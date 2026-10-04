@@ -7,10 +7,6 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/types/expected.h"
-#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
-#include "chrome/browser/web_applications/model/web_app_icon_types.h"
-#include "chrome/browser/web_applications/web_app_icon_manager.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_frame_host.h"
 #include "extensions/common/extension.h"
@@ -30,25 +26,8 @@ void ControlledFrameMenuIconLoader::LoadIcon(
     content::BrowserContext* context,
     const extensions::Extension* extension,
     const extensions::MenuItem::ExtensionKey& extension_key) {
-  const auto* render_frame_host = content::RenderFrameHost::FromID(
-      extension_key.webview_embedder_process_id,
-      extension_key.webview_embedder_frame_id);
-  CHECK(render_frame_host);
-
-  const base::expected<web_app::IsolatedWebAppUrlInfo, std::string>
-      iwa_url_info = web_app::IsolatedWebAppUrlInfo::Create(
-          render_frame_host->GetLastCommittedURL());
-  CHECK(iwa_url_info.has_value());
-
-  auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(context));
-  CHECK(web_app_provider);
-  auto result = pending_icons_.insert(extension_key);
-  CHECK(result.second);
-  web_app_provider->icon_manager().ReadSmallestIcon(
-      iwa_url_info->app_id(), {web_app::IconPurpose::ANY}, gfx::kFaviconSize,
-      base::BindOnce(&ControlledFrameMenuIconLoader::OnIconLoaded,
-                     weak_ptr_factory_.GetWeakPtr(), extension_key));
+  // Controlled Frame requires Isolated Web Apps, which have been removed.
+  NOTREACHED();
 }
 
 gfx::Image ControlledFrameMenuIconLoader::GetIcon(
@@ -75,7 +54,6 @@ void ControlledFrameMenuIconLoader::SetNotifyOnLoadedCallbackForTesting(
 
 void ControlledFrameMenuIconLoader::OnIconLoaded(
     const extensions::MenuItem::ExtensionKey& extension_key,
-    web_app::IconPurpose purpose,
     SkBitmap bitmap) {
   gfx::Image image = gfx::Image::CreateFrom1xBitmap(bitmap);
   CHECK(!image.IsEmpty());

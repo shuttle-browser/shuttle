@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/endpoint_fetcher",
-  "+pdf/mojom/pdf.mojom.h",
-]

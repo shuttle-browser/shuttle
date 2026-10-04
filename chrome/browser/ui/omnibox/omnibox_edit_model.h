@@ -20,7 +20,6 @@
 #include "base/observer_list_types.h"
 #include "base/time/time.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
-#include "components/contextual_tasks/public/query_contextualizer.h"
 #include "components/omnibox/browser/autocomplete_controller.h"
 #include "components/omnibox/browser/autocomplete_enums.h"
 #include "components/omnibox/browser/autocomplete_input.h"
@@ -41,7 +40,6 @@ class OmniboxPopupView;
 class TemplateURL;
 class Profile;
 namespace contextual_search {
-class ContextualSearchSessionHandle;
 }
 namespace gfx {
 class Image;
@@ -103,9 +101,6 @@ class OmniboxEditModel {
 
     ~Observer() override = default;
   };
-
-  void SetQueryContextualizerForTesting(
-      std::unique_ptr<contextual_tasks::QueryContextualizer> contextualizer);
 
   explicit OmniboxEditModel(OmniboxController* controller);
   OmniboxEditModel(const OmniboxEditModel&) = delete;
@@ -282,9 +277,6 @@ class OmniboxEditModel {
 
   // Returns true if the popup is open and is in in AI-Mode.
   bool PopupInAiMode() const;
-
-  // Opens the Lens search UI using a synthetic autocomplete match.
-  void OpenLensSearch();
 
   // Opens given selection. Most kinds of selection invoke an action or
   // otherwise call `OpenMatch`, but some may `AcceptInput` which is not
@@ -771,36 +763,6 @@ class OmniboxEditModel {
   bool ShouldOpenAimPopup(AimActivation activation,
                           AutocompleteMatchType::Type current_match_type);
 
-  // Helper for `OpenAiMode()` to initialize `query_contextualizer_`. No-op if
-  // called before. `query_contextualizer_` may be null after this is called.
-  void InitializeQueryContextualizerIfNeeded();
-
-  // TODO(hujasonx): Add comment.
-  // Helper for `InitializeQueryContextualizerIfNeeded()`...
-  contextual_search::ContextualSearchSessionHandle*
-  GetOrCreateContextualSearchSessionHandle(Profile* profile);
-
-  // TODO(hujasonx): Add comment.
-  // Helper for `OpenAiMode()`...
-  void NavigateToAiModeWithContextualizer(const std::u16string& query_text);
-
-  // TODO(hujasonx): Add comment and possibly rename.
-  // Helper for `OpenAiMode()`...
-  void NavigateToAiModeWithContextualizerOnContextualizationComplete(
-      const std::u16string& query_text,
-      WindowOpenDisposition disposition,
-      base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
-          session_handle);
-
-  // TODO(hujasonx): Add comment and possibly rename.
-  // Helper for `OpenAiMode()`...
-  void NavigateToAiModeWithContextualizerNavigateToUrlWithSession(
-      base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
-          session_handle,
-      const std::u16string& query_text,
-      WindowOpenDisposition disposition,
-      GURL url);
-
   // Helper for `OpenAiMode()` to navigate to Google's AI mode page without
   // including context.
   void NavigateToAiModeWithoutContextualizer(const std::u16string& query_text);
@@ -961,25 +923,6 @@ class OmniboxEditModel {
 
   // See comment on `Observer`.
   mutable base::ObserverList<Observer> observers_;
-
-  // True if the query contextualizer has been initialized for the current
-  // session.
-  bool query_contextualizer_initialized_ = false;
-
-  // Session handle for the query contextualizer. Initiated on-demand when the
-  // user triggers the AI Mode button if there is context to upload. Its
-  // lifecycle is tied to the duration of context submission and URL creation,
-  // and is reset if the contextualizer triggers a cleanup.
-  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
-      session_handle_;
-
-  // Delegate for the query contextualizer, used to interact with the omnibox
-  // client.
-  std::unique_ptr<contextual_tasks::QueryContextualizer::Delegate>
-      query_contextualizer_delegate_;
-
-  // The query contextualizer used to fetch context for the search query.
-  std::unique_ptr<contextual_tasks::QueryContextualizer> query_contextualizer_;
 
   base::WeakPtrFactory<OmniboxEditModel> weak_factory_{this};
 };

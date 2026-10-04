@@ -16,9 +16,6 @@
 #include "base/types/to_address.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/extensions/extensions_overrides/simple_overrides.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -254,61 +251,6 @@ void ExtensionSettingsOverriddenDialog::HandleDialogResult(
         extensions_features::kSearchEngineExplicitChoiceDialog));
     std::move(dialog_result_callback_).Run(result);
   }
-
-  if (params_.hats_survey_trigger) {
-    base::TimeDelta duration = show_time_.is_null()
-                                   ? base::TimeDelta()
-                                   : base::TimeTicks::Now() - show_time_;
-    MaybeShowHatsSurvey(
-        base::to_address(profile_), *params_.hats_survey_trigger, result,
-        duration, params_.extension_name, params_.controlling_extension_id);
-  }
-}
-
-// static
-void ExtensionSettingsOverriddenDialog::MaybeShowHatsSurvey(
-    Profile* profile,
-    const std::string& survey_trigger,
-    DialogResult result,
-    base::TimeDelta duration,
-    const std::string& extension_name,
-    const std::string& extension_id) {
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile, /*create_if_necessary=*/true);
-  if (!hats_service) {
-    return;
-  }
-
-  SurveyStringData data_map;
-  data_map[kHatsPsdChannel] =
-      std::string(version_info::GetChannelString(chrome::GetChannel()));
-
-  std::string user_choice;
-  switch (result) {
-    case DialogResult::kChangeSettingsBack:
-      user_choice = kHatsUserChoicePreviousProvider;
-      break;
-    case DialogResult::kKeepNewSettings:
-      user_choice = kHatsUserChoiceNewProvider;
-      break;
-    case DialogResult::kDialogDismissed:
-      user_choice = kHatsUserChoiceDismissed;
-      break;
-    case DialogResult::kDialogClosedWithoutUserAction:
-      user_choice = kHatsUserChoiceClosedWithoutUserAction;
-      break;
-    default:
-      NOTREACHED();
-  }
-  data_map[kHatsPsdUserChoice] = user_choice;
-
-  data_map[kHatsPsdTimeDialogVisible] = base::NumberToString(
-      ukm::GetExponentialBucketMinForUserTiming(duration.InSeconds()));
-  data_map[kHatsPsdNewExtensionName] = extension_name;
-  data_map[kHatsPsdNewExtensionId] = extension_id;
-
-  hats_service->LaunchDelayedSurvey(survey_trigger, /*timeout_ms=*/5000, {},
-                                    data_map);
 }
 
 void ExtensionSettingsOverriddenDialog::SetDialogResultCallback(

@@ -94,7 +94,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     BUILDFLAG(IS_MAC)
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -220,8 +219,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 // Diagnostics is only available on non-android platforms.
-#include "chrome/browser/diagnostics/diagnostics_controller.h"  // nogncheck
-#include "chrome/browser/diagnostics/diagnostics_writer.h"  // nogncheck
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_LINUX)
@@ -267,10 +264,6 @@ ChromeMainDelegate::GetNonWildcardDomainNonPortSchemes() {
       extensions::kExtensionScheme,
 #endif
       chrome::kChromeSearchScheme,
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
-    BUILDFLAG(IS_MAC)
-      webapps::kIsolatedAppScheme,
-#endif
       content::kChromeDevToolsScheme,    content::kChromeUIScheme,
       content::kChromeUIUntrustedScheme,
   };
@@ -1278,37 +1271,6 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
 
   ContentSettingsPattern::SetNonWildcardDomainNonPortSchemes(
       GetNonWildcardDomainNonPortSchemes());
-
-// No support for ANDROID yet as DiagnosticsController needs wchar support.
-// TODO(gspencer): That's not true anymore, or at least there are no w-string
-// references anymore. Not sure if that means this can be enabled on Android or
-// not though.  As there is no easily accessible command line on Android, I'm
-// not sure this is a big deal.
-#if !BUILDFLAG(IS_ANDROID) && !defined(BUILDING_CHROME_RENDERER)
-  // If we are in diagnostics mode this is the end of the line: after the
-  // diagnostics are run the process will invariably exit.
-  if (command_line.HasSwitch(switches::kDiagnostics)) {
-    diagnostics::DiagnosticsWriter::FormatType format =
-        diagnostics::DiagnosticsWriter::HUMAN;
-    if (command_line.HasSwitch(switches::kDiagnosticsFormat)) {
-      std::string format_str =
-          command_line.GetSwitchValueASCII(switches::kDiagnosticsFormat);
-      if (format_str == "machine") {
-        format = diagnostics::DiagnosticsWriter::MACHINE;
-      } else if (format_str == "log") {
-        format = diagnostics::DiagnosticsWriter::LOG;
-      } else {
-        DUMP_WILL_BE_CHECK_EQ("human", format_str);
-      }
-    }
-
-    diagnostics::DiagnosticsWriter writer(format);
-    int exit_code = diagnostics::DiagnosticsController::GetInstance()->Run(
-        command_line, &writer);
-    diagnostics::DiagnosticsController::GetInstance()->ClearResults();
-    return exit_code;
-  }
-#endif
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Initialize primary user homedir (in multi-profile session) as it may be

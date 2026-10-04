@@ -7,22 +7,16 @@
 #include <map>
 
 #import "base/apple/foundation_util.h"
-#include "base/notimplemented.h"
 #import "chrome/browser/app_controller_mac.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
-#import "chrome/browser/ui/cocoa/applescript/bookmark_folder_applescript.h"
 #import "chrome/browser/ui/cocoa/applescript/browsercrapplication+applescript.h"
 #import "chrome/browser/ui/cocoa/applescript/constants_applescript.h"
 #import "chrome/browser/ui/cocoa/applescript/error_applescript.h"
 #import "chrome/browser/ui/cocoa/applescript/window_applescript.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "ui/base/base_window.h"
-
-using bookmarks::BookmarkModel;
 
 @implementation BrowserCrApplication (AppleScriptAdditions)
 
@@ -78,65 +72,6 @@ using bookmarks::BookmarkModel;
 
 - (NSScriptObjectSpecifier*)objectSpecifier {
   return nil;
-}
-
-- (BookmarkFolderAppleScript*)otherBookmarks {
-  Profile* lastProfile = AppController.sharedController.lastProfile;
-  if (!lastProfile) {
-    AppleScript::SetError(AppleScript::Error::kGetProfile);
-    return nil;
-  }
-
-  BookmarkModel* model =
-      BookmarkModelFactory::GetForBrowserContext(lastProfile);
-  if (!model->loaded()) {
-    AppleScript::SetError(AppleScript::Error::kBookmarkModelLoad);
-    return nil;
-  }
-
-  BookmarkFolderAppleScript* otherBookmarks = [[BookmarkFolderAppleScript alloc]
-      initWithBookmarkNode:model->other_node()];
-  [otherBookmarks setContainer:self
-                      property:AppleScript::kBookmarkFoldersProperty];
-  return otherBookmarks;
-}
-
-- (BookmarkFolderAppleScript*)bookmarksBar {
-  Profile* lastProfile = AppController.sharedController.lastProfile;
-  if (!lastProfile) {
-    AppleScript::SetError(AppleScript::Error::kGetProfile);
-    return nil;
-  }
-
-  BookmarkModel* model =
-      BookmarkModelFactory::GetForBrowserContext(lastProfile);
-  if (!model->loaded()) {
-    AppleScript::SetError(AppleScript::Error::kBookmarkModelLoad);
-    return nullptr;
-  }
-
-  BookmarkFolderAppleScript* bookmarksBar = [[BookmarkFolderAppleScript alloc]
-      initWithBookmarkNode:model->bookmark_bar_node()];
-  [bookmarksBar setContainer:self
-                    property:AppleScript::kBookmarkFoldersProperty];
-  return bookmarksBar;
-}
-
-- (NSArray<BookmarkFolderAppleScript*>*)bookmarkFolders {
-  return @[ self.otherBookmarks, self.bookmarksBar ];
-}
-
-- (void)insertInBookmarksFolders:(BookmarkFolderAppleScript*)aBookmarkFolder {
-  NOTIMPLEMENTED();
-}
-
-- (void)insertInBookmarksFolders:(BookmarkFolderAppleScript*)aBookmarkFolder
-                         atIndex:(int)index {
-  NOTIMPLEMENTED();
-}
-
-- (void)removeFromBookmarksFoldersAtIndex:(int)index {
-  NOTIMPLEMENTED();
 }
 
 @end

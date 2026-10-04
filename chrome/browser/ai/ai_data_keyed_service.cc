@@ -29,7 +29,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/unguessable_token.h"
-#include "chrome/browser/history_embeddings/history_embeddings_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/common/chrome_switches.h"
@@ -40,8 +39,6 @@
 #include "components/autofill/core/common/form_data.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/compose/buildflags.h"
-#include "components/content_extraction/content/browser/inner_text.h"
-#include "components/history_embeddings/content/history_embeddings_service.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/core/optimization_guide_proto_util.h"
 #include "components/optimization_guide/proto/features/actions_data.pb.h"
@@ -146,115 +143,24 @@ void GetAIPageContentWithActionableElementsForModelPrototyping(
                                        std::move(callback));
 }
 
-// Fills an AiData proto with information from GetInnerText. If no result,
-// returns an empty AiDAta.
-void OnGetInnerTextForModelPrototyping(
-    AiDataKeyedService::AiDataCallback continue_callback,
-    std::unique_ptr<content_extraction::InnerTextResult> result) {
-  TRACE_EVENT0("browser", "OnGetInnerTextForModelPrototyping");
-  AiDataKeyedService::AiData data;
-  if (result) {
-    data = std::make_optional<AiDataKeyedService::BrowserData>();
-    data->mutable_page_context()->set_inner_text(result->inner_text);
-    if (result->node_offset) {
-      data->mutable_page_context()->set_inner_text_offset(
-          result->node_offset.value());
-    }
-  }
-  std::move(continue_callback).Run(std::move(data));
-}
-
-// Calls GetInnerText and creates a WrapCallbackWithDefaultInvokeIfNotRun with
-// nullptr.
+// Inner text extraction (content_extraction) has been removed from this build,
+// so the inner text part of the AiData is always left empty.
 void GetInnerTextForModelPrototyping(
     int dom_node_id,
     content::WebContents* web_contents,
     AiDataKeyedService::AiDataCallback continue_callback) {
-  TRACE_EVENT0("browser", "GetInnerTextForModelPrototyping");
-  DCHECK(web_contents);
-  // If the tab has not actually navigated, then the remote interfaces will be
-  // null, just leave off inner text in this case.
-  if (!web_contents->GetPrimaryMainFrame() ||
-      !web_contents->GetPrimaryMainFrame()->GetRemoteInterfaces()) {
-    return std::move(continue_callback)
-        .Run(std::make_optional<AiDataKeyedService::BrowserData>());
-  }
-  content_extraction::GetInnerText(
-      *web_contents->GetPrimaryMainFrame(), dom_node_id,
-      mojo::WrapCallbackWithDefaultInvokeIfNotRun(
-          base::BindOnce(&OnGetInnerTextForModelPrototyping,
-                         std::move(continue_callback)),
-          nullptr));
+  std::move(continue_callback)
+      .Run(std::make_optional<AiDataKeyedService::BrowserData>());
 }
 
-void OnHistorySearchCompleted(
-    AiDataKeyedService::AiDataCallback ai_data_callback,
-    std::vector<history_embeddings::SearchResult> search_results) {
-  AiDataKeyedService::AiData data =
-      std::make_optional<AiDataKeyedService::BrowserData>();
-  for (const auto& search_result : search_results) {
-    // Skip search result if empty;
-    if (search_result.scored_url_rows.empty()) {
-      continue;
-    }
-
-    auto* history_result = data->add_history_query_result();
-    auto* query = history_result->mutable_query();
-    query->set_query(search_result.query);
-    query->set_num_history_visits(search_result.count);
-    if (search_result.time_range_start) {
-      query->mutable_history_search_time_range()
-          ->mutable_start_time()
-          ->set_seconds((int64_t)(search_result.time_range_start
-                                      ->InSecondsFSinceUnixEpoch()));
-    }
-    for (auto& scored_url_row : search_result.scored_url_rows) {
-      optimization_guide::proto::HistoryVisitItem* visit_item =
-          history_result->mutable_history_data()->add_visit_item();
-      visit_item->set_page_title(base::UTF16ToUTF8(scored_url_row.row.title()));
-      visit_item->set_page_url(scored_url_row.row.url().spec());
-      visit_item->mutable_visit_time()->set_seconds(static_cast<int64_t>(
-          scored_url_row.scored_url.visit_time.InSecondsFSinceUnixEpoch()));
-      for (const std::string& passage :
-           scored_url_row.url_data.passages.passages()) {
-        visit_item->add_passages(passage);
-      }
-    }
-  }
-
-  std::move(ai_data_callback).Run(data);
-}
-
+// History embeddings have been removed from this build, so history queries
+// always produce an empty result.
 void GetHistoryQueryResultForModelPrototyping(
     content::WebContents* web_contents,
     const optimization_guide::proto::HistoryQuerySpecifiers& history_specifiers,
     AiDataKeyedService::AiDataCallback continue_callback) {
-  history_embeddings::HistoryEmbeddingsService* history_embeddings_service =
-      HistoryEmbeddingsServiceFactory::GetForProfile(
-          Profile::FromBrowserContext(web_contents->GetBrowserContext()));
-
-  const auto history_search_callback =
-      base::BarrierCallback<history_embeddings::SearchResult>(
-          history_specifiers.history_queries_size(),
-          base::BindOnce(&OnHistorySearchCompleted,
-                         std::move(continue_callback)));
-
-  for (const auto& history_query : history_specifiers.history_queries()) {
-    // Skip empty queries by returning an empty result.
-    if (history_query.query().empty()) {
-      history_search_callback.Run(history_embeddings::SearchResult());
-      continue;
-    }
-
-    history_embeddings_service->Search(
-        /*previous_search_result=*/nullptr, history_query.query(),
-        base::Time::FromSecondsSinceUnixEpoch(
-            (double)(history_query.history_search_time_range()
-                         .start_time()
-                         .seconds())),
-        history_query.num_history_visits(),
-        /*skip_answering=*/true, /*url_id_filter=*/{}, history_search_callback);
-  }
+  std::move(continue_callback)
+      .Run(std::make_optional<AiDataKeyedService::BrowserData>());
 }
 
 // Fills an AiData proto with information from RequestAXTreeSnapshot. If no
@@ -364,45 +270,19 @@ void OnDataCollectionsComplete(AiDataKeyedService::AiDataCallback callback,
 }
 
 #if !BUILDFLAG(IS_ANDROID)
-void OnGetTabInnerText(
-    int64_t tab_id,
-    std::string title,
-    std::string url,
-    AiDataKeyedService::AiDataCallback continue_callback,
-    std::unique_ptr<content_extraction::InnerTextResult> result) {
-  TRACE_EVENT0("browser", "OnGetTabInnerText");
+// Creates an AiData with the tab info. Inner text is not collected since
+// content_extraction has been removed.
+void FillTabInfo(AiDataKeyedService::AiDataCallback continue_callback,
+                 int64_t tab_id,
+                 std::string title,
+                 std::string url) {
+  TRACE_EVENT0("browser", "FillTabInfo");
   auto data = std::make_optional<AiDataKeyedService::BrowserData>();
   auto* tab = data->add_tabs();
   tab->set_tab_id(tab_id);
   tab->set_title(std::move(title));
   tab->set_url(std::move(url));
-  if (result) {
-    tab->mutable_page_context()->set_inner_text(result->inner_text);
-  }
   std::move(continue_callback).Run(std::move(data));
-}
-
-// Gets tab info and starts a call to get the inner text from the tab.
-void FillTabInfo(content::WebContents* web_contents,
-                 AiDataKeyedService::AiDataCallback continue_callback,
-                 int64_t tab_id,
-                 std::string title,
-                 std::string url) {
-  TRACE_EVENT0("browser", "FillTabInfo");
-  DCHECK(web_contents);
-  // If the tab has not actually navigated, then the remote interfaces will be
-  // null, just leave off inner text in this case.
-  if (!web_contents->GetPrimaryMainFrame() ||
-      !web_contents->GetPrimaryMainFrame()->GetRemoteInterfaces()) {
-    return std::move(continue_callback)
-        .Run(std::make_optional<AiDataKeyedService::BrowserData>());
-  }
-  content_extraction::GetInnerText(
-      *web_contents->GetPrimaryMainFrame(), std::nullopt,
-      mojo::WrapCallbackWithDefaultInvokeIfNotRun(
-          base::BindOnce(&OnGetTabInnerText, tab_id, std::move(title),
-                         std::move(url), std::move(continue_callback)),
-          nullptr));
 }
 
 // Create an AiData with the tab and tab group information.
@@ -429,13 +309,8 @@ void GetTabDataForModelPrototyping(
         tab_strip_model->GetWebContentsAt(index);
     auto title = base::UTF16ToUTF8(tab_web_contents->GetTitle());
     auto url = tab_web_contents->GetLastCommittedURL().spec();
-    if (index >= tabs_for_inner_text) {
-      OnGetTabInnerText(index, std::move(title), std::move(url),
-                        concurrent.CreateCallback(), nullptr);
-    } else {
-      FillTabInfo(tab_web_contents, concurrent.CreateCallback(), index,
-                  std::move(title), std::move(url));
-    }
+    FillTabInfo(concurrent.CreateCallback(), index, std::move(title),
+                std::move(url));
     if (web_contents == tab_web_contents) {
       data->set_active_tab_id(index);
     }

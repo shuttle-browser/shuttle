@@ -50,7 +50,7 @@ class SiteProtectionMetricsObserver
                          double score,
                          double old_score,
                          site_engagement::EngagementType type,
-                         const std::optional<webapps::AppId>& app_id) override;
+                         const std::optional<std::string>& app_id) override;
 
   // content::WebContentsObserver:
   void PrimaryPageChanged(content::Page& page) override;

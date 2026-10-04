@@ -18,8 +18,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
-#include "components/lens/lens_features.h"
-#include "components/lens/proto/server/lens_overlay_response.pb.h"
 #include "components/omnibox/browser/base_search_provider.h"
 #include "components/omnibox/browser/document_suggestions_service.h"
 #include "components/omnibox/browser/enterprise_search_aggregator_suggestions_service.h"
@@ -40,29 +38,8 @@
 
 namespace {
 
-// Maximum length of page title sent to Suggest via `pageTitle` CGI param,
-// expressed as number of Unicode characters (codepoints).
-const size_t kMaxPageTitleLength = 128;
-
 // Suggest query parameter for setting the SuggestInventory for the request.
 constexpr char kSuggestInventoryParam[] = "azi";
-
-// TODO(crbug.com/842922363): Combine with the similar function in
-// zero_suggest_provider.cc.
-std::u16string TruncateUTF16(const std::u16string& input, size_t max_length) {
-  if (input.empty()) {
-    return u"";
-  }
-
-  size_t num_chars = 0;
-  base::i18n::UTF16CharIterator it(input);
-  while (!it.end() && (num_chars < max_length)) {
-    it.Advance();
-    num_chars++;
-  }
-
-  return input.substr(0, it.array_pos());
-}
 
 std::string RequestTypeToString(RemoteRequestType request_type) {
   switch (request_type) {
@@ -181,114 +158,6 @@ void AddVariationHeaders(network::ResourceRequest* request,
       is_off_the_record ? variations::InIncognito::kYes
                         : variations::InIncognito::kNo,
       request);
-}
-
-// Adds query params to the url from the search terms args
-// Lens overlay suggest inputs.
-GURL AddLensOverlaySuggestInputsDataToEndpointUrl(
-    TemplateURLRef::SearchTermsArgs search_terms_args,
-    const GURL& url_to_modify) {
-  auto lens_overlay_suggest_inputs =
-      search_terms_args.lens_overlay_suggest_inputs;
-  if (!lens_overlay_suggest_inputs.has_value()) {
-    return url_to_modify;
-  }
-  GURL modified_url = GURL(url_to_modify);
-  bool send_request_and_session_ids = false;
-  bool send_vit = false;
-
-  if (search_terms_args.page_classification ==
-          metrics::OmniboxEventProto::CONTEXTUAL_SEARCHBOX ||
-      search_terms_args.page_classification ==
-          metrics::OmniboxEventProto::NTP_REALBOX ||
-      (omnibox::IsComposebox(search_terms_args.page_classification) &&
-       search_terms_args.page_classification !=
-           metrics::OmniboxEventProto::LENS_SIDE_PANEL_COMPOSEBOX)) {
-    send_request_and_session_ids =
-        lens_overlay_suggest_inputs
-            ->send_gsession_vsrid_for_contextual_suggest();
-    send_vit = true;
-    modified_url =
-        net::AppendOrReplaceQueryParameter(modified_url, "gs_ps", "1");
-
-    if (lens_overlay_suggest_inputs->send_page_title_and_url()) {
-      if (lens_overlay_suggest_inputs->has_page_title()) {
-        std::u16string title_16 =
-            base::UTF8ToUTF16(lens_overlay_suggest_inputs->page_title());
-        std::u16string truncated_16 =
-            TruncateUTF16(title_16, kMaxPageTitleLength);
-        modified_url = net::AppendOrReplaceQueryParameter(
-            modified_url, "pageTitle", base::UTF16ToUTF8(truncated_16));
-      }
-      if (lens_overlay_suggest_inputs->has_page_url()) {
-        modified_url = net::AppendOrReplaceQueryParameter(
-            modified_url, "url", lens_overlay_suggest_inputs->page_url());
-      }
-    }
-  } else if (search_terms_args.page_classification ==
-                 metrics::OmniboxEventProto::LENS_SIDE_PANEL_SEARCHBOX ||
-             search_terms_args.page_classification ==
-                 metrics::OmniboxEventProto::LENS_SIDE_PANEL_COMPOSEBOX) {
-    if (lens::features::GetLensAimSuggestionsType() ==
-        lens::features::LensAimSuggestionsType::kContextual) {
-      send_request_and_session_ids =
-          lens_overlay_suggest_inputs
-              ->send_gsession_vsrid_for_contextual_suggest();
-      send_vit = true;
-    } else {
-      if (lens_overlay_suggest_inputs
-              ->send_gsession_vsrid_vit_for_lens_suggest()) {
-        send_request_and_session_ids = true;
-        send_vit = true;
-      }
-      if (lens_overlay_suggest_inputs->has_encoded_image_signals()) {
-        modified_url = net::AppendOrReplaceQueryParameter(
-            modified_url, "iil",
-            lens_overlay_suggest_inputs->encoded_image_signals());
-      }
-      if (lens_overlay_suggest_inputs->send_vsint_for_lens_suggest() &&
-          lens_overlay_suggest_inputs
-              ->has_encoded_visual_search_interaction_log_data()) {
-        modified_url = net::AppendOrReplaceQueryParameter(
-            modified_url, "vsint",
-            lens_overlay_suggest_inputs
-                ->encoded_visual_search_interaction_log_data());
-      }
-    }
-
-    if (omnibox::IsComposebox(search_terms_args.page_classification)) {
-      modified_url =
-          net::AppendOrReplaceQueryParameter(modified_url, "gs_ps", "1");
-    }
-  }
-
-  if (send_vit &&
-      lens_overlay_suggest_inputs->has_contextual_visual_input_type()) {
-    modified_url = net::AppendOrReplaceQueryParameter(
-        modified_url, "vit",
-        lens_overlay_suggest_inputs->contextual_visual_input_type());
-  }
-
-  if (send_request_and_session_ids) {
-    if (lens_overlay_suggest_inputs->has_encoded_request_id()) {
-      modified_url = net::AppendOrReplaceQueryParameter(
-          modified_url, "vsrid",
-          lens_overlay_suggest_inputs->encoded_request_id());
-    }
-    if (lens_overlay_suggest_inputs->has_search_session_id()) {
-      modified_url = net::AppendOrReplaceQueryParameter(
-          modified_url, "gsessionid",
-          lens_overlay_suggest_inputs->search_session_id());
-    }
-  }
-
-  if (lens_overlay_suggest_inputs->has_encoded_contextual_inputs()) {
-    modified_url = net::AppendOrReplaceQueryParameter(
-        modified_url, "cinpts",
-        lens_overlay_suggest_inputs->encoded_contextual_inputs());
-  }
-
-  return modified_url;
 }
 
 GURL AddAimInputStateParamsToEndpointUrl(
@@ -454,30 +323,12 @@ GURL RemoteSuggestionsService::EndpointUrl(
     case metrics::OmniboxEventProto::OMNIBOX_EVERYWHERE:
     case metrics::OmniboxEventProto::SRP_OMNIBOX_COMPOSEBOX:
     case metrics::OmniboxEventProto::OTHER_OMNIBOX_COMPOSEBOX:
-      if (search_terms_args.lens_overlay_suggest_inputs.has_value() &&
-          search_terms_args.input_state.active_tool ==
-              omnibox::ToolMode::TOOL_MODE_UNSPECIFIED) {
-        url = net::AppendOrReplaceQueryParameter(url, "client",
-                                                 "chrome-contextual");
-      }
       break;
     case metrics::OmniboxEventProto::LENS_SIDE_PANEL_COMPOSEBOX:
-      if (search_terms_args.lens_overlay_suggest_inputs.has_value()) {
-        if (lens::features::GetLensAimSuggestionsType() ==
-            lens::features::LensAimSuggestionsType::kContextual) {
-          url = net::AppendOrReplaceQueryParameter(url, "client",
-                                                   "chrome-contextual");
-        } else if (lens::features::GetLensAimSuggestionsType() ==
-                   lens::features::LensAimSuggestionsType::kMultimodal) {
-          url = net::AppendOrReplaceQueryParameter(url, "client",
-                                                   "chrome-multimodal");
-        }
-      }
       break;
     default:
       break;
   }
-  url = AddLensOverlaySuggestInputsDataToEndpointUrl(search_terms_args, url);
   url = AddAimInputStateParamsToEndpointUrl(search_terms_args, url);
   url = AddSmartComposePreviousQueryToEndpointUrl(search_terms_args, url);
   url = ReplaceLensSuggestPathPlaceholderInEndpointUrl(search_terms_args, url);

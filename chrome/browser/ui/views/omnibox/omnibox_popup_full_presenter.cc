@@ -95,14 +95,6 @@ void OmniboxPopupFullPresenter::Show() {
     }
   }
 
-  auto* controller =
-      GetWebUIContent()->contents_wrapper()->GetWebUIController();
-  auto* handler = controller ? controller->omnibox_handler() : nullptr;
-  auto* omnibox_view = location_bar()->GetOmniboxView();
-  if (handler && omnibox_view) {
-    handler->SetAimButtonVisible(omnibox_view->AimButtonVisible());
-  }
-
   views::Widget* parent_widget = delegate().GetLocationBarWidget();
   if (parent_widget && !parent_widget_observation_.IsObserving()) {
     parent_widget_observation_.Observe(parent_widget);

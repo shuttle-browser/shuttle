@@ -23,13 +23,6 @@ component("features") {
 
 static_library("core") {
   sources = [
-    "category_classifier_model_executor.cc",
-    "category_classifier_model_executor.h",
-    "category_classifier_model_handler.cc",
-    "category_classifier_model_handler.h",
-    "on_device_category_classifier.cc",
-    "on_device_category_classifier.h",
-    "page_category_classifier_bridge.h",
     "page_content_annotation_job.cc",
     "page_content_annotation_job.h",
     "page_content_annotation_job_executor.cc",
@@ -53,8 +46,6 @@ static_library("core") {
     "page_content_extraction_types.h",
     "page_content_store.cc",
     "page_content_store.h",
-    "page_embeddings_common.cc",
-    "page_embeddings_common.h",
     "page_stability_event.h",
     "page_stability_monitor_delegate.cc",
     "page_stability_monitor_delegate.h",
@@ -86,7 +77,6 @@ static_library("core") {
     "//components/google/core/common",
     "//components/omnibox/common",
     "//components/optimization_guide/core:features",
-    "//components/passage_embeddings/core",
     "//services/metrics/public/cpp:metrics_cpp",
     "//services/metrics/public/cpp:ukm_builders",
     "//third_party/tensorflow_models:tflite_custom_ops",
@@ -118,8 +108,6 @@ static_library("test_support") {
 source_set("unit_tests") {
   testonly = true
   sources = [
-    "category_classifier_model_handler_unittest.cc",
-    "on_device_category_classifier_unittest.cc",
     "page_content_annotation_job_executor_unittest.cc",
     "page_content_annotation_job_unittest.cc",
     "page_content_annotations_common_unittest.cc",
@@ -142,7 +130,6 @@ source_set("unit_tests") {
     "//base/test:test_support",
     "//components/history/core/test",
     "//components/optimization_guide/core:test_support",
-    "//components/passage_embeddings/core:passage_embeddings_types",
     "//components/search_engines:test_support",
     "//testing/gmock",
     "//testing/gtest",

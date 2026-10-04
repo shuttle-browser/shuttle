@@ -20,7 +20,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/common/logger.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
@@ -113,6 +112,10 @@ constexpr int kAiModeAllowedDefault = 0;
 
 // The maximum number of retries for eligibility requests.
 constexpr int kMaxRetries = 3;
+
+// Request header carrying the search capabilities version.
+constexpr char kSearchCapabilitiesHeaderName[] =
+    "Chrome-Search-Capabilities-Version";
 
 // The pref name used for storing the eligibility response proto.
 constexpr char kResponsePrefName[] =
@@ -512,10 +515,8 @@ bool AimEligibilityService::IsCobrowseServerEligible() const {
 }
 
 bool AimEligibilityService::IsCobrowseEligible() const {
-  if (!base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks)) {
-    return false;
-  }
-  return IsCobrowseServerEligible();
+  // Contextual tasks (co-browsing) were removed from this fork.
+  return false;
 }
 
 bool AimEligibilityService::IsFuseboxEligible() const {
@@ -534,26 +535,15 @@ bool AimEligibilityService::IsCsbEligible() const {
       GetMostRecentResponse().is_contextual_searchbox_eligible());
 }
 
-bool AimEligibilityService::IsAimUrl(
-    const GURL& url,
-    std::optional<contextual_tasks::HostOverride> host_override) const {
-  OMNIBOX_LOG("aim_url_check")
-      << "IsAimUrl: Checking " << url
-      << " override: " << (host_override ? host_override->ToString() : "");
-  bool is_aim_url =
-      IsAimHost(url, host_override) && IsAimPath(url) && HasAimUrlParams(url);
+bool AimEligibilityService::IsAimUrl(const GURL& url) const {
+  OMNIBOX_LOG("aim_url_check") << "IsAimUrl: Checking " << url;
+  bool is_aim_url = IsAimHost(url) && IsAimPath(url) && HasAimUrlParams(url);
   OMNIBOX_LOG("aim_url_check") << "IsAimUrl: " << (is_aim_url ? "yes" : "no");
   return is_aim_url;
 }
 
-bool AimEligibilityService::IsAimHost(
-    const GURL& url,
-    std::optional<contextual_tasks::HostOverride> host_override) const {
+bool AimEligibilityService::IsAimHost(const GURL& url) const {
   OMNIBOX_LOG("aim_url_check") << "IsAimHost: Checking host...";
-  if (host_override && host_override->Matches(url)) {
-    OMNIBOX_LOG("aim_url_check") << "Found overridden host!";
-    return true;
-  }
   OMNIBOX_LOG("aim_url_check")
       << "IsAimHost: Available hosts: "
       << GetMostRecentResponse().interception_allowed_hosts().size();
@@ -1167,7 +1157,7 @@ void AimEligibilityService::StartServerEligibilityRequest(
           omnibox::kAimServerEligibilitySendSearchCapabilitiesHeaderEnabled) &&
       !configuration_.search_capabilities_version.empty()) {
     request->headers.SetHeader(
-        contextual_tasks::kContextualTasksSearchCapabilitiesHeaderName,
+        kSearchCapabilitiesHeaderName,
         configuration_.search_capabilities_version);
   }
 

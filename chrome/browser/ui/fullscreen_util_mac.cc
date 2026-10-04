@@ -9,7 +9,6 @@
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 
@@ -31,11 +30,6 @@ bool IsInContentFullscreen(
 
 bool IsAlwaysShowToolbarEnabled(
     const BrowserWindowInterface* browser_window_interface) {
-  if (web_app::AppBrowserController::IsWebApp(browser_window_interface)) {
-    const web_app::AppBrowserController* controller =
-        web_app::AppBrowserController::From(browser_window_interface);
-    return controller->AlwaysShowToolbarInFullscreen();
-  }
   return browser_window_interface->GetProfile()->GetPrefs()->GetBoolean(
       prefs::kShowFullscreenToolbar);
 }

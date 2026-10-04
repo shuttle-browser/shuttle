@@ -13,7 +13,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "components/background_sync/background_sync_delegate.h"
 #include "components/site_engagement/content/site_engagement_observer.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/background_sync_controller.h"
 #include "content/public/browser/browser_thread.h"
 #include "url/origin.h"
@@ -88,7 +87,7 @@ class BackgroundSyncDelegateImpl
                          double score,
                          double old_score,
                          site_engagement::EngagementType engagement_type,
-                         const std::optional<webapps::AppId>& app_id) override;
+                         const std::optional<std::string>& app_id) override;
 
  private:
   raw_ptr<Profile, DanglingUntriaged> profile_;

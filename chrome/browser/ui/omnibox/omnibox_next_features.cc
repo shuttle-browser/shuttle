@@ -18,9 +18,6 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_prefs.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/contextual_search/contextual_search_metrics_recorder.h"
-#include "components/contextual_search/contextual_search_service.h"
-#include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/common/omnibox_features.h"
@@ -42,7 +39,9 @@ BASE_FEATURE(kWebUIOmniboxPopup, ENABLED);
 
 // If enabled, Omnibox popup will transition to AI-Mode with the compose-box
 // panel taking up the whole of the popup, covering the location bar completely.
-BASE_FEATURE(kWebUIOmniboxAimPopup, ENABLED);
+// Agent Chrome: disabled, the composebox / contextual search backend the AIM
+// popup talks to is removed.
+BASE_FEATURE(kWebUIOmniboxAimPopup, DISABLED);
 
 // If enabled, the Omnibox Popup will enable a different UI state when on a
 // webpage.
@@ -188,9 +187,6 @@ omnibox::NTPComposeboxConfig GetNTPComposeboxConfig() {
   if (!kConfigParam.Get().empty()) {
     bool parsed =
         ParseProtoFromBase64String(kConfigParam.Get(), fieldtrial_config);
-    contextual_search::ContextualSearchMetricsRecorder::
-        RecordConfigParseSuccess(
-            contextual_search::ContextualSearchSource::kOmnibox, parsed);
     if (!parsed) {
       return default_config;
     }
@@ -309,15 +305,6 @@ bool IsOmniboxEverywhereEnabled(Profile* profile) {
   return true;
 }
 
-bool IsContentSharingEnabled(
-    Profile* profile,
-    contextual_search::ContextualSearchSessionHandle* session_handle) {
-  if (!profile || !session_handle) {
-    return false;
-  }
-  return session_handle->CheckSearchContentSharingSettings(profile->GetPrefs());
-}
-
 bool IsCreateImagesEnabled(Profile* profile) {
   if (!profile) {
     return false;
@@ -346,17 +333,6 @@ bool IsDeepSearchEnabled(Profile* profile) {
       AimEligibilityServiceFactory::GetForProfile(profile);
   return kShowToolsAndModels.Get() && aim_eligibility_service &&
          aim_eligibility_service->IsDeepSearchEligible();
-}
-
-std::unique_ptr<
-    contextual_search::ContextualSearchContextController::ConfigParams>
-CreateQueryControllerConfigParams() {
-  auto config_params = std::make_unique<
-      contextual_search::ContextualSearchContextController::ConfigParams>();
-  config_params->send_lns_surface = true;
-  config_params->enable_viewport_images = true;
-  config_params->attach_page_title_and_url_to_suggest_requests = false;
-  return config_params;
 }
 
 const base::FeatureParam<std::string>

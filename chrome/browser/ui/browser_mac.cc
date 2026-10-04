@@ -59,12 +59,6 @@ void OpenImportSettingsDialogWindow(Profile* profile) {
   browser->GetWindow()->Show();
 }
 
-void OpenBookmarkManagerWindow(Profile* profile) {
-  BrowserWindowInterface* browser =
-      CreateBrowserWindow(BrowserWindowCreateParams(profile, true));
-  ShowBookmarkManager(browser);
-  browser->GetWindow()->Show();
-}
 
 void OpenExtensionsWindow(Profile* profile) {
   BrowserWindowInterface* browser =

@@ -15,7 +15,6 @@
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
 #include "chrome/browser/signin/dice_intercepted_session_startup_helper.h"
 #include "chrome/browser/signin/dice_signed_in_profile_creator.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -452,14 +451,6 @@ void ManagedProfileCreationController::OnNewSignedInProfileCreated(
       ->SetUserColorAndBrowserColorVariant(
           GenerateNewProfileColor(entry).color,
           ui::mojom::BrowserColorVariant::kTonalSpot);
-
-  if (source_profile_) {
-    // The new profile inherits the default search provider and the search
-    // engine choice timestamp from the previous profile.
-    SearchEngineChoiceDialogService::UpdateProfileFromChoiceData(
-        *new_profile, SearchEngineChoiceDialogService::GetChoiceDataFromProfile(
-                          *source_profile_));
-  }
 
   enterprise_util::SetUserAcceptedAccountManagement(new_profile, true);
   CHECK(enterprise_util::UserAcceptedAccountManagement(new_profile));

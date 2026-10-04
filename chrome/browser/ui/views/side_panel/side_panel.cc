@@ -33,7 +33,6 @@
 #include "chrome/browser/ui/views/side_panel/side_panel_resize_area.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/lens/lens_features.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "third_party/skia/include/core/SkPath.h"

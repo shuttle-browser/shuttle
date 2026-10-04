@@ -67,7 +67,6 @@ class PictureInPictureBrowserFrameView
 
   // BrowserFrameView:
   int GetTopInset(bool restored) const override;
-  bool ShouldShowWebAppFrameToolbar() const override;
   void OnBrowserViewInitViewsComplete() override;
   void UpdateThrobber(bool running) override {}
   gfx::Rect GetBoundsForClientView() const override;

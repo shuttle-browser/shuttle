@@ -118,31 +118,6 @@ export function getHtml(this: SettingsAppearancePageElement) {
         </settings-radio-group>
       </div>
     ` : ''}
-    <div
-        class="hr"
-        ?hidden="${!this.showHr_(
-            this.pageVisibility_.homeButton, this.pageVisibility_.bookmarksBar)}">
-    </div>
-    ${!this.ntpSimplificationBookmarksBarEnabled_ ? html`
-      <settings-toggle-button id="showBookmarksBar"
-          ?hidden="${!this.pageVisibility_.bookmarksBar}"
-          pref-key="bookmark_bar.show_on_all_tabs"
-          label="$i18n{showBookmarksBar}">
-      </settings-toggle-button>
-    ` : ''}
-    ${this.ntpSimplificationBookmarksBarEnabled_ ? html`
-      <div class="cr-row" ?hidden="${!this.pageVisibility_.bookmarksBar}">
-        <div class="flex cr-padded-text" aria-hidden="true">
-          $i18n{bookmarksBar}
-        </div>
-        <settings-dropdown-menu id="bookmarksBarVisibilityDropdown"
-            label="$i18n{bookmarksBar}"
-            pref-key="bookmark_bar.visibility_state"
-            .menuOptions="${this.bookmarksBarOptions_}"
-            @settings-control-change="${this.onBookmarksBarVisibilitySettingsControlChange_}">
-        </settings-dropdown-menu>
-      </div>
-    ` : ''}
 
     <if expr="is_macosx">
       ${this.showGlassEffectEnabled_ ? html`
@@ -208,18 +183,6 @@ export function getHtml(this: SettingsAppearancePageElement) {
         </settings-toggle-button>
       </div>
     ` : ''}
-
-    <settings-toggle-button id="showTabSearchButton" class="hr"
-        pref-key="tab_search.pinned_to_tabstrip"
-        label="$i18n{showTabSearchButton}"
-        @change="${this.onShowTabSearchButtonChange_}">
-    </settings-toggle-button>
-
-    <settings-toggle-button class="hr" id="showSavedTabGroups"
-        pref-key="bookmark_bar.show_tab_groups"
-        label="$i18n{showTabGroupsInBookmarksBar}"
-        ?hidden="${this.showOrganizerPanelEnabled_}">
-    </settings-toggle-button>
 
     <settings-toggle-button class="hr" id="autoPinNewTabGroups"
         pref-key="auto_pin_new_tab_groups"
@@ -294,7 +257,6 @@ export function getHtml(this: SettingsAppearancePageElement) {
     ` : ''}
 
 <if expr="is_linux">
-    <div class="hr" ?hidden="${!this.pageVisibility_.bookmarksBar}"></div>
     <settings-toggle-button
         ?hidden="${!this.showCustomChromeFrame_}"
         pref-key="browser.custom_chrome_frame"

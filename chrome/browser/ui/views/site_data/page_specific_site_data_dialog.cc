@@ -26,14 +26,7 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/site_data/page_specific_site_data_dialog_controller.h"
-#include "chrome/browser/ui/views/site_data/related_app_row_view.h"
 #include "chrome/browser/ui/views/site_data/site_data_row_view.h"
-#include "chrome/browser/ui/web_applications/web_app_ui_utils.h"
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/browsing_data/content/browsing_data_model.h"
@@ -48,7 +41,6 @@
 #include "components/omnibox/browser/favicon_cache.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/browsing_data_filter_builder.h"
 #include "content/public/browser/browsing_data_remover.h"
 #include "content/public/browser/web_contents.h"
@@ -250,35 +242,6 @@ class PageSpecificSiteDataDialogModelDelegate : public ui::DialogModelDelegate {
     return sites;
   }
 
-  std::vector<webapps::AppId> GetInstalledRelatedApps() {
-    // There will be no installed related apps in off the record mode, because
-    // apps are not installable there.
-    if (web_contents_->GetBrowserContext()->IsOffTheRecord()) {
-      return {};
-    }
-
-    // If the provider isn't ready, there will also be no apps installed.
-    web_app::WebAppProvider* provider = web_app::WebAppProvider::GetForWebApps(
-        Profile::FromBrowserContext(web_contents_->GetBrowserContext()));
-    if (!provider) {
-      return {};
-    }
-
-    const GURL last_committed_url(
-        web_contents_->GetPrimaryMainFrame()->GetLastCommittedURL());
-    // We don't need to lock the registrar, as we're only reading the list of
-    // apps from it. See RelatedAppRowView::RelatedAppRowView() for more info.
-    base::flat_map<webapps::AppId, std::string> all_controlling_apps_map =
-        provider->registrar_unsafe().GetAllAppsControllingUrl(
-            last_committed_url);
-    std::vector<webapps::AppId> all_controlling_apps_list;
-    all_controlling_apps_list.reserve(all_controlling_apps_map.size());
-    for (const auto& [app_id, _] : all_controlling_apps_map) {
-      all_controlling_apps_list.push_back(app_id);
-    }
-    return all_controlling_apps_list;
-  }
-
   FaviconCache* favicon_cache() { return favicon_cache_.get(); }
 
   void DeleteStoredObjects(const url::Origin& origin) {
@@ -324,12 +287,6 @@ class PageSpecificSiteDataDialogModelDelegate : public ui::DialogModelDelegate {
         GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
             web_contents_.get());
     chrome::ShowSettingsSubPage(browser, chrome::kOnDeviceSiteDataSubpage);
-  }
-
-  void OnRelatedApplicationLinkToAppSettings(const webapps::AppId& app_id) {
-    web_app::OpenAppSettingsForInstalledRelatedApp(
-        app_id,
-        Profile::FromBrowserContext(web_contents_->GetBrowserContext()));
   }
 
  private:
@@ -519,29 +476,6 @@ class PageSpecificSiteDataSectionView : public views::BoxLayoutView {
   raw_ptr<views::Label> empty_state_label_ = nullptr;
 };
 
-std::unique_ptr<views::BoxLayoutView> CreateRelatedAppsView(
-    Profile* profile,
-    std::vector<webapps::AppId> all_controlling_apps,
-    PageSpecificSiteDataDialogModelDelegate* delegate) {
-  auto box_view = std::make_unique<views::BoxLayoutView>();
-  box_view->SetOrientation(views::BoxLayout::Orientation::kVertical);
-  box_view->SetCrossAxisAlignment(
-      views::BoxLayout::CrossAxisAlignment::kStretch);
-
-  for (const webapps::AppId& app_id : all_controlling_apps) {
-    box_view->AddChildView(std::make_unique<RelatedAppRowView>(
-        profile, app_id,
-        // It is safe to use base::Unretained for the delegate here because both
-        // the RelatedAppRowView and the delegate are owned by the dialog and
-        // will be destroyed when the dialog is destroyed.
-        base::BindRepeating(&PageSpecificSiteDataDialogModelDelegate::
-                                OnRelatedApplicationLinkToAppSettings,
-                            base::Unretained(delegate))));
-  }
-
-  return box_view;
-}
-
 }  // namespace
 
 namespace test {
@@ -563,11 +497,6 @@ void PageSpecificSiteDataDialogTestApi::SetBrowsingDataModels(
 std::vector<PageSpecificSiteDataDialogSite>
 PageSpecificSiteDataDialogTestApi::GetAllSites() {
   return delegate_->GetAllSites();
-}
-
-std::vector<webapps::AppId>
-PageSpecificSiteDataDialogTestApi::GetInstalledRelatedApps() {
-  return delegate_->GetInstalledRelatedApps();
 }
 
 void PageSpecificSiteDataDialogTestApi::DeleteStoredObjects(
@@ -637,30 +566,6 @@ views::Widget* ShowPageSpecificSiteDataDialog(
         CreateCustomField(std::make_unique<PageSpecificSiteDataSectionView>(
             profile, section.sites, delegate)),
         section.identifier);
-  }
-
-  // Decide whether to show any apps installed from a related site origin.
-  if (base::FeatureList::IsEnabled(
-          features::kPageSpecificDataDialogRelatedInstalledAppsSection)) {
-    std::vector<webapps::AppId> all_controlling_apps_list =
-        delegate->GetInstalledRelatedApps();
-
-    if (!all_controlling_apps_list.empty()) {
-      has_any_sections = true;
-
-      builder.AddParagraph(
-          ui::DialogModelLabel(
-              l10n_util::GetStringUTF16(
-                  IDS_PAGE_SPECIFIC_SITE_DATA_DIALOG_RELATED_APPS_SUBTITLE))
-              .set_is_secondary(),
-          l10n_util::GetStringUTF16(
-              IDS_PAGE_SPECIFIC_SITE_DATA_DIALOG_RELATED_APPS_TITLE));
-
-      builder.AddCustomField(
-          CreateCustomField(CreateRelatedAppsView(
-              profile, std::move(all_controlling_apps_list), delegate)),
-          kPageSpecificSiteDataDialogRelatedAppsSection);
-    }
   }
 
   // If there were no sections shown, show a label that explains an empty state.

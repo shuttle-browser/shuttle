@@ -18,7 +18,6 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
@@ -580,7 +579,6 @@ bool FeaturedSearchProvider::ShouldShowHistoryEmbeddingsSettingsPromoIphMatch()
   // - The user has not deleted the IPH suggestion.
   return client_->IsHistoryEmbeddingsSettingVisible() &&
          !client_->IsHistoryEmbeddingsEnabled() &&
-         history_embeddings::GetFeatureParameters().omnibox_scoped &&
          ShouldShowIPH(IphType::kHistoryEmbeddingsSettingsPromo);
 }
 
@@ -604,8 +602,7 @@ bool FeaturedSearchProvider::ShouldShowHistoryEmbeddingsDisclaimerIphMatch()
   // Assumes this is only called when the user is in @history scope. Not limited
   // by `ShouldShowIPH()` (i.e. shown count or dismissal) because this is a
   // disclaimer.
-  return client_->IsHistoryEmbeddingsEnabled() &&
-         history_embeddings::GetFeatureParameters().omnibox_scoped;
+  return client_->IsHistoryEmbeddingsEnabled();
 }
 
 void FeaturedSearchProvider::AddHistoryEmbeddingsDisclaimerIphMatch() {
@@ -630,7 +627,6 @@ bool FeaturedSearchProvider::ShouldShowHistoryScopePromoIphMatch() const {
   // directly related to embeddings so it's ok to show to users who can't opt-in
   // to embeddings.
   return !client_->IsHistoryEmbeddingsEnabled() &&
-         history_embeddings::GetFeatureParameters().omnibox_scoped &&
          !client_->IsOffTheRecord() &&
          ShouldShowIPH(IphType::kHistoryScopePromo);
 }
@@ -650,7 +646,6 @@ bool FeaturedSearchProvider::ShouldShowHistoryEmbeddingsScopePromoIphMatch()
     const {
   // Shown when history embeddings is enabled (& opted-in) for the omnibox.
   return client_->IsHistoryEmbeddingsEnabled() &&
-         history_embeddings::GetFeatureParameters().omnibox_scoped &&
          ShouldShowIPH(IphType::kHistoryEmbeddingsScopePromo);
 }
 

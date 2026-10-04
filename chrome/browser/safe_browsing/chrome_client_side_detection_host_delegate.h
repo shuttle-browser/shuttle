@@ -6,7 +6,6 @@
 #define CHROME_BROWSER_SAFE_BROWSING_CHROME_CLIENT_SIDE_DETECTION_HOST_DELEGATE_H_
 
 #include "base/memory/raw_ptr.h"
-#include "components/content_extraction/content/browser/inner_text.h"
 #include "components/safe_browsing/content/browser/client_side_detection_host.h"
 #include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager.h"
 #include "content/public/browser/global_routing_id.h"
@@ -67,9 +66,6 @@ class ChromeClientSideDetectionHostDelegate
       SafeBrowsingNavigationObserverManager::AttributionResult result);
 
  private:
-  void OnInnerTextResult(
-      HostInnerTextCallback callback,
-      std::unique_ptr<content_extraction::InnerTextResult> result);
   raw_ptr<content::WebContents> web_contents_;
   raw_ptr<SafeBrowsingNavigationObserverManager> observer_manager_for_testing_ =
       nullptr;

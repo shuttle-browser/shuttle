@@ -3,10 +3,8 @@
 # found in the LICENSE file.
 
 import("//pdf/features.gni")
-import("//services/screen_ai/buildflags/features.gni")
 
 assert(enable_pdf)
-assert(enable_screen_ai_service)
 
 source_set("pdf") {
   sources = [
@@ -15,9 +13,7 @@ source_set("pdf") {
   ]
   deps = [
     "//chrome/browser/download",
-    "//chrome/browser/glic",
     "//chrome/browser/pdf",
-    "//chrome/browser/screen_ai:screen_ai_install_state",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/user_education",
     "//chrome/common",

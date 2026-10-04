@@ -6,7 +6,6 @@ module chrome.mojom;
 
 import "chrome/common/actor.mojom";
 import "components/actor/public/mojom/actor_types.mojom";
-import "components/lens/lens_metadata.mojom";
 import "components/page_content_annotations/content/mojom/page_stability.mojom";
 import "mojo/public/mojom/base/string16.mojom";
 import "mojo/public/mojom/base/unguessable_token.mojom";
@@ -57,27 +56,6 @@ interface ChromeRenderFrame {
   // correspond to the result of calling RequestBitmapForContextNode() on each
   // image.
   RequestBoundsHintForAllImages() => (array<gfx.mojom.Rect> all_bounds);
-
-  // Requests an encoded image selected by the most recently opened context
-  // menu. The encoding format is specified as a parameter. If no image is
-  // selected or there's an error capturing the image, |image_data| will be
-  // empty. If the image area is larger than |image_min_area_pixels| it will be
-  // downscaled to fit within |image_max_size_pixels|.
-  // If |image_format| is ORIGINAL, return original image data except image
-  // larger than size specified as a parameter. In that case, returns a resized
-  // JPEG static image. |quality| is an integer between 0-100 where 100
-  // is the highest quality. Higher encoding quality results in a better visual
-  // image, but takes longer to encode and yields a larger image.
-  // |quality| only affects lossy |image_formats| (aka JPEG/WebP).
-  RequestImageForContextNode(int32 image_min_area_pixels,
-                             gfx.mojom.Size image_max_size_pixels,
-                             ImageFormat image_format,
-                             int32 quality)
-      => (array<uint8> image_data,
-          gfx.mojom.Size original_size,
-          gfx.mojom.Size downscaled_size,
-          string mime_type,
-          array<lens.mojom.LatencyLog> log_data);
 
   // For WebUI testing, this message requests JavaScript to be executed at a
   // time which is late enough to not be thrown out, and early enough to be

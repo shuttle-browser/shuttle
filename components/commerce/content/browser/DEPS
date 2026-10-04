@@ -1,5 +1,0 @@
-specific_include_rules = {
-  "commerce_tab_helper.cc": [
-    "+components/keyed_service/core/keyed_service.h",
-  ],
-}

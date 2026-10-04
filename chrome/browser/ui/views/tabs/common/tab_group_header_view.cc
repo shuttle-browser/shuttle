@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/views/tabs/horizontal/horizontal_tab_closing_helper.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/data_sharing/public/features.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/tab_group.h"
@@ -573,9 +572,7 @@ void TabGroupHeaderView::OnDataChanged(
     // Update background.
     SetBackground(views::CreateRoundedRectBackground(background_color,
                                                      kGroupHeaderCornerRadius));
-    UpdateAttentionState(
-        data_sharing::features::IsDataSharingFunctionalityEnabled() &&
-        tab_group_data.needs_attention);
+    UpdateAttentionState(false);
   }
 
   UpdateIsCollapsed();

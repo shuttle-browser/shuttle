@@ -24,7 +24,6 @@ source_set("impl") {
   deps = [
     ":prefetch_service",
     "//chrome/browser/battery",
-    "//chrome/browser/data_saver",
     "//chrome/browser/prefetch",
     "//chrome/browser/preloading",
     "//chrome/browser/preloading:prefs",

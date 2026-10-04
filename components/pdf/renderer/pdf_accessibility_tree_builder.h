@@ -120,9 +120,6 @@ class PdfAccessibilityTreeBuilder {
       const chrome_pdf::AccessibilityButtonInfo& button);
   ui::AXNodeData* CreateChoiceFieldNode(
       const chrome_pdf::AccessibilityChoiceFieldInfo& choice_field);
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  ui::AXNodeData* CreateOcrWrapperNode(const gfx::PointF& position, bool start);
-#endif
 
  private:
   void AddFontWeightAttributes(

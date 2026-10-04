@@ -4,7 +4,6 @@
 
 #include "chrome/browser/ui/views/tabs/common/tab_view_horizontal_layout.h"
 
-#include "chrome/browser/glic/browser_ui/tab_underline_view.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
@@ -90,20 +89,6 @@ views::ProposedLayout TabViewHorizontalLayout::CalculateProposedLayout(
       CalculateChildVisibilities(width, contents_rect.width());
 
   const int start = contents_rect.x();
-
-  // Position the underline under the tab contents.
-  if (TabView().glic_tab_underline_view_) {
-    constexpr int kGlicUnderlineYOffset = 8;
-    gfx::Rect glic_bounds =
-        contents_rect + gfx::Vector2d(0, kGlicUnderlineYOffset);
-    // Use the full width of the tab in order to accommodate small tab sizes
-    // where the width of the contents bounds is 0.
-    glic_bounds.set_x(0);
-    glic_bounds.set_width(width);
-    layouts.child_layouts.emplace_back(
-        TabView().glic_tab_underline_view_.get(),
-        TabView().glic_tab_underline_view_->GetVisible(), glic_bounds);
-  }
 
   // The bounds for the favicon will include extra width for the attention
   // indicator, but visually it will be smaller at kFaviconSize wide.
@@ -243,16 +228,6 @@ TabViewHorizontalLayout::CalculateChildVisibilities(int width,
   const bool has_favicon = TabView().data().should_display_favicon;
   bool has_alert_icon =
       TabView().alert_indicator_->showing_alert_state().has_value();
-  std::optional<tabs::TabAlert> current_alert_state =
-      TabView().alert_indicator_->showing_alert_state();
-  if (TabView().glic_tab_underline_view_ &&
-      (current_alert_state == tabs::TabAlert::kGlicAccessing ||
-       current_alert_state == tabs::TabAlert::kGlicSharing)) {
-    // Tab underlines for glic multitab replace `alert_indicator_` as the
-    // UI indicator for sharing. In this case, ensure the alert indicator is
-    // hidden.
-    has_alert_icon = false;
-  }
 
   if (TabView().pinned_) {
     // When the tab is pinned, we can show one of the two icons; the alert icon

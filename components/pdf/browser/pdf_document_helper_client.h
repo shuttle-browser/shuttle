@@ -5,7 +5,6 @@
 #ifndef COMPONENTS_PDF_BROWSER_PDF_DOCUMENT_HELPER_CLIENT_H_
 #define COMPONENTS_PDF_BROWSER_PDF_DOCUMENT_HELPER_CLIENT_H_
 
-#include "services/screen_ai/buildflags/buildflags.h"
 
 namespace content {
 class RenderFrameHost;
@@ -41,11 +40,6 @@ class PDFDocumentHelperClient {
   virtual void OnDidScroll(const gfx::SelectionBound& start,
                            const gfx::SelectionBound& end) {}
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Notifies that PDF searchifier started processing pages.
-  virtual void OnSearchifyStarted(content::RenderFrameHost& render_frame_host) {
-  }
-#endif
 };
 
 }  // namespace pdf

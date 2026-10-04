@@ -18,7 +18,6 @@
 #include "base/version.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings_types.h"
-#include "components/passage_embeddings/core/passage_embeddings_types.h"
 #include "components/permissions/permission_request_data.h"
 #include "components/permissions/permission_request_enums.h"
 #include "components/permissions/permission_uma_constants.h"
@@ -372,7 +371,7 @@ class PermissionUmaUtil {
   static void RecordPassageEmbeddingModelExecutionTimeAndStatus(
       PredictionModelType model_type,
       base::TimeTicks snapshot_inquire_start_time,
-      passage_embeddings::ComputeEmbeddingsStatus status);
+      ComputeEmbeddingsStatus status);
 
   // Records the status of language detection during the Aiv4 workflow.
   static void RecordLanguageDetectionStatus(LanguageDetectionStatus status);

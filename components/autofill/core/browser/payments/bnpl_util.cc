@@ -32,10 +32,10 @@
 #include "components/autofill/core/browser/integrators/optimization_guide/autofill_optimization_guide_decider.h"
 #include "components/autofill/core/browser/payments/amount_extraction_manager.h"
 #include "components/autofill/core/browser/payments/constants.h"
+#include "components/autofill/core/browser/payments/currency_formatter.h"
 #include "components/autofill/core/browser/payments/payments_autofill_client.h"
 #include "components/autofill/core/browser/suggestions/suggestion.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
-#include "components/payments/core/currency_formatter.h"
 #include "components/strings/grit/components_strings.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/range/range.h"
@@ -234,7 +234,7 @@ std::u16string GetBnplIssuerSelectionOptionText(
   // TODO(crbug.com/403361321): Add a util function that returns all supported
   // locales.
   CHECK_EQ(app_locale, "en-US");
-  ::payments::CurrencyFormatter formatter = ::payments::CurrencyFormatter(
+  CurrencyFormatter formatter = CurrencyFormatter(
       /*currency_code=*/"USD",
       /*locale_name=*/app_locale);
   formatter.SetMaxFractionalDigits(/*max_fractional_digits=*/2);

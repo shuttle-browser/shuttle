@@ -11,9 +11,9 @@
 #include "services/on_device_model/public/mojom/on_device_model_service.mojom.h"
 #include "third_party/tflite_support/src/tensorflow_lite_support/cc/task/text/nlclassifier/nl_classifier.h"
 
-namespace translate {
+namespace language_detection {
 class LanguageDetectionModel;
-}  // namespace translate
+}  // namespace language_detection
 
 namespace on_device_model {
 
@@ -44,7 +44,7 @@ class BertSafetyModel final : public mojom::TextSafetyModel,
   bool InitLanguageDetection(base::File model);
   bool InitTextSafetyModel(base::File model);
 
-  std::unique_ptr<translate::LanguageDetectionModel> language_detector_;
+  std::unique_ptr<language_detection::LanguageDetectionModel> language_detector_;
   std::unique_ptr<tflite::task::text::nlclassifier::NLClassifier>
       loaded_bert_model_;
   mojo::ReceiverSet<mojom::TextSafetySession> sessions_;

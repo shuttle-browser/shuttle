@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/webui/side_panel/comments/comments_side_panel_ui.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/collaboration/public/features.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/saved_tab_groups/public/types.h"
@@ -221,8 +220,8 @@ void CommentsSidePanelCoordinator::UpdateSidePanelTitle(
 
 // static
 bool CommentsSidePanelCoordinator::IsSupported() {
-  return base::FeatureList::IsEnabled(
-      collaboration::features::kCollaborationComments);
+  // Collaboration comments were removed from this build.
+  return false;
 }
 
 CommentsSidePanelCoordinator* CommentsSidePanelCoordinator::From(

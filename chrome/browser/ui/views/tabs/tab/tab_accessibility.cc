@@ -6,9 +6,7 @@
 
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
-#include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/collaboration_messaging_tab_data.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -55,20 +53,6 @@ namespace tabs {
 
 bool ShouldUpdateAccessibleName(const TabData& old_data,
                                 const TabData& new_data) {
-  bool has_old_message = old_data.collaboration_messaging &&
-                         old_data.collaboration_messaging->HasMessage();
-  bool has_new_message = new_data.collaboration_messaging &&
-                         new_data.collaboration_messaging->HasMessage();
-  bool collaboration_message_changed = has_old_message != has_new_message;
-  if (!collaboration_message_changed && has_old_message) {
-    // Old and new data have both have messages, so compare the contents.
-    collaboration_message_changed =
-        (old_data.collaboration_messaging->given_name() !=
-         new_data.collaboration_messaging->given_name()) ||
-        (old_data.collaboration_messaging->collaboration_event() !=
-         new_data.collaboration_messaging->collaboration_event());
-  }
-
   return ((old_data.network_state != new_data.network_state) ||
           old_data.is_crashed != new_data.is_crashed ||
           old_data.alert_state != new_data.alert_state ||
@@ -76,9 +60,8 @@ bool ShouldUpdateAccessibleName(const TabData& old_data,
               new_data.should_show_discard_status ||
           old_data.discarded_memory_savings !=
               new_data.discarded_memory_savings ||
-          old_data.tab_resource_usage != new_data.tab_resource_usage ||
           old_data.pinned != new_data.pinned ||
-          old_data.title != new_data.title || collaboration_message_changed);
+          old_data.title != new_data.title);
 }
 
 std::u16string GetAccessibleTabLabel(const TabInterface* tab, bool is_for_tab) {
@@ -182,47 +165,6 @@ std::u16string GetAccessibleTabLabel(const TabInterface* tab, bool is_for_tab) {
       title = l10n_util::GetStringFUTF16(
           IDS_TAB_AX_MEMORY_SAVINGS, title,
           ui::FormatBytes(discarded_memory_savings.value()));
-    }
-  } else if (tab_data.tab_resource_usage &&
-             tab_data.tab_resource_usage->memory_usage().is_positive()) {
-    const base::ByteSize memory_used =
-        tab_data.tab_resource_usage->memory_usage();
-    const bool is_high_memory_usage =
-        tab_data.tab_resource_usage->is_high_memory_usage();
-
-    TabHoverCardController* const hover_card_controller =
-        browser_view->tab_strip_view()
-            ? browser_view->tab_strip_view()->GetHoverCardController()
-            : nullptr;
-
-    const bool hover_card_memory_usage_enabled =
-        hover_card_controller &&
-        hover_card_controller->hover_card_memory_usage_enabled();
-
-    if (is_high_memory_usage ||
-        (is_for_tab && hover_card_memory_usage_enabled)) {
-      const int message_id = is_high_memory_usage ? IDS_TAB_AX_HIGH_MEMORY_USAGE
-                                                  : IDS_TAB_AX_MEMORY_USAGE;
-      title = l10n_util::GetStringFUTF16(message_id, title,
-                                         ui::FormatBytes(memory_used));
-    }
-  } else if (tab_data.collaboration_messaging &&
-             tab_data.collaboration_messaging->HasMessage()) {
-    std::u16string given_name = tab_data.collaboration_messaging->given_name();
-
-    switch (tab_data.collaboration_messaging->collaboration_event()) {
-      case collaboration::messaging::CollaborationEvent::TAB_ADDED:
-        title = l10n_util::GetStringFUTF16(
-            IDS_TAB_AX_DATA_SHARING_RECENT_ACTIVITY_MEMBER_ADDED_THIS_TAB,
-            given_name, title);
-        break;
-      case collaboration::messaging::CollaborationEvent::TAB_UPDATED:
-        title = l10n_util::GetStringFUTF16(
-            IDS_TAB_AX_DATA_SHARING_RECENT_ACTIVITY_MEMBER_CHANGED_THIS_TAB,
-            given_name, title);
-        break;
-      default:
-        NOTREACHED();
     }
   }
 

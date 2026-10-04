@@ -279,7 +279,6 @@ source_set("chrome_web_authentication_delegate") {
       "//chrome/browser/sync",
       "//chrome/browser/ui/passwords",
       "//components/device_event_log",
-      "//components/webapps/isolated_web_apps:scheme",
       "//components/webauthn/core/browser",
       "//components/webauthn/core/browser:signal_api_utils",
     ]
@@ -537,7 +536,6 @@ if (!is_android) {
       "//chrome/browser/ui",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/passwords",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/device_event_log",

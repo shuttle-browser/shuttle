@@ -74,11 +74,6 @@ if (toolkit_views) {
         "//components/media_effects",
       ]
     }
-
-    if (is_mac) {
-      public += [ "permission_prompt_notifications_mac.h" ]
-      public_deps += [ "//chrome/browser/apps/app_shim" ]
-    }
   }
 
   # frame/browser_view.h, frame/contents_web_view.h,
@@ -133,13 +128,11 @@ if (toolkit_views) {
       "//chrome/browser/ui/browser_web_contents_delegate",
       "//chrome/browser/ui/dialogs",
       "//chrome/browser/ui/exclusive_access",
-      "//chrome/browser/ui/lens",
       "//chrome/browser/ui/omnibox",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/views:bubble_anchor_util_views",
       "//chrome/browser/ui/views:device_chooser_content_view",
       "//chrome/browser/ui/views:layout_provider",
-      "//chrome/browser/ui/views:sub_apps_permission_explanation",
       "//chrome/browser/ui/views:title_origin_label",
       "//chrome/browser/ui/views/extensions:extensions_container_views",
       "//chrome/browser/ui/views/frame:contents_web_view",
@@ -152,7 +145,6 @@ if (toolkit_views) {
       "//chrome/browser/ui/views/tabs/common",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/window_metadata",
-      "//chrome/browser/web_applications",
       "//chrome/common",
       "//content/public/browser",
       "//ui/base",
@@ -166,11 +158,6 @@ if (toolkit_views) {
         "//chrome/browser/ui/views/extensions:extensions_views_utils",
         "//chrome/browser/ui/views/frame:toolbar_button_provider",
       ]
-    }
-
-    if (is_mac) {
-      sources += [ "permission_prompt_notifications_mac.cc" ]
-      deps += [ "//chrome/browser/permissions/system" ]
     }
   }
 
@@ -206,6 +193,7 @@ if (toolkit_views) {
     deps = [
       ":permission_prompt_observer",
       ":permissions",
+      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/custom_handlers",
       "//chrome/browser/permissions",
       "//chrome/browser/ui/permission_bubble:browser_tests",
@@ -238,6 +226,7 @@ if (toolkit_views) {
       deps = [
         ":permissions",
         "//chrome/browser/content_settings",
+        "//chrome/browser/content_settings:content_settings_factory",
         "//chrome/browser/file_system_access",
         "//chrome/browser/media/webrtc:webrtc_browser_tests_base",
         "//chrome/browser/permissions",

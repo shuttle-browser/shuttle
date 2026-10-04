@@ -13,7 +13,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/contextual_search/contextual_search_web_contents_helper.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/webui/new_tab_page/action_chips/action_chips.mojom.h"
@@ -21,12 +20,8 @@
 #include "chrome/browser/ui/webui/new_tab_page/action_chips/action_chips_metrics.h"
 #include "chrome/browser/ui/webui/new_tab_page/action_chips/tab_id_generator.h"
 #include "chrome/common/pref_names.h"
-#include "components/contextual_search/contextual_search_metrics_recorder.h"
-#include "components/contextual_search/contextual_search_service.h"
-#include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/google/core/common/google_util.h"
-#include "components/lens/lens_overlay_invocation_source.h"
 #include "components/search/ntp_features.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/search_engines/util.h"
@@ -128,14 +123,12 @@ ActionChipsHandler::ActionChipsHandler(
     mojo::PendingRemote<action_chips::mojom::Page> page,
     Profile* profile,
     content::WebUI* web_ui,
-    std::unique_ptr<ActionChipsGenerator> action_chips_generator,
-    GetSessionHandleCallback get_session_handle_callback)
+    std::unique_ptr<ActionChipsGenerator> action_chips_generator)
     : receiver_(this, std::move(receiver)),
       page_(std::move(page)),
       profile_(profile),
       web_ui_(web_ui),
-      action_chips_generator_(std::move(action_chips_generator)),
-      get_session_handle_callback_(std::move(get_session_handle_callback)) {
+      action_chips_generator_(std::move(action_chips_generator)) {
 #if !BUILDFLAG(IS_ANDROID)
   browser_window_interface_subscription_ =
       webui::RegisterBrowserWindowInterfaceChanged(
@@ -162,10 +155,9 @@ void ActionChipsHandler::StartActionChipsRetrieval() {
 
   TabInterface* tab = nullptr;
 #if !BUILDFLAG(IS_ANDROID)
-  if (contextual_search::ContextualSearchService::IsContextSharingEnabled(
-          profile_->GetPrefs())) {
-    tab = FindMostRecentTab(*web_ui_);
-  }
+  // The search content sharing policy lived in contextual search, which was
+  // removed; the most recent tab is always considered.
+  tab = FindMostRecentTab(*web_ui_);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
   const GURL current_url =
@@ -181,17 +173,7 @@ void ActionChipsHandler::StartActionChipsRetrieval() {
 }
 
 void ActionChipsHandler::ActivateMetricsFunnel(const std::string& funnel_name) {
-  auto* session_handle = get_session_handle_callback_
-                             ? get_session_handle_callback_.Run()
-                             : nullptr;
-  if (!session_handle) {
-    return;
-  }
-
-  auto* metrics_recorder = session_handle->GetMetricsRecorder();
-  if (metrics_recorder) {
-    metrics_recorder->ActivateMetricsFunnel(funnel_name);
-  }
+  // Contextual search metrics funnels were removed.
 }
 
 void ActionChipsHandler::SetActionChipsVisibility(bool is_visible) {
@@ -282,7 +264,6 @@ void ActionChipsHandler::NavigateToAim(
       template_url_service,
       omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_NTP_ACTION_CHIPS_ENTRY_POINT,
       base::Time::Now(), base::UTF8ToUTF16(query_text),
-      lens::LensOverlayInvocationSource::kNtpActionChips,
       /*additional_params=*/{});
 
   const WindowOpenDisposition disposition = ui::DispositionFromClick(

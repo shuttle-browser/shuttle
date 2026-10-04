@@ -330,7 +330,6 @@ class UnloadController : public WebContentsCollection::Observer,
       base::WeakPtr<content::WebContents> web_contents,
       bool confirmed);
 
-  bool IsUnclosableApp() const;
 
   bool is_calling_before_unload_handlers() {
     return !on_close_confirmed_.is_null();

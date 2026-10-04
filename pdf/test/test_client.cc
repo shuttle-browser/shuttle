@@ -86,12 +86,5 @@ bool TestClient::IsInAnnotationMode() const {
 }
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-void TestClient::OnSearchifyStateChange(bool busy) {}
-
-void TestClient::OnHasSearchifyText() {}
-
-void TestClient::MaybeShowSearchifyInProgress() {}
-#endif
 
 }  // namespace chrome_pdf

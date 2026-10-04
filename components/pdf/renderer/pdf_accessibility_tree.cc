@@ -47,9 +47,6 @@
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/transform.h"
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "ui/strings/grit/auto_image_annotation_strings.h"
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 namespace pdf {
 
@@ -486,21 +483,6 @@ void PdfAccessibilityTree::SetAccessibilityPageInfo(
                      std::move(chars), std::move(page_objects)));
 }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-void PdfAccessibilityTree::OnHasSearchifyText() {
-  if (!render_frame()) {
-    return;
-  }
-  content::RenderAccessibility* render_accessibility =
-      render_frame()->GetRenderAccessibility();
-  bool screen_reader_mode =
-      (render_accessibility && render_accessibility->GetAXMode().has_mode(
-                                   ui::AXMode::kExtendedProperties));
-  base::UmaHistogramBoolean(
-      "Accessibility.ScreenAI.Searchify.ScreenReaderModeEnabled",
-      screen_reader_mode);
-}
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 void PdfAccessibilityTree::DoSetAccessibilityPageInfo(
     const chrome_pdf::AccessibilityPageInfo& page_info,
@@ -517,21 +499,6 @@ void PdfAccessibilityTree::DoSetAccessibilityPageInfo(
     return;
   }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  bool first_searchified_page = page_info.is_searchified && !did_searchify_run_;
-  did_searchify_run_ |= page_info.is_searchified;
-  if (!was_text_converted_from_image_ && page_info.is_searchified) {
-    // `page_info.is_searchified` is true when Searchify is run on the page, but
-    // if it did not find any text, `is_searchified` will be false for all
-    // `text_run`s.
-    for (const auto& text_run : text_runs) {
-      if (text_run.is_searchified) {
-        was_text_converted_from_image_ = true;
-        break;
-      }
-    }
-  }
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   // If unsanitized data is found, don't trust it and stop creation of the
   // accessibility tree. Now that we already created the initial tree with the
@@ -555,11 +522,7 @@ void PdfAccessibilityTree::DoSetAccessibilityPageInfo(
   // Update `had_accessible_text_` before calling `AddPageContent()` as this
   // variable will be used inside of `AddPageContent()`. If the page is
   // searchified, it indicates that the page was not originally accessible.
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  had_accessible_text_ |= (!page_info.is_searchified && !text_runs.empty());
-#else
   had_accessible_text_ |= !text_runs.empty();
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   AddPageContent(page_info, page_index, text_runs, chars, page_objects);
 
@@ -573,32 +536,12 @@ void PdfAccessibilityTree::DoSetAccessibilityPageInfo(
           "Accessibility.PdfOcr.InaccessiblePdfPageCount", page_count_);
     }
   } else {
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-    // If this is the first page with searchify results, notify the user that
-    // OCR is in progress.
-    if (first_searchified_page) {
-      SetStatusMessage(IDS_PDF_OCR_IN_PROGRESS);
-    }
-#endif
   }
 
   UnserializeNodes();
 }
 
 void PdfAccessibilityTree::SetFinalStatusMessage() {
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  if (did_searchify_run_) {
-    SetStatusMessage(was_text_converted_from_image_ ? IDS_PDF_OCR_COMPLETED
-                                                    : IDS_PDF_OCR_NO_RESULT);
-    return;
-  }
-  // Show promotion if the PDF had images and searchify did not run. Promotion
-  // is not needed when searchify run but did not find any results.
-  if (!did_searchify_run_ && did_have_an_image_) {
-    SetStatusMessage(IDS_PDF_OCR_FEATURE_ALERT);
-    return;
-  }
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
   if (had_accessible_text_ || !did_have_an_image_) {
     // Set the status node to notify users that the PDF content has been loaded
     // into an accessibility tree.

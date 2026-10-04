@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
-#include "chrome/browser/ui/translate/partial_translate_bubble_model.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search.mojom.h"
 #include "chrome/common/buildflags.h"
 #include "components/user_education/common/new_badge/new_badge_controller.h"
@@ -113,7 +112,6 @@ class TestBrowserWindow : public BrowserWindow,
   void UpdateReloadStopState(bool is_loading, bool force) override {}
   void UpdateToolbar(content::WebContents* contents) override {}
   bool UpdateToolbarSecurityState() override;
-  void UpdateCustomTabBarVisibility(bool visible, bool animate) override {}
   void ResetToolbarTabState(content::WebContents* contents) override {}
   void FocusToolbar() override {}
   void ToolbarSizeChanged(bool is_animating) override {}
@@ -139,26 +137,9 @@ class TestBrowserWindow : public BrowserWindow,
   void ShowChromeLabs() override {}
   BrowserView* AsBrowserView() override;
   void ShowUpdateChromeDialog() override {}
-  void ShowBookmarkBubble(const GURL& url, bool already_bookmarked) override {}
-#if !BUILDFLAG(IS_ANDROID)
-  void ShowIntentPickerBubble(
-      std::vector<apps::IntentPickerAppInfo> app_info,
-      bool show_stay_in_chrome,
-      bool show_remember_selection,
-      apps::IntentPickerBubbleType bubble_type,
-      const std::optional<url::Origin>& initiating_origin,
-      IntentPickerResponse callback) override {}
-#endif  //  !define(OS_ANDROID)
 #if BUILDFLAG(IS_CHROMEOS)
   void ToggleMultitaskMenu() override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  ShowTranslateBubbleResult ShowTranslateBubble(
-      content::WebContents* contents,
-      translate::TranslateStep step,
-      const std::string& source_language,
-      const std::string& target_language,
-      translate::TranslateErrors error_type,
-      bool is_user_gesture) override;
 
   DownloadBubbleUIController* GetDownloadBubbleUIController() override;
   void ConfirmBrowserCloseWithPendingDownloads(
@@ -177,15 +158,6 @@ class TestBrowserWindow : public BrowserWindow,
 
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_LINUX)
-  void ShowHatsDialog(
-      const std::string& site_id,
-      const std::optional<std::string>& hats_histogram_name,
-      const std::optional<uint64_t> hats_survey_ukm_id,
-      base::OnceClosure success_callback,
-      base::OnceClosure failure_callback,
-      const SurveyBitsData& product_specific_bits_data,
-      const SurveyStringData& product_specific_string_data) override {}
-
   void ShowIncognitoClearBrowsingDataDialog() override {}
   void ShowIncognitoHistoryDisclaimerDialog() override {}
 #endif
@@ -203,8 +175,6 @@ class TestBrowserWindow : public BrowserWindow,
 
   void SetCloseCallback(base::OnceClosure close_callback);
 
-  void CreateTabSearchBubble() override {}
-  void CloseTabSearchBubble() override {}
 
   void set_workspace(std::string workspace) { workspace_ = workspace; }
   void set_visible_on_all_workspaces(bool visible_on_all_workspaces) {

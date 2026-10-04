@@ -9,7 +9,6 @@
 #include <string>
 #include <utility>
 
-#include "ash/constants/web_app_id_constants.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
@@ -39,7 +38,6 @@
 #include "chrome/browser/signin/account_preview_data_service_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_hats_util.h"
 #include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/signin/signin_util.h"
@@ -50,7 +48,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
@@ -64,7 +61,6 @@
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
 #include "chrome/browser/ui/views/controls/hover_button.h"
 #include "chrome/browser/ui/views/profiles/avatar_badge_view.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/webui/signin/signin_ui_error.h"
 #include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
 #include "chrome/browser/user_education/user_education_service.h"
@@ -117,8 +113,6 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "chrome/browser/apps/app_shim/app_shim_manager_mac.h"
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
 #endif
 
 namespace {
@@ -172,29 +166,9 @@ ProfileMenuView::ProfileMenuView(
       promo_info_(promo_info),
       from_avatar_promo_(from_avatar_promo) {
   set_close_on_deactivate(close_on_deactivate_for_testing_);
-
-  // Set the callback to launch a HaTS survey upon menu dismissal.
-  // We use `SetCloseCallback` instead of `SetCancelCallback` because the close
-  // callback is also executed when users dismiss the menu by clicking outside,
-  // unlike the cancel callback.
-  SetCloseCallback(
-      base::BindOnce(&ProfileMenuView::OnClose, base::Unretained(this)));
 }
 
 ProfileMenuView::~ProfileMenuView() = default;
-
-void ProfileMenuView::OnClose() {
-  bool is_browser_window_active =
-      skip_window_active_check_for_testing_ ||
-      (browser().GetWindow() && browser().GetWindow()->IsActive());
-  if (!actionable_item_clicked() && is_browser_window_active) {
-    // Launch a HaTS survey only if the user dismissed the menu without
-    // selecting an item (e.g., by clicking outside or pressing ESC), and the
-    // browser window remains active.
-    signin::LaunchHatsSurveyForProfile(
-        kHatsSurveyTriggerIdentityProfileMenuDismissed, &profile());
-  }
-}
 
 void ProfileMenuView::BuildMenu() {
   if (profile().IsGuestSession()) {
@@ -208,18 +182,7 @@ void ProfileMenuView::BuildMenu() {
   SetMenuTitleForAccessibility();
   BuildIdentityWithCallToAction();
 
-  const bool is_web_app = web_app::AppBrowserController::IsWebApp(&browser());
-  if (is_web_app) {
-    BrowserUserEducationInterface::From(&browser())
-        ->NotifyFeaturePromoFeatureUsed(
-            feature_engagement::kIPHPasswordsWebAppProfileSwitchFeature,
-            FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  }
-
-  // Users should not be able to use features from WebApps.
-  if (!is_web_app) {
-    BuildFeatureButtons();
-  }
+  BuildFeatureButtons();
 
   std::vector<ProfileAttributesEntry*> available_profiles;
   GetProfilesForOtherProfilesSection(available_profiles);
@@ -232,10 +195,7 @@ void ProfileMenuView::BuildMenu() {
   base::UmaHistogramBoolean("ProfileChooser.HasProfilesShown",
                             !available_profiles.empty());
 
-  // Users should not be able to manage profiles from WebApps.
-  if (!is_web_app) {
-    BuildProfileManagementFeatureButtons();
-  }
+  BuildProfileManagementFeatureButtons();
 }
 
 std::u16string ProfileMenuView::GetAccessibleWindowTitle() const {
@@ -449,50 +409,9 @@ void ProfileMenuView::OnOtherProfileSelected(
     return;
   }
 
-  if (!web_app::AppBrowserController::IsWebApp(&browser())) {
-    GetWidget()->CloseWithReason(views::Widget::ClosedReason::kUnspecified);
-    // Switch to the selected profile and launch a HaTS survey for the
-    // associated non-webapp browser.
-    profiles::SwitchToProfile(
-        profile_path, /*always_create=*/false,
-        base::BindOnce([](BrowserWindowInterface* browser) {
-          if (!browser) {
-            return;
-          }
-          signin::LaunchHatsSurveyForProfile(
-              kHatsSurveyTriggerIdentitySwitchProfileFromProfileMenu,
-              browser->GetProfile());
-        }));
-  } else {
-    // Open the same web app for another profile.
-    // On non-macOS the only allowlisted case is PasswordManager WebApp, which
-    // uses a different code path from other PWAs as it needs to not only
-    // support switching profiles, but also possibly installing the app into a
-    // different profile. Regular PWAs can only switch to profiles where the app
-    // is already installed.
-    const webapps::AppId& app_id =
-        web_app::AppBrowserController::From(&browser())->app_id();
-#if BUILDFLAG(IS_MAC)
-    if (app_id != ash::kPasswordManagerAppId) {
-      apps::AppShimManager::Get()->LaunchAppInProfile(app_id, profile_path);
-      return;
-    }
-#endif
-    CHECK_EQ(app_id, ash::kPasswordManagerAppId);
-
-    app_profile_switcher_.emplace(
-        app_id, profile(),
-        base::BindOnce(
-            [](views::Widget* widget) {
-              widget->CloseWithReason(
-                  views::Widget::ClosedReason::kUnspecified);
-            },
-            // It's safe to use base::Unretained, because the profile
-            // switcher is owned by ProfileMenuView and is destroyed
-            // before the widget is destroyed.
-            base::Unretained(GetWidget())));
-    app_profile_switcher_->SwitchToProfile(profile_path);
-  }
+  GetWidget()->CloseWithReason(views::Widget::ClosedReason::kUnspecified);
+  profiles::SwitchToProfile(profile_path, /*always_create=*/false,
+                            base::DoNothing());
 }
 
 void ProfileMenuView::OnAddNewProfileButtonClicked() {
@@ -712,13 +631,6 @@ ProfileMenuView::GetIdentitySectionParams(const ProfileAttributesEntry& entry) {
   if (entry.IsDasherlessManagement()) {
     params.subtitle =
         l10n_util::GetStringUTF16(IDS_PROFILES_DASHER_FEATURE_DISABLED_TITLE);
-    return params;
-  }
-
-  if (web_app::AppBrowserController::IsWebApp(&browser())) {
-    if (!primary_account_info.email.empty()) {
-      params.subtitle = base::UTF8ToUTF16(primary_account_info.email);
-    }
     return params;
   }
 
@@ -1315,19 +1227,6 @@ void ProfileMenuView::OnCrossDeviceSigninButtonClicked() {
 void ProfileMenuView::GetProfilesForOtherProfilesSection(
     std::vector<ProfileAttributesEntry*>& available_profiles) const {
   CHECK(!profile().IsGuestSession());
-#if BUILDFLAG(IS_MAC)
-  const bool is_regular_web_app =
-      web_app::AppBrowserController::IsWebApp(&browser()) &&
-      web_app::AppBrowserController::From(&browser())->app_id() !=
-          ash::kPasswordManagerAppId;
-  std::set<base::FilePath> available_profile_paths;
-  if (is_regular_web_app) {
-    available_profile_paths =
-        AppShimRegistry::Get()->GetInstalledProfilesForApp(
-            web_app::AppBrowserController::From(&browser())->app_id());
-  }
-#endif
-
   auto profile_entries = g_browser_process->profile_manager()
                              ->GetProfileAttributesStorage()
                              .GetAllProfilesAttributesSortedByNameWithCheck();
@@ -1339,13 +1238,6 @@ void ProfileMenuView::GetProfilesForOtherProfilesSection(
     if (profile_entry->IsOmitted()) {
       continue;
     }
-
-#if BUILDFLAG(IS_MAC)
-    if (is_regular_web_app &&
-        !available_profile_paths.contains(profile_entry->GetPath())) {
-      continue;
-    }
-#endif
 
     available_profiles.push_back(profile_entry);
   }
@@ -1406,8 +1298,7 @@ void ProfileMenuView::BuildProfileManagementFeatureButtons() {
                             base::Unretained(this)));
   }
 
-  if (profiles::IsGuestModeEnabled(profile()) &&
-      !web_app::AppBrowserController::IsWebApp(&browser())) {
+  if (profiles::IsGuestModeEnabled(profile())) {
     AddProfileManagementFeatureButton(
         features::IsRoundedIconsEnabled() ? kAccountBoxIcon
                                           : kAccountBoxOldIcon,

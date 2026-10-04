@@ -162,12 +162,12 @@ void ChromeSpeechRecognitionManagerDelegate::BindSpeechRecognitionContext(
 #elif BUILDFLAG(IS_CHROMEOS)
             auto* factory =
                 CrosSpeechRecognitionServiceFactory::GetForProfile(profile);
-#else
-#error "No speech recognition service factory on this platform."
 #endif  // BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
+#if BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE) || BUILDFLAG(IS_CHROMEOS)
             if (factory) {
               factory->BindSpeechRecognitionContext(std::move(receiver));
             }
+#endif  // BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE) || BUILDFLAG(IS_CHROMEOS)
             // Reset the SODA uninstall timer when used by the Web Speech
             // API.
             SodaInstaller::GetInstance()->SetUninstallTimer(

@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/contextual_cueing",
-  "+components/keyed_service/core",
-  "+components/private_insights",
-]

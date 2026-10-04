@@ -50,8 +50,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/hats/hats_service.h"          // nogncheck
-#include "chrome/browser/ui/hats/hats_service_factory.h"  // nogncheck
 #include "chrome/browser/ui/user_education/show_promo_in_page.h"
 #endif
 
@@ -212,27 +210,6 @@ std::string GetGooglePasswordManagerSubPageURLStr() {
 
 // Navigation is handled differently on Android.
 #if !BUILDFLAG(IS_ANDROID)
-void TriggerManagePasswordsPerceptionSurvey(BrowserWindowInterface* browser,
-                                            ManagePasswordsReferrer referrer) {
-  Profile* profile = browser->GetProfile();
-  if (!base::FeatureList::IsEnabled(
-          autofill::features::kManagePasswordsPerceptionSurvey) ||
-      profile->IsOffTheRecord()) {
-    return;
-  }
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile, /*create_if_necessary=*/false);
-  if (!hats_service) {
-    return;
-  }
-  const SurveyBitsData product_specific_bits_data = {
-      {"Visit from Your saved info",
-       referrer == ManagePasswordsReferrer::kChromeSettings},
-  };
-  hats_service->LaunchDelayedSurvey(kHatsSurveyTriggerManagePasswordsPerception,
-                                    10000, product_specific_bits_data);
-}
-
 void NavigateToManagePasswordsPage(BrowserWindowInterface* browser,
                                    ManagePasswordsReferrer referrer) {
   if (!browser) {
@@ -240,7 +217,6 @@ void NavigateToManagePasswordsPage(BrowserWindowInterface* browser,
   }
   base::UmaHistogramEnumeration("PasswordManager.ManagePasswordsReferrer",
                                 referrer);
-  TriggerManagePasswordsPerceptionSurvey(browser, referrer);
   chrome::ShowPasswordManager(browser);
 }
 

@@ -61,18 +61,10 @@ class AutofillContextMenuManager : public RenderViewContextMenuObserver {
   }
 
  private:
-  // Conditionally adds the feedback manual fallback item if Autofill is
-  // available for the field.
-  void MaybeAddAutofillFeedbackItem();
-
   // Conditionally adds the address, payments and / or passwords Autofill manual
   // fallbacks to the context menu model depending on whether there's data to
   // suggest.
   void MaybeAddAutofillManualFallbackItems();
-
-  // Adds the AtMemory manual fallback item if the feature is enabled. Returns
-  // true if the item was added, false otherwise.
-  bool MaybeAddAtMemoryItem();
 
   // Checks if the currently focused field is a password field and whether
   // password filling is enabled.
@@ -103,14 +95,6 @@ class AutofillContextMenuManager : public RenderViewContextMenuObserver {
       password_manager::ContentPasswordManagerDriver& password_manager_drivern);
 
   void LogSelectPasswordManualFallbackContextMenuEntryAccepted();
-
-  // Triggers the feedback flow for Autofill command.
-  void ExecuteAutofillFeedbackCommand(const LocalFrameToken& frame_token,
-                                      AutofillManager& manager);
-
-  // Triggers AtMemory search popup on the field that the context menu was
-  // opened on.
-  void ExecuteFallbackForAtMemoryCommand(AutofillDriver& driver);
 
   // Triggers passwords suggestions on the field that the context menu was
   // opened on.

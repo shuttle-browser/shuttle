@@ -34,10 +34,6 @@ namespace base {
 class TimeTicks;
 }
 
-namespace contextual_search {
-class ContextualSearchSessionHandle;
-}
-
 class Profile;
 
 class ActionChipsHandler : public action_chips::mojom::ActionChipsHandler
@@ -47,16 +43,12 @@ class ActionChipsHandler : public action_chips::mojom::ActionChipsHandler
 #endif
 {
  public:
-  using GetSessionHandleCallback = base::RepeatingCallback<
-      contextual_search::ContextualSearchSessionHandle*()>;
-
   ActionChipsHandler(
       mojo::PendingReceiver<action_chips::mojom::ActionChipsHandler> receiver,
       mojo::PendingRemote<action_chips::mojom::Page> page,
       Profile* profile,
       content::WebUI* web_ui,
-      std::unique_ptr<ActionChipsGenerator> action_chips_generator,
-      GetSessionHandleCallback get_session_handle_callback);
+      std::unique_ptr<ActionChipsGenerator> action_chips_generator);
   ActionChipsHandler(const ActionChipsHandler&) = delete;
   ActionChipsHandler& operator=(const ActionChipsHandler&) = delete;
   ~ActionChipsHandler() override;
@@ -98,7 +90,6 @@ class ActionChipsHandler : public action_chips::mojom::ActionChipsHandler
   raw_ptr<Profile> profile_;
   raw_ptr<content::WebUI> web_ui_;
   std::unique_ptr<ActionChipsGenerator> action_chips_generator_;
-  GetSessionHandleCallback get_session_handle_callback_;
   PrefChangeRegistrar pref_change_registrar_;
 
 #if !BUILDFLAG(IS_ANDROID)

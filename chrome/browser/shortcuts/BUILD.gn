@@ -38,8 +38,6 @@ source_set("shortcuts") {
       "//chrome/browser/profiles:profile",
       "//chrome/common:channel_info",
       "//chrome/common:chrome_features",
-      "//components/webapps/common",
-      "//components/webapps/common:mojo_bindings",
       "//content/public/browser",
       "//crypto",
       "//mojo/public/cpp/bindings",

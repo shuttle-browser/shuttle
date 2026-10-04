@@ -35,11 +35,6 @@ namespace input {
 struct NativeWebKeyboardEvent;
 }
 
-namespace glic {
-class GlicInstance;
-}
-
-
 namespace chrome {
 
 // This class needs to expose the internal command_updater_ in some way, hence
@@ -88,7 +83,6 @@ class BrowserCommandController : public CommandUpdater,
   void SetTabSwitchCommandsEnabled(bool enabled);
 #endif
   void PrintingStateChanged();
-  void GlicActiveInstanceChanged(glic::GlicInstance* instance);
   void LoadingStateChanged(bool is_loading, bool force);
   void FindBarVisibilityChanged();
   void ExtensionStateChanged();
@@ -188,11 +182,6 @@ class BrowserCommandController : public CommandUpdater,
   // Updates commands for enabling developer tools.
   void UpdateCommandsForDevTools();
 
-  // Updates commands for bookmark editing.
-  void UpdateCommandsForBookmarkEditing();
-
-  // Updates commands that affect the bookmark bar.
-  void UpdateCommandsForBookmarkBar();
 
   // Updates commands that affect file selection dialogs in aggregate,
   // namely the save-page-as state and the open-file state.
@@ -221,8 +210,6 @@ class BrowserCommandController : public CommandUpdater,
   // Updates the printing command state.
   void UpdatePrintingState();
 
-  // Updates the Glic command state.
-  void UpdateGlicState();
 
   // Updates the SHOW_SYNC_SETUP menu entry.
   void OnSigninAllowedPrefChange();
@@ -243,8 +230,6 @@ class BrowserCommandController : public CommandUpdater,
   // Updates the command to close find or stop loading.
   void UpdateCloseFindOrStop();
 
-  // Updates commands for Media Router.
-  void UpdateCommandsForMediaRouter();
 
   // Updates commands for tab keyboard focus state. If |target_index| is
   // populated, it is the index of the tab with focus; if it is not populated,
@@ -257,8 +242,6 @@ class BrowserCommandController : public CommandUpdater,
   // Updates commands that depend on the state of the tab strip model.
   void UpdateCommandsForTabStripStateChanged();
 
-  // Updates commands that depend on the enabled state of glic.
-  void UpdateCommandsForEnableGlicChanged();
 
   // Updates commands and actions that depend on tab group focus state.
   void UpdateCommandsForTabGroupFocusChanged();
@@ -280,7 +263,6 @@ class BrowserCommandController : public CommandUpdater,
 
   PrefChangeRegistrar profile_pref_registrar_;
   PrefChangeRegistrar local_pref_registrar_;
-  std::unique_ptr<base::CallbackListSubscription> glic_enabling_subscription_;
 
 #if BUILDFLAG(IS_CHROMEOS)
   // In locked fullscreen mode disallow enabling/disabling commands.
@@ -293,9 +275,6 @@ class BrowserCommandController : public CommandUpdater,
   CustomizeChromeSection customize_chrome_section_ =
       CustomizeChromeSection::kUnspecified;
 
-  // Callback subscription for listening to changes to the Glic window
-  // activation changes.
-  base::CallbackListSubscription glic_active_instance_changed_subscription_;
   // Observes for extension state changes (load/unload).
   class ExtensionStateObserver;
   std::unique_ptr<ExtensionStateObserver> extension_state_observer_;

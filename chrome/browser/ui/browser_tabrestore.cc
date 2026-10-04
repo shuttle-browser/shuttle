@@ -10,8 +10,6 @@
 
 #include "base/containers/span.h"
 #include "build/build_config.h"
-#include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
-#include "chrome/browser/glic/glic_tab_restore_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/session_service_base.h"
@@ -19,7 +17,6 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_activation_tracker.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
@@ -79,12 +76,6 @@ std::unique_ptr<WebContents> CreateRestoredTab(
   std::unique_ptr<WebContents> web_contents =
       WebContents::CreateWithSessionStorage(create_params,
                                             session_storage_namespace_map);
-  apps::SetAppIdForWebContents(browser->GetProfile(), web_contents.get(),
-                               extension_app_id);
-
-  glic::RestoreGlicStateFromExtraData(web_contents.get(), extra_data);
-  send_tab_to_self::SendTabToSelfActivationTracker::RestoreFromExtraData(
-      web_contents.get(), extra_data);
 
   std::vector<std::unique_ptr<NavigationEntry>> entries =
       ContentSerializedNavigationBuilder::ToNavigationEntries(

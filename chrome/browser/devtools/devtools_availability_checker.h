@@ -17,10 +17,6 @@ namespace extensions {
 class Extension;
 }
 
-namespace web_app {
-class WebApp;
-}
-
 // |web_contents| may be null, in which case this function just checks
 // the settings for |profile|.
 bool IsInspectionAllowed(Profile* profile, content::WebContents* web_contents);
@@ -29,10 +25,6 @@ bool IsInspectionAllowed(Profile* profile, content::WebContents* web_contents);
 // the settings for |profile|.
 bool IsInspectionAllowed(Profile* profile,
                          const extensions::Extension* extension);
-
-// |web_app| may be null, in which case this function just checks
-// the settings for |profile|.
-bool IsInspectionAllowed(Profile* profile, const web_app::WebApp* web_app);
 
 // Checks the developer tools policies for a given |url|.
 bool IsInspectionAllowed(Profile* profile, const GURL& url);

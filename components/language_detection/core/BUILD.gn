@@ -87,6 +87,5 @@ source_set("unit_tests") {
     "//base",
     "//base/test:test_support",
     "//components/language_detection/testing",
-    "//components/translate/core/common",
   ]
 }

@@ -25,10 +25,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "ui/base/l10n/l10n_util.h"
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-#include "components/on_device_translation/public/language_pack.h"
-#include "components/on_device_translation/public/supported_languages.h"
-#endif
 
 namespace captions {
 
@@ -63,13 +59,6 @@ CaptionBubbleControllerViews::CaptionBubbleControllerViews(
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  auto* translation_installer =
-      on_device_translation::OnDeviceTranslationInstaller::GetInstance();
-  if (translation_installer) {
-    translation_installer->AddObserver(this);
-  }
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 }
 
 CaptionBubbleControllerViews::~CaptionBubbleControllerViews() {
@@ -87,13 +76,6 @@ CaptionBubbleControllerViews::~CaptionBubbleControllerViews() {
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  auto* translation_installer =
-      on_device_translation::OnDeviceTranslationInstaller::GetInstance();
-  if (translation_installer) {
-    translation_installer->RemoveObserver(this);
-  }
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 }
 
 void CaptionBubbleControllerViews::OnCaptionBubbleDestroyed() {
@@ -309,31 +291,6 @@ void CaptionBubbleControllerViews::OnSodaProgress(
   }
 }
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-void CaptionBubbleControllerViews::OnLanguagePackProgress(
-    const on_device_translation::LanguagePackKey lang_pack,
-    int progress) {
-  translation_progress_[lang_pack] = progress;
-  UpdateCombinedProgressText();
-}
-
-void CaptionBubbleControllerViews::OnLanguagePackInstalled(
-    const on_device_translation::LanguagePackKey lang_pack) {
-  translation_progress_.erase(lang_pack);
-  UpdateCombinedProgressText();
-}
-
-void CaptionBubbleControllerViews::OnLanguagePackInstallationChanged(
-    const on_device_translation::LanguagePackKey lang_pack) {
-  auto* installer =
-      on_device_translation::OnDeviceTranslationInstaller::GetInstance();
-  if (installer && !installer->RegisteredLanguagePacks().contains(lang_pack) &&
-      !installer->InstalledLanguagePacks().contains(lang_pack)) {
-    translation_progress_.erase(lang_pack);
-    UpdateCombinedProgressText();
-  }
-}
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
 void CaptionBubbleControllerViews::UpdateCombinedProgressText() {
   if (!active_model_) {
@@ -350,16 +307,6 @@ void CaptionBubbleControllerViews::UpdateCombinedProgressText() {
     sum_progress += *soda_progress_;
   }
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  for (const auto& [lang_pack, progress] : translation_progress_) {
-    if (progress < 100) {
-      downloading_translation_count++;
-      sum_progress += progress;
-    } else {
-      installing_count++;
-    }
-  }
-#endif
 
   int total_downloading =
       (soda_is_downloading ? 1 : 0) + downloading_translation_count;
@@ -388,29 +335,6 @@ void CaptionBubbleControllerViews::UpdateCombinedProgressText() {
         speech::GetLanguageName(soda_language_code_), application_locale_);
   }
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  for (const auto& [lang_pack, progress] : translation_progress_) {
-    if (progress < 0) {
-      continue;
-    }
-
-    auto get_language_name = [&]() {
-      return l10n_util::GetDisplayNameForLocale(
-          std::string(on_device_translation::ToLanguageCode(
-              on_device_translation::
-                  NonEnglishSupportedLanguageFromLanguagePackKey(lang_pack))),
-          application_locale_, /*is_for_ui=*/true);
-    };
-
-    if (progress < 100) {
-      parts.push_back(l10n_util::GetStringFUTF16(
-          IDS_LIVE_CAPTION_DOWNLOAD_PROGRESS, get_language_name(),
-          base::UTF8ToUTF16(base::NumberToString(progress))));
-    } else {
-      installing_language_name = get_language_name();
-    }
-  }
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
   if (total_downloading == 0 && installing_count > 0) {
     if (installing_count > 1) {

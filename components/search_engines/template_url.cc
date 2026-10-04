@@ -1515,13 +1515,6 @@ std::string TemplateURLRef::HandleReplacements(
               break;
             }
 #endif
-            if (search_terms_args.page_classification ==
-                    metrics::OmniboxEventProto::NTP_REALBOX &&
-                search_terms_args.lens_overlay_suggest_inputs.has_value()) {
-              // No replacement. `gs_ri` is not recommended for contextual
-              // queries.
-              break;
-            }
             HandleReplacement(std::string(), "chrome-ext-ansg", replacement,
                               &url);
             break;

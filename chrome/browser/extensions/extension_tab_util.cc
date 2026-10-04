@@ -26,7 +26,6 @@
 #include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/extensions/window_controller_list.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -35,8 +34,6 @@
 #include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/data_sharing/public/features.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/split_tabs/split_tab_visual_data.h"
@@ -832,41 +829,9 @@ api::tab_groups::TabGroup ExtensionTabUtil::CreateTabGroupObject(
   tab_group_object.title = base::UTF16ToUTF8(visual_data.title());
   tab_group_object.window_id = GetWindowIdOfGroup(id);
 
-  tab_group_object.shared = GetSharedStateOfGroup(id);
+  // Shared tab groups (data sharing) are removed.
+  tab_group_object.shared = false;
   return tab_group_object;
-}
-
-// static
-bool ExtensionTabUtil::GetSharedStateOfGroup(const tab_groups::TabGroupId& id) {
-  if (!data_sharing::features::IsDataSharingFunctionalityEnabled()) {
-    return false;
-  }
-
-  BrowserWindowInterface* browser = FindBrowserWithGroup(id);
-  if (!browser) {
-    return false;
-  }
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser->GetProfile());
-  if (!tab_group_service) {
-    return false;
-  }
-
-#if BUILDFLAG(IS_ANDROID)
-  // TabGroupService uses a different type on Android.
-  const base::Token local_id = id.token();
-#else
-  const tab_groups::TabGroupId local_id = id;
-#endif
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(local_id);
-  if (!saved_group) {
-    return false;
-  }
-
-  return saved_group->is_shared_tab_group();
 }
 
 // static

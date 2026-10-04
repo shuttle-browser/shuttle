@@ -531,13 +531,8 @@ void ExtensionsToolbarDesktop::UpdateIconVisibility(
         break;
       case DisplayMode::kCompact:
       case DisplayMode::kAutoHide:
-        views::MinimumFlexSizeRule min_flex_rule =
+        const views::MinimumFlexSizeRule min_flex_rule =
             views::MinimumFlexSizeRule::kPreferredSnapToZero;
-        BrowserView* const browser_view =
-            BrowserView::GetBrowserViewForBrowser(browser_);
-        if (browser_view->IsWindowControlsOverlayEnabled()) {
-          min_flex_rule = views::MinimumFlexSizeRule::kPreferred;
-        }
 
         // In compact/auto hide mode, the icon can still drop out, but receives
         // precedence over other actions.

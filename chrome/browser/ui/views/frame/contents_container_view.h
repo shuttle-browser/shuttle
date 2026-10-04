@@ -30,10 +30,6 @@ namespace gfx {
 class Rect;
 }  // namespace gfx
 
-namespace glic {
-class ContextSharingBorderView;
-}  // namespace glic
-
 namespace new_tab_footer {
 class NewTabFooterWebView;
 }  // namespace new_tab_footer
@@ -86,7 +82,6 @@ class ContentsContainerView : public views::View,
   ReadAnythingImmersiveOverlayView* read_anything_immersive_overlay_view() {
     return read_anything_immersive_overlay_view_;
   }
-  glic::ContextSharingBorderView* glic_border_view() { return glic_border_; }
   new_tab_footer::NewTabFooterWebView* new_tab_footer_view() {
     return new_tab_footer_view_;
   }
@@ -97,15 +92,12 @@ class ContentsContainerView : public views::View,
   data_protection_overlay_view() {
     return data_protection_overlay_view_;
   }
-  views::WebView* ai_overlay_dialog_view() { return ai_overlay_dialog_view_; }
   const ContentsContainerOutline* contents_outline_view() const {
     return container_outline_;
   }
   TabModalDialogHost* web_contents_modal_dialog_host() {
     return &web_contents_modal_dialog_host_;
   }
-
-  views::View* indigo_overlay_view() { return indigo_overlay_view_; }
 
   // Sets the contents resizing strategy.
   void SetContentsResizingStrategy(
@@ -201,9 +193,6 @@ class ContentsContainerView : public views::View,
   raw_ptr<enterprise_data_protection::DataProtectionOverlayView>
       data_protection_overlay_view_ = nullptr;
 
-  // The overlay dialog view that is displayed on top of the web contents.
-  raw_ptr<views::WebView> ai_overlay_dialog_view_ = nullptr;
-
   // The scrim view that covers the content area when a tab-modal dialog is
   // open.
   raw_ptr<ScrimView> contents_scrim_view_ = nullptr;
@@ -212,22 +201,11 @@ class ContentsContainerView : public views::View,
   // overlay that is shown on top of the web contents.
   raw_ptr<ActorOverlayWebView> actor_overlay_web_view_ = nullptr;
 
-  // Contains glic selection overlay. The overlay renders a static screenshot
-  // of the WebContents and is drawn on top of the WebContents.
-  raw_ptr<views::View> glic_selection_overlay_view_ = nullptr;
-
-  // The glic browser view that renders around the web contents area.
-  raw_ptr<glic::ContextSharingBorderView> glic_border_ = nullptr;
-
   raw_ptr<MultiContentsViewMiniToolbar> mini_toolbar_ = nullptr;
 
   raw_ptr<ContentsContainerOutline> container_outline_ = nullptr;
 
   raw_ptr<ContentsCaptureBorderView> capture_contents_border_view_ = nullptr;
-
-  // Toolbar for chrome/browser/indigo/, which determines where in the content
-  // area it wants to float.
-  raw_ptr<views::View> indigo_overlay_view_ = nullptr;
 
   // See `SetTargetContentSize()`.
   std::optional<gfx::Outsets> target_content_bounds_;

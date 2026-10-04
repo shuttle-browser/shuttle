@@ -7,14 +7,12 @@
 
 #include "chrome/services/mac_notifications/public/cpp/notification_style.h"
 #include "chrome/services/mac_notifications/public/mojom/mac_notifications.mojom-forward.h"
-#include "components/webapps/common/web_app_id.h"
 #include "mojo/public/cpp/bindings/remote.h"
 
 class MacNotificationProviderFactory {
  public:
   explicit MacNotificationProviderFactory(
-      mac_notifications::NotificationStyle notification_style,
-      const webapps::AppId& web_app_id = {});
+      mac_notifications::NotificationStyle notification_style);
   MacNotificationProviderFactory(const MacNotificationProviderFactory&) =
       delete;
   MacNotificationProviderFactory& operator=(
@@ -31,7 +29,6 @@ class MacNotificationProviderFactory {
 
  private:
   const mac_notifications::NotificationStyle notification_style_;
-  const webapps::AppId web_app_id_;
 };
 
 #endif  // CHROME_BROWSER_NOTIFICATIONS_MAC_MAC_NOTIFICATION_PROVIDER_FACTORY_H_

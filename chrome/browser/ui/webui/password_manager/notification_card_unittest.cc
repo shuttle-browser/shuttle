@@ -19,13 +19,7 @@
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/webui/password_manager/notification_cards/access_on_any_device_promo.h"
 #include "chrome/browser/ui/webui/password_manager/notification_cards/password_checkup_promo.h"
-#include "chrome/browser/ui/webui/password_manager/notification_cards/password_manager_shortcut_promo.h"
 #include "chrome/browser/ui/webui/password_manager/notification_cards/web_password_manager_promo.h"
-#include "chrome/browser/web_applications/test/fake_web_app_provider.h"
-#include "chrome/browser/web_applications/test/web_app_test.h"
-#include "chrome/browser/web_applications/test/web_app_test_utils.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/webauthn/enclave_manager_factory.h"
 #include "chrome/browser/webauthn/mock_enclave_manager.h"
 #include "chrome/common/webui_url_constants.h"
@@ -78,13 +72,6 @@ class FakeNotificationCard : public PasswordNotificationCardBase {
     return u"Do something!";
   }
 };
-
-std::unique_ptr<web_app::WebApp> CreateWebApp() {
-  GURL url(chrome::kChromeUIPasswordManagerURL);
-  auto web_app = web_app::test::CreateWebApp(url);
-  web_app->SetUserDisplayMode(web_app::mojom::UserDisplayMode::kStandalone);
-  return web_app;
-}
 
 }  // namespace
 
@@ -307,55 +294,6 @@ TEST_P(NotificationCardInWebTest, CardNotShownAfterDismiss) {
 
   std::unique_ptr<PasswordNotificationCardBase> card =
       std::make_unique<WebPasswordManagerPromo>(sync_service());
-  EXPECT_TRUE(card->ShouldShowCard(NotificationCardPrefState{}));
-
-  NotificationCardPrefState dismissed_state{
-      .was_dismissed = true,
-      .number_of_times_shown = 1,
-      .last_time_shown = base::Time::Now(),
-  };
-  EXPECT_FALSE(card->ShouldShowCard(dismissed_state));
-}
-
-class NotificationCardShortcutTest : public WebAppTest {
- public:
-  void SetUp() override {
-    WebAppTest::SetUp();
-    provider()->Start();
-  }
-
-  PrefService* pref_service() { return profile()->GetPrefs(); }
-  web_app::FakeWebAppProvider* provider() {
-    return web_app::FakeWebAppProvider::Get(profile());
-  }
-};
-
-TEST_F(NotificationCardShortcutTest, NoCardIfShortcutInstalled) {
-  auto web_app = CreateWebApp();
-  provider()->GetRegistrarMutable().registry().emplace(web_app->app_id(),
-                                                       std::move(web_app));
-
-  std::unique_ptr<PasswordNotificationCardBase> card =
-      std::make_unique<PasswordManagerShortcutPromo>(profile());
-  EXPECT_FALSE(card->ShouldShowCard(NotificationCardPrefState{}));
-}
-
-TEST_F(NotificationCardShortcutTest, ShouldShowCardFirstThreeTimes) {
-  std::unique_ptr<PasswordNotificationCardBase> card =
-      std::make_unique<PasswordManagerShortcutPromo>(profile());
-
-  EXPECT_TRUE(card->ShouldShowCard(NotificationCardPrefState{}));
-  EXPECT_TRUE(card->ShouldShowCard(
-      NotificationCardPrefState{.number_of_times_shown = 1}));
-  EXPECT_TRUE(card->ShouldShowCard(
-      NotificationCardPrefState{.number_of_times_shown = 2}));
-  EXPECT_FALSE(card->ShouldShowCard(NotificationCardPrefState{
-      .number_of_times_shown = 3, .last_time_shown = base::Time::Now()}));
-}
-
-TEST_F(NotificationCardShortcutTest, CardNotShownAfterDismiss) {
-  std::unique_ptr<PasswordNotificationCardBase> card =
-      std::make_unique<PasswordManagerShortcutPromo>(profile());
   EXPECT_TRUE(card->ShouldShowCard(NotificationCardPrefState{}));
 
   NotificationCardPrefState dismissed_state{

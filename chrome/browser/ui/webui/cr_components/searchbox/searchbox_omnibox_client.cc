@@ -7,7 +7,6 @@
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_provider_client.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/omnibox/autocomplete_controller_emitter_factory.h"
 #include "chrome/browser/predictors/autocomplete_action_predictor.h"
 #include "chrome/browser/predictors/autocomplete_action_predictor_factory.h"
@@ -15,9 +14,7 @@
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/ui/bookmarks/bookmark_stats.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
@@ -59,10 +56,6 @@ PrefService* SearchboxOmniboxClient::GetPrefs() {
 
 const PrefService* SearchboxOmniboxClient::GetPrefs() const {
   return profile_->GetPrefs();
-}
-
-bookmarks::BookmarkModel* SearchboxOmniboxClient::GetBookmarkModel() {
-  return BookmarkModelFactory::GetForBrowserContext(profile_);
 }
 
 AutocompleteControllerEmitter*

@@ -7,7 +7,6 @@
 
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
-#include "chrome/browser/ui/views/tab_search_bubble_host.h"
 #include "chrome/browser/ui/webui_browser/browser.mojom.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_window.h"
 #include "components/browser_apis/tab_strip/types/node_id.h"
@@ -75,8 +74,6 @@ class WebUIBrowserPageHandler
   std::unique_ptr<views::MenuModelAdapter> back_forward_menu_model_adapter_;
   std::unique_ptr<views::MenuRunner> back_forward_menu_runner_;
 
-  std::unique_ptr<content::WebContents> tab_search_contents_;
-  std::unique_ptr<TabSearchBubbleHost> tab_search_bubble_host_;
 
   std::unique_ptr<content::WebContents> glic_contents_;
 

@@ -243,7 +243,6 @@ class OnDemandUpdater {
   friend class ash::SmartDimComponentIntegrationTest;
   friend class CrOSComponentInstaller;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  friend class IwaKeyDistributionComponentInstallerPolicy;
   friend class PlatformRuntimeComponentInstallerPolicy;
   friend void UpdateAIEmbeddingsComponentOnDemand(Priority priority,
                                                   Callback callback);

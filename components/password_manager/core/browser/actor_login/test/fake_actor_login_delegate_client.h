@@ -50,7 +50,6 @@ class FakeActorLoginDelegateClient : public ActorLoginDelegateClient {
   GetPasswordManagerDriverForMainFrame() override;
   ukm::SourceId GetPageUkmSourceIdForMainFrame() override;
   url::Origin GetLastCommittedOriginForMainFrame() override;
-  translate::TranslateManager* GetTranslateManager() override;
   ActorLoginPermissionCleaningService* GetPermissionCleaningService() override;
   std::unique_ptr<ActorLoginCredentialsFetcher>
   CreateFederatedCredentialsFetcher(

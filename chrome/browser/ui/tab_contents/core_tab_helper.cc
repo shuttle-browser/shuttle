@@ -24,11 +24,6 @@
 #include "chrome/common/chrome_render_frame.mojom.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/lens/buildflags.h"
-#include "components/lens/lens_constants.h"
-#include "components/lens/lens_entrypoints.h"
-#include "components/lens/lens_features.h"
-#include "components/lens/lens_url_utils.h"
 #include "components/search/search.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
@@ -70,16 +65,19 @@ constexpr int kImageSearchThumbnailMaxHeight = 600;
 constexpr int kEncodingQualityJpeg = 40;
 constexpr int kEncodingQualityWebp = 45;
 
+constexpr int kMaxAreaForImageSearch = 1'000'000;
+constexpr int kMaxPixelsForImageSearch = 1000;
+
 bool NeedsDownscale(gfx::Image image) {
-  return (image.Height() * image.Width() > lens::kMaxAreaForImageSearch) &&
-         (image.Width() > lens::kMaxPixelsForImageSearch ||
-          image.Height() > lens::kMaxPixelsForImageSearch);
+  return (image.Height() * image.Width() > kMaxAreaForImageSearch) &&
+         (image.Width() > kMaxPixelsForImageSearch ||
+          image.Height() > kMaxPixelsForImageSearch);
 }
 
 gfx::Image DownscaleImage(const gfx::Image& image) {
-  return gfx::ResizedImageForMaxDimensions(
-      image, lens::kMaxPixelsForImageSearch, lens::kMaxPixelsForImageSearch,
-      lens::kMaxAreaForImageSearch);
+  return gfx::ResizedImageForMaxDimensions(image, kMaxPixelsForImageSearch,
+                                           kMaxPixelsForImageSearch,
+                                           kMaxAreaForImageSearch);
 }
 
 }  // namespace
@@ -119,21 +117,18 @@ void CoreTabHelper::UpdateContentRestrictions(int content_restrictions) {
 
 std::vector<unsigned char> CoreTabHelper::EncodeImage(
     const gfx::Image& image,
-    std::string& content_type,
-    lens::mojom::ImageFormat& image_format) {
+    std::string& content_type) {
   std::optional<std::vector<uint8_t>> data =
       gfx::JPEGCodec::Encode(image.AsBitmap(), kEncodingQualityJpeg);
 
   if (data) {
     content_type = "image/jpeg";
-    image_format = lens::mojom::ImageFormat::JPEG;
     return data.value();
   }
 
   // Get the front and end of the image bytes in order to store them in the
   // search_args to be sent as part of the PostContent in the request
   content_type = "image/png";
-  image_format = lens::mojom::ImageFormat::PNG;
   auto bytes = image.As1xPNGBytes();
   return {bytes->begin(), bytes->end()};
 }
@@ -148,12 +143,11 @@ void CoreTabHelper::DownscaleAndEncodeBitmap(
   gfx::Size original_size;
   std::string content_type;
   gfx::Size downscaled_size;
-  std::vector<lens::mojom::LatencyLogPtr> log_data;
   std::vector<unsigned char> thumbnail_data;
 
   if (bitmap.isNull()) {
     return std::move(callback).Run(thumbnail_data, content_type, original_size,
-                                   downscaled_size, std::move(log_data));
+                                   downscaled_size);
   }
 
   original_size = gfx::Size(bitmap.width(), bitmap.height());
@@ -174,77 +168,40 @@ void CoreTabHelper::DownscaleAndEncodeBitmap(
 
   SkBitmap thumbnail;
   if (needs_downscale) {
-    log_data.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::DOWNSCALE_START, original_size, gfx::Size(),
-        lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-        /*encoded_size_bytes=*/0));
     thumbnail = skia::ImageOperations::Resize(
         bitmap, skia::ImageOperations::RESIZE_GOOD,
         static_cast<int>(scaled_size.width()),
         static_cast<int>(scaled_size.height()));
     downscaled_size = gfx::Size(thumbnail.width(), thumbnail.height());
-    log_data.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::DOWNSCALE_END, original_size, downscaled_size,
-        lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-        /*encoded_size_bytes=*/0));
   } else {
     thumbnail = std::move(bitmap);
     downscaled_size = gfx::Size(original_size);
   }
 
-  lens::mojom::ImageFormat encode_target_format;
   std::optional<std::vector<uint8_t>> encoded_data;
-  log_data.push_back(lens::mojom::LatencyLog::New(
-      lens::mojom::Phase::ENCODE_START, original_size, downscaled_size,
-      lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-      /*encoded_size_bytes=*/0));
   if (thumbnail.isOpaque() && (encoded_data = gfx::JPEGCodec::Encode(
                                    thumbnail, kEncodingQualityJpeg))) {
     thumbnail_data.swap(encoded_data.value());
     content_type = "image/jpeg";
-    encode_target_format = lens::mojom::ImageFormat::JPEG;
   } else if ((encoded_data =
                   gfx::WebpCodec::Encode(thumbnail, kEncodingQualityWebp))) {
     thumbnail_data.swap(encoded_data.value());
     content_type = "image/webp";
-    encode_target_format = lens::mojom::ImageFormat::WEBP;
   }
-  log_data.push_back(lens::mojom::LatencyLog::New(
-      lens::mojom::Phase::ENCODE_END, original_size, downscaled_size,
-      encode_target_format, base::Time::Now(),
-      /*encoded_size_bytes=*/sizeof(unsigned char) * thumbnail_data.size()));
   return std::move(callback).Run(thumbnail_data, content_type, original_size,
-                                 downscaled_size, std::move(log_data));
+                                 downscaled_size);
 }
 
 // static
-lens::mojom::ImageFormat CoreTabHelper::EncodeImageIntoSearchArgs(
+void CoreTabHelper::EncodeImageIntoSearchArgs(
     const gfx::Image& image,
     size_t& encoded_size_bytes,
     TemplateURLRef::SearchTermsArgs& search_args) {
-  lens::mojom::ImageFormat image_format;
   std::string content_type;
-  std::vector<uint8_t> data = EncodeImage(image, content_type, image_format);
+  std::vector<uint8_t> data = EncodeImage(image, content_type);
   encoded_size_bytes = sizeof(unsigned char) * data.size();
   search_args.image_thumbnail_content.assign(data.begin(), data.end());
   search_args.image_thumbnail_content_type = content_type;
-  return image_format;
-}
-
-void CoreTabHelper::SearchWithLens(content::RenderFrameHost* render_frame_host,
-                                   const GURL& src_url,
-                                   lens::EntryPoint entry_point) {
-  SearchByImageImpl(render_frame_host, src_url, kImageSearchThumbnailMinSize,
-                    lens::kMaxPixelsForImageSearch,
-                    lens::kMaxPixelsForImageSearch,
-                    lens::GetQueryParametersForLensRequest(entry_point));
-}
-
-void CoreTabHelper::SearchWithLens(const gfx::Image& image,
-                                   lens::EntryPoint entry_point) {
-  auto lens_query_params = lens::GetQueryParametersForLensRequest(entry_point);
-
-  SearchByImageImpl(image, lens_query_params);
 }
 
 void CoreTabHelper::SearchByImage(content::RenderFrameHost* render_frame_host,
@@ -262,26 +219,10 @@ void CoreTabHelper::SearchByImage(const gfx::Image& image) {
 void CoreTabHelper::SearchByImageImpl(
     const gfx::Image& original_image,
     const std::string& additional_query_params) {
-  std::vector<lens::mojom::LatencyLogPtr> log_data;
-  log_data.push_back(lens::mojom::LatencyLog::New(
-      lens::mojom::Phase::OVERALL_START, gfx::Size(), gfx::Size(),
-      lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-      /*encoded_size_bytes=*/0));
-
   // Downscale the `original_image` if needed.
   gfx::Image image = original_image;
   if (NeedsDownscale(original_image)) {
-    log_data.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::DOWNSCALE_START, original_image.Size(), gfx::Size(),
-        lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-        /*encoded_size_bytes=*/0));
-
     image = DownscaleImage(original_image);
-
-    log_data.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::DOWNSCALE_END, original_image.Size(), image.Size(),
-        lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-        /*encoded_size_bytes=*/0));
   }
 
   TemplateURLService* template_url_service = GetTemplateURLService();
@@ -291,27 +232,8 @@ void CoreTabHelper::SearchByImageImpl(
   TemplateURLRef::SearchTermsArgs search_args =
       TemplateURLRef::SearchTermsArgs(std::u16string());
 
-  log_data.push_back(lens::mojom::LatencyLog::New(
-      lens::mojom::Phase::ENCODE_START, original_image.Size(), gfx::Size(),
-      lens::mojom::ImageFormat::ORIGINAL, base::Time::Now(),
-      /*encoded_size_bytes=*/0));
-
   size_t encoded_size_bytes;
-  std::string content_type;
-  std::vector<unsigned char> encoded_image_bytes;
-  lens::mojom::ImageFormat image_format;
-  image_format =
-      EncodeImageIntoSearchArgs(image, encoded_size_bytes, search_args);
-  log_data.push_back(lens::mojom::LatencyLog::New(
-      lens::mojom::Phase::ENCODE_END, original_image.Size(), gfx::Size(),
-      image_format, base::Time::Now(), encoded_size_bytes));
-
-  std::string additional_query_params_modified = additional_query_params;
-  if (base::FeatureList::IsEnabled(lens::features::kLensStandalone) &&
-      search::DefaultSearchProviderIsGoogle(template_url_service)) {
-    lens::AppendLogsQueryParam(&additional_query_params_modified,
-                               std::move(log_data));
-  }
+  EncodeImageIntoSearchArgs(image, encoded_size_bytes, search_args);
 
   if (search::DefaultSearchProviderIsGoogle(template_url_service)) {
     search_args.processed_image_dimensions =
@@ -320,7 +242,7 @@ void CoreTabHelper::SearchByImageImpl(
   }
 
   search_args.image_original_size = original_image.Size();
-  search_args.additional_query_params = additional_query_params_modified;
+  search_args.additional_query_params = additional_query_params;
   TemplateURLRef::PostContent post_content;
   GURL search_url(default_provider->image_url_ref().ReplaceSearchTerms(
       search_args, template_url_service->search_terms_data(), &post_content));
@@ -507,8 +429,7 @@ void CoreTabHelper::DoSearchByImage(
     const std::vector<unsigned char>& thumbnail_data,
     const std::string& content_type,
     const gfx::Size& original_size,
-    const gfx::Size& downscaled_size,
-    const std::vector<lens::mojom::LatencyLogPtr> log_data) {
+    const gfx::Size& downscaled_size) {
   if (thumbnail_data.empty()) {
     return;
   }
@@ -517,13 +438,6 @@ void CoreTabHelper::DoSearchByImage(
   const TemplateURL* const default_provider =
       template_url_service->GetDefaultSearchProvider();
   DCHECK(default_provider);
-
-  std::string additional_query_params_modified = additional_query_params;
-  if (base::FeatureList::IsEnabled(lens::features::kLensStandalone) &&
-      search::DefaultSearchProviderIsGoogle(template_url_service)) {
-    lens::AppendLogsQueryParam(&additional_query_params_modified,
-                               std::move(log_data));
-  }
 
   TemplateURLRef::SearchTermsArgs search_args =
       TemplateURLRef::SearchTermsArgs(std::u16string());
@@ -538,7 +452,7 @@ void CoreTabHelper::DoSearchByImage(
   search_args.image_thumbnail_content_type = content_type;
   search_args.image_url = src_url;
   search_args.image_original_size = original_size;
-  search_args.additional_query_params = additional_query_params_modified;
+  search_args.additional_query_params = additional_query_params;
   TemplateURLRef::PostContent post_content;
   const TemplateURLRef& template_url = default_provider->image_url_ref();
   GURL search_url(template_url.ReplaceSearchTerms(

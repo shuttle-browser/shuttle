@@ -18,8 +18,6 @@
 #include "chrome/browser/command_updater.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/ui/bookmarks/bookmark_tab_helper.h"
-#include "chrome/browser/ui/bookmarks/bookmark_tab_helper_observer.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -120,7 +118,6 @@ NSButton* CreateTouchBarButton(const gfx::VectorIcon& icon,
 // the profile preferences and the back/forward commands.
 class TouchBarNotificationBridge : public CommandObserver,
                                    public BrowserCollectionObserver,
-                                   public BookmarkTabHelperObserver,
                                    public TabStripModelObserver,
                                    public content::WebContentsObserver {
  public:
@@ -175,24 +172,13 @@ class TouchBarNotificationBridge : public CommandObserver,
     if (contents_ == new_contents) {
       return;
     }
-    if (contents_) {
-      BookmarkTabHelper::FromWebContents(contents_)->RemoveObserver(this);
-    }
-
     contents_ = new_contents;
 
     // Stop observing the old WebContents and start observing the new one (if
     // nonnull).
     Observe(contents_);
 
-    BookmarkTabHelper* bookmark_helper =
-        contents_ ? BookmarkTabHelper::FromWebContents(contents_) : nullptr;
-    if (bookmark_helper) {
-      bookmark_helper->AddObserver(this);
-    }
-
     owner_.isPageLoading = contents_ && contents_->IsLoading();
-    owner_.isStarred = bookmark_helper && bookmark_helper->is_starred();
     UpdateTouchBar();
   }
 
@@ -206,13 +192,6 @@ class TouchBarNotificationBridge : public CommandObserver,
     if (browser == owner_.browser) {
       owner_.browser = nullptr;
     }
-  }
-
-  // BookmarkTabHelperObserver:
-  void URLStarredChanged(content::WebContents* web_contents,
-                         bool starred) override {
-    DCHECK(web_contents == contents_);
-    owner_.isStarred = starred;
   }
 
  protected:
@@ -469,7 +448,7 @@ class TouchBarNotificationBridge : public CommandObserver,
 
     NSArray<NSString*>* touchBarItemIdentifiers = @[
       kBackTouchId, kForwardTouchId, kReloadOrStopTouchId, kHomeTouchId,
-      kSearchTouchId, kStarTouchId, kNewTabTouchId
+      kSearchTouchId, kNewTabTouchId
     ];
 
     for (NSString* itemIdentifier in touchBarItemIdentifiers) {
@@ -705,10 +684,6 @@ class TouchBarNotificationBridge : public CommandObserver,
 
 - (NSButton*)searchButton {
   return _searchButton;
-}
-
-- (BookmarkTabHelperObserver*)bookmarkTabObserver {
-  return _notificationBridge.get();
 }
 
 @end

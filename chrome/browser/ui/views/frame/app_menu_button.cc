@@ -23,6 +23,7 @@
 #include "chrome/browser/ui/views/toolbar/app_menu.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/accessible_pane_view.h"
 #include "ui/views/bubble/bubble_anchor.h"
 #include "ui/views/controls/button/menu_button_controller.h"

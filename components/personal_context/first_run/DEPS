@@ -1,7 +1,0 @@
-include_rules = [
-  "+components/keyed_service/core",
-  "+components/personal_context/core",
-  "+components/prefs",
-  "+components/signin/public/identity_manager",
-  "+content/public/browser",
-]

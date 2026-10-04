@@ -36,7 +36,6 @@
 #include "extensions/common/permissions/api_permission.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/extensions/api/bookmark_manager_private/bookmark_manager_private_api.h"
 #endif
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
@@ -102,12 +101,6 @@ TabHelper::TabHelper(content::WebContents* web_contents)
 
   registry_observation_.Observe(
       ExtensionRegistry::Get(web_contents->GetBrowserContext()));
-
-#if !BUILDFLAG(IS_ANDROID)
-  // The Android bookmark manager is native UI, not web UI, so this event router
-  // isn't needed on desktop Android.
-  BookmarkManagerPrivateDragEventRouter::CreateForWebContents(web_contents);
-#endif
 }
 
 void TabHelper::SetReloadRequired(

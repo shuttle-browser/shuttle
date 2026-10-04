@@ -16,17 +16,11 @@
 #include "chrome/browser/account_settings/account_setting_service_factory.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/collaboration/collaboration_service_factory.h"
-#include "chrome/browser/consent_auditor/consent_auditor_factory.h"
-#include "chrome/browser/data_sharing/data_sharing_service_factory.h"
-#include "chrome/browser/data_sharing/personal_collaboration_data/personal_collaboration_data_service_factory.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/gcm/gcm_profile_service_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/metrics/variations/google_groups_manager_factory.h"
-#include "chrome/browser/notebooks/notebooks_service_factory.h"
 #include "chrome/browser/password_manager/factories/account_password_store_factory.h"
 #include "chrome/browser/password_manager/factories/password_receiver_service_factory.h"
 #include "chrome/browser/password_manager/factories/password_sender_service_factory.h"
@@ -39,21 +33,17 @@
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/security_events/security_event_recorder_factory.h"
-#include "chrome/browser/sharing/sharing_message_bridge_factory.h"
 #include "chrome/browser/signin/about_signin_internals_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_factory.h"
 #include "chrome/browser/supervised_user/family_link_settings_service_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_service_factory.h"
-#include "chrome/browser/sync/account_bookmark_sync_service_factory.h"
 #include "chrome/browser/sync/chrome_sync_client.h"
 #include "chrome/browser/sync/chrome_sync_controller_builder.h"
 #include "chrome/browser/sync/cross_device_theme_tracker_factory.h"
 #include "chrome/browser/sync/data_type_store_service_factory.h"
 #include "chrome/browser/sync/device_info_sync_service_factory.h"
 #include "chrome/browser/sync/glue/extensions_activity_monitor.h"
-#include "chrome/browser/sync/local_or_syncable_bookmark_sync_service_factory.h"
-#include "chrome/browser/sync/send_tab_to_self_sync_service_factory.h"
 #include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/sync/sync_invalidations_service_factory.h"
 #include "chrome/browser/sync/tab_context_sync_service_factory.h"
@@ -63,7 +53,6 @@
 #include "chrome/browser/tab_group_sync/tab_group_trial.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/trusted_vault/trusted_vault_service_factory.h"
-#include "chrome/browser/undo/bookmark_undo_service_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
@@ -72,12 +61,10 @@
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #include "components/browser_sync/common_controller_builder.h"
-#include "components/collaboration/public/collaboration_service.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/password_manager/core/browser/sharing/password_receiver_service.h"
 #include "components/saved_tab_groups/public/features.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
-#include "components/send_tab_to_self/send_tab_to_self_sync_service.h"
 #include "components/spellcheck/browser/pref_names.h"
 #include "components/sync/base/command_line_switches.h"
 #include "components/sync/base/features.h"
@@ -99,11 +86,6 @@
 #include "extensions/browser/extensions_browser_client.h"           // nogncheck
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_provider_factory.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_features.h"
@@ -128,8 +110,6 @@
 // Must come after other includes, because FromJniType() uses Profile.
 #include "chrome/browser/sync/android/jni_headers/SyncServiceFactory_jni.h"
 #else  // BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
-#include "chrome/browser/skills/skills_service_factory.h"
 #include "chrome/browser/webauthn/passkey_model_factory.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -218,24 +198,10 @@ syncer::DataTypeController::TypeVector CreateCommonControllers(
   builder.SetAutofillWebDataService(content::GetUIThreadTaskRunner({}),
                                     profile_web_data_service,
                                     account_web_data_service);
-  builder.SetBookmarkModel(BookmarkModelFactory::GetForBrowserContext(profile));
-  builder.SetBookmarkSyncService(
-      LocalOrSyncableBookmarkSyncServiceFactory::GetForProfile(profile),
-      AccountBookmarkSyncServiceFactory::GetForProfile(profile));
-  builder.SetConsentAuditor(ConsentAuditorFactory::GetForProfile(profile));
-  builder.SetCollaborationService(
-      collaboration::CollaborationServiceFactory::GetForProfile(profile));
 #if !BUILDFLAG(IS_ANDROID)
   builder.SetAimEligibilityService(
       AimEligibilityServiceFactory::GetForProfile(profile));
-  builder.SetContextualTasksService(
-      contextual_tasks::ContextualTasksServiceFactory::GetForProfile(profile));
 #endif
-  builder.SetDataSharingService(
-      data_sharing::DataSharingServiceFactory::GetForProfile(profile));
-  builder.SetPersonalCollaborationDataService(
-      data_sharing::personal_collaboration_data::
-          PersonalCollaborationDataServiceFactory::GetForProfile(profile));
   builder.SetDeviceInfoSyncService(
       DeviceInfoSyncServiceFactory::GetForProfile(profile));
   builder.SetDualReadingListModel(
@@ -264,14 +230,10 @@ syncer::DataTypeController::TypeVector CreateCommonControllers(
   builder.SetPrefServiceSyncable(PrefServiceSyncableFromProfile(profile));
   builder.SetTabGroupSyncService(GetTabGroupSyncService(profile));
   builder.SetTemplateURLService(GetTemplateURLService(profile));
-  builder.SetSendTabToSelfSyncService(
-      SendTabToSelfSyncServiceFactory::GetForProfile(profile));
   builder.SetSessionSyncService(
       SessionSyncServiceFactory::GetForProfile(profile));
   builder.SetTabContextSyncService(
       TabContextSyncServiceFactory::GetForProfile(profile));
-  builder.SetSharingMessageBridge(
-      SharingMessageBridgeFactory::GetForBrowserContext(profile));
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
   builder.SetFamilyLinkSettingsService(
       supervised_user::FamilyLinkSettingsServiceFactory::GetForKey(
@@ -279,15 +241,6 @@ syncer::DataTypeController::TypeVector CreateCommonControllers(
 #endif  // BUILDFLAG(ENABLE_SUPERVISED_USERS)
   builder.SetUserEventService(
       browser_sync::UserEventServiceFactory::GetForProfile(profile));
-  builder.SetSkillsService(
-#if BUILDFLAG(IS_ANDROID)
-      nullptr
-#else   // BUILDFLAG(IS_ANDROID)
-      skills::SkillsServiceFactory::GetForProfile(profile)
-#endif  // BUILDFLAG(IS_ANDROID)
-  );
-  builder.SetNotebooksService(
-      notebooks::NotebooksServiceFactory::GetForProfile(profile));
 
   return builder.Build(/*disabled_types=*/{}, sync_service,
                        chrome::GetChannel());
@@ -310,10 +263,6 @@ syncer::DataTypeController::TypeVector CreateChromeControllers(
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   builder.SetThemeService(ThemeServiceFactory::GetForProfile(profile));
-  builder.SetWebAppProvider(
-      web_app::AreWebAppsEnabled(profile)
-          ? web_app::WebAppProvider::GetForWebApps(profile)
-          : nullptr);
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)
@@ -489,11 +438,7 @@ std::unique_ptr<KeyedService> BuildSyncService(
     password_receiver_service->OnSyncServiceInitialized(sync_service.get());
   }
 
-  SendTabToSelfSyncServiceFactory::GetForProfile(profile)
-      ->OnSyncServiceInitialized(sync_service.get());
 
-  collaboration::CollaborationServiceFactory::GetForProfile(profile)
-      ->OnSyncServiceInitialized(sync_service.get());
 
   // Allow sync_preferences/ components to use SyncService.
   sync_preferences::PrefServiceSyncable* pref_service =
@@ -545,30 +490,17 @@ SyncServiceFactory::SyncServiceFactory()
   // actually plumbed in ChromeSyncClient, which this factory constructs.
   DependsOn(AboutSigninInternalsFactory::GetInstance());
   DependsOn(AccountSettingServiceFactory::GetInstance());
-  DependsOn(AccountBookmarkSyncServiceFactory::GetInstance());
   DependsOn(AccountPasswordStoreFactory::GetInstance());
   DependsOn(AimEligibilityServiceFactory::GetInstance());
-  DependsOn(BookmarkModelFactory::GetInstance());
-  DependsOn(BookmarkUndoServiceFactory::GetInstance());
   DependsOn(browser_sync::UserEventServiceFactory::GetInstance());
-  DependsOn(collaboration::CollaborationServiceFactory::GetInstance());
-  DependsOn(ConsentAuditorFactory::GetInstance());
-#if !BUILDFLAG(IS_ANDROID)
-  DependsOn(contextual_tasks::ContextualTasksServiceFactory::GetInstance());
-#endif  // !BUILDFLAG(IS_ANDROID)
   DependsOn(CrossDeviceThemeTrackerFactory::GetInstance());
   DependsOn(DataTypeStoreServiceFactory::GetInstance());
   DependsOn(DeviceInfoSyncServiceFactory::GetInstance());
-  DependsOn(data_sharing::DataSharingServiceFactory::GetInstance());
-  DependsOn(data_sharing::personal_collaboration_data::
-                PersonalCollaborationDataServiceFactory::GetInstance());
   DependsOn(FaviconServiceFactory::GetInstance());
   DependsOn(gcm::GCMProfileServiceFactory::GetInstance());
   DependsOn(GoogleGroupsManagerFactory::GetInstance());
   DependsOn(HistoryServiceFactory::GetInstance());
   DependsOn(IdentityManagerFactory::GetInstance());
-  DependsOn(LocalOrSyncableBookmarkSyncServiceFactory::GetInstance());
-  DependsOn(notebooks::NotebooksServiceFactory::GetInstance());
 #if !BUILDFLAG(IS_ANDROID)
   DependsOn(PasskeyModelFactory::GetInstance());
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -577,11 +509,6 @@ SyncServiceFactory::SyncServiceFactory()
   DependsOn(ProfilePasswordStoreFactory::GetInstance());
 
   DependsOn(SecurityEventRecorderFactory::GetInstance());
-  DependsOn(SendTabToSelfSyncServiceFactory::GetInstance());
-  DependsOn(SharingMessageBridgeFactory::GetInstance());
-#if !BUILDFLAG(IS_ANDROID)
-  DependsOn(skills::SkillsServiceFactory::GetInstance());
-#endif  // !BUILDFLAG(IS_ANDROID)
   DependsOn(SpellcheckServiceFactory::GetInstance());
   DependsOn(SyncInvalidationsServiceFactory::GetInstance());
   DependsOn(supervised_user::FamilyLinkSettingsServiceFactory::GetInstance());
@@ -606,9 +533,6 @@ SyncServiceFactory::SyncServiceFactory()
   DependsOn(extensions::StorageFrontend::GetFactoryInstance());
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  DependsOn(web_app::WebAppProviderFactory::GetInstance());
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(IS_CHROMEOS)
   DependsOn(app_list::AppListSyncableServiceFactory::GetInstance());

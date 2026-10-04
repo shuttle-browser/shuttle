@@ -88,7 +88,6 @@ class BrowserNativeWidgetMac : public views::NativeWidgetMac,
       remote_cocoa::mojom::CreateWindowParams* params) override;
   NativeWidgetMacNSWindow* CreateNSWindow(
       const remote_cocoa::mojom::CreateWindowParams* params) override;
-  remote_cocoa::ApplicationHost* GetRemoteCocoaApplicationHost() override;
   void OnWindowInitialized() override;
   void OnWidgetInitDone() override;
   void OnWidgetThemeChanged(views::Widget* widget) override;

@@ -179,8 +179,7 @@ class StartupBrowserCreatorImpl {
       chrome::startup::IsProcessStartup process_startup,
       bool is_ephemeral_profile,
       bool is_post_crash_launch,
-      bool promotional_tabs_enabled,
-      bool whats_new_enabled);
+      bool promotional_tabs_enabled);
 
   // Begins an asynchronous session restore if current state allows it (e.g.,
   // this is not process startup) and SessionService indicates that one is

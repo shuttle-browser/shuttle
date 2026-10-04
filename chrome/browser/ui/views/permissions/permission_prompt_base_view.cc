@@ -19,14 +19,12 @@
 #include "chrome/browser/ui/views/picture_in_picture/document_pip_host.h"
 #include "chrome/browser/ui/views/title_origin_label.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/permissions/permission_request.h"
 #include "components/permissions/permission_uma_util.h"
 #include "components/permissions/permission_util.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #include "ui/base/base_window.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -195,11 +193,7 @@ UrlIdentity PermissionPromptBaseView::GetUrlIdentity(
   DCHECK(!delegate.Requests().empty());
 
   GURL origin_url = delegate.GetRequestingOrigin();
-  // Use the full URL for Isolated Web Apps to match it with the app scope.
-  GURL url = origin_url.SchemeIs(webapps::kIsolatedAppScheme) &&
-                     delegate.GetAssociatedWebContents()
-                 ? delegate.GetAssociatedWebContents()->GetLastCommittedURL()
-                 : origin_url;
+  GURL url = origin_url;
 
   UrlIdentity url_identity = UrlIdentity::CreateFromUrl(
       web_contents

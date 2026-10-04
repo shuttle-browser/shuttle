@@ -38,8 +38,6 @@ if (!is_android) {
 
     deps = [
       "//base",
-      "//chrome/browser/apps/app_service",
-      "//chrome/browser/apps/platform_apps:browser_test_support",
       "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/extensions",
       "//chrome/browser/net",

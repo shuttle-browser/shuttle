@@ -24,7 +24,6 @@
 #include "pdf/pdfium/pdfium_unsupported_features.h"
 #include "pdf/pdfium/pdfium_watermark_overlayer.h"
 #include "printing/nup_parameters.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "third_party/pdfium/public/cpp/fpdf_scopers.h"
 #include "third_party/pdfium/public/fpdf_attachment.h"
@@ -37,16 +36,6 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/size_f.h"
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include <memory>
-
-#include "base/functional/callback.h"
-#include "pdf/pdf_progressive_searchifier.h"
-#include "pdf/pdfium/pdfium_progressive_searchifier.h"
-#include "pdf/pdfium/pdfium_searchify.h"
-#include "services/screen_ai/public/mojom/screen_ai_service.mojom.h"
-#include "third_party/skia/include/core/SkBitmap.h"
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 namespace chrome_pdf {
 
@@ -541,18 +530,5 @@ PDFiumEngineExports::CreatePdfWatermarkOverlayer(
   return PdfiumWatermarkOverlayer::Create(pdf_buffer);
 }
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-std::vector<uint8_t> PDFiumEngineExports::Searchify(
-    base::span<const uint8_t> pdf_buffer,
-    base::RepeatingCallback<screen_ai::mojom::VisualAnnotationPtr(
-        const SkBitmap& bitmap)> perform_ocr_callback) {
-  return PDFiumSearchify(pdf_buffer, std::move(perform_ocr_callback));
-}
-
-std::unique_ptr<PdfProgressiveSearchifier>
-PDFiumEngineExports::CreateProgressiveSearchifier() {
-  return std::make_unique<PdfiumProgressiveSearchifier>();
-}
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 }  // namespace chrome_pdf

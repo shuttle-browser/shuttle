@@ -23,8 +23,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/picture_in_picture/auto_pip_setting_overlay_view.h"
-#include "chrome/browser/picture_in_picture/hats/auto_picture_in_picture_hats_service.h"
-#include "chrome/browser/picture_in_picture/hats/auto_picture_in_picture_hats_service_factory.h"
 #endif
 
 // static
@@ -209,16 +207,6 @@ void AutoPipSettingHelper::RecordResult(
     PromptResult result,
     media::PictureInPictureEventsInfo::AutoPipReason auto_pip_reason,
     std::optional<ukm::SourceId> source_id) {
-#if !BUILDFLAG(IS_ANDROID)
-  if (web_contents_) {
-    if (auto* hats_service =
-            AutoPictureInPictureHatsServiceFactory::GetForProfile(
-                Profile::FromBrowserContext(
-                    web_contents_->GetBrowserContext()))) {
-      hats_service->SetPromptResult(result);
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   base::UmaHistogramEnumeration("Media.AutoPictureInPicture.PromptResultV2",
                                 result);

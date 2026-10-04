@@ -25,8 +25,6 @@
 #include "base/types/expected.h"
 #include "build/build_config.h"
 #include "chrome/browser/tab_contents/web_contents_collection.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/browser_window_deleter.h"
@@ -79,9 +77,6 @@ namespace content {
 class NavigationHandle;
 }  // namespace content
 
-namespace web_app {
-class AppBrowserController;
-}
 
 namespace web_modal {
 class WebContentsModalDialogHost;

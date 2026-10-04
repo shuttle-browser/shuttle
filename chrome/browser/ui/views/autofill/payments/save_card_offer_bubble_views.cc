@@ -16,8 +16,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/autofill/payments/save_card_ui.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/browser/ui/views/autofill/payments/dialog_view_ids.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/grit/browser_resources.h"
@@ -55,14 +53,6 @@ SaveCardOfferBubbleViews::SaveCardOfferBubbleViews(
     : SaveCardBubbleViews(anchor_view, web_contents, controller) {
   SetButtons(static_cast<int>(ui::mojom::DialogButton::kOk) |
              static_cast<int>(ui::mojom::DialogButton::kCancel));
-
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile, /*create_if_necessary=*/true);
-  CHECK(hats_service);
-  hats_service->LaunchDelayedSurveyForWebContents(
-      kHatsSurveyTriggerAutofillCard, web_contents, 10000);
 }
 
 void SaveCardOfferBubbleViews::Init() {

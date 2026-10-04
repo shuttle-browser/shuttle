@@ -18,7 +18,7 @@ import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_
 import {browserProxyFactory, ColorSchemeMode} from 'chrome://resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom-webui.js';
 import type {BrowserProxy as CustomizeColorSchemeModeBrowserProxy} from 'chrome://resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom-webui.js';
 import {I18nMixinLit} from 'chrome://resources/cr_elements/i18n_mixin_lit.js';
-import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
+import {assert} from 'chrome://resources/js/assert.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
@@ -88,7 +88,6 @@ function normalizePageVisibility(
     undefined): AppearancePageVisibility {
   if (visibility === undefined) {
     return {
-      bookmarksBar: true,
       homeButton: true,
       hoverCard: true,
       pageZoom: true,
@@ -99,7 +98,6 @@ function normalizePageVisibility(
 
   if (typeof visibility === 'boolean') {
     return {
-      bookmarksBar: visibility,
       homeButton: visibility,
       hoverCard: visibility,
       pageZoom: visibility,
@@ -168,8 +166,6 @@ export class SettingsAppearancePageElement extends
       glassEffectOptions_: {type: Array},
       tabStripOptions_: {type: Array},
       showGlassEffectEnabled_: {type: Boolean},
-      ntpSimplificationBookmarksBarEnabled_: {type: Boolean},
-      bookmarksBarOptions_: {type: Array},
       showVerticalTabsExpandOnHoverEnabled_: {type: Boolean},
       showOrganizerPanelEnabled_: {type: Boolean},
       showEverythingMenuEnabled_: {type: Boolean},
@@ -259,13 +255,6 @@ export class SettingsAppearancePageElement extends
     {value: 'false', name: loadTimeData.getString('uiFeatureAlignTop')},
   ];
 
-  // The values in this array must match the BookmarkBarVisibilityState enum
-  // defined in components/bookmarks/common/bookmark_bar_visibility_state.h.
-  protected accessor bookmarksBarOptions_: DropdownMenuOptionList = [
-    {value: 0, name: loadTimeData.getString('bookmarksBarAlwaysShow')},
-    {value: 1, name: loadTimeData.getString('bookmarksBarOnlyShowOnNtp')},
-    {value: 2, name: loadTimeData.getString('bookmarksBarAlwaysHide')},
-  ];
 
   protected accessor sidePanelAlignmentOptions_: DropdownMenuOptionList = [
     {value: 'false', name: loadTimeData.getString('uiFeatureAlignLeft')},
@@ -296,8 +285,6 @@ export class SettingsAppearancePageElement extends
   protected accessor showManagedThemeDialog_: boolean = false;
   protected accessor showGlassEffectEnabled_: boolean =
       loadTimeData.getBoolean('showGlassEffectEnabled');
-  protected accessor ntpSimplificationBookmarksBarEnabled_: boolean =
-      loadTimeData.getBoolean('ntpSimplificationBookmarksBarEnabled');
   protected accessor showVerticalTabsExpandOnHoverEnabled_: boolean =
       loadTimeData.getBoolean('showVerticalTabsExpandOnHoverEnabled');
   protected accessor showOrganizerPanelEnabled_: boolean =
@@ -630,12 +617,6 @@ export class SettingsAppearancePageElement extends
                        'Settings_Appearance_TabScrollButtons_Unpinned');
   }
 
-  protected onShowTabSearchButtonChange_(event: CustomEvent<boolean>) {
-    this.metricsBrowserProxy_.recordAction(
-        event.detail ? 'TabStripComboButton.TabSearch.Pinned' :
-                       'TabStripComboButton.TabSearch.Unpinned');
-  }
-
   protected onShowOrganizerPanelButtonChange_(event: CustomEvent<boolean>) {
     this.metricsBrowserProxy_.recordAction(
         event.detail ? 'TabStripComboButton.OrganizerPanel.Pinned' :
@@ -646,32 +627,6 @@ export class SettingsAppearancePageElement extends
     this.metricsBrowserProxy_.recordAction(
         event.detail ? 'TabStripComboButton.EverythingMenu.Pinned' :
                        'TabStripComboButton.EverythingMenu.Unpinned');
-  }
-
-  protected onBookmarksBarVisibilitySettingsControlChange_(event: Event) {
-    const dropdown = event.target as SettingsDropdownMenuElement;
-    const value = Number.parseInt(dropdown.getSelectedValue(), 10);
-    // These values map to the BookmarkBarVisibilityState enum in
-    // components/bookmarks/common/bookmark_bar_visibility_state.h.
-    switch (value) {
-      // Equivalent to `BookmarkBarVisibilityState::kAlwaysShow`.
-      case 0:
-        this.metricsBrowserProxy_.recordAction(
-            'Settings_BookmarkBar_AlwaysShow');
-        break;
-      // Equivalent to `BookmarkBarVisibilityState::kOnlyShowOnNtp`.
-      case 1:
-        this.metricsBrowserProxy_.recordAction(
-            'Settings_BookmarkBar_OnlyShowOnNtp');
-        break;
-      // Equivalent to `BookmarkBarVisibilityState::kAlwaysHide`.
-      case 2:
-        this.metricsBrowserProxy_.recordAction(
-            'Settings_BookmarkBar_AlwaysHide');
-        break;
-      default:
-        assertNotReached();
-    }
   }
 
   protected onGlassFrameSettingsControlChange_(event: Event) {

@@ -14,8 +14,6 @@
 #include <vector>
 
 #include "base/time/time.h"
-#include "components/lens/lens_overlay_invocation_source.h"
-#include "components/lens/lens_overlay_mime_type.h"
 #include "components/search_engines/keyword_web_data_service.h"
 #include "components/search_engines/template_url_prepopulate_data_resolver.h"
 #include "components/search_engines/template_url_service.h"
@@ -25,11 +23,6 @@
 class KeywordWebDataService;
 class PrefService;
 class TemplateURL;
-
-namespace lens {
-class LensOverlayContextualInputs;
-class LensOverlayRequestId;
-}  // namespace lens
 
 // Returns the short name of the default search engine, or the empty string if
 // none is set.
@@ -280,58 +273,10 @@ std::string GetFixedUpSearchEngineUrl(const std::string& url_input,
 // `aim_entrypoint` (aep) is required as it identifies the source of the
 // request. `query_start_time` is the time that the user clicked the submit
 // button.
-GURL GetUrlForAim(
-    TemplateURLService* turl_service,
-    omnibox::ChromeAimEntryPoint aim_entrypoint,
-    const base::Time& query_start_time,
-    const std::u16string& query_text,
-    const std::optional<lens::LensOverlayInvocationSource> invocation_source,
-    std::map<std::string, std::string> additional_params);
-
-// Retrieves the URL for the AIM web page if the a file was uploaded as part
-// of the input.
-// `aim_entrypoint` (aep) is the source of the request.
-// `search_session_id` (gsessionid) is the search session id from the cluster
-// info.
-// `request_id` (vsrid) is the visual search request id used by lens to obtain
-// the uploaded context.
-// TODO(crbug.com/430070871): Make `lns_surface` a required parameter when
-// the server supports it.
-// TODO(crbug.com/446972028): Remove this method in favor of the one below that
-// takes `contextual_inputs` once the server fully supports it.
-GURL GetUrlForMultimodalSearch(
-    TemplateURLService* turl_service,
-    bool is_aim_search,
-    omnibox::ChromeAimEntryPoint aim_entrypoint,
-    const base::Time& query_start_time,
-    const std::string& search_session_id,
-    const std::unique_ptr<lens::LensOverlayRequestId> request_id,
-    const std::optional<lens::LensOverlayInvocationSource> invocation_source =
-        std::nullopt,
-    const std::string& lns_surface = std::string(),
-    const std::u16string& query_text = std::u16string(),
-    std::map<std::string, std::string> additional_params = {});
-
-// Retrieves the URL for the AIM web page if file(s) were uploaded as part
-// of the input.
-// `aim_entrypoint` (aep) is the source of the request.
-// `search_session_id` (gsessionid) is the search session id from the cluster
-// info.
-// `contextual_inputs` (cinpts) are the visual search request ids used by lens
-// to obtain the uploaded context.
-// TODO(crbug.com/430070871): Make `lns_surface` a required parameter when
-// the server supports it.
-GURL GetUrlForMultimodalSearch(
-    TemplateURLService* turl_service,
-    bool is_aim_search,
-    omnibox::ChromeAimEntryPoint aim_entrypoint,
-    const base::Time& query_start_time,
-    const std::string& search_session_id,
-    const std::unique_ptr<lens::LensOverlayContextualInputs> contextual_inputs,
-    const std::optional<lens::LensOverlayInvocationSource> invocation_source =
-        std::nullopt,
-    const std::string& lns_surface = std::string(),
-    const std::u16string& query_text = std::u16string(),
-    std::map<std::string, std::string> additional_params = {});
+GURL GetUrlForAim(TemplateURLService* turl_service,
+                  omnibox::ChromeAimEntryPoint aim_entrypoint,
+                  const base::Time& query_start_time,
+                  const std::u16string& query_text,
+                  std::map<std::string, std::string> additional_params);
 
 #endif  // COMPONENTS_SEARCH_ENGINES_UTIL_H_

@@ -20,9 +20,7 @@ ${this.showing_ ? html`
       </cr-icon-button>
     </div>
     <div id="content">
-      ${this.showBookmarks_ ? html`
-        <webui-browser-bookmarks></webui-browser-bookmarks>
-      ` : this.webView}
+      ${this.webView}
     </div>
   </div>
 ` : ''}

@@ -6,7 +6,6 @@
 
 #include <utility>
 
-#include "chrome/browser/password_manager/password_change/glic_password_change_actuator.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/web_contents.h"
 
@@ -28,12 +27,10 @@ void PasswordChangeFromCheckupDelegate::StartPasswordChangeFlow(
   web_contents_ = web_contents;
   state_change_callback_ = std::move(callback);
 
+  // Password change from checkup relied on Gemini in Chrome (glic), which has
+  // been removed, so there is no actuator to run.
   if (!actuator_) {
-    Profile* profile =
-        Profile::FromBrowserContext(web_contents->GetBrowserContext());
-    actuator_ = std::make_unique<GlicPasswordChangeActuator>(
-        std::move(credential), web_contents.get(), profile);
-    actuator_->AddObserver(this);
+    return;
   }
   actuator_->Start();
 }

@@ -33,8 +33,6 @@ _default_allowed_violations = [
 if (!is_android) {
   _default_allowed_violations += [
     "../../chrome/browser/indigo/resources/internal/*",
-    "../../chrome/browser/nearby_sharing/internal/nearby_share_internal_icons.grd",
-    "../../chrome/browser/nearby_sharing/internal/nearby_share_internal_strings.grd",
     "../../chrome/browser/resources/downloads/internal/icons.html",
     "../../chrome/browser/resources/history/internal/icons.html",
     "../../chrome/browser/resources/settings/internal/icons.html",

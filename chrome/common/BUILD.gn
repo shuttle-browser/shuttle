@@ -236,8 +236,6 @@ static_library("common_lib") {
     "//components/services/heap_profiling/public/cpp",
     "//components/strings",
     "//components/supervised_user/core/common",
-    "//components/translate/content/common",
-    "//components/translate/core/common",
     "//components/url_formatter",
     "//components/variations",
     "//components/variations/net",
@@ -283,7 +281,6 @@ static_library("common_lib") {
   ]
 
   if (is_mac || is_win || is_linux || is_chromeos) {
-    deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
 
   if (is_android || enable_library_cdms || enable_playready) {
@@ -338,7 +335,6 @@ static_library("common_lib") {
       "mac/detect_inappropriate_exit.cc",
       "mac/detect_inappropriate_exit.h",
     ]
-    public_deps += [ ":app_mode_app_support" ]
   }
 
   if (is_chromeos) {
@@ -541,7 +537,6 @@ static_library("url_constants") {
     "//printing/buildflags",
   ]
   deps = [
-    "//components/commerce/core:commerce_constants",
     "//components/history_clusters/history_clusters_internals/webui:constants",
     "//components/lens:buildflags",
     "//components/optimization_guide/optimization_guide_internals/webui:url_constants",
@@ -660,27 +655,6 @@ static_library("test_support") {
   }
 }
 
-if (is_mac) {
-  source_set("app_mode_app_support") {
-    sources = [
-      "mac/app_mode_chrome_locator.h",
-      "mac/app_mode_chrome_locator.mm",
-      "mac/app_mode_common.h",
-      "mac/app_mode_common.mm",
-    ]
-
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
-    deps = [
-      ":constants",
-      "//components/version_info",
-      "//mojo/core/embedder",
-    ]
-
-    public_deps = [ "//base" ]
-  }
-}
-
 mojom("mojo_bindings") {
   disable_variants = true
 
@@ -700,30 +674,10 @@ mojom("mojo_bindings") {
     "trusted_vault_encryption_keys_extension.mojom",
   ]
 
-  deps = [ "//components/lens:lens_mojo" ]
+  deps = []
 
   if (is_android) {
     sources += [ "sandbox_status_extension_android.mojom" ]
-  }
-
-  if (is_mac) {
-    sources += [ "mac/app_shim.mojom" ]
-    deps +=
-        [ "//components/metrics/public/mojom:histogram_fetcher_mojo_bindings" ]
-    cpp_typemaps = [
-      {
-        types = [
-          {
-            mojom = "chrome.mojom.FeatureState"
-            cpp = "::variations::VariationsCommandLine"
-            move_only = true
-          },
-        ]
-        traits_headers = [ "mac/app_shim_mojom_traits.h" ]
-        traits_sources = [ "mac/app_shim_mojom_traits.cc" ]
-        traits_public_deps = [ "//components/variations/net" ]
-      },
-    ]
   }
 
   if (is_win) {
@@ -765,10 +719,7 @@ mojom("mojo_bindings") {
   }
 
   if (!is_android) {
-    sources += [
-      "indigo/indigo.mojom",
-      "password_manager/remote_actor_credential_sharing.mojom",
-    ]
+    sources += [ "password_manager/remote_actor_credential_sharing.mojom" ]
   }
 
   if (safe_browsing_mode == 1) {

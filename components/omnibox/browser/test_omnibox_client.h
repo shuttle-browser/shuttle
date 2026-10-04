@@ -91,19 +91,10 @@ class TestOmniboxClient final : public testing::NiceMock<OmniboxClient> {
                const std::u16string& text,
                const AutocompleteMatch& match,
                const AutocompleteMatch& alternative_nav_match));
-  MOCK_METHOD(bookmarks::BookmarkModel*, GetBookmarkModel, ());
   MOCK_METHOD(PrefService*, GetPrefs, (), (override));
   MOCK_METHOD(const PrefService*, GetPrefs, (), (const, override));
   MOCK_METHOD(bool, IsAimPopupEnabled, (), (const, override));
   MOCK_METHOD(void, OpenUrl, (GURL, WindowOpenDisposition), (override));
-  MOCK_METHOD(std::optional<lens::proto::LensOverlaySuggestInputs>,
-              GetLensOverlaySuggestInputs,
-              (),
-              (const, override));
-  MOCK_METHOD(std::optional<lens::ContextualInputData>,
-              GetContextualInputData,
-              (),
-              (const, override));
   MOCK_METHOD(GURL, GetContextualTasksInnerFrameURL, (), (const, override));
   MOCK_METHOD(bool,
               ShowConfirmationDialogIfDefaultSearchExtensionControlled,

@@ -115,7 +115,6 @@ FetchOptions FetchOptions::CreateFetchOptionsForTabResumption(
     const URLVisitAggregate::URLTypeSet& result_sources) {
   std::vector<URLVisitAggregatesTransformType> transforms{
       URLVisitAggregatesTransformType::kRecencyFilter,
-      URLVisitAggregatesTransformType::kBookmarkData,
 #if BUILDFLAG(IS_ANDROID)
       URLVisitAggregatesTransformType::kDefaultAppUrlFilter,
       URLVisitAggregatesTransformType::kHistoryBrowserTypeFilter,

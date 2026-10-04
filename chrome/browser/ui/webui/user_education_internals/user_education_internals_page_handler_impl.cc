@@ -17,11 +17,8 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/types/pass_key.h"
-#include "chrome/browser/browser_process.h"
 #include "chrome/browser/feature_engagement/tracker_factory.h"
-#include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
@@ -49,12 +46,6 @@
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/resource_path.h"
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/ui/navigator/browser_navigator.h"
-#include "chrome/browser/ui/navigator/browser_navigator_params.h"
-#include "net/base/url_util.h"
-#endif
 
 using mojom::user_education_internals::FeaturePromoDemoPageData;
 using mojom::user_education_internals::FeaturePromoDemoPageDataPtr;
@@ -89,12 +80,9 @@ user_education::NewBadgeRegistry* GetNewBadgeRegistry(Profile* profile) {
   return service ? service->new_badge_registry() : nullptr;
 }
 
+// What's New was removed from this build.
 whats_new::WhatsNewRegistry* GetWhatsNewRegistry() {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  return g_browser_process->GetFeatures()->whats_new_registry();
-#else
   return nullptr;
-#endif
 }
 
 user_education::UserEducationStorageService* GetStorageService(
@@ -938,22 +926,14 @@ void UserEducationInternalsPageHandlerImpl::ClearWhatsNewData(
 }
 
 void UserEducationInternalsPageHandlerImpl::LaunchWhatsNewStaging() {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  GURL url = net::AppendQueryParameter(GURL(chrome::kChromeUIWhatsNewURL),
-                                       "staging", "true");
-  NavigateParams params(profile_, url, ui::PAGE_TRANSITION_TYPED);
-  params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
-  params.browser = GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-      web_ui_->GetWebContents());
-  Navigate(&params);
-#endif
+  // What's New was removed from this build.
 }
 
 void UserEducationInternalsPageHandlerImpl::UpdateWhatsNewVersionOverride(
     int32_t version) {
-  auto* const registry = GetWhatsNewRegistry();
-  CHECK(registry);
-  registry->set_version_override(version);
+  if (auto* const registry = GetWhatsNewRegistry()) {
+    registry->set_version_override(version);
+  }
 }
 
 void UserEducationInternalsPageHandlerImpl::GetNtpPromos(

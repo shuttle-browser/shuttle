@@ -21,10 +21,6 @@
 
 class AimEligibilityExtensionBinderProvider;
 
-namespace contextual_tasks {
-class ContextualTasksExtensionBinderProvider;
-}
-
 namespace extensions {
 
 class ExtensionMojoBinderRegistryTest;
@@ -46,13 +42,6 @@ ExtensionMojoBinderRegistry::~ExtensionMojoBinderRegistry() = default;
 template <>
 void ExtensionMojoBinderRegistry::RegisterProvider(
     base::PassKey<AimEligibilityExtensionBinderProvider>,
-    std::unique_ptr<ExtensionMojoBinderProvider> provider) {
-  RegisterProviderImpl(std::move(provider));
-}
-
-template <>
-void ExtensionMojoBinderRegistry::RegisterProvider(
-    base::PassKey<contextual_tasks::ContextualTasksExtensionBinderProvider>,
     std::unique_ptr<ExtensionMojoBinderProvider> provider) {
   RegisterProviderImpl(std::move(provider));
 }

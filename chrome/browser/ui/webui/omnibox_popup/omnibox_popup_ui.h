@@ -26,16 +26,11 @@
 
 class Profile;
 
-class ComposeboxHandler;
-class ContextualSearchboxHandler;
 class OmniboxPopupAimHandler;
 class OmniboxPopupHandler;
 class OmniboxPopupPresenterBase;
 class OmniboxPopupUI;
-
-namespace contextual_search {
-class ContextualSearchSessionHandle;
-}  // namespace contextual_search
+class SearchboxHandler;
 
 class OmniboxPopupUIConfig
     : public DefaultTopChromeWebUIConfig<OmniboxPopupUI> {
@@ -66,7 +61,7 @@ class OmniboxPopupUI : public TopChromeWebUIController,
   void BindInterface(content::RenderFrameHost* host,
                      mojo::PendingReceiver<searchbox::mojom::PageHandlerFactory>
                          pending_page_handler);
-  ContextualSearchboxHandler* omnibox_handler() {
+  SearchboxHandler* omnibox_handler() {
     return omnibox_handler_.get();
   }
 
@@ -107,11 +102,6 @@ class OmniboxPopupUI : public TopChromeWebUIController,
       mojo::PendingRemote<searchbox::mojom::Page> pending_searchbox_page,
       mojo::PendingReceiver<searchbox::mojom::PageHandler>
           pending_searchbox_handler) override;
-  ComposeboxHandler* composebox_handler() { return composebox_handler_.get(); }
-
-  // Returns the active ContextualSearchboxHandler (either composebox_handler_
-  // or omnibox_handler_).
-  ContextualSearchboxHandler* GetContextualSearchboxHandler();
 
   // searchbox::mojom::PageHandlerFactory:
   void CreatePageHandler(
@@ -120,22 +110,12 @@ class OmniboxPopupUI : public TopChromeWebUIController,
 
   static constexpr std::string_view GetWebUIName() { return "OmniboxPopup"; }
 
-  // Lazily creates and returns a reference to the owned contextual search
-  // session handle for`omnibox_handler_` and `composebox_handler_`.
-  contextual_search::ContextualSearchSessionHandle*
-  GetOrCreateContextualSessionHandle();
-
-  void ClearContextualSessionHandle();
-
   void SetPresenterDelegate(OmniboxPopupPresenterBase* delegate);
 
  private:
   raw_ptr<Profile> profile_;
 
-  // Must outlive `omnibox_handler_` and `composebox_handler_`.
-  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
-      shared_session_handle_;
-  std::unique_ptr<ContextualSearchboxHandler> omnibox_handler_;
+  std::unique_ptr<SearchboxHandler> omnibox_handler_;
 
   std::unique_ptr<OmniboxPopupHandler> popup_handler_;
   mojo::Receiver<omnibox_popup::mojom::PageHandlerFactory>
@@ -145,9 +125,6 @@ class OmniboxPopupUI : public TopChromeWebUIController,
   mojo::Receiver<omnibox_popup_aim::mojom::PageHandlerFactory>
       aim_page_factory_receiver_{this};
 
-  std::unique_ptr<ComposeboxHandler> composebox_handler_;
-  mojo::Receiver<composebox::mojom::PageHandlerFactory>
-      composebox_page_factory_receiver_{this};
 
   mojo::Receiver<searchbox::mojom::PageHandlerFactory>
       searchbox_page_factory_receiver_{this};

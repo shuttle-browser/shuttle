@@ -32,14 +32,6 @@
 #include "extensions/common/manifest.h"
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chromeos/constants/pref_names.h"
 #endif
@@ -161,21 +153,6 @@ bool IsInspectionAllowed(Profile* profile, content::WebContents* web_contents) {
   }
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (web_app::AreWebAppsEnabled(profile)) {
-    if (const webapps::AppId* app_id =
-            web_app::WebAppTabHelper::GetAppId(web_contents)) {
-      if (auto* web_app_provider =
-              web_app::WebAppProvider::GetForWebContents(web_contents)) {
-        if (const web_app::WebApp* web_app =
-                web_app_provider->registrar_unsafe().GetAppById(*app_id)) {
-          return IsInspectionAllowed(profile, web_app);
-        }
-      }
-    }
-  }
-#endif
-
   policy::DeveloperToolsPolicyChecker* checker =
       policy::DeveloperToolsPolicyCheckerFactory::GetForBrowserContext(profile);
   if (checker) {
@@ -263,47 +240,6 @@ bool IsInspectionAllowed(Profile* profile,
       NOTREACHED() << "Unknown developer tools policy";
   }
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-bool IsInspectionAllowed(Profile* profile, const web_app::WebApp* web_app) {
-  if (web_app) {
-    policy::DeveloperToolsPolicyChecker* checker =
-        policy::DeveloperToolsPolicyCheckerFactory::GetForBrowserContext(
-            profile);
-    auto url_availability =
-        checker->GetDevToolsAvailabilityForUrl(web_app->start_url());
-    switch (url_availability) {
-      case policy::DeveloperToolsPolicyChecker::DevToolsAvailability::kAllowed:
-        return true;
-      case policy::DeveloperToolsPolicyChecker::DevToolsAvailability::
-          kDisallowed:
-        return false;
-      case policy::DeveloperToolsPolicyChecker::DevToolsAvailability::kNotSet:
-        // The URL is not covered by the URL-based policies, so we fall back to
-        // the general enum-based policy.
-        break;
-    }
-  }
-  using Availability = policy::DeveloperToolsAvailability;
-  Availability availability =
-      policy::DeveloperToolsPolicyHandler::GetEffectiveAvailability(profile);
-  switch (availability) {
-    case Availability::kDisallowed:
-      return false;
-    case Availability::kAllowed:
-      return true;
-    case Availability::kDisallowedForForceInstalledExtensions:
-      // DevTools should be blocked for Kiosk apps and policy-installed IWAs.
-      if (web_app && (web_app->IsKioskInstalledApp() ||
-                      web_app->IsIwaPolicyInstalledApp())) {
-        return false;
-      }
-      return true;
-    default:
-      NOTREACHED() << "Unknown developer tools policy";
-  }
-}
-#endif
 
 bool IsInspectionAllowed(Profile* profile, const GURL& url) {
   if (url.is_empty() || url.SchemeIs(url::kAboutScheme)) {

@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "base/functional/bind.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/importer/external_process_importer_client.h"
 #include "chrome/browser/importer/firefox_profile_lock.h"
 #include "chrome/browser/importer/importer_lock_dialog.h"
@@ -15,11 +14,9 @@
 #include "chrome/browser/importer/in_process_importer_bridge.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/search_engines/template_url_service.h"
 #include "content/public/browser/browser_thread.h"
 
-using bookmarks::BookmarkModel;
 using content::BrowserThread;
 
 ExternalProcessImporterHost::ExternalProcessImporterHost()
@@ -92,8 +89,7 @@ void ExternalProcessImporterHost::NotifyImportEnded() {
 ExternalProcessImporterHost::~ExternalProcessImporterHost() = default;
 
 void ExternalProcessImporterHost::LaunchImportIfReady() {
-  if (bookmark_model_observation_for_loading_.IsObserving() ||
-      template_service_subscription_ || !is_source_readable_ || cancelled_) {
+  if (template_service_subscription_ || !is_source_readable_ || cancelled_) {
     return;
   }
 
@@ -108,19 +104,6 @@ void ExternalProcessImporterHost::LaunchImportIfReady() {
   client_ = new ExternalProcessImporterClient(
       weak_ptr_factory_.GetWeakPtr(), source_profile_, items_, bridge);
   client_->Start();
-}
-
-void ExternalProcessImporterHost::BookmarkModelLoaded(bool ids_reassigned) {
-  bookmark_model_observation_for_loading_.Reset();
-
-  LaunchImportIfReady();
-}
-
-void ExternalProcessImporterHost::BookmarkModelBeingDeleted() {
-  bookmark_model_observation_for_loading_.Reset();
-}
-
-void ExternalProcessImporterHost::BookmarkModelChanged() {
 }
 
 void ExternalProcessImporterHost::OnTemplateURLServiceLoaded() {
@@ -179,14 +162,6 @@ bool ExternalProcessImporterHost::CheckForFirefoxLock(
 void ExternalProcessImporterHost::CheckForLoadedModels(uint16_t items) {
   // A target profile must be loaded by StartImportSettings().
   DCHECK(profile_);
-
-  // BookmarkModel should be loaded before adding IE favorites. So we observe
-  // the BookmarkModel if needed, and start the task after it has been loaded.
-  if ((items & user_data_importer::FAVORITES) &&
-      !writer_->BookmarkModelIsLoaded()) {
-    bookmark_model_observation_for_loading_.Observe(
-        BookmarkModelFactory::GetForBrowserContext(profile_));
-  }
 
   // Observes the TemplateURLService if needed to import search engines from the
   // other browser. We also check to see if we're importing bookmarks because

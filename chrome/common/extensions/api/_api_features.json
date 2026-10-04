@@ -78,11 +78,6 @@
       "chrome://extensions/*"
     ]
   }],
-  "contextualTasksPrivate": {
-    "contexts": ["privileged_extension"],
-    "dependencies": ["permission:contextualTasksPrivate"],
-    "feature_flag": "ApiContextualTasksPrivate"
-  },
   "experimentalActor": {
     "contexts": ["privileged_extension"],
     "dependencies": ["permission:experimentalActor"]
@@ -90,14 +85,6 @@
   "experimentalAiData": {
     "contexts": ["privileged_extension"],
     "dependencies": ["permission:experimentalAiData"]
-  },
-  "glicPrivate": {
-    "contexts": ["privileged_extension"],
-    "dependencies": ["permission:glicPrivate"],
-    "feature_flag": "ApiGlicPrivate"
-  },
-  "glicPrivate.invoke": {
-    "dependencies": ["permission:glicPrivate.invoke"]
   },
   "app": {
     "blocklist": [
@@ -142,47 +129,6 @@
   "autotestPrivate": {
     "dependencies": ["permission:autotestPrivate"],
     "contexts": ["privileged_extension"]
-  },
-  "bookmarkManagerPrivate": {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "matches": [
-      "chrome://bookmarks/*",
-      "chrome://bookmarks-side-panel.top-chrome/*",
-      "chrome://read-later.top-chrome/*"
-    ],
-    // "desktop_android" is not supported.
-    "platforms": ["chromeos", "linux", "mac", "win"]
-  },
-  "bookmarks": [{
-    "dependencies": ["permission:bookmarks"],
-    "contexts": ["privileged_extension"],
-    "default_parent": true
-  }, {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "matches": [
-      "chrome://bookmarks/*",
-      "chrome://bookmarks-side-panel.top-chrome/*",
-      "chrome://read-later.top-chrome/*",
-      "chrome://welcome/*"
-    ]
-  }],
-  "bookmarks.export": {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "dependencies": [],
-    "matches": [
-      "chrome://bookmarks/*"
-    ]
-  },
-  "bookmarks.import": {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "dependencies": [],
-    "matches": [
-      "chrome://bookmarks/*"
-    ]
   },
   "brailleDisplayPrivate": {
     "dependencies": ["permission:brailleDisplayPrivate"],
@@ -256,10 +202,6 @@
     "matches": [
       "chrome://add-supervision/*",
       "chrome://chrome-signin/*",
-      "chrome://contextual-tasks/*",
-      "chrome://glic/*",
-      "chrome://glic-fre/*",
-      "chrome://glic-experimental-opt-in/*",
       "chrome://graduation/*",
       "chrome://mobilesetup/*",
       "chrome://oobe/*",
@@ -403,10 +345,6 @@
   "devtools.panels": {
     "nocompile": true,
     "dependencies": ["manifest:devtools_page"],
-    "contexts": ["privileged_extension"]
-  },
-  "dictationPrivate": {
-    "dependencies": ["permission:dictationPrivate"],
     "contexts": ["privileged_extension"]
   },
   "documentScan": {
@@ -651,13 +589,6 @@
     "dependencies": ["permission:identity"],
     "contexts": ["privileged_extension"]
   },
-  "indigoPrivate": {
-    "dependencies": ["permission:indigoPrivate"],
-    "contexts": [
-      "privileged_extension"
-    ],
-    "disallow_for_service_workers": true
-  },
   "imageLoaderPrivate": {
     "dependencies": ["permission:imageLoaderPrivate"],
     "contexts": ["privileged_extension"]
@@ -774,10 +705,6 @@
   },
   "mediaPlayerPrivate": {
     "dependencies": ["permission:mediaPlayerPrivate"],
-    "contexts": ["privileged_extension"]
-  },
-  "mdns": {
-    "dependencies": ["permission:mdns"],
     "contexts": ["privileged_extension"]
   },
   "notifications": {

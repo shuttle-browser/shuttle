@@ -20,7 +20,6 @@
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/content_setting_bubble_contents.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
@@ -320,22 +319,6 @@ void ContentSettingImageView::UpdateImage() {
 
 void ContentSettingImageView::AnimationEnded(const gfx::Animation* animation) {
   IconLabelBubbleView::AnimationEnded(animation);
-
-  content::WebContents* web_contents =
-      delegate_->GetContentSettingWebContents();
-
-  // The promo currently is only used for Notifications, and it is only shown
-  // directly after the animation is shown.
-  if (web_contents) {
-    const webapps::AppId* app_id =
-        web_app::WebAppTabHelper::GetAppId(web_contents);
-    if (app_id) {
-      user_education::FeaturePromoParams params(
-          feature_engagement::kIPHPwaQuietNotificationFeature, *app_id);
-      BrowserUserEducationInterface::From(browser_)->MaybeShowFeaturePromo(
-          std::move(params));
-    }
-  }
 }
 
 BEGIN_METADATA(ContentSettingImageView)

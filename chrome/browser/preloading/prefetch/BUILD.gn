@@ -87,7 +87,7 @@ source_set("platform_browser_tests") {
     deps += [ "//third_party/blink/public/common:preloading_headers" ]
   }
 
-  data = [ "//chrome/test/data/" ]
+  data = []
 }
 
 source_set("unit_tests") {

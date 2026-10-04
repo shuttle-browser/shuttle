@@ -24,9 +24,6 @@
 #include "ui/webui/resources/cr_components/theme_color_picker/theme_color_picker.mojom.h"
 
 class FeatureShowcaseHandler;
-class DefaultBrowserHandler;
-class GeminiHandler;
-class GoogleLensHandler;
 class PasswordManagerHandler;
 class ThemesAndCustomizationHandler;
 class CustomizeColorSchemeModeHandler;
@@ -175,13 +172,9 @@ class FeatureShowcaseUI
   void OnShowcaseFinished();
   void OnNextStepShown();
 
-  bool can_pin_ = false;
   base::OnceClosure finish_callback_;
   base::RepeatingClosure next_step_shown_callback_;
   std::unique_ptr<FeatureShowcaseHandler> page_handler_;
-  std::unique_ptr<DefaultBrowserHandler> default_browser_page_handler_;
-  std::unique_ptr<GeminiHandler> gemini_handler_;
-  std::unique_ptr<GoogleLensHandler> google_lens_handler_;
   std::unique_ptr<PasswordManagerHandler> password_manager_handler_;
   std::unique_ptr<ThemesAndCustomizationHandler>
       themes_and_customization_handler_;
@@ -191,12 +184,6 @@ class FeatureShowcaseUI
 
   mojo::Receiver<feature_showcase::mojom::FeatureShowcasePageHandlerFactory>
       page_factory_receiver_{this};
-  mojo::Receiver<feature_showcase::mojom::DefaultBrowserPageHandlerFactory>
-      default_browser_page_factory_receiver_{this};
-  mojo::Receiver<feature_showcase::mojom::GeminiPageHandlerFactory>
-      gemini_factory_receiver_{this};
-  mojo::Receiver<feature_showcase::mojom::GoogleLensPageHandlerFactory>
-      google_lens_factory_receiver_{this};
   mojo::Receiver<feature_showcase::mojom::PasswordManagerPageHandlerFactory>
       password_manager_factory_receiver_{this};
   mojo::Receiver<

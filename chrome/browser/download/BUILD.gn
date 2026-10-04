@@ -114,16 +114,12 @@ source_set("download") {
       "download_commands.h",
       "download_dir_policy_handler.h",
       "download_dir_util.h",
-      "download_item_web_app_data.h",
       "download_ui_enterprise_util.h",
-      "download_warning_desktop_hats_utils.h",
       "offline_item_model.h",
       "offline_item_model_data.h",
       "offline_item_model_manager.h",
       "offline_item_model_manager_factory.h",
     ]
-
-    public_deps += [ "//components/webapps/common" ]
   }
 
   if (!is_android && !is_chromeos) {
@@ -285,9 +281,7 @@ source_set("impl") {
       "download_commands.cc",
       "download_dir_policy_handler.cc",
       "download_dir_util.cc",
-      "download_item_web_app_data.cc",
       "download_ui_enterprise_util.cc",
-      "download_warning_desktop_hats_utils.cc",
       "offline_item_model.cc",
       "offline_item_model_manager.cc",
       "offline_item_model_manager_factory.cc",
@@ -297,9 +291,7 @@ source_set("impl") {
       "//chrome/browser/image_decoder",
       "//chrome/browser/policy:path_parser",
       "//chrome/browser/ui:chrome_pages",
-      "//chrome/browser/ui/hats",
       "//chrome/browser/ui/views/download",
-      "//chrome/browser/ui/web_applications",
       "//chrome/browser/ui/window_feature_controller",
       "//chrome/common:chrome_features",
       "//components/drive",
@@ -327,7 +319,6 @@ source_set("impl") {
     ]
 
     deps += [
-      "//chrome/browser/apps/app_service",
       "//chrome/browser/ash/drive",
       "//chrome/browser/ash/file_manager",
       "//chrome/browser/ash/policy/dlp",
@@ -448,7 +439,6 @@ source_set("test_support") {
     public_deps += [ "//chrome/test:test_support" ]
     deps += [
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//content/test:test_support",
     ]
   }
@@ -529,9 +519,7 @@ source_set("unit_tests") {
       "download_commands_unittest.cc",
       "download_dir_policy_handler_unittest.cc",
       "download_ui_enterprise_util_unittest.cc",
-      "download_warning_desktop_hats_utils_unittest.cc",
     ]
-    deps += [ "//chrome/browser/ui/hats:test_support" ]
   }
 
   if (!is_android && !is_chromeos) {
@@ -542,8 +530,6 @@ source_set("unit_tests") {
   if (is_chromeos) {
     sources += [ "notification/download_item_notification_unittest.cc" ]
     deps += [
-      "//chrome/browser/apps/app_service",
-      "//chrome/browser/apps/app_service:test_support",
       "//chrome/browser/ash/policy/dlp",
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/chromeos/policy/dlp/test:test_support",
@@ -572,13 +558,13 @@ if (!is_android) {
       "//base",
       "//chrome/browser/subresource_filter:test_support",
       "//chrome/browser/ui:chrome_pages",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/history/content/browser",
       "//components/infobars/content",
       "//components/lookalikes/core:safety_tips",
       "//components/page_load_metrics/browser:test_support",
+      "//components/pdf/browser",
       "//components/safe_browsing/content/browser:safe_browsing_service",
       "//components/safe_browsing/content/common:file_type_policies",
       "//components/safe_browsing/content/common:file_type_policies_test_support",

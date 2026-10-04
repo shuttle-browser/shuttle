@@ -31,8 +31,6 @@
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom-forward.h"
 #include "chrome/browser/resource_coordinator/utils.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
-#include "chrome/browser/translate/translate_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
@@ -41,15 +39,12 @@
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/translate/core/browser/language_state.h"
-#include "components/translate/core/common/language_detection_details.h"
 #include "components/zoom/zoom_controller.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -79,19 +74,11 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "base/strings/stringprintf.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/unload_controller.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
 #include "chrome/browser/ui/window_sizer/window_sizer.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -129,27 +116,6 @@ constexpr char kTabIndexNotFoundError[] = "No tab at index: *.";
 constexpr char kCannotFindTabToDiscard[] = "Cannot find a tab to discard.";
 constexpr char kCannotUnhighlightAllTabsError[] =
     "Cannot unhighlight all tabs.";
-
-#if !BUILDFLAG(IS_ANDROID)
-constexpr char kWindowCreateSupportsOnlySingleIwaUrlError[] =
-    "When creating a window for a URL with the 'isolated-app:' scheme, only "
-    "one tab can be added to the window.";
-constexpr char kWindowCreateCannotParseIwaUrlError[] =
-    "Unable to parse 'isolated-app:' URL: %s";
-constexpr char kWindowCreateCannotUseTabIdWithIwaError[] =
-    "Creating a new window for an Isolated Web App does not support adding a "
-    "tab by its ID.";
-constexpr char kCannotMoveIwaTabError[] =
-    "The tab of an Isolated Web App cannot be moved.";
-constexpr char kTabsCreateIwaUrlNotAllowedError[] =
-    "URLs with the 'isolated-app:' scheme cannot be opened with tabs.create. "
-    "Use windows.create instead.";
-constexpr char kTabsUpdateIwaUrlNotAllowedError[] =
-    "Cannot navigate to a URL with the 'isolated-app:' scheme via tabs.update. "
-    "Use windows.create instead.";
-constexpr char kCannotDuplicateIwaTabError[] =
-    "The tab of an Isolated Web App cannot be duplicated.";
-#endif
 
 #if BUILDFLAG(IS_ANDROID)
 std::string WindowResizePrecheckResultToErrorMessage(
@@ -228,71 +194,6 @@ bool SetOpenerOfTab(Profile& profile,
 }
 
 #if !BUILDFLAG(IS_ANDROID)
-
-// Returns the IsolatedWebAppUrlInfo for the given call to windows.create() if
-// the call is to create a new IWA window.
-// Populates `error` with an error if the call is invalid.
-// Note that returning std::nullopt *can* be valid (if error is unpopulated);
-// this indicates the call is not for an IWA window.
-std::optional<web_app::IsolatedWebAppUrlInfo> GetIsolatedWebAppInfo(
-    const std::optional<windows::Create::Params::CreateData>& create_data,
-    const std::vector<GURL>& parsed_urls,
-    std::string* error) {
-  if (parsed_urls.size() > 1) {
-    if (std::ranges::any_of(parsed_urls, [](const GURL& url) {
-          return url.SchemeIs(webapps::kIsolatedAppScheme);
-        })) {
-      // Invalid. Can only open a single IWA URL.
-      *error = kWindowCreateSupportsOnlySingleIwaUrlError;
-      return std::nullopt;
-    }
-  }
-
-  if (parsed_urls.empty() ||
-      !parsed_urls[0].SchemeIs(webapps::kIsolatedAppScheme)) {
-    // Valid; not opening an IWA.
-    return std::nullopt;
-  }
-
-  base::expected<web_app::IsolatedWebAppUrlInfo, std::string> maybe_url_info =
-      web_app::IsolatedWebAppUrlInfo::Create(parsed_urls[0]);
-
-  if (!maybe_url_info.has_value()) {
-    // Invalid. Failed to create IWA info.
-    *error = base::StringPrintf(kWindowCreateCannotParseIwaUrlError,
-                                maybe_url_info.error().c_str());
-    return std::nullopt;
-  }
-
-  // Validate `create_data` params to make sure they're compatible with IWAs.
-  if (create_data) {
-    if (create_data->tab_id) {
-      // Invalid. Can't specify tab ID with IWAs.
-      *error = kWindowCreateCannotUseTabIdWithIwaError;
-      return std::nullopt;
-    }
-
-    switch (create_data->type) {
-      case windows::CreateType::kNone:
-      case windows::CreateType::kNormal:
-        break;  // Valid type.
-      case windows::CreateType::kPopup:
-      case windows::CreateType::kPanel:
-        // Invalid window type for IWAs.
-        *error = kInvalidWindowTypeError;
-        return std::nullopt;
-    }
-
-    if (create_data->set_self_as_opener && *create_data->set_self_as_opener) {
-      // Invalid. Can't have openers with IWAs.
-      *error = "Cannot specify setSelfAsOpener for isolated-app:// URLs.";
-      return std::nullopt;
-    }
-  }
-
-  // Valid IWA parameters.
-  return *maybe_url_info;
-}
 
 class ScopedPinBrowserAtFront {
  public:
@@ -973,14 +874,6 @@ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
 
   std::string error;
 
-#if !BUILDFLAG(IS_ANDROID)
-  isolated_web_app_url_info_ =
-      GetIsolatedWebAppInfo(create_data_, urls_, &error);
-  if (!error.empty()) {
-    return RespondNow(Error(std::move(error)));
-  }
-#endif
-
   // Decide whether we are opening a normal window or an incognito window.
   Profile* calling_profile = Profile::FromBrowserContext(browser_context());
   windows_util::IncognitoResult incognito_result =
@@ -1091,22 +984,7 @@ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
   BrowserWindowCreateParams create_params(window_type, *window_profile,
                                           user_gesture());
 
-  bool initialized_type = false;
-#if !BUILDFLAG(IS_ANDROID)
-  if (isolated_web_app_url_info_.has_value()) {
-    create_params.type = BrowserWindowInterface::TYPE_APP;
-    create_params.app_name = web_app::GenerateApplicationNameFromAppId(
-        isolated_web_app_url_info_->app_id());
-    // For Isolated Web Apps, the actual navigating-to URL will be the app's
-    // start_url to prevent deep-linking attacks, while the original URL will be
-    // accessible via window.launchQueue; for this reason the browser is marked
-    // trusted.
-    create_params.is_trusted_source = true;
-    initialized_type = true;
-  }
-#endif
-
-  if (!initialized_type && !extension_id.empty()) {
+  if (!extension_id.empty()) {
     // extension_id is only set for CREATE_TYPE_POPUP.
 
     // On non-Android platforms, we use TYPE_APP_POPUP. On Android, this is
@@ -1123,11 +1001,10 @@ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
     // TODO(https://crbug.com/545671279): Initialize app name on android, or
     // verify this is unnecessary.
 #if !BUILDFLAG(IS_ANDROID)
-    create_params.app_name =
-        web_app::GenerateApplicationNameFromAppId(extension_id);
+    // Matches the "_crx_<id>" naming used for extension app windows.
+    create_params.app_name = "_crx_" + extension_id;
 #endif
     create_params.is_trusted_source = false;
-    initialized_type = true;
   }
   create_params.initial_bounds = window_bounds;
   create_params.initial_show_state = ui::mojom::WindowShowState::kNormal;
@@ -1188,15 +1065,6 @@ ExtensionFunction::ResponseValue WindowsCreateFunction::OnBrowserWindowCreated(
       navigate_params.disposition = WindowOpenDisposition::CURRENT_TAB;
     }
 #endif
-    // Ensure that these navigations will not get 'captured' into PWA windows,
-    // as this means that `new_window` could be ignored. It may be
-    // useful/desired in the future to allow this behavior, but this may require
-    // an API change, or at least a re-write of how these navigations are called
-    // to be compatible with the navigation capturing behavior.
-    navigate_params.web_app_navigation_data.emplace();
-    navigate_params.web_app_navigation_data->SetNavigationCapturingForceOff(
-        true);
-
     if (OpenTabHelper::MaybeSetPdfNavigateParams(*this, navigate_params)) {
       return navigate_params;
     }
@@ -1220,48 +1088,11 @@ ExtensionFunction::ResponseValue WindowsCreateFunction::OnBrowserWindowCreated(
     return navigate_params;
   };
 
-  bool navigated = false;
-#if !BUILDFLAG(IS_ANDROID)
-  if (isolated_web_app_url_info_) {
-    CHECK_EQ(urls_.size(), 1U);
-    const GURL& original_url = urls_[0];
-
-    const webapps::AppId& iwa_id = isolated_web_app_url_info_->app_id();
-    web_app::WebAppRegistrar& registrar =
-        web_app::WebAppProvider::GetForWebApps(new_window->GetProfile())
-            ->registrar_unsafe();
-
-    // TODO(crbug.com/424128443): create an dummy tab in the browser so that the
-    // returned window's tab count is always equal to 1 -- this will limit the
-    // extension's ability to figure out which IWAs are installed without the
-    // `tabs` permission.
-    if (registrar.AppMatches(iwa_id, web_app::WebAppFilter::IsIsolatedApp())) {
-      NavigateParams navigate_params = create_nav_params(
-          registrar.GetAppStartUrl(iwa_id), /*is_first_nav=*/true);
-      webapps::LaunchParams launch_params;
-      CHECK(navigate_params.web_app_navigation_data);
-      launch_params.set_app_id(iwa_id);
-      launch_params.set_target_url(original_url);
-      navigate_params.web_app_navigation_data->SetLaunchParams(
-          std::move(launch_params));
-
-      // Navigate() takes care of enqueueing the launch params once the
-      // navigation commits.
-      base::WeakPtr<content::NavigationHandle> handle =
-          Navigate(&navigate_params);
-      CHECK(handle);
-    }
-    navigated = true;
-  }
-#endif
-
-  if (!navigated) {
-    bool is_first_nav = true;
-    for (const GURL& url : urls_) {
-      NavigateParams navigate_params = create_nav_params(url, is_first_nav);
-      is_first_nav = false;
-      Navigate(&navigate_params);
-    }
+  bool is_first_nav = true;
+  for (const GURL& url : urls_) {
+    NavigateParams navigate_params = create_nav_params(url, is_first_nav);
+    is_first_nav = false;
+    Navigate(&navigate_params);
   }
 
   TabListInterface* tab_list = TabListInterface::From(new_window);
@@ -1412,16 +1243,6 @@ base::expected<void, std::string> WindowsCreateFunction::ValidateTab(
     return base::unexpected(
         ExtensionTabUtil::kCanOnlyMoveTabsWithinNormalWindowsError);
   }
-#if !BUILDFLAG(IS_ANDROID)
-  BrowserWindowInterface* source_browser = source_window->GetBrowser();
-  CHECK(source_browser);
-  if (web_app::AppBrowserController* controller =
-          web_app::AppBrowserController::From(source_browser);
-      controller && controller->IsIsolatedWebApp()) {
-    return base::unexpected(kCannotMoveIwaTabError);
-  }
-#endif
-
   if (!ExtensionTabUtil::IsTabStripEditable(*source_window->profile())) {
     return base::unexpected(ExtensionTabUtil::kTabStripNotEditableError);
   }
@@ -2095,14 +1916,6 @@ ExtensionFunction::ResponseAction TabsCreateFunction::Run() {
     validated_url_ = std::move(maybe_url.value());
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  // Isolated Web Apps must be opened at their start URL with the requested
-  // URL routed via launchQueue, which is handled by `windows.create`.
-  if (validated_url_.SchemeIs(webapps::kIsolatedAppScheme)) {
-    return RespondNow(Error(kTabsCreateIwaUrlNotAllowedError));
-  }
-#endif
-
   opener_tab_id_ = create_properties.opener_tab_id;
 
   // TODO(jstritar): Add a constant, chrome.tabs.TAB_ID_ACTIVE, that
@@ -2404,13 +2217,6 @@ ExtensionFunction::ResponseAction TabsDuplicateFunction::Run() {
       !ExtensionTabUtil::IsTabStripEditable(*browser->GetProfile())) {
     return RespondNow(Error(ExtensionTabUtil::kTabStripNotEditableError));
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  if (web_contents->GetLastCommittedURL().SchemeIs(
-          webapps::kIsolatedAppScheme)) {
-    return RespondNow(Error(kCannotDuplicateIwaTabError));
-  }
-#endif
 
   TabListInterface* tab_list = TabListInterface::From(browser);
   if (!tab_list) {
@@ -2870,15 +2676,6 @@ bool TabsUpdateFunction::UpdateURL(content::WebContents* web_contents,
     *error = std::move(url.error());
     return false;
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Isolated Web Apps must be opened at their start URL with the requested
-  // URL routed via launchQueue, which is handled by `windows.create`.
-  if (url->SchemeIs(webapps::kIsolatedAppScheme)) {
-    *error = kTabsUpdateIwaUrlNotAllowedError;
-    return false;
-  }
-#endif
 
   if (IsDSERedirect(extension()->id(), *browser_context(), render_frame_host(),
                     *web_contents, *url, user_gesture())) {
@@ -3632,83 +3429,8 @@ ExtensionFunction::ResponseAction TabsDetectLanguageFunction::Run() {
     return RespondNow(Error(kCannotDetermineLanguageOfUnloadedTab));
   }
 
-  if (!TranslateService::IsTranslatableURL(contents->GetLastCommittedURL())) {
-    return RespondNow(Error(kLanguageDetectionNotSupported));
-  }
-
-  // Language detection is asynchronous.
-  return StartLanguageDetection(contents);
-}
-
-TabsDetectLanguageFunction::ResponseAction
-TabsDetectLanguageFunction::StartLanguageDetection(
-    content::WebContents* contents) {
-  AddRef();  // Balanced in RespondWithLanguage().
-
-  ChromeTranslateClient* chrome_translate_client =
-      ChromeTranslateClient::FromWebContents(contents);
-  if (!chrome_translate_client->GetLanguageState().source_language().empty()) {
-    // Delay the callback invocation until after the current JS call has
-    // returned.
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            &TabsDetectLanguageFunction::RespondWithLanguage, this,
-            chrome_translate_client->GetLanguageState().source_language()));
-    return RespondLater();
-  }
-
-  // The tab contents does not know its language yet. Let's wait until it
-  // receives it, or until the tab is closed/navigates to some other page.
-
-  // Observe the WebContents' lifetime and navigations.
-  Observe(contents);
-  // Wait until the language is determined.
-  chrome_translate_client->GetTranslateDriver()->AddLanguageDetectionObserver(
-      this);
-  is_observing_ = true;
-  return RespondLater();
-}
-
-void TabsDetectLanguageFunction::NavigationEntryCommitted(
-    const content::LoadCommittedDetails& load_details) {
-  // Call RespondWithLanguage() with an empty string as we want to guarantee the
-  // callback is called for every API call the extension made.
-  RespondWithLanguage(std::string());
-}
-
-void TabsDetectLanguageFunction::WebContentsDestroyed() {
-  // Call RespondWithLanguage() with an empty string as we want to guarantee the
-  // callback is called for every API call the extension made.
-  RespondWithLanguage(std::string());
-}
-
-void TabsDetectLanguageFunction::OnTranslateDriverDestroyed(
-    translate::TranslateDriver* driver) {
-  // Typically, we'd return an error in these cases, since we weren't able to
-  // detect a valid language. However, this matches the behavior in other cases
-  // (like the tab going away), so we aim for consistency.
-  RespondWithLanguage(std::string());
-}
-
-void TabsDetectLanguageFunction::OnLanguageDetermined(
-    const translate::LanguageDetectionDetails& details) {
-  RespondWithLanguage(details.adopted_language);
-}
-
-void TabsDetectLanguageFunction::RespondWithLanguage(
-    const std::string& language) {
-  // Stop observing.
-  if (is_observing_) {
-    ChromeTranslateClient::FromWebContents(web_contents())
-        ->GetTranslateDriver()
-        ->RemoveLanguageDetectionObserver(this);
-    Observe(nullptr);
-    is_observing_ = false;
-  }
-
-  Respond(WithArguments(language));
-  Release();  // Balanced in Run()
+  // Page language detection was provided by Translate, which is removed.
+  return RespondNow(Error(kLanguageDetectionNotSupported));
 }
 
 // static

@@ -15,7 +15,6 @@
 #include "ui/gfx/native_ui_types.h"
 #include "ui/views/layout/layout_manager.h"
 
-class BookmarkBarView;
 class BrowserWindowInterface;
 class BrowserViewLayoutDelegate;
 class InfoBarContainerView;
@@ -27,7 +26,6 @@ class TabStrip;
 class TabStripRegionView;
 class VerticalTabStripRegionView;
 class VerticalTabStripBackgroundBlurBackdrop;
-class WebAppFrameToolbarView;
 
 namespace views {
 class View;
@@ -65,8 +63,6 @@ struct BrowserViewLayoutViews {
   raw_ptr<views::View> main_background_region = nullptr;
   raw_ptr<views::View> main_shadow_overlay = nullptr;
   raw_ptr<views::View> top_container = nullptr;
-  raw_ptr<WebAppFrameToolbarView> web_app_frame_toolbar = nullptr;
-  raw_ptr<views::Label> web_app_window_title = nullptr;
   raw_ptr<TabStripRegionView> horizontal_tab_strip_region_view = nullptr;
   raw_ptr<VerticalTabStripRegionView> vertical_tab_strip_region_view = nullptr;
   raw_ptr<VerticalTabStripBackgroundBlurBackdrop>
@@ -88,9 +84,6 @@ struct BrowserViewLayoutViews {
   raw_ptr<views::View> top_container_separator = nullptr;
 
   // LINT.ThenChange(//chrome/browser/ui/views/frame/browser_view.cc:BrowserViewLayoutViews)
-
-  // These views are dynamically set.
-  raw_ptr<BookmarkBarView> bookmark_bar = nullptr;
 };
 
 // The layout manager used in chrome browser.
@@ -125,9 +118,6 @@ class BrowserViewLayout : public views::LayoutManager {
       BrowserViewLayoutViews views);
 
   // Sets or updates views that are not available when |this| is initialized.
-  void set_bookmark_bar(BookmarkBarView* bookmark_bar) {
-    views_.bookmark_bar = bookmark_bar;
-  }
   void set_side_panel_animation_content(
       SidePanelAnimationContentView* contents_to_animate) {
     views_.side_panel_animation_content = contents_to_animate;

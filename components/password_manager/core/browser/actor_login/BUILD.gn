@@ -22,7 +22,6 @@ source_set("common") {
     "//components/keyed_service/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/password_manager/core/browser/ui",
-    "//components/translate/core/browser",
     "//ui/gfx",
     "//url",
   ]
@@ -67,7 +66,6 @@ source_set("actor_login_service_impl") {
     "//components/optimization_guide/core:model_execution",
     "//components/password_manager/core/browser",
     "//components/password_manager/core/browser/actor_login/internal:delegate",
-    "//components/translate/core/browser",
     "//components/url_formatter",
     "//components/variations/service",
     "//net",
@@ -97,7 +95,6 @@ source_set("unit_tests") {
     "//components/password_manager/core/browser/actor_login/test:test_support",
     "//components/prefs:test_support",
     "//components/sync:test_support",
-    "//components/translate/core/browser:test_support",
     "//components/variations:test_support",
     "//testing/gmock",
     "//testing/gtest",

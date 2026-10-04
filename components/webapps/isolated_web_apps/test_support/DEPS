@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/webapps/isolated_web_apps/key_distribution",
-  "+skia/ext",
-  "+third_party/skia/include/core",
-]

@@ -237,7 +237,6 @@ if (enable_printing) {
           deps += [
             "//chrome/browser/ash/printing/print_management",
             "//chrome/browser/chromeos/printing",
-            "//chrome/browser/web_applications",
             "//chrome/common/printing",
             "//chromeos/ash/components/browser_context_helper",
             "//components/content_settings/browser",
@@ -321,8 +320,6 @@ if (enable_printing) {
         deps += [
           "//chrome/browser/chromeos/printing",
           "//chrome/browser/content_settings:content_settings_factory",
-          "//chrome/browser/web_applications",
-          "//chrome/browser/web_applications:web_applications_test_support",
           "//components/content_settings/core/browser",
           "//printing/backend",
         ]

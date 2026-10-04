@@ -66,6 +66,7 @@ source_set("impl") {
     ":desktop_capture",
     "//chrome/app/vector_icons",
     "//chrome/browser/favicon",
+    "//chrome/browser/ui:layout_constants",
     "//chrome/browser/ui:view_ids",
     "//chrome/browser/ui/extensions",
     "//chrome/browser/ui/views:layout_provider",

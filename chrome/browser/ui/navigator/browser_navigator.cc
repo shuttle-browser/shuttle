@@ -19,8 +19,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
-#include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
-#include "chrome/browser/apps/link_capturing/link_capturing_tab_data.h"
 #include "chrome/browser/browser_about_handler.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/platform_util.h"
@@ -44,14 +42,7 @@
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/navigation_capturing_process.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_navigation_handle_user_data.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/captive_portal/core/buildflags.h"
@@ -116,16 +107,6 @@ struct AdditionalParams {
 // template, otherwise only if the URL is within the app scope.
 bool WindowCanOpenTabs(const NavigateParams& params) {
   if (!params.browser) {
-    return false;
-  }
-
-  // If the browser is created from a template, we do not need to check if the
-  // url is in the app scope since we know it was saved directly from the app.
-  if (BrowserInitState::From(params.browser)->creation_source() !=
-          BrowserWindowCreateParams::CreationSource::kDeskTemplate &&
-      web_app::AppBrowserController::From(params.browser) &&
-      !web_app::AppBrowserController::From(params.browser)
-           ->IsUrlInAppScope(params.url)) {
     return false;
   }
 
@@ -212,20 +193,6 @@ bool AdjustNavigateParamsForURL(NavigateParams* params) {
     params->window_action = NavigateParams::WindowAction::kShowWindow;
   }
 
-  // Clicking a link to the home tab in a tabbed web app should always open the
-  // link in the home tab.
-  if (web_app::IsHomeTabUrl(params->browser, params->url)) {
-    params->browser->GetTabStripModel()->ActivateTabAt(0);
-    // If the navigation URL is the same as the current home tab URL, skip the
-    // navigation.
-    if (params->browser->GetTabStripModel()
-            ->GetActiveWebContents()
-            ->GetLastCommittedURL() == params->url) {
-      return false;
-    }
-    params->disposition = WindowOpenDisposition::CURRENT_TAB;
-  }
-
   return true;
 }
 
@@ -298,11 +265,9 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       // The picture in picture window should be part of the opener's web app,
       // if any.
       std::string app_name;
-      if (!params.app_id.empty()) {
-        app_name = web_app::GenerateApplicationNameFromAppId(params.app_id);
-      } else if (params.browser && !BrowserInitState::From(params.browser)
-                                        ->create_params()
-                                        .app_name.empty()) {
+      if (params.browser && !BrowserInitState::From(params.browser)
+                                 ->create_params()
+                                 .app_name.empty()) {
         app_name =
             BrowserInitState::From(params.browser)->create_params().app_name;
       }
@@ -340,11 +305,9 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       // Make a new popup window.
       // Coerce app-style if |source| represents an app.
       std::string app_name;
-      if (!params.app_id.empty()) {
-        app_name = web_app::GenerateApplicationNameFromAppId(params.app_id);
-      } else if (params.browser && !BrowserInitState::From(params.browser)
-                                        ->create_params()
-                                        .app_name.empty()) {
+      if (params.browser && !BrowserInitState::From(params.browser)
+                                 ->create_params()
+                                 .app_name.empty()) {
         app_name =
             BrowserInitState::From(params.browser)->create_params().app_name;
       }
@@ -743,22 +706,10 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
 
   int singleton_index = -1;
 
-  std::unique_ptr<web_app::NavigationCapturingProcess> app_navigation =
-      web_app::NavigationCapturingProcess::MaybeHandleAppNavigation(*params);
-
-  std::optional<web_app::NavigationCapturingOverride> override_params =
-      app_navigation
-          ? app_navigation->GetInitialNavigationParamsOverride(*params)
-          : std::nullopt;
-  if (override_params) {
-    params->browser = override_params->browser();
-    singleton_index = override_params->tab_index().value_or(-1);
-  } else {
-    std::tuple<BrowserWindowInterface*, int> browser_and_index =
-        GetBrowserAndTabForDisposition(*params, additional_params);
-    params->browser = std::get<0>(browser_and_index);
-    singleton_index = std::get<1>(browser_and_index);
-  }
+  std::tuple<BrowserWindowInterface*, int> browser_and_index =
+      GetBrowserAndTabForDisposition(*params, additional_params);
+  params->browser = std::get<0>(browser_and_index);
+  singleton_index = std::get<1>(browser_and_index);
 
   if (!params->browser) {
     return nullptr;
@@ -770,9 +721,7 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   // the new tab is focused.
   if (source_browser &&
       source_browser->GetType() == BrowserWindowInterface::Type::TYPE_APP &&
-      params->disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB &&
-      !(web_app::AppBrowserController::From(source_browser) &&
-        web_app::AppBrowserController::From(source_browser)->has_tab_strip())) {
+      params->disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB) {
     params->disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
   }
 
@@ -788,10 +737,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
     params->disposition = WindowOpenDisposition::SINGLETON_TAB;
     ShowSingletonTabOverwritingNTP(params);
     return nullptr;
-  }
-  if (content::SiteIsolationPolicy::ShouldUrlUseApplicationIsolationLevel(
-          params->initiating_profile, params->url)) {
-    CHECK(web_app::AppBrowserController::IsIsolatedWebApp(params->browser));
   }
 #if BUILDFLAG(IS_CHROMEOS)
   if (source_browser && source_browser != params->browser) {
@@ -887,10 +832,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
             tabs::TabInterface::MaybeGetFromContents(params->source_contents));
       }
       contents_to_navigate_or_insert = tab_to_insert->GetContents();
-
-      apps::SetAppIdForWebContents(params->browser->GetProfile(),
-                                   contents_to_navigate_or_insert,
-                                   params->app_id);
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
       captive_portal::CaptivePortalTabHelper::FromWebContents(
           contents_to_navigate_or_insert)
@@ -930,14 +871,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
        params->disposition == WindowOpenDisposition::NEW_WINDOW) &&
       (params->tabstrip_add_types & AddTabTypes::ADD_INHERIT_OPENER)) {
     params->source_contents->Focus();
-  }
-
-  if (tab_to_insert) {
-    // Save data needed for link capturing into apps that cannot otherwise be
-    // inferred later in the navigation. These are only needed when the
-    // navigation happens in a different tab to the link click.
-    apps::SetLinkCapturingSourceDisposition(tab_to_insert->GetContents(),
-                                            params->disposition);
   }
 
   if (params->source_contents == contents_to_navigate_or_insert) {
@@ -1064,24 +997,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   }
 
   params->navigated_or_inserted_contents = contents_to_navigate_or_insert;
-
-  // If launch_params are provided, store them in the navigation handle so that
-  // the LaunchQueue can pick them up once the navigation commits.
-  if (navigation_handle && params->web_app_navigation_data &&
-      params->web_app_navigation_data->launch_params()) {
-    auto* user_data = web_app::WebAppLaunchNavigationHandleUserData::
-        GetOrCreateForNavigationHandle(*navigation_handle);
-    const auto& web_app_navigation_data = params->web_app_navigation_data;
-    user_data->SetLaunchParams(
-        std::move(*web_app_navigation_data->launch_params()));
-    user_data->SetLaunchSource(web_app_navigation_data->launch_source());
-  }
-
-  if (app_navigation) {
-    web_app::NavigationCapturingProcess::AfterWebContentsCreation(
-        std::move(app_navigation), *params->navigated_or_inserted_contents,
-        navigation_handle.get());
-  }
 
   return navigation_handle;
 }

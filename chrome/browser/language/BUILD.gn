@@ -33,7 +33,6 @@ source_set("impl") {
     "//components/language/core/language_model",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/translate/core/browser",
     "//content/public/browser",
   ]
 

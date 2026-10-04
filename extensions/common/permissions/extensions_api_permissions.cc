@@ -73,8 +73,6 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
     {APIPermissionID::kDeprecated_ExternallyConnectableAllUrls,
      "externally_connectable.all_urls",
      APIPermissionInfo::kFlagDoesNotRequireManagedSessionFullLoginWarning},
-    {APIPermissionID::kFeedbackPrivate, "feedbackPrivate",
-     APIPermissionInfo::kFlagCannotBeOptional},
     {APIPermissionID::kFullscreen, "app.window.fullscreen",
      APIPermissionInfo::kFlagDoesNotRequireManagedSessionFullLoginWarning},
 

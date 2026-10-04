@@ -16,13 +16,9 @@
 #include "base/memory/weak_ptr.h"
 #include "components/live_caption/caption_bubble_controller.h"
 #include "components/live_caption/views/caption_bubble.h"
-#include "components/on_device_translation/buildflags/buildflags.h"
 #include "components/soda/soda_installer.h"
 #include "media/mojo/mojom/speech_recognition.mojom.h"
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-#include "components/on_device_translation/installer.h"
-#endif
 
 namespace views {
 class Widget;
@@ -44,10 +40,6 @@ class TranslationViewWrapperBase;
 class CaptionBubbleControllerViews
     : public CaptionBubbleController,
       public speech::SodaInstaller::Observer
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-    ,
-      public on_device_translation::OnDeviceTranslationInstaller::Observer
-#endif
 {
  public:
   CaptionBubbleControllerViews(
@@ -103,17 +95,6 @@ class CaptionBubbleControllerViews
   void OnSodaProgress(speech::LanguageCode language_code,
                       int progress) override;
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  // OnDeviceTranslationInstaller::Observer overrides:
-  void OnLanguagePackInstalled(
-      const on_device_translation::LanguagePackKey lang_pack) override;
-  void OnLanguagePackInstallationChanged(
-      const on_device_translation::LanguagePackKey lang_pack) override;
-  void OnInstallationChanged() override {}
-  void OnLanguagePackProgress(
-      const on_device_translation::LanguagePackKey lang_pack,
-      int progress) override;
-#endif
 
   // A callback passed to the CaptionBubble which is called when the
   // CaptionBubble is destroyed.
@@ -158,10 +139,6 @@ class CaptionBubbleControllerViews
 
   std::optional<int> soda_progress_;
   speech::LanguageCode soda_language_code_ = speech::LanguageCode::kNone;
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  base::flat_map<on_device_translation::LanguagePackKey, int>
-      translation_progress_;
-#endif
 
   void UpdateCombinedProgressText();
 

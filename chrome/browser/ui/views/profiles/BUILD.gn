@@ -111,7 +111,6 @@ if (toolkit_views) {
       "//chrome/browser/ui/signin",
       "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views/toolbar:impl",
-      "//chrome/browser/ui/web_applications",
       "//chrome/browser/user_education",
       "//chrome/browser/webauthn",
       "//chrome/common",
@@ -419,7 +418,6 @@ if (enable_dice_support) {
       ":profile_picker_sign_in_provider",
       "//base",
       "//chrome/browser/profiles:profile",
-      "//chrome/browser/search_engine_choice",
       "//components/signin/public/base:signin_buildflags",
       "//url",
     ]

@@ -80,7 +80,6 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/account_id/account_id.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/crash/core/common/crash_key.h"
@@ -2124,8 +2123,6 @@ void ProfileManager::AddProfileToStorage(Profile* profile) {
 void ProfileManager::SetNonPersonalProfilePrefs(Profile* profile) {
   PrefService* prefs = profile->GetPrefs();
   prefs->SetBoolean(prefs::kSigninAllowed, false);
-  prefs->SetBoolean(bookmarks::prefs::kEditBookmarksEnabled, false);
-  prefs->SetBoolean(bookmarks::prefs::kShowBookmarkBar, false);
   prefs->ClearPref(DefaultSearchManager::kDefaultSearchProviderDataPrefName);
 }
 

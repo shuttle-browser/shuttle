@@ -8,8 +8,6 @@
 
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
-#include "chrome/browser/apps/app_shim/app_shim_manager_mac.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -26,15 +24,6 @@
 #endif
 
 namespace {
-
-AppShimHost* GetHostForBrowser(BrowserWindowInterface* browser) {
-  auto* const shim_manager = apps::AppShimManager::Get();
-  CHECK(browser);
-  if (!shim_manager) {
-    return nullptr;
-  }
-  return shim_manager->GetHostForRemoteCocoaBrowser(browser);
-}
 
 bool ShouldHandleKeyboardEvent(const input::NativeWebKeyboardEvent& event) {
   // |event.skip_if_unhandled| is true when it shouldn't be handled by the
@@ -99,11 +88,6 @@ class WebUIBrowserNativeWidgetMac : public views::NativeWidgetMac {
       bridge->SetCommandDispatcher(
           [[ChromeCommandDispatcherDelegate alloc] init],
           [[BrowserWindowCommandHandler alloc] init]);
-    } else {
-      if (auto* host = GetHostForBrowser(browser_)) {
-        host->GetAppShim()->CreateCommandDispatcherForWidget(
-            GetNSWindowHost()->bridged_native_widget_id());
-      }
     }
   }
 

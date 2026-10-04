@@ -38,7 +38,6 @@ class SearchboxOmniboxClient : public OmniboxClient {
   SessionID GetSessionID() const override;
   PrefService* GetPrefs() override;
   const PrefService* GetPrefs() const override;
-  bookmarks::BookmarkModel* GetBookmarkModel() override;
   AutocompleteControllerEmitter* GetAutocompleteControllerEmitter() override;
   TemplateURLService* GetTemplateURLService() override;
   const AutocompleteSchemeClassifier& GetSchemeClassifier() const override;

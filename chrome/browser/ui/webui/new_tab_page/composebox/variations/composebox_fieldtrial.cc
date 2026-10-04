@@ -12,8 +12,6 @@
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/contextual_search/contextual_search_metrics_recorder.h"
-#include "components/contextual_search/contextual_search_service.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "ui/base/l10n/l10n_util.h"
 
@@ -91,9 +89,6 @@ omnibox::NTPComposeboxConfig GetNTPComposeboxConfig() {
   if (!kConfigParam.Get().empty()) {
     bool parsed =
         ParseProtoFromBase64String(kConfigParam.Get(), fieldtrial_config);
-    contextual_search::ContextualSearchMetricsRecorder::
-        RecordConfigParseSuccess(
-            contextual_search::ContextualSearchSource::kNewTabPage, parsed);
     if (!parsed) {
       return default_config;
     }
@@ -126,43 +121,8 @@ omnibox::NTPComposeboxConfig GetNTPComposeboxConfig() {
 }  // namespace
 
 bool IsNtpComposeboxEnabled(Profile* profile) {
-  if (!profile) {
-    return false;
-  }
-
-  if (!contextual_search::ContextualSearchService::IsContextSharingEnabled(
-          profile->GetPrefs()) &&
-      !base::FeatureList::IsEnabled(omnibox::kAimUsePecApi)) {
-    return false;
-  }
-
-  // The `AimEligibilityService` depends on the `TemplateURLService`. If the
-  // `TemplateURLService` does not exist for this profile, then the
-  // `AimEligibilityService` cannot be created.
-  if (!TemplateURLServiceFactory::GetForProfile(profile)) {
-    return false;
-  }
-
-  AimEligibilityService* aim_eligibility_service =
-      AimEligibilityServiceFactory::GetForProfile(profile);
-  if (!aim_eligibility_service) {
-    return false;
-  }
-
-  return base::FeatureList::IsEnabled(kNtpComposebox) &&
-         aim_eligibility_service->IsAimEligible() &&
-         aim_eligibility_service->IsFuseboxEligible();
-}
-
-std::unique_ptr<
-    contextual_search::ContextualSearchContextController::ConfigParams>
-CreateQueryControllerConfigParams() {
-  auto config_params = std::make_unique<
-      contextual_search::ContextualSearchContextController::ConfigParams>();
-  config_params->send_lns_surface = true;
-  config_params->enable_viewport_images = true;
-  config_params->attach_page_title_and_url_to_suggest_requests = false;
-  return config_params;
+  // The composebox depended on contextual search, which was removed.
+  return false;
 }
 
 BASE_FEATURE(kNtpComposebox, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -219,36 +179,9 @@ FeatureConfig::~FeatureConfig() = default;
 namespace ntp_realbox {
 
 bool IsNtpRealboxNextEnabled(Profile* profile) {
-  if (!profile) {
-    return false;
-  }
-
-  if (!ntp_composebox::IsNtpComposeboxEnabled(profile)) {
-    return false;
-  }
-
-  if (!contextual_search::ContextualSearchService::IsContextSharingEnabled(
-          profile->GetPrefs()) &&
-      !base::FeatureList::IsEnabled(omnibox::kAimUsePecApi)) {
-    return false;
-  }
-
-  // The `AimEligibilityService` depends on the `TemplateURLService`. If the
-  // `TemplateURLService` does not exist for this profile, then the
-  // `AimEligibilityService` cannot be created.
-  if (!TemplateURLServiceFactory::GetForProfile(profile)) {
-    return false;
-  }
-
-  AimEligibilityService* aim_eligibility_service =
-      AimEligibilityServiceFactory::GetForProfile(profile);
-  if (!aim_eligibility_service) {
-    return false;
-  }
-
-  return base::FeatureList::IsEnabled(kNtpRealboxNext) &&
-         aim_eligibility_service->IsAimEligible() &&
-         aim_eligibility_service->IsFuseboxEligible();
+  // The realbox "next" experience depended on the composebox, which was
+  // removed.
+  return false;
 }
 
 BASE_FEATURE(kNtpRealboxNext, base::FEATURE_ENABLED_BY_DEFAULT);

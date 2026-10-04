@@ -13,7 +13,6 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/accessibility/tree_fixing/pref_names.h"
-#include "chrome/browser/autofill/generated_find_and_fill_with_gemini_pref.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/content_settings/generated_cookie_prefs.h"
@@ -22,9 +21,7 @@
 #include "chrome/browser/extensions/api/settings_private/generated_prefs.h"
 #include "chrome/browser/extensions/api/settings_private/generated_prefs_factory.h"
 #include "chrome/browser/extensions/settings_api_helpers.h"
-#include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/metrics/profile_pref_names.h"
-#include "chrome/browser/nearby_sharing/common/nearby_share_prefs.h"
 #include "chrome/browser/new_tab_page/prefs/ntp_pref_names.h"
 #include "chrome/browser/password_manager/generated_password_leak_detection_pref.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
@@ -33,35 +30,27 @@
 #include "chrome/browser/safe_browsing/generated_security_settings_bundle_pref.h"
 #include "chrome/browser/ssl/generated_https_first_mode_pref.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_prefs.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_prefs.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/api/settings_private.h"
 #include "chrome/common/pref_names.h"
 #include "components/autofill/core/common/autofill_prefs.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/browsing_data/core/pref_names.h"
-#include "components/commerce/core/pref_names.h"
 #include "components/component_updater/pref_names.h"
-#include "components/compose/buildflags.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/contextual_search/pref_names.h"
-#include "components/contextual_tasks/public/prefs.h"
 #include "components/dom_distiller/core/pref_names.h"
 #include "components/drive/drive_pref_names.h"
 #include "components/embedder_support/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/live_caption/pref_names.h"
-#include "components/media_router/common/pref_names.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
-#include "components/payments/core/payment_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/pref_names.h"
-#include "components/personal_context/core/personal_context_prefs.h"
 #include "components/prefs/pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_prefs.h"
 #include "components/proxy_config/proxy_config_pref_names.h"
@@ -69,12 +58,9 @@
 #include "components/saved_tab_groups/public/pref_names.h"
 #include "components/search_engines/default_search_manager.h"
 #include "components/signin/public/base/signin_pref_names.h"
-#include "components/skills/public/skills_prefs.h"
 #include "components/spellcheck/browser/pref_names.h"
 #include "components/supervised_user/core/common/pref_names.h"
 #include "components/themes/pref_names.h"
-#include "components/translate/core/browser/translate_pref_names.h"
-#include "components/translate/core/browser/translate_prefs.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/universal_optout/prefs.h"
 #include "components/url_formatter/url_fixer.h"
@@ -258,28 +244,15 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[autofill::prefs::kAutofillAiTravelEntitiesEnabled] =
       settings_api::PrefType::kBoolean;
-  (*s_allowlist)[personal_context::prefs::
-                     kPersonalContextInAutofillSettingsToggleStatus] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::kGeneratedFindAndFillWithGeminiPref] =
-      settings_api::PrefType::kBoolean;
   (*s_allowlist)[optimization_guide::prefs::kFindAndFillWithGeminiSettings] =
       settings_api::PrefType::kNumber;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)[payments::kCanMakePaymentEnabled] =
-      settings_api::PrefType::kBoolean;
   if (base::FeatureList::IsEnabled(
           features::kGlicActorAutofillOneTimePassword)) {
     (*s_allowlist)[autofill::prefs::kAutofillGmailOtpFillingEnabled] =
         settings_api::PrefType::kBoolean;
   }
-  (*s_allowlist)[bookmarks::prefs::kShowBookmarkBar] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[bookmarks::prefs::kBookmarkBarVisibilityState] =
-      settings_api::PrefType::kNumber;
-  (*s_allowlist)[bookmarks::prefs::kShowTabGroupsInBookmarkBar] =
-      settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kSidePanelHorizontalAlignment] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kSidePanelAlignmentOverrides] =
@@ -500,8 +473,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)
       [::unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled] =
           settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::commerce::kPriceEmailNotificationsEnabled] =
-      settings_api::PrefType::kBoolean;
 
   // Languages page
   (*s_allowlist)[spellcheck::prefs::kSpellCheckEnable] =
@@ -514,22 +485,12 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kList;
   (*s_allowlist)[spellcheck::prefs::kSpellCheckUseSpellingService] =
       settings_api::PrefType::kBoolean;
-  (*s_allowlist)[translate::prefs::kOfferTranslateEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[translate::prefs::kBlockedLanguages] =
-      settings_api::PrefType::kList;
-  (*s_allowlist)[translate::prefs::kPrefNeverPromptSitesWithTime] =
-      settings_api::PrefType::kList;
   (*s_allowlist)[language::prefs::kSelectedLanguages] =
       settings_api::PrefType::kString;
   (*s_allowlist)[language::prefs::kForcedLanguages] =
       settings_api::PrefType::kList;
   (*s_allowlist)[::language::prefs::kAcceptLanguages] =
       settings_api::PrefType::kString;
-  (*s_allowlist)[translate::prefs::kPrefTranslateRecentTarget] =
-      settings_api::PrefType::kString;
-  (*s_allowlist)[translate::prefs::kPrefAlwaysTranslateList] =
-      settings_api::PrefType::kList;
 #if BUILDFLAG(IS_CHROMEOS)
   (*s_allowlist)[ash::prefs::kLanguageImeMenuActivated] =
       settings_api::PrefType::kBoolean;
@@ -554,21 +515,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[ash::prefs::kLocalUserFilesAllowed] =
       settings_api::PrefType::kBoolean;
-
-  // Nearby Share.
-  (*s_allowlist)[::prefs::kNearbySharingEnabledPrefName] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)
-      [::prefs::kNearbySharingFastInitiationNotificationStatePrefName] =
-          settings_api::PrefType::kNumber;
-  (*s_allowlist)[::prefs::kNearbySharingOnboardingCompletePrefName] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kNearbySharingActiveProfilePrefName] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kNearbySharingDeviceNamePrefName] =
-      settings_api::PrefType::kString;
-  (*s_allowlist)[::prefs::kNearbySharingDataUsageName] =
-      settings_api::PrefType::kNumber;
 
   // Instant Hotspot
   (*s_allowlist)[::ash::tether::prefs::kNotificationsEnabled] =
@@ -602,15 +548,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kNumber;
   (*s_allowlist)[::prefs::kEnableQuietNotificationPermissionUi] =
       settings_api::PrefType::kBoolean;
-  (*s_allowlist)[safety_hub_prefs::kUnusedSitePermissionsRevocationEnabled] =
-      settings_api::PrefType::kBoolean;
-
-#if BUILDFLAG(ENABLE_COMPOSE)
-  (*s_allowlist)[prefs::kEnableProactiveNudge] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[prefs::kProactiveNudgeDisabledSitesWithTime] =
-      settings_api::PrefType::kDictionary;
-#endif  // BUILDFLAG(ENABLE_COMPOSE)
 
   // Clear browsing data settings.
   (*s_allowlist)[browsing_data::prefs::kDeleteBrowsingHistory] =
@@ -1313,10 +1250,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 
-  // Media Remoting settings.
-  (*s_allowlist)[media_router::prefs::kMediaRouterMediaRemotingEnabled] =
-      settings_api::PrefType::kBoolean;
-
   // Performance settings.
   (*s_allowlist)
       [performance_manager::user_tuning::prefs::kMemorySaverModeState] =
@@ -1358,16 +1291,9 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
       optimization_guide::UserVisibleFeatureKey::kPasswordChangeSubmission)] =
       settings_api::PrefType::kNumber;
-  (*s_allowlist)[contextual_tasks::kContextualTasksShareOpenTabsEveryThread] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[contextual_tasks::kContextualTasksSiteExclusions] =
-      settings_api::PrefType::kDictionary;
   (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
       optimization_guide::UserVisibleFeatureKey::kContextualCueing)] =
       settings_api::PrefType::kNumber;
-
-  (*s_allowlist)[skills::prefs::kChromeSkillsEnabled] =
-      settings_api::PrefType::kBoolean;
 
   // AI enterprise prefs
   (*s_allowlist)[optimization_guide::prefs::kComposeEnterprisePolicyAllowed] =
@@ -1386,36 +1312,9 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kNumber;
   (*s_allowlist)[optimization_guide::prefs::kChromeSuggestionsSettings] =
       settings_api::PrefType::kNumber;
-  (*s_allowlist)[contextual_tasks::kContextualTasksSmartTabSharingSettings] =
-      settings_api::PrefType::kNumber;
 
-  // Glic prefs
-  (*s_allowlist)[glic::prefs::kGlicPinnedToTabstrip] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicLauncherEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicClosedCaptioningEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicMediaUnderstandingEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicGeolocationEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicMicrophoneEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicTabContextEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicDefaultTabContextEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicUserStatus] =
-      settings_api::PrefType::kDictionary;
   (*s_allowlist)[optimization_guide::prefs::kGeminiSettings] =
       settings_api::PrefType::kNumber;
-  (*s_allowlist)[glic::prefs::kGlicKeepSidepanelOpenOnNewTabsEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicShakeTriggerEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[glic::prefs::kGlicHotkeyGlobalScopeEnabled] =
-      settings_api::PrefType::kBoolean;
 
   // Dictation / Voice typing prefs
   (*s_allowlist)[prefs::kVoiceTypingHotkey] = settings_api::PrefType::kString;

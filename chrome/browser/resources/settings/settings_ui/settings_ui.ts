@@ -178,8 +178,7 @@ export class SettingsUiElement extends SettingsUiElementBase {
   }
 
   override currentRouteChanged(route: Route) {
-    this.$.scrollableShadow.classList.toggle(
-        'force-on', route === routes.PRIVACY_GUIDE || route.depth > 1);
+    this.$.scrollableShadow.classList.toggle('force-on', route.depth > 1);
 
     const urlSearchQuery =
         Router.getInstance().getQueryParameters().get('search') || '';

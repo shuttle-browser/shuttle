@@ -1023,7 +1023,6 @@ if (is_chromeos) {
       "//components/exo/wayland:wayland_client_tests",
       "//media:media_unittests",
       "//media/capture:capture_unittests",
-      "//services/screen_ai:screen_ai_ocr_perf_test",
       "//third_party/dawn/src/dawn/tests:dawn_end2end_tests",
       "//third_party/dawn/src/dawn/tests:dawn_unittests",
       "//ui/ozone:ozone_integration_tests",

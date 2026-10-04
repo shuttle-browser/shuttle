@@ -7,7 +7,6 @@
 
 #include "components/browsing_data/content/browsing_data_model.h"
 #include "components/content_settings/core/common/content_settings.h"
-#include "components/webapps/common/web_app_id.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "url/origin.h"
 
@@ -50,7 +49,6 @@ class PageSpecificSiteDataDialogTestApi {
   void SetBrowsingDataModels(BrowsingDataModel* allowed,
                              BrowsingDataModel* blocked);
   std::vector<PageSpecificSiteDataDialogSite> GetAllSites();
-  std::vector<webapps::AppId> GetInstalledRelatedApps();
   void DeleteStoredObjects(const url::Origin& origin);
 
  private:

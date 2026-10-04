@@ -7,7 +7,6 @@
 #include "base/containers/fixed_flat_set.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/child_process_id.h"
@@ -150,10 +149,6 @@ bool ChromeDirectSocketsDelegate::ValidateRequest(
   if (!IsContentSettingAllowedForUrl(rfh.GetBrowserContext(), url,
                                      ContentSettingsType::DIRECT_SOCKETS)) {
     return false;
-  }
-
-  if (url.SchemeIs(webapps::kIsolatedAppScheme)) {
-    return ValidateAddressAndPortForIwa(request);
   }
 
 #if BUILDFLAG(IS_CHROMEOS)

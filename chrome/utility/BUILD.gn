@@ -44,7 +44,6 @@ static_library("utility") {
     "//components/on_device_translation/buildflags",
     "//components/paint_preview/buildflags",
     "//components/password_manager/services/csv_password:lib",
-    "//components/private_ai/oak_session_service",
     "//components/safe_browsing:buildflags",
     "//components/search_engines",
     "//components/services/paint_preview_compositor",
@@ -54,7 +53,6 @@ static_library("utility") {
     "//components/url_formatter",
     "//components/user_data_importer/content",
     "//components/user_data_importer/mojom",
-    "//components/webapps/services/web_app_origin_association:lib",
     "//content/public/child",
     "//content/public/common",
     "//content/public/utility",
@@ -66,8 +64,6 @@ static_library("utility") {
     "//printing/buildflags",
     "//services/data_decoder:lib",
     "//services/network:network_service",
-    "//services/passage_embeddings",
-    "//services/passage_embeddings/public/mojom",
     "//services/screen_ai/buildflags",
     "//services/service_manager/public/cpp",
     "//skia",
@@ -149,7 +145,6 @@ static_library("utility") {
       "//components/user_data_importer/content",
       "//components/user_data_importer/utility:bookmarks",
       "//services/proxy_resolver:lib",
-      "//services/screen_ai",
     ]
   }
 
@@ -261,7 +256,6 @@ static_library("utility") {
   }
 
   if (enable_on_device_translation) {
-    deps += [ "//components/on_device_translation/service:on_device_translation_service" ]
   }
 
   if (is_android) {

@@ -145,8 +145,8 @@ void LogOmniboxZeroSuggestRequest(const RemoteRequestEvent request_event,
 bool ShouldCacheResultTypeInContext(const ResultType result_type,
                                     const AutocompleteInput& input) {
   const auto page_class = input.current_page_classification();
-  const bool has_contextual_input =
-      input.lens_overlay_suggest_inputs().has_value();
+  // Lens contextual inputs were removed from this fork.
+  const bool has_contextual_input = false;
   const auto& input_state = input.input_state();
 
   switch (result_type) {
@@ -413,15 +413,6 @@ void MaybeAddContextualSuggestParams(
       if (!input.context_tab_url().is_empty()) {
         search_terms_args.current_page_url = input.context_tab_url().spec();
       }
-    } else if (search_terms_args.page_classification == OEP::NTP_COMPOSEBOX &&
-               !client->IsPersonalizedUrlDataCollectionActive() &&
-               !input.context_tab_title().empty()) {
-      // Set `lens_overlay_suggest_inputs` when history sync is disabled, but
-      // delayed context data is found in the input. This is done to switch over
-      // to the "chrome-contextual" client to only retrieve contextual
-      // suggestions.
-      search_terms_args.lens_overlay_suggest_inputs =
-          lens::proto::LensOverlaySuggestInputs();
     }
 
     search_terms_args.additional_query_params =
@@ -612,8 +603,6 @@ void ZeroSuggestProvider::RunZeroSuggestPrefetch(const AutocompleteInput& input,
   search_terms_args.current_page_url = result_type == ResultType::kRemoteSendURL
                                            ? input.current_url().spec()
                                            : std::string();
-  search_terms_args.lens_overlay_suggest_inputs =
-      input.lens_overlay_suggest_inputs();
 
   std::unique_ptr<network::SimpleURLLoader>* prefetch_loader = nullptr;
   if (result_type == ResultType::kRemoteNoURL) {
@@ -641,8 +630,6 @@ void ZeroSuggestProvider::RunComposeboxPrefetch(
   search_terms_args.request_source = TemplateURLRef::RequestSource::COMPOSEBOX;
   search_terms_args.focus_type = input.focus_type();
   search_terms_args.current_page_url = std::string();
-  search_terms_args.lens_overlay_suggest_inputs =
-      input.lens_overlay_suggest_inputs();
   search_terms_args.input_state = input.input_state();
   search_terms_args.suggest_inventory = input.suggest_inventory();
 
@@ -695,8 +682,6 @@ void ZeroSuggestProvider::Start(const AutocompleteInput& input,
       result_type_running_ == ResultType::kRemoteSendURL
           ? input.current_url().spec()
           : std::string();
-  search_terms_args.lens_overlay_suggest_inputs =
-      input.lens_overlay_suggest_inputs();
   search_terms_args.input_state = input.input_state();
   search_terms_args.suggest_inventory = input.suggest_inventory();
 

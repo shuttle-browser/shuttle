@@ -29,6 +29,7 @@
 #include "chrome/browser/password_manager/factories/account_password_store_factory.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/password_manager/password_change_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
@@ -40,10 +41,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_trigger_service.h"
-#include "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_trigger_service_factory.h"
-#include "chrome/browser/ui/desktop_to_mobile_promos/ios_promos_utils.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
@@ -62,15 +59,12 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/passwords/manage_passwords_page_action_controller.h"
 #include "chrome/browser/ui/views/passwords/password_bubble_view_base.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/autofill/core/browser/logging/log_manager.h"
 #include "components/autofill/core/common/save_password_progress_logger.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
-#include "components/desktop_to_mobile_promos/features.h"
-#include "components/desktop_to_mobile_promos/promos_types.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/feature_engagement/public/tracker.h"
 #include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
@@ -166,15 +160,6 @@ const password_manager::InteractionsStats* FindStatsByUsername(
   auto it = std::ranges::find(
       stats, username, &password_manager::InteractionsStats::username_value);
   return it == stats.end() ? nullptr : &*it;
-}
-
-void MaybeShowPasswordManagerShortcutIPH(BrowserWindowInterface* browser) {
-  // Don't show IPH if shortcut can't be created.
-  if (!web_app::AreWebAppsEnabled(browser->GetProfile())) {
-    return;
-  }
-  BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
-      feature_engagement::kIPHPasswordManagerShortcutFeature);
 }
 
 std::optional<password_manager::BrowserSavePasswordProgressLogger>
@@ -497,7 +482,6 @@ void ManagePasswordsUIController::OnPasswordAutofilled(
     BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
         feature_engagement::kIPHPasswordsManagementBubbleDuringSigninFeature);
   }
-  MaybeShowPasswordManagerShortcutIPH(browser);
 }
 
 void ManagePasswordsUIController::OnCredentialLeak(
@@ -972,16 +956,6 @@ void ManagePasswordsUIController::SavePassword(
   UpdatePasswordFormUsernameAndPassword(username, password,
                                         passwords_data_.form_manager());
 
-  if (auto* sentiment_service =
-          TrustSafetySentimentServiceFactory::GetForProfile(
-              Profile::FromBrowserContext(
-                  web_contents()->GetBrowserContext()))) {
-    sentiment_service->SavedPassword();
-    if (IsPendingPasswordPhished()) {
-      sentiment_service->PhishedPasswordUpdateFinished();
-    }
-  }
-
   if (GetPasswordFormMetricsRecorder() && BubbleIsManualFallbackForSaving()) {
     GetPasswordFormMetricsRecorder()->RecordDetailedUserAction(
         password_manager::PasswordFormMetricsRecorder::DetailedUserAction::
@@ -1024,7 +998,6 @@ void ManagePasswordsUIController::SavePassword(
     // first.
     BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
         feature_engagement::kIPHPasswordsManagementBubbleAfterSaveFeature);
-    MaybeShowPasswordManagerShortcutIPH(browser);
   }
 }
 
@@ -1176,28 +1149,6 @@ void ManagePasswordsUIController::AuthenticateUserWithMessage(
   biometric_authenticator_->AuthenticateWithMessage(
       message, std::move(callback).Then(std::move(on_reauth_completed)));
 #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
-}
-
-void ManagePasswordsUIController::MaybeShowIOSPasswordPromo() {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-          web_contents());
-  if (!browser) {
-    return;
-  }
-
-  if (MobilePromoOnDesktopTypeEnabled(
-          MobilePromoOnDesktopPromoType::kAutofillPromo)) {
-    IOSPromoTriggerService* service =
-        IOSPromoTriggerServiceFactory::GetForProfile(browser->GetProfile());
-    if (service) {
-      service->NotifyPromoShouldBeShown(
-          desktop_to_mobile_promos::PromoType::kPassword);
-    }
-  } else {
-    ios_promos_utils::VerifyIOSPromoEligibility(
-        desktop_to_mobile_promos::PromoType::kPassword, browser);
-  }
 }
 
 void ManagePasswordsUIController::RelaunchChrome() {

@@ -24,7 +24,6 @@
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
 #include "chrome/browser/ui/webui/password_manager/notification_cards/access_on_any_device_promo.h"
 #include "chrome/browser/ui/webui/password_manager/notification_cards/password_checkup_promo.h"
-#include "chrome/browser/ui/webui/password_manager/notification_cards/password_manager_shortcut_promo.h"
 #include "chrome/browser/ui/webui/password_manager/notification_cards/passkey_unlock_promo.h"
 #include "chrome/browser/ui/webui/password_manager/notification_cards/web_password_manager_promo.h"
 #include "chrome/browser/webauthn/passkey_unlock_manager_factory.h"
@@ -176,8 +175,6 @@ NotificationCardsHandler::NotificationCardsHandler(Profile* profile)
           .get()));
   notification_cards_.push_back(std::make_unique<WebPasswordManagerPromo>(
       SyncServiceFactory::GetForProfile(profile)));
-  notification_cards_.push_back(
-      std::make_unique<PasswordManagerShortcutPromo>(profile));
   notification_cards_.push_back(std::make_unique<AccessOnAnyDevicePromo>());
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
   notification_cards_.push_back(std::make_unique<MovePasswordsPromo>(

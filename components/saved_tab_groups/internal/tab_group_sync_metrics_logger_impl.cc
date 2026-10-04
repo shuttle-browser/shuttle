@@ -7,7 +7,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
 #include "base/time/time.h"
-#include "components/data_sharing/public/features.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
 #include "components/saved_tab_groups/public/saved_tab_group_tab.h"
 #include "components/sync_device_info/device_info.h"
@@ -276,9 +275,6 @@ void TabGroupSyncMetricsLoggerImpl::RecordMetricsOnStartup(
   int remote_active_group_count_7_day = 0;
   int remote_active_group_count_28_day = 0;
 
-  // Shared tab group metrics.
-  int total_shared_group_count = 0;
-
   const base::Time current_time = base::Time::Now();
   for (size_t i = 0; i < saved_tab_groups.size(); ++i) {
     const auto& group = saved_tab_groups[i];
@@ -332,15 +328,6 @@ void TabGroupSyncMetricsLoggerImpl::RecordMetricsOnStartup(
     base::UmaHistogramCounts10000("TabGroups.Sync.SavedTabGroupTabCount",
                                   group.saved_tabs().size());
 
-    if (data_sharing::features::IsDataSharingFunctionalityEnabled() &&
-        group.is_shared_tab_group()) {
-      base::UmaHistogramCounts1M("TabGroups.Shared.TabGroupAge2",
-                                 tab_group_age.InMinutes());
-      base::UmaHistogramCounts10000("TabGroups.Shared.TotalTabGroupTabCount2",
-                                    group.saved_tabs().size());
-      total_shared_group_count++;
-    }
-
     for (const SavedTabGroupTab& tab : group.saved_tabs()) {
       const base::TimeDelta duration_since_tab_modification =
           current_time - tab.update_time();
@@ -379,12 +366,6 @@ void TabGroupSyncMetricsLoggerImpl::RecordMetricsOnStartup(
   base::UmaHistogramCounts10000(
       "TabGroups.Sync.RemoteActiveTabGroupCount.28Day",
       remote_active_group_count_28_day);
-
-  // Shared tab group metrics.
-  if (data_sharing::features::IsDataSharingFunctionalityEnabled()) {
-    base::UmaHistogramCounts10000("TabGroups.Shared.TotalTabGroupCount2",
-                                  total_shared_group_count);
-  }
 }
 
 void TabGroupSyncMetricsLoggerImpl::RecordTabGroupDeletionsOnStartup(

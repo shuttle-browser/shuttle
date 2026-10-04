@@ -34,7 +34,6 @@
 #include "chrome/browser/actor/tools/scroll_tool_request.h"
 #include "chrome/browser/actor/tools/select_tool_request.h"
 #include "chrome/browser/actor/tools/tab_management_tool_request.h"
-#include "chrome/browser/actor/tools/translate_page_tool_request.h"
 #include "chrome/browser/actor/tools/type_tool_request.h"
 #include "chrome/browser/actor/tools/wait_tool_request.h"
 #include "chrome/common/actor.mojom.h"
@@ -751,17 +750,6 @@ std::unique_ptr<ToolRequest> MakeMediaControlRequest(
     MediaControl media_control) {
   return std::make_unique<MediaControlToolRequest>(tab.GetHandle(),
                                                    media_control);
-}
-
-std::unique_ptr<ToolRequest> MakeTranslatePageRequest(tabs::TabInterface& tab) {
-  return std::make_unique<TranslatePageToolRequest>(tab.GetHandle());
-}
-
-std::unique_ptr<ToolRequest> MakeTranslatePageRequest(
-    tabs::TabInterface& tab,
-    std::string_view target_language) {
-  return std::make_unique<TranslatePageToolRequest>(
-      tab.GetHandle(), std::string(target_language));
 }
 
 std::unique_ptr<ToolRequest> MakeFindAndHighlightRequest(

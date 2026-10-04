@@ -27,7 +27,6 @@ source_set("bookmarks") {
   ]
   deps = [
     "//base",
-    "//components/bookmarks/browser",
     "//components/favicon_base",
     "//components/reading_list/core",
     "//components/user_data_importer/common",
@@ -47,8 +46,6 @@ source_set("safari_data_importer") {
     ":zip_ffi_glue",
     "//base",
     "//components/autofill/core/common",
-    "//components/bookmarks/browser",
-    "//components/bookmarks/common",
     "//components/history/core/browser",
     "//components/history/core/common",
     "//components/password_manager/core/browser/features:utils",
@@ -175,9 +172,6 @@ source_set("unit_tests") {
     "//components/affiliations/core/browser:test_support",
     "//components/autofill/core/browser:test_support",
     "//components/autofill/core/common",
-    "//components/bookmarks/browser",
-    "//components/bookmarks/common",
-    "//components/bookmarks/test",
     "//components/history/core/browser",
     "//components/history/core/common",
     "//components/history/core/test",

@@ -15,7 +15,6 @@
 #include "base/containers/span.h"
 #include "base/functional/callback.h"
 #include "pdf/buildflags.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/cursor/mojom/cursor_type.mojom-forward.h"
 #include "ui/base/window_open_disposition.h"
@@ -212,18 +211,6 @@ class PDFiumEngineClient {
   virtual bool IsInAnnotationMode() const = 0;
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // See the comment for `OnSearchifyStateChange` in pdf/pdfium/pdfium_engine.h.
-  virtual void OnSearchifyStateChange(bool busy) = 0;
-
-  // Notifies that at least one page is searchified. This function is called at
-  // most once.
-  virtual void OnHasSearchifyText() = 0;
-
-  // Show searchify in progress indicator if searchify is running and the
-  // indicator is not showing.
-  virtual void MaybeShowSearchifyInProgress() = 0;
-#endif
 };
 
 }  // namespace chrome_pdf

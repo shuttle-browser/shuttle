@@ -190,19 +190,6 @@
   -->
   <suite name="Chromium Suite" code="CrSu" description="Common classes and commands for Chrome.">
 
-    <class-extension description="The application&apos;s top-level scripting object." extends="application">
-      <cocoa class="BrowserCrApplication"/>
-      <element description="Contains the bookmarks bar and other bookmarks folder." type="bookmark folder" access="r">
-        <cocoa key="bookmarkFolders"/>
-      </element>
-      <property name="bookmarks bar" code="ChBB" description="The bookmarks bar bookmark folder." type="bookmark folder" access="r">
-        <cocoa key="bookmarksBar"/>
-      </property>
-      <property name="other bookmarks" code="ChOB" description="The other bookmarks bookmark folder." type="bookmark folder" access="r">
-        <cocoa key="otherBookmarks"/>
-      </property>
-    </class-extension>
-
     <class name="tab" code="CrTb" description="A tab.">
       <cocoa class="TabAppleScript"/>
       <property name="id" code="ID  " description="Unique ID of the tab." type="text" access="r">
@@ -256,35 +243,6 @@
       <responds-to command="execute">
         <cocoa method="handlesExecuteJavascriptScriptCommand:"/>
       </responds-to>
-    </class>
-
-    <class name="bookmark folder" code="CrBF" description="A bookmarks folder that contains other bookmarks folder and bookmark items.">
-      <cocoa class="BookmarkFolderAppleScript"/>
-      <element description="The bookmark folders present within." type="bookmark folder">
-        <cocoa key="bookmarkFolders"/>
-      </element>
-      <element description="The bookmarks present within." type="bookmark item">
-        <cocoa key="bookmarkItems"/>
-      </element>
-      <property name="id" code="ID  " description="Unique ID of the bookmark folder." type="text" access="r">
-        <cocoa key="uniqueID"/>
-      </property>
-      <property name="title" code="pnam" description="The title of the folder." type="text"/>
-      <property name="index" code="pidx" description="Returns the index with respect to its parent bookmark folder." type="number" access="r">
-        <cocoa key="index"/>
-      </property>
-    </class>
-
-    <class name="bookmark item" code="CrBI" description="An item consists of an URL and the title of a bookmark">
-      <cocoa class="BookmarkItemAppleScript"/>
-      <property name="id" code="ID  " description="Unique ID of the bookmark item." type="text" access="r">
-        <cocoa key="uniqueID"/>
-      </property>
-      <property name="title" code="pnam" description="The title of the bookmark item." type="text"/>
-      <property name="URL" code="URL " description="The URL of the bookmark." type="text"/>
-      <property name="index" code="pidx" description="Returns the index with respect to its parent bookmark folder." type="number" access="r">
-        <cocoa key="index"/>
-      </property>
     </class>
 
     <command name="reload" code="CrSuRlod" description="Reload a tab.">

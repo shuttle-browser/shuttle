@@ -19,8 +19,6 @@
 #include "components/autofill/core/browser/filling/autofill_ai/field_filling_entity_util.h"
 #include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h"
-#include "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager.h"
-#include "components/autofill/core/browser/network/autofill_ai/wallet_pass_access_manager.h"
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/device_reauth/device_authenticator.h"
 #include "url/origin.h"
@@ -205,28 +203,12 @@ void AutofillAiAccessManager::MaybeUnmaskServerEntity(
       reauth_attempted);
 
   switch (entity.record_type()) {
-    case EntityInstance::RecordType::kServerWallet: {
-      if (!manager_->client().GetWalletPassAccessManager()) {
-        std::move(on_unmasked_entity_fetched).Run(std::nullopt);
-        return;
-      }
-      manager_->client()
-          .GetWalletPassAccessManager()
-          ->GetUnmaskedWalletEntityInstance(
-              entity.guid(), std::move(on_unmasked_entity_fetched));
+    case EntityInstance::RecordType::kServerWallet:
+    case EntityInstance::RecordType::kPersonalContext:
+      // Wallet and Personal Context servers are not supported in this fork, so
+      // server entities can never be unmasked.
+      std::move(on_unmasked_entity_fetched).Run(std::nullopt);
       break;
-    }
-    case EntityInstance::RecordType::kPersonalContext: {
-      if (!manager_->client().GetAutofillAiPersonalContextAccessManager()) {
-        std::move(on_unmasked_entity_fetched).Run(std::nullopt);
-        return;
-      }
-      manager_->client()
-          .GetAutofillAiPersonalContextAccessManager()
-          ->GetUnmaskedSpiiEntity(entity.guid(),
-                                  std::move(on_unmasked_entity_fetched));
-      break;
-    }
     case EntityInstance::RecordType::kLocal:
       NOTREACHED();
   }

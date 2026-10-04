@@ -12,7 +12,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/global_features.h"
 #include "components/application_locale_storage/application_locale_storage.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "components/prefs/pref_service.h"
 #include "components/search_engines/template_url_service.h"

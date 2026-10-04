@@ -13,7 +13,6 @@
 
 #include "base/functional/callback_forward.h"
 #include "build/build_config.h"
-#include "chrome/browser/password_manager/web_app_profile_switcher.h"
 #include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/views/profiles/profile_menu_view_base.h"
@@ -71,9 +70,6 @@ class ProfileMenuView : public ProfileMenuViewBase {
 
   // views::BubbleDialogDelegateView:
   std::u16string GetAccessibleWindowTitle() const override;
-
-  // Callback invoked whenever the view is being closed.
-  void OnClose();
 
   // Button/link actions.
   void OnProfileManagementButtonClicked();
@@ -145,10 +141,6 @@ class ProfileMenuView : public ProfileMenuViewBase {
 
   std::u16string menu_title_;
   std::u16string menu_subtitle_;
-
-  // A profile switcher object needed if the user triggers opening other
-  // profile in a web app.
-  std::optional<WebAppProfileSwitcher> app_profile_switcher_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_PROFILES_PROFILE_MENU_VIEW_H_

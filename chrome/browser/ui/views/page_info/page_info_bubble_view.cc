@@ -18,8 +18,6 @@
 #include "chrome/browser/ui/views/controls/page_switcher_view.h"
 #include "chrome/browser/ui/views/page_info/page_info_bubble_specification.h"
 #include "chrome/browser/ui/views/page_info/page_info_main_view.h"
-#include "chrome/browser/ui/views/page_info/page_info_merchant_trust_content_view.h"
-#include "chrome/browser/ui/views/page_info/page_info_merchant_trust_coordinator.h"
 #include "chrome/browser/ui/views/page_info/page_info_security_content_view.h"
 #include "chrome/browser/ui/views/page_info/page_info_view_factory.h"
 #include "components/dom_distiller/core/url_constants.h"
@@ -225,11 +223,6 @@ PageInfoBubbleView::PageInfoBubbleView(
   page_container_ = AddChildView(
       std::make_unique<PageSwitcherView>(std::move(main_page_view)));
 
-  if (page_info::IsMerchantTrustFeatureEnabled()) {
-    merchant_trust_coordinator_ =
-        std::make_unique<PageInfoMerchantTrustCoordinator>(web_contents());
-  }
-
   views::BubbleDialogDelegateView::CreateBubble(this);
 }
 
@@ -308,22 +301,6 @@ void PageInfoBubbleView::OpenCookiesPage() {
   cookies_page_view->SetID(PageInfoViewFactory::VIEW_ID_PAGE_INFO_CURRENT_VIEW);
   page_container_->SwitchToPage(std::move(cookies_page_view));
   AnnouncePageOpened(l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES));
-}
-
-void PageInfoBubbleView::OpenMerchantTrustPage() {
-  CHECK(merchant_trust_coordinator_);
-  auto title = l10n_util::GetStringUTF16(IDS_PAGE_INFO_MERCHANT_TRUST_HEADER);
-  auto page_content = merchant_trust_coordinator_->CreatePageContent();
-  // TODO(crbug.com/390370438): Remove this call after the presenter is
-  // refactored since merchant trust page doesn't implement any of the
-  // PageInfoUI methods.
-  presenter_->InitializeUiState(page_content.get(), base::DoNothing());
-  auto page_view =
-      view_factory_->CreatePageView(title, std::move(page_content));
-  page_view->SetID(PageInfoViewFactory::VIEW_ID_PAGE_INFO_CURRENT_VIEW);
-  page_container_->SwitchToPage(std::move(page_view));
-  AnnouncePageOpened(title);
-  merchant_trust_coordinator_->OnBubbleOpened();
 }
 
 void PageInfoBubbleView::CloseBubble() {

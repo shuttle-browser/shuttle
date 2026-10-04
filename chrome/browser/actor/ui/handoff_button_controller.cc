@@ -12,8 +12,6 @@
 #include "chrome/browser/actor/ui/actor_ui_metrics.h"
 #include "chrome/browser/actor/ui/actor_ui_tab_controller.h"
 #include "chrome/browser/actor/ui/actor_ui_window_controller.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/common/chrome_features.h"
@@ -421,15 +419,6 @@ void HandoffButtonController::OnButtonPressed() {
   if (auto* tab_controller = GetTabController()) {
     if (ownership_ == kActor) {
       tab_controller->SetActorTaskPaused();
-      BrowserWindowInterface* bwi = tab_interface_->GetBrowserWindowInterface();
-      if (bwi) {
-        auto* glic_service = glic::GlicKeyedServiceFactory::GetGlicKeyedService(
-            bwi->GetProfile());
-        if (glic_service) {
-          glic_service->ShowUI(bwi,
-                               glic::mojom::InvocationSource::kHandoffButton);
-        }
-      }
     } else {
       tab_controller->SetActorTaskResume();
     }

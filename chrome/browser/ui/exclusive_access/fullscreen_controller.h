@@ -20,7 +20,6 @@
 #include "ui/display/types/display_constants.h"
 #include "url/origin.h"
 
-class BookmarkBarController;
 
 namespace chrome {
 class BrowserCommandController;
@@ -66,8 +65,7 @@ class FullscreenController : public ExclusiveAccessControllerBase {
  public:
   FullscreenController(
       ExclusiveAccessManager* manager,
-      chrome::BrowserCommandController* browser_command_controller,
-      BookmarkBarController* bookmark_bar_controller);
+      chrome::BrowserCommandController* browser_command_controller);
 
   FullscreenController(const FullscreenController&) = delete;
   FullscreenController& operator=(const FullscreenController&) = delete;
@@ -290,7 +288,6 @@ class FullscreenController : public ExclusiveAccessControllerBase {
   base::CancelableTaskTracker task_tracker_;
 
   const raw_ptr<chrome::BrowserCommandController> browser_command_controller_;
-  const raw_ptr<BookmarkBarController> bookmark_bar_controller_;
 
   base::WeakPtrFactory<FullscreenController> weak_ptr_factory_{this};
 };

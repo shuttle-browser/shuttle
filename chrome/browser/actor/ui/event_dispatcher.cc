@@ -79,7 +79,6 @@ constexpr absl::Overload PreToolEventsFn{
     NoUiEvents<EnterFullscreenToolRequest>,
     NoUiEvents<ExitFullscreenToolRequest>,
 #endif
-    NoUiEvents<AddBookmarkToolRequest>,
     NoUiEvents<DragAndReleaseToolRequest>,
     NoUiEvents<FindAndHighlightToolRequest>,
     NoUiEvents<HistoryToolRequest>,
@@ -94,10 +93,8 @@ constexpr absl::Overload PreToolEventsFn{
     },
     NoUiEvents<NavigateToolRequest>,
     NoUiEvents<PerformSearchToolRequest>,
-    NoUiEvents<RemoveBookmarkToolRequest>,
     NoUiEvents<ScrollToolRequest>,
     NoUiEvents<SelectToolRequest>,
-    NoUiEvents<TranslatePageToolRequest>,
     [](const TypeToolRequest& tr) {
       auto [pt, source] = ComputeMouseTarget(tr.GetTabHandle(), tr.GetTarget());
       return EventSequence<AsyncUiEvent>{
@@ -122,7 +119,6 @@ constexpr absl::Overload PostToolEventsFn{
     NoUiEvents<EnterFullscreenToolRequest>,
     NoUiEvents<ExitFullscreenToolRequest>,
 #endif
-    NoUiEvents<AddBookmarkToolRequest>,
     NoUiEvents<DragAndReleaseToolRequest>,
     NoUiEvents<FindAndHighlightToolRequest>,
     NoUiEvents<HistoryToolRequest>,
@@ -133,10 +129,8 @@ constexpr absl::Overload PostToolEventsFn{
     NoUiEvents<MoveMouseToolRequest>,
     NoUiEvents<NavigateToolRequest>,
     NoUiEvents<PerformSearchToolRequest>,
-    NoUiEvents<RemoveBookmarkToolRequest>,
     NoUiEvents<ScrollToolRequest>,
     NoUiEvents<SelectToolRequest>,
-    NoUiEvents<TranslatePageToolRequest>,
     NoUiEvents<TypeToolRequest>,
     NoUiEvents<WaitToolRequest>,
     NoUiEvents<AttemptLoginToolRequest>,

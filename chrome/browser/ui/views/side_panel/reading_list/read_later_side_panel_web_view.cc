@@ -6,9 +6,7 @@
 
 #include <memory>
 
-#include "chrome/browser/extensions/api/bookmark_manager_private/bookmark_manager_private_api.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -40,8 +38,6 @@ ReadLaterSidePanelWebView::ReadLaterSidePanelWebView(
       tab_strip_model_(tab_strip_model) {
   SetProperty(views::kElementIdentifierKey,
               kReadLaterSidePanelWebViewElementId);
-  extensions::BookmarkManagerPrivateDragEventRouter::CreateForWebContents(
-      contents_wrapper()->web_contents());
   tab_strip_model_->AddObserver(this);
 }
 
@@ -72,7 +68,7 @@ void ReadLaterSidePanelWebView::UpdateActiveURL(
   }
 
   controller->GetAs<ReadingListUI>()->SetActiveTabURL(
-      chrome::GetURLToBookmark(contents));
+      contents->GetURL());
 }
 
 void ReadLaterSidePanelWebView::UpdateActiveURLToActiveTab() {

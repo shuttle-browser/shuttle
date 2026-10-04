@@ -24,7 +24,6 @@ source_set("tab_contents") {
   public_deps = [
     "//base",
     "//chrome/common:mojo_bindings",
-    "//components/lens",
     "//components/search_engines",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
@@ -61,12 +60,9 @@ source_set("impl") {
     "//chrome/common:non_code_constants",
     "//components/enterprise/common:files_scan_data",
     "//components/lens:buildflags",
-    "//components/lens:features",
     "//components/search",
     "//components/strings:components_strings",
     "//components/tabs:public",
-    "//components/translate/core/browser",
-    "//components/translate/core/common",
     "//content/public/browser",
     "//content/public/common",
     "//extensions/buildflags",
@@ -81,7 +77,6 @@ source_set("impl") {
     deps += [ "//chrome/browser/ui/android/tab_contents" ]
   } else {
     deps += [
-      "//chrome/browser/glic",
       "//chrome/browser/ui/views/side_panel",
     ]
   }
@@ -115,8 +110,6 @@ if (!is_android) {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tab_contents",
       "//chrome/test:test_support",
-      "//components/lens:features",
-      "//components/lens:lens_mojo",
       "//components/prefs",
       "//components/safe_browsing/core/common:features",
       "//components/safe_browsing/core/common:safe_browsing_prefs",

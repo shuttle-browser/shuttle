@@ -5,11 +5,9 @@
 #include "chrome/browser/autocomplete/in_memory_url_index_factory.h"
 
 #include "base/no_destructor.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/omnibox/browser/in_memory_url_index.h"
 #include "content/public/common/url_constants.h"
@@ -38,7 +36,6 @@ InMemoryURLIndexFactory::InMemoryURLIndexFactory()
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kRedirectedToOriginal)
               .Build()) {
-  DependsOn(BookmarkModelFactory::GetInstance());
   DependsOn(HistoryServiceFactory::GetInstance());
   DependsOn(TemplateURLServiceFactory::GetInstance());
 }
@@ -54,7 +51,6 @@ InMemoryURLIndexFactory::BuildServiceInstanceForBrowserContext(
   chrome_schemes_to_whitelist.insert(content::kChromeUIScheme);
   std::unique_ptr<InMemoryURLIndex> in_memory_url_index =
       std::make_unique<InMemoryURLIndex>(
-          BookmarkModelFactory::GetForBrowserContext(profile),
           HistoryServiceFactory::GetForProfile(
               profile, ServiceAccessType::IMPLICIT_ACCESS),
           TemplateURLServiceFactory::GetForProfile(profile), profile->GetPath(),

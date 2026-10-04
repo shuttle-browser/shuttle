@@ -48,13 +48,7 @@
 #include "chrome/browser/ui/views/tabs/tab.h"
 #include "chrome/browser/ui/views/tabs/tab_slot_view.h"
 #include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_group.h"
@@ -2442,22 +2436,6 @@ void TabDragController::CompleteDrag() {
   }
   OnContextStoppedDragging();
 
-  // Tabbed PWAs with a home tab should have a home tab in every window.
-  // This means when dragging tabs out to create a new window, a home tab
-  // needs to be added.
-  if (is_dragging_new_browser_) {
-    BrowserWindowInterface* new_browser =
-        BrowserView::GetBrowserViewForNativeWindow(
-            attached_context_->GetWidget()->GetNativeWindow())
-            ->browser();
-
-    auto* const app_controller =
-        web_app::AppBrowserController::From(new_browser);
-    if (app_controller && app_controller->has_tab_strip()) {
-      web_app::MaybeAddPinnedHomeTab(new_browser, app_controller->app_id());
-    }
-  }
-
   if (drag_data_.group_header_drag_data_.has_value()) {
     // Manually reset the selection to just the active tab in the group.
     // For multi tab select keep the selection model as the user used it as the
@@ -2697,26 +2675,6 @@ void TabDragController::AdjustTabBoundsForDrag(
                                          drag_bounds);
 }
 
-std::optional<webapps::AppId> TabDragController::GetControllingAppForDrag(
-    BrowserWindowInterface* browser) {
-  content::WebContents* active_contents = drag_data_.source_dragged_contents();
-  if (!base::FeatureList::IsEnabled(
-          features::kTearOffWebAppTabOpensWebAppWindow) ||
-      drag_data_.tab_drag_data_.size() != 1 || !active_contents) {
-    return std::nullopt;
-  }
-  const web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebApps(browser->GetProfile());
-  const base::flat_map<webapps::AppId, std::string> all_controlling_apps =
-      provider->registrar_unsafe().GetAllAppsControllingUrl(
-          active_contents->GetLastCommittedURL());
-  if (all_controlling_apps.size() != 1) {
-    return std::nullopt;
-  }
-
-  return all_controlling_apps.begin()->first;
-}
-
 BrowserWindowInterface* TabDragController::CreateBrowserForDrag(
     TabDragContext* source,
     gfx::Size initial_size) {
@@ -2732,31 +2690,16 @@ BrowserWindowInterface* TabDragController::CreateBrowserForDrag(
           },
           base::TimeTicks::Now()));
 
-  // Find if there's a controlling app, and thus we should open an app window.
   BrowserWindowInterface* from_browser =
       BrowserView::GetBrowserViewForNativeWindow(
           GetAttachedBrowserWidget()->GetNativeWindow())
           ->browser();
 
-  const std::optional<webapps::AppId> controlling_app =
-      GetControllingAppForDrag(from_browser);
-  const bool open_as_web_app = controlling_app.has_value();
-
   BrowserWindowCreateParams create_params =
-      open_as_web_app ? BrowserWindowCreateParams::CreateForApp(
-                            web_app::GenerateApplicationNameFromAppId(
-                                controlling_app.value()),
-                            /* trusted_source=*/true, gfx::Rect(),
-                            from_browser->GetProfile(),
-                            /* user_gesture=*/true)
-                      : BrowserInitState::From(from_browser)
-                            ->browser_window_create_params()
-                            .Clone();
-  // Web app windows have their own initial size independent of the source
-  // browser window.
-  if (!open_as_web_app) {
-    create_params.initial_bounds = gfx::Rect(initial_size);
-  }
+      BrowserInitState::From(from_browser)
+          ->browser_window_create_params()
+          .Clone();
+  create_params.initial_bounds = gfx::Rect(initial_size);
   create_params.from_user_gesture = true;
   create_params.in_tab_dragging = true;
 #if BUILDFLAG(IS_CHROMEOS)
@@ -2801,9 +2744,7 @@ BrowserWindowInterface* TabDragController::CreateBrowserForDrag(
   // If the window is created maximized then the bounds we supplied are ignored.
   // We need to reset them again so they are honored. On ChromeOS, this is
   // handled in NativeWidgetAura.
-  if (!open_as_web_app) {
-    browser->GetWindow()->SetBounds(gfx::Rect(initial_size));
-  }
+  browser->GetWindow()->SetBounds(gfx::Rect(initial_size));
 #endif
 
   return browser;

@@ -41,7 +41,6 @@ source_set("impl") {
     "//chrome/browser/resources/side_panel/comments:resources",
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/common",
-    "//components/collaboration/public:features",
     "//ui/webui",
   ]
 }

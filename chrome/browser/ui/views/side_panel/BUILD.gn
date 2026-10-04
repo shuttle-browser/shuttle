@@ -9,8 +9,6 @@ import("//extensions/buildflags/buildflags.gni")
 
 source_set("side_panel") {
   sources = [
-    "bookmarks/bookmarks_side_panel_coordinator.cc",
-    "bookmarks/bookmarks_side_panel_coordinator.h",
     "comments/comments_side_panel_coordinator.cc",
     "comments/comments_side_panel_coordinator.h",
     "extensions/extension_side_panel_action_item_util.cc",
@@ -89,7 +87,6 @@ source_set("side_panel") {
     # part of //chrome/browser/ui:ui, but we can't depend on that
     # because that depends on this.
     "//ui/webui/resources/cr_components/history:mojo_bindings",
-    "//ui/webui/resources/cr_components/history_embeddings:mojo_bindings",
     "//url",
   ]
   deps = [
@@ -97,9 +94,7 @@ source_set("side_panel") {
     "//chrome/app:generated_resources",
     "//chrome/app:generated_resources_grit",
     "//chrome/app/vector_icons",
-    "//chrome/browser/contextual_tasks",
     "//chrome/browser/favicon",
-    "//chrome/browser/glic",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/new_tab_page",
     "//chrome/browser/performance_manager",
@@ -116,7 +111,6 @@ source_set("side_panel") {
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions",
     "//chrome/browser/ui/animation",
-    "//chrome/browser/ui/bookmarks",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/extensions",
     "//chrome/browser/ui/side_panel",
@@ -129,7 +123,6 @@ source_set("side_panel") {
     "//chrome/browser/ui/views/interaction",
     "//chrome/browser/ui/views/toolbar",
     "//chrome/browser/ui/webui:webui_util",
-    "//chrome/browser/ui/webui/side_panel/bookmarks",
     "//chrome/browser/ui/webui/side_panel/comments",
     "//chrome/browser/ui/webui/side_panel/history",
     "//chrome/browser/ui/webui/side_panel/history_clusters",
@@ -155,8 +148,6 @@ source_set("side_panel") {
     "//components/search",
     "//components/strings:components_strings",
     "//components/strings:components_strings_grit",
-    "//components/translate/core/browser",
-    "//components/translate/core/common",
     "//components/user_education/common",
     "//components/vector_icons",
     "//components/web_modal",
@@ -184,5 +175,5 @@ source_set("side_panel") {
     deps += [ "//chrome/common/extensions/api" ]
   }
 
-  allow_circular_includes_from = [ "//chrome/browser/glic" ]
+  allow_circular_includes_from = []
 }

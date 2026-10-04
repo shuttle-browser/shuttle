@@ -964,7 +964,6 @@ void AutocompleteInput::Clear() {
   omit_asynchronous_matches_ = false;
   focus_type_ = metrics::OmniboxFocusType::INTERACTION_DEFAULT;
   terms_prefixed_by_http_or_https_.clear();
-  lens_overlay_suggest_inputs_.reset();
   input_state_ = omnibox::InputState();
   suggest_inventory_ = omnibox::SuggestInventory::SUGGEST_INVENTORY_DEFAULT;
   https_port_for_testing_ = 0;

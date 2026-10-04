@@ -94,14 +94,6 @@
           <div slot="label" class="label">$i18n{myActivity}</div>
         </cr-link-row>
       </template>
-      <template is="dom-if"
-          if="[[shouldShowGeminiAppsActivityLink_(syncStatus_)]]" restamp>
-        <cr-link-row id="geminiAppsActivityLink" external using-slotted-label
-            sub-label="$i18n{manageInYourGeminiAppsActivity}"
-            on-click="onGeminiAppsActivityClick_">
-          <div slot="label" class="label">$i18n{geminiAppsActivity}</div>
-        </cr-link-row>
-      </template>
       <template is="dom-if" if="[[!isGoogleDse_]]" restamp>
         <cr-link-row id="nonGoogleSearchHistoryLink" external
             using-slotted-label class="hide-icon"

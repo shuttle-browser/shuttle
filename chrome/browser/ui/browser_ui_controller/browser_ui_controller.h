@@ -15,7 +15,6 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 
-class BookmarkBarController;
 class BrowserWindow;
 class BrowserWindowInterface;
 class StatusBubble;
@@ -37,8 +36,7 @@ class BrowserUiController {
 
   BrowserUiController(BrowserWindowInterface& browser,
                       TabStripModel& tab_strip_model,
-                      BrowserWindow& window,
-                      BookmarkBarController& bookmark_bar_controller);
+                      BrowserWindow& window);
   BrowserUiController(const BrowserUiController&) = delete;
   BrowserUiController& operator=(const BrowserUiController&) = delete;
   ~BrowserUiController();
@@ -103,7 +101,6 @@ class BrowserUiController {
   const raw_ref<BrowserWindowInterface> browser_;
   const raw_ref<TabStripModel> tab_strip_model_;
   const raw_ref<BrowserWindow> window_;
-  const raw_ref<BookmarkBarController> bookmark_bar_controller_;
 
   // Maps TabInterface to pending UI update invalidate flags.
   UpdateMap scheduled_updates_;

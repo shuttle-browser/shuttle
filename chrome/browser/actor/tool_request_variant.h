@@ -18,7 +18,6 @@ using ToolRequestVariant = std::variant<
     ActivateTabToolRequest,
     ActivateWindowToolRequest,
 #endif
-    AddBookmarkToolRequest,
     AttemptLoginToolRequest,
     AttemptFormFillingToolRequest,
     AttemptOtpFillingToolRequest,
@@ -43,12 +42,10 @@ using ToolRequestVariant = std::variant<
     MoveMouseToolRequest,
     NavigateToolRequest,
     PerformSearchToolRequest,
-    RemoveBookmarkToolRequest,
     ScriptToolRequest,
     ScrollToolRequest,
     ScrollToToolRequest,
     SelectToolRequest,
-    TranslatePageToolRequest,
     TypeToolRequest,
     WaitToolRequest>;
 // LINT.ThenChange(//tools/metrics/histograms/metadata/actor/histograms.xml:ToolRequest)
@@ -63,7 +60,6 @@ class ConvertToVariantFn : public ToolRequestVisitorFunctor {
   void Apply(const ActivateTabToolRequest&) override;
   void Apply(const ActivateWindowToolRequest&) override;
 #endif
-  void Apply(const AddBookmarkToolRequest&) override;
   void Apply(const AttemptLoginToolRequest&) override;
   void Apply(const AttemptFormFillingToolRequest&) override;
   void Apply(const AttemptOtpFillingToolRequest&) override;
@@ -88,12 +84,10 @@ class ConvertToVariantFn : public ToolRequestVisitorFunctor {
   void Apply(const MoveMouseToolRequest&) override;
   void Apply(const NavigateToolRequest&) override;
   void Apply(const PerformSearchToolRequest&) override;
-  void Apply(const RemoveBookmarkToolRequest&) override;
   void Apply(const ScriptToolRequest&) override;
   void Apply(const ScrollToolRequest&) override;
   void Apply(const ScrollToToolRequest&) override;
   void Apply(const SelectToolRequest&) override;
-  void Apply(const TranslatePageToolRequest&) override;
   void Apply(const TypeToolRequest&) override;
   void Apply(const WaitToolRequest&) override;
 

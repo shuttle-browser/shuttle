@@ -28,7 +28,6 @@
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_labels.h"
-#include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_wallet_util.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/management_util.h"
 #include "components/autofill/core/browser/proto/server.pb.h"
 #include "components/autofill/core/common/autofill_features.h"
@@ -107,10 +106,6 @@ void EntityInstanceToPrivateApiEntityInstanceWithLabels(
     entity_instance_with_labels.stored_in_wallet =
         entity_instance.record_type() ==
         EntityInstance::RecordType::kServerWallet;
-    if (entity_instance_with_labels.stored_in_wallet) {
-      entity_instance_with_labels.wallet_entity_url =
-          autofill::GetWalletManagementURL(entity_instance);
-    }
     entity_instance_with_labels.is_read_only =
         entity_instance.are_attributes_read_only().value();
   }

@@ -44,10 +44,6 @@ class GoogleGroupsManager;
 class GURL;
 class PrefService;
 
-namespace consent_auditor {
-class ConsentAuditor;
-}
-
 namespace device_reauth {
 class DeviceAuthenticator;
 }
@@ -82,11 +78,6 @@ namespace syncer {
 class SyncService;
 }
 
-namespace translate {
-class LanguageState;
-class TranslateDriver;
-}  // namespace translate
-
 namespace ukm {
 class UkmRecorder;
 }
@@ -97,12 +88,6 @@ class Origin;
 
 namespace version_info {
 enum class Channel;
-}
-
-namespace personal_context {
-enum class PersonalContextEligibilityState;
-class PersonalContextEligibilityService;
-class PersonalContextFirstRunService;
 }
 
 namespace subscription_eligibility {
@@ -118,14 +103,11 @@ namespace autofill {
 class ActorAutofillManager;
 class AutofillManager;
 class AddressNormalizer;
-class AtMemoryManager;
-class AtMemoryQueryService;
 class AutocompleteHistoryManager;
 class AutofillAblationStudy;
 class AutofillAiManager;
 class AutofillAiModelCache;
 class AutofillAiModelExecutor;
-class AutofillComposeDelegate;
 class AutofillCrowdsourcingManager;
 class AutofillDriverFactory;
 class AutofillOptimizationGuideDecider;
@@ -156,11 +138,9 @@ enum class SuggestionType;
 class SingleFieldFillRouter;
 class TouchToFillAutofillDelegate;
 class ValuablesDataManager;
-class AutofillAiPersonalContextAccessManager;
 class EntitySuppressionManager;
 class VotesUploader;
 class PasswordManagerAutofillHelperDelegate;
-class WalletPassAccessManager;
 
 namespace autofill_metrics {
 class FormInteractionsUkmLogger;
@@ -427,11 +407,6 @@ class AutofillClient {
   virtual EntityDataManager* GetEntityDataManager() = 0;
   const EntityDataManager* GetEntityDataManager() const;
 
-  // Gets the WalletPassAccessManager instance associated with the client, if
-  // there is one.
-  virtual WalletPassAccessManager* GetWalletPassAccessManager();
-  const WalletPassAccessManager* GetWalletPassAccessManager() const;
-
   // Gets the AutofillOptimizationGuideDecider instance associated with the
   // client. This function can return nullptr if we are on an unsupported
   // platform, or if the AutofillOptimizationGuideDecider's dependencies are not
@@ -453,17 +428,8 @@ class AutofillClient {
   // Autocomplete and merchant promo codes.
   virtual SingleFieldFillRouter& GetSingleFieldFillRouter() = 0;
 
-  // Returns the PersonalContextFirstRunService instance associated with the
-  // client.
-  virtual personal_context::PersonalContextFirstRunService*
-  GetPersonalContextFirstRunService();
-
   // Gets the AutocompleteHistoryManager instance associated with the client.
   virtual AutocompleteHistoryManager* GetAutocompleteHistoryManager() = 0;
-
-  // Returns the `AutofillComposeDelegate` instance for the tab of this client.
-  virtual AutofillComposeDelegate* GetComposeDelegate();
-  const AutofillComposeDelegate* GetComposeDelegate() const;
 
   // Attempts to the annotated page content for the current tab and calls
   // `callback` with the results.
@@ -475,14 +441,6 @@ class AutofillClient {
   // Returns `nullptr` if, at the time of the AutofillClient's construction, the
   // Autofill AI feature is unsupported.
   virtual AutofillAiManager* GetAutofillAiManager();
-
-  // Returns the `AutofillAiPersonalContextAccessManager` instance associated
-  // with the client. Returns `nullptr` if `kAutofillAmbientAutofill` is not
-  // enabled.
-  virtual AutofillAiPersonalContextAccessManager*
-  GetAutofillAiPersonalContextAccessManager();
-  const AutofillAiPersonalContextAccessManager*
-  GetAutofillAiPersonalContextAccessManager() const;
 
   // Returns the per-profile `EntitySuppressionManager` associated with the
   // client.
@@ -497,9 +455,6 @@ class AutofillClient {
   // `kAutofillAiServerModel` is not enabled or the profile is OTR.
   virtual AutofillAiModelExecutor* GetAutofillAiModelExecutor();
 
-  // Returns the per-profile ConsentAuditor.
-  virtual consent_auditor::ConsentAuditor* GetConsentAuditor();
-
   // Returns the per-profile `RemoteModelExecutor`.
   virtual optimization_guide::RemoteModelExecutor* GetRemoteModelExecutor();
 
@@ -511,24 +466,6 @@ class AutofillClient {
   }
 
   virtual IdentityCredentialDelegate* GetIdentityCredentialDelegate();
-
-  // Returns the `AtMemoryQueryService` associated with the profile of
-  // the window of this tab.
-  virtual AtMemoryQueryService* GetAtMemoryQueryService();
-
-  // Returns the `AtMemoryManager`.
-  virtual AtMemoryManager* GetAtMemoryManager();
-  const AtMemoryManager* GetAtMemoryManager() const;
-
-  // Returns the enablement state of the Accessibility Annotator.
-  // TODO(crbug.com/524193567) Delete this method once all the invocations are
-  // replaced by the calls to the central enablement util.
-  virtual personal_context::PersonalContextEligibilityState
-  GetPersonalContextEligibilityState() const;
-
-  // Returns the Personal Context Eligibility Service. May return nullptr.
-  virtual personal_context::PersonalContextEligibilityService*
-  GetPersonalContextEligibilityService() const;
 
   // Returns the `PasswordManagerDelegate` responsible to provide
   // password suggestions for the given `field_id`.
@@ -592,13 +529,6 @@ class AutofillClient {
   // context if possible, SECURITY_LEVEL_COUNT otherwise.
   virtual security_state::SecurityLevel GetSecurityLevelForUmaHistograms() = 0;
 
-  // Returns the language state, if available.
-  virtual const translate::LanguageState* GetLanguageState() = 0;
-
-  // Returns the translate driver, if available, which is used to observe the
-  // page language for language-dependent heuristics.
-  virtual translate::TranslateDriver* GetTranslateDriver() = 0;
-
   // Retrieves the country code of the user from Chrome variation service.
   // If the variation service is not available, return an empty string.
   virtual GeoIpCountryCode GetVariationConfigCountryCode() const;
@@ -647,12 +577,6 @@ class AutofillClient {
   virtual SuggestionUiSessionId ShowAutofillSuggestions(
       const PopupOpenArgs& open_args,
       base::WeakPtr<AutofillSuggestionDelegate> delegate) = 0;
-
-  // Opens Gemini in the sidebar with the given prompt pre-filled.
-  virtual void OpenGeminiInSidebar(const std::u16string& prompt);
-
-  // Returns true if the Glic sidebar is enabled and can be opened.
-  virtual bool IsGlicEnabled() const;
 
   // Update the data list values shown by the Autofill suggestions, if visible.
   virtual void UpdateAutofillDataListValues(
@@ -876,12 +800,6 @@ class AutofillClient {
 
   // Notifies the user that operation to fetch data failed.
   virtual void ShowAutofillAiFetchEntityFailureNotification();
-
-  // Notifies the user that an AtMemory operation to fetch PII data failed. If
-  // `message_override` is provided, it is displayed instead of the generic
-  // error message.
-  virtual void ShowAtMemoryFetchFailureNotification(
-      std::optional<std::u16string> message_override);
 
   // Notifies the user that prefetching Autofill AI entities failed.
   virtual void ShowAutofillAiPreFetchFailureNotification();

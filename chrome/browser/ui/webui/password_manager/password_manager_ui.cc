@@ -26,11 +26,7 @@
 #include "chrome/browser/ui/webui/plural_string_handler.h"
 #include "chrome/browser/ui/webui/policy_indicator_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
-#include "chrome/browser/ui/webui/settings/safety_hub_handler.h"
 #include "chrome/browser/ui/webui/theme_source.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -682,7 +678,7 @@ content::WebUIDataSource* CreateAndAddPasswordsUIHTMLSource(
   source->AddString("importPasswordsHelpURL",
                     chrome::kPasswordManagerImportLearnMoreURL);
 
-  source->AddBoolean("canAddShortcut", web_app::AreWebAppsEnabled(profile));
+  source->AddBoolean("canAddShortcut", false);
 
   source->AddBoolean(
       "enableActorLoginPermissions",
@@ -847,7 +843,6 @@ PasswordManagerUI::PasswordManagerUI(content::WebUI* web_ui)
   web_ui->AddMessageHandler(
       std::make_unique<password_manager::SyncHandler>(profile));
   web_ui->AddMessageHandler(std::make_unique<ExtensionControlHandler>());
-  web_ui->AddMessageHandler(std::make_unique<SafetyHubHandler>(profile));
   web_ui->AddMessageHandler(
       std::make_unique<password_manager::NotificationCardsHandler>(profile));
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)

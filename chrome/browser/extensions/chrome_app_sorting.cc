@@ -19,14 +19,8 @@
 #include "chrome/browser/extensions/install_tracker_factory.h"
 #include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_sync_bridge.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "components/app_constants/constants.h"
-#include "components/webapps/common/web_app_id.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/browser/install_tracker.h"
@@ -194,17 +188,7 @@ void ChromeAppSorting::MigrateAppIndex(const ExtensionIdList& extension_ids) {
 }
 
 void ChromeAppSorting::InitializePageOrdinalMapFromWebApps() {
-  auto* profile = Profile::FromBrowserContext(browser_context_);
-  DCHECK(profile);
-  auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(profile);
-  if (!web_app_provider)
-    return;
-
-  web_app_registrar_ = &web_app_provider->registrar_unsafe();
-  web_app_sync_bridge_ = &web_app_provider->sync_bridge_unsafe();
-  app_registrar_observation_.Observe(&web_app_provider->registrar_unsafe());
-  install_manager_observation_.Observe(&web_app_provider->install_manager());
-  InitializePageOrdinalMap(web_app_registrar_->GetAppIds());
+  // Web apps are removed; there are no web app ordinals to load.
 }
 
 void ChromeAppSorting::FixNTPOrdinalCollisions() {
@@ -343,14 +327,6 @@ void ChromeAppSorting::OnExtensionMoved(
 
 syncer::StringOrdinal ChromeAppSorting::GetAppLaunchOrdinal(
     const ExtensionId& extension_id) const {
-  // TODO(crbug.com/379136842): Verify that the allowed states as part of
-  // IsAppSurfaceableToUser() is correct.
-  if (web_app_registrar_ &&
-      web_app_registrar_->AppMatches(
-          extension_id, web_app::WebAppFilter::IsAppSurfaceableToUser())) {
-    return web_app_registrar_->GetAppById(extension_id)->user_launch_ordinal();
-  }
-
   std::string raw_value;
   // If the preference read fails then raw_value will still be unset and we
   // will return an invalid StringOrdinal to signal that no app launch ordinal
@@ -373,16 +349,6 @@ void ChromeAppSorting::SetAppLaunchOrdinal(
   RemoveOrdinalMapping(
       extension_id, page_ordinal, GetAppLaunchOrdinal(extension_id));
   AddOrdinalMapping(extension_id, page_ordinal, new_app_launch_ordinal);
-
-  // TODO(crbug.com/379136842): Verify that the allowed states as part of
-  // IsAppSurfaceableToUser() is correct.
-  if (web_app_registrar_ &&
-      web_app_registrar_->AppMatches(
-          extension_id, web_app::WebAppFilter::IsAppSurfaceableToUser())) {
-    web_app_sync_bridge_->SetUserLaunchOrdinal(extension_id,
-                                               new_app_launch_ordinal);
-    return;
-  }
 
   std::optional<base::Value> new_value;
   if (new_app_launch_ordinal.IsValid()) {
@@ -442,14 +408,6 @@ syncer::StringOrdinal ChromeAppSorting::GetNaturalAppPageOrdinal() const {
 
 syncer::StringOrdinal ChromeAppSorting::GetPageOrdinal(
     const ExtensionId& extension_id) const {
-  // TODO(crbug.com/379136842): Verify that the allowed states as part of
-  // IsAppSurfaceableToUser() is correct.
-  if (web_app_registrar_ &&
-      web_app_registrar_->AppMatches(
-          extension_id, web_app::WebAppFilter::IsAppSurfaceableToUser())) {
-    return web_app_registrar_->GetAppById(extension_id)->user_page_ordinal();
-  }
-
   std::string raw_data;
   // If the preference read fails then raw_data will still be unset and we will
   // return an invalid StringOrdinal to signal that no page ordinal was found.
@@ -469,15 +427,6 @@ void ChromeAppSorting::SetPageOrdinal(
   RemoveOrdinalMapping(
       extension_id, GetPageOrdinal(extension_id), app_launch_ordinal);
   AddOrdinalMapping(extension_id, new_page_ordinal, app_launch_ordinal);
-
-  // TODO(crbug.com/379136842): Verify that the allowed states as part of
-  // IsAppSurfaceableToUser() is correct.
-  if (web_app_registrar_ &&
-      web_app_registrar_->AppMatches(
-          extension_id, web_app::WebAppFilter::IsAppSurfaceableToUser())) {
-    web_app_sync_bridge_->SetUserPageOrdinal(extension_id, new_page_ordinal);
-    return;
-  }
 
   std::optional<base::Value> new_value;
   if (new_page_ordinal.IsValid()) {
@@ -528,69 +477,6 @@ void ChromeAppSorting::SetExtensionVisible(const ExtensionId& extension_id,
     ntp_hidden_extensions_.erase(extension_id);
   else
     ntp_hidden_extensions_.insert(extension_id);
-}
-
-void ChromeAppSorting::OnWebAppInstalled(const webapps::AppId& app_id) {
-  const web_app::WebApp* web_app = web_app_registrar_->GetAppById(app_id);
-  // There seems to be a racy bug where |web_app| can be a nullptr. Until that
-  // bug is solved, check for that here. https://crbug.com/40703690
-  if (!web_app)
-    return;
-  if (web_app->user_page_ordinal().IsValid() &&
-      web_app->user_launch_ordinal().IsValid()) {
-    AddOrdinalMapping(web_app->app_id(), web_app->user_page_ordinal(),
-                      web_app->user_launch_ordinal());
-    FixNTPOrdinalCollisions();
-  }
-}
-
-void ChromeAppSorting::OnWebAppInstallManagerDestroyed() {
-  install_manager_observation_.Reset();
-}
-
-void ChromeAppSorting::OnWebAppsWillBeUpdatedFromSync(
-    base::span<const web_app::WebApp* const> updated_apps_state) {
-  DCHECK(web_app_registrar_);
-
-  // Unlike the extensions system (which calls SetPageOrdinal() and
-  // SetAppLaunchOrdinal() from within the extensions sync code), setting the
-  // ordinals of the web app happens within the WebAppSyncBridge system. In
-  // order to correctly update the internal map representation in this class,
-  // any changed ordinals are manually updated here.
-  bool fix_ntp = false;
-  for (const web_app::WebApp* new_web_app_state : updated_apps_state) {
-    const web_app::WebApp* old_web_app_state =
-        web_app_registrar_->GetAppById(new_web_app_state->app_id());
-    DCHECK(old_web_app_state);
-    DCHECK_EQ(new_web_app_state->app_id(), old_web_app_state->app_id());
-    if (old_web_app_state->user_page_ordinal() !=
-            new_web_app_state->user_page_ordinal() ||
-        old_web_app_state->user_launch_ordinal() !=
-            new_web_app_state->user_launch_ordinal()) {
-      RemoveOrdinalMapping(old_web_app_state->app_id(),
-                           old_web_app_state->user_page_ordinal(),
-                           old_web_app_state->user_launch_ordinal());
-      AddOrdinalMapping(new_web_app_state->app_id(),
-                        new_web_app_state->user_page_ordinal(),
-                        new_web_app_state->user_launch_ordinal());
-      fix_ntp = true;
-    }
-  }
-
-  // Only resolve collisions if values have changed. This must happen on a
-  // different task, as in this method call the WebAppRegistrar still doesn't
-  // have the 'new' values saved. Posting this task ensures that the values
-  // returned from GetPageOrdinal() and GetAppLaunchOrdinal() match what is in
-  // the internal map representation in this class.
-  if (fix_ntp) {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(&ChromeAppSorting::FixNTPOrdinalCollisions,
-                                  weak_factory_.GetWeakPtr()));
-  }
-}
-
-void ChromeAppSorting::OnAppRegistrarDestroyed() {
-  app_registrar_observation_.Reset();
 }
 
 syncer::StringOrdinal ChromeAppSorting::GetMinOrMaxAppLaunchOrdinalsOnPage(

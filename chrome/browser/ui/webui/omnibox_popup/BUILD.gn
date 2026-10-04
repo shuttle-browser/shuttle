@@ -20,7 +20,6 @@ if (!is_android) {
     deps = [
       "//base",
       "//chrome/browser/autocomplete:aim_eligibility_service",
-      "//chrome/browser/contextual_search",
       "//chrome/browser/devtools",
       "//chrome/browser/history_clusters",
       "//chrome/browser/profiles:profile",
@@ -41,8 +40,7 @@ if (!is_android) {
       "//chrome/browser/ui/webui/searchbox",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/common",
-      "//components/contextual_search:public",
-      "//components/lens",
+      "//components/contextual_search:types",
       "//components/omnibox/browser",
       "//components/omnibox/browser:mojo_bindings",
       "//components/omnibox/common:features",
@@ -69,7 +67,6 @@ if (!is_android) {
     deps = [
       ":omnibox_popup",
       "//base/test:test_support",
-      "//chrome/browser/contextual_search",
       "//chrome/browser/search_engines",
       "//chrome/browser/ui/webui/searchbox:searchbox_test_utils",
       "//chrome/browser/ui/webui/top_chrome:test_support",

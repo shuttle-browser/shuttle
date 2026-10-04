@@ -4,7 +4,6 @@
 
 #include "chrome/browser/history/history_service_factory.h"
 
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/chrome_history_client.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/channel_info.h"
@@ -21,8 +20,7 @@ namespace {
 std::unique_ptr<KeyedService> BuildHistoryService(
     content::BrowserContext* context) {
   auto history_service = std::make_unique<history::HistoryService>(
-      std::make_unique<ChromeHistoryClient>(
-          BookmarkModelFactory::GetForBrowserContext(context)),
+      std::make_unique<ChromeHistoryClient>(),
       std::make_unique<history::ContentVisitDelegate>(context),
       /*device_info_tracker=*/nullptr, /*local_device_info_provider=*/nullptr);
   if (!history_service->Init(history::HistoryDatabaseParamsForPath(
@@ -99,9 +97,7 @@ HistoryServiceFactory::HistoryServiceFactory()
               // TODO(crbug.com/41488885): Check if this service is needed for
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kRedirectedToOriginal)
-              .Build()) {
-  DependsOn(BookmarkModelFactory::GetInstance());
-}
+              .Build()) {}
 
 HistoryServiceFactory::~HistoryServiceFactory() = default;
 

@@ -55,8 +55,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
@@ -2984,27 +2982,15 @@ void ShowSurveyCallback(DevToolsUIBindings::DispatchCallback callback,
 
 void DevToolsUIBindings::ShowSurvey(DispatchCallback callback,
                                     const std::string& trigger) {
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile_->GetOriginalProfile(), true);
-  if (!hats_service) {
-    ShowSurveyCallback(std::move(callback), false);
-    return;
-  }
-  auto split_callback = base::SplitOnceCallback(std::move(callback));
-  hats_service->LaunchSurvey(
-      trigger,
-      base::BindOnce(ShowSurveyCallback, std::move(split_callback.first), true),
-      base::BindOnce(ShowSurveyCallback, std::move(split_callback.second),
-                     false));
+  // Surveys (HaTS) are not supported.
+  ShowSurveyCallback(std::move(callback), false);
 }
 
 void DevToolsUIBindings::CanShowSurvey(DispatchCallback callback,
                                        const std::string& trigger) {
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile_->GetOriginalProfile(), true);
-  bool can_show = hats_service ? hats_service->CanShowSurvey(trigger) : false;
+  // Surveys (HaTS) are not supported.
   base::DictValue response_dict;
-  response_dict.Set("canShowSurvey", can_show);
+  response_dict.Set("canShowSurvey", false);
   base::Value response = base::Value(std::move(response_dict));
   std::move(callback).Run(&response);
 }

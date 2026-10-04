@@ -30,9 +30,6 @@
 #include "chrome/browser/search/background/wallpaper_search/wallpaper_search_background_manager.h"
 #include "chrome/browser/search/background/wallpaper_search/wallpaper_search_data.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
-#include "chrome/browser/ui/hats/mock_hats_service.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/wallpaper_search/wallpaper_search_string_map.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -140,8 +137,6 @@ std::unique_ptr<TestingProfile> MakeTestingProfile(
         return std::make_unique<
             testing::NiceMock<MockOptimizationGuideKeyedService>>();
       }));
-  profile_builder.AddTestingFactory(HatsServiceFactory::GetInstance(),
-                                    base::BindRepeating(&BuildMockHatsService));
   profile_builder.SetSharedURLLoaderFactory(url_loader_factory);
   auto profile = profile_builder.Build();
   return profile;
@@ -160,9 +155,6 @@ class WallpaperSearchHandlerTest : public testing::Test {
                     profile_.get()))),
         mock_wallpaper_search_background_manager_(
             MockWallpaperSearchBackgroundManager(profile_.get())),
-        mock_hats_service_(static_cast<MockHatsService*>(
-            HatsServiceFactory::GetForProfile(profile_.get(),
-                                              /*create_if_necessary=*/true))),
         identity_manager_(
             IdentityManagerFactory::GetForProfile(profile_.get())) {
     signin::SetPrimaryAccount(identity_manager_, "test@example.com",
@@ -294,7 +286,6 @@ class WallpaperSearchHandlerTest : public testing::Test {
   network::TestURLLoaderFactory& test_url_loader_factory() {
     return test_url_loader_factory_;
   }
-  MockHatsService& mock_hats_service() { return *mock_hats_service_; }
   signin::IdentityManager& identity_manager() { return *identity_manager_; }
   MockWallpaperSearchStringMap& mock_wallpaper_search_string_map() {
     return mock_wallpaper_search_string_map_;
@@ -314,7 +305,6 @@ class WallpaperSearchHandlerTest : public testing::Test {
   base::HistogramTester histogram_tester_;
   MockWallpaperSearchBackgroundManager
       mock_wallpaper_search_background_manager_;
-  raw_ptr<MockHatsService> mock_hats_service_;
   raw_ptr<signin::IdentityManager> identity_manager_;
   testing::NiceMock<MockWallpaperSearchStringMap>
       mock_wallpaper_search_string_map_;
@@ -1590,11 +1580,6 @@ TEST_F(WallpaperSearchHandlerTest, SetUserFeedback) {
       .Run(optimization_guide::OptimizationGuideModelExecutionResult(
                base::ok(result1), nullptr),
            ModelQuality());
-#if BUILDFLAG(IS_CHROMEOS)
-  // The feedback dialog on CrOS happens at the system level. This can cause the
-  // unittest to crash.
-  handler->SkipShowFeedbackPageForTesting(true);
-#endif  // BUILDFLAG(IS_CHROMEOS)
   handler->SetUserFeedback(
       side_panel::customize_chrome::mojom::UserFeedback::kThumbsDown);
 
@@ -1656,22 +1641,6 @@ TEST_F(WallpaperSearchHandlerTest, SetUserFeedback) {
             log1.user_feedback());
   EXPECT_EQ(optimization_guide::proto::UserFeedback::USER_FEEDBACK_THUMBS_UP,
             log2.user_feedback());
-}
-
-TEST_F(WallpaperSearchHandlerTest, LaunchHatsSurvey) {
-  base::test::ScopedFeatureList features;
-  features.InitWithFeaturesAndParameters(
-      {
-          {features::kHappinessTrackingSurveysForWallpaperSearch,
-           {{ntp_features::kWallpaperSearchHatsDelayParam, "5m"}}},
-      },
-      {});
-  EXPECT_CALL(mock_hats_service(),
-              LaunchSurvey(kHatsSurveyTriggerWallpaperSearch, _, _, _, _, _, _))
-      .Times(1);
-  auto handler = MakeHandler(/*session_id=*/123);
-  handler->LaunchHatsSurvey();
-  task_environment().FastForwardBy(base::Minutes(5));
 }
 
 TEST_F(WallpaperSearchHandlerTest, GetInspirations_Success) {

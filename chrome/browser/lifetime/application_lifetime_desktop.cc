@@ -18,7 +18,6 @@
 #include "base/types/strong_alias.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "chrome/browser/background/glic/glic_background_mode_manager.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/download/download_core_service.h"
@@ -303,12 +302,6 @@ void ShutdownIfNoBrowsers() {
 
   // Tell everyone that we are shutting down.
   browser_shutdown::SetTryingToQuit(true);
-
-  auto* glic_background_mode_manager =
-      glic::GlicBackgroundModeManager::GetInstance();
-  if (glic_background_mode_manager) {
-    glic_background_mode_manager->ExitBackgroundMode();
-  }
 
   auto* browser_features =
       g_browser_process ? g_browser_process->GetFeatures() : nullptr;

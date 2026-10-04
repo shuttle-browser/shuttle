@@ -32,8 +32,6 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
-#include "chrome/browser/apps/app_service/app_service_proxy.h"
-#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
 #include "chrome/browser/bluetooth/bluetooth_chooser_context_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_model_delegate.h"
@@ -42,7 +40,6 @@
 #include "chrome/browser/file_system_access/chrome_file_system_access_permission_context.h"
 #include "chrome/browser/file_system_access/file_system_access_features.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
-#include "chrome/browser/glic/selection/inline_cue_blocklist_utils.h"
 #include "chrome/browser/hid/hid_chooser_context.h"
 #include "chrome/browser/hid/hid_chooser_context_factory.h"
 #include "chrome/browser/infobars/browser_infobar_manager.h"
@@ -57,7 +54,6 @@
 #include "chrome/browser/serial/serial_chooser_context_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/page_info/page_info_infobar_delegate.h"
-#include "chrome/browser/ui/safety_hub/notification_permission_review_service_factory.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/url_identity.h"
@@ -65,12 +61,6 @@
 #include "chrome/browser/ui/webui/settings/site_settings_helper.h"
 #include "chrome/browser/usb/usb_chooser_context.h"
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
-#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
-#include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -128,7 +118,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
 
@@ -257,26 +246,6 @@ void AddExceptionsGrantedByHostedApps(content::BrowserContext* context,
     site_settings::AddExceptionForHostedApp(launch_url.spec(),
                                             *extension->get(), exceptions);
   }
-}
-
-base::flat_set<url::Origin> GetInstalledAppOrigins(Profile* profile) {
-  if (!apps::AppServiceProxyFactory::IsAppServiceAvailableForProfile(profile)) {
-    return base::flat_set<url::Origin>();
-  }
-
-  std::vector<url::Origin> origins;
-  apps::AppServiceProxyFactory::GetForProfile(profile)
-      ->AppRegistryCache()
-      .ForEachApp([&origins](const apps::AppUpdate& update) {
-        if (update.AppType() == apps::AppType::kWeb ||
-            update.AppType() == apps::AppType::kSystemWeb) {
-          // For web apps, |PublisherId()| is set to the start URL.
-          const GURL start_url(update.PublisherId());
-          DCHECK(start_url.is_valid());
-          origins.push_back(url::Origin::Create(start_url));
-        }
-      });
-  return base::flat_set<url::Origin>(std::move(origins));
 }
 
 // Placeholder opaque origin until a valid origin is added. If a group only has
@@ -518,8 +487,8 @@ void ConvertSiteGroupMapToList(
   auto* privacy_sandbox_service =
       PrivacySandboxServiceFactory::GetForProfile(profile);
   auto rws_map = GetRwsMap(privacy_sandbox_service, browsing_data_model);
-  base::flat_set<url::Origin> installed_origins =
-      GetInstalledAppOrigins(profile);
+  // Installed web apps (PWAs) are not part of this build.
+  base::flat_set<url::Origin> installed_origins;
   site_engagement::SiteEngagementService* engagement_service =
       site_engagement::SiteEngagementService::Get(profile);
   for (const auto& entry : site_group_map) {
@@ -871,22 +840,12 @@ void SiteSettingsHandler::OnJavascriptAllowed() {
     }
   }
 
-  // Listen for zoom changes in the default StoragePartition and the primary
-  // StoragePartition of all installed Isolated Web Apps.
+  // Listen for zoom changes in the default StoragePartition.
   auto zoom_changed_callback = base::BindRepeating(
       &SiteSettingsHandler::OnZoomLevelChanged, base::Unretained(this));
   host_zoom_map_subscriptions_.push_back(
       content::HostZoomMap::GetDefaultForBrowserContext(profile_)
           ->AddZoomLevelChangedCallback(zoom_changed_callback));
-  for (const web_app::IsolatedWebAppUrlInfo& iwa_url_info :
-       site_settings::GetInstalledIsolatedWebApps(profile_)) {
-    content::StoragePartition* iwa_storage_partition =
-        profile_->GetStoragePartition(
-            iwa_url_info.storage_partition_config(profile_));
-    host_zoom_map_subscriptions_.push_back(
-        content::HostZoomMap::GetForStoragePartition(iwa_storage_partition)
-            ->AddZoomLevelChangedCallback(zoom_changed_callback));
-  }
 
   pref_change_registrar_ = std::make_unique<PrefChangeRegistrar>();
   pref_change_registrar_->Init(profile_->GetPrefs());
@@ -1872,15 +1831,6 @@ void SiteSettingsHandler::HandleResetCategoryPermissionForPattern(
           profile, primary_pattern, secondary_pattern, content_type,
           permissions::PermissionSourceUI::SITE_SETTINGS);
 
-  // For INLINE_CUE_MENU, if the site is in the default blocklist, resetting it
-  // explicitly sets CONTENT_SETTING_ALLOW in HostContentSettingsMap so that
-  // the user's intent to unblock the site takes precedence over the default
-  // blocklist fallback.
-  if (content_type == ContentSettingsType::INLINE_CUE_MENU &&
-      glic::UnblockDefaultSiteForInlineCue(profile, primary_pattern_string)) {
-    return;
-  }
-
   map->SetContentSettingCustomScope(primary_pattern, secondary_pattern,
                                     content_type, CONTENT_SETTING_DEFAULT);
 
@@ -1902,10 +1852,6 @@ void SiteSettingsHandler::HandleResetCategoryPermissionForPattern(
     PermissionDecisionAutoBlockerFactory::GetForProfile(profile)
         ->RemoveEmbargoAndResetCounts(url, content_type);
     ResetHeuristicData(profile_, url, content_type);
-  }
-
-  if (content_type == ContentSettingsType::NOTIFICATIONS) {
-    SendNotificationPermissionReviewList();
   }
 
   if (content_type == ContentSettingsType::COOKIES &&
@@ -2031,10 +1977,6 @@ void SiteSettingsHandler::HandleSetCategoryPermissionForPattern(
     }
   }
 
-  if (content_type == ContentSettingsType::NOTIFICATIONS) {
-    SendNotificationPermissionReviewList();
-  }
-
   if (content_type == ContentSettingsType::COOKIES &&
       primary_pattern.MatchesAllHosts() &&
       !secondary_pattern.MatchesAllHosts()) {
@@ -2113,44 +2055,6 @@ void SiteSettingsHandler::SendZoomLevels() {
 
   base::ListValue zoom_levels_exceptions;
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  // Show any non-default Isolated Web App zoom levels at the top of the page.
-  auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(profile_);
-  if (web_app_provider) {
-    const web_app::WebAppRegistrar& registrar =
-        web_app_provider->registrar_unsafe();
-    for (const web_app::IsolatedWebAppUrlInfo& iwa_url_info :
-         site_settings::GetInstalledIsolatedWebApps(profile_)) {
-      content::StoragePartition* iwa_storage_partition =
-          profile_->GetStoragePartition(
-              iwa_url_info.storage_partition_config(profile_));
-      auto* host_zoom_map =
-          content::HostZoomMap::GetForStoragePartition(iwa_storage_partition);
-      double iwa_zoom = host_zoom_map->GetZoomLevelForHostAndScheme(
-          webapps::kIsolatedAppScheme, iwa_url_info.origin().host());
-      if (iwa_zoom == host_zoom_map->GetDefaultZoomLevel()) {
-        continue;
-      }
-
-      zoom_levels_exceptions.Append(CreateZoomLevelException(
-          iwa_url_info.origin().Serialize(), iwa_url_info.origin().Serialize(),
-          registrar.GetAppShortName(iwa_url_info.app_id()), iwa_zoom));
-    }
-
-    // Sort by app name.
-    std::sort(zoom_levels_exceptions.begin(), zoom_levels_exceptions.end(),
-              [](const base::Value& a, const base::Value& b) {
-                const std::string& name_a =
-                    *a.GetDict().FindString(site_settings::kDisplayName);
-                const std::string& name_b =
-                    *b.GetDict().FindString(site_settings::kDisplayName);
-                return name_a < name_b;
-              });
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS)
-  }
-
   content::HostZoomMap* host_zoom_map =
       content::HostZoomMap::GetDefaultForBrowserContext(profile_);
   content::HostZoomMap::ZoomLevelVector zoom_levels(
@@ -2212,28 +2116,6 @@ void SiteSettingsHandler::HandleRemoveZoomLevel(const base::ListValue& args) {
   CHECK_EQ(1U, args.size());
 
   const std::string& host_or_spec = args[0].GetString();
-
-  GURL url(host_or_spec);
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  if (url.is_valid() && url.GetScheme() == webapps::kIsolatedAppScheme) {
-    base::expected<web_app::IsolatedWebAppUrlInfo, std::string> iwa_url_info =
-        web_app::IsolatedWebAppUrlInfo::Create(url);
-    if (!iwa_url_info.has_value()) {
-      return;
-    }
-    content::StoragePartition* iwa_storage_partition =
-        profile_->GetStoragePartition(
-            iwa_url_info->storage_partition_config(profile_));
-    auto* host_zoom_map =
-        content::HostZoomMap::GetForStoragePartition(iwa_storage_partition);
-    double default_level = host_zoom_map->GetDefaultZoomLevel();
-    host_zoom_map->SetZoomLevelForHost(url.GetHost(), default_level);
-    return;
-  }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS)
 
   content::HostZoomMap* host_zoom_map =
       content::HostZoomMap::GetDefaultForBrowserContext(profile_);
@@ -2611,44 +2493,7 @@ void SiteSettingsHandler::HandleGetSubAppsPermissionExplanation(
   result.Set("isSubApp", false);
   result.Set("hasSubApps", false);
 
-  auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(profile_);
-  if (!web_app_provider) {
-    ResolveJavascriptCallback(callback_id, result);
-    return;
-  }
-
-  const web_app::WebAppRegistrar& registrar =
-      web_app_provider->registrar_unsafe();
-  std::optional<webapps::AppId> app_id =
-      web_app::FindInstalledAppWithUrlInScope(profile_, url);
-
-  if (app_id.has_value()) {
-    if (registrar.AppMatches(*app_id,
-                             web_app::WebAppFilter::IsIsolatedSubApp())) {
-      const web_app::WebApp* app = registrar.GetAppById(*app_id);
-      if (app && app->parent_app_id().has_value()) {
-        std::string parent_app_id = app->parent_app_id().value();
-        result.Set("isSubApp", true);
-        result.Set("appName", registrar.GetAppShortName(*app_id));
-        result.Set("parentAppName", registrar.GetAppShortName(parent_app_id));
-        GURL parent_app_url = registrar.GetAppStartUrl(parent_app_id);
-        std::string parent_url_string =
-            parent_app_url.SchemeIs(webapps::kIsolatedAppScheme)
-                ? parent_app_url.spec()
-                : url::Origin::Create(parent_app_url).Serialize();
-        result.Set("parentAppOrigin", parent_url_string);
-      }
-    }
-
-    if (!result.FindBool("isSubApp").value_or(false) &&
-        registrar.AppMatches(*app_id, web_app::WebAppFilter::IsIsolatedApp())) {
-      if (!registrar.GetAllSubAppIds(*app_id).empty()) {
-        result.Set("hasSubApps", true);
-        result.Set("appName", registrar.GetAppShortName(*app_id));
-      }
-    }
-  }
-
+  // Isolated web apps (and their sub apps) are not part of this build.
   ResolveJavascriptCallback(callback_id, result);
 }
 
@@ -2839,21 +2684,6 @@ base::ListValue SiteSettingsHandler::PopulateFileSystemGrantData() {
     grants.Append(std::move(origin_file_system_permission_grants));
   }
   return grants;
-}
-
-void SiteSettingsHandler::SendNotificationPermissionReviewList() {
-  NotificationPermissionsReviewService* service =
-      NotificationPermissionsReviewServiceFactory::GetForProfile(profile_);
-  CHECK(service);
-  // Notify observers that the permission review list could have changed. Note
-  // that the list is not guaranteed to have changed. In places where
-  // determining whether the list has changed is cause for performance concerns,
-  // an unchanged list may be sent. This is the case for
-  // HandleResetCategoryPermissionForPattern and
-  // HandleSetCategoryPermissionForPattern.
-  FireWebUIListener(
-      site_settings::kNotificationPermissionsReviewListMaybeChangedEvent,
-      service->PopulateNotificationPermissionReviewData());
 }
 
 base::Value SiteSettingsHandler::GetSystemDeniedPermissions() {

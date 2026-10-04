@@ -9,8 +9,6 @@
 #include "base/functional/callback.h"
 #include "base/no_destructor.h"
 #include "build/build_config.h"
-#include "chrome/browser/data_sharing/data_sharing_service_factory.h"
-#include "chrome/browser/data_sharing/personal_collaboration_data/personal_collaboration_data_service_factory.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/incognito_helpers.h"
@@ -21,11 +19,10 @@
 #include "chrome/browser/tab_group_sync/feature_utils.h"
 #include "chrome/browser/tab_group_sync/tab_group_trial.h"
 #include "chrome/common/channel_info.h"
-#include "components/collaboration/internal/collaboration_finder_impl.h"
-#include "components/data_sharing/public/features.h"
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/saved_tab_groups/delegate/empty_tab_group_sync_delegate.h"
 #include "components/saved_tab_groups/delegate/tab_group_sync_delegate.h"
+#include "components/saved_tab_groups/public/collaboration_finder.h"
 #include "components/saved_tab_groups/public/features.h"
 #include "components/saved_tab_groups/public/synthetic_field_trial_helper.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
@@ -48,6 +45,25 @@
 #endif  // BUILDFLAG(IS_ANDROID)
 
 namespace tab_groups {
+
+namespace {
+
+// Shared tab groups (collaborations) are not supported, so no collaboration
+// ever becomes available.
+class NoopCollaborationFinder : public CollaborationFinder {
+ public:
+  NoopCollaborationFinder() = default;
+  ~NoopCollaborationFinder() override = default;
+
+  // CollaborationFinder:
+  void SetClient(Client* client) override {}
+  bool IsCollaborationAvailable(
+      const syncer::CollaborationId& collaboration_id) override {
+    return false;
+  }
+};
+
+}  // namespace
 
 // static
 TabGroupSyncServiceFactory* TabGroupSyncServiceFactory::GetInstance() {
@@ -78,9 +94,6 @@ TabGroupSyncServiceFactory::TabGroupSyncServiceFactory()
   // The dependency on IdentityManager is only for the purpose of recording "on
   // signin" metrics.
   DependsOn(IdentityManagerFactory::GetInstance());
-  DependsOn(data_sharing::DataSharingServiceFactory::GetInstance());
-  DependsOn(data_sharing::personal_collaboration_data::
-                PersonalCollaborationDataServiceFactory::GetInstance());
 }
 
 TabGroupSyncServiceFactory::~TabGroupSyncServiceFactory() = default;
@@ -96,11 +109,6 @@ TabGroupSyncServiceFactory::BuildServiceInstanceForBrowserContext(
     return nullptr;
   }
 
-  auto* data_sharing_service =
-      data_sharing::DataSharingServiceFactory::GetForProfile(profile);
-  auto collaboration_finder =
-      std::make_unique<collaboration::CollaborationFinderImpl>(
-          data_sharing_service);
   auto service = CreateTabGroupSyncService(
       chrome::GetChannel(), DataTypeStoreServiceFactory::GetForProfile(profile),
       pref_service,
@@ -108,10 +116,8 @@ TabGroupSyncServiceFactory::BuildServiceInstanceForBrowserContext(
           ->GetDeviceInfoTracker(),
       OptimizationGuideKeyedServiceFactory::GetForProfile(profile),
       IdentityManagerFactory::GetForProfile(profile),
-      data_sharing::personal_collaboration_data::
-          PersonalCollaborationDataServiceFactory::GetForProfile(profile),
-      std::move(collaboration_finder), synthetic_field_trial_helper_.get(),
-      data_sharing_service->GetLogger());
+      std::make_unique<NoopCollaborationFinder>(),
+      synthetic_field_trial_helper_.get());
 
   std::unique_ptr<TabGroupSyncDelegate> delegate;
 #if BUILDFLAG(IS_ANDROID)

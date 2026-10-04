@@ -11,7 +11,6 @@
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/chrome_render_frame.mojom.h"
-#include "components/lens/lens_entrypoints.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -27,8 +26,7 @@ using DownscaleAndEncodeBitmapCallback = base::OnceCallback<void(
     const std::vector<unsigned char>& thumbnail_data,
     const std::string& content_type,
     const gfx::Size& original_size,
-    const gfx::Size& downscaled_size,
-    const std::vector<lens::mojom::LatencyLogPtr> log_data)>;
+    const gfx::Size& downscaled_size)>;
 
 // Per-tab class to handle functionality that is core to the operation of tabs.
 // TODO(crbug.com/346044243): Delete this class.
@@ -49,10 +47,9 @@ class CoreTabHelper : public content::WebContentsObserver,
   void UpdateContentRestrictions(int content_restrictions);
 
   // Encodes the given image to proper image format, adds to |search_args|
-  // thumbnail image content data, and emits the image bytes size. Also
-  // returns the format the image was encoded to.
+  // thumbnail image content data, and emits the image bytes size.
   // Public for testing.
-  static lens::mojom::ImageFormat EncodeImageIntoSearchArgs(
+  static void EncodeImageIntoSearchArgs(
       const gfx::Image& image,
       size_t& encoded_size_bytes,
       TemplateURLRef::SearchTermsArgs& search_args);
@@ -66,20 +63,6 @@ class CoreTabHelper : public content::WebContentsObserver,
       int thumbnail_max_width,
       int thumbnail_max_height,
       DownscaleAndEncodeBitmapCallback callback);
-
-  // Opens the Lens standalone experience for the image that triggered the
-  // context menu. If the google lens supports opening requests in side panel,
-  // then the request will open in the side panel instead of new tab, unless
-  // force_open_in_new_tab is set.
-  void SearchWithLens(content::RenderFrameHost* render_frame_host,
-                      const GURL& src_url,
-                      lens::EntryPoint entry_point);
-
-  // Opens the Lens experience for an `image`, which will be resized if needed.
-  // If the search engine supports opening requests in side panel, then the
-  // request will open in the side panel instead of a new tab, unless
-  // force_open_in_new_tab is set.
-  void SearchWithLens(const gfx::Image& image, lens::EntryPoint entry_point);
 
   // Performs an image search for the image that triggered the context menu. The
   // `src_url` is passed to the search request and is not used directly to fetch
@@ -125,18 +108,15 @@ class CoreTabHelper : public content::WebContentsObserver,
                        const std::vector<unsigned char>& thumbnail_data,
                        const std::string& content_type,
                        const gfx::Size& original_size,
-                       const gfx::Size& downscaled_size,
-                       const std::vector<lens::mojom::LatencyLogPtr> log_data);
+                       const gfx::Size& downscaled_size);
 
   // Wrapper method for fetching template URL service.
   TemplateURLService* GetTemplateURLService();
 
-  // Encode the image and set the content type and image format for the
-  // result image. Returns the vector of image bytes.
-  static std::vector<unsigned char> EncodeImage(
-      const gfx::Image& image,
-      std::string& content_type,
-      lens::mojom::ImageFormat& image_format);
+  // Encode the image and set the content type for the result image. Returns
+  // the vector of image bytes.
+  static std::vector<unsigned char> EncodeImage(const gfx::Image& image,
+                                                std::string& content_type);
 
   // Posts the bytes and content type to the specified URL in a new tab.
   void PostContentToURL(TemplateURLRef::PostContent post_content, GURL url);

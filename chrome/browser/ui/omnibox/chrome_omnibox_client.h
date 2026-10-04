@@ -64,7 +64,6 @@ class ChromeOmniboxClient final : public OmniboxClient {
       override;
   PrefService* GetPrefs() override;
   const PrefService* GetPrefs() const override;
-  bookmarks::BookmarkModel* GetBookmarkModel() override;
   AutocompleteControllerEmitter* GetAutocompleteControllerEmitter() override;
   TemplateURLService* GetTemplateURLService() override;
   AiModeButtonService* GetAiModeButtonService() override;
@@ -98,8 +97,6 @@ class ChromeOmniboxClient final : public OmniboxClient {
   void OnInputStateChanged() override;
   void OnFocusChanged(OmniboxFocusState state,
                       OmniboxFocusChangeReason reason) override;
-  void MaybeShowOnFocusHatsSurvey(AutocompleteProviderClient* client) override;
-  void CheckConditionsAndLaunchSurvey();
   void OnResultChanged(const AutocompleteResult& result,
                        bool default_match_changed,
                        bool should_prerender,
@@ -122,15 +119,12 @@ class ChromeOmniboxClient final : public OmniboxClient {
                      bool has_focus) override;
   void OnRevert() override;
   void OnURLOpenedFromOmnibox(OmniboxLog* log) override;
-  void OnBookmarkLaunched() override;
   void DiscardNonCommittedNavigations() override;
   void FocusWebContents() override;
   void OnNavigationLikely(
       size_t index,
       const AutocompleteMatch& match,
       omnibox::mojom::NavigationPredictor navigation_predictor) override;
-  void ShowFeedbackPage(const std::u16string& input_text,
-                        const GURL& destination_url) override;
   void OnAutocompleteAccept(
       const GURL& destination_url,
       TemplateURLRef::PostContent* post_content,
@@ -152,10 +146,7 @@ class ChromeOmniboxClient final : public OmniboxClient {
       base::OnceCallback<void(base::WeakPtr<content::NavigationHandle>)>
           callback);
   void OpenIphLink(GURL gurl) override;
-  bool IsHistoryEmbeddingsEnabled() const override;
   bool IsAimPopupEnabled() const override;
-  std::optional<lens::proto::LensOverlaySuggestInputs>
-  GetLensOverlaySuggestInputs() const override;
   void MaybePrewarmForDefaultSearchEngine(PrewarmTrigger trigger) override;
   base::WeakPtr<OmniboxClient> AsWeakPtr() override;
   Profile* profile() { return profile_; }

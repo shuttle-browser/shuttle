@@ -45,7 +45,6 @@
 #include "pdf/pdfium/pdfium_range.h"
 #include "pdf/region_data.h"
 #include "printing/mojom/print.mojom-forward.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/pdfium/public/cpp/fpdf_scopers.h"
 #include "third_party/pdfium/public/fpdf_formfill.h"
 #include "third_party/pdfium/public/fpdf_progressive.h"
@@ -76,10 +75,6 @@
 #include "ui/gfx/geometry/transform.h"
 #endif
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "pdf/pdfium/pdfium_searchify.h"
-#include "services/screen_ai/public/mojom/screen_ai_service.mojom-forward.h"
-#endif
 
 namespace blink {
 class WebInputEvent;
@@ -107,9 +102,6 @@ struct DocumentAttachmentInfo;
 struct DocumentMetadata;
 struct PageCharacterIndex;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-class PDFiumOnDemandSearchifier;
-#endif
 
 namespace draw_utils {
 class ShadowMatrix;
@@ -617,42 +609,6 @@ class PDFiumEngine : public DocumentLoader::Client,
   void UpdatePageCount();
 #endif  // defined(PDF_ENABLE_XFA)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Starts the searchify process and passes two callbacks to functions that
-  // return the maximum image dimension and performs OCR.
-  // This function is expected to be called only once.
-  void StartSearchify(GetOcrMaxImageDimensionCallbackAsync get_max_dimension,
-                      PerformOcrCallbackAsync perform_ocr_callback);
-
-  // Returns a function to pass OCR disconnection events to the searchifier.
-  base::RepeatingClosure GetOcrDisconnectHandler();
-
-  // Tells if the page is waiting to be searchified.
-  bool IsPageScheduledForSearchify(int page_index) const;
-
-  // Schedules searchify for the page if it has no text. `page` must be non-null
-  // and in an available state.
-  void ScheduleSearchifyIfNeeded(PDFiumPage* page);
-
-  // Notifies that PDF searchifier has switched between busy or not busy.
-  // A busy state is when it has some queued pages to process or is processing a
-  // page at the moment. It comes out of this state either when all tasks are
-  // completed or canceled.
-  void OnSearchifyStateChange(bool busy);
-
-  // Called when searchify text is added.
-  void OnHasSearchifyText();
-
-  PDFiumOnDemandSearchifier* GetSearchifierForTesting() {
-    return searchifier_.get();
-  }
-
-  // Tells if the page is in `progressive_paints_`
-  bool IsPageScheduledForPaint(uint32_t page_index) const;
-
-  // Unloads the page if it is not visible or prevented from unloading.
-  void MaybeUnloadPage(int page_index);
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   void UnsupportedFeature(const std::string& feature);
 
@@ -1209,10 +1165,6 @@ class PDFiumEngine : public DocumentLoader::Client,
   std::optional<AccessibilityTextRunInfo> GetFirstVisibleTextRun(
       uint32_t page_index) const;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Called if OCR service gets disconnected.
-  void OnOcrDisconnected();
-#endif
 
 #if BUILDFLAG(ENABLE_PDF_INK2)
   struct InkTextData {
@@ -1270,16 +1222,6 @@ class PDFiumEngine : public DocumentLoader::Client,
   // form filler.
   PDFiumFormFiller form_filler_;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  std::unique_ptr<PDFiumOnDemandSearchifier> searchifier_;
-
-  // Keeps track of the indices of pages for which "PDF.PageHasText" metric is
-  // reported.
-  std::set<int> page_has_text_metric_reported_;
-
-  // Records if at least one page has searchify text.
-  bool has_searchify_text_ = false;
-#endif
 
   std::unique_ptr<PDFiumDocument> document_;
   bool document_pending_ = false;

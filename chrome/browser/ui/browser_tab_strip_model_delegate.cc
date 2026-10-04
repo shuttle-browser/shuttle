@@ -13,8 +13,6 @@
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/user_metrics.h"
 #include "build/build_config.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
@@ -39,12 +37,8 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_close_button_controller.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/chrome_switches.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/reading_list/core/reading_list_model.h"
 #include "components/saved_tab_groups/internal/saved_tab_group_model.h"
@@ -97,13 +91,6 @@ BrowserTabStripModelDelegate::BrowserTabStripModelDelegate(
 
 BrowserTabStripModelDelegate::~BrowserTabStripModelDelegate() = default;
 
-void BrowserTabStripModelDelegate::GlicUnpinTabsFromAllConversations(
-    base::span<const tabs::TabHandle> tab_handles) {
-  auto* service = glic::GlicKeyedServiceFactory::GetGlicKeyedService(
-      browser_->GetProfile());
-  service->instance_coordinator().UnpinTabsFromAllInstances(
-      tab_handles, glic::GlicUnpinTrigger::kContextMenu);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // BrowserTabStripModelDelegate, TabStripModelDelegate implementation:
@@ -190,7 +177,7 @@ void BrowserTabStripModelDelegate::MoveToExistingWindow(
     int browser_index) {
   std::vector<BrowserWindowInterface*> existing_browsers =
       TabMenuModelDelegate::From(browser_)->GetOtherBrowserWindows(
-          web_app::AppBrowserController::IsWebApp(browser_));
+          /*is_app=*/false);
   size_t existing_browser_count = existing_browsers.size();
   if (static_cast<size_t>(browser_index) < existing_browser_count &&
       existing_browsers[browser_index]) {
@@ -350,7 +337,7 @@ bool BrowserTabStripModelDelegate::SupportsReadLater() {
 }
 
 bool BrowserTabStripModelDelegate::IsForWebApp() {
-  return web_app::AppBrowserController::IsWebApp(browser_);
+  return false;
 }
 
 void BrowserTabStripModelDelegate::CopyURL(content::WebContents* web_contents) {
@@ -428,9 +415,6 @@ void BrowserTabStripModelDelegate::CloseTab(
   }
   int tab_index = maybe_tab_index.value();
 
-  if (!web_app::IsTabClosable(model, tab_index)) {
-    return;
-  }
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Tabs cannot be closed when the app is in locked fullscreen, which is
@@ -440,17 +424,6 @@ void BrowserTabStripModelDelegate::CloseTab(
   }
 #endif
 
-  if (base::FeatureList::IsEnabled(
-          contextual_tasks::kContextualTasksCloseTabExpandsSidePanel)) {
-    ContextualTasksCloseButtonController* const close_button_controller =
-        ContextualTasksCloseButtonController::From(browser_);
-    if (tab_interface && tab_interface->IsActivated() &&
-        close_button_controller &&
-        close_button_controller->ShouldShowCloseButton()) {
-      close_button_controller->MaybeCloseTabExpandSidePanel();
-      return;
-    }
-  }
 
   auto [cb1, cb2] = base::SplitOnceCallback(std::move(on_approved));
 

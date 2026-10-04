@@ -8,7 +8,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/ui/accelerator_utils.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -16,7 +15,6 @@
 #include "chrome/browser/ui/read_anything/read_anything_contents_wrapper.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_enums.h"
-#include "chrome/browser/ui/read_anything/read_anything_hats_survey_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_omnibox_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
 #include "chrome/browser/ui/read_anything/read_anything_service.h"
@@ -129,11 +127,6 @@ ReadAnythingController::ReadAnythingController(
 
   if (features::IsReadAnythingOmniboxChipEnabled()) {
     omnibox_controller_ = std::make_unique<ReadAnythingOmniboxController>(tab_);
-  }
-
-  if (features::IsHatsReadingModeSurveyEnabled()) {
-    hats_survey_ =
-        std::make_unique<ReadAnythingHatsSurveyController>(this, tab_);
   }
 }
 
@@ -328,10 +321,6 @@ ReadAnythingContentsWrapper ReadAnythingController::GetOrCreateWebUIWrapper(
         web_ui_wrapper_->web_contents(), this);
     find_in_page::FindTabHelper::CreateForWebContents(
         web_ui_wrapper_->web_contents());
-    if (features::IsReadAnythingTranslateEntryPointEnabled()) {
-      ChromeTranslateClient::CreateForWebContents(
-          web_ui_wrapper_->web_contents());
-    }
   }
   return std::move(web_ui_wrapper_);
 }

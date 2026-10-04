@@ -130,10 +130,7 @@
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/execution_engine.h"
-#include "chrome/browser/download/download_item_web_app_data.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/actor.mojom-shared.h"
 #endif
@@ -2544,24 +2541,6 @@ void ChromeDownloadManagerDelegate::OnCheckDownloadAllowedComplete(
 
   std::move(check_download_allowed_cb).Run(allow);
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-void ChromeDownloadManagerDelegate::AttachExtraInfo(
-    download::DownloadItem* item) {
-  content::WebContents* web_contents =
-      content::DownloadItemUtils::GetWebContents(item);
-  BrowserWindowInterface* browser =
-      web_contents ? GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-                         web_contents)
-                   : nullptr;
-  // Attach the info for whether the download came from a web app.
-  if (browser && web_app::AppBrowserController::IsWebApp(browser) &&
-      web_app::AppBrowserController::From(browser)) {
-    DownloadItemWebAppData::CreateAndAttachToItem(
-        item, web_app::AppBrowserController::From(browser)->app_id());
-  }
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
 bool ChromeDownloadManagerDelegate::IsFromExternalApp(

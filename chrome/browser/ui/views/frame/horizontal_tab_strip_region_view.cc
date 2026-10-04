@@ -9,8 +9,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "chrome/browser/geic/geic_enabling.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -25,7 +23,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/tab_search_bubble_host.h"
 #include "chrome/browser/ui/views/tabs/browser_tab_strip_controller.h"
 #include "chrome/browser/ui/views/tabs/common/root_tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
@@ -34,16 +31,13 @@
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
 #include "chrome/browser/ui/views/tabs/new_tab_button.h"
 #include "chrome/browser/ui/views/tabs/shared/new_tab_button.h"
-#include "chrome/browser/ui/views/tabs/shared/tab_strip_combo_button.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_flat_edge_button.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
-#include "chrome/browser/ui/views/tabs/tab_strip_action_container.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_control_button.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_nudge_button.h"
 #include "chrome/browser/ui/views/tabs/tab_style_views.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/vector_icons/vector_icons.h"
@@ -115,18 +109,6 @@ class FrameGrabHandle : public views::View {
 BEGIN_METADATA(FrameGrabHandle)
 END_METADATA
 
-bool ShouldShowNewTabButton(BrowserWindowInterface* browser) {
-  // `browser` can be null in tests and `app_controller` will be null if
-  // the browser is not for an app.
-  if (browser) {
-    auto* const controller = web_app::AppBrowserController::From(browser);
-    if (controller && controller->ShouldHideNewTabButton()) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // Updates the border of `view` if the insets need to be updated.
 void UpdateBorderInsetsIfNeeded(views::View* view,
                                 const gfx::Insets& new_border_insets) {
@@ -166,15 +148,6 @@ HorizontalTabStripRegionViewOld::HorizontalTabStripRegionViewOld(
 
   BrowserWindowInterface* const browser = browser_view->browser();
 
-  if (browser &&
-      (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL)) {
-    combo_button_ = AddChildView(std::make_unique<TabStripComboButton>(
-        browser, TabStripComboButton::Context::kHorizontalTabStrip));
-    combo_button_->SetProperty(views::kCrossAxisAlignmentKey,
-                               views::LayoutAlignment::kCenter);
-    combo_button_->MaybeShowIPH();
-  }
-
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     unfocus_button_ = AddChildView(std::make_unique<TabStripControlButton>(
         browser, views::Button::PressedCallback(),
@@ -199,24 +172,6 @@ HorizontalTabStripRegionViewOld::HorizontalTabStripRegionViewOld(
                                  views::LayoutAlignment::kCenter);
   }
 
-  // Add and configure the TabStripComboButton.
-  std::unique_ptr<TabStripActionContainer> tab_strip_action_container;
-  if (browser &&
-      (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL)) {
-    // The Glic button visibility is dynamic and depends on profile state
-    // (e.g., sign-in status, enterprise policies, recoverable errors).
-    // We instantiate the action container if the profile is eligible (even if
-    // the button is not currently shown, e.g. when signed out) so that it can
-    // dynamically update its visibility when the profile state changes.
-    if (geic::IsGeicEnabled(browser_view->GetProfile()) ||
-        glic::GlicEnabling::IsProfileEligible(browser_view->GetProfile())) {
-      tab_strip_action_container =
-          std::make_unique<TabStripActionContainer>(browser);
-      tab_strip_action_container->SetProperty(views::kCrossAxisAlignmentKey,
-                                              views::LayoutAlignment::kStart);
-    }
-  }
-
   tab_strip_ = AddChildView(CreateTabStrip(this, browser_view));
 
   // Allow the |tab_strip_| to grow into the free space available in
@@ -227,7 +182,7 @@ HorizontalTabStripRegionViewOld::HorizontalTabStripRegionViewOld(
                                views::MaximumFlexSizeRule::kPreferred);
   tab_strip_->SetProperty(views::kFlexBehaviorKey, tab_strip_flex_spec);
 
-  if (ShouldShowNewTabButton(browser)) {
+  {
     std::unique_ptr<TabStripControlButton> tab_strip_control_button =
         std::make_unique<NewTabButton>(
             base::BindRepeating(&TabStrip::NewTabButtonPressed,
@@ -263,22 +218,12 @@ HorizontalTabStripRegionViewOld::HorizontalTabStripRegionViewOld(
 
   SetProperty(views::kElementIdentifierKey, kTabStripRegionElementId);
 
-  if (tab_strip_action_container) {
-    tab_strip_action_container_ =
-        AddChildView(std::move(tab_strip_action_container));
-  }
   UpdateTabStripMargin();
 }
 
 HorizontalTabStripRegionViewOld::~HorizontalTabStripRegionViewOld() {
   // These objects have pointers to TabStripController, which is also destoroyed
   // by this class. Remove child views that hold raw_ptr to TabStripController.
-  if (tab_strip_action_container_) {
-    RemoveChildViewT(std::exchange(tab_strip_action_container_, nullptr));
-  }
-  if (combo_button_) {
-    RemoveChildViewT(std::exchange(combo_button_, nullptr));
-  }
   if (new_tab_button_) {
     RemoveChildViewT(std::exchange(new_tab_button_, nullptr));
   }
@@ -290,10 +235,6 @@ HorizontalTabStripRegionViewOld::~HorizontalTabStripRegionViewOld() {
 bool HorizontalTabStripRegionViewOld::IsPositionInWindowCaption(
     const gfx::Point& point) {
   if (new_tab_button_ && IsHitInView(new_tab_button_, point)) {
-    return false;
-  }
-
-  if (combo_button_ && IsHitInView(combo_button_, point)) {
     return false;
   }
 
@@ -335,16 +276,9 @@ views::View::Views HorizontalTabStripRegionViewOld::GetChildrenInZOrder() {
     children.emplace_back(new_tab_button_.get());
   }
 
-  if (combo_button_) {
-    children.emplace_back(combo_button_.get());
-  }
 
   if (unfocus_button_) {
     children.emplace_back(unfocus_button_.get());
-  }
-
-  if (tab_strip_action_container_) {
-    children.emplace_back(tab_strip_action_container_.get());
   }
 
   if (reserved_grab_handle_space_) {
@@ -365,15 +299,8 @@ void HorizontalTabStripRegionViewOld::Layout(PassKey) {
   UpdateTabStripMargin();
   LayoutSuperclass<views::AccessiblePaneView>(this);
 
-  int leading_offset = 0;
   if (unfocus_button_ && unfocus_button_->GetVisible()) {
-    AdjustViewBoundsRect(unfocus_button_, leading_offset);
-    leading_offset += unfocus_button_->GetPreferredSize().width() +
-                      GetLayoutConstant(LayoutConstant::kTabStripPadding);
-  }
-
-  if (combo_button_) {
-    AdjustViewBoundsRect(combo_button_, leading_offset);
+    AdjustViewBoundsRect(unfocus_button_, /*leading_offset=*/0);
   }
 
   views::View* button_to_paint_to_layer = new_tab_button_;
@@ -597,13 +524,6 @@ HorizontalTabStripRegionViewOld::GetExpandOnHoverLock(
 }
 
 bool HorizontalTabStripRegionViewOld::HasLeadingButtons() const {
-  if (combo_button_ && combo_button_->GetVisible() &&
-      ((combo_button_->start_button() &&
-        combo_button_->start_button()->GetVisible()) ||
-       (combo_button_->end_button() &&
-        combo_button_->end_button()->GetVisible()))) {
-    return true;
-  }
   if (unfocus_button_ && unfocus_button_->GetVisible()) {
     return true;
   }
@@ -633,12 +553,6 @@ void HorizontalTabStripRegionViewOld::UpdateButtonBorders() {
   // should be improved, likely by taking the scroll state of the tabstrip into
   // account.
   const auto border_insets = gfx::Insets::TLBR(top_inset, 0, bottom_inset, 0);
-  if (tab_strip_action_container_) {
-    tab_strip_action_container_->UpdateButtonBorders(border_insets);
-  }
-  if (combo_button_) {
-    UpdateBorderInsetsIfNeeded(combo_button_, border_insets);
-  }
   if (new_tab_button_) {
     UpdateBorderInsetsIfNeeded(new_tab_button_, border_insets);
   }
@@ -687,18 +601,6 @@ void HorizontalTabStripRegionViewOld::UpdateTabStripMargin() {
     unfocus_button_->SetProperty(views::kViewIgnoredByLayoutKey, true);
     current_leading_width +=
         unfocus_button_->GetPreferredSize().width() +
-        GetLayoutConstant(LayoutConstant::kTabStripPadding);
-  }
-
-  if (combo_button_ && ((combo_button_->start_button() &&
-                         combo_button_->start_button()->GetVisible()) ||
-                        (combo_button_->end_button() &&
-                         combo_button_->end_button()->GetVisible()))) {
-    combo_button_->SetPaintToLayer();
-    combo_button_->layer()->SetFillsBoundsOpaquely(false);
-    combo_button_->SetProperty(views::kViewIgnoredByLayoutKey, true);
-    current_leading_width +=
-        combo_button_->GetPreferredSize().width() +
         GetLayoutConstant(LayoutConstant::kTabStripPadding);
   }
 
@@ -760,11 +662,7 @@ HorizontalTabStripRegionViewNew::HorizontalTabStripRegionViewNew(
           browser_view,
           BrowserActions::From(browser_view->browser())->root_action_item(),
           TabStripOrientation::kHorizontal),
-      action_view_controller_(std::make_unique<views::ActionViewController>()),
-      subscription_(
-          ui::TouchUiController::Get()->RegisterCallback(base::BindRepeating(
-              &HorizontalTabStripRegionViewNew::UpdateButtonBorders,
-              base::Unretained(this)))) {
+      action_view_controller_(std::make_unique<views::ActionViewController>()) {
   views::SetCascadingColorProviderColor(
       this, views::kCascadingBackgroundColor,
       kColorTabBackgroundInactiveFrameInactive);
@@ -774,23 +672,7 @@ HorizontalTabStripRegionViewNew::HorizontalTabStripRegionViewNew(
 
   BrowserWindowInterface* const browser = browser_view->browser();
 
-  std::unique_ptr<TabStripActionContainer> tab_strip_action_container;
-  if (browser &&
-      (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL)) {
-    combo_button_ = AddChildView(std::make_unique<TabStripComboButton>(
-        browser, TabStripComboButton::Context::kHorizontalTabStrip));
-    combo_button_->SetProperty(views::kCrossAxisAlignmentKey,
-                               views::LayoutAlignment::kCenter);
-
-    if (glic::GlicEnabling::IsProfileEligible(browser_view->GetProfile())) {
-      tab_strip_action_container =
-          std::make_unique<TabStripActionContainer>(browser);
-      tab_strip_action_container->SetProperty(views::kCrossAxisAlignmentKey,
-                                              views::LayoutAlignment::kStart);
-    }
-  }
-
-  if (browser && ShouldShowNewTabButton(browser)) {
+  if (browser) {
     auto new_tab_button = std::make_unique<shared::NewTabButton>(
         browser, TabStripControlButton::kButtonSize.width(),
         TabStripControlButton::kIconSize,
@@ -810,22 +692,9 @@ HorizontalTabStripRegionViewNew::HorizontalTabStripRegionViewNew(
           .WithOrder(3));
 
   SetProperty(views::kElementIdentifierKey, kTabStripRegionElementId);
-
-  if (tab_strip_action_container) {
-    tab_strip_action_container_ =
-        AddChildView(std::move(tab_strip_action_container));
-  }
-
-  UpdateButtonBorders();
 }
 
 HorizontalTabStripRegionViewNew::~HorizontalTabStripRegionViewNew() {
-  if (tab_strip_action_container_) {
-    RemoveChildViewT(std::exchange(tab_strip_action_container_, nullptr));
-  }
-  if (combo_button_) {
-    RemoveChildViewT(std::exchange(combo_button_, nullptr));
-  }
   if (new_tab_button_) {
     RemoveChildViewT(std::exchange(new_tab_button_, nullptr));
   }
@@ -834,9 +703,6 @@ HorizontalTabStripRegionViewNew::~HorizontalTabStripRegionViewNew() {
 bool HorizontalTabStripRegionViewNew::IsPositionInWindowCaption(
     const gfx::Point& point) {
   if (new_tab_button_ && IsHitInView(new_tab_button_, point)) {
-    return false;
-  }
-  if (combo_button_ && IsHitInView(combo_button_, point)) {
     return false;
   }
   if (tab_strip_view() && IsHitInView(tab_strip_view(), point)) {
@@ -861,14 +727,8 @@ views::View::Views HorizontalTabStripRegionViewNew::GetChildrenInZOrder() {
   if (new_tab_button_) {
     children.emplace_back(new_tab_button_.get());
   }
-  if (combo_button_) {
-    children.emplace_back(combo_button_.get());
-  }
   if (reserved_grab_handle_space_) {
     children.emplace_back(reserved_grab_handle_space_.get());
-  }
-  if (tab_strip_action_container_) {
-    children.emplace_back(tab_strip_action_container_.get());
   }
   return children;
 }
@@ -983,25 +843,7 @@ gfx::Point HorizontalTabStripRegionViewNew::GetLinkDropArrowPosition(
 }
 
 void HorizontalTabStripRegionViewNew::OnTabStripViewSet() {
-  const size_t index = combo_button_ ? 1 : 0;
-  ReorderChildView(tab_strip_view(), index);
-}
-
-void HorizontalTabStripRegionViewNew::UpdateButtonBorders() {
-  if (!tab_strip_action_container_) {
-    return;
-  }
-  const int extra_vertical_space =
-      GetLayoutConstant(LayoutConstant::kTabStripHeight) -
-      GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap) -
-      TabStripControlButton::kButtonSize.height();
-  const int top_inset = extra_vertical_space / 2;
-  const int bottom_inset =
-      extra_vertical_space - top_inset +
-      GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap);
-
-  const auto border_insets = gfx::Insets::TLBR(top_inset, 0, bottom_inset, 0);
-  tab_strip_action_container_->UpdateButtonBorders(border_insets);
+  ReorderChildView(tab_strip_view(), 0);
 }
 
 BEGIN_METADATA(HorizontalTabStripRegionViewNew)

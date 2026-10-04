@@ -7,8 +7,6 @@
 #include "base/time/default_clock.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -172,17 +170,6 @@ NoCriticalNoticeShowingPrecondition::~NoCriticalNoticeShowingPrecondition() =
 user_education::FeaturePromoResult
 NoCriticalNoticeShowingPrecondition::CheckPrecondition(
     user_education::UnownedTypedDataCollection&) const {
-  // Turn off IPH while a required search engine choice dialog is visible or
-  // pending.
-  SearchEngineChoiceDialogService* const search_engine_choice_dialog_service =
-      SearchEngineChoiceDialogServiceFactory::GetForProfile(
-          browser_view_->GetProfile());
-  if (search_engine_choice_dialog_service &&
-      search_engine_choice_dialog_service->HasPendingDialog(
-          *browser_view_->browser())) {
-    return user_education::FeaturePromoResult::kBlockedByUi;
-  }
-
   return user_education::FeaturePromoResult::Success();
 }
 

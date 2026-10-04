@@ -19,7 +19,6 @@ class PageInfoNavigationHandler {
   virtual void OpenSecurityPage() = 0;
   virtual void OpenPermissionPage(ContentSettingsType type) = 0;
   virtual void OpenCookiesPage() = 0;
-  virtual void OpenMerchantTrustPage() = 0;
   virtual void CloseBubble() = 0;
 };
 

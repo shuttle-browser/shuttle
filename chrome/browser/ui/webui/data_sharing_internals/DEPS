@@ -1,3 +1,0 @@
-include_rules = [
-    "+components/data_sharing/data_sharing_internals",
-]

@@ -23,7 +23,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/default_clock.h"
 #include "base/time/time.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/critical_actions/critical_action_factory.h"
 #include "chrome/browser/critical_actions/critical_action_ui_utils.h"
@@ -41,9 +40,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
@@ -52,8 +48,6 @@
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/critical_actions/core/browser/critical_action_service.h"
 #include "components/critical_actions/core/browser/critical_action_types.h"
 #include "components/critical_actions/core/browser/features.h"
@@ -64,7 +58,6 @@
 #include "components/history_clusters/core/config.h"
 #include "components/history_clusters/core/features.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
@@ -87,7 +80,6 @@
 #include "ui/base/l10n/time_format.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
 
-using bookmarks::BookmarkModel;
 using history::BrowsingHistoryService;
 using history::HistoryService;
 using history::WebHistoryService;
@@ -239,7 +231,6 @@ history::mojom::FilteringBehavior FilteringBehaviorToMojom(
 // Converts `entry` to a history::mojom::QueryResult to be owned by the caller.
 history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     const BrowsingHistoryService::HistoryEntry& entry,
-    BookmarkModel* bookmark_model,
     Profile& profile,
     const syncer::DeviceInfoTracker* tracker,
     base::Clock* clock) {
@@ -341,7 +332,7 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
   result_mojom->date_time_of_day = base::UTF16ToUTF8(date_time_of_day);
   result_mojom->date_relative_day = base::UTF16ToUTF8(date_relative_day);
   result_mojom->snippet = base::UTF16ToUTF8(snippet_string);
-  result_mojom->starred = bookmark_model->IsBookmarked(entry.url);
+  result_mojom->starred = false;
   result_mojom->blocked_visit = is_blocked_visit;
   result_mojom->is_url_in_remote_user_data = IsEntryInRemoteUserData(entry);
   result_mojom->remote_icon_url_for_uma = entry.remote_icon_url_for_uma.spec();
@@ -448,45 +439,6 @@ void BrowsingHistoryHandler::SetPage(
     std::move(deferred_callback).Run();
   }
   deferred_callbacks_.clear();
-
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile_,
-                                        /* create_if_necessary = */ true);
-  if (!hats_service) {
-    return;
-  }
-
-  // Experiment group HaTS survey should trigger if the HaTS experiment group
-  // feature is enabled and any of the history improvement features is enabled.
-  // Check the HaTS feature last, so that clients are only counted as active if
-  // one of the other feature is enabled.
-  if ((history::IsBrowsingHistoryActorIntegrationM3Enabled() ||
-       base::FeatureList::IsEnabled(
-           history::kBrowsingHistorySimilarVisitsGrouping)) &&
-      base::FeatureList::IsEnabled(
-          features::kHappinessTrackingSurveysForDesktopHistoryPageExperiment)) {
-    hats_service->LaunchDelayedSurveyForWebContents(
-        kHatsSurveyTriggerHistoryPageExperiment, web_contents_,
-        features::kHappinessTrackingSurveysForDesktopHistoryPageExperimentTime
-            .Get()
-            .InMilliseconds());
-  }
-
-  // Control group HaTS survey should trigger if the HaTS control group feature
-  // is enabled and none of the history improvement features is enabled.
-  // Check the HaTS feature last, so that clients are only counted as active if
-  // all of the other features are disabled.
-  if (!history::IsBrowsingHistoryActorIntegrationM3Enabled() &&
-      !base::FeatureList::IsEnabled(
-          history::kBrowsingHistorySimilarVisitsGrouping) &&
-      base::FeatureList::IsEnabled(
-          features::kHappinessTrackingSurveysForDesktopHistoryPageControl)) {
-    hats_service->LaunchDelayedSurveyForWebContents(
-        kHatsSurveyTriggerHistoryPageControl, web_contents_,
-        features::kHappinessTrackingSurveysForDesktopHistoryPageControlTime
-            .Get()
-            .InMilliseconds());
-  }
 }
 
 void BrowsingHistoryHandler::ShowSidePanelUI() {
@@ -770,10 +722,7 @@ void BrowsingHistoryHandler::
 }
 #endif
 
-void BrowsingHistoryHandler::RemoveBookmark(const std::string& url) {
-  BookmarkModel* model = BookmarkModelFactory::GetForBrowserContext(profile_);
-  bookmarks::RemoveAllBookmarks(model, GURL(url), FROM_HERE);
-}
+void BrowsingHistoryHandler::RemoveBookmark(const std::string& url) {}
 //
 void BrowsingHistoryHandler::SetLastSelectedTab(const int last_tab) {
   profile_->GetPrefs()->SetInteger(history_clusters::prefs::kLastSelectedTab,
@@ -849,9 +798,6 @@ void BrowsingHistoryHandler::HandleQueryResults(
     query_timer_.reset();
   }
 
-  BookmarkModel* bookmark_model =
-      BookmarkModelFactory::GetForBrowserContext(profile_);
-
   const syncer::DeviceInfoTracker* tracker =
       DeviceInfoSyncServiceFactory::GetForProfile(profile_)
           ->GetDeviceInfoTracker();
@@ -882,7 +828,7 @@ void BrowsingHistoryHandler::HandleQueryResults(
   std::vector<history::mojom::HistoryEntryPtr> results_mojom;
   for (const BrowsingHistoryService::HistoryEntry& entry : results) {
     history::mojom::HistoryEntryPtr entry_mojom =
-        HistoryEntryToMojom(entry, bookmark_model, *profile_, tracker, clock_);
+        HistoryEntryToMojom(entry, *profile_, tracker, clock_);
 
     if (entry.is_actor_visit &&
         base::FeatureList::IsEnabled(

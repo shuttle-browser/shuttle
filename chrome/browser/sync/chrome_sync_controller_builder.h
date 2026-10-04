@@ -49,9 +49,6 @@ class ExtensionSyncService;
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 class ThemeService;
 
-namespace web_app {
-class WebAppProvider;
-}  // namespace web_app
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)
@@ -125,7 +122,6 @@ class ChromeSyncControllerBuilder {
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   void SetThemeService(ThemeService* theme_service);
-  void SetWebAppProvider(web_app::WebAppProvider* web_app_provider);
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)
@@ -207,7 +203,6 @@ class ChromeSyncControllerBuilder {
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   SafeOptional<raw_ptr<ThemeService>> theme_service_;
-  SafeOptional<raw_ptr<web_app::WebAppProvider>> web_app_provider_;
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)

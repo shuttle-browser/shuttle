@@ -9,7 +9,6 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/memory/scoped_refptr.h"
-#include "build/blink_buildflags.h"
 #include "build/build_config.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/sync/model/syncable_service.h"
@@ -18,12 +17,6 @@
 class KeywordWebDataService;
 class TokenWebData;
 class WebDatabaseService;
-
-#if BUILDFLAG(USE_BLINK)
-namespace payments {
-class WebPaymentsWebDataService;
-}  // namespace payments
-#endif
 
 namespace autofill {
 class AutofillWebDataService;
@@ -85,11 +78,6 @@ class WebDataServiceWrapper : public KeyedService {
   scoped_refptr<autofill::AutofillWebDataService> GetAccountAutofillWebData();
   scoped_refptr<KeywordWebDataService> GetKeywordWebData();
   scoped_refptr<TokenWebData> GetTokenWebData();
-#if BUILDFLAG(USE_BLINK)
-  // Virtual for testing.
-  virtual scoped_refptr<payments::WebPaymentsWebDataService>
-  GetWebPaymentsWebData();
-#endif
 
  protected:
   // For testing.
@@ -103,10 +91,6 @@ class WebDataServiceWrapper : public KeyedService {
   scoped_refptr<autofill::AutofillWebDataService> account_autofill_web_data_;
   scoped_refptr<KeywordWebDataService> keyword_web_data_;
   scoped_refptr<TokenWebData> token_web_data_;
-
-#if BUILDFLAG(USE_BLINK)
-  scoped_refptr<payments::WebPaymentsWebDataService> web_payments_web_data_;
-#endif
 };
 
 #endif  // COMPONENTS_WEBDATA_SERVICES_WEB_DATA_SERVICE_WRAPPER_H_

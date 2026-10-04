@@ -55,7 +55,6 @@ source_set("impl") {
       "//chrome/browser/ui/views/accessibility",
       "//chrome/browser/ui/views/digital_credentials",
       "//components/constrained_window",
-      "//components/qr_code_generator:bitmap_generator",
       "//device/fido",
       "//ui/base",
       "//ui/views",

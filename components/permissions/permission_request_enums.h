@@ -96,6 +96,16 @@ enum LanguageDetectionStatus {
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/permissions/enums.xml:LanguageDetectionStatus)
 
+// The status of a text embeddings generation attempt for the AIv4 workflow.
+// Mirrors the values of the former passage_embeddings::ComputeEmbeddingsStatus.
+enum class ComputeEmbeddingsStatus {
+  kSuccess = 0,
+  kModelUnavailable = 1,
+  kExecutionFailure = 2,
+  kCanceled = 3,
+  kMaxValue = kCanceled,
+};
+
 // Used for UMA histograms to record model execution stats for the different
 // models we use for a permission prediction.
 // LINT.IfChange(PredictionModelType)

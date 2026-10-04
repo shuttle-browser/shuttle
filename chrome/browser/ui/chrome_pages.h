@@ -13,7 +13,6 @@
 #include "base/values.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
-#include "chrome/browser/feedback/public/feedback_source.h"
 #include "chrome/browser/ui/user_education/show_promo_in_page.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/signin/public/base/signin_buildflags.h"
@@ -35,11 +34,6 @@ namespace signin {
 enum class ConsentLevel;
 }  // namespace signin
 
-#if !BUILDFLAG(IS_ANDROID)
-namespace web_app {
-enum class AppSettingsPageEntryPoint;
-}  // namespace web_app
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 class BrowserWindowInterface;
 class Profile;
@@ -69,9 +63,6 @@ enum class HelpSource {
   kWebUSD,
 };
 
-void ShowBookmarkManager(BrowserWindowInterface* browser);
-void ShowBookmarkManagerForNode(BrowserWindowInterface* browser,
-                                int64_t node_id);
 void ShowHistory(BrowserWindowInterface* browser, const std::string& host_name);
 void ShowHistory(BrowserWindowInterface* browser);
 void ShowHistorySubPage(BrowserWindowInterface* browser,
@@ -153,23 +144,11 @@ void ShowAllSitesSettingsFilteredByRwsOwner(
     BrowserWindowInterface* browser,
     const std::string& rws_owner_host_name);
 
-// Shows all recent shared tab group activities.
-void ShowSharedTabGroupActivity(Profile* profile);
 
 // Shows the enterprise management info page in a browser tab.
 void ShowEnterpriseManagementPageInTabbedBrowser(
     BrowserWindowInterface* browser);
 
-#if !BUILDFLAG(IS_ANDROID)
-// Show chrome://app-settings/<app-id> page on desktop, or OS Settings on
-// ChromeOS.
-void ShowWebAppSettings(BrowserWindowInterface* browser,
-                        const std::string& app_id,
-                        web_app::AppSettingsPageEntryPoint entry_point);
-void ShowWebAppSettings(Profile* profile,
-                        const std::string& app_id,
-                        web_app::AppSettingsPageEntryPoint entry_point);
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 }  // namespace chrome
 

@@ -38,13 +38,11 @@
 #include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
-#include "chrome/browser/ui/views/profiles/first_run_flow_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_management_flow_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_management_flow_controller_impl.h"
 #include "chrome/browser/ui/views/profiles/profile_management_types.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_feature_promo_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_flow_controller.h"
-#include "chrome/browser/ui/views/profiles/profile_picker_glic_flow_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_omnibox_everywhere_flow_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_toolbar.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_utils.h"
@@ -712,28 +710,6 @@ void ProfilePickerView::FinishInit() {
 std::unique_ptr<ProfileManagementFlowController>
 ProfilePickerView::CreateFlowController(Profile* picker_profile,
                                         ClearHostClosure clear_host_callback) {
-  if (params_.entry_point() == ProfilePicker::EntryPoint::kFirstRun) {
-    auto first_run_exited_callback =
-        base::BindOnce(&ProfilePicker::Params::NotifyFirstRunExited,
-                       // Unretained ok because the controller is owned
-                       // by this through `initialized_steps_`.
-                       base::Unretained(&params_));
-    return std::make_unique<FirstRunFlowController>(
-        /*host=*/this, std::move(clear_host_callback), picker_profile,
-        std::move(first_run_exited_callback));
-  }
-
-  if (params_.entry_point() == ProfilePicker::EntryPoint::kGlicManager) {
-    auto profile_picked_callback =
-        base::BindOnce(&ProfilePicker::Params::NotifyProfilePicked,
-                       // Unretained ok because the controller is owned
-                       // by this through `initialized_steps_`.
-                       base::Unretained(&params_));
-    return std::make_unique<ProfilePickerGlicFlowController>(
-        /*host=*/this, std::move(clear_host_callback),
-        std::move(profile_picked_callback));
-  }
-
   if (params_.entry_point() == ProfilePicker::EntryPoint::kOmniboxEverywhere) {
     auto profile_picked_callback =
         base::BindOnce(&ProfilePicker::Params::NotifyProfilePicked,
@@ -743,7 +719,8 @@ ProfilePickerView::CreateFlowController(Profile* picker_profile,
         std::move(profile_picked_callback));
   }
 
-  DCHECK(IsClassicProfilePickerFlow(params_));
+  // The first-run and Glic flows were removed from this build; they fall back
+  // to the classic profile picker flow.
   return std::make_unique<ProfilePickerFlowController>(
       /*host=*/this, std::move(clear_host_callback), params_.entry_point(),
       params_.on_select_profile_target_url(), params_.initial_email());

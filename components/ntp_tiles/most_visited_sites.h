@@ -34,7 +34,6 @@
 #include "components/ntp_tiles/tile_source.h"
 #include "components/ntp_tiles/tile_type.h"
 #include "components/supervised_user/core/common/buildflags.h"
-#include "components/webapps/common/constants.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)

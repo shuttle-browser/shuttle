@@ -554,7 +554,6 @@ static_library("test_support") {
     "//build/config/linux/dbus:buildflags",
     "//cc:test_support",
     "//cc/slim",
-    "//components/breadcrumbs/core",
     "//components/cbor",
     "//components/input",
     "//components/input:test_support",
@@ -2084,11 +2083,6 @@ test("content_browsertests") {
 
   if (enable_plugins) {
     sources += [ "../browser/plugin_service_impl_browsertest.cc" ]
-  }
-
-  if (enable_screen_ai_service) {
-    sources += [ "../renderer/accessibility/annotations/ax_main_node_annotator_browsertest.cc" ]
-    deps += [ "//services/screen_ai" ]
   }
 
   if (enable_library_cdms) {

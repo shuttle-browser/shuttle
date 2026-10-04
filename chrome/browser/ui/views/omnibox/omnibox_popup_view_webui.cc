@@ -133,14 +133,6 @@ void OmniboxPopupViewWebUI::UpdatePopupAppearance() {
             delta);
       }
     }
-
-    auto* controller = presenter()
-                           ->GetWebUIContent()
-                           ->contents_wrapper()
-                           ->GetWebUIController();
-    if (auto* handler = controller ? controller->omnibox_handler() : nullptr) {
-      handler->SetAimButtonVisible(omnibox_view_->AimButtonVisible());
-    }
   }
 }
 
@@ -163,7 +155,6 @@ void OmniboxPopupViewWebUI::StepSelection(
   auto* controller =
       presenter()->GetWebUIContent()->contents_wrapper()->GetWebUIController();
   if (auto* handler = controller ? controller->omnibox_handler() : nullptr) {
-    handler->SetAimButtonVisible(omnibox_view_->AimButtonVisible());
     if (!omnibox::ShouldUseWebUIOmniboxFullHandler()) {
       // Full webui omnibox avoids this code path by intentionally excluding
       // the edit model. Use of downcast here seems better than complicating

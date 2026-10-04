@@ -32,7 +32,6 @@
 #include "components/omnibox/browser/autocomplete_match_classification.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
-#include "components/omnibox/browser/bookmark_provider.h"
 #include "components/omnibox/browser/history_quick_provider.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/omnibox_triggered_feature_service.h"
@@ -48,8 +47,6 @@ namespace {
 // the `Omnibox.HistoryFuzzy.MatchConversion` entry in histograms.xml.
 const char kMetricMatchConversionHistoryQuick[] =
     "Omnibox.HistoryFuzzy.MatchConversion.HistoryQuick";
-const char kMetricMatchConversionBookmark[] =
-    "Omnibox.HistoryFuzzy.MatchConversion.Bookmark";
 
 // Histogram name for time spent on the fuzzy search portion of provider time.
 const char kMetricSearchDuration[] = "Omnibox.HistoryFuzzy.SearchDuration";
@@ -575,10 +572,7 @@ void HistoryFuzzyProvider::DoAutocomplete() {
     // Use of `scoped_refptr` is required here because destructor is private.
     scoped_refptr<HistoryQuickProvider> history_quick_provider =
         new HistoryQuickProvider(client());
-    scoped_refptr<BookmarkProvider> bookmark_provider =
-        new BookmarkProvider(client());
     int count_history_quick = 0;
-    int count_bookmark = 0;
     for (const auto& correction : corrections) {
       std::u16string fixed = text;
       correction.ApplyTo(fixed);
@@ -595,13 +589,9 @@ void HistoryFuzzyProvider::DoAutocomplete() {
 
       history_quick_provider->Start(corrected_input, false);
       DCHECK(history_quick_provider->done());
-      bookmark_provider->Start(corrected_input, false);
-      DCHECK(bookmark_provider->done());
 
       count_history_quick +=
           AddConvertedMatches(history_quick_provider->matches(), penalty);
-      count_bookmark +=
-          AddConvertedMatches(bookmark_provider->matches(), penalty);
     }
     if (matches_.size() > provider_max_matches_) {
       // When too many matches are generated, take only the most relevant
@@ -610,14 +600,9 @@ void HistoryFuzzyProvider::DoAutocomplete() {
                         matches_.begin() + provider_max_matches_,
                         matches_.end(), AutocompleteMatch::MoreRelevant);
       for (size_t i = provider_max_matches_; i < matches_.size(); i++) {
-        DCHECK(matches_[i].provider.get() == history_quick_provider ||
-               matches_[i].provider.get() == bookmark_provider)
+        DCHECK(matches_[i].provider.get() == history_quick_provider)
             << matches_[i].provider->GetName();
-        if (matches_[i].provider.get() == history_quick_provider) {
-          count_history_quick--;
-        } else {
-          count_bookmark--;
-        }
+        count_history_quick--;
       }
       matches_.resize(provider_max_matches_);
     }
@@ -628,7 +613,6 @@ void HistoryFuzzyProvider::DoAutocomplete() {
 
     RecordMatchConversion(kMetricMatchConversionHistoryQuick,
                           count_history_quick);
-    RecordMatchConversion(kMetricMatchConversionBookmark, count_bookmark);
   }
 }
 

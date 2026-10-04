@@ -168,10 +168,6 @@ FileSystemDelegate* ExtensionsAPIClient::GetFileSystemDelegate() {
   return nullptr;
 }
 
-FeedbackPrivateDelegate* ExtensionsAPIClient::GetFeedbackPrivateDelegate() {
-  return nullptr;
-}
-
 AutomationInternalApiDelegate*
 ExtensionsAPIClient::GetAutomationInternalApiDelegate() {
   return nullptr;

@@ -6,7 +6,7 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "base/timer/elapsed_timer.h"
-#include "components/translate/core/language_detection/language_detection_model.h"
+#include "components/language_detection/core/language_detection_model.h"
 #include "services/on_device_model/public/mojom/on_device_model.mojom.h"
 #include "services/on_device_model/public/mojom/on_device_model_service.mojom.h"
 #include "services/on_device_model/safety/bert_safety_op_resolver.h"
@@ -69,12 +69,9 @@ bool BertSafetyModel::InitTextSafetyModel(base::File model) {
   return static_cast<bool>(loaded_bert_model_);
 }
 bool BertSafetyModel::InitLanguageDetection(base::File model) {
-  auto tflite_model =
+  language_detector_ =
       std::make_unique<language_detection::LanguageDetectionModel>();
-  tflite_model->UpdateWithFile(std::move(model));
-
-  language_detector_ = std::make_unique<translate::LanguageDetectionModel>(
-      std::move(tflite_model));
+  language_detector_->UpdateWithFile(std::move(model));
   return language_detector_->IsAvailable();
 }
 
@@ -132,7 +129,7 @@ mojom::LanguageDetectionResultPtr BertSafetyModel::DetectLanguage(
     return nullptr;
   }
   language_detection::Prediction prediction =
-      PredictLanguage(language_detector_->tflite_model(), text);
+      PredictLanguage(*language_detector_, text);
   return mojom::LanguageDetectionResult::New(prediction.language,
                                              prediction.score);
 }

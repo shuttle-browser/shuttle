@@ -47,21 +47,6 @@ export interface ProtocolEntry {
   protocol_display_name: string;
 }
 
-export interface AppHandlerEntry {
-  host: string;
-  protocol: string;
-  protocol_display_name: string;
-  spec: string;
-  app_id: string;
-  app_name?: string;
-}
-
-export interface AppProtocolEntry {
-  handlers: AppHandlerEntry[];
-  protocol: string;
-  protocol_display_name: string;
-}
-
 export interface ProtocolHandlersElement {
   $: {
     defaultButton: HTMLButtonElement,
@@ -86,34 +71,6 @@ export class ProtocolHandlersElement extends ProtocolHandlersElementBase {
        * Array of protocols and their handlers.
        */
       protocols: Array,
-
-      /**
-       * Array of allowed app protocols and their handlers.
-       */
-      appAllowedProtocols: {
-        type: Array,
-        value() {
-          return [];
-        },
-      },
-
-      /**
-       * Array of disallowed app protocols and their handlers.
-       */
-      appDisallowedProtocols: {
-        type: Array,
-        value() {
-          return [];
-        },
-      },
-
-      /**
-       * Used to determine if the apps title should be shown.
-       */
-      showAppsProtocolHandlersTitle_: {
-        type: Boolean,
-        value: false,
-      },
 
       /**
        * The targeted object for menu operations.
@@ -143,9 +100,6 @@ export class ProtocolHandlersElement extends ProtocolHandlersElementBase {
   }
 
   declare protocols: ProtocolEntry[];
-  declare appAllowedProtocols: AppProtocolEntry[];
-  declare appDisallowedProtocols: AppProtocolEntry[];
-  declare private showAppsProtocolHandlersTitle_: boolean;
   declare private actionMenuModel_: HandlerEntry|null;
   declare toggleOffLabel: string;
   declare toggleOnLabel: string;
@@ -167,15 +121,6 @@ export class ProtocolHandlersElement extends ProtocolHandlersElementBase {
         (ignoredProtocols: HandlerEntry[]) =>
             this.setIgnoredProtocolHandlers_(ignoredProtocols));
     this.browserProxy.observeProtocolHandlers();
-
-    // Web App Observer
-    this.addWebUiListener(
-        'setAppAllowedProtocolHandlers',
-        this.setAppAllowedProtocolHandlers_.bind(this));
-    this.addWebUiListener(
-        'setAppDisallowedProtocolHandlers',
-        this.setAppDisallowedProtocolHandlers_.bind(this));
-    this.browserProxy.observeAppProtocolHandlers();
   }
 
   /**
@@ -209,36 +154,6 @@ export class ProtocolHandlersElement extends ProtocolHandlersElementBase {
    */
   private setIgnoredProtocolHandlers_(ignoredProtocols: HandlerEntry[]) {
     this.ignoredProtocols = ignoredProtocols;
-  }
-
-  /**
-   * Updates the list of allowed app protocol handlers.
-   * @param appAllowedProtocols The new allowed app protocol handler list.
-   */
-  private setAppAllowedProtocolHandlers_(appAllowedProtocols:
-                                             AppProtocolEntry[]) {
-    this.appAllowedProtocols = appAllowedProtocols;
-    this.updateShowAppsProtocolHandlersTitle_();
-  }
-
-  /**
-   * Updates the list of disallowed app protocol handlers.
-   * @param appDisallowedProtocols The new disallowed app protocol
-   *     handler list.
-   */
-  private setAppDisallowedProtocolHandlers_(appDisallowedProtocols:
-                                                AppProtocolEntry[]) {
-    this.appDisallowedProtocols = appDisallowedProtocols;
-    this.updateShowAppsProtocolHandlersTitle_();
-  }
-
-  /**
-   * Determines if the app header should be shown.
-   */
-  private updateShowAppsProtocolHandlersTitle_() {
-    this.showAppsProtocolHandlersTitle_ =
-        (this.appAllowedProtocols && this.appAllowedProtocols.length > 0) ||
-        (this.appDisallowedProtocols && this.appDisallowedProtocols.length > 0);
   }
 
   /**
@@ -276,26 +191,6 @@ export class ProtocolHandlersElement extends ProtocolHandlersElementBase {
   }
 
   /**
-   * Handler for removing web app protocol handlers that were allowed.
-   */
-  private onRemoveAppAllowedHandlerButtonClick_(
-      event: DomRepeatEvent<AppHandlerEntry>) {
-    const item = event.model.item;
-    this.browserProxy.removeAppAllowedHandler(
-        item.protocol, item.spec, item.app_id);
-  }
-
-  /**
-   * Handler for removing web app protocol handlers that were disallowed.
-   */
-  private onRemoveAppDisallowedHandlerButtonClick_(
-      event: DomRepeatEvent<AppHandlerEntry>) {
-    const item = event.model.item;
-    this.browserProxy.removeAppDisallowedHandler(
-        item.protocol, item.spec, item.app_id);
-  }
-
-  /**
    * Handler for removing handlers that were blocked
    */
   private onRemoveIgnored_(event: DomRepeatEvent<HandlerEntry>) {
@@ -310,14 +205,6 @@ export class ProtocolHandlersElement extends ProtocolHandlersElementBase {
     this.actionMenuModel_ = event.model.item;
     this.shadowRoot!.querySelector('cr-action-menu')!.showAt(
         event.target as HTMLElement);
-  }
-
-  private getNameCssClass_(item: AppHandlerEntry): string {
-    return item.app_name ? '' : 'url-directionality';
-  }
-
-  private getNameText_(item: AppHandlerEntry): string {
-    return item.app_name || item.host;
   }
 
   // SettingsViewMixin implementation.

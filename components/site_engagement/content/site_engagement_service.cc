@@ -35,8 +35,6 @@
 #include "components/site_engagement/content/site_engagement_score.h"
 #include "components/site_engagement/core/pref_names.h"
 #include "components/user_prefs/user_prefs.h"
-#include "components/webapps/browser/webapps_client.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -335,7 +333,7 @@ void SiteEngagementService::ResetBaseScoreForURL(const GURL& url,
 void SiteEngagementService::SetLastShortcutLaunchTime(
     content::WebContents* web_contents,
 #if !BUILDFLAG(IS_ANDROID)
-    const webapps::AppId& app_id,
+    const std::string& app_id,
 #endif
     const GURL& url) {
   double old_score = GetScore(url);
@@ -347,7 +345,7 @@ void SiteEngagementService::SetLastShortcutLaunchTime(
   score.set_last_shortcut_launch_time(now);
   score.Commit();
 
-  std::optional<webapps::AppId> web_app_id;
+  std::optional<std::string> web_app_id;
 #if !BUILDFLAG(IS_ANDROID)
   CHECK(!app_id.empty());
   web_app_id = app_id;
@@ -668,14 +666,10 @@ void SiteEngagementService::OnEngagementEvent(
     const GURL& url,
     EngagementType type,
     double old_score,
-    const std::optional<webapps::AppId>& app_id_override) {
+    const std::optional<std::string>& app_id_override) {
   SiteEngagementMetrics::RecordEngagement(type);
 
-  std::optional<webapps::AppId> app_id = app_id_override;
-  if (!app_id && web_contents && webapps::WebappsClient::Get()) {
-    app_id =
-        webapps::WebappsClient::Get()->GetAppIdForWebContents(web_contents);
-  }
+  std::optional<std::string> app_id = app_id_override;
   // TODO(crbug.com/358168777): Possibly look up the app_id from the url
   // for the notification use-case, if the notification system doesn't have the
   // app_id to provide to this system.

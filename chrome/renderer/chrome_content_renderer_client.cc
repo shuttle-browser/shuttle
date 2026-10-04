@@ -79,7 +79,6 @@
 #include "components/autofill/content/renderer/password_autofill_agent.h"
 #include "components/autofill/content/renderer/password_generation_agent.h"
 #include "components/autofill/core/common/autofill_features.h"
-#include "components/commerce/content/renderer/commerce_web_extractor.h"
 #include "components/content_capture/common/content_capture_features.h"
 #include "components/content_capture/renderer/content_capture_sender.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
@@ -92,7 +91,6 @@
 #include "components/dom_distiller/core/url_constants.h"
 #include "components/error_page/common/error.h"
 #include "components/error_page/common/localized_error.h"
-#include "components/feed/feed_feature_list.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/heap_profiling/in_process/heap_profiler_controller.h"
@@ -127,10 +125,7 @@
 #include "components/variations/variations_switches.h"
 #include "components/version_info/version_info.h"
 #include "components/visitedlink/renderer/visitedlink_reader.h"
-#include "components/wallet/content/renderer/image_extractor.h"
-#include "components/wallet/core/common/wallet_features.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
-#include "components/webapps/renderer/web_page_metadata_agent.h"
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
@@ -189,22 +184,16 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/renderer/sandbox_status_extension_android.h"
 #include "chrome/renderer/wallet/boarding_pass_extractor.h"
-#include "components/feed/feed_feature_list.h"
 #else
-#include "chrome/renderer/indigo/indigo_agent.h"
-#include "chrome/renderer/indigo/onboarding_agent.h"
 #include "chrome/renderer/password_manager/remote_actor_credential_sharing_extension.h"
 #include "chrome/renderer/searchbox/searchbox.h"
 #include "chrome/renderer/searchbox/searchbox_extension.h"
-#include "components/record_replay/content/renderer/record_replay_agent.h"
-#include "components/record_replay/core/common/record_replay_features.h"
 #include "components/search/ntp_features.h"  // nogncheck
 #endif
 
@@ -455,12 +444,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
   extensions_renderer_client->RenderThreadStarted();
   WebSecurityPolicy::RegisterURLSchemeAsExtension(
       WebString::FromAscii(extensions::kExtensionScheme));
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  WebSecurityPolicy::RegisterURLSchemeAsIsolatedApp(
-      WebString::FromAscii(webapps::kIsolatedAppScheme));
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS)
   WebSecurityPolicy::RegisterURLSchemeAsCodeCacheWithHashing(
       WebString::FromAscii(extensions::kExtensionScheme));
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -492,16 +475,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
   WebSecurityPolicy::RegisterURLSchemeAsFirstPartyWhenTopLevelEmbeddingSecure(
       chrome_scheme);
 
-#if !BUILDFLAG(IS_ANDROID)
-  // TODO(crbug.com/483614998): Granting Lens side panel is a temporary
-  // exception to use SameSite cookies while it migrates to a <webview>
-  // approach. This should not be done for other untrusted WebUI.
-  blink::WebURL chrome_lens_url =
-      GURL(chrome::kChromeUILensUntrustedSidePanelURL);
-  WebSecurityPolicy::RegisterURLAsFirstPartyWhenTopLevelEmbeddingSecure(
-      chrome_lens_url);
-#endif
-
   // chrome-native: is a scheme used for placeholder navigations that allow
   // UIs to be drawn with platform native widgets instead of HTML.  These pages
   // should not be accessible.  No code should be runnable in these pages,
@@ -519,29 +492,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
   // (to help limit the damage that a corrupt page could cause).
   WebString chrome_search_scheme(
       WebString::FromAscii(chrome::kChromeSearchScheme));
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  // IWAs can be enabled by either the feature flag or by enterprise
-  // policy. In either case the kEnableIsolatedWebAppsInRenderer flag is passed
-  // to the renderer process.
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kEnableIsolatedWebAppsInRenderer)) {
-    // isolated-app: is the scheme used for Isolated Web Apps, which are web
-    // applications packaged in Signed Web Bundles.
-    WebString isolated_app_scheme(
-        WebString::FromAscii(webapps::kIsolatedAppScheme));
-    // Resources contained in Isolated Web Apps are HTTP-like and safe to expose
-    // to the fetch API.
-    WebSecurityPolicy::RegisterURLSchemeAsSupportingFetchAPI(
-        isolated_app_scheme);
-    WebSecurityPolicy::RegisterURLSchemeAsAllowingServiceWorkers(
-        isolated_app_scheme);
-    WebSecurityPolicy::RegisterURLSchemeAsAllowedForReferrer(
-        isolated_app_scheme);
-  }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS)
 
   // The Instant process can only display the content but not read it. Other
   // processes can't display it or read it. (see http://crbug.com/40309067 for
@@ -693,9 +643,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
 #endif
   GoogleAccountsPrivateApiExtension::Create(render_frame);
 
-  if (render_frame->IsMainFrame())
-    new webapps::WebPageMetadataAgent(render_frame);
-
   const bool search_result_extractor_enabled =
       render_frame->IsMainFrame() &&
       page_content_annotations::features::ShouldExtractRelatedSearches();
@@ -747,15 +694,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
                       associated_interfaces);
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(
-          record_replay::features::kRecordReplayBase)) {
-    new record_replay::RecordReplayAgent(render_frame, associated_interfaces);
-  }
-  indigo::IndigoAgent::MaybeCreate(render_frame, associated_interfaces);
-  indigo::OnboardingAgent::MaybeCreate(render_frame, associated_interfaces);
-#endif
-
   if (content_capture::features::IsContentCaptureEnabled()) {
     new content_capture::ContentCaptureSender(render_frame,
                                               associated_interfaces);
@@ -803,22 +741,12 @@ void ChromeContentRendererClient::RenderFrameCreated(
   }
 #endif
 
-  if (render_frame->IsMainFrame()) {
-    new commerce::CommerceWebExtractor(render_frame, registry);
-  }
-
 #if BUILDFLAG(IS_ANDROID)
   if (base::FeatureList::IsEnabled(features::kBoardingPassDetector) &&
       render_frame->IsMainFrame()) {
     new wallet::BoardingPassExtractor(render_frame, registry);
   }
 #endif
-
-  if (base::FeatureList::IsEnabled(
-          wallet::features::kWalletablePassDetection) &&
-      render_frame->IsMainFrame()) {
-    wallet::ImageExtractor::Create(render_frame, registry);
-  }
 
 #if !BUILDFLAG(IS_ANDROID)
   if (base::FeatureList::IsEnabled(features::kWebium)) {

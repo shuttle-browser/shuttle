@@ -38,11 +38,6 @@ namespace sync_pb {
 class AutofillValuableSpecifics;
 }
 
-namespace personal_context::proto {
-class Entity;
-class TypedValue;
-}  // namespace personal_context::proto
-
 namespace autofill {
 
 // Entity and attribute types are blueprints for entity and attribute instances.
@@ -59,7 +54,6 @@ struct AutofillFormatString;
 class EntityInstance;
 class EntityInstanceTestApi;
 class EntityTable;
-class WalletPassAccessManagerImpl;
 
 // An attribute instance is a typed string value with additional metadata.
 //
@@ -139,15 +133,6 @@ class AttributeInstance final {
   VerificationStatus GetVerificationStatus(
       std::optional<FieldType> field_type) const;
 
-  // Returns a TypedValue representation of the attribute if available (e.g.,
-  // country code for CountryInfo or calendar date for DateInfo).
-  // If the attribute has no typed representation or is empty/unset, returns a
-  // default-constructed TypedValue whose oneof value is not set. We return a
-  // TypedValue by value (instead of std::optional<TypedValue>) so that
-  // TypedValue can be forward-declared in this header without including the
-  // protobuf header.
-  personal_context::proto::TypedValue GetTypedValue() const;
-
   // Populates the attribute with a value for a specific `type`, according to a
   // given `app_locale`.
   //
@@ -199,13 +184,8 @@ class AttributeInstance final {
    private:
     MarkAsMaskedPasskey() = default;
     friend class EntityTable;
-    friend class WalletPassAccessManagerImpl;
-    friend class FakeWalletPassAccessManager;
     friend std::optional<EntityInstance> CreateEntityInstanceFromSpecifics(
         const sync_pb::AutofillValuableSpecifics&);
-    friend std::optional<EntityInstance> PersonalContextEntityToEntityInstance(
-        const personal_context::proto::Entity&,
-        bool);
   };
   void mark_as_masked(MarkAsMaskedPasskey) { masked_ = true; }
 

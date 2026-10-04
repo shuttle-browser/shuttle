@@ -203,12 +203,10 @@ void HistorySyncOptinService::OnPrimaryAccountChanged(
       required_types = {syncer::UserSelectableType::kTabs};
       error_message_id = IDS_TABS_DISABLED_ERROR_DESCRIPTION;
       break;
+    // Collaboration (shared tab groups) is not part of this build, and all
+    // other access points should not trigger an error.
     case signin_metrics::AccessPoint::kCollaborationJoinTabGroup:
     case signin_metrics::AccessPoint::kCollaborationShareTabGroup:
-      required_types = {syncer::UserSelectableType::kSavedTabGroups};
-      error_message_id = IDS_COLLABORATION_ENTREPRISE_TABS_SYNC_DISABLED_BODY;
-      break;
-    // All other access points should not trigger an error.
     case signin_metrics::AccessPoint::kAvatarBubbleSignInWithSyncPromo:
     case signin_metrics::AccessPoint::kPasswordBubble:
     case signin_metrics::AccessPoint::kAddressBubble:

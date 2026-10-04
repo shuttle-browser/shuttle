@@ -10,7 +10,6 @@
 
 #include "base/i18n/case_conversion.h"
 #include "base/strings/utf_offset_string_conversions.h"
-#include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_match_classification.h"

@@ -29,10 +29,8 @@
 #include "components/history_clusters/core/file_clustering_backend.h"
 #include "components/infobars/content/content_infobar_manager.h"
 #include "components/infobars/core/infobar_delegate.h"
-#include "components/media_router/common/providers/cast/certificate/switches.h"
 #include "components/network_session_configurator/common/network_switches.h"
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
-#include "components/translate/core/common/translate_switches.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "google_apis/gaia/gaia_switches.h"
@@ -98,9 +96,6 @@ const char* const kBadFlags[] = {
     switches::kDisableWebSecurity,
     switches::kSingleProcess,
 
-    // These flags disable or undermine the Same Origin Policy.
-    translate::switches::kTranslateSecurityOrigin,
-
     // These flags undermine HTTPS / connection security.
     switches::kDisableWebRtcEncryption,
     switches::kIgnoreCertificateErrors,
@@ -108,7 +103,6 @@ const char* const kBadFlags[] = {
 
     // These flags change the URLs that handle PII.
     switches::kGaiaUrl,
-    translate::switches::kTranslateScriptURL,
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     // These flags enable extensions running scripts on chrome:// and
@@ -168,17 +162,6 @@ const char* const kBadFlags[] = {
     switches::kDisableHidBlocklist,
 #endif
 
-    // This flag tells Chrome to automatically install an Isolated Web App in
-    // developer mode. The flag should contain the path to an unsigned Web
-    // Bundle containing the IWA. Paths will be resolved relative to the
-    // current working directory.
-    switches::kInstallIsolatedWebAppFromFile,
-
-    // This flag tells Chrome to automatically install an Isolated Web App in
-    // developer mode. The flag should contain an HTTP(S) URL that all of the
-    // app's requests will be proxied to.
-    switches::kInstallIsolatedWebAppFromUrl,
-
     // Allows the specified origin to make Web Authentication API requests on
     // behalf of other origins, if a corresponding Google-internal
     // platform-level enterprise policy is also applied.
@@ -197,10 +180,6 @@ const char* const kBadFlags[] = {
     // in tests and performance benchmarks. Using it could allow faking user
     // interaction across origins.
     switches::kEnableGpuBenchmarking,
-
-    // This flag enables loading a developer-signed certificate for Cast
-    // streaming receivers and should only be used for testing purposes.
-    cast_certificate::switches::kCastDeveloperCertificatePath,
 
     // This flag ignores potential bad mojo messages received in network
     // service process instead of collecting dump about their occurrence.
@@ -222,9 +201,6 @@ const char* const kBadFlags[] = {
 // non-rooted Android devices, so we avoid showing a warning for them.
 static const std::variant<const base::Feature*, const char*>
     kBadFeatureFlagsInAboutFlags[] = {
-        // This feature enables developer mode support for Isolated Web Apps.
-        &features::kIsolatedWebAppDevMode,
-
         // This flag disables site isolation.
         switches::kDisableSiteIsolation,
 

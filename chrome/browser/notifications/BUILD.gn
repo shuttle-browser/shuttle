@@ -50,7 +50,6 @@ source_set("notifications") {
     "//components/keyed_service/core",
     "//components/permissions",
     "//components/prefs",
-    "//components/webapps/common",
     "//content/public/browser",
     "//content/public/common",
     "//extensions/buildflags",
@@ -208,7 +207,6 @@ source_set("impl") {
     "//chrome/browser/safe_browsing",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/exclusive_access",
-    "//chrome/browser/ui/safety_hub",
     "//chrome/browser/updates/announcement_notification",
     "//components/content_settings/browser",
     "//components/content_settings/core/browser",
@@ -242,8 +240,6 @@ source_set("impl") {
       "//chrome/browser/notifications/chime/android",
       "//chrome/browser/notifications/scheduler/public",
       "//chrome/browser/segmentation_platform",
-      "//chrome/browser/tips/core",
-      "//chrome/browser/webapps/installable:android",
       "//components/browser_ui/notifications/android",
     ]
   }
@@ -258,16 +254,12 @@ source_set("impl") {
 
     deps += [
       "//chrome/browser/media/webrtc",
-      "//chrome/browser/sharing",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/web_applications",
-      "//chrome/browser/web_applications/proto",
     ]
 
     if (!is_chromeos) {
-      deps += [ "//chrome/browser/default_browser" ]
     }
   }
 
@@ -283,12 +275,10 @@ source_set("impl") {
     ]
 
     deps += [
-      "//chrome/browser/apps/app_service",
       "//chrome/browser/content_settings",
       "//chrome/browser/extensions",
       "//chrome/browser/extensions/api/notifications",
       "//chrome/browser/favicon",
-      "//chrome/browser/nearby_sharing",
       "//chrome/browser/ui/ash/multi_user",
       "//chromeos/ash/components/browser_context_helper",
       "//ui/message_center",
@@ -320,7 +310,6 @@ source_set("impl") {
 
     deps += [
       "//chrome/browser:child_process_host_flags",
-      "//chrome/browser/apps/app_shim",
       "//chrome/services/mac_notifications",
       "//chrome/services/mac_notifications/public/cpp",
       "//chrome/services/mac_notifications/public/mojom",
@@ -446,6 +435,7 @@ source_set("unit_tests") {
     ":test_support",
     "//base",
     "//base/test:test_support",
+    "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/engagement",
     "//chrome/browser/notifications/scheduler:unit_tests",
     "//chrome/browser/optimization_guide:test_support",
@@ -453,7 +443,9 @@ source_set("unit_tests") {
     "//chrome/test:test_support",
     "//components/content_settings/core/test:test_support",
     "//components/optimization_guide/core:model_execution_test_support",
+    "//components/safe_browsing/content/browser/notification_content_detection",
     "//components/safe_browsing/content/browser/notification_content_detection:test_utils",
+    "//components/safe_browsing/core/browser:safe_browsing_metrics_collector",
     "//content/test:test_support",
     "//testing/gmock",
     "//testing/gtest",
@@ -473,20 +465,13 @@ source_set("unit_tests") {
       "muted_notification_handler_unittest.cc",
       "screen_capture_notification_blocker_unittest.cc",
     ]
-    deps +=
-        [ "//chrome/browser/web_applications:web_applications_test_support" ]
   }
 
   if (is_android) {
     sources += [ "notification_channels_provider_android_unittest.cc" ]
     deps += [
-      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/optimization_guide",
-      "//chrome/browser/ui/safety_hub",
-      "//chrome/browser/web_applications/proto:proto_gen",
       "//components/content_settings/core/browser:test_support",
-      "//components/safe_browsing/content/browser/notification_content_detection",
-      "//components/safe_browsing/core/browser:safe_browsing_metrics_collector",
       "//components/ukm:test_support",
     ]
   }
@@ -528,7 +513,6 @@ source_set("unit_tests") {
     ]
     deps += [
       "//chrome/browser/favicon",
-      "//chrome/browser/nearby_sharing",
       "//components/favicon/core/test:test_support",
     ]
   }
@@ -596,8 +580,8 @@ if (!is_android) {
         ":notifications",
         ":test_support",
         "//base",
+        "//chrome/browser/content_settings:content_settings_factory",
         "//chrome/browser/permissions",
-        "//chrome/browser/web_applications:web_applications_test_support",
         "//chrome/test:test_support",
         "//chrome/test:test_support_ui",
         "//components/infobars/content",

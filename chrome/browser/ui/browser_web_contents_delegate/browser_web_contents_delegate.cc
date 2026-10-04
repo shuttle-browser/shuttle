@@ -49,11 +49,6 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/status_bubble_views.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/blocked_content/popup_blocker.h"
 #include "components/blocked_content/popup_tracker.h"
@@ -268,14 +263,12 @@ BrowserWebContentsDelegate::BrowserWebContentsDelegate(
     ExclusiveAccessManager& exclusive_access_manager,
     chrome::BrowserCommandController& command_controller,
     UnloadController& unload_controller,
-    web_app::AppBrowserController* app_browser_controller,
     BrowserWindow& window,
     DesktopBrowserWindowCapabilities& capabilities,
     BrowserUiController& browser_ui_controller)
     : exclusive_access_manager_(exclusive_access_manager),
       command_controller_(command_controller),
       unload_controller_(unload_controller),
-      app_browser_controller_(app_browser_controller),
       window_(window),
       capabilities_(capabilities),
       browser_ui_controller_(browser_ui_controller),
@@ -639,10 +632,6 @@ void BrowserWebContentsDelegate::NavigationStateChanged(
        content::INVALIDATE_TYPE_TAB)) {
     command_controller_->TabStateChanged();
   }
-
-  if (app_browser_controller_) {
-    app_browser_controller_->UpdateCustomTabBarVisibility(true);
-  }
 }
 
 void BrowserWebContentsDelegate::VisibleSecurityStateChanged(
@@ -652,10 +641,6 @@ void BrowserWebContentsDelegate::VisibleSecurityStateChanged(
   DCHECK(source);
   if (browser_->GetTabStripModel()->GetActiveWebContents() == source) {
     window_->UpdateToolbarSecurityState();
-
-    if (app_browser_controller_) {
-      app_browser_controller_->UpdateCustomTabBarVisibility(true);
-    }
   }
 }
 
@@ -681,8 +666,7 @@ content::WebContents* BrowserWebContentsDelegate::AddNewContents(
       screen && source && source->GetContentNativeView() &&
       screen->GetDisplayNearestView(source->GetContentNativeView()) !=
           screen->GetDisplayMatching(window_features.bounds);
-  if (!app_browser_controller_ &&
-      disposition == WindowOpenDisposition::NEW_POPUP &&
+  if (disposition == WindowOpenDisposition::NEW_POPUP &&
       fullscreen_controller->IsFullscreenForBrowser() &&
       !targeting_different_display) {
     disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
@@ -937,43 +921,12 @@ bool BrowserWebContentsDelegate::ShouldUseInstancedSystemMediaControls() const {
 
 void BrowserWebContentsDelegate::DraggableRegionsChanged(
     const std::vector<blink::mojom::DraggableRegionPtr>& regions,
-    content::WebContents* contents) {
-  if (app_browser_controller_) {
-    app_browser_controller_->DraggableRegionsChanged(regions, contents);
-  }
-}
+    content::WebContents* contents) {}
 
 std::vector<blink::mojom::RelatedApplicationPtr>
 BrowserWebContentsDelegate::GetSavedRelatedApplications(
     content::WebContents* web_contents) {
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  CHECK(profile);
-  if (!web_app::AreWebAppsEnabled(profile)) {
-    return {};
-  }
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(web_contents);
-  if (!app_id || app_id->empty()) {
-    return {};
-  }
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebApps(profile);
-  CHECK(provider);
-  std::vector<blink::Manifest::RelatedApplication> saved_related_apps =
-      provider->registrar_unsafe().GetRelatedApplications(*app_id);
-  std::vector<blink::mojom::RelatedApplicationPtr> related_apps_ptr;
-  for (const auto& app : saved_related_apps) {
-    auto related_app = blink::mojom::RelatedApplication::New();
-    related_app->platform =
-        base::UTF16ToUTF8(app.platform.value_or(std::u16string()));
-    related_app->id = base::UTF16ToUTF8(app.id.value_or(std::u16string()));
-    if (!app.url.is_empty()) {
-      related_app->url = app.url.spec();
-    }
-    related_apps_ptr.push_back(std::move(related_app));
-  }
-  return related_apps_ptr;
+  return {};
 }
 
 content::WebContents* BrowserWebContentsDelegate::GetResponsibleWebContents(
@@ -1147,13 +1100,10 @@ bool BrowserWebContentsDelegate::GetIsAlwaysOnTop() {
 
 bool BrowserWebContentsDelegate::CanUseWindowingControls(
     content::RenderFrameHost* requesting_frame) {
-  if (!app_browser_controller_) {
-    requesting_frame->AddMessageToConsole(
-        blink::mojom::ConsoleMessageLevel::kWarning,
-        "API called from something else than a web_app.");
-    return false;
-  }
-  return true;
+  requesting_frame->AddMessageToConsole(
+      blink::mojom::ConsoleMessageLevel::kWarning,
+      "API called from something else than a web_app.");
+  return false;
 }
 
 void BrowserWebContentsDelegate::MinimizeFromWebAPI() {
@@ -1232,27 +1182,6 @@ blink::mojom::DisplayMode BrowserWebContentsDelegate::GetDisplayMode(
   if ((type == BrowserWindowInterface::Type::TYPE_APP) ||
       (type == BrowserWindowInterface::Type::TYPE_DEVTOOLS) ||
       (type == BrowserWindowInterface::Type::TYPE_APP_POPUP)) {
-    if (app_browser_controller_ &&
-        app_browser_controller_->HasMinimalUiButtons()) {
-      return blink::mojom::DisplayMode::kMinimalUi;
-    }
-
-    if (app_browser_controller_ &&
-        app_browser_controller_->AppUsesWindowControlsOverlay() &&
-        !web_contents->GetWindowsControlsOverlayRect().IsEmpty()) {
-      return blink::mojom::DisplayMode::kWindowControlsOverlay;
-    }
-
-    if (app_browser_controller_ && app_browser_controller_->AppUsesTabbed()) {
-      return blink::mojom::DisplayMode::kTabbed;
-    }
-
-    if (app_browser_controller_ &&
-        app_browser_controller_->AppUsesUnframedMode() &&
-        window_->IsUnframedModeEnabled()) {
-      return blink::mojom::DisplayMode::kUnframed;
-    }
-
     return blink::mojom::DisplayMode::kStandalone;
   }
 
@@ -1452,9 +1381,7 @@ bool BrowserWebContentsDelegate::CheckMediaAccessPermission(
 
 std::string BrowserWebContentsDelegate::GetTitleForMediaControls(
     content::WebContents* web_contents) {
-  return app_browser_controller_
-             ? app_browser_controller_->GetTitleForMediaControls()
-             : std::string();
+  return std::string();
 }
 
 void BrowserWebContentsDelegate::GetAIPageContent(

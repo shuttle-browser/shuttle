@@ -60,13 +60,11 @@ static_library("base") {
     "wait_for_network_callback_helper.h",
   ]
   deps = [
-    "//components/contextual_tasks/public:feature_list",
     "//components/metrics",
     "//components/prefs",
 
     # TODO(crbug.com/478783796): Remove once kWalletApiPrivatePassesEnabled
     # launches.
-    "//components/wallet/core/common:features",
     "//crypto",
     "//third_party/boringssl",
     "//third_party/icu:icui18n",
@@ -162,7 +160,6 @@ static_library("test_support") {
     # TODO(crbug.com/478783796): Remove once kWalletApiPrivatePassesEnabled
     # launches.
     "//components/prefs",
-    "//components/wallet/core/common:features",
     "//crypto",
     "//google_apis:test_support",
 

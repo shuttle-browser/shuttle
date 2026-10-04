@@ -97,15 +97,10 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/badging/badge_manager.h"
-#include "chrome/browser/indigo/onboarding/indigo_onboarding_dialog.h"
 #include "chrome/browser/password_manager/remote_actor/remote_actor_credential_sharing_impl.h"
-#include "chrome/browser/record_replay/chrome_record_replay_client.h"
 #include "chrome/browser/ui/search/search_tab_helper.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
-#include "chrome/common/indigo/indigo.mojom.h"
 #include "chrome/common/password_manager/remote_actor_credential_sharing_policy.h"
-#include "components/record_replay/core/common/record_replay.mojom.h"
 #endif
 
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
@@ -198,23 +193,6 @@ void MaybeCreateExtensionWebRequestReporterForRenderer(
 }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 #endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-
-// BadgeManager is not used for Android.
-#if !BUILDFLAG(IS_ANDROID)
-void BindBadgeServiceForServiceWorker(
-    const content::ServiceWorkerVersionBaseInfo& info,
-    mojo::PendingReceiver<blink::mojom::BadgeService> receiver) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-
-  content::RenderProcessHost* render_process_host =
-      content::RenderProcessHost::FromID(info.process_id);
-  if (!render_process_host)
-    return;
-
-  badging::BadgeManager::BindServiceWorkerReceiverIfAllowed(
-      render_process_host, info, std::move(receiver));
-}
-#endif
 
 }  // namespace
 
@@ -372,10 +350,6 @@ void ChromeContentBrowserClient::
             service_worker_version_info,
         mojo::BinderMapWithContext<
             const content::ServiceWorkerVersionBaseInfo&>* map) {
-#if !BUILDFLAG(IS_ANDROID)
-  map->Add<blink::mojom::BadgeService>(&BindBadgeServiceForServiceWorker);
-#endif
-
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   const GURL& site = service_worker_version_info.scope;
   if (!site.SchemeIs(extensions::kExtensionScheme)) {
@@ -465,11 +439,6 @@ void ChromeContentBrowserClient::
         },
         &render_frame_host));
   }
-#endif
-#if !BUILDFLAG(IS_ANDROID)
-  associated_registry.AddInterface<record_replay::mojom::RecordReplayDriver>(
-      base::BindRepeating(&ChromeRecordReplayClient::BindRecordReplayDriver,
-                          &render_frame_host));
 #endif
   associated_registry.AddInterface<chrome::mojom::NetworkDiagnostics>(
       base::BindRepeating(
@@ -657,20 +626,6 @@ void ChromeContentBrowserClient::
                     std::move(receiver), render_frame_host);
               },
               &render_frame_host));
-
-#if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(features::kIndigo)) {
-    associated_registry.AddInterface<chrome::mojom::IndigoOnboardingDialogHost>(
-        base::BindRepeating(
-            [](content::RenderFrameHost* render_frame_host,
-               mojo::PendingAssociatedReceiver<
-                   chrome::mojom::IndigoOnboardingDialogHost> receiver) {
-              indigo::IndigoOnboardingDialog::BindOnboardingDialogHost(
-                  std::move(receiver), render_frame_host);
-            },
-            &render_frame_host));
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 void ChromeContentBrowserClient::BindGpuHostReceiver(

@@ -7,7 +7,6 @@
 
 #include "chrome/common/extensions/api/pdf_viewer_private.h"
 #include "extensions/browser/extension_function.h"
-#include "pdf/buildflags.h"
 
 namespace extensions {
 
@@ -64,14 +63,6 @@ class PdfViewerPrivateSaveToDriveFunction : public ExtensionFunction {
 
   // Override from ExtensionFunction:
   ResponseAction Run() override;
-
-#if BUILDFLAG(ENABLE_PDF_SAVE_TO_DRIVE)
- private:
-  ResponseAction RunSaveToDriveFlow(
-      api::pdf_viewer_private::SaveRequestType request_type);
-
-  ResponseAction StopSaveToDriveFlow();
-#endif  // BUILDFLAG(ENABLE_PDF_SAVE_TO_DRIVE)
 };
 
 class PdfViewerPrivateSetPdfDocumentTitleFunction : public ExtensionFunction {
@@ -106,24 +97,6 @@ class PdfViewerPrivateSetPdfPluginAttributesFunction
 
  protected:
   ~PdfViewerPrivateSetPdfPluginAttributesFunction() override;
-
-  // Override from ExtensionFunction:
-  ResponseAction Run() override;
-};
-
-class PdfViewerPrivateGlicSummarizeFunction : public ExtensionFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("pdfViewerPrivate.glicSummarize",
-                             PDFVIEWERPRIVATE_GLICSUMMARIZE)
-
-  PdfViewerPrivateGlicSummarizeFunction();
-  PdfViewerPrivateGlicSummarizeFunction(
-      const PdfViewerPrivateGlicSummarizeFunction&) = delete;
-  PdfViewerPrivateGlicSummarizeFunction& operator=(
-      const PdfViewerPrivateGlicSummarizeFunction&) = delete;
-
- protected:
-  ~PdfViewerPrivateGlicSummarizeFunction() override;
 
   // Override from ExtensionFunction:
   ResponseAction Run() override;

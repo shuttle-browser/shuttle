@@ -18,7 +18,7 @@ extern const char kProfileStatisticsPasswords[];
 extern const char kProfileStatisticsBookmarks[];
 extern const char kProfileStatisticsAutofill[];
 
-extern const std::array<const char*, 4> kProfileStatisticsCategories;
+extern const std::array<const char*, 3> kProfileStatisticsCategories;
 
 // Definition of a single return value of |ProfileStatisticsCallback|.
 // The data look like these: {"BrowsingHistory", 912},

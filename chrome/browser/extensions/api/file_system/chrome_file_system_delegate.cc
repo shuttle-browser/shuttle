@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 
-#include "apps/saved_files_service.h"
 #include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
@@ -188,7 +187,9 @@ void ChromeFileSystemDelegate::GetVolumeList(
 
 SavedFilesServiceInterface* ChromeFileSystemDelegate::GetSavedFilesService(
     content::BrowserContext* browser_context) {
-  return apps::SavedFilesService::Get(browser_context);
+  // apps/ (including SavedFilesService) is removed; platform apps, the only
+  // users of retained file entries, no longer exist.
+  return nullptr;
 }
 
 }  // namespace extensions

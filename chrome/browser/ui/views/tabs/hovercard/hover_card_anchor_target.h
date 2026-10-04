@@ -20,8 +20,6 @@ struct TabData;
 struct TabGroupData;
 }  // namespace tabs
 
-class TabResourceUsage;
-
 struct TabCardData {
   TabCardData();
   ~TabCardData();
@@ -35,7 +33,6 @@ struct TabCardData {
   bool show_collaboration_messaging = false;
   std::u16string collaboration_message;
 
-  scoped_refptr<const TabResourceUsage> tab_resource_usage;
   scoped_refptr<ThumbnailImage> thumbnail;
   bool show_discard_status = false;
   bool is_tab_discarded = false;

@@ -5,7 +5,6 @@
 #include "components/saved_tab_groups/internal/versioning_message_controller_impl.h"
 
 #include "base/functional/bind.h"
-#include "components/data_sharing/public/features.h"
 #include "components/prefs/pref_service.h"
 #include "components/saved_tab_groups/public/pref_names.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
@@ -54,21 +53,8 @@ enum class VersionState {
 
 // Returns the current version state based on combination of feature flags.
 VersionState GetVersionState() {
-  if (!data_sharing::features::IsDataSharingFunctionalityEnabled()) {
-    return VersionState::kDataSharingFunctionalityDisabled;
-  }
-  const bool is_shared_data_types_enabled = !base::FeatureList::IsEnabled(
-      data_sharing::features::kSharedDataTypesKillSwitch);
-  const bool is_update_chrome_ui_enabled = base::FeatureList::IsEnabled(
-      data_sharing::features::kDataSharingEnableUpdateChromeUI);
-
-  if (is_shared_data_types_enabled) {
-    return is_update_chrome_ui_enabled ? VersionState::kInvalidCombination
-                                       : VersionState::kUpToDate;
-  } else {
-    return is_update_chrome_ui_enabled ? VersionState::kOutOfDate
-                                       : VersionState::kNoMessage;
-  }
+  // Data sharing was removed from this fork.
+  return VersionState::kDataSharingFunctionalityDisabled;
 }
 
 bool HasCurrentSharedTabGroups(TabGroupSyncService* tab_group_sync_service) {

@@ -6,29 +6,11 @@ import("../build_webui_tests.gni")
 
 build_webui_tests("build") {
   cc_test_files = [
-    "bookmarks/sp_bookmarks_interactive_uitest.cc",
-    "commerce/commerce_browsertest.cc",
     "history_clusters/history_clusters_browsertest.cc",
     "reading_list/reading_list_browsertest.cc",
   ]
 
   files = [
-    "bookmarks/commerce/shopping_list_test.ts",
-    "bookmarks/commerce/test_shopping_service_api_proxy.ts",
-    "bookmarks/keyboard_arrow_navigation_service_test.ts",
-    "bookmarks/power_bookmarks_app_test.ts",
-    "bookmarks/power_bookmarks_app_test_util.ts",
-    "bookmarks/power_bookmarks_app_migrate_ui_changes_test.ts",
-    "bookmarks/power_bookmarks_app_tree_view_test.ts",
-    "bookmarks/power_bookmarks_context_menu_test.ts",
-    "bookmarks/power_bookmarks_drag_manager_test.ts",
-    "bookmarks/power_bookmarks_edit_dialog_test.ts",
-    "bookmarks/power_bookmarks_labels_test.ts",
-    "bookmarks/power_bookmarks_service_test.ts",
-    "bookmarks/test_bookmarks_api_proxy.ts",
-    "bookmarks/test_power_bookmarks_delegate.ts",
-    "commerce/price_tracking_section_test.ts",
-    "commerce/shopping_insights_app_test.ts",
     "history_clusters/history_clusters_app_test.ts",
     "reading_list/reading_list_app_test.ts",
     "reading_list/test_reading_list_api_proxy.ts",
@@ -66,13 +48,9 @@ build_webui_tests("build") {
     "//tools/typescript/definitions/pending.d.ts",
   ]
   ts_deps = [
-    "//chrome/browser/resources/side_panel/bookmarks:build_ts",
-    "//chrome/browser/resources/side_panel/commerce:build_ts",
     "//chrome/browser/resources/side_panel/history_clusters:build_ts",
     "//chrome/browser/resources/side_panel/reading_list:build_ts",
     "//chrome/browser/resources/side_panel/shared:build_ts",
-    "//ui/webui/resources/cr_components/commerce:build_ts",
-    "//ui/webui/resources/cr_components/history_embeddings:build_ts",
     "//ui/webui/resources/cr_components/page_image_service:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
     "//ui/webui/resources/js:build_ts",

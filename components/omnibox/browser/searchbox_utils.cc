@@ -12,7 +12,6 @@
 #include "base/metrics/user_metrics.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/navigation_metrics/navigation_metrics.h"
 #include "components/omnibox/browser/actions/omnibox_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_concepts.h"
@@ -324,11 +323,6 @@ void OpenMatch(
 
   RecordNonActionSearchMetrics(template_url_service, match, is_incognito,
                                metrics_tracker.match_selection_timestamp());
-
-  bookmarks::BookmarkModel* bookmark_model = client->GetBookmarkModel();
-  if (bookmark_model && bookmark_model->IsBookmarked(destination_url)) {
-    client->OnBookmarkLaunched();
-  }
 
   GURL alternate_nav_url = AutocompleteResult::ComputeAlternateNavUrl(
       input, match, autocomplete_controller->autocomplete_provider_client());

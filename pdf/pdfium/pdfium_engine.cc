@@ -128,10 +128,6 @@
 #include "ui/gfx/skia_span_util.h"
 #endif
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "pdf/pdfium/pdfium_on_demand_searchifier.h"
-#include "ui/accessibility/ax_features.mojom-features.h"
-#endif
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "pdf/pdfium/pdfium_font_linux.h"
@@ -962,14 +958,6 @@ PDFiumEngine::~PDFiumEngine() {
     base::UmaHistogramLongTimes("PDF.EngineLifetime",
                                 base::TimeTicks::Now() - engine_creation_time_);
   }
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  if (searchifier_ && searchifier_->PerformedOCR()) {
-    base::UmaHistogramBoolean("PDF.SearchifySuccessful2", has_searchify_text_);
-  }
-
-  // Should be reset before document is unloaded.
-  searchifier_.reset();
-#endif
 
   // Clear all the containers that can prevent unloading.
   find_results_.clear();
@@ -2042,9 +2030,6 @@ bool PDFiumEngine::OnLeftMouseDown(const blink::WebMouseEvent& event) {
   }
   SetFieldFocus(FocusFieldType::kNoFocus);
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  client_->MaybeShowSearchifyInProgress();
-#endif
 
   if (point_data.area != PDFiumPage::TEXT_AREA) {
     return true;  // Return true so WebKit doesn't do its own highlighting.
@@ -2537,9 +2522,6 @@ void PDFiumEngine::StartFind(const std::u16string& text, bool case_sensitive) {
     return;
   }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  client_->MaybeShowSearchifyInProgress();
-#endif
 
   bool first_search = (current_find_text_ != text);
   int char_to_start_searching_from = 0;
@@ -5240,109 +5222,6 @@ void PDFiumEngine::UpdatePageCount() {
 }
 #endif  // defined(PDF_ENABLE_XFA)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-void PDFiumEngine::StartSearchify(
-    GetOcrMaxImageDimensionCallbackAsync get_max_dimension,
-    PerformOcrCallbackAsync perform_ocr_callback) {
-  if (!base::FeatureList::IsEnabled(ax::mojom::features::kScreenAIOCREnabled)) {
-    return;
-  }
-  // Searchify requests may be sent to the engine when PDF pages are loaded and
-  // before this function is called. In that case, `searchifier_` is already
-  // created and is waiting for the `Start` command to start processing the
-  // requests.
-  if (!searchifier_) {
-    searchifier_ = std::make_unique<PDFiumOnDemandSearchifier>(this);
-  }
-  searchifier_->Start(std::move(get_max_dimension),
-                      std::move(perform_ocr_callback));
-}
-
-base::RepeatingClosure PDFiumEngine::GetOcrDisconnectHandler() {
-  return base::BindRepeating(&PDFiumEngine::OnOcrDisconnected,
-                             weak_factory_.GetWeakPtr());
-}
-
-void PDFiumEngine::OnOcrDisconnected() {
-  if (searchifier_) {
-    searchifier_->OnOcrDisconnected();
-  }
-}
-
-bool PDFiumEngine::IsPageScheduledForSearchify(int page_index) const {
-  CHECK(PageIndexInBounds(page_index));
-  return searchifier_ && searchifier_->IsPageScheduled(page_index);
-}
-
-void PDFiumEngine::ScheduleSearchifyIfNeeded(PDFiumPage* page) {
-  CHECK(page);
-  CHECK(page->available());
-
-  if (client_->IsPrintPreview() || page->IsPageSearchified()) {
-    return;
-  }
-
-  // TODO(crbug.com/40066441): Explore heuristics to run OCR on pages with large
-  // images and a little text.
-  // Note that `PdfAccessibilityTreeBuilder` relies on this heuristic about
-  // pages that are searchified. If this is changed, verify it's also compatible
-  // with that.
-  bool page_has_text = page->GetCharCount() != 0;
-
-  // Report metric only once for each page. Note that it is possible to reach
-  // here multiple times for a given page, if the page was scheduled to be
-  // Searchified, but the Searchify operation did not complete for some reason.
-  bool not_reported =
-      page_has_text_metric_reported_.insert(page->index()).second;
-  if (not_reported) {
-    base::UmaHistogramBoolean("PDF.PageHasText", page_has_text);
-  }
-  if (page_has_text || !page->HasImages()) {
-    return;
-  }
-
-  if (!base::FeatureList::IsEnabled(ax::mojom::features::kScreenAIOCREnabled)) {
-    return;
-  }
-
-  // This function is called during page load, which can be before when the
-  // client calls `StartSearchify`, or after searchifier has failed to call OCR
-  // and is considered as not available.
-  if (!searchifier_) {
-    searchifier_ = std::make_unique<PDFiumOnDemandSearchifier>(this);
-  } else if (searchifier_->HasFailed()) {
-    return;
-  }
-
-  searchifier_->SchedulePage(page->index());
-}
-
-void PDFiumEngine::OnSearchifyStateChange(bool busy) {
-  client_->OnSearchifyStateChange(busy);
-}
-
-void PDFiumEngine::OnHasSearchifyText() {
-  if (!has_searchify_text_) {
-    has_searchify_text_ = true;
-    client_->OnHasSearchifyText();
-  }
-}
-
-bool PDFiumEngine::IsPageScheduledForPaint(uint32_t page_index) const {
-  for (const auto& progressive_paint : progressive_paints_) {
-    if (progressive_paint.page_index() == page_index) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void PDFiumEngine::MaybeUnloadPage(int page_index) {
-  if (!IsPageVisible(page_index)) {
-    pages_[page_index]->Unload();
-  }
-}
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 bool PDFiumEngine::HasMeaningfulText() {
   if (!document_loaded_) {
@@ -5351,14 +5230,7 @@ bool PDFiumEngine::HasMeaningfulText() {
 
   size_t total_char_count = 0;
   const bool has_meaningful_text = ForEachPageUntilTrue([&](PDFiumPage* page) {
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-    // PDFium determines the character count, but pages requiring Searchify
-    // are bypassed via `page->IsPageSearchified()`. Since Searchify only
-    // processes textless pages, these are assigned a count of zero.
-    int page_char_count = page->IsPageSearchified() ? 0 : page->GetCharCount();
-#else   // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
     int page_char_count = page->GetCharCount();
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
     if (page_char_count > 0) {
       total_char_count += static_cast<size_t>(page_char_count);
       if (total_char_count >= kMinCharsForMeaningfulText) {

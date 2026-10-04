@@ -15,7 +15,6 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/url_constants.h"
@@ -30,12 +29,6 @@
 namespace chrome {
 
 GURL GetNewTabURL(const BrowserWindowInterface* browser) {
-  if (browser) {
-    if (auto* const app_browser_controller =
-            web_app::AppBrowserController::From(browser)) {
-      return app_browser_controller->GetAppNewTabUrl();
-    }
-  }
   return ChromeUINewTabURLAsGURL();
 }
 
@@ -60,8 +53,6 @@ content::WebContents* AddAndReturnTabAt(
     params.tabstrip_add_types |= AddTabTypes::ADD_PINNED;
   }
 
-  params.web_app_navigation_data.emplace();
-  params.web_app_navigation_data->SetNavigationCapturingForceOff(true);
   Navigate(&params);
 
   if (!params.navigated_or_inserted_contents) {
@@ -87,8 +78,6 @@ content::WebContents* AddSelectedTabWithURL(BrowserWindowInterface* browser,
                                             ui::PageTransition transition) {
   NavigateParams params(browser, url, transition);
   params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
-  params.web_app_navigation_data.emplace();
-  params.web_app_navigation_data->SetNavigationCapturingForceOff(true);
   Navigate(&params);
   return params.navigated_or_inserted_contents;
 }

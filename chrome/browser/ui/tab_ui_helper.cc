@@ -18,14 +18,11 @@
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/performance_controls/memory_saver_utils.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_web_contents_listener.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_browser_controller.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
@@ -50,29 +47,6 @@ bool IsNTP(const GURL& url) {
           url.host() == chrome::kChromeUINewTabPageHost);
 }
 
-web_app::WebAppBrowserController* GetWebAppBrowserController(
-    tabs::TabInterface* tab_interface) {
-  // The browser window interface can be null during unit tests.
-  BrowserWindowInterface* const browser_window_interface =
-      tab_interface->GetBrowserWindowInterface();
-  return browser_window_interface
-             ? web_app::WebAppBrowserController::From(browser_window_interface)
-             : nullptr;
-}
-
-bool ShouldShowAppIcon(web_app::WebAppBrowserController* app_controller,
-                       tabs::TabInterface* tab_interface) {
-  if (!app_controller) {
-    return false;
-  }
-
-  BrowserWindowInterface* const browser_window_interface =
-      tab_interface->GetBrowserWindowInterface();
-  CHECK(browser_window_interface);
-  const int index = browser_window_interface->GetTabStripModel()->GetIndexOfTab(
-      tab_interface);
-  return app_controller->ShouldShowAppIconOnTab(index);
-}
 }  // namespace
 
 DEFINE_USER_DATA(TabUIHelper);
@@ -139,18 +113,6 @@ bool TabUIHelper::ShouldThemifyFavicon() {
 }
 
 bool TabUIHelper::ShouldDisplayFavicon() {
-  // BrowserWindowInterface can be null during unit tests
-  BrowserWindowInterface* const browser_window_interface =
-      tab().GetBrowserWindowInterface();
-  if (browser_window_interface) {
-    // Remove for all tabbed web apps.
-    web_app::AppBrowserController* const app_browser_controller =
-        web_app::AppBrowserController::From(browser_window_interface);
-    if (app_browser_controller && app_browser_controller->has_tab_strip()) {
-      return false;
-    }
-  }
-
   if (tab().IsPinned()) {
     return true;
   }
@@ -169,10 +131,7 @@ bool TabUIHelper::ShouldDisplayFavicon() {
 }
 
 bool TabUIHelper::IsMonochromeFavicon() {
-  web_app::WebAppBrowserController* const web_app_browser_controller =
-      GetWebAppBrowserController(&tab());
-  return ShouldShowAppIcon(web_app_browser_controller, &tab()) &&
-         !web_app_browser_controller->GetHomeTabIcon().isNull();
+  return false;
 }
 
 ui::ImageModel TabUIHelper::GetFavicon() {
@@ -185,21 +144,6 @@ ui::ImageModel TabUIHelper::GetFavicon() {
     }
   }
 
-  web_app::WebAppBrowserController* const web_app_browser_controller =
-      GetWebAppBrowserController(&tab());
-  if (ShouldShowAppIcon(web_app_browser_controller, &tab())) {
-    const gfx::ImageSkia home_tab_icon =
-        web_app_browser_controller->GetHomeTabIcon();
-    if (!home_tab_icon.isNull()) {
-      return ui::ImageModel::FromImageSkia(home_tab_icon);
-    } else {
-      gfx::ImageSkia fallback_home_icon =
-          web_app_browser_controller->GetFallbackHomeTabIcon();
-      if (!fallback_home_icon.isNull()) {
-        return ui::ImageModel::FromImageSkia(fallback_home_icon);
-      }
-    }
-  }
 
   return ui::ImageModel::FromImage(
       favicon::TabFaviconFromWebContents(web_contents()));
@@ -333,28 +277,12 @@ bool TabUIHelper::IsDiscarded() {
 }
 
 bool TabUIHelper::ShouldShowDiscardStatus() {
-  content::WebContents* const web_contents = tab().GetContents();
-  std::optional<mojom::LifecycleUnitDiscardReason> discard_reason =
-      memory_saver::GetDiscardReason(web_contents);
-
-  // Only show discard status for tabs that were proactively discarded or
-  // suggested by the PerformanceDetectionManager to prevent confusion to users
-  // on why a tab was discarded. Also, the favicon discard animation may use
-  // resources so the animation should be limited to prevent performance issues.
-  return memory_saver::IsURLSupported(web_contents->GetURL()) &&
-         web_contents->WasDiscarded() && discard_reason.has_value() &&
-         (discard_reason.value() ==
-              mojom::LifecycleUnitDiscardReason::PROACTIVE ||
-          discard_reason.value() ==
-              mojom::LifecycleUnitDiscardReason::SUGGESTED);
+  // The memory saver discard UI was removed.
+  return false;
 }
 
 std::optional<base::ByteSize> TabUIHelper::GetDiscardedMemorySavings() {
-  content::WebContents* const web_contents = tab().GetContents();
-  return web_contents->WasDiscarded()
-             ? std::make_optional(
-                   memory_saver::GetDiscardedMemorySavings(web_contents))
-             : std::nullopt;
+  return std::nullopt;
 }
 
 void TabUIHelper::NotifyTabUIChanged(

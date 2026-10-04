@@ -20,7 +20,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -120,11 +119,8 @@ void TabDesktopMediaList::Refresh(bool update_thumbnails) {
       [&browsers, profile](BrowserWindowInterface* browser) {
         // Omit all the IWAs for TabDesktopMediaList as they are already
         // present in NativeDesktopMediaList.
-        if ((!base::FeatureList::IsEnabled(
-                 features::kRemovalOfIWAsFromTabCapture) ||
-             !web_app::AppBrowserController::IsIsolatedWebApp(browser)) &&
-            browser->GetProfile()->GetOriginalProfile() ==
-                profile->GetOriginalProfile()) {
+        if (browser->GetProfile()->GetOriginalProfile() ==
+            profile->GetOriginalProfile()) {
           browsers.push_back(browser);
         }
         return true;

@@ -53,7 +53,6 @@
         <structure type="lottie" name="IDR_AUTOFILL_WALLET_REMINDER_NOTICE_LOTTIE" file="resources/autofill/autofill_wallet_reminder_notice.json" compress="brotli"/>
 
         <!-- Shopping resources -->
-        <structure type="lottie" name="IDR_SHOPPING_DISCOUNTS_AVAILABLE_LOTTIE" file="resources/shopping/discounts_available.json" compress="brotli"/>
 
         <!-- Automated Password Change resources -->
         <structure type="lottie" name="IDR_PASSWORD_CHANGE_SUCCESS_LOTTIE" file="resources/automated_password_change/password_change_success.json" compress="brotli"/>
@@ -62,10 +61,6 @@
         <structure type="lottie" name="IDR_PASSWORD_CHANGE_PRIVATE_INFERENCE_LOTTIE" file="resources/automated_password_change/password_change_private_inference.json" compress="brotli"/>
 
         <!-- Wallet Pass Save Bubble resources -->
-        <structure type="lottie" name="IDR_WALLET_PASS_SAVE_LOYALTY_CARD_LOTTIE" file="resources/wallet/wallet_save_loyalty_card.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_WALLET_PASS_SAVE_EVENT_TICKET_LOTTIE" file="resources/wallet/wallet_save_event_ticket.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_WALLET_PASS_SAVE_BOARDING_PASS_LOTTIE" file="resources/wallet/wallet_save_boarding_pass.json" compress="brotli" />
-        <structure type="lottie" name="IDR_WALLET_PASS_SAVE_TRANSPORT_TICKET_LOTTIE" file="resources/wallet/wallet_save_transport_ticket.json" compress="brotli" />
 
         <!-- Toolbar Lottie resources -->
         <structure type="lottie" name="IDR_PAGE_INFO_LOTTIE" file="resources/toolbar/page_info.json" compress="brotli" />
@@ -78,32 +73,21 @@
         </if>
 
         <!-- Search AI Mode Lottie resources -->
-        <structure type="lottie" name="IDR_SEARCH_AI_MODE_SIGNIN_PROMO_LOTTIE" file="resources/search_ai_mode/search_ai_mode_signin_promo.json" compress="brotli" />
 
         <!-- Send Tab to Self Lottie resources -->
-        <structure type="lottie" name="IDR_INSTANT_HANDOFF_ILLUSTRATION" file="resources/send_tab_to_self/instant_handoff_illustration.json" compress="brotli" />
 
         <!-- Web App Internals resources -->
-        <structure type="lottie" name="IDR_WEB_APP_INSTALL_ILLUSTRATION" file="resources/webapps/install_illustration.json" compress="brotli" />
-        <structure type="lottie" name="IDR_WEB_APP_INTERNALS_CROS_LAUNCHER" file="resources/webapps/cros_launcher.json" compress="brotli" />
       </if>
     </structures>
     <includes>
       <if expr="is_win or is_macosx or is_linux">
         <!-- First Run audio resources -->
-        <include name="IDR_INTRO_SOUND_ALL_SET_FLAC" file="resources\intro\sounds\all_set.flac" type="BINDATA" />
-        <include name="IDR_INTRO_SOUND_AMBIENT_FLAC" file="resources\intro\sounds\ambient.flac" type="BINDATA" />
-        <include name="IDR_INTRO_SOUND_FEATURE_SHOWCASE_AMBIENT_FLAC" file="resources\intro\sounds\feature_showcase_ambient.flac" type="BINDATA" />
-        <include name="IDR_INTRO_SOUND_FEATURE_SHOWCASE_PROGRESS_FLAC" file="resources\intro\sounds\feature_showcase_progress.flac" type="BINDATA" />
-        <include name="IDR_INTRO_SOUND_LOGO_FLAC" file="resources\intro\sounds\logo.flac" type="BINDATA" />
-        <include name="IDR_INTRO_SOUND_WELCOME_BACK_FLAC" file="resources\intro\sounds\welcome_back.flac" type="BINDATA" />
       </if>
       <if expr="enable_src_internal">
         <include name="IDR_APC_PROMPTS_JSON" file="../../internal/password_manager/apc_prompts.json" type="BINDATA" />
         <include name="IDR_SEARCH_ENGINE_HISTORICAL_SEARCH_URLS_JSON" file="../../third_party/search_engines_data/resources_internal/definitions/historical_search_urls.json" type="BINDATA" />
       </if>
 
-      <include name="IDR_AD_NETWORK_HASHES" file="resources\ad_networks.dat" type="BINDATA" />
       <if expr="is_chromeos">
         <include name="IDR_CHROME_APP_MANIFEST" file="resources\chrome_app\manifest.json" type="BINDATA" />
         <include name="IDR_URL_MOJOM_LITE_JS" file="${root_gen_dir}\url\mojom\url.mojom-lite.js" use_base_dir="false" type="BINDATA" />

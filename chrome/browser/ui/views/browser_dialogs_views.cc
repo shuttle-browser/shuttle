@@ -11,7 +11,6 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/views/bookmarks/bookmark_editor_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/select_audio_output/select_audio_output_views.h"
 #include "chrome/browser/ui/views/task_manager_view.h"
@@ -23,18 +22,6 @@
 
 // This file provides definitions of desktop browser dialog-creation methods for
 // all toolkit-views platforms.
-
-// static
-void BookmarkEditor::Show(gfx::NativeWindow parent_window,
-                          Profile* profile,
-                          const EditDetails& details,
-                          Configuration configuration,
-                          OnSaveCallback on_save_callback) {
-  auto editor = std::make_unique<BookmarkEditorView>(
-      profile, details, configuration, std::move(on_save_callback));
-  editor->Show(parent_window);
-  editor.release();  // BookmarkEditorView is self-deleting
-}
 
 void ChromeUsbDevicePermissionsPrompt::ShowDialog() {
   ShowDialogViews();

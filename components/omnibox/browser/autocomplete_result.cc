@@ -31,8 +31,6 @@
 #include "base/trace_event/typed_macros.h"
 #include "build/android_buildflags.h"
 #include "build/build_config.h"
-#include "components/lens/lens_features.h"
-#include "components/omnibox/browser/actions/contextual_search_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_concepts.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
 #include "components/omnibox/browser/actions/omnibox_action_site_search.h"
@@ -535,19 +533,12 @@ void AutocompleteResult::SortAndCull(
                     suggestion_groups_map_));
             break;
           case OmniboxEventProto::LENS_SIDE_PANEL_COMPOSEBOX: {
-            size_t max_aim_suggestions =
-                lens::features::GetLensAimSuggestionsCount();
+            // Lens AIM suggestions were removed from this fork.
+            size_t max_aim_suggestions = 0;
             // Always add contextual suggestions
             sections.push_back(std::make_unique<DesktopComposeboxZpsSection>(
                 suggestion_groups_map_, max_aim_suggestions,
                 max_aim_suggestions, max_aim_suggestions));
-            // Add multimodal suggestions if enabled.
-            if (lens::features::GetLensAimSuggestionsType() ==
-                lens::features::LensAimSuggestionsType::kMultimodal) {
-              sections.push_back(
-                  std::make_unique<DesktopLensMultimodalZpsSection>(
-                      suggestion_groups_map_, max_aim_suggestions));
-            }
             break;
           }
           default:
@@ -1025,31 +1016,6 @@ void AutocompleteResult::AttachPedalsToMatches(
       if (result.second) {
         match.actions.push_back(pedal);
       }
-    }
-  }
-}
-
-void AutocompleteResult::AttachContextualSearchFulfillmentActionToMatches() {
-#if !BUILDFLAG(IS_ANDROID)
-  // ContextualSearchFulfillmentAction is a Desktop-specific legacy action that
-  // lacks an Android JNI counterpart. Skip since Android currently only has
-  // minimal contextual search supports (e.g., Lens Overlay entry point).
-  for (AutocompleteMatch& match : matches_) {
-    if (match.IsContextualSearchSuggestion() && !match.HasLensSearchAction()) {
-      match.takeover_action =
-          base::MakeRefCounted<ContextualSearchFulfillmentAction>(
-              match.destination_url, match.type,
-              match.subtypes.contains(omnibox::SUBTYPE_ZERO_PREFIX));
-    }
-  }
-#endif
-}
-
-void AutocompleteResult::AttachContextualSearchOpenLensActionToMatches() {
-  for (AutocompleteMatch& match : matches_) {
-    if (match.IsContextualSearchSuggestion() && match.HasLensSearchAction()) {
-      match.takeover_action =
-          base::MakeRefCounted<ContextualSearchOpenLensAction>();
     }
   }
 }

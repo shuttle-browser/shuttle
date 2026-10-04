@@ -6,25 +6,11 @@
           on-browsing-data-deleted="onBrowsingDataDeleted_">
       </settings-clear-browsing-data-dialog>
     </template>
-    <template is="dom-if" if="[[showPrivacyGuideDialog_]]" restamp>
-      <settings-privacy-guide-dialog id="privacyGuideDialog" prefs="{{prefs}}"
-          on-close="onPrivacyGuideDialogClosed_">
-      </settings-privacy-guide-dialog>
-    </template>
     <cr-link-row id="clearBrowsingData"
         start-icon="cr:delete"
         label="$i18n{clearBrowsingData}"
         sub-label="$i18n{clearBrowsingDataDescription}"
         on-click="onClearBrowsingDataClick_"></cr-link-row>
-    <template is="dom-if" if="[[isPrivacyGuideAvailable]]">
-      <cr-link-row id="privacyGuideLinkRow" class="hr"
-          start-icon="privacy20:signpost"
-          label="$i18n{privacyGuideLabel}"
-          sub-label="$i18n{privacyGuideSublabel}"
-          on-click="onPrivacyGuideClick_"
-          role-description="$i18n{subpageArrowRoleDescription}">
-      </cr-link-row>
-    </template>
     <cr-link-row id="thirdPartyCookiesLinkRow"
         start-icon="privacy:cookie"
         class="hr"

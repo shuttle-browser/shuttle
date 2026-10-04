@@ -48,10 +48,6 @@ class ContentPhishingClassifierDelegate;
 class ContentPhishingImageEmbedderDelegate;
 }  // namespace safe_browsing
 
-namespace translate {
-class TranslateAgent;
-}
-
 namespace web_cache {
 class WebCacheImpl;
 }
@@ -112,12 +108,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
   void SetWindowFeatures(
       blink::mojom::WindowFeaturesPtr window_features) override;
   void ExecuteWebUIJavaScript(const std::u16string& javascript) override;
-  void RequestImageForContextNode(
-      int32_t thumbnail_min_area_pixels,
-      const gfx::Size& thumbnail_max_size_pixels,
-      chrome::mojom::ImageFormat image_format,
-      int32_t quality,
-      RequestImageForContextNodeCallback callback) override;
   void RequestBitmapForContextNode(
       RequestBitmapForContextNodeCallback callback) override;
   void RequestBitmapForContextNodeWithBoundsHint(
@@ -205,7 +195,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
   static bool IsAnimatedWebp(const std::vector<uint8_t>& image_data);
 
   // Have the same lifetime as us.
-  raw_ptr<translate::TranslateAgent> translate_agent_;
   raw_ptr<optimization_guide::PageTextAgent> page_text_agent_;
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   raw_ptr<safe_browsing::ContentPhishingClassifierDelegate>

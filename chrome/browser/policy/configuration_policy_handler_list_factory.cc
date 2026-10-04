@@ -19,13 +19,8 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "chrome/browser/bookmarks/bookmark_bar_policy_handler.h"
 #include "chrome/browser/browsing_data/browsing_data_lifetime_policy_handler.h"
-#include "chrome/browser/contextual_tasks/smart_tab_sharing_settings_policy_handler.h"
 #include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_report_policy_handler.h"
-#include "chrome/browser/glic/gemini_act_on_web_settings_policy_handler.h"
-#include "chrome/browser/glic/gemini_spark_settings_policy_handler.h"
-#include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/media/webrtc/capture_policy_utils.h"
 #include "chrome/browser/net/disk_cache_dir_policy_handler.h"
 #include "chrome/browser/net/explicitly_allowed_network_ports_policy_handler.h"
@@ -61,16 +56,11 @@
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
-#include "components/autofill/core/browser/at_memory/policy/find_and_fill_with_gemini_settings_policy_handler.h"
 #include "components/autofill/core/browser/permissions/autofill_policy_handler.h"
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/blocked_content/pref_names.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
-#include "components/bookmarks/managed/managed_bookmarks_policy_handler.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/certificate_transparency/pref_names.h"
-#include "components/collaboration/public/pref_names.h"
-#include "components/commerce/core/pref_names.h"
 #include "components/component_updater/pref_names.h"
 #include "components/content_settings/core/browser/cookie_settings_policy_handler.h"
 #include "components/content_settings/core/common/pref_names.h"
@@ -94,7 +84,6 @@
 #include "components/enterprise/device_trust/prefs.h"
 #include "components/enterprise/isolated_mode/prefs.h"
 #include "components/enterprise/net/core/prefs.h"
-#include "components/feed/core/shared_prefs/pref_names.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/language/core/browser/pref_names.h"
@@ -104,12 +93,10 @@
 #include "components/ntp_tiles/enterprise/ntp_shortcuts_policy_handler.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/common/omnibox_features.h"
-#include "components/on_device_translation/buildflags/buildflags.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
-#include "components/payments/core/payment_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/policy/core/browser/boolean_disabling_policy_handler.h"
 #include "components/policy/core/browser/configuration_policy_handler.h"
@@ -137,13 +124,10 @@
 #include "components/security_interstitials/core/pref_names.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_pref_names.h"
-#include "components/skills/internal/enterprise_published_skills_policy_handler.h"
-#include "components/skills/public/skills_prefs.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
 #include "components/sync/base/pref_names.h"
 #include "components/sync/service/sync_policy_handler.h"
 #include "components/themes/theme_color_policy_handler.h"
-#include "components/translate/core/browser/translate_pref_names.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/variations/pref_names.h"
 #include "components/variations/service/variations_service.h"
@@ -164,16 +148,10 @@
 #include "chrome/browser/download/default_download_dir_policy_handler.h"
 #include "chrome/browser/download/download_auto_open_policy_handler.h"
 #include "chrome/browser/download/download_dir_policy_handler.h"
-#include "chrome/browser/media/router/discovery/access_code/access_code_cast_feature.h"
 #include "chrome/browser/policy/battery_saver_policy_handler.h"
 #include "chrome/browser/policy/local_sync_policy_handler.h"
 #include "chrome/browser/policy/managed_account_policy_handler.h"
-#include "chrome/browser/web_applications/policy/web_app_settings_policy_handler.h"
-#include "chrome/browser/web_applications/policy/web_app_user_install_policy_handler.h"
-#include "components/contextual_tasks/public/prefs.h"
 #include "components/headless/policy/headless_mode_policy_handler.h"
-#include "components/lens/lens_overlay_permission_utils.h"
-#include "components/media_router/common/pref_names.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/search_engines/enterprise/search_aggregator_policy_handler.h"
 #include "components/search_engines/enterprise/site_search_policy_handler.h"
@@ -220,7 +198,6 @@
 #include "chrome/browser/ash/policy/reporting/metrics_reporting/metric_reporting_prefs.h"
 #include "chrome/browser/ash/wallpaper_handlers/wallpaper_prefs.h"
 #include "chrome/browser/chromeos/reporting/metric_reporting_prefs.h"
-#include "chrome/browser/nearby_sharing/common/nearby_share_prefs.h"
 #include "chrome/browser/policy/default_geolocation_policy_handler.h"
 #include "chrome/browser/policy/device_login_screen_geolocation_access_level_policy_handler.h"
 #include "chrome/browser/policy/os_color_mode_policy_handler.h"
@@ -255,10 +232,6 @@
 #include "chrome/browser/extensions/api/messaging/native_messaging_policy_handler.h"
 #include "extensions/common/manifest.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
-
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-#include "components/on_device_translation/public/pref_names.h"
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
 #if BUILDFLAG(ENABLE_PDF)
 #include "chrome/browser/pdf/pdf_pref_names.h"
@@ -299,7 +272,6 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/indigo/indigo_prefs.h"
 #endif
 
 namespace policy {
@@ -362,9 +334,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kDomainReliabilityAllowed,
     domain_reliability::prefs::kDomainReliabilityAllowedByPolicy,
     base::Value::Type::BOOLEAN },
-  { key::kEditBookmarksEnabled,
-    bookmarks::prefs::kEditBookmarksEnabled,
-    base::Value::Type::BOOLEAN },
   { key::kFeedbackSurveysEnabled,
     policy::policy_prefs::kFeedbackSurveysEnabled,
     base::Value::Type::BOOLEAN },
@@ -425,14 +394,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kTabCaptureAllowedByOrigins,
     prefs::kTabCaptureAllowedByOrigins,
     base::Value::Type::LIST },
-  { key::kTranslateEnabled,
-    translate::prefs::kOfferTranslateEnabled,
-    base::Value::Type::BOOLEAN },
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  { key::kTranslatorAPIAllowed,
-    prefs::kTranslatorAPIAllowed,
-    base::Value::Type::BOOLEAN },
-#endif
   { key::kWindowCaptureAllowedByOrigins,
     prefs::kWindowCaptureAllowedByOrigins,
     base::Value::Type::LIST },
@@ -491,14 +452,8 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     optimization_guide::prefs::kGeminiSettings,
     base::Value::Type::INTEGER },
 #if !BUILDFLAG(IS_ANDROID)
-  { key::kGeminiChromeFileUploadSettings,
-    glic::prefs::kGlicFileUploadAllowed,
-    base::Value::Type::INTEGER },
   { key::kVoiceTypingSettings,
     prefs::kVoiceTypingSettings,
-    base::Value::Type::INTEGER },
-  { key::kIndigo,
-    indigo::prefs::kIndigoPolicy,
     base::Value::Type::INTEGER },
 #endif
   { key::kAllowDeletingBrowserHistory,
@@ -557,9 +512,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kBackForwardCacheEnabled,
     policy_prefs::kBackForwardCacheEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kNTPContentSuggestionsEnabled,
-    feed::prefs::kEnableSnippets,
-    base::Value::Type::BOOLEAN },
   { key::kSitePerProcessAndroid,
     prefs::kSitePerProcess,
     base::Value::Type::BOOLEAN },
@@ -581,12 +533,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 #else // !BUILDFLAG(IS_ANDROID)
   { key::kAbusiveExperienceInterventionEnforce,
     blocked_content::prefs::kAbusiveExperienceInterventionEnforce,
-    base::Value::Type::BOOLEAN },
-  { key::kAccessCodeCastDeviceDuration,
-    media_router::prefs::kAccessCodeCastDeviceDuration,
-    base::Value::Type::INTEGER },
-  { key::kAccessCodeCastEnabled,
-    media_router::prefs::kAccessCodeCastEnabled,
     base::Value::Type::BOOLEAN },
   { key::kAccessibilityImageLabelsEnabled,
     prefs::kAccessibilityImageLabelsEnabled,
@@ -783,9 +729,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kLocalFontsBlockedForUrls,
     prefs::kManagedLocalFontsBlockedForUrls,
     base::Value::Type::LIST },
-  { key::kMediaRouterCastAllowAllIPs,
-    media_router::prefs::kMediaRouterCastAllowAllIPs,
-    base::Value::Type::BOOLEAN },
   { key::kNTPCardsVisible,
     prefs::kNtpModulesVisible,
     base::Value::Type::BOOLEAN },
@@ -883,9 +826,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::BOOLEAN },
   { key::kShowCastIconInToolbar,
     prefs::kShowCastIconInToolbar,
-    base::Value::Type::BOOLEAN },
-  { key::kShowCastSessionsStartedByOtherDevices,
-    media_router::prefs::kMediaRouterShowCastSessionsStartedByOtherDevices,
     base::Value::Type::BOOLEAN },
   { key::kSignedHTTPExchangeEnabled,
     prefs::kSignedHTTPExchangeEnabled,
@@ -1156,9 +1096,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::BOOLEAN },
   { key::kPasswordLeakDetectionEnabled,
     password_manager::prefs::kPasswordLeakDetectionEnabled,
-    base::Value::Type::BOOLEAN },
-  { key::kPaymentMethodQueryEnabled,
-    payments::kCanMakePaymentEnabled,
     base::Value::Type::BOOLEAN },
   { key::kSafeSitesFilterBehavior,
     policy_prefs::kSafeSitesFilterBehavior,
@@ -1749,9 +1686,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kDeviceI18nShortcutsEnabled,
     ash::prefs::kDeviceI18nShortcutsEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kArcAppToWebAppSharingEnabled,
-    apps::webapk_prefs::kGeneratedWebApksEnabled,
-    base::Value::Type::BOOLEAN},
   { key::kEnhancedNetworkVoicesInSelectToSpeakAllowed,
     ash::prefs::kAccessibilityEnhancedNetworkVoicesInSelectToSpeakAllowed,
     base::Value::Type::BOOLEAN },
@@ -2107,9 +2041,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kAllowFileSelectionDialogs,
     prefs::kAllowFileSelectionDialogs,
     base::Value::Type::BOOLEAN },
-  { key::kShowAppsShortcutInBookmarkBar,
-    bookmarks::prefs::kShowAppsShortcutInBookmarkBar,
-    base::Value::Type::BOOLEAN },
   { key::kDiskCacheSize,
     prefs::kDiskCacheSize,
     base::Value::Type::INTEGER },
@@ -2349,9 +2280,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     ash::prefs::kRecoveryFactorBehavior,
     base::Value::Type::BOOLEAN },
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  { key::kShoppingListEnabled,
-    commerce::kShoppingListEnabledPrefName,
-    base::Value::Type::BOOLEAN},
 #if BUILDFLAG(IS_ANDROID)
   { key::kVirtualKeyboardResizesLayoutByDefault,
     prefs::kVirtualKeyboardResizesLayoutByDefault,
@@ -2649,12 +2577,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<
           LocalNetworkAccessIpAddressSpaceOverridesPolicyHandler>());
   handlers->AddHandler(std::make_unique<DefaultSensorsSettingPolicyHandler>());
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  handlers->AddHandler(
-      std::make_unique<skills::EnterprisePublishedSkillsPolicyHandler>(
-          chrome_schema));
-#endif
-
   handlers->AddHandler(
       std::make_unique<autofill::AutofillSettingsPolicyHandler>(chrome_schema));
 
@@ -2668,9 +2590,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(
       std::make_unique<enterprise_reporting::LegacyTechReportPolicyHandler>());
   handlers->AddHandler(std::make_unique<DefaultSearchPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<bookmarks::ManagedBookmarksPolicyHandler>(
-          chrome_schema));
   handlers->AddHandler(
       std::make_unique<safe_browsing::SafeBrowsingPolicyHandler>());
   handlers->AddHandler(std::make_unique<syncer::SyncPolicyHandler>());
@@ -2795,7 +2714,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           chrome_schema.GetValidationSchema(),
           SimpleSchemaValidatingPolicyHandler::RECOMMENDED_ALLOWED,
           SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED));
-  handlers->AddHandler(std::make_unique<BookmarkBarPolicyHandler>());
   handlers->AddHandler(std::make_unique<BrowsingHistoryPolicyHandler>());
   handlers->AddHandler(std::make_unique<WebHidDevicePolicyHandler>(
       key::kWebHidAllowDevicesForUrls, prefs::kManagedWebHidAllowDevicesForUrls,
@@ -2893,11 +2811,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
           key::kOnPrintEnterpriseConnector, enterprise_connectors::kOnPrintPref,
           enterprise_connectors::kOnPrintScopePref, chrome_schema));
-
-  handlers->AddHandler(
-      std::make_unique<web_app::WebAppSettingsPolicyHandler>(chrome_schema));
-  handlers->AddHandler(
-      std::make_unique<web_app::WebAppUserInstallPolicyHandler>());
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   handlers->AddHandler(
@@ -3624,32 +3537,12 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-  gen_ai_default_policies.emplace_back(
-      key::kLensOverlaySettings, lens::prefs::kLensOverlaySettings,
-      key::kSearchContentSharingSettings,
-      GenAiDefaultSettingsPolicyHandler::PolicyValueToPrefMap(
-          {{0, 0}, {1, 0}, {2, 1}}));
-
-  handlers->AddHandler(std::make_unique<SimpleDeprecatingPolicyHandler>(
-      std::make_unique<SimplePolicyHandler>(key::kLensOverlaySettings,
-                                            lens::prefs::kLensOverlaySettings,
-                                            base::Value::Type::INTEGER),
-      std::make_unique<contextual_search::SearchContentSharingPolicyHandler>(
-          lens::prefs::kLensOverlaySettings,
-          /* convert_policy_value_to_enabled_boolean= */ false)));
   handlers->AddHandler(std::make_unique<SimpleDeprecatingPolicyHandler>(
       std::make_unique<SimplePolicyHandler>(key::kLensDesktopNTPSearchEnabled,
                                             prefs::kLensDesktopNTPSearchEnabled,
                                             base::Value::Type::BOOLEAN),
       std::make_unique<contextual_search::SearchContentSharingPolicyHandler>(
           prefs::kLensDesktopNTPSearchEnabled,
-          /* convert_policy_value_to_enabled_boolean= */ true)));
-  handlers->AddHandler(std::make_unique<SimpleDeprecatingPolicyHandler>(
-      std::make_unique<SimplePolicyHandler>(key::kLensRegionSearchEnabled,
-                                            prefs::kLensRegionSearchEnabled,
-                                            base::Value::Type::BOOLEAN),
-      std::make_unique<contextual_search::SearchContentSharingPolicyHandler>(
-          prefs::kLensRegionSearchEnabled,
           /* convert_policy_value_to_enabled_boolean= */ true)));
 #else
   handlers->AddHandler(std::make_unique<policy::SimpleDeprecatingPolicyHandler>(
@@ -3675,8 +3568,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
 #if !BUILDFLAG(IS_ANDROID)
   gen_ai_default_policies.emplace_back(key::kVoiceTypingSettings,
                                        prefs::kVoiceTypingSettings);
-  gen_ai_default_policies.emplace_back(key::kIndigo,
-                                       indigo::prefs::kIndigoPolicy);
 #endif
   // Default value for SearchContentSharingSettings is 0 if
   // GenAiDefaultSettings value is 0 or 1, or 1 if the latter is 2.
@@ -3689,43 +3580,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       key::kFindAndFillWithGeminiSettings,
       optimization_guide::prefs::kFindAndFillWithGeminiSettings);
   handlers->AddHandler(std::make_unique<GenAiDefaultSettingsPolicyHandler>(
-      gen_ai_default_policies));
-#if !BUILDFLAG(IS_ANDROID)
-  handlers->AddHandler(std::make_unique<GeminiSparkSettingsPolicyHandler>(
-      std::make_unique<GenAiDefaultSettingsPolicyHandler>(
-          gen_ai_default_policies)));
-  handlers->AddHandler(std::make_unique<SmartTabSharingSettingsPolicyHandler>(
-      std::make_unique<GenAiDefaultSettingsPolicyHandler>(
-          gen_ai_default_policies)));
-#endif
-  handlers->AddHandler(
-      std::make_unique<FindAndFillWithGeminiSettingsPolicyHandler>(
-          std::make_unique<GenAiDefaultSettingsPolicyHandler>(
-              gen_ai_default_policies)));
-  handlers->AddHandler(std::make_unique<GeminiActOnWebSettingsPolicyHandler>(
-      std::make_unique<GenAiDefaultSettingsPolicyHandler>(
-          std::move(gen_ai_default_policies))));
-  handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
-      key::kGeminiActOnWebAllowedForURLs,
-      glic::prefs::kGlicActuationOnWebAllowedForURLs));
-  handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
-      key::kGeminiActOnWebBlockedForURLs,
-      glic::prefs::kGlicActuationOnWebBlockedForURLs));
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  handlers->AddHandler(std::make_unique<SimpleSchemaValidatingPolicyHandler>(
-      key::kGeminiEnterpriseSettings, glic::prefs::kGlicGeminiEnterpriseSettings,
-      chrome_schema, SCHEMA_ALLOW_UNKNOWN,
-      SimpleSchemaValidatingPolicyHandler::RECOMMENDED_ALLOWED,
-      SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED));
-#endif
-
-  handlers->AddHandler(std::make_unique<CloudUserOnlyPolicyChecker>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kTabGroupSharingSettings,
-          collaboration::prefs::kSharedTabGroupsManagedAccountSetting,
-          base::Value::Type::INTEGER)));
+      std::move(gen_ai_default_policies)));
 
 #if BUILDFLAG(IS_CHROMEOS)
   handlers->AddHandler(std::make_unique<SimpleDeprecatingPolicyHandler>(

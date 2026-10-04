@@ -4,7 +4,6 @@
 
 #include "chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.h"
 
-#include "chrome/browser/glic/browser_ui/tab_underline_view.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view.h"
@@ -94,14 +93,6 @@ views::ProposedLayout TabViewVerticalLayout::CalculateProposedLayout(
     }
   }
 
-  if (TabView().glic_tab_underline_view_) {
-    const gfx::Rect glic_bounds =
-        gfx::Rect(0, 0, 2 * glic::TabUnderlineView::kEffectThickness, height);
-    layouts.child_layouts.emplace_back(
-        TabView().glic_tab_underline_view_.get(),
-        TabView().glic_tab_underline_view_->GetVisible(), glic_bounds);
-  }
-
   return layouts;
 }
 
@@ -150,13 +141,6 @@ bool TabViewVerticalLayout::IsChildVisible(const views::View* child_view,
   }
 
   if (child_view == TabView().alert_indicator_) {
-    if (TabView().glic_tab_underline_view_ &&
-        (TabView().alert_indicator_->showing_alert_state() ==
-             tabs::TabAlert::kGlicAccessing ||
-         TabView().alert_indicator_->showing_alert_state() ==
-             tabs::TabAlert::kGlicSharing)) {
-      return false;
-    }
     return TabView().alert_indicator_->showing_alert_state().has_value();
   }
 

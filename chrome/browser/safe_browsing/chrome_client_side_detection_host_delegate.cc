@@ -143,10 +143,8 @@ ChromeClientSideDetectionHostDelegate::GetUserPopulation() {
 
 void ChromeClientSideDetectionHostDelegate::GetInnerText(
     HostInnerTextCallback callback) {
-  content_extraction::GetInnerText(
-      *web_contents_->GetPrimaryMainFrame(), std::nullopt,
-      base::BindOnce(&ChromeClientSideDetectionHostDelegate::OnInnerTextResult,
-                     weak_factory_.GetWeakPtr(), std::move(callback)));
+  // Inner-text extraction (components/content_extraction) has been removed.
+  std::move(callback).Run(std::string());
 }
 
 void ChromeClientSideDetectionHostDelegate::MaybeStartGeminiAntiscamProtection(
@@ -169,12 +167,6 @@ void ChromeClientSideDetectionHostDelegate::MaybeStartGeminiAntiscamProtection(
         url, request_type, did_match_high_confidence_allowlist.value_or(true),
         web_contents_->GetPrimaryMainFrame()->GetLastCommittedURL()));
   }
-}
-
-void ChromeClientSideDetectionHostDelegate::OnInnerTextResult(
-    HostInnerTextCallback callback,
-    std::unique_ptr<content_extraction::InnerTextResult> result) {
-  std::move(callback).Run(result ? result->inner_text : "");
 }
 
 #if BUILDFLAG(IS_ANDROID)

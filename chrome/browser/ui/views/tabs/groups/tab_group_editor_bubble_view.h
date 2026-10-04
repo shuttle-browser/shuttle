@@ -38,7 +38,6 @@ class Separator;
 }  // namespace views
 
 class ColorPickerView;
-class ManageSharingRow;
 
 // A dialog for changing a tab group's visual parameters.
 class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
@@ -101,10 +100,6 @@ class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
   // Returns whether the user has the appropriate profile and the
   // enabled features to save/share groups.
   bool CanSaveGroups() const;
-  bool CanShareGroups() const;
-
-  // Returns whether the user has permissions to create shared groups.
-  bool IsAllowedToCreateSharedGroup() const;
 
   bool IsGroupSaved() const;
   bool IsGroupShared() const;
@@ -123,7 +118,6 @@ class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
   std::unique_ptr<ColorPickerView> BuildColorPicker();
   std::unique_ptr<views::LabelButton> BuildNewTabInGroupButton();
   std::unique_ptr<views::LabelButton> BuildHomeButton();
-  std::unique_ptr<views::LabelButton> BuildAskGeminiButton();
   std::unique_ptr<views::LabelButton> BuildUngroupButton();
   std::unique_ptr<views::LabelButton> BuildCloseGroupButton();
   std::unique_ptr<views::LabelButton> BuildDeleteGroupButton();
@@ -131,22 +125,16 @@ class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
   std::unique_ptr<views::LabelButton> BuildMoveGroupToNewWindowButton();
   std::unique_ptr<views::LabelButton> BuildFocusGroupButton();
   std::unique_ptr<views::LabelButton> BuildUnfocusGroupButton();
-  std::unique_ptr<ManageSharingRow> BuildManageSharingButton();
-  std::unique_ptr<views::LabelButton> BuildShareGroupButton();
-  std::unique_ptr<views::LabelButton> BuildRecentActivityButton();
 
   void NewTabInGroupPressed();
   void HomePressed();
-  void AskGeminiPressed();
   void UngroupPressed();
-  void ShareOrManagePressed();
   void CloseGroupPressed();
   void DeleteGroupPressed();
   void LeaveGroupPressed();
   void MoveGroupToNewWindowPressed();
   void FocusGroupPressed();
   void UnfocusGroupPressed();
-  void RecentActivityPressed();
 
   // The action for moving a group to a new window is only enabled when the
   // tabstrip contains more than just the tabs in the current group.
@@ -235,7 +223,6 @@ class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
   raw_ptr<TitleField> title_field_ = nullptr;
   raw_ptr<ColorPickerView> color_selector_ = nullptr;
   raw_ptr<Footer> footer_ = nullptr;
-  raw_ptr<ManageSharingRow> manage_shared_group_button_ = nullptr;
   raw_ptr<views::ImageView> save_group_icon_ = nullptr;
   raw_ptr<views::Label> save_group_label_ = nullptr;
 

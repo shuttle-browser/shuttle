@@ -264,7 +264,6 @@ source_set("popup_cell_utils") {
     "//chrome/browser/ui/views/autofill/payments:payments_view_util",
     "//chrome/browser/ui/webid",
     "//components/omnibox/browser:vector_icons",
-    "//components/qr_code_generator:bitmap_generator",
     "//components/strings:components_strings",
     "//components/vector_icons",
     "//ui/accessibility:ax_base",

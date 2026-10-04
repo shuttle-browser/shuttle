@@ -31,21 +31,8 @@
 #include "components/autofill/core/browser/webdata/valuables/valuable_data_type_controller.h"
 #include "components/autofill/core/browser/webdata/valuables/valuable_metadata_sync_bridge.h"
 #include "components/autofill/core/browser/webdata/valuables/valuable_sync_bridge.h"
-#include "components/collaboration/public/collaboration_service.h"
-#include "components/collaboration/public/data_type_controller/collaboration_group_data_type_controller.h"
-#include "components/collaboration/public/data_type_controller/shared_tab_group_account_data_type_controller.h"
-#include "components/collaboration/public/data_type_controller/shared_tab_group_data_type_controller.h"
-#include "components/commerce/core/commerce_feature_list.h"
-#include "components/consent_auditor/consent_auditor.h"
-#include "components/contextual_tasks/public/ai_thread_data_type_controller.h"
-#include "components/contextual_tasks/public/contextual_tasks_service.h"
-#include "components/contextual_tasks/public/gemini_thread_data_type_controller.h"
-#include "components/data_sharing/public/data_sharing_service.h"
-#include "components/data_sharing/public/features.h"
-#include "components/data_sharing/public/personal_collaboration_data/personal_collaboration_data_service.h"
 #include "components/history/core/browser/sync/history_data_type_controller.h"
 #include "components/history/core/browser/sync/history_delete_directives_data_type_controller.h"
-#include "components/notebooks/public/notebooks_service.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
 #include "components/password_manager/core/browser/sharing/incoming_password_sharing_invitation_data_type_controller.h"
 #include "components/password_manager/core/browser/sharing/outgoing_password_sharing_invitation_data_type_controller.h"
@@ -58,23 +45,14 @@
 #include "components/reading_list/core/reading_list_local_data_batch_uploader.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/search_engines/template_url_service.h"
-#include "components/send_tab_to_self/send_tab_to_self_data_type_controller.h"
-#include "components/send_tab_to_self/send_tab_to_self_sync_service.h"
-#include "components/sharing_message/sharing_message_bridge.h"
-#include "components/sharing_message/sharing_message_data_type_controller.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/skills/features.h"
-#include "components/skills/public/skill_data_type_controller.h"
-#include "components/skills/public/skills_service.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync/base/features.h"
 #include "components/sync/base/report_unrecoverable_error.h"
+#include "components/sync/model/data_type_store_service.h"
 #include "components/sync/model/forwarding_data_type_controller_delegate.h"
 #include "components/sync/model/proxy_data_type_controller_delegate.h"
 #include "components/sync/service/data_type_controller.h"
-#include "components/sync_bookmarks/bookmark_data_type_controller.h"
-#include "components/sync_bookmarks/bookmark_local_data_batch_uploader.h"
-#include "components/sync_bookmarks/bookmark_sync_service.h"
 #include "components/sync_device_info/device_info_sync_service.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/sync_sessions/session_data_type_controller.h"
@@ -241,46 +219,6 @@ void CommonControllerBuilder::SetAimEligibilityService(
   aim_eligibility_service_.Set(aim_eligibility_service);
 }
 
-void CommonControllerBuilder::SetBookmarkModel(
-    bookmarks::BookmarkModel* bookmark_model) {
-  bookmark_model_.Set(bookmark_model);
-}
-
-void CommonControllerBuilder::SetBookmarkSyncService(
-    sync_bookmarks::BookmarkSyncService*
-        local_or_syncable_bookmark_sync_service,
-    sync_bookmarks::BookmarkSyncService* account_bookmark_sync_service) {
-  local_or_syncable_bookmark_sync_service_.Set(
-      local_or_syncable_bookmark_sync_service);
-  account_bookmark_sync_service_.Set(account_bookmark_sync_service);
-}
-
-void CommonControllerBuilder::SetConsentAuditor(
-    consent_auditor::ConsentAuditor* consent_auditor) {
-  consent_auditor_.Set(consent_auditor);
-}
-
-void CommonControllerBuilder::SetCollaborationService(
-    collaboration::CollaborationService* collaboration_service) {
-  collaboration_service_.Set(collaboration_service);
-}
-
-void CommonControllerBuilder::SetContextualTasksService(
-    contextual_tasks::ContextualTasksService* contextual_tasks_service) {
-  contextual_tasks_service_.Set(contextual_tasks_service);
-}
-
-void CommonControllerBuilder::SetPersonalCollaborationDataService(
-    data_sharing::personal_collaboration_data::PersonalCollaborationDataService*
-        personal_collaboration_data_service) {
-  personal_collaboration_data_service_.Set(personal_collaboration_data_service);
-}
-
-void CommonControllerBuilder::SetDataSharingService(
-    data_sharing::DataSharingService* data_sharing_service) {
-  data_sharing_service_.Set(data_sharing_service);
-}
-
 void CommonControllerBuilder::SetDeviceInfoSyncService(
     syncer::DeviceInfoSyncService* device_info_sync_service) {
   device_info_sync_service_.Set(device_info_sync_service);
@@ -309,16 +247,6 @@ void CommonControllerBuilder::SetIdentityManager(
 void CommonControllerBuilder::SetDataTypeStoreService(
     syncer::DataTypeStoreService* data_type_store_service) {
   data_type_store_service_.Set(data_type_store_service);
-}
-
-void CommonControllerBuilder::SetSkillsService(
-    skills::SkillsService* skills_service) {
-  skills_service_.Set(skills_service);
-}
-
-void CommonControllerBuilder::SetNotebooksService(
-    notebooks::NotebooksService* notebooks_service) {
-  notebooks_service_.Set(notebooks_service);
 }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -362,11 +290,6 @@ void CommonControllerBuilder::SetDualReadingListModel(
   dual_reading_list_model_.Set(dual_reading_list_model);
 }
 
-void CommonControllerBuilder::SetSendTabToSelfSyncService(
-    send_tab_to_self::SendTabToSelfSyncService* send_tab_to_self_sync_service) {
-  send_tab_to_self_sync_service_.Set(send_tab_to_self_sync_service);
-}
-
 void CommonControllerBuilder::SetSessionSyncService(
     sync_sessions::SessionSyncService* session_sync_service) {
   session_sync_service_.Set(session_sync_service);
@@ -375,11 +298,6 @@ void CommonControllerBuilder::SetSessionSyncService(
 void CommonControllerBuilder::SetTabContextSyncService(
     sync_tab_context::TabContextSyncService* tab_context_sync_service) {
   tab_context_sync_service_.Set(tab_context_sync_service);
-}
-
-void CommonControllerBuilder::SetSharingMessageBridge(
-    SharingMessageBridge* sharing_message_bridge) {
-  sharing_message_bridge_.Set(sharing_message_bridge);
 }
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
@@ -458,10 +376,6 @@ CommonControllerBuilder::Build(syncer::DataTypeSet disabled_types,
         CreateAutofillWalletCredentialDataTypeController(sync_service));
   }
 
-  if (!disabled_types.Has(syncer::BOOKMARKS)) {
-    add_controller(CreateBookmarksDataTypeController());
-  }
-
   if (!disabled_types.Has(syncer::HISTORY)) {
     add_controller(CreateHistoryDataTypeController(sync_service));
   }
@@ -514,14 +428,6 @@ CommonControllerBuilder::Build(syncer::DataTypeSet disabled_types,
         CreateEncryptedTabContextItemDataTypeController(sync_service));
   }
 
-  if (!disabled_types.Has(syncer::SHARED_TAB_GROUP_DATA)) {
-    add_controller(CreateSharedTabGroupDataTypeController(sync_service));
-  }
-
-  if (!disabled_types.Has(syncer::SHARING_MESSAGE)) {
-    add_controller(CreateSharingMessageDataTypeController());
-  }
-
   if (!disabled_types.Has(syncer::READING_LIST)) {
     add_controller(CreateReadingListDataTypeController());
   }
@@ -532,14 +438,6 @@ CommonControllerBuilder::Build(syncer::DataTypeSet disabled_types,
 
   if (!disabled_types.Has(syncer::USER_EVENTS)) {
     add_controller(CreateUserEventsDataTypeController(sync_service));
-  }
-
-  if (!disabled_types.Has(syncer::SEND_TAB_TO_SELF)) {
-    add_controller(CreateSendTabToSelfDataTypeController());
-  }
-
-  if (!disabled_types.Has(syncer::USER_CONSENTS)) {
-    add_controller(CreateUserConsentsDataTypeController());
   }
 
   if (!disabled_types.Has(syncer::AUTOFILL_VALUABLE)) {
@@ -554,24 +452,8 @@ CommonControllerBuilder::Build(syncer::DataTypeSet disabled_types,
     add_controller(CreateAccountSettingDataTypeController());
   }
 
-  if (!disabled_types.Has(syncer::SHARED_TAB_GROUP_ACCOUNT_DATA)) {
-    add_controller(CreateSharedTabGroupAccountDataTypeController(sync_service));
-  }
-
   if (!disabled_types.Has(syncer::SHARED_COMMENT)) {
     add_controller(CreateSharedCommentDataTypeController());
-  }
-
-  if (!disabled_types.Has(syncer::AI_THREAD)) {
-    add_controller(CreateAiThreadDataTypeController());
-  }
-
-  if (!disabled_types.Has(syncer::GEMINI_THREAD)) {
-    add_controller(CreateGeminiThreadDataTypeController());
-  }
-
-  if (!disabled_types.Has(syncer::NOTEBOOK)) {
-    add_controller(CreateNotebookDataTypeController());
   }
 
   if (!disabled_types.Has(syncer::JOURNEY)) {
@@ -581,12 +463,6 @@ CommonControllerBuilder::Build(syncer::DataTypeSet disabled_types,
   if (!disabled_types.Has(syncer::CONTEXTUAL_TASK)) {
     add_controller(CreateContextualTaskDataTypeController());
   }
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-  if (!disabled_types.Has(syncer::SKILL)) {
-    add_controller(CreateSkillDataTypeController(sync_service));
-  }
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
   if (!disabled_types.Has(syncer::WEBAUTHN_CREDENTIAL)) {
@@ -598,10 +474,6 @@ CommonControllerBuilder::Build(syncer::DataTypeSet disabled_types,
   add_controller(
       CreateFamilyLinkSettingsDataTypeController(sync_service, channel));
 #endif
-
-  if (!disabled_types.Has(syncer::COLLABORATION_GROUP)) {
-    add_controller(CreateCollaborationGroupDataTypeController(sync_service));
-  }
 
   return controllers;
 }
@@ -736,31 +608,6 @@ CommonControllerBuilder::CreateAutofillWalletCredentialDataTypeController(
       syncer::AUTOFILL_WALLET_CREDENTIAL,
       base::BindRepeating(&AutofillWalletCredentialDataDelegateFromDataService),
       sync_service, /*with_transport_mode_support=*/true);
-}
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateBookmarksDataTypeController() {
-  if (!local_or_syncable_bookmark_sync_service_.value() ||
-      !favicon_service_.value()) {
-    return nullptr;
-  }
-  auto full_mode_delegate =
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
-          local_or_syncable_bookmark_sync_service_.value()
-              ->GetBookmarkSyncControllerDelegate(favicon_service_.value())
-              .get());
-  auto transport_mode_delegate =
-      account_bookmark_sync_service_.value()
-          ? std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
-                account_bookmark_sync_service_.value()
-                    ->GetBookmarkSyncControllerDelegate(
-                        favicon_service_.value())
-                    .get())
-          : nullptr;
-  return std::make_unique<sync_bookmarks::BookmarkDataTypeController>(
-      std::move(full_mode_delegate), std::move(transport_mode_delegate),
-      std::make_unique<sync_bookmarks::BookmarkLocalDataBatchUploader>(
-          bookmark_model_.value(), pref_service_.value()));
 }
 
 std::unique_ptr<syncer::DataTypeController>
@@ -926,41 +773,6 @@ CommonControllerBuilder::CreateEncryptedTabContextItemDataTypeController(
 }
 
 std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateSharedTabGroupDataTypeController(
-    syncer::SyncService* sync_service) {
-  if (!tab_group_sync_service_.value() ||
-      !data_sharing::features::IsDataSharingFunctionalityEnabled()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* delegate =
-      tab_group_sync_service_.value()
-          ->GetSharedTabGroupControllerDelegate()
-          .get();
-  return std::make_unique<collaboration::SharedTabGroupDataTypeController>(
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      sync_service, collaboration_service_.value());
-}
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateSharingMessageDataTypeController() {
-  if (!sharing_message_bridge_.value()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* sharing_message_delegate =
-      sharing_message_bridge_.value()->GetControllerDelegate().get();
-  return std::make_unique<SharingMessageDataTypeController>(
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
-          sharing_message_delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
-          sharing_message_delegate));
-}
-
-std::unique_ptr<syncer::DataTypeController>
 CommonControllerBuilder::CreateReadingListDataTypeController() {
   syncer::DataTypeControllerDelegate* delegate_for_transport_mode =
       dual_reading_list_model_.value()
@@ -1013,29 +825,6 @@ CommonControllerBuilder::CreateUserEventsDataTypeController(
           ? std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
                 delegate)
           : nullptr);
-}
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateSendTabToSelfDataTypeController() {
-  syncer::DataTypeControllerDelegate* delegate =
-      send_tab_to_self_sync_service_.value()->GetControllerDelegate().get();
-  return std::make_unique<send_tab_to_self::SendTabToSelfDataTypeController>(
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate));
-}
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateUserConsentsDataTypeController() {
-  syncer::DataTypeControllerDelegate* delegate =
-      consent_auditor_.value()->GetControllerDelegate().get();
-  return std::make_unique<DataTypeController>(
-      syncer::USER_CONSENTS,
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate));
 }
 
 std::unique_ptr<syncer::DataTypeController>
@@ -1097,35 +886,6 @@ CommonControllerBuilder::CreateAccountSettingDataTypeController() {
 }
 
 std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateSharedTabGroupAccountDataTypeController(
-    syncer::SyncService* sync_service) {
-  if (!base::FeatureList::IsEnabled(syncer::kSyncSharedTabGroupAccountData) ||
-      !data_sharing::features::IsDataSharingFunctionalityEnabled()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* delegate = nullptr;
-  if (personal_collaboration_data_service_.value()) {
-    delegate = personal_collaboration_data_service_.value()
-                   ->GetControllerDelegate()
-                   .get();
-  } else if (tab_group_sync_service_.value()) {
-    delegate = tab_group_sync_service_.value()
-                   ->GetSharedTabGroupAccountControllerDelegate()
-                   .get();
-  }
-  if (!delegate) {
-    return nullptr;
-  }
-  return std::make_unique<
-      collaboration::SharedTabGroupAccountDataTypeController>(
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      sync_service, collaboration_service_.value());
-}
-
-std::unique_ptr<syncer::DataTypeController>
 CommonControllerBuilder::CreateSharedCommentDataTypeController() {
   if (!base::FeatureList::IsEnabled(syncer::kSyncSharedComment)) {
     return nullptr;
@@ -1144,46 +904,6 @@ CommonControllerBuilder::CreateSharedCommentDataTypeController() {
   //   on it to create the DataTypeController.
   // In following CLs implement the bridge and keep adding unit tests.
   return nullptr;
-}
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateAiThreadDataTypeController() {
-  if (!base::FeatureList::IsEnabled(syncer::kSyncAIThread) ||
-      !contextual_tasks_service_.value() || !aim_eligibility_service_.value()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* delegate =
-      contextual_tasks_service_.value()->GetAiThreadControllerDelegate().get();
-  if (!delegate) {
-    return nullptr;
-  }
-  return std::make_unique<contextual_tasks::AIThreadDataTypeController>(
-      aim_eligibility_service_.value(),
-      /*delegate_for_full_sync_mode= */
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode= */
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate));
-}
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateGeminiThreadDataTypeController() {
-  if (!base::FeatureList::IsEnabled(syncer::kSyncGeminiThread) ||
-      !contextual_tasks_service_.value()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* delegate =
-      contextual_tasks_service_.value()
-          ->GetGeminiThreadControllerDelegate()
-          .get();
-  if (!delegate) {
-    return nullptr;
-  }
-  return std::make_unique<contextual_tasks::GeminiThreadDataTypeController>(
-      /*contextual_tasks_service=*/contextual_tasks_service_.value(),
-      /*delegate_for_full_sync_mode= */
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode= */
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate));
 }
 
 std::unique_ptr<syncer::DataTypeController>
@@ -1207,24 +927,6 @@ CommonControllerBuilder::CreateContextualTaskDataTypeController() {
 }
 
 std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateNotebookDataTypeController() {
-  if (!base::FeatureList::IsEnabled(syncer::kSyncNotebook) ||
-      !notebooks_service_.value()) {
-    return nullptr;
-  }
-
-  syncer::DataTypeControllerDelegate* delegate =
-      notebooks_service_.value()->GetSyncControllerDelegate().get();
-  CHECK(delegate);
-  return std::make_unique<syncer::DataTypeController>(
-      syncer::NOTEBOOK,
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate));
-}
-
-std::unique_ptr<syncer::DataTypeController>
 CommonControllerBuilder::CreateJourneyDataTypeController() {
   if (!base::FeatureList::IsEnabled(syncer::kSyncJourney)) {
     return nullptr;
@@ -1244,28 +946,6 @@ CommonControllerBuilder::CreateJourneyDataTypeController() {
   // In CLs #5, #6, ..., implement the bridge and keep adding unit tests.
   return nullptr;
 }
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateSkillDataTypeController(
-    syncer::SyncService* sync_service) {
-  if (!base::FeatureList::IsEnabled(features::kSkillsEnabled) ||
-      !skills_service_.value()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* delegate =
-      skills_service_.value()->GetControllerDelegate().get();
-  if (!delegate) {
-    return nullptr;
-  }
-  return std::make_unique<skills::SkillDataTypeController>(
-      sync_service, pref_service_.value(),
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate));
-}
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
 std::unique_ptr<syncer::DataTypeController>
@@ -1300,25 +980,6 @@ CommonControllerBuilder::CreateFamilyLinkSettingsDataTypeController(
       pref_service_.value(), sync_service);
 }
 #endif
-
-std::unique_ptr<syncer::DataTypeController>
-CommonControllerBuilder::CreateCollaborationGroupDataTypeController(
-    syncer::SyncService* sync_service) {
-  if (!data_sharing_service_.value() ||
-      !data_sharing::features::IsDataSharingFunctionalityEnabled()) {
-    return nullptr;
-  }
-  syncer::DataTypeControllerDelegate* delegate =
-      data_sharing_service_.value()
-          ->GetCollaborationGroupControllerDelegate()
-          .get();
-  return std::make_unique<collaboration::CollaborationGroupDataTypeController>(
-      /*delegate_for_full_sync_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      /*delegate_for_transport_mode=*/
-      std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(delegate),
-      sync_service, collaboration_service_.value());
-}
 
 std::unique_ptr<DataTypeController>
 CommonControllerBuilder::CreateWalletDataTypeController(

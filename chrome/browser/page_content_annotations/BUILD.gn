@@ -16,7 +16,6 @@ source_set("page_content_annotations") {
   public_deps = [
     ":extraction_service",
     ":fetcher",
-    ":page_embeddings",
     "//base",
     "//chrome/browser/profiles:profile",
     "//components/continuous_search/browser",
@@ -104,7 +103,6 @@ source_set("fetcher") {
   sources = [ "multi_source_page_context_fetcher.cc" ]
   public_deps = [
     "//base",
-    "//components/content_extraction/content/browser",
     "//components/page_content_annotations/content",
   ]
   deps = [
@@ -123,23 +121,6 @@ source_set("screenshot_service") {
     "//components/paint_preview/browser",
   ]
   deps = [ "//components/page_content_annotations/content" ]
-}
-
-source_set("page_embeddings") {
-  public = [ "page_embeddings_service_factory.h" ]
-  sources = [ "page_embeddings_service_factory.cc" ]
-  public_deps = [
-    "//base",
-    "//chrome/browser/profiles:profile",
-    "//components/page_content_annotations/content:page_embeddings",
-  ]
-  deps = [
-    ":extraction_service",
-    "//chrome/browser/passage_embeddings",
-    "//chrome/common:chrome_features",
-    "//components/keyed_service/core",
-    "//components/passage_embeddings/core",
-  ]
 }
 
 if (is_android) {
@@ -243,7 +224,6 @@ if (is_android) {
       "//components/page_content_annotations/content",
       "//components/page_content_annotations/content:metrics",
       "//components/page_content_annotations/core",
-      "//components/passage_embeddings/core:test_support",
       "//components/ukm:test_support",
       "//content/public/browser",
       "//content/test:browsertest_support",
@@ -268,7 +248,6 @@ source_set("unit_tests") {
     "//base/test:test_support",
     "//chrome/browser/autocomplete",
     "//chrome/browser/history",
-    "//chrome/browser/search_engine_choice",
     "//chrome/browser/search_engines",
     "//chrome/test:test_support",
     "//components/google/core/common",

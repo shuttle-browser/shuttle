@@ -65,7 +65,6 @@ class MockAutocompleteProviderClient
   }
   scoped_refptr<history::TopSites> GetTopSites() override { return nullptr; }
 
-  MOCK_METHOD0(GetBookmarkModel, bookmarks::BookmarkModel*());
   MOCK_METHOD0(GetInMemoryDatabase, history::URLDatabase*());
   MOCK_METHOD0(GetInMemoryURLIndex, InMemoryURLIndex*());
 
@@ -172,9 +171,6 @@ class MockAutocompleteProviderClient
   MOCK_METHOD(bool, IsAskGShowChipEnabled, (), (const, override));
   MOCK_METHOD(bool, IsOmniboxNextAimPopupEnabled, (), (const, override));
   MOCK_METHOD(bool, IsWebUiNtpEnabledForDesktopAndroid, (), (const, override));
-  MOCK_CONST_METHOD1(GetLensSuggestInputsWhenReady,
-                     base::CallbackListSubscription(
-                         LensOverlaySuggestInputsCallback callback));
   MOCK_METHOD(bool, IsAimEligible, (), (const));
   MOCK_METHOD(bool,
               IsOmniboxNextFeatureParamEnabled,
@@ -225,18 +221,10 @@ class MockAutocompleteProviderClient
   MOCK_METHOD0(OpenIncognitoClearBrowsingDataDialog, void());
   MOCK_METHOD0(CloseIncognitoWindows, void());
   MOCK_METHOD0(PromptPageTranslation, void());
-  MOCK_METHOD(void,
-              OpenLensOverlay,
-              (bool show, lens::LensOverlayInvocationSource invocation_source),
-              (override));
   MOCK_METHOD(bool, ShouldOpenCoBrowsePanel, (), (const, override));
   MOCK_METHOD(void, OpenCoBrowsePanel, (), (override));
   MOCK_METHOD(bool, ShouldOpenComposeboxForAskG, (), (const, override));
   MOCK_METHOD(void, OpenComposeboxForAskG, (), (override));
-  MOCK_METHOD3(IssueContextualSearchRequest,
-               void(const GURL& destination_url,
-                    AutocompleteMatchType::Type match_type,
-                    bool is_zero_prefix_suggestion));
 
  private:
   network::TestURLLoaderFactory test_url_loader_factory_;

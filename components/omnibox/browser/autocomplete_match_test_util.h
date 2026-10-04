@@ -29,9 +29,6 @@ AutocompleteMatch CreateContextualSearchMatch(
 AutocompleteMatch CreateZeroSuggestContextualSearchMatch(
     std::u16string contents = u"text");
 
-AutocompleteMatch CreateLensActionMatch(
-  std::u16string contents = u"text");
-
 AutocompleteMatch CreateZeroPrefixSearchMatch(
     std::u16string contents = u"text");
 

@@ -82,6 +82,7 @@ source_set("impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser:primitives",
     "//chrome/browser/app_mode",
+    "//chrome/browser/download",
     "//chrome/browser/enterprise",
     "//chrome/browser/pdf:pdf_pref_names",
     "//chrome/browser/printing",

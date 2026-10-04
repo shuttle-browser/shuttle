@@ -61,10 +61,6 @@ namespace speech {
 class SpeechRecognitionSmallExpertModelInstaller;
 }  // namespace speech
 
-namespace breadcrumbs {
-class ApplicationBreadcrumbsLogger;
-}  // namespace breadcrumbs
-
 namespace embedder_support {
 class OriginTrialsSettingsStorage;
 }  // namespace embedder_support
@@ -98,10 +94,6 @@ class WebRtcEventLogManager;
 namespace speech {
 class SodaInstaller;
 }  // namespace speech
-
-namespace screen_ai {
-class ScreenAIInstallState;
-}  // namespace screen_ai
 
 namespace supervised_user {
 class DeviceParentalControls;
@@ -468,10 +460,6 @@ class BrowserProcessImpl : public BrowserProcess,
   // to ensure that SodaInstallerImpl gets destructed first.
   std::unique_ptr<speech::SodaInstaller> soda_installer_impl_;
 
-  // Used to download Screen AI on demand and keep track of the library
-  // availability.
-  std::unique_ptr<screen_ai::ScreenAIInstallState> screen_ai_download_;
-
   std::unique_ptr<speech::SpeechRecognitionSmallExpertModelInstaller>
       speech_recognition_small_expert_model_installer_;
 #endif
@@ -515,11 +503,6 @@ class BrowserProcessImpl : public BrowserProcess,
 
   // This must be destroyed before UnownedUserDataHost.
   std::unique_ptr<GlobalFeatures> features_;
-
-  // Observes application-wide events and logs them to breadcrumbs. Null if
-  // breadcrumbs logging is disabled.
-  std::unique_ptr<breadcrumbs::ApplicationBreadcrumbsLogger>
-      application_breadcrumbs_logger_;
 
   std::unique_ptr<os_crypt_async::OSCryptAsync> os_crypt_async_;
 

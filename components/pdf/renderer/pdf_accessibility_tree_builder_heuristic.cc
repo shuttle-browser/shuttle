@@ -646,39 +646,12 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
   LineHelper line_helper(builder_->text_runs());
   bool pdf_forms_enabled =
       base::FeatureList::IsEnabled(chrome_pdf::features::kAccessiblePDFForm);
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  bool ocr_block = false;
-  bool has_ocr_text = false;
-#endif
 
   for (size_t text_run_index = 0; text_run_index < builder_->text_runs().size();
        ++text_run_index) {
     const chrome_pdf::AccessibilityTextRunInfo& text_run =
         (builder_->text_runs())[text_run_index];
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-    // OCR text should be marked by nodes before and after it.
-    bool ocr_block_start = text_run.is_searchified && !ocr_block;
-    bool ocr_block_end = !text_run.is_searchified && ocr_block;
-    if (ocr_block_start || ocr_block_end) {
-      // If already inside a block, end it.
-      // PDF searchifier only processes pages that have no text, hence OCR text
-      // is never added in the middle of a paragraph.
-      if (block_node) {
-        BuildStaticNode(&static_text_node, &static_text, &current_style);
-        block_node = nullptr;
-      }
-      CHECK(ocr_block_start || text_run_index);
-      gfx::PointF position = ocr_block_start
-                                 ? text_run.bounds.origin()
-                                 : (builder_->text_runs())[text_run_index - 1]
-                                       .bounds.bottom_right();
-      builder_->page_node()->child_ids.push_back(
-          builder_->CreateOcrWrapperNode(position, ocr_block_start)->id);
-      ocr_block = ocr_block_start;
-      has_ocr_text = true;
-    }
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
     // If we don't have a block level node, create one.
     if (!block_node) {
       const chrome_pdf::AccessibilityTextRunInfo* next_run =
@@ -833,21 +806,7 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
     }
   }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Add the wrapper node if still in OCR block and text runs finish.
-  if (ocr_block) {
-    builder_->page_node()->child_ids.push_back(
-        builder_
-            ->CreateOcrWrapperNode(
-                builder_->text_runs().back().bounds.bottom_right(),
-                /*start=*/false)
-            ->id);
-  }
-
-  AddRemainingAnnotations(block_node, has_ocr_text);
-#else
   AddRemainingAnnotations(block_node);
-#endif
 }
 
 ui::AXNodeData* PdfAccessibilityTreeBuilderHeuristic::CreateBlockLevelNode(
@@ -1087,10 +1046,6 @@ void PdfAccessibilityTreeBuilderHeuristic::AddChoiceFieldToParaNode(
 
 void PdfAccessibilityTreeBuilderHeuristic::AddRemainingAnnotations(
     ui::AXNodeData* para_node
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-    ,
-    bool ocr_applied
-#endif
 ) {
   // If we don't have additional links, images or form fields to insert in the
   // tree, then return.
@@ -1119,9 +1074,6 @@ void PdfAccessibilityTreeBuilderHeuristic::AddRemainingAnnotations(
   // unless OCR has run. PDF Searchify either OCRs all images on a page, or none
   // of them.
   bool push_remaining_images = true;
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  push_remaining_images = !ocr_applied;
-#endif
   if (push_remaining_images) {
     for (size_t i = current_image_index_; i < builder_->images().size(); i++) {
       const chrome_pdf::AccessibilityImageInfo& image_info =

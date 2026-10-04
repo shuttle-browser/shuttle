@@ -12,16 +12,12 @@ static_library("autofill") {
   sources = [
     "address_normalizer_factory.cc",
     "address_normalizer_factory.h",
-    "at_memory/at_memory_query_service_factory.cc",
-    "at_memory/at_memory_query_service_factory.h",
     "autocomplete_history_manager_factory.cc",
     "autocomplete_history_manager_factory.h",
     "autofill_ai_model_cache_factory.cc",
     "autofill_ai_model_cache_factory.h",
     "autofill_ai_model_executor_factory.cc",
     "autofill_ai_model_executor_factory.h",
-    "autofill_ai_personal_context_access_manager_factory.cc",
-    "autofill_ai_personal_context_access_manager_factory.h",
     "autofill_entity_data_manager_factory.cc",
     "autofill_entity_data_manager_factory.h",
     "autofill_field_classification_model_service_factory.cc",
@@ -56,8 +52,6 @@ static_library("autofill") {
     "validation_rules_storage_factory.h",
     "valuables_data_manager_factory.cc",
     "valuables_data_manager_factory.h",
-    "wallet_pass_access_manager_factory.cc",
-    "wallet_pass_access_manager_factory.h",
   ]
 
   public_deps = [
@@ -83,7 +77,6 @@ static_library("autofill") {
     "//chrome/browser/metrics",
     "//chrome/browser/net",
     "//chrome/browser/optimization_guide",
-    "//chrome/browser/personal_context",
     "//chrome/browser/profiles",
     "//chrome/browser/signin",
     "//chrome/browser/strike_database",
@@ -94,7 +87,6 @@ static_library("autofill") {
     "//components/account_settings",
     "//components/autofill/content/browser",
     "//components/image_fetcher/core",
-    "//components/personal_context/core",
     "//components/prefs",
     "//components/safe_browsing:buildflags",
     "//components/safe_browsing/core/browser/db:database_manager",
@@ -102,7 +94,6 @@ static_library("autofill") {
     "//components/safe_browsing/core/browser/db:v4_protocol_manager_util",
     "//components/strings:components_strings_grit",
     "//components/variations/service",
-    "//components/wallet/core/browser",
     "//third_party/libphonenumber",
   ]
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
@@ -149,7 +140,6 @@ static_library("autofill") {
     deps += [
       "//chrome/android:jni_headers",
       "//chrome/browser/autofill/android:jni_headers",
-      "//chrome/browser/consent_auditor",
       "//chrome/browser/keyboard_accessory/android",
       "//chrome/browser/metrics",
       "//chrome/browser/ui/autofill:autofill_ai_ui_utils",
@@ -159,13 +149,9 @@ static_library("autofill") {
       "//components/autofill/android:payments_jni_headers",
       "//components/autofill/core/common:credit_card_number_validation",
       "//components/autofill/core/common/mojom:mojo_types",
-      "//components/consent_auditor",
       "//components/messages/android:feature_flags",
       "//components/one_time_tokens/android/backend/sms:backend",
       "//components/password_manager/core/browser",
-      "//components/personal_context/core",
-      "//components/personal_context/core:features",
-      "//components/wallet/core/common:features",
       "//third_party/jni_zero",
       "//third_party/libaddressinput",
       "//ui/android",
@@ -308,8 +294,6 @@ if (!is_android) {
       "//chrome/browser/ui/autofill",
       "//chrome/browser/ui/autofill:test_support",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/translate",
-      "//chrome/browser/ui/translate:test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/javascript_dialogs",
@@ -326,7 +310,6 @@ if (!is_android) {
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
     sources = [
-      "at_memory_interactive_uitest.cc",
       "autofill_interactive_uitest.cc",
     ]
 
@@ -343,8 +326,6 @@ if (!is_android) {
       "//chrome/browser/ui",
       "//chrome/browser/ui/autofill",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/translate",
-      "//chrome/browser/ui/translate:test_support",
       "//chrome/common:chrome_features",
       "//chrome/common:non_code_constants",
       "//chrome/test:test_support",
@@ -357,8 +338,6 @@ if (!is_android) {
       "//components/autofill/core/common:features",
       "//components/metrics:content",
       "//components/network_session_configurator/common",
-      "//components/translate/core/browser",
-      "//components/translate/core/common",
       "//content/public/browser",
       "//content/public/common",
       "//content/test:test_support",
@@ -407,7 +386,6 @@ if (!is_android) {
       "//chrome/browser/autofill:test_support_ui",
       "//chrome/browser/ui/autofill",
       "//chrome/browser/ui/autofill:test_support",
-      "//chrome/browser/ui/translate:test_support",
       "//chrome/test:test_support",
       "//components/autofill/core/common:autofill_regex",
     ]
@@ -441,17 +419,12 @@ source_set("unit_tests") {
 
   if (!is_android) {
     sources += [
-      "autofill_ai_personal_context_access_manager_factory_unittest.cc",
       "entity_suppression_manager_factory_unittest.cc",
-      "generated_find_and_fill_with_gemini_pref_unittest.cc",
       "ui/autofill_image_fetcher_impl_unittest.cc",
     ]
     deps += [
-      ":generated_find_and_fill_with_gemini_pref",
-      "//chrome/browser/personal_context",
       "//components/autofill/core/browser",
       "//components/autofill/core/common",
-      "//components/personal_context/core",
       "//ui/base",
       "//ui/gfx:test_support",
     ]
@@ -474,19 +447,3 @@ source_set("unit_tests") {
   }
 }
 
-if (!is_android) {
-  source_set("generated_find_and_fill_with_gemini_pref") {
-    sources = [
-      "generated_find_and_fill_with_gemini_pref.cc",
-      "generated_find_and_fill_with_gemini_pref.h",
-    ]
-    deps = [
-      "//base",
-      "//chrome/browser/profiles:profile",
-      "//chrome/common/extensions/api",
-      "//components/optimization_guide/core",
-      "//components/personal_context/core",
-      "//components/prefs",
-    ]
-  }
-}

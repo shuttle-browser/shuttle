@@ -7,9 +7,7 @@
 
 #include <memory>
 
-#include "base/scoped_observation.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "components/passage_embeddings/core/passage_embeddings_types.h"
 #include "components/permissions/request_type.h"
 
 namespace optimization_guide {
@@ -19,16 +17,11 @@ class OptimizationGuideModelProvider;
 namespace permissions {
 
 class PredictionModelHandler;
-class PermissionsAiv4Handler;
 
-class PredictionModelHandlerProvider
-    : public KeyedService,
-      public passage_embeddings::EmbedderMetadataObserver {
+class PredictionModelHandlerProvider : public KeyedService {
  public:
   explicit PredictionModelHandlerProvider(
-      optimization_guide::OptimizationGuideModelProvider* optimization_guide,
-      passage_embeddings::EmbedderMetadataProvider* embedder_metadata_provider,
-      passage_embeddings::Embedder* passage_embedder);
+      optimization_guide::OptimizationGuideModelProvider* optimization_guide);
   ~PredictionModelHandlerProvider() override;
   PredictionModelHandlerProvider(const PredictionModelHandlerProvider&) =
       delete;
@@ -41,43 +34,14 @@ class PredictionModelHandlerProvider
   // (like OptimizationGuideKeyedService) are shut down.
   void Shutdown() override;
 
-  static bool IsAIv4FeatureEnabled();
   PredictionModelHandler* GetPredictionModelHandler(RequestType request_type);
-  PermissionsAiv4Handler* GetPermissionsAiv4Handler(RequestType request_type);
-  passage_embeddings::Embedder* GetPassageEmbedder();
-  bool IsPassageEmbedderReady() const;
-
-  void set_permissions_aiv4_handler_for_testing(
-      RequestType request_type,
-      std::unique_ptr<PermissionsAiv4Handler> handler);
-  void set_passage_embedder_for_testing(
-      passage_embeddings::Embedder* passage_embedder_);
 
  private:
-  // EmbedderMetadataObserver:
-  void EmbedderMetadataUpdated(
-      passage_embeddings::EmbedderMetadata metadata) override;
-
   // LINT.IfChange(ModelHandlers)
   std::unique_ptr<PredictionModelHandler>
       notification_prediction_model_handler_;
   std::unique_ptr<PredictionModelHandler> geolocation_prediction_model_handler_;
-  std::unique_ptr<PermissionsAiv4Handler> notification_aiv4_handler_;
-  std::unique_ptr<PermissionsAiv4Handler> geolocation_aiv4_handler_;
   // LINT.ThenChange(//chrome/browser/permissions/prediction_service/prediction_model_handler_provider.cc:Shutdown)
-
-  // This embedder is required to preprocess the inner_text to create the
-  // embeddings we use for the AIv4 tflite model as input.
-  raw_ptr<passage_embeddings::Embedder> passage_embedder_;
-
-  // True if the passage embedder model is ready to be used. This is a
-  // dependency for the AIv4 permission prediction model, which requires text
-  // embeddings as input. This value is updated via the
-  // EmbedderMetadataObserver interface.
-  bool is_passage_embedder_ready_ = false;
-  base::ScopedObservation<passage_embeddings::EmbedderMetadataProvider,
-                          passage_embeddings::EmbedderMetadataObserver>
-      embedder_metadata_observation_{this};
 };
 }  // namespace permissions
 #endif  // CHROME_BROWSER_PERMISSIONS_PREDICTION_SERVICE_PREDICTION_MODEL_HANDLER_PROVIDER_H_

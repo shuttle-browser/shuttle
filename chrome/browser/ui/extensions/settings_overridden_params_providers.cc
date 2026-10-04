@@ -26,7 +26,6 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/extensions/controlled_home_dialog_controller.h"
 #include "chrome/browser/ui/extensions/settings_api_bubble_helpers.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/manifest_handlers/settings_overrides_handler.h"
 #include "chrome/common/url_constants.h"
@@ -631,10 +630,6 @@ void GetSearchOverriddenParamsThenRun(
     auto params = std::make_unique<ExtensionSettingsOverriddenDialog::Params>(
         extension->id(), extension->name(), preference_name, histogram_name,
         std::move(show_params));
-    if (base::FeatureList::IsEnabled(
-            features::kHappinessTrackingSurveysForDesktopSEHijacking)) {
-      params->hats_survey_trigger = kHatsSurveyTriggerSEHijacking;
-    }
     // The explicit choice dialog needs to be shown until a choice is made,
     // so suppress the mechanism that limits the number of times the dialog is
     // shown. This is Finch-controlled in case it's proven undesirable.
@@ -725,10 +720,6 @@ void GetSearchOverriddenParamsThenRun(
   auto params = std::make_unique<ExtensionSettingsOverriddenDialog::Params>(
       extension->id(), extension->name(), preference_name, histogram_name,
       std::move(show_params));
-  if (base::FeatureList::IsEnabled(
-          features::kHappinessTrackingSurveysForDesktopSEHijacking)) {
-    params->hats_survey_trigger = kHatsSurveyTriggerSEHijacking;
-  }
 
   // There are no async operations needed for the non-explicit-choice dialog,
   // so trigger the callback immediately.

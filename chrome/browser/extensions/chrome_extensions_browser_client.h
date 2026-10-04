@@ -277,13 +277,6 @@ class ChromeExtensionsBrowserClient : public ExtensionsBrowserClient {
   void CleanUpWebView(content::BrowserContext* browser_context,
                       int embedder_process_id,
                       int view_instance_id) override;
-  void GetWebViewStoragePartitionConfig(
-      content::BrowserContext* browser_context,
-      content::SiteInstance* owner_site_instance,
-      const std::string& partition_name,
-      bool in_memory,
-      base::OnceCallback<void(std::optional<content::StoragePartitionConfig>)>
-          callback) override;
   custom_handlers::ProtocolHandlerRegistry* GetProtocolHandlerRegistry(
       content::BrowserContext* context) override;
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)

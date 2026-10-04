@@ -126,8 +126,6 @@
 #include "ui/android/window_android.h"
 #else
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"  // nogncheck crbug.com/40147906
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #endif
 
 using base::RecordAction;
@@ -673,25 +671,6 @@ void ChromePasswordProtectionService::OnUserAction(
       NOTREACHED();
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (safe_browsing::IsSafeBrowsingSurveysEnabled(*profile_->GetPrefs())) {
-    TrustSafetySentimentService* trust_safety_sentiment_service =
-        TrustSafetySentimentServiceFactory::GetForProfile(profile_);
-    if (trust_safety_sentiment_service) {
-      // Use trigger that delays survey when user changes password so we don't
-      // interrupt their password change.
-      if (action == WarningAction::CHANGE_PASSWORD) {
-        trust_safety_sentiment_service->ProtectResetOrCheckPasswordClicked(
-            ui_type);
-      } else if (action == WarningAction::IGNORE_WARNING ||
-                 action == WarningAction::CLOSE ||
-                 action == WarningAction::MARK_AS_LEGITIMATE) {
-        trust_safety_sentiment_service->PhishedPasswordUpdateNotClicked(ui_type,
-                                                                        action);
-      }
-    }
-  }
-#endif
 }
 
 void ChromePasswordProtectionService::AddObserver(Observer* observer) {

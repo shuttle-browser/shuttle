@@ -9,12 +9,9 @@
 #include "base/containers/fixed_flat_map.h"
 #include "build/build_config.h"
 #include "chrome/browser/accessibility/tree_fixing/pref_names.h"
-#include "chrome/browser/desktop_to_mobile_promos/promos_pref_names.h"
-#include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
 #include "chrome/common/pref_names.h"
-#include "components/desktop_to_mobile_promos/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/live_caption/pref_names.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
@@ -22,7 +19,6 @@
 #include "components/spellcheck/browser/pref_names.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync_preferences/syncable_prefs_database.h"
-#include "components/translate/core/browser/translate_prefs.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_login_pref_names.h"
@@ -1813,111 +1809,13 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
      {syncable_prefs_ids::kWebauthnCablev2Pairings, syncer::PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPasswordPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::kDesktopToiOSPasswordPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPasswordPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSPasswordPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPasswordPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSPasswordPromoOptOut, syncer::PREFERENCES,
-      sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
     {prefs::kHttpsFirstModeIncognito,
      {syncable_prefs_ids::kHttpsFirstModeIncognito, syncer::PREFERENCES,
-      sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSAddressPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::kDesktopToiOSAddressPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSAddressPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSAddressPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSAddressPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSAddressPromoOptOut, syncer::PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
     {prefs::kHttpsFirstBalancedMode,
      {syncable_prefs_ids::kHttpsFirstBalancedMode, syncer::PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPaymentPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::kDesktopToiOSPaymentPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPaymentPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSPaymentPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPaymentPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSPaymentPromoOptOut, syncer::PREFERENCES,
-      sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSNtpPromoAppearanceTimestamps,
-     {syncable_prefs_ids::kDesktopToiOSNtpPromoAppearanceTimestamps,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kMergeableListWithRewriteOnUpdate}},
-    {promos_prefs::kDesktopToiOSNtpPromoDismissed,
-     {syncable_prefs_ids::kDesktopToiOSNtpPromoDismissed, syncer::PREFERENCES,
-      sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSEnhancedBrowsingPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::
-          kDesktopToiOSEnhancedBrowsingPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSEnhancedBrowsingPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSEnhancedBrowsingPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSEnhancedBrowsingPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSEnhancedBrowsingPromoOptOut,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSLensPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::kDesktopToiOSLensPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSLensPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSLensPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSLensPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSLensPromoOptOut, syncer::PREFERENCES,
-      sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSTabGroupsPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::kDesktopToiOSTabGroupsPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSTabGroupsPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSTabGroupsPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSTabGroupsPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSTabGroupsPromoOptOut,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPriceTrackingPromoLastImpressionTimestamp,
-     {syncable_prefs_ids::
-          kDesktopToiOSPriceTrackingPromoLastImpressionTimestamp,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPriceTrackingPromoImpressionsCounter,
-     {syncable_prefs_ids::kDesktopToiOSPriceTrackingPromoImpressionsCounter,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {promos_prefs::kDesktopToiOSPriceTrackingPromoOptOut,
-     {syncable_prefs_ids::kDesktopToiOSPriceTrackingPromoOptOut,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
-    {glic::prefs::kGlicRolloutEligibility,
-     {syncable_prefs_ids::kGlicRolloutEligibility, syncer::PRIORITY_PREFERENCES,
-      sync_preferences::PrefSensitivity::kExemptFromUserControlWhileSignedIn,
       sync_preferences::MergeBehavior::kNone}},
 });
 

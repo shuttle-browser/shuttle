@@ -162,7 +162,6 @@ class WebUILocationBar : public LocationBar,
 
   // OmniboxPopupPresenterDelegate:
   views::Widget* GetLocationBarWidget() override;
-  OmniboxPopupFileSelector* GetOmniboxPopupFileSelector() const override;
   OmniboxPopupAimPresenter* GetOmniboxPopupAimPresenter() const override;
   views::View* GetLocationBarFocusRestoreView() override;
 
@@ -227,7 +226,6 @@ class WebUILocationBar : public LocationBar,
   WebUIContentSettingImageControl content_setting_image_control_;
   page_actions::WebUIPageActionControl page_action_control_;
 
-
   std::unique_ptr<WebUIPermissionDashboard> permission_dashboard_;
   std::unique_ptr<PermissionDashboardController>
       permission_dashboard_controller_;
@@ -238,7 +236,6 @@ class WebUILocationBar : public LocationBar,
   const bool using_full_popup_;
   // The presenter controlling the showing of the AI mode popup.
   std::unique_ptr<OmniboxPopupAimPresenter> omnibox_popup_aim_presenter_;
-  std::unique_ptr<OmniboxPopupFileSelector> omnibox_popup_file_selector_;
   base::CallbackListSubscription popup_state_changed_subscription_;
 
   bool is_initialized_ = false;

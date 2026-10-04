@@ -36,7 +36,6 @@ source_set("impl") {
     "//chrome/browser/ui:browser_init_state",
     "//chrome/browser/ui:browser_window_state",
     "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/web_applications",
     "//chrome/common:non_code_constants",
     "//components/prefs",
     "//ui/base",

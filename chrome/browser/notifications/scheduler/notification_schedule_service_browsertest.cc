@@ -21,7 +21,6 @@
 #include "chrome/browser/notifications/scheduler/public/notification_params.h"
 #include "chrome/browser/notifications/scheduler/public/notification_scheduler_client.h"
 #include "chrome/browser/notifications/scheduler/public/notification_scheduler_client_registrar.h"
-#include "chrome/browser/notifications/scheduler/public/tips_agent.h"
 #include "chrome/browser/notifications/scheduler/schedule_service_factory_helper.h"
 #include "chrome/browser/notifications/scheduler/test/mock_notification_background_task_scheduler.h"
 #include "chrome/browser/profiles/profile.h"
@@ -164,14 +163,13 @@ class NotificationScheduleServiceTest : public InProcessBrowserTest {
     auto display_agent = notifications::DisplayAgent::Create();
     auto background_task_scheduler =
         std::make_unique<TestBackgroundTaskScheduler>();
-    auto tips_agent = notifications::TipsAgent::Create();
     auto finds_agent = notifications::FindsAgent::Create();
     task_scheduler_ = background_task_scheduler.get();
     auto* db_provider =
         profile->GetDefaultStoragePartition()->GetProtoDatabaseProvider();
     service_ = CreateNotificationScheduleService(
         std::move(client_registrar), std::move(background_task_scheduler),
-        std::move(display_agent), std::move(tips_agent), std::move(finds_agent),
+        std::move(display_agent), std::move(finds_agent),
         db_provider, tmp_dir_.GetPath().Append(kTestDir),
         profile->IsOffTheRecord(), profile->GetPrefs());
   }

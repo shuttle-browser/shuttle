@@ -8,7 +8,6 @@
 #include <optional>
 #include <string>
 
-#include "components/desktop_to_mobile_promos/features.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync/protocol/device_info_specifics.pb.h"
 #include "components/sync_device_info/device_info.h"

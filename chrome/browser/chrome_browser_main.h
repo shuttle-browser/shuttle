@@ -34,10 +34,6 @@ class StartupBrowserCreator;
 class ShutdownWatcherHelper;
 class WebUsbDetector;
 
-namespace apps {
-class PublisherHostFactory;
-}  // namespace apps
-
 namespace base {
 class CommandLine;
 class RunLoop;
@@ -196,11 +192,6 @@ class ChromeBrowserMainParts : public content::BrowserMainParts {
   // Members needed across shutdown methods.
   browser_shutdown::RestartMode restart_mode_ =
       browser_shutdown::RestartMode::kNoRestart;
-#endif  // !BUILDFLAG(IS_ANDROID)
-
-#if !BUILDFLAG(IS_ANDROID)
-  std::optional<base::AutoReset<std::unique_ptr<apps::PublisherHostFactory>>>
-      publisher_host_factory_resetter_;
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_DOWNGRADE_PROCESSING)

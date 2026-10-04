@@ -16,8 +16,6 @@
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
-#include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/collaboration_messaging_tab_data.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
@@ -476,43 +474,23 @@ class TabHoverCardBubbleView::TabCardView : public views::View {
     const bool show_collaboration_messaging =
         card_data.show_collaboration_messaging;
 
-    const base::ByteSize tab_memory_usage =
-        card_data.tab_resource_usage
-            ? card_data.tab_resource_usage->memory_usage()
-            : base::ByteSize(0);
-    const bool is_high_memory_usage =
-        card_data.tab_resource_usage
-            ? card_data.tab_resource_usage->is_high_memory_usage()
-            : false;
-
-    // High memory usage notification is considered a tab alert. Show it even
-    // if the memory usage in hover cards pref is disabled.
-    // However, collaboration messaging takes precedence over memory usage for
-    // shared tabs.
-    const bool show_memory_usage =
-        ((tab_memory_usage.is_positive() &&
-          bubble_view_->bubble_params().show_memory_usage) ||
-         is_high_memory_usage) &&
-        !show_collaboration_messaging && !card_data.show_discard_status;
-
+    // Tab resource usage (performance controls) was removed: never show
+    // memory usage in hover cards.
     footer_view_->SetPerformanceData(
-        {show_memory_usage, is_high_memory_usage, tab_memory_usage});
+        {/*show_memory_usage=*/false, /*is_high_memory_usage=*/false,
+         base::ByteSize(0)});
 
     CollaborationMessagingRowData collaboration_messaging_row_data;
     collaboration_messaging_row_data.should_show_collaboration_messaging =
         show_collaboration_messaging;
     collaboration_messaging_row_data.text = card_data.collaboration_message;
-    collaboration_messaging_row_data.avatar =
-        tab_groups::CollaborationMessagingTabData::GetHoverCardImage(
-            GetWidget(), card_data.collaboration_avatar,
-            /*has_message*/ card_data.collaboration_message.size() > 0u);
 
     footer_view_->SetCollaborationMessagingData(
         {collaboration_messaging_row_data});
 
     const bool show_footer = card_data.alert_data.alert_state.has_value() ||
                              card_data.show_discard_status ||
-                             show_memory_usage || show_collaboration_messaging;
+                             show_collaboration_messaging;
 
     if (thumbnail_view_) {
       // We only clip the corners of the fade image when there isn't a footer.

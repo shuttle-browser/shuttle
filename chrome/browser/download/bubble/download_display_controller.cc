@@ -5,6 +5,7 @@
 #include "chrome/browser/download/bubble/download_display_controller.h"
 
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/power_monitor/power_monitor.h"
 #include "base/task/sequenced_task_runner.h"
@@ -13,7 +14,6 @@
 #include "chrome/browser/download/bubble/download_bubble_display_info.h"
 #include "chrome/browser/download/bubble/download_bubble_prefs.h"
 #include "chrome/browser/download/bubble/download_bubble_ui_controller.h"
-#include "chrome/browser/download/bubble/download_bubble_utils.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/download/download_item_model.h"
@@ -78,22 +78,11 @@ bool HasRecentCompleteDownload(base::TimeDelta interval,
   return time_since_last_completion < interval;
 }
 
-// `profile` must be non-null. `app_id` can be null, signifying no app. This
-// returns the most recent browser for the profile which matches the given app
-// or lack thereof.
-BrowserWindowInterface* FindMostRecentBrowserForProfileMatchingWebApp(
-    Profile* profile,
-    const webapps::AppId* app_id) {
+// `profile` must be non-null. Returns the most recent browser for the profile.
+BrowserWindowInterface* FindMostRecentBrowserForProfile(Profile* profile) {
   BrowserWindowInterface* result = nullptr;
   ProfileBrowserCollection::GetForProfile(profile)
       ->ForEach([&](BrowserWindowInterface* browser) {
-        const webapps::AppId* browser_app_id = GetWebAppIdForBrowser(browser);
-        bool app_ids_match =
-            (!app_id && !browser_app_id) ||
-            (app_id && browser_app_id && *app_id == *browser_app_id);
-        if (!app_ids_match) {
-          return true;  // Continue iterating.
-        }
         result = browser;
         return false;  // Stop iterating.
       });
@@ -337,11 +326,9 @@ void DownloadDisplayController::UpdateDownloadIconToInactive() {
 const DownloadBubbleDisplayInfo&
 DownloadDisplayController::UpdateButtonStateFromUpdateService() {
   const DownloadBubbleDisplayInfo& info =
-      bubble_controller_->update_service()->GetDisplayInfo(
-          GetWebAppIdForBrowser(browser_));
+      bubble_controller_->update_service()->GetDisplayInfo();
   DownloadDisplay::ProgressInfo progress_info =
-      bubble_controller_->update_service()->GetProgressInfo(
-          GetWebAppIdForBrowser(browser_));
+      bubble_controller_->update_service()->GetProgressInfo();
 
   UpdateToolbarButtonState(info, progress_info);
 
@@ -350,14 +337,12 @@ DownloadDisplayController::UpdateButtonStateFromUpdateService() {
 
 void DownloadDisplayController::HandleAccessibleAlerts() {
   // Don't attempt to announce through more than one browser.
-  const webapps::AppId* app_id = GetWebAppIdForBrowser(browser_);
-  if (browser_ != FindMostRecentBrowserForProfileMatchingWebApp(
-                      browser_->GetProfile(), app_id)) {
+  if (browser_ != FindMostRecentBrowserForProfile(browser_->GetProfile())) {
     return;
   }
   for (const std::u16string& alert :
        bubble_controller_->update_service()
-           ->TakeAccessibleAlertsForAnnouncement(app_id)) {
+           ->TakeAccessibleAlertsForAnnouncement()) {
     display_->AnnounceAccessibleAlertNow(alert);
   }
 }

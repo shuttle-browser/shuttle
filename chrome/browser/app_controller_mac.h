@@ -22,7 +22,6 @@
 #include "chrome/browser/ui/startup/startup_tab.h"
 #include "components/prefs/pref_change_registrar.h"
 
-class BookmarkMenuBridge;
 @class ConfirmQuitPanelController;
 class GURL;
 class HistoryMenuBridge;
@@ -130,7 +129,6 @@ typedef NS_ENUM(NSInteger, ConfirmQuitResult) {
 - (NSMenu*)applicationDockMenu:(NSApplication*)sender;
 
 
-- (BookmarkMenuBridge*)bookmarkMenuBridge;
 - (HistoryMenuBridge*)historyMenuBridge;
 - (TabMenuBridge*)tabMenuBridge;
 

@@ -67,36 +67,8 @@ enum class WebUIPreloadResult {
   kMaxValue = kMiss,
 };
 
-// A candidate selector that always preloads a fixed WebUI.
-class FixedCandidateSelector : public webui::PreloadCandidateSelector {
- public:
-  explicit FixedCandidateSelector(GURL webui_url) : webui_url_(webui_url) {}
-  FixedCandidateSelector(const FixedCandidateSelector&) = default;
-  FixedCandidateSelector(FixedCandidateSelector&&) = default;
-  FixedCandidateSelector& operator=(const FixedCandidateSelector&) = default;
-  FixedCandidateSelector& operator=(FixedCandidateSelector&&) = default;
-
-  // webui::PreloadCandidateSelector:
-  void Init(const std::vector<GURL>& preloadable_urls) override {
-    DCHECK(std::ranges::contains(preloadable_urls, webui_url_));
-  }
-  std::optional<GURL> GetURLToPreload(
-      webui::PreloadContext context) const override {
-    return IsUrlExcludedByFlag(webui_url_) ? std::nullopt
-                                           : std::make_optional(webui_url_);
-  }
-
- private:
-  GURL webui_url_;
-};
-
 bool IsFeatureEnabled() {
   return base::FeatureList::IsEnabled(features::kPreloadTopChromeWebUI);
-}
-
-bool IsSmartPreloadEnabled() {
-  return IsFeatureEnabled() &&
-         features::kPreloadTopChromeWebUISmartPreload.Get();
 }
 
 content::WebContents::CreateParams GetWebContentsCreateParams(
@@ -291,17 +263,12 @@ WebUIContentsPreloadManager::WebUIContentsPreloadManager()
 
   webui_tracker_ = PerProfileWebUITracker::Create();
   webui_tracker_observation_.Observe(webui_tracker_.get());
-  if (IsSmartPreloadEnabled()) {
-    // Use ProfilePreloadCandidateSelector to find the WebUI with the
-    // highest engagement score and is not present under the current profile.
-    SetPreloadCandidateSelector(
-        std::make_unique<webui::ProfilePreloadCandidateSelector>(
-            webui_tracker_.get()));
-  } else {
-    // Old behavior always preloads Tab Search.
-    SetPreloadCandidateSelector(std::make_unique<FixedCandidateSelector>(
-        GURL(chrome::kChromeUITabSearchURL)));
-  }
+  // Use ProfilePreloadCandidateSelector to find the WebUI with the highest
+  // engagement score and is not present under the current profile. (The old
+  // fixed behavior preloaded Tab Search, which was removed.)
+  SetPreloadCandidateSelector(
+      std::make_unique<webui::ProfilePreloadCandidateSelector>(
+          webui_tracker_.get()));
 }
 
 void WebUIContentsPreloadManager::ReregisterMemoryConsumerForTesting() {

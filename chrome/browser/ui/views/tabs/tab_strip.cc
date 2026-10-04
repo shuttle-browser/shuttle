@@ -60,8 +60,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_layout_helper.h"
 #include "chrome/browser/ui/views/tabs/z_orderable_tab_container_element.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/crash/core/common/crash_key.h"
 #include "components/split_tabs/split_tab_id.h"
@@ -422,9 +420,7 @@ class TabStrip::TabDragContextImpl : public TabDragContext,
   }
 
   bool IsTabDetachable(const TabSlotView* view) const override {
-    // The tab is not detachable if it is a pinned home tab on a web app.
-    return !(web_app::HasPinnedHomeTab(GetTabStripModel()) &&
-             GetIndexOf(view) == 0);
+    return true;
   }
 
   TabSlotView* GetTabGroupHeader(const tab_groups::TabGroupId& group) override {

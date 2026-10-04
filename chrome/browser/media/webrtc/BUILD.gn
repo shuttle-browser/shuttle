@@ -224,7 +224,6 @@ source_set("webrtc") {
     deps += [
       "//chrome/browser/controlled_frame:media_access_handler",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/web_applications",
       "//extensions/browser",
       "//extensions/browser/kiosk",
       "//extensions/common",
@@ -243,10 +242,7 @@ source_set("webrtc") {
       "display_media_access_handler.cc",
       "display_media_access_handler.h",
     ]
-    deps += [
-      "//chrome/browser/glic",
-      "//chrome/browser/ui:url_identity",
-    ]
+    deps += [ "//chrome/browser/ui:url_identity" ]
 
     if (is_android) {
       sources += [
@@ -318,12 +314,9 @@ source_set("webrtc") {
       "//chrome/browser/chromeos/policy/dlp",
       "//chrome/browser/ui/ash/keyboard",
       "//chrome/browser/ui/ash/media_client",
-      "//chrome/browser/ui/views/web_apps/isolated_web_apps:multi_capture_notification_details_view",
-      "//chrome/browser/web_applications",
       "//chromeos/ash/components/browser_context_helper",
       "//chromeos/ash/components/system",
       "//components/user_manager",
-      "//components/webapps/isolated_web_apps",
     ]
     allow_circular_includes_from = [
       "//chrome/browser/ash/policy/handlers",
@@ -423,7 +416,7 @@ if (!is_android) {
       ":webrtc_browser_tests_base",
       "//base",
       "//chrome/browser:test_support",
-      "//chrome/browser/apps/platform_apps:browser_test_support",
+      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/extensions:test_support",
       "//chrome/browser/extensions/api/desktop_capture",
       "//chrome/browser/infobars:test_support",
@@ -433,8 +426,6 @@ if (!is_android) {
       "//chrome/browser/ui/apps",
       "//chrome/browser/ui/tab_sharing",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/web_applications:web_applications_test_support",
-      "//chrome/browser/web_applications/isolated_web_apps/test:test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/infobars/content",
@@ -455,7 +446,6 @@ if (!is_android) {
       ]
       deps += [
         "//chrome/browser:chrome_content_browser_client",
-        "//chrome/browser/apps/app_service",
         "//chrome/browser/ash/login/users",
         "//chrome/browser/ash/system_web_apps/test_support:test_support_ui",
         "//chrome/browser/chromeos/policy/dlp",
@@ -549,8 +539,6 @@ source_set("unit_tests") {
     deps += [
       ":test_support",
       ":webrtc_browser_tests_base",
-      "//chrome/browser/web_applications:web_app_test",
-      "//chrome/browser/web_applications:web_applications_test_support",
     ]
   }
 

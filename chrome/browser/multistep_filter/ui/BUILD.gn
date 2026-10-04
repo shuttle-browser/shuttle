@@ -24,7 +24,6 @@ source_set("ui") {
 
     deps += [
       "//chrome/app:generated_resources",
-      "//chrome/browser/contextual_cueing",
       "//chrome/browser/favicon",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/page_action",

@@ -114,7 +114,6 @@ source_set("webauthn") {
     "//components/google/core/common",
     "//components/password_manager/core/browser",
     "//components/password_manager/core/common",
-    "//components/qr_code_generator:bitmap_generator",
     "//components/signin/public/identity_manager",
     "//components/strings:components_strings",
     "//components/vector_icons",

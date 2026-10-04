@@ -42,7 +42,6 @@ class ProfileWriter : public base::RefCountedThreadSafe<ProfileWriter> {
   // These functions return true if the corresponding model has been loaded.
   // If the models haven't been loaded, the importer waits to run until they've
   // completed.
-  virtual bool BookmarkModelIsLoaded() const;
   virtual bool TemplateURLServiceIsLoaded() const;
 
   // Helper methods for adding data to local stores.

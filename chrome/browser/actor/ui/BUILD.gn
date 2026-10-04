@@ -249,15 +249,13 @@ if (!skip_android_unmigrated_actor_files) {
     testonly = true
 
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "handoff_button_controller_interactive_uitest.cc" ]
+    sources = []
 
     deps = [
       ":actor_ui_interactive_base",
       ":ui",
       "//base/test:test_support",
       "//chrome/browser/actor",
-      "//chrome/browser/glic",
-      "//chrome/browser/glic/test_support",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui",
       "//chrome/browser/ui:ui_features",
@@ -308,7 +306,6 @@ source_set("ui") {
     deps += [
       "//chrome/app/theme:chrome_unscaled_resources",
       "//chrome/browser/actor",
-      "//chrome/browser/glic",
       "//chrome/browser/lifetime",
       "//chrome/browser/ui:browser_tab_strip",
       "//components/constrained_window",
@@ -333,7 +330,6 @@ source_set("ui") {
       "//chrome/app/vector_icons",
       "//chrome/browser/actor",
       "//chrome/browser/actor/resources:browser_resources",
-      "//chrome/browser/glic",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/immersive:immersive_mode_controller",

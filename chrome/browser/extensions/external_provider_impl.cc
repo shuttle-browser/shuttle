@@ -60,10 +60,6 @@
 #include "extensions/common/manifest.h"
 #include "ui/base/l10n/l10n_util.h"
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/web_applications/preinstalled_app_install_features.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_paths.h"
 #include "ash/constants/ash_switches.h"
@@ -410,25 +406,9 @@ void ExternalProviderImpl::RetrieveExtensionsFromPrefs(
       continue;
     }
 
-    // If the extension is in a web app migration treat it as "keep_if_present"
-    // so it can get uninstalled by WebAppUiManager::UninstallAndReplace() once
-    // the replacement web app has installed and migrated over user preferences.
-    // TODO(crbug.com/1099150): Remove this field after migration is complete.
-    // TODO(crbug.com/409795200): Decide how to handle this on desktop Android.
-    // We can't currently depend on //chrome/browser/web_applications.
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-    const std::string* web_app_migration_flag =
-        extension_dict.FindString(kWebAppMigrationFlag);
-    bool is_migrating_to_web_app =
-        web_app_migration_flag &&
-        web_app::IsPreinstalledAppInstallFeatureEnabled(
-            *web_app_migration_flag);
-#else
-    bool is_migrating_to_web_app = false;
-#endif
     bool keep_if_present =
         extension_dict.FindBool(kKeepIfPresent).value_or(false);
-    if (keep_if_present || is_migrating_to_web_app) {
+    if (keep_if_present) {
       ExtensionRegistry* extension_registry = ExtensionRegistry::Get(profile_);
       const Extension* extension =
           extension_registry ? extension_registry->GetExtensionById(
@@ -831,7 +811,6 @@ void ExternalProviderImpl::CreateExternalProviders(
         profile->IsNewProfile()
             ? ExternalPrefLoader::DELAY_LOAD_UNTIL_PRIORITY_SYNC
             : ExternalPrefLoader::NONE;
-    pref_load_flags |= ExternalPrefLoader::USE_USER_TYPE_PROFILE_FILTER;
     provider_list->push_back(std::make_unique<ExternalProviderImpl>(
         service,
         base::MakeRefCounted<ExternalPrefLoader>(
@@ -859,7 +838,7 @@ void ExternalProviderImpl::CreateExternalProviders(
         service,
         base::MakeRefCounted<ExternalPrefLoader>(
             chrome::DIR_STANDALONE_EXTERNAL_EXTENSIONS,
-            ExternalPrefLoader::USE_USER_TYPE_PROFILE_FILTER, profile),
+            ExternalPrefLoader::NONE, profile),
         profile, ManifestLocation::kExternalPref,
         ManifestLocation::kExternalPrefDownload,
         bundled_extension_creation_flags));

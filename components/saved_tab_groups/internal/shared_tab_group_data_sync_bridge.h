@@ -30,10 +30,6 @@
 
 class PrefService;
 
-namespace data_sharing {
-class Logger;
-}  // namespace data_sharing
-
 namespace syncer {
 class DataTypeLocalChangeProcessor;
 class MetadataChangeList;
@@ -57,8 +53,7 @@ class SharedTabGroupDataSyncBridge : public syncer::DataTypeSyncBridge {
       SyncBridgeTabGroupModelWrapper* model_wrapper,
       syncer::OnceDataTypeStoreFactory create_store_callback,
       std::unique_ptr<syncer::DataTypeLocalChangeProcessor> change_processor,
-      PrefService* pref_service,
-      data_sharing::Logger* logger);
+      PrefService* pref_service);
 
   SharedTabGroupDataSyncBridge(const SharedTabGroupDataSyncBridge&) = delete;
   SharedTabGroupDataSyncBridge& operator=(const SharedTabGroupDataSyncBridge&) =
@@ -252,9 +247,6 @@ class SharedTabGroupDataSyncBridge : public syncer::DataTypeSyncBridge {
 
   // Whether shared tab group was enabled in last session. Used for migration.
   const bool did_enable_shared_tab_groups_in_last_session_;
-
-  // Logger for logging to debug UI.
-  raw_ptr<data_sharing::Logger> logger_ = nullptr;
 
   // List of tab groups waiting for being committed to the server.
   std::vector<base::Uuid> tab_groups_waiting_for_commit_;

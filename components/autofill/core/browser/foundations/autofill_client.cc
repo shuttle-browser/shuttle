@@ -24,7 +24,6 @@
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_manager.h"
-#include "components/autofill/core/browser/integrators/compose/autofill_compose_delegate.h"
 #include "components/autofill/core/browser/integrators/identity_credential/identity_credential_delegate.h"
 #include "components/autofill/core/browser/integrators/password_form_classification.h"
 #include "components/autofill/core/browser/integrators/password_manager/password_manager_delegate.h"
@@ -37,7 +36,6 @@
 #include "components/autofill/core/common/aliases.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/optimization_guide/core/model_execution/remote_model_executor.h"
-#include "components/personal_context/core/personal_context_types.h"
 #include "components/profile_metrics/browser_profile_type.h"
 #include "net/base/schemeful_site.h"
 #include "ui/gfx/geometry/rect_f.h"
@@ -101,15 +99,6 @@ const ValuablesDataManager* AutofillClient::GetValuablesDataManager() const {
   return const_cast<AutofillClient*>(this)->GetValuablesDataManager();
 }
 
-WalletPassAccessManager* AutofillClient::GetWalletPassAccessManager() {
-  return nullptr;
-}
-
-const WalletPassAccessManager* AutofillClient::GetWalletPassAccessManager()
-    const {
-  return const_cast<AutofillClient*>(this)->GetWalletPassAccessManager();
-}
-
 AutofillOptimizationGuideDecider*
 AutofillClient::GetAutofillOptimizationGuideDecider() const {
   return nullptr;
@@ -122,41 +111,6 @@ AutofillClient::GetAutofillFieldClassificationModelHandler() {
 
 FieldClassificationModelHandler*
 AutofillClient::GetPasswordManagerFieldClassificationModelHandler() {
-  return nullptr;
-}
-
-personal_context::PersonalContextFirstRunService*
-AutofillClient::GetPersonalContextFirstRunService() {
-  return nullptr;
-}
-
-AutofillComposeDelegate* AutofillClient::GetComposeDelegate() {
-  return nullptr;
-}
-const AutofillComposeDelegate* AutofillClient::GetComposeDelegate() const {
-  return const_cast<AutofillClient*>(this)->GetComposeDelegate();
-}
-
-AtMemoryQueryService* AutofillClient::GetAtMemoryQueryService() {
-  return nullptr;
-}
-
-AtMemoryManager* AutofillClient::GetAtMemoryManager() {
-  return nullptr;
-}
-
-const AtMemoryManager* AutofillClient::GetAtMemoryManager() const {
-  return const_cast<AutofillClient*>(this)->GetAtMemoryManager();
-}
-
-personal_context::PersonalContextEligibilityState
-AutofillClient::GetPersonalContextEligibilityState() const {
-  return personal_context::PersonalContextEligibilityState::
-      kDisabledNotEligible;
-}
-
-personal_context::PersonalContextEligibilityService*
-AutofillClient::GetPersonalContextEligibilityService() const {
   return nullptr;
 }
 
@@ -179,17 +133,6 @@ AutofillAiManager* AutofillClient::GetAutofillAiManager() {
   return nullptr;
 }
 
-AutofillAiPersonalContextAccessManager*
-AutofillClient::GetAutofillAiPersonalContextAccessManager() {
-  return nullptr;
-}
-
-const AutofillAiPersonalContextAccessManager*
-AutofillClient::GetAutofillAiPersonalContextAccessManager() const {
-  return const_cast<AutofillClient*>(this)
-      ->GetAutofillAiPersonalContextAccessManager();
-}
-
 EntitySuppressionManager* AutofillClient::GetEntitySuppressionManager() {
   return nullptr;
 }
@@ -204,10 +147,6 @@ AutofillAiModelCache* AutofillClient::GetAutofillAiModelCache() {
 }
 
 AutofillAiModelExecutor* AutofillClient::GetAutofillAiModelExecutor() {
-  return nullptr;
-}
-
-consent_auditor::ConsentAuditor* AutofillClient::GetConsentAuditor() {
   return nullptr;
 }
 
@@ -427,11 +366,6 @@ void AutofillClient::ShowAutofillAiFetchEntityFailureNotification() {
   NOTIMPLEMENTED();
 }
 
-void AutofillClient::ShowAtMemoryFetchFailureNotification(
-    std::optional<std::u16string> message_override) {
-  NOTIMPLEMENTED();
-}
-
 void AutofillClient::ShowAutofillAiPreFetchFailureNotification() {
   NOTIMPLEMENTED();
 }
@@ -484,15 +418,6 @@ AutofillManager* AutofillClient::GetAutofillManagerForPrimaryMainFrame() {
 
 OtpPhishGuardDelegate* AutofillClient::GetOtpPhishGuardDelegate() {
   return nullptr;
-}
-
-void AutofillClient::OpenGeminiInSidebar(const std::u16string& prompt) {
-  // TODO(crbug.com/493824736): Implement opening Gemini in the sidebar.
-  NOTIMPLEMENTED();
-}
-
-bool AutofillClient::IsGlicEnabled() const {
-  return false;
 }
 
 bool AutofillClient::IsAutofillTypeBlockedByPolicy(

@@ -15,7 +15,6 @@
 #include "chrome/browser/profiles/profile_selections.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/storage_partition.h"
@@ -34,26 +33,6 @@ AimEligibilityService::Configuration CreateConfiguration(
   config.is_off_the_record = is_off_the_record;
   config.full_version_list =
       embedder_support::GetUserAgentMetadata().SerializeBrandFullVersionList();
-  if (!contextual_tasks::IsContextualTasksUIEnabled()) {
-    return config;
-  }
-
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (contextual_tasks::IsContextualTasksRearchitectureEnabled() &&
-      base::FeatureList::IsEnabled(
-          extensions_features::kApiContextualTasksPrivate)) {
-    config.search_capabilities_version =
-        contextual_tasks::GetContextualTasksSearchCapabilitiesVersion();
-  } else {
-    config.user_agent_with_cobrowse_suffix =
-        base::StrCat({embedder_support::GetUserAgent(), " ",
-                      contextual_tasks::GetContextualTasksUserAgentSuffix()});
-  }
-#else
-  config.user_agent_with_cobrowse_suffix =
-      base::StrCat({embedder_support::GetUserAgent(), " ",
-                    contextual_tasks::GetContextualTasksUserAgentSuffix()});
-#endif
   return config;
 }
 

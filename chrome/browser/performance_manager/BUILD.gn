@@ -41,7 +41,6 @@ source_set("performance_manager") {
     "//base",
     "//chrome/browser:chrome_content_browser_client_parts",
     "//chrome/browser:main_extra_parts",
-    "//chrome/browser/glic",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/resource_coordinator:mojo_bindings",
@@ -165,7 +164,6 @@ source_set("impl") {
   deps = [
     "//chrome/browser:browser_process",
     "//chrome/browser/devtools",
-    "//chrome/browser/glic",
     "//chrome/browser/history",
     "//chrome/browser/memory",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
@@ -227,9 +225,7 @@ source_set("impl") {
       "user_tuning/user_performance_tuning_notifier.cc",
     ]
     deps += [
-      "//chrome/browser/ui/performance_controls",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/web_applications",
       "//chrome/common:chrome_features",
       "//components/split_tabs",
       "//third_party/perfetto:libperfetto",
@@ -375,6 +371,7 @@ source_set("unit_tests") {
 
     # Inherits -Wno-sign-compare via fuzztest_public_config. See
     # crbug.com/527094632.
+    "//chrome/browser/content_settings:content_settings_factory",
     "//third_party/fuzztest",
   ]
 
@@ -415,10 +412,7 @@ source_set("unit_tests") {
       "policies/discard_page_with_crashed_subframe_policy_unittest.cc",
       "policies/process_rank_policy_android_unittest.cc",
     ]
-    deps += [
-      "//chrome/browser/content_settings:content_settings_factory",
-      "//chrome/browser/ui/android/tab_model:test_support",
-    ]
+    deps += [ "//chrome/browser/ui/android/tab_model:test_support" ]
     if (enable_guest_view && !enable_extensions_core) {
       deps += [
         "//chrome/browser/android/guest_view",
@@ -480,10 +474,8 @@ if (!is_android) {
     deps = [
       ":performance_manager",
       "//base",
-      "//chrome/browser/apps/link_capturing:test_support",
       "//chrome/browser/resource_coordinator:utils",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/performance_manager/test_support:test_support_common",

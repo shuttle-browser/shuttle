@@ -35,10 +35,6 @@
 
 class CommandUpdater;
 
-namespace contextual_search {
-class ContextualSearchSessionHandle;
-}  // namespace contextual_search
-
 namespace user_education {
 class HelpBubbleHandler;
 }  // namespace user_education
@@ -174,16 +170,8 @@ class WebUIToolbarUI : public TopChromeWebUIController,
   void InitBrowserControlsService(DependencyProvider& dependency_provider);
   void InitToolbarUIService(DependencyProvider& dependency_provider);
 
-  // Lazily creates and returns a reference to the owned contextual search
-  // session handle for `omnibox_handler_`.
-  contextual_search::ContextualSearchSessionHandle*
-  GetOrCreateContextualSessionHandle();
-
   raw_ptr<OmniboxController> omnibox_controller_ = nullptr;
 
-  // Must outlive `omnibox_handler_`.
-  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
-      session_handle_;
   std::unique_ptr<WebuiOmniboxHandler> omnibox_handler_;
 
   std::unique_ptr<browser_controls_api::BrowserControlsService>

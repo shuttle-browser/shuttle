@@ -52,7 +52,6 @@ source_set("prefs") {
 
   deps = [
     "//chrome/browser/battery",
-    "//chrome/browser/data_saver",
     "//chrome/browser/prefetch",
     "//components/pref_registry",
     "//components/prefs",
@@ -104,7 +103,6 @@ source_set("unit_tests") {
     ":prefs",
     "//base/test:test_support",
     "//chrome/browser/battery",
-    "//chrome/browser/data_saver",
     "//chrome/browser/prefetch",
     "//chrome/common:constants",
     "//components/prefs",

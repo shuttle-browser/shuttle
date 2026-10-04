@@ -37,7 +37,10 @@ source_set("content_settings") {
 
 source_set("impl") {
   sources = []
-  deps = [ "//chrome/browser/ui:collected_cookies_infobar_delegate" ]
+  deps = [
+    "//chrome/browser/ui:browser_element_identifiers",
+    "//chrome/browser/ui:collected_cookies_infobar_delegate",
+  ]
 
   if (!is_android) {
     sources += [
@@ -49,7 +52,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser/custom_handlers",
       "//chrome/browser/ui/views/site_data",
-      "//chrome/browser/ui/web_applications",
     ]
   }
 
@@ -71,7 +73,6 @@ source_set("impl") {
     "//chrome/browser/ui:layout_constants",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:url_identity",
-    "//chrome/browser/web_applications",
     "//chrome/common:non_code_constants",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
@@ -156,7 +157,6 @@ source_set("unit_tests") {
     "//chrome/browser/permissions",
     "//chrome/browser/permissions:test_support",
     "//chrome/browser/ui:ui_features",
-    "//chrome/browser/web_applications:web_applications_test_support",
     "//chrome/test:test_support",
     "//components/custom_handlers:test_support",
     "//components/infobars/content",

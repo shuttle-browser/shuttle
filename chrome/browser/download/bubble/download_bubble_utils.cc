@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/download/download_item_mode.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_item.h"
@@ -214,11 +213,4 @@ BrowserWindowInterface* FindBrowserToShowAnimation(
                                     ->GetLastActiveBrowser();
   }
   return browser_to_show_animation;
-}
-
-const webapps::AppId* GetWebAppIdForBrowser(
-    const BrowserWindowInterface* browser) {
-  const web_app::AppBrowserController* controller =
-      web_app::AppBrowserController::From(browser);
-  return controller ? &controller->app_id() : nullptr;
 }

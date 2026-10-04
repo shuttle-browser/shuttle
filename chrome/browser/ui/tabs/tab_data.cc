@@ -9,18 +9,13 @@
 #include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
-#include "chrome/browser/collaboration/messaging/messaging_backend_service_factory.h"
-#include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/contents_observing_tab_feature.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/collaboration_messaging_tab_data.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_image.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
-#include "components/collaboration/public/messaging/messaging_backend_service.h"
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
@@ -62,15 +57,6 @@ TabData TabData::FromTabInterface(tabs::TabInterface* tab_interface) {
   tab_data.thumbnail =
       thumbnail_tab_helper ? thumbnail_tab_helper->thumbnail() : nullptr;
 
-  TabResourceUsageTabHelper* const tab_resource_usage_tab_helper =
-      TabResourceUsageTabHelper::From(tab_interface);
-  tab_data.tab_resource_usage = tab_resource_usage_tab_helper->resource_usage();
-
-  tab_groups::CollaborationMessagingTabData* collaboration_messaging =
-      tab_groups::CollaborationMessagingTabData::From(tab_interface);
-  tab_data.collaboration_messaging =
-      collaboration_messaging ? collaboration_messaging->GetWeakPtr() : nullptr;
-
   return tab_data;
 }
 
@@ -99,8 +85,7 @@ bool TabData::operator==(const TabData& other) const {
          is_tab_discarded == other.is_tab_discarded &&
          last_committed_url == other.last_committed_url &&
          alert_state == other.alert_state && pinned == other.pinned &&
-         blocked == other.blocked && thumbnail == other.thumbnail &&
-         tab_resource_usage == other.tab_resource_usage;
+         blocked == other.blocked && thumbnail == other.thumbnail;
 }
 
 TabDataObserver::TabDataObserver(TabInterface* tab_interface)
@@ -127,13 +112,6 @@ TabDataObserver::TabDataObserver(TabInterface* tab_interface)
   tab_detached_subscription_ =
       tab_interface_->RegisterWillDetach(base::BindRepeating(
           &TabDataObserver::OnTabDetached, base::Unretained(this)));
-  TabResourceUsageTabHelper* const tab_resource_usage_tab_helper =
-      TabResourceUsageTabHelper::From(tab_interface_);
-  tab_resource_usage_subscription_ =
-      tab_resource_usage_tab_helper->AddResourceUsageChangeCallback(
-          base::BindRepeating(&TabDataObserver::OnResourceUsageChanged,
-                              base::Unretained(this)));
-
   // Initialize the tab data.
   OnTabUIChange();
 }
@@ -208,15 +186,8 @@ void TabDataObserver::OnTabDetached(tabs::TabInterface* tab_interface,
     pinned_state_change_subscription_ = base::CallbackListSubscription();
     blocked_state_change_subscription_ = base::CallbackListSubscription();
     tab_detached_subscription_ = base::CallbackListSubscription();
-    tab_resource_usage_subscription_ = base::CallbackListSubscription();
     tab_interface_ = nullptr;
   }
-}
-
-void TabDataObserver::OnResourceUsageChanged(
-    scoped_refptr<const ::TabResourceUsage> usage) {
-  tab_data_.tab_resource_usage = usage;
-  NotifyTabDataChanged(TabChangeType::kResourceUsageOnly);
 }
 
 }  // namespace tabs

@@ -8,7 +8,6 @@
 #include "chrome/browser/actor/tools/attempt_form_filling_tool_request.h"
 #include "chrome/browser/actor/tools/attempt_login_tool_request.h"
 #include "chrome/browser/actor/tools/attempt_otp_filling_tool_request.h"
-#include "chrome/browser/actor/tools/bookmark_management_tool_request.h"
 #include "chrome/browser/actor/tools/click_tool_request.h"
 #include "chrome/browser/actor/tools/drag_and_release_tool_request.h"
 #include "chrome/browser/actor/tools/find_and_highlight_tool_request.h"
@@ -23,7 +22,6 @@
 #include "chrome/browser/actor/tools/scroll_tool_request.h"
 #include "chrome/browser/actor/tools/select_tool_request.h"
 #include "chrome/browser/actor/tools/tool_request.h"
-#include "chrome/browser/actor/tools/translate_page_tool_request.h"
 #include "chrome/browser/actor/tools/type_tool_request.h"
 #include "chrome/browser/actor/tools/wait_tool_request.h"
 #include "chrome/common/buildflags.h"
@@ -41,7 +39,6 @@ class ToolRequestVisitorFunctor {
   virtual void Apply(const ActivateTabToolRequest&) = 0;
   virtual void Apply(const ActivateWindowToolRequest&) = 0;
 #endif
-  virtual void Apply(const AddBookmarkToolRequest&) = 0;
   virtual void Apply(const AttemptLoginToolRequest&) = 0;
   virtual void Apply(const AttemptFormFillingToolRequest&) = 0;
   virtual void Apply(const AttemptOtpFillingToolRequest&) = 0;
@@ -64,12 +61,10 @@ class ToolRequestVisitorFunctor {
   virtual void Apply(const MoveMouseToolRequest&) = 0;
   virtual void Apply(const NavigateToolRequest&) = 0;
   virtual void Apply(const PerformSearchToolRequest&) = 0;
-  virtual void Apply(const RemoveBookmarkToolRequest&) = 0;
   virtual void Apply(const ScriptToolRequest&) = 0;
   virtual void Apply(const ScrollToolRequest&) = 0;
   virtual void Apply(const ScrollToToolRequest&) = 0;
   virtual void Apply(const SelectToolRequest&) = 0;
-  virtual void Apply(const TranslatePageToolRequest&) = 0;
   virtual void Apply(const TypeToolRequest&) = 0;
   virtual void Apply(const WaitToolRequest&) = 0;
 };

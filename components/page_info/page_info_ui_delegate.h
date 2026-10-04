@@ -28,8 +28,6 @@ class PageInfoUiDelegate {
       blink::PermissionType permission) = 0;
   virtual std::optional<content::PermissionResult> GetEmbargoResult(
       ContentSettingsType type) = 0;
-  virtual void GetMerchantTrustInfo(
-      page_info::MerchantDataCallback callback) = 0;
 };
 
 #endif  // COMPONENTS_PAGE_INFO_PAGE_INFO_UI_DELEGATE_H_

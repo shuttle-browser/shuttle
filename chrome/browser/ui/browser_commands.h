@@ -36,10 +36,6 @@ class NavigationHandle;
 class WebContents;
 }  // namespace content
 
-namespace bookmarks {
-class BookmarkModel;
-enum class BookmarkBarVisibilityState;
-}  // namespace bookmarks
 
 namespace split_tabs {
 enum class SplitTabCreatedSource;
@@ -241,17 +237,6 @@ void ConvertPopupToTabbedBrowser(BrowserWindowInterface* browser);
 void CloseTabsToRight(BrowserWindowInterface* browser);
 void CloseOtherTabs(BrowserWindowInterface* browser);
 void Exit();
-// Bookmarks the current tab in the most recently used folder and shows the
-// edit dialog.
-void BookmarkCurrentTab(BrowserWindowInterface* browser);
-// Bookmarks the current tab in the given folder and does not show the edit
-// dialog.
-void BookmarkCurrentTabInFolder(BrowserWindowInterface* browser,
-                                bookmarks::BookmarkModel* model,
-                                int64_t folder_id);
-bool CanBookmarkCurrentTab(BrowserWindowInterface* browser);
-void BookmarkAllTabs(BrowserWindowInterface* browser);
-bool CanBookmarkAllTabs(BrowserWindowInterface* browser);
 bool CanMoveActiveTabToReadLater(BrowserWindowInterface* browser);
 void MoveCurrentTabToReadLater(BrowserWindowInterface* browser);
 void MoveTabsToReadLater(BrowserWindowInterface* browser,
@@ -266,14 +251,7 @@ void SaveAutofillAddress(BrowserWindowInterface* browser);
 void ShowFilledCardInformationBubble(BrowserWindowInterface* browser);
 void ShowVirtualCardEnrollBubble(BrowserWindowInterface* browser);
 void StartTabOrganizationRequest(BrowserWindowInterface* browser);
-void ShowTranslateBubble(BrowserWindowInterface* browser);
 void ManagePasswordsForPage(BrowserWindowInterface* browser);
-bool CanSendTabToSelf(BrowserWindowInterface* browser);
-void SendTabToSelf(BrowserWindowInterface* browser);
-bool CanGenerateQrCode(BrowserWindowInterface* browser);
-void GenerateQRCode(BrowserWindowInterface* browser);
-void SharingHub(BrowserWindowInterface* browser);
-void ScreenshotCapture(BrowserWindowInterface* browser);
 void SavePage(BrowserWindowInterface* browser);
 bool CanSavePage(const BrowserWindowInterface* browser);
 void Print(BrowserWindowInterface* browser);
@@ -282,21 +260,12 @@ bool CanPrint(BrowserWindowInterface* browser);
 void BasicPrint(BrowserWindowInterface* browser);
 bool CanBasicPrint(BrowserWindowInterface* browser);
 #endif  // ENABLE_PRINTING
-bool CanRouteMedia(BrowserWindowInterface* browser);
-// NOTE: For metrics collection purposes, this method is assumed to be invoked
-// from the app menu. That will need to be changed if this is to be invoked from
-// elsewhere.
-void RouteMediaInvokedFromAppMenu(BrowserWindowInterface* browser);
 void Find(BrowserWindowInterface* browser);
 void FindNext(BrowserWindowInterface* browser);
 void FindPrevious(BrowserWindowInterface* browser);
 void FindInPage(BrowserWindowInterface* browser, bool find_next, bool forward_direction);
-void ShowTabSearch(BrowserWindowInterface* browser);
-void CloseTabSearch(BrowserWindowInterface* browser);
 void ToggleTabSearchPin(BrowserWindowInterface* browser);
 void ToggleTabScrollButtonsPin(BrowserWindowInterface* browser);
-void ToggleContextualTasksSidePanel(BrowserWindowInterface* browser);
-void ToggleContextualTasksSidePanelZeroState(BrowserWindowInterface* browser);
 void ToggleVerticalTabs(BrowserWindowInterface* browser);
 void ToggleVerticalTabsExpandOnHover(BrowserWindowInterface* browser);
 void ToggleCollapseVerticalTabs(BrowserWindowInterface* browser);
@@ -307,7 +276,6 @@ void FocusToolbar(BrowserWindowInterface* browser);
 void FocusLocationBar(BrowserWindowInterface* browser);
 void FocusSearch(BrowserWindowInterface* browser);
 void FocusAppMenu(BrowserWindowInterface* browser);
-void FocusBookmarksToolbar(BrowserWindowInterface* browser);
 void FocusInactivePopupForAccessibility(BrowserWindowInterface* browser);
 void FocusNextPane(BrowserWindowInterface* browser);
 void FocusPreviousPane(BrowserWindowInterface* browser);
@@ -321,22 +289,11 @@ bool CanOpenTaskManager();
 void OpenTaskManager(
     BrowserWindowInterface* browser,
     task_manager::StartAction start_action = task_manager::StartAction::kOther);
-void OpenFeedbackDialog(BrowserWindowInterface* browser,
-                        feedback::FeedbackSource source,
-                        const std::string& description_template = std::string(),
-                        const std::string& category_tag = std::string());
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-void OpenReportUnsafeSiteDialog(BrowserWindowInterface* browser);
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 #if BUILDFLAG(IS_WIN)
 void OpenMoveWindow(BrowserWindowInterface* browser);
 void OpenSizeWindow(BrowserWindowInterface* browser);
 #endif  // BUILDFLAG(IS_WIN)
-void ToggleBookmarkBar(BrowserWindowInterface* browser);
-void SetBookmarkBarVisibilityState(BrowserWindowInterface* browser,
-                                   bookmarks::BookmarkBarVisibilityState state);
 void ToggleShowFullURLs(BrowserWindowInterface* browser);
-void ToggleShowGoogleLensShortcut(BrowserWindowInterface* browser);
 void ToggleShowAiModeOmniboxButton(BrowserWindowInterface* browser);
 void ToggleShowSearchTools(BrowserWindowInterface* browser);
 void ShowAppMenu(BrowserWindowInterface* browser);
@@ -358,10 +315,6 @@ void CopyURL(BrowserWindowInterface* browser,
 bool CanCopyUrl(BrowserWindowInterface* browser);
 // Returns true if the browser window is for a web app or custom tab.
 bool IsWebAppOrCustomTab(const BrowserWindowInterface* browser);
-// Moves the WebContents of a hosted app Browser to a tabbed Browser. Returns
-// the tabbed Browser.
-BrowserWindowInterface* OpenInChrome(
-    BrowserWindowInterface* hosted_app_browser);
 bool CanViewSource(BrowserWindowInterface* browser);
 bool CanToggleCaretBrowsing(BrowserWindowInterface* browser);
 void ToggleCaretBrowsing(BrowserWindowInterface* browser);
@@ -380,8 +333,6 @@ bool ShouldInterceptChromeURLNavigationInIncognito(BrowserWindowInterface* brows
                                                    const GURL& url);
 void ProcessInterceptedChromeURLNavigationInIncognito(BrowserWindowInterface* browser,
                                                       const GURL& url);
-void ExecLensOverlay(BrowserWindowInterface* browser);
-void ExecLensRegionSearch(BrowserWindowInterface* browser);
 
 }  // namespace chrome
 

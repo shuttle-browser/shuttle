@@ -22,7 +22,6 @@
 #include "chrome/browser/ui/views/tabs/new_tab_button.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "components/strings/grit/components_strings.h"
@@ -138,16 +137,6 @@ OpaqueBrowserFrameView::OpaqueBrowserFrameView(
       window_title_(nullptr),
       frame_background_(new views::FrameBackground()) {
   layout_->set_delegate(this);
-
-  if (browser_view->AppUsesWindowControlsOverlay()) {
-    layout_->SetWindowControlsOverlayEnabled(
-        browser_view->IsWindowControlsOverlayEnabled(), this);
-  }
-
-  if (browser_view->AppUsesUnframedMode()) {
-    layout_->SetUnframedModeEnabled(browser_view->IsUnframedModeEnabled(),
-                                    this);
-  }
   SetLayoutManager(std::unique_ptr<views::LayoutManager>(layout_));
 
   // Expose this view as a generic container as it contains/paints many things.
@@ -157,14 +146,6 @@ OpaqueBrowserFrameView::OpaqueBrowserFrameView(
 OpaqueBrowserFrameView::~OpaqueBrowserFrameView() = default;
 
 void OpaqueBrowserFrameView::InitViews() {
-  web_app::AppBrowserController* controller =
-      web_app::AppBrowserController::From(GetBrowserView()->browser());
-
-  if (controller && controller->IsWindowControlsOverlayEnabled()) {
-    caption_button_placeholder_container_ =
-        AddChildView(std::make_unique<CaptionButtonPlaceholderContainer>());
-  }
-
   if (GetFrameButtonStyle() == FrameButtonStyle::kMdButton) {
     minimize_button_ = CreateFrameCaptionButton(
         views::CAPTION_BUTTON_ICON_MINIMIZE, HTMINBUTTON,
@@ -233,25 +214,12 @@ void OpaqueBrowserFrameView::InitViews() {
                      .Build());
   }
 
-  // If this is a web app window, the window title will be part of the
-  // BrowserView and thus we don't need to create another one here.
-  if (!controller) {
-    // The window title appears above the web app frame toolbar (if present),
-    // which surrounds the title with minimal-ui buttons on the left,
-    // and other controls (such as the app menu button) on the right.
-    window_title_ = new views::Label(GetBrowserView()->GetWindowTitle());
-    window_title_->SetVisible(GetBrowserView()->ShouldShowWindowTitle());
-    window_title_->SetSubpixelRenderingEnabled(false);
-    window_title_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-    window_title_->SetID(VIEW_ID_WINDOW_TITLE);
-    AddChildViewRaw(window_title_.get());
-  }
-
-#if BUILDFLAG(IS_WIN)
-  if (GetBrowserView()->AppUsesWindowControlsOverlay()) {
-    UpdateCaptionButtonToolTipsForWindowControlsOverlay();
-  }
-#endif
+  window_title_ = new views::Label(GetBrowserView()->GetWindowTitle());
+  window_title_->SetVisible(GetBrowserView()->ShouldShowWindowTitle());
+  window_title_->SetSubpixelRenderingEnabled(false);
+  window_title_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+  window_title_->SetID(VIEW_ID_WINDOW_TITLE);
+  AddChildViewRaw(window_title_.get());
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -302,25 +270,6 @@ void OpaqueBrowserFrameView::UpdateThrobber(bool running) {
   if (window_icon_) {
     window_icon_->Update();
   }
-}
-
-void OpaqueBrowserFrameView::WindowControlsOverlayEnabledChanged() {
-  bool enabled = GetBrowserView()->IsWindowControlsOverlayEnabled();
-  if (enabled) {
-    caption_button_placeholder_container_ =
-        AddChildView(std::make_unique<CaptionButtonPlaceholderContainer>());
-    UpdateCaptionButtonPlaceholderContainerBackground();
-  } else {
-    RemoveChildViewT(caption_button_placeholder_container_.get());
-    caption_button_placeholder_container_ = nullptr;
-  }
-
-#if BUILDFLAG(IS_WIN)
-  UpdateCaptionButtonToolTipsForWindowControlsOverlay();
-#endif
-
-  layout_->SetWindowControlsOverlayEnabled(enabled, this);
-  InvalidateLayout();
 }
 
 gfx::Size OpaqueBrowserFrameView::GetMinimumSize() const {
@@ -380,18 +329,6 @@ int OpaqueBrowserFrameView::NonClientHitTest(const gfx::Point& point) {
     return frame_component;
   }
 
-  // BrowserView covers the frame view when Window Controls Overlay is enabled.
-  // The native window that encompasses Web Contents gets the mouse events meant
-  // for the caption buttons, so returning HTClient allows these buttons to be
-  // highlighted on hover.
-  if (GetBrowserView()->IsWindowControlsOverlayEnabled() &&
-      (HitTestCaptionButton(minimize_button_, point) ||
-       HitTestCaptionButton(maximize_button_, point) ||
-       HitTestCaptionButton(restore_button_, point) ||
-       HitTestCaptionButton(close_button_, point))) {
-    return HTCLIENT;
-  }
-
   // Then see if the point is within any of the window controls.
   if (HitTestCaptionButton(close_button_, point)) {
     return HTCLOSE;
@@ -404,13 +341,6 @@ int OpaqueBrowserFrameView::NonClientHitTest(const gfx::Point& point) {
   }
   if (HitTestCaptionButton(minimize_button_, point)) {
     return HTMINBUTTON;
-  }
-
-  if (GetBrowserView()->IsWindowControlsOverlayEnabled() &&
-      caption_button_placeholder_container_ &&
-      caption_button_placeholder_container_->GetMirroredBounds().Contains(
-          point)) {
-    return HTCAPTION;
   }
 
   views::WidgetDelegate* delegate = browser_widget()->widget_delegate();
@@ -497,8 +427,7 @@ ui::ImageModel OpaqueBrowserFrameView::GetFaviconForTabIconView() {
 bool OpaqueBrowserFrameView::ShouldShowWindowIcon() const {
   views::WidgetDelegate* delegate = browser_widget()->widget_delegate();
   return GetShowWindowTitleBar() && delegate &&
-         delegate->ShouldShowWindowIcon() &&
-         !GetBrowserView()->IsWindowControlsOverlayEnabled();
+         delegate->ShouldShowWindowIcon();
 }
 
 bool OpaqueBrowserFrameView::ShouldShowWindowTitle() const {
@@ -622,7 +551,7 @@ bool OpaqueBrowserFrameView::IsTiled() const {
 #endif
 
 int OpaqueBrowserFrameView::WebAppButtonHeight() const {
-  return GetBrowserView()->GetWebAppFrameToolbarPreferredSize().height();
+  return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -684,11 +613,7 @@ void OpaqueBrowserFrameView::OnPaint(gfx::Canvas* canvas) {
    * So we'd need to sample the background color at the right location and
    * synthesize a good shadow color. */
 
-  // Custom tab bar mode draws the toolbar as a unified part of the titlebar, so
-  // it shouldn't have a client edge.
-  if (!GetBrowserView()->toolbar()->custom_tab_bar()) {
-    PaintClientEdge(canvas);
-  }
+  PaintClientEdge(canvas);
 }
 
 OpaqueBrowserFrameView::BoundsAndMargins

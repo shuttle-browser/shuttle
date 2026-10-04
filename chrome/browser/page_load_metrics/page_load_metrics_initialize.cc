@@ -52,7 +52,6 @@
 #include "chrome/browser/page_load_metrics/observers/security_state_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/signed_exchange_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/tab_strip_page_load_metrics_observer.h"
-#include "chrome/browser/page_load_metrics/observers/translate_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/webui_page_load_metrics_observer.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/chrome_no_state_prefetch_contents_delegate.h"
 #include "chrome/browser/profiles/profile.h"
@@ -84,7 +83,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
 
@@ -306,12 +304,6 @@ void PageLoadMetricsEmbedder::RegisterObservers(
 #endif
   tracker->AddObserver(
       std::make_unique<PageAnchorsMetricsObserver>(tracker->GetWebContents()));
-  std::unique_ptr<TranslatePageLoadMetricsObserver> translate_observer =
-      TranslatePageLoadMetricsObserver::CreateIfNeeded(
-          tracker->GetWebContents());
-  if (translate_observer) {
-    tracker->AddObserver(std::move(translate_observer));
-  }
   tracker->AddObserver(std::make_unique<ZstdPageLoadMetricsObserver>());
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -431,14 +423,7 @@ bool PageLoadMetricsEmbedder::IsInternalWebUI(const GURL& url) {
 }
 
 bool PageLoadMetricsEmbedder::ShouldObserveScheme(std::string_view scheme) {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  return scheme == webapps::kIsolatedAppScheme;
-#else   // !(BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS))
   return false;
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS)
 }
 
 }  // namespace

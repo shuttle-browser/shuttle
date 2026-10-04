@@ -13,13 +13,6 @@
 
 class PrefService;
 
-namespace data_sharing {
-class Logger;
-namespace personal_collaboration_data {
-class PersonalCollaborationDataService;
-}  // namespace personal_collaboration_data
-}  // namespace data_sharing
-
 namespace optimization_guide {
 class OptimizationGuideDecider;
 }  // namespace optimization_guide
@@ -42,11 +35,8 @@ std::unique_ptr<TabGroupSyncService> CreateTabGroupSyncService(
     syncer::DeviceInfoTracker* device_info_tracker,
     optimization_guide::OptimizationGuideDecider* optimization_guide,
     signin::IdentityManager* identity_manager,
-    data_sharing::personal_collaboration_data::PersonalCollaborationDataService*
-        personal_collaboration_data_service,
     std::unique_ptr<CollaborationFinder> collaboration_finder,
-    SyntheticFieldTrialHelper* synthetic_field_trial_helper,
-    data_sharing::Logger* logger);
+    SyntheticFieldTrialHelper* synthetic_field_trial_helper);
 
 }  // namespace tab_groups
 

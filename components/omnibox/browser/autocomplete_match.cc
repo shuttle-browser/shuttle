@@ -30,7 +30,6 @@
 #include "build/android_buildflags.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/omnibox/browser/actions/omnibox_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_concepts.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
@@ -1387,9 +1386,6 @@ std::u16string AutocompleteMatch::GetKeywordPlaceholder(
   return std::u16string();
 #else
   if (!template_url) {
-    return std::u16string();
-  }
-  if (!history_embeddings::GetFeatureParameters().omnibox_scoped) {
     return std::u16string();
   }
   if (template_url->CreatedByEnterpriseSearchAggregatorPolicy()) {

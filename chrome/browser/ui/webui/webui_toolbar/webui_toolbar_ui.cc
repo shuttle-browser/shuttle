@@ -13,7 +13,6 @@
 #include "base/json/json_writer.h"
 #include "base/strings/strcat.h"
 #include "base/values.h"
-#include "chrome/browser/contextual_search/contextual_search_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -52,8 +51,6 @@
 #include "components/browser_apis/browser_controls/browser_controls_api.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
-#include "components/contextual_search/contextual_search_service.h"
-#include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/user_education/webui/help_bubble_handler.h"
@@ -499,28 +496,7 @@ void WebUIToolbarUI::CreatePageHandler(
   omnibox_handler_ = std::make_unique<WebuiOmniboxHandler>(
       std::move(receiver), std::move(page),
       metrics_reporter_service->metrics_reporter(), omnibox_controller_,
-      web_ui(),
-      base::BindRepeating(&WebUIToolbarUI::GetOrCreateContextualSessionHandle,
-                          base::Unretained(this)));
-}
-
-contextual_search::ContextualSearchSessionHandle*
-WebUIToolbarUI::GetOrCreateContextualSessionHandle() {
-  if (!session_handle_) {
-    auto* service = ContextualSearchServiceFactory::GetForProfile(
-        Profile::FromWebUI(web_ui()));
-    if (service) {
-      // TODO(http://crbug.com/529689765): This is based on what webui_browser
-      // does, and that in turn has a bunch of TODOs on its own.
-      session_handle_ = service->CreateSession(
-          omnibox::CreateQueryControllerConfigParams(),
-          contextual_search::ContextualSearchSource::kOmnibox,
-          lens::LensOverlayInvocationSource::kOmniboxContextualQuery);
-      session_handle_->CheckSearchContentSharingSettings(
-          Profile::FromWebUI(web_ui())->GetPrefs());
-    }
-  }
-  return session_handle_.get();
+      web_ui());
 }
 
 const std::vector<ui::ElementIdentifier>

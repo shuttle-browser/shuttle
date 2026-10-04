@@ -109,11 +109,9 @@ void StablePortabilityDataImporter::BackgroundWorker::ParseHistory(
 
 StablePortabilityDataImporter::StablePortabilityDataImporter(
     history::HistoryService* history_service,
-    bookmarks::BookmarkModel* bookmark_model,
     ReadingListModel* reading_list_model,
     std::unique_ptr<ContentBookmarkParser> bookmark_parser)
     : history_service_(history_service),
-      bookmark_model_(bookmark_model),
       reading_list_model_(reading_list_model),
       metrics_recorder_(
           ImporterMetricsRecorder::Source::kStablePortabilityData),
@@ -278,30 +276,10 @@ void StablePortabilityDataImporter::OnBookmarksParsed(
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (!bookmark_model_) {
-    metrics_recorder_.bookmark_metrics().LogOutcome(
-        DataTypeMetrics::ImportOutcome::kFailure);
-    PostCallback(std::move(bookmarks_callback), -1);
-    return;
-  }
-
-  ASSIGN_OR_RETURN(BookmarkParser::ParsedBookmarks value, std::move(result),
-                   &StablePortabilityDataImporter::OnBookmarksParsingError,
-                   this, std::move(bookmarks_callback));
-
-  metrics_recorder_.bookmark_metrics().OnPreparationFinished(
-      value.bookmarks.size());
-  metrics_recorder_.bookmark_metrics().OnImportStarted();
-
-  // Add the parsed bookmarks to the user's storage.
-  size_t imported_count = ::user_data_importer::ImportBookmarks(
-      bookmark_model_, std::move(value.bookmarks),
-      l10n_util::GetStringUTF16(IDS_IMPORTED_FOLDER));
-
-  PostCallback(std::move(bookmarks_callback), imported_count);
-  metrics_recorder_.bookmark_metrics().OnImportFinished(imported_count);
+  // Bookmarks were removed from this fork, so there is nowhere to import them.
   metrics_recorder_.bookmark_metrics().LogOutcome(
-      DataTypeMetrics::ImportOutcome::kSuccess);
+      DataTypeMetrics::ImportOutcome::kFailure);
+  PostCallback(std::move(bookmarks_callback), -1);
 }
 
 void StablePortabilityDataImporter::OnBookmarksParsingError(

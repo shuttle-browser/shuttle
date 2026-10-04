@@ -17,10 +17,6 @@
 
 class PrefService;
 
-namespace translate {
-class TranslateManager;
-}
-
 namespace password_manager {
 class PasswordManagerClient;
 class PasswordManagerDriver;
@@ -70,9 +66,6 @@ class ActorLoginDelegateClient : public base::SupportsUserData {
 
   // Returns the last committed origin of the primary main frame of the page.
   virtual url::Origin GetLastCommittedOriginForMainFrame() = 0;
-
-  // Returns the translate manager associated with the profile.
-  virtual translate::TranslateManager* GetTranslateManager() = 0;
 
   // Returns the permission cleaning service associated with the profile.
   virtual ActorLoginPermissionCleaningService*

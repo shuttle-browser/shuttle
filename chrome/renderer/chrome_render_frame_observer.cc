@@ -41,14 +41,11 @@
 #include "components/crash/core/common/crash_key.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/guest_view/renderer/slim_web_view/slim_web_view_bindings.h"
-#include "components/lens/lens_metadata.mojom.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_helper.h"
 #include "components/no_state_prefetch/renderer/no_state_prefetch_utils.h"
 #include "components/offline_pages/buildflags/buildflags.h"
 #include "components/optimization_guide/content/renderer/page_text_agent.h"
 #include "components/page_content_annotations/content/renderer/page_stability_monitor.h"
-#include "components/translate/content/renderer/translate_agent.h"
-#include "components/translate/core/common/translate_util.h"
 #include "components/variations/variations_switches.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
 #include "content/public/common/bindings_policy.h"
@@ -77,9 +74,6 @@
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/libwebp/src/src/webp/decode.h"
 #include "third_party/skia/include/core/SkBitmap.h"
-#include "ui/gfx/codec/jpeg_codec.h"
-#include "ui/gfx/codec/png_codec.h"
-#include "ui/gfx/codec/webp_codec.h"
 #include "ui/gfx/geometry/size_f.h"
 #include "url/gurl.h"
 
@@ -117,10 +111,6 @@ static const size_t kMaxIndexChars = 65535;
 // For a page that auto-refreshes, we still show the bubble, if
 // the refresh delay is less than this value (in seconds).
 static constexpr base::TimeDelta kLocationChangeInterval = base::Seconds(10);
-
-// For the context menu, we want to keep transparency as is instead of
-// replacing transparent pixels with black ones
-static const bool kDiscardTransparencyForContextMenu = false;
 
 namespace {
 
@@ -190,24 +180,12 @@ void UpdateLoadedOriginCrashKeys() {
   }
 }
 
-bool ShouldForceTranslateAgentCreation(const GURL& url) {
-#if !BUILDFLAG(IS_ANDROID)
-  // The Reading Mode side panel is a Top Chrome WebUI, but it exceptionally
-  // requires a TranslateAgent to support PDF translation.
-  return url.SchemeIs("chrome-untrusted") &&
-         url.host() == chrome::kChromeUIUntrustedReadAnythingSidePanelHost;
-#else
-  return false;
-#endif
-}
-
 }  // namespace
 
 ChromeRenderFrameObserver::ChromeRenderFrameObserver(
     content::RenderFrame* render_frame,
     web_cache::WebCacheImpl* web_cache_impl)
     : content::RenderFrameObserver(render_frame),
-      translate_agent_(nullptr),
       page_text_agent_(new optimization_guide::PageTextAgent(render_frame)),
       actor_journal_(std::make_unique<actor::Journal>()),
       web_cache_impl_(web_cache_impl) {
@@ -223,16 +201,6 @@ ChromeRenderFrameObserver::ChromeRenderFrameObserver(
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   SetClientSidePhishingDetection();
 #endif
-
-  bool skip_translate = base::FeatureList::IsEnabled(features::kInitialWebUI) &&
-                        features::kInitialWebUIWithoutTranslate.Get() &&
-                        base::CommandLine::ForCurrentProcess()->HasSwitch(
-                            switches::kTopChromeWebUI);
-
-  if (!skip_translate) {
-    translate_agent_ = new translate::TranslateAgent(
-        render_frame, ISOLATED_WORLD_ID_TRANSLATE);
-  }
 }
 
 ChromeRenderFrameObserver::~ChromeRenderFrameObserver() = default;
@@ -265,29 +233,10 @@ void ChromeRenderFrameObserver::ReadyToCommitNavigation(
   // event (including tab reload).
   if (render_frame()->IsMainFrame() && web_cache_impl_)
     web_cache_impl_->ExecutePendingClearCache();
-
-  // Dynamically instantiate TranslateAgent on-the-fly if this WebUI
-  // exceptionally requires it.
-  if (!translate_agent_ && render_frame()->IsMainFrame() && document_loader) {
-    GURL url = GURL(document_loader->GetUrl());
-    if (ShouldForceTranslateAgentCreation(url)) {
-      translate_agent_ = new translate::TranslateAgent(
-          render_frame(), ISOLATED_WORLD_ID_TRANSLATE);
-    }
-  }
-
-  // Let translate_agent do any preparatory work before the new document loads.
-  if (translate_agent_) {
-    translate_agent_->PrepareForNewDocument();
-  }
 }
 
 void ChromeRenderFrameObserver::DidSetPageLifecycleState(
     blink::BFCacheStateChange bfcache_change) {
-  if (bfcache_change == blink::BFCacheStateChange::kRestoredFromBFCache &&
-      translate_agent_) {
-    translate_agent_->RenewPageRegistration();
-  }
   if (bfcache_change == blink::BFCacheStateChange::kStoredToBFCache) {
     // Reset actor state if entering the BFCache
     page_stability_monitor_.reset();
@@ -424,136 +373,6 @@ void ChromeRenderFrameObserver::ExecuteWebUIJavaScript(
 #if !BUILDFLAG(IS_ANDROID)
   webui_javascript_.push_back(javascript);
 #endif
-}
-
-void ChromeRenderFrameObserver::RequestImageForContextNode(
-    int32_t thumbnail_min_area_pixels,
-    const gfx::Size& thumbnail_max_size_pixels,
-    chrome::mojom::ImageFormat image_format,
-    int32_t quality,
-    RequestImageForContextNodeCallback callback) {
-  WebNode context_node = render_frame()->GetWebFrame()->ContextMenuImageNode();
-  std::vector<uint8_t> image_data;
-  gfx::Size original_size;
-  std::string mime_type;
-  std::vector<lens::mojom::LatencyLogPtr> latency_logs;
-
-  // Map for converting between multiple mojom ImageFormat structures to
-  // prevent a circular dependency (go/lens-logging-in-chromium)
-  // TODO(shivpatel): add default value UNKNOWN for if ImageFormat is updated
-  const std::map<chrome::mojom::ImageFormat, lens::mojom::ImageFormat>
-      image_format_conversion = {
-          {chrome::mojom::ImageFormat::ORIGINAL,
-           lens::mojom::ImageFormat::ORIGINAL},
-          {chrome::mojom::ImageFormat::PNG, lens::mojom::ImageFormat::PNG},
-          {chrome::mojom::ImageFormat::JPEG, lens::mojom::ImageFormat::JPEG},
-          {chrome::mojom::ImageFormat::WEBP, lens::mojom::ImageFormat::WEBP},
-      };
-
-  if (context_node.IsNull() || !context_node.IsElementNode()) {
-    // The downscaled size is the original size, since no downscaling was
-    // required.
-    std::move(callback).Run(image_data, original_size,
-                            /*downscaled_size=*/original_size, mime_type,
-                            std::move(latency_logs));
-    return;
-  }
-
-  WebElement web_element = context_node.To<WebElement>();
-  original_size = web_element.GetImageSize();
-  mime_type = web_element.ImageMimeType().Utf8();
-  bool needs_downscale = NeedsDownscale(
-      original_size, thumbnail_min_area_pixels, thumbnail_max_size_pixels);
-  bool needs_encode = NeedsEncodeImage(mime_type, image_format) ||
-                      IsAnimatedWebp(web_element.CopyOfImageData());
-  if (!needs_encode && !needs_downscale) {
-    image_data = web_element.CopyOfImageData();
-    // The downscaled size is the original size, since no downscaling was
-    // required.
-    std::move(callback).Run(std::move(image_data), original_size,
-                            /*downscaled_size=*/original_size, mime_type,
-                            std::move(latency_logs));
-    return;
-  }
-  SkBitmap image = web_element.ImageContents();
-  if (needs_downscale) {
-    latency_logs.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::DOWNSCALE_START, original_size, gfx::Size(),
-        image_format_conversion.at(image_format), base::Time::Now(),
-        /*encoded_size_bytes=*/0));
-  }
-  SkBitmap thumbnail =
-      Downscale(image, thumbnail_min_area_pixels, thumbnail_max_size_pixels);
-  gfx::Size downscaled_size = gfx::Size(thumbnail.width(), thumbnail.height());
-  if (needs_downscale) {
-    latency_logs.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::DOWNSCALE_END, original_size, downscaled_size,
-        image_format_conversion.at(image_format), base::Time::Now(),
-        /*encoded_size_bytes=*/0));
-  }
-
-  SkBitmap bitmap;
-  if (thumbnail.colorType() == kN32_SkColorType) {
-    bitmap = thumbnail;
-  } else {
-    SkImageInfo info = thumbnail.info().makeColorType(kN32_SkColorType);
-    if (bitmap.tryAllocPixels(info)) {
-      thumbnail.readPixels(info, bitmap.getPixels(), bitmap.rowBytes(), 0, 0);
-    }
-  }
-
-  if (image_format == chrome::mojom::ImageFormat::ORIGINAL) {
-    // ORIGINAL will only fall back to here if the image needs to downscale.
-    // Let's PNG downscale to PNG and JEPG downscale to JPEG.
-    if (mime_type == kImagePng) {
-      image_format = chrome::mojom::ImageFormat::PNG;
-    } else if (mime_type == kImageJpeg) {
-      image_format = chrome::mojom::ImageFormat::JPEG;
-    }
-  }
-
-  if (needs_encode) {
-    latency_logs.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::ENCODE_START, original_size, downscaled_size,
-        image_format_conversion.at(image_format), base::Time::Now(),
-        /*encoded_size_bytes=*/0));
-  }
-  std::optional<std::vector<uint8_t>> data;
-  switch (image_format) {
-    case chrome::mojom::ImageFormat::PNG:
-      data = gfx::PNGCodec::EncodeBGRASkBitmap(
-          bitmap, kDiscardTransparencyForContextMenu);
-      if (data) {
-        image_data.swap(data.value());
-        mime_type = kImagePng;
-      }
-      break;
-    case chrome::mojom::ImageFormat::WEBP:
-      data = gfx::WebpCodec::Encode(bitmap, quality);
-      if (data) {
-        image_data.swap(data.value());
-        mime_type = kImageWebp;
-      }
-      break;
-    case chrome::mojom::ImageFormat::ORIGINAL:
-    // Any format other than PNG and JPEG fall back to here.
-    case chrome::mojom::ImageFormat::JPEG:
-      data = gfx::JPEGCodec::Encode(bitmap, quality);
-      if (data) {
-        image_data.swap(data.value());
-        mime_type = kImageJpeg;
-      }
-      break;
-  }
-  if (needs_encode) {
-    latency_logs.push_back(lens::mojom::LatencyLog::New(
-        lens::mojom::Phase::ENCODE_END, original_size, downscaled_size,
-        image_format_conversion.at(image_format), base::Time::Now(),
-        sizeof(uint8_t) * image_data.size()));
-  }
-
-  std::move(callback).Run(image_data, original_size, downscaled_size, mime_type,
-                          std::move(latency_logs));
 }
 
 void ChromeRenderFrameObserver::RequestBitmapForContextNode(
@@ -756,9 +575,7 @@ void ChromeRenderFrameObserver::SetClientSidePhishingDetection() {
 void ChromeRenderFrameObserver::PdfPageCaptured(const std::u16string& contents,
                                                 const std::string& pdf_lang,
                                                 const GURL& page_url) {
-  if (translate_agent_) {
-    translate_agent_->PdfPageCaptured(contents, pdf_lang, page_url);
-  }
+  // PDF translation has been removed.
 }
 #endif
 
@@ -814,10 +631,6 @@ bool ChromeRenderFrameObserver::ShouldCapturePageTextForTranslateOrPhishing(
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  // Translate specific checks.
-  bool should_capture_for_translate = !!translate_agent_;
-
-  //////////////////////////////////////////////////////////////////////////////
   // Phishing specific checks.
   bool should_capture_for_phishing = false;
 
@@ -825,7 +638,7 @@ bool ChromeRenderFrameObserver::ShouldCapturePageTextForTranslateOrPhishing(
   should_capture_for_phishing = phishing_classifier_->is_ready();
 #endif
 
-  return should_capture_for_translate || should_capture_for_phishing;
+  return should_capture_for_phishing;
 }
 
 void ChromeRenderFrameObserver::CapturePageText(
@@ -852,13 +665,6 @@ void ChromeRenderFrameObserver::CapturePageText(
         WebFrameContentDumper::DumpFrameTreeAsText(
             render_frame()->GetWebFrame(), capture_max_size)
             .Utf16());
-  }
-
-  // Language detection should run only once. Parsing finishes before the page
-  // loads, so attempt detection here first.
-  if (translate_agent_ &&
-      (layout_type == blink::WebMeaningfulLayout::kFinishedParsing)) {
-    translate_agent_->PageCaptured(contents);
   }
 
   if (text_callback) {

@@ -55,7 +55,6 @@ source_set("tab_groups") {
   }
 
   if (is_mac || is_win || is_linux || is_chromeos) {
-    deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
 
   if (!is_android) {

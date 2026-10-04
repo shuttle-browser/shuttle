@@ -29,7 +29,6 @@
 #include "chrome/browser/background/extensions/background_application_list_model.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/extension_service.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/lifetime/termination_notification.h"
@@ -46,9 +45,7 @@
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/extensions/app_launch_params.h"
 #include "chrome/browser/ui/profiles/profile_picker.h"
-#include "chrome/browser/web_applications/extensions/launch.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension_constants.h"
@@ -410,19 +407,7 @@ bool BackgroundModeManager::UnregisterProfile(Profile* profile) {
 void BackgroundModeManager::LaunchBackgroundApplication(
     Profile* profile,
     const Extension* extension) {
-#if !BUILDFLAG(IS_CHROMEOS)
-  web_app::LaunchExtensionOrWebApp(
-      profile,
-      CreateAppLaunchParamsUserContainer(
-          profile, extension, WindowOpenDisposition::NEW_FOREGROUND_TAB,
-          apps::LaunchSource::kFromBackgroundMode),
-      base::DoNothing());
-#else
-  // background mode is not used in Chrome OS platform.
-  // TODO(crbug.com/40212901): Remove the background mode manager from Chrome OS
-  // build.
-  NOTIMPLEMENTED();
-#endif
+  // App launching has been removed together with apps and web apps.
 }
 
 // static
@@ -975,7 +960,7 @@ void BackgroundModeManager::UpdateStatusTrayIconContextMenu() {
   }
 
   menu->AddSeparator(ui::NORMAL_SEPARATOR);
-  bool use_background_setting = glic::GlicEnabling::IsEnabledByGlobalCriteria();
+  bool use_background_setting = false;
   if (use_background_setting) {
     menu->AddCheckItemWithStringId(
         IDC_STATUS_TRAY_KEEP_CHROME_RUNNING_IN_BACKGROUND_SETTING,

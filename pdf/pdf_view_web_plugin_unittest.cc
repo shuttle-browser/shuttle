@@ -54,7 +54,6 @@
 #include "pdf/test/test_pdfium_engine.h"
 #include "printing/metafile_skia.h"
 #include "printing/units.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
@@ -208,13 +207,6 @@ SkBitmap GenerateExpectedBitmapForPaint(const gfx::Rect& expected_clipped_rect,
   return expected_bitmap;
 }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-base::DictValue GenerateShowSearchifyInProgressMessage(bool show) {
-  return base::DictValue()
-      .Set("type", "showSearchifyInProgress")
-      .Set("show", show);
-}
-#endif
 
 base::DictValue GenerateResetPrintPreviewModeMessage(const char* id,
                                                      int page_number,
@@ -254,9 +246,6 @@ class MockPdfAccessibilityDataHandler : public PdfAccessibilityDataHandler {
                std::vector<AccessibilityCharInfo>,
                AccessibilityPageObjects),
               (override));
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  MOCK_METHOD(void, OnHasSearchifyText, (), (override));
-#endif
 };
 
 class FakePdfViewWebPluginClient : public PdfViewWebPlugin::Client {
@@ -376,24 +365,6 @@ class FakePdfViewWebPluginClient : public PdfViewWebPlugin::Client {
               CreateAccessibilityDataHandler,
               (PdfAccessibilityActionHandler*, blink::WebPluginContainer*),
               (override));
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  MOCK_METHOD(void,
-              GetOcrMaxImageDimension,
-              (base::OnceCallback<void(uint32_t)> callback),
-              (override));
-
-  MOCK_METHOD(void,
-              PerformOcr,
-              (const SkBitmap& image,
-               base::OnceCallback<void(screen_ai::mojom::VisualAnnotationPtr)>
-                   callback),
-              (override));
-
-  MOCK_METHOD(void,
-              SetOcrDisconnectedCallback,
-              (base::RepeatingClosure callback),
-              (override));
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 };
 
 class FakePdfHost : public pdf::mojom::PdfHost {
@@ -410,9 +381,6 @@ class FakePdfHost : public pdf::mojom::PdfHost {
               (const gfx::PointF&, int32_t, const gfx::PointF&, int32_t),
               (override));
   MOCK_METHOD(void, SetPluginCanSave, (bool), (override));
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  MOCK_METHOD(void, OnSearchifyStarted, (), (override));
-#endif
 };
 
 }  // namespace
@@ -2013,91 +1981,6 @@ TEST_F(PdfViewWebPluginTest, OnRendererPreferencesUpdated) {
   plugin_->OnRendererPreferencesUpdated(prefs);
 }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-// Searchify in progress not shown when searchify just starts.
-TEST_F(PdfViewWebPluginTest, OnSearchifyStarted) {
-  base::DictValue message = GenerateShowSearchifyInProgressMessage(true);
-
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message)))).Times(0);
-  EXPECT_CALL(pdf_host_, OnSearchifyStarted);
-
-  plugin_->OnSearchifyStateChange(true);
-
-  pdf_receiver_.FlushForTesting();
-}
-
-// Searchify in progress not shown when searchify didn't starts.
-TEST_F(PdfViewWebPluginTest, OnSearchifyNotStartedAndMaybeShowInProgress) {
-  base::DictValue message = GenerateShowSearchifyInProgressMessage(true);
-
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message)))).Times(0);
-  EXPECT_CALL(pdf_host_, OnSearchifyStarted).Times(0);
-
-  plugin_->MaybeShowSearchifyInProgress();
-
-  pdf_receiver_.FlushForTesting();
-}
-
-// Searchify in progress shown when asked after start.
-TEST_F(PdfViewWebPluginTest, OnSearchifyStartedAndMaybeShowInProgress) {
-  base::DictValue message = GenerateShowSearchifyInProgressMessage(true);
-
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message))));
-  EXPECT_CALL(pdf_host_, OnSearchifyStarted);
-
-  plugin_->OnSearchifyStateChange(true);
-  plugin_->MaybeShowSearchifyInProgress();
-
-  pdf_receiver_.FlushForTesting();
-}
-
-// Searchify in progress not shown when asked after stop.
-TEST_F(PdfViewWebPluginTest,
-       OnSearchifyStartedAndStoppedAndMaybeShowInProgress) {
-  base::DictValue message_show = GenerateShowSearchifyInProgressMessage(true);
-
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message_show)))).Times(0);
-  EXPECT_CALL(pdf_host_, OnSearchifyStarted);
-
-  plugin_->OnSearchifyStateChange(true);
-  plugin_->OnSearchifyStateChange(false);
-  plugin_->MaybeShowSearchifyInProgress();
-
-  pdf_receiver_.FlushForTesting();
-}
-
-// Searchify in progress hides after stop.
-TEST_F(PdfViewWebPluginTest, OnSearchifyShowProgressHideAfterStopped) {
-  base::DictValue message_show = GenerateShowSearchifyInProgressMessage(true);
-  base::DictValue message_hide = GenerateShowSearchifyInProgressMessage(false);
-
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message_show))));
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message_hide))));
-
-  plugin_->OnSearchifyStateChange(true);
-  plugin_->MaybeShowSearchifyInProgress();
-  plugin_->OnSearchifyStateChange(false);
-
-  pdf_receiver_.FlushForTesting();
-}
-
-TEST_F(PdfViewWebPluginTest, OnSearchifyStartedMoreThanOnce) {
-  plugin_->OnSearchifyStateChange(true);
-  plugin_->OnSearchifyStateChange(false);
-  plugin_->OnSearchifyStateChange(true);
-
-  EXPECT_CALL(pdf_host_, OnSearchifyStarted);
-
-  pdf_receiver_.FlushForTesting();
-}
-
-TEST_F(PdfViewWebPluginTest, OnHasSearchifyText) {
-  auto message = base::DictValue().Set("type", "setHasSearchifyText");
-
-  EXPECT_CALL(*client_ptr_, PostMessage(Eq(std::ref(message))));
-  plugin_->OnHasSearchifyText();
-}
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 TEST_F(PdfViewWebPluginTest, FindAndHighlightTextFragments) {
   EXPECT_CALL(*engine_ptr_, FindAndHighlightTextFragments(

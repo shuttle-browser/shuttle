@@ -34,9 +34,9 @@ MockAimEligibilityService::MockAimEligibilityService(
   ON_CALL(*this, IsCreateImagesEligible()).WillByDefault(testing::Return(true));
   ON_CALL(*this, IsFuseboxEligible()).WillByDefault(testing::Return(true));
   ON_CALL(*this, IsCsbEligible()).WillByDefault(testing::Return(true));
-  ON_CALL(*this, IsAimUrl(testing::_, testing::_))
+  ON_CALL(*this, IsAimUrl(testing::_))
       .WillByDefault(testing::Return(true));
-  ON_CALL(*this, IsAimHost(testing::_, testing::_))
+  ON_CALL(*this, IsAimHost(testing::_))
       .WillByDefault(testing::Return(true));
   ON_CALL(*this, HasNoCobrowseParams(testing::_))
       .WillByDefault(testing::Return(false));

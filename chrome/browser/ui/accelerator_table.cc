@@ -17,8 +17,6 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "components/lens/buildflags.h"
-#include "components/lens/lens_features.h"
 #include "printing/buildflags/buildflags.h"
 #include "services/screen_ai/buildflags/buildflags.h"
 #include "ui/base/accelerators/accelerator.h"

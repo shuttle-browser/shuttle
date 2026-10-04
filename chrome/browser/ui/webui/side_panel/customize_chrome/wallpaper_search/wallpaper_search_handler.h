@@ -100,17 +100,11 @@ class WallpaperSearchHandler
                            selected_option) override;
   void OpenHelpArticle() override;
   void LaunchHatsSurvey() override;
-#if BUILDFLAG(IS_CHROMEOS)
-  void SkipShowFeedbackPageForTesting(bool should_skip_check) {
-    skip_show_feedback_page_for_testing_ = should_skip_check;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
   // WallpaperSearchBackgroundManagerObserver:
   void OnHistoryUpdated() override;
 
  private:
-  void ShowFeedbackPage();
   void DecodeHistoryImage(image_fetcher::ImageDecodedCallback callback,
                           std::string image);
   void OnDescriptorsRetrieved(GetDescriptorsCallback callback,
@@ -142,7 +136,6 @@ class WallpaperSearchHandler
       base::ElapsedTimer timer,
       side_panel::customize_chrome::mojom::ResultDescriptorsPtr descriptors,
       const gfx::Image& image);
-  void LaunchDelayedHatsSurvey();
 
   raw_ptr<Profile> profile_;
   std::unique_ptr<network::SimpleURLLoader> descriptors_simple_url_loader_;
@@ -177,9 +170,6 @@ class WallpaperSearchHandler
       wallpaper_search_results_;
   const int64_t session_id_;
   const raw_ref<const WallpaperSearchStringMap> string_map_;
-#if BUILDFLAG(IS_CHROMEOS)
-  bool skip_show_feedback_page_for_testing_ = false;
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
   mojo::Remote<side_panel::customize_chrome::mojom::WallpaperSearchClient>
       client_;

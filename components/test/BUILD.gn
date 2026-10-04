@@ -21,7 +21,6 @@ source_set("test_support") {
 
   deps = [
     "//components:components_tests_pak",
-    "//components/breadcrumbs/core",
     "//components/content_settings/core/common",
     "//components/gcm_driver",
     "//mojo/core/embedder",

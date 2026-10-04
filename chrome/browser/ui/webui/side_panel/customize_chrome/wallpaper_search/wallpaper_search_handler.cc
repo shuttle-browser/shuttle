@@ -25,7 +25,6 @@
 #include "base/token.h"
 #include "base/values.h"
 #include "chrome/browser/browser_features.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -34,8 +33,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/views/side_panel/customize_chrome/customize_chrome_utils.h"
@@ -534,10 +531,6 @@ void WallpaperSearchHandler::UpdateHistory() {
 }
 
 void WallpaperSearchHandler::SetUserFeedback(UserFeedback selected_option) {
-  if (selected_option == UserFeedback::kThumbsDown) {
-    ShowFeedbackPage();
-  }
-
   optimization_guide::proto::UserFeedback user_feedback =
       OptimizationFeedbackFromWallpaperSearchFeedback(selected_option);
   if (!log_entries_.empty()) {
@@ -563,49 +556,7 @@ void WallpaperSearchHandler::OpenHelpArticle() {
 }
 
 void WallpaperSearchHandler::LaunchHatsSurvey() {
-  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-      FROM_HERE,
-      base::BindOnce(&WallpaperSearchHandler::LaunchDelayedHatsSurvey,
-                     weak_ptr_factory_.GetWeakPtr()),
-      base::GetFieldTrialParamByFeatureAsTimeDelta(
-          features::kHappinessTrackingSurveysForWallpaperSearch,
-          ntp_features::kWallpaperSearchHatsDelayParam, base::TimeDelta()));
-}
-
-void WallpaperSearchHandler::ShowFeedbackPage() {
-#if BUILDFLAG(IS_CHROMEOS)
-  if (skip_show_feedback_page_for_testing_) {
-    return;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser();
-  if (!browser) {
-    return;
-  }
-  OptimizationGuideKeyedService* opt_guide_keyed_service =
-      OptimizationGuideKeyedServiceFactory::GetForProfile(
-          browser->GetProfile());
-  if (!opt_guide_keyed_service ||
-      !opt_guide_keyed_service->ShouldFeatureBeCurrentlyAllowedForFeedback(
-          optimization_guide::proto::LogAiDataRequest::kWallpaperSearch)) {
-    return;
-  }
-  base::DictValue feedback_metadata;
-  if (!log_entries_.empty()) {
-    feedback_metadata.Set("log_id", log_entries_.back()
-                                        .first->log_ai_data_request()
-                                        ->model_execution_info()
-                                        .execution_id());
-  }
-  chrome::ShowFeedbackPage(
-      browser, feedback::kFeedbackSourceAI,
-      /*description_template=*/std::string(),
-      /*description_placeholder_text=*/
-      l10n_util::GetStringUTF8(IDS_NTP_WALLPAPER_SEARCH_FEEDBACK_PLACEHOLDER),
-      /*category_tag=*/"wallpaper_search",
-      /*extra_diagnostics=*/std::string(),
-      /*autofill_metadata=*/base::DictValue(), std::move(feedback_metadata));
+  // HaTS surveys are not part of this build.
 }
 
 void WallpaperSearchHandler::OnHistoryUpdated() {
@@ -1100,11 +1051,4 @@ void WallpaperSearchHandler::OnWallpaperSearchResultsDecoded(
       "NewTabPage.WallpaperSearch.GetResultProcessingLatency",
       processing_timer.Elapsed());
   std::move(callback).Run(WallpaperSearchStatus::kOk, std::move(thumbnails));
-}
-
-void WallpaperSearchHandler::LaunchDelayedHatsSurvey() {
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile_, /*create_if_necessary=*/true);
-  CHECK(hats_service);
-  hats_service->LaunchSurvey(kHatsSurveyTriggerWallpaperSearch);
 }

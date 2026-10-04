@@ -11,28 +11,21 @@
 #include "base/feature_list.h"
 #include "build/build_config.h"
 #include "components/autofill/core/common/autofill_prefs.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/browsing_data/core/pref_names.h"
-#include "components/commerce/core/pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/contextual_search/pref_names.h"
-#include "components/desktop_to_mobile_promos/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/metrics/demographics/user_demographics.h"
 #include "components/metrics/metrics_pref_names.h"
 #include "components/ntp_tiles/pref_names.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
-#include "components/payments/core/payment_prefs.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/saved_tab_groups/public/pref_names.h"
-#include "components/sharing_message/pref_names.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync/base/features.h"
 #include "components/sync_preferences/cross_device_pref_tracker/prefs/cross_device_pref_names.h"
-#include "components/translate/core/browser/translate_pref_names.h"
-#include "components/translate/core/browser/translate_prefs.h"
 #include "components/variations/service/google_groups_manager_prefs.h"
 
 namespace sync_preferences {
@@ -232,27 +225,9 @@ constexpr auto kCommonSyncablePrefsAllowlist =
           syncer::PRIORITY_PREFERENCES,
           PrefSensitivity::kExemptFromUserControlWhileSignedIn,
           MergeBehavior::kNone}},
-        {bookmarks::prefs::kShowAppsShortcutInBookmarkBar,
-         {syncable_prefs_ids::kShowAppsShortcutInBookmarkBar,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {bookmarks::prefs::kShowTabGroupsInBookmarkBar,
-         {syncable_prefs_ids::kShowTabGroupsInBookmarkBar, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {bookmarks::prefs::kShowBookmarkBar,
-         {syncable_prefs_ids::kShowBookmarkBar, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {bookmarks::prefs::kShowManagedBookmarksInBookmarkBar,
-         {syncable_prefs_ids::kShowManagedBookmarksInBookmarkBar,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {bookmarks::prefs::kBookmarkBarVisibilityState,
-         {syncable_prefs_ids::kBookmarkBarVisibilityState, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
         {browsing_data::prefs::kLastClearBrowsingDataTime,
          {syncable_prefs_ids::kLastClearBrowsingDataTime, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {commerce::kPriceEmailNotificationsEnabled,
-         {syncable_prefs_ids::kPriceEmailNotificationsEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
         {language::prefs::kAcceptLanguages,
          {syncable_prefs_ids::kAcceptLanguages, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
@@ -298,9 +273,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
          {syncable_prefs_ids::kWasAutoSignInFirstRunExperienceShown,
           syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
           MergeBehavior::kNone}},
-        {payments::kCanMakePaymentEnabled,
-         {syncable_prefs_ids::kCanMakePaymentEnabled, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
         {prefs::kAccountTailoredSecurityUpdateTimestamp,
          {syncable_prefs_ids::kAccountTailoredSecurityUpdateTimestamp,
           syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
@@ -345,42 +317,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
           PrefSensitivity::kNone, MergeBehavior::kNone}},
         {tab_groups::prefs::kAutoPinNewTabGroups,
          {syncable_prefs_ids::kAutoPinNewTabGroups, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::TranslatePrefs::kPrefForceTriggerTranslateCount,
-         {syncable_prefs_ids::kPrefForceTriggerTranslateCount,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::TranslatePrefs::kPrefTranslateAcceptedCount,
-         {syncable_prefs_ids::kPrefTranslateAcceptedCount, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
-        {translate::TranslatePrefs::kPrefTranslateAutoAlwaysCount,
-         {syncable_prefs_ids::kPrefTranslateAutoAlwaysCount,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::TranslatePrefs::kPrefTranslateAutoNeverCount,
-         {syncable_prefs_ids::kPrefTranslateAutoNeverCount, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
-        {translate::TranslatePrefs::kPrefTranslateDeniedCount,
-         {syncable_prefs_ids::kPrefTranslateDeniedCount, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::prefs::kBlockedLanguages,
-         {syncable_prefs_ids::kBlockedLanguages, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::prefs::kOfferTranslateEnabled,
-         {syncable_prefs_ids::kOfferTranslateEnabled, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::prefs::kPrefAlwaysTranslateList,
-         {syncable_prefs_ids::kPrefAlwaysTranslateList, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::prefs::kPrefNeverPromptSitesWithTime,
-         {syncable_prefs_ids::kPrefNeverPromptSitesWithTime,
-          syncer::PREFERENCES, PrefSensitivity::kSensitiveRequiresHistory,
-          MergeBehavior::kNone}},
-        {translate::prefs::kPrefTranslateRecentTarget,
-         {syncable_prefs_ids::kPrefTranslateRecentTarget, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {translate::prefs::kPrefTranslateRecentTargets,
-         {syncable_prefs_ids::kPrefTranslateRecentTargets, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
 // For Ash, the OS_PRIORITY_PREFERENCES equivalent is defined in
 // chrome/browser/sync/prefs/chrome_syncable_prefs_database.cc instead.
@@ -474,9 +410,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
         {omnibox::kShowAiModeOmniboxButton,
          {syncable_prefs_ids::kShowAiModeOmniboxButton, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {prefs::kIOSPromoReminder,
-         {syncable_prefs_ids::kIOSPromoReminder, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kMergeableDict}},
         {contextual_search::kDriveConsentState,
          {syncable_prefs_ids::kDriveConsentState, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},

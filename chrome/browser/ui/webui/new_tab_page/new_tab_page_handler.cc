@@ -36,8 +36,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/desktop_to_mobile_promos/promos_pref_names.h"
-#include "chrome/browser/desktop_to_mobile_promos/promos_utils.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/new_tab_page/feature_promo_helper/new_tab_page_feature_promo_helper.h"
 #include "chrome/browser/new_tab_page/microsoft_auth/microsoft_auth_service.h"
@@ -57,8 +55,6 @@
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/views/new_tab_footer/footer_controller.h"
 #include "chrome/browser/ui/webui/new_tab_footer/new_tab_footer_helper.h"
@@ -77,6 +73,7 @@
 #include "components/ntp_tiles/tile_type.h"
 #include "components/omnibox/browser/omnibox.mojom.h"
 #include "components/omnibox/common/composebox_features.h"
+#include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/search/ntp_features.h"
@@ -123,30 +120,9 @@ namespace {
 
 const int64_t kMaxDownloadBytes = 1024 * 1024;
 
-constexpr char kDisableInteraction[] = "disable";
-constexpr char kDismissInteraction[] = "dismiss";
-#if !BUILDFLAG(IS_ANDROID)
-constexpr char kIgnoreInteraction[] = "ignore";
-#endif
-constexpr char kUseInteraction[] = "use";
 
 // TODO(b/502297163): Implement for Android.
 #if !BUILDFLAG(IS_ANDROID)
-constexpr auto kModuleInteractionNames =
-    base::MakeFixedFlatSet<std::string_view>(
-        {kDisableInteraction, kDismissInteraction, kIgnoreInteraction,
-         kUseInteraction});
-
-// Returns a list of module IDs that are eligible for HATS.
-std::vector<std::string> GetSurveyEligibleModuleIds() {
-  return base::SplitString(
-      base::GetFieldTrialParamValueByFeature(
-          features::kHappinessTrackingSurveysForDesktopNtpModules,
-          ntp_features::kNtpModulesEligibleForHappinessTrackingSurveyParam),
-      ",:;", base::WhitespaceHandling::TRIM_WHITESPACE,
-      base::SplitResult::SPLIT_WANT_NONEMPTY);
-}
-
 // Returns true if we should force dark foreground colors for the Google logo
 // and the One Google Bar. This is done to fix specific GWS themes where the
 // always-light logo and OGB colors do not sufficiently contrast with lighter
@@ -393,39 +369,6 @@ new_tab_page::mojom::ImageDoodlePtr MakeImageDoodle(
   return doodle;
 }
 
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-base::DictValue MakeModuleInteractionTriggerIdDictionary() {
-  const auto data = base::GetFieldTrialParamValueByFeature(
-      features::kHappinessTrackingSurveysForDesktopNtpModules,
-      ntp_features::kNtpModulesInteractionBasedSurveyEligibleIdsParam);
-  if (data.empty()) {
-    return base::DictValue();
-  }
-
-  auto value_with_error = base::JSONReader::ReadAndReturnValueWithError(
-      data, base::JSONParserOptions::JSON_ALLOW_TRAILING_COMMAS);
-  if (!value_with_error.has_value()) {
-    LOG(ERROR)
-        << "Failed to parse "
-           "ntp_features::kNtpModulesInteractionBasedSurveyEligibleIdsParam ("
-        << value_with_error.error().message << ") on line "
-        << value_with_error.error().line << " at position "
-        << value_with_error.error().column;
-    return base::DictValue();
-  }
-
-  if (!value_with_error->is_dict()) {
-    LOG(WARNING)
-        << "ntp_features::kNtpModulesInteractionBasedSurveyEligibleIdsParam "
-           "data skipped. Not a dictionary.";
-    return base::DictValue();
-  }
-
-  return std::move(*value_with_error).TakeDict();
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
-
 }  // namespace
 
 // static
@@ -475,10 +418,6 @@ NewTabPageHandler::NewTabPageHandler(
       module_id_details_(module_id_details),
       microsoft_auth_service_(
           MicrosoftAuthServiceFactory::GetForProfile(profile)),
-#if !BUILDFLAG(IS_ANDROID)
-      interaction_module_id_trigger_dict_(
-          MakeModuleInteractionTriggerIdDictionary()),
-#endif
       browser_window_changed_subscription_(
           webui::RegisterBrowserWindowInterfaceChanged(
               web_contents_,
@@ -644,7 +583,6 @@ void NewTabPageHandler::OnDismissModule(const std::string& module_id) {
   base::UmaHistogramExactLinear(histogram_prefix + "." + module_id, 1, 1);
 
   RecordModuleInteraction(module_id);
-  MaybeLaunchInteractionSurvey(kDismissInteraction, module_id);
 }
 
 void NewTabPageHandler::OnRestoreModule(const std::string& module_id) {
@@ -686,7 +624,6 @@ void NewTabPageHandler::SetModulesDisabled(
     for (const auto& module_id : module_ids) {
       IncrementDictPrefKeyCount(prefs::kNtpModulesInteractedCountDict,
                                 module_id);
-      MaybeLaunchInteractionSurvey(kDisableInteraction, module_id);
     }
   }
 }
@@ -727,54 +664,10 @@ void NewTabPageHandler::OnModulesLoadedWithData(
     IncrementDictPrefKeyCount(prefs::kNtpModulesLoadedCountDict, module_id);
   }
 
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-  std::vector<std::string> survey_eligible_module_ids =
-      GetSurveyEligibleModuleIds();
-  if (std::any_of(module_ids.begin(), module_ids.end(),
-                  [&survey_eligible_module_ids](std::string id) {
-                    return std::ranges::contains(survey_eligible_module_ids,
-                                                 id);
-                  })) {
-    HatsService* hats_service = HatsServiceFactory::GetForProfile(
-        profile_, /*create_if_necessary=*/true);
-    CHECK(hats_service);
-    hats_service->LaunchDelayedSurveyForWebContents(
-        kHatsSurveyTriggerNtpModules, web_contents_, 0);
-    return;
-  }
-
-  const auto module_ignored_criteria_threshold =
-      base::GetFieldTrialParamByFeatureAsInt(
-          features::kHappinessTrackingSurveysForDesktopNtpModules,
-          ntp_features::kNtpModuleIgnoredCriteriaThreshold, 25);
-  for (const auto& module_id : module_ids) {
-    const base::DictValue& interacted_counts_dict =
-        profile_->GetPrefs()->GetDict(prefs::kNtpModulesInteractedCountDict);
-    std::optional<int> interacted_count =
-        interacted_counts_dict.FindInt(module_id);
-    if (interacted_count.value_or(0) != 0) {
-      continue;
-    }
-
-    const base::DictValue& loaded_counts_dict =
-        profile_->GetPrefs()->GetDict(prefs::kNtpModulesLoadedCountDict);
-    std::optional<int> loaded_count = loaded_counts_dict.FindInt(module_id);
-    if (loaded_count.value_or(0) >= module_ignored_criteria_threshold) {
-      const auto survey_delay_time_ms = base::GetFieldTrialParamByFeatureAsInt(
-          features::kHappinessTrackingSurveysForDesktopNtpModules,
-          ntp_features::kNtpModuleIgnoredHaTSDelayTimeParam, 0);
-      MaybeLaunchInteractionSurvey(kIgnoreInteraction, module_id,
-                                   survey_delay_time_ms);
-      break;
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 void NewTabPageHandler::OnModuleUsed(const std::string& module_id) {
   RecordModuleInteraction(module_id);
-  MaybeLaunchInteractionSurvey(kUseInteraction, module_id);
 }
 
 void NewTabPageHandler::GetModulesIdNames(GetModulesIdNamesCallback callback) {
@@ -1359,28 +1252,6 @@ bool NewTabPageHandler::IsShortcutsVisible() const {
   return profile_->GetPrefs()->GetBoolean(ntp_prefs::kNtpShortcutsVisible);
 }
 
-void NewTabPageHandler::MaybeLaunchInteractionSurvey(
-    std::string_view interaction,
-    const std::string& module_id,
-    int delay_time_ms) {
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-  const auto& module_trigger_id =
-      GetSurveyTriggerIdForModuleAndInteraction(interaction, module_id);
-  if (module_trigger_id.empty()) {
-    return;
-  }
-
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile_, /*create_if_necessary=*/true);
-  CHECK(hats_service);
-  hats_service->LaunchDelayedSurveyForWebContents(
-      kHatsSurveyTriggerNtpModules, web_contents_, delay_time_ms, {}, {},
-      HatsService::NavigationBehavior::ALLOW_ANY, base::DoNothing(),
-      base::DoNothing(), module_trigger_id);
-#endif  // !BUILDFLAG(IS_ANDROID)
-}
-
 void NewTabPageHandler::MaybeShowWebstoreToast() {
   if (profile_->GetPrefs()->GetInteger(prefs::kSeedColorChangeCount) <= 3) {
     page_->ShowWebstoreToast();
@@ -1402,27 +1273,6 @@ void NewTabPageHandler::IncrementDictPrefKeyCount(const std::string& pref_name,
                   ? ((count.value() < INT_MAX) ? count.value() + 1 : INT_MAX)
                   : 1);
 }
-
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-const std::string& NewTabPageHandler::GetSurveyTriggerIdForModuleAndInteraction(
-    std::string_view interaction,
-    const std::string& module_id) {
-  static const std::string kNoTriggerId;
-  DCHECK(kModuleInteractionNames.find(interaction) !=
-         kModuleInteractionNames.end());
-  const base::DictValue* module_id_trigger_dict =
-      interaction_module_id_trigger_dict_.FindDict(interaction);
-  if (module_id_trigger_dict) {
-    auto* trigger_id = module_id_trigger_dict->FindString(module_id);
-    if (trigger_id) {
-      return *trigger_id;
-    }
-  }
-
-  return kNoTriggerId;
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 void NewTabPageHandler::SetModuleHidden(const std::string& module_id,
                                         bool hidden) {

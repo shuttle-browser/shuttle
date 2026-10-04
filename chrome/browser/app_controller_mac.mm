@@ -40,8 +40,6 @@
 #include "base/time/time.h"
 #include "build/branding_buildflags.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/apps/app_shim/app_shim_termination_manager.h"
-#include "chrome/browser/apps/platform_apps/app_window_registry_util.h"
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
@@ -85,8 +83,6 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/cocoa/apps/quit_with_apps_controller_mac.h"
-#import "chrome/browser/ui/cocoa/bookmarks/bookmark_menu_bridge.h"
 #import "chrome/browser/ui/cocoa/confirm_quit.h"
 #import "chrome/browser/ui/cocoa/confirm_quit_panel_controller.h"
 #include "chrome/browser/ui/cocoa/handoff_observer.h"
@@ -95,7 +91,6 @@
 #import "chrome/browser/ui/cocoa/share_menu_controller.h"
 #import "chrome/browser/ui/cocoa/tab_menu_bridge.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/extensions/application_launch.h"
 #include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/browser/ui/startup/first_run_service.h"
 #include "chrome/browser/ui/startup/google_chrome_scheme_util.h"
@@ -110,13 +105,11 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension_constants.h"
-#include "chrome/common/mac/app_mode_common.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
@@ -288,33 +281,6 @@ void AttemptSessionRestore(Profile* profile) {
   }
   // No session to restore, proceed with normal startup.
   LaunchBrowserStartup(profile);
-}
-
-// Record the location of the application bundle (containing the main framework)
-// from which Chromium was loaded. This is used by app mode shims to find
-// Chromium.
-void RecordLastRunAppBundlePath() {
-  // Going up three levels from |chrome::GetVersionedDirectory()| gives the
-  // real, user-visible app bundle directory. (The alternatives give either the
-  // framework's path or the initial app's path, which may be an app mode shim
-  // or a unit test.)
-  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
-                                                base::BlockingType::MAY_BLOCK);
-
-  // Go up five levels from the versioned sub-directory of the framework, which
-  // is at C.app/Contents/Frameworks/C.framework/Versions/V.
-  base::FilePath app_bundle_path = chrome::GetFrameworkBundlePath()
-                                       .DirName()
-                                       .DirName()
-                                       .DirName()
-                                       .DirName()
-                                       .DirName();
-  base::apple::ScopedCFTypeRef<CFStringRef> app_bundle_path_cfstring =
-      base::apple::FilePathToCFString(app_bundle_path);
-  CFPreferencesSetAppValue(
-      base::apple::NSToCFPtrCast(app_mode::kLastRunAppBundlePathPrefsKey),
-      app_bundle_path_cfstring.get(),
-      base::SysUTF8ToCFStringRef(base::apple::BaseBundleID()).get());
 }
 
 bool IsProfileSignedOut(const base::FilePath& profile_path) {
@@ -687,15 +653,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   std::unique_ptr<AppControllerProfileObserver>
       _profileAttributesStorageObserver;
 
-  // Management of the bookmark menu which spans across all windows
-  // (and Browser*s). |profileBookmarkMenuBridgeMap_| is a cache that owns one
-  // pointer to a BookmarkMenuBridge for each profile. |bookmarkMenuBridge_| is
-  // a weak pointer that is updated to match the corresponding cache entry
-  // during a profile switch.
-  raw_ptr<BookmarkMenuBridge, DanglingUntriaged> _bookmarkMenuBridge;
-  std::map<base::FilePath, std::unique_ptr<BookmarkMenuBridge>>
-      _profileBookmarkMenuBridgeMap;
-
   std::unique_ptr<HistoryMenuBridge> _historyMenuBridge;
 
 
@@ -721,9 +678,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   std::unique_ptr<PrefChangeRegistrar> _profilePrefRegistrar;
   PrefChangeRegistrar _localPrefRegistrar;
-
-  // Displays a notification when quitting while apps are running.
-  scoped_refptr<QuitWithAppsController> _quitWithAppsController;
 
   // Responsible for maintaining all state related to the Handoff feature.
   HandoffManager* __strong _handoffManager;
@@ -943,7 +897,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   }
 
   // Reset this now that we've received the call to terminate.
-  BOOL isPoweringOff = _isPoweringOff;
   _isPoweringOff = NO;
 
   // Stop the browser from re-opening when we close Chrome while
@@ -958,23 +911,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   // Check for in-process downloads, and prompt the user if they really want
   // to quit (and thus cancel downloads).
   if (![self shouldQuitWithInProgressDownloads]) {
-    return;
-  }
-
-  // Check for active apps. If quitting is prevented, only close browsers and
-  // sessions.
-  if (!isPoweringOff && _quitWithAppsController.get() &&
-      !_quitWithAppsController->ShouldQuit()) {
-    chrome::OnClosingAllBrowsers(true);
-    // This will close all browser sessions.
-    chrome::CloseAllBrowsers();
-
-    // At this point, the user has already chosen to cancel downloads. If we
-    // were to shut down as usual, the downloads would be cancelled in
-    // DownloadCoreService::Shutdown().
-    DownloadCoreService::CancelAllDownloads(
-        DownloadCoreService::CancelDownloadsTrigger::kShutdown);
-
     return;
   }
 
@@ -1005,8 +941,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
 - (ConfirmQuitResult)confirmQuitIfNeeded {
   // If there are no windows, quit immediately.
-  if (!GetLastActiveBrowserWindowInterfaceWithAnyProfile() &&
-      !AppWindowRegistryUtil::IsAppWindowVisibleInAnyProfile(0)) {
+  if (!GetLastActiveBrowserWindowInterfaceWithAnyProfile()) {
     return ConfirmQuitResultNotPrompted;
   }
 
@@ -1079,7 +1014,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   _profileAttributesStorageObserver.reset();
   [self unregisterEventHandlers];
-  _profileBookmarkMenuBridgeMap.clear();
 }
 
 - (void)didEndMainMessageLoop {
@@ -1298,10 +1232,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   [self setUpdateCheckInterval];
 
-  // If enabled, keep Chrome alive when apps are open instead of quitting all
-  // apps.
-  _quitWithAppsController = new QuitWithAppsController();
-
   // Dynamically update shortcuts for "Close Window" and "Close Tab" menu items.
   [self fileMenu].delegate = self;
 
@@ -1310,16 +1240,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   _profileAttributesStorageObserver =
       std::make_unique<AppControllerProfileObserver>(
           g_browser_process->profile_manager(), self);
-
-  // Record the path to the (browser) app bundle; this is used by the app mode
-  // shim.
-  if (base::apple::AmIBundled()) {
-    base::ThreadPool::PostTask(
-        FROM_HERE,
-        {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
-         base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
-        base::BindOnce(&RecordLastRunAppBundlePath));
-  }
 
   // Makes "Services" menu items available.
   [self registerServicesMenuTypesTo:[notify object]];
@@ -1540,16 +1460,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
     [self setLastProfile:last_used_profile];
   }
 
-  auto it = _profileBookmarkMenuBridgeMap.find(profilePath);
-  if (it != _profileBookmarkMenuBridgeMap.end() &&
-      (!base::FeatureList::IsEnabled(features::kDestroyProfileOnBrowserClose) ||
-       (it->second->GetProfile() && !isOffTheRecord))) {
-    // Clean up the dangling Profile* in |_profileBookmarkMenuBridgeMap|.
-    //
-    // No need to clean up when |isOffTheRecord|, because BookmarkMenuBridge
-    // always points to a non-OTR profile.
-    _profileBookmarkMenuBridgeMap.erase(it);
-  }
 }
 
 // Returns true if there is a modal window (either window- or application-
@@ -1616,7 +1526,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
         case IDC_FOCUS_LOCATION:
         case IDC_FOCUS_SEARCH:
         case IDC_SHOW_HISTORY:
-        case IDC_SHOW_BOOKMARK_MANAGER:
         case IDC_CLEAR_BROWSING_DATA:
         case IDC_SHOW_DOWNLOADS:
         case IDC_IMPORT_SETTINGS:
@@ -1786,14 +1695,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       }
       break;
     }
-    case IDC_SHOW_BOOKMARK_MANAGER:
-      if (BrowserWindowInterface* browser = ActivateBrowser(profile)) {
-        chrome::ShowBookmarkManager(browser);
-      } else {
-        // No browser window, so create one for the bookmark manager tab.
-        chrome::OpenBookmarkManagerWindow(profile);
-      }
-      break;
     case IDC_SHOW_HISTORY:
       if (BrowserWindowInterface* browser = ActivateBrowser(profile)) {
         chrome::ShowHistory(browser);
@@ -1885,8 +1786,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   // Normally, it'd just open a new empty page.
   static BOOL doneOnce = NO;
   BOOL attemptRestore =
-      apps::AppShimTerminationManager::Get()->ShouldRestoreSession() ||
-      (!doneOnce && base::mac::WasLaunchedAsHiddenLoginItem());
+      !doneOnce && base::mac::WasLaunchedAsHiddenLoginItem();
   doneOnce = YES;
 
   // If the profile is locked or was off-the-record, open the profile picker.
@@ -1938,7 +1838,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   _menuState->UpdateCommandEnabled(IDC_RESTORE_TAB, false);
   _menuState->UpdateCommandEnabled(IDC_FOCUS_LOCATION, true);
   _menuState->UpdateCommandEnabled(IDC_FOCUS_SEARCH, true);
-  _menuState->UpdateCommandEnabled(IDC_SHOW_BOOKMARK_MANAGER, true);
   _menuState->UpdateCommandEnabled(IDC_SHOW_HISTORY, true);
   _menuState->UpdateCommandEnabled(IDC_SHOW_DOWNLOADS, true);
   _menuState->UpdateCommandEnabled(IDC_MANAGE_EXTENSIONS, true);
@@ -2195,10 +2094,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 }
 
 
-- (BookmarkMenuBridge*)bookmarkMenuBridge {
-  return _bookmarkMenuBridge;
-}
-
 - (HistoryMenuBridge*)historyMenuBridge {
   return _historyMenuBridge.get();
 }
@@ -2268,54 +2163,10 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
     }
   }
 
-  NSMenuItem* bookmarkItem = [NSApp.mainMenu itemWithTag:IDC_BOOKMARKS_MENU];
-  BOOL hidden = bookmarkItem.hidden;
-  if (profile != nullptr) {
-    // Rebuild the menus with the new profile. The bookmarks submenu is cached
-    // to avoid slowdowns when switching between profiles with large numbers of
-    // bookmarks. Before caching, store whether it is hidden, make the menu item
-    // visible, and restore its original hidden state after resetting the
-    // submenu. This works around an apparent AppKit bug where setting a
-    // *different* NSMenu submenu on a *hidden* menu item forces the item to
-    // become visible. See https://crbug.com/40421657 for more details.
-    bookmarkItem.hidden = NO;
-    _bookmarkMenuBridge = nullptr;
-  } else if (_bookmarkMenuBridge && !_isShuttingDown) {
-    DCHECK_EQ(_bookmarkMenuBridge->GetProfile(),
-              _lastProfile->GetOriginalProfile());
-    // |_bookmarkMenuBridge| always points to the original profile. So, no need
-    // to call OnProfileWillBeDestroyed() when the OTR profile is destroyed.
-    if (!_lastProfile->IsOffTheRecord()) {
-      _bookmarkMenuBridge->OnProfileWillBeDestroyed();
-    }
-  }
-
   _lastProfile = profile;
 
   if (_lastProfile == nullptr)
     return;
-
-  auto& entry = _profileBookmarkMenuBridgeMap[profile->GetPath()];
-  if (!entry || !entry->GetProfile()) {
-    // This creates a deep copy, but only the first 3 items in the root menu
-    // are really wanted. This can probably be optimized, but lazy-loading of
-    // the menu should reduce the impact in most flows.
-    NSMenu* submenu = [bookmarkItem.submenu copy];
-    submenu.delegate = nil;  // The delegate is also copied. Remove it.
-
-    // The original profile outlives the OTR profile. Always create the bridge
-    // on the original profile, to prevent bugs WRT profile lifetime.
-    entry = std::make_unique<BookmarkMenuBridge>(profile->GetOriginalProfile(),
-                                                 submenu);
-
-    // Clear bookmarks from the old profile.
-    entry->ClearBookmarkMenu();
-  }
-  _bookmarkMenuBridge = entry.get();
-
-  // No need to |BuildMenu| here.  It is done lazily upon menu access.
-  bookmarkItem.submenu = _bookmarkMenuBridge->BookmarkMenu();
-  bookmarkItem.hidden = hidden;
 
   _historyMenuBridge = std::make_unique<HistoryMenuBridge>(_lastProfile);
   _historyMenuBridge->BuildMenu();

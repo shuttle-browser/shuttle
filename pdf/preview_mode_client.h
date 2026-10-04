@@ -15,7 +15,6 @@
 #include "base/memory/raw_ptr.h"
 #include "pdf/buildflags.h"
 #include "pdf/pdfium/pdfium_engine_client.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 
 namespace chrome_pdf {
 
@@ -80,11 +79,6 @@ class PreviewModeClient : public PDFiumEngineClient {
 #if BUILDFLAG(ENABLE_PDF_INK2)
   bool IsInAnnotationMode() const override;
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  void OnSearchifyStateChange(bool busy) override;
-  void OnHasSearchifyText() override;
-  void MaybeShowSearchifyInProgress() override;
-#endif
 
  private:
   const raw_ptr<Client> client_;

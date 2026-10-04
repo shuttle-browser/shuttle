@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/crx_file/id_util.h",
-  "+crypto/hash.h",
-]

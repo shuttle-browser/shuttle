@@ -26,7 +26,6 @@
 #include "components/language/core/language_model/ulp_language_model.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
-#include "components/translate/core/browser/translate_prefs.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_string.h"
@@ -55,12 +54,6 @@ void RecordULPInitMetrics(
   logger.RecordInitiationUILanguageInULP(
       ULPMetricsLogger::DetermineLanguageStatus(app_locale, ulp_languages));
 
-  const std::string target_language =
-      translate::TranslatePrefs(pref_service).GetRecentTargetLanguage();
-  logger.RecordInitiationTranslateTargetInULP(
-      ULPMetricsLogger::DetermineLanguageStatus(target_language,
-                                                ulp_languages));
-
   std::vector<std::string> accept_languages;
   language::LanguagePrefs(pref_service)
       .GetAcceptLanguagesList(&accept_languages);
@@ -75,15 +68,6 @@ void RecordULPInitMetrics(
 
   logger.RecordInitiationAcceptLanguagesULPOverlap(
       ULPMetricsLogger::LanguagesOverlapRatio(accept_languages, ulp_languages));
-
-  std::vector<std::string> never_languages_not_in_ulp =
-      ULPMetricsLogger::RemoveULPLanguages(
-          translate::TranslatePrefs(pref_service).GetNeverTranslateLanguages(),
-          ulp_languages);
-  logger.RecordInitiationNeverLanguagesMissingFromULP(
-      never_languages_not_in_ulp);
-  logger.RecordInitiationNeverLanguagesMissingFromULPCount(
-      never_languages_not_in_ulp.size());
 
   std::vector<std::string> page_languages;
   for (const language::UrlLanguageHistogram::LanguageInfo& language_info :

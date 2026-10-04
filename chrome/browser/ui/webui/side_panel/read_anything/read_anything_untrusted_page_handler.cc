@@ -24,10 +24,7 @@
 #include "chrome/browser/dom_distiller/dom_distiller_service_factory.h"
 #include "chrome/browser/language/language_model_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/screen_ai/screen_ai_service_router.h"
-#include "chrome/browser/screen_ai/screen_ai_service_router_factory.h"
 #include "chrome/browser/speech/extension_api/tts_engine_extension_api.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_enums.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
@@ -50,9 +47,6 @@
 #include "components/pdf/browser/pdf_frame_util.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/translate/core/browser/language_state.h"
-#include "components/translate/core/browser/translate_driver.h"
-#include "components/translate/core/browser/translate_manager.h"
 #include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
@@ -351,7 +345,7 @@ ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
     mojo::PendingRemote<UntrustedPage> page,
     mojo::PendingReceiver<UntrustedPageHandler> receiver,
     content::WebUI* web_ui,
-    bool use_screen_ai_service
+    bool /*use_screen_ai_service*/
 #if BUILDFLAG(IS_CHROMEOS)
     ,
     std::unique_ptr<ChromeOsExtensionWrapper> extension_wrapper
@@ -360,8 +354,7 @@ ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
     : profile_(Profile::FromWebUI(web_ui)),
       web_ui_(web_ui),
       receiver_(this, std::move(receiver)),
-      page_(std::move(page)),
-      use_screen_ai_service_(use_screen_ai_service)
+      page_(std::move(page))
 #if BUILDFLAG(IS_CHROMEOS)
       ,
       extension_wrapper_(std::move(extension_wrapper))
@@ -404,15 +397,6 @@ ReadAnythingUntrustedPageHandler::ReadAnythingUntrustedPageHandler(
   prefs_lang = language::ExtractBaseLanguage(prefs_lang);
   SetDefaultLanguageCode(prefs_lang);
 
-  if (use_screen_ai_service_) {
-    screen_ai::ScreenAIServiceRouterFactory::GetForBrowserContext(profile_)
-        ->GetServiceStateAsync(
-            screen_ai::ScreenAIServiceRouter::Service::kMainContentExtraction,
-            base::BindOnce(
-                &ReadAnythingUntrustedPageHandler::OnScreenAIServiceInitialized,
-                weak_factory_.GetWeakPtr()));
-  }
-
   if (features::IsReadAnythingWithReadabilityEnabled() &&
       !features::IsReadAnythingReadAloudPhraseHighlightingEnabled()) {
     // Set the JavaScript world ID.
@@ -451,7 +435,6 @@ ReadAnythingUntrustedPageHandler::~ReadAnythingUntrustedPageHandler() {
       this);
   extensions::ExtensionRegistry::Get(profile_)->RemoveObserver(this);
 #endif
-  translate_observation_.Reset();
   main_observer_.reset();
   pdf_observer_.reset();
   LogTextStyle();
@@ -533,7 +516,6 @@ bool ReadAnythingUntrustedPageHandler::IsGoogleDocs(const GURL& url) const {
 }
 
 void ReadAnythingUntrustedPageHandler::WebContentsDestroyed() {
-  translate_observation_.Reset();
   audible_closure_.RunAndReset();
 }
 
@@ -903,86 +885,8 @@ void ReadAnythingUntrustedPageHandler::OnLinksEnabledChanged(bool enabled) {
       prefs::kAccessibilityReadAnythingLinksEnabled, enabled);
 }
 
-std::string ReadAnythingUntrustedPageHandler::GetDisplayLanguage() {
-  std::string source_lang = current_language_code_;
-
-  content::WebContents* main_contents = GetWebContents();
-  if (!main_contents) {
-    return source_lang;
-  }
-
-  ChromeTranslateClient* main_client =
-      ChromeTranslateClient::FromWebContents(main_contents);
-  if (!main_client) {
-    return source_lang;
-  }
-
-  const translate::LanguageState& main_language_state =
-      main_client->GetLanguageState();
-
-  // Use the main page's translated language if it has already been translated.
-  if (main_language_state.IsPageTranslated()) {
-    return main_language_state.current_language();
-  }
-
-  // Fall back to the main page's source language if ours is unknown.
-  if (source_lang.empty() || source_lang == "und" || source_lang == "und-und") {
-    return main_language_state.source_language();
-  }
-
-  return source_lang;
-}
-
 void ReadAnythingUntrustedPageHandler::OnTranslationRequested() {
-  if (!features::IsReadAnythingTranslateEntryPointEnabled()) {
-    mojo::ReportBadMessage("Translate entry point not enabled");
-    return;
-  }
-  content::WebContents* side_panel_contents = web_ui_->GetWebContents();
-  if (!side_panel_contents) {
-    return;
-  }
-
-  ChromeTranslateClient::CreateForWebContents(side_panel_contents);
-  ChromeTranslateClient* translate_client =
-      ChromeTranslateClient::FromWebContents(side_panel_contents);
-  if (!translate_client) {
-    return;
-  }
-
-  translate::TranslateManager* translate_manager =
-      translate_client->GetTranslateManager();
-  if (translate_manager) {
-    // Sync the article's true source language to the side panel
-    // TranslateManager (using the current language if the main page was
-    // translated) and preserve any existing target language before opening the
-    // Translate bubble.
-    std::optional<std::string> target_lang;
-    translate::LanguageState* language_state =
-        translate_manager->GetLanguageState();
-
-    if (language_state) {
-      if (language_state->IsPageTranslated()) {
-        target_lang = language_state->current_language();
-      }
-
-      std::string source_lang = GetDisplayLanguage();
-
-      if (target_lang == source_lang) {
-        target_lang = std::nullopt;
-      }
-      if (!source_lang.empty() && source_lang != "und" &&
-          source_lang != "und-und") {
-        language_state->LanguageDetermined(
-            source_lang, /*page_level_translation_criteria_met=*/true);
-      }
-      language_state->set_translation_pending(false);
-    }
-    translate_manager->ShowTranslateUI(/*source_code=*/std::nullopt,
-                                       /*target_code=*/target_lang,
-                                       /*auto_translate=*/true,
-                                       /*triggered_from_menu=*/true);
-  }
+  // Translate is not part of this build.
 }
 
 void ReadAnythingUntrustedPageHandler::OnImagesEnabledChanged(bool enabled) {
@@ -1504,17 +1408,6 @@ void ReadAnythingUntrustedPageHandler::OnTabWillDetach(
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// screen_ai::ScreenAIInstallState::Observer:
-///////////////////////////////////////////////////////////////////////////////
-
-void ReadAnythingUntrustedPageHandler::OnScreenAIServiceInitialized(
-    bool successful) {
-  if (successful) {
-    page_->ScreenAIServiceReady();
-  }
-}
-
 void ReadAnythingUntrustedPageHandler::SetUpPdfObserver() {
 #if BUILDFLAG(ENABLE_PDF)
   pdf_observer_.reset();
@@ -1579,31 +1472,6 @@ void ReadAnythingUntrustedPageHandler::OnActiveAXTreeIDChanged() {
     page_->OnActiveAXTreeIDChanged(ui::AXTreeIDUnknown(), ukm::kInvalidSourceId,
                                    /*is_pdf=*/false);
     return;
-  }
-
-  // Observe the new contents so we can get the page language once it's
-  // determined.
-  if (ChromeTranslateClient* translate_client =
-          ChromeTranslateClient::FromWebContents(contents)) {
-    translate::TranslateDriver* driver = translate_client->GetTranslateDriver();
-    const std::string& source_language =
-        translate_client->GetLanguageState().source_language();
-    // If we're not already observing these web contents, then observe them so
-    // we can get a callback when the language is determined. Otherwise, we
-    // just set the language directly.
-    if (!translate_observation_.IsObservingSource(driver)) {
-      translate_observation_.Reset();
-      translate_observation_.Observe(driver);
-      // The language may have already been determined before (and then
-      // unobserved), so send the language if it's not empty. If the language
-      // is outdated, we'll receive a call in OnLanguageDetermined and send
-      // the updated lang there.
-      if (!source_language.empty()) {
-        SetLanguageCode(source_language);
-      }
-    } else {
-      SetLanguageCode(source_language);
-    }
   }
 
 #if BUILDFLAG(ENABLE_PDF)
@@ -1949,16 +1817,6 @@ void ReadAnythingUntrustedPageHandler::SetLanguageCode(
     current_language_code_ = language_code;
     page_->SetLanguageCode(current_language_code_);
   }
-}
-
-void ReadAnythingUntrustedPageHandler::OnLanguageDetermined(
-    const translate::LanguageDetectionDetails& details) {
-  SetLanguageCode(details.adopted_language);
-}
-
-void ReadAnythingUntrustedPageHandler::OnTranslateDriverDestroyed(
-    translate::TranslateDriver* driver) {
-  translate_observation_.Reset();
 }
 
 void ReadAnythingUntrustedPageHandler::LogExtensionState() {

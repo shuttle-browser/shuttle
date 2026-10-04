@@ -5,15 +5,12 @@
 #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
 
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/collaboration_messaging_tab_data.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_image.h"
 #include "chrome/browser/ui/views/tabs/hovercard/filename_elider.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/collaboration/public/messaging/message.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/url_formatter/url_formatter.h"
@@ -127,32 +124,7 @@ void HoverCardAnchorTarget::SetHoverCardDataFrom(
   card_data.title_data = GetTabTitleLabel(tab_data);
   card_data.domain_data = {domain, false, gfx::ELIDE_HEAD, is_domain_url};
 
-  // Now set the collaboration data.
-  using collaboration::messaging::CollaborationEvent;
   card_data.show_collaboration_messaging = false;
-
-  if (tab_data.collaboration_messaging &&
-      tab_data.collaboration_messaging->HasMessage()) {
-    card_data.show_collaboration_messaging = true;
-    switch (tab_data.collaboration_messaging->collaboration_event()) {
-      case CollaborationEvent::TAB_ADDED:
-        card_data.collaboration_message = l10n_util::GetStringFUTF16(
-            IDS_DATA_SHARING_RECENT_ACTIVITY_MEMBER_ADDED_THIS_TAB,
-            tab_data.collaboration_messaging->given_name());
-        break;
-      case CollaborationEvent::TAB_UPDATED:
-        card_data.collaboration_message = l10n_util::GetStringFUTF16(
-            IDS_DATA_SHARING_RECENT_ACTIVITY_MEMBER_CHANGED_THIS_TAB,
-            tab_data.collaboration_messaging->given_name());
-        break;
-      default:
-        NOTREACHED();
-    }
-  }
-
-  if (tab_data.collaboration_messaging) {
-    card_data.collaboration_avatar = tab_data.collaboration_messaging->avatar();
-  }
 
   base::ByteSize memory_savings =
       tab_data.discarded_memory_savings.has_value()
@@ -161,7 +133,6 @@ void HoverCardAnchorTarget::SetHoverCardDataFrom(
 
   card_data.alert_data = {alert_state, tab_data.should_show_discard_status,
                           memory_savings};
-  card_data.tab_resource_usage = tab_data.tab_resource_usage;
   card_data.show_discard_status = tab_data.should_show_discard_status;
   card_data.is_tab_discarded = tab_data.is_tab_discarded;
   card_data.is_crashed = tab_data.is_crashed;

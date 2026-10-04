@@ -26,7 +26,6 @@
 #include "components/autofill/core/browser/payments/offer_notification_options.h"
 #include "components/autofill/core/common/autofill_clock.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
-#include "components/commerce/core/commerce_feature_list.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_handle.h"

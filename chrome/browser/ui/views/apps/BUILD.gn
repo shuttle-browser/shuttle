@@ -89,8 +89,6 @@ source_set("impl") {
       "shaped_app_window_targeter.cc",
     ]
     deps += [
-      "//apps/ui/views",
-      "//chrome/browser/web_applications",
       "//ui/aura",
       "//ui/wm",
     ]
@@ -104,8 +102,6 @@ source_set("impl") {
     deps += [
       "//ash",
       "//ash/public/cpp",
-      "//chrome/browser/apps:icon_standardizer",
-      "//chrome/browser/apps/app_service",
       "//chrome/browser/ash/note_taking",
       "//chrome/browser/ui/apps",
       "//chrome/browser/ui/ash/multi_user",
@@ -140,7 +136,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser:shell_integration",
       "//chrome/browser/ui/apps",
-      "//chrome/browser/web_applications/extensions",
       "//chrome/common:constants",
       "//content/public/browser",
       "//extensions/common",
@@ -154,7 +149,6 @@ source_set("impl") {
       "chrome_native_app_window_views_mac.mm",
     ]
     deps += [
-      "//chrome/browser/apps/app_shim",
       "//chrome/browser/ui/apps",
       "//chrome/browser/ui/cocoa",
       "//components/remote_cocoa/app_shim",
@@ -173,7 +167,6 @@ if (use_aura) {
 
     deps = [
       ":apps",
-      "//apps/ui/views",
       "//testing/gtest",
       "//ui/aura",
       "//ui/events",
@@ -197,7 +190,6 @@ if (is_chromeos) {
     deps = [
       ":apps",
       "//ash/public/cpp",
-      "//chrome/browser/apps/platform_apps:browser_test_support",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui",
       "//chrome/test:test_support",

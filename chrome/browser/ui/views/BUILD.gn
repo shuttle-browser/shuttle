@@ -40,7 +40,6 @@ component("views") {
     "event_utils.cc",
     "event_utils.h",
     "tab_icon_view_model.h",
-    "tab_search_bubble_host_observer.h",
     "tabs/shared/tab_strip_observer.cc",
     "tabs/shared/tab_strip_observer.h",
     "tabs/shared/tab_strip_types.h",
@@ -62,7 +61,6 @@ component("views") {
     "//chrome/app:generated_resources",
     "//chrome/browser/ui:layout_constants",
     "//components/keep_alive_registry",
-    "//components/lens",
     "//components/lens:buildflags",
     "//components/vector_icons",
     "//content/public/browser",
@@ -206,7 +204,6 @@ if (!is_mac) {
     sources = [ "create_application_shortcut_view.cc" ]
     public_deps = [
       "//base",
-      "//chrome/browser/web_applications",
       "//ui/base/metadata",
       "//ui/base/mojom:ui_base_types",
       "//ui/views",
@@ -216,7 +213,6 @@ if (!is_mac) {
       "//chrome/browser/password_manager",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/views:layout_provider",
-      "//chrome/browser/web_applications/extensions",
       "//chrome/common:constants",
       "//components/constrained_window",
       "//components/prefs",
@@ -339,7 +335,6 @@ source_set("tab_dialogs_impl") {
     ":hung_renderer_view",
     "//chrome/browser/ui/views/passwords:password_bubble_view_base",
     "//chrome/browser/ui/views/site_data",
-    "//chrome/browser/ui/views/web_apps",
     "//ui/views",
   ]
 }
@@ -510,23 +505,6 @@ source_set("message_box_dialog") {
   if (is_mac) {
     deps += [ "//chrome/browser/ui/cocoa" ]
   }
-}
-
-source_set("sub_apps_permission_explanation") {
-  public = [ "sub_apps_permission_explanation.h" ]
-  sources = [ "sub_apps_permission_explanation.cc" ]
-  public_deps = [
-    "//base",
-    "//ui/base",
-  ]
-  deps = [
-    "//chrome/app:generated_resources",
-    "//chrome/browser/password_manager",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/web_applications",
-    "//components/webapps/common",
-    "//content/public/browser",
-  ]
 }
 
 source_set("task_manager_search_bar_view") {
@@ -709,6 +687,8 @@ source_set("external_protocol_dialog") {
 }
 
 source_set("first_run_dialog") {
+  deps = [ "//chrome/common" ]
+
   if (is_linux || is_mac) {
     public = [ "first_run_dialog.h" ]
     sources = [ "first_run_dialog.cc" ]
@@ -717,7 +697,7 @@ source_set("first_run_dialog") {
       "//ui/base/metadata",
       "//ui/views",
     ]
-    deps = [
+    deps += [
       ":layout_provider",
       "//chrome/app:branded_strings",
       "//chrome/app:generated_resources",
@@ -927,7 +907,6 @@ source_set("content_setting_bubble_contents") {
   deps = [
     ":content_setting_site_row_view",
     ":layout_provider",
-    ":sub_apps_permission_explanation",
     "//chrome/app:generated_resources",
     "//chrome/browser/favicon",
     "//chrome/browser/media/webrtc",
@@ -958,7 +937,6 @@ source_set("certificate_selector") {
   deps = [
     "//chrome/app:generated_resources",
     "//chrome/browser:certificate_viewer",
-    "//chrome/browser/glic",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/views:layout_provider",
@@ -1024,9 +1002,6 @@ if (is_chromeos) {
       "//chrome/browser/chromeos/arc",
       "//chrome/browser/external_protocol",
       "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui/views/web_apps:protocol_handler_picker_coordinator",
-      "//chrome/browser/web_applications",
-      "//chrome/browser/web_applications/app_service",
       "//chromeos/ash/components/browser_context_helper",
       "//content/public/browser",
       "//ui/aura",
@@ -1141,18 +1116,13 @@ source_set("chrome_browser_main_extra_parts_views") {
     "//build:branding_buildflags",
     "//chrome/app:generated_resources",
     "//chrome/browser:browser_process",
-    "//chrome/browser/bookmarks",
     "//chrome/browser/net",
     "//chrome/browser/ui:simple_message_box_headers",
-    "//chrome/browser/ui/bookmarks",
     "//chrome/browser/ui/infobars",
-    "//chrome/browser/ui/views/bookmarks",
-    "//chrome/browser/ui/views/media_router",
     "//chrome/browser/ui/views/relaunch_notification",
     "//chrome/common:constants",
     "//components/constrained_window",
     "//components/infobars/core",
-    "//components/media_router/browser",
     "//components/strings:components_strings",
     "//components/ui_devtools",
     "//components/ui_devtools/views",
@@ -1314,7 +1284,6 @@ source_set("task_manager_view") {
     "//chrome/app/theme:theme_resources",
     "//chrome/app/vector_icons",
     "//chrome/browser:browser_process",
-    "//chrome/browser/apps:icon_standardizer",
     "//chrome/browser/task_manager/common",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",

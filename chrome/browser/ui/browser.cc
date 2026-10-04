@@ -37,7 +37,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/ai/ai_data_keyed_service.h"          // nogncheck
 #include "chrome/browser/ai/ai_data_keyed_service_factory.h"  // nogncheck
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/content_settings/sound_content_setting_observer.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
@@ -49,8 +48,6 @@
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/first_run/first_run.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
@@ -66,8 +63,6 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_lookup.h"
 #include "chrome/browser/tab_contents/tab_util.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_init_state.h"
@@ -109,7 +104,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
@@ -123,9 +117,6 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/blocked_content/popup_blocker_tab_helper.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/browser/bookmark_utils.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/captive_portal/core/buildflags.h"
 #include "components/custom_handlers/protocol_handler.h"
 #include "components/favicon/content/content_favicon_driver.h"
@@ -308,10 +299,6 @@ Browser::Browser(BrowserWindowCreateParams params)
           : BrowserWindow::CreateBrowserWindow(this, user_gesture,
                                                in_tab_dragging);
 
-  if (auto* const app_browser_controller =
-          web_app::AppBrowserController::From(this)) {
-    app_browser_controller->UpdateCustomTabBarVisibility(false);
-  }
 
   SessionServiceBase* const session_service =
       GetAppropriateSessionServiceForSessionRestore(profile_, type_);
@@ -780,10 +767,6 @@ void Browser::OnActiveTabChanged(const TabStripModelChange& change,
 
   base::RecordAction(UserMetricsAction("ActiveTabChanged"));
 
-  // Update the bookmark state, since the BrowserWindow may query it during
-  // OnActiveTabChanged() below.
-  BookmarkBarController::From(this)->UpdateBookmarkBarState(
-      BookmarkBarController::StateChangeReason::kTabSwitch);
 
   // Let the BrowserWindow do its handling.  On e.g. views this changes the
   // focused object, which should happen before we update the toolbar below,

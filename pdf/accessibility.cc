@@ -43,11 +43,7 @@ void GetAccessibilityInfo(PDFiumEngine* engine,
   page_info.page_index = page_index;
   page_info.bounds = page->rect();
   page_info.char_count = chars.size();
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  page_info.is_searchified = page->IsPageSearchified();
-#else
   page_info.is_searchified = false;
-#endif
   page_objects.images = page->GetImageInfo();
   page_info.text_run_count = text_runs.size();
   page_objects.links = page->GetLinkInfo();

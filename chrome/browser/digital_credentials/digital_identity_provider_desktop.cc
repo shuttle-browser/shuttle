@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "base/containers/span.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/digital_credentials/digital_identity_low_risk_origins.h"
@@ -19,7 +20,6 @@
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/constrained_window/constrained_window_views.h"
-#include "components/qr_code_generator/bitmap_generator.h"
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/cross_device_request_info.h"
 #include "content/public/browser/digital_credentials_cross_device.h"
@@ -34,6 +34,7 @@
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/bubble/bubble_dialog_model_host.h"
 #include "ui/views/controls/image_view.h"
+#include "ui/views/controls/label.h"
 #include "ui/views/controls/theme_tracking_animated_image_view.h"
 #include "ui/views/layout/box_layout_view.h"
 #include "ui/views/layout/layout_provider.h"
@@ -44,7 +45,6 @@
 namespace {
 
 // Smaller than DistanceMetric::DISTANCE_MODAL_DIALOG_PREFERRED_WIDTH.
-constexpr int kQrCodeSize = 240;
 constexpr int kQrCodeMargin = 20;
 
 using DigitalIdentityInterstitialAbortCallback =
@@ -72,24 +72,11 @@ void RunDigitalIdentityCallback(
 }
 
 std::unique_ptr<views::View> MakeQrCodeImageView(const std::string& qr_url) {
-  auto qr_code = qr_code_generator::GenerateImage(
-      base::as_byte_span(qr_url), qr_code_generator::ModuleStyle::kCircles,
-      qr_code_generator::LocatorStyle::kRounded,
-      qr_code_generator::CenterImage::kNoCenterImage,
-      qr_code_generator::QuietZone::kIncluded);
-
-  // Success is guaranteed, because `qr_url`'s size is bounded and smaller
-  // than QR code limits.
-  CHECK(qr_code.has_value());
-  auto image_view = std::make_unique<views::ImageView>(
-      ui::ImageModel::FromImageSkia(qr_code.value()));
-  image_view->GetViewAccessibility().SetName(
-      l10n_util::GetStringUTF16(IDS_WEB_DIGITAL_CREDENTIALS_QR_CODE_ALT_TEXT));
-  image_view->SetImageSize(gfx::Size(kQrCodeSize, kQrCodeSize));
-  image_view->SetCornerRadius(
-      10);  // Set radius to match that used in the QR-Code Locator.
-  image_view->SetBorder(views::CreateEmptyBorder(gfx::Insets(kQrCodeMargin)));
-  return image_view;
+  // The QR code generator has been removed; show the URL as text instead.
+  auto label = std::make_unique<views::Label>(base::UTF8ToUTF16(qr_url));
+  label->SetMultiLine(true);
+  label->SetBorder(views::CreateEmptyBorder(gfx::Insets(kQrCodeMargin)));
+  return label;
 }
 
 device::cablev2::CredentialRequestType

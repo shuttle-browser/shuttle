@@ -388,13 +388,8 @@ void TurnSyncOnHelper::LoadPolicyWithCachedCredentials() {
 }
 
 void TurnSyncOnHelper::CreateNewSignedInProfile() {
-  // Use the same the default search engine in the new profile.
-  std::optional<search_engines::ChoiceData> search_engine_choice_data =
-      SearchEngineChoiceDialogService::GetChoiceDataFromProfile(*profile_);
-
   base::OnceCallback<void(Profile*)> profile_created_callback = base::BindOnce(
-      &TurnSyncOnHelper::OnNewSignedInProfileCreated, base::Unretained(this),
-      std::move(search_engine_choice_data));
+      &TurnSyncOnHelper::OnNewSignedInProfileCreated, base::Unretained(this));
 
   DCHECK(!dice_signed_in_profile_creator_);
   // Unretained is fine because the profile creator is owned by this.
@@ -411,9 +406,7 @@ syncer::SyncService* TurnSyncOnHelper::GetSyncService() {
              : nullptr;
 }
 
-void TurnSyncOnHelper::OnNewSignedInProfileCreated(
-    std::optional<search_engines::ChoiceData> search_engine_choice_data,
-    Profile* new_profile) {
+void TurnSyncOnHelper::OnNewSignedInProfileCreated(Profile* new_profile) {
   DCHECK(dice_signed_in_profile_creator_);
   dice_signed_in_profile_creator_.reset();
 
@@ -429,11 +422,6 @@ void TurnSyncOnHelper::OnNewSignedInProfileCreated(
   DCHECK_NE(profile_, new_profile);
   SwitchToProfile(new_profile);
   DCHECK_EQ(profile_, new_profile);
-
-  // The new profile inherits the default search provider and the search
-  // engine choice timestamp from the previous profile.
-  SearchEngineChoiceDialogService::UpdateProfileFromChoiceData(
-      *new_profile, search_engine_choice_data);
 
   if (policy_fetch_tracker_) {
     // Load policy for the just-created profile - once policy has finished

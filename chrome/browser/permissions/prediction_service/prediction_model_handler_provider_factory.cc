@@ -12,13 +12,8 @@
 #include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/optimization_guide/optimization_guide_global_state_holder_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_global_state_holder_keyed_service_factory.h"
-#include "chrome/browser/passage_embeddings/chrome_passage_embeddings_service_controller.h"
-#include "chrome/browser/passage_embeddings/passage_embedder_model_observer_factory.h"
 #include "chrome/browser/permissions/prediction_service/prediction_model_handler_provider.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/passage_embeddings/core/passage_embedder_model_observer.h"
-#include "components/passage_embeddings/core/passage_embeddings_service_controller.h"
-#include "components/permissions/features.h"
 
 // static
 PredictionModelHandlerProviderFactory*
@@ -49,8 +44,6 @@ PredictionModelHandlerProviderFactory::PredictionModelHandlerProviderFactory()
               .Build()) {
   DependsOn(
       OptimizationGuideGlobalStateHolderKeyedServiceFactory::GetInstance());
-  DependsOn(
-      passage_embeddings::PassageEmbedderModelObserverFactory::GetInstance());
 }
 
 PredictionModelHandlerProviderFactory::
@@ -74,35 +67,8 @@ PredictionModelHandlerProviderFactory::BuildServiceInstanceForBrowserContext(
   }
   optimization_guide::OptimizationGuideModelProvider* optimization_guide =
       &global_state_service->GetGlobalState().model_provider();
-  passage_embeddings::Embedder* passage_embedder = nullptr;
-  passage_embeddings::EmbedderMetadataProvider* embedder_metadata_provider =
-      nullptr;
-  if (base::FeatureList::IsEnabled(permissions::features::kPermissionsAIv4)) {
-    if (!passage_embeddings::PassageEmbedderModelObserverFactory::GetForProfile(
-            profile)) {
-      VLOG(1) << "[PermissionsAI]: PassageEmbedderModelObserver not available, "
-                 "passage embedder not setup.";
-    } else if (auto* passage_embeddings_service_controller =
-                   passage_embeddings::
-                       GetChromePassageEmbeddingsServiceController()) {
-      passage_embedder = passage_embeddings_service_controller->GetEmbedder();
-      embedder_metadata_provider = passage_embeddings_service_controller;
-      VLOG(1)
-          << "[PermissionsAI]: PassageEmbeddingsServiceController available, "
-             "passage_embedder setup."
-          << (passage_embedder ? "true" : "false");
-    } else {
-      VLOG(1) << "[PermissionsAI]: PassageEmbeddingsServiceController not "
-                 "available, passage embedder not setup.";
-    }
-  } else {
-    VLOG(1) << "[PermissionsAI]: "
-               "PredictionModelHandlerProviderFactory::"
-               "BuildServiceInstanceForBrowserContext PermissionsAIv4 not "
-               "enabled, passage embedder not setup.";
-  }
   return std::make_unique<permissions::PredictionModelHandlerProvider>(
-      optimization_guide, embedder_metadata_provider, passage_embedder);
+      optimization_guide);
 }
 
 bool PredictionModelHandlerProviderFactory::ServiceIsCreatedWithBrowserContext()

@@ -37,7 +37,6 @@
 #include "chrome/renderer/accessibility/read_anything/read_anything_app_model.h"
 #include "chrome/renderer/accessibility/read_anything/read_anything_node_utils.h"
 #include "components/language/core/common/locale_util.h"
-#include "components/translate/core/common/translate_constants.h"
 #include "content/public/renderer/chrome_object_extensions_utils.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_thread.h"

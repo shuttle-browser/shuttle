@@ -196,10 +196,6 @@ class PasswordsModelDelegate {
       const std::u16string& username,
       const password_manager::PasswordForm& password_to_change) = 0;
 
-  // Called from the Save/Update bubble controller to decide whether or not we
-  // should show the user the Chrome for iOS promo.
-  virtual void MaybeShowIOSPasswordPromo() = 0;
-
   // Called from the Relaunch Chrome bubble to gracefully restart the Chrome.
   virtual void RelaunchChrome() = 0;
 

@@ -11,7 +11,6 @@
 #include "extensions/renderer/api/context_menus_custom_bindings.h"
 #include "extensions/renderer/api/declarative_content_hooks_delegate.h"
 #include "extensions/renderer/api/dom_hooks_delegate.h"
-#include "extensions/renderer/api/feedback_private_hooks_delegate.h"
 #include "extensions/renderer/api/file_system_natives.h"
 #include "extensions/renderer/api/i18n_hooks_delegate.h"
 #include "extensions/renderer/api/messaging/messaging_bindings.h"
@@ -161,8 +160,6 @@ void CoreExtensionsRendererAPIProvider::AddBindingsSystemHooks(
   bindings->RegisterHooksDelegate("runtime",
                                   std::make_unique<RuntimeHooksDelegate>(
                                       bindings_system->messaging_service()));
-  bindings->RegisterHooksDelegate(
-      "feedbackPrivate", std::make_unique<FeedbackPrivateHooksDelegate>());
 }
 
 void CoreExtensionsRendererAPIProvider::PopulateSourceMap(
@@ -189,8 +186,6 @@ void CoreExtensionsRendererAPIProvider::PopulateSourceMap(
        IDR_EXTENSIONS_RENDERER_GENERATED_GUEST_VIEW_EXTENSION_OPTIONS_EXTENSION_OPTIONS_CONSTANTS_JS},
       {"extensionOptionsEvents",
        IDR_EXTENSIONS_RENDERER_GENERATED_GUEST_VIEW_EXTENSION_OPTIONS_EXTENSION_OPTIONS_EVENTS_JS},
-      {"feedbackPrivate",
-       IDR_EXTENSIONS_RENDERER_GENERATED_FEEDBACK_PRIVATE_CUSTOM_BINDINGS_JS},
       {"fileEntryBindingUtil",
        IDR_EXTENSIONS_RENDERER_GENERATED_FILE_ENTRY_BINDING_UTIL_JS},
       {"fileSystem",

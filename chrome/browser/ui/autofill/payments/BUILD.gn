@@ -173,14 +173,12 @@ source_set("impl") {
       "//chrome/browser/ui:browser_actions",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/desktop_to_mobile_promos:utils",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views/page_action",
       "//chrome/common",
       "//components/autofill/core/common:credit_card_number_validation",
-      "//components/commerce/core:feature_list",
       "//components/prefs",
       "//components/strings:components_strings_grit",
       "//components/sync/service",
@@ -199,7 +197,6 @@ source_set("impl") {
       "save_payment_icon_controller.cc",
     ]
     deps += [
-      "//chrome/browser/ui/hats",
       "//chrome/browser/ui/location_bar",
     ]
   }
@@ -250,7 +247,6 @@ if (!is_android) {
       "//chrome/browser/autofill",
       "//chrome/browser/ui",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/hats:test_support",
       "//chrome/browser/ui/page_action:icon_type",
       "//chrome/common",
       "//chrome/test:test_support",
@@ -343,12 +339,9 @@ source_set("unit_tests") {
       "//chrome/app:generated_resources_grit",
       "//chrome/browser/autofill",
       "//chrome/browser/ui:test_support",
-      "//chrome/browser/ui/hats",
-      "//chrome/browser/ui/hats:test_support",
       "//chrome/browser/ui/page_action:test_support",
       "//chrome/browser/ui/tabs:test_support",
       "//chrome/test/user_education:impl",
-      "//components/commerce/core:feature_list",
       "//components/tabs:test_support",
       "//content/test:test_support",
       "//ui/gfx",

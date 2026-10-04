@@ -13,7 +13,6 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/feedback/report_unsafe_site_dialog.h"
 #include "chrome/browser/ui/cocoa/accelerators_cocoa.h"
 #include "chrome/browser/ui/cocoa/history_menu_bridge.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
@@ -309,15 +308,10 @@ NSMenuItem* BuildViewMenu(NSApplication* nsapp,
       Item(IDS_VIEW_MENU_MAC)
           .tag(IDC_VIEW_MENU)
           .submenu({
-              Item(IDS_BOOKMARK_BAR_ALWAYS_SHOW_MAC)
-                  .command_id(IDC_SHOW_BOOKMARK_BAR)
-                  .remove_if(is_pwa),
               Item(IDS_TOGGLE_FULLSCREEN_TOOLBAR_MAC)
                   .command_id(IDC_TOGGLE_FULLSCREEN_TOOLBAR),
               Item(IDS_CONTEXT_MENU_SHOW_FULL_URLS)
                   .command_id(IDC_SHOW_FULL_URLS),
-              Item(IDS_CONTEXT_MENU_SHOW_GOOGLE_LENS_SHORTCUT)
-                  .command_id(IDC_SHOW_GOOGLE_LENS_SHORTCUT),
                Item(IDS_AI_MODE_ENTRYPOINT_CONTEXT_MENU_SHOW)
                    .string_format_1(
                        l10n_util::GetStringUTF16(IDS_AI_MODE_ENTRYPOINT_LABEL))
@@ -356,9 +350,6 @@ NSMenuItem* BuildViewMenu(NSApplication* nsapp,
                   .command_id(IDC_ZOOM_PLUS),
               Item(IDS_TEXT_SMALLER_MAC)
                   .command_id(IDC_ZOOM_MINUS),
-              Item().is_separator(),
-              Item(IDS_MEDIA_ROUTER_MENU_ITEM_TITLE)
-                  .command_id(IDC_ROUTE_MEDIA),
               Item().is_separator(),
               Item(IDS_DEVELOPER_MENU_MAC)
                   .tag(IDC_DEVELOPER_MENU)
@@ -419,39 +410,6 @@ NSMenuItem* BuildHistoryMenu(NSApplication* nsapp,
                   .sf_symbol(
                       @"clock.arrow.trianglehead.counterclockwise.rotate.90")
                   .remove_if(is_pwa),
-          })
-          .Build();
-  // clang-format on
-  return item;
-}
-
-NSMenuItem* BuildBookmarksMenu(NSApplication* nsapp,
-                               id app_delegate,
-                               const std::u16string& product_name,
-                               bool is_pwa,
-                               bool is_rtl) {
-  if (is_pwa) {
-    return nil;
-  }
-
-  const int bookmarks_manager_string_id =
-      features::IsMenuSimplificationEnabled() ? IDS_BOOKMARK_MANAGER_V2_MAC
-                                              : IDS_BOOKMARK_MANAGER_MAC;
-  // clang-format off
-  NSMenuItem* item =
-      Item(IDS_BOOKMARKS_MENU)
-          .tag(AppMenuModel::kBookmarksMenuPlaceholder)
-          .submenu({
-              Item(bookmarks_manager_string_id)
-                  .command_id(IDC_SHOW_BOOKMARK_MANAGER),
-              Item().is_separator()
-                  .tag(IDC_BOOKMARK_THIS_TAB),
-              Item(IDS_BOOKMARK_THIS_TAB_MAC)
-                  .command_id(IDC_BOOKMARK_THIS_TAB),
-              Item(IDS_BOOKMARK_ALL_TABS_MAC)
-                  .command_id(IDC_BOOKMARK_ALL_TABS),
-              Item().is_separator()
-                  .tag(IDC_BOOKMARK_THIS_TAB),
           })
           .Build();
   // clang-format on
@@ -601,18 +559,6 @@ NSMenuItem* BuildHelpMenu(NSApplication* nsapp,
 
   // clang-format off
   std::vector<Item> items = {};
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  items.push_back(Item(IDS_FEEDBACK_MAC).command_id(IDC_FEEDBACK));
-  bool is_profile_loaded =
-      g_browser_process && g_browser_process->profile_manager() &&
-      g_browser_process->profile_manager()->GetLastUsedProfileIfLoaded();
-  if (is_profile_loaded && feedback::ReportUnsafeSiteDialog::IsEnabled(
-                               *(g_browser_process->profile_manager()
-                                     ->GetLastUsedProfileIfLoaded()))) {
-    items.push_back(Item(IDS_REPORT_UNSAFE_SITE)
-                        .command_id(IDC_REPORT_UNSAFE_SITE));
-  }
-#endif
   items.push_back(Item(IDS_HELP_MAC)
                       .string_format_1(product_name)
                       .command_id(IDC_HELP_PAGE_VIA_MENU));
@@ -642,7 +588,6 @@ NSMenu* BuildMainMenu(NSApplication* nsapp,
            &BuildEditMenu,
            &BuildViewMenu,
            &BuildHistoryMenu,
-           &BuildBookmarksMenu,
            &BuildPeopleMenu,
            &BuildTabMenu,
            &BuildWindowMenu,

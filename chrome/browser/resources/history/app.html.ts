@@ -49,20 +49,6 @@ export function getHtml(this: HistoryAppElement) {
           selected="${this.contentPage_}"
           @iron-select="${this.onContentIronSelect_}">
         <div id="tabsContainer" path="history">
-          <div id="historyEmbeddingsDisclaimer" class="history-cards"
-              ?hidden="${!this.enableHistoryEmbeddings_}"
-              ?narrow="${this.hasDrawer_}">
-            <div id="historyEmbeddingsDisclaimerContent">
-              $i18n{historyEmbeddingsDisclaimer}
-              <a id="historyEmbeddingsDisclaimerLink"
-                  href="$i18n{historyEmbeddingsSettingsUrl}" target="_blank"
-                  aria-describedby="historyEmbeddingsDisclaimer"
-                  @click="${this.onHistoryEmbeddingsDisclaimerLinkClick_}"
-                  @auxclick="${this.onHistoryEmbeddingsDisclaimerLinkAuxclick_}">
-                $i18n{learnMore}
-              </a>
-            </div>
-          </div>
           ${this.showTabs_ ? html`
             <div id="tabs">
               <cr-tabs .tabNames="${this.tabsNames_}"
@@ -92,30 +78,6 @@ export function getHtml(this: HistoryAppElement) {
                 </history-cross-device-signin-promo>
               </div>
             </if>
-            ${this.enableHistoryEmbeddings_ ? html`
-              <div id="historyEmbeddingsContainer" class="history-cards">
-                <history-embeddings-promo></history-embeddings-promo>
-                <cr-history-embeddings-filter-chips
-                    .timeRangeStart="${this.queryStateAfterDate_}"
-                    ?enable-show-results-by-group-option="${this.showHistoryClusters_}"
-                    ?show-results-by-group="${this.getShowResultsByGroup_()}"
-                    @show-results-by-group-changed="${this.onShowResultsByGroupChanged_}"
-                    @selected-suggestion-changed="${this.onSelectedSuggestionChanged_}">
-                </cr-history-embeddings-filter-chips>
-                ${this.shouldShowHistoryEmbeddings_() ? html`
-                  <cr-history-embeddings
-                      .searchQuery="${this.queryState_.searchTerm}"
-                      .timeRangeStart="${this.queryStateAfterDate_}"
-                      .numCharsForQuery="${this.numCharsTypedInSearch_}"
-                      @more-from-site-click="${this.onHistoryEmbeddingsItemMoreFromSiteClick_}"
-                      @remove-item-click="${this.onHistoryEmbeddingsItemRemoveItemClick_}"
-                      @is-empty-changed="${this.onHistoryEmbeddingsIsEmptyChanged_}"
-                      ?force-suppress-logging="${this.historyEmbeddingsDisclaimerLinkClicked_}"
-                      ?show-more-from-site-menu-option="${!this.getShowResultsByGroup_()}"
-                      ?show-relative-times="${this.getShowResultsByGroup_()}"
-                      ?other-history-result-clicked="${this.nonEmbeddingsResultClicked_}">
-                  </cr-history-embeddings>` : ''}
-              </div>` : ''}
             <cr-page-selector id="tabsContent" attr-for-selected="path"
                 selected="${this.tabsContentPage_}"
                 @iron-select="${this.onTabsContentIronSelect_}">

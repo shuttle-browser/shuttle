@@ -30,10 +30,6 @@ class OmniboxTriggeredFeatureService;
 class TemplateURLService;
 class URLIndexPrivateDataTest;
 
-namespace bookmarks {
-class BookmarkModel;
-}
-
 namespace history {
 class HistoryDatabase;
 }  // namespace history
@@ -75,7 +71,6 @@ class URLIndexPrivateData
       std::u16string term_string,
       size_t cursor_position,
       size_t max_matches,
-      bookmarks::BookmarkModel* bookmark_model,
       TemplateURLService* template_url_service,
       OmniboxTriggeredFeatureService* triggered_feature_service);
 
@@ -240,7 +235,6 @@ class URLIndexPrivateData
       HistoryIDVector history_ids,
       const std::u16string& lower_raw_string,
       const TemplateURLService* template_url_service,
-      bookmarks::BookmarkModel* bookmark_model,
       ScoredHistoryMatches* scored_items,
       OmniboxTriggeredFeatureService* triggered_feature_service) const;
 

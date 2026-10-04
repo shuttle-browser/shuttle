@@ -110,7 +110,6 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
 
 #if !BUILDFLAG(IS_ANDROID)
   FileSystemDelegate* GetFileSystemDelegate() override;
-  FeedbackPrivateDelegate* GetFeedbackPrivateDelegate() override;
   AutomationInternalApiDelegate* GetAutomationInternalApiDelegate() override;
 #endif
 
@@ -144,7 +143,6 @@ class ChromeExtensionsAPIClient : public ExtensionsAPIClient {
 #if !BUILDFLAG(IS_ANDROID)
   // Desktop Android does not support these APIs.
   std::unique_ptr<FileSystemDelegate> file_system_delegate_;
-  std::unique_ptr<FeedbackPrivateDelegate> feedback_private_delegate_;
   std::unique_ptr<extensions::ChromeAutomationInternalApiDelegate>
       extensions_automation_api_delegate_;
 #endif

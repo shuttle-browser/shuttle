@@ -31,7 +31,6 @@
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_actions.h"
 #include "chrome/browser/ui/views/location_bar/location_icon_state_helper.h"
-#include "chrome/browser/ui/views/location_bar/omnibox_popup_file_selector.h"
 #include "chrome/browser/ui/views/location_bar/selected_keyword_view.h"
 #include "chrome/browser/ui/views/location_bar/webui_content_setting_image_control.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
@@ -50,7 +49,6 @@
 #include "chrome/browser/ui/views/permissions/permission_prompt_factory.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
 #include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/common/chrome_features.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
@@ -142,20 +140,15 @@ void WebUILocationBar::Init(WebUIToolbarControlDelegate* delegate) {
   // windows as of now. If this changes, we will need to be careful to not
   // create extra processes for the popups in cases where they can't actually
   // be shown.
-  const bool is_web_app =
-      browser_ && web_app::AppBrowserController::IsWebApp(browser_);
   const bool is_devtools =
       browser_ &&
       browser_->GetType() == BrowserWindowInterface::Type::TYPE_DEVTOOLS;
-  DCHECK(!is_web_app);
   DCHECK(!is_devtools);
 
   if (omnibox::IsAimPopupFeatureEnabled()) {
     omnibox_popup_aim_presenter_ = std::make_unique<OmniboxPopupAimPresenter>(
         /*location_bar=*/this, omnibox_controller_.get(),
         /*presenter_delegate=*/*this);
-    omnibox_popup_file_selector_ = std::make_unique<OmniboxPopupFileSelector>(
-        GetLocationBarWidget()->GetNativeWindow());
   }
 
   content_setting_image_control_.Init(delegate);
@@ -946,11 +939,6 @@ WebUILocationBar::GetContentSettingBubbleModelDelegate() {
 views::Widget* WebUILocationBar::GetLocationBarWidget() {
   return toolbar_delegate_ ? toolbar_delegate_->GetView()->GetWidget()
                            : nullptr;
-}
-
-OmniboxPopupFileSelector* WebUILocationBar::GetOmniboxPopupFileSelector()
-    const {
-  return omnibox_popup_file_selector_.get();
 }
 
 OmniboxPopupAimPresenter* WebUILocationBar::GetOmniboxPopupAimPresenter()

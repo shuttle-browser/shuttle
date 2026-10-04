@@ -23,7 +23,6 @@
 #include "ui/webui/resources/cr_components/history/history.mojom-forward.h"
 #include "ui/webui/resources/cr_components/history/history_cross_device_signin_promo.mojom.h"
 #include "ui/webui/resources/cr_components/history_clusters/history_clusters.mojom.h"
-#include "ui/webui/resources/cr_components/history_embeddings/history_embeddings.mojom.h"
 
 namespace base {
 class RefCountedMemory;
@@ -40,7 +39,6 @@ namespace history_clusters {
 class HistoryClustersHandler;
 }
 
-class HistoryEmbeddingsHandler;
 class UserEducationMixedTrustHandler;
 
 namespace page_image_service {
@@ -61,7 +59,6 @@ class HistoryUIConfig : public content::WebUIConfig {
 class HistoryUI
     : public ui::MojoWebUIController,
       public help_bubble::mojom::HelpBubbleHandlerFactory,
-      public history_embeddings::mojom::PageHandlerFactory,
       public history::mojom::ForeignSessionPageHandlerFactory,
       public history_clusters::mojom::PageHandlerFactory,
       public user_education::mojom::UserEducationMixedTrustHandlerFactory {
@@ -77,9 +74,6 @@ class HistoryUI
       ui::ResourceScaleFactor scale_factor);
 
   // Instantiates the implementors of mojom interfaces.
-  void BindInterface(
-      mojo::PendingReceiver<history_embeddings::mojom::PageHandlerFactory>
-          pending_page_handler_factory);
   void BindInterface(
       mojo::PendingReceiver<history::mojom::PageHandler> pending_page_handler);
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -127,11 +121,6 @@ class HistoryUI
       mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,
       mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler)
       override;
-  // history_embeddings::mojom::PageHandlerFactory:
-  void CreatePageHandler(
-      mojo::PendingRemote<history_embeddings::mojom::Page> page,
-      mojo::PendingReceiver<history_embeddings::mojom::PageHandler> receiver)
-      override;
   // history_clusters::mojom::PageHandlerFactory:
   void CreatePageHandler(
       mojo::PendingRemote<history_clusters::mojom::Page> page,
@@ -143,7 +132,6 @@ class HistoryUI
           user_education::mojom::UserEducationMixedTrustHandler> receiver)
       override;
 
-  std::unique_ptr<HistoryEmbeddingsHandler> history_embeddings_handler_;
   std::unique_ptr<history_clusters::HistoryClustersHandler>
       history_clusters_handler_;
   std::unique_ptr<BrowsingHistoryHandler> browsing_history_handler_;
@@ -159,8 +147,6 @@ class HistoryUI
   std::unique_ptr<user_education::HelpBubbleHandler> help_bubble_handler_;
   mojo::Receiver<help_bubble::mojom::HelpBubbleHandlerFactory>
       help_bubble_handler_factory_receiver_{this};
-  mojo::Receiver<history_embeddings::mojom::PageHandlerFactory>
-      history_embeddings_handler_factory_receiver_{this};
   mojo::Receiver<history::mojom::ForeignSessionPageHandlerFactory>
       foreign_session_page_handler_factory_receiver_{this};
   mojo::Receiver<history_clusters::mojom::PageHandlerFactory>

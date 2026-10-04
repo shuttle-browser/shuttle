@@ -20,7 +20,6 @@
 #include "chrome/common/buildflags.h"
 #include "components/content_settings/core/browser/content_settings_observer.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/platform_notification_service.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "ui/gfx/image/image_skia.h"
@@ -94,20 +93,10 @@ class PlatformNotificationServiceImpl
   friend class PushMessagingBrowserTest;
   FRIEND_TEST_ALL_PREFIXES(PlatformNotificationServiceTest,
                            CreateNotificationFromData);
-  FRIEND_TEST_ALL_PREFIXES(PlatformNotificationServiceTest_WebApps,
-                           CreateNotificationFromData);
   FRIEND_TEST_ALL_PREFIXES(PlatformNotificationServiceTest,
                            DisplayNameForContextMessage);
   FRIEND_TEST_ALL_PREFIXES(PlatformNotificationServiceTest,
                            RecordNotificationUkmEvent);
-  FRIEND_TEST_ALL_PREFIXES(PlatformNotificationServiceTest_WebApps,
-                           IncomingCallWebApp);
-  FRIEND_TEST_ALL_PREFIXES(
-      PlatformNotificationServiceTest_WebAppNotificationIconAndTitle,
-      FindWebAppIconAndTitle_NoApp);
-  FRIEND_TEST_ALL_PREFIXES(
-      PlatformNotificationServiceTest_WebAppNotificationIconAndTitle,
-      FindWebAppIconAndTitle);
   FRIEND_TEST_ALL_PREFIXES(
       PlatformNotificationServiceTest_ReportNotificationContentDetectionData,
       UpdateNotificationDatabaseMetadata);
@@ -127,11 +116,6 @@ class PlatformNotificationServiceImpl
       PlatformNotificationServiceTest_AutoRevokeSuspiciousNotification,
       RevokeNotificationPermission_UpdateNotificationDatabaseMetadata);
 
-  struct WebAppIconAndTitle {
-    gfx::ImageSkia icon;
-    std::u16string title;
-  };
-
   // KeyedService implementation.
   void Shutdown() override;
 
@@ -147,33 +131,15 @@ class PlatformNotificationServiceImpl
       ukm::SourceId source_id);
 
   // Creates a new Web Notification-based Notification object. Should only be
-  // called when the notification is first shown. |web_app_hint_url| is used to
-  // find a corresponding web app, it can be a service worker scope or document
-  // url.
+  // called when the notification is first shown.
   message_center::Notification CreateNotificationFromData(
       const GURL& origin,
       const std::string& notification_id,
       const blink::PlatformNotificationData& notification_data,
-      const blink::NotificationResources& notification_resources,
-      const GURL& web_app_hint_url) const;
+      const blink::NotificationResources& notification_resources) const;
 
   // Returns a display name for an origin, to be used in the context message
   std::u16string DisplayNameForContextMessage(const GURL& origin) const;
-
-  // Finds the AppId associated with |web_app_hint_url| when this is part of
-  // an installed experience, and the notification can be attributed as such.
-  std::optional<webapps::AppId> FindWebAppId(
-      const GURL& web_app_hint_url) const;
-
-  // Finds the icon and title associated with |web_app_id| when this
-  // is part of an installed experience, and the notification can be attributed
-  // as such.
-  std::optional<WebAppIconAndTitle> FindWebAppIconAndTitle(
-      const GURL& web_app_hint_url) const;
-
-  // Identifies whether the notification was sent from an installed web app or
-  // not.
-  bool IsActivelyInstalledWebAppScope(const GURL& web_app_url) const;
 
   // Clears |closed_notifications_|. Should only be used for testing purposes.
   void ClearClosedNotificationsForTesting() { closed_notifications_.clear(); }

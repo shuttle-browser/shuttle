@@ -1514,16 +1514,6 @@ void PdfViewWebPlugin::DocumentLoadComplete() {
 
   ApplyAndObserveRendererPreferences();
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // To avoid delaying page load for searchify, start searchify after document
-  // load is completed.
-  // Maximum image dimension is asked once and stored for the next usages, so
-  // `BindOnce` is sufficient.
-  client_->SetOcrDisconnectedCallback(engine_->GetOcrDisconnectHandler());
-  engine_->StartSearchify(
-      base::BindOnce(&Client::GetOcrMaxImageDimension, client_->GetWeakPtr()),
-      base::BindRepeating(&Client::PerformOcr, client_->GetWeakPtr()));
-#endif
 
   pdf_host_->OnDocumentLoadComplete();
 
@@ -1693,68 +1683,6 @@ bool PdfViewWebPlugin::IsInAnnotationMode() const {
 }
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-void PdfViewWebPlugin::OnSearchifyStateChange(bool busy) {
-  switch (searchify_state_) {
-    case SearchifyState::kNotStarted:
-      // Expected to be called only to say searchify started.
-      CHECK(busy);
-      pdf_host_->OnSearchifyStarted();
-      searchify_state_ = SearchifyState::kStarted;
-      break;
-
-    case SearchifyState::kStarted:
-      // Expected to be called only to say searchify stopped.
-      CHECK(!busy);
-      searchify_state_ = SearchifyState::kStopped;
-      break;
-
-    case SearchifyState::kShowingInProgress:
-      // Expected to be called only to say searchify stopped.
-      CHECK(!busy);
-      // Executing the script directly may cause a crash in blink as it might be
-      // during layout change, hence posting it (crbug.com/401142034).
-      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-          FROM_HERE,
-          base::BindOnce(&PdfViewWebPlugin::SetShowSearchifyInProgress,
-                         weak_factory_.GetWeakPtr(), /*show=*/false));
-      searchify_state_ = SearchifyState::kStopped;
-      break;
-
-    case SearchifyState::kStopped:
-      // Expected to be called only to say searchify started again.
-      CHECK(busy);
-      searchify_state_ = SearchifyState::kStarted;
-      break;
-  }
-}
-
-void PdfViewWebPlugin::MaybeShowSearchifyInProgress() {
-  if (searchify_state_ == SearchifyState::kStarted) {
-    searchify_state_ = SearchifyState::kShowingInProgress;
-    // Executing the script directly may cause a crash in blink as it might be
-    // during layout change, hence posting it (crbug.com/401142034).
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(&PdfViewWebPlugin::SetShowSearchifyInProgress,
-                                  weak_factory_.GetWeakPtr(), /*show=*/true));
-  }
-}
-
-void PdfViewWebPlugin::SetShowSearchifyInProgress(bool show) {
-  client_->PostMessage(base::DictValue()
-                           .Set("type", "showSearchifyInProgress")
-                           .Set("show", show));
-}
-
-void PdfViewWebPlugin::OnHasSearchifyText() {
-  client_->PostMessage(base::DictValue().Set("type", "setHasSearchifyText"));
-
-  pdf_accessibility_data_handler_->OnHasSearchifyText();
-  if (base::FeatureList::IsEnabled(chrome_pdf::features::kPdfSearchifySave)) {
-    SetPluginCanSave(true);
-  }
-}
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 void PdfViewWebPlugin::SetCaretPosition(const gfx::PointF& position) {
   engine_->SetCaretPosition(FrameToPdfCoordinates(position));
@@ -2093,18 +2021,9 @@ void PdfViewWebPlugin::HandleSaveMessage(const base::DictValue& message) {
       SaveToBuffer(request_type, token);
       return;
     case pdf::mojom::SaveRequestType::kSearchified:
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-      CHECK(base::FeatureList::IsEnabled(
-          chrome_pdf::features::kPdfSearchifySave));
-      // TODO(crbug.com/382610226): If engine has searchified text, ensure all
-      // pages are searchified and then save.
-      SaveToBuffer(request_type, token);
-      return;
-#else
       // PDF Searchify is not expected to be triggered when ScreenAI service is
       // not enabled.
       NOTREACHED();
-#endif
   }
   NOTREACHED();
 }
@@ -2302,9 +2221,6 @@ void PdfViewWebPlugin::SaveToBuffer(pdf::mojom::SaveRequestType request_type,
   use_save_data |= !!ink_module_;
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  use_save_data |= (request_type == pdf::mojom::SaveRequestType::kSearchified);
-#endif
 
   if (use_save_data) {
     base::Value::BlobStorage data = engine_->GetSaveData();
@@ -3309,21 +3225,6 @@ void PdfViewWebPlugin::PrepareAndSetAccessibilityPageInfo(int32_t page_index) {
     return;
   }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Wait for the page to be loaded and searchified before getting accessibility
-  // page info.
-  // Ensure page is loaded so that it can schedule a searchify operation if
-  // needed.
-  engine_->GetPage(page_index)->GetPage();
-  if (engine_->IsPageScheduledForSearchify(page_index)) {
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(&PdfViewWebPlugin::PrepareAndSetAccessibilityPageInfo,
-                       weak_factory_.GetWeakPtr(), page_index),
-        kAccessibilityPageDelay * 10);
-    return;
-  }
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   ++next_accessibility_page_index_;
 

@@ -17,14 +17,12 @@ WebuiOmniboxFullHandler::WebuiOmniboxFullHandler(
     mojo::PendingRemote<searchbox::mojom::Page> pending_page,
     Profile* profile,
     content::WebContents* web_contents,
-    std::unique_ptr<OmniboxClient> client,
-    GetSessionHandleCallback get_session_callback)
-    : ContextualSearchboxHandler(std::move(pending_searchbox_handler),
-                                 std::move(pending_page),
-                                 profile,
-                                 web_contents,
-                                 std::move(client),
-                                 std::move(get_session_callback)) {
+    std::unique_ptr<OmniboxClient> client)
+    : SearchboxHandler(std::move(pending_searchbox_handler),
+                       std::move(pending_page),
+                       profile,
+                       web_contents,
+                       std::move(client)) {
   autocomplete_controller_observation_.Observe(autocomplete_controller());
 
   // Ensure the page receives the current autocomplete state on startup.

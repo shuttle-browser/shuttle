@@ -13,8 +13,6 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_registrar_observer.h"
 #include "components/prefs/pref_member.h"
 #include "ui/gfx/geometry/rect_f.h"
 
@@ -28,10 +26,7 @@ enum class ToolbarVisibilityStyle;
 
 @class FullscreenToolbarController;
 
-class CaptionButtonPlaceholderContainer;
-
-class BrowserFrameViewMac : public BrowserFrameView,
-                            public web_app::WebAppRegistrarObserver {
+class BrowserFrameViewMac : public BrowserFrameView {
  public:
   // Mac implementation of BrowserFrameView.
   BrowserFrameViewMac(BrowserWidget* widget, BrowserView* browser_view);
@@ -61,16 +56,10 @@ class BrowserFrameViewMac : public BrowserFrameView,
       const gfx::Rect& client_bounds) const override;
   int NonClientHitTest(const gfx::Point& point) override;
   void UpdateMinimumSize() override;
-  void WindowControlsOverlayEnabledChanged() override;
 
   // views::View:
   gfx::Size GetMinimumSize() const override;
   void PaintChildren(const views::PaintInfo& info) override;
-
-  // web_app::WebAppRegistrarObserver
-  void OnAlwaysShowToolbarInFullscreenChanged(const webapps::AppId& app_id,
-                                              bool show) override;
-  void OnAppRegistrarDestroyed() override;
 
   // Used by TabContainerOverlayView to paint the tab strip background.
   void PaintThemedFrame(gfx::Canvas* canvas);
@@ -91,14 +80,6 @@ class BrowserFrameViewMac : public BrowserFrameView,
   // Calculate the y offset the top UI needs to shift down due to showing the
   // slide down menu bar at the very top in full screen.
   int TopUIFullscreenYOffset() const;
-  void LayoutWindowControlsOverlay();
-
-  void UpdateCaptionButtonPlaceholderContainerBackground();
-
-  // Toggle the visibility of the web_app_frame_toolbar_view() for PWAs with
-  // window controls overlay display override when entering full screen or when
-  // toolbar style is changed.
-  void ToggleWebAppFrameToolbarViewVisibility();
 
   // Emits the duration of the current fullscreen session, if any.
   void EmitFullscreenSessionHistograms();
@@ -107,14 +88,6 @@ class BrowserFrameViewMac : public BrowserFrameView,
 
   // Used to keep track of the update of kShowFullscreenToolbar preference.
   BooleanPrefMember show_fullscreen_toolbar_;
-  base::ScopedObservation<web_app::WebAppRegistrar,
-                          web_app::WebAppRegistrarObserver>
-      always_show_toolbar_in_fullscreen_observation_{this};
-
-  // A placeholder container that lies on top of the traffic lights to indicate
-  // NonClientArea. Only for PWAs with window controls overlay display override.
-  raw_ptr<CaptionButtonPlaceholderContainer>
-      caption_button_placeholder_container_ = nullptr;
 
   FullscreenToolbarController* __strong fullscreen_toolbar_controller_;
 

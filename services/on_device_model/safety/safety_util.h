@@ -5,7 +5,7 @@
 #ifndef SERVICES_ON_DEVICE_MODEL_SAFETY_SAFETY_UTIL_H_
 #define SERVICES_ON_DEVICE_MODEL_SAFETY_SAFETY_UTIL_H_
 
-#include "components/translate/core/language_detection/language_detection_model.h"
+#include "components/language_detection/core/language_detection_model.h"
 
 namespace on_device_model {
 

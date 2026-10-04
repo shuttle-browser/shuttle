@@ -635,9 +635,6 @@ ChromePermissionMessageRule::GetAllRules() {
        {APIPermissionID::kStartupPages},
        {}},
 
-      {IDS_EXTENSION_PROMPT_WARNING_BOOKMARKS,
-       {APIPermissionID::kBookmark},
-       {}},
       {IDS_EXTENSION_PROMPT_WARNING_READING_LIST,
        {APIPermissionID::kReadingList},
        {}},

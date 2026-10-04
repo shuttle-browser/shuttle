@@ -14,9 +14,6 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/glic/glic_profile_manager.h"               // nogncheck
-#include "chrome/browser/glic/host/glic_synthetic_trial_manager.h"  // nogncheck
-#include "chrome/browser/glic/public/glic_enabling.h"               // nogncheck
 #include "chrome/browser/infobars/browser_infobar_manager.h"
 #include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/local_network_access/ip_address_space_overrides_prefs_observer.h"
@@ -29,7 +26,6 @@
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "components/application_locale_storage/application_locale_storage.h"
 #include "components/browser_apis/tab_drag/sessions/tab_drag_session_manager.h"
-#include "components/on_device_translation/buildflags/buildflags.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "media/base/media_switches.h"
 #include "net/net_buildflags.h"
@@ -38,7 +34,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 // This causes a gn error on Android builds, because gn does not understand
 // buildflags, so we include it only on platforms where it is used.
-#include "chrome/browser/background/glic/glic_background_mode_manager.h"  // nogncheck
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_session_desktop_injector.h"
@@ -47,9 +42,6 @@
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 // This causes a gn error on Android builds, because gn does not understand
 // buildflags, so we include it only on platforms where it is used.
-#include "chrome/browser/default_browser/default_browser_manager.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"
-#include "chrome/browser/ui/webui/whats_new/whats_new_registrar.h"
 #include "components/user_education/common/user_education_features.h"  // nogncheck
 #endif
 
@@ -82,9 +74,6 @@
 #include "components/unexportable_keys/unexportable_key_service_impl.h"
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-#include "chrome/browser/on_device_translation/installer_impl.h"
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
 #include "chrome/browser/request_header_integrity/chrome_companero_host.h"  // nogncheck
@@ -130,21 +119,6 @@ void GlobalFeatures::PostBrowserProcessInit() {
 
   PostBrowserProcessInitCore();
 
-  // Create Glic global features for all users in case they are only
-  // temporarily ineligible (in which case we continue to show the entrypoint
-  // but surface IPH dialogs instead of the webclient).
-  // Many tests do not initialize profile_manager so we gate on that too.
-  if (g_browser_process->profile_manager()) {
-    glic_profile_manager_ = std::make_unique<glic::GlicProfileManager>();
-#if !BUILDFLAG(IS_ANDROID)
-    glic_background_mode_manager_ =
-        std::make_unique<glic::GlicBackgroundModeManager>(
-            g_browser_process->status_tray());
-#endif
-    synthetic_trial_manager_ =
-        std::make_unique<glic::GlicSyntheticTrialManager>();
-  }
-
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   if (base::FeatureList::IsEnabled(omnibox::kOmniboxEverywhere)) {
     omnibox_everywhere_controller_ =
@@ -167,10 +141,6 @@ void GlobalFeatures::PostBrowserProcessInit() {
   ip_address_space_overrides_prefs_observer_ = std::make_unique<
       local_network_access::IPAddressSpaceOverridesPrefsObserver>(
       g_browser_process->local_state());
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  on_device_translation_installer_ = std::make_unique<
-      on_device_translation::OnDeviceTranslationInstallerImpl>();
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
 #if !BUILDFLAG(IS_ANDROID)
   profile_launch_observer_ = std::make_unique<ProfileLaunchObserver>();
@@ -209,22 +179,7 @@ void GlobalFeatures::PostBrowserProcessInitCore() {
   }
 #endif
   system_permissions_platform_handle_ = CreateSystemPermissionsPlatformHandle();
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  // TODO(crbug.com/463742800): Migrate WhatsNewRegistry (and other non-core
-  // features) to Init().
-  whats_new_registry_ = CreateWhatsNewRegistry();
-
-  default_browser_manager_ =
-      GetUserDataFactory()
-          .CreateInstance<default_browser::DefaultBrowserManager>(
-              *g_browser_process, g_browser_process,
-              default_browser::DefaultBrowserManager::CreateDefaultDelegate(),
-              base::BindRepeating(&ProfileManager::GetLastUsedProfile));
-#endif
-
   application_locale_storage_ = std::make_unique<ApplicationLocaleStorage>();
-
-  glic_global_enabling_ = std::make_unique<glic::GlicGlobalEnabling>();
 
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
   installer_downloader_controller_ = std::make_unique<
@@ -284,17 +239,8 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (glic_background_mode_manager_) {
-    glic_background_mode_manager_->Shutdown();
-    glic_background_mode_manager_.reset();
-  }
   omnibox_everywhere_controller_.reset();
 #endif
-  if (glic_profile_manager_) {
-    glic_profile_manager_->Shutdown();
-    glic_profile_manager_.reset();
-  }
-  synthetic_trial_manager_.reset();
   audio_process_ml_model_forwarder_.reset();
   optimization_guide_global_feature_.reset();
 
@@ -305,11 +251,6 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
   chrome_companero_host_.reset();
-#endif
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  DefaultBrowserPromptManager::GetInstance()->CloseAllPrompts(
-      DefaultBrowserPromptManager::CloseReason::kDismiss);
 #endif
 }
 
@@ -325,13 +266,6 @@ std::unique_ptr<system_permission_settings::PlatformHandle>
 GlobalFeatures::CreateSystemPermissionsPlatformHandle() {
   return system_permission_settings::PlatformHandle::Create();
 }
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-std::unique_ptr<whats_new::WhatsNewRegistry>
-GlobalFeatures::CreateWhatsNewRegistry() {
-  return whats_new::CreateWhatsNewRegistry();
-}
-#endif
 
 std::unique_ptr<GlobalBrowserCollection>
 GlobalFeatures::CreateGlobalBrowserCollection() {

@@ -11,7 +11,6 @@ include_rules = [
   "+chrome/browser/captive_portal/captive_portal_service_factory.h",
   "+chrome/browser/content_settings/host_content_settings_map_factory.h",
   "+chrome/browser/controlled_frame/controlled_frame_user_agent_util.h",
-  "+chrome/browser/glic/host/guest_util.h",
   "+chrome/browser/guest_view",
   "+chrome/browser/media/webrtc/media_capture_devices_dispatcher.h",
   "+chrome/browser/performance_manager/public",

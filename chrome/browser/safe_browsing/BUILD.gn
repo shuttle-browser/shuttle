@@ -110,7 +110,6 @@ static_library("safe_browsing") {
   ]
 
   if (enable_extensions) {
-    deps += [ "//chrome/browser/ui/web_applications" ]
 
     if (is_chromeos) {
       deps += [ "//chromeos/ash/components/system" ]
@@ -310,11 +309,9 @@ static_library("safe_browsing") {
       ]
     } else {
       public += [
-        "chrome_safe_browsing_hats_delegate_desktop.h",
         "client_side_detection_intelligent_scan_delegate_desktop.h",
       ]
       sources += [
-        "chrome_safe_browsing_hats_delegate_desktop.cc",
         "client_side_detection_intelligent_scan_delegate_desktop.cc",
       ]
     }
@@ -332,13 +329,10 @@ static_library("safe_browsing") {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/search_engines",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/hats",
-      "//chrome/browser/ui/safety_hub",
       "//chrome/common/safe_browsing:archive_analyzer_results",
       "//chrome/common/safe_browsing:binary_feature_extractor",
       "//chrome/common/safe_browsing:download_type_util",
       "//components/autofill/core/browser",
-      "//components/content_extraction/content/browser",
       "//components/content_settings/core/browser",
       "//components/enterprise/connectors/core",
       "//components/enterprise/connectors/core:cloud_content_scanning",
@@ -874,7 +868,6 @@ source_set("unit_tests") {
       "advanced_protection_status_manager_desktop_unittest.cc",
       "chrome_password_reuse_detection_manager_client_unittest.cc",
       "chrome_ping_manager_factory_unittest.cc",
-      "chrome_safe_browsing_hats_delegate_desktop_unittest.cc",
       "client_side_detection_intelligent_scan_delegate_desktop_unittest.cc",
       "client_side_detection_intelligent_scan_delegate_factory_unittest.cc",
       "client_side_detection_service_factory_unittest.cc",
@@ -1195,7 +1188,6 @@ if (safe_browsing_mode != 0) {
     # BUILDFLAG(FULL_SAFE_BROWSING) (safe_browsing_mode == 1), and
     # ui/hats:test_support only exists on non-Android.
     if (safe_browsing_mode == 1) {
-      public_deps += [ "//chrome/browser/ui/hats:test_support" ]
     }
   }
 }

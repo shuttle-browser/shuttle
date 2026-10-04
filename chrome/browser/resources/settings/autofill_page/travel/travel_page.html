@@ -19,13 +19,6 @@
         label="$i18n{travelOptInToggleLabel}"
         sub-label="$i18n{travelOptInToggleSubLabel}">
     </settings-toggle-button>
-    <template is="dom-if" if="[[showSuggestionsFromGeminiSettings_]]">
-      <cr-link-row id="suggestionsFromGeminiLinkRow"
-          label="$i18n{personalContextAutofillSettingsTitle}"
-          sub-label="$i18n{personalContextAutofillSettingsSubpageSummary}"
-          on-click="onSuggestionsFromGeminiClick_" class="hr">
-      </cr-link-row>
-    </template>
     <template is="dom-if" if="[[extensionControlledIndicatorIsVisible_(
             prefs.autofill.profile_enabled.extensionId, prefsInitialized_)]]">
       <div class="cr-row continuation">

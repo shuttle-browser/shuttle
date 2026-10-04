@@ -10,7 +10,6 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "components/google/core/common/google_util.h"
-#include "components/lens/lens_features.h"
 #include "url/gurl.h"
 
 namespace {
@@ -112,12 +111,6 @@ std::string SearchTermsData::GoogleBaseURLValue() const {
 
 std::string SearchTermsData::GoogleBaseSearchByImageURLValue() const {
   const std::string kGoogleHomepageURLPath = std::string("searchbyimage/");
-
-#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(lens::features::kLensStandalone)) {
-    return lens::features::GetHomepageURLForLens();
-  }
-#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 
   return google_util::kGoogleHomepageURL + kGoogleHomepageURLPath;
 }

@@ -14,6 +14,7 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
@@ -33,16 +34,13 @@
 #include "chrome/browser/signin/chrome_device_id_helper.h"
 #include "chrome/browser/signin/force_signin_verifier.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_hats_util.h"
 #include "chrome/browser/signin/signin_util.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/browser_actuator/public/features.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/metrics/metrics_service.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
@@ -58,14 +56,12 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_change_event.h"
 #include "components/site_token_provider/features.h"
-#include "components/skills/features.h"
 #include "components/version_info/channel.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/storage_partition.h"
 #include "google_apis/gaia/gaia_auth_fetcher.h"
 #include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/gaia/gaia_urls.h"
-#include "ui/base/models/tree_node_iterator.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -107,22 +103,6 @@
 
 namespace {
 
-// OAuth2 scopes for Contextual Tasks.
-inline constexpr char kCalendarEventsOAuth2Scope[] =
-    "https://www.googleapis.com/auth/calendar.events";
-inline constexpr char kCalendarFreeBusyOAuth2Scope[] =
-    "https://www.googleapis.com/auth/calendar.freebusy";
-inline constexpr char kCalendarListOAuth2Scope[] =
-    "https://www.googleapis.com/auth/calendar.calendarlist";
-inline constexpr char kDocumentsOAuth2Scope[] =
-    "https://www.googleapis.com/auth/documents";
-inline constexpr char kGmailModifyOAuth2Scope[] =
-    "https://www.googleapis.com/auth/gmail.modify";
-inline constexpr char kPeopleReadOnlyOAuth2Scope[] =
-    "https://www.googleapis.com/auth/peopleapi.readonly";
-inline constexpr char kSpreadsheetsOAuth2Scope[] =
-    "https://www.googleapis.com/auth/spreadsheets";
-
 // List of sources for which sign out is always allowed.
 // TODO(crbug.com/40162614): core product logic should not rely on metric
 // sources/callsites.  Consider removing such logic, potentially as part of
@@ -160,32 +140,6 @@ signin_metrics::ProfileSignout kAlwaysAllowedSignoutSources[] = {
     signin_metrics::ProfileSignout::kUserDeclinedEnterpriseSignalsDisclaimer,
 };
 
-// Returns the HaTS survey trigger corresponding to the given AccessPoint, or
-// the empty string if there is no such survey.
-std::string HatsSurveyTriggerForAccessPoint(
-    signin_metrics::AccessPoint access_point) {
-  switch (access_point) {
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
-    case signin_metrics::AccessPoint::kAddressBubble:
-      return kHatsSurveyTriggerIdentityAddressBubbleSignin;
-    case signin_metrics::AccessPoint::kAvatarBubbleSignIn:
-    case signin_metrics::AccessPoint::kAvatarBubbleSignInWithSyncPromo:
-      return kHatsSurveyTriggerIdentityProfileMenuSignin;
-    case signin_metrics::AccessPoint::kForYouFre:
-      return kHatsSurveyTriggerIdentityFirstRunSignin;
-    case signin_metrics::AccessPoint::kPasswordBubble:
-      return kHatsSurveyTriggerIdentityPasswordBubbleSignin;
-    case signin_metrics::AccessPoint::kSigninInterceptFirstRunExperience:
-      return kHatsSurveyTriggerIdentitySigninInterceptProfileSeparation;
-    case signin_metrics::AccessPoint::kUserManager:
-      return kHatsSurveyTriggerIdentityProfilePickerAddProfileSignin;
-#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
-    default:
-      // No HaTS survey is defined for the rest of the access point.
-      return std::string();
-  }
-}
-
 class ChromeOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
  protected:
   signin::OAuthConsumer GetOAuthConsumerForGlicUserStatus() const override {
@@ -206,44 +160,13 @@ class ChromeOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
   }
 
   signin::OAuthConsumer GetOAuthConsumerForSkillsService() const override {
-    CHECK(base::FeatureList::IsEnabled(features::kSkillsEnabled));
-    CHECK(base::FeatureList::IsEnabled(features::kSkillsServiceApi));
-    return signin::OAuthConsumer(
-        signin::oauth_consumer_name::kSkillsServiceName,
-        {features::kSkillsServiceApiOAuth2Scope.Get()});
+    // Skills were removed from Agent Chrome.
+    NOTREACHED();
   }
 
   signin::OAuthConsumer GetOAuthConsumerForContextualTasks() const override {
-    CHECK(contextual_tasks::IsContextualTasksUIEnabled());
-    signin::ScopeSet scopes = {
-        GaiaConstants::kSearchResultsOAuth2Scope,
-        kCalendarEventsOAuth2Scope,
-        kCalendarFreeBusyOAuth2Scope,
-        kCalendarListOAuth2Scope,
-        GaiaConstants::kClearCutOAuth2Scope,
-        kDocumentsOAuth2Scope,
-        kGmailModifyOAuth2Scope,
-        GaiaConstants::kLensOAuth2Scope,
-        kPeopleReadOnlyOAuth2Scope,
-        kSpreadsheetsOAuth2Scope,
-    };
-    if (base::FeatureList::IsEnabled(
-            contextual_tasks::kContextualTasksDriveOAuthScope)) {
-      scopes.insert(GaiaConstants::kDriveOAuth2Scope);
-    }
-    if (base::FeatureList::IsEnabled(
-            contextual_tasks::kContextualTasksExtraOauthScopes)) {
-      std::string extra_scopes_str =
-          contextual_tasks::kContextualTasksOAuthScopes.Get();
-      std::vector<std::string> extra_scopes_vec =
-          base::SplitString(extra_scopes_str, ",", base::TRIM_WHITESPACE,
-                            base::SPLIT_WANT_NONEMPTY);
-      for (const std::string& extra_scope : extra_scopes_vec) {
-        scopes.insert(extra_scope);
-      }
-    }
-    return signin::OAuthConsumer(
-        signin::oauth_consumer_name::kContextualTasksName, std::move(scopes));
+    // Contextual tasks were removed from Agent Chrome.
+    NOTREACHED();
   }
 
   signin::OAuthConsumer GetOAuthConsumerForDrivePickerHost() const override {
@@ -464,12 +387,6 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
         CHECK(event_details.GetSetPrimaryAccountAccessPoint().has_value());
         signin_metrics::AccessPoint access_point =
             event_details.GetSetPrimaryAccountAccessPoint().value();
-
-        if (consent_level == signin::ConsentLevel::kSignin) {
-          std::string trigger = HatsSurveyTriggerForAccessPoint(access_point);
-          signin::LaunchHatsSurveyForProfile(trigger, profile_,
-                                             /*defer_if_no_browser=*/true);
-        }
 
 #if !BUILDFLAG(IS_CHROMEOS)
         RecordOpenTabCount(access_point, consent_level);

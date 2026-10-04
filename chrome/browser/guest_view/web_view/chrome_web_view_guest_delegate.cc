@@ -162,9 +162,7 @@ void ChromeWebViewGuestDelegate::SetClientHintsEnabled(bool enable) {
 
 bool ChromeWebViewGuestDelegate::ShouldForwardOpenUrlFromTabToOwnerWebContents(
     const GURL& owner_url) {
-  // Allow contextual tasks URL to redirect to owner_web_cotnents.
-  return owner_url.scheme() == content::kChromeUIScheme &&
-         owner_url.host() == chrome::kChromeUIContextualTasksHost;
+  return false;
 }
 
 }  // namespace extensions

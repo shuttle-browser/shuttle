@@ -12,7 +12,6 @@
 #include "base/timer/elapsed_timer.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_constants.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/user_education/common/menu/highlighting_simple_menu_model_delegate.h"
 #include "ui/base/accelerators/accelerator.h"
@@ -315,26 +314,11 @@ class AppMenuModel : public ui::SimpleMenuModel,
   // took to select the command.
   void LogMenuMetrics(int command_id);
 
-  // Logs UMA metrics when the user interacted with a Safety Hub notification
-  // in the menu. When an expected module is provided, the metrics will only be
-  // logged when the module matches the one for which there is an active menu
-  // notification.
-  void LogSafetyHubInteractionMetrics(safety_hub::SafetyHubModuleType sh_module,
-                                      int event_flags);
-
  private:
   // Adds actionable global error menu items to the menu.
   // Examples: Extension permissions and sign in errors.
   // Returns a boolean indicating whether any menu items were added.
   bool AddGlobalErrorMenuItems();
-
-  // Adds actionable default browser prompt menu items to the menu. Returns a
-  // boolean indicating whether any menu items were added.
-  bool AddDefaultBrowserMenuItems();
-
-  // Adds the Safety Hub menu notifications to the menu. Returns a boolean
-  // indicating whether any menu items were added.
-  [[nodiscard]] bool AddSafetyHubMenuItem();
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Disables/Enables the settings item based on kSystemFeaturesDisableList

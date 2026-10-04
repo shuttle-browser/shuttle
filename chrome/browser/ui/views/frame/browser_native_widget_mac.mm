@@ -15,11 +15,8 @@
 #include "base/notimplemented.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/app_controller_mac.h"
-#include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
-#include "chrome/browser/apps/app_shim/app_shim_manager_mac.h"
 #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
 #include "chrome/browser/global_keyboard_shortcuts_mac.h"
-#include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -32,7 +29,6 @@
 #import "chrome/browser/ui/cocoa/touchbar/browser_window_touch_bar_controller.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/lens/lens_overlay_entry_point_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
@@ -43,20 +39,17 @@
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
-#include "chrome/browser/ui/views/web_apps/frame_toolbar/web_app_frame_toolbar_utils.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/dom_distiller/content/browser/distillable_page_utils.h"
 #include "components/dom_distiller/core/url_utils.h"
 #include "components/input/native_web_keyboard_event.h"
-#include "components/lens/lens_features.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #import "components/omnibox/common/omnibox_feature_configs.h"
 #import "components/remote_cocoa/app_shim/native_widget_mac_nswindow.h"
 #import "components/remote_cocoa/app_shim/native_widget_ns_window_bridge.h"
 #import "components/remote_cocoa/app_shim/window_touch_bar_delegate.h"
+#include "components/prefs/pref_service.h"
 #include "components/remote_cocoa/common/application.mojom.h"
 #include "components/remote_cocoa/common/native_widget_ns_window.mojom.h"
 #include "components/remote_cocoa/common/native_widget_ns_window_host.mojom.h"
@@ -74,19 +67,6 @@
 #include "ui/views/interaction/element_tracker_views.h"
 
 namespace {
-
-AppShimHost* GetHostForBrowser(BrowserView* browser_view) {
-  auto* const shim_manager = apps::AppShimManager::Get();
-  if (!browser_view || !shim_manager) {
-    return nullptr;
-  }
-  return shim_manager->GetHostForRemoteCocoaBrowser(browser_view->browser());
-}
-
-bool UsesRemoteCocoaApplicationHost(BrowserWindowInterface* browser) {
-  auto* const shim_manager = apps::AppShimManager::Get();
-  return shim_manager && shim_manager->BrowserUsesRemoteCocoa(browser);
-}
 
 bool ShouldHandleKeyboardEvent(const input::NativeWebKeyboardEvent& event) {
   // |event.skip_if_unhandled| is true when it shouldn't be handled by the
@@ -210,12 +190,6 @@ BrowserNativeWidgetMac::BrowserNativeWidgetMac(BrowserWidget* browser_widget,
     : views::NativeWidgetMac(browser_widget), browser_view_(browser_view) {
   CHECK(browser_widget);
   CHECK(browser_view);
-  if (GetRemoteCocoaApplicationHost()) {
-    // Only add observer on PWA.
-    chrome::AddCommandObserver(browser_view_->browser(), IDC_BACK, this);
-    chrome::AddCommandObserver(browser_view_->browser(), IDC_FORWARD, this);
-  }
-
   if (features::IsGlassFrameEnabled()) {
     if (auto* vertical_tab_strip_state_controller =
             tabs::VerticalTabStripStateController::From(
@@ -273,9 +247,6 @@ void BrowserNativeWidgetMac::GetWindowFrameTitlebarHeight(
         std::max(top_element_info.tabstrip_preferred_height,
                  top_element_info.toolbar_minimum_height) +
         browser_view_->browser_widget()->GetFrameView()->GetTopInset(true);
-    if (!browser_view_->ShouldDrawTabStrip()) {
-      *titlebar_height += kWebAppMenuMargin * 2;
-    }
   } else {
     *override_titlebar_height = false;
     *titlebar_height = 0;
@@ -369,10 +340,6 @@ void BrowserNativeWidgetMac::OnWindowDidEndLiveResize() {
 void BrowserNativeWidgetMac::OnWidgetDestroyed(views::Widget* widget) {
   widget->RemoveObserver(this);
   CHECK(browser_view_);
-  if (UsesRemoteCocoaApplicationHost(browser_view_->browser())) {
-    chrome::RemoveCommandObserver(browser_view_->browser(), IDC_BACK, this);
-    chrome::RemoveCommandObserver(browser_view_->browser(), IDC_FORWARD, this);
-  }
   touch_bar_delegate_ = nullptr;
   if (glass_background_view_) {
     [glass_background_view_ removeFromSuperview];
@@ -429,9 +396,7 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
       break;
     }
     case IDC_ROUTE_MEDIA: {
-      // Hide this menu option if Media Router is disabled.
-      result->new_hidden_state =
-          !media_router::MediaRouterEnabled(browser->GetProfile());
+      result->new_hidden_state = true;
       break;
     }
     case IDC_BACK:
@@ -488,23 +453,10 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
     default:
       result->set_toggle_state = false;
       break;
-    case IDC_SHOW_BOOKMARK_BAR: {
+    case IDC_TOGGLE_FULLSCREEN_TOOLBAR: {
       PrefService* prefs = browser->GetProfile()->GetPrefs();
       result->new_toggle_state =
-          prefs->GetBoolean(bookmarks::prefs::kShowBookmarkBar);
-      break;
-    }
-    case IDC_TOGGLE_FULLSCREEN_TOOLBAR: {
-      web_app::AppBrowserController* app_controller =
-          web_app::AppBrowserController::From(browser);
-      if (app_controller) {
-        result->new_toggle_state =
-            app_controller->AlwaysShowToolbarInFullscreen();
-      } else {
-        PrefService* prefs = browser->GetProfile()->GetPrefs();
-        result->new_toggle_state =
-            prefs->GetBoolean(prefs::kShowFullscreenToolbar);
-      }
+          prefs->GetBoolean(prefs::kShowFullscreenToolbar);
       break;
     }
     case IDC_SHOW_FULL_URLS: {
@@ -521,10 +473,8 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
       PrefService* prefs = browser->GetProfile()->GetPrefs();
       result->new_toggle_state =
           prefs->GetBoolean(omnibox::kShowGoogleLensShortcut);
-      // Disable this menu option if the LensOverlay feature is not enabled.
-      result->enable =
-          lens::features::IsOmniboxEntryPointEnabled() &&
-          lens::LensOverlayEntryPointController::From(browser)->IsEnabled();
+      // Lens is not available in this build.
+      result->enable = false;
       break;
     }
     case IDC_SHOW_AI_MODE_OMNIBOX_BUTTON: {
@@ -714,25 +664,17 @@ void BrowserNativeWidgetMac::PopulateCreateWindowParams(
                        NSWindowStyleMaskResizable;
   CHECK(browser_view_);
   if (browser_view_->GetIsPictureInPictureType()) {
-    // Picture in Picture windows, even if they are part of a web app, draw
-    // their own title bar and decorations.  Note that `GetIsWebAppType()` might
-    // also be true here, so it's important that this check is first.
+    // Picture in Picture windows draw their own title bar and decorations.
     params->window_class = remote_cocoa::mojom::WindowClass::kFrameless;
     params->style_mask = NSWindowStyleMaskFullSizeContentView |
                          NSWindowStyleMaskTitled | NSWindowStyleMaskResizable;
     params->window_title_hidden = true;
-  } else if (browser_view_->GetIsNormalType() ||
-             browser_view_->GetIsWebAppType()) {
+  } else if (browser_view_->GetIsNormalType()) {
     params->window_class = remote_cocoa::mojom::WindowClass::kBrowser;
     params->style_mask |= NSWindowStyleMaskFullSizeContentView;
 
     // Ensure tabstrip/profile button are visible.
     params->titlebar_appears_transparent = true;
-
-    // Hosted apps draw their own window title.
-    if (browser_view_->GetIsWebAppType()) {
-      params->window_title_hidden = true;
-    }
   } else {
     params->window_class = remote_cocoa::mojom::WindowClass::kDefault;
   }
@@ -751,23 +693,10 @@ NativeWidgetMacNSWindow* BrowserNativeWidgetMac::CreateNSWindow(
   return ns_window;
 }
 
-remote_cocoa::ApplicationHost*
-BrowserNativeWidgetMac::GetRemoteCocoaApplicationHost() {
-  if (auto* host = GetHostForBrowser(browser_view_)) {
-    return host->GetRemoteCocoaApplicationHost();
-  }
-  return nullptr;
-}
-
 void BrowserNativeWidgetMac::OnWindowInitialized() {
   if (auto* bridge = GetInProcessNSWindowBridge()) {
     bridge->SetCommandDispatcher([[ChromeCommandDispatcherDelegate alloc] init],
                                  [[BrowserWindowCommandHandler alloc] init]);
-  } else {
-    if (auto* host = GetHostForBrowser(browser_view_)) {
-      host->GetAppShim()->CreateCommandDispatcherForWidget(
-          GetNSWindowHost()->bridged_native_widget_id());
-    }
   }
 }
 

@@ -101,17 +101,6 @@
   </settings-toggle-button>
 </template>
 
-<!-- Toggle to allow/disallow certain behavior for the Payment Request API. Note
-     that this setting does *NOT* relate to payments autofill, but lives in
-     chrome://settings/payments for legacy reasons (and lack of a better place
-     to put it). -->
-<settings-toggle-button id="canMakePaymentToggle"
-    aria-label="$i18n{canMakePaymentToggleLabel}"
-    label="$i18n{canMakePaymentToggleLabel}"
-    pref="{{prefs.payments.can_make_payment_enabled}}"
-    on-settings-boolean-control-change="onCanMakePaymentChange_">
-</settings-toggle-button>
-
 <div id="manageLink" class="cr-row">
   <!-- This span lays out the link correctly, relative to the text. -->
   <div class="cr-padded-text">$i18nRaw{manageCreditCardsLabel}</div>

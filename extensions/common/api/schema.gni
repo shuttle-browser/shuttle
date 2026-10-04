@@ -76,7 +76,6 @@ if (enable_extensions) {
     "automation_internal.webidl",
     "cec_private.webidl",
     "clipboard.webidl",
-    "feedback_private.webidl",
     "file_system.idl",
     "hid.idl",
     "mime_handler.webidl",

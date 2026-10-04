@@ -15,14 +15,7 @@
 #include "chrome/browser/extensions/error_console/error_console.h"
 #include "chrome/browser/extensions/menu_manager.h"
 #include "chrome/browser/extensions/user_script_listener.h"
-#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
-#include "chrome/browser/web_applications/web_app_command_scheduler.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
-#include "components/webapps/isolated_web_apps/url_loading/url_loader_factory.h"
-#include "content/public/browser/security_principal.h"
-#include "content/public/browser/site_instance.h"
 #include "extensions/browser/safe_browsing_delegate.h"
 #include "ipc/constants.mojom.h"
 
@@ -62,12 +55,8 @@ ChromeExtensionsBrowserClient::GetControlledFrameEmbedderURLLoader(
     const url::Origin& app_origin,
     content::FrameTreeNodeId frame_tree_node_id,
     content::BrowserContext* browser_context) {
-  // For ControlledFrame, the request initiator is typically the content inside
-  // the frame (cross-origin to the embedder IWA). Thus, strict same-origin
-  // enforcement must be disabled to allow access to the embedder's resources.
-  return web_app::IsolatedWebAppURLLoaderFactory::CreateForFrame(
-      browser_context, app_origin, frame_tree_node_id,
-      /*enforce_same_origin=*/false);
+  // ControlledFrame is only available to Isolated Web Apps, which are removed.
+  return mojo::PendingRemote<network::mojom::URLLoaderFactory>();
 }
 
 void ChromeExtensionsBrowserClient::ReportError(
@@ -96,32 +85,6 @@ void ChromeExtensionsBrowserClient::CleanUpWebView(
       "", embedder_process_id,
       /*webview_embedder_frame_id=*/IPC::mojom::kRoutingIdNone,
       view_instance_id));
-}
-
-void ChromeExtensionsBrowserClient::GetWebViewStoragePartitionConfig(
-    content::BrowserContext* browser_context,
-    content::SiteInstance* owner_site_instance,
-    const std::string& partition_name,
-    bool in_memory,
-    base::OnceCallback<void(std::optional<content::StoragePartitionConfig>)>
-        callback) {
-  if (owner_site_instance->GetSecurityPrincipal().SchemeIs(
-          webapps::kIsolatedAppScheme)) {
-    auto url_info = web_app::IsolatedWebAppUrlInfo::CreateFromHost(
-        owner_site_instance->GetSecurityPrincipal().GetHost());
-    DCHECK(url_info.has_value()) << url_info.error();
-
-    auto* profile = Profile::FromBrowserContext(browser_context);
-    auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(profile);
-    CHECK(web_app_provider);
-    web_app_provider->scheduler().GetControlledFramePartition(
-        *url_info, partition_name, in_memory, std::move(callback));
-    return;
-  }
-
-  ExtensionsBrowserClient::GetWebViewStoragePartitionConfig(
-      browser_context, owner_site_instance, partition_name, in_memory,
-      std::move(callback));
 }
 
 custom_handlers::ProtocolHandlerRegistry*

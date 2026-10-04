@@ -6,7 +6,6 @@ import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
 import '../settings_shared.css.js';
 import './languages_page.js';
 import './spell_check_page.js';
-import './translate_page.js';
 // <if expr="not is_macosx">
 import './edit_dictionary_page.js';
 
@@ -60,8 +59,7 @@ export class SettingsLanguagesPageIndexElement extends
 
   private showDefaultViews_() {
     this.$.viewManager.switchViews(
-        ['languages', 'spellCheck', 'translate'], 'no-animation',
-        'no-animation');
+        ['languages', 'spellCheck'], 'no-animation', 'no-animation');
   }
 
   override currentRouteChanged(newRoute: Route, oldRoute?: Route) {

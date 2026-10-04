@@ -62,7 +62,6 @@ class OpaqueBrowserFrameView : public BrowserFrameView,
   BrowserLayoutParams GetBrowserLayoutParams() const override;
   int GetTopInset(bool restored) const override;
   void UpdateThrobber(bool running) override;
-  void WindowControlsOverlayEnabledChanged() override;
   gfx::Size GetMinimumSize() const override;
   void PaintAsActiveChanged() override;
   void OnThemeChanged() override;

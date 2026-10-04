@@ -31,12 +31,10 @@ source_set("impl") {
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui:status_bubble",
     "//chrome/browser/ui:tab_ui_helper",
-    "//chrome/browser/ui/bookmarks",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/location_bar",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/browser/ui/web_applications",
     "//content/public/browser",
   ]
 }

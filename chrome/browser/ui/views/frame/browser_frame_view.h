@@ -120,10 +120,6 @@ class BrowserFrameView : public views::FrameView {
   // browser is in fullscreen mode.
   virtual bool ShouldHideTopUIInFullscreen() const;
 
-  // Returns true if a toolbar should be shown in the current browser, false if
-  // not.
-  virtual bool ShouldShowWebAppFrameToolbar() const;
-
   // Determines whether the top of the frame is "condensed" (i.e., has less
   // vertical space). This is typically true when the window is maximized or
   // fullscreen. If true, the top frame is just the height of a tab,

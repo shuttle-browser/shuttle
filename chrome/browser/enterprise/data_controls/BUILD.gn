@@ -29,7 +29,6 @@ source_set("data_controls") {
 
   deps = [
     "//base",
-    "//chrome/browser/glic",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/safe_browsing",
     "//components/enterprise/common/proto:dlp_policy_event_proto",

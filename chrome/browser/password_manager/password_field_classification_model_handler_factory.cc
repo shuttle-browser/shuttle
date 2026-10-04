@@ -8,8 +8,6 @@
 
 #include "base/no_destructor.h"
 #include "chrome/browser/autofill/ml_log_router_factory.h"
-#include "chrome/browser/glic/glic_pref_names.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/optimization_guide/optimization_guide_global_state_holder_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_global_state_holder_keyed_service_factory.h"
@@ -115,14 +113,6 @@ PasswordFieldClassificationModelHandlerFactory::GetBrowserContextToUse(
         password_change_service->UserIsActivePasswordChangeUser()) {
       return context;
     }
-  }
-
-  // Special case for ActorLogin which uses a model in a very limited scope.
-  auto* glic_service = glic::GlicKeyedService::Get(profile);
-  if (glic_service && glic_service->enabling().GetUserEnabledActuationOnWeb() &&
-      base::FeatureList::IsEnabled(
-          password_manager::features::kActorLoginLocalClassificationModel)) {
-    return context;
   }
 
   return nullptr;

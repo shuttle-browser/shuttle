@@ -10,7 +10,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/strings/string_util.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
-#include "chrome/browser/ui/views/web_apps/web_app_views_utils.h"
+#include "chrome/browser/ui/views/chrome_typography.h"
 #include "components/constrained_window/constrained_window_views.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
@@ -29,6 +29,8 @@
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
 #include "url/gurl.h"
+#include "url/origin.h"
+#include "components/url_formatter/elide_url.h"
 
 namespace {
 
@@ -102,9 +104,16 @@ SiteIconTextAndOriginView::SiteIconTextAndOriginView(
   AddChildView(views::Builder<views::View>().Build());
 
   // TODO(dibyapal): Modify to support full urls for Create Shortcut dialog.
-  AddChildViewRaw(
-      web_app::CreateOriginLabelFromStartUrl(url, /*is_primary_text=*/false)
-          .release());
+  auto origin_label = std::make_unique<views::Label>(
+      url_formatter::FormatOriginForSecurityDisplay(
+          url::Origin::Create(url),
+          url_formatter::SchemeDisplay::OMIT_HTTP_AND_HTTPS),
+      CONTEXT_DIALOG_BODY_TEXT_SMALL, views::style::STYLE_SECONDARY);
+  origin_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+  // Elide from head to prevent origin spoofing.
+  origin_label->SetElideBehavior(gfx::ELIDE_HEAD);
+  origin_label->SetMultiLine(false);
+  AddChildView(std::move(origin_label));
   title_field_->SelectAll(true);
 }
 

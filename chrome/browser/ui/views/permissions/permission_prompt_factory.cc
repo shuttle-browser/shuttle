@@ -11,7 +11,6 @@
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/lens/lens_overlay_controller.h"
 #include "chrome/browser/ui/location_bar/location_bar_override_data.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
@@ -23,7 +22,6 @@
 #include "chrome/browser/ui/views/permissions/permission_prompt_bubble.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_chip.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_quiet_icon.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/permissions/permission_request.h"
@@ -38,8 +36,6 @@
 #include "url/origin.h"
 
 #if BUILDFLAG(IS_MAC)
-#include "chrome/browser/ui/views/permissions/permission_prompt_notifications_mac.h"
-#include "chrome/browser/web_applications/os_integration/mac/web_app_shortcut_mac.h"
 #endif
 
 namespace {
@@ -62,11 +58,6 @@ bool IsFullScreenMode(content::WebContents* web_contents) {
     return false;
   }
 
-  // PWA uses the title bar as a substitute for LocationBarView.
-  if (web_app::AppBrowserController::IsWebApp(browser)) {
-    return false;
-  }
-
   LocationBar* location_bar =
       location_bar::GetLocationBarForWebContents(web_contents);
 
@@ -79,8 +70,6 @@ bool IsFullScreenMode(content::WebContents* web_contents) {
 //    - a user interacts with the LocationBar. The only exception is the NTP
 //      page where the user needs to press on a microphone icon to get a
 //      permission request.
-//    - The Lens Overlay is open covering the context. We suppress permission
-//      prompts until the Lens Overlay is closed.
 bool ShouldIgnorePermissionRequest(
     content::WebContents* web_contents,
     permissions::PermissionPrompt::Delegate* delegate) {
@@ -94,21 +83,6 @@ bool ShouldIgnorePermissionRequest(
   LocationBar* location_bar =
       location_bar::GetLocationBarForWebContents(web_contents);
   bool can_display_prompt = !(location_bar && location_bar->IsEditingOrEmpty());
-
-  BrowserWindowInterface* browser = GetBrowser(web_contents);
-  if (browser) {
-    LensOverlayController* lens_overlay_controller =
-        browser->GetTabStripModel()
-            ->GetActiveTab()
-            ->GetTabFeatures()
-            ->lens_overlay_controller();
-    // Don't show prompt if Lens Overlay is showing
-    // TODO(b/331940245): Refactor to be decoupled from LensOverlayController
-    if (lens_overlay_controller &&
-        lens_overlay_controller->IsOverlayShowing()) {
-      can_display_prompt = false;
-    }
-  }
 
   permissions::PermissionUmaUtil::RecordPermissionPromptAttempt(
       delegate->Requests(), can_display_prompt);
@@ -188,24 +162,6 @@ bool CanCurrentRequestUseModalUI(
     return true;
   }
   return tabs::TabInterface::GetFromContents(web_contents)->CanShowModalUI();
-}
-
-std::unique_ptr<permissions::PermissionPrompt> CreatePwaPrompt(
-    content::WebContents* web_contents,
-    permissions::PermissionPrompt::Delegate* delegate) {
-  if (permissions::PermissionUtil::
-          ShouldCurrentRequestUsePermissionElementSecondaryUI(delegate)) {
-    // Run this check inside the if statement to avoid creating another prompt
-    // type for embedded permission prompts.
-    return CanCurrentRequestUseModalUI(web_contents, delegate)
-               ? std::make_unique<EmbeddedPermissionPrompt>(web_contents,
-                                                            delegate)
-               : nullptr;
-  } else if (delegate->ShouldCurrentRequestUseQuietUI()) {
-    return std::make_unique<PermissionPromptQuietIcon>(web_contents, delegate);
-  } else {
-    return std::make_unique<PermissionPromptBubble>(web_contents, delegate);
-  }
 }
 
 std::unique_ptr<permissions::PermissionPrompt> CreateNormalPrompt(
@@ -293,24 +249,7 @@ std::unique_ptr<permissions::PermissionPrompt> CreatePermissionPrompt(
     return nullptr;
   }
 
-#if BUILDFLAG(IS_MAC)
-  // If this is a notification permission request coming from a PWA (or a PWA
-  // associated tab), and this is the first time we show a permission prompt for
-  // this request, try using a OS-native permission prompt. If showing the
-  // prompt fails, it will trigger the view to be recreated for the request, at
-  // which point we end up in the normal code path below.
-  if (web_app::UseNotificationAttributionForWebAppShims() &&
-      !delegate->WasCurrentRequestAlreadyDisplayed() &&
-      PermissionPromptNotificationsMac::CanHandleRequest(web_contents,
-                                                         delegate)) {
-    return std::make_unique<PermissionPromptNotificationsMac>(web_contents,
-                                                              delegate);
-  }
-#endif
-
-  if (web_app::AppBrowserController::IsWebApp(GetBrowser(web_contents))) {
-    return CreatePwaPrompt(web_contents, delegate);
-  } else if (delegate->ShouldCurrentRequestUseQuietUI()) {
+  if (delegate->ShouldCurrentRequestUseQuietUI()) {
     return CreateQuietPrompt(web_contents, delegate);
   }
 

@@ -26,7 +26,6 @@ source_set("customize_toolbar") {
     "//chrome/browser/ui/toolbar/pinned_toolbar",
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/ui/webui/util",
-    "//components/contextual_tasks/public:feature_list",
     "//components/feature_engagement/public:feature_constants",
     "//components/prefs",
     "//components/strings:components_strings",

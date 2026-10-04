@@ -34,12 +34,10 @@
 #include "chrome/browser/autocomplete/zero_suggest_cache_service_factory.h"
 #include "chrome/browser/autofill/autofill_entity_data_manager_factory.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/browsing_data/navigation_entry_remover.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
-#include "chrome/browser/crash_upload_list/crash_upload_list.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
 #include "chrome/browser/domain_reliability/service_factory.h"
 #include "chrome/browser/downgrade/snapshot_file_collector.h"
@@ -62,8 +60,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/password_manager/factories/account_password_store_factory.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
-#include "chrome/browser/payments/browser_binding/browser_bound_key_deleter_service.h"
-#include "chrome/browser/payments/browser_binding/browser_bound_key_deleter_service_factory.h"
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
@@ -76,14 +72,12 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_service.h"
 #include "chrome/browser/strike_database/strike_database_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/find_bar/find_bar_state_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
@@ -97,7 +91,6 @@
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/autofill/core/common/autofill_prefs.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
 #include "components/browsing_data/core/features.h"
 #include "components/content_settings/core/browser/content_settings_registry.h"
@@ -114,7 +107,6 @@
 #include "components/history/core/common/pref_names.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/language/core/browser/url_language_histogram.h"
-#include "components/lens/lens_features.h"
 #include "components/media_device_salt/media_device_salt_service.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
@@ -124,7 +116,6 @@
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
 #include "components/password_manager/core/browser/password_store/smart_bubble_stats_store.h"
-#include "components/payments/content/web_payments_web_data_service.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/features.h"
 #include "components/permissions/permission_actions_history.h"
@@ -132,7 +123,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/reading_list/core/reading_list_model.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
-#include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/consent_level.h"
@@ -174,7 +164,6 @@
 #include "chrome/browser/android/customtabs/chrome_origin_verifier.h"
 #include "chrome/browser/android/oom_intervention/oom_intervention_decider.h"
 #include "chrome/browser/android/webapps/webapp_registry.h"
-#include "chrome/browser/feed/feed_service_factory.h"
 #include "chrome/browser/offline_pages/offline_page_model_factory.h"
 #include "chrome/browser/settings/jni_headers/RecentSearchQueue_jni.h"
 #include "chrome/browser/share/share_history.h"
@@ -183,7 +172,6 @@
 #include "chrome/browser/ui/android/tab_model/tab_model_list.h"
 #include "components/cdm/browser/media_drm_storage_impl.h"  // nogncheck crbug.com/40147906
 #include "components/feed/core/v2/public/feed_service.h"    // nogncheck
-#include "components/feed/feed_feature_list.h"
 #include "components/installedapp/android/jni_headers/PackageHash_jni.h"
 #include "components/offline_pages/core/offline_page_feature.h"
 #include "components/offline_pages/core/offline_page_model.h"
@@ -193,12 +181,6 @@
 #include "chrome/browser/new_tab_page/microsoft_auth/microsoft_auth_service.h"
 #include "chrome/browser/new_tab_page/microsoft_auth/microsoft_auth_service_factory.h"
 #include "chrome/browser/user_education/browser_user_education_storage_service.h"
-#include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_command_scheduler.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
-#include "content/public/browser/isolated_web_apps_policy.h"
 #include "content/public/browser/storage_partition_config.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -507,16 +489,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     if (optimization_guide_keyed_service)
       optimization_guide_keyed_service->ClearData();
 
-#if !BUILDFLAG(IS_ANDROID)
-    // Remove localStorage data from Lens Overlay UI whenever any history is
-    // deleted.
-    if (lens::features::IsLensOverlayTranslateLanguagesFetchEnabled()) {
-      profile_->GetDefaultStoragePartition()->ClearDataForOrigin(
-          content::StoragePartition::REMOVE_DATA_MASK_LOCAL_STORAGE,
-          GURL(chrome::kChromeUILensOverlayUntrustedURL), base::DoNothing());
-    }
-#endif
-
     content::PrefetchServiceDelegate::ClearData(profile_);
 
 #if BUILDFLAG(IS_ANDROID)
@@ -561,8 +533,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 
     device_event_log::Clear(delete_begin_, delete_end_);
 
-    CreateCrashUploadList()->Clear(delete_begin_, delete_end_);
-
     tracing::BackgroundTracingManager::GetInstance().DeleteTracesInDateRange(
         delete_begin_, delete_end_);
 
@@ -575,12 +545,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     if (auto* share_ranking = sharing::ShareRanking::Get(profile_))
       share_ranking->Clear(delete_begin_, delete_end_);
 #endif
-
-    // Also clear the last used time in bookmarks.
-    auto* bookmark_model = BookmarkModelFactory::GetForBrowserContext(profile_);
-    if (bookmark_model && bookmark_model->loaded()) {
-      bookmark_model->ClearLastUsedTimeInRange(delete_begin, delete_end);
-    }
 
 #if !BUILDFLAG(IS_ANDROID)
     // Clear any stored User Education session data. Note that we can't clear a
@@ -696,15 +660,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-    if (filter_builder->MatchesMostOriginsAndDomains()) {
-      if (payments::
-              BrowserBoundKeyDeleterService* browser_bound_key_deleter_service =
-                  payments::BrowserBoundKeyDeleterServiceFactory::GetForProfile(
-                      profile_)) {
-        browser_bound_key_deleter_service->RemoveInvalidBBKs();
-      }
-    }
-
 #if BUILDFLAG(IS_CHROMEOS)
     if (ash::SystemProxyManager::Get() &&
         filter_builder->MatchesMostOriginsAndDomains()) {
@@ -778,9 +733,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     if (handler_registry)
       handler_registry->ClearUserDefinedHandlers(delete_begin_, delete_end_);
 
-    ChromeTranslateClient::CreateTranslatePrefs(prefs)
-        ->DeleteNeverPromptSitesBetween(delete_begin_, delete_end_);
-
     host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
         ContentSettingsType::PERMISSION_AUTOREVOCATION_DATA, delete_begin,
         delete_end, website_settings_filter);
@@ -807,21 +759,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  // DATA_TYPE_BOOKMARKS
-  if (remove_mask & constants::DATA_TYPE_BOOKMARKS) {
-    auto* bookmark_model = BookmarkModelFactory::GetForBrowserContext(profile_);
-    if (bookmark_model && bookmark_model->loaded()) {
-      if (delete_begin_.is_null() &&
-          (delete_end_.is_null() || delete_end_.is_max())) {
-        bookmark_model->RemoveAllUserBookmarks(FROM_HERE);
-      } else {
-        // Bookmark deletion is only implemented to remove all data after a
-        // profile deletion. A full implementation would need to traverse the
-        // whole tree and check timestamps against delete_begin and delete_end.
-        NOTIMPLEMENTED();
-      }
-    }
-  }
+  // DATA_TYPE_BOOKMARKS: bookmarks have been removed; nothing to delete.
 
   //////////////////////////////////////////////////////////////////////////////
   // DATA_TYPE_LOCAL_CUSTOM_DICTIONARY
@@ -1091,24 +1029,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     }
   }
 
-  if ((remove_mask & constants::DATA_TYPE_PASSWORDS)
-#if !BUILDFLAG(IS_ANDROID)
-      || (remove_mask & constants::DATA_TYPE_FORM_DATA)
-#endif  // !BUILDFLAG(IS_ANDROID)
-  ) {
-    scoped_refptr<payments::WebPaymentsWebDataService>
-        payment_web_data_service =
-            webdata_services::WebDataServiceWrapperFactory::
-                GetWebPaymentsWebDataServiceForBrowserContext(
-                    profile_, ServiceAccessType::EXPLICIT_ACCESS);
-    if (payment_web_data_service) {
-      payment_web_data_service->ClearSecurePaymentConfirmationCredentials(
-          delete_begin_, delete_end_,
-          CreateTaskCompletionClosure(
-              TracingDataType::kSecurePaymentConfirmationCredentials));
-    }
-  }
-
   //////////////////////////////////////////////////////////////////////////////
   // DATA_TYPE_CACHE
   if (remove_mask & content::BrowsingDataRemover::DATA_TYPE_CACHE) {
@@ -1365,16 +1285,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 
 //////////////////////////////////////////////////////////////////////////////
 // Remove web app history.
-#if !BUILDFLAG(IS_ANDROID)
-  if (remove_mask & constants::DATA_TYPE_HISTORY &&
-      web_app::AreWebAppsEnabled(profile_)) {
-    auto* web_app_provider =
-        web_app::WebAppProvider::GetForLocalAppsUnchecked(profile_);
-    web_app_provider->scheduler().ClearWebAppBrowsingData(
-        delete_begin, delete_end,
-        CreateTaskCompletionClosure(TracingDataType::kWebAppHistory));
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   //////////////////////////////////////////////////////////////////////////////
   // Remove external protocol data.
@@ -1420,57 +1330,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       filter_builder->MatchesMostOriginsAndDomains()) {
     login_detection::prefs::RemoveLoginDetectionData(prefs);
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  //////////////////////////////////////////////////////////////////////////////
-  // Isolated Web Apps.
-  // If no StoragePartition was specified in the filter, make additional
-  // BrowsingDataRemover::Remove* calls for each StoragePartition of Isolated
-  // Web Apps (IWA) that match the filter.
-  //
-  // The data types specified in `remove_mask` will be removed from the primary
-  // StoragePartition of an IWA, and all Controlled Frame StoragePartitions if
-  // DATA_TYPE_CONTROLLED_FRAME is specified in `remove_mask`.
-  if (!filter_builder->GetStoragePartitionConfig().has_value() &&
-      content::AreIsolatedWebAppsEnabled(profile_)) {
-    const web_app::WebAppRegistrar& web_app_registrar =
-        web_app::WebAppProvider::GetForLocalAppsUnchecked(profile_)
-            ->registrar_unsafe();
-    for (const web_app::WebApp& web_app :
-         web_app_registrar.GetAppsIncludingStubs()) {
-      if (!filter.Run(web_app.scope())) {
-        continue;
-      }
-      std::vector<content::StoragePartitionConfig> partitions =
-          web_app_registrar.GetIsolatedWebAppStoragePartitionConfigs(
-              web_app.app_id());
-      for (const content::StoragePartitionConfig& partition : partitions) {
-        // Only delete data types that live on a StoragePartition.
-        uint64_t iwa_remove_mask =
-            content::BrowsingDataRemover::DATA_TYPE_ON_STORAGE_PARTITION &
-            remove_mask;
-
-        // COOKIES are a domain-scoped datatype. ISOLATED_WEB_APP_COOKIES are
-        // attributed to the Isolated Web App's origin, so we're tracking them
-        // as a separate origin-scoped datatype. A deletion request for an
-        // app's ISOLATED_WEB_APP_COOKIES is implemented as a deletion request
-        // for COOKIES for all domains on the app's StoragePartition.
-        if (remove_mask & constants::DATA_TYPE_ISOLATED_WEB_APP_COOKIES) {
-          iwa_remove_mask |= content::BrowsingDataRemover::DATA_TYPE_COOKIES;
-        }
-
-        // We can't wait for the `RemoveWithFilter` call to finish because
-        // BrowsingDataRemover doesn't support nested Remove calls.
-        auto iwa_filter_builder = content::BrowsingDataFilterBuilder::Create(
-            content::BrowsingDataFilterBuilder::Mode::kPreserve);
-        iwa_filter_builder->SetStoragePartitionConfig(partition);
-        profile_->GetBrowsingDataRemover()->RemoveWithFilter(
-            delete_begin, delete_end, iwa_remove_mask, origin_type_mask,
-            std::move(iwa_filter_builder));
-      }
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   //////////////////////////////////////////////////////////////////////////////
   // DATA_TYPE_TABS
@@ -1542,8 +1401,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
                                                 : profile_.get())
                         ->GetPrefs()),
         search_engines::SearchEngineChoiceWipeReason::kProfileWipe);
-    search_engines::SearchEngineChoiceServiceFactory::GetForProfile(profile_)
-        ->ResetState();
   }
 }
 

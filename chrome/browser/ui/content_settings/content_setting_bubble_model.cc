@@ -103,8 +103,6 @@
 #include "base/apple/bundle_locations.h"
 #include "base/mac/mac_util.h"
 #include "chrome/browser/permissions/system/system_media_capture_permissions_mac.h"
-#include "chrome/browser/web_applications/os_integration/mac/web_app_shortcut_mac.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #endif
 
 using base::UserMetricsAction;
@@ -1525,12 +1523,6 @@ ContentSettingNotificationsBubbleModel::
 
 void ContentSettingNotificationsBubbleModel::OnDoneButtonClicked() {
   std::string bundle_identifier = base::apple::MainBundleIdentifier();
-  if (std::optional<webapps::AppId> app_id =
-          web_app::WebAppTabHelper::GetAppIdForNotificationAttribution(
-              web_contents());
-      app_id.has_value()) {
-    bundle_identifier = web_app::GetBundleIdentifierForShim(*app_id);
-  }
   base::mac::OpenSystemSettingsPane(
       base::mac::SystemSettingsPane::kNotifications, bundle_identifier);
 }

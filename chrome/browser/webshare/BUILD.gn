@@ -90,7 +90,6 @@ if (is_win || is_chromeos || is_mac) {
       sources += [ "chromeos/sharesheet_client.cc" ]
       deps += [
         ":storage",
-        "//chrome/browser/apps/app_service",
         "//chrome/browser/ash/file_manager",
         "//chrome/browser/profiles",
         "//chrome/browser/sharesheet",

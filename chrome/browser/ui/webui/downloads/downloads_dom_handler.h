@@ -14,7 +14,6 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "chrome/browser/download/download_danger_prompt.h"
-#include "chrome/browser/download/download_warning_desktop_hats_utils.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom-forward.h"
 #include "chrome/browser/ui/webui/downloads/downloads_list_tracker.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -119,12 +118,6 @@ class DownloadsDOMHandler : public content::WebContentsObserver,
   // Convenience method to call |original_notifier_->GetManager()| while
   // null-checking |original_notifier_|.
   content::DownloadManager* GetOriginalNotifierManager() const;
-
-  // Launches a HaTS survey for a download warning that is heeded, bypassed, or
-  // ignored (if all preconditions are met).
-  void MaybeTriggerDownloadWarningHatsSurvey(
-      download::DownloadItem* item,
-      DownloadWarningHatsType survey_type);
 
   // Called when the downloads page is dismissed by closing the tab, or
   // navigating the tab to another page.

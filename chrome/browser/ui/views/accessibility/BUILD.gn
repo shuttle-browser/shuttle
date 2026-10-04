@@ -68,7 +68,6 @@ source_set("impl") {
 
   if (!is_chromeos) {
     sources += [ "accessibility_focus_highlight.cc" ]
-    deps += [ "//chrome/browser/ui/webui/tab_search:mojo_bindings" ]
   } else {
     deps += [
       "//chrome/browser/ash/accessibility",
@@ -176,7 +175,6 @@ if (!is_android) {
       ]
 
       if (enable_on_device_translation) {
-        deps += [ "//components/on_device_translation:public" ]
       }
 
       if (is_win) {

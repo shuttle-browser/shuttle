@@ -34,7 +34,6 @@ source_set("pdf") {
     "//build:chromeos_buildflags",
     "//chrome/browser:browser_process",
     "//chrome/browser:resources",
-    "//chrome/browser/glic",
     "//chrome/browser/pdf:pdf_pref_names",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/resources/pdf:resources",
@@ -43,6 +42,7 @@ source_set("pdf") {
     "//components/pdf/browser:interceptors",
     "//components/pdf/common:util",
     "//components/prefs",
+    "//components/tabs:public",
     "//components/user_education/webui",
     "//components/zoom",
     "//extensions/browser",
@@ -231,12 +231,10 @@ if (!is_android) {
     if (enable_screen_ai_browsertests) {
       sources += [ "pdf_searchify_browsertest.cc" ]
       deps += [
-        "//chrome/browser/screen_ai:screen_ai_install_state",
         "//chrome/browser/ui/user_education",
         "//components/feature_engagement/public",
         "//components/metrics:content",
         "//components/pdf/browser",
-        "//services/screen_ai/public/cpp:utilities",
         "//ui/accessibility",
       ]
 

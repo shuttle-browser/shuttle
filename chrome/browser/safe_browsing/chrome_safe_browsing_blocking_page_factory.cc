@@ -17,7 +17,7 @@
 #include "chrome/browser/safe_browsing/safe_browsing_metrics_collector_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
-#include "chrome/browser/ui/safety_hub/abusive_notification_permissions_manager.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/security_interstitials/content/content_metrics_helper.h"
@@ -25,8 +25,6 @@
 #include "content/public/browser/web_contents.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #endif
 
 namespace safe_browsing {
@@ -41,15 +39,8 @@ void MaybeIgnoreAbusiveNotificationAutoRevocation(
     GURL url,
     bool did_proceed,
     SBThreatType threat_type) {
-  // Set REVOKED_ABUSIVE_NOTIFICATION_PERMISSIONS to ignore only if the URL is
-  // valid and the user bypassed a phishing interstitial.
-  if (!url.is_valid() || !did_proceed ||
-      threat_type != SBThreatType::SB_THREAT_TYPE_URL_PHISHING) {
-    return;
-  }
-  AbusiveNotificationPermissionsManager::
-      SetRevokedAbusiveNotificationPermission(hcsm.get(), url,
-                                              /*is_ignored=*/true);
+  // Abusive notification auto-revocation was part of Safety Hub, which has
+  // been removed.
 }
 
 SafeBrowsingBlockingPage*
@@ -89,10 +80,6 @@ ChromeSafeBrowsingBlockingPageFactory::CreateSafeBrowsingPage(
       g_browser_process->safe_browsing_service()
           ? g_browser_process->safe_browsing_service()->trigger_manager()
           : nullptr;
-#if !BUILDFLAG(IS_ANDROID)
-  TrustSafetySentimentService* trust_safety_sentiment_service =
-      TrustSafetySentimentServiceFactory::GetForProfile(profile);
-#endif
   bool is_safe_browsing_surveys_enabled = IsSafeBrowsingSurveysEnabled(*prefs);
   // Use base::Unretained since blocking pages are owned by
   // SecurityInterstitialTabHelper, which is associated with a WebContents, and
@@ -110,16 +97,7 @@ ChromeSafeBrowsingBlockingPageFactory::CreateSafeBrowsingPage(
       SafeBrowsingMetricsCollectorFactory::GetForProfile(profile),
       trigger_manager, is_proceed_anyway_disabled,
       is_safe_browsing_surveys_enabled,
-#if !BUILDFLAG(IS_ANDROID)
-      trust_safety_sentiment_service == nullptr ||
-              !is_safe_browsing_surveys_enabled
-          ? base::NullCallback()
-          : base::BindOnce(&TrustSafetySentimentService::
-                               InteractedWithSafeBrowsingInterstitial,
-                           base::Unretained(trust_safety_sentiment_service)),
-#else
       base::NullCallback(),
-#endif
       base::BindOnce(&MaybeIgnoreAbusiveNotificationAutoRevocation,
                      base::WrapRefCounted(
                          HostContentSettingsMapFactory::GetForProfile(profile)),

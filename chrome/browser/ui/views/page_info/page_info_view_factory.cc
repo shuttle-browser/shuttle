@@ -17,7 +17,6 @@
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/page_info/page_info_cookies_content_view.h"
 #include "chrome/browser/ui/views/page_info/page_info_main_view.h"
-#include "chrome/browser/ui/views/page_info/page_info_merchant_trust_content_view.h"
 #include "chrome/browser/ui/views/page_info/page_info_navigation_handler.h"
 #include "chrome/browser/ui/views/page_info/page_info_permission_content_view.h"
 #include "chrome/browser/ui/views/page_info/page_info_security_content_view.h"
@@ -166,15 +165,6 @@ std::unique_ptr<views::View> PageInfoViewFactory::CreateCookiesPageView() {
           l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_HEADER),
           presenter_->GetSubjectNameForDisplay()),
       std::make_unique<PageInfoCookiesContentView>(presenter_));
-}
-
-std::unique_ptr<views::View>
-PageInfoViewFactory::CreateMerchantTrustPageView() {
-  return std::make_unique<PageInfoSubpageView>(
-      CreateSubpageHeader(
-          l10n_util::GetStringUTF16(IDS_PAGE_INFO_MERCHANT_TRUST_HEADER),
-          presenter_->GetSubjectNameForDisplay()),
-      std::make_unique<PageInfoMerchantTrustContentView>());
 }
 
 std::unique_ptr<views::View> PageInfoViewFactory::CreateSubpageHeader(

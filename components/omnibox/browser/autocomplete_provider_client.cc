@@ -12,11 +12,6 @@ AutocompleteProviderClient::GetHistoryClustersService() {
   return nullptr;
 }
 
-history_embeddings::HistoryEmbeddingsSearch*
-AutocompleteProviderClient::GetHistoryEmbeddingsSearch() {
-  return nullptr;
-}
-
 GeolocationHeaderService*
 AutocompleteProviderClient::GetGeolocationHeaderService() const {
   return nullptr;

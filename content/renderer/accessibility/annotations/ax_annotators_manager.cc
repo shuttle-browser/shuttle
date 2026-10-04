@@ -10,14 +10,8 @@
 #include "content/renderer/accessibility/annotations/ax_image_annotator.h"
 #include "content/renderer/accessibility/render_accessibility_impl.h"
 #include "content/renderer/render_frame_impl.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/blink/public/web/web_document.h"
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "content/renderer/accessibility/annotations/ax_canvas_annotator.h"
-#include "content/renderer/accessibility/annotations/ax_main_node_annotator.h"
-#include "ui/accessibility/accessibility_features.h"
-#endif
 
 namespace content {
 
@@ -28,14 +22,6 @@ AXAnnotatorsManager::AXAnnotatorsManager(
 
   ax_annotators_.emplace_back(
       std::make_unique<AXImageAnnotator>(render_accessibility_));
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  ax_annotators_.emplace_back(
-      std::make_unique<AXCanvasAnnotator>(render_accessibility_));
-  if (features::IsMainNodeAnnotationsEnabled()) {
-    ax_annotators_.emplace_back(
-        std::make_unique<AXMainNodeAnnotator>(render_accessibility_));
-  }
-#endif
 }
 
 AXAnnotatorsManager::~AXAnnotatorsManager() {}

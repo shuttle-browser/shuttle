@@ -74,10 +74,7 @@
 #include "components/autofill/core/common/password_form_fill_data.h"
 #include "components/autofill/core/common/signatures.h"
 #include "components/autofill/core/common/unique_ids.h"
-#include "components/language_detection/core/constants.h"
 #include "components/optimization_guide/proto/models.pb.h"
-#include "components/translate/core/browser/language_state.h"
-#include "components/translate/core/common/language_detection_details.h"
 #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "ui/gfx/geometry/rect.h"
@@ -172,15 +169,9 @@ struct AutofillManager::AsyncContext {
 };
 
 AutofillManager::AutofillManager(AutofillDriver* driver)
-    : driver_(CHECK_DEREF(driver)) {
-  if (auto* translate_driver = client().GetTranslateDriver()) {
-    translate_observation_.Observe(translate_driver);
-  }
-}
+    : driver_(CHECK_DEREF(driver)) {}
 
-AutofillManager::~AutofillManager() {
-  translate_observation_.Reset();
-}
+AutofillManager::~AutofillManager() = default;
 
 void AutofillManager::OnAutofillDriverLifecycleStateChanged(
     LifecycleState old_state,
@@ -200,43 +191,9 @@ void AutofillManager::Reset() {
   form_structures_.clear();
 }
 
-void AutofillManager::OnLanguageDetermined(
-    const translate::LanguageDetectionDetails& details) {
-  if (!base::FeatureList::IsEnabled(features::kAutofillPageLanguageDetection)) {
-    return;
-  }
-  if (details.adopted_language == language_detection::kUnknownLanguageCode ||
-      !driver_->IsActive()) {
-    return;
-  }
-
-  NotifyObservers(&Observer::OnBeforeLanguageDetermined);
-
-  // TODO(crbug.com/360322019): This will make an additional server query for
-  // server predictions which does not need any update after determining the
-  // page language. This was added to `ParseFormsAsync()` as part of
-  // crbug.com/470949499.
-  // TODO(crbug.com/360322019):  Consider using `ReparseKnownForms()` instead.
-  ParseFormsAsync(
-      base::ToVector(form_structures_,
-                     [](const auto& p) { return p.second->ToFormData(); }),
-      base::BindOnce(
-          [](AutofillManager& self, const std::vector<FormData>& parsed_forms) {
-            self.NotifyObservers(&Observer::OnAfterLanguageDetermined);
-          }));
-}
-
-void AutofillManager::OnTranslateDriverDestroyed(
-    translate::TranslateDriver* translate_driver) {
-  translate_observation_.Reset();
-}
-
 LanguageCode AutofillManager::GetCurrentPageLanguage() {
-  const translate::LanguageState* language_state = client().GetLanguageState();
-  if (!language_state) {
-    return LanguageCode();
-  }
-  return LanguageCode(language_state->current_language());
+  // Page language detection (Translate) was removed from this fork.
+  return LanguageCode();
 }
 
 void AutofillManager::OnDidAutofillForm(const FormData& form,

@@ -12,19 +12,13 @@
 #include "base/values.h"
 #include "build/branding_buildflags.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/webui/cr_components/customize_color_scheme_mode/customize_color_scheme_mode_handler.h"
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
-#include "chrome/browser/ui/webui/feature_showcase/default_browser_handler.h"
 #include "chrome/browser/ui/webui/feature_showcase/feature_showcase_handler.h"
-#include "chrome/browser/ui/webui/feature_showcase/gemini_disclosure.h"
-#include "chrome/browser/ui/webui/feature_showcase/gemini_handler.h"
-#include "chrome/browser/ui/webui/feature_showcase/google_lens_handler.h"
 #include "chrome/browser/ui/webui/feature_showcase/password_manager_handler.h"
 #include "chrome/browser/ui/webui/feature_showcase/themes_and_customization_handler.h"
 #include "chrome/common/chrome_features.h"
@@ -34,7 +28,6 @@
 #include "chrome/grit/feature_showcase_resources.h"
 #include "chrome/grit/feature_showcase_resources_map.h"
 #include "chrome/grit/generated_resources.h"
-#include "chrome/grit/intro_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "components/regional_capabilities/regional_capabilities_service.h"
 #include "components/signin/public/base/signin_switches.h"
@@ -47,68 +40,6 @@
 #include "ui/webui/webui_util.h"
 
 namespace {
-
-void AddDefaultBrowserStepResources(content::WebUIDataSource* source) {
-  source->AddLocalizedStrings({
-      {"refreshDefaultBrowserTitle", IDS_FRE_REFRESH_DEFAULT_BROWSER_TITLE},
-      {"refreshDefaultBrowserSubtitle",
-       IDS_FRE_REFRESH_DEFAULT_BROWSER_SUBTITLE},
-      {"refreshDefaultBrowserSetAsDefault",
-       IDS_FRE_REFRESH_DEFAULT_BROWSER_SET_AS_DEFAULT},
-      {"refreshDefaultBrowserNoThanks",
-       IDS_FRE_REFRESH_DEFAULT_BROWSER_NO_THANKS},
-  });
-
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  source->AddResourcePath("images/refresh_showcase_illustration.png",
-                          IDR_DEFAULT_BROWSER_SHOWCASE_CHROME);
-#else
-  source->AddResourcePath(
-      "images/refresh_showcase_illustration.png",
-      IDR_INTRO_IMAGES_REFRESH_SHOWCASE_ILLUSTRATION_CHROMIUM_PNG);
-#endif
-}
-
-void AddGoogleLensStepResources(content::WebUIDataSource* source) {
-  source->AddLocalizedStrings({
-      {"lensTitle", IDS_FEATURE_SHOWCASE_LENS_OVERLAY_TITLE},
-      {"lensSubtitle", IDS_FEATURE_SHOWCASE_LENS_OVERLAY_SUBTITLE},
-      {"lensDisclosure", IDS_FEATURE_SHOWCASE_LENS_OVERLAY_DISCLOSURE},
-      {"lensYesImIn", IDS_FEATURE_SHOWCASE_LENS_OVERLAY_YES_IM_IN},
-      {"lensNotNow", IDS_FEATURE_SHOWCASE_LENS_OVERLAY_NOT_NOW},
-  });
-
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  source->AddResourcePath("images/lens_overlay_illustration_light.png",
-                          IDR_FEATURE_SHOWCASE_GOOGLE_LENS_ILLUSTRATION_LIGHT);
-  source->AddResourcePath("images/lens_overlay_illustration_dark.png",
-                          IDR_FEATURE_SHOWCASE_GOOGLE_LENS_ILLUSTRATION_DARK);
-#endif
-}
-
-void AddGeminiStepResources(content::WebUIDataSource* source, bool is_managed) {
-  std::string country_code;
-  if (base::FeatureList::IsEnabled(
-          features::kGlicUseSessionCountryForFiltering)) {
-    country_code = g_browser_process->variations_service()->GetLatestCountry();
-  } else {
-    country_code =
-        g_browser_process->variations_service()->GetStoredPermanentCountry();
-  }
-
-  const GeminiDisclosure disclosure =
-      GetGeminiDisclosure(country_code, is_managed);
-
-  source->AddString("geminiDisclosure1", disclosure.first_paragraph);
-  source->AddString("geminiDisclosure2", disclosure.second_paragraph);
-
-  source->AddLocalizedStrings({
-      {"geminiTitle", IDS_FEATURE_SHOWCASE_GEMINI_TITLE},
-      {"geminiSubtitle", IDS_FEATURE_SHOWCASE_GEMINI_SUBTITLE},
-      {"geminiYesImIn", IDS_FEATURE_SHOWCASE_GEMINI_YES_IM_IN},
-      {"geminiNotNow", IDS_FEATURE_SHOWCASE_GEMINI_NOT_NOW},
-  });
-}
 
 void AddPasswordManagerStepResources(content::WebUIDataSource* source) {
   source->AddLocalizedStrings({
@@ -184,10 +115,6 @@ FeatureShowcaseUI::FeatureShowcaseUI(content::WebUI* web_ui)
   source->AddLocalizedString("stepperA11yLabel",
                              IDS_FEATURE_SHOWCASE_STEPPER_A11Y_LABEL);
 
-  AddDefaultBrowserStepResources(source);
-  AddGeminiStepResources(source, glic::GlicEnabling::IsEnterpriseAccount(
-                                     Profile::FromWebUI(web_ui)));
-  AddGoogleLensStepResources(source);
   AddPasswordManagerStepResources(source);
   AddThemesAndCustomizationStepResources(source);
 }
@@ -204,23 +131,7 @@ void FeatureShowcaseUI::SetNextStepShownCallback(
 }
 
 void FeatureShowcaseUI::SetCanPinToTaskbar(bool can_pin) {
-  can_pin_ = can_pin;
-  if (default_browser_page_handler_) {
-    default_browser_page_handler_->SetCanPin(can_pin);
-  }
-
-  if (can_pin) {
-    base::DictValue update;
-    update.Set(
-        "refreshDefaultBrowserTitle",
-        l10n_util::GetStringUTF16(IDS_FRE_DEFAULT_BROWSER_AND_PINNING_TITLE));
-    update.Set("refreshDefaultBrowserSubtitle",
-               l10n_util::GetStringUTF16(
-                   IDS_FRE_DEFAULT_BROWSER_AND_PINNING_SUBTITLE));
-    content::WebUIDataSource::Update(Profile::FromWebUI(web_ui()),
-                                     chrome::kChromeUIFeatureShowcaseHost,
-                                     std::move(update));
-  }
+  // The default browser step was removed, so pinning is irrelevant.
 }
 
 void FeatureShowcaseUI::BindInterface(
@@ -233,22 +144,19 @@ void FeatureShowcaseUI::BindInterface(
 void FeatureShowcaseUI::BindInterface(
     mojo::PendingReceiver<
         feature_showcase::mojom::DefaultBrowserPageHandlerFactory> receiver) {
-  default_browser_page_factory_receiver_.reset();
-  default_browser_page_factory_receiver_.Bind(std::move(receiver));
+  // The default browser step was removed; drop the receiver.
 }
 
 void FeatureShowcaseUI::BindInterface(
     mojo::PendingReceiver<feature_showcase::mojom::GeminiPageHandlerFactory>
         receiver) {
-  gemini_factory_receiver_.reset();
-  gemini_factory_receiver_.Bind(std::move(receiver));
+  // Gemini was removed; drop the receiver.
 }
 
 void FeatureShowcaseUI::BindInterface(
     mojo::PendingReceiver<feature_showcase::mojom::GoogleLensPageHandlerFactory>
         receiver) {
-  google_lens_factory_receiver_.reset();
-  google_lens_factory_receiver_.Bind(std::move(receiver));
+  // Lens was removed; drop the receiver.
 }
 
 void FeatureShowcaseUI::BindInterface(
@@ -295,25 +203,15 @@ void FeatureShowcaseUI::CreatePageHandler(
 
 void FeatureShowcaseUI::CreatePageHandler(
     mojo::PendingReceiver<feature_showcase::mojom::DefaultBrowserPageHandler>
-        handler) {
-  default_browser_page_handler_ =
-      std::make_unique<DefaultBrowserHandler>(std::move(handler));
-  default_browser_page_handler_->SetCanPin(can_pin_);
-}
+        handler) {}
 
 void FeatureShowcaseUI::CreateGeminiPageHandler(
     mojo::PendingReceiver<feature_showcase::mojom::GeminiPageHandler> handler) {
-  gemini_handler_ = std::make_unique<GeminiHandler>(
-      std::move(handler),
-      glic::GlicKeyedService::Get(Profile::FromWebUI(web_ui())));
 }
 
 void FeatureShowcaseUI::CreateGoogleLensPageHandler(
     mojo::PendingReceiver<feature_showcase::mojom::GoogleLensPageHandler>
-        handler) {
-  google_lens_handler_ = std::make_unique<GoogleLensHandler>(
-      std::move(handler), Profile::FromWebUI(web_ui()));
-}
+        handler) {}
 
 void FeatureShowcaseUI::CreatePasswordManagerPageHandler(
     mojo::PendingReceiver<feature_showcase::mojom::PasswordManagerPageHandler>

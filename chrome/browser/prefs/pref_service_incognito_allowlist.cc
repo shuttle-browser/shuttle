@@ -8,7 +8,6 @@
 
 #include "build/build_config.h"
 #include "chrome/common/pref_names.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/metrics/metrics_pref_names.h"
 #include "components/reading_list/core/reading_list_pref_names.h"
@@ -151,13 +150,6 @@ const char* const kPersistentPrefNames[] = {
 #endif
 
     // Bookmark preferences are common between incognito and regular mode.
-    bookmarks::prefs::kBookmarkEditorExpandedNodes,
-    bookmarks::prefs::kEditBookmarksEnabled,
-    bookmarks::prefs::kManagedBookmarks,
-    bookmarks::prefs::kManagedBookmarksFolderName,
-    bookmarks::prefs::kShowAppsShortcutInBookmarkBar,
-    bookmarks::prefs::kShowManagedBookmarksInBookmarkBar,
-    bookmarks::prefs::kShowBookmarkBar,
 #if BUILDFLAG(IS_ANDROID)
     prefs::kPartnerBookmarkMappings,
 #endif  // BUILDFLAG(IS_ANDROID)

@@ -17,7 +17,6 @@ include_rules = [
     "+components/os_crypt/async/browser",
     "+components/page_content_annotations/core",
     "+components/paint_preview",
-    "+components/passage_embeddings/core",
     "+components/performance_manager/scenario_api",
     "+components/pdf/browser",
     "+components/pdf/common",
@@ -33,7 +32,6 @@ include_rules = [
     "+pdf/mojom",
     "+services/metrics/public/cpp",
     "+services/network/public/mojom",
-    "+services/passage_embeddings/public/mojom",
     "+third_party/blink/public/common",
     "+third_party/blink/public/mojom/content_extraction",
     "+third_party/blink/public/mojom/opengraph",
@@ -44,9 +42,5 @@ include_rules = [
 specific_include_rules = {
   "annotate_page_content_request_unittest.cc": [
     "+components/ukm/test_ukm_recorder.h",
-  ],
-  "mock_page_content_services\\.(cc|h)": [
-    "+testing/gmock",
-    "+testing/gtest",
   ],
 }

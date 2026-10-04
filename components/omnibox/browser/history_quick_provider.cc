@@ -20,7 +20,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/trace_event/memory_usage_estimator.h"
 #include "base/trace_event/trace_event.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/history/core/browser/history_database.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/omnibox/browser/autocomplete_match_classification.h"

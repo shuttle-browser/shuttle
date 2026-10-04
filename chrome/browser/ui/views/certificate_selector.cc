@@ -16,11 +16,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/browser/certificate_viewer.h"
-#include "chrome/browser/glic/host/guest_util.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
@@ -51,23 +46,6 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_factory.h"
 #endif
-
-namespace {
-
-// Checks that `contents` is for glic.
-bool IsForGlic(content::WebContents* contents) {
-  return glic::IsGlicWebUI(contents) ||
-         glic::IsGlicWebUI(contents->GetOutermostWebContents());
-}
-
-// Combines IsForGlic with glic dev switch.
-bool UseGlicDevFlow(content::WebContents* contents) {
-  return base::CommandLine::ForCurrentProcess()->HasSwitch(
-             ::switches::kGlicDev) &&
-         IsForGlic(contents);
-}
-
-}  // namespace
 
 const int CertificateSelector::kTableViewWidth = 500;
 const int CertificateSelector::kTableViewHeight = 150;
@@ -205,10 +183,6 @@ CertificateSelector::~CertificateSelector() {
 
 // static
 bool CertificateSelector::CanShow(content::WebContents* web_contents) {
-  if (UseGlicDevFlow(web_contents)) {
-    return true;
-  }
-
   content::WebContents* top_level_web_contents =
       constrained_window::GetTopLevelWebContents(web_contents);
   return web_modal::WebContentsModalDialogManager::FromWebContents(
@@ -216,27 +190,6 @@ bool CertificateSelector::CanShow(content::WebContents* web_contents) {
 }
 
 void CertificateSelector::Show() {
-  // In the event that glic is showing and glic-dev is enabled, always show the
-  // certificate picker on the glic window. This is not fully correct, but
-  // satisfies the main dev use case with minimal overhead.
-  if (UseGlicDevFlow(web_contents_)) {
-    Profile* profile =
-        Profile::FromBrowserContext(web_contents_->GetBrowserContext());
-    BrowserWindowInterface* const browser =
-        ProfileBrowserCollection::GetForProfile(profile)
-            ->GetLastActiveBrowser();
-    if (browser) {
-      SetModalType(ui::mojom::ModalType::kWindow);
-      constrained_window::CreateBrowserModalDialogViews(
-          this, browser->GetWindow()->GetNativeWindow())
-          ->Show();
-    } else {
-      LOG(ERROR) << "Dev error. Make sure there's a browser window of the "
-                    "matching profile open.";
-    }
-    return;
-  }
-
   constrained_window::ShowWebModalDialogViews(this, web_contents_);
 
   // TODO(isandrk): A certificate that was previously provided by *both* the

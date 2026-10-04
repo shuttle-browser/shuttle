@@ -2391,7 +2391,7 @@ void PermissionUmaUtil::RecordFinishedPassageEmbeddingsJobOutdated(
 void PermissionUmaUtil::RecordPassageEmbeddingModelExecutionTimeAndStatus(
     PredictionModelType model_type,
     base::TimeTicks model_inquire_start_time,
-    passage_embeddings::ComputeEmbeddingsStatus status) {
+    ComputeEmbeddingsStatus status) {
   // Only the AIv4 model requires the passage embedding model.
   DCHECK_EQ(model_type, PredictionModelType::kOnDeviceAiV4Model);
 

@@ -14,7 +14,6 @@
 #include "chrome/browser/ui/views/chrome_widget_sublevel.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
-#include "chrome/browser/ui/views/sub_apps_permission_explanation.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/permissions/permission_request.h"
 #include "components/permissions/permission_uma_util.h"
@@ -86,24 +85,6 @@ PermissionPromptBubbleBaseView::~PermissionPromptBubbleBaseView() = default;
 void PermissionPromptBubbleBaseView::CreatePermissionButtons(
     const std::u16string& allow_always_text,
     const std::u16string& block_text) {
-  if (delegate_) {
-    if (std::optional<std::u16string> explanation =
-            GetSubAppsPermissionExplanation(
-                delegate_->GetAssociatedWebContents())) {
-      auto custom_label = std::make_unique<views::Label>(
-          *explanation, views::style::CONTEXT_DIALOG_BODY_TEXT,
-          views::style::STYLE_BODY_4);
-      custom_label->SetMultiLine(true);
-      custom_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-      custom_label->SetProperty(
-          views::kMarginsKey,
-          gfx::Insets::VH(views::LayoutProvider::Get()->GetDistanceMetric(
-                              views::DISTANCE_RELATED_CONTROL_VERTICAL),
-                          0));
-      AddChildView(std::move(custom_label));
-    }
-  }
-
   if (is_one_time_permission_) {
     SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
 

@@ -419,9 +419,6 @@ export interface PasswordManagerProxy {
    */
   movePasswordsToAccount(ids: number[]): void;
 
-  /** Dismiss the menu notifications for the Safety Hub password module. */
-  dismissSafetyHubPasswordMenuNotification(): void;
-
   /** Starts the flow for changing Password Manager PIN. */
   changePasswordManagerPin(): Promise<boolean>;
 
@@ -931,10 +928,6 @@ export class PasswordManagerImpl implements PasswordManagerProxy {
       return;
     }
     this.handler.movePasswordsToAccount(ids);
-  }
-
-  dismissSafetyHubPasswordMenuNotification() {
-    chrome.send('dismissSafetyHubPasswordMenuNotification');
   }
 
   changePasswordManagerPin() {

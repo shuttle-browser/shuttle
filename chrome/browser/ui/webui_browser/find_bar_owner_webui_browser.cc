@@ -10,7 +10,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
-#include "chrome/browser/ui/views/translate/translate_bubble_controller.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_window.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
@@ -91,8 +90,5 @@ void FindBarOwnerWebUIBrowser::OnFindBarVisibilityChanged(
 }
 
 void FindBarOwnerWebUIBrowser::CloseOverlappingBubbles() {
-  if (TranslateBubbleController* controller =
-      TranslateBubbleController::From(window_->browser())) {
-    controller->CloseBubble();
-  }
+  // The translate bubble was removed; there are no overlapping bubbles.
 }

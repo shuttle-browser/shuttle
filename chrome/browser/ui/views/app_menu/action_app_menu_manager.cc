@@ -16,25 +16,17 @@
 #include "build/branding_buildflags.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/defaults.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
-#include "chrome/browser/sharing_hub/sharing_hub_features.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-#include "chrome/browser/feedback/report_unsafe_site_dialog.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
-#include "chrome/browser/ui/webui/whats_new/whats_new_util.h"
 #endif
 #include "chrome/browser/ui/color/chrome_color_id.h"
-#include "chrome/browser/ui/lens/lens_overlay_entry_point_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/views/app_menu/action_app_menu_zoom_view.h"
-#include "chrome/browser/ui/views/app_menu/bookmarks_dynamic_menu.h"
 #include "chrome/browser/ui/views/app_menu/recent_tabs_dynamic_menu.h"
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
 #include "chrome/grit/branded_strings.h"
@@ -294,9 +286,7 @@ ActionAppMenuManager::ActionAppMenuManager(
     BrowserWindowInterface* browser_window_interface)
     : browser_window_interface_(browser_window_interface),
       recent_tabs_menu_(
-          std::make_unique<RecentTabsDynamicMenu>(browser_window_interface)),
-      bookmarks_menu_(
-          std::make_unique<BookmarksDynamicMenu>(browser_window_interface)) {}
+          std::make_unique<RecentTabsDynamicMenu>(browser_window_interface)) {}
 
 ActionAppMenuManager::~ActionAppMenuManager() = default;
 
@@ -364,17 +354,6 @@ void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
 
   builder.AddAction(kActionShowDownloads);
 
-  if (!profile->IsGuestSession()) {
-    builder.AddDynamicSubmenu(
-        kActionBookmarksSubmenu,
-        base::BindRepeating(&BookmarksDynamicMenu::BuildBookmarksActions,
-                            bookmarks_menu_->GetWeakPtr()),
-        [](AppMenuBuilder& sub_builder) {
-          sub_builder.AddAction(kActionBookmarkThisTab)
-              .AddAction(kActionBookmarkAllTabs);
-        });
-  }
-
   builder.AddSubmenu(kActionExtensionsSubmenu, [](AppMenuBuilder& sub) {
     sub.AddAction(kActionExtensionsSubmenuManageExtensions)
         .AddAction(kActionExtensionsSubmenuVisitChromeWebStore);
@@ -399,18 +378,6 @@ void ActionAppMenuManager::AddToolsAndActionsActions(
 
   Profile* profile = browser_window_interface_->GetProfile();
 
-  if (glic::GlicEnabling::IsEnabledForProfile(profile)) {
-    builder.AddAction(kActionOpenGlic);
-  }
-
-  if (auto* controller = lens::LensOverlayEntryPointController::From(
-          browser_window_interface_);
-      controller && controller->IsEnabled()) {
-    builder.AddAction(kActionShowLensOverlayFromAppMenu);
-  }
-
-  builder.AddAction(kActionShowTranslate);
-
   builder.AddSubmenu(kActionFindAndEditSubmenu, [](AppMenuBuilder& sub) {
     sub.AddAction(kActionFind)
         .AddDivider()
@@ -420,33 +387,12 @@ void ActionAppMenuManager::AddToolsAndActionsActions(
   });
 
   builder.AddSubmenu(
-      kActionSaveAndShareSubmenu, [this](AppMenuBuilder& sub) {
-        Profile* profile = browser_window_interface_->GetProfile();
-        if (media_router::MediaRouterEnabled(profile)) {
-          sub.AddAction(kActionRouteMedia).AddDivider();
-        }
-
-        sub.AddAction(kActionSavePage)
-            .AddDivider()
-            .AddAction(kActionCreateShortcut);
-
-        if (!sharing_hub::SharingIsDisabledByPolicy(profile) ||
-            sharing_hub::DesktopScreenshotsFeatureEnabled(profile)) {
-          sub.AddDivider();
-          if (!sharing_hub::SharingIsDisabledByPolicy(profile)) {
-            sub.AddAction(kActionCopyUrl)
-                .AddAction(kActionSendTabToSelf)
-                .AddAction(kActionQrCodeGenerator);
-          }
-          if (sharing_hub::DesktopScreenshotsFeatureEnabled(profile)) {
-            sub.AddAction(kActionSharingHubScreenshot);
-          }
-        }
+      kActionSaveAndShareSubmenu, [](AppMenuBuilder& sub) {
+        sub.AddAction(kActionSavePage).AddDivider().AddAction(kActionCopyUrl);
       });
 
   builder.AddSubmenu(kActionDeveloperSubmenu, [profile](AppMenuBuilder& sub) {
-    sub.AddAction(kActionTabSearch)
-        .AddAction(kActionNameWindow)
+    sub.AddAction(kActionNameWindow)
         .AddAction(kActionToggleVerticalTabs);
 
     if (CustomizeChromePageHandler::IsSupported(
@@ -481,21 +427,7 @@ void ActionAppMenuManager::AddToolsAndActionsActions(
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
 void AddHelpSubmenuActions(AppMenuBuilder& sub, BrowserWindowInterface* bwi) {
   sub.AddAction(kActionAbout);
-
-  if (whats_new::IsEnabled()) {
-    sub.AddAction(kActionChromeWhatsNew);
-  }
-
   sub.AddAction(kActionHelpPageViaMenu);
-
-  Profile* profile = bwi->GetProfile();
-  if (chrome::CanShowFeedback(profile)) {
-    sub.AddAction(kActionFeedback);
-
-    if (feedback::ReportUnsafeSiteDialog::IsEnabled(*profile)) {
-      sub.AddAction(kActionReportUnsafeSite);
-    }
-  }
 }
 #endif
 

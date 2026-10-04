@@ -1988,6 +1988,8 @@ export class PdfViewerElement extends PdfViewerBaseElement {
     PdfViewerPrivateProxyImpl.getInstance().glicSummarize();
   }
 
+  // Agent Chrome: without enable_pdf_ink2 there is nothing to await.
+  // eslint-disable-next-line @typescript-eslint/require-await
   protected async onPrint_() {
     record(UserAction.PRINT);
     assert(this.currentController);

@@ -75,5 +75,5 @@ source_set("browser_tests") {
     "//components/page_load_metrics/browser:test_support",
   ]
 
-  data = [ "//chrome/test/data/" ]
+  data = []
 }

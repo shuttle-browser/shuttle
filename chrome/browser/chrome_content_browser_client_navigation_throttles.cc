@@ -11,13 +11,9 @@
 #include "chrome/browser/actor/actor_navigation_throttle.h"
 #include "chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_navigation_throttle.h"
 #include "chrome/browser/custom_handlers/chrome_protocol_handler_navigation_throttle.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
-#include "chrome/browser/data_sharing/data_sharing_navigation_throttle.h"
 #include "chrome/browser/enterprise/data_protection/view_source_navigation_throttle.h"
-#include "chrome/browser/glic/glic_navigation_throttle.h"
-#include "chrome/browser/glic/host/glic_guest_navigation_throttle.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/interstitials/enterprise_util.h"
 #include "chrome/browser/lookalikes/lookalike_url_navigation_throttle.h"
@@ -42,13 +38,11 @@
 #include "chrome/browser/ui/login/login_navigation_throttle.h"
 #include "chrome/browser/ui/passwords/password_manager_navigation_throttle.h"
 #include "chrome/browser/ui/passwords/well_known_change_password_navigation_throttle.h"
-#include "chrome/browser/ui/web_applications/navigation_capturing_redirection_throttle.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "components/captive_portal/content/captive_portal_service.h"
 #include "components/captive_portal/core/buildflags.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/custom_handlers/protocol_handler_navigation_throttle.h"
 #include "components/dom_distiller/content/browser/distiller_page_web_contents.h"
 #include "components/dom_distiller/content/browser/distiller_referrer_throttle.h"
@@ -57,11 +51,9 @@
 #include "components/error_page/content/browser/net_error_auto_reloader.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/history/content/browser/visited_link_navigation_throttle.h"
-#include "components/lens/lens_features.h"
 #include "components/offline_pages/buildflags/buildflags.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/page_load_metrics/browser/metrics_navigation_throttle.h"
-#include "components/payments/content/payment_handler_navigation_throttle.h"
 #include "components/policy/content/policy_blocklist_navigation_throttle.h"
 #include "components/policy/content/safe_search_service.h"
 #include "components/safe_browsing/buildflags.h"
@@ -96,17 +88,11 @@
 #include "chrome/browser/background/background_contents_navigation_throttle.h"
 #include "chrome/browser/devtools/devtools_navigation_throttle.h"
 #include "chrome/browser/page_info/web_view_side_panel_throttle.h"
-#include "chrome/browser/themes/theme_service_factory.h"
-#include "chrome/browser/ui/lens/lens_overlay_side_panel_navigation_throttle.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_navigation_throttle.h"
 #include "chrome/browser/ui/search/chrome_search_navigation_throttle.h"
 #include "chrome/browser/ui/search/new_tab_page_navigation_throttle.h"
-#include "chrome/browser/ui/web_applications/tabbed_web_app_navigation_throttle.h"
-#include "chrome/browser/ui/web_applications/webui_web_app_navigation_throttle.h"
 #include "chrome/browser/ui/webui/image/image_navigation_throttle.h"
 #include "chrome/browser/ui/webui/ntp_microsoft_auth/ntp_microsoft_auth_response_capture_navigation_throttle.h"
-#include "chrome/browser/ui/webui/skills/skills_navigation_throttle.h"
-#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_throttle.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -119,13 +105,7 @@
 #include "chrome/browser/chromeos/app_mode/kiosk_settings_navigation_throttle.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "chrome/browser/apps/platform_apps/platform_app_navigation_redirector.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
 #include "chrome/browser/devtools/devtools_window.h"
@@ -155,7 +135,6 @@
 #include "chrome/browser/enterprise/signin/managed_profile_required_navigation_throttle.h"
 #include "chrome/browser/enterprise/webstore/chrome_web_store_navigation_throttle.h"
 #include "chrome/browser/enterprise/webstore/features.h"
-#include "chrome/browser/ui/webui/app_settings/web_app_settings_navigation_throttle.h"
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -229,14 +208,7 @@ void HandleSSLErrorWrapper(
 // Returns whether `web_contents` is within a web app.
 // TODO(crbug.com/505461569): Support Android.
 bool IsInWebApp(content::WebContents* web_contents) {
-#if !BUILDFLAG(IS_ANDROID)
-  tabs::TabInterface* tab =
-      tabs::TabInterface::MaybeGetFromContents(web_contents);
-  return tab && web_app::AppBrowserController::IsWebApp(
-                    tab->GetBrowserWindowInterface());
-#else
   return false;
-#endif
 }
 
 bool IsErrorPageAutoReloadEnabled() {
@@ -332,7 +304,6 @@ void CreateAndAddChromeThrottlesForNavigation(
 #elif BUILDFLAG(ENABLE_PLATFORM_APPS)
   // Redirect some navigations to apps that have registered matching URL
   // handlers ('url_handlers' in the manifest).
-  PlatformAppNavigationRedirector::MaybeCreateAndAdd(registry);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -362,7 +333,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   apps::ChromeOsReimplNavigationCapturingThrottle::MaybeCreateAndAdd(registry);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  web_app::NavigationCapturingRedirectionThrottle::MaybeCreateAndAdd(registry);
 
   if (base::FeatureList::IsEnabled(
           extensions_features::kExtensionProtocolHandlers)) {
@@ -447,7 +417,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   }
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  WebAppSettingsNavigationThrottle::MaybeCreateAndAdd(registry);
   profile_management::ProfileManagementNavigationThrottle::MaybeCreateAndAdd(
       registry);
   profile_management::OidcAuthResponseCaptureNavigationThrottle::
@@ -475,12 +444,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   // before ContextualTasksNavigationThrottle intercepts them.
   AimEligibilityRefreshNavigationThrottle::MaybeCreateAndAdd(registry);
 
-  if (contextual_tasks::IsContextualTasksUIEnabled() ||
-      base::FeatureList::IsEnabled(
-          contextual_tasks::kContextualTasksUrlRedirectToAimUrl)) {
-    contextual_tasks::ContextualTasksNavigationThrottle::MaybeCreateAndAdd(
-        registry);
-  }
 
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
   DevToolsWindow::MaybeCreateAndAddNavigationThrottle(registry);
@@ -493,12 +456,9 @@ void CreateAndAddChromeThrottlesForNavigation(
 
   NewTabPageNavigationThrottle::MaybeCreateAndAdd(registry);
 
-  web_app::TabbedWebAppNavigationThrottle::MaybeCreateAndAdd(registry);
 
-  web_app::WebUIWebAppNavigationThrottle::MaybeCreateAndAdd(registry);
 
   ImageNavigationThrottle::MaybeCreateAndAdd(registry);
-  SkillsNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -545,20 +505,10 @@ void CreateAndAddChromeThrottlesForNavigation(
         registry);
   }
 
-  payments::PaymentHandlerNavigationThrottle::MaybeCreateAndAdd(registry);
 
 #if !BUILDFLAG(IS_ANDROID)
   ReadAnythingSidePanelNavigationThrottle::CreateAndAdd(registry);
 
-  if (lens::features::IsLensOverlayEnabled()) {
-    if (profile) {
-      if (ThemeService* theme_service =
-              ThemeServiceFactory::GetForProfile(profile)) {
-        lens::LensOverlaySidePanelNavigationThrottle::MaybeCreateAndAdd(
-            registry, theme_service);
-      }
-    }
-  }
 
   NtpMicrosoftAuthResponseCaptureNavigationThrottle::MaybeCreateAndAdd(
       registry);
@@ -607,11 +557,9 @@ void CreateAndAddChromeThrottlesForNavigation(
 
   MaybeCreateAndAddVisitedLinkNavigationThrottle(registry);
 
-  data_sharing::DataSharingNavigationThrottle::MaybeCreateAndAdd(registry);
 
 #if !BUILDFLAG(IS_ANDROID)
   BackgroundContentsNavigationThrottle::MaybeCreateAndAdd(registry);
-  web_app::IsolatedWebAppThrottle::MaybeCreateAndAdd(registry);
   DevToolsNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -622,8 +570,6 @@ void CreateAndAddChromeThrottlesForNavigation(
 
   dom_distiller::DistillerReferrerThrottle::MaybeCreateAndAdd(registry);
 
-  glic::GlicNavigationThrottle::MaybeCreateAndAdd(registry);
-  glic::GlicGuestNavigationThrottle::MaybeCreateAndAdd(registry);
 
   pwc::PwcNavigationThrottle::MaybeCreateAndAdd(registry);
 }

@@ -5,14 +5,11 @@
 #include "chrome/browser/password_manager/actor_login/chrome_actor_login_delegate_client.h"
 
 #include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/password_manager/actor_login/actor_login_permission_cleaning_service_factory.h"
 #include "chrome/browser/password_manager/actor_login/actor_login_permission_service_factory.h"
 #include "chrome/browser/password_manager/actor_login/internal/actor_login_federated_credentials_fetcher.h"
 #include "chrome/browser/password_manager/actor_login/internal/actor_login_siwg_controller.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/common/buildflags.h"
 #include "components/password_manager/content/browser/content_password_manager_driver.h"
@@ -77,11 +74,6 @@ ukm::SourceId ChromeActorLoginDelegateClient::GetPageUkmSourceIdForMainFrame() {
 url::Origin
 ChromeActorLoginDelegateClient::GetLastCommittedOriginForMainFrame() {
   return GetWebContents().GetPrimaryMainFrame()->GetLastCommittedOrigin();
-}
-
-translate::TranslateManager*
-ChromeActorLoginDelegateClient::GetTranslateManager() {
-  return ChromeTranslateClient::GetManagerFromWebContents(&GetWebContents());
 }
 
 ActorLoginPermissionCleaningService*
@@ -155,23 +147,7 @@ bool ChromeActorLoginDelegateClient::IsTaskInFocus() {
     return false;
   }
 #endif
-  if (tab_interface->IsActivated()) {
-    return true;
-  }
-  glic::GlicKeyedService* glic_service =
-      glic::GlicKeyedService::Get(GetWebContents().GetBrowserContext());
-  CHECK(glic_service);
-
-  glic::GlicInstance* current_tab_instance =
-      glic_service->GetInstanceForTab(tab_interface);
-  glic::GlicInstance* active_tab_instance =
-      glic_service->GetInstanceForActiveTab(
-          tab_interface->GetBrowserWindowInterface());
-  if (current_tab_instance != active_tab_instance) {
-    return false;
-  }
-
-  return current_tab_instance->IsShowing();
+  return tab_interface->IsActivated();
 }
 
 bool ChromeActorLoginDelegateClient::SupportsFedCmEmbedderInitiatedLogin() {

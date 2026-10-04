@@ -1833,7 +1833,6 @@ component("platform") {
     "//components/language_detection/core",
     "//components/paint_preview/common",
     "//components/search_engines:search_engine_utils",
-    "//components/translate/core/language_detection",
     "//components/viz/client",
     "//components/viz/common",
     "//components/webrtc:net_address_utils",

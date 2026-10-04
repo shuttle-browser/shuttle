@@ -20,9 +20,6 @@ assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 group("resources") {
   public_deps = [
-    "contextual_tasks:resources",
-    "glic:resources",
-    "glic/experimental_opt_in:resources",
     "saved_tab_groups_unsupported:resources",
     "segmentation_internals:resources",
     "//components/enterprise/connectors/resources",
@@ -41,7 +38,6 @@ group("resources") {
   if (enable_extensions_core) {
     public_deps += [
       ":component_extension_resources",
-      "contextual_tasks/extension:resources",
       "omnibox/aim_eligibility_extension:resources",
     ]
   }
@@ -51,41 +47,23 @@ group("resources") {
       ":app_icon_resources",
       ":dev_ui_paks",
       "about_sys:resources",
-      "access_code_cast:resources",
       "actor_overlay:resources",
-      "app_service_internals:resources",
       "autofill_ml_internals:resources",
-      "bookmarks:resources",
       "certificate_manager:resources",
       "content_settings:resources",
-      "contextual_cueing/internals:resources",
-      "data_sharing:resources",
       "downloads:resources",
-      "drive_picker_host:resources",
-      "drive_picker_host/untrusted:resources",
-      "feedback:resources",
       "gaia_auth_host:resources",
-      "geic:resources",
-      "glic/selection_overlay:resources",
       "history:resources",
-      "indigo:resources",
       "inspect:resources",
-      "iwa_dev:resources",
       "key_value_pair_viewer_shared:resources",
-      "lens/overlay:resources",
-      "lens/shared:resources",
       "new_tab_footer:resources",
       "omnibox_everywhere:resources",
       "omnibox_popup:resources",
-      "organizer_panel:resources",
       "password_manager:resources",
       "profile_internals:resources",
-      "search_engine_choice:resources",
       "settings:resources",
       "settings_shared:resources",
-      "side_panel/bookmarks:resources",
       "side_panel/comments:resources",
-      "side_panel/commerce:resources",
       "side_panel/customize_chrome:resources",
       "side_panel/history:resources",
       "side_panel/history_clusters:resources",
@@ -96,20 +74,16 @@ group("resources") {
       "signin:resources",
       "support_tool:resources",
       "tab_group_home:resources",
-      "tab_search:resources",
-      "web_app_internals:resources",
       "webnn_internals:resources",
       "webui_browser:resources",
       "webui_gallery:resources",
       "webui_toolbar:resources",
       "webui_toolbar_shared:resources",
-      "whats_new:resources",
       "//components/browser_apis/tab_strip/resources",
     ]
     if (is_chrome_branded) {
       public_deps += [
         ":preinstalled_web_apps_resources",
-        "media_router/cast_feedback:resources",
       ]
     }
   }
@@ -143,20 +117,15 @@ group("resources") {
     public_deps += [
       "discards:resources",
       "management:resources",
-      "//chrome/browser/ttc/resources",
     ]
   }
 
   if (is_win || is_mac || is_linux || is_chromeos) {
-    public_deps += [ "skills:resources" ]
   }
 
   if (is_win || is_mac || is_linux) {
     public_deps += [
-      "app_home:resources",
-      "app_settings:resources",
       "browser_switch:resources",
-      "on_device_translation_internals:resources",
       "signin/history_sync_optin:resources",
       "updater:resources",
     ]
@@ -164,7 +133,6 @@ group("resources") {
 
   if (!is_android && !is_chromeos) {
     public_deps += [
-      "default_browser/default_browser_modal:resources",
       "signin/profile_picker:resources",
     ]
   }
@@ -172,7 +140,6 @@ group("resources") {
   if (is_win) {
     public_deps += [
       "conflicts:resources",
-      "default_browser/visual_guided_setter:resources",
       "inline_login:resources",
     ]
   }
@@ -184,7 +151,6 @@ group("resources") {
   if (enable_dice_support) {
     public_deps += [
       "feature_showcase:resources",
-      "intro:resources",
       "signin/signout_confirmation:resources",
     ]
   }
@@ -210,7 +176,6 @@ group("resources") {
   }
 
   if (enable_compose) {
-    public_deps += [ "compose:resources" ]
   }
 
   if (enterprise_watermark) {
@@ -225,7 +190,6 @@ group("resources") {
 if (enable_webui_generate_code_cache) {
   group("code_cache_resources") {
     public_deps = [
-      "side_panel/bookmarks:code_cache_resources",
       "side_panel/customize_chrome:code_cache_resources",
       "side_panel/reading_list:code_cache_resources",
       "side_panel/shared:code_cache_resources",
@@ -240,7 +204,6 @@ if (enable_extensions_core) {
     source = "component_extension_resources.grd"
 
     inputs = [
-      "glic/extension/manifest.json",
       "network_speech_synthesis/mv3/audio.html",
       "network_speech_synthesis/mv3/audio.js",
       "network_speech_synthesis/mv3/service_worker.js",
@@ -248,7 +211,6 @@ if (enable_extensions_core) {
       "network_speech_synthesis/tts_extension.js",
       "reading_mode_gdocs_helper/content.js",
       "reading_mode_gdocs_helper/gdocs_script.js",
-      "$root_gen_dir/chrome/browser/resources/glic/extension/tsc/background.js",
     ]
 
     if (is_chrome_branded || enable_hangout_services_extension) {
@@ -269,7 +231,7 @@ if (enable_extensions_core) {
 
     # Some resources within component_extension_resources.grd are generated at
     # build time so we include them as explicit dependencies here
-    deps = [ "//chrome/browser/resources/glic/extension:build_ts" ]
+    deps = []
 
     if (is_chromeos) {
       inputs += [
@@ -372,36 +334,6 @@ if (!is_android) {
     }
   }
 
-  if (is_chrome_branded) {
-    grit("preinstalled_web_apps_resources") {
-      source = "preinstalled_web_apps/resources.grd"
-      inputs = [
-        "preinstalled_web_apps/internal/gmail_192.png",
-        "preinstalled_web_apps/internal/google_chat_192.png",
-        "preinstalled_web_apps/internal/google_docs_192.png",
-        "preinstalled_web_apps/internal/google_drive_192.png",
-        "preinstalled_web_apps/internal/google_sheets_192.png",
-        "preinstalled_web_apps/internal/google_slides_192.png",
-        "preinstalled_web_apps/internal/youtube_192.png",
-      ]
-      if (is_chromeos) {
-        inputs += [
-          "preinstalled_web_apps/internal/gemini_192.png",
-          "preinstalled_web_apps/internal/google_calendar_192.png",
-          "preinstalled_web_apps/internal/notebook_lm_512.png",
-          "preinstalled_web_apps/internal/vids_192.png",
-        ]
-      }
-      defines = chrome_grit_defines
-      outputs = [
-        "grit/preinstalled_web_apps_resources.h",
-        "grit/preinstalled_web_apps_resources_map.cc",
-        "grit/preinstalled_web_apps_resources_map.h",
-        "preinstalled_web_apps_resources.pak",
-      ]
-      output_dir = "$root_gen_dir/chrome"
-    }
-  }
 }
 
 group("dev_ui_resources") {
@@ -411,7 +343,6 @@ group("dev_ui_resources") {
     "chrome_finds_internals:resources",
     "components:resources",
     "content_settings:resources",
-    "context_hub:resources",
     "device_log:resources",
     "engagement:resources",
     "family_link_user_internals:resources",
@@ -426,23 +357,18 @@ group("dev_ui_resources") {
     "usb_internals:resources",
     "//components/actor/core/internals/resources",
     "//components/autofill/core/browser/autofill_and_password_manager_internals:resources",
-    "//components/commerce/core/internals/resources",
-    "//components/data_sharing/data_sharing_internals/resources",
     "//components/download/resources/download_internals:resources",
     "//components/enterprise/connectors/resources",
     "//components/gcm_driver/resources",
     "//components/history_clusters/history_clusters_internals/resources",
     "//components/metrics/debug:resources",
     "//components/net_log/resources",
-    "//components/notebooks/internals/webui/resources",
     "//components/ntp_tiles/webui/resources",
     "//components/optimization_guide/optimization_guide_internals/resources",
     "//components/policy/resources/webui:resources",
-    "//components/private_ai/private_ai_internals/resources",
     "//components/resources:dev_ui_components_resources",
     "//components/signin/core/browser/resources",
     "//components/sync/service/resources",
-    "//components/translate/translate_internals:resources",
     "//components/ukm/debug:resources",
     "//components/webui/regional_capabilities_internals/resources",
     "//content/browser/resources/gpu:resources",
@@ -461,18 +387,14 @@ group("dev_ui_resources") {
 
   if (is_android) {
     public_deps += [
-      "//chrome/browser/resources/feed_internals:resources",
       "//chrome/browser/resources/notifications_internals:resources",
       "//chrome/browser/resources/webapks:resources",
     ]
   } else {
     public_deps += [
       "color_pipeline_internals:resources",
-      "indigo_internals:resources",
       "infobar_internals:resources",
-      "media_router/internals:resources",
       "multistep_filter_internals:resources",
-      "on_device_internals:resources",
       "page_action_internals:resources",
       "user_education_internals:resources",
       "webnn_internals:resources",
@@ -502,7 +424,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/chrome_finds_internals_resources.pak",
     "$root_gen_dir/chrome/components_resources.pak",
     "$root_gen_dir/chrome/content_settings_resources.pak",
-    "$root_gen_dir/chrome/context_hub_resources.pak",
     "$root_gen_dir/chrome/device_log_resources.pak",
     "$root_gen_dir/chrome/engagement_resources.pak",
     "$root_gen_dir/chrome/family_link_user_internals_resources.pak",
@@ -517,24 +438,19 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/usb_internals_resources.pak",
     "$root_gen_dir/components/actor_internals_resources.pak",
     "$root_gen_dir/components/autofill_and_password_manager_internals_resources.pak",
-    "$root_gen_dir/components/commerce_internals_resources.pak",
     "$root_gen_dir/components/connectors_internals_resources.pak",
-    "$root_gen_dir/components/data_sharing_internals_resources.pak",
     "$root_gen_dir/components/dev_ui_components_resources.pak",
     "$root_gen_dir/components/download_internals_resources.pak",
     "$root_gen_dir/components/gcm_internals_resources.pak",
     "$root_gen_dir/components/history_clusters_internals_resources.pak",
     "$root_gen_dir/components/metrics_internals_resources.pak",
     "$root_gen_dir/components/net_export_resources.pak",
-    "$root_gen_dir/components/notebooks_internals_resources.pak",
     "$root_gen_dir/components/ntp_tiles_internals_resources.pak",
     "$root_gen_dir/components/optimization_guide_internals_resources.pak",
     "$root_gen_dir/components/policy_resources.pak",
-    "$root_gen_dir/components/private_ai_internals_resources.pak",
     "$root_gen_dir/components/regional_capabilities_internals_resources.pak",
     "$root_gen_dir/components/signin_internals_resources.pak",
     "$root_gen_dir/components/sync_service_sync_internals_resources.pak",
-    "$root_gen_dir/components/translate_internals_resources.pak",
     "$root_gen_dir/components/ukm_resources.pak",
     "$root_gen_dir/content/browser/resources/media/media_internals_resources.pak",
     "$root_gen_dir/content/browser/webrtc/resources/webrtc_internals_resources.pak",
@@ -559,11 +475,8 @@ repack("dev_ui_paks") {
   } else {
     sources += [
       "$root_gen_dir/chrome/color_pipeline_internals_resources.pak",
-      "$root_gen_dir/chrome/indigo_internals_resources.pak",
       "$root_gen_dir/chrome/infobar_internals_resources.pak",
-      "$root_gen_dir/chrome/media_router_internals_resources.pak",
       "$root_gen_dir/chrome/multistep_filter_internals_resources.pak",
-      "$root_gen_dir/chrome/on_device_internals_resources.pak",
       "$root_gen_dir/chrome/page_action_internals_resources.pak",
       "$root_gen_dir/chrome/user_education_internals_resources.pak",
       "$root_gen_dir/chrome/webui_js_error_resources.pak",

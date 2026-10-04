@@ -12,7 +12,6 @@
 #include "components/browsing_data/core/history_notice_utils.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/prefs/pref_service.h"
-#include "components/webapps/browser/banners/app_banner_settings_helper.h"
 #include "extensions/buildflags/buildflags.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -32,11 +31,6 @@ void ProfileBasedBrowsingHistoryDriver::OnRemoveVisits(
     activity_log->RemoveURLs(expire_entry.urls);
   }
 #endif
-
-  for (const history::ExpireHistoryArgs& expire_entry : expire_list) {
-    webapps::AppBannerSettingsHelper::ClearHistoryForURLs(GetProfile(),
-                                                          expire_entry.urls);
-  }
 }
 
 bool ProfileBasedBrowsingHistoryDriver::AllowHistoryDeletions() {

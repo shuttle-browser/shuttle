@@ -34,26 +34,12 @@ bool OmniboxActionClientDelegator::OpenJourneys(const std::string& query) {
   return delegate_->OpenJourneys(query);
 }
 
-void OmniboxActionClientDelegator::OpenLensOverlay(
-    bool show,
-    lens::LensOverlayInvocationSource invocation_source) {
-  delegate_->OpenLensOverlay(show, invocation_source);
-}
-
 bool OmniboxActionClientDelegator::ShouldOpenCoBrowsePanel() const {
   return delegate_->ShouldOpenCoBrowsePanel();
 }
 
 void OmniboxActionClientDelegator::OpenCoBrowsePanel() {
   delegate_->OpenCoBrowsePanel();
-}
-
-void OmniboxActionClientDelegator::IssueContextualSearchRequest(
-    const GURL& destination_url,
-    AutocompleteMatchType::Type match_type,
-    bool is_zero_prefix_suggestion) {
-  delegate_->IssueContextualSearchRequest(destination_url, match_type,
-                                          is_zero_prefix_suggestion);
 }
 
 bool OmniboxActionClientDelegator::ShouldOpenComposeboxForAskG() const {

@@ -7,13 +7,8 @@
 
 #include <memory>
 
-#include "chrome/browser/apps/app_shim/app_shim_listener.h"
 #include "chrome/browser/browser_process_platform_part_base.h"
 #include "chrome/browser/mac/key_window_notifier.h"
-
-namespace apps {
-class AppShimManager;
-}  // namespace apps
 
 class BrowserProcessPlatformPart : public BrowserProcessPlatformPartBase {
  public:
@@ -31,17 +26,9 @@ class BrowserProcessPlatformPart : public BrowserProcessPlatformPartBase {
   void PreMainMessageLoopRun() override;
   void PostDestroyThreads() override;
 
-  AppShimListener* app_shim_listener();
-  apps::AppShimManager* app_shim_manager();
-
   KeyWindowNotifier& key_window_notifier() { return key_window_notifier_; }
 
  private:
-  std::unique_ptr<apps::AppShimManager> app_shim_manager_;
-
-  // Hosts the IPC channel factory that App Shims connect to on Mac.
-  scoped_refptr<AppShimListener> app_shim_listener_;
-
   KeyWindowNotifier key_window_notifier_;
 };
 

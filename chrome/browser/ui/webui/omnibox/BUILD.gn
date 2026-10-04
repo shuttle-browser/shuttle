@@ -44,7 +44,6 @@ source_set("mojom_traits") {
   public_deps = [
     ":mojo_bindings_shared_cpp_sources",
     "//base",
-    "//components/bookmarks/browser",
     "//components/omnibox/browser",
   ]
 }
@@ -71,7 +70,6 @@ source_set("omnibox") {
     "//base",
     "//chrome/browser/autocomplete",
     "//chrome/browser/bitmap_fetcher",
-    "//chrome/browser/bookmarks",
     "//chrome/browser/history",
     "//chrome/browser/omnibox",
     "//chrome/browser/profiles:profile",

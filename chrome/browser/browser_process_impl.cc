@@ -62,7 +62,6 @@
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/media/audio_process_ml_model_forwarder.h"
 #include "chrome/browser/media/chrome_media_session_client.h"
-#include "chrome/browser/media/router/providers/cast/dual_media_sink_service.h"
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager.h"
 #include "chrome/browser/media/webrtc/webrtc_log_uploader.h"
 #include "chrome/browser/metrics/chrome_feature_list_creator.h"
@@ -102,10 +101,6 @@
 #include "chrome/installer/util/google_update_settings.h"
 #include "components/activity_reporter/activity_reporter.h"
 #include "components/application_locale_storage/application_locale_storage.h"
-#include "components/breadcrumbs/core/application_breadcrumbs_logger.h"
-#include "components/breadcrumbs/core/breadcrumb_persistent_storage_util.h"
-#include "components/breadcrumbs/core/breadcrumbs_status.h"
-#include "components/breadcrumbs/core/crash_reporter_breadcrumb_observer.h"
 #include "components/component_updater/component_updater_service.h"
 #include "components/component_updater/timer_update_scheduler.h"
 #include "components/crash/core/common/crash_key.h"
@@ -134,7 +129,6 @@
 #include "components/subresource_filter/core/common/constants.h"
 #include "components/supervised_user/core/browser/device_parental_controls.h"
 #include "components/supervised_user/core/browser/device_parental_controls_noop_impl.h"
-#include "components/translate/core/browser/translate_download_manager.h"
 #include "components/ukm/ukm_service.h"
 #include "components/update_client/net/network_chromium.h"
 #include "components/update_client/update_query_params.h"
@@ -200,15 +194,12 @@ void OnLocalStatePrefsLoaded();
 }  // namespace chrome_browser_prefs
 #else
 #include "chrome/browser/devtools/devtools_auto_opener.h"
-#include "chrome/browser/error_reporting/chrome_js_error_report_processor.h"
 #include "chrome/browser/gcm/gcm_product_util.h"
 #include "chrome/browser/hid/hid_system_tray_icon.h"
 #include "chrome/browser/intranet_redirect_detector.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/resource_coordinator/tab_manager.h"
 #include "chrome/browser/usb/usb_system_tray_icon.h"
-#include "chrome/browser/web_applications/isolated_web_apps/runtime_init.h"
-#include "chrome/browser/webapps/webapps_client_desktop.h"
 #include "components/gcm_driver/gcm_client_factory.h"
 #include "components/gcm_driver/gcm_desktop_utils.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
@@ -231,8 +222,6 @@ void OnLocalStatePrefsLoaded();
 #endif
 
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "chrome/browser/apps/platform_apps/chrome_apps_browser_api_provider.h"
-#include "chrome/browser/ui/apps/chrome_app_window_client.h"
 #endif
 
 #if BUILDFLAG(ENABLE_PLUGINS)
@@ -265,7 +254,6 @@ void OnLocalStatePrefsLoaded();
 #include "components/crash/core/app/crashpad.h"
 #elif !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/hid/hid_status_icon.h"
-#include "chrome/browser/screen_ai/screen_ai_downloader_non_chromeos.h"
 #include "chrome/browser/usb/usb_status_icon.h"
 #include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
 #endif
@@ -416,11 +404,6 @@ void BrowserProcessImpl::Init() {
 
   extensions_browser_client_->Init();
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  extensions_browser_client_->AddAPIProvider(
-      std::make_unique<chrome_apps::ChromeAppsBrowserAPIProvider>());
-  extensions::AppWindowClient::Set(ChromeAppWindowClient::GetInstance());
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   extensions_browser_client_->AddAPIProvider(
       std::make_unique<
@@ -457,17 +440,6 @@ void BrowserProcessImpl::Init() {
 
   // Make sure media session client has been set.
   ChromeMediaSessionClient::GetInstance();
-
-  // Make sure webapps client has been set.
-#if BUILDFLAG(IS_ANDROID)
-  webapps::WebappsClientAndroid::CreateSingleton();
-#else
-  webapps::WebappsClientDesktop::CreateSingleton();
-#endif
-
-#if !BUILDFLAG(IS_ANDROID)
-  web_app::InitializeIsolatedWebAppRuntime(base::PassKey<BrowserProcessImpl>());
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
   KeepAliveRegistry::GetInstance()->SetIsShuttingDown(false);
@@ -584,9 +556,6 @@ BrowserProcessImpl::~BrowserProcessImpl() {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   extensions::ExtensionsBrowserClient::Set(nullptr);
 #endif
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  extensions::AppWindowClient::Set(nullptr);
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
   KeepAliveRegistry::GetInstance()->RemoveObserver(this);
@@ -680,11 +649,6 @@ void BrowserProcessImpl::StartTearDown() {
     profile_manager_.reset();
   }
 
-  if (media_router::DualMediaSinkService::HasInstance()) {
-    media_router::DualMediaSinkService::GetInstance()
-        ->StopObservingPrefChanges();
-  }
-
 #if BUILDFLAG(IS_CHROMEOS)
   // The `media_file_system_registry_` cannot be reset until the
   // `profile_manager_` has been.
@@ -738,10 +702,6 @@ void BrowserProcessImpl::StartTearDown() {
     component_updater_->Stop();
   }
 
-  // The ApplicationBreadcrumbsLogger logs a shutdown event via a task when it
-  // is destroyed, so it should be destroyed before the task scheduler is torn
-  // down.
-  application_breadcrumbs_logger_.reset();
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -1702,7 +1662,6 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
 #endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 #if !BUILDFLAG(IS_ANDROID)
-  ChromeJsErrorReportProcessor::Create();
   storage_monitor::StorageMonitor::Create();
 #endif
 
@@ -1729,29 +1688,9 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if !BUILDFLAG(IS_ANDROID)
-  screen_ai_download_ = screen_ai::ScreenAIInstallState::Create();
   speech_recognition_small_expert_model_installer_ =
       std::make_unique<speech::SpeechRecognitionSmallExpertModelInstaller>();
 #endif
-
-  base::FilePath user_data_dir;
-  bool result = base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir);
-  DCHECK(result);
-  if (breadcrumbs::MaybeEnableBasedOnChannel(local_state_.get(),
-                                             chrome::GetChannel())) {
-    // Start crash reporter listening for breadcrumb events. Collected
-    // breadcrumbs will be attached to crash reports.
-    breadcrumbs::CrashReporterBreadcrumbObserver::GetInstance();
-
-    application_breadcrumbs_logger_ =
-        std::make_unique<breadcrumbs::ApplicationBreadcrumbsLogger>(
-            user_data_dir, base::BindRepeating([] {
-              return ChromeMetricsServiceAccessor::
-                  IsMetricsAndCrashReportingEnabled();
-            }));
-  } else {
-    breadcrumbs::DeleteBreadcrumbFiles(user_data_dir);
-  }
 
   if (features_->audio_process_ml_model_forwarder()) {
     // TODO(crbug.com/454930933): Once the model provider is available from
@@ -1909,12 +1848,6 @@ void BrowserProcessImpl::OnLocaleChanged(const std::string& new_locale) {
   // TODO(crbug.com/406985310): The cache for IO thread should be integrated
   // into ApplicationLocaleStorage.
   ChromeContentBrowserClient::SetApplicationLocale(new_locale);
-
-  // TODO(crbug.com/406985310): Implement ApplicationLocaleStorage::Observer for
-  // TranslateDownloadManager, or refactor //components/translate so that it can
-  // directly depend on ApplicationLocaleStorage.
-  translate::TranslateDownloadManager::GetInstance()->set_application_locale(
-      new_locale);
 }
 
 void BrowserProcessImpl::Pin() {

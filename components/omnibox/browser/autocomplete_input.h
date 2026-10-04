@@ -12,7 +12,6 @@
 #include <string_view>
 #include <vector>
 
-#include "components/lens/proto/server/lens_overlay_response.pb.h"
 #include "components/omnibox/common/input_state.h"
 #include "components/search_engines/search_terms_data.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
@@ -347,26 +346,6 @@ class AutocompleteInput {
     return terms_prefixed_by_http_or_https_;
   }
 
-  const std::optional<lens::proto::LensOverlaySuggestInputs>&
-  lens_overlay_suggest_inputs() const {
-    return lens_overlay_suggest_inputs_;
-  }
-
-  void set_lens_overlay_suggest_inputs(
-      const lens::proto::LensOverlaySuggestInputs&
-          lens_overlay_suggest_inputs) {
-    lens_overlay_suggest_inputs_ = lens_overlay_suggest_inputs;
-  }
-
-  // Variant of the set_lens_overlay_suggest_inputs that doesn't make copies
-  // and is better aligned with the value returned by ComposeboxQueryController.
-  void set_lens_overlay_suggest_inputs(
-      std::unique_ptr<lens::proto::LensOverlaySuggestInputs>
-          lens_overlay_suggest_inputs) {
-    lens_overlay_suggest_inputs_.emplace(
-        std::move(*lens_overlay_suggest_inputs.release()));
-  }
-
   const omnibox::InputState& input_state() const { return input_state_; }
 
   void set_input_state(const omnibox::InputState& input_state) {
@@ -476,10 +455,6 @@ class AutocompleteInput {
   metrics::OmniboxFocusType focus_type_ =
       metrics::OmniboxFocusType::INTERACTION_DEFAULT;
   std::vector<std::u16string> terms_prefixed_by_http_or_https_;
-  // The lens overlay suggest inputs to be sent as query parameters in
-  // the suggest requests.
-  std::optional<lens::proto::LensOverlaySuggestInputs>
-      lens_overlay_suggest_inputs_;
   // Input state. This is specifically the primitive state, with regards to
   // the tools and models that may be selected.
   omnibox::InputState input_state_;

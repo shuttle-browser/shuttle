@@ -12,7 +12,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/side_panel_comments_resources.h"
 #include "chrome/grit/side_panel_comments_resources_map.h"
-#include "components/collaboration/public/features.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/webui/webui_util.h"
@@ -24,8 +23,8 @@ CommentsSidePanelUIConfig::CommentsSidePanelUIConfig()
 
 bool CommentsSidePanelUIConfig::IsWebUIEnabled(
     content::BrowserContext* browser_context) {
-  return base::FeatureList::IsEnabled(
-      collaboration::features::kCollaborationComments);
+  // Collaboration (tab group comments) is not part of this build.
+  return false;
 }
 
 std::optional<int> CommentsSidePanelUIConfig::GetCommandIdForTesting() {

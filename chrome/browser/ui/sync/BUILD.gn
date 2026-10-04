@@ -38,7 +38,6 @@ source_set("impl") {
   deps = [
     ":sync",
     "//base",
-    "//chrome/browser/complex_tasks",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/supervised_user",
     "//components/sessions",
@@ -51,7 +50,6 @@ source_set("impl") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 
   if (enable_extensions) {
-    deps += [ "//chrome/browser/apps/app_service" ]
   }
 
   if (!is_android) {
@@ -63,7 +61,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser/sync",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//components/bookmarks/browser",
       "//components/browser_sync",
       "//components/history/core/browser",
     ]
@@ -103,7 +100,6 @@ source_set("unit_tests") {
       "//chrome/browser:browser_process",
       "//chrome/browser/extensions:test_support",
       "//chrome/browser/prefs",
-      "//components/bookmarks/test",
       "//components/pref_registry",
       "//components/prefs:test_support",
       "//components/sync_preferences:test_support",

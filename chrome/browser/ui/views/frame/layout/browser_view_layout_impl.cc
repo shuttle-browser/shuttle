@@ -7,7 +7,6 @@
 #include "base/functional/bind.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
-#include "chrome/browser/ui/views/bookmarks/bookmark_bar_view.h"
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/layout/browser_view_layout_delegate.h"
 #include "chrome/browser/ui/views/frame/multi_contents_view.h"
@@ -287,9 +286,6 @@ void BrowserViewLayoutImpl::Layout(views::View* host) {
     // Here are the views which require adjustment (add/remove as necessary).
     if (views().toolbar && views().toolbar->GetVisible()) {
       apply_bottom_paint_allowance(views().toolbar);
-    }
-    if (views().bookmark_bar && views().bookmark_bar->GetVisible()) {
-      apply_bottom_paint_allowance(views().bookmark_bar);
     }
     apply_bottom_paint_allowance(views().top_container);
   }

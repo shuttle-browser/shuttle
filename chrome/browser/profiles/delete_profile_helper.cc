@@ -36,7 +36,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/web_applications/os_integration/web_app_shortcut.h"
 #include "chrome/common/pref_names.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -235,10 +234,6 @@ void DeleteProfileHelper::CleanUpEphemeralProfiles() {
             &NukeProfileFromDisk, profile_path,
             base::BindOnce(&ProfileCleanedUp,
                            base::FilePathToValue(profile_path.BaseName()))));
-    web_app::internals::GetShortcutIOTaskRunner()->PostTask(
-        FROM_HERE,
-        base::BindOnce(&web_app::internals::DeleteAllShortcutsForProfile,
-                       profile_path));
 
     storage.RemoveProfile(profile_path);
   }

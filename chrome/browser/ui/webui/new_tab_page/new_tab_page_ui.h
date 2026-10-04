@@ -71,16 +71,11 @@ class NavigationHandle;
 class WebUI;
 }  // namespace content
 
-namespace contextual_search {
-class ContextualSearchSessionHandle;
-}  // namespace contextual_search
-
 namespace page_image_service {
 class ImageServiceHandler;
 }  // namespace page_image_service
 
 class BrowserCommandHandler;
-class ComposeboxHandler;
 class CustomizeButtonsHandler;
 class DriveSuggestionHandler;
 #if !defined(OFFICIAL_BUILD)
@@ -247,13 +242,6 @@ class NewTabPageUI
   static scoped_refptr<base::RefCountedMemory> GetFaviconResourceBytes(
       ui::ResourceScaleFactor scale_factor);
 
-  // Lazily creates and returns a reference to the owned contextual search
-  // session handle for `realbox_handler_` and `composebox_handler_`.
-  contextual_search::ContextualSearchSessionHandle*
-  GetOrCreateContextualSessionHandle();
-
-  void ClearContextualSessionHandle();
-
  private:
   // new_tab_page::mojom::PageHandlerFactory:
   void CreatePageHandler(
@@ -329,10 +317,6 @@ class NewTabPageUI
   // The counter for NewTabPage.Count UMA metrics.
   static int instance_count_;
 
-  // Must outlive `realbox_handler_` and `composebox_handler_`.
-  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
-      shared_session_handle_;
-
   std::unique_ptr<NewTabPageHandler> page_handler_;
   mojo::Receiver<new_tab_page::mojom::PageHandlerFactory>
       page_factory_receiver_;
@@ -345,7 +329,6 @@ class NewTabPageUI
       most_visited_page_factory_receiver_;
   mojo::Receiver<composebox::mojom::PageHandlerFactory>
       composebox_page_factory_receiver_;
-  std::unique_ptr<ComposeboxHandler> composebox_handler_;
 #if BUILDFLAG(IS_ANDROID)
   std::unique_ptr<composebox::mojom::PageHandler>
       android_stub_composebox_handler_;

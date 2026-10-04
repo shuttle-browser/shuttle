@@ -20,9 +20,6 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
-#include "chrome/browser/apps/app_service/app_service_proxy.h"
-#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/download/bubble/download_bubble_ui_controller.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/file_system_access/file_system_access_features.h"
@@ -42,7 +39,6 @@
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/user_education/show_promo_in_page.h"
-#include "chrome/browser/ui/webui/bookmarks/bookmarks_ui.h"
 #include "chrome/browser/ui/webui/settings/site_settings_helper.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
 #include "chrome/browser/user_education/user_education_service.h"
@@ -52,10 +48,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/autofill/core/common/autofill_features.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/browser/bookmark_node.h"
-#include "components/commerce/core/commerce_constants.h"
-#include "components/data_sharing/public/features.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/safe_browsing/core/common/safe_browsing_settings_metrics.h"
@@ -86,10 +78,8 @@
 #if !BUILDFLAG(IS_ANDROID)
 #include "base/metrics/histogram_functions.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif  //! BUILDFLAG(IS_ANDROID)
 
 using base::UserMetricsAction;
@@ -115,13 +105,6 @@ void ShowSingletonTabIgnorePathOverwriteNTP(BrowserWindowInterface* browser,
                                  NavigateParams::IGNORE_AND_NAVIGATE);
 }
 
-void OpenBookmarkManagerForNode(BrowserWindowInterface* browser,
-                                int64_t node_id) {
-  GURL url = GURL(kChromeUIBookmarksURL)
-                 .Resolve(base::StringPrintf(
-                     "/?id=%s", base::NumberToString(node_id).c_str()));
-  ShowSingletonTabIgnorePathOverwriteNTP(browser, url);
-}
 
 #if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
 void LaunchReleaseNotesImpl(Profile* profile, apps::LaunchSource source) {
@@ -256,13 +239,7 @@ bool SiteGURLIsValid(const GURL& url) {
   // TODO(crbug.com/40399136): Site Details should work with file:// urls
   // when this bug is fixed, so add it to the allowlist when that happens.
   return !site_origin.opaque() && (url.SchemeIsHTTPOrHTTPS() ||
-                                   url.SchemeIs(extensions::kExtensionScheme)
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-                                   || url.SchemeIs(webapps::kIsolatedAppScheme)
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS)
-                                  );
+                                   url.SchemeIs(extensions::kExtensionScheme));
 }
 
 void ShowSiteSettingsImpl(BrowserWindowInterface* browser,
@@ -273,9 +250,7 @@ void ShowSiteSettingsImpl(BrowserWindowInterface* browser,
   constexpr char kParamRequest[] = "site";
   GURL link_destination = GetSettingsUrl(chrome::kContentSettingsSubPage);
   if (SiteGURLIsValid(url)) {
-    std::string url_string = url.SchemeIs(webapps::kIsolatedAppScheme)
-                                 ? url.spec()
-                                 : url::Origin::Create(url).Serialize();
+    std::string url_string = url::Origin::Create(url).Serialize();
     link_destination = net::AppendQueryParameter(
         GetSettingsUrl(chrome::kSiteDetailsSubpage), kParamRequest, url_string);
   }
@@ -322,16 +297,6 @@ BrowserWindowInterface* GetOrCreateBrowserForProfile(Profile* profile) {
 
 }  // namespace
 
-void ShowBookmarkManager(BrowserWindowInterface* browser) {
-  base::RecordAction(UserMetricsAction("ShowBookmarkManager"));
-  ShowSingletonTabIgnorePathOverwriteNTP(browser, GURL(kChromeUIBookmarksURL));
-}
-
-void ShowBookmarkManagerForNode(BrowserWindowInterface* browser,
-                                int64_t node_id) {
-  base::RecordAction(UserMetricsAction("ShowBookmarkManager"));
-  OpenBookmarkManagerForNode(browser, node_id);
-}
 
 void ShowHistory(BrowserWindowInterface* browser,
                  const std::string& host_name) {
@@ -696,42 +661,5 @@ void ShowEnterpriseManagementPageInTabbedBrowser(
   ShowSingletonTabIgnorePathOverwriteNTP(browser, GURL(kChromeUIManagementURL));
 }
 
-void ShowSharedTabGroupActivity(Profile* profile) {
-  auto* browser = GetOrCreateBrowserForProfile(profile);
-  ShowSingletonTab(browser,
-                   GURL(data_sharing::features::kActivityLogsURL.Get()));
-}
-
-#if !BUILDFLAG(IS_ANDROID)
-void ShowWebAppSettingsImpl(BrowserWindowInterface* browser,
-                            Profile* profile,
-                            const std::string& app_id,
-                            web_app::AppSettingsPageEntryPoint entry_point) {
-  base::UmaHistogramEnumeration(
-      web_app::kAppSettingsPageEntryPointsHistogramName, entry_point);
-#if BUILDFLAG(IS_CHROMEOS)
-  chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
-      profile, ash::SettingsAppManager::CreateAppManagementPagePath(app_id));
-#else
-  const GURL link_destination(chrome::kChromeUIWebAppSettingsURL + app_id);
-  NavigateParams params(profile, link_destination, ui::PAGE_TRANSITION_TYPED);
-  params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
-  params.browser = browser;
-  Navigate(&params);
-#endif  // BUILDFLAG(IS_CHROMEOS)
-}
-
-void ShowWebAppSettings(BrowserWindowInterface* browser,
-                        const std::string& app_id,
-                        web_app::AppSettingsPageEntryPoint entry_point) {
-  ShowWebAppSettingsImpl(browser, browser->GetProfile(), app_id, entry_point);
-}
-
-void ShowWebAppSettings(Profile* profile,
-                        const std::string& app_id,
-                        web_app::AppSettingsPageEntryPoint entry_point) {
-  ShowWebAppSettingsImpl(/*browser=*/nullptr, profile, app_id, entry_point);
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 }  // namespace chrome

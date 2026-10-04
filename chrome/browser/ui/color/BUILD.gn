@@ -113,7 +113,6 @@ if (!is_android) {
       ]
 
       deps += [
-        "//chrome/app_shim",
         "//components/upload_list",
       ]
     }

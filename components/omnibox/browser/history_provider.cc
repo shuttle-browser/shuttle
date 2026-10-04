@@ -7,7 +7,6 @@
 #include <string>
 
 #include "base/strings/string_util.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
@@ -51,15 +50,12 @@ HistoryProvider::~HistoryProvider() = default;
 
 void HistoryProvider::DeleteMatchFromMatches(const AutocompleteMatch& match) {
   bool found = false;
-  bookmarks::BookmarkModel* bookmark_model = client_->GetBookmarkModel();
   for (auto i(matches_.begin()); i != matches_.end(); ++i) {
     if (i->destination_url == match.destination_url && i->type == match.type) {
       found = true;
-      if ((i->type == AutocompleteMatchType::URL_WHAT_YOU_TYPED) ||
-          (bookmark_model &&
-           bookmark_model->IsBookmarked(i->destination_url))) {
-        // We can't get rid of What-You-Typed or Bookmarked matches,
-        // but we can make them look like they have no backing data.
+      if (i->type == AutocompleteMatchType::URL_WHAT_YOU_TYPED) {
+        // We can't get rid of What-You-Typed matches, but we can make them
+        // look like they have no backing data.
         i->deletable = false;
         i->description.clear();
         i->description_class.clear();

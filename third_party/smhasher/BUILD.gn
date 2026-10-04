@@ -15,8 +15,6 @@ static_library("murmurhash2") {
     "//chrome/browser/android/webapk:webapk_sources",
     "//chrome/browser/ash/apps/webapk",
     "//components/language_detection/core:internals",
-    "//components/translate/core/language_detection",
-    "//components/webapps/browser",
   ]
 }
 

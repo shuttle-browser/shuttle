@@ -1,1 +1,0 @@
-UIs related to the desktop-to-mobile promos. These are promo bubbles presented on desktop that promote feature usage on mobile devices.

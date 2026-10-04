@@ -24,7 +24,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-#include "components/webapps/isolated_web_apps/scheme.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
 #if !BUILDFLAG(IS_ANDROID)
@@ -612,8 +611,7 @@ bool PictureInPictureWindowManager::IsSupportedForDocumentPictureInPicture(
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
   return url.SchemeIs(url::kHttpsScheme) || url.SchemeIsFile() ||
-         net::IsLocalhost(url) || url.SchemeIs(content::kChromeUIScheme) ||
-         url.SchemeIs(webapps::kIsolatedAppScheme);
+         net::IsLocalhost(url) || url.SchemeIs(content::kChromeUIScheme);
 #else
   return false;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||

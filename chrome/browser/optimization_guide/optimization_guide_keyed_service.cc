@@ -95,11 +95,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_tab_url_provider.h"
 #endif
 
-#include "chrome/browser/private_ai/private_ai_service_factory.h"
-#include "components/optimization_guide/core/model_execution/private_ai_model_execution_fetcher.h"
-#include "components/private_ai/client.h"    // nogncheck
-#include "components/private_ai/features.h"  // nogncheck
-#include "components/private_ai/private_ai_service.h"
 
 namespace {
 
@@ -134,39 +129,6 @@ Profile* GetProfileForOTROptimizationGuide(Profile* profile) {
   }
   return profile->GetOriginalProfile();
 }
-
-class FetcherDelegate : public ModelExecutionManager::Delegate {
- public:
-  ~FetcherDelegate() override = default;
-
-  // Takes a BrowserContext instead of a private_ai::Client directly to avoid a
-  // dangling pointer. The KeyedService dependency (DependsOn) ensures that
-  // the PrivateAiService outlives this service during normal shutdown. However,
-  // in tests, the PrivateAiService can be replaced with a test factory after
-  // this service has been created, immediately destroying the original
-  // PrivateAiService and its Client. Holding a BrowserContext allows for
-  // fetching the correct, current PrivateAiService instance at execution time.
-  explicit FetcherDelegate(content::BrowserContext* browser_context)
-      : browser_context_(browser_context) {
-    CHECK(browser_context_);
-  }
-
-  std::unique_ptr<optimization_guide::ModelExecutionFetcher>
-  CreatePrivateAiFetcher() override {
-    private_ai::PrivateAiService* private_ai_service =
-        private_ai::PrivateAiServiceFactory::GetForProfile(
-            Profile::FromBrowserContext(browser_context_));
-    if (!private_ai_service) {
-      return nullptr;
-    }
-    private_ai::Client* client = private_ai_service->GetClient();
-    return std::make_unique<optimization_guide::PrivateAiModelExecutionFetcher>(
-        client);
-  }
-
- private:
-  raw_ptr<content::BrowserContext> browser_context_;
-};
 
 ModelExecutionFeaturesController::SettingsVisibilityResult
 ShouldHideHistorySearch(PrefService* local_state) {
@@ -393,15 +355,9 @@ void OptimizationGuideKeyedService::InitializeModelExecution(Profile* profile) {
         "HistorySearch");
   }
 
-  std::unique_ptr<ModelExecutionManager::Delegate> delegate;
-
-  if (base::FeatureList::IsEnabled(private_ai::kPrivateAi)) {
-    delegate = std::make_unique<FetcherDelegate>(browser_context_);
-  }
-
   model_execution_manager_ = std::make_unique<ModelExecutionManager>(
       url_loader_factory, IdentityManagerFactory::GetForProfile(profile),
-      std::move(delegate), optimization_guide_logger_.get(),
+      /*delegate=*/nullptr, optimization_guide_logger_.get(),
       model_quality_logs_uploader_service_
           ? model_quality_logs_uploader_service_->GetWeakPtr()
           : nullptr);

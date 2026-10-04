@@ -8,11 +8,9 @@
 #include <string>
 
 #include "base/check.h"
-#include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/qr_code_generator/bitmap_generator.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
@@ -48,23 +46,8 @@ AuthenticatorQrCenteredView::AuthenticatorQrCenteredView(
   qr_code_image_->GetViewAccessibility().SetName(
       l10n_util::GetStringUTF16(IDS_WEBAUTHN_QR_CODE_ALT_TEXT));
 
-  // TODO(https://crbug.com/325664342): Audit if `QuietZone::kIncluded`
-  // can/should be used instead (this may require testing if the different
-  // image size works well with surrounding UI elements).  Note that the
-  // absence of a quiet zone may interfere with decoding of QR codes even for
-  // small codes (for examples see #comment8, #comment9 and #comment6 in the
-  // bug).
-  auto qr_code = qr_code_generator::GenerateImage(
-      base::as_byte_span(qr_string), qr_code_generator::ModuleStyle::kCircles,
-      qr_code_generator::LocatorStyle::kRounded,
-      qr_code_generator::CenterImage::kPasskey,
-      qr_code_generator::QuietZone::kWillBeAddedByClient);
-
-  // Success is guaranteed, because `qr_string`'s size is bounded and smaller
-  // than QR code limits.
-  CHECK(qr_code.has_value());
-
-  qr_code_image_->SetImage(ui::ImageModel::FromImageSkia(qr_code.value()));
+  // QR code rendering is unavailable: components/qr_code_generator was removed
+  // from this build, so the image is left empty.
   qr_code_image_->SetVisible(true);
 }
 

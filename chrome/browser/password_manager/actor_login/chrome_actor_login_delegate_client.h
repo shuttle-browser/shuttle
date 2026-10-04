@@ -22,10 +22,6 @@ class Page;
 class WebContents;
 }  // namespace content
 
-namespace translate {
-class TranslateManager;
-}
-
 namespace actor_login {
 
 // Chrome-specific implementation of `ActorLoginDelegateClient`.
@@ -54,7 +50,6 @@ class ChromeActorLoginDelegateClient
   GetPasswordManagerDriverForMainFrame() override;
   ukm::SourceId GetPageUkmSourceIdForMainFrame() override;
   url::Origin GetLastCommittedOriginForMainFrame() override;
-  translate::TranslateManager* GetTranslateManager() override;
   ActorLoginPermissionCleaningService* GetPermissionCleaningService() override;
   std::unique_ptr<ActorLoginCredentialsFetcher>
   CreateFederatedCredentialsFetcher(

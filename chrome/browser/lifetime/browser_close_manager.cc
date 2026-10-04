@@ -13,7 +13,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "build/build_config.h"
 #include "chrome/browser/background/extensions/background_mode_manager.h"
-#include "chrome/browser/background/glic/glic_background_mode_manager.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
@@ -201,12 +200,6 @@ void BrowserCloseManager::CloseBrowsers() {
     }
   }
 #endif
-
-  auto* glic_background_mode_manager =
-      glic::GlicBackgroundModeManager::GetInstance();
-  if (glic_background_mode_manager) {
-    glic_background_mode_manager->ExitBackgroundMode();
-  }
 
   ForEachCurrentAndNewBrowserWindowInterfaceOrderedByActivation(
       [](BrowserWindowInterface* browser_window) {

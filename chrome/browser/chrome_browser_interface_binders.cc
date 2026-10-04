@@ -15,10 +15,6 @@
 #include "chrome/browser/actor/actor_script_tool_receiver.h"
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/dom_distiller/dom_distiller_service_factory.h"
-#include "chrome/browser/geic/geic_host.h"
-#include "chrome/browser/glic/host/glic_page_handler.h"
-#include "chrome/browser/glic/host/guest_util.h"
-#include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
@@ -33,7 +29,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/speech/on_device_speech_recognition_impl.h"
 #include "chrome/browser/ssl/chrome_security_state_util.h"
-#include "chrome/browser/translate/translate_frame_binder.h"
 #include "chrome/browser/ui/search_engines/search_engine_tab_helper.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/pref_names.h"
@@ -58,7 +53,6 @@
 #include "components/security_state/core/security_state.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
-#include "components/translate/content/common/translate.mojom.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -90,9 +84,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/screen_ai/screen_ai_service_router.h"
-#include "chrome/browser/screen_ai/screen_ai_service_router_factory.h"
-#include "chrome/browser/web_applications/sub_apps/sub_apps_service_impl.h"
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -104,12 +95,7 @@
 #include "third_party/blink/public/mojom/digital_goods/digital_goods.mojom.h"
 #include "third_party/blink/public/mojom/installedapp/installed_app_provider.mojom.h"
 #else
-#include "chrome/browser/badging/badge_manager.h"
-#include "chrome/browser/geic/geic.mojom.h"
-#include "chrome/browser/geic/geic_pwc_manager.h"
-#include "chrome/browser/payments/payment_request_factory.h"
 #include "chrome/browser/prefs/persistent_renderer_prefs_manager.h"
-#include "chrome/browser/web_applications/web_install_service_impl.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -320,13 +306,15 @@ void BindSpeechRecognitionContextHandler(
 
   // Bind via the appropriate factory.
 #if BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
-  auto* factory = SpeechRecognitionServiceFactory::GetForProfile(profile);
+  SpeechRecognitionServiceFactory::GetForProfile(profile)
+      ->BindSpeechRecognitionContext(std::move(receiver));
 #elif BUILDFLAG(IS_CHROMEOS)
-  auto* factory = CrosSpeechRecognitionServiceFactory::GetForProfile(profile);
+  CrosSpeechRecognitionServiceFactory::GetForProfile(profile)
+      ->BindSpeechRecognitionContext(std::move(receiver));
 #else
-#error "No speech recognition service factory on this platform."
+  // Agent Chrome builds with enable_browser_speech_service=false: there is no
+  // speech recognition service, so the receiver is dropped.
 #endif
-  factory->BindSpeechRecognitionContext(std::move(receiver));
 }
 
 void BindSpeechRecognitionClientBrowserInterfaceHandler(
@@ -392,28 +380,6 @@ void BindMediaFoundationPreferences(
 }
 #endif  // BUILDFLAG(IS_WIN)
 
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
-void BindScreenAIAnnotator(
-    content::RenderFrameHost* frame_host,
-    mojo::PendingReceiver<screen_ai::mojom::ScreenAIAnnotator> receiver) {
-  content::BrowserContext* browser_context =
-      frame_host->GetProcess()->GetBrowserContext();
-
-  screen_ai::ScreenAIServiceRouterFactory::GetForBrowserContext(browser_context)
-      ->BindScreenAIAnnotator(std::move(receiver));
-}
-
-void BindScreen2xMainContentExtractor(
-    content::RenderFrameHost* frame_host,
-    mojo::PendingReceiver<screen_ai::mojom::Screen2xMainContentExtractor>
-        receiver) {
-  screen_ai::ScreenAIServiceRouterFactory::GetForBrowserContext(
-      frame_host->GetProcess()->GetBrowserContext())
-      ->BindMainContentExtractor(std::move(receiver));
-}
-#endif
-
 void BindModelBroker(
     content::RenderFrameHost* frame_host,
     mojo::PendingReceiver<optimization_guide::mojom::ModelBroker> receiver) {
@@ -457,14 +423,12 @@ void BindCredentialManager(
 void PopulateChromeFrameBinders(
     mojo::BinderMapWithContext<content::RenderFrameHost*>* map,
     content::RenderFrameHost* render_frame_host) {
-  map->Add<glic::mojom::WebClientHandler>(&glic::BindGlicWebClientHandler);
   // Defense in depth: privileged capability interfaces are not even registered
   // for a frame outside a privileged process, so a non-PWC frame cannot
   // request them at all. The bind-time gate (pwc::EnforceCapabilityGate)
   // remains the security boundary for frames that do get the binders.
   if (render_frame_host->GetProcess()->IsPrivileged()) {
     map->Add<pwc::mojom::PrivilegedBridge>(&pwc::BindPrivilegedBridge);
-    map->Add<geic::mojom::GeicApi>(&geic::BindGeicApi);
   }
   map->Add<image_annotation::mojom::Annotator>(&BindImageAnnotator);
 
@@ -494,9 +458,6 @@ void PopulateChromeFrameBinders(
   if (pm_registry) {
     pm_registry->GetBinders().ExposeInterfacesToRenderFrame(map);
   }
-
-  map->Add<translate::mojom::ContentTranslateDriver>(
-      &translate::BindContentTranslateDriver);
 
   map->Add<optimization_guide::mojom::ModelBroker>(&BindModelBroker);
 
@@ -528,20 +489,8 @@ void PopulateChromeFrameBinders(
 #endif  // BUILDFLAG(ENABLE_UNHANDLED_TAP)
 
 #else
-  map->Add<geic::mojom::GeicBrowserHost>(&geic::BindGeicBrowserHost);
-  map->Add<blink::mojom::BadgeService>(
-      &badging::BadgeManager::BindFrameReceiverIfAllowed);
   map->Add<blink::mojom::PersistentRendererPrefsService>(
       &PersistentRendererPrefsManager::BindFrameReceiver);
-  if (base::FeatureList::IsEnabled(features::kWebPayments)) {
-    map->Add<payments::mojom::PaymentRequest>(&payments::CreatePaymentRequest);
-  }
-  if ((base::FeatureList::IsEnabled(blink::features::kWebAppInstallation) ||
-       base::FeatureList::IsEnabled(blink::features::kInstallElement)) &&
-      !render_frame_host->GetParentOrOuterDocument()) {
-    map->Add<blink::mojom::WebInstallService>(
-        &web_app::WebInstallServiceImpl::CreateIfAllowed);
-  }
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -574,23 +523,6 @@ void PopulateChromeFrameBinders(
       &BindMediaFoundationRendererNotifierHandler);
 #endif
 #endif  // BUILDFLAG(ENABLE_SPEECH_SERVICE)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(blink::features::kSubApps) &&
-      !render_frame_host->GetParentOrOuterDocument()) {
-    // The service binder will reject non-primary main frames, but we still need
-    // to register it for them because a non-primary main frame could become a
-    // primary main frame at a later time (eg. a prerendered page).
-    map->Add<blink::mojom::SubAppsService>(
-        &web_app::SubAppsServiceImpl::CreateIfAllowed);
-  }
-
-  map->Add<screen_ai::mojom::ScreenAIAnnotator>(&BindScreenAIAnnotator);
-
-  map->Add<screen_ai::mojom::Screen2xMainContentExtractor>(
-      &BindScreen2xMainContentExtractor);
-#endif
 
 #if BUILDFLAG(IS_WIN)
   map->Add<media::mojom::MediaFoundationPreferences>(

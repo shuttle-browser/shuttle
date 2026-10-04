@@ -20,10 +20,8 @@
 #include "chrome/browser/ui/views/toolbar/webui_app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_avatar_toolbar_button.h"
 #include "chrome/browser/ui/views/toolbar/webui_back_forward_control.h"
-#include "chrome/browser/ui/views/toolbar/webui_battery_saver_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_home_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_overflow_button.h"
-#include "chrome/browser/ui/views/toolbar/webui_performance_intervention_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/webui_reload_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_split_tabs_control.h"
@@ -46,7 +44,6 @@
 
 class BrowserWindowInterface;
 class ExtensionsContainerViews;
-class MediaToolbarButton;
 class WebUILocationBar;
 class WebUIOverflowButton;
 class WebUIToolbarUI;
@@ -167,7 +164,6 @@ class WebUIToolbarWebView
     return &pinned_toolbar_actions_;
   }
   AvatarToolbarButtonInterface* GetAvatarToolbarButtonInterface();
-  MediaToolbarButton* GetMediaToolbarButton();
   WebUIAppMenuControl* GetAppMenuControl() { return &app_menu_control_; }
   ExtensionsContainerViews* extensions_container_views();
   const WebUIAppMenuControl* GetAppMenuControl() const {
@@ -366,10 +362,6 @@ class WebUIToolbarWebView
   void SetDidFirstNonEmptyPaintCallbackForTesting(base::OnceClosure callback);
   void SetTickClockForTesting(const base::TickClock* clock);
   views::WebView* GetWebViewForTesting();
-  WebUIPerformanceInterventionControl*
-  GetPerformanceInterventionControlForTesting() {
-    return &performance_intervention_control_;
-  }
   bool IsPendingForTesting() const {
     return initialization_state_ == InitializationState::kPending;
   }
@@ -610,9 +602,7 @@ class WebUIToolbarWebView
   WebUIReloadControl reload_control_;
   WebUISplitTabsControl split_tabs_control_;
   WebUIHomeControl home_control_;
-  WebUIPerformanceInterventionControl performance_intervention_control_;
   WebUIAppMenuControl app_menu_control_;
-  WebUIBatterySaverControl battery_saver_control_;
   WebUIAvatarToolbarButton avatar_control_;
   // This is null if WebUILocationBar is off, or the window is in one of the
   // modes (e.g. popup) that don't use it yet.

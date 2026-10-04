@@ -58,7 +58,6 @@ source_set("impl") {
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/interaction",
     "//chrome/browser/ui/location_bar",
-    "//chrome/browser/ui/performance_controls",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/tabs:favicon_theming",
     "//chrome/browser/ui/tabs:tab_menu",
@@ -104,6 +103,7 @@ source_set("browser_tests") {
 
   deps = [
     ":tab",
+    "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/media/webrtc:webrtc_browser_tests_base",
     "//chrome/browser/ui/views/tabs:tab",
     "//chrome/test:test_support",

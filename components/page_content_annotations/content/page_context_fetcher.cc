@@ -37,7 +37,6 @@
 #include "base/types/expected_macros.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "components/content_extraction/content/browser/inner_text.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/content/browser/page_content_proto_util.h"
 #include "components/optimization_guide/core/page_content_proto_serializer.h"
@@ -418,20 +417,6 @@ void PageContextFetcher::FetchStart(content::WebContents& aweb_contents,
     GetTabScreenshot(*web_contents(), options.screenshot_options.value());
   } else {
     screenshot_done_ = true;
-  }
-
-  inner_text_bytes_limit_ = options.inner_text_bytes_limit;
-  if (options.inner_text_bytes_limit > 0) {
-    content::RenderFrameHost* frame = web_contents()->GetPrimaryMainFrame();
-    // This could be more efficient if GetInnerText
-    // supported a max length. Instead, we truncate after generating the full
-    // text.
-    GetInnerText(
-        *frame,
-        /*node_id=*/std::nullopt,
-        base::BindOnce(&PageContextFetcher::ReceivedInnerText, GetWeakPtr()));
-  } else {
-    inner_text_done_ = true;
   }
 
   pdf_done_ = true;  // Will not fetch PDF contents by default.
@@ -940,21 +925,6 @@ void PageContextFetcher::ReceivedEncodedScreenshot(
   RunCallbackIfComplete();
 }
 
-void PageContextFetcher::ReceivedInnerText(
-    std::unique_ptr<content_extraction::InnerTextResult> result) {
-  // Get trimmed text without copying.
-  std::string trimmed_text = std::move(result->inner_text);
-  bool truncated =
-      TruncateUTF8ToByteLimit(trimmed_text, inner_text_bytes_limit_);
-
-  pending_result_->inner_text_result.emplace(
-      std::move(trimmed_text), std::move(result->node_offset), truncated);
-  inner_text_done_ = true;
-  base::UmaHistogramTimes("Glic.PageContextFetcher.GetInnerText",
-                          elapsed_timer_.Elapsed());
-  RunCallbackIfComplete();
-}
-
 void PageContextFetcher::ReceivedAnnotatedPageContent(
     optimization_guide::AIPageContentResultOrError content) {
   const bool has_result = content.has_value();
@@ -993,8 +963,8 @@ void PageContextFetcher::RunCallbackIfComplete() {
   }
 
   // Continue only if the primary page changed or work is complete.
-  bool work_complete = (screenshot_done_ && inner_text_done_ &&
-                        annotated_page_content_done_ && pdf_done_) ||
+  bool work_complete = (screenshot_done_ && annotated_page_content_done_ &&
+                        pdf_done_) ||
                        primary_page_changed_;
   if (!work_complete) {
     return;
@@ -1239,15 +1209,6 @@ ScreenshotResult::ScreenshotResult(ScreenshotResult&&) = default;
 ScreenshotResult& ScreenshotResult::operator=(ScreenshotResult&&) = default;
 
 ScreenshotResult::~ScreenshotResult() = default;
-
-InnerTextResultWithTruncation::InnerTextResultWithTruncation(
-    std::string inner_text,
-    std::optional<unsigned> node_offset,
-    bool truncated)
-    : InnerTextResult(std::move(inner_text), node_offset),
-      truncated(truncated) {}
-
-InnerTextResultWithTruncation::~InnerTextResultWithTruncation() = default;
 
 PageContentResultWithEndTime::PageContentResultWithEndTime(
     optimization_guide::AIPageContentResult&& result)

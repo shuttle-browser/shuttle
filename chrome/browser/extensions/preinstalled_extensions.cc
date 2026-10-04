@@ -27,26 +27,12 @@
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_urls.h"
-#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
-
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "chrome/browser/web_applications/preinstalled_app_install_features.h"
-#include "chrome/browser/web_applications/preinstalled_web_app_utils.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
 namespace {
 
 using extensions::mojom::ManifestLocation;
-
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-// Returns true if the app was a pre-installed app in Chrome 22
-bool IsOldPreinstalledApp(const std::string& extension_id) {
-  return extension_id == extension_misc::kGmailAppId ||
-         extension_id == extension_misc::kYoutubeAppId;
-}
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 bool IsLocaleSupported() {
   // Don't bother installing pre-installed apps in locales where it is known
@@ -209,70 +195,12 @@ void Provider::SetPrefs(base::DictValue prefs) {
   }
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // First, check if this is for a migration from around 2013. Likely not.
-  if (is_migration_) {
-    DCHECK(!perform_new_installation_);
-    absl::flat_hash_set<std::string> keys_to_erase;
-    // Filter out the new pre-installed apps for migrating users, so that we
-    // don't randomly install them out of the blue. Two-pass to keep iterators
-    // nice and happy.
-    for (auto entry : prefs) {
-      if (!IsOldPreinstalledApp(entry.first)) {
-        keys_to_erase.insert(entry.first);
-      }
-    }
-    for (const auto& key : keys_to_erase) {
-      prefs.Remove(key);
-    }
-  }
-
-  // Next, the more fun case. It's possible that these apps were uninstalled
-  // as part of the web app migration. But, the web app migration could have
-  // been rolled back. If that happened, we need to reinstall the extension
-  // apps.
+  // Without a new installation, the only apps installed here used to be those
+  // re-added after a rolled-back web app migration. Web apps are removed, so
+  // there is nothing to install.
   if (!perform_new_installation_) {
-    auto should_re_add_app = [profile = profile_](const std::string& id,
-                                                  const base::Value& pref) {
-      if (!pref.is_dict()) {
-        return false;  // Invalid entry; it'll be ignored later.
-      }
-      const std::string* web_app_flag =
-          pref.GetDict().FindString(kWebAppMigrationFlag);
-      if (!web_app_flag) {
-        return false;  // Isn't migrating.
-      }
-      if (web_app::IsPreinstalledAppInstallFeatureEnabled(*web_app_flag)) {
-        // The feature is still enabled; it's responsible for the behavior.
-        return false;
-      }
-      if (!web_app::WasAppMigratedToWebApp(profile, id)) {
-        // The web app was not previously migrated to a web app; don't do
-        // anything special for it.
-        return false;
-      }
-
-      // The edge case! We found an app that was migrated to a web app, but now
-      // the feature is disabled. We need to re-add it.
-      return true;
-    };
-
-    absl::flat_hash_set<std::string> keys_to_erase;
-    for (auto entry : prefs) {
-      bool should_re_add = should_re_add_app(entry.first, entry.second);
-      if (should_re_add) {
-        // Since it will be re-added, mark it as no-longer-migrated.
-        web_app::MarkAppAsMigratedToWebApp(profile_, entry.first, false);
-      } else {
-        keys_to_erase.insert(entry.first);
-      }
-    }
-
-    for (const auto& key : keys_to_erase) {
-      prefs.Remove(key);
-    }
+    prefs.clear();
   }
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
   ExternalProviderImpl::SetPrefs(std::move(prefs));
 }

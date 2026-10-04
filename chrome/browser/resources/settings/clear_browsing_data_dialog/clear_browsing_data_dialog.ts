@@ -378,10 +378,6 @@ export class SettingsClearBrowsingDataDialogElement extends
   }
 
   private computeOtherGoogleDataRowSubLabel_() {
-    if (loadTimeData.getBoolean('showGlicSettings') && this.isSignedIn_()) {
-      return loadTimeData.getString('manageSearchGeminiPasswordsSubLabel');
-    }
-
     if (this.isSignedIn_() || !this.isGoogleDse_) {
       return loadTimeData.getString('manageOtherDataSubLabel');
     }

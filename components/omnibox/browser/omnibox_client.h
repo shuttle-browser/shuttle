@@ -12,7 +12,6 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "components/lens/contextual_input.h"
 #include "components/omnibox/browser/actions/omnibox_action.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
@@ -36,10 +35,6 @@ class TemplateURL;
 class TemplateURLService;
 struct AutocompleteMatch;
 struct OmniboxLog;
-
-namespace bookmarks {
-class BookmarkModel;
-}
 
 namespace gfx {
 struct VectorIcon;
@@ -136,10 +131,6 @@ class OmniboxClient {
 
   virtual PrefService* GetPrefs() = 0;
   virtual const PrefService* GetPrefs() const = 0;
-  virtual bookmarks::BookmarkModel* GetBookmarkModel();
-  const bookmarks::BookmarkModel* GetBookmarkModel() const {
-    return const_cast<OmniboxClient*>(this)->GetBookmarkModel();
-  }
   virtual AutocompleteControllerEmitter* GetAutocompleteControllerEmitter() = 0;
   virtual TemplateURLService* GetTemplateURLService();
   const TemplateURLService* GetTemplateURLService() const {
@@ -227,14 +218,6 @@ class OmniboxClient {
   // icon.
   virtual const gfx::VectorIcon& GetVectorIcon() const = 0;
 
-  // Returns the LensOverlaySuggestInputs if available.
-  virtual std::optional<lens::proto::LensOverlaySuggestInputs>
-  GetLensOverlaySuggestInputs() const;
-
-  // Returns ContextualInputData if available.
-  virtual std::optional<lens::ContextualInputData> GetContextualInputData()
-      const;
-
   // Returns true if there is previous submitted thread context (files, tabs,
   // etc.) in the session. Only relevant for co-browsing / composebox sessions.
   virtual bool HasPreviousSubmittedThreadContext() const;
@@ -259,9 +242,6 @@ class OmniboxClient {
   // Called to notify clients that the omnibox focus state has changed.
   virtual void OnFocusChanged(OmniboxFocusState state,
                               OmniboxFocusChangeReason reason) {}
-
-  // Called to show HaTS survey if the proper criteria is met.
-  virtual void MaybeShowOnFocusHatsSurvey(AutocompleteProviderClient* client) {}
 
   // Called to notify the clients that the user has pasted into the omnibox, and
   // the resulting string in the omnibox is a valid URL.
@@ -339,20 +319,11 @@ class OmniboxClient {
   // Called to notify clients that a URL was opened from the omnibox.
   virtual void OnURLOpenedFromOmnibox(OmniboxLog* log) {}
 
-  // Called when a bookmark is launched from the omnibox.
-  virtual void OnBookmarkLaunched() {}
-
   // Discards the state for all pending and transient navigations.
   virtual void DiscardNonCommittedNavigations() {}
 
   // Focuses the `WebContents`, i.e. the web page of the current tab.
   virtual void FocusWebContents() {}
-
-  // Called when the user presses the thumbs down button on a suggestion.
-  // Displays the Feedback form for submitting detailed feedback on why they
-  // disliked the suggestion.
-  virtual void ShowFeedbackPage(const std::u16string& input_text,
-                                const GURL& destination_url) {}
 
   virtual void OnAutocompleteAccept(
       const GURL& destination_url,

@@ -26,10 +26,6 @@ import type {ModelExecutionEnterprisePolicyValue} from '../../ai_page/constants.
 import {EntityTypeName} from '../../autofill_ai_enums.mojom-webui.js';
 import type {SettingsToggleButtonElement} from '../../controls/settings_toggle_button.js';
 import {loadTimeData} from '../../i18n_setup.js';
-import type {MetricsBrowserProxy} from '../../metrics_browser_proxy.js';
-import {MetricsBrowserProxyImpl, SuggestionsFromGeminiEntryPoint} from '../../metrics_browser_proxy.js';
-import {routes} from '../../route.js';
-import {Router} from '../../router.js';
 import {SettingsViewMixin} from '../../settings_page/settings_view_mixin.js';
 import {AutofillPolicyDataCategory, checkAutofillPoliciesAndModifyPrefIfNecessary} from '../policy_utils.js';
 import type {TypesBlockedEntry} from '../policy_utils.js';
@@ -103,13 +99,6 @@ export class SettingsIdentityDocsPageElement extends
         type: Boolean,
         value: false,
       },
-
-      showSuggestionsFromGeminiSettings_: {
-        type: Boolean,
-        value() {
-          return loadTimeData.getBoolean('showSuggestionsFromGeminiSettings');
-        },
-      },
     };
   }
 
@@ -117,10 +106,6 @@ export class SettingsIdentityDocsPageElement extends
   declare private identityDocsOptedIn_: chrome.settingsPrivate.PrefObject;
   declare private autofillSettingsEnterprisePolicyEnabled_: boolean;
   declare private prefsInitialized_: boolean;
-  declare private showSuggestionsFromGeminiSettings_: boolean;
-
-  private metricsBrowserProxy_: MetricsBrowserProxy =
-      MetricsBrowserProxyImpl.getInstance();
 
   override connectedCallback() {
     super.connectedCallback();
@@ -212,22 +197,6 @@ export class SettingsIdentityDocsPageElement extends
 
     return !!addressAutofillEnabled.extensionId &&
         !addressAutofillEnabled.value;
-  }
-
-  private onSuggestionsFromGeminiClick_() {
-    this.metricsBrowserProxy_.recordSuggestionsFromGeminiEntryPointClick(
-        SuggestionsFromGeminiEntryPoint.IDENTITY_DOCS);
-    Router.getInstance().navigateTo(routes.SUGGESTIONS_FROM_GEMINI);
-  }
-
-  // SettingsViewMixin implementation.
-  override getFocusConfig() {
-    const map = new Map();
-    if (routes.SUGGESTIONS_FROM_GEMINI) {
-      map.set(
-          routes.SUGGESTIONS_FROM_GEMINI.path, '#suggestionsFromGeminiLinkRow');
-    }
-    return map;
   }
 
   // SettingsViewMixin implementation.

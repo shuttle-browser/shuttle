@@ -7,7 +7,6 @@
 #include "base/json/json_reader.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
-#include "components/omnibox/browser/actions/contextual_search_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/omnibox_proto/rich_answer_template.pb.h"
@@ -68,19 +67,6 @@ AutocompleteMatch CreateZeroSuggestContextualSearchMatch(
   match.search_terms_args->searchbox_stats.set_client_name("chrome");
   match.destination_url =
       GURL{"https://google.com/" + base::UTF16ToUTF8(contents)};
-  return match;
-}
-
-AutocompleteMatch CreateLensActionMatch(std::u16string contents) {
-  AutocompleteMatch match;
-  match.type = AutocompleteMatchType::Type::PEDAL;
-  match.contents = contents;
-  match.contents_class = {{0, 1}};
-  match.keyword = u"lens";
-  match.relevance = omnibox::kContextualActionZeroSuggestRelevance;
-  match.suggestion_group_id = omnibox::GroupId::GROUP_CONTEXTUAL_SEARCH_ACTION;
-  match.takeover_action =
-      base::MakeRefCounted<ContextualSearchOpenLensAction>();
   return match;
 }
 

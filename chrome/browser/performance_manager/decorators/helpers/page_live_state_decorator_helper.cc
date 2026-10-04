@@ -6,7 +6,6 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
-#include "chrome/browser/glic/public/glic_perf_traits_tracker.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "components/performance_manager/public/decorators/page_live_state_decorator.h"
 #include "components/performance_manager/public/features.h"
@@ -282,9 +281,6 @@ PageLiveStateDecoratorHelper::PageLiveStateDecoratorHelper() {
   active_tab_observer_ = std::make_unique<ActiveTabObserver>();
 
   content::DevToolsAgentHost::AddObserver(this);
-
-  glic_perf_traits_observation_.Observe(
-      glic::GlicPerfTraitsTracker::GetInstance());
 }
 
 PageLiveStateDecoratorHelper::~PageLiveStateDecoratorHelper() {
@@ -379,23 +375,6 @@ void PageLiveStateDecoratorHelper::OnPageNodeCreatedForWebContents(
   // Start observing the WebContents. See comment on
   // |first_web_contents_observer_| for lifetime management details.
   new WebContentsObserver(web_contents, this);
-}
-
-void PageLiveStateDecoratorHelper::OnGlicActuationStateChanged(
-    content::WebContents* web_contents,
-    GlicActuationState state) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  if (base::FeatureList::IsEnabled(features::kGlicActuationPriorityVoter)) {
-    PageLiveStateDecorator::SetGlicActuationState(web_contents, state);
-  }
-}
-
-void PageLiveStateDecoratorHelper::OnIsGlicPinnedToVisibleInstanceChanged(
-    content::WebContents* web_contents,
-    bool is_pinned_to_visible) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  PageLiveStateDecorator::SetIsGlicPinnedToVisibleInstance(
-      web_contents, is_pinned_to_visible);
 }
 
 }  // namespace performance_manager

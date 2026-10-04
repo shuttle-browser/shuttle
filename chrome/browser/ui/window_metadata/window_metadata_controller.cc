@@ -16,7 +16,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/captive_portal/core/buildflags.h"
@@ -161,11 +160,7 @@ std::u16string WindowMetadataController::GetWindowTitleForMaxWidth(
   // |contents| can be NULL if GetWindowTitleForMenu is called during the
   // window's creation (before tabs have been added).
   if (contents) {
-    auto* const app_browser_controller =
-        web_app::AppBrowserController::From(browser_);
-    title = FormatTitleForDisplay(app_browser_controller
-                                      ? app_browser_controller->GetTitle()
-                                      : contents->GetTitle());
+    title = FormatTitleForDisplay(contents->GetTitle());
   }
 
   // If there is no title, leave it empty for apps.
@@ -198,11 +193,7 @@ std::u16string WindowMetadataController::GetWindowTitleFromWebContents(
   // |contents| can be NULL because GetWindowTitleForCurrentTab is called by the
   // window during the window's creation (before tabs have been added).
   if (title.empty() && contents) {
-    auto* const app_browser_controller =
-        web_app::AppBrowserController::From(browser_);
-    title = FormatTitleForDisplay(app_browser_controller
-                                      ? app_browser_controller->GetTitle()
-                                      : contents->GetTitle());
+    title = FormatTitleForDisplay(contents->GetTitle());
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
     // If the app name is requested and this is a captive portal window, the
     // title should indicate that this is a captive portal window. Captive
@@ -239,13 +230,8 @@ std::u16string WindowMetadataController::GetWindowTitleFromWebContents(
        browser_->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP ||
        browser_->GetType() == BrowserWindowInterface::Type::TYPE_DEVTOOLS) &&
       include_app_name) {
-    auto* const app_browser_controller =
-        web_app::AppBrowserController::From(browser_);
-    return app_browser_controller
-               ? app_browser_controller->GetAppShortName()
-               : base::UTF8ToUTF16(BrowserInitState::From(browser_)
-                                       ->create_params()
-                                       .app_name);
+    return base::UTF8ToUTF16(
+        BrowserInitState::From(browser_)->create_params().app_name);
   }
   // Include the app name in window titles for tabbed browser windows when
   // requested with |include_app_name|.

@@ -12,10 +12,6 @@
 #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
 #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_overlay_view.h"
-#include "chrome/browser/glic/browser_ui/context_sharing_border_view.h"
-#include "chrome/browser/glic/browser_ui/context_sharing_border_view_controller_impl.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/ui/ai_overlay_dialog/ai_overlay_dialog_controller.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/read_anything/read_anything_immersive_overlay_view.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -29,7 +25,6 @@
 #include "chrome/browser/ui/views/frame/scrim_view.h"
 #include "chrome/browser/ui/views/frame/tab_modal_dialog_host.h"
 #include "chrome/browser/ui/views/frame/top_container_view.h"
-#include "chrome/browser/ui/views/indigo/indigo_toolbar.h"
 #include "chrome/browser/ui/views/new_tab_footer/footer_web_view.h"
 #include "chrome/common/chrome_features.h"
 #include "components/search/ntp_features.h"
@@ -105,22 +100,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
       AddChildView(std::make_unique<
                    enterprise_data_protection::DataProtectionOverlayView>());
 
-  if (base::FeatureList::IsEnabled(features::kIndigo)) {
-    indigo_overlay_view_ = AddChildView(indigo::CreateIndigoOverlayView());
-    indigo_overlay_view_->InsertBeforeInFocusList(contents_view_);
-  }
-
-  if (base::FeatureList::IsEnabled(features::kAiOverlayDialog)) {
-    auto ai_overlay_dialog_view =
-        std::make_unique<views::WebView>(browser_view->GetProfile());
-    ai_overlay_dialog_view->SetVisible(false);
-    ai_overlay_dialog_view->SetProperty(views::kElementIdentifierKey,
-                                        kAiOverlayDialogWebViewElementId);
-    ai_overlay_dialog_view->EnableSizingFromWebContents(gfx::Size(1, 1),
-                                                        gfx::Size(800, 600));
-    ai_overlay_dialog_view_ = AddChildView(std::move(ai_overlay_dialog_view));
-  }
-
   auto read_anything_immersive_overlay_view =
       std::make_unique<ReadAnythingImmersiveOverlayView>(contents_view_);
   read_anything_immersive_overlay_view_ =
@@ -137,26 +116,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
     actor_overlay_web_view_ = AddChildView(std::move(actor_overlay_web_view));
   }
 
-  glic_selection_overlay_view_ = AddChildView(std::make_unique<views::View>());
-  glic_selection_overlay_view_->SetProperty(views::kElementIdentifierKey,
-                                            kGlicSelectionOverlayViewElementId);
-  glic_selection_overlay_view_->SetVisible(false);
-  glic_selection_overlay_view_->SetLayoutManager(
-      std::make_unique<views::FillLayout>());
-  glic_selection_overlay_view_->SetPaintToLayer();
-
-  if (glic::GlicEnabling::IsProfileEligible(browser_view->GetProfile())) {
-    glic_border_ = AddChildView(
-        views::Builder<glic::ContextSharingBorderView>(
-            glic::ContextSharingBorderView::Factory::Create(
-                std::make_unique<
-                    glic::ContextSharingBorderViewControllerImpl>(),
-                browser_view->browser(), contents_view_))
-            .SetVisible(false)
-            .SetCanProcessEventsWithinSubtree(false)
-            .Build());
-  }
-
   mini_toolbar_ = AddChildView(std::make_unique<MultiContentsViewMiniToolbar>(
       browser_view, contents_view_));
 
@@ -170,7 +129,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
 }
 
 ContentsContainerView::~ContentsContainerView() {
-  indigo_overlay_view_ = nullptr;
   // read_anything_immersive_overlay_view_ holds a raw_ptr to
   // contents_view_. We need to make sure we destroy
   // read_anything_immersive_overlay_view_ first to avoid a dangling pointer.
@@ -291,19 +249,6 @@ void ContentsContainerView::SetBorderRoundedCornersFrom(
     actor_overlay_web_view_->holder()->SetNativeViewCornerRadii(radii);
   }
 
-  if (ai_overlay_dialog_view_) {
-    // ai_overlay_dialog_view_ should use the same radii as the contents view
-    // since it acts as a layer directly over the main web content.
-    ai_overlay_dialog_view_->holder()->SetNativeViewCornerRadii(radii);
-  }
-
-  if (glic_selection_overlay_view_) {
-    glic_selection_overlay_view_->layer()->SetRoundedCornerRadius(radii);
-  }
-
-  if (glic_border_) {
-    glic_border_->SetRoundedCorners(content_rounded_corners);
-  }
 }
 
 void ContentsContainerView::UpdateBorderRoundedCorners() {
@@ -529,13 +474,6 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
       toast_anchor_view_.get(), toast_anchor_view_->GetVisible(),
       gfx::BoundingRect(contents_rect.origin(), contents_rect.top_right()));
 
-  if (glic_border_) {
-    // |glic_border_| should not be seen over devtools.
-    layouts.child_layouts.emplace_back(glic_border_.get(),
-                                       glic_border_->GetVisible(),
-                                       non_devtools_contents_bounds);
-  }
-
   // The content scrim view should cover the entire contents bounds.
   CHECK(contents_scrim_view_);
   layouts.child_layouts.emplace_back(contents_scrim_view_.get(),
@@ -554,50 +492,12 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
         non_devtools_contents_bounds, size_bounds);
   }
 
-  if (ai_overlay_dialog_view_) {
-    // TODO(b/490458384): Look into whether the view can be transparent to hit
-    // testing (in transparent parts) - otherwise autosize it to the inner web
-    // content.
-    gfx::Size size = ai_overlay_dialog_view_->GetPreferredSize();
-    if (size.IsEmpty()) {
-      int dialog_width = 200;
-      int dialog_height = 200;
-      if (!features::kAiOverlayDialogMockJsonPath.Get().empty()) {
-        // 150px (buttons) + 20px (gap) + 100px (persona) = 270px
-        dialog_width = 270;
-        // 200px (max height of column)
-        dialog_height = 200;
-      }
-      size = gfx::Size(dialog_width, dialog_height);
-    }
-    int x_margin = 15;
-    gfx::Point top_left = non_devtools_contents_bounds.bottom_right() -
-                          gfx::Vector2d(size.width() + x_margin, size.height());
-    gfx::Rect rect(top_left, size);
-    layouts.child_layouts.emplace_back(ai_overlay_dialog_view_.get(),
-                                       ai_overlay_dialog_view_->GetVisible(),
-                                       rect, views::SizeBounds(rect.size()));
-  }
-
-  if (glic_selection_overlay_view_) {
-    layouts.child_layouts.emplace_back(
-        glic_selection_overlay_view_.get(),
-        glic_selection_overlay_view_->GetVisible(),
-        non_devtools_contents_bounds, size_bounds);
-  }
-
   // Reading Mode overlay view bounds are the same as the contents view.
   if (read_anything_immersive_overlay_view_) {
     layouts.child_layouts.emplace_back(
         read_anything_immersive_overlay_view_.get(),
         read_anything_immersive_overlay_view_->GetVisible(),
         non_devtools_contents_bounds, size_bounds);
-  }
-
-  if (indigo_overlay_view_) {
-    layouts.child_layouts.emplace_back(indigo_overlay_view_.get(),
-                                       indigo_overlay_view_->GetVisible(),
-                                       non_devtools_contents_bounds);
   }
 
   if (mini_toolbar_) {

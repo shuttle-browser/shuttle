@@ -210,27 +210,12 @@ class NewTabPageHandler
   ntp_tiles::TileType GetTileType() const;
   bool IsActionChipsVisible() const;
   bool IsShortcutsVisible() const;
-  void MaybeLaunchInteractionSurvey(std::string_view interaction,
-                                    const std::string& module_id,
-                                    int delay_time_ms = 0);
   void MaybeShowWebstoreToast();
 
   void RecordModuleInteraction(const std::string& module_id);
 
   void IncrementDictPrefKeyCount(const std::string& pref_name,
                                  const std::string& key);
-
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-  // Returns a HaTS trigger id associated with the given combination of user
-  // interaction and module id if one exists, or nullptr otherwise to indicate
-  // that there is no configured survey trigger id for such combination. The
-  // valid interaction names are defined in `kModuleInteractionNames`. The valid
-  // module id strings are listed in `ntp::MakeModuleIdNames`.
-  const std::string& GetSurveyTriggerIdForModuleAndInteraction(
-      std::string_view interaction,
-      const std::string& module_id);
-#endif
 
   void SetModuleHidden(const std::string& module_id, bool hidden);
 
@@ -290,10 +275,6 @@ class NewTabPageHandler
   base::ScopedObservation<NtpCustomBackgroundService,
                           NtpCustomBackgroundServiceObserver>
       ntp_custom_background_service_observation_{this};
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-  base::DictValue interaction_module_id_trigger_dict_;
-#endif
   // Notifies this when the browser window context changes.
   base::CallbackListSubscription browser_window_changed_subscription_;
   // Triggered when the searchbox's contextual menu entrypoint is displayed.

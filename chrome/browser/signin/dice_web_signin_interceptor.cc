@@ -40,22 +40,18 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
-#include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/account_preview_data_service_factory.h"
 #include "chrome/browser/signin/chrome_signin_pref_names.h"
 #include "chrome/browser/signin/dice_intercepted_session_startup_helper.h"
 #include "chrome/browser/signin/dice_signed_in_profile_creator.h"
 #include "chrome/browser/signin/dice_web_signin_interceptor_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_hats_util.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/signin/web_signin_interceptor.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
 #include "chrome/browser/ui/signin/dice_web_signin_interceptor_delegate.h"
@@ -77,9 +73,6 @@
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
-#include "components/search_engines/template_url_data.h"
-#include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -1447,8 +1440,6 @@ void DiceWebSigninInterceptor::OnChromeSigninChoice(
     case SigninInterceptionResult::kDeclined:
       RecordChromeSigninNumberOfDismissesForAccount(account_info.GetGaiaId(),
                                                     processed_result);
-      signin::LaunchHatsSurveyForProfile(
-          kHatsSurveyTriggerIdentityDiceWebSigninDeclined, profile_);
       break;
     case SigninInterceptionResult::kAcceptedWithExistingProfile:
       NOTREACHED()
@@ -1464,8 +1455,6 @@ void DiceWebSigninInterceptor::OnChromeSigninChoice(
       identity_manager_->GetPrimaryAccountMutator()->SetPrimaryAccount(
           account_info.GetAccountId(), signin::ConsentLevel::kSignin,
           access_point);
-      signin::LaunchHatsSurveyForProfile(
-          kHatsSurveyTriggerIdentityDiceWebSigninAccepted, profile_);
   }
 
   // In all cases we want to close the bubble after the choice is taken.
@@ -1536,11 +1525,6 @@ void DiceWebSigninInterceptor::OnNewSignedInProfileCreated(
           ->SetUserColorAndBrowserColorVariant(
               profile_presets->profile_color,
               ui::mojom::BrowserColorVariant::kTonalSpot);
-
-      // The new profile inherits the default search provider and the search
-      // engine choice timestamp from the previous profile.
-      SearchEngineChoiceDialogService::UpdateProfileFromChoiceData(
-          *new_profile, profile_presets->search_engine_choice_data);
     }
 
     // Set the ChromeSignin setting to always signin following accepting the
@@ -1576,8 +1560,6 @@ void DiceWebSigninInterceptor::ProceedWithProfileCreation(
   std::u16string profile_name =
       profiles::GetDefaultNameForNewSignedInProfile(account_info);
   ProfilePresets profile_presets(profile_color);
-  profile_presets.search_engine_choice_data =
-      SearchEngineChoiceDialogService::GetChoiceDataFromProfile(*profile_);
 
   DCHECK(!state_->dice_signed_in_profile_creator_);
   // Unretained is fine because the profile creator is owned by this.

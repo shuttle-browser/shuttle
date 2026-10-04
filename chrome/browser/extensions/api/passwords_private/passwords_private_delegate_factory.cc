@@ -4,7 +4,6 @@
 
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_delegate_factory.h"
 
-#include "ash/constants/web_app_id_constants.h"
 #include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/no_destructor.h"
@@ -12,7 +11,6 @@
 #include "chrome/browser/affiliations/affiliation_service_factory.h"
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_delegate_impl.h"
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_event_router_factory.h"
-#include "chrome/browser/extensions/profile_util.h"
 #include "chrome/browser/password_manager/factories/account_password_store_factory.h"
 #include "chrome/browser/password_manager/factories/bulk_leak_check_service_factory.h"
 #include "chrome/browser/password_manager/factories/password_sender_service_factory.h"
@@ -20,15 +18,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-// TODO(crbug.com/528209923): //chrome/browser/ui cannot be added to deps
-// because it would cause a circular dependency. Remove this nogncheck once
-// MaybeShowProfileSwitchIPH is moved to //chrome/browser/ui/...
-#include "chrome/browser/ui/browser_window.h"  // nogncheck
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_provider_factory.h"
 #include "chrome/browser/webauthn/enclave_manager_factory.h"
 #include "chrome/browser/webauthn/passkey_model_factory.h"
 #include "components/password_manager/core/common/password_manager_features.h"
@@ -45,22 +34,6 @@ namespace extensions {
 using content::BrowserContext;
 
 namespace {
-
-void MaybeShowProfileSwitchIPH(Profile* profile) {
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (extensions::profile_util::GetNumberOfProfiles() < 2) {
-    return;
-  }
-
-  BrowserWindowInterface* launched_app =
-      web_app::AppBrowserController::FindForWebApp(*profile,
-                                                   ash::kPasswordManagerAppId);
-  if (launched_app && web_app::AppBrowserController::From(launched_app)
-                          ->HasProfileMenuButton()) {
-    BrowserWindow::FromBrowser(launched_app)->MaybeShowProfileSwitchIPH();
-  }
-#endif
-}
 
 // ChromeDeviceAuthenticatorFactory::GetForProfile() is overloaded, so binding
 // it directly makes the compiler confused.
@@ -109,7 +82,6 @@ PasswordsPrivateDelegateProxy::GetOrCreateDelegate() {
               ->GetURLLoaderFactoryForBrowserProcess(),
           PasswordSenderServiceFactory::GetForProfile(profile),
           SyncServiceFactory::GetForProfile(profile),
-          TrustSafetySentimentServiceFactory::GetForProfile(profile),
           AffiliationServiceFactory::GetForProfile(profile),
           ProfilePasswordStoreFactory::GetForProfile(
               profile, ServiceAccessType::EXPLICIT_ACCESS),
@@ -118,10 +90,8 @@ PasswordsPrivateDelegateProxy::GetOrCreateDelegate() {
           PasskeyModelFactory::GetInstance()->GetForProfile(profile),
           BulkLeakCheckServiceFactory::GetForProfile(profile),
           PasswordsPrivateEventRouterFactory::GetForProfile(profile),
-          &web_app::WebAppProvider::GetForWebApps(profile)->install_manager(),
           EnclaveManagerFactory::GetForProfile(profile),
-          base::BindRepeating(&GetDeviceAuthenticator, profile),
-          base::BindRepeating(&MaybeShowProfileSwitchIPH, profile));
+          base::BindRepeating(&GetDeviceAuthenticator, profile));
   weak_instance_ = delegate->AsWeakPtr();
   return delegate;
 }
@@ -168,10 +138,8 @@ PasswordsPrivateDelegateFactory::PasswordsPrivateDelegateFactory()
   DependsOn(AffiliationServiceFactory::GetInstance());
   DependsOn(PasswordSenderServiceFactory::GetInstance());
   DependsOn(IdentityManagerFactory::GetInstance());
-  DependsOn(TrustSafetySentimentServiceFactory::GetInstance());
   DependsOn(PasskeyModelFactory::GetInstance());
   DependsOn(EnclaveManagerFactory::GetInstance());
-  DependsOn(web_app::WebAppProviderFactory::GetInstance());
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
   DependsOn(ChromeDeviceAuthenticatorFactory::GetInstance());
 #endif

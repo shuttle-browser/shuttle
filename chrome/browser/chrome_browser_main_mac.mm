@@ -22,7 +22,6 @@
 #include "base/strings/sys_string_conversions.h"
 #include "build/branding_buildflags.h"
 #import "chrome/browser/app_controller_mac.h"
-#include "chrome/browser/apps/app_shim/app_shim_listener.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/buildflags.h"
@@ -170,10 +169,6 @@ int ChromeBrowserMainPartsMac::PreCreateThreads() {
 
 void ChromeBrowserMainPartsMac::PreProfileInit() {
   ChromeBrowserMainPartsPosix::PreProfileInit();
-
-  // This is called here so that the app shim socket is only created after
-  // taking the singleton lock.
-  g_browser_process->platform_part()->app_shim_listener()->Init();
 }
 
 void ChromeBrowserMainPartsMac::PostProfileInit(Profile* profile,

@@ -25,7 +25,6 @@
 #include "components/optimization_guide/core/delivery/optimization_guide_model_provider.h"
 #include "components/optimization_guide/core/hints/optimization_guide_decider.h"
 #include "components/optimization_guide/core/optimization_guide_logger.h"
-#include "components/page_content_annotations/core/on_device_category_classifier.h"
 #include "components/page_content_annotations/core/page_content_annotations_enums.h"
 #include "components/page_content_annotations/core/page_content_annotations_features.h"
 #include "components/page_content_annotations/core/page_content_annotations_model_manager.h"
@@ -165,7 +164,6 @@ PageContentAnnotationsService::PageContentAnnotationsService(
     const base::FilePath& database_dir,
     OptimizationGuideLogger* optimization_guide_logger,
     optimization_guide::OptimizationGuideDecider* optimization_guide_decider,
-    passage_embeddings::EmbedderMetadataProvider* embedder_metadata_provider,
     scoped_refptr<base::SequencedTaskRunner> background_task_runner)
     : history_service_(history_service),
       template_url_service_(template_url_service),
@@ -197,14 +195,6 @@ PageContentAnnotationsService::PageContentAnnotationsService(
     annotation_types_to_execute_.push_back(AnnotationType::kContentVisibility);
   }
 
-  if (features::ShouldExecuteOnDeviceCategoryClassifierOnPageContent(
-          application_locale, country_code)) {
-    on_device_category_classifier_ =
-        std::make_unique<OnDeviceCategoryClassifier>(
-            optimization_guide_model_provider, embedder_metadata_provider);
-    on_device_category_classifier_->AddObserver(this);
-  }
-
   if (optimization_guide_decider_) {
     optimization_guide_decider_->RegisterOptimizationTypes(
         {optimization_guide::proto::PAGE_ENTITIES,
@@ -214,11 +204,7 @@ PageContentAnnotationsService::PageContentAnnotationsService(
       PageContentAnnotationsValidator::MaybeCreateAndStartTimer(annotator_);
 }
 
-PageContentAnnotationsService::~PageContentAnnotationsService() {
-  if (on_device_category_classifier_) {
-    on_device_category_classifier_->RemoveObserver(this);
-  }
-}
+PageContentAnnotationsService::~PageContentAnnotationsService() = default;
 
 void PageContentAnnotationsService::Shutdown() {
   history_service_observation_.Reset();
@@ -285,20 +271,6 @@ void PageContentAnnotationsService::Annotate(const HistoryVisit& visit) {
     LOCAL_HISTOGRAM_BOOLEAN(
         "PageContentAnnotations.AnnotateVisit.QueueFullVisitDropped", true);
   }
-}
-
-void PageContentAnnotationsService::OnCategoriesClassified(
-    const GURL& url,
-    ukm::SourceId source_id,
-    const std::vector<Category>& categories) {
-  auto it = last_visit_for_url_.Peek(url);
-  if (it == last_visit_for_url_.end()) {
-    return;
-  }
-
-  NotifyPageContentAnnotatedObservers(
-      AnnotationType::kCategoryClassifier, it->second,
-      PageContentAnnotationsResult::CreateCategoryResults(categories));
 }
 
 bool PageContentAnnotationsService::MaybeStartAnnotateVisitBatch() {
@@ -905,12 +877,6 @@ void PageContentAnnotationsService::OnOptimizationGuideResponseReceived(
     default:
       NOTREACHED();
   }
-}
-
-void PageContentAnnotationsService::SetPageCategoryClassifierBridge(
-    std::unique_ptr<PageCategoryClassifierBridge>
-        page_category_classifier_bridge) {
-  page_category_classifier_bridge_ = std::move(page_category_classifier_bridge);
 }
 
 HistoryVisit::HistoryVisit() = default;

@@ -19,7 +19,7 @@
 #include "base/types/expected.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/actor_task_delegate.h"
-#include "chrome/browser/glic/host/glic.mojom.h"
+#include "chrome/common/glic_enums.mojom.h"
 #include "chrome/browser/page_content_annotations/multi_source_page_context_fetcher.h"
 #include "chrome/browser/profiles/profile_observer.h"
 #include "chrome/common/actor/action_result.h"

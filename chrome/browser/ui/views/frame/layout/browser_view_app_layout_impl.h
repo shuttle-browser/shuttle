@@ -6,7 +6,6 @@
 #define CHROME_BROWSER_UI_VIEWS_FRAME_LAYOUT_BROWSER_VIEW_APP_LAYOUT_IMPL_H_
 
 #include <memory>
-#include <optional>
 
 #include "chrome/browser/ui/views/frame/layout/browser_view_layout_delegate.h"
 #include "chrome/browser/ui/views/frame/layout/browser_view_layout_impl.h"
@@ -18,8 +17,7 @@
 class BrowserViewAppLayoutImpl : public BrowserViewLayoutImpl {
  public:
   BrowserViewAppLayoutImpl(std::unique_ptr<BrowserViewLayoutDelegate> delegate,
-                           BrowserViewLayoutViews views,
-                           bool is_web_app);
+                           BrowserViewLayoutViews views);
   ~BrowserViewAppLayoutImpl() override;
 
  protected:
@@ -30,16 +28,6 @@ class BrowserViewAppLayoutImpl : public BrowserViewLayoutImpl {
   gfx::Rect CalculateTopContainerLayout(ProposedLayout& layout,
                                         BrowserLayoutParams params,
                                         bool needs_exclusion) const override;
-  void DoPostLayoutVisualAdjustments(const BrowserLayoutParams&) override;
-
- private:
-  // Lays out titlebar elements adding them to `parent`, and updating `params`.
-  // It is assumed that this handles the exclusions in `params`.
-  void CalculateTitlebarLayout(ProposedLayout& layout,
-                               BrowserLayoutParams& params) const;
-
-  mutable std::optional<gfx::Rect> overlay_rect_;
-  const bool is_web_app_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_LAYOUT_BROWSER_VIEW_APP_LAYOUT_IMPL_H_

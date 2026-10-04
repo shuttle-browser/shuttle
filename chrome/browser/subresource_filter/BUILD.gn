@@ -197,6 +197,7 @@ if (!is_android) {
     deps = [
       ":subresource_filter",
       "//base",
+      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/preloading",
       "//chrome/browser/subresource_filter:test_support",
       "//chrome/browser/ui",

@@ -248,16 +248,6 @@ class StartupBrowserCreator {
       Profile* last_used_profile,
       const Profiles& last_opened_profiles);
 
-  // This function performs command-line handling and is invoked only after
-  // start up (for example when we get a start request for another process).
-  // |command_line| holds the command line being processed.
-  // |cur_dir| is the current working directory that the original process was
-  // invoked from.
-  // |profile| is the profile the apps will be launched in.
-  static bool ProcessLoadApps(const base::CommandLine& command_line,
-                              const base::FilePath& cur_dir,
-                              Profile* profile);
-
   // Callback after a profile has been initialized. `profile` should be nullptr
   // if `mode` is `StartupProfileMode::kProfilePicker`.
   static void ProcessCommandLineWithProfile(

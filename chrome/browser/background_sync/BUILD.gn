@@ -16,13 +16,11 @@ source_set("background_sync") {
     "//components/content_settings/core/common",
     "//components/permissions",
     "//components/site_engagement/content",
-    "//components/webapps/common",
     "//content/public/browser",
     "//url",
   ]
   if (!is_android) {
     public_deps += [
-      "//chrome/browser/web_applications",
       "//components/keep_alive_registry",
     ]
   }
@@ -40,7 +38,6 @@ source_set("impl") {
     "//chrome/browser/engagement",
     "//chrome/browser/metrics",
     "//chrome/browser/search_engines",
-    "//chrome/browser/webapps/installable",
     "//chrome/common:chrome_features",
     "//components/content_settings/core/browser",
     "//components/search_engines",
@@ -49,7 +46,6 @@ source_set("impl") {
   if (is_android) {
     deps += [ "//chrome/browser/android:shortcut_helper" ]
   } else {
-    deps += [ "//chrome/browser/web_applications/proto" ]
   }
 
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
@@ -77,8 +73,6 @@ source_set("unit_tests") {
     "//third_party/blink/public/common",
   ]
   if (!is_android) {
-    deps +=
-        [ "//chrome/browser/web_applications:web_applications_test_support" ]
   }
 
   if (is_android) {

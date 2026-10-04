@@ -25,8 +25,6 @@
 #include "chrome/common/read_anything/distillation_evaluator.mojom.h"
 #include "chrome/common/read_anything/read_anything.mojom.h"
 #include "components/dom_distiller/core/task_tracker.h"
-#include "components/translate/core/browser/translate_client.h"
-#include "components/translate/core/browser/translate_driver.h"
 #include "content/public/browser/tts_controller.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -165,9 +163,7 @@ class ReadAnythingUntrustedPageHandler :
     public ui::AXActionHandlerObserver,
     public read_anything::mojom::UntrustedPageHandler,
     public ReadAnythingLifecycleObserver,
-    public PinnedToolbarActionsModel::Observer,
-    public translate::TranslateDriver::LanguageDetectionObserver {
-
+    public PinnedToolbarActionsModel::Observer {
  public:
   ReadAnythingUntrustedPageHandler(
       mojo::PendingRemote<read_anything::mojom::UntrustedPage> page,
@@ -268,11 +264,6 @@ class ReadAnythingUntrustedPageHandler :
   // Checks toolbar pin status to assess whether or not to update the pin status
   // of read anything immersive
   void MaybeUpdateImmersivePinStatus();
-
-  // TranslateDriver::LanguageDetectionObserver:
-  void OnLanguageDetermined(
-      const translate::LanguageDetectionDetails& details) override;
-  void OnTranslateDriverDestroyed(translate::TranslateDriver* driver) override;
 
   // ReadAnythingLifecycleObserver:
   void OnDestroyed() override;
@@ -404,12 +395,6 @@ class ReadAnythingUntrustedPageHandler :
 
   bool HasTransientUserActivation() const;
 
-  // Returns the actual language of the text currently displayed in the Reading
-  // Mode panel.
-  std::string GetDisplayLanguage();
-
-  void OnScreenAIServiceInitialized(bool successful);
-
   // Called to notify this instance that the dependency parser loader
   // is available for model requests or is invalidating existing requests
   // specified by "is_available". The "callback" will be either forwarded to a
@@ -478,7 +463,6 @@ class ReadAnythingUntrustedPageHandler :
 
   // The current language being used in the app.
   std::string current_language_code_ = "en-US";
-  const bool use_screen_ai_service_;
 
 #if BUILDFLAG(IS_CHROMEOS)
   // The ChromeOS language pack manager can't handle more than one language
@@ -520,12 +504,6 @@ class ReadAnythingUntrustedPageHandler :
   raw_ptr<PinnedToolbarActionsModel> pinned_toolbar_;
 
   base::ScopedClosureRunner audible_closure_;
-
-  // Observes LanguageDetectionObserver, which notifies us when the language of
-  // the contents of the current page has been determined.
-  base::ScopedObservation<translate::TranslateDriver,
-                          translate::TranslateDriver::LanguageDetectionObserver>
-      translate_observation_{this};
 
   // Timer used for checking for pdf contents after the page has loaded.
   // Otherwise, it may incorrectly return that the page is not a pdf if

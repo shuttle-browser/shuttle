@@ -11,7 +11,6 @@
 #include "base/functional/bind.h"
 #include "build/build_config.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
-#include "chrome/browser/apps/platform_apps/audio_focus_web_contents_observer.h"
 #include "chrome/browser/favicon/favicon_utils.h"
 #include "chrome/browser/file_select_helper.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_request_manager.h"
@@ -243,8 +242,6 @@ void ChromeAppDelegate::InitWebContents(content::WebContents* web_contents) {
 #if BUILDFLAG(ENABLE_PRINTING)
   printing::InitializePrintingForWebContents(web_contents);
 #endif
-
-  apps::AudioFocusWebContentsObserver::CreateForWebContents(web_contents);
 
 #if BUILDFLAG(IS_CHROMEOS)
   policy::DlpContentTabHelper::MaybeCreateForWebContents(web_contents);

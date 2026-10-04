@@ -9,8 +9,6 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
-#include "chrome/browser/glic/host/glic.mojom.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 #include "components/tab_groups/tab_group_id.h"
 

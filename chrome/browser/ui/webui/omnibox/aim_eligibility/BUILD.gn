@@ -37,6 +37,5 @@ static_library("aim_eligibility") {
   ]
 
   if (!is_android) {
-    deps += [ "//chrome/browser/ui/webui/drive_picker_host" ]
   }
 }

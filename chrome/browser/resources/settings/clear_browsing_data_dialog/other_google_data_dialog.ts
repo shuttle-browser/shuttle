@@ -139,25 +139,12 @@ export class SettingsOtherGoogleDataDialogElement extends
         'Settings.DeleteBrowsingData.GoogleSearchHistoryLinkClick');
   }
 
-  private onGeminiAppsActivityClick_() {
-    OpenWindowProxyImpl.getInstance().openUrl(
-        loadTimeData.getString('myActivityGeminiAppsUrl'));
-
-    this.metricsBrowserProxy_.recordAction(
-        'Settings.DeleteBrowsingData.GeminiAppsActivityLinkClick');
-  }
-
   private shouldShowMyActivityLink_() {
     return isSignedIn(this.syncStatus_);
   }
 
   private shouldShowGoogleSearchHistoryLink_() {
     return isSignedIn(this.syncStatus_) && this.isGoogleDse_;
-  }
-
-  private shouldShowGeminiAppsActivityLink_() {
-    return isSignedIn(this.syncStatus_) &&
-        loadTimeData.getBoolean('showGlicSettings');
   }
 }
 

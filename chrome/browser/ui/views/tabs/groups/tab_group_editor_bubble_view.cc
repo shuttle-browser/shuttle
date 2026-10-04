@@ -22,17 +22,10 @@
 #include "base/strings/string_util.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/collaboration/collaboration_service_factory.h"
-#include "chrome/browser/data_sharing/data_sharing_service_factory.h"
-#include "chrome/browser/glic/public/features.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/glic/service/glic_instance_impl.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_group_sync/feature_utils.h"
 #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils_desktop.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -53,25 +46,18 @@
 #include "chrome/browser/ui/views/bubble_menu_item_factory.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/controls/hover_button.h"
-#include "chrome/browser/ui/views/data_sharing/collaboration_controller_delegate_desktop.h"
-#include "chrome/browser/ui/views/data_sharing/data_sharing_bubble_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
-#include "chrome/browser/ui/views/global_media_controls/media_item_ui_helper.h"
-#include "chrome/browser/ui/views/tabs/groups/avatar_container_view.h"
 #include "chrome/browser/ui/views/tabs/groups/color_picker_view.h"
-#include "chrome/browser/ui/views/tabs/groups/manage_sharing_row.h"
-#include "chrome/browser/ui/views/tabs/groups/recent_activity_bubble_dialog_view.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
-#include "components/collaboration/public/collaboration_service.h"
 #include "components/prefs/pref_service.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/saved_tab_groups/public/types.h"
+#include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tab_groups/tab_group_visual_data.h"
@@ -468,18 +454,6 @@ bool TabGroupEditorBubbleView::CanSaveGroups() const {
              browser_->GetProfile());
 }
 
-bool TabGroupEditorBubbleView::CanShareGroups() const {
-  return tab_groups::SavedTabGroupUtils::SupportsSharedTabGroups() &&
-         CanSaveGroups();
-}
-
-bool TabGroupEditorBubbleView::IsAllowedToCreateSharedGroup() const {
-  auto* collaboration_service =
-      collaboration::CollaborationServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  return collaboration_service->GetServiceStatus().IsAllowedToCreate();
-}
-
 bool TabGroupEditorBubbleView::IsGroupSaved() const {
   tab_groups::TabGroupSyncService* tab_group_service =
       tab_groups::TabGroupSyncServiceFactory::GetForProfile(
@@ -552,7 +526,6 @@ void TabGroupEditorBubbleView::RebuildMenuContents() {
     title_field = RemoveChildViewT(title_field_);
     title_field->SetText(title_at_opening_);
   }
-  manage_shared_group_button_ = nullptr;
   color_selector_ = nullptr;
   save_group_icon_ = nullptr;
   save_group_label_ = nullptr;
@@ -579,10 +552,6 @@ void TabGroupEditorBubbleView::RebuildMenuContents() {
         simple_menu_items_.push_back(AddChildView(BuildFocusGroupButton()));
       }
     }
-    if (base::FeatureList::IsEnabled(features::kGlicTabGroups)) {
-      AddChildView(BuildSeparator());
-      simple_menu_items_.push_back(AddChildView(BuildAskGeminiButton()));
-    }
     AddChildView(BuildSeparator());
     simple_menu_items_.push_back(AddChildView(BuildUngroupButton()));
     simple_menu_items_.push_back(AddChildView(BuildCloseGroupButton()));
@@ -602,26 +571,7 @@ void TabGroupEditorBubbleView::RebuildMenuContents() {
       }
     }
 
-    if (CanShareGroups()) {
-      if (IsGroupShared()) {
-        manage_shared_group_button_ = AddChildView(BuildManageSharingButton());
-        manage_shared_group_button_->UpdateInsetsToMatchLabelButton(
-            simple_menu_items_[0]);
-        manage_shared_group_button_->SetProperty(
-            views::kElementIdentifierKey,
-            kTabGroupEditorBubbleManageSharedGroupButtonId);
-      }
-      if (IsAllowedToCreateSharedGroup()) {
-        simple_menu_items_.push_back(AddChildView(BuildShareGroupButton()));
-      }
-      simple_menu_items_.push_back(AddChildView(BuildRecentActivityButton()));
-    }
-
     simple_menu_items_.push_back(AddChildView(BuildCloseGroupButton()));
-    if (base::FeatureList::IsEnabled(features::kGlicTabGroups)) {
-      AddChildView(BuildSeparator());
-      simple_menu_items_.push_back(AddChildView(BuildAskGeminiButton()));
-    }
     AddChildView(BuildSeparator());
 
     if (!IsGroupShared()) {
@@ -646,10 +596,6 @@ void TabGroupEditorBubbleView::UpdateMenuContentsVisibility() {
   // iterate through the menu list setting the correct visibility.
   for (views::LabelButton* button : simple_menu_items_) {
     switch (button->GetID()) {
-      case TAB_GROUP_HEADER_CXMENU_SHARE: {
-        button->SetVisible(CanShareGroups() && !IsGroupShared());
-        break;
-      }
       case TAB_GROUP_HEADER_CXMENU_DELETE_GROUP: {
         button->SetVisible(IsGroupSaved() || IsGroupShared());
         break;
@@ -658,14 +604,7 @@ void TabGroupEditorBubbleView::UpdateMenuContentsVisibility() {
         button->SetVisible(CanMoveGroupToNewWindow());
         break;
       }
-      case TAB_GROUP_HEADER_CXMENU_RECENT_ACTIVITY: {
-        button->SetVisible(IsGroupShared());
-        break;
-      }
     }
-  }
-  if (manage_shared_group_button_) {
-    manage_shared_group_button_->SetVisible(IsGroupShared());
   }
 }
 
@@ -849,74 +788,6 @@ TabGroupEditorBubbleView::BuildUnfocusGroupButton() {
   return menu_item;
 }
 
-std::unique_ptr<ManageSharingRow>
-TabGroupEditorBubbleView::BuildManageSharingButton() {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(group_);
-  CHECK(saved_group.has_value());
-  CHECK(saved_group->collaboration_id().has_value());
-  return std::make_unique<ManageSharingRow>(
-      browser_->GetProfile(), saved_group->collaboration_id().value(),
-      base::BindRepeating(&TabGroupEditorBubbleView::ShareOrManagePressed,
-                          base::Unretained(this)));
-}
-
-std::unique_ptr<views::LabelButton>
-TabGroupEditorBubbleView::BuildShareGroupButton() {
-  auto menu_item = CreateMenuItem(
-      TAB_GROUP_HEADER_CXMENU_SHARE,
-      l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_SHARE_GROUP),
-      base::BindRepeating(&TabGroupEditorBubbleView::ShareOrManagePressed,
-                          base::Unretained(this)),
-      ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
-                                         ? kGroupCustomIcon
-                                         : kTabGroupSharingOldIcon));
-  menu_item->SetProperty(views::kElementIdentifierKey,
-                         kTabGroupEditorBubbleShareGroupButtonId);
-  return menu_item;
-}
-
-std::unique_ptr<views::LabelButton>
-TabGroupEditorBubbleView::BuildRecentActivityButton() {
-  auto menu_item = CreateMenuItem(
-      TAB_GROUP_HEADER_CXMENU_RECENT_ACTIVITY,
-      l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_RECENT_ACTIVITY),
-      base::BindRepeating(&TabGroupEditorBubbleView::RecentActivityPressed,
-                          base::Unretained(this)),
-      ui::ImageModel::FromVectorIcon(
-          features::IsRoundedIconsEnabled() ? kHistoryIcon : kHistoryOldIcon,
-          ui::kColorMenuIcon, kDefaultIconSize));
-  menu_item->SetProperty(views::kElementIdentifierKey,
-                         kTabGroupEditorBubbleRecentActivityButtonId);
-  return menu_item;
-}
-
-std::unique_ptr<views::LabelButton>
-TabGroupEditorBubbleView::BuildAskGeminiButton() {
-  std::unique_ptr<views::LabelButton> menu_item = CreateMenuItem(
-      TAB_GROUP_HEADER_CXMENU_ASK_GEMINI,
-      l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_ASK_GEMINI),
-      base::BindRepeating(&TabGroupEditorBubbleView::AskGeminiPressed,
-                          base::Unretained(this)),
-      ui::ImageModel::FromVectorIcon(vector_icons::kChatSparkIcon,
-                                     ui::kColorMenuIcon, kDefaultIconSize));
-  return menu_item;
-}
-
-void TabGroupEditorBubbleView::AskGeminiPressed() {
-  glic::GlicKeyedService* service =
-      glic::GlicKeyedServiceFactory::GetGlicKeyedService(browser_->GetProfile(),
-                                                         /*create=*/true);
-  if (service) {
-    service->instance_coordinator().ShowInstanceForTabGroup(group_);
-  }
-  GetWidget()->Close();
-}
-
 void TabGroupEditorBubbleView::NewTabInGroupPressed() {
   base::RecordAction(
       base::UserMetricsAction("TabGroups_TabGroupBubble_NewTabInGroup"));
@@ -959,28 +830,6 @@ void TabGroupEditorBubbleView::UngroupPressed() {
 
   if (widget) {
     widget->Close();
-  }
-}
-
-void TabGroupEditorBubbleView::ShareOrManagePressed() {
-  collaboration::CollaborationService* service =
-      collaboration::CollaborationServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  auto delegate =
-      std::make_unique<CollaborationControllerDelegateDesktop>(browser_);
-  service->StartShareOrManageFlow(
-      std::move(delegate), group_,
-      collaboration::CollaborationServiceShareOrManageEntryPoint::
-          kDesktopGroupEditorShareOrManageButton);
-
-  bool is_group_shared = IsGroupShared();
-  if (!is_group_shared) {
-    shared_tab_group_metrics::RecordSharedTabGroupManageType(
-        shared_tab_group_metrics::SharedTabGroupManageTypeDesktop::kShareGroup);
-  } else {
-    shared_tab_group_metrics::RecordSharedTabGroupManageType(
-        shared_tab_group_metrics::SharedTabGroupManageTypeDesktop::
-            kManageGroup);
   }
 }
 
@@ -1084,22 +933,6 @@ void TabGroupEditorBubbleView::UnfocusGroupPressed() {
   TabStripModel* const model = browser_->GetTabStripModel();
   model->SetFocusedGroup(std::nullopt);
   GetWidget()->Close();
-}
-
-void TabGroupEditorBubbleView::RecentActivityPressed() {
-  views::View* tab_group_header =
-      BrowserView::GetBrowserViewForBrowser(browser_)
-          ->tab_strip_view()
-          ->GetTabGroupAnchorView(group_);
-
-  auto* bubble_coordinator = RecentActivityBubbleCoordinator::From(browser_);
-  CHECK(bubble_coordinator);
-
-  bubble_coordinator->Show(views::BubbleAnchor(tab_group_header),
-                           browser_->GetTabStripModel()->GetActiveWebContents(),
-                           tab_groups::SavedTabGroupUtils::GetRecentActivity(
-                               browser_->GetProfile(), group_),
-                           browser_->GetProfile());
 }
 
 bool TabGroupEditorBubbleView::CanMoveGroupToNewWindow() {

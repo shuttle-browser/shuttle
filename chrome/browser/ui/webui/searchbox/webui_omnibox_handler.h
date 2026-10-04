@@ -9,7 +9,9 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
-#include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_handler.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
+#include "chrome/browser/tab_list/tab_list_interface_observer.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
@@ -32,7 +34,8 @@ class WebUI;
 }  // namespace content
 
 // Handles bidirectional communication between NTP realbox JS and the browser.
-class WebuiOmniboxHandler : public ContextualSearchboxHandler,
+class WebuiOmniboxHandler : public SearchboxHandler,
+                            public TabListInterfaceObserver,
                             OmniboxEditModel::Observer {
  public:
   WebuiOmniboxHandler(
@@ -40,8 +43,7 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
       mojo::PendingRemote<searchbox::mojom::Page> pending_page,
       MetricsReporter* metrics_reporter,
       OmniboxController* omnibox_controller,
-      content::WebUI* web_ui,
-      GetSessionHandleCallback get_session_callback);
+      content::WebUI* web_ui);
 
   WebuiOmniboxHandler(const WebuiOmniboxHandler&) = delete;
   WebuiOmniboxHandler& operator=(const WebuiOmniboxHandler&) = delete;
@@ -54,11 +56,6 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
                        base::TimeTicks match_selection_timestamp,
                        bool is_mouse_event) override;
   void OnThumbnailRemoved() override {}
-  void OpenLensSearch() override;
-  void AddTabContext(int32_t tab_id,
-                     bool delay_upload,
-                     searchbox::mojom::TabAttachmentSource source,
-                     AddTabContextCallback) override;
   // Queries autocomplete matches from the browser:
   // - When the WebUI Omnibox full popup is enabled:
   //   - If targeting the active tab (or if `tab_id` is nullopt), triggers
@@ -82,7 +79,7 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
   void StepSelection(OmniboxPopupSelection::Direction direction,
                      OmniboxPopupSelection::Step step);
   void OpenCurrentSelection(WindowOpenDisposition disposition);
-  void SetAimButtonVisible(bool visible) override;
+  void SetAimButtonVisible(bool visible);
 
   // SearchboxHandler:
   WindowOpenDisposition ComputeWindowOpenDisposition(
@@ -125,6 +122,7 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
   void OnTabDidInsert(tabs::TabInterface* tab);
 
   void UpdateAimButtonVisibility();
+  void UpdateTabListObservation(TabListInterface* tab_list);
 
   // Delegate to observe WebContents.
   // Managed as a separate class to prevent member naming conflicts
@@ -142,9 +140,6 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
     raw_ptr<WebuiOmniboxHandler> handler_;
   };
 
-  // ContextualSearchboxHandler:
-  int GetContextMenuMaxTabSuggestions() override;
-
   void OnContentSharingPolicyChanged();
   void OnAimPopupEligibilityChanged();
   void OnAiModeButtonConfigChanged(const AiModeButtonUiConfig* config);
@@ -159,6 +154,9 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
   PrefChangeRegistrar pref_change_registrar_;
   base::CallbackListSubscription aim_eligibility_subscription_;
   base::CallbackListSubscription ai_mode_config_subscription_;
+  base::ScopedObservation<TabListInterface, TabListInterfaceObserver>
+      tab_list_observation_{this};
+
   base::CallbackListSubscription tab_will_detach_subscription_;
   base::CallbackListSubscription tab_did_insert_subscription_;
 

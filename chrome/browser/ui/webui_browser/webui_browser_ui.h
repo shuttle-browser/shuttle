@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/webui_browser/bookmark_bar.mojom.h"
 #include "chrome/browser/ui/webui_browser/browser.mojom.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_window.h"
-#include "components/browser_apis/bookmarks/bookmarks_service.h"
 #include "components/browser_apis/tab_drag/tab_drag_api.mojom.h"
 #include "components/browser_apis/tab_strip/tab_strip_api.mojom.h"
 #include "components/browser_apis/tab_strip/tab_strip_experiment_api.mojom.h"
@@ -34,17 +33,12 @@ namespace content {
 class BrowserContext;
 }  // namespace content
 
-namespace contextual_search {
-class ContextualSearchSessionHandle;
-}  // namespace contextual_search
-
 namespace ui {
 class TrackedElementHandler;
 }  // namespace ui
 
 class RealboxHandler;
 class WebUIBrowserUI;
-class WebUIBrowserBookmarkBarPageHandler;
 
 class WebUIBrowserUIConfig
     : public content::DefaultWebUIConfig<WebUIBrowserUI> {
@@ -70,8 +64,6 @@ class WebUIBrowserUI : public ui::MojoWebUIController,
   void BindInterface(
       mojo::PendingReceiver<bookmark_bar::mojom::PageHandlerFactory> receiver);
   void BindInterface(
-      mojo::PendingReceiver<bookmarks_api::mojom::BookmarksService> receiver);
-  void BindInterface(
       mojo::PendingReceiver<extensions_bar::mojom::PageHandlerFactory>
           receiver);
   void BindInterface(
@@ -89,7 +81,6 @@ class WebUIBrowserUI : public ui::MojoWebUIController,
   void BindInterface(
       mojo::PendingReceiver<tabs_api::mojom::TabStripUIController> receiver);
 
-  void BookmarkBarStateChanged(BookmarkBar::AnimateChangeType change_type);
   void ShowSidePanel(SidePanelEntryKey side_panel_entry_key);
   void CloseSidePanel();
 
@@ -139,25 +130,13 @@ class WebUIBrowserUI : public ui::MojoWebUIController,
   // UIs.
   const std::vector<ui::ElementIdentifier>& GetKnownElementIdentifiers() const;
 
-  // Lazily creates and returns a reference to the owned contextual search
-  // session handle for `realbox_handler_`.
-  contextual_search::ContextualSearchSessionHandle*
-  GetOrCreateContextualSessionHandle();
-
-  // Must outlive `realbox_handler_`.
-  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
-      session_handle_;
   std::unique_ptr<RealboxHandler> realbox_handler_;
-  std::unique_ptr<WebUIBrowserBookmarkBarPageHandler>
-      bookmark_bar_page_handler_;
   std::unique_ptr<ui::TrackedElementHandler> tracked_element_handler_;
 
   mojo::Remote<webui_browser::mojom::Page> page_;
   mojo::Receiver<webui_browser::mojom::PageHandlerFactory>
       page_factory_receiver_{this};
 
-  mojo::Receiver<bookmark_bar::mojom::PageHandlerFactory>
-      bookmark_bar_page_factory_receiver_{this};
   mojo::Receiver<extensions_bar::mojom::PageHandlerFactory>
       extensions_bar_page_factory_receiver_{this};
 

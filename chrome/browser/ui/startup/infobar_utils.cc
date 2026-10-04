@@ -43,7 +43,6 @@
 #include "google_apis/google_api_keys.h"
 
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
 #endif
 
 #if BUILDFLAG(CHROME_FOR_TESTING)
@@ -308,46 +307,19 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
   }
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
 
-  // The default browser prompt should only be shown after the first run.
+  // The pin prompt should only be shown after the first run.
   if (is_first_run == chrome::startup::IsFirstRun::kNo) {
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-    if (base::FeatureList::IsEnabled(features::kSeparateDefaultAndPinPrompt)) {
-      const int seed = features::kSeparateDefaultAndPinPromptRandSeed.Get();
-      const int choice = (seed > 0) ? (seed % 2) : base::RandIntInclusive(0, 1);
-
-      base::OnceCallback<void(bool)> pdf_callback = base::DoNothing();
-      if (base::FeatureList::IsEnabled(features::kPdfInfoBar)) {
-        pdf_callback = base::BindOnce(
-            &pdf::infobar::PdfInfoBarController::MaybeShowInfoBarAtStartup,
-            browser->GetWeakPtr());
-      }
-
-      if (choice == 0) {
-        // Experiment Arm 1: Show default browser prompt first, then PDF.
-        ShowDefaultBrowserPrompt(profile, std::move(pdf_callback));
-      } else {
-        // Experiment Arm 2: Show Pin to Taskbar prompt first, then PDF.
-        default_browser::PinInfoBarController::MaybeShowInfoBarForBrowser(
-            browser->GetWeakPtr(), std::move(pdf_callback),
-            /*another_infobar_shown=*/false);
-      }
-    } else {
-      // Default browser prompt with either pinning if enabled or fallback to
-      // pdf if enabled.
-      base::OnceCallback<void(bool)> callback = base::DoNothing();
-      if (base::FeatureList::IsEnabled(features::kPdfInfoBar)) {
-        callback = base::BindOnce(
-            &pdf::infobar::PdfInfoBarController::MaybeShowInfoBarAtStartup,
-            browser->GetWeakPtr());
-      }
+    // Pin prompt first, then PDF if enabled.
+    base::OnceCallback<void(bool)> callback = base::DoNothing();
+    if (base::FeatureList::IsEnabled(features::kPdfInfoBar)) {
       callback = base::BindOnce(
-          &default_browser::PinInfoBarController::MaybeShowInfoBarForBrowser,
-          browser->GetWeakPtr(), std::move(callback));
-      ShowDefaultBrowserPrompt(profile, std::move(callback));
+          &pdf::infobar::PdfInfoBarController::MaybeShowInfoBarAtStartup,
+          browser->GetWeakPtr());
     }
-#else
-    // Purely default browser path since it's non mac/windows.
-    ShowDefaultBrowserPrompt(profile, base::DoNothing());
+    default_browser::PinInfoBarController::MaybeShowInfoBarForBrowser(
+        browser->GetWeakPtr(), std::move(callback),
+        /*another_infobar_shown=*/false);
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   }
 #endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)

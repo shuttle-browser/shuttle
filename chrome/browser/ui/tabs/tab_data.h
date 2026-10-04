@@ -18,16 +18,11 @@
 #include "ui/base/models/image_model.h"
 #include "url/gurl.h"
 
-class TabResourceUsage;
 class ThumbnailImage;
 
 namespace content {
 class WebContents;
 }
-
-namespace tab_groups {
-class CollaborationMessagingTabData;
-}  // namespace tab_groups
 
 namespace tabs {
 class TabInterface;
@@ -70,9 +65,6 @@ struct TabData {
   bool blocked = false;
 
   scoped_refptr<ThumbnailImage> thumbnail;
-  scoped_refptr<const TabResourceUsage> tab_resource_usage;
-  base::WeakPtr<tab_groups::CollaborationMessagingTabData>
-      collaboration_messaging = nullptr;
 };
 
 // Caches various data about a tab and notifies subscribers when any of the
@@ -100,7 +92,6 @@ class TabDataObserver {
                       content::WebContents* new_web_contents);
   void OnTabDetached(tabs::TabInterface* tab_interface,
                      tabs::TabInterface::DetachReason reason);
-  void OnResourceUsageChanged(scoped_refptr<const ::TabResourceUsage> usage);
 
   TabData tab_data_;
 
@@ -111,7 +102,6 @@ class TabDataObserver {
   base::CallbackListSubscription blocked_state_change_subscription_;
   base::CallbackListSubscription tab_discarded_subscription_;
   base::CallbackListSubscription tab_detached_subscription_;
-  base::CallbackListSubscription tab_resource_usage_subscription_;
   base::RepeatingCallbackList<void(TabChangeType, const TabData&)>
       tab_data_changed_callback_list_;
 };

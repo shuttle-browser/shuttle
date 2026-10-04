@@ -10,8 +10,8 @@ const char kProfileStatisticsPasswords[] = "Passwords";
 const char kProfileStatisticsBookmarks[] = "Bookmarks";
 const char kProfileStatisticsAutofill[] = "Autofill";
 
-const std::array<const char*, 4> kProfileStatisticsCategories = {
+const std::array<const char*, 3> kProfileStatisticsCategories = {
     {kProfileStatisticsBrowsingHistory, kProfileStatisticsPasswords,
-     kProfileStatisticsBookmarks, kProfileStatisticsAutofill}};
+     kProfileStatisticsAutofill}};
 
 }  // namespace profiles

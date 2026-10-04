@@ -7,7 +7,6 @@
 #include <memory>
 #include <type_traits>
 
-#include "base/command_line.h"
 #include "base/feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_features.h"
@@ -16,17 +15,14 @@
 #include "chrome/browser/devtools/protocol/ads_handler.h"
 #include "chrome/browser/devtools/protocol/autofill_handler.h"
 #include "chrome/browser/devtools/protocol/browser_handler.h"
-#include "chrome/browser/devtools/protocol/cast_handler.h"
 #include "chrome/browser/devtools/protocol/emulation_handler.h"
 #include "chrome/browser/devtools/protocol/extensions_handler.h"
 #include "chrome/browser/devtools/protocol/page_handler.h"
-#include "chrome/browser/devtools/protocol/pwa_handler.h"
 #include "chrome/browser/devtools/protocol/security_handler.h"
 #include "chrome/browser/devtools/protocol/storage_handler.h"
 #include "chrome/browser/devtools/protocol/system_info_handler.h"
 #include "chrome/browser/devtools/protocol/target_handler.h"
 #include "chrome/browser/devtools/protocol/webmcp_handler.h"
-#include "chrome/common/chrome_switches.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client.h"
 #include "content/public/browser/devtools_agent_host_client_channel.h"
@@ -71,11 +67,6 @@ ChromeDevToolsSession::ChromeDevToolsSession(
     if (IsDomainAvailableToUntrustedClient<SecurityHandler>() ||
         channel->GetClient()->IsTrusted()) {
       security_handler_ = std::make_unique<SecurityHandler>(
-          agent_host->GetWebContents(), dispatcher());
-    }
-    if (IsDomainAvailableToUntrustedClient<CastHandler>() ||
-        channel->GetClient()->IsTrusted()) {
-      cast_handler_ = std::make_unique<CastHandler>(
           agent_host->GetWebContents(), dispatcher());
     }
     if (IsDomainAvailableToUntrustedClient<StorageHandler>() ||
@@ -124,24 +115,6 @@ ChromeDevToolsSession::ChromeDevToolsSession(
   if (IsDomainAvailableToUntrustedClient<SystemInfoHandler>() ||
       channel->GetClient()->IsTrusted()) {
     system_info_handler_ = std::make_unique<SystemInfoHandler>(dispatcher());
-  }
-
-  if ((agent_host->GetType() == content::DevToolsAgentHost::kTypeBrowser ||
-       agent_host->GetType() == content::DevToolsAgentHost::kTypePage) &&
-      (channel->GetClient()->AllowUnsafeOperations()
-#if BUILDFLAG(IS_CHROMEOS)
-       // Also enable on ChromeOS in dev mode.
-       || (base::CommandLine::ForCurrentProcess()->HasSwitch(
-               chromeos::switches::kSystemDevMode) &&
-           base::CommandLine::ForCurrentProcess()->HasSwitch(
-               switches::kEnableDevToolsPwaHandler))
-#endif
-           )) {
-    if (IsDomainAvailableToUntrustedClient<PWAHandler>() ||
-        channel->GetClient()->IsTrusted()) {
-      pwa_handler_ =
-          std::make_unique<PWAHandler>(dispatcher(), agent_host->GetId());
-    }
   }
 #if BUILDFLAG(IS_CHROMEOS)
   window_manager_handler_ =

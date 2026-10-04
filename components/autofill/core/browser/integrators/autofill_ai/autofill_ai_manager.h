@@ -24,7 +24,6 @@
 #include "components/autofill/core/browser/foundations/autofill_manager.h"
 #include "components/autofill/core/browser/foundations/scoped_autofill_managers_observation.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_logger.h"
-#include "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_save_strike_database_by_attribute.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_save_strike_database_by_host.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_update_strike_database.h"
@@ -45,9 +44,7 @@ struct Suggestion;
 
 // The class for embedder-independent, tab-specific Autofill AI logic. This
 // class is owned by the AutofillClient.
-class AutofillAiManager
-    : public AutofillManager::Observer,
-      public AutofillAiPersonalContextAccessManager::Observer {
+class AutofillAiManager {
  public:
   using UpdateSuggestionsCallback =
       base::RepeatingCallback<void(std::vector<Suggestion>)>;
@@ -56,7 +53,7 @@ class AutofillAiManager
                     strike_database::StrikeDatabaseBase* strike_database);
   AutofillAiManager(const AutofillAiManager&) = delete;
   AutofillAiManager& operator=(const AutofillAiManager&) = delete;
-  ~AutofillAiManager() override;
+  virtual ~AutofillAiManager();
 
   // Generates AutofillAi suggestions.
   virtual std::vector<Suggestion> GetSuggestions(
@@ -101,16 +98,6 @@ class AutofillAiManager
   virtual void OnEditedAutofilledField(const FormStructure& form,
                                        const AutofillField& field,
                                        ukm::SourceId ukm_source_id);
-
-  // AutofillManager::Observer:
-  void OnAfterLoadedServerPredictions(
-      AutofillManager& manager,
-      base::span<const FormGlobalId> forms) override;
-
-  // AutofillAiPersonalContextAccessManager::Observer:
-  void OnPrefetchContextComplete(
-      const AutofillAiPersonalContextAccessManager& manager,
-      std::optional<base::span<const EntityInstance>> entities) override;
 
   // Updates `logger_`'s information about data stored for AutofillAi for
   // `form`.
@@ -279,19 +266,8 @@ class AutofillAiManager
   ukm::SourceId last_logged_ukm_source_id_for_interaction_ =
       ukm::kInvalidSourceId;
 
-  // Tracks the UKM source ID for which the prefetch cache readiness metric was
-  // last logged, ensuring it is logged at most once per page.
-  ukm::SourceId last_logged_ukm_source_id_for_cache_readiness_ =
-      ukm::kInvalidSourceId;
-
   // Callback to update the shown suggestions.
   base::RepeatingClosure generate_suggestions_and_update_popup_callback_;
-
-  ScopedAutofillManagersObservation autofill_managers_observation_{this};
-
-  base::ScopedObservation<AutofillAiPersonalContextAccessManager,
-                          AutofillAiPersonalContextAccessManager::Observer>
-      autofill_ai_personal_context_access_manager_observation_{this};
 
   base::WeakPtrFactory<AutofillAiManager> weak_ptr_factory_{this};
 };

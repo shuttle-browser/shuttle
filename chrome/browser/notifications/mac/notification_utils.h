@@ -12,19 +12,9 @@
 #include "chrome/browser/notifications/notification_handler.h"
 #include "chrome/services/mac_notifications/public/cpp/notification_style.h"
 #include "chrome/services/mac_notifications/public/mojom/mac_notifications.mojom.h"
-#include "components/webapps/common/web_app_id.h"
 #include "ui/message_center/public/cpp/notification.h"
 
 class Profile;
-
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-enum class MacNotificationAttributionOutcome {
-  kAttributed = 0,
-  kFallbackFeatureDisabled = 1,
-  kFallbackNoAppShim = 2,
-  kMaxValue = kFallbackNoAppShim,
-};
 
 namespace message_center {
 class Notification;
@@ -50,8 +40,7 @@ std::u16string CreateMacNotificationContext(
 // (click close, etc.).
 void ProcessMacNotificationResponse(
     mac_notifications::NotificationStyle notification_style,
-    mac_notifications::mojom::NotificationActionInfoPtr info,
-    std::optional<webapps::AppId> web_app_id = std::nullopt);
+    mac_notifications::mojom::NotificationActionInfoPtr info);
 
 // Returns if the given |notification| should be shown as an alert.
 bool IsAlertNotificationMac(const message_center::Notification& notification);

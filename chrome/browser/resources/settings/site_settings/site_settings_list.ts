@@ -17,7 +17,6 @@ import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bu
 
 import {BaseMixin} from '../base_mixin.js';
 import type {FocusConfig} from '../focus_config.js';
-import {loadTimeData} from '../i18n_setup.js';
 import type {Route} from '../router.js';
 import {Router} from '../router.js';
 import {ContentSetting, ContentSettingsTypes, CookieControlsMode, SettingsState} from '../site_settings/constants.js';
@@ -86,7 +85,6 @@ class SettingsSiteSettingsListElement extends
       'updateSiteDataLabel_(prefs.generated.cookie_default_content_setting.*)',
       'updateThirdPartyCookiesLabel_(prefs.profile.cookie_controls_mode.*,' +
           'prefs.generated.third_party_cookie_blocking_setting.*)',
-      'updateOfferWritingHelpLabel_(prefs.compose.proactive_nudge_enabled.*)',
     ];
   }
 
@@ -151,12 +149,11 @@ class SettingsSiteSettingsListElement extends
   private refreshDefaultValueLabel_(category: ContentSettingsTypes):
       Promise<void> {
     // Default labels are not applicable to ZOOM_LEVELS, PDF, PROTECTED_CONTENT,
-    // SITE_DATA, or OFFER_WRITING_HELP.
+    // or SITE_DATA.
     if (category === ContentSettingsTypes.ZOOM_LEVELS ||
         category === ContentSettingsTypes.PROTECTED_CONTENT ||
         category === ContentSettingsTypes.PDF_DOCUMENTS ||
         category === ContentSettingsTypes.SITE_DATA ||
-        category === ContentSettingsTypes.OFFER_WRITING_HELP ||
         // Updates to the cookies label are handled by the
         // cookieSettingDescriptionChanged event listener.
         category === ContentSettingsTypes.COOKIES) {
@@ -345,26 +342,6 @@ class SettingsSiteSettingsListElement extends
       label = 'thirdPartyCookiesLinkRowSublabelDisabled';
     }
     assert(!!label);
-    this.set(`categoryList.${index}.subLabel`, this.i18n(label));
-  }
-
-  private updateOfferWritingHelpLabel_() {
-    if (!loadTimeData.getBoolean('enableComposeProactiveNudge')) {
-      return;
-    }
-
-    const enabled = this.getPref('compose.proactive_nudge_enabled').value;
-    const index =
-        this.categoryMap_.get(ContentSettingsTypes.OFFER_WRITING_HELP);
-
-    // The writing help data row might not be part of the current
-    // site-settings-list but the class always observes the preference.
-    if (index === -1) {
-      return;
-    }
-
-    const label = enabled ? 'siteSettingsOfferWritingHelpEnabledSublabel' :
-                            'siteSettingsOfferWritingHelpDisabledSublabel';
     this.set(`categoryList.${index}.subLabel`, this.i18n(label));
   }
 

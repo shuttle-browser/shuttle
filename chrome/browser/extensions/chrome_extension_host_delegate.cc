@@ -21,10 +21,6 @@
 #include "ui/base/base_window.h"
 #include "ui/base/page_transition_types.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "chrome/browser/apps/platform_apps/audio_focus_web_contents_observer.h"
-#endif
-
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/android/tab_android.h"
 #endif
@@ -41,9 +37,6 @@ ChromeExtensionHostDelegate::~ChromeExtensionHostDelegate() = default;
 void ChromeExtensionHostDelegate::OnExtensionHostCreated(
     content::WebContents* web_contents) {
   PrefsTabHelper::CreateForWebContents(web_contents);
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  apps::AudioFocusWebContentsObserver::CreateForWebContents(web_contents);
-#endif
 }
 
 void ChromeExtensionHostDelegate::CreateTab(

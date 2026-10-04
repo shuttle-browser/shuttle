@@ -23,7 +23,6 @@
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_service.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_service_factory.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/omnibox/autocomplete_controller_emitter_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -97,11 +96,9 @@ void OmniboxPageHandler::OnResultChanged(AutocompleteController* controller,
   // `AutocompleteMatch` cannot be serialized directly, since the Mojo type
   // includes fields that can only be calculated in `//chrome` and not
   // `//components`.
-  bookmarks::BookmarkModel* bookmark_model =
-      BookmarkModelFactory::GetForBrowserContext(profile_);
   response->combined_results = base::ToVector(
       controller->result(), [&](const ::AutocompleteMatch& match) {
-        return ::AutocompleteMatchWrapper(bookmark_model, match);
+        return ::AutocompleteMatchWrapper(match);
       });
   std::vector<scoped_refptr<AutocompleteProvider>> providers = {};
   for (const auto& provider : controller->providers()) {
@@ -115,7 +112,7 @@ void OmniboxPageHandler::OnResultChanged(AutocompleteController* controller,
             input->GetName(),
             base::ToVector(
                 input->matches(), [&](const ::AutocompleteMatch& match) {
-                  return ::AutocompleteMatchWrapper(bookmark_model, match);
+                  return ::AutocompleteMatchWrapper(match);
                 }));
       });
 
@@ -152,7 +149,7 @@ void OmniboxPageHandler::OnMlScored(AutocompleteController* controller,
                                     const AutocompleteResult& result) {
   auto combined_results =
       base::ToVector(result, [](const ::AutocompleteMatch& match) {
-        return ::AutocompleteMatchWrapper(nullptr, match);
+        return ::AutocompleteMatchWrapper(match);
       });
   page_->HandleNewMlResponse(GetAutocompleteControllerType(controller),
                              base::UTF16ToUTF8(controller->input().text()),

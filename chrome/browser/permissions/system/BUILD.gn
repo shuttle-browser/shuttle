@@ -54,14 +54,12 @@ source_set("system") {
     ]
     deps += [
       "//chrome/browser:after_startup_task_utils",
-      "//chrome/browser/web_applications",
     ]
   } else if (is_chromeos) {
     sources += [ "system_permission_settings_chromeos.cc" ]
     deps += [
       "//chrome/browser:browser_public_dependencies",
       "//chrome/browser/ash/privacy_hub",
-      "//chrome/browser/web_applications",
     ]
   } else if (is_win) {
     public += [ "system_media_source_win.h" ]

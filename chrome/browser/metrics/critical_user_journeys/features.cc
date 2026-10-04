@@ -18,19 +18,4 @@ BASE_FEATURE(kViewDownloadedFileFromAppMenuJourney,
 BASE_FEATURE(kPinExtensionJourney, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kSettingsGlowupJourneys, base::FEATURE_ENABLED_BY_DEFAULT);
 
-// HaTS.
-BASE_FEATURE(kHappinessTrackingSurveysForDownloadJourney,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-BASE_FEATURE(kHappinessTrackingSurveysForPinExtensionJourney,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-const char kHatsSurveyTriggerDownloadJourney[] = "download-journey";
-const char kHatsSurveyTriggerPinExtensionJourney[] = "pin-extension-journey";
-
-BASE_FEATURE(kHappinessTrackingSurveysForClearBrowsingHistory,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-const char kHatsSurveyTriggerClearBrowsingHistory[] =
-    "clear-browsing-history-journey";
-
 }  // namespace metrics

@@ -17,8 +17,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/browser/signin/signin_ui_util.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/browser/ui/passwords/password_dialog_prompts.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/signin/promos/bubble_signin_promo_view.h"
@@ -470,14 +468,6 @@ PasswordSaveUpdateView::PasswordSaveUpdateView(
   AddAccelerator(ui::Accelerator(ui::VKEY_RETURN, ui::EF_NONE));
 
   UpdateBubbleUIElements();
-
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(profile, /*create_if_necessary=*/true);
-  CHECK(hats_service);
-  hats_service->LaunchDelayedSurveyForWebContents(
-      kHatsSurveyTriggerAutofillPassword, web_contents, 10000);
 }
 
 PasswordSaveUpdateView::~PasswordSaveUpdateView() = default;

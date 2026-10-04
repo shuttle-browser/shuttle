@@ -71,11 +71,6 @@ class StartupTabProvider {
   virtual CommandLineTabsPresent HasCommandLineTabs(
       const base::CommandLine& command_line,
       const base::FilePath& cur_dir) const = 0;
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Returns tabs related to the What's New UI (if applicable).
-  virtual StartupTabs GetNewFeaturesTabs(bool whats_new_enabled) const = 0;
-#endif  // !BUILDFLAG(IS_ANDROID)
 };
 
 class StartupTabProviderImpl : public StartupTabProvider {
@@ -118,11 +113,6 @@ class StartupTabProviderImpl : public StartupTabProvider {
   // explicitly specified. Session Restore does not expect the NTP to be passed.
   static StartupTabs GetNewTabPageTabsForState(const SessionStartupPref& pref);
 
-#if !BUILDFLAG(IS_ANDROID)
-  // Determines if the what's new page should be shown.
-  static StartupTabs GetNewFeaturesTabsForState(bool whats_new_enabled);
-#endif
-
   // Gets the URL for the page which offers to reset the user's profile
   // settings.
   static GURL GetTriggeredResetSettingsUrl();
@@ -143,10 +133,6 @@ class StartupTabProviderImpl : public StartupTabProvider {
   CommandLineTabsPresent HasCommandLineTabs(
       const base::CommandLine& command_line,
       const base::FilePath& cur_dir) const override;
-
-#if !BUILDFLAG(IS_ANDROID)
-  StartupTabs GetNewFeaturesTabs(bool whats_new_enabled) const override;
-#endif  // !BUILDFLAG(IS_ANDROID)
 
  private:
   struct ParsedCommandLineTabArg {

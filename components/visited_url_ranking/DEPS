@@ -1,5 +1,4 @@
 include_rules = [
-  "+components/bookmarks",
   "+components/history",
   "+components/keyed_service/core",
   "+components/prefs",

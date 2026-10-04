@@ -1684,12 +1684,11 @@ class OmniboxPedalShareThisPage : public OmniboxPedal {
   bool IsReadyToTrigger(
       const AutocompleteInput& input,
       const AutocompleteProviderClient& client) const override {
-    return client.IsSharingHubAvailable();
+    // The sharing hub has been removed, so this pedal is never available.
+    return false;
   }
 
-  void Execute(ExecutionContext& context) const override {
-    context.client_->OpenSharingHub();
-  }
+  void Execute(ExecutionContext& context) const override {}
 
  protected:
   ~OmniboxPedalShareThisPage() override = default;

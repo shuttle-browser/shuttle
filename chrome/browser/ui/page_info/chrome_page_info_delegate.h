@@ -16,7 +16,6 @@
 class BrowserWindowInterface;
 class Profile;
 class StatefulSSLHostStateDelegate;
-class TrustSafetySentimentService;
 
 namespace content_settings {
 class PageSpecificContentSettings;
@@ -147,11 +146,6 @@ class ChromePageInfoDelegate : public PageInfoDelegate {
 #if !BUILDFLAG(IS_ANDROID)
   // Focus the window and tab for the web contents.
   void FocusWebContents();
-
-  // The sentiment service is owned by the profile and will outlive this. The
-  // service cannot be retrieved via |web_contents_| as that may be destroyed
-  // before this is.
-  raw_ptr<TrustSafetySentimentService> sentiment_service_;
 #endif
 
   // Callback used to look up the BrowserWindowInterface for a WebContents.

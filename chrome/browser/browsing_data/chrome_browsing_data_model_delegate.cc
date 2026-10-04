@@ -28,27 +28,9 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
-#include "chrome/browser/web_applications/isolated_web_apps/get_isolated_web_app_browsing_data.h"
-#include "chrome/browser/web_applications/isolated_web_apps/remove_isolated_web_app_data.h"
 #endif
 
 namespace {
-
-#if !BUILDFLAG(IS_ANDROID)
-std::vector<ChromeBrowsingDataModelDelegate::DelegateEntry>
-IsolatedWebAppBrowsingDataToDelegateEntries(
-    base::flat_map<url::Origin, uint64_t> isolated_web_app_browsing_data) {
-  std::vector<ChromeBrowsingDataModelDelegate::DelegateEntry> entries;
-  for (auto const& [origin, size] : isolated_web_app_browsing_data) {
-    entries.emplace_back(
-        origin,
-        static_cast<BrowsingDataModel::StorageType>(
-            ChromeBrowsingDataModelDelegate::StorageType::kIsolatedWebApp),
-        size);
-  }
-  return entries;
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 std::vector<ChromeBrowsingDataModelDelegate::DelegateEntry>
 PrivateVerificationTokenBrowsingDataToDelegateEntries(
@@ -117,14 +99,6 @@ void ChromeBrowsingDataModelDelegate::GetAllDataKeys(
 
   GetAllFederatedIdentityDataKeys(concurrent.CreateCallback(), {});
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (storage_partition_->GetConfig().is_default()) {
-    web_app::GetIsolatedWebAppBrowsingData(
-        profile_, base::BindOnce(&IsolatedWebAppBrowsingDataToDelegateEntries)
-                      .Then(concurrent.CreateCallback()));
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
-
   GetAllMediaDeviceSaltDataKeys(concurrent.CreateCallback(), {});
 
   if (base::FeatureList::IsEnabled(
@@ -168,17 +142,6 @@ void ChromeBrowsingDataModelDelegate::RemoveDataKey(
                                   concurrent.CreateClosure());
     }
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  if (storage_types.Has(static_cast<BrowsingDataModel::StorageType>(
-          StorageType::kIsolatedWebApp))) {
-    CHECK(std::holds_alternative<url::Origin>(data_key));
-    const url::Origin& origin = *std::get_if<url::Origin>(&data_key);
-
-    web_app::RemoveIsolatedWebAppBrowsingData(profile_, origin,
-                                              concurrent.CreateClosure());
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   if (base::FeatureList::IsEnabled(
           net::features::kEnablePrivateVerificationTokens) &&

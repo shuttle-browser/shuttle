@@ -15,8 +15,6 @@
 #include "chrome/browser/ui/startup/focus/focus_result_file_writer.h"
 #include "chrome/browser/ui/startup/focus/match_candidate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/common/chrome_switches.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/base_window.h"
@@ -67,15 +65,6 @@ std::vector<MatchCandidate> CollectMatchingElements(const Selector& selector,
                                                     Profile& profile) {
   std::vector<MatchCandidate> candidates;
 
-  // Get the WebAppProvider to access the registrar for app matching.
-  // This is safe access for our use-case, as we are only using this when
-  // encountering a browser with an AppBrowserController, which means that an
-  // app is installed here, at least for now.
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebApps(&profile);
-  web_app::WebAppRegistrar* registrar =
-      provider ? &provider->registrar_unsafe() : nullptr;
-
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
       [&](BrowserWindowInterface* browser_window) {
         if (browser_window->GetProfile() != &profile) {
@@ -94,7 +83,7 @@ std::vector<MatchCandidate> CollectMatchingElements(const Selector& selector,
           }
 
           std::optional<MatchCandidate> match =
-              MatchTab(selector, *browser_window, i, *web_contents, registrar);
+              MatchTab(selector, *browser_window, i, *web_contents);
           if (match.has_value()) {
             candidates.push_back(std::move(match.value()));
           }

@@ -5,84 +5,20 @@
 #include <memory>
 #include <utility>
 
-#include "base/check_is_test.h"
 #include "base/functional/bind.h"
-#include "base/memory/raw_ptr.h"
-#include "base/strings/utf_string_conversions.h"
-#include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
-#include "chrome/browser/apps/app_service/app_service_proxy.h"
-#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
-#include "chrome/browser/apps/app_service/browser_app_launcher.h"
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/extensions/api/management/chrome_management_api_delegate.h"
-#include "chrome/browser/extensions/chrome_app_deprecation.h"
-#include "chrome/browser/extensions/chrome_extension_function_details.h"
-#include "chrome/browser/extensions/launch_util.h"
-#include "chrome/browser/favicon/favicon_service_factory.h"
-#include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/browser_tabstrip.h"
-#include "chrome/browser/ui/browser_window.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
-#include "chrome/browser/ui/tab_helpers.h"
-#include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
-#include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
-#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
-#include "chrome/browser/web_applications/scheduler/fetch_installability_for_chrome_management_result.h"
-#include "chrome/browser/web_applications/web_app_command_scheduler.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_install_info.h"
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_params.h"
-#include "chrome/browser/web_applications/web_app_install_utils.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
-#include "chrome/common/extensions/extension_metrics.h"
-#include "components/favicon/core/favicon_service.h"
-#include "components/services/app_service/public/cpp/app_launch_params.h"
-#include "components/services/app_service/public/cpp/app_launch_util.h"
-#include "components/webapps/browser/install_result_code.h"
-#include "components/webapps/browser/installable/installable_manager.h"
-#include "components/webapps/browser/installable/installable_metrics.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/browser_context.h"
-#include "content/public/browser/web_contents.h"
 #include "extensions/browser/api/management/management_api.h"
-#include "extensions/browser/api/management/management_api_constants.h"
-#include "extensions/browser/disable_reason.h"
-#include "extensions/browser/extension_dialog_auto_confirm.h"
-#include "extensions/browser/extension_prefs.h"
-#include "extensions/browser/extension_registry.h"
-#include "extensions/browser/extension_system.h"
 #include "extensions/common/api/management.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_id.h"
-#include "extensions/common/extension_urls.h"
-#include "extensions/common/mojom/context_type.mojom.h"
-#include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
-#include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 
 namespace extensions {
 namespace {
-using InstallOrLaunchWebAppCallback =
-    ManagementAPIDelegate::InstallOrLaunchWebAppCallback;
-using InstallOrLaunchWebAppResult =
-    ManagementAPIDelegate::InstallOrLaunchWebAppResult;
-using InstallableCheckResult = web_app::InstallableCheckResult;
 
-void OnGenerateAppForLinkCompleted(
-    ManagementGenerateAppForLinkFunction* function,
-    const webapps::AppId& app_id,
-    webapps::InstallResultCode code) {
-  const bool install_success =
-      code == webapps::InstallResultCode::kSuccessNewInstall;
-  function->FinishCreateWebApp(app_id, install_success);
-}
-
+// Web apps and app launching are removed from this browser, so no app can be
+// generated for a link. The delegate only exists to satisfy the interface.
 class ChromeAppForLinkDelegate : public AppForLinkDelegate {
  public:
   ChromeAppForLinkDelegate() = default;
@@ -92,234 +28,29 @@ class ChromeAppForLinkDelegate : public AppForLinkDelegate {
 
   ~ChromeAppForLinkDelegate() override = default;
 
-  void OnFaviconForApp(ManagementGenerateAppForLinkFunction* function,
-                       content::BrowserContext* context,
-                       const std::string& title,
-                       const GURL& launch_url,
-                       const favicon_base::FaviconImageResult& image_result) {
-    // GenerateAppForLink API doesn't allow a manifest ID to be specified, so
-    // just use the launch_url for both manifest ID and start URL. This is a
-    // reasonable behavior for "DIY apps" generated for a specific URL but
-    // should be fixed if used for installing existing "Crafted Apps" (ie.
-    // apps with an existing manifest that should be used for updates).
-    GURL start_url = launch_url;
-    webapps::ManifestId manifest_id =
-        web_app::GenerateManifestIdFromStartUrlOnly(start_url);
-    auto web_app_info =
-        std::make_unique<web_app::WebAppInstallInfo>(manifest_id, start_url);
-    web_app_info->title = base::UTF8ToUTF16(title);
-    web_app_info->display_mode = web_app::DisplayMode::kBrowser;
-    web_app_info->user_display_mode = web_app::mojom::UserDisplayMode::kBrowser;
-
-    if (!image_result.image.IsEmpty()) {
-      web_app_info->icon_bitmaps.any[image_result.image.Width()] =
-          image_result.image.AsBitmap();
-    }
-
-    auto* provider = web_app::WebAppProvider::GetForWebApps(
-        Profile::FromBrowserContext(context));
-
-    provider->scheduler().InstallFromInfoWithParams(
-        std::move(web_app_info),
-        /*overwrite_existing_manifest_fields=*/false,
-        webapps::WebappInstallSource::MANAGEMENT_API,
-        base::BindOnce(OnGenerateAppForLinkCompleted,
-                       base::RetainedRef(function)),
-        web_app::WebAppInstallParams());
-  }
-
   api::management::ExtensionInfo CreateExtensionInfoFromWebApp(
       const ExtensionId& app_id,
       content::BrowserContext* context) override {
-    auto* provider = web_app::WebAppProvider::GetForWebApps(
-        Profile::FromBrowserContext(context));
-    DCHECK(provider);
-    const web_app::WebAppRegistrar& registrar = provider->registrar_unsafe();
-
-    api::management::ExtensionInfo info;
-    info.id = app_id;
-    info.name = registrar.GetAppShortName(app_id);
-    info.enabled = registrar.GetInstallState(app_id) ==
-                   web_app::proto::INSTALLED_WITH_OS_INTEGRATION;
-    info.install_type = api::management::ExtensionInstallType::kOther;
-    info.is_app = true;
-    info.type = api::management::ExtensionType::kHostedApp;
-    info.app_launch_url = registrar.GetAppStartUrl(app_id).spec();
-
-    info.icons.emplace();
-    std::vector<apps::IconInfo> manifest_icons =
-        registrar.GetAppIconInfos(app_id);
-    info.icons->reserve(manifest_icons.size());
-    for (const apps::IconInfo& web_app_icon_info : manifest_icons) {
-      api::management::IconInfo icon_info;
-      if (web_app_icon_info.square_size_px) {
-        icon_info.size = *web_app_icon_info.square_size_px;
-      }
-      icon_info.url = web_app_icon_info.url.spec();
-      info.icons->push_back(std::move(icon_info));
-    }
-
-    switch (registrar.GetAppDisplayMode(app_id)) {
-      case web_app::DisplayMode::kBrowser:
-        info.launch_type = api::management::LaunchType::kOpenAsRegularTab;
-        break;
-      case web_app::DisplayMode::kMinimalUi:
-      case web_app::DisplayMode::kStandalone:
-        info.launch_type = api::management::LaunchType::kOpenAsWindow;
-        break;
-      case web_app::DisplayMode::kFullscreen:
-        info.launch_type = api::management::LaunchType::kOpenFullScreen;
-        break;
-      // These modes are not supported by the extension app backend.
-      case web_app::DisplayMode::kWindowControlsOverlay:
-      case web_app::DisplayMode::kTabbed:
-      case web_app::DisplayMode::kUnframed:
-      case web_app::DisplayMode::kPictureInPicture:
-      case web_app::DisplayMode::kUndefined:
-        info.launch_type = api::management::LaunchType::kNone;
-        break;
-    }
-
-    return info;
+    return api::management::ExtensionInfo();
   }
-
-  // Used for favicon loading tasks.
-  base::CancelableTaskTracker cancelable_task_tracker_;
 };
-
-void LaunchWebApp(const webapps::AppId& app_id, Profile* profile) {
-  // Look at prefs to find the right launch container. If the user has not set a
-  // preference, the default launch value will be returned.
-  // TODO(crbug.com/40098656): Make AppLaunchParams launch container Optional or
-  // add a "default" launch container enum value.
-  auto* provider = web_app::WebAppProvider::GetForWebApps(profile);
-  DCHECK(provider);
-  std::optional<web_app::mojom::UserDisplayMode> display_mode =
-      provider->registrar_unsafe().GetAppUserDisplayMode(app_id);
-  auto launch_container = apps::LaunchContainer::kLaunchContainerWindow;
-  if (display_mode == web_app::mojom::UserDisplayMode::kBrowser) {
-    launch_container = apps::LaunchContainer::kLaunchContainerTab;
-  }
-
-  if (!apps::AppServiceProxyFactory::IsAppServiceAvailableForProfile(profile)) {
-    // If the profile doesn't have an App Service Proxy available, that means
-    // this extension has been explicitly permitted to run in an incognito
-    // context. Treat this as if the extension is running in the original
-    // profile, so it is allowed to access apps in the original profile.
-    profile = profile->GetOriginalProfile();
-  }
-
-  apps::AppServiceProxyFactory::GetForProfile(profile)->LaunchAppWithParams(
-      apps::AppLaunchParams(app_id, launch_container,
-                            WindowOpenDisposition::NEW_FOREGROUND_TAB,
-                            apps::LaunchSource::kFromManagementApi));
-}
-
-void OnWebAppInstallCompleted(InstallOrLaunchWebAppCallback callback,
-                              const webapps::AppId& app_id,
-                              webapps::InstallResultCode code) {
-  InstallOrLaunchWebAppResult result =
-      IsSuccess(code) ? InstallOrLaunchWebAppResult::kSuccess
-                      : InstallOrLaunchWebAppResult::kUnknownError;
-  std::move(callback).Run(result);
-}
-
-void OnWebAppInstallabilityChecked(
-    base::WeakPtr<Profile> profile,
-    InstallOrLaunchWebAppCallback callback,
-    std::unique_ptr<content::WebContents> web_contents,
-    InstallableCheckResult result,
-    std::optional<webapps::AppId> app_id) {
-  if (!profile) {
-    return;
-  }
-  switch (result) {
-    case InstallableCheckResult::kAlreadyInstalled:
-      DCHECK(app_id);
-      LaunchWebApp(*app_id, profile.get());
-      std::move(callback).Run(InstallOrLaunchWebAppResult::kSuccess);
-      return;
-    case InstallableCheckResult::kNotInstallable:
-      std::move(callback).Run(InstallOrLaunchWebAppResult::kInvalidWebApp);
-      return;
-    case InstallableCheckResult::kInstallable:
-      base::WeakPtr<content::WebContents> weak_contents =
-          web_contents->GetWeakPtr();
-      chrome::ScopedTabbedBrowserDisplayer displayer(profile.get());
-      const GURL& url = web_contents->GetLastCommittedURL();
-
-      chrome::AddWebContents(displayer.browser_window_interface(), nullptr,
-                             std::move(web_contents), url,
-                             WindowOpenDisposition::NEW_FOREGROUND_TAB,
-                             blink::mojom::WindowFeatures());
-      if (!weak_contents) {
-        std::move(callback).Run(InstallOrLaunchWebAppResult::kUnknownError);
-        return;
-      }
-      web_app::CreateWebAppFromManifest(
-          weak_contents.get(), webapps::WebappInstallSource::MANAGEMENT_API,
-          base::BindOnce(&OnWebAppInstallCompleted, std::move(callback)));
-      return;
-  }
-  NOTREACHED();
-}
 
 }  // namespace
 
 bool ChromeManagementAPIDelegate::LaunchAppFunctionDelegate(
     const Extension* extension,
     content::BrowserContext* context) const {
-  // Look at prefs to find the right launch container.
-  // If the user has not set a preference, the default launch value will be
-  // returned.
-  // TODO(crbug.com/40098656): Make AppLaunchParams launch container Optional or
-  // add a "default" launch container enum value.
-  apps::LaunchContainer launch_container =
-      GetLaunchContainer(ExtensionPrefs::Get(context), extension);
-  Profile* profile = Profile::FromBrowserContext(context);
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  if (IsExtensionUnsupportedDeprecatedApp(profile, extension->id())) {
-    return false;
-  }
-#endif
-  if (!apps::AppServiceProxyFactory::IsAppServiceAvailableForProfile(profile)) {
-    // If the profile doesn't have an App Service Proxy available, that means
-    // this extension has been explicitly permitted to run in an incognito
-    // context. Treat this as if the extension is running in the original
-    // profile, so it is allowed to access apps in the original profile.
-    profile = profile->GetOriginalProfile();
-  }
-  apps::AppServiceProxyFactory::GetForProfile(profile)->LaunchAppWithParams(
-      apps::AppLaunchParams(extension->id(), launch_container,
-                            WindowOpenDisposition::NEW_FOREGROUND_TAB,
-                            apps::LaunchSource::kFromManagementApi));
-
-  RecordAppLaunchType(extension_misc::APP_LAUNCH_EXTENSION_API,
-                      extension->GetType());
-  return true;
+  // App launching (App Service, application_launch) is removed.
+  return false;
 }
 
 bool ChromeManagementAPIDelegate::CreateAppShortcutFunctionDelegate(
     ManagementCreateAppShortcutFunction* function,
     const Extension* extension,
     std::string* error) const {
-  BrowserWindowInterface* browser =
-      ProfileBrowserCollection::GetForProfile(
-          Profile::FromBrowserContext(function->browser_context()))
-          ->GetLastActiveBrowser();
-  if (!browser) {
-    // Shouldn't happen if we have user gesture.
-    *error = extension_management_api_constants::kNoBrowserToCreateShortcut;
-    return false;
-  }
-
-  chrome::ShowCreateChromeAppShortcutsDialog(
-      browser->GetWindow()->GetNativeWindow(), browser->GetProfile(), extension,
-      base::BindOnce(
-          &ManagementCreateAppShortcutFunction::OnCloseShortcutPrompt,
-          function));
-
-  return true;
+  // App shortcuts (and the app launching they rely on) are removed.
+  *error = "Creating app shortcuts is not supported.";
+  return false;
 }
 
 std::unique_ptr<AppForLinkDelegate>
@@ -328,63 +59,26 @@ ChromeManagementAPIDelegate::GenerateAppForLinkFunctionDelegate(
     content::BrowserContext* context,
     const std::string& title,
     const GURL& launch_url) const {
-  favicon::FaviconService* favicon_service =
-      FaviconServiceFactory::GetForProfile(Profile::FromBrowserContext(context),
-                                           ServiceAccessType::EXPLICIT_ACCESS);
-  DCHECK(favicon_service);
-
-  auto delegate = std::make_unique<ChromeAppForLinkDelegate>();
-
-  favicon_service->GetFaviconImageForPageURL(
-      launch_url,
-      base::BindOnce(&ChromeAppForLinkDelegate::OnFaviconForApp,
-                     base::Unretained(delegate.get()),
-                     base::RetainedRef(function), context, title, launch_url),
-      &delegate->cancelable_task_tracker_);
-
-  return delegate;
+  // Web apps are removed; report an install failure asynchronously, as the
+  // caller expects the response after this returns.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&ManagementGenerateAppForLinkFunction::FinishCreateWebApp,
+                     base::RetainedRef(function), std::string(),
+                     /*install_success=*/false));
+  return std::make_unique<ChromeAppForLinkDelegate>();
 }
 
 bool ChromeManagementAPIDelegate::CanContextInstallWebApps(
     content::BrowserContext* context) const {
-  return web_app::AreWebAppsUserInstallable(
-      Profile::FromBrowserContext(context));
+  return false;
 }
 
 void ChromeManagementAPIDelegate::InstallOrLaunchReplacementWebApp(
     content::BrowserContext* context,
     const GURL& web_app_url,
     InstallOrLaunchWebAppCallback callback) const {
-  Profile* profile = Profile::FromBrowserContext(context);
-  auto* provider = web_app::WebAppProvider::GetForWebApps(profile);
-  DCHECK(provider);
-
-  // Launch the app if web_app_url happens to match start_url. If not, the app
-  // could still be installed with different start_url.
-  std::optional<webapps::ManifestId> manifest_id =
-      webapps::ManifestId::Create(web_app_url);
-  if (manifest_id.has_value()) {
-    webapps::AppId app_id = web_app::GenerateAppIdFromManifestId(*manifest_id);
-    if (provider->registrar_unsafe().AppMatches(
-            app_id, web_app::WebAppFilter::InstalledInChrome())) {
-      LaunchWebApp(web_app::GenerateAppId(/*manifest_id_path=*/std::nullopt,
-                                          web_app_url),
-                   profile);
-      std::move(callback).Run(InstallOrLaunchWebAppResult::kSuccess);
-      return;
-    }
-  }
-
-  std::unique_ptr<content::WebContents> web_contents =
-      content::WebContents::Create(content::WebContents::CreateParams(profile));
-  web_app::CreateWebAppInstallTabHelpers(web_contents.get());
-
-  base::WeakPtr<content::WebContents> web_contents_ptr =
-      web_contents->GetWeakPtr();
-  provider->scheduler().FetchInstallabilityForChromeManagement(
-      web_app_url, web_contents_ptr,
-      base::BindOnce(&OnWebAppInstallabilityChecked, profile->GetWeakPtr(),
-                     std::move(callback), std::move(web_contents)));
+  std::move(callback).Run(InstallOrLaunchWebAppResult::kInvalidWebApp);
 }
 
 }  // namespace extensions

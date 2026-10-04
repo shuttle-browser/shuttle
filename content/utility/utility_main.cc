@@ -23,7 +23,6 @@
 #include "base/time/time.h"
 #include "base/timer/hi_res_timer_manager.h"
 #include "build/build_config.h"
-#include "components/on_device_translation/buildflags/buildflags.h"
 #include "components/webrtc/features.h"
 #include "content/child/child_process.h"
 #include "content/common/content_switches_internal.h"
@@ -57,7 +56,6 @@
 #include "sandbox/policy/linux/sandbox_linux.h"
 #include "services/audio/audio_sandbox_hook_linux.h"
 #include "services/network/network_sandbox_hook_linux.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "services/shape_detection/shape_detection_sandbox_hook.h"
 
 #if BUILDFLAG(USE_LINUX_VIDEO_ACCELERATION)
@@ -80,11 +78,6 @@
 
 #if BUILDFLAG(ENABLE_PRINTING)
 #include "printing/sandbox/print_backend_sandbox_hook_linux.h"
-#endif
-
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "services/screen_ai/public/cpp/utilities.h"  // nogncheck
-#include "services/screen_ai/sandbox/screen_ai_sandbox_hook_linux.h"  // nogncheck
 #endif
 
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -118,12 +111,6 @@
 #if BUILDFLAG(IS_WIN)
 sandbox::TargetServices* g_utility_target_services = nullptr;
 #endif  // BUILDFLAG(IS_WIN)
-
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION) && \
-    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS))
-#include "components/on_device_translation/service/sandbox_hook.h"
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION) &&  (BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS))
 
 namespace content {
 
@@ -340,24 +327,8 @@ int UtilityMain(MainFunctionParams parameters) {
       pre_sandbox_hook =
           base::BindOnce(&speech::SpeechRecognitionPreSandboxHook);
       break;
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION) && \
-    (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS))
-    case sandbox::mojom::Sandbox::kOnDeviceTranslation:
-      pre_sandbox_hook = base::BindOnce(
-          &on_device_translation::OnDeviceTranslationSandboxHook);
-      break;
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION) && (BUILDFLAG(IS_LINUX) ||
-        // BUILDFLAG(IS_CHROMEOS))
     case sandbox::mojom::Sandbox::kScreenAI:
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-      pre_sandbox_hook =
-          base::BindOnce(&screen_ai::ScreenAIPreSandboxHook,
-                         parameters.command_line->GetSwitchValuePath(
-                             screen_ai::GetBinaryPathSwitch()));
-      break;
-#else
       NOTREACHED();
-#endif
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
     case sandbox::mojom::Sandbox::kShapeDetection:
       pre_sandbox_hook =

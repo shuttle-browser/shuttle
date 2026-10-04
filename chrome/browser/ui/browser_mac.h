@@ -20,7 +20,6 @@ void OpenHelpWindow(Profile* profile, HelpSource source);
 void OpenOptionsWindow(Profile* profile);
 void OpenClearBrowsingDataDialogWindow(Profile* profile);
 void OpenImportSettingsDialogWindow(Profile* profile);
-void OpenBookmarkManagerWindow(Profile* profile);
 void OpenExtensionsWindow(Profile* profile);
 
 }  // namespace chrome

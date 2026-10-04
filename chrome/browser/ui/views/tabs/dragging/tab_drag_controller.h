@@ -30,7 +30,6 @@
 // Verified via a real, from-scratch build -- do not remove based on grep or
 // IWYU alone.
 #include "components/tabs/public/split_tab_data.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-shared.h"
 #include "ui/base/models/list_selection_model.h"
@@ -505,12 +504,6 @@ class TabDragController : public views::WidgetObserver,
   void AdjustTabBoundsForDrag(int previous_tab_area_width,
                               int first_tab_leading_x,
                               std::vector<gfx::Rect> drag_bounds);
-
-  // If the user is dragging a single tab that is controlled by one web app,
-  // and features::kTearOffWebAppTabOpensWebAppWindow is enabled,
-  // returns the app id of that web app, nullopt otherwise.
-  std::optional<webapps::AppId> GetControllingAppForDrag(
-      BrowserWindowInterface* browser);
 
   // Creates and returns a new BrowserWindowInterface to handle the drag.
   BrowserWindowInterface* CreateBrowserForDrag(TabDragContext* source,

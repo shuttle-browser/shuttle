@@ -14,21 +14,14 @@
 #include "build/build_config.h"
 #include "chrome/browser/lifetime/browser_close_manager.h"
 #include "chrome/browser/signin/chrome_signin_helper.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window_deleter.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_bubble_type.h"
-#include "chrome/browser/ui/hats/hats_service.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
-#include "chrome/browser/ui/translate/partial_translate_bubble_model.h"
 #include "chrome/browser/ui/unload_controller.h"
-#include "chrome/browser/ui/webui/tab_search/tab_search.mojom.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/buildflags.h"
-#include "components/apps/link_capturing/intent_picker_info.h"
 #include "components/content_settings/core/common/content_settings_types.h"
-#include "components/translate/core/browser/translate_step.h"
-#include "components/translate/core/common/translate_errors.h"
 #include "ui/base/base_window.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/mojom/window_show_state.mojom-forward.h"
@@ -84,18 +77,6 @@ namespace web_modal {
 class WebContentsModalDialogHost;
 }
 
-enum class ShowTranslateBubbleResult {
-  // The Full Page Translate bubble was successfully shown.
-  kSuccess,
-
-  // The various reasons for which the Full Page Translate bubble could fail to
-  // be shown.
-  kBrowserWindowNotValid,
-  kBrowserWindowMinimized,
-  kBrowserWindowNotActive,
-  kWebContentsNotActive,
-  kEditableFieldIsActive,
-};
 
 enum class BrowserThemeChangeType {
   // User changes the browser theme.
@@ -283,10 +264,6 @@ class BrowserWindow : public ui::BaseWindow {
   // was redrawn.
   virtual bool UpdateToolbarSecurityState() = 0;
 
-  // Updates whether or not the custom tab bar is visible. Animates the
-  // transition if |animate| is true.
-  virtual void UpdateCustomTabBarVisibility(bool visible, bool animate) = 0;
-
   // Resets the toolbar's tab state for |contents|.
   virtual void ResetToolbarTabState(content::WebContents* contents) = 0;
 
@@ -335,41 +312,13 @@ class BrowserWindow : public ui::BaseWindow {
   // Shows the Update Recommended dialog box.
   virtual void ShowUpdateChromeDialog() = 0;
 
-  // Shows the intent picker bubble. |app_info| contains the app candidates to
-  // display, if |show_stay_in_chrome| is false, the 'Stay in
-  // Chrome' (used for non-http(s) queries) button is hidden, if
-  // |show_remember_selection| is false, the "remember my choice" checkbox is
-  // hidden and |callback| helps to continue the flow back to either
-  // AppsNavigationThrottle or ArcExternalProtocolDialog capturing the user's
-  // decision and storing UMA metrics.
-  virtual void ShowIntentPickerBubble(
-      std::vector<apps::IntentPickerAppInfo> app_info,
-      bool show_stay_in_chrome,
-      bool show_remember_selection,
-      apps::IntentPickerBubbleType bubble_type,
-      const std::optional<url::Origin>& initiating_origin,
-      IntentPickerResponse callback) = 0;
 
-  // Shows the Bookmark bubble. |url| is the URL being bookmarked,
-  // |already_bookmarked| is true if the url is already bookmarked.
-  virtual void ShowBookmarkBubble(const GURL& url, bool already_bookmarked) = 0;
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Toggles the multitask menu on the browser frame size button.
   virtual void ToggleMultitaskMenu() = 0;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  // Shows the Full Page Translate bubble.
-  //
-  // |is_user_gesture| is true when the bubble is shown on the user's deliberate
-  // action.
-  virtual ShowTranslateBubbleResult ShowTranslateBubble(
-      content::WebContents* contents,
-      translate::TranslateStep step,
-      const std::string& source_language,
-      const std::string& target_language,
-      translate::TranslateErrors error_type,
-      bool is_user_gesture) = 0;
 
 
   // Returns the DownloadBubbleUIController. Returns null if Download Bubble
@@ -442,26 +391,6 @@ class BrowserWindow : public ui::BaseWindow {
   // on sync for an existing profile.
   virtual void MaybeShowSupervisedUserProfileSignInIPH() = 0;
 
-  // Shows User Happiness Tracking Survey's dialog after the survey associated
-  // with |site_id| has been successfully loaded. Failure to load the survey
-  // will result in the dialog not being shown. |product_specific_bits_data| and
-  // |product_specific_string_data| should contain key-value pairs where the
-  // keys match the field names set for the survey in hats_service.cc, and the
-  // values are those which will be associated with the survey response.
-  // The parameters |hats_histogram_name| and |hats_survey_ukm_id| allows HaTS
-  // to log to UMA and UKM, respectively. These values are are populated in
-  // chrome/browser/ui/hats/survey_config.cc and can be configured in finch.
-  // Surveys that opt-in to UMA and UKM will need to have surveys reviewed by
-  // privacy to ensure they are appropriate to log to UMA and/or UKM. This is
-  // enforced through the OWNERS mechanism.
-  virtual void ShowHatsDialog(
-      const std::string& site_id,
-      const std::optional<std::string>& hats_histogram_name,
-      const std::optional<uint64_t> hats_survey_ukm_id,
-      base::OnceClosure success_callback,
-      base::OnceClosure failure_callback,
-      const SurveyBitsData& product_specific_bits_data,
-      const SurveyStringData& product_specific_string_data) = 0;
 
   // Returns object implementing ExclusiveAccessContext interface.
   virtual ExclusiveAccessContext* GetExclusiveAccessContext() = 0;
@@ -482,11 +411,6 @@ class BrowserWindow : public ui::BaseWindow {
   // Shows a confirmation dialog about enabling caret browsing.
   virtual void ShowCaretBrowsingDialog() = 0;
 
-  // Create and open the tab search bubble.
-  virtual void CreateTabSearchBubble() = 0;
-
-  // Closes the tab search bubble if open for the given browser instance.
-  virtual void CloseTabSearchBubble() = 0;
 
   // Shows an Incognito clear browsing data dialog.
   virtual void ShowIncognitoClearBrowsingDataDialog() = 0;

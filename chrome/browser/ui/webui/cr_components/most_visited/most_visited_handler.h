@@ -23,7 +23,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "url/gurl.h"
 #else
-#include "chrome/browser/web_applications/preinstalled_web_app_manager.h"
 #endif
 
 class GURL;
@@ -45,13 +44,7 @@ enum class MostVisitedShowActions {
 
 // Handles bidirectional communication between MV tiles and the browser.
 class MostVisitedHandler : public most_visited::mojom::MostVisitedPageHandler,
-                           public ntp_tiles::MostVisitedSites::Observer
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-    ,
-                           public web_app::PreinstalledWebAppManager::Observer
-#endif
-{
+                           public ntp_tiles::MostVisitedSites::Observer {
  public:
   MostVisitedHandler(
       mojo::PendingReceiver<most_visited::mojom::MostVisitedPageHandler>
@@ -121,13 +114,6 @@ class MostVisitedHandler : public most_visited::mojom::MostVisitedPageHandler,
   bool MaybeRemoveStaleShortcuts();
 
   raw_ptr<Profile> profile_;
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-  // web_app::PreinstalledWebAppManager::Observer
-  void OnMigrationRun() override;
-  void OnDestroyed() override;
-#endif
-
   std::unique_ptr<ntp_tiles::MostVisitedSites> most_visited_sites_;
   raw_ptr<content::WebContents> web_contents_;
   std::unique_ptr<MostVisitedMetricsLogger> logger_;
@@ -136,13 +122,6 @@ class MostVisitedHandler : public most_visited::mojom::MostVisitedPageHandler,
 
   mojo::Receiver<most_visited::mojom::MostVisitedPageHandler> page_handler_;
   mojo::Remote<most_visited::mojom::MostVisitedPage> page_;
-
-// TODO(b/502297163): Implement for Android.
-#if !BUILDFLAG(IS_ANDROID)
-  base::ScopedObservation<web_app::PreinstalledWebAppManager,
-                          web_app::PreinstalledWebAppManager::Observer>
-      preinstalled_web_app_observer_{this};
-#endif
 
   base::WeakPtrFactory<MostVisitedHandler> weak_ptr_factory_{this};
 };

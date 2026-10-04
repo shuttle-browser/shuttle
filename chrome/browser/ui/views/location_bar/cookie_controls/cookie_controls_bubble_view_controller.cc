@@ -10,7 +10,6 @@
 #include "base/metrics/user_metrics_action.h"
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"

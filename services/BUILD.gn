@@ -160,7 +160,6 @@ test("services_unittests") {
     # or iOS, so any tests which use the ServiceTest framework to connect to
     # standalone services must be added here.
     deps += [
-      "//services/passage_embeddings:tests",
       "//services/video_capture:tests",
     ]
   }
@@ -173,7 +172,6 @@ test("services_unittests") {
   }
 
   if (enable_screen_ai_service) {
-    deps += [ "//services/screen_ai:unit_tests" ]
   }
 }
 

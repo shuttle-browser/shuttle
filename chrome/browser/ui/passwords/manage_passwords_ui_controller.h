@@ -206,7 +206,6 @@ class ManagePasswordsUIController
   void OnDialogHidden() override;
   void AuthenticateUserWithMessage(const std::u16string& message,
                                    AvailabilityCallback callback) override;
-  void MaybeShowIOSPasswordPromo() override;
   void RelaunchChrome() override;
   void NavigateToPasswordChangeSettings() override;
   void OnMouseEntered() override;

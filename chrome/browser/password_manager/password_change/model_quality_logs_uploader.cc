@@ -12,7 +12,6 @@
 #include "chrome/browser/password_manager/password_change/features.h"
 #include "chrome/browser/password_manager/password_change/login_state_checker.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
 #include "components/affiliations/core/browser/affiliation_utils.h"
 #include "components/autofill/core/browser/proto/password_requirements.pb.h"
@@ -20,7 +19,6 @@
 #include "components/optimization_guide/core/model_quality/model_quality_log_entry.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_manager.h"
-#include "components/translate/core/browser/translate_manager.h"
 #include "components/variations/service/variations_service.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -59,11 +57,7 @@ std::string GetPageDomain(const GURL& page_url) {
 
 std::string GetPageLanguage(content::WebContents* web_contents) {
   CHECK(web_contents);
-  auto* translate_manager =
-      ChromeTranslateClient::GetManagerFromWebContents(web_contents);
-  if (translate_manager) {
-    return translate_manager->GetLanguageState()->source_language();
-  }
+  // Translate (which provided page language detection) has been removed.
   return std::string();
 }
 

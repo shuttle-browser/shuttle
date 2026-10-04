@@ -21,13 +21,11 @@ source_set("bubble") {
     "//base",
     "//chrome/browser/download",
     "//chrome/browser/metrics",
-    "//chrome/browser/metrics:browser_activity_watcher",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui/download",
     "//components/download/content/public",
     "//components/keyed_service/core",
     "//components/offline_items_collection/core",
-    "//components/webapps/common",
   ]
 }
 
@@ -56,12 +54,11 @@ source_set("impl") {
     "//chrome/browser/headless",
     "//chrome/browser/offline_items_collection",
     "//chrome/browser/safe_browsing",
+    "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/exclusive_access",
-    "//chrome/browser/ui/hats",
     "//chrome/browser/ui/immersive:immersive_mode_controller",
     "//chrome/browser/ui/views/download",
-    "//chrome/browser/ui/web_applications",
     "//chrome/common",
     "//chrome/common:constants",
     "//components/prefs",

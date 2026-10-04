@@ -10,7 +10,6 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/command_updater_delegate.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/ui/user_education/start_tutorial_in_page.h"
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -26,21 +25,6 @@ class Profile;
 namespace user_education {
 class TutorialService;
 }
-
-// Struct containing the information needed to customize/configure the feedback
-// form. Used to populate arguments passed to chrome::ShowFeedbackPage().
-struct FeedbackCommandSettings {
-  FeedbackCommandSettings() = default;
-
-  FeedbackCommandSettings(const GURL& url,
-                          feedback::FeedbackSource source,
-                          std::string category)
-      : url(url), source(source), category(category) {}
-
-  GURL url;
-  feedback::FeedbackSource source = feedback::kFeedbackSourceCount;
-  std::string category;
-};
 
 // Handles browser commands send from JS.
 class BrowserCommandHandler : public CommandUpdaterDelegate,
@@ -68,8 +52,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
                                     WindowOpenDisposition disposition,
                                     base::TimeTicks time_stamp) override;
 
-  void ConfigureFeedbackCommand(FeedbackCommandSettings settings);
-
  protected:
   void EnableSupportedCommands();
 
@@ -87,7 +69,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
 
   virtual void NavigateToURL(const GURL& url,
                              WindowOpenDisposition disposition);
-  virtual void OpenFeedbackForm();
   virtual void OnTutorialStarted(
       user_education::TutorialIdentifier tutorial_id,
       user_education::TutorialService* tutorial_service);
@@ -96,8 +77,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   virtual void NavigateToEnhancedProtectionSetting();
   virtual void OpenPasswordManager();
   virtual void OpenAISettings();
-  virtual void OpenGlic();
-  virtual void OpenGlicSettings();
   virtual void OpenSplitView();
   virtual void EnableVerticalTabs();
   void StartTabGroupTutorial();
@@ -105,7 +84,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   void StartPasswordManagerTutorial();
   void StartSavedTabGroupTutorial();
 
-  FeedbackCommandSettings feedback_settings_;
   raw_ptr<Profile, DanglingUntriaged> profile_;
   std::vector<browser_command::mojom::Command> supported_commands_;
   std::unique_ptr<CommandUpdater> command_updater_;

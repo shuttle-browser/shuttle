@@ -10,8 +10,6 @@
 #include "ui/views/layout/delegating_layout_manager.h"
 #include "ui/views/layout/layout_types.h"
 #include "ui/views/view.h"
-
-class TabStripComboButton;
 class TabStripFlatEdgeButton;
 class BrowserWindowInterface;
 class ExpandOnHoverLock;
@@ -57,8 +55,6 @@ class VerticalTabStripTopContainer : public views::View,
   // Creates a TopContainerButton (Collapse Button).
   views::LabelButton* AddChildButtonFor(actions::ActionId action_id);
 
-  TabStripComboButton* GetComboButton();
-  TabStripFlatEdgeButton* GetTabSearchButton();
   views::LabelButton* GetCollapseButton() { return collapse_button_; }
   views::LabelButton* GetUnfocusButton() { return unfocus_button_; }
 
@@ -99,7 +95,6 @@ class VerticalTabStripTopContainer : public views::View,
   raw_ptr<tabs::VerticalTabStripStateController> state_controller_ = nullptr;
   raw_ptr<actions::ActionItem> root_action_item_ = nullptr;
   raw_ptr<BrowserWindowInterface> browser_ = nullptr;
-  raw_ptr<TabStripComboButton> combo_button_ = nullptr;
   raw_ptr<views::LabelButton> collapse_button_ = nullptr;
   raw_ptr<views::LabelButton> unfocus_button_ = nullptr;
 
@@ -121,10 +116,6 @@ class VerticalTabStripTopContainer : public views::View,
   // the expand-on-hover animation. This is because the final state needs to be
   // within the wrapped state bounds when leading caption buttons are present.
   bool is_exiting_expand_on_hover_ = false;
-
-  // This is updated during layout calculation and then applied during layout.
-  mutable views::LayoutOrientation combo_button_orientation_ =
-      views::LayoutOrientation::kHorizontal;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_VERTICAL_VERTICAL_TAB_STRIP_TOP_CONTAINER_H_

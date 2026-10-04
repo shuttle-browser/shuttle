@@ -235,14 +235,6 @@ base::expected<content::WebContents*, std::string> OpenTabHelper::OpenTab(
   }
   navigate_params.tabstrip_add_types = add_types;
 
-  // Ensure that this navigation will not get 'captured' into PWA windows, as
-  // this means that `browser` could be ignored. It may be useful/desired in
-  // the future to allow this behavior, but this may require an API change, and
-  // likely a re-write of how this navigation is called to be compatible with
-  // the navigation capturing behavior.
-  navigate_params.web_app_navigation_data.emplace();
-  navigate_params.web_app_navigation_data->SetNavigationCapturingForceOff(true);
-
   MaybeSetPdfNavigateParams(function, navigate_params);
 
   base::WeakPtr<content::NavigationHandle> handle = Navigate(&navigate_params);

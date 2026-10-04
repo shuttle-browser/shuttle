@@ -18,18 +18,9 @@
 #include "pdf/pdf_watermark_overlayer.h"
 #include "pdf/pdfium/pdfium_engine.h"
 #include "pdf/pdfium/pdfium_engine_exports.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size_f.h"
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include <memory>
-
-#include "base/functional/callback.h"
-#include "pdf/pdf_progressive_searchifier.h"
-#include "services/screen_ai/public/mojom/screen_ai_service.mojom.h"
-#include "third_party/skia/include/core/SkBitmap.h"
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 namespace chrome_pdf {
 
@@ -191,20 +182,5 @@ std::vector<uint8_t> ConvertPdfDocumentToNupPdf(
       input_buffer, pages_per_sheet, page_size, printable_area);
 }
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-std::vector<uint8_t> Searchify(
-    base::span<const uint8_t> pdf_buffer,
-    base::RepeatingCallback<screen_ai::mojom::VisualAnnotationPtr(
-        const SkBitmap& bitmap)> perform_ocr_callback) {
-  ScopedSdkInitializer scoped_sdk_initializer(/*enable_v8=*/false);
-  PDFiumEngineExports* engine_exports = PDFiumEngineExports::Get();
-  return engine_exports->Searchify(pdf_buffer, std::move(perform_ocr_callback));
-}
-
-std::unique_ptr<PdfProgressiveSearchifier> CreateProgressiveSearchifier() {
-  PDFiumEngineExports* engine_exports = PDFiumEngineExports::Get();
-  return engine_exports->CreateProgressiveSearchifier();
-}
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 }  // namespace chrome_pdf

@@ -32,10 +32,6 @@ class ChromePDFDocumentHelperClient : public pdf::PDFDocumentHelperClient {
   void OnSaveURL() override;
   void SetPluginCanSave(content::RenderFrameHost& render_frame_host,
                         bool can_save) override;
-  void OnSearchifyStarted(content::RenderFrameHost& render_frame_host) override;
-
-  void OnPdfTextExtracted(content::GlobalRenderFrameHostId render_frame_host_id,
-                          const std::u16string& text);
 
   // Holds subscriptions for TabInterface callbacks.
   std::vector<base::CallbackListSubscription> tab_subscriptions_;

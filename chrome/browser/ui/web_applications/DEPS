@@ -1,5 +1,0 @@
-specific_include_rules = {
-  "web_app_interactive_uitest\\.cc": [
-    "+ash/shell.h",
-  ],
-}

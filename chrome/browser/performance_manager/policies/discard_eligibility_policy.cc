@@ -6,9 +6,6 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
 #include "chrome/common/buildflags.h"
 #include "components/performance_manager/graph/page_node_impl.h"
 #include "components/performance_manager/public/decorators/page_live_state_decorator.h"
@@ -22,7 +19,6 @@
 #include "base/android/device_info.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #else
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 namespace performance_manager::policies {
@@ -312,21 +308,6 @@ DiscardEligibilityPolicy::CanDiscardWithCustomRecentVisibilityWindow(
     add_reason_and_update_result(CannotDiscardReason::kInvalidURL,
                                  CanDiscardResult::kProtected);
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  {
-    // Do not discard Desktop PWA windows. Preserve native-app experience.
-    content::WebContents* web_contents = page_node->GetWebContents().get();
-    if (web_contents) {
-      web_app::WebAppTabHelper* tab_helper =
-          web_app::WebAppTabHelper::FromWebContents(web_contents);
-      if (tab_helper && tab_helper->is_in_app_window()) {
-        add_reason_and_update_result(CannotDiscardReason::kWebApp,
-                                     CanDiscardResult::kProtected);
-      }
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   if (live_state_data && is_proactive_or_suggested &&
       live_state_data->IsGlicPinnedToVisibleInstance()) {

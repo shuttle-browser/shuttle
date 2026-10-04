@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/animations/side_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
-#include "chrome/browser/ui/views/bookmarks/bookmark_bar_view.h"
 #include "chrome/browser/ui/views/frame/custom_corners.h"
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/custom_floating_corner.h"
@@ -245,7 +244,7 @@ BrowserViewTabbedLayoutImpl::CalculateSeparatorInfo() const {
       // However, if top container elements are not visible (for example,
       // because they are offscreen), the separator is not shown.
       info.top_container_separator =
-          delegate().IsToolbarVisible() || delegate().IsBookmarkBarVisible();
+          delegate().IsToolbarVisible();
       info.side_panel_top_padding = true;
       break;
     case WindowState::kFullscreenWithToolbar:
@@ -553,7 +552,7 @@ BrowserViewTabbedLayoutImpl::CalculateVerticalTabStripAnimation() {
         if (layout_data_->revised_params.leading_exclusion.ContentWithPadding()
                 .height() > 0) {
           top_corner_collapsed_state =
-              delegate().IsBookmarkBarVisible() || !would_have_separator
+              !would_have_separator
                   ? -1.0
                   : side_panel_corner_value;
         }
@@ -610,19 +609,14 @@ gfx::Size BrowserViewTabbedLayoutImpl::GetMinimumMainAreaSize(
   if (tab_strip_type == TabStripType::kVertical) {
     toolbar_size.Enlarge(GetExclusionWidth(params), 0);
   }
-  const gfx::Size bookmark_bar_size =
-      (views().bookmark_bar && views().bookmark_bar->GetVisible())
-          ? views().bookmark_bar->GetMinimumSize()
-          : gfx::Size();
   const gfx::Size infobar_container_size =
       views().infobar_container->GetMinimumSize();
   const gfx::Size contents_size = views().multi_contents_view->GetMinimumSize();
 
-  int width = std::max({toolbar_size.width(), bookmark_bar_size.width(),
-                        infobar_container_size.width(),
+  int width = std::max({toolbar_size.width(), infobar_container_size.width(),
                             kContentsContainerMinimumWidth});
-  const int height = toolbar_size.height() + bookmark_bar_size.height() +
-                     infobar_container_size.height() + contents_size.height();
+  const int height = toolbar_size.height() + infobar_container_size.height() +
+                     contents_size.height();
 
   return gfx::Size(width, height);
 }
@@ -1367,18 +1361,6 @@ gfx::Rect BrowserViewTabbedLayoutImpl::CalculateTopContainerLayout(
       needs_exclusion = false;
     }
     layout.AddChild(views().toolbar, toolbar_bounds, toolbar_visible);
-  }
-
-  // Lay out the bookmarks bar if one is present.
-  const bool bookmarks_visible = delegate().IsBookmarkBarVisible();
-  if (IsParentedTo(views().bookmark_bar, views().top_container)) {
-    const gfx::Rect bookmarks_bounds(
-        params.visual_client_area.x(), params.visual_client_area.y(),
-        params.visual_client_area.width(),
-        bookmarks_visible ? views().bookmark_bar->GetPreferredSize().height()
-                          : 0);
-    layout.AddChild(views().bookmark_bar, bookmarks_bounds, bookmarks_visible);
-    params.SetTop(bookmarks_bounds.bottom());
   }
 
   // Maybe show the separator in the top container.

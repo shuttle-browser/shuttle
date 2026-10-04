@@ -325,7 +325,6 @@ class DevToolsWindow : public DevToolsUIBindings::Delegate,
  private:
   friend class DevToolsWindowTesting;
   friend class DevToolsWindowCreationObserver;
-  friend class HatsNextWebDialogBrowserTest;
 
   using CreationCallback = base::RepeatingCallback<void(DevToolsWindow*)>;
   static void AddCreationCallbackForTest(const CreationCallback& callback);

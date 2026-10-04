@@ -42,10 +42,6 @@ namespace base {
 class TimeDelta;
 }  // namespace base
 
-namespace glic {
-class TabUnderlineView;
-}  // namespace glic
-
 // The view class for the tab. It is responsible for painting the
 // tab background and displaying the favicon, title, alert indicators and close
 // button. It handles data changed event and view hierarchy changes to updates
@@ -215,7 +211,6 @@ class TabView : public views::View,
   const raw_ptr<TabTitle> title_;
   const raw_ptr<AlertIndicatorButton> alert_indicator_;
   const raw_ptr<TabCloseButton> close_button_;
-  raw_ptr<glic::TabUnderlineView> glic_tab_underline_view_ = nullptr;
 
   base::CallbackListSubscription node_destroyed_subscription_;
   base::CallbackListSubscription tab_state_changed_subscription_;

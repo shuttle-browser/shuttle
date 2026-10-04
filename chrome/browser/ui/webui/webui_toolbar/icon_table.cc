@@ -18,8 +18,6 @@
 #include "build/branding_buildflags.h"
 #include "build/buildflag.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
-#include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/ui/webui/util/image_util.h"
 #include "chrome/browser/ui/webui/webui_toolbar/adapters/icon_table_fetcher.h"
 #include "components/omnibox/browser/vector_icons.h"
@@ -52,9 +50,6 @@ struct IconInfo {
 const base::flat_map<const gfx::VectorIcon*, IconInfo>& KnownIcons() {
   static base::NoDestructor<base::flat_map<const gfx::VectorIcon*, IconInfo>>
       table({
-          {{&glic::GlicVectorIconManager::GetVectorIcon(
-               IDR_GLIC_BUTTON_VECTOR_ICON)},
-           {"webui-toolbar:glic_button_old", IconType::kIconSet}},
           {{&kAccountBoxIcon},
            {"webui-toolbar:account_box", IconType::kIconSet}},
           {{&kAccountBoxOldIcon},

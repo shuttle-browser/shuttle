@@ -16,9 +16,6 @@
 #include "chrome/browser/permissions/system/platform_handle.h"
 #include "chrome/browser/permissions/system/system_media_capture_permissions_mac.h"
 #include "chrome/browser/permissions/system/system_media_permission_cache.h"
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
-#include "chrome/browser/web_applications/os_integration/mac/web_app_shortcut_mac.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/web_contents.h"
 #include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
@@ -113,17 +110,10 @@ class PlatformHandleImpl : public PlatformHandle {
   void OpenSystemSettings(content::WebContents* web_contents,
                           ContentSettingsType type) override {
     switch (type) {
-      case ContentSettingsType::NOTIFICATIONS: {
-        const webapps::AppId* app_id =
-            web_app::WebAppTabHelper::GetAppId(web_contents);
-        if (!app_id) {
-          return;
-        }
-        base::mac::OpenSystemSettingsPane(
-            base::mac::SystemSettingsPane::kNotifications,
-            web_app::GetBundleIdentifierForShim(*app_id));
+      case ContentSettingsType::NOTIFICATIONS:
+        // Per-app notification settings only existed for web app shims, which
+        // are not supported.
         return;
-      }
       case ContentSettingsType::MEDIASTREAM_CAMERA:
       case ContentSettingsType::CAMERA_PAN_TILT_ZOOM: {
         base::mac::OpenSystemSettingsPane(

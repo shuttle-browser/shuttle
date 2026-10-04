@@ -32,8 +32,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
-#include "chrome/browser/ui/safety_hub/abusive_notification_permissions_manager.h"
-#include "chrome/browser/ui/safety_hub/disruptive_notification_permissions_manager.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -69,10 +67,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"  // nogncheck crbug.com/40147906
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"  // nogncheck
-#include "chrome/browser/web_applications/web_app_icon_manager.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #else
 #include "chrome/browser/safe_browsing/android/notification_content_detection_manager_android.h"
 #endif
@@ -274,7 +268,7 @@ void PlatformNotificationServiceImpl::DisplayNotification(
 
   message_center::Notification notification =
       CreateNotificationFromData(origin, notification_id, notification_data,
-                                 notification_resources, document_url);
+                                 notification_resources);
   auto metadata = std::make_unique<NonPersistentNotificationMetadata>();
   metadata->document_url = document_url;
 
@@ -292,15 +286,6 @@ void PlatformNotificationServiceImpl::DisplayNotification(
   if (service) {
     service->RecordNotificationDisplayed(notification.origin_url());
   }
-
-  // Logs metrics for proposed disruptive notification revocation when
-  // displaying a non persistent notification. Disruptive are notifications
-  // with high notification volume and low site engagement score.
-  ukm::SourceId source_id = ukm::UkmRecorder::GetSourceIdForNotificationEvent(
-      base::PassKey<PlatformNotificationServiceImpl>(),
-      notification.origin_url());
-  DisruptiveNotificationPermissionsManager::LogMetrics(
-      profile_, notification.origin_url(), source_id);
 }
 
 void PlatformNotificationServiceImpl::DisplayPersistentNotification(
@@ -323,7 +308,7 @@ void PlatformNotificationServiceImpl::DisplayPersistentNotification(
 
   message_center::Notification notification =
       CreateNotificationFromData(origin, notification_id, notification_data,
-                                 notification_resources, service_worker_scope);
+                                 notification_resources);
   auto metadata = std::make_unique<PersistentNotificationMetadata>();
   metadata->service_worker_scope = service_worker_scope;
 
@@ -368,15 +353,6 @@ void PlatformNotificationServiceImpl::DisplayPersistentNotification(
 
   LogPersistentNotificationShownMetrics(notification_data, origin,
                                         notification.origin_url());
-
-  // Logs metrics for proposed disruptive notification revocation when
-  // displaying a persistent notification. Disruptive are notifications with
-  // high notification volume and low site engagement score.
-  ukm::SourceId source_id = ukm::UkmRecorder::GetSourceIdForNotificationEvent(
-      base::PassKey<PlatformNotificationServiceImpl>(),
-      notification.origin_url());
-  DisruptiveNotificationPermissionsManager::LogMetrics(
-      profile_, notification.origin_url(), source_id);
 }
 
 void PlatformNotificationServiceImpl::CloseNotification(
@@ -548,8 +524,7 @@ PlatformNotificationServiceImpl::CreateNotificationFromData(
     const GURL& origin,
     const std::string& notification_id,
     const blink::PlatformNotificationData& notification_data,
-    const blink::NotificationResources& notification_resources,
-    const GURL& web_app_hint_url) const {
+    const blink::NotificationResources& notification_resources) const {
   // Blink always populates action icons to match the actions, even if no icon
   // was fetched, so this indicates a compromised renderer.
   CHECK_EQ(notification_data.actions.size(),
@@ -560,29 +535,7 @@ PlatformNotificationServiceImpl::CreateNotificationFromData(
   optional_fields.settings_button_handler =
       message_center::SettingsButtonHandler::INLINE;
 
-  // TODO(crbug.com/40277066): We can do a better job than basing this
-  // purely on `web_app_hint_url`, for example for non-persistent notifications
-  // triggered from workers (where `web_app_hint_url` is always blank) but also
-  // for persistent notifications triggered from web pages (where the page url
-  // might be a better "hint" than the service worker scope).
-  std::optional<webapps::AppId> web_app_id = FindWebAppId(web_app_hint_url);
-
-  std::optional<WebAppIconAndTitle> web_app_icon_and_title;
-#if BUILDFLAG(IS_CHROMEOS)
-  web_app_icon_and_title = FindWebAppIconAndTitle(web_app_hint_url);
-  if (web_app_icon_and_title && notification_resources.badge.isNull()) {
-    // ChromeOS: Enables web app theme color only if monochrome web app icon
-    // has been specified. `badge` Notifications API icons must be masked with
-    // the accent color.
-    optional_fields.ignore_accent_color_for_small_image = true;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
-  message_center::NotifierId notifier_id(
-      origin,
-      web_app_icon_and_title ? std::make_optional(web_app_icon_and_title->title)
-                             : std::nullopt,
-      web_app_id);
+  message_center::NotifierId notifier_id(origin);
 
   // TODO(peter): Handle different screen densities instead of always using the
   // 1x bitmap - crbug.com/41238973.
@@ -613,9 +566,6 @@ PlatformNotificationServiceImpl::CreateNotificationFromData(
                                image.computeByteSize() / 1024);
 #endif  // BUILDFLAG(IS_CHROMEOS)
   }
-
-  if (web_app_icon_and_title && !web_app_icon_and_title->icon.isNull())
-    notification.SetSmallImage(gfx::Image(web_app_icon_and_title->icon));
 
   // TODO(peter): Handle different screen densities instead of always using the
   // 1x bitmap - crbug.com/41238973.
@@ -650,15 +600,8 @@ PlatformNotificationServiceImpl::CreateNotificationFromData(
   if (base::FeatureList::IsEnabled(features::kIncomingCallNotifications) &&
       notification_data.scenario ==
           blink::mojom::NotificationScenario::INCOMING_CALL) {
-    // If the origin is not installed, the notification scenario should be set
-    // to DEFAULT.
-    if (IsActivelyInstalledWebAppScope(web_app_hint_url)) {
-      notification.set_scenario(
-          message_center::NotificationScenario::INCOMING_CALL);
-    } else {
-      notification.set_scenario(message_center::NotificationScenario::DEFAULT);
-    }
-
+    // Web apps are not supported, so the origin is never installed and the
+    // notification scenario stays DEFAULT.
     // Create the default incoming call dismiss button and set the button types
     // accordingly to fit the incoming call scenario - i.e., developer supplied
     // action buttond are of type ButtonType::ACKNOWLEDGE and the default dimiss
@@ -695,75 +638,6 @@ std::u16string PlatformNotificationServiceImpl::DisplayNameForContextMessage(
   return std::u16string();
 }
 
-std::optional<webapps::AppId> PlatformNotificationServiceImpl::FindWebAppId(
-    const GURL& web_app_hint_url) const {
-#if !BUILDFLAG(IS_ANDROID)
-  web_app::WebAppProvider* web_app_provider =
-      web_app::WebAppProvider::GetForLocalAppsUnchecked(profile_);
-  if (web_app_provider) {
-    return web_app_provider->registrar_unsafe().FindBestAppWithUrlInScope(
-        web_app_hint_url, web_app::WebAppFilter::InstalledInChrome());
-  }
-#endif
-
-  return std::nullopt;
-}
-
-std::optional<PlatformNotificationServiceImpl::WebAppIconAndTitle>
-PlatformNotificationServiceImpl::FindWebAppIconAndTitle(
-    const GURL& web_app_hint_url) const {
-#if !BUILDFLAG(IS_ANDROID)
-  web_app::WebAppProvider* web_app_provider =
-      web_app::WebAppProvider::GetForLocalAppsUnchecked(profile_);
-  if (web_app_provider) {
-#if BUILDFLAG(IS_CHROMEOS)
-    // The PlatformNotificationServiceTest FindWebAppIconAndTitle seems to be
-    // verifying the availability of an icon and a title for notification
-    // purposes, even though the app is not installed with OS integration, which
-    // is surprising.
-    web_app::WebAppFilter filter = web_app::WebAppFilter::InstalledInChrome();
-#else
-    web_app::WebAppFilter filter =
-        web_app::WebAppFilter::SupportsOsNotifications();
-#endif
-    const std::optional<webapps::AppId> app_id =
-        web_app_provider->registrar_unsafe().FindBestAppWithUrlInScope(
-            web_app_hint_url, filter);
-    if (app_id) {
-      std::optional<WebAppIconAndTitle> icon_and_title;
-      icon_and_title.emplace();
-
-      icon_and_title->title = base::UTF8ToUTF16(
-          web_app_provider->registrar_unsafe().GetAppShortName(*app_id));
-      icon_and_title->icon =
-          web_app_provider->icon_manager().GetMonochromeFavicon(*app_id);
-      return icon_and_title;
-    }
-  }
-#endif
-
-  return std::nullopt;
-}
-
-bool PlatformNotificationServiceImpl::IsActivelyInstalledWebAppScope(
-    const GURL& web_app_url) const {
-#if BUILDFLAG(IS_ANDROID)
-  // TODO(peter): Investigate whether it makes sense to consider installed
-  // WebAPKs and TWAs on Android here, when depending features are considered.
-  return false;
-#else
-  web_app::WebAppProvider* web_app_provider =
-      web_app::WebAppProvider::GetForLocalAppsUnchecked(profile_);
-  if (!web_app_provider) {
-    return false;
-  }
-  const std::optional<webapps::AppId> app_id =
-      web_app_provider->registrar_unsafe().FindBestAppWithUrlInScope(
-          web_app_url, web_app::WebAppFilter::SupportsOsNotifications());
-  return app_id.has_value();
-#endif
-}
-
 void PlatformNotificationServiceImpl::
     HandleOnDeviceModelResponseThenMaybeDisplay(
         const message_center::Notification& notification,
@@ -774,12 +648,6 @@ void PlatformNotificationServiceImpl::
   if (base::FeatureList::IsEnabled(
           safe_browsing::kAutoRevokeSuspiciousNotification) &&
       should_show_warning) {
-#if BUILDFLAG(IS_ANDROID)
-    suspicious_notification_revoked = AbusiveNotificationPermissionsManager::
-        MaybeRevokeSuspiciousNotificationPermission(profile_,
-                                                    notification.origin_url());
-#endif
-
     auto* service =
         NotificationsEngagementServiceFactory::GetForProfile(profile_);
     // This service might be missing for incognito profiles and in tests.

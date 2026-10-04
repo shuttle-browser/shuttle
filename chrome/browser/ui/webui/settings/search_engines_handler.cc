@@ -25,7 +25,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/search_hijacking_detector.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/search_engines/ui_thread_search_terms_data.h"
 #include "chrome/browser/ui/search_engines/keyword_editor_controller.h"
@@ -39,7 +38,6 @@
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/prefs/pref_service.h"
 #include "components/regional_capabilities/regional_capabilities_service.h"
-#include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
 #include "components/search_engines/search_engine_split_metrics.h"
 #include "components/search_engines/search_engines_switches.h"
@@ -66,33 +64,6 @@ namespace {
 const char kSearchEngineField[] = "searchEngine";
 const char kKeywordField[] = "keyword";
 const char kQueryUrlField[] = "queryUrl";
-
-void ProcessGuestDsePropagation(Profile& profile,
-                                bool save_guest_choice,
-                                int dse_prepopulate_id) {
-  auto* choice_service =
-      search_engines::SearchEngineChoiceServiceFactory::GetForProfile(&profile);
-  if (!choice_service->IsDsePropagationAllowedForGuest()) {
-    return;
-  }
-
-  if (!save_guest_choice) {
-    // The user opted out, so clear the propagated choice. The next Guest
-    // session will be reprompted if a choice is needed.
-    choice_service->SetSavedSearchEngineBetweenGuestSessions(std::nullopt);
-    return;
-  }
-
-  if (dse_prepopulate_id <= 0 ||
-      dse_prepopulate_id >
-          TemplateURLPrepopulateData::kMaxPrepopulatedEngineID) {
-    // DSE is custom or coming from local overrides, and incompatible with
-    // propagation.
-    return;
-  }
-
-  choice_service->SetSavedSearchEngineBetweenGuestSessions(dse_prepopulate_id);
-}
 
 std::u16string GetDisplayName(std::u16string url_short_name, bool is_default) {
   // TODO(crbug.com/41290309): Consider adding a special case if the short name
@@ -506,13 +477,6 @@ void SearchEnginesHandler::HandleSetDefaultSearchEngine(
             search_engines::ChoiceMadeLocation::kSearchEngineSettings);
   list_controller_.MakeDefaultTemplateURL(id, choice_made_location);
   base::RecordAction(base::UserMetricsAction("Options_SearchEngineSetDefault"));
-
-  if (std::optional<bool> save_guest_choice = args[2].GetIfBool();
-      save_guest_choice.has_value()) {
-    ProcessGuestDsePropagation(
-        *profile_, save_guest_choice.value(),
-        list_controller_.GetDefaultSearchProvider()->prepopulate_id());
-  }
 }
 
 void SearchEnginesHandler::HandleGetSaveGuestChoice(
@@ -521,14 +485,8 @@ void SearchEnginesHandler::HandleGetSaveGuestChoice(
   const base::Value& callback_id = args[0];
   AllowJavascript();
 
-  base::Value save_guest_choice;
-  auto* choice_service =
-      search_engines::SearchEngineChoiceServiceFactory::GetForProfile(profile_);
-  if (choice_service->IsDsePropagationAllowedForGuest()) {
-    save_guest_choice = base::Value(
-        choice_service->GetSavedSearchEngineBetweenGuestSessions().has_value());
-  }
-  ResolveJavascriptCallback(callback_id, std::move(save_guest_choice));
+  // Guest-session search engine propagation is not supported: resolve null.
+  ResolveJavascriptCallback(callback_id, base::Value());
 }
 
 void SearchEnginesHandler::HandleSetIsActiveSearchEngine(

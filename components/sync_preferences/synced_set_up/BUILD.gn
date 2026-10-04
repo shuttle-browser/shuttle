@@ -9,7 +9,6 @@ source_set("utils") {
   ]
   public_deps = [
     "//base",
-    "//components/commerce/core:pref_names",
     "//components/ntp_tiles:pref_names",
     "//components/omnibox/browser:pref_names",
     "//components/safety_check:pref_names",

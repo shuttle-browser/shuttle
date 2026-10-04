@@ -21,8 +21,6 @@
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_model/payments/credit_card.h"
 #include "components/autofill/core/common/autofill_prefs.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/history/core/browser/history_backend.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/common/pref_names.h"
@@ -277,7 +275,6 @@ SafariDataImporter::SafariDataImporter(
     password_manager::SavedPasswordsPresenter* presenter,
     autofill::PaymentsDataManager* payments_data_manager,
     history::HistoryService* history_service,
-    bookmarks::BookmarkModel* bookmark_model,
     ReadingListModel* reading_list_model,
     syncer::SyncService* sync_service,
     PrefService* pref_service,
@@ -292,7 +289,6 @@ SafariDataImporter::SafariDataImporter(
       client_(CHECK_DEREF(client)),
       payments_data_manager_(CHECK_DEREF(payments_data_manager)),
       history_service_(CHECK_DEREF(history_service)),
-      bookmark_model_(CHECK_DEREF(bookmark_model)),
       reading_list_model_(CHECK_DEREF(reading_list_model)),
       sync_service_(sync_service),
       pref_service_(pref_service),
@@ -632,15 +628,6 @@ void SafariDataImporter::PreparePaymentCards(
 
 void SafariDataImporter::PrepareBookmarks(
     SafariDataImporter::BlockingWorker::BookmarkUnzipResult result) {
-  if (IsImportBlockedByEnablingPolicy(
-          pref_service_, bookmarks::prefs::kEditBookmarksEnabled)) {
-    // TODO(crbug.com/407587751): Signal to UI that bookmarks import is blocked
-    // by policy.
-    client_->OnBookmarksReady(
-        base::unexpected(ImportPreparationError::kBlockedByPolicy));
-    return;
-  }
-
   if (!result.path || result.path->empty()) {
     metrics_recorder_.bookmark_metrics().LogOutcome(
         DataTypeMetrics::ImportOutcome::kNotPresent);
@@ -824,15 +811,10 @@ void SafariDataImporter::ContinueImportPaymentCards() {
 }
 
 void SafariDataImporter::ContinueImportBookmarks() {
-  if (IsImportBlockedByEnablingPolicy(
-          pref_service_, bookmarks::prefs::kEditBookmarksEnabled)) {
-    client_->OnBookmarksImported(0);
-    return;
-  }
-
-  size_t imported_bookmarks_count = user_data_importer::ImportBookmarks(
-      &*bookmark_model_, std::move(pending_bookmarks_),
-      l10n_util::GetStringUTF16(IDS_IMPORTED_FROM_SAFARI_FOLDER));
+  // Bookmarks were removed from this fork: only reading list entries are
+  // imported.
+  size_t imported_bookmarks_count = 0u;
+  pending_bookmarks_.clear();
   size_t imported_reading_list_count = user_data_importer::ImportReadingList(
       &*reading_list_model_, std::move(pending_reading_list_));
 

@@ -35,8 +35,6 @@
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/optimization_guide/proto/page_entities_metadata.pb.h"
 #include "components/optimization_guide/proto/salient_image_metadata.pb.h"
-#include "components/page_content_annotations/core/on_device_category_classifier.h"
-#include "components/page_content_annotations/core/page_category_classifier_bridge.h"
 #include "components/page_content_annotations/core/page_content_annotations_common.h"
 #include "components/page_content_annotations/core/page_content_annotator.h"
 #include "components/search_engines/template_url_service.h"
@@ -51,10 +49,6 @@ class HistoryService;
 namespace leveldb_proto {
 class ProtoDatabaseProvider;
 }  // namespace leveldb_proto
-
-namespace passage_embeddings {
-class EmbedderMetadataProvider;
-}  // namespace passage_embeddings
 
 namespace optimization_guide {
 class OptimizationGuideDecider;
@@ -123,8 +117,7 @@ enum class PageContentAnnotationsType {
 class PageContentAnnotationsService
     : public KeyedService,
       public history::HistoryServiceObserver,
-      public ZeroSuggestCacheServiceInterface::Observer,
-      public OnDeviceCategoryClassifier::Observer {
+      public ZeroSuggestCacheServiceInterface::Observer {
  public:
   // Observer interface to listen for PageContentAnnotations for page loads.
   // Annotations will be sent for each page load for the registered annotation
@@ -148,7 +141,6 @@ class PageContentAnnotationsService
       const base::FilePath& database_dir,
       OptimizationGuideLogger* optimization_guide_logger,
       optimization_guide::OptimizationGuideDecider* optimization_guide_decider,
-      passage_embeddings::EmbedderMetadataProvider* embedder_metadata_provider,
       scoped_refptr<base::SequencedTaskRunner> background_task_runner);
   ~PageContentAnnotationsService() override;
   PageContentAnnotationsService(const PageContentAnnotationsService&) = delete;
@@ -221,21 +213,6 @@ class PageContentAnnotationsService
     return optimization_guide_logger_;
   }
 
-  // Sets the bridge that connects the on-device category classifier to the
-  // page embeddings service.
-  void SetPageCategoryClassifierBridge(
-      std::unique_ptr<PageCategoryClassifierBridge>
-          page_category_classifier_bridge);
-
-  OnDeviceCategoryClassifier* on_device_category_classifier() const {
-    return on_device_category_classifier_.get();
-  }
-
-  // OnDeviceCategoryClassifier::Observer:
-  void OnCategoriesClassified(const GURL& url,
-                              ukm::SourceId source_id,
-                              const std::vector<Category>& categories) override;
-
  private:
   // Callback invoked when a single |visit| has been annotated.
   void OnPageContentAnnotated(
@@ -271,15 +248,6 @@ class PageContentAnnotationsService
           merged_annotation_outputs);
 
   std::unique_ptr<PageContentAnnotationsModelManager> model_manager_;
-
-  std::unique_ptr<OnDeviceCategoryClassifier> on_device_category_classifier_;
-
-  // A bridge that allows page category classification. The functionality of the
-  // bridge is type-erased at the 'core' level, but it's stored on this object
-  // because it shares the same lifetime -- hence it has an interface that only
-  // exposes a virtual destructor.
-  std::unique_ptr<PageCategoryClassifierBridge>
-      page_category_classifier_bridge_;
 
   // The annotator to use for requests to |BatchAnnotate| and |Annotate|. In
   // prod, this is simply |model_manager_.get()| but is set as a separate

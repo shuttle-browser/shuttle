@@ -46,7 +46,6 @@
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
-#include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_close_button_controller.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
@@ -58,9 +57,6 @@
 #include "chrome/browser/ui/views/tabs/tab/tab_accessibility.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
@@ -901,17 +897,6 @@ void BrowserTabStripController::ExecuteContextMenuCommand(
 bool BrowserTabStripController::GetContextMenuAccelerator(
     int command_id,
     ui::Accelerator* accelerator) {
-#if BUILDFLAG(IS_CHROMEOS)
-  auto* const app_controller =
-      web_app::AppBrowserController::From(GetBrowserWindowInterface());
-  auto* system_app = app_controller ? app_controller->system_app() : nullptr;
-  if (system_app && !system_app->ShouldShowTabContextMenuShortcut(
-                        GetBrowserWindowInterface()->GetProfile(),
-                        static_cast<tabs::TabContextMenuCommand>(command_id))) {
-    return false;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
   int browser_cmd;
   return TabStripModel::ContextMenuCommandToBrowserCommand(command_id,
                                                            &browser_cmd) &&

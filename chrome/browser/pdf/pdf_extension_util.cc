@@ -16,7 +16,6 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/api/pdf_viewer_private.h"
 #include "chrome/common/url_constants.h"
@@ -37,6 +36,7 @@
 #include "extensions/common/api/mime_handler_private.h"
 #include "pdf/buildflags.h"
 #include "pdf/pdf_features.h"
+#include "services/screen_ai/buildflags/buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
@@ -142,7 +142,9 @@ base::DictValue GetPdfViewerStrings() {
       {"rotationStateLabel90", IDS_PDF_ROTATION_STATE_LABEL_90},
       {"rotationStateLabel180", IDS_PDF_ROTATION_STATE_LABEL_180},
       {"rotationStateLabel270", IDS_PDF_ROTATION_STATE_LABEL_270},
+#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
       {"searchifyInProgress", IDS_PDF_SEARCHIFY_IN_PROGRESS},
+#endif
       {"sidebarLabel", IDS_PDF_SIDEBAR_LABEL},
       {"thumbnailPageAriaLabel", IDS_PDF_THUMBNAIL_PAGE_ARIA_LABEL},
       {"tooltipAttachments", IDS_PDF_TOOLTIP_ATTACHMENTS},
@@ -260,6 +262,11 @@ base::DictValue GetPdfViewerStrings() {
   for (const auto& resource : kPdfResources) {
     dict.Set(resource.name, l10n_util::GetStringUTF16(resource.id));
   }
+
+#if !BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
+  // Referenced by pdf_viewer.html; Searchify (screen_ai) is removed.
+  dict.Set("searchifyInProgress", std::u16string());
+#endif
 
   dict.Set("glicSummarize",
            l10n_util::GetStringUTF16(GetGlicSummarizeButtonLabelId()));
@@ -487,37 +494,8 @@ void DispatchShouldUpdateViewportEvent(content::RenderFrameHost* embedder_host,
 }
 
 bool ShouldShowGlicSummarizeButton(content::WebContents* web_contents) {
-  if (!web_contents) {
-    return false;
-  }
-
-  // When the PDF viewer is hosted in a MimeHandlerViewGuest (legacy GuestView,
-  // e.g. on ChromeOS where kPdfOopif is disabled), `web_contents` is the inner
-  // guest contents which has no TabInterface attached. Walk up to the embedder
-  // so the tab lookup below matches the click handler in
-  // PdfViewerPrivateGlicSummarizeFunction::Run().
-  if (!chrome_pdf::features::IsOopifPdfEnabled()) {
-    if (auto* guest =
-            extensions::MimeHandlerViewGuest::FromWebContents(web_contents)) {
-      web_contents = guest->embedder_web_contents();
-      if (!web_contents) {
-        return false;
-      }
-    }
-  }
-
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  if (!glic::GlicEnabling::IsEnabledForProfile(profile)) {
-    return false;
-  }
-
-  auto* tab_interface = tabs::TabInterface::MaybeGetFromContents(web_contents);
-  if (tab_interface && !tab_interface->IsInNormalWindow()) {
-    return false;
-  }
-
-  return base::FeatureList::IsEnabled(features::kPdfGlicSummarize);
+  // Gemini in Chrome (glic) has been removed.
+  return false;
 }
 
 }  // namespace pdf_extension_util

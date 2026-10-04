@@ -21,7 +21,6 @@
 #include "components/proxy_config/proxy_config_pref_names.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/spellcheck/browser/pref_names.h"
-#include "components/translate/core/browser/translate_pref_names.h"
 #include "extensions/browser/pref_transformer_interface.h"
 #include "extensions/buildflags/buildflags.h"
 
@@ -84,8 +83,6 @@ const PrefMappingEntry kMappings[] = {
     {"fledgeEnabled", prefs::kPrivacySandboxM1FledgeEnabled,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"adMeasurementEnabled", prefs::kPrivacySandboxM1AdMeasurementEnabled,
-     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
-    {"translationServiceEnabled", translate::prefs::kOfferTranslateEnabled,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"webRTCIPHandlingPolicy", prefs::kWebRTCIPHandlingPolicy,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},

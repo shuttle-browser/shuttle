@@ -16,7 +16,6 @@
 #include "url/url_util.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/web_applications/app_service/publisher_helper.h"
 #include "chromeos/constants/chromeos_features.h"
 #endif
 

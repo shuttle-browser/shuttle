@@ -47,7 +47,6 @@ source_set("openscreen_platform") {
 source_set("openscreen_platform_using_net_sockets") {
   testonly = true
   visibility += [
-    "//components/cast_streaming/test:test_sender_using_net_sockets",
     "//media/cast:media_vpx_quantizer_parser_fuzzer",
   ]
   if (is_android || is_ios) {
@@ -89,8 +88,6 @@ source_set("openscreen_platform_using_net_sockets") {
 source_set("openscreen_platform_without_sockets") {
   # The private target below must directly depend on this target for reasons
   # described at its definition.
-  visibility +=
-      [ "//components/cast_streaming/test:test_sender_without_socket_deps" ]
 
   public = [
     "event_trace_logging_platform.h",
@@ -127,7 +124,6 @@ if (!is_win && !is_ios) {
 
     deps = [
       "//base",
-      "//components/cast/message_port",
       "//third_party/openscreen/src/platform:api",
     ]
 
@@ -165,7 +161,6 @@ source_set("unittests") {
     sources += [ "message_port_tls_connection_unittest.cc" ]
     deps += [
       ":message_port_tls_connection",
-      "//components/cast/message_port",
       "//third_party/openscreen/src/platform:api",
     ]
   }

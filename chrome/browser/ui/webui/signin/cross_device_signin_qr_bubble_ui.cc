@@ -21,7 +21,6 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/signin_resources.h"
 #include "chrome/grit/signin_resources_map.h"
-#include "components/qr_code_generator/bitmap_generator.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -41,7 +40,8 @@ CrossDeviceSigninQrBubbleUIConfig::CrossDeviceSigninQrBubbleUIConfig()
 
 bool CrossDeviceSigninQrBubbleUIConfig::IsWebUIEnabled(
     content::BrowserContext* browser_context) {
-  return base::FeatureList::IsEnabled(switches::kCrossDeviceSigninFromDesktop);
+  // The QR code generator is not part of this build.
+  return false;
 }
 
 namespace {
@@ -82,35 +82,8 @@ class CrossDeviceSigninQrBubbleHandler
         identity_manager->FindExtendedAccountInfo(core_info);
     data->full_name = std::string(account_info.GetFullName().value_or(""));
 
-    std::string qr_code_url = base::ReplaceStringPlaceholders(
-        switches::kCrossDeviceSigninFromDesktopUrl.Get(),
-        {base::EscapeQueryParamValue(data->email, true)}, nullptr);
-
-    std::optional<gfx::Image> avatar_image =
-        account_info.IsEmpty() ? std::nullopt : account_info.GetAvatarImage();
-    base::expected<gfx::ImageSkia, qr_code_generator::Error> qr_image;
-    if (avatar_image.has_value()) {
-      gfx::Image round_avatar = profiles::GetSizedAvatarIcon(
-          avatar_image.value(), avatar_image->Width(), avatar_image->Height(),
-          profiles::SHAPE_CIRCLE);
-      qr_image = qr_code_generator::GenerateImage(
-          base::as_byte_span(qr_code_url),
-          qr_code_generator::ModuleStyle::kCircles,
-          qr_code_generator::LocatorStyle::kRounded, round_avatar.AsImageSkia(),
-          qr_code_generator::QuietZone::kWillBeAddedByClient);
-    } else {
-      qr_image = qr_code_generator::GenerateImage(
-          base::as_byte_span(qr_code_url),
-          qr_code_generator::ModuleStyle::kCircles,
-          qr_code_generator::LocatorStyle::kRounded,
-          qr_code_generator::CenterImage::kProductLogo,
-          qr_code_generator::QuietZone::kWillBeAddedByClient);
-    }
-
-    if (qr_image.has_value()) {
-      data->qr_code_data_uri =
-          webui::EncodePNGAndMakeDataURI(qr_image.value(), 1.0f);
-    }
+    // QR code generation is not part of this build, so no QR code data URI is
+    // provided.
 
     std::move(callback).Run(std::move(data));
   }

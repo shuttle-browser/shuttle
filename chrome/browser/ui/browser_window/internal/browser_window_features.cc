@@ -15,41 +15,17 @@
 #include "chrome/browser/actor/ui/actor_border_view_controller.h"
 #include "chrome/browser/actor/ui/actor_ui_window_controller.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
-#include "chrome/browser/bookmarks/bookmark_merged_surface_service_factory.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
-#include "chrome/browser/bookmarks/managed_bookmark_service_factory.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/collaboration/collaboration_service_factory.h"
-#include "chrome/browser/commerce/shopping_service_factory.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
-#include "chrome/browser/contextual_tasks/active_task_context_provider_impl.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_side_panel_coordinator.h"
-#include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/devtools/devtools_ui_controller.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_ui_controller.h"
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
-#include "chrome/browser/geic/geic_enabling.h"
-#include "chrome/browser/geic/geic_side_panel_coordinator.h"
-#include "chrome/browser/glic/browser_ui/glic_iph_controller.h"
-#include "chrome/browser/glic/browser_ui/glic_nudge_controller.h"
-#include "chrome/browser/glic/browser_ui/glic_split_button_controller.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/lens/region_search/lens_region_search_controller.h"
-#include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/sessions/session_service_factory.h"
-#include "chrome/browser/skills/skills_ui_window_controller.h"
 #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
-#include "chrome/browser/ui/ai_overlay_dialog/ai_overlay_dialog_controller_views.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
-#include "chrome/browser/ui/bookmarks/bookmarks_service_feature.h"
-#include "chrome/browser/ui/breadcrumb_manager_browser_agent.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
@@ -72,7 +48,6 @@
 #include "chrome/browser/ui/call_to_action/call_to_action_lock.h"
 #include "chrome/browser/ui/context_highlight/context_highlight_window_feature.h"
 #include "chrome/browser/ui/contextual_search/searchbox_context_data.h"
-#include "chrome/browser/ui/desktop_to_mobile_promos/ios_promo_controller.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/extensions/extension_installed_watcher.h"
 #include "chrome/browser/ui/extensions/extension_side_panel_manager.h"
@@ -83,13 +58,8 @@
 #include "chrome/browser/ui/focus/browser_focus_controller_webui.h"
 #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
-#include "chrome/browser/ui/lens/lens_overlay_entry_point_controller.h"
 #include "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h"
-#include "chrome/browser/ui/performance_controls/memory_saver_bubble_controller.h"
-#include "chrome/browser/ui/performance_controls/memory_saver_opt_in_iph_controller.h"
-#include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_iph_controller.h"
 #include "chrome/browser/ui/sessions/session_service_browser_helper.h"
-#include "chrome/browser/ui/sharing_hub/sharing_hub_window_controller.h"
 #include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/signin/signin_view_controller.h"
@@ -98,7 +68,6 @@
 #include "chrome/browser/ui/tabs/saved_tab_groups/most_recent_shared_tab_update_store.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/session_service_tab_group_sync_observer.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/shared_tab_group_feedback_controller.h"
 #include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
 #include "chrome/browser/ui/tabs/split_view_iph_controller.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_window_adapter_impl.h"
@@ -116,14 +85,11 @@
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/toasts/toast_service.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
-#include "chrome/browser/ui/ui_controller_factory.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/views/animations/side_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
-#include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_browser_controller.h"
-#include "chrome/browser/ui/views/data_sharing/data_sharing_bubble_controller.h"
 #include "chrome/browser/ui/views/extensions/extension_keybinding_registry_views.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/contents_border_controller.h"
@@ -139,34 +105,24 @@
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_coordinator.h"
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_manager_views.h"
-#include "chrome/browser/ui/views/media_router/cast_browser_controller.h"
 #include "chrome/browser/ui/views/new_tab_footer/footer_controller.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
 #include "chrome/browser/ui/views/profiles/profile_customization_bubble_sync_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
-#include "chrome/browser/ui/views/qrcode_generator/qrcode_window_controller.h"
-#include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_toolbar_bubble_controller.h"
-#include "chrome/browser/ui/views/sharing/sharing_window_controller.h"
-#include "chrome/browser/ui/views/side_panel/bookmarks/bookmarks_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/comments/comments_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/history/history_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/reading_list/reading_list_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
-#include "chrome/browser/ui/views/tabs/groups/recent_activity_bubble_dialog_view.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
-#include "chrome/browser/ui/views/tabs/tab_strip_action_container.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/views/translate/translate_bubble_controller.h"
 #include "chrome/browser/ui/views/upgrade_notification_controller.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_user_education_interface_impl.h"
 #include "chrome/browser/ui/waap/initial_web_ui_manager.h"
 #include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
 #include "chrome/browser/ui/webui_browser/browser_elements_webui_browser.h"
 #include "chrome/browser/ui/webui_browser/find_bar_owner_webui_browser.h"
@@ -180,17 +136,9 @@
 #include "chrome/browser/ui/zoom/browser_window_zoom_observer.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
-#include "components/breadcrumbs/core/breadcrumbs_status.h"
-#include "components/collaboration/public/collaboration_service.h"
-#include "components/commerce/core/commerce_feature_list.h"
-#include "components/commerce/core/feature_utils.h"
-#include "components/commerce/core/shopping_service.h"
 #include "components/content_settings/browser/ui/cookie_controls_controller.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
-#include "components/contextual_tasks/public/features.h"
-#include "components/desktop_to_mobile_promos/features.h"
 #include "components/feature_engagement/public/feature_constants.h"
-#include "components/lens/lens_features.h"
 #include "components/omnibox/browser/location_bar_model.h"
 #include "components/omnibox/browser/location_bar_model_impl.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
@@ -216,7 +164,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #include "chrome/browser/ui/pdf/infobar/pdf_infobar_controller.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/pin_infobar/pin_infobar_controller.h"
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -275,50 +222,22 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
         std::make_unique<ActorBorderViewController>(browser);
   }
 
-  app_browser_controller_ =
-      GetUserDataFactory().CreateInstanceWithFactoryMethod(
-          *browser, &web_app::MaybeCreateAppBrowserController, browser);
 
   browser_active_state_manager_ =
       GetUserDataFactory().CreateInstance<BrowserActiveStateManager>(
-          *browser, *browser, app_browser_controller_.get());
-
-  {
-    auto* merged_bookmarks_service =
-        BookmarkMergedSurfaceServiceFactory::GetForProfile(profile);
-    if (merged_bookmarks_service != nullptr) {
-      bookmarks_service_feature_ =
-          GetUserDataFactory().CreateInstance<BookmarksServiceFeature>(
-              *browser, merged_bookmarks_service,
-              browser->GetUnownedUserDataHost());
-    }
-  }
-
-  bookmarks_side_panel_coordinator_ =
-      GetUserDataFactory().CreateInstance<BookmarksSidePanelCoordinator>(
           *browser, *browser);
 
-  if (breadcrumbs::IsEnabled(g_browser_process->local_state())) {
-    breadcrumb_manager_browser_agent_ =
-        std::make_unique<BreadcrumbManagerBrowserAgent>(
-            browser->GetTabStripModel(), profile);
-  }
 
   // Foundational members hoisted out of alphabetical order:
-  //   bookmark_bar_controller_ depends on fullscreen_controller_.
   //   window_feature_controller_ depends on fullscreen_controller_.
   //   Later features depend on browser_command_controller_.
   //   Later features depend on browser_actions_.
   //   Later features depend on side_panel_registry_.
   fullscreen_controller_ =
       std::make_unique<BrowserWindowFullscreenController>(*browser);
-  bookmark_bar_controller_ =
-      GetUserDataFactory().CreateInstance<BookmarkBarController>(
-          *browser, *browser, *browser->GetTabStripModel());
   window_feature_controller_ =
       GetUserDataFactory().CreateInstance<WindowFeatureController>(
-          *browser, fullscreen_controller_.get(), app_browser_controller_.get(),
-          browser->GetType(),
+          *browser, fullscreen_controller_.get(), browser->GetType(),
           BrowserInitState::From(browser)
               ->browser_window_create_params()
               .is_trusted_source,
@@ -399,9 +318,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
           HostContentSettingsMapFactory::GetForProfile(profile),
           profile->IsIncognitoProfile());
 
-  data_sharing_bubble_controller_ =
-      std::make_unique<DataSharingBubbleController>(browser, profile,
-                                                    tab_strip_model_);
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   extension_browser_window_helper_ =
@@ -411,12 +327,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 
   extension_installed_watcher_ =
       std::make_unique<ExtensionInstalledWatcher>(profile);
-
-  if (geic::IsGeicEnabled(profile)) {
-    geic_side_panel_coordinator_ =
-        GetUserDataFactory().CreateInstance<geic::GeicSidePanelCoordinator>(
-            *browser, *browser);
-  }
 
   history_clusters_side_panel_coordinator_ =
       GetUserDataFactory().CreateInstance<HistoryClustersSidePanelCoordinator>(
@@ -445,17 +355,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
         std::make_unique<InitialWebUIWindowMetricsManager>(browser);
   }
 
-  // The LensOverlayEntryPointController is constructed for all browser types
-  // but is only initialized for normal browser windows. This simplifies the
-  // logic for code shared by both normal and non-normal windows.
-  lens_overlay_entry_point_controller_ =
-      GetUserDataFactory()
-          .CreateInstance<lens::LensOverlayEntryPointController>(*browser,
-                                                                 browser);
-
-  lens_region_search_controller_ =
-      GetUserDataFactory().CreateInstance<lens::LensRegionSearchController>(
-          *browser, browser->GetUnownedUserDataHost());
 
   // Must be before location_bar_model_.
   location_bar_model_delegate_ =
@@ -463,10 +362,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   location_bar_model_ = std::make_unique<LocationBarModelImpl>(
       location_bar_model_delegate_.get(), content::kMaxURLDisplayChars);
 
-  memory_saver_bubble_controller_ =
-      GetUserDataFactory()
-          .CreateInstance<memory_saver::MemorySaverBubbleController>(*browser,
-                                                                     browser);
 
 #if BUILDFLAG(IS_CHROMEOS)
   locked_state_controller_ =
@@ -491,10 +386,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
         GetUserDataFactory().CreateInstance<pdf::infobar::PdfInfoBarController>(
             *browser, browser);
   }
-  pin_infobar_controller_ =
-      GetUserDataFactory()
-          .CreateInstance<default_browser::PinInfoBarController>(*browser,
-                                                                 browser);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -546,7 +437,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   tab_menu_model_delegate_ =
       GetUserDataFactory().CreateInstance<chrome::BrowserTabMenuModelDelegate>(
           *browser, browser->GetSessionID(), profile,
-          app_browser_controller_.get(),
           tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile),
           browser->GetUnownedUserDataHost());
 
@@ -571,9 +461,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
                 *browser, browser, profile);
   }
 
-  translate_bubble_controller_ =
-      GetUserDataFactory().CreateInstance<TranslateBubbleController>(
-          *browser, browser, browser_actions_->root_action_item());
 
   user_education_ =
       GetUserDataFactory().CreateInstance<BrowserUserEducationInterfaceImpl>(
@@ -588,24 +475,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // instantiated in this block (please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
-    if (base::FeatureList::IsEnabled(features::kAiOverlayDialog)) {
-      ai_overlay_dialog_controller_ =
-          GetUserDataFactory()
-              .CreateInstance<ttc::AiOverlayDialogControllerViews>(*browser,
-                                                                   browser);
-    }
-
-    if (glic::GlicEnabling::IsProfileEligible(profile)) {
-      if (glic::GlicKeyedService* glic_service =
-              glic::GlicKeyedService::Get(profile)) {
-        glic_iph_controller_ =
-            GetUserDataFactory().CreateInstance<glic::GlicIphController>(
-                *browser, browser, *glic_service);
-        glic_split_button_controller_ =
-            std::make_unique<glic::GlicSplitButtonController>(browser,
-                                                              glic_service);
-      }
-    }
 
     initial_web_ui_manager_ = std::make_unique<InitialWebUIManager>(browser);
 
@@ -658,18 +527,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
                 restored_state_uncollapsed_width);
   }
 
-  // Constructed last, out of alphabetical order:
-  //   EphemeralButtonController depends on SidePanelRegistry.
-  //   CloseButtonController depends on SidePanelRegistry.
-  //   CloseButtonController depends on VerticalTabStripStateController.
-  //   CloseButtonController depends on ImmersiveModeController.
-  // TODO(crbug.com/481268779): Pass these dependencies explicitly.
-  if (contextual_tasks::IsContextualTasksUIEnabled()) {
-    contextual_tasks_browser_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<contextual_tasks::ContextualTasksBrowserController>(
-                *browser_, browser_);
-  }
 
   // Initialize embedder features last.
   embedder_browser_window_features_ =
@@ -708,11 +565,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
     accelerator_provider_ = webui_browser_window;
   }
 
-  if (browser_view) {
-    bookmark_bar_controller_->SetDelegate(browser_view);
-  } else if (webui_browser_window) {
-    bookmark_bar_controller_->SetDelegate(webui_browser_window);
-  }
 
   if (browser_view) {
     browser_focus_controller_ =
@@ -739,7 +591,7 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
   browser_ui_controller_ =
       GetUserDataFactory().CreateInstance<BrowserUiController>(
           *browser, *browser, *tab_strip_model_,
-          *BrowserWindow::FromBrowser(browser), *bookmark_bar_controller_);
+          *BrowserWindow::FromBrowser(browser));
 
   if (browser_view) {
     color_provider_browser_helper_ =
@@ -754,8 +606,7 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
 
   if (browser_view) {
     if (browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
-        browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP ||
-        browser_view->GetIsWebAppType()) {
+        browser_->GetType() == BrowserWindowInterface::Type::TYPE_POPUP) {
       data_protection_ui_controller_ =
           GetUserDataFactory()
               .CreateInstance<
@@ -809,14 +660,13 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
 
   exclusive_access_manager_ = std::make_unique<ExclusiveAccessManager>(
       browser, BrowserWindow::FromBrowser(browser)->GetExclusiveAccessContext(),
-      browser_command_controller_.get(), bookmark_bar_controller_.get());
+      browser_command_controller_.get());
 
   // Must be after exclusive_access_manager_,
   // desktop_browser_window_capabilities_, and browser_ui_controller_.
   browser_web_contents_delegate_ = std::make_unique<BrowserWebContentsDelegate>(
       browser, *exclusive_access_manager_, *browser_command_controller_,
-      *unload_controller_, app_browser_controller_.get(),
-      *BrowserWindow::FromBrowser(browser),
+      *unload_controller_, *BrowserWindow::FromBrowser(browser),
       *desktop_browser_window_capabilities_, *browser_ui_controller_);
 
   // Must be after exclusive_access_manager_.
@@ -917,10 +767,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
         std::make_unique<WebUIBrowserSidePanelUI>(browser);
   }
 
-  if (browser_view) {
-    skills_ui_window_controller_ =
-        std::make_unique<skills::SkillsUiWindowController>(browser_);
-  }
 
   synced_window_delegate_ = std::make_unique<BrowserSyncedWindowDelegate>(
       browser, browser->GetTabStripModel(), browser->GetSessionID(),
@@ -935,9 +781,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
   upgrade_notification_controller_ =
       std::make_unique<UpgradeNotificationController>(browser);
 
-  ui_controller_factory_ =
-      GetUserDataFactory().CreateInstance<UIControllerFactory>(*browser,
-                                                               browser);
 
   if (browser_view) {
     user_education_->Init(browser_view);
@@ -997,15 +840,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
       }
     }
 
-    if (browser_view) {
-      if (media_router::MediaRouterEnabled(
-              browser_view->browser()->GetProfile())) {
-        cast_browser_controller_ =
-            GetUserDataFactory()
-                .CreateInstance<media_router::CastBrowserController>(
-                    *browser, browser_view->browser());
-      }
-    }
 
     if (IsChromeLabsEnabled()) {
       chrome_labs_coordinator_ =
@@ -1013,38 +847,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
                                                                      browser);
     }
 
-    if (MobilePromoOnDesktopEnabled()) {
-      ios_promo_controller_ =
-          GetUserDataFactory().CreateInstance<IOSPromoController>(*browser,
-                                                                  browser);
-    }
-
-    // TODO(crbug.com/350508658): Ideally, we don't pass in a reference to
-    // browser as per the guidance in the comment above. However, currently,
-    // we need browser to properly determine if the lens overlay is enabled.
-    // Cannot be in Init since needs to listen to the fullscreen controller
-    // and location bar view which are initialized after Init.
-    if (lens::features::IsLensOverlayEnabled()) {
-      LocationBar* location_bar = nullptr;
-      // TODO(crbug.com/360163254): We should really be using
-      // Browser::GetBrowserView, which always returns a non-null BrowserView
-      // in production, but this crashes during unittests using
-      // BrowserWithTestWindowTest; these should eventually be refactored.
-      if (browser_view) {
-        location_bar = browser_view->GetLocationBar();
-      }
-      lens_overlay_entry_point_controller_->Initialize(
-          browser, browser_command_controller_.get(), location_bar);
-    }
-
-    if (browser_view) {
-      // Memory Saver mode is default off but is available to turn on.
-      // The controller relies on performance manager which isn't initialized in
-      // some unit tests without browser view.
-      memory_saver_opt_in_iph_controller_ =
-          GetUserDataFactory().CreateInstance<MemorySaverOptInIPHController>(
-              *browser_, browser_);
-    }
 
     if (browser_view) {
       // Get the PinnedToolbarActions for the browser; it might not exist for
@@ -1053,40 +855,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
           browser_view->toolbar_button_provider()->GetPinnedToolbarActions();
     }
 
-    qrcode_window_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<qrcode_generator::QRCodeWindowController>(*browser,
-                                                                      browser);
-
-    send_tab_to_self_toolbar_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<
-                send_tab_to_self::SendTabToSelfToolbarBubbleController>(
-                *browser, browser);
-
-    if (browser->GetTabStripModel()->SupportsTabGroups() &&
-        tab_groups::SavedTabGroupUtils::SupportsSharedTabGroups() &&
-        tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile)) {
-      if (browser_view) {
-        shared_tab_group_feedback_controller_ =
-            GetUserDataFactory()
-                .CreateInstance<tab_groups::SharedTabGroupFeedbackController>(
-                    *browser, browser_view->browser());
-        shared_tab_group_feedback_controller_->Init();
-      }
-      recent_activity_bubble_coordinator_ =
-          GetUserDataFactory().CreateInstance<RecentActivityBubbleCoordinator>(
-              *browser, browser);
-    }
-
-    sharing_hub_window_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<sharing_hub::SharingHubWindowController>(*browser,
-                                                                     browser);
-
-    sharing_window_controller_ =
-        GetUserDataFactory().CreateInstance<SharingWindowController>(*browser,
-                                                                     browser);
 
     if (browser_view) {
       split_tab_highlight_controller_ =
@@ -1112,13 +880,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
               *browser, browser);
     }
 
-    if (base::FeatureList::IsEnabled(
-            feature_engagement::kIPHSendTabToSelfTutorialFeature)) {
-      send_tab_to_self_iph_controller_ =
-          GetUserDataFactory()
-              .CreateInstance<send_tab_to_self::SendTabToSelfIphController>(
-                  *browser, browser);
-    }
   }
 
   // Initialize post-window dependent embedder features last.
@@ -1149,25 +910,13 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   // InitPostWindowConstruction (reverse).
 
   // TYPE_NORMAL members.
-  send_tab_to_self_iph_controller_.reset();
   vertical_tab_iph_controller_.reset();
   split_view_iph_controller_.reset();
   split_tab_highlight_controller_.reset();
-  sharing_window_controller_.reset();
-  sharing_hub_window_controller_.reset();
-  recent_activity_bubble_coordinator_.reset();
-  if (shared_tab_group_feedback_controller_) {
-    shared_tab_group_feedback_controller_->TearDown();
-  }
-  send_tab_to_self_toolbar_bubble_controller_.reset();
-  qrcode_window_controller_.reset();
   pinned_toolbar_actions_ = nullptr;
-  memory_saver_opt_in_iph_controller_.reset();
-  ios_promo_controller_.reset();
   if (chrome_labs_coordinator_) {
     chrome_labs_coordinator_->TearDown();
   }
-  cast_browser_controller_.reset();
   ai_mode_page_action_controller_.reset();
   if (actor_ui_window_controller_) {
     actor_ui_window_controller_->TearDown();
@@ -1182,11 +931,9 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   if (user_education_) {
     user_education_->TearDown();
   }
-  ui_controller_factory_.reset();
   upgrade_notification_controller_.reset();
   toast_service_.reset();
   synced_window_delegate_.reset();
-  skills_ui_window_controller_.reset();
   // TODO(crbug.com/346148093): This logic should not be gated behind a
   // conditional.
   if (side_panel_coordinator_) {
@@ -1231,28 +978,16 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   browser_ui_controller_.reset();
   browser_select_file_dialog_controller_.reset();
   browser_focus_controller_.reset();
-  bookmark_bar_controller_->SetDelegate(nullptr);
   accelerator_provider_ = nullptr;
 
   // ---------------------------------------------------------------------------
   // Init (reverse).
 
   // TYPE_NORMAL members.
-  glic_iph_controller_.reset();
-  glic_split_button_controller_.reset();
   initial_web_ui_manager_.reset();
-  ai_overlay_dialog_controller_.reset();
 
   // Owned-by-all members.
-  // contextual_tasks_* are reset first because the group is constructed last
-  // in Init (it observes other features such as immersive_mode_controller_
-  // via ScopedObservation), and ContextualTasksCloseButtonController must
-  // outlive nothing observable.
-  if (contextual_tasks_browser_controller_) {
-    contextual_tasks_browser_controller_->Shutdown();
-  }
   signin_view_controller_->TearDownPreBrowserWindowDestruction();
-  lens_overlay_entry_point_controller_.reset();
   // Must be before window_feature_controller_ (raw pointer).
   immersive_mode_controller_.reset();
   history_clusters_side_panel_coordinator_.reset();
@@ -1269,11 +1004,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   actor_border_view_controller_.reset();
 }
 
-glic::GlicNudgeController* BrowserWindowFeatures::glic_nudge_controller() {
-  return glic_split_button_controller_
-             ? glic_split_button_controller_->nudge_controller()
-             : nullptr;
-}
 
 SidePanelUI* BrowserWindowFeatures::side_panel_ui() {
   // TODO(crbug.com/428946261): Remove this and replace all clients with

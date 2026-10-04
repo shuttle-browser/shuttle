@@ -36,7 +36,6 @@
 #include "pdf/post_message_receiver.h"
 #include "pdf/preview_mode_client.h"
 #include "pdf/v8_value_converter.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/blink/public/mojom/annotation/annotation.mojom.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/web_string.h"
@@ -60,9 +59,6 @@
 #include "pdf/save_data_buffer_handler_for_drive.h"
 #endif  // BUILDFLAG(ENABLE_PDF_SAVE_TO_DRIVE)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "services/screen_ai/public/mojom/screen_ai_service.mojom-forward.h"
-#endif
 
 namespace blink {
 class WebAssociatedURLLoader;
@@ -244,25 +240,6 @@ class PdfViewWebPlugin final : public PDFiumEngineClient,
         PdfAccessibilityActionHandler* action_handler,
         blink::WebPluginContainer* plugin_container) = 0;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-    // Returns the maximum expected dimension of the images to be OCRed. If
-    // images are larger than the returned value, they will be downsampled
-    // before processing.
-    virtual void GetOcrMaxImageDimension(
-        base::OnceCallback<void(uint32_t)> callback) = 0;
-
-    // Performs OCR on `image` and sends the recognized text to `callback`.
-    // In case OCR service gets disconnected before or during running this
-    // request, `callback` will not be called.
-    virtual void PerformOcr(
-        const SkBitmap& image,
-        base::OnceCallback<void(screen_ai::mojom::VisualAnnotationPtr)>
-            callback) = 0;
-
-    // Sets a `callback` that is notified if OCR service gets disconnected.
-    virtual void SetOcrDisconnectedCallback(
-        base::RepeatingClosure callback) = 0;
-#endif
   };
 
   struct SaveDataBlock {
@@ -415,11 +392,6 @@ class PdfViewWebPlugin final : public PDFiumEngineClient,
 #if BUILDFLAG(ENABLE_PDF_INK2)
   bool IsInAnnotationMode() const override;
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  void OnSearchifyStateChange(bool busy) override;
-  void OnHasSearchifyText() override;
-  void MaybeShowSearchifyInProgress() override;
-#endif
 
   // pdf::mojom::PdfListener:
   void SetCaretPosition(const gfx::PointF& position) override;
@@ -822,10 +794,6 @@ class PdfViewWebPlugin final : public PDFiumEngineClient,
   // Applies the initial renderer preferences and observes future updates.
   void ApplyAndObserveRendererPreferences();
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Triggered to show/hide Searchify progress indicator.
-  void SetShowSearchifyInProgress(bool show);
-#endif
 
   bool initialized_ = false;
 
@@ -1078,16 +1046,6 @@ class PdfViewWebPlugin final : public PDFiumEngineClient,
       annotation_agent_container_receiver_{this};
   std::unique_ptr<PdfAnnotationAgent> annotation_agent_;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  enum class SearchifyState {
-    kNotStarted,
-    kStarted,
-    kShowingInProgress,
-    kStopped,
-  };
-
-  SearchifyState searchify_state_ = SearchifyState::kNotStarted;
-#endif
 
   base::WeakPtrFactory<PdfViewWebPlugin> weak_factory_{this};
 };

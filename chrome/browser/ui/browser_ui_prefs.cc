@@ -20,7 +20,6 @@
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/translate/core/browser/translate_pref_names.h"
 #include "media/media_buildflags.h"
 #include "third_party/blink/public/common/peerconnection/webrtc_ip_handling_policy.h"
 
@@ -144,9 +143,6 @@ void RegisterBrowserUserPrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterBooleanPref(prefs::kWebAppCreateOnDesktop, true);
   registry->RegisterBooleanPref(prefs::kWebAppCreateInAppsMenu, true);
   registry->RegisterBooleanPref(prefs::kWebAppCreateInQuickLaunchBar, true);
-  registry->RegisterBooleanPref(
-      translate::prefs::kOfferTranslateEnabled, true,
-      user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
   registry->RegisterDictionaryPref(prefs::kBrowserWindowPlacement);
   registry->RegisterDictionaryPref(prefs::kBrowserWindowPlacementPopup);
   registry->RegisterDictionaryPref(prefs::kAppWindowPlacement);

@@ -7,17 +7,13 @@
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/default_browser/default_browser_controller.h"
-#include "chrome/browser/default_browser/default_browser_manager.h"
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_prefs.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -77,25 +73,11 @@ void DefaultBrowserHandler::OnJavascriptAllowed() {
       prefs::kDefaultBrowserSettingEnabled,
       base::BindRepeating(&DefaultBrowserHandler::OnDefaultBrowserSettingChange,
                           base::Unretained(this)));
-
-  default_browser_controller_ =
-      default_browser::DefaultBrowserManager::CreateControllerFor(
-          default_browser::DefaultBrowserEntrypointType::kSettingsPage);
-  CHECK(default_browser_controller_);
-
-  default_browser_controller_->OnShown();
-  did_user_interact_ = false;
 }
 
 void DefaultBrowserHandler::OnJavascriptDisallowed() {
-  if (!did_user_interact_) {
-    default_browser_controller_->OnIgnored();
-  }
-
-  did_user_interact_ = false;
   local_state_pref_registrar_.RemoveAll();
   weak_ptr_factory_.InvalidateWeakPtrs();
-  default_browser_controller_.reset();
 }
 
 void DefaultBrowserHandler::RequestDefaultBrowserState(
@@ -105,8 +87,8 @@ void DefaultBrowserHandler::RequestDefaultBrowserState(
   CHECK_EQ(args.size(), 1U);
   auto& callback_id = args[0].GetString();
 
-  default_browser::DefaultBrowserManager::From(g_browser_process)
-      ->GetDefaultBrowserState(
+  base::MakeRefCounted<shell_integration::DefaultBrowserWorker>()
+      ->StartCheckIsDefault(
           base::BindOnce(&DefaultBrowserHandler::OnDefaultBrowserWorkerFinished,
                          weak_ptr_factory_.GetWeakPtr(), callback_id));
 }
@@ -136,22 +118,15 @@ void DefaultBrowserHandler::SetAsDefaultBrowser(const base::ListValue& args) {
   }
 #endif  // BUILDFLAG(IS_WIN)
 
-  did_user_interact_ = true;
-  default_browser_controller_->OnAccepted(
-      base::BindOnce(&DefaultBrowserHandler::OnDefaultBrowserWorkerFinished,
-                     weak_ptr_factory_.GetWeakPtr(), std::nullopt));
-
-  // If the user attempted to make Chrome the default browser, notify
-  // them when this changes and close all open prompts.
-  chrome::startup::default_prompt::UpdatePrefsForDismissedPrompt(
-      Profile::FromWebUI(web_ui()));
-  DefaultBrowserPromptManager::GetInstance()->CloseAllPrompts(
-      DefaultBrowserPromptManager::CloseReason::kAccept);
+  base::MakeRefCounted<shell_integration::DefaultBrowserWorker>()
+      ->StartSetAsDefault(
+          base::BindOnce(&DefaultBrowserHandler::OnDefaultBrowserWorkerFinished,
+                         weak_ptr_factory_.GetWeakPtr(), std::nullopt));
 }
 
 void DefaultBrowserHandler::OnDefaultBrowserSettingChange() {
-  default_browser::DefaultBrowserManager::From(g_browser_process)
-      ->GetDefaultBrowserState(
+  base::MakeRefCounted<shell_integration::DefaultBrowserWorker>()
+      ->StartCheckIsDefault(
           base::BindOnce(&DefaultBrowserHandler::OnDefaultBrowserWorkerFinished,
                          weak_ptr_factory_.GetWeakPtr(), std::nullopt));
 }
@@ -171,12 +146,7 @@ void DefaultBrowserHandler::OnCanPinToTaskbarResult(
 void DefaultBrowserHandler::OnDefaultBrowserWorkerFinished(
     const std::optional<std::string>& js_callback_id,
     shell_integration::DefaultWebClientState state) {
-  if (state == shell_integration::IS_DEFAULT) {
-    // Notify the user in the future if Chrome ceases to be the user's chosen
-    // default browser.
-    chrome::startup::default_prompt::ResetPromptPrefs(
-        Profile::FromWebUI(web_ui()));
-  } else {
+  if (state != shell_integration::IS_DEFAULT) {
 #if BUILDFLAG(IS_WIN)
     browser_util::ShouldOfferToPin(
         ShellUtil::GetBrowserModelId(InstallUtil::IsPerUserInstall()),

@@ -24,18 +24,10 @@ namespace sync_sessions {
 SyncSessionsRouterTabHelper::SyncSessionsRouterTabHelper(
     content::WebContents* web_contents,
     SyncSessionsWebContentsRouter* router,
-    ChromeTranslateClient* chrome_translate_client,
     favicon::FaviconDriver* favicon_driver)
     : content::WebContentsObserver(web_contents),
       router_(router),
-      chrome_translate_client_(chrome_translate_client),
       favicon_driver_(favicon_driver) {
-  // A translate client is not always attached to web contents (e.g. tests).
-  if (chrome_translate_client_) {
-    chrome_translate_client_->GetTranslateDriver()
-        ->AddLanguageDetectionObserver(this);
-  }
-
   if (favicon_driver_) {
     favicon_driver_->AddObserver(this);
   }
@@ -53,10 +45,6 @@ SyncSessionsRouterTabHelper::~SyncSessionsRouterTabHelper() {
     router_->NotifyTabClosed();
   }
 #endif
-  if (chrome_translate_client_) {
-    chrome_translate_client_->GetTranslateDriver()
-        ->RemoveLanguageDetectionObserver(this);
-  }
   if (favicon_driver_) {
     favicon_driver_->RemoveObserver(this);
   }
@@ -103,14 +91,6 @@ void SyncSessionsRouterTabHelper::OnVisibilityChanged(
   if (visibility == content::Visibility::VISIBLE) {
     NotifyRouter();
   }
-}
-
-void SyncSessionsRouterTabHelper::OnLanguageDetermined(
-    const translate::LanguageDetectionDetails& details) {
-  if (details.adopted_language.empty()) {
-    return;
-  }
-  NotifyRouter();
 }
 
 void SyncSessionsRouterTabHelper::NotifyRouter(bool page_load_completed) {

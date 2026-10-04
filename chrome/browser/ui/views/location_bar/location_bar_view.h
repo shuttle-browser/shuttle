@@ -45,7 +45,6 @@
 #include "ui/views/drag_controller.h"
 
 #if BUILDFLAG(IS_MAC)
-#include "components/webapps/common/web_app_id.h"
 #endif
 
 #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
@@ -56,10 +55,8 @@ class BrowserWindowInterface;
 class CommandUpdater;
 class ContentSettingBubbleModelDelegate;
 class OmniboxController;
-class OmniboxContextMenu;
 enum class OmniboxPart;
 class OmniboxPopupAimPresenter;
-class OmniboxPopupFileSelector;
 class OmniboxPopupUI;
 class OmniboxPopupView;
 class OmniboxViewViews;
@@ -187,7 +184,6 @@ class LocationBarView
 
   const OmniboxController* GetOmniboxController() const;
 
-
   PermissionChipView* chip_view() { return chip_view_; }
   PermissionDashboardView* permission_dashboard_view() {
     return permission_dashboard_view_;
@@ -264,7 +260,6 @@ class LocationBarView
 
   // OmniboxPopupPresenterDelegate:
   views::Widget* GetLocationBarWidget() override;
-  OmniboxPopupFileSelector* GetOmniboxPopupFileSelector() const override;
   OmniboxPopupAimPresenter* GetOmniboxPopupAimPresenter() const override;
   views::View* GetLocationBarFocusRestoreView() override;
 
@@ -329,11 +324,6 @@ class LocationBarView
                            PrefChangesAddContextButtonVisibility);
   using ContentSettingViews =
       std::vector<raw_ptr<ContentSettingImageView, VectorExperimental>>;
-
-  void SetRunOmniboxContextMenuForTesting(
-      base::RepeatingCallback<void(OmniboxContextMenu*, gfx::Point)> callback) {
-    run_omnibox_context_menu_callback_ = std::move(callback);
-  }
 
   // Returns the amount of space required to the left of the omnibox text.
   int GetMinimumLeadingWidth() const;
@@ -481,26 +471,7 @@ class LocationBarView
   // destroyed.
   page_actions::PageActionController* GetPageActionController();
 
-  bool OpenContextMenu();
-
-  // Whether the "Add Context" button should be shown in place of the location
-  // bar page info icon button.
-  bool ShouldShowAddContextButton();
-
-  // Whether the Omnibox context menu contains at least one menu item that can
-  // be shown to the user.
-  bool HasAllowedInputs();
-
   content::WebContents* GetWrappedWebContents();
-
-#if BUILDFLAG(IS_MAC)
-  // Called when app shims change.
-  void OnAppShimChanged(const webapps::AppId& app_id);
-
-  // Manage a subscription to AppShimRegistry; used to monitor for changes
-  // to system level notification permissions.
-  base::CallbackListSubscription app_shim_observation_;
-#endif
 
 #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
   // Manage a subscription to GeolocationSystemPermissionManager, which may
@@ -573,7 +544,6 @@ class LocationBarView
   // Shown if the user has selected a keyword.
   raw_ptr<SelectedKeywordView> selected_keyword_view_ = nullptr;
 
-
   // The content setting views.
   ContentSettingViews content_setting_views_;
 
@@ -603,12 +573,7 @@ class LocationBarView
   // to outlive this view.
   raw_ptr<views::FocusManager> focus_manager_ = nullptr;
 
-  std::unique_ptr<OmniboxContextMenu> omnibox_context_menu_;
-  std::unique_ptr<OmniboxPopupFileSelector> omnibox_popup_file_selector_;
   std::unique_ptr<PrefChangeRegistrar> pref_registrar_;
-
-  base::RepeatingCallback<void(OmniboxContextMenu*, gfx::Point)>
-      run_omnibox_context_menu_callback_;
 
   base::CallbackListSubscription subscription_ =
       ui::TouchUiController::Get()->RegisterCallback(

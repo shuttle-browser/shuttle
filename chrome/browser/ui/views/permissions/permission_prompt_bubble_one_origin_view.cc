@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/media_effects/media_device_info.h"
 #include "components/permissions/permission_request.h"

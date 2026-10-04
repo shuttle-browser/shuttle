@@ -41,12 +41,6 @@
 #include "components/webdata/common/web_database_service.h"
 #include "components/webdata/common/webdata_constants.h"
 
-#if BUILDFLAG(USE_BLINK)
-#include "components/payments/content/web_app_manifest_section_table.h"
-#include "components/payments/content/web_payments_table.h"
-#include "components/payments/content/web_payments_web_data_service.h"
-#endif
-
 namespace {
 
 void InitAutofillSyncBridgesOnDBSequence(
@@ -163,11 +157,6 @@ WebDataServiceWrapper::WebDataServiceWrapper(
   profile_database_->AddTable(std::make_unique<autofill::EntityTable>());
   profile_database_->AddTable(std::make_unique<KeywordTable>());
   profile_database_->AddTable(std::make_unique<TokenServiceTable>());
-#if BUILDFLAG(USE_BLINK)
-  profile_database_->AddTable(
-      std::make_unique<payments::WebAppManifestSectionTable>());
-  profile_database_->AddTable(std::make_unique<payments::WebPaymentsTable>());
-#endif
   profile_database_->AddTable(std::make_unique<autofill::ValuablesTable>());
   profile_database_->LoadDatabase(os_crypt);
 
@@ -186,14 +175,6 @@ WebDataServiceWrapper::WebDataServiceWrapper(
       base::MakeRefCounted<TokenWebData>(profile_database_, ui_task_runner);
   token_web_data_->Init(
       base::BindOnce(show_error_callback, ERROR_LOADING_TOKEN));
-
-#if BUILDFLAG(USE_BLINK)
-  web_payments_web_data_ =
-      base::MakeRefCounted<payments::WebPaymentsWebDataService>(
-          profile_database_, ui_task_runner);
-  web_payments_web_data_->Init(
-      base::BindOnce(show_error_callback, ERROR_LOADING_PAYMENT_MANIFEST));
-#endif
 
   profile_autofill_web_data_->GetAutofillBackend(
       base::BindOnce(&InitAutofillSyncBridgesOnDBSequence, db_task_runner,
@@ -271,10 +252,6 @@ void WebDataServiceWrapper::Shutdown() {
   keyword_web_data_->ShutdownOnUISequence();
   token_web_data_->ShutdownOnUISequence();
 
-#if BUILDFLAG(USE_BLINK)
-  web_payments_web_data_->ShutdownOnUISequence();
-#endif
-
   profile_database_->ShutdownDatabase();
   account_database_->ShutdownDatabase();
 }
@@ -298,9 +275,3 @@ scoped_refptr<TokenWebData> WebDataServiceWrapper::GetTokenWebData() {
   return token_web_data_;
 }
 
-#if BUILDFLAG(USE_BLINK)
-scoped_refptr<payments::WebPaymentsWebDataService>
-WebDataServiceWrapper::GetWebPaymentsWebData() {
-  return web_payments_web_data_;
-}
-#endif

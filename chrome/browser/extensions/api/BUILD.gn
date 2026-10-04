@@ -41,7 +41,6 @@ group("api_implementations") {
     "//chrome/browser/extensions/api/extension_action",
     "//chrome/browser/extensions/api/font_settings",
     "//chrome/browser/extensions/api/gcm",
-    "//chrome/browser/extensions/api/glic_private",
     "//chrome/browser/extensions/api/history",
     "//chrome/browser/extensions/api/module",
     "//chrome/browser/extensions/api/notifications",
@@ -61,17 +60,12 @@ group("api_implementations") {
     "//chrome/browser/extensions/api/webrtc_logging_private",
   ]
 
-  if (enable_service_discovery) {
-    public_deps += [ "//chrome/browser/extensions/api/mdns" ]
-  }
-
   if (enable_extensions) {
     # APIs supported on Win/Mac/Linux but NOT desktop Android go here.
     public_deps += [
       "//chrome/browser/extensions/api/autofill_private",
       "//chrome/browser/extensions/api/braille_display_private",
       "//chrome/browser/extensions/api/command_line_private",
-      "//chrome/browser/extensions/api/dictation_private",
       "//chrome/browser/extensions/api/experimental_actor",
       "//chrome/browser/extensions/api/experimental_ai_data",
       "//chrome/browser/extensions/api/networking_private",
@@ -109,13 +103,6 @@ group("api_implementations") {
       ]
     }
   }  # if (enable_extensions)
-
-  if (!is_android) {
-    public_deps += [
-      "//chrome/browser/extensions/api/contextual_tasks_private",
-      "//chrome/browser/extensions/api/indigo_private",
-    ]
-  }
 }
 
 # The step necessary to generate the code to register the corresponding
@@ -169,7 +156,6 @@ function_registration("api_registration") {
     "vpn_provider",
     "wallpaper",
     "wm_desks_private",
-    "glic_private",
     "page_action",
     "windows",
   ]
@@ -206,7 +192,6 @@ function_registration("api_registration") {
     "experimental_actor/experimental_actor_api.h",
     "experimental_ai_data/experimental_ai_data_api.h",
     "extension_action/extension_action_api.h",
-    "glic_private/glic_private_api.h",
     "module/module.h",
     "tabs/tabs_api.h",
     "terminal/terminal_private_api.h",
@@ -225,7 +210,6 @@ function_registration("api_registration") {
     "//chrome/common:mojo_bindings",
     "//components/autofill/core/common/mojom:mojo_types",
     "//components/omnibox/browser",
-    "//components/translate/core/browser",
     "//components/zoom",
     "//content/public/browser",
     "//extensions/browser",
@@ -268,7 +252,6 @@ source_set("keyed_service_factories") {
 
   deps = [
     ":api_implementations",
-    "//chrome/browser/contextual_tasks",
     "//chrome/browser/extensions",
     "//chrome/common:buildflags",
     "//components/safe_browsing:buildflags",

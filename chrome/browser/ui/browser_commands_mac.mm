@@ -15,7 +15,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/fullscreen_util_mac.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/remote_cocoa/app_shim/native_widget_mac_nswindow.h"
@@ -29,15 +28,7 @@ namespace chrome {
 void ToggleAlwaysShowToolbarInFullscreen(BrowserWindowInterface* browser) {
   DCHECK(browser);
 
-  // If this browser belongs to an app, toggle the value for that app.
-  web_app::AppBrowserController* app_controller =
-      web_app::AppBrowserController::From(browser);
-  if (app_controller) {
-    app_controller->ToggleAlwaysShowToolbarInFullscreen();
-    return;
-  }
-
-  // Otherwise toggle the value of the preference.
+  // Toggle the value of the preference.
   PrefService* prefs = browser->GetProfile()->GetPrefs();
   bool show_toolbar = prefs->GetBoolean(prefs::kShowFullscreenToolbar);
   prefs->SetBoolean(prefs::kShowFullscreenToolbar, !show_toolbar);

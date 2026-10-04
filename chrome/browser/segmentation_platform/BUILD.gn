@@ -104,16 +104,12 @@ source_set("impl") {
 
   deps = [
     "//chrome/browser:browser_process",
-    "//chrome/browser/bookmarks",
-    "//chrome/browser/commerce",
     "//chrome/browser/history",
     "//chrome/browser/metrics",
     "//chrome/browser/optimization_guide",
     "//chrome/browser/profiles:profile_manager",
     "//chrome/browser/sync",
     "//chrome/browser/ui/browser_window",
-    "//components/commerce/core:feature_list",
-    "//components/compose:buildflags",
     "//components/metrics_services_manager",
     "//components/search",
     "//components/segmentation_platform/embedder",
@@ -134,7 +130,6 @@ source_set("impl") {
       "//chrome/browser/ui",
       "//chrome/browser/ui/android/tab_model",
       "//chrome/browser/ui/android/toolbar",
-      "//components/commerce/core:shopping_service",
       "//components/segmentation_platform/embedder/home_modules:constants",
     ]
   } else {
@@ -159,10 +154,8 @@ source_set("unit_tests") {
     ":impl",
     ":test_utils",
     "//base/test:test_support",
-    "//chrome/browser/commerce",
     "//chrome/browser/optimization_guide",
     "//chrome/test:test_support",
-    "//components/commerce/core:shopping_service_test_support",
     "//components/optimization_guide/core",
     "//components/segmentation_platform/embedder",
     "//components/segmentation_platform/embedder/default_model",

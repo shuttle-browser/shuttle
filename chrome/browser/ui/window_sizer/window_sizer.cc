@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window_state.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/prefs/pref_service.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
@@ -112,7 +111,7 @@ class DefaultStateProvider : public WindowSizer::StateProvider {
     DCHECK(show_state);
     // Legacy Applications and Devtools are always restored with the same
     // position.
-    if (browser_ && !web_app::AppBrowserController::IsWebApp(browser_) &&
+    if (browser_ &&
         (browser_->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
          browser_->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP ||
          browser_->GetType() == BrowserWindowInterface::Type::TYPE_DEVTOOLS)) {
@@ -126,28 +125,6 @@ class DefaultStateProvider : public WindowSizer::StateProvider {
     // Window may be null if browser is just starting up.
     if (browser_ && browser_->GetWindow()) {
       window = browser_->GetWindow();
-    } else if (web_app::AppBrowserController::IsWebApp(browser_)) {
-      window = FindMostRecentWindow(
-          [profile = browser_->GetProfile(),
-           app_id = web_app::AppBrowserController::From(browser_)->app_id(),
-           display = display::Screen::Get()->GetDisplayForNewWindows()](
-              BrowserWindowInterface* browser) {
-            if (browser->GetProfile() != profile) {
-              return false;
-            }
-            if (!web_app::AppBrowserController::IsForWebApp(browser, app_id)) {
-              return false;
-            }
-#if BUILDFLAG(IS_CHROMEOS)
-            if (display::Screen::Get()->GetDisplayNearestWindow(
-                    browser->GetWindow()->GetNativeWindow()) != display) {
-              return false;
-            }
-#endif
-            if (!BrowserWindow::FromBrowser(browser)->IsOnCurrentWorkspace())
-              return false;
-            return true;
-          });
     } else {
       window = FindMostRecentWindow([](BrowserWindowInterface* browser) {
         return browser->GetType() == BrowserWindowInterface::TYPE_NORMAL;

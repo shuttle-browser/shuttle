@@ -14,7 +14,6 @@
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "chrome/browser/ui/performance_controls/tab_resource_usage_collector.h"
 #include "chrome/browser/ui/views/tabs/tab_slot_controller.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "ui/views/animation/bubble_slide_animator.h"
@@ -33,8 +32,7 @@ class TabStripRegionView;
 class BrowserWindowInterface;
 
 // Controls how hover cards are shown and hidden for tabs.
-class TabHoverCardController : public views::ViewObserver,
-                               public TabResourceUsageCollector::Observer {
+class TabHoverCardController : public views::ViewObserver {
  public:
   class ScopedHideHoverCardLock {
    public:
@@ -118,9 +116,6 @@ class TabHoverCardController : public views::ViewObserver,
   void OnViewVisibilityChanged(views::View* observed_view,
                                views::View* starting_view,
                                bool visible) override;
-
-  // TabResourceUsageCollector::Observer:
-  void OnTabResourceMetricsRefreshed() override;
 
   bool ArePreviewsEnabled() const;
 
@@ -213,16 +208,6 @@ class TabHoverCardController : public views::ViewObserver,
   base::CallbackListSubscription fade_complete_subscription_;
   base::CallbackListSubscription slide_progressed_subscription_;
   base::CallbackListSubscription slide_complete_subscription_;
-
-  // Ensure that an instance of the TabResourceUsageCollector exists so
-  // resources are up to date when we eventually show the hover card.
-  raw_ptr<TabResourceUsageCollector> tab_resource_usage_collector_;
-
-  // Observation of `tab_resource_usage_collector_`, active when `hover_card_`
-  // exists.
-  base::ScopedObservation<TabResourceUsageCollector,
-                          TabResourceUsageCollector::Observer>
-      tab_resource_usage_collector_observation_{this};
 
   // Tracks changes to the hover card preferences
   PrefChangeRegistrar pref_change_registrar_;

@@ -23,7 +23,6 @@
 #include "base/trace_event/trace_event.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "chrome/browser/apps/platform_apps/app_load_service.h"
 #include "chrome/browser/background/background_contents_service_factory.h"
 #include "chrome/browser/background/background_contents_service_observer.h"
 #include "chrome/browser/browser_process.h"
@@ -131,8 +130,6 @@ class CrashNotificationDelegate : public message_center::NotificationDelegate {
           BackgroundContentsServiceFactory::GetForProfile(profile);
       if (!service->GetAppBackgroundContents(extension_id))
         service->LoadBackgroundContentsForExtension(extension_id);
-    } else if (is_platform_app) {
-      apps::AppLoadService::Get(profile)->RestartApplication(extension_id);
     } else {
       extensions::ExtensionRegistrar::Get(profile)->ReloadExtension(
           extension_id);

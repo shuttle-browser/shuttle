@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/views/frame/layout/browser_view_popup_layout_impl.h"
 #include "chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.h"
 #include "chrome/browser/ui/views/frame/multi_contents_view.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget.h"
@@ -145,18 +144,9 @@ std::unique_ptr<BrowserViewLayout> BrowserViewLayout::CreateLayout(
         return std::make_unique<BrowserViewTabbedLayoutImpl>(
             std::move(delegate), std::move(views));
       case BrowserWindowInterface::Type::TYPE_APP:
-      case BrowserWindowInterface::Type::TYPE_APP_POPUP: {
-        bool is_web_app =
-            browser->GetType() == BrowserWindowInterface::Type::TYPE_APP &&
-            web_app::AppBrowserController::IsWebApp(browser);
-#if BUILDFLAG(IS_CHROMEOS)
-        is_web_app =
-            is_web_app &&
-            !web_app::AppBrowserController::From(browser)->system_app();
-#endif
-        return std::make_unique<BrowserViewAppLayoutImpl>(
-            std::move(delegate), std::move(views), is_web_app);
-      }
+      case BrowserWindowInterface::Type::TYPE_APP_POPUP:
+        return std::make_unique<BrowserViewAppLayoutImpl>(std::move(delegate),
+                                                          std::move(views));
       case BrowserWindowInterface::Type::TYPE_POPUP:
       case BrowserWindowInterface::Type::TYPE_DEVTOOLS:
       case BrowserWindowInterface::Type::TYPE_PICTURE_IN_PICTURE:

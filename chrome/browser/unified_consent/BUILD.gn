@@ -20,7 +20,6 @@ source_set("impl") {
     "//chrome/browser/signin",
     "//chrome/browser/sync",
     "//chrome/common",
-    "//components/commerce/core:pref_names",
     "//components/embedder_support",
     "//components/prefs",
     "//components/safe_browsing/core/common:safe_browsing_prefs",

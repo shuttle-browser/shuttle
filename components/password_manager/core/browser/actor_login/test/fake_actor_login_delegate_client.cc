@@ -82,11 +82,6 @@ url::Origin FakeActorLoginDelegateClient::GetLastCommittedOriginForMainFrame() {
   return origin_;
 }
 
-translate::TranslateManager*
-FakeActorLoginDelegateClient::GetTranslateManager() {
-  return nullptr;
-}
-
 ActorLoginPermissionCleaningService*
 FakeActorLoginDelegateClient::GetPermissionCleaningService() {
   return cleaning_service_;

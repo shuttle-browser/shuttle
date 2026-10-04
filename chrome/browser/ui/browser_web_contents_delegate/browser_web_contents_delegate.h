@@ -22,10 +22,6 @@ namespace chrome {
 class BrowserCommandController;
 }
 
-namespace web_app {
-class AppBrowserController;
-}
-
 // This class handles the WebContentsDelegate responsibilities of its host
 // browser.
 class BrowserWebContentsDelegate : public content::WebContentsDelegate {
@@ -37,7 +33,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
       ExclusiveAccessManager& exclusive_access_manager,
       chrome::BrowserCommandController& command_controller,
       UnloadController& unload_controller,
-      web_app::AppBrowserController* app_browser_controller,
       BrowserWindow& window,
       DesktopBrowserWindowCapabilities& capabilities,
       BrowserUiController& browser_ui_controller);
@@ -268,7 +263,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
   const raw_ref<ExclusiveAccessManager> exclusive_access_manager_;
   const raw_ref<chrome::BrowserCommandController> command_controller_;
   const raw_ref<UnloadController> unload_controller_;
-  const raw_ptr<web_app::AppBrowserController> app_browser_controller_;
   const raw_ref<BrowserWindow> window_;
   const raw_ref<DesktopBrowserWindowCapabilities> capabilities_;
   const raw_ref<BrowserUiController> browser_ui_controller_;

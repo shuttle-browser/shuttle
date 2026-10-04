@@ -15,14 +15,12 @@
 #include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "components/contextual_tasks/public/ai_thread_data_type_controller.h"
 #include "components/supervised_user/core/common/buildflags.h"
 #include "components/sync/base/data_type.h"
 
 class AimEligibilityService;
 class GoogleGroupsManager;
 class PrefService;
-class SharingMessageBridge;
 class TemplateURLService;
 
 namespace account_settings {
@@ -34,30 +32,6 @@ class AddressDataManager;
 class AutofillWebDataService;
 }  // namespace autofill
 
-namespace bookmarks {
-class BookmarkModel;
-}  // namespace bookmarks
-
-namespace collaboration {
-class CollaborationService;
-}  // namespace collaboration
-
-namespace contextual_tasks {
-class ContextualTasksService;
-}  // namespace contextual_tasks
-
-namespace consent_auditor {
-class ConsentAuditor;
-}  // namespace consent_auditor
-
-namespace data_sharing {
-class DataSharingService;
-}  // namespace data_sharing
-
-namespace data_sharing::personal_collaboration_data {
-class PersonalCollaborationDataService;
-}  // namespace data_sharing::personal_collaboration_data
-
 namespace favicon {
 class FaviconService;
 }  // namespace favicon
@@ -65,10 +39,6 @@ class FaviconService;
 namespace history {
 class HistoryService;
 }  // namespace history
-
-namespace notebooks {
-class NotebooksService;
-}  // namespace notebooks
 
 namespace password_manager {
 class PasswordReceiverService;
@@ -80,25 +50,13 @@ namespace reading_list {
 class DualReadingListModel;
 }  // namespace reading_list
 
-namespace send_tab_to_self {
-class SendTabToSelfSyncService;
-}  // namespace send_tab_to_self
-
 namespace signin {
 class IdentityManager;
 }  // namespace signin
 
-namespace skills {
-class SkillsService;
-}  // namespace skills
-
 namespace supervised_user {
 class FamilyLinkSettingsService;
 }  // namespace supervised_user
-
-namespace sync_bookmarks {
-class BookmarkSyncService;
-}  // namespace sync_bookmarks
 
 namespace sync_preferences {
 class PrefServiceSyncable;
@@ -157,22 +115,6 @@ class CommonControllerBuilder {
       const scoped_refptr<autofill::AutofillWebDataService>&
           web_data_service_in_memory);
   void SetAimEligibilityService(AimEligibilityService* aim_eligibility_service);
-  void SetBookmarkModel(bookmarks::BookmarkModel* bookmark_model);
-  void SetBookmarkSyncService(
-      sync_bookmarks::BookmarkSyncService*
-          local_or_syncable_bookmark_sync_service,
-      sync_bookmarks::BookmarkSyncService* account_bookmark_sync_service);
-  void SetConsentAuditor(consent_auditor::ConsentAuditor* consent_auditor);
-  void SetCollaborationService(
-      collaboration::CollaborationService* collaboration_service);
-  void SetContextualTasksService(
-      contextual_tasks::ContextualTasksService* contextual_tasks_service);
-  void SetPersonalCollaborationDataService(
-      data_sharing::personal_collaboration_data::
-          PersonalCollaborationDataService*
-              personal_collaboration_data_service);
-  void SetDataSharingService(
-      data_sharing::DataSharingService* data_sharing_service);
   void SetDeviceInfoSyncService(
       syncer::DeviceInfoSyncService* device_info_sync_service);
   void SetFaviconService(favicon::FaviconService* favicon_service);
@@ -181,8 +123,6 @@ class CommonControllerBuilder {
   void SetIdentityManager(signin::IdentityManager* identity_manager);
   void SetDataTypeStoreService(
       syncer::DataTypeStoreService* data_type_store_service);
-  void SetSkillsService(skills::SkillsService* skills_service);
-  void SetNotebooksService(notebooks::NotebooksService* notebooks_service);
 
 #if !BUILDFLAG(IS_ANDROID)
   void SetPasskeyModel(webauthn::PasskeyModel* passkey_model);
@@ -202,13 +142,10 @@ class CommonControllerBuilder {
       sync_preferences::PrefServiceSyncable* pref_service_syncable);
   void SetDualReadingListModel(
       reading_list::DualReadingListModel* dual_reading_list_model);
-  void SetSendTabToSelfSyncService(send_tab_to_self::SendTabToSelfSyncService*
-                                       send_tab_to_self_sync_service);
   void SetSessionSyncService(
       sync_sessions::SessionSyncService* session_sync_service);
   void SetTabContextSyncService(
       sync_tab_context::TabContextSyncService* tab_context_sync_service);
-  void SetSharingMessageBridge(SharingMessageBridge* sharing_message_bridge);
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
   void SetFamilyLinkSettingsService(
@@ -252,8 +189,6 @@ class CommonControllerBuilder {
   std::unique_ptr<syncer::DataTypeController>
   CreateAutofillWalletCredentialDataTypeController(
       syncer::SyncService* sync_service);
-  std::unique_ptr<syncer::DataTypeController>
-  CreateBookmarksDataTypeController();
   std::unique_ptr<syncer::DataTypeController> CreateHistoryDataTypeController(
       syncer::SyncService* sync_service);
   std::unique_ptr<syncer::DataTypeController>
@@ -277,15 +212,11 @@ class CommonControllerBuilder {
   std::unique_ptr<syncer::DataTypeController>
   CreateSavedTabGroupDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
-  CreateSharedTabGroupDataTypeController(syncer::SyncService* sync_service);
-  std::unique_ptr<syncer::DataTypeController>
   CreateEncryptedTabContextContainerDataTypeController(
       syncer::SyncService* sync_service);
   std::unique_ptr<syncer::DataTypeController>
   CreateEncryptedTabContextItemDataTypeController(
       syncer::SyncService* sync_service);
-  std::unique_ptr<syncer::DataTypeController>
-  CreateSharingMessageDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
   CreateReadingListDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
@@ -293,33 +224,16 @@ class CommonControllerBuilder {
   std::unique_ptr<syncer::DataTypeController>
   CreateUserEventsDataTypeController(syncer::SyncService* sync_service);
   std::unique_ptr<syncer::DataTypeController>
-  CreateSendTabToSelfDataTypeController();
-  std::unique_ptr<syncer::DataTypeController>
-  CreateUserConsentsDataTypeController();
-  std::unique_ptr<syncer::DataTypeController>
   CreateAutofillValuableDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
   CreateAutofillValuableMetadataDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
   CreateAccountSettingDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
-  CreateSharedTabGroupAccountDataTypeController(
-      syncer::SyncService* sync_service);
-  std::unique_ptr<syncer::DataTypeController>
   CreateSharedCommentDataTypeController();
   std::unique_ptr<syncer::DataTypeController>
-  CreateAiThreadDataTypeController();
-  std::unique_ptr<syncer::DataTypeController>
-  CreateGeminiThreadDataTypeController();
-  std::unique_ptr<syncer::DataTypeController>
   CreateContextualTaskDataTypeController();
-  std::unique_ptr<syncer::DataTypeController>
-  CreateNotebookDataTypeController();
   std::unique_ptr<syncer::DataTypeController> CreateJourneyDataTypeController();
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-  std::unique_ptr<syncer::DataTypeController> CreateSkillDataTypeController(
-      syncer::SyncService* sync_service);
-#endif
 #if !BUILDFLAG(IS_ANDROID)
   std::unique_ptr<syncer::DataTypeController>
   CreateWebauthnCredentialDataTypeController(syncer::SyncService* sync_service);
@@ -329,8 +243,6 @@ class CommonControllerBuilder {
   CreateFamilyLinkSettingsDataTypeController(syncer::SyncService* sync_service,
                                              version_info::Channel channel);
 #endif
-  std::unique_ptr<syncer::DataTypeController>
-  CreateCollaborationGroupDataTypeController(syncer::SyncService* sync_service);
 
   // Minimalistic fork of std::optional that enforces via CHECK that it has a
   // value when accessing it.
@@ -376,7 +288,6 @@ class CommonControllerBuilder {
   base::RepeatingCallback<autofill::AddressDataManager*()>
       address_data_manager_getter_;
   SafeOptional<raw_ptr<signin::IdentityManager>> identity_manager_;
-  SafeOptional<raw_ptr<consent_auditor::ConsentAuditor>> consent_auditor_;
   SafeOptional<raw_ptr<syncer::DeviceInfoSyncService>>
       device_info_sync_service_;
   SafeOptional<raw_ptr<favicon::FaviconService>> favicon_service_;
@@ -395,8 +306,6 @@ class CommonControllerBuilder {
       session_sync_service_;
   SafeOptional<raw_ptr<reading_list::DualReadingListModel>>
       dual_reading_list_model_;
-  SafeOptional<raw_ptr<send_tab_to_self::SendTabToSelfSyncService>>
-      send_tab_to_self_sync_service_;
   SafeOptional<raw_ptr<syncer::UserEventService>> user_event_service_;
   SafeOptional<scoped_refptr<base::SequencedTaskRunner>>
       autofill_web_data_ui_thread_;
@@ -409,29 +318,13 @@ class CommonControllerBuilder {
       profile_password_store_;
   SafeOptional<scoped_refptr<password_manager::PasswordStoreInterface>>
       account_password_store_;
-  SafeOptional<raw_ptr<sync_bookmarks::BookmarkSyncService>>
-      local_or_syncable_bookmark_sync_service_;
-  SafeOptional<raw_ptr<sync_bookmarks::BookmarkSyncService>>
-      account_bookmark_sync_service_;
-  SafeOptional<raw_ptr<bookmarks::BookmarkModel>> bookmark_model_;
   SafeOptional<raw_ptr<supervised_user::FamilyLinkSettingsService>>
       family_link_settings_service_;
-  SafeOptional<raw_ptr<collaboration::CollaborationService>>
-      collaboration_service_;
-  SafeOptional<raw_ptr<contextual_tasks::ContextualTasksService>>
-      contextual_tasks_service_;
-  SafeOptional<raw_ptr<data_sharing::personal_collaboration_data::
-                           PersonalCollaborationDataService>>
-      personal_collaboration_data_service_;
-  SafeOptional<raw_ptr<data_sharing::DataSharingService>> data_sharing_service_;
-  SafeOptional<raw_ptr<SharingMessageBridge>> sharing_message_bridge_;
   SafeOptional<raw_ptr<tab_groups::TabGroupSyncService>>
       tab_group_sync_service_;
   SafeOptional<raw_ptr<sync_tab_context::TabContextSyncService>>
       tab_context_sync_service_;
   SafeOptional<raw_ptr<TemplateURLService>> template_url_service_;
-  SafeOptional<raw_ptr<skills::SkillsService>> skills_service_;
-  SafeOptional<raw_ptr<notebooks::NotebooksService>> notebooks_service_;
 };
 
 }  // namespace browser_sync

@@ -6,7 +6,6 @@
 
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/performance_manager/public/guest_view_policy.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/common/buildflags.h"
@@ -45,9 +44,6 @@ void ChromeGuestViewManagerDelegate::OnGuestAdded(
   // Notifies Kiosk controller about the added guest.
   ash::KioskController::Get().OnGuestAdded(guest_web_contents);
 #endif
-
-  // Check if guest belongs to glic and apply specific customizations if so.
-  glic::OnGuestAdded(guest_web_contents);
 
   performance_manager::GuestViewAssociatedToWebContents(guest_web_contents);
 

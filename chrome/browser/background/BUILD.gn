@@ -56,7 +56,6 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser:browser_process",
-      "//chrome/browser/apps/platform_apps",
       "//chrome/browser/extensions",
       "//chrome/browser/notifications",
       "//chrome/browser/ui",

@@ -54,7 +54,6 @@ static_library("sync_sessions") {
 
   deps = [
     "//base",
-    "//components/bookmarks/browser",
     "//components/favicon/core",
     "//components/favicon_base",
     "//components/history/core/browser",
@@ -119,7 +118,6 @@ source_set("unit_tests") {
     ":sync_sessions",
     ":test_support",
     "//base/test:test_support",
-    "//components/bookmarks/browser",
     "//components/favicon/core/test:test_support",
     "//components/prefs:test_support",
     "//components/sessions:test_support",

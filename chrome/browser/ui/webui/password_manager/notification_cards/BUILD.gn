@@ -17,7 +17,6 @@ source_set("notification_cards") {
     "//chrome/browser/sync",
     "//chrome/browser/ui/webui/password_manager:notification_card",
     "//chrome/browser/user_education",
-    "//chrome/browser/web_applications",
     "//chrome/common",
     "//components/password_manager/core/browser",
     "//components/password_manager/core/browser/features:password_features",

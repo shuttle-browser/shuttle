@@ -35,7 +35,6 @@
 #include "chrome/browser/ui/views/find_bar_host.h"
 #include "chrome/browser/ui/views/find_bar_owner.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_extensions_container.h"
 #include "chrome/browser/ui/webui_browser/browser_elements_webui_browser.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_client_view.h"
@@ -51,7 +50,6 @@
 #include "chrome/common/chrome_render_frame.mojom.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/input/native_web_keyboard_event.h"
-#include "components/sharing_message/sharing_dialog_data.h"
 #include "components/version_info/channel.h"
 #include "components/version_info/version_info.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
@@ -73,15 +71,6 @@
 namespace {
 
 const char* const kWebUIBrowserWindowKey = "__WEBUI_BROWSER_WINDOW__";
-
-// Copied from chrome/browser/ui/views/frame/browser_widget.cc.
-bool IsUsingLinuxSystemTheme(Profile* profile) {
-#if BUILDFLAG(IS_LINUX)
-  return ThemeServiceFactory::GetForProfile(profile)->UsingSystemTheme();
-#else
-  return false;
-#endif
-}
 
 // WebShell is the WebContents that hosts the top-chrome WebUI. This UserData
 // establishes a link from WebShell to WebUIBrowserWindow.
@@ -455,15 +444,6 @@ ui::NativeTheme* WebUIBrowserWindow::GetNativeTheme() {
 
 const ui::ThemeProvider* WebUIBrowserWindow::GetThemeProvider() const {
   // Copied from BrowserWidget::GetThemeProvider().
-  auto* app_controller = web_app::AppBrowserController::From(browser_);
-  // Ignore the system theme for web apps with window-controls-overlay as the
-  // display_override so the web contents can blend with the overlay by using
-  // the developer-provided theme color for a better experience. Context:
-  // https://crbug.com/40771982.
-  if (app_controller && (!IsUsingLinuxSystemTheme(browser_->GetProfile()) ||
-                         app_controller->AppUsesWindowControlsOverlay())) {
-    return app_controller->GetThemeProvider();
-  }
   return &ThemeService::GetThemeProviderForProfile(browser_->GetProfile());
 }
 
@@ -485,15 +465,6 @@ WebUIBrowserWindow::GetThemeInitializerSupplier() const {
     return nullptr;
   }
 
-  auto* app_controller = web_app::AppBrowserController::From(browser_);
-  // Ignore the system theme for web apps with window-controls-overlay as the
-  // display_override so the web contents can blend with the overlay by using
-  // the developer-provided theme color for a better experience. Context:
-  // https://crbug.com/40771982.
-  if (app_controller && (!IsUsingLinuxSystemTheme(browser_->GetProfile()) ||
-                         app_controller->AppUsesWindowControlsOverlay())) {
-    return app_controller->GetThemeSupplier();
-  }
   auto* theme_service =
       ThemeServiceFactory::GetForProfile(browser_->GetProfile());
   return theme_service->UsingDeviceTheme() ? nullptr
@@ -504,14 +475,6 @@ ui::ColorProviderKey WebUIBrowserWindow::GetColorProviderKey() const {
   auto key = ui::NativeTheme::GetInstanceForNativeUi()->GetColorProviderKey(
       GetThemeInitializerSupplier());
 
-  key.app_controller = web_app::AppBrowserController::From(browser_);
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // ChromeOS SystemWebApps use the OS theme all the time.
-  if (web_app::GetSystemWebAppType(browser_).has_value()) {
-    return key;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
   const auto* theme_service =
       ThemeServiceFactory::GetForProfile(browser_->GetProfile());
@@ -754,11 +717,6 @@ void WebUIBrowserWindow::UpdateTitleBar() {
   // TODO(webium): The icon might also need updating.
 }
 
-void WebUIBrowserWindow::OnBookmarkBarStateChanged(
-    BookmarkBar::AnimateChangeType change_type) {
-  GetWebUIBrowserUI()->BookmarkBarStateChanged(change_type);
-}
-
 void WebUIBrowserWindow::UpdateLoadingAnimations(bool is_visible) {
   NOTIMPLEMENTED_LOG_ONCE();
 }
@@ -860,11 +818,6 @@ bool WebUIBrowserWindow::UpdateToolbarSecurityState() {
   return false;
 }
 
-void WebUIBrowserWindow::UpdateCustomTabBarVisibility(bool visible,
-                                                      bool animate) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
 void WebUIBrowserWindow::ResetToolbarTabState(content::WebContents* contents) {
   NOTIMPLEMENTED_LOG_ONCE();
 }
@@ -887,10 +840,6 @@ void WebUIBrowserWindow::LinkOpeningFromGesture(
 }
 
 void WebUIBrowserWindow::FocusAppMenu() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::OnFocusBookmarksToolbar() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 
@@ -920,37 +869,11 @@ void WebUIBrowserWindow::ShowUpdateChromeDialog() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 
-void WebUIBrowserWindow::ShowIntentPickerBubble(
-    std::vector<apps::IntentPickerAppInfo> app_info,
-    bool show_stay_in_chrome,
-    bool show_remember_selection,
-    apps::IntentPickerBubbleType bubble_type,
-    const std::optional<url::Origin>& initiating_origin,
-    IntentPickerResponse callback) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::ShowBookmarkBubble(const GURL& url,
-                                            bool already_bookmarked) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
 #if BUILDFLAG(IS_CHROMEOS)
 void WebUIBrowserWindow::ToggleMultitaskMenu() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-ShowTranslateBubbleResult WebUIBrowserWindow::ShowTranslateBubble(
-    content::WebContents* contents,
-    translate::TranslateStep step,
-    const std::string& source_language,
-    const std::string& target_language,
-    translate::TranslateErrors error_type,
-    bool is_user_gesture) {
-  NOTIMPLEMENTED_LOG_ONCE();
-  return ShowTranslateBubbleResult::kBrowserWindowNotValid;
-}
 
 DownloadBubbleUIController*
 WebUIBrowserWindow::GetDownloadBubbleUIController() {
@@ -1096,17 +1019,6 @@ void WebUIBrowserWindow::MaybeShowSupervisedUserProfileSignInIPH() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 
-void WebUIBrowserWindow::ShowHatsDialog(
-    const std::string& site_id,
-    const std::optional<std::string>& hats_histogram_name,
-    const std::optional<uint64_t> hats_survey_ukm_id,
-    base::OnceClosure success_callback,
-    base::OnceClosure failure_callback,
-    const SurveyBitsData& product_specific_bits_data,
-    const SurveyStringData& product_specific_string_data) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
 ExclusiveAccessContext* WebUIBrowserWindow::GetExclusiveAccessContext() {
   return WebUIBrowserExclusiveAccessContext::From(browser_);
 }
@@ -1133,14 +1045,6 @@ std::unique_ptr<content::EyeDropper> WebUIBrowserWindow::OpenEyeDropper(
 }
 
 void WebUIBrowserWindow::ShowCaretBrowsingDialog() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::CreateTabSearchBubble() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::CloseTabSearchBubble() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 

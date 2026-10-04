@@ -20,16 +20,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/commerce/shopping_service_factory.h"
-#include "chrome/browser/compose/compose_enabling.h"
-#include "chrome/browser/contextual_cueing/features.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_context_service.h"
-#include "chrome/browser/dictation/dictation_keyed_service.h"
-#include "chrome/browser/dictation/features.h"
-#include "chrome/browser/glic/public/features.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
 #include "chrome/browser/metrics/variations/google_groups_manager_factory.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
@@ -37,7 +27,6 @@
 #include "chrome/browser/password_manager/password_change_service_factory.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_performance_tuning_manager.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_tuning_utils.h"
-#include "chrome/browser/personal_context/personal_context_eligibility_service_factory.h"
 #include "chrome/browser/preloading/preloading_features.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -48,8 +37,6 @@
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
@@ -65,11 +52,8 @@
 #include "chrome/browser/ui/webui/settings/accessibility_main_handler.h"
 #include "chrome/browser/ui/webui/settings/appearance_handler.h"
 #include "chrome/browser/ui/webui/settings/browser_lifetime_handler.h"
-#include "chrome/browser/ui/webui/settings/dictation_handler.h"
 #include "chrome/browser/ui/webui/settings/downloads_handler.h"
 #include "chrome/browser/ui/webui/settings/font_handler.h"
-#include "chrome/browser/ui/webui/settings/glic_handler.h"
-#include "chrome/browser/ui/webui/settings/hats_handler.h"
 #include "chrome/browser/ui/webui/settings/import_data_handler.h"
 #include "chrome/browser/ui/webui/settings/metrics_reporting_handler.h"
 #include "chrome/browser/ui/webui/settings/omnibox_everywhere_settings_handler.h"
@@ -80,7 +64,6 @@
 #include "chrome/browser/ui/webui/settings/profile_info_handler.h"
 #include "chrome/browser/ui/webui/settings/protocol_handlers_handler.h"
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
-#include "chrome/browser/ui/webui/settings/safety_hub_handler.h"
 #include "chrome/browser/ui/webui/settings/saved_info_handler.h"
 #include "chrome/browser/ui/webui/settings/search_engines_handler.h"
 #include "chrome/browser/ui/webui/settings/security_settings_provider.h"
@@ -103,22 +86,14 @@
 #include "chrome/grit/settings_resources_map.h"
 #include "components/account_manager_core/account_manager_facade.h"
 #include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/autofill/core/browser/at_memory/at_memory_enablement_util.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
-#include "components/autofill/core/browser/integrators/personal_context/personal_context_autofill_util.h"
 #include "components/autofill/core/browser/payments/bnpl_manager.h"
 #include "components/autofill/core/browser/payments/payments_autofill_client.h"
 #include "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_util.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/browsing_data/core/features.h"
-#include "components/commerce/core/commerce_feature_list.h"
-#include "components/commerce/core/feature_utils.h"
-#include "components/commerce/core/shopping_service.h"
-#include "components/compose/core/browser/compose_features.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/contextual_tasks/public/features.h"
-#include "components/contextual_tasks/public/prefs.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
 #include "components/metrics/metrics_reporting_choice_service.h"
@@ -126,8 +101,6 @@
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/performance_manager/public/features.h"
 #include "components/permissions/features.h"
-#include "components/personal_context/core/personal_context_eligibility_service.h"
-#include "components/personal_context/core/personal_context_types.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
@@ -137,7 +110,6 @@
 #include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/skills/features.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/sync/base/features.h"
@@ -256,13 +228,10 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   AddSettingsPageUIHandler(std::make_unique<BrowserLifetimeHandler>());
   AddSettingsPageUIHandler(
       std::make_unique<ClearBrowsingDataHandler>(web_ui, profile));
-  AddSettingsPageUIHandler(std::make_unique<SafetyHubHandler>(profile));
-  AddSettingsPageUIHandler(std::make_unique<DictationHandler>());
   AddSettingsPageUIHandler(std::make_unique<DownloadsHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<ExtensionControlHandler>());
   AddSettingsPageUIHandler(std::make_unique<FontHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<ImportDataHandler>());
-  AddSettingsPageUIHandler(std::make_unique<HatsHandler>());
 
 #if BUILDFLAG(IS_WIN)
   AddSettingsPageUIHandler(std::make_unique<LanguagesHandler>());
@@ -332,14 +301,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddBoolean("hasEnterpriseLabel",
                           entry && !entry->GetEnterpriseProfileLabel().empty());
 
-  commerce::ShoppingService* shopping_service =
-      commerce::ShoppingServiceFactory::GetForBrowserContext(profile);
-  html_source->AddBoolean("changePriceEmailNotificationsEnabled",
-                          shopping_service->IsShoppingListEligible());
-  if (shopping_service->IsShoppingListEligible()) {
-    commerce::ShoppingServiceFactory::GetForBrowserContext(profile)
-        ->FetchPriceEmailPref();
-  }
+  html_source->AddBoolean("changePriceEmailNotificationsEnabled", false);
 
   TemplateURLService* template_url_service =
       TemplateURLServiceFactory::GetForProfile(profile);
@@ -385,35 +347,12 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       "enableKeyboardLockPrompt",
       base::FeatureList::IsEnabled(permissions::features::kKeyboardLockPrompt));
 
-#if BUILDFLAG(ENABLE_COMPOSE)
-  const bool compose_enabled = ComposeEnabling::IsEnabledForProfile(profile);
-  const bool compose_visible = ComposeEnabling::IsSettingVisible(profile);
-#else
-  const bool compose_enabled = false;
-  const bool compose_visible = false;
-#endif  // BUILDFLAG(ENABLE_COMPOSE)
+  // Compose is not part of this build.
+  html_source->AddBoolean("enableComposeProactiveNudge", false);
 
-  html_source->AddBoolean(
-      "enableComposeProactiveNudge",
-      compose_enabled && base::FeatureList::IsEnabled(
-                             compose::features::kEnableComposeProactiveNudge));
-
-  auto* subscription_service = subscription_eligibility::
-      SubscriptionEligibilityServiceFactory::GetForProfile(profile);
-
-  const bool use_paid_tier =
-      subscription_service && subscription_service->GetAiSubscriptionTier() > 0;
-
-  html_source->AddBoolean(
-      "showGeminiPersonalContextLink",
-      base::FeatureList::IsEnabled(features::kGlicPersonalContext) &&
-          use_paid_tier);
-  html_source->AddBoolean(
-      "showInstructionLink",
-      (base::FeatureList::IsEnabled(features::kGlicPersonalContext) &&
-       !use_paid_tier) ||
-          (base::FeatureList::IsEnabled(features::kGlicGeminiInstructions) &&
-           !base::FeatureList::IsEnabled(features::kGlicPersonalContext)));
+  // Glic (Gemini in Chrome) is not part of this build.
+  html_source->AddBoolean("showGeminiPersonalContextLink", false);
+  html_source->AddBoolean("showInstructionLink", false);
 
 #if BUILDFLAG(IS_CHROMEOS)
   const bool download_bubble_controlled_by_pref = false;
@@ -444,30 +383,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   auto plural_string_handler = std::make_unique<PluralStringHandler>();
   plural_string_handler->AddLocalizedString("securityKeysNewPIN",
                                             IDS_SETTINGS_SECURITY_KEYS_NEW_PIN);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubExtensionsReviewLabel",
-      IDS_SETTINGS_SAFETY_CHECK_REVIEW_EXTENSIONS);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubNotificationPermissionReviewBlockAllToastLabel",
-      IDS_SETTINGS_SAFETY_CHECK_NOTIFICATION_PERMISSION_REVIEW_BLOCK_ALL_TOAST_LABEL);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubUnusedSitePermissionsPrimaryLabel",
-      IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_PRIMARY_LABEL);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubUnusedSitePermissionsSecondaryLabel",
-      IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_SECONDARY_LABEL);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubRevokedPermissionsSecondaryLabel",
-      IDS_SETTINGS_SAFETY_HUB_REVOKED_PERMISSIONS_SECONDARY_LABEL);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubUnusedSitePermissionsToastBulkLabel",
-      IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_TOAST_BULK_LABEL);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubNotificationPermissionsPrimaryLabel",
-      IDS_SETTINGS_SAFETY_HUB_NOTIFICATION_PERMISSIONS_PRIMARY_LABEL);
-  plural_string_handler->AddLocalizedString(
-      "safetyHubNotificationPermissionsSecondaryLabel",
-      IDS_SETTINGS_SAFETY_HUB_NOTIFICATION_PERMISSIONS_SECONDARY_LABEL);
   plural_string_handler->AddLocalizedString(
       "batchUploadPromoLabel", IDS_BATCH_UPLOAD_PROMO_SUBTITLE_ITEMS_WITH_LINK);
   plural_string_handler->AddLocalizedString("cpuPerformanceCores",
@@ -559,34 +474,11 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       base::FeatureList::IsEnabled(
           autofill::features::kAutofillAiWalletPrivatePasses));
 
-  html_source->AddBoolean(
-      "enableInlineCueMenuContentSetting",
-      base::FeatureList::IsEnabled(features::kGlicSelectionPrompt));
+  html_source->AddBoolean("enableInlineCueMenuContentSetting", false);
 
-  // AI
-  bool show_glic_section = false;
-  bool glic_disallowed_by_admin = false;
-
-  auto glic_enablement = glic::GlicEnabling::EnablementForProfile(profile);
-  show_glic_section = glic_enablement.ShouldShowSettingsPage();
-  glic_disallowed_by_admin = glic_enablement.DisallowedByAdmin();
-
-  if (glic_enablement.IsProfileEligible()) {
-    AddSettingsPageUIHandler(std::make_unique<GlicHandler>());
-
-    auto* glic_service = glic::GlicKeyedService::Get(profile);
-    CHECK(glic_service);
-
-    // `this` unretained because the subscription is owned by this and will
-    // unregister the callback on destruction.
-    glic_settings_state_subscription_ =
-        glic_service->enabling().RegisterOnShowSettingsPageChanged(
-            base::BindRepeating(&SettingsUI::UpdateShowGlicState,
-                                base::Unretained(this)));
-  }
-
-  html_source->AddBoolean("showGlicSettings", show_glic_section);
-  html_source->AddBoolean("glicDisallowedByAdmin", glic_disallowed_by_admin);
+  // AI. Glic (Gemini in Chrome) is not part of this build.
+  html_source->AddBoolean("showGlicSettings", false);
+  html_source->AddBoolean("glicDisallowedByAdmin", false);
 
   const auto& autofill_client =
       *autofill::ContentAutofillClient::FromWebContents(
@@ -596,41 +488,26 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       autofill::MayPerformAutofillAiAction(
           autofill_client,
           autofill::AutofillAiAction::kListEntityInstancesInSettings));
-  auto* dictation_keyed_service =
-      dictation::DictationKeyedService::Get(profile);
-  bool show_dictation_control =
-      dictation_keyed_service && dictation_keyed_service->IsEnabledAndReady();
 
   std::pair<const std::string_view, bool> optimization_guide_features[] = {
-      {"showComposeControl", compose_visible},
-      {"showHistorySearchControl",
-       history_embeddings::IsHistoryEmbeddingsSettingVisible(profile)},
+      {"showComposeControl", false},
+      {"showHistorySearchControl", false},
       {"showPasswordChangeControl",
        PasswordChangeServiceFactory::GetForProfile(profile) &&
            PasswordChangeServiceFactory::GetForProfile(profile)
                ->UserIsActivePasswordChangeUser()},
-      {"showAiSuggestionsControl",
-       base::FeatureList::IsEnabled(contextual_cueing::kContextualCueingV2)},
-      {"showInlineCueMenuControl",
-       base::FeatureList::IsEnabled(features::kGlicSelectionPrompt) &&
-           glic_enablement.ShouldShowSettingsPage()},
-      {"showSkillsSettingPage",
-       base::FeatureList::IsEnabled(features::kSkillsEnabled)},
-      {"showIndigoControl", base::FeatureList::IsEnabled(features::kIndigo)},
+      {"showAiSuggestionsControl", false},
+      {"showInlineCueMenuControl", false},
+      {"showSkillsSettingPage", false},
+      {"showIndigoControl", false},
       {"showGoogleSearchAiModeWorkspaceControl",
        base::FeatureList::IsEnabled(features::kGoogleSearchAiModeWorkspace)},
-      {"showDictationControl", show_dictation_control},
+      {"showDictationControl", false},
   };
 
-  html_source->AddString("aiSuggestionsHelpCenterArticleLink",
-                         contextual_cueing::kHelpCenterArticleLink.Get());
+  html_source->AddString("aiSuggestionsHelpCenterArticleLink", std::string());
 
-  const bool enable_ai_mode_search =
-      contextual_tasks::ContextualTasksContextService::
-          GetIsSmartTabSharingEnabled(profile) &&
-      base::FeatureList::IsEnabled(
-          contextual_tasks::
-              kContextualTasksContextSmartTabSharingDefaultOnAvailability);
+  const bool enable_ai_mode_search = false;
   html_source->AddBoolean("enableAiModeSearchSetting", enable_ai_mode_search);
 
   const bool show_ai_settings_for_testing = base::FeatureList::IsEnabled(
@@ -657,8 +534,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   // Within the AI subpage are separate sections for Glic and for all other AI
   // features, the visibility of these are separately controlled but we want to
   // show the subpage if any of the AI features or Glic are enabled.
-  html_source->AddBoolean("showAiPage", show_glic_section ||
-                                            show_ai_features_section ||
+  html_source->AddBoolean("showAiPage", show_ai_features_section ||
                                             enable_ai_mode_search);
   html_source->AddBoolean("showAiPageAiFeatureSection",
                           show_ai_features_section);
@@ -681,21 +557,10 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
           ? "settings-refresh-2026"
           : "");
 
-  personal_context::PersonalContextEligibilityService* eligibility_service =
-      PersonalContextEligibilityServiceFactory::GetForProfile(profile);
-  html_source->AddBoolean("showSuggestionsFromGeminiSettings",
-                          autofill::ShouldShowPersonalContextAutofillSetting(
-                              autofill_client, eligibility_service));
-  html_source->AddBoolean(
-      "isAtMemoryEnabled",
-      autofill::MayPerformAtMemoryAction(
-          autofill::AtMemoryAction::kShowAtMemoryInSettings, autofill_client));
-
-  html_source->AddBoolean(
-      "isAtMemoryTriggerCustomizationAllowed",
-      autofill::MayPerformAtMemoryAction(
-          autofill::AtMemoryAction::kAllowCustomizeAtMemoryShortcut,
-          autofill_client));
+  html_source->AddBoolean("showSuggestionsFromGeminiSettings", false);
+  // @memory is not part of this build.
+  html_source->AddBoolean("isAtMemoryEnabled", false);
+  html_source->AddBoolean("isAtMemoryTriggerCustomizationAllowed", false);
 
   html_source->AddString(
       "webuiRefresh2026",
@@ -720,8 +585,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
                 kGlicOsToggleElementId,
                 kGlicOsWidgetKeyboardShortcutElementId,
             });
-
-  TryShowHatsSurveyWithTimeout();
 }
 
 SettingsUI::~SettingsUI() = default;
@@ -815,20 +678,6 @@ void SettingsUI::AddSettingsPageUIHandler(
   web_ui()->AddMessageHandler(std::move(handler));
 }
 
-void SettingsUI::TryShowHatsSurveyWithTimeout() {
-  HatsService* hats_service =
-      HatsServiceFactory::GetForProfile(Profile::FromWebUI(web_ui()),
-                                        /* create_if_necessary = */ true);
-  if (hats_service) {
-    int timeout_ms =
-        features::kHappinessTrackingSurveysForDesktopSettingsTime.Get()
-            .InMilliseconds();
-    hats_service->LaunchDelayedSurveyForWebContents(
-        kHatsSurveyTriggerSettings, web_ui()->GetWebContents(), timeout_ms, {},
-        {}, HatsService::NavigationBehavior::REQUIRE_SAME_ORIGIN);
-  }
-}
-
 #if !BUILDFLAG(IS_CHROMEOS)
 void SettingsUI::CreateThemeColorPickerHandler(
     mojo::PendingRemote<theme_color_picker::mojom::ThemeColorPickerClient>
@@ -898,26 +747,6 @@ void SettingsUI::BindInterface(
   }
   customize_color_scheme_mode_handler_factory_receiver_.Bind(
       std::move(pending_receiver));
-}
-
-void SettingsUI::UpdateShowGlicState() {
-  // The visibility of the Glic page can change based on the user accepting the
-  // FRE. Propagate this state to the WebUI value used to display the settings
-  // page.
-  Profile* profile = Profile::FromWebUI(web_ui());
-  auto enablement = glic::GlicEnabling::EnablementForProfile(profile);
-  const bool show_glic = enablement.ShouldShowSettingsPage();
-
-  base::DictValue update;
-  update.Set("showGlicSettings", show_glic);
-  update.Set("glicDisallowedByAdmin", enablement.DisallowedByAdmin());
-  if (show_glic) {
-    update.Set("showAiPage", true);
-  }
-
-  content::WebUIDataSource::Update(
-      web_ui()->GetWebContents()->GetBrowserContext(),
-      chrome::kChromeUISettingsHost, std::move(update));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(SettingsUI)

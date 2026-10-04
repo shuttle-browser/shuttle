@@ -18,10 +18,6 @@ export function getHtml(this: SettingsImportDataDialogElement) {
           <cr-icon id="successIcon" icon="cr:check-circle"></cr-icon>
           <div ?hidden="${!this.importDialogBookmarksPref_?.value}">
             <div class="description">$i18n{importSuccess}</div>
-            <settings-toggle-button
-                label="$i18n{showBookmarksBar}"
-                pref-key="bookmark_bar.show_on_all_tabs">
-            </settings-toggle-button>
           </div>
         </div>
 

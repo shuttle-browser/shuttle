@@ -72,7 +72,7 @@ void SiteProtectionMetricsObserver::OnEngagementEvent(
     double score,
     double old_score,
     site_engagement::EngagementType type,
-    const std::optional<webapps::AppId>& app_id) {
+    const std::optional<std::string>& app_id) {
   if (type == site_engagement::EngagementType::kNavigation) {
     got_points_navigation_ = {/*url=*/url,
                               /* score_before_navigation=*/old_score};

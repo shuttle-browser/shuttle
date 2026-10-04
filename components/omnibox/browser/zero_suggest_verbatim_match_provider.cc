@@ -88,11 +88,8 @@ void ZeroSuggestVerbatimMatchProvider::Start(const AutocompleteInput& input,
   // For composebox only, create verbatim match if there are context inputs
   // in zero suggest.
   if (omnibox::IsComposebox(input.current_page_classification())) {
-    if (base::FeatureList::IsEnabled(
-            omnibox::kComposeboxVerbatimMatchZeroSuggest) &&
-        input.lens_overlay_suggest_inputs().has_value()) {
-      CreateVerbatimMatchForComposebox(input);
-    }
+    // Lens contextual inputs were removed from this fork, so there is never a
+    // context input for which to create a composebox verbatim match.
     return;
   }
 

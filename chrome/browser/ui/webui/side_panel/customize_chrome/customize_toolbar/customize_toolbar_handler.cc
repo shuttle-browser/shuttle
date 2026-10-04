@@ -22,7 +22,6 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
@@ -341,11 +340,6 @@ void CustomizeToolbarHandler::ListActions(ListActionsCallback callback) {
 
   add_action(kActionPrint,
              side_panel::customize_chrome::mojom::CategoryId::kTools);
-  if (base::FeatureList::IsEnabled(
-          contextual_tasks::kEnableContextualTasksPinButtonInToolbar)) {
-    add_action(kActionSidePanelShowContextualTasks,
-               side_panel::customize_chrome::mojom::CategoryId::kTools);
-  }
   add_action(kActionSidePanelShowLensOverlayResults,
              side_panel::customize_chrome::mojom::CategoryId::kTools);
   add_action(kActionSidePanelShowSearchCompanion,

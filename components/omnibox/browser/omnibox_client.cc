@@ -50,10 +50,6 @@ bool OmniboxClient::IsDefaultSearchProviderEnabled() const {
   return true;
 }
 
-bookmarks::BookmarkModel* OmniboxClient::GetBookmarkModel() {
-  return nullptr;
-}
-
 bool OmniboxClient::ShowConfirmationDialogIfDefaultSearchExtensionControlled(
     const GURL& url,
     base::OnceCallback<void(ExtensionControlledDialogResult)> callback) {
@@ -117,16 +113,6 @@ gfx::Image OmniboxClient::GetSizedIcon(const gfx::VectorIcon& vector_icon_type,
 
 gfx::Image OmniboxClient::GetSizedIcon(const gfx::Image& icon) const {
   return gfx::Image();
-}
-
-std::optional<lens::proto::LensOverlaySuggestInputs>
-OmniboxClient::GetLensOverlaySuggestInputs() const {
-  return std::nullopt;
-}
-
-std::optional<lens::ContextualInputData> OmniboxClient::GetContextualInputData()
-    const {
-  return std::nullopt;
 }
 
 bool OmniboxClient::HasPreviousSubmittedThreadContext() const {

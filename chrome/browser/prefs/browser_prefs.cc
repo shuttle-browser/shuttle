@@ -26,8 +26,6 @@
 #include "chrome/browser/browser_process_impl.h"
 #include "chrome/browser/chrome_content_browser_client.h"
 #include "chrome/browser/component_updater/component_updater_prefs.h"
-#include "chrome/browser/context_hub/prefs.h"
-#include "chrome/browser/contextual_cueing/prefs.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/engagement/important_sites_util.h"
 #include "chrome/browser/enterprise/reporting/prefs.h"
@@ -35,8 +33,6 @@
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
 #include "chrome/browser/finds/core/finds_service.h"
 #include "chrome/browser/first_run/first_run.h"
-#include "chrome/browser/glic/glic_pref_names.h"
-#include "chrome/browser/glic/suggestions/contextual_cueing_prefs.h"
 #include "chrome/browser/gpu/gpu_mode_manager.h"
 #include "chrome/browser/hid/hid_policy_allowed_devices.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
@@ -80,25 +76,20 @@
 #include "chrome/browser/search/background/ntp_custom_background_service.h"
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/serial/serial_policy_allowed_ports.h"
-#include "chrome/browser/sharing_hub/sharing_hub_features.h"
 #include "chrome/browser/signin/chrome_signin_client.h"
 #include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/browser/ssl/ssl_config_service_manager.h"
 #include "chrome/browser/themes/theme_service.h"
-#include "chrome/browser/tips/core/tips_prefs.h"
 #include "chrome/browser/tracing/chrome_tracing_delegate.h"
 #include "chrome/browser/ui/browser_ui_prefs.h"
 #include "chrome/browser/ui/network_profile_bubble.h"
-#include "chrome/browser/ui/performance_controls/performance_controls_metrics.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_prefs.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_prefs.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
 #include "chrome/browser/ui/webui/accessibility/accessibility_ui.h"
-#include "chrome/browser/ui/webui/bookmarks/bookmark_prefs.h"
 #include "chrome/browser/ui/webui/flags/flags_ui.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_ui.h"
 #include "chrome/browser/ui/webui/policy/policy_ui.h"
@@ -110,15 +101,11 @@
 #include "chrome/common/secure_origin_allowlist.h"
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/blocked_content/safe_browsing_triggered_popup_blocker.h"
-#include "components/breadcrumbs/core/breadcrumbs_status.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/certificate_transparency/pref_names.h"
-#include "components/collaboration/public/pref_names.h"
-#include "components/commerce/core/prefs.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/contextual_search/contextual_search_service.h"
-#include "components/contextual_tasks/public/prefs.h"
+#include "components/contextual_search/pref_names.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/dom_distiller/core/distilled_page_prefs.h"
 #include "components/domain_reliability/domain_reliability_prefs.h"
@@ -155,17 +142,13 @@
 #include "components/omnibox/browser/document_provider.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/browser/zero_suggest_provider.h"
-#include "components/on_device_translation/buildflags/buildflags.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
-#include "components/page_info/core/merchant_trust_service.h"
 #include "components/password_manager/core/browser/password_manager.h"
-#include "components/payments/core/payment_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/permission_hats_trigger_helper.h"
 #include "components/permissions/pref_names.h"
-#include "components/personal_context/core/personal_context_prefs.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
 #include "components/policy/core/browser/url_list/url_blocklist_manager.h"
 #include "components/policy/core/browser/url_list/url_list_policy_pref_names.h"
@@ -191,13 +174,11 @@
 #include "components/segmentation_platform/embedder/default_model/device_switcher_result_dispatcher.h"
 #include "components/segmentation_platform/public/segmentation_platform_service.h"
 #include "components/sessions/core/session_id_generator.h"
-#include "components/sharing_message/sharing_sync_preference.h"
 #include "components/signin/core/browser/active_primary_accounts_metrics_recorder.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_prefs.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/site_engagement/content/site_engagement_service.h"
-#include "components/skills/public/skills_prefs.h"
 #include "components/subresource_filter/content/browser/ruleset_service.h"
 #include "components/subresource_filter/core/common/constants.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
@@ -212,12 +193,10 @@
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/sync_sessions/session_sync_prefs.h"
 #include "components/tracing/common/pref_names.h"
-#include "components/translate/core/browser/translate_prefs.h"
 #include "components/universal_optout/prefs.h"
 #include "components/update_client/update_client.h"
 #include "components/variations/service/variations_service.h"
 #include "components/visited_url_ranking/internal/url_grouping/group_suggestions_service_impl.h"
-#include "components/wallet/core/common/wallet_prefs.h"
 #include "components/webui/chrome_urls/pref_names.h"
 #include "components/webui/flags/pref_service_flags_storage.h"
 #include "content/public/browser/render_process_host.h"
@@ -291,7 +270,6 @@
 #include "chrome/browser/ssl/known_interception_disclosure_infobar_delegate.h"
 #include "components/cdm/browser/media_drm_storage_impl.h"  // nogncheck crbug.com/40147906
 #include "components/feed/core/common/pref_names.h"        // nogncheck
-#include "components/feed/core/shared_prefs/pref_names.h"  // nogncheck
 #include "components/feed/core/v2/ios_shared_prefs.h"      // nogncheck
 #include "components/ntp_tiles/popular_sites_impl.h"
 #include "components/permissions/contexts/geolocation_permission_context_android.h"
@@ -300,25 +278,16 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/actor/ui/actor_ui_state_manager_prefs.h"
-#include "chrome/browser/desktop_to_mobile_promos/promos_utils.h"  // nogncheck crbug.com/40147906
 #include "chrome/browser/gcm/gcm_product_util.h"
-#include "chrome/browser/indigo/indigo_prefs.h"
 #include "chrome/browser/intranet_redirect_detector.h"
-#include "chrome/browser/media/router/discovery/access_code/access_code_cast_feature.h"
-#include "chrome/browser/media/router/media_router_feature.h"
-#include "chrome/browser/nearby_sharing/common/nearby_share_prefs.h"
 #include "chrome/browser/new_tab_page/modules/file_suggestion/microsoft_files_page_handler.h"
 #include "chrome/browser/new_tab_page/modules/v2/authentication/microsoft_auth_page_handler.h"
 #include "chrome/browser/new_tab_page/modules/v2/calendar/outlook_calendar_page_handler.h"
 #include "chrome/browser/new_tab_page/modules/v2/tab_groups/tab_groups_page_handler.h"
-#include "chrome/browser/screen_ai/pref_names.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
 #include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
 #include "chrome/browser/themes/theme_syncable_service.h"
-#include "chrome/browser/ui/commerce/commerce_ui_tab_helper.h"
-#include "chrome/browser/ui/hats/hats_service_desktop.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_prefs.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
 #include "chrome/browser/ui/side_panel/side_panel_prefs.h"
@@ -330,12 +299,10 @@
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
 #include "chrome/browser/ui/webui/history/foreign_session_handler.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
-#include "chrome/browser/ui/webui/tab_search/tab_search_prefs.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/browser/user_education/browser_user_education_storage_service.h"
 #include "chrome/browser/webauthn/chrome_authenticator_request_delegate.h"
 #include "components/headless/policy/headless_mode_prefs.h"  // nogncheck crbug.com/40147906
-#include "components/lens/lens_overlay_permission_utils.h"
 #include "components/live_caption/live_caption_controller.h"
 #include "components/live_caption/live_translate_controller.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -344,9 +311,6 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #endif  // BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/ui/webui/whats_new/whats_new_ui.h"
-#endif
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_constants.h"
@@ -469,7 +433,6 @@
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
 #include "chrome/browser/ui/webui/signin/ash/inline_login_handler_impl.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector_chromeos.h"
-#include "chrome/browser/web_applications/isolated_web_apps/policy/isolated_web_app_cache_manager.h"
 #include "chromeos/ash/components/audio/audio_devices_pref_handler_impl.h"
 #include "chromeos/ash/components/boca/babelorca/babel_orca_manager.h"
 #include "chromeos/ash/components/boca/gemini/gemini_status_fetcher.h"
@@ -512,10 +475,8 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/media/webrtc/system_media_capture_permissions_stats_mac.h"
-#include "chrome/browser/ui/cocoa/apps/quit_with_apps_controller_mac.h"
 #include "chrome/browser/ui/cocoa/confirm_quit.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -553,7 +514,6 @@
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/device_identity/device_oauth2_token_store_desktop.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
 #endif
 
 #if defined(TOOLKIT_VIEWS)
@@ -570,9 +530,6 @@
 #include "ui/color/system_theme.h"
 #endif
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-#include "components/on_device_translation/public/pref_names.h"
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
 #if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
 #include "components/enterprise/data_controls/core/browser/prefs.h"
@@ -1471,7 +1428,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
       registry);
 #endif
   autofill::prefs::RegisterLocalStatePrefs(registry);
-  breadcrumbs::RegisterPrefs(registry);
   browser_shutdown::RegisterPrefs(registry);
   BrowserProcessImpl::RegisterPrefs(registry);
   ChromeContentBrowserClient::RegisterLocalStatePrefs(registry);
@@ -1572,9 +1528,7 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   gcm::RegisterPrefs(registry);
   headless::RegisterPrefs(registry);
   IntranetRedirectDetector::RegisterPrefs(registry);
-  media_router::RegisterLocalStatePrefs(registry);
   performance_manager::user_tuning::prefs::RegisterLocalStatePrefs(registry);
-  PerformanceInterventionMetricsReporter::RegisterLocalStatePrefs(registry);
   RegisterBrowserPrefs(registry);
   speech::SodaInstaller::RegisterLocalStatePrefs(registry);
   speech::SpeechRecognitionSmallExpertModelInstaller::RegisterLocalStatePrefs(
@@ -1582,20 +1536,15 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   StartupBrowserCreator::RegisterLocalStatePrefs(registry);
   task_manager::TaskManagerInterface::RegisterPrefs(registry);
   UpgradeDetector::RegisterPrefs(registry);
-  registry->RegisterIntegerPref(prefs::kLastWhatsNewVersion, 0);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   extensions::ExtensionPrefs::RegisterLocalStatePrefs(registry);
 #endif
 
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  on_device_translation::RegisterLocalStatePrefs(registry);
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   scheduled_restart::ScheduledRestartManager::RegisterLocalStatePrefs(registry);
-  WhatsNewUI::RegisterLocalStatePrefs(registry);
 #endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -1683,9 +1632,7 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 
 #if BUILDFLAG(IS_MAC)
   confirm_quit::RegisterLocalState(registry);
-  QuitWithAppsController::RegisterPrefs(registry);
   system_media_permissions::RegisterSystemMediaPermissionStatesPrefs(registry);
-  AppShimRegistry::Get()->RegisterLocalPrefs(registry);
   GlassFrameService::RegisterLocalStatePrefs(registry);
 
   // The default value is not signicant as this preference is only consulted if
@@ -1723,13 +1670,9 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  RegisterDefaultBrowserPromptPrefs(registry);
   DeviceOAuth2TokenStoreDesktop::RegisterPrefs(registry);
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  screen_ai::RegisterLocalStatePrefs(registry);
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
   PlatformAuthPolicyObserver::RegisterPrefs(registry);
@@ -1770,7 +1713,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 
   registry->RegisterIntegerPref(prefs::kChromeDataRegionSetting, 0);
 
-  glic::prefs::RegisterLocalStatePrefs(registry);
 
   registry->RegisterIntegerPref(prefs::kToastAlertLevel, 0);
 
@@ -1810,12 +1752,10 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   ChromeVersionService::RegisterProfilePrefs(registry);
   chrome_browser_net::NetErrorTabHelper::RegisterProfilePrefs(registry);
   chrome_prefs::RegisterProfilePrefs(registry);
-  collaboration::prefs::RegisterProfilePrefs(registry);
-  commerce::RegisterProfilePrefs(registry);
-  context_hub::prefs::RegisterProfilePrefs(registry);
-  contextual_cueing::prefs::RegisterProfilePrefs(registry);
-  contextual_search::ContextualSearchService::RegisterProfilePrefs(registry);
-  contextual_tasks::RegisterProfilePrefs(registry);
+  registry->RegisterIntegerPref(
+      contextual_search::kSearchContentSharingSettings,
+      static_cast<int>(
+          contextual_search::SearchContentSharingSettingsValue::kEnabled));
   registry->RegisterIntegerPref(prefs::kContextualTasksNextPanelOpenCount, 0);
   registry->RegisterBooleanPref(prefs::kCtrlTabMru, false);
   cross_device::RegisterProfilePrefs(registry);
@@ -1830,8 +1770,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   dom_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
   DownloadPrefs::RegisterProfilePrefs(registry);
   finds::FindsService::RegisterProfilePrefs(registry);
-  glic::prefs::RegisterProfilePrefs(registry);
-  glic::contextual_cueing::prefs::RegisterProfilePrefs(registry);
   permissions::PermissionHatsTriggerHelper::RegisterProfilePrefs(registry);
   history_clusters::prefs::RegisterProfilePrefs(registry);
   HostContentSettingsMap::RegisterProfilePrefs(registry);
@@ -1853,16 +1791,12 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   NotifierStateTracker::RegisterProfilePrefs(registry);
   ntp_tiles::CustomLinksManagerImpl::RegisterProfilePrefs(registry);
   ntp_tiles::MostVisitedSites::RegisterProfilePrefs(registry);
-#if BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
-  on_device_translation::RegisterProfilePrefs(registry);
-#endif  // BUILDFLAG(ENABLE_ON_DEVICE_TRANSLATION)
   optimization_guide::prefs::RegisterProfilePrefs(registry);
   optimization_guide::model_execution::prefs::RegisterProfilePrefs(registry);
 #if !BUILDFLAG(IS_ANDROID)
   PageColorsController::RegisterProfilePrefs(registry);
 #endif
   password_manager::PasswordManager::RegisterProfilePrefs(registry);
-  payments::RegisterProfilePrefs(registry);
   performance_manager::user_tuning::prefs::RegisterProfilePrefs(registry);
   permissions::RegisterProfilePrefs(registry);
   PermissionBubbleMediaAccessHandler::RegisterProfilePrefs(registry);
@@ -1873,7 +1807,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   prefetch::RegisterPredictionOptionsProfilePrefs(registry);
   PrefetchOriginDecider::RegisterPrefs(registry);
   PrefsTabHelper::RegisterProfilePrefs(registry, locale);
-  personal_context::prefs::RegisterProfilePrefs(registry);
   privacy_sandbox::RegisterProfilePrefs(registry);
   Profile::RegisterProfilePrefs(registry);
   ProfileImpl::RegisterProfilePrefs(registry);
@@ -1895,11 +1828,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   registry->RegisterStringPref(prefs::kVoiceTypingHotkey, "Alt+Space");
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  indigo::prefs::RegisterProfilePrefs(registry);
-#endif
   RegisterPrefersDefaultScrollbarStylesPrefs(registry);
-  RegisterSafetyHubProfilePrefs(registry);
 #if BUILDFLAG(IS_CHROMEOS)
   settings::ResetSettingsHandler::RegisterProfilePrefs(registry);
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -1919,13 +1848,11 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
       registry);
   SearchPreloadService::RegisterProfilePrefs(registry);
   SessionStartupPref::RegisterProfilePrefs(registry);
-  SharingSyncPreference::RegisterProfilePrefs(registry);
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
   signin::AvatarButtonPromoManager::RegisterProfilePrefs(registry);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
   SigninPrefs::RegisterProfilePrefs(registry);
   site_engagement::SiteEngagementService::RegisterProfilePrefs(registry);
-  skills::prefs::RegisterProfilePrefs(registry);
   subscription_eligibility::prefs::RegisterProfilePrefs(registry);
   supervised_user::RegisterProfilePrefs(registry);
   sync_sessions::SessionSyncPrefs::RegisterProfilePrefs(registry);
@@ -1935,11 +1862,9 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   syncer::SyncTransportDataPrefs::RegisterProfilePrefs(registry);
   TemplateURLPrepopulateData::RegisterProfilePrefs(registry);
   tab_groups::prefs::RegisterProfilePrefs(registry);
-  translate::TranslatePrefs::RegisterProfilePrefs(registry);
   universal_optout::prefs::RegisterProfilePrefs(registry);
   visited_url_ranking::GroupSuggestionsServiceImpl::RegisterProfilePrefs(
       registry);
-  wallet::prefs::RegisterProfilePrefs(registry);
   omnibox::RegisterProfilePrefs(registry);
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   omnibox_everywhere::prefs::RegisterProfilePrefs(registry);
@@ -2036,31 +1961,23 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   variations::VariationsService::RegisterProfilePrefs(registry);
   webapps::InstallPromptPrefs::RegisterProfilePrefs(registry);
 #else   // BUILDFLAG(IS_ANDROID)
-  bookmarks_webui::RegisterProfilePrefs(registry);
   browser_sync::ForeignSessionHandler::RegisterProfilePrefs(registry);
   BrowserUserEducationStorageService::RegisterProfilePrefs(registry);
   captions::LiveCaptionController::RegisterProfilePrefs(registry);
   captions::LiveTranslateController::RegisterProfilePrefs(registry);
   ChromeAuthenticatorRequestDelegate::RegisterProfilePrefs(registry);
-  commerce::CommerceUiTabHelper::RegisterProfilePrefs(registry);
   first_run::RegisterProfilePrefs(registry);
   gcm::RegisterProfilePrefs(registry);
-  HatsServiceDesktop::RegisterProfilePrefs(registry);
-  lens::prefs::RegisterProfilePrefs(registry);
-  media_router::RegisterAccessCodeProfilePrefs(registry);
-  media_router::RegisterProfilePrefs(registry);
   MicrosoftAuthPageHandler::RegisterProfilePrefs(registry);
   MicrosoftFilesPageHandler::RegisterProfilePrefs(registry);
   OutlookCalendarPageHandler::RegisterProfilePrefs(registry);
   PinnedTabCodec::RegisterProfilePrefs(registry);
-  promos_utils::RegisterProfilePrefs(registry);
   RegisterReadAnythingProfilePrefs(registry);
   settings::SettingsUI::RegisterProfilePrefs(registry);
   signin::RegisterProfilePrefs(registry);
   StartupBrowserCreator::RegisterProfilePrefs(registry);
   TabGroupsPageHandler::RegisterProfilePrefs(registry);
   tab_groups::saved_tab_groups::prefs::RegisterProfilePrefs(registry);
-  tab_search_prefs::RegisterProfilePrefs(registry);
   ThemeColorPickerHandler::RegisterProfilePrefs(registry);
   ThemeService::RegisterProfilePrefs(registry);
   toolbar::RegisterProfilePrefs(registry);
@@ -2212,22 +2129,13 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   preinstalled_extensions::RegisterProfilePrefs(registry);
 #endif
 
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  sharing_hub::RegisterProfilePrefs(registry);
-#endif
-
 #if defined(TOOLKIT_VIEWS)
   accessibility_prefs::RegisterInvertBubbleUserPrefs(registry);
   side_search_prefs::RegisterProfilePrefs(registry);
   RegisterBrowserViewProfilePrefs(registry);
 #endif
 
-#if BUILDFLAG(ENABLE_LENS_DESKTOP)
-  registry->RegisterBooleanPref(
-      prefs::kLensRegionSearchEnabled, true,
-      user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
-#endif
-#if BUILDFLAG(ENABLE_LENS_DESKTOP) || BUILDFLAG(ENABLE_WEBUI_NTP)
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
   registry->RegisterBooleanPref(prefs::kLensDesktopNTPSearchEnabled, true);
 #endif
 
@@ -2291,12 +2199,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   registry->RegisterBooleanPref(prefs::kNativeHostsExecutablesLaunchDirectly,
                                 false);
 #endif  // BUILDFLAG(IS_WIN)
-
-#if BUILDFLAG(ENABLE_COMPOSE)
-  registry->RegisterBooleanPref(prefs::kPrefHasCompletedComposeFRE, false);
-  registry->RegisterBooleanPref(prefs::kEnableProactiveNudge, true);
-  registry->RegisterDictionaryPref(prefs::kProactiveNudgeDisabledSitesWithTime);
-#endif
 
   registry->RegisterIntegerPref(prefs::kChromeDataRegionSetting, 0);
 

@@ -9,7 +9,6 @@
 #include "base/no_destructor.h"
 #include "base/numerics/safe_conversions.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
-#include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/prefs/pref_service.h"
 
@@ -95,10 +94,6 @@ ActionSourceOrDestination ChromeRulesService::ExtractPasteActionContext(
     action.incognito = Profile::FromBrowserContext(endpoint.browser_context())
                            ->IsIncognitoProfile();
     action.other_profile = endpoint.browser_context() != profile_;
-  }
-  if (endpoint.web_contents() && (glic::IsGlicGuest(endpoint.web_contents()) ||
-                                  glic::IsGlicWebUI(endpoint.web_contents()))) {
-    action.gemini_in_chrome = true;
   }
   return action;
 }

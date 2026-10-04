@@ -84,18 +84,10 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/page_info/page_info_infobar_delegate.h"
 #include "chrome/browser/ui/tab_dialogs.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_ui_utils.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/vector_icons/vector_icons.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/reload_type.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
@@ -137,10 +129,6 @@ ChromePageInfoDelegate::ChromePageInfoDelegate(
     : get_browser_callback_(std::move(get_browser_callback)),
       web_contents_(web_contents) {
   CHECK(get_browser_callback_);
-#if !BUILDFLAG(IS_ANDROID)
-  sentiment_service_ =
-      TrustSafetySentimentServiceFactory::GetForProfile(GetProfile());
-#endif
   base::UmaHistogramBoolean("Security.PageInfo.AboutThisSiteLanguageSupported",
                             page_info::IsAboutThisSiteFeatureEnabled(
                                 g_browser_process->GetApplicationLocale()));
@@ -317,53 +305,18 @@ ChromePageInfoDelegate::CreateCookieControlsController() {
 }
 
 bool ChromePageInfoDelegate::IsIsolatedWebApp() {
-  CHECK(web_contents_);
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebContents(web_contents_);
-  if (!provider) {
-    return false;
-  }
-
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(web_contents_);
-  return app_id && provider->registrar_unsafe().AppMatches(
-                       *app_id, web_app::WebAppFilter::IsIsolatedApp() |
-                                    web_app::WebAppFilter::IsIsolatedSubApp());
+  return false;
 }
 
 bool ChromePageInfoDelegate::IsSubApp() {
-  CHECK(web_contents_);
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebContents(web_contents_);
-  if (!provider) {
-    return false;
-  }
-
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(web_contents_);
-  return app_id && provider->registrar_unsafe().AppMatches(
-                       *app_id, web_app::WebAppFilter::IsIsolatedSubApp());
+  return false;
 }
 
 bool ChromePageInfoDelegate::HasSubApps() {
-  CHECK(web_contents_);
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebContents(web_contents_);
-  if (!provider) {
-    return false;
-  }
-
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(web_contents_);
-  return app_id &&
-         !provider->registrar_unsafe().GetAllSubAppIds(*app_id).empty();
+  return false;
 }
 
 void ChromePageInfoDelegate::ShowSiteSettings(const GURL& site_url) {
-  if (web_app::HandleAppManagementLinkClickedInPageInfo(web_contents_)) {
-    return;
-  }
-
   BrowserWindowInterface* browser = get_browser_callback_.Run(web_contents_);
   chrome::ShowSiteSettings(browser, site_url);
 }
@@ -427,21 +380,9 @@ void ChromePageInfoDelegate::OpenContentSettingsExceptions(
 }
 
 void ChromePageInfoDelegate::OnPageInfoActionOccurred(
-    page_info::PageInfoAction action) {
-  if (sentiment_service_) {
-    if (action == page_info::PAGE_INFO_OPENED) {
-      sentiment_service_->PageInfoOpened();
-    } else {
-      sentiment_service_->InteractedWithPageInfo();
-    }
-  }
-}
+    page_info::PageInfoAction action) {}
 
-void ChromePageInfoDelegate::OnUIClosing() {
-  if (sentiment_service_) {
-    sentiment_service_->PageInfoClosed();
-  }
-}
+void ChromePageInfoDelegate::OnUIClosing() {}
 #endif
 
 void ChromePageInfoDelegate::OpenSafeBrowsingHelpCenterPage(

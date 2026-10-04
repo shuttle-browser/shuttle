@@ -46,12 +46,10 @@
 #include "components/autofill/core/browser/data_model/payments/iban.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
-#include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_wallet_util.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/management_util.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h"
 #include "components/autofill/core/browser/metrics/address_save_metrics.h"
 #include "components/autofill/core/browser/metrics/payments/mandatory_reauth_metrics.h"
-#include "components/autofill/core/browser/network/autofill_ai/wallet_pass_access_manager.h"
 #include "components/autofill/core/browser/payments/credit_card_access_manager.h"
 #include "components/autofill/core/browser/payments/mandatory_reauth_manager.h"
 #include "components/autofill/core/browser/payments/payments_autofill_client.h"
@@ -65,7 +63,6 @@
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/autofill/core/common/autofill_regexes.h"
 #include "components/autofill/core/common/dense_set.h"
-#include "components/consent_auditor/consent_auditor.h"
 #include "components/device_reauth/device_authenticator.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/one_time_tokens/core/browser/one_time_token_service.h"
@@ -73,8 +70,6 @@
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/strings/grit/components_branded_strings.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/wallet/core/browser/walletable_permission_utils.h"
-#include "components/wallet/core/common/wallet_features.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_function_registry.h"
@@ -1165,12 +1160,6 @@ AutofillPrivateAddOrUpdateEntityInstanceFunction::Run() {
   if (GetWalletPassType(entity_instance->type(),
                         entity_instance->record_type()) ==
       EntityInstance::WalletPassType::kPrivate) {
-    // If the request is successfully started, the callback will handle the
-    // response.
-    if (TrySavePrivatePassWithWalletAPI(*entity_instance)) {
-      return RespondLater();
-    }
-
     SavePrivatePassLocallyAndNotifyAsFallback(*entity_data_manager,
                                               std::move(*entity_instance));
     return RespondNow(NoArguments());
@@ -1185,71 +1174,6 @@ AutofillPrivateAddOrUpdateEntityInstanceFunction::Run() {
     autofill_client()->ShowAutofillAiLocalSaveNotification();
   }
   return RespondNow(NoArguments());
-}
-
-bool AutofillPrivateAddOrUpdateEntityInstanceFunction::
-    TrySavePrivatePassWithWalletAPI(const EntityInstance& entity_instance) {
-  if (!base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAiWalletPrivatePasses)) {
-    return false;
-  }
-
-  if (!autofill_client()) {
-    return false;
-  }
-
-  if (autofill::WalletPassAccessManager* pass_manager =
-          autofill_client()->GetWalletPassAccessManager()) {
-    // When WalletApiPrivatePassesConsent is disabled,
-    // `SaveWalletEntityInstance()` doesn't require a valid `session_id`.
-    consent_auditor::ConsentAuditor::SessionId session_id;
-    if (base::FeatureList::IsEnabled(
-            wallet::features::kWalletApiPrivatePassesConsent)) {
-      // Sadly, the string IDs are hardcoded here, because the TypeScript code
-      // only has access to the strings themselves, not their IDs.
-      session_id = autofill::RecordWalletPrivatePassConsent(
-          /*accepted_consent_string_id=*/
-          IDS_AUTOFILL_AI_SAVE_ENTITY_TO_WALLET_DIALOG_SUBTITLE_NEW,
-          /*accept_button_string_id=*/IDS_SAVE,
-          *autofill_client()->GetConsentAuditor(),
-          *autofill_client()->GetIdentityManager());
-    }
-    pass_manager->SaveWalletEntityInstance(
-        entity_instance, session_id,
-        base::BindOnce(&AutofillPrivateAddOrUpdateEntityInstanceFunction::
-                           OnSavePrivatePassToWalletFinished,
-                       base::RetainedRef(this), entity_instance));
-    return true;
-  }
-
-  return false;
-}
-
-void AutofillPrivateAddOrUpdateEntityInstanceFunction::
-    OnSavePrivatePassToWalletFinished(
-        autofill::EntityInstance original_entity,
-        std::optional<EntityInstance> saved_entity) {
-  content::BrowserContext* context = browser_context();
-  if (!context) {
-    Respond(Error(kErrorAutofillAiUnavailable));
-    return;
-  }
-  Profile* profile = Profile::FromBrowserContext(context);
-  EntityDataManager* entity_data_manager =
-      profile ? AutofillEntityDataManagerFactory::GetForProfile(profile)
-              : nullptr;
-
-  if (!entity_data_manager) {
-    Respond(Error(kErrorAutofillAiUnavailable));
-    return;
-  }
-  if (saved_entity.has_value()) {
-    entity_data_manager->AddOrUpdateEntityInstance(std::move(*saved_entity));
-  } else {
-    SavePrivatePassLocallyAndNotifyAsFallback(*entity_data_manager,
-                                              std::move(original_entity));
-  }
-  Respond(NoArguments());
 }
 
 void AutofillPrivateAddOrUpdateEntityInstanceFunction::
@@ -1522,8 +1446,8 @@ AutofillPrivateSetAutofillAiOptInStatusFunction::Run() {
 
 ExtensionFunction::ResponseAction
 AutofillPrivateGetWalletablePassDetectionOptInStatusFunction::Run() {
-  return RespondNow(WithArguments(wallet::GetWalletablePassDetectionOptInStatus(
-      autofill_client()->GetPrefs(), autofill_client()->GetIdentityManager())));
+  // Wallet integration is removed; pass detection is never opted in.
+  return RespondNow(WithArguments(false));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1536,12 +1460,8 @@ AutofillPrivateSetWalletablePassDetectionOptInStatusFunction::Run() {
           Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
-  const bool success = wallet::SetWalletablePassDetectionOptInStatus(
-      autofill_client()->GetPrefs(), autofill_client()->GetIdentityManager(),
-      wallet::GeoIpCountryCode(
-          autofill_client()->GetVariationConfigCountryCode().value()),
-      params->opted_in);
-  return RespondNow(WithArguments(success));
+  // Wallet integration is removed; opting in is not possible.
+  return RespondNow(WithArguments(false));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

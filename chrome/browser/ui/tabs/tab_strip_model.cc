@@ -42,20 +42,16 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/extensions/tab_helper.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/resource_coordinator/tab_helper.h"
-#include "chrome/browser/send_tab_to_self/send_tab_to_self_util.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_bubble.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
@@ -75,15 +71,8 @@
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
-#include "chrome/browser/web_applications/policy/web_app_policy_manager.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/commerce/core/commerce_utils.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
@@ -102,7 +91,6 @@
 #include "components/tabs/public/tab_strip_collection.h"
 #include "components/tabs/public/unpinned_tab_collection.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/reload_type.h"
@@ -2283,7 +2271,7 @@ bool TabStripModel::IsReadLaterSupportedForAny(
   }
   for (int index : indices) {
     if (model->IsUrlSupported(
-            chrome::GetURLToBookmark(GetWebContentsAt(index)))) {
+            GetWebContentsAt(index)->GetURL())) {
       return true;
     }
   }
@@ -2633,7 +2621,7 @@ bool TabStripModel::IsContextMenuCommandEnabled(
       return SupportsTabGroups();
 
     case CommandSendTabToSelf:
-      return true;
+      return false;
 
     case CommandAddToReadLater:
       return true;
@@ -2663,12 +2651,10 @@ bool TabStripModel::IsContextMenuCommandEnabled(
     }
 
     case CommandGlicShare:
-      return true;
     case CommandGlicCreateNewChat:
     case CommandGlicSwitchToRecentConversation:
-      return true;
     case CommandGlicUnshare:
-      return true;
+      return false;
 
     case CommandCopyURL:
       DCHECK(delegate()->IsForWebApp());
@@ -2680,7 +2666,6 @@ bool TabStripModel::IsContextMenuCommandEnabled(
 
     case CommandCloseAllTabs:
       DCHECK(delegate()->IsForWebApp());
-      DCHECK(web_app::HasPinnedHomeTab(this));
       return true;
 
     case CommandToggleVertical:
@@ -2800,14 +2785,8 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       break;
     }
 
-    case CommandSendTabToSelf: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.SendTabToSelf.SelectedTabsCount",
-          selection_model_.size());
-      send_tab_to_self::ShowBubble(GetWebContentsAt(context_index),
-                                   send_tab_to_self::ShareEntryPoint::kTabMenu);
+    case CommandSendTabToSelf:
       break;
-    }
 
     case CommandTogglePinned: {
       base::UmaHistogramCounts1000(
@@ -3012,25 +2991,10 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
     }
 
     case CommandGlicShare:
-      // Do nothing. The submenu's delegate will invoke the correct subcommand
-      // later.
-      break;
     case CommandGlicCreateNewChat:
     case CommandGlicSwitchToRecentConversation:
-      // These are handled by GlicTabSubMenuModel.
+    case CommandGlicUnshare:
       break;
-    case CommandGlicUnshare: {
-      std::vector<int> indices = GetIndicesForCommand(context_index);
-      base::UmaHistogramCounts100("Glic.TabContextMenu.UnpinnedTabs",
-                                  indices.size());
-      std::vector<tabs::TabHandle> tab_handles;
-      tab_handles.reserve(indices.size());
-      std::transform(
-          indices.begin(), indices.end(), std::back_inserter(tab_handles),
-          [this](int index) { return GetTabAtIndex(index)->GetHandle(); });
-      delegate_->GlicUnpinTabsFromAllConversations(tab_handles);
-      break;
-    }
 
     case CommandCopyURL: {
       base::UmaHistogramCounts1000("Tab.ContextMenu.CopyURL.SelectedTabsCount",
@@ -5642,21 +5606,7 @@ void TabStripModel::OnActiveTabChanged(
 }
 
 bool TabStripModel::IsTabClosable(const tabs::TabInterface* tab) const {
-  if (!tab) {
-    return true;
-  }
-
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebContents(tab->GetContents());
-  // Can be null if there is no tab helper or app id.
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(tab->GetContents());
-  if (!app_id) {
-    return true;
-  }
-
-  return !delegate()->IsForWebApp() ||
-         !provider->policy_manager().IsPreventCloseEnabled(*app_id);
+  return true;
 }
 
 int TabStripModel::DetermineInsertionIndex(ui::PageTransition transition,

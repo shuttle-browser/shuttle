@@ -5,21 +5,6 @@
 #ifndef COMPONENTS_CONTEXTUAL_SEARCH_CONTEXTUAL_SEARCH_TYPES_H_
 #define COMPONENTS_CONTEXTUAL_SEARCH_CONTEXTUAL_SEARCH_TYPES_H_
 
-#include <optional>
-#include <string>
-
-#include "base/memory/advanced_memory_safety_checks.h"
-#include "base/time/time.h"
-#include "base/unguessable_token.h"
-#include "components/lens/contextual_input.h"
-#include "components/sessions/core/session_id.h"
-#include "third_party/lens_server_proto/lens_overlay_request_id.pb.h"
-#include "url/gurl.h"
-
-namespace lens {
-enum class MimeType;
-}  // namespace lens
-
 namespace contextual_search {
 
 // LINT.IfChange(ContextUploadStatus)
@@ -98,79 +83,6 @@ enum class ContextUploadErrorType {
 //   //components/omnibox/composebox/composebox_query.mojom:ContextUploadErrorType,
 //   //tools/metrics/histograms/metadata/omnibox/enums.xml:ContextUploadErrorType
 // )
-
-// Struct containing file information for a file upload.
-struct FileInfo {
-  // TODO(crbug.com/497396516): after fixing the issue, remove this macro.
-  ADVANCED_MEMORY_SAFETY_CHECKS();
-
- public:
-  FileInfo();
-  FileInfo(const FileInfo& other);
-  FileInfo& operator=(const FileInfo& other);
-  virtual ~FileInfo();
-
-  // Gets the context id for this request.
-  std::optional<int64_t> GetContextId() const;
-
-  // Gets the injected input id if it exists.
-  std::optional<std::string> GetInjectedInputId() const;
-
-  // Client-side unique identifier.
-  base::UnguessableToken file_token;
-
-  // Name of the selected file.
-  std::string file_name;
-
-  // Size in bytes of the file.
-  uint64_t file_size_bytes = 0;
-
-  // The time the file was selected.
-  base::Time selection_time;
-
-  // The mime type of the file.
-  lens::MimeType mime_type = lens::MimeType::kUnknown;
-
-  // The upload status of the file.
-  // Do not modify this field directly.
-  contextual_search::ContextUploadStatus upload_status =
-      contextual_search::ContextUploadStatus::kNotUploaded;
-
-  // The error type if the upload failed.
-  // Do not modify this field directly.
-  contextual_search::ContextUploadErrorType upload_error_type =
-      contextual_search::ContextUploadErrorType::kUnknown;
-
-  // If populated, the url of the tab corresponding to this uploaded file.
-  std::optional<GURL> tab_url;
-
-  // If populated, the title of the tab corresponding to this uploaded file.
-  std::optional<std::string> tab_title;
-
-  // If populated, the session id corresponding to the tab.
-  std::optional<SessionID> tab_session_id;
-
-  // The request ID for this request. Updated by the context
-  // controller when the file upload is started.
-  std::optional<lens::LensOverlayRequestId> request_id;
-
-  // The raw response bodies from the upload requests.
-  std::vector<std::string> response_bodies;
-
-  // The input data associated with this file.
-  std::unique_ptr<lens::ContextualInputData> input_data;
-
-  // Whether or not this file was superceded by a new file upload with the same
-  // context id.
-  bool is_superceded = false;
-
-  // Whether or not this file is an implicit upload.
-  // e.g. a viewport screenshot from the Lens overlay contextual searchbox.
-  bool is_implicit_upload = false;
-
-  // The mime type string of the file, if known.
-  std::optional<std::string> mime_type_string;
-};
 
 // LINT.IfChange(ContextualSearchErrorPage)
 

@@ -20,8 +20,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
-#include "chrome/browser/ui/views/location_bar/omnibox_popup_file_selector.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_context_menu.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_tab_selection_listener.h"
@@ -211,16 +209,7 @@ void OmniboxPopupWebUIBaseContent::ShowUI() {
 void OmniboxPopupWebUIBaseContent::ShowCustomContextMenu(
     gfx::Point point,
     std::unique_ptr<ui::MenuModel> menu_model) {
-  ConvertPointToScreen(this, &point);
-  context_menu_ = std::make_unique<OmniboxContextMenu>(
-      GetWidget(), popup_presenter_->delegate().GetOmniboxPopupFileSelector(),
-      popup_presenter_->delegate()
-          .GetOmniboxPopupAimPresenter()
-          ->GetWebUIContent()
-          ->GetWrappedWebContents(),
-      base::BindRepeating(&OmniboxPopupWebUIBaseContent::OnMenuClosed,
-                          base::Unretained(this)));
-  context_menu_->RunMenuAt(point, ui::mojom::MenuSourceType::kMouse);
+  // The omnibox AIM context menu was removed from this build.
 }
 
 void OmniboxPopupWebUIBaseContent::ResizeDueToAutoResize(
@@ -398,7 +387,6 @@ content::WebContents* OmniboxPopupWebUIBaseContent::GetWrappedWebContents() {
 }
 
 void OmniboxPopupWebUIBaseContent::OnMenuClosed() {
-  std::move(context_menu_).reset();
   OnContextMenuClosed();
   // Synthesize a mouse leave event from the context menu to trigger
   // re-rendering of the web ui pop up state. This is to ensure entrypoint

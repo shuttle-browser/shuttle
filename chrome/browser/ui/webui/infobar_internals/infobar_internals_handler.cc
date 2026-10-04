@@ -91,8 +91,6 @@
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"  // nogncheck
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_prefs.h"  // nogncheck
 #include "chrome/browser/ui/views/session_restore_infobar/session_restore_infobar_manager.h"
 #endif
 
@@ -141,8 +139,8 @@ TriggerRequirements RequirementsFor(InfoBarType type) {
       return {.profile = true, .web_contents = true};
 #endif
     case InfoBarType::kExtensionDevTools:
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
     case InfoBarType::kDefaultBrowser:
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
     case InfoBarType::kSessionRestore:
 #endif
 #if BUILDFLAG(IS_MAC)
@@ -200,14 +198,6 @@ void InfoBarInternalsHandler::GetInfoBars(GetInfoBarsCallback callback) {
             "The Collected Cookies infobar is shown after the user has changed "
             "the allowed/blocked state of a cookie, reminding them to reload "
             "the page in order for the new cookies to take effect.");
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  add_entry(InfoBarType::kDefaultBrowser, "Default Browser",
-            "The Default Browser infobar asks the user if they want to set "
-            "Chrome as their default browser. This trigger resets any browser "
-            "state that prevents the infobar from showing, then shows it. This "
-            "can only be triggered on non-ChromeOS Desktop platforms.");
-#endif
-
   add_entry(InfoBarType::kDevTools, "DevTools",
             "The DevTools infobar is used to confirm that the user wants to "
             "allow DevTools to be used. This trigger shows the infobar.");
@@ -362,13 +352,9 @@ bool InfoBarInternalsHandler::TriggerInfoBarInternal(InfoBarType type) {
       }
       return true;
     }
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-    case InfoBarType::kDefaultBrowser: {
-      chrome::startup::default_prompt::ResetPromptPrefs(profile);
-      DefaultBrowserPromptManager::GetInstance()->MaybeShowPrompt();
-      return true;
-    }
-#endif
+    case InfoBarType::kDefaultBrowser:
+      // The default browser prompt was removed.
+      return false;
     case InfoBarType::kDevTools: {
       DevToolsInfoBarDelegate::Create(
           l10n_util::GetStringFUTF16(IDS_DEV_TOOLS_INFOBAR_LABEL,

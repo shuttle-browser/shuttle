@@ -80,10 +80,6 @@ source_set("impl") {
 
   deps = [
     "//chrome/browser:primitives",
-    "//chrome/browser/dictation",
-    "//chrome/browser/glic",
-    "//chrome/browser/glic/browser_ui:glow",
-    "//chrome/browser/glic/browser_ui:glow_controller",
     "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/themes",
     "//chrome/browser/ui:browser_element_identifiers",
@@ -116,7 +112,6 @@ source_set("impl") {
     "//chrome/browser/ui/views/tabs/vertical",
     "//chrome/browser/ui/views/toolbar",
     "//chrome/browser/ui/window_metadata",
-    "//components/contextual_tasks/public:feature_list",
     "//components/performance_manager",
     "//components/tab_groups",
     "//components/tabs:impl",

@@ -7,7 +7,6 @@
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
-#include "components/data_sharing/public/features.h"
 
 namespace tab_groups {
 
@@ -61,7 +60,8 @@ bool RestrictDownloadOnSyncedTabs() {
 }
 
 bool DeferMediaLoadInBackgroundTab() {
-  return data_sharing::features::IsDataSharingFunctionalityEnabled();
+  // Data sharing was removed from this fork.
+  return false;
 }
 
 bool ShouldForceRemoveClosedTabGroupsOnStartup() {
@@ -73,12 +73,13 @@ bool ShouldForceRemoveClosedTabGroupsOnStartup() {
 }
 
 bool IsTabTitleSanitizationEnabled() {
-  return data_sharing::features::IsDataSharingFunctionalityEnabled();
+  // Data sharing was removed from this fork.
+  return false;
 }
 
 bool IsUrlRestrictionEnabled() {
-  return data_sharing::features::IsDataSharingFunctionalityEnabled() &&
-         base::FeatureList::IsEnabled(kEnableUrlRestriction);
+  // Data sharing was removed from this fork.
+  return false;
 }
 
 bool IsOriginatingSavedGroupCleanUpEnabled() {

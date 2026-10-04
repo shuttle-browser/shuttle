@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//build/config/ui.gni")
-import("//components/on_device_translation/buildflags/features.gni")
 
 if (!is_android && !is_ios) {
   static_library("live_caption") {
@@ -57,9 +56,7 @@ if (!is_android && !is_ios) {
 
       deps += [
         "//components/language/core/common",
-        "//components/on_device_translation/buildflags",
         "//components/strings",
-        "//components/translate/core/browser",
         "//components/vector_icons",
         "//third_party/re2",
         "//ui/accessibility",
@@ -71,9 +68,6 @@ if (!is_android && !is_ios) {
         "//ui/views",
       ]
 
-      if (enable_on_device_translation) {
-        deps += [ "//components/on_device_translation:translation_installer" ]
-      }
     }  # toolkit_views
   }
 
@@ -114,17 +108,6 @@ if (!is_android && !is_ios) {
       "//ui/native_theme",
     ]
 
-    if (enable_on_device_translation) {
-      sources += [
-        "translation_dispatcher_on_device.cc",
-        "translation_dispatcher_on_device.h",
-      ]
-      public_deps += [
-        "//components/on_device_translation:public",
-        "//components/on_device_translation/public/mojom",
-      ]
-      deps += [ "//components/on_device_translation" ]
-    }
   }
 
   source_set("unit_tests") {
@@ -161,13 +144,6 @@ if (!is_android && !is_ios) {
       "//ui/base",
     ]
 
-    if (enable_on_device_translation) {
-      sources += [ "translation_dispatcher_on_device_unittest.cc" ]
-      deps += [
-        "//components/on_device_translation",
-        "//components/on_device_translation:test_support",
-      ]
-    }
 
     if (is_chromeos) {
       sources += [

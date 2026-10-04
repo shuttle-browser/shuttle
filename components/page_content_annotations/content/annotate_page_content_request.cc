@@ -27,7 +27,6 @@
 #include "base/timer/elapsed_timer.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
-#include "components/content_extraction/content/browser/inner_text.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/content/browser/page_content_proto_util.h"
 #include "components/optimization_guide/content/browser/page_context_eligibility.h"
@@ -196,8 +195,6 @@ AnnotatedPageContentRequest::AnnotatedPageContentRequest(
       content::WebContentsUserData<AnnotatedPageContentRequest>(*web_contents),
       page_content_extraction_service_(page_content_extraction_service),
       options_(CreateOptions()),
-      include_inner_text_(
-          features::ShouldAnnotatedPageContentStudyIncludeInnerText()),
       is_pdf_text_extraction_enabled_(base::FeatureList::IsEnabled(
           features::kAnnotatedPageContentPDFTextExtraction)),
       use_page_settled_monitor_(base::FeatureList::IsEnabled(
@@ -521,13 +518,6 @@ void AnnotatedPageContentRequest::RequestAnnotatedPageContentSync(
       *web_contents(), options, /*progress_listener=*/nullptr,
       base::BindOnce(&AnnotatedPageContentRequest::OnPageContextFetched,
                      weak_factory_.GetWeakPtr(), trigger_source));
-
-  if (include_inner_text_) {
-    content_extraction::GetInnerText(
-        *web_contents()->GetPrimaryMainFrame(), std::nullopt,
-        base::BindOnce(&AnnotatedPageContentRequest::OnInnerTextReceived,
-                       weak_factory_.GetWeakPtr(), base::TimeTicks::Now()));
-  }
 }
 
 std::optional<AnnotatedPageContentRequest::TriggerSource>
@@ -703,18 +693,6 @@ void AnnotatedPageContentRequest::OnPageContextFetched(
   RecordAnnotatedPageContentMetrics(cached_content_->page_content->data);
 
   ResolveAllCallbacksWith(cached_content_);
-}
-
-void AnnotatedPageContentRequest::OnInnerTextReceived(
-    base::TimeTicks start_time,
-    std::unique_ptr<content_extraction::InnerTextResult> result) {
-  if (!result) {
-    return;
-  }
-  UMA_HISTOGRAM_TIMES("OptimizationGuide.InnerText.TotalLatency",
-                      base::TimeTicks::Now() - start_time);
-  UMA_HISTOGRAM_CUSTOM_COUNTS("OptimizationGuide.InnerText.TotalSize2",
-                              result->inner_text.length() / 1024, 10, 5000, 50);
 }
 
 void AnnotatedPageContentRequest::RecordAnnotatedPageContentMetrics(

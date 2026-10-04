@@ -206,24 +206,9 @@ std::optional<SelectOption> GetOptionForSelect(
 
 DenseSet<EntityType> GetEntityTypesBeingFetched(const AutofillField& field,
                                                 const AutofillClient& client) {
-  const AutofillAiPersonalContextAccessManager* access_manager =
-      client.GetAutofillAiPersonalContextAccessManager();
-  if (!access_manager) {
-    return {};
-  }
-  DenseSet<EntityType> types;
-  using RequestStatus = AutofillAiPersonalContextAccessManager::RequestStatus;
-
-  for (EntityType entity_type : DenseSet<EntityType>::all()) {
-    if (field.Type().GetAutofillAiType(entity_type) != UNKNOWN_TYPE) {
-      if (access_manager->ServerHasSpiiPresenceSignal(entity_type) &&
-          access_manager->GetPrefetchStatusByEntityType(entity_type) ==
-              RequestStatus::kPending) {
-        types.insert(entity_type);
-      }
-    }
-  }
-  return types;
+  // Personal Context prefetching was removed from this fork, so no entity types
+  // are ever being fetched.
+  return {};
 }
 
 std::vector<const EntityInstance*> GetFillableEntityInstances(
@@ -365,19 +350,9 @@ bool WillRequireServerFetch(const EntityInstance& entity,
                             const FormStructure& form,
                             const Section& section,
                             std::string_view app_locale) {
-  if (!entity.IsMaskedEntity() || !entity.IsServerInstance() ||
-      !WillFillSensitiveAttributes(entity, form, section, app_locale)) {
-    return false;
-  }
-  const bool is_ambient_enabled =
-      entity.record_type() == EntityInstance::RecordType::kPersonalContext &&
-      base::FeatureList::IsEnabled(features::kAutofillAmbientAutofill);
-
-  const bool is_wallet_enabled =
-      entity.record_type() == EntityInstance::RecordType::kServerWallet &&
-      base::FeatureList::IsEnabled(features::kAutofillAiWalletPrivatePasses);
-
-  return is_ambient_enabled || is_wallet_enabled;
+  // Server entities (Wallet and Personal Context) cannot be unmasked in this
+  // fork, so a server fetch is never required.
+  return false;
 }
 
 url::Origin GetTargetFieldOrigin(const url::Origin& origin,

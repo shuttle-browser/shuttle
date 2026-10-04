@@ -19,11 +19,6 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #endif
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
-#include "chrome/browser/apps/platform_apps/platform_app_launch.h"
-#endif
-
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #else
@@ -93,14 +88,7 @@ bool ChromeTabRestoreServiceClient::ShouldTrackURLForRestore(const GURL& url) {
 
 std::string ChromeTabRestoreServiceClient::GetExtensionAppIDForTab(
     sessions::LiveTab* tab) {
-  std::string app_id;
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  app_id = apps::GetAppIdForWebContents(
-      &static_cast<sessions::ContentLiveTab*>(tab)->GetWebContents());
-#endif
-
-  return app_id;
+  return std::string();
 }
 
 base::FilePath ChromeTabRestoreServiceClient::GetPathToSaveTo() {
@@ -137,8 +125,4 @@ void ChromeTabRestoreServiceClient::GetLastSession(
 #endif
 }
 
-void ChromeTabRestoreServiceClient::OnTabRestored(const GURL& url) {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  apps::RecordExtensionAppLaunchOnTabRestored(profile_, url);
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
-}
+void ChromeTabRestoreServiceClient::OnTabRestored(const GURL& url) {}

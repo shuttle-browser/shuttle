@@ -9,8 +9,6 @@
 #include "base/files/file_path.h"
 #include "base/run_loop.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/test/test_bookmark_client.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/test/history_service_test_util.h"
 #include "components/omnibox/browser/in_memory_url_index.h"
@@ -79,15 +77,6 @@ history::HistoryService* FakeAutocompleteProviderClient::GetHistoryService() {
 history_clusters::HistoryClustersService*
 FakeAutocompleteProviderClient::GetHistoryClustersService() {
   return history_clusters_service_;
-}
-
-history_embeddings::HistoryEmbeddingsSearch*
-FakeAutocompleteProviderClient::GetHistoryEmbeddingsSearch() {
-  return history_embeddings_search_.get();
-}
-
-bookmarks::BookmarkModel* FakeAutocompleteProviderClient::GetBookmarkModel() {
-  return bookmark_model_.get();
 }
 
 InMemoryURLIndex* FakeAutocompleteProviderClient::GetInMemoryURLIndex() {

@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/content_settings/content_setting_image_model_states.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -64,8 +63,6 @@
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/permissions/system/system_media_capture_permissions_mac.h"
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #endif
 
 using content::WebContents;
@@ -1419,67 +1416,9 @@ bool ContentSettingNotificationsImageModel::UpdateAndGetVisibility(
   set_should_auto_open_bubble(false);
   set_blocked_on_system_level(false);
 
-#if BUILDFLAG(IS_MAC)
-  if (std::optional<webapps::AppId> app_id =
-          web_app::WebAppTabHelper::GetAppIdForNotificationAttribution(
-              web_contents);
-      app_id.has_value()) {
-    PageSpecificContentSettings* content_settings =
-        PageSpecificContentSettings::GetForFrame(
-            web_contents->GetPrimaryMainFrame());
-
-    const bool is_allowed =
-        content_settings &&
-        content_settings->IsContentAllowed(ContentSettingsType::NOTIFICATIONS);
-    const bool was_denied_because_of_system_permission =
-        content_settings &&
-        content_settings
-            ->notifications_was_denied_because_of_system_permission();
-
-    const mac_notifications::mojom::PermissionStatus system_permission_status =
-        AppShimRegistry::Get()->GetNotificationPermissionStatusForApp(*app_id);
-
-    // If the system level permission for this app is currently "denied", and
-    // either the chrome level permission was granted (and notifications have
-    // been attempted to be used in this page) or the chrome level permission
-    // just switched from "ask" to "blocked", show the indicator icon.
-    if ((was_denied_because_of_system_permission || is_allowed) &&
-        system_permission_status ==
-            mac_notifications::mojom::PermissionStatus::kDenied) {
-      SetIcon(ContentSettingsType::NOTIFICATIONS, /*blocked=*/true);
-      // If the chrome level permission was just auto-denied, also popup the
-      // bubble.
-      set_should_auto_open_bubble(was_denied_because_of_system_permission);
-      set_blocked_on_system_level(true);
-      return true;
-    }
-  }
-#endif
-
-  auto* manager =
-      permissions::PermissionRequestManager::FromWebContents(web_contents);
-
-  // We shouldn't show the icon unless we're a PWA.
-  // TODO(crbug.com/40186737): Allow PermissionRequestManager to identify the
-  // correct UI style of a permission prompt.
-  const bool quiet_icon_allowed = web_app::AppBrowserController::IsWebApp(
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents));
-
-  if (!quiet_icon_allowed || !manager ||
-      !manager->ShouldCurrentRequestUseQuietUI()) {
-    return false;
-  }
-
-  // |manager| may be null in tests.
-  SetIcon(ContentSettingsType::NOTIFICATIONS, /*blocked=*/false);
-  if (permissions::PermissionUiSelector::ShouldSuppressAnimation(
-          manager->ReasonForUsingQuietUi())) {
-    set_accessibility_string_id(IDS_NOTIFICATIONS_OFF_EXPLANATORY_TEXT);
-    set_explanatory_string_id(0);
-  } else {
-    set_explanatory_string_id(IDS_NOTIFICATIONS_OFF_EXPLANATORY_TEXT);
-  }
-  return true;
+  // The notifications indicator is only shown for web apps, which this
+  // browser doesn't have.
+  return false;
 }
 
 std::unique_ptr<ContentSettingBubbleModel>

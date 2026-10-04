@@ -17,7 +17,6 @@ source_set("page_info") {
   } else {
     sources += [
       "about_this_site_side_panel.h",
-      "merchant_trust_side_panel.h",
       "page_info_dialog.h",
       "page_info_infobar_delegate.h",
     ]
@@ -65,8 +64,6 @@ source_set("impl") {
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/browser_web_contents_delegate",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/web_applications",
-      "//chrome/browser/web_applications",
     ]
     if (is_chromeos) {
       deps += [ "//chrome/browser/ash/floating_sso" ]
@@ -90,7 +87,6 @@ source_set("impl") {
     "//chrome/browser/subresource_filter",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:url_identity",
-    "//chrome/browser/ui/hats",
     "//chrome/browser/usb",
     "//chrome/common",
     "//chrome/common:chrome_features",
@@ -108,7 +104,6 @@ source_set("impl") {
     "//components/strings:components_strings",
     "//components/subresource_filter/content/browser",
     "//components/vector_icons",
-    "//components/webapps/common",
     "//content/public/common",
     "//net",
     "//services/network/public/cpp",

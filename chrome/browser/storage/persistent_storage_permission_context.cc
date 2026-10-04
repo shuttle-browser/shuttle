@@ -8,12 +8,10 @@
 #include <variant>
 
 #include "base/check_op.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/engagement/important_sites_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/browser/website_settings_registry.h"
@@ -36,7 +34,6 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
-using bookmarks::BookmarkModel;
 using PermissionStatus = blink::mojom::PermissionStatus;
 
 PersistentStoragePermissionContext::PersistentStoragePermissionContext(

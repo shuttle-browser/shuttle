@@ -6,11 +6,14 @@
 
 #include "base/strings/strcat.h"
 #include "base/strings/string_tokenizer.h"
-#include "components/passage_embeddings/core/passage_embeddings_features.h"
 
 namespace page_content_annotations {
 
 namespace {
+
+// Formerly passage_embeddings feature params.
+constexpr size_t kMaxWordsPerAggregatePassage = 100;
+constexpr size_t kMinWordsPerPassage = 5;
 
 void CollectTextForContentNode(
     const optimization_guide::proto::ContentNode& node,
@@ -105,13 +108,13 @@ std::vector<std::string> CreatePassagesFromAnnotatedPageContent(
   }
 
   const size_t max_words_per_aggregate_passage =
-      passage_embeddings::kMaxWordsPerAggregatePassage.Get();
+      kMaxWordsPerAggregatePassage;
   if (max_words_per_aggregate_passage == 0) {
     return {};
   }
 
   const size_t min_words_per_passage =
-      passage_embeddings::kMinWordsPerPassage.Get();
+      kMinWordsPerPassage;
 
   std::vector<std::string> passages{""};
   size_t current_passage_words = 0;
@@ -162,7 +165,7 @@ std::vector<std::string> CreatePassagesFromPDFText(
   }
 
   const size_t max_words_per_aggregate_passage =
-      passage_embeddings::kMaxWordsPerAggregatePassage.Get();
+      kMaxWordsPerAggregatePassage;
   if (max_words_per_aggregate_passage == 0) {
     return {};
   }

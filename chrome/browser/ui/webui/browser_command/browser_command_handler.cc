@@ -12,11 +12,6 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/command_updater_impl.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
-#include "chrome/browser/glic/glic_settings_util.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -111,7 +106,7 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = !managed && !already_enabled;
     } break;
     case Command::kOpenFeedbackForm:
-      can_execute = true;
+      can_execute = false;
       break;
     case Command::kOpenPrivacyGuide:
       can_execute =
@@ -148,10 +143,8 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = true;
       break;
     case Command::kOpenGlic:
-      can_execute = true;
-      break;
     case Command::kOpenGlicSettings:
-      can_execute = true;
+      can_execute = false;
       break;
     case Command::kOpenSplitView:
       can_execute = true;
@@ -203,7 +196,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
           base::UserMetricsAction("NewTabPage_Promos_EnhancedProtection"));
       break;
     case Command::kOpenFeedbackForm:
-      OpenFeedbackForm();
+      // Feedback was removed.
       break;
     case Command::kOpenPrivacyGuide:
       NavigateToURL(GURL(chrome::GetSettingsUrl(chrome::kPrivacyGuideSubPage)),
@@ -242,12 +235,9 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
       NavigateToURL(GURL(chrome::GetSettingsUrl(chrome::kPaymentsSubPage)),
                     disposition);
       break;
-    case Command::kOpenGlic: {
-      OpenGlic();
-      break;
-    }
+    case Command::kOpenGlic:
     case Command::kOpenGlicSettings:
-      OpenGlicSettings();
+      // Glic was removed.
       break;
     case Command::kOpenSplitView:
       OpenSplitView();
@@ -362,40 +352,6 @@ void BrowserCommandHandler::StartSavedTabGroupTutorial() {
   StartTutorial(std::move(params));
 }
 
-void BrowserCommandHandler::OpenGlic() {
-  glic::GlicKeyedService* glic_service = glic::GlicKeyedService::Get(profile_);
-
-  if (!glic_service) {
-    return;
-  }
-
-  auto* browser_window = webui::GetBrowserWindowInterface(web_contents_);
-
-  glic_service->ToggleUI(browser_window, /*prevent_close=*/false,
-                         glic::mojom::InvocationSource::kWhatsNew);
-}
-
-void BrowserCommandHandler::OpenGlicSettings() {
-  if (glic::GlicEnabling::ShouldShowSettingsPage(profile_)) {
-    glic::OpenGlicKeyboardShortcutSetting(profile_);
-  } else {
-    // Link to help center article.
-    auto* command_line = base::CommandLine::ForCurrentProcess();
-    bool has_url =
-        command_line->HasSwitch(::switches::kGlicShortcutsLearnMoreURL);
-    const std::string url = has_url
-                                ? command_line->GetSwitchValueASCII(
-                                      ::switches::kGlicShortcutsLearnMoreURL)
-                                : features::kGlicShortcutsLearnMoreURL.Get();
-    if (url.empty()) {
-      return;
-    }
-
-    NavigateToURL(glic::GetHelpCenterUrl(url),
-                  WindowOpenDisposition::SINGLETON_TAB);
-  }
-}
-
 void BrowserCommandHandler::OpenSplitView() {
   tabs::TabInterface* tab =
       tabs::TabInterface::MaybeGetFromContents(web_contents_);
@@ -411,20 +367,6 @@ void BrowserCommandHandler::EnableVerticalTabs() {
 
   tabs::RecordVerticalTabStripModeChanged(
       true, tabs::VerticalTabStripEntryPoint::kWhatsNew);
-}
-
-void BrowserCommandHandler::OpenFeedbackForm() {
-  chrome::ShowFeedbackPage(feedback_settings_.url, profile_,
-                           feedback_settings_.source,
-                           std::string() /* description_template */,
-                           std::string() /* description_placeholder_text */,
-                           feedback_settings_.category /* category_tag */,
-                           std::string() /* extra_diagnostics */);
-}
-
-void BrowserCommandHandler::ConfigureFeedbackCommand(
-    FeedbackCommandSettings settings) {
-  feedback_settings_ = settings;
 }
 
 void BrowserCommandHandler::EnableSupportedCommands() {

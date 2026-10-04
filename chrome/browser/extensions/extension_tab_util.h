@@ -209,9 +209,6 @@ class ExtensionTabUtil {
                            tab_groups::TabGroupVisualData* out_visual_data,
                            std::string* error);
 
-  // Returns whether the group is shared or not.
-  static bool GetSharedStateOfGroup(const tab_groups::TabGroupId& id);
-
   // Creates a TabGroup object
   // (see chrome/common/extensions/api/tab_groups.json) with information about
   // the state of a tab group for the given group `id`. Most group metadata is

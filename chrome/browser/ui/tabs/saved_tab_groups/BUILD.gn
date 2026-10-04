@@ -8,11 +8,6 @@ import("//chrome/common/features.gni")
 
 source_set("saved_tab_groups") {
   sources = [
-    "collaboration_messaging_observer.h",
-    "collaboration_messaging_observer_factory.h",
-    "collaboration_messaging_page_action_controller.h",
-    "collaboration_messaging_tab_data.h",
-    "instant_message_queue_processor.h",
     "local_tab_group_listener.h",
     "most_recent_shared_tab_update_store.h",
     "saved_tab_group_controller.h",
@@ -23,7 +18,6 @@ source_set("saved_tab_groups") {
     "saved_tab_group_utils.h",
     "saved_tab_group_web_contents_listener.h",
     "session_service_tab_group_sync_observer.h",
-    "shared_tab_group_feedback_controller.h",
     "tab_group_action_context_desktop.h",
     "tab_group_menu_utils.h",
     "tab_group_sync_delegate_desktop.h",
@@ -37,8 +31,6 @@ source_set("saved_tab_groups") {
     "//chrome/browser/ui/tabs:tab_strip_model_observer",
     "//chrome/browser/ui/toasts",
     "//chrome/browser/ui/views/page_action",
-    "//components/collaboration/public",
-    "//components/data_sharing/public:group_data",
     "//components/keyed_service/core",
     "//components/pref_registry",
     "//components/prefs",
@@ -63,11 +55,6 @@ source_set("saved_tab_groups") {
 
 source_set("impl") {
   sources = [
-    "collaboration_messaging_observer.cc",
-    "collaboration_messaging_observer_factory.cc",
-    "collaboration_messaging_page_action_controller.cc",
-    "collaboration_messaging_tab_data.cc",
-    "instant_message_queue_processor.cc",
     "local_tab_group_listener.cc",
     "most_recent_shared_tab_update_store.cc",
     "saved_tab_group_metrics.cc",
@@ -77,7 +64,6 @@ source_set("impl") {
     "saved_tab_group_utils.cc",
     "saved_tab_group_web_contents_listener.cc",
     "session_service_tab_group_sync_observer.cc",
-    "shared_tab_group_feedback_controller.cc",
     "tab_group_action_context_desktop.cc",
     "tab_group_menu_utils.cc",
     "tab_group_sync_delegate_desktop.cc",
@@ -88,9 +74,6 @@ source_set("impl") {
     "//chrome/app:generated_resources",
     "//chrome/app/vector_icons",
     "//chrome/browser:browser_process",
-    "//chrome/browser/collaboration",
-    "//chrome/browser/collaboration/messaging",
-    "//chrome/browser/data_sharing",
     "//chrome/browser/favicon",
     "//chrome/browser/image_fetcher",
     "//chrome/browser/profiles",
@@ -107,7 +90,6 @@ source_set("impl") {
     "//chrome/browser/ui:tab_ui_helper",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions:actions_headers",
-    "//chrome/browser/ui/bookmarks",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/page_action:icon_type",
     "//chrome/browser/ui/tabs:tab_group",
@@ -118,7 +100,6 @@ source_set("impl") {
     "//chrome/browser/ui/toasts/api:toasts",
     "//chrome/browser/ui/user_education",
     "//chrome/browser/ui/views:layout_provider",
-    "//chrome/browser/ui/views/data_sharing",
     "//chrome/browser/ui/views/frame",
     "//chrome/browser/ui/views/page_action",
     "//chrome/browser/ui/views/tabs/groups",
@@ -126,10 +107,6 @@ source_set("impl") {
     "//chrome/common",
     "//chrome/common:channel_info",
     "//chrome/common:constants",
-    "//components/collaboration/public",
-    "//components/data_sharing/public",
-    "//components/data_sharing/public:features",
-    "//components/data_sharing/public:group_data",
     "//components/favicon/core",
     "//components/favicon_base",
     "//components/feature_engagement/public:feature_constants",
@@ -167,9 +144,6 @@ source_set("impl") {
 source_set("unit_tests") {
   testonly = true
   sources = [
-    "collaboration_messaging_page_action_controller_unittest.cc",
-    "collaboration_messaging_tab_data_unittest.cc",
-    "instant_message_queue_processor_unittest.cc",
     "tab_group_menu_utils_unittest.cc",
   ]
   deps = [
@@ -178,7 +152,6 @@ source_set("unit_tests") {
     "//base",
     "//base/test:test_support",
     "//chrome/app:generated_resources",
-    "//chrome/browser/data_sharing",
     "//chrome/browser/favicon",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions:actions_headers",
@@ -192,11 +165,6 @@ source_set("unit_tests") {
     "//chrome/browser/ui/views/page_action:test_support",
     "//chrome/common",
     "//chrome/test:test_support",
-    "//components/collaboration/public",
-    "//components/data_sharing:test_support",
-    "//components/data_sharing/public",
-    "//components/data_sharing/public:features",
-    "//components/data_sharing/public:group_data",
     "//components/saved_tab_groups/internal:model",
     "//components/saved_tab_groups/public",
     "//components/saved_tab_groups/public:features",
@@ -218,10 +186,7 @@ source_set("browser_tests") {
   testonly = true
   defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
   sources = [
-    "collaboration_messaging_observer_browsertest.cc",
-    "collaboration_messaging_page_action_controller_browsertest.cc",
     "saved_tab_group_web_contents_listener_browsertest.cc",
-    "shared_tab_group_feedback_controller_browsertest.cc",
     "tab_group_sync_delegate_browsertest.cc",
     "tab_group_sync_navigation_browser_test.cc",
   ]
@@ -231,7 +196,6 @@ source_set("browser_tests") {
     "//base",
     "//base/test:test_support",
     "//chrome/browser",
-    "//chrome/browser/collaboration/messaging",
     "//chrome/browser/favicon",
     "//chrome/browser/prefs:util",
     "//chrome/browser/profiles:profile",
@@ -248,8 +212,6 @@ source_set("browser_tests") {
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/tabs:tabs_public",
     "//chrome/browser/ui/toasts",
-    "//chrome/browser/ui/views/bookmarks",
-    "//chrome/browser/ui/views/bookmarks/saved_tab_groups",
     "//chrome/browser/ui/views/frame",
     "//chrome/browser/ui/views/tabs:tab",
     "//chrome/browser/ui/views/tabs:tab_group",
@@ -259,9 +221,6 @@ source_set("browser_tests") {
     "//chrome/common:channel_info",
     "//chrome/test:test_support",
     "//chrome/test:test_support_ui",
-    "//components/collaboration/public",
-    "//components/collaboration/public:empty_messaging_backend_service",
-    "//components/data_sharing/public:features",
     "//components/keyed_service/content",
     "//components/keyed_service/core",
     "//components/prefs",

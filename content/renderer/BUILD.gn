@@ -340,17 +340,6 @@ target(link_target_type, "renderer") {
     }
   }
 
-  if (enable_screen_ai_service) {
-    sources += [
-      "accessibility/annotations/ax_canvas_annotator.cc",
-      "accessibility/annotations/ax_canvas_annotator.h",
-      "accessibility/annotations/ax_main_node_annotator.cc",
-      "accessibility/annotations/ax_main_node_annotator.h",
-    ]
-
-    deps += [ "//services/screen_ai/public/mojom" ]
-  }
-
   if (is_linux || is_chromeos) {
     deps += [ "//components/services/font/public/cpp" ]
   }
@@ -367,8 +356,6 @@ target(link_target_type, "renderer") {
 
   if (enable_cast_receiver) {
     deps += [
-      "//components/cast_streaming/common",
-      "//components/cast_streaming/renderer:resource_provider",
     ]
   }
 

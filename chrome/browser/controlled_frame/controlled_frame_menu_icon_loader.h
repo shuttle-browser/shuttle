@@ -13,7 +13,6 @@
 #include "base/memory/weak_ptr.h"
 #include "chrome/browser/extensions/menu_icon_loader.h"
 #include "chrome/browser/extensions/menu_manager.h"
-#include "chrome/browser/web_applications/model/web_app_icon_types.h"
 
 class SkBitmap;
 
@@ -63,7 +62,6 @@ class ControlledFrameMenuIconLoader : public extensions::MenuIconLoader {
   FRIEND_TEST_ALL_PREFIXES(ControlledFrameMenuIconLoaderTest, MenuManager);
 
   void OnIconLoaded(const extensions::MenuItem::ExtensionKey& extension_key,
-                    web_app::IconPurpose purpose,
                     SkBitmap bitmap);
 
   std::map<extensions::MenuItem::ExtensionKey, gfx::Image> icons_;

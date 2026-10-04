@@ -17,7 +17,6 @@
 #include "chrome/browser/performance_manager/policies/page_discarding_helper.h"
 #include "chrome/browser/performance_manager/user_tuning/cpu_health_tracker.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom-shared.h"
-#include "chrome/browser/ui/performance_controls/performance_controls_metrics.h"
 #include "components/performance_manager/public/graph/graph.h"
 #include "components/performance_manager/public/graph/page_node.h"
 #include "components/performance_manager/public/performance_manager.h"
@@ -81,8 +80,6 @@ bool PerformanceDetectionManager::DiscardTabs(
   performance_manager::user_tuning::CpuHealthTracker* const health_tracker =
       performance_manager::user_tuning::CpuHealthTracker::GetFromGraph(graph);
 
-  RecordCpuUsageBeforeDiscard(
-      health_tracker->GetTotalCpuPercentUsage(eligible_page_contexts));
   health_level_before_discard_ = health_tracker->GetCurrentHealthLevel();
 
   policies::PageDiscardingHelper* const helper =
@@ -133,17 +130,7 @@ void PerformanceDetectionManager::RecordCpuHealthStatus(
                             base::Unretained(this), base::Minutes(4)));
   }
 
-  Graph* const graph = PerformanceManager::GetGraph();
-  CpuHealthTracker* const health_tracker =
-      performance_manager::user_tuning::CpuHealthTracker::GetFromGraph(graph);
-  PerformanceDetectionManager::HealthLevel current_health_level =
-      health_tracker->GetCurrentHealthLevel();
-
   CHECK(health_level_before_discard_.has_value());
-  RecordCpuHealthStatusChange(time_after_discard,
-                              health_level_before_discard_.value(),
-                              current_health_level);
-  RecordCpuHealthStatusAfterDiscard(time_after_discard, current_health_level);
 }
 
 void PerformanceDetectionManager::NotifyActionableTabObserversForTesting(

@@ -10,8 +10,6 @@
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/glic/host/glic.mojom.h"                    // nogncheck
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"  // nogncheck
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 
 class BrowserWindowInterface;
@@ -91,8 +89,6 @@ class BrowserTabStripModelDelegate : public TabStripModelDelegate {
   void OnRemovingAllTabsFromGroups(
       const std::vector<tab_groups::TabGroupId>& group_ids,
       base::OnceCallback<void()> callback) override;
-  void GlicUnpinTabsFromAllConversations(
-      base::span<const tabs::TabHandle> tab_handles) override;
   void CloseTab(const tabs::TabInterface* tab,
                 CloseTabSource source,
                 base::OnceCallback<void(CloseTabSource)> on_approved) override;

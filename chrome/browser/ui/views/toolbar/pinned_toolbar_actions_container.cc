@@ -32,7 +32,6 @@
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container_layout.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_divider.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/feature_engagement/public/feature_constants.h"
@@ -528,9 +527,8 @@ void PinnedToolbarActionsContainer::AddPinnedActionButtonFor(
   // (like popups).
   if (auto* browser = browser_view_->browser();
       browser &&
-      (web_app::AppBrowserController::From(browser) ||
-       !WindowFeatureController::From(browser)->SupportsWindowFeature(
-           WindowFeatureController::WindowFeature::kFeatureTabStrip))) {
+      !WindowFeatureController::From(browser)->SupportsWindowFeature(
+          WindowFeatureController::WindowFeature::kFeatureTabStrip)) {
     return;
   }
 

@@ -6,10 +6,10 @@
 #define COMPONENTS_SITE_ENGAGEMENT_CONTENT_SITE_ENGAGEMENT_OBSERVER_H_
 
 #include <optional>
+#include <string>
 
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
-#include "components/webapps/common/web_app_id.h"
 
 namespace content {
 class WebContents;
@@ -45,7 +45,7 @@ class SiteEngagementObserver {
                                  double score,
                                  double old_score,
                                  EngagementType type,
-                                 const std::optional<webapps::AppId>& app_id) {}
+                                 const std::optional<std::string>& app_id) {}
 
  protected:
   explicit SiteEngagementObserver(SiteEngagementService* service);

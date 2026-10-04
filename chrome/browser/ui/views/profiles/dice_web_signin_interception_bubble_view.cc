@@ -25,7 +25,6 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/webui/signin/dice_web_signin_intercept_ui.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -484,11 +483,8 @@ void DiceWebSigninInterceptionBubbleView::ApplyAvatarButtonEffects() {
 // static
 bool DiceWebSigninInterceptorDelegate::IsSigninInterceptionSupportedInternal(
     const BrowserWindowInterface& browser) {
-  // Some browsers, such as web apps, don't have an avatar toolbar button to
-  // anchor the bubble. Even if a web app has an avatar toolbar button, we
-  // still don't support signin interception.
-  return GetAvatarToolbarButtonInterface(browser) != nullptr &&
-         !web_app::AppBrowserController::IsWebApp(&browser);
+  // Some browsers don't have an avatar toolbar button to anchor the bubble.
+  return GetAvatarToolbarButtonInterface(browser) != nullptr;
 }
 
 std::unique_ptr<ScopedWebSigninInterceptionBubbleHandle>

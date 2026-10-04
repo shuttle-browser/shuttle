@@ -30,7 +30,6 @@ source_set("read_anything") {
     "read_anything_controller.h",
     "read_anything_entry_point_controller.h",
     "read_anything_enums.h",
-    "read_anything_hats_survey_controller.h",
     "read_anything_immersive_activation_observer.h",
     "read_anything_immersive_overlay_view.h",
     "read_anything_lifecycle_observer.h",
@@ -74,7 +73,6 @@ source_set("impl") {
     "read_anything_contents_wrapper.cc",
     "read_anything_controller.cc",
     "read_anything_entry_point_controller.cc",
-    "read_anything_hats_survey_controller.cc",
     "read_anything_immersive_overlay_view.cc",
     "read_anything_immersive_web_view.cc",
     "read_anything_immersive_web_view.h",
@@ -98,7 +96,6 @@ source_set("impl") {
     "//chrome/browser/extensions",
     "//chrome/browser/language",
     "//chrome/browser/profiles",
-    "//chrome/browser/translate",
     "//chrome/browser/ui:accelerator_utils_headers",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:view_ids",
@@ -120,6 +117,7 @@ source_set("impl") {
     "//components/language/core/browser",
     "//components/language/core/common",
     "//components/page_load_metrics/browser",
+    "//components/pdf/browser",
     "//services/metrics/public/cpp:metrics_cpp",
   ]
 }
@@ -192,21 +190,5 @@ source_set("interactive_ui_tests") {
     "//content/test:test_support",
     "//testing/gtest",
     "//ui/views",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "read_anything_hats_survey_controller_unittest.cc" ]
-  deps = [
-    ":read_anything",
-    "//base",
-    "//chrome/browser/ui/hats:test_support",
-    "//chrome/browser/ui/side_panel:side_panel_views_dependent",
-    "//chrome/test:test_support",
-    "//components/tabs:test_support",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
   ]
 }

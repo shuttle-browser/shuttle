@@ -35,10 +35,6 @@ class ToolbarButtonMenuHighlighter;
 class UserEducationMixedTrustHandler;
 class UserEducationInternalsPageHandlerImpl;
 
-namespace web_app {
-class WebAppUiManagerImpl;
-}
-
 class UserEducationService : public KeyedService {
  public:
   explicit UserEducationService(Profile* profile, bool allows_promos);
@@ -98,8 +94,7 @@ class UserEducationService : public KeyedService {
              std::same_as<T, BrowserUserEducationInterfaceImpl> ||
              std::same_as<T, ToolbarButtonMenuHighlighter> ||
              std::same_as<T, UserEducationMixedTrustHandler> ||
-             std::same_as<T, UserEducationInternalsPageHandlerImpl> ||
-             std::same_as<T, web_app::WebAppUiManagerImpl>
+             std::same_as<T, UserEducationInternalsPageHandlerImpl>
   const user_education::FeaturePromoController* GetFeaturePromoController(
       base::PassKey<T>) const {
     return feature_promo_controller_.get();

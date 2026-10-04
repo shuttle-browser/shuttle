@@ -8,11 +8,9 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/default_clock.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/permissions/notifications_permission_revocation_config.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/safety_hub/abusive_notification_permissions_manager.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/permissions/constants.h"
 #include "components/permissions/permission_manager.h"
@@ -97,21 +95,11 @@ void SetOriginStatus(Profile* profile,
 }
 
 void RevokePermission(const GURL& origin, Profile* profile) {
-  if (base::FeatureList::IsEnabled(
-          safe_browsing::kShowManualNotificationRevocationsSafetyHub)) {
-    AbusiveNotificationPermissionsManager::
-        ExecuteAbusiveNotificationAutoRevocation(
-            HostContentSettingsMapFactory::GetForProfile(profile), origin,
-            safe_browsing::NotificationRevocationSource::
-                kSafeBrowsingUnwantedRevocation,
-            base::DefaultClock::GetInstance());
-  } else {
-    permissions::PermissionsClient::Get()
-        ->GetSettingsMap(profile)
-        ->SetContentSettingDefaultScope(
-            origin, GURL(), ContentSettingsType::NOTIFICATIONS,
-            ContentSetting::CONTENT_SETTING_DEFAULT);
-  }
+  permissions::PermissionsClient::Get()
+      ->GetSettingsMap(profile)
+      ->SetContentSettingDefaultScope(origin, GURL(),
+                                      ContentSettingsType::NOTIFICATIONS,
+                                      ContentSetting::CONTENT_SETTING_DEFAULT);
 
   OriginStatus status = GetOriginStatus(profile, origin);
   status.has_been_previously_revoked = true;

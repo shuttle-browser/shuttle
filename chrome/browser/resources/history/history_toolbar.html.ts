@@ -14,9 +14,7 @@ export function getHtml(this: HistoryToolbarElement) {
     ?has-overlay="${this.itemsSelected_}"
     page-name="$i18n{title}"
     clear-label="$i18n{clearSearch}"
-    search-icon-override="${this.computeSearchIconOverride_()}"
-    search-input-aria-description="${this.computeSearchInputAriaDescriptionOverride_()}"
-    search-prompt="${this.computeSearchPrompt_()}"
+    search-prompt="$i18n{searchPrompt}"
     ?spinner-active="${this.spinnerActive}"
     autofocus
     ?show-menu="${this.hasDrawer}"

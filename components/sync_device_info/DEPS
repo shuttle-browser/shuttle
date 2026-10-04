@@ -2,7 +2,6 @@ include_rules = [
   "+ash/constants",
   "+base/i18n",
   "+chromeos",
-  "+components/desktop_to_mobile_promos",
   "+components/keyed_service",
   "+components/metrics",
   "+components/prefs",

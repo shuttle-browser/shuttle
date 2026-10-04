@@ -14,7 +14,6 @@
 #include "base/memory/weak_ptr.h"
 #include "components/history/core/browser/keyword_id.h"
 #include "components/omnibox/browser/actions/omnibox_action.h"
-#include "components/omnibox/browser/lens_suggest_inputs_utils.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 
 class AiModeButtonService;
@@ -42,10 +41,6 @@ class ZeroSuggestCacheService;
 struct AutocompleteMatch;
 struct ProviderStateService;
 
-namespace bookmarks {
-class BookmarkModel;
-}
-
 namespace history {
 class HistoryService;
 class TopSites;
@@ -54,10 +49,6 @@ class URLDatabase;
 
 namespace history_clusters {
 class HistoryClustersService;
-}
-
-namespace history_embeddings {
-class HistoryEmbeddingsSearch;
 }
 
 namespace network {
@@ -95,10 +86,7 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   virtual AutocompleteClassifier* GetAutocompleteClassifier() = 0;
   virtual history::HistoryService* GetHistoryService() = 0;
   virtual history_clusters::HistoryClustersService* GetHistoryClustersService();
-  virtual history_embeddings::HistoryEmbeddingsSearch*
-  GetHistoryEmbeddingsSearch();
   virtual scoped_refptr<history::TopSites> GetTopSites() = 0;
-  virtual bookmarks::BookmarkModel* GetBookmarkModel() = 0;
   virtual history::URLDatabase* GetInMemoryDatabase() = 0;
   virtual InMemoryURLIndex* GetInMemoryURLIndex() = 0;
   virtual TemplateURLService* GetTemplateURLService() = 0;
@@ -122,8 +110,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
       const = 0;
   virtual OnDeviceTailModelService* GetOnDeviceTailModelService() const = 0;
   virtual ProviderStateService* GetProviderStateService() const = 0;
-  virtual base::CallbackListSubscription GetLensSuggestInputsWhenReady(
-      LensOverlaySuggestInputsCallback callback) const = 0;
   virtual tab_groups::TabGroupSyncService* GetTabGroupSyncService() const = 0;
   virtual sync_sessions::SessionSyncService* GetSessionSyncService() const = 0;
   virtual AimEligibilityService* GetAimEligibilityService() const = 0;

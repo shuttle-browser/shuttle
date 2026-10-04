@@ -10,7 +10,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/dom_distiller/core/url_constants.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_match.h"
@@ -42,9 +41,7 @@ std::u16string GetSecurityChipText(const LocationBarModel* model,
     return std::u16string();
   }
 
-  if (model->GetURL().SchemeIs(content::kChromeUIScheme) ||
-      (contextual_tasks::ShouldShowExpandedSecurityChip() &&
-       model->IsContextualTasksPage())) {
+  if (model->GetURL().SchemeIs(content::kChromeUIScheme)) {
     return l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_NAME);
   }
 
@@ -89,9 +86,7 @@ bool ShouldShowSecurityChipText(const LocationBarModel* model,
   if (url.SchemeIs(content::kChromeUIScheme) ||
       url.SchemeIs(extensions::kExtensionScheme) ||
       url.SchemeIs(url::kFileScheme) ||
-      url.SchemeIs(dom_distiller::kDomDistillerScheme) ||
-      (model->IsContextualTasksPage() &&
-       contextual_tasks::ShouldShowExpandedSecurityChip())) {
+      url.SchemeIs(dom_distiller::kDomDistillerScheme)) {
     return true;
   }
 

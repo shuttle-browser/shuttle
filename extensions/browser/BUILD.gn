@@ -1025,8 +1025,6 @@ source_set("test_support") {
 
   if (is_chromeos) {
     sources += [
-      "api/feedback_private/mock_feedback_service.cc",
-      "api/feedback_private/mock_feedback_service.h",
     ]
     deps += [
       "//components/crash/core/app",
@@ -1169,7 +1167,6 @@ source_set("unit_tests") {
     "//components/content_settings/core/test:test_support",
     "//components/crash/core/common:crash_key",
     "//components/crx_file",
-    "//components/feedback",
     "//components/file_access:test_support",
     "//components/keyed_service/content",
     "//components/onc",
@@ -1226,7 +1223,6 @@ source_set("unit_tests") {
   # in the desktop-android build when the related APIs are enabled.
   if (enable_extensions) {
     sources += [
-      "api/feedback_private/feedback_service_unittest.cc",
       "api/mime_handler_private/mime_handler_private_unittest.cc",
       "api/socket/mojo_data_pump_unittest.cc",
       "api/sockets_tcp/sockets_tcp_api_unittest.cc",
@@ -1260,11 +1256,6 @@ source_set("unit_tests") {
       "api/audio/audio_device_id_calculator_unittest.cc",
       "api/bluetooth/bluetooth_event_router_unittest.cc",
       "api/bluetooth_socket/bluetooth_socket_api_unittest.cc",
-      "api/feedback_private/access_rate_limiter_chromeos_unittest.cc",
-      "api/feedback_private/feedback_private_api_chromeos_unittest.cc",
-      "api/feedback_private/feedback_private_api_unittest_base_chromeos.cc",
-      "api/feedback_private/feedback_private_api_unittest_base_chromeos.h",
-      "api/feedback_private/log_source_access_manager_chromeos_unittest.cc",
       "api/media_perception_private/conversion_utils_unittest.cc",
       "api/media_perception_private/media_perception_api_manager_unittest.cc",
       "api/networking_private/networking_private_chromeos_unittest.cc",
@@ -1291,8 +1282,6 @@ source_set("unit_tests") {
       "//chromeos/dbus/power",
       "//components/account_id",
       "//components/account_id:test_support",
-      "//components/feedback",
-      "//components/feedback/content:factory",
       "//components/prefs",
       "//components/prefs:test_support",
       "//components/session_manager/core",

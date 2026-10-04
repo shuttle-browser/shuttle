@@ -20,7 +20,6 @@
 #include "chrome/browser/performance_manager/policies/page_discarding_helper.h"
 #include "chrome/browser/performance_manager/user_tuning/user_performance_tuning_notifier.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom-shared.h"
-#include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
 #include "components/performance_manager/public/features.h"
 #include "components/performance_manager/public/freezing/freezing.h"
 #include "components/performance_manager/public/metrics/page_resource_monitor.h"

@@ -51,10 +51,6 @@ class ChromeLabsItemView : public views::View {
     return lab_state_combobox_;
   }
 
-  views::MdTextButton* GetFeedbackButtonForTesting() {
-    return feedback_button_;
-  }
-
   user_education::NewBadgeLabel* GetNewBadgeForTesting() {
     return experiment_name_;
   }
@@ -68,8 +64,6 @@ class ChromeLabsItemView : public views::View {
   raw_ptr<views::Combobox> lab_state_combobox_;
 
   raw_ptr<const flags_ui::FeatureEntry> feature_entry_;
-
-  raw_ptr<views::MdTextButton> feedback_button_;
 
   base::RepeatingClosureList combobox_callback_list_;
 };

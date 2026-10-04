@@ -11,7 +11,6 @@ include_rules = [
   "+components/guest_view/browser",
   "+components/guest_view/buildflags",
   "+components/omnibox/common",
-  "+components/passage_embeddings/core/passage_embeddings_types.h",
   "+components/prefs",
   "+components/privacy_sandbox",
   "+components/resources/android",

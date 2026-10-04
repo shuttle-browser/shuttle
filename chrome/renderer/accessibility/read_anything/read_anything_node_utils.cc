@@ -9,6 +9,7 @@
 
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
+#include "services/screen_ai/buildflags/buildflags.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/ax_enum_util.h"
 #include "ui/accessibility/ax_role_properties.h"
@@ -51,6 +52,7 @@ bool IsIgnored(const ui::AXNode* const ax_node, bool is_pdf) {
   // text node but keep the `kContentInfo` so a line break can be inserted in
   // between pages during `a11y::GetHtmlTagForPDF()`.
   const ax::mojom::Role role = ax_node->GetRole();
+#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
   if (is_pdf) {
     // The text content of the aforementioned `kBanner` or `kContentInfo` node
     // is the same as the text content of its child static text node.
@@ -66,6 +68,7 @@ bool IsIgnored(const ui::AXNode* const ax_node, bool is_pdf) {
       return true;
     }
   }
+#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   // Ignore interactive elements, except for text fields and aria-related
   // support fields.
@@ -132,6 +135,7 @@ std::string GetHtmlTagForPDF(const ui::AXNode* ax_node,
       return "";
     case ax::mojom::Role::kHeading:
       return GetHeadingHtmlTagForPDF(ax_node, html_tag);
+#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
     // Add a line break after each page of an inaccessible PDF for readability
     // since there is no other formatting included in the OCR output.
     case ax::mojom::Role::kContentInfo:
@@ -140,6 +144,7 @@ std::string GetHtmlTagForPDF(const ui::AXNode* ax_node,
         return "br";
       }
       [[fallthrough]];
+#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
     default:
       return html_tag.empty() ? "span" : html_tag;
   }

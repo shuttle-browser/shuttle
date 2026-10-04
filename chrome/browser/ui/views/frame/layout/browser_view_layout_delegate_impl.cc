@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/views/infobars/infobar_container_view.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/views/web_apps/frame_toolbar/web_app_frame_toolbar_view.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/pref_names.h"
 #include "ui/gfx/geometry/rect.h"
@@ -69,14 +68,6 @@ bool BrowserViewLayoutDelegateImpl::ShouldDrawVerticalTabStrip() const {
 
 bool BrowserViewLayoutDelegateImpl::IsVerticalTabStripCollapsed() const {
   return browser_view_->IsVerticalTabStripCollapsed();
-}
-
-bool BrowserViewLayoutDelegateImpl::ShouldDrawWebAppFrameToolbar() const {
-  return browser_view_->ShouldDrawWebAppFrameToolbar();
-}
-
-bool BrowserViewLayoutDelegateImpl::GetUnframedModeEnabled() const {
-  return browser_view_->IsUnframedModeEnabled();
 }
 
 BrowserLayoutParams BrowserViewLayoutDelegateImpl::GetBrowserLayoutParams(
@@ -134,10 +125,6 @@ bool BrowserViewLayoutDelegateImpl::IsToolbarVisible() const {
   return browser_view_->IsToolbarVisible();
 }
 
-bool BrowserViewLayoutDelegateImpl::IsBookmarkBarVisible() const {
-  return browser_view_->IsBookmarkBarVisible();
-}
-
 bool BrowserViewLayoutDelegateImpl::IsInfobarVisible() const {
   auto* const container = browser_view_->infobar_container();
   if (!container || container->IsEmpty()) {
@@ -150,12 +137,7 @@ bool BrowserViewLayoutDelegateImpl::IsInfobarVisible() const {
 }
 
 bool BrowserViewLayoutDelegateImpl::IsContentsSeparatorEnabled() const {
-  // Web app windows manage their own separator.
-  // TODO(crbug.com/40102629): Make PWAs set the visibility of the ToolbarView
-  // based on whether it is visible instead of setting the height to 0px. This
-  // will enable BrowserViewLayout to hide the contents separator on its own
-  // using the same logic used by normal BrowserElementsViews.
-  return !web_app::AppBrowserController::From(browser_view_->browser());
+  return true;
 }
 
 bool BrowserViewLayoutDelegateImpl::IsActiveTabSplit() const {
@@ -219,26 +201,6 @@ void BrowserViewLayoutDelegateImpl::MoveWindowForFindBarIfNecessary() const {
   auto* const controller =
       browser_view_->browser()->GetFeatures().GetFindBarController();
   return controller->find_bar()->MoveWindowIfNecessary();
-}
-
-bool BrowserViewLayoutDelegateImpl::IsWindowControlsOverlayEnabled() const {
-  return browser_view_->IsWindowControlsOverlayEnabled();
-}
-
-void BrowserViewLayoutDelegateImpl::UpdateWindowControlsOverlay(
-    const gfx::Rect& available_titlebar_area) {
-  content::WebContents* web_contents = browser_view_->GetActiveWebContents();
-  if (!web_contents) {
-    return;
-  }
-
-  // The rect passed to WebContents is directly exposed to websites. In case
-  // of an empty rectangle, this should be exposed as 0,0 0x0 rather than
-  // whatever coordinates might be in rect.
-  web_contents->UpdateWindowControlsOverlay(
-      available_titlebar_area.IsEmpty()
-          ? gfx::Rect()
-          : browser_view_->GetMirroredRect(available_titlebar_area));
 }
 
 bool BrowserViewLayoutDelegateImpl::ShouldLayoutTabStrip() const {

@@ -25,8 +25,6 @@
 #include "components/live_caption/views/format_constants.h"
 #include "components/live_caption/views/translation_view_wrapper_base.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/translate/core/browser/translate_download_manager.h"
-#include "components/translate/core/browser/translate_ui_languages_manager.h"
 #include "components/vector_icons/vector_icons.h"
 #include "media/base/media_switches.h"
 #include "third_party/re2/src/re2/re2.h"

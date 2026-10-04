@@ -215,6 +215,8 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
   void OpenHotkeySettings() override {}
   void set_delegate(Delegate* delegate) { omnibox_delegate_ = delegate; }
 
+  ~SearchboxHandler() override;
+
  protected:
   SearchboxHandler(
       mojo::PendingReceiver<searchbox::mojom::PageHandler> pending_page_handler,
@@ -224,8 +226,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       std::unique_ptr<OmniboxClient> client,
       std::optional<base::TimeDelta> autocomplete_stop_timer_duration =
           std::nullopt);
-
-  ~SearchboxHandler() override;
 
   OmniboxController* omnibox_controller() const;
   OmniboxClient* client() const;
@@ -285,7 +285,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       int32_t query_id,
       const std::u16string& input,
       const AutocompleteResult& result,
-      bookmarks::BookmarkModel* bookmark_model,
       const PrefService* prefs,
       const TemplateURLService* turl_service) const;
   base::flat_map<int32_t, searchbox::mojom::SuggestionGroupPtr>
@@ -295,7 +294,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       const omnibox::GroupConfigMap& suggestion_groups_map) const;
   std::vector<searchbox::mojom::AutocompleteMatchPtr> CreateAutocompleteMatches(
       const AutocompleteResult& result,
-      bookmarks::BookmarkModel* bookmark_model,
       const omnibox::GroupConfigMap& suggestion_groups_map,
       const TemplateURLService* turl_service) const;
   virtual bool ShouldShowFirstContextualDescription() const;
@@ -306,7 +304,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
   std::optional<searchbox::mojom::AutocompleteMatchPtr> CreateAutocompleteMatch(
       const AutocompleteMatch& match,
       size_t line,
-      bookmarks::BookmarkModel* bookmark_model,
       const omnibox::GroupConfigMap& suggestion_groups_map,
       const TemplateURLService* turl_service) const;
   virtual WindowOpenDisposition ComputeWindowOpenDisposition(

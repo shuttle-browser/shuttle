@@ -47,14 +47,12 @@
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/global_media_controls/media_toolbar_button.h"
 #include "chrome/browser/ui/views/location_bar/webui_content_setting_image_control.h"
 #include "chrome/browser/ui/views/location_bar/webui_location_bar.h"
 #include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_home_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_overflow_button.h"
-#include "chrome/browser/ui/views/toolbar/webui_performance_intervention_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_split_tabs_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_extensions_container_wrapper.h"
 #include "chrome/browser/ui/waap/initial_web_ui_manager.h"
@@ -350,9 +348,7 @@ WebUIToolbarWebView::WebUIToolbarWebView(
       reload_control_(this),
       split_tabs_control_(this),
       home_control_(this),
-      performance_intervention_control_(this),
       app_menu_control_(*this),
-      battery_saver_control_(this),
       avatar_control_(this),
       location_bar_(std::move(location_bar)),
       extensions_container_(this),
@@ -371,8 +367,7 @@ WebUIToolbarWebView::WebUIToolbarWebView(
       toolbar_ui_api::mojom::ReloadControlState::New();
   last_queued_state_.home_control_state =
       toolbar_ui_api::mojom::HomeControlState::New();
-  last_queued_state_.battery_saver_button_visible =
-      battery_saver_control_.IsVisible();
+  last_queued_state_.battery_saver_button_visible = false;
   last_queued_state_.performance_intervention_control_state =
       toolbar_ui_api::mojom::PerformanceInterventionControlState::New();
   last_queued_state_.location_bar_state =
@@ -534,12 +529,6 @@ void WebUIToolbarWebView::AddedToWidget() {
     if (features::IsWebUIHomeButtonEnabled()) {
       home_control_.Init();
     }
-    if (features::IsWebUIBatterySaverButtonEnabled()) {
-      battery_saver_control_.Init();
-    }
-    if (features::IsWebUIPerformanceInterventionButtonEnabled()) {
-      performance_intervention_control_.Init();
-    }
     if (features::IsWebUIPinnedToolbarActionsEnabled()) {
       pinned_toolbar_actions_.Init();
     }
@@ -621,7 +610,6 @@ void WebUIToolbarWebView::HandleContextMenu(
       home_control_.HandleContextMenu(screen_rect, source);
       break;
     case toolbar_ui_api::mojom::ContextMenuType::kBatterySaver:
-      battery_saver_control_.ShowBubble(screen_rect);
       break;
     case toolbar_ui_api::mojom::ContextMenuType::
         kPinnedActionNewIncognitoWindow:
@@ -910,13 +898,9 @@ WebUIToolbarWebView::AdjustOmniboxTextForCopy(const std::u16string& text,
 }
 
 void WebUIToolbarWebView::OnPerformanceInterventionButtonClicked(
-    bool is_mouse_interaction) {
-  performance_intervention_control_.OnClicked(is_mouse_interaction);
-}
+    bool is_mouse_interaction) {}
 
-void WebUIToolbarWebView::OnPerformanceInterventionButtonMousePressed() {
-  performance_intervention_control_.OnMousePressed();
-}
+void WebUIToolbarWebView::OnPerformanceInterventionButtonMousePressed() {}
 
 ReloadControl* WebUIToolbarWebView::GetReloadControl() {
   return &reload_control_;
@@ -925,10 +909,6 @@ ReloadControl* WebUIToolbarWebView::GetReloadControl() {
 AvatarToolbarButtonInterface*
 WebUIToolbarWebView::GetAvatarToolbarButtonInterface() {
   return &avatar_control_;
-}
-
-MediaToolbarButton* WebUIToolbarWebView::GetMediaToolbarButton() {
-  return nullptr;
 }
 
 ExtensionsContainerViews* WebUIToolbarWebView::extensions_container_views() {
@@ -1693,10 +1673,6 @@ gfx::Size WebUIToolbarWebView::ComputeLayout(
                   split_tabs_control_.IsVisible();
   button_count += features::IsWebUIBackForwardButtonEnabled();
   button_count += features::IsWebUIAvatarButtonEnabled();
-  button_count += features::IsWebUIBatterySaverButtonEnabled() &&
-                  battery_saver_control_.IsVisible();
-  button_count += features::IsWebUIPerformanceInterventionButtonEnabled() &&
-                  performance_intervention_control_.IsButtonShowing();
   button_count += features::IsWebUIAppMenuButtonEnabled();
 
   const int size = GetLayoutConstant(LayoutConstant::kToolbarButtonHeight);

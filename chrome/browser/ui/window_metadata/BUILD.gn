@@ -27,7 +27,6 @@ source_set("window_metadata") {
     "//chrome/browser/ui:browser_init_state",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/browser/ui/web_applications",
     "//components/captive_portal/core:buildflags",
     "//components/favicon/content",
     "//components/favicon/core",

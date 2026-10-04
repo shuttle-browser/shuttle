@@ -12,7 +12,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -22,7 +21,6 @@
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/invalidate_type.h"
 #include "content/public/browser/web_contents.h"
@@ -39,12 +37,10 @@ DEFINE_USER_DATA(BrowserUiController);
 BrowserUiController::BrowserUiController(
     BrowserWindowInterface& browser,
     TabStripModel& tab_strip_model,
-    BrowserWindow& window,
-    BookmarkBarController& bookmark_bar_controller)
+    BrowserWindow& window)
     : browser_(browser),
       tab_strip_model_(tab_strip_model),
       window_(window),
-      bookmark_bar_controller_(bookmark_bar_controller),
       scoped_unowned_user_data_(browser.GetUnownedUserDataHost(), *this) {}
 
 BrowserUiController::~BrowserUiController() = default;
@@ -208,16 +204,6 @@ void BrowserUiController::ProcessPendingUIUpdates() {
       NotifyTabUIChanged(tab, TabChangeType::kAll);
     }
 
-    // Update the bookmark bar and PWA install icon. It may happen that the tab
-    // is crashed, and if so, the bookmark bar and PWA install icon should be
-    // hidden.
-    if (flags & content::INVALIDATE_TYPE_TAB) {
-      // Update bookmark bar state with kTabState to handle tab state changes
-      // (like crashes). This is different from kTabSwitch which is already
-      // handled in Browser::OnActiveTabChanged().
-      bookmark_bar_controller_->UpdateBookmarkBarState(
-          BookmarkBarController::StateChangeReason::kTabState);
-    }
 
     // We don't need to process INVALIDATE_STATE, since that's not visible.
   }
@@ -262,15 +248,6 @@ std::vector<StatusBubble*> BrowserUiController::GetStatusBubbles() {
     return {};
   }
 
-  // We hide the status bar for web apps windows as this matches native
-  // experience. However, we include the status bar for 'minimal-ui' display
-  // mode, as the minimal browser UI includes the status bar.
-  auto* const app_browser_controller =
-      web_app::AppBrowserController::From(&*browser_);
-  if (app_browser_controller &&
-      !app_browser_controller->HasMinimalUiButtons()) {
-    return {};
-  }
 
   return window_->GetStatusBubbles();
 }

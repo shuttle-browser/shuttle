@@ -205,23 +205,6 @@ export class SettingsPersonalizationOptionsElement extends
     return !!this.syncStatus.firstSetupInProgress;
   }
 
-  protected showPriceEmailNotificationsToggle_(): boolean {
-    if (!loadTimeData.getBoolean('changePriceEmailNotificationsEnabled')) {
-      return false;
-    }
-    // Only show the toggle when the user signed in.
-    if (loadTimeData.getBoolean('replaceSyncPromosWithSignInPromos') &&
-        this.syncStatus.signedInState === SignedInState.SIGNED_IN) {
-      return true;
-    }
-    return this.syncStatus.signedInState === SignedInState.SYNCING;
-  }
-
-  protected getPriceEmailNotificationsPrefDesc_(): string {
-    const username = this.syncStatus.signedInUsername || '';
-    return loadTimeData.getStringF('priceEmailNotificationsPrefDesc', username);
-  }
-
   // <if expr="is_chromeos">
   /**
    * @return the autocomplete search suggestions CrToggleElement.

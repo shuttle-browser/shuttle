@@ -22,9 +22,6 @@ namespace gfx {
 class FontList;
 }  // namespace gfx
 
-namespace translate {
-class TranslateUILanguagesManager;
-}  // namespace translate
 
 namespace views {
 class ImageView;
@@ -35,6 +32,8 @@ class MenuRunner;
 }  // namespace views
 
 namespace captions {
+
+class LiveTranslateLanguagesManager;
 
 class TranslationViewWrapperBase : public ui::SimpleMenuModel::Delegate,
                                    public CaptionBubbleSettings::Observer {
@@ -147,7 +146,7 @@ class TranslationViewWrapperBase : public ui::SimpleMenuModel::Delegate,
   raw_ptr<Delegate> delegate_;
 
   // Manages the Translate UI language list related APIs.
-  std::unique_ptr<translate::TranslateUILanguagesManager>
+  std::unique_ptr<LiveTranslateLanguagesManager>
       translate_ui_languages_manager_;
 
   raw_ptr<views::Label> translation_header_text_;

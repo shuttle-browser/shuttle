@@ -4,7 +4,6 @@
 
 #include "chrome/browser/ui/webui/cr_components/history/history_util.h"
 
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
@@ -112,7 +111,39 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       "lastSelectedTab",
       prefs->GetInteger(history_clusters::prefs::kLastSelectedTab));
 
-  history_embeddings::PopulateSourceForWebUI(source, profile);
+  // History embeddings were removed; provide neutral values for the keys the
+  // history frontend still reads.
+  static constexpr webui::LocalizedString kHistoryEmbeddingsBaseStrings[] = {
+      {"foundSearchResults", IDS_HISTORY_FOUND_SEARCH_RESULTS},
+      {"historyEmbeddingsSearchPrompt", IDS_HISTORY_EMBEDDINGS_SEARCH_PROMPT},
+      {"historyEmbeddingsHeading", IDS_HISTORY_EMBEDDINGS_HEADING},
+      {"historyEmbeddingsWithAnswersResultsHeading",
+       IDS_HISTORY_EMBEDDINGS_WITH_ANSWERS_RESULTS_HEADING},
+      {"historyEmbeddingsHeadingLoading",
+       IDS_HISTORY_EMBEDDINGS_HEADING_LOADING},
+      {"historyEmbeddingsFooter", IDS_HISTORY_EMBEDDINGS_FOOTER},
+      {"learnMore", IDS_LEARN_MORE},
+      {"thumbsUp", IDS_THUMBS_UP_RESULTS_A11Y_LABEL},
+      {"thumbsDown", IDS_THUMBS_DOWN_OPENS_FEEDBACK_FORM_A11Y_LABEL},
+      {"historyEmbeddingsAnswerHeading", IDS_HISTORY_EMBEDDINGS_ANSWER_HEADING},
+      {"historyEmbeddingsAnswerLoadingHeading",
+       IDS_HISTORY_EMBEDDINGS_ANSWER_LOADING_HEADING},
+      {"historyEmbeddingsAnswerSourceDate",
+       IDS_HISTORY_EMBEDDINGS_ANSWER_SOURCE_VISIT_DATE_LABEL},
+      {"historyEmbeddingsAnswererErrorModelUnavailable",
+       IDS_HISTORY_EMBEDDINGS_ANSWERER_ERROR_MODEL_UNAVAILABLE},
+      {"historyEmbeddingsAnswererErrorTryAgain",
+       IDS_HISTORY_EMBEDDINGS_ANSWERER_ERROR_TRY_AGAIN},
+      {"historyEmbeddingsMatch", IDS_HISTORY_SEARCH_EMBEDDINGS_MATCH_RESULT},
+      {"historyEmbeddingsMatches", IDS_HISTORY_SEARCH_EMBEDDINGS_MATCH_RESULTS},
+  };
+  source->AddLocalizedStrings(kHistoryEmbeddingsBaseStrings);
+  source->AddBoolean("enableHistoryEmbeddingsAnswers", false);
+  source->AddBoolean("enableHistoryEmbeddingsImages", false);
+  source->AddInteger("historyEmbeddingsSearchMinimumWordCount", 0);
+  source->AddString("historyEmbeddingsSettingsUrl", std::string());
+  source->AddLocalizedString("historyEmbeddingsDisclaimer",
+                             IDS_HISTORY_EMBEDDINGS_DISCLAIMER);
 
   static constexpr webui::LocalizedString kHistoryEmbeddingsStrings[] = {
       {"historyEmbeddingsAnswersSearchAlternativePrompt1",

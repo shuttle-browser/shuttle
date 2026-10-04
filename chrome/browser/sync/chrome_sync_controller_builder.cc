@@ -49,12 +49,6 @@
 #include "chrome/browser/sync/glue/extension_setting_data_type_controller.h"
 #endif
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_sync_bridge.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
-
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_switches.h"
@@ -111,11 +105,6 @@ void ChromeSyncControllerBuilder::SetExtensionSystemProfile(Profile* profile) {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 void ChromeSyncControllerBuilder::SetThemeService(ThemeService* theme_service) {
   theme_service_.Set(theme_service);
-}
-
-void ChromeSyncControllerBuilder::SetWebAppProvider(
-    web_app::WebAppProvider* web_app_provider) {
-  web_app_provider_.Set(web_app_provider);
 }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
@@ -296,25 +285,6 @@ ChromeSyncControllerBuilder::Build(syncer::SyncService* sync_service) {
               // ThemeSyncableService instance should outlive the controller.
               std::make_unique<ThemeLocalDataBatchUploader>(
                   theme_service_.value()->GetThemeSyncableService())));
-    }
-
-    if (web_app_provider_.value()) {
-      syncer::DataTypeControllerDelegate* delegate =
-          web_app_provider_.value()
-              ->sync_bridge_unsafe()
-              .change_processor()
-              ->GetControllerDelegate()
-              .get();
-
-      controllers.push_back(std::make_unique<syncer::DataTypeController>(
-          syncer::WEB_APPS,
-          /*delegate_for_full_sync_mode=*/
-          std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
-              delegate),
-          /*delegate_for_transport_mode=*/
-          std::make_unique<syncer::ForwardingDataTypeControllerDelegate>(
-              delegate)
-          ));
     }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 

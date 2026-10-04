@@ -21,13 +21,11 @@ export interface PageVisibility {
   performance?: boolean;
   privacy?: boolean|PrivacyPageVisibility;
   reset?: boolean;
-  safetyHub?: boolean;
   system?: boolean;
   yourSavedInfo?: boolean;
 }
 
 export interface AppearancePageVisibility {
-  bookmarksBar: boolean;
   homeButton: boolean;
   hoverCard: boolean;
   pageZoom: boolean;
@@ -35,8 +33,6 @@ export interface AppearancePageVisibility {
   sidePanel: boolean;
 }
 
-// TODO(crbug.com/362659905): Merge pageVisibility.safetyHub with
-// PrivacyPageVisibility when the crash is fixed.
 export interface PrivacyPageVisibility {
   networkPrediction: boolean;
   searchPrediction: boolean;
@@ -62,7 +58,6 @@ function createPageVisibility(): PageVisibility|undefined {
     performance: false,
     privacy: false,
     reset: false,
-    safetyHub: false,
     system: false,
     yourSavedInfo: false,
   };
@@ -74,12 +69,10 @@ function createPageVisibility(): PageVisibility|undefined {
     people: false,
     onStartup: false,
     reset: false,
-    safetyHub: false,
     appearance: {
       setTheme: false,
       homeButton: false,
       hoverCard: false,
-      bookmarksBar: false,
       pageZoom: false,
       sidePanel: false,
     },

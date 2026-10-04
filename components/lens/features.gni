@@ -13,7 +13,7 @@ if (!is_ios) {
 declare_args() {
   # Includes Lens features in the build. toolkit_views is used to ensure Lens
   # features are only included on Desktop devices running Chromium
-  enable_lens_desktop = toolkit_views
+  enable_lens_desktop = false  # Agent Chrome: removed
 
   # Controls whether the Lens Overlay feature is enabled on Android. Enabling
   # this would incur binary increase of > 47 KiB.

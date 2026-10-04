@@ -19,11 +19,9 @@ source_set("history") {
   public_deps = [
     "//base",
     "//chrome/browser/profiles:profile",
-    "//components/bookmarks/browser",
     "//components/history/core/browser",
     "//components/keyed_service/core",
     "//components/sessions",
-    "//components/translate/core/browser",
     "//content/public/browser",
   ]
 }
@@ -47,8 +45,6 @@ source_set("impl") {
   deps = [
     "//base",
     "//chrome/browser/actor",
-    "//chrome/browser/bookmarks",
-    "//chrome/browser/complex_tasks",
     "//chrome/browser/engagement",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
     "//chrome/browser/profiles:profile",
@@ -56,11 +52,9 @@ source_set("impl") {
     "//chrome/browser/search_engines",
     "//chrome/browser/signin",
     "//chrome/browser/sync:factories",
-    "//chrome/browser/translate",
     "//chrome/browser/ui/profiles",
     "//chrome/common",
     "//chrome/common:constants",
-    "//components/bookmarks/browser",
     "//components/browsing_data/core",
     "//components/dom_distiller/core",
     "//components/history/content/browser",
@@ -76,7 +70,6 @@ source_set("impl") {
     "//components/sessions",
     "//components/strings:components_strings",
     "//components/sync/service",
-    "//components/webapps/browser",
     "//content/public/browser",
     "//extensions/buildflags",
     "//net",
@@ -92,7 +85,6 @@ source_set("impl") {
   if (is_android) {
     deps += [
       ":jni_headers",
-      "//chrome/browser/feed",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/ui/android/tab_model:impl",
     ]
@@ -216,9 +208,6 @@ source_set("unit_tests") {
 
   if (is_android) {
     deps += [
-      "//chrome/browser/feed",
-      "//components/feed/core/v2:feed_core_stubs",
-      "//components/feed/core/v2:feed_core_v2",
     ]
   }
 }

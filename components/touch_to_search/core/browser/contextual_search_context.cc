@@ -5,7 +5,6 @@
 #include "components/touch_to_search/core/browser/contextual_search_context.h"
 
 #include "components/language_detection/core/constants.h"
-#include "components/translate/core/language_detection/language_detection_util.h"
 
 ContextualSearchContext::ContextualSearchContext() = default;
 ContextualSearchContext::~ContextualSearchContext() = default;
@@ -57,19 +56,9 @@ base::WeakPtr<ContextualSearchContext> ContextualSearchContext::AsWeakPtr() {
 
 std::string ContextualSearchContext::GetReliableLanguage(
     const std::u16string& contents) const {
-  std::string model_detected_language;
-  bool is_model_reliable;
-  float model_reliability_score;
-  std::string language = translate::DeterminePageLanguage(
-      /*code=*/std::string(),
-      /*html_lang=*/std::string(), contents, &model_detected_language,
-      &is_model_reliable, model_reliability_score);
-  // Make sure we return an empty string when unreliable or an unknown result.
-  if (!is_model_reliable ||
-      language == language_detection::kUnknownLanguageCode) {
-    language = "";
-  }
-  return language;
+  // Page language detection lived in the translate component, which has been
+  // removed. Report an unknown (empty) language.
+  return "";
 }
 
 std::u16string ContextualSearchContext::GetSelection() const {

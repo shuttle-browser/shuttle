@@ -11,8 +11,6 @@
 #include "build/buildflag.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/browser_management/management_identity.h"
-#include "chrome/browser/glic/resources/glic_resources.h"
-#include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/policy/browser_signin_policy_handler.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
@@ -260,23 +258,10 @@ void AddResourcePaths(content::WebUIDataSource* html_source,
        IDR_SIGNIN_IMAGES_SHARED_GRADIENT_LIGHT_BACKGROUND_SVG},
       {"shared_gradient_dark_background.svg",
        IDR_SIGNIN_IMAGES_SHARED_GRADIENT_DARK_BACKGROUND_SVG},
-      {"glic_banner_top_right.svg",
-       glic::GetResourceID(IDR_GLIC_PROFILE_BANNER_TOP_RIGHT)},
-      {"glic_banner_bottom_left.svg",
-       glic::GetResourceID(IDR_GLIC_PROFILE_BANNER_BOTTOM_LEFT)},
-      {"glic_banner_top_right_light.svg",
-       glic::GetResourceID(IDR_GLIC_PROFILE_BANNER_TOP_RIGHT_LIGHT)},
-      {"glic_banner_bottom_left_light.svg",
-       glic::GetResourceID(IDR_GLIC_PROFILE_BANNER_BOTTOM_LEFT_LIGHT)},
-      {"glic_profile_branding.css",
-       glic::GetResourceID(IDR_GLIC_PROFILE_BRANDING_CSS)},
   };
   html_source->AddResourcePaths(kResourcePaths);
 
-  int logo_resource_id = is_glic_version
-                             ? glic::GetResourceID(IDR_GLIC_PROFILE_LOGO)
-                             : IDR_PRODUCT_LOGO_SVG;
-  html_source->AddResourcePath("picker_logo.svg", logo_resource_id);
+  html_source->AddResourcePath("picker_logo.svg", IDR_PRODUCT_LOGO_SVG);
 }
 
 bool IsInSearchEngineChoiceScreenRegion(Profile& profile) {
@@ -300,8 +285,9 @@ ProfilePickerUI::ProfilePickerUI(content::WebUI* web_ui)
 
   // `content::WebContents::GetVisibleURL()` is used here because a
   // WebUIController is created before the navigation commits.
-  bool is_glic_version = web_ui->GetWebContents()->GetVisibleURL().GetQuery() ==
-                         chrome::kChromeUIProfilePickerGlicQuery;
+  // The glic (Gemini in Chrome) flavor of the profile picker is not part of
+  // this build.
+  const bool is_glic_version = false;
 
   std::unique_ptr<ProfilePickerHandler> handler =
       std::make_unique<ProfilePickerHandler>(is_glic_version);

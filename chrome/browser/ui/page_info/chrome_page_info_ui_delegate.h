@@ -81,16 +81,11 @@ class ChromePageInfoUiDelegate : public PageInfoUiDelegate {
   bool IsMultipleTabsOpen() override;
   void OpenSiteSettingsFileSystem() override;
 
-  void OpenMerchantTrustSidePanel(const GURL& url);
 #endif  // !BUILDFLAG(IS_ANDROID)
   content::PermissionResult GetPermissionResult(
       blink::PermissionType permission) override;
   std::optional<content::PermissionResult> GetEmbargoResult(
       ContentSettingsType type) override;
-
-  void GetMerchantTrustInfo(page_info::MerchantDataCallback callback) override;
-  void RecordMerchantTrustButtonShown();
-  void RecordMerchantTrustSidePanelOpened();
 
   content::WebContents* GetWebContents() const { return web_contents_; }
 

@@ -28,7 +28,6 @@
 #include "chrome/browser/ui/views/page_info/page_info_view_factory.h"
 #include "chrome/browser/ui/views/page_info/permission_toggle_row_view.h"
 #include "chrome/browser/ui/views/page_info/star_rating_view.h"
-#include "chrome/browser/ui/views/sub_apps_permission_explanation.h"
 #include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/common/url_constants.h"
 #include "components/page_info/core/about_this_site_service.h"
@@ -215,11 +214,6 @@ PageInfoMainView::PageInfoMainView(
         extended_site_info_section_->AddChildView(CreateContainerView());
   }
 
-  if (allow_extended_site_info && page_info::IsMerchantTrustFeatureEnabled()) {
-    merchant_trust_section_ =
-        extended_site_info_section_->AddChildView(CreateContainerView());
-  }
-
   presenter_->InitializeUiState(this, std::move(initialized_callback));
 }
 
@@ -314,24 +308,6 @@ void PageInfoMainView::SetPermissionInfo(
       layout_provider
           ->GetInsetsMetric(ChromeInsetsMetric::INSETS_PAGE_INFO_HOVER_BUTTON)
           .left();
-
-  if (std::optional<std::u16string> explanation =
-          GetSubAppsPermissionExplanation(ui_delegate_->GetWebContents())) {
-    auto* label = content_view->AddChildView(std::make_unique<views::Label>(
-        *explanation, views::style::CONTEXT_DIALOG_BODY_TEXT,
-        views::style::STYLE_BODY_4));
-    label->SetMultiLine(true);
-    label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-    label->SetProperty(
-        views::kMarginsKey,
-        gfx::Insets::TLBR(controls_spacing, side_button_padding,
-                          controls_spacing, side_button_padding));
-    label->SetProperty(views::kCrossAxisAlignmentKey,
-                       views::LayoutAlignment::kStretch);
-    label->SetMaximumWidth(layout_provider->GetDistanceMetric(
-                               views::DISTANCE_BUBBLE_PREFERRED_WIDTH) -
-                           side_button_padding * 2);
-  }
 
   // If there is a permission that supports one time grants, offset all other
   // permissions to align toggles.
@@ -474,14 +450,6 @@ void PageInfoMainView::SetIdentityInfo(const IdentityInfo& identity_info) {
         extended_site_info_section_->SetVisible(true);
       }
     }
-
-    // Fetch the data when the UI is enabled or if the control survey may be
-    // shown.
-    if (merchant_trust_section_) {
-      ui_delegate_->GetMerchantTrustInfo(
-          base::BindOnce(&PageInfoMainView::OnMerchantTrustDataFetched,
-                         weak_factory_.GetWeakPtr()));
-    }
   } else {
     security_content_view_ = security_container_view_->AddChildView(
         std::make_unique<PageInfoSecurityContentView>(
@@ -606,23 +574,6 @@ void PageInfoMainView::HandleMoreInfoRequestAsync(int view_id) {
   }
 }
 
-void PageInfoMainView::OnMerchantTrustDataFetched(
-    const GURL& url,
-    std::optional<page_info::MerchantData> merchant_data) {
-  if (!merchant_data.has_value()) {
-    return;
-  }
-
-  if (!merchant_trust_section_) {
-    return;
-  }
-  merchant_trust_section_->RemoveAllChildViews();
-  merchant_trust_section_->AddChildView(
-      CreateMerchantTrustButton(merchant_data.value()));
-  extended_site_info_section_->SetVisible(true);
-  ui_delegate_->RecordMerchantTrustButtonShown();
-}
-
 gfx::Size PageInfoMainView::CalculatePreferredSize(
     const views::SizeBounds& available_size) const {
   if (site_settings_view_ == nullptr && permissions_view_ == nullptr &&
@@ -723,62 +674,6 @@ std::unique_ptr<views::View> PageInfoMainView::CreateAboutThisSiteButton(
       views::style::STYLE_BODY_4, kColorPageInfoSubtitleForeground);
 
   return about_this_site_button;
-}
-
-std::unique_ptr<views::View> PageInfoMainView::CreateMerchantTrustButton(
-    page_info::MerchantData value) {
-  auto merchant_trust_button =
-      value.reviews_summary.empty()
-          ? CreateMerchantTrustLaunchButton(value.page_url)
-          : CreateMerchantTrustSubpageButton(value);
-
-  merchant_trust_button->SetTitleTextStyleAndColor(
-      views::style::STYLE_BODY_3_MEDIUM, kColorPageInfoForeground);
-  merchant_trust_button->SetProperty(views::kElementIdentifierKey,
-                                     kMerchantTrustElementId);
-
-  auto* star_rating_view =
-      merchant_trust_button->SetCustomView(std::make_unique<StarRatingView>());
-  star_rating_view->SetRating(value.star_rating);
-  merchant_trust_button->GetViewAccessibility().SetName(
-      base::i18n::MessageFormatter::FormatWithNumberedArgs(
-          l10n_util::GetStringUTF16(
-              IDS_PAGE_INFO_MERCHANT_TRUST_STAR_RATING_A11Y_DESCRIPTION),
-          value.star_rating));
-  return merchant_trust_button;
-}
-
-std::unique_ptr<RichHoverButton>
-PageInfoMainView::CreateMerchantTrustSubpageButton(
-    page_info::MerchantData value) {
-  auto button = std::make_unique<RichHoverButton>(
-      base::BindRepeating(&PageInfoNavigationHandler::OpenMerchantTrustPage,
-                          base::Unretained(navigation_handler_)),
-      PageInfoViewFactory::GetImageModel(
-          features::IsRoundedIconsEnabled() ? vector_icons::kStorefrontIcon
-                                            : vector_icons::kStorefrontOldIcon),
-      l10n_util::GetStringUTF16(IDS_PAGE_INFO_MERCHANT_TRUST_HEADER),
-      std::u16string(), PageInfoViewFactory::GetOpenSubpageIcon());
-
-  return button;
-}
-
-std::unique_ptr<RichHoverButton>
-PageInfoMainView::CreateMerchantTrustLaunchButton(GURL page_url) {
-  auto button = std::make_unique<RichHoverButton>(
-      base::BindRepeating(&PageInfoMainView::OpenMerchantTrustSidePanel,
-                          weak_factory_.GetWeakPtr(), page_url),
-      PageInfoViewFactory::GetImageModel(
-          features::IsRoundedIconsEnabled() ? vector_icons::kStorefrontIcon
-                                            : vector_icons::kStorefrontOldIcon),
-      l10n_util::GetStringUTF16(IDS_PAGE_INFO_MERCHANT_TRUST_HEADER),
-      std::u16string(), PageInfoViewFactory::GetLaunchIcon());
-  return button;
-}
-
-void PageInfoMainView::OpenMerchantTrustSidePanel(const GURL& url) {
-  ui_delegate_->OpenMerchantTrustSidePanel(url);
-  ui_delegate_->RecordMerchantTrustSidePanelOpened();
 }
 
 std::unique_ptr<views::View> PageInfoMainView::CreateSuspiciousSiteBannerView(

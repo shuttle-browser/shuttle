@@ -30,8 +30,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/memory_usage_estimator.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/history/core/browser/history_database.h"
 #include "components/history/core/browser/history_db_task.h"
 #include "components/history/core/browser/history_service.h"
@@ -134,7 +132,6 @@ ScoredHistoryMatches URLIndexPrivateData::HistoryItemsForTerms(
     std::u16string original_search_string,
     size_t cursor_position,
     size_t max_matches,
-    bookmarks::BookmarkModel* bookmark_model,
     TemplateURLService* template_url_service,
     OmniboxTriggeredFeatureService* triggered_feature_service) {
   CHECK(sequence_checker_.CalledOnValidSequence(), base::NotFatalUntil::M149);
@@ -202,8 +199,8 @@ ScoredHistoryMatches URLIndexPrivateData::HistoryItemsForTerms(
     history_ids_were_trimmed |= TrimHistoryIdsPool(&history_ids);
 
     HistoryIdsToScoredMatches(std::move(history_ids), lower_raw_string,
-                              template_url_service, bookmark_model,
-                              &scored_items, triggered_feature_service);
+                              template_url_service, &scored_items,
+                              triggered_feature_service);
   }
   // Select and sort only the top |max_matches| results.
   if (scored_items.size() > max_matches) {
@@ -660,7 +657,6 @@ void URLIndexPrivateData::HistoryIdsToScoredMatches(
     HistoryIDVector history_ids,
     const std::u16string& lower_raw_string,
     const TemplateURLService* template_url_service,
-    bookmarks::BookmarkModel* bookmark_model,
     ScoredHistoryMatches* scored_items,
     OmniboxTriggeredFeatureService* triggered_feature_service) const {
   if (history_ids.empty())
@@ -719,8 +715,7 @@ void URLIndexPrivateData::HistoryIdsToScoredMatches(
     ScoredHistoryMatch new_scored_match(
         hist_item, hist_pos->second.visits, lower_raw_string, lower_raw_terms,
         lower_terms_to_word_starts_offsets, starts_pos->second,
-        bookmark_model && bookmark_model->IsBookmarked(hist_item.url()),
-        num_unique_hosts, now);
+        /*is_url_bookmarked=*/false, num_unique_hosts, now);
 
     // Filter new matches that ended up scoring 0. (These are usually matches
     // which didn't match the user's raw terms.)

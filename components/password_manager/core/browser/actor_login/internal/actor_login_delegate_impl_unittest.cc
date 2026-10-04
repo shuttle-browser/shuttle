@@ -392,7 +392,7 @@ TEST_F(ActorLoginDelegateImplTest, GetCredentialsLogsDomainAndLanguage) {
   SetUpGetCredentialsDeps();
   EXPECT_CALL(mock_form_cache_, GetFormManagers());
   EXPECT_CALL(*mqls_logger(),
-              SetDomainAndLanguage(_, Eq(GURL("https://example.com/"))));
+              SetDomain(Eq(GURL("https://example.com/"))));
   delegate_->GetCredentials(/*has_sign_in_with_google_button=*/false,
                             mqls_logger(), base::DoNothing());
 }
@@ -479,7 +479,7 @@ TEST_F(ActorLoginDelegateImplTest, AttemptLoginLogsDomainAndLanguage) {
   EXPECT_CALL(mock_form_cache_, GetFormManagers());
 
   EXPECT_CALL(*mqls_logger(),
-              SetDomainAndLanguage(_, Eq(GURL("https://example.com/"))));
+              SetDomain(Eq(GURL("https://example.com/"))));
   delegate_->AttemptLogin(
       credential, false, mqls_logger(), base::TimeTicks::Now(),
       /*frame_filling_started_cb=*/base::DoNothing(), base::DoNothing(),

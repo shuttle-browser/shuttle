@@ -4,19 +4,10 @@
 
 #include "chrome/browser/accessibility/live_caption/live_translate_controller_factory.h"
 
-#include "base/feature_list.h"
 #include "base/no_destructor.h"
-#include "chrome/browser/on_device_translation/service_controller_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/live_caption/features.h"
 #include "components/live_caption/google_api_translation_dispatcher.h"
 #include "components/live_caption/live_translate_controller.h"
-#include "components/live_caption/translation_dispatcher_on_device.h"
-#include "components/on_device_translation/buildflags/buildflags.h"
-#include "components/on_device_translation/installer.h"
-#include "components/on_device_translation/service/service_launcher.h"
-#include "components/on_device_translation/service_controller.h"
-#include "components/on_device_translation/service_controller_manager.h"
 #include "google_apis/google_api_keys.h"
 
 namespace captions {
@@ -59,28 +50,12 @@ std::unique_ptr<KeyedService>
 LiveTranslateControllerFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
-  std::unique_ptr<TranslationDispatcher> on_device_dispatcher;
-  std::unique_ptr<TranslationDispatcher> google_api_dispatcher;
-
-  // Only set on_device_dispatcher if feature flag is set and installer is
-  // available.
-  if (base::FeatureList::IsEnabled(
-          live_caption::kLiveCaptionOnDeviceTranslation) &&
-      on_device_translation::OnDeviceTranslationInstaller::GetInstance()) {
-    on_device_dispatcher = std::make_unique<TranslationDispatcherOnDevice>(
-        std::make_unique<
-            on_device_translation::OnDeviceTranslationServiceController>(
-            on_device_translation::CreateOnDeviceTranslationServiceLauncher(),
-            /*service_display_name_suffix=*/"",
-            on_device_translation::OnDeviceTranslationInstaller::
-                GetInstance()));
-  }
-  google_api_dispatcher = std::make_unique<GoogleApiTranslationDispatcher>(
-      google_apis::GetAPIKey(), context);
-
+  // On-device translation has been removed; only the Google API dispatcher
+  // remains.
   return std::make_unique<LiveTranslateController>(
-      profile->GetPrefs(), std::move(on_device_dispatcher),
-      std::move(google_api_dispatcher));
+      profile->GetPrefs(), /*translation_dispatcher=*/nullptr,
+      std::make_unique<GoogleApiTranslationDispatcher>(google_apis::GetAPIKey(),
+                                                       context));
 }
 
 }  // namespace captions

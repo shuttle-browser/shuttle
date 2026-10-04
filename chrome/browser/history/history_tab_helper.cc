@@ -11,12 +11,10 @@
 #include "build/build_config.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_task.h"
-#include "chrome/browser/complex_tasks/task_tab_helper.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_host/chrome_navigation_ui_data.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "components/actor/core/task_id.h"
 #include "components/history/content/browser/history_context_helper.h"
 #include "components/history/core/browser/history_constants.h"
@@ -39,7 +37,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_string.h"
 #include "chrome/browser/android/background_tab_manager.h"
-#include "chrome/browser/feed/feed_service_factory.h"
 #include "chrome/browser/flags/android/chrome_session_state.h"
 #include "chrome/browser/history/jni_headers/HistoryTabHelper_jni.h"
 #include "chrome/browser/ui/android/tab_model/tab_model.h"
@@ -208,13 +205,7 @@ ConvertSessionsPasswordStateToHistory(
 
 HistoryTabHelper::HistoryTabHelper(WebContents* web_contents)
     : content::WebContentsObserver(web_contents),
-      content::WebContentsUserData<HistoryTabHelper>(*web_contents) {
-  // A translate client is not always attached to web contents (e.g. tests).
-  if (ChromeTranslateClient* translate_client =
-          ChromeTranslateClient::FromWebContents(web_contents)) {
-    translate_observation_.Observe(translate_client->GetTranslateDriver());
-  }
-}
+      content::WebContentsUserData<HistoryTabHelper>(*web_contents) {}
 
 HistoryTabHelper::~HistoryTabHelper() {
   if (history_service_) {
@@ -297,17 +288,6 @@ history::HistoryAddPageArgs HistoryTabHelper::CreateHistoryAddPageArgs(
       sessions::SessionTabHelper::IdForWindowContainingTab(web_contents());
   context_annotations.tab_id =
       sessions::SessionTabHelper::IdForTab(web_contents());
-
-  // Note: We can't use TaskTabHelper::get_task_id_for_navigation() here - that
-  // wants the ID of a NavigationEntry, but we have a NavigationHandle which has
-  // a different ID.
-  const sessions::NavigationTaskId* nav_task_id =
-      tasks::TaskTabHelper::GetCurrentTaskId(web_contents());
-  if (nav_task_id) {
-    context_annotations.task_id = nav_task_id->id();
-    context_annotations.root_task_id = nav_task_id->root_id();
-    context_annotations.parent_task_id = nav_task_id->parent_id();
-  }
 
   context_annotations.response_code = http_response_code;
 
@@ -603,20 +583,6 @@ void HistoryTabHelper::DidOpenRequestedURL(
   new_history_tab_helper->opener_web_contents_ = web_contents()->GetWeakPtr();
 }
 
-void HistoryTabHelper::OnLanguageDetermined(
-    const translate::LanguageDetectionDetails& details) {
-  if (history::HistoryService* hs = GetHistoryService()) {
-    NavigationEntry* entry =
-        web_contents()->GetController().GetLastCommittedEntry();
-    if (entry) {
-      hs->SetPageLanguageForVisit(
-          history::ContextIDForWebContents(web_contents()),
-          entry->GetUniqueID(), web_contents()->GetLastCommittedURL(),
-          details.adopted_language);
-    }
-  }
-}
-
 void HistoryTabHelper::TitleWasSet(NavigationEntry* entry) {
   if (!entry) {
     return;
@@ -653,8 +619,6 @@ history::HistoryService* HistoryTabHelper::GetHistoryService() {
 }
 
 void HistoryTabHelper::WebContentsDestroyed() {
-  translate_observation_.Reset();
-
   history::HistoryService* history_service = GetHistoryService();
   if (!history_service) {
     return;

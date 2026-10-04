@@ -10,7 +10,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "build/build_config.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/flag_descriptions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_model.h"
@@ -20,7 +19,6 @@
 #include "components/user_education/common/new_badge/new_badge_controller.h"
 #include "components/user_education/views/new_badge_label.h"
 #include "components/webui/flags/feature_entry.h"
-#include "extensions/browser/api/feedback_private/feedback_private_api.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/combobox_model.h"
@@ -34,24 +32,6 @@
 #include "ui/views/layout/flex_layout_view.h"
 #include "ui/views/layout/layout_provider.h"
 #include "ui/views/metadata/view_factory.h"
-
-namespace {
-
-void ShowFeedbackPage(BrowserWindowInterface* browser,
-                      std::string feedback_category_name,
-                      std::u16string visible_name) {
-  chrome::ShowFeedbackPage(
-      browser, feedback::FeedbackSource::kFeedbackSourceChromeLabs,
-      /*description_template=*/std::string(),
-      /*description_placeholder_text=*/
-      l10n_util::GetStringFUTF8(
-          IDS_CHROMELABS_SEND_FEEDBACK_DESCRIPTION_PLACEHOLDER,
-          std::move(visible_name)),
-      /*category_tag=*/std::move(feedback_category_name),
-      /* extra_diagnostics=*/std::string());
-}
-
-}  // namespace
 
 class LabsComboboxModel : public ui::ComboboxModel {
  public:
@@ -205,35 +185,7 @@ ChromeLabsItemView::ChromeLabsItemView(
                                    views::MinimumFlexSizeRule::kScaleToZero,
                                    views::MaximumFlexSizeRule::kPreferred))
 
-                  .SetSizeToLargestLabel(false),
-              views::Builder<views::MdTextButton>()
-                  .CopyAddressTo(&feedback_button_)
-                  .SetTooltipText(l10n_util::GetStringFUTF16(
-                      IDS_TOOLTIP_CHROMELABS_FEEDBACK_BUTTON, lab.visible_name))
-                  .SetCallback(base::BindRepeating(&ShowFeedbackPage, browser,
-                                                   lab.feedback_category_name,
-                                                   lab.visible_name))
-                  .SetText(
-                      l10n_util::GetStringUTF16(IDS_CHROMELABS_SEND_FEEDBACK))
-                  .SetProperty(
-                      views::kMarginsKey,
-                      gfx::Insets::TLBR(
-                          0,
-                          views::LayoutProvider::Get()->GetDistanceMetric(
-                              views::DISTANCE_RELATED_CONTROL_HORIZONTAL),
-                          0, 0))
-                  .SetProperty(
-                      views::kFlexBehaviorKey,
-                      // FlexSpecification has multiple constructors, and if no
-                      // direction is specified, the settings will be used in
-                      // both horizontal and vertical directions. Therefore, we
-                      // must specify the horizontal direction. Otherwise, the
-                      // vertical height will be stretched.
-                      views::FlexSpecification(
-                          views::LayoutOrientation::kHorizontal,
-                          views::MinimumFlexSizeRule::kPreferred,
-                          views::MaximumFlexSizeRule::kUnbounded)
-                          .WithAlignment(views::LayoutAlignment::kEnd)))
+                  .SetSizeToLargestLabel(false))
           .Build());
 }
 

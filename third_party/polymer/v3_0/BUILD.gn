@@ -119,8 +119,6 @@ ts_library("library") {
     # with //ui/webui/PLATFORM_OWNERS or g/chrome-webui if you think there is a
     # strong reason to use Polymer.
 
-    "//chrome/browser/resources/lens/overlay:build_ts",
-    "//chrome/browser/resources/lens/shared:build_ts",
     "//chrome/browser/resources/password_manager:build_ts",
     "//chrome/browser/resources/settings:build_ts",
     "//chrome/browser/resources/settings_shared:build_ts",

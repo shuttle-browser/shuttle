@@ -7,7 +7,6 @@
 
 #include <memory>
 
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/permissions/content_setting_permission_context_base.h"
 #include "components/permissions/permission_request_data.h"
 

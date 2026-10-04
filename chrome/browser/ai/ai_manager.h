@@ -194,10 +194,6 @@ class AIManager : public base::SupportsUserData::Data,
   // switch.
   void StartModelPathValidationIfOverrideSet();
 
-  void OnSemanticEmbedderModelReady(
-      mojo::PendingRemote<blink::mojom::AIManagerCreateSemanticEmbedderClient>
-          client);
-
   // Creates an `AILanguageModel`, as a new session. Clones are created
   // internally within the `AILanguageModel` object.
   void CreateLanguageModelInternal(

@@ -70,9 +70,6 @@ static_library("renderer") {
   if (enable_printing) {
     deps += [ "//components/printing/renderer" ]
   }
-  if (enable_screen_ai_service) {
-    deps += [ "//services/screen_ai/public/mojom" ]
-  }
 }
 
 source_set("unit_tests") {

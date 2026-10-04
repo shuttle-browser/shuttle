@@ -15,7 +15,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "base/base64url.h"
 #include "base/check_is_test.h"
 #include "base/check_op.h"
 #include "base/debug/crash_logging.h"
@@ -30,10 +29,6 @@
 #include "base/time/time.h"
 #include "components/country_codes/country_codes.h"
 #include "components/google/core/common/google_util.h"
-#include "components/lens/lens_features.h"
-#include "components/lens/lens_overlay_invocation_source.h"
-#include "components/lens/lens_overlay_mime_type.h"
-#include "components/lens/lens_url_utils.h"
 #include "components/prefs/pref_service.h"
 #include "components/regional_capabilities/regional_capabilities_switches.h"
 #include "components/regional_capabilities/regional_capabilities_utils.h"
@@ -50,18 +45,12 @@
 #include "components/search_engines/template_url_starter_pack_data.h"
 #include "components/url_formatter/url_fixer.h"
 #include "net/base/url_util.h"
-#include "third_party/lens_server_proto/lens_overlay_contextual_inputs.pb.h"
-#include "third_party/lens_server_proto/lens_overlay_request_id.pb.h"
 #include "third_party/search_engines_data/resources/definitions/prepopulated_engines.h"
 
 namespace {
 
 using ::TemplateURLPrepopulateData::PrepopulatedEngine;
 
-constexpr char kContextualInputsParameterKey[] = "cinpts";
-constexpr char kSearchSessionIdParameterKey[] = "gsessionid";
-constexpr char kLnsSurfaceParameterKey[] = "lns_surface";
-constexpr char kVisualRequestIdQueryParameter[] = "vsrid";
 constexpr char kQuerySubmissionTimeQueryParameter[] = "qsubts";
 constexpr char kClientUploadDurationQueryParameter[] = "cud";
 constexpr char kAimUdmQueryParameterValue[] = "50";
@@ -152,13 +141,10 @@ GURL GetBaseSearchUrl(TemplateURLService* turl_service,
       result_url, kClientUploadDurationQueryParameter,
       base::NumberToString(
           (query_submission_time - query_start_time).InMilliseconds()));
-  if (base::FeatureList::IsEnabled(
-          lens::features::kLensSendQuerySubmissionTime)) {
-    result_url = net::AppendOrReplaceQueryParameter(
-        result_url, kQuerySubmissionTimeQueryParameter,
-        base::NumberToString(
-            query_submission_time.InMillisecondsSinceUnixEpoch()));
-  }
+  result_url = net::AppendOrReplaceQueryParameter(
+      result_url, kQuerySubmissionTimeQueryParameter,
+      base::NumberToString(
+          query_submission_time.InMillisecondsSinceUnixEpoch()));
   return result_url;
 }
 
@@ -1169,100 +1155,12 @@ bool IsAimZeroStateURL(const GURL& url) {
          !google_util::IsGoogleSearchUrl(url);
 }
 
-GURL GetUrlForAim(
-    TemplateURLService* turl_service,
-    omnibox::ChromeAimEntryPoint aim_entrypoint,
-    const base::Time& query_start_time,
-    const std::u16string& query_text,
-    const std::optional<lens::LensOverlayInvocationSource> invocation_source,
-    std::map<std::string, std::string> additional_params) {
-  GURL result_url = GetBaseSearchUrl(turl_service, aim_entrypoint,
-                                     /*is_aim_search=*/true, query_start_time,
-                                     query_text, additional_params);
-  if (invocation_source.has_value()) {
-    // If the invocation source is set, send the contextual tasks invocation
-    // source, as only the unmigrated LensOverlay flow, which uses a different
-    // code path for url generation, should be sending non contextual tasks
-    // invocation sources. This prevents non LensOverlay flows (i.e. the
-    // omnibox popup) from polluting the metrics for the existing LensOverlay
-    // feature.
-    result_url = lens::AppendInvocationSourceParamToURL(
-        result_url, *invocation_source, /*is_contextual_tasks=*/true);
-  }
-  return result_url;
-}
-
-GURL GetUrlForMultimodalSearch(
-    TemplateURLService* turl_service,
-    bool is_aim_search,
-    omnibox::ChromeAimEntryPoint aim_entrypoint,
-    const base::Time& query_start_time,
-    const std::string& search_session_id,
-    const std::unique_ptr<lens::LensOverlayRequestId> request_id,
-    const std::optional<lens::LensOverlayInvocationSource> invocation_source,
-    const std::string& lns_surface,
-    const std::u16string& query_text,
-    std::map<std::string, std::string> additional_params) {
-  GURL result_url =
-      GetBaseSearchUrl(turl_service, aim_entrypoint, is_aim_search,
-                       query_start_time, query_text, additional_params);
-  if (request_id) {
-    std::string serialized_request_id;
-    CHECK(request_id->SerializeToString(&serialized_request_id));
-    std::string encoded_request_id;
-    base::Base64UrlEncode(serialized_request_id,
-                          base::Base64UrlEncodePolicy::OMIT_PADDING,
-                          &encoded_request_id);
-    result_url = net::AppendOrReplaceQueryParameter(
-        result_url, kVisualRequestIdQueryParameter, encoded_request_id);
-  }
-
-  if (invocation_source.has_value()) {
-    // If the invocation source is set, this is a Lens query that is migrated
-    // to the common ContextualSearchSessionHandle, which is only used for the
-    // contextual tasks flow.
-    result_url = lens::AppendInvocationSourceParamToURL(
-        result_url, *invocation_source, /*is_contextual_tasks=*/true);
-  }
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kSearchSessionIdParameterKey, search_session_id);
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kLnsSurfaceParameterKey, lns_surface);
-  return result_url;
-}
-
-GURL GetUrlForMultimodalSearch(
-    TemplateURLService* turl_service,
-    bool is_aim_search,
-    omnibox::ChromeAimEntryPoint aim_entrypoint,
-    const base::Time& query_start_time,
-    const std::string& search_session_id,
-    const std::unique_ptr<lens::LensOverlayContextualInputs> contextual_inputs,
-    const std::optional<lens::LensOverlayInvocationSource> invocation_source,
-    const std::string& lns_surface,
-    const std::u16string& query_text,
-    std::map<std::string, std::string> additional_params) {
-  GURL result_url =
-      GetBaseSearchUrl(turl_service, aim_entrypoint, is_aim_search,
-                       query_start_time, query_text, additional_params);
-  std::string serialized_contextual_inputs;
-  CHECK(contextual_inputs->SerializeToString(&serialized_contextual_inputs));
-  std::string encoded_contextual_inputs;
-  base::Base64UrlEncode(serialized_contextual_inputs,
-                        base::Base64UrlEncodePolicy::OMIT_PADDING,
-                        &encoded_contextual_inputs);
-  if (invocation_source.has_value()) {
-    // If the invocation source is set, this is a Lens query that is migrated
-    // to the common ContextualSearchSessionHandle, which is only used for the
-    // contextual tasks flow.
-    result_url = lens::AppendInvocationSourceParamToURL(
-        result_url, *invocation_source, /*is_contextual_tasks=*/true);
-  }
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kContextualInputsParameterKey, encoded_contextual_inputs);
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kSearchSessionIdParameterKey, search_session_id);
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kLnsSurfaceParameterKey, lns_surface);
-  return result_url;
+GURL GetUrlForAim(TemplateURLService* turl_service,
+                  omnibox::ChromeAimEntryPoint aim_entrypoint,
+                  const base::Time& query_start_time,
+                  const std::u16string& query_text,
+                  std::map<std::string, std::string> additional_params) {
+  return GetBaseSearchUrl(turl_service, aim_entrypoint,
+                          /*is_aim_search=*/true, query_start_time, query_text,
+                          additional_params);
 }

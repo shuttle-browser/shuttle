@@ -16,7 +16,6 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/ui/webui/omnibox/omnibox_internals.mojom-shared.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/omnibox/browser/actions/omnibox_pedal.h"
 #include "components/omnibox/browser/autocomplete_controller.h"
 #include "components/omnibox/browser/autocomplete_match.h"
@@ -32,12 +31,8 @@ AutocompleteMatchWrapper::AutocompleteMatchWrapper() : wrapped_match_(nullptr) {
 }
 
 AutocompleteMatchWrapper::AutocompleteMatchWrapper(
-    bookmarks::BookmarkModel* bookmark_model,
     const ::AutocompleteMatch& match)
-    : wrapped_match_(&match),
-      starred_(bookmark_model
-                   ? bookmark_model->IsBookmarked(match.destination_url)
-                   : false) {}
+    : wrapped_match_(&match), starred_(false) {}
 
 namespace mojo {
 

@@ -4,6 +4,11 @@
 
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_utils.h"
 
+#include <map>
+#include <string>
+#include <string_view>
+
+#include "net/base/url_util.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
 
@@ -37,4 +42,19 @@ omnibox::ChromeAimEntryPoint PageClassificationToAimEntryPoint(
     default:
       return omnibox::UNKNOWN_AIM_ENTRY_POINT;
   }
+}
+
+std::map<std::string, std::string> GetParametersMapWithoutQuery(
+    const GURL& url) {
+  std::map<std::string, std::string> additional_query_parameters;
+  net::QueryIterator query_iterator(url);
+  while (!query_iterator.IsAtEnd()) {
+    std::string_view key = query_iterator.GetKey();
+    if (key != "q") {
+      additional_query_parameters.insert(std::make_pair(
+          query_iterator.GetKey(), query_iterator.GetUnescapedValue()));
+    }
+    query_iterator.Advance();
+  }
+  return additional_query_parameters;
 }

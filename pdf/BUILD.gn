@@ -68,10 +68,6 @@ if (enable_pdf) {
       "//services/screen_ai/buildflags",
       "//ui/gfx/geometry",
     ]
-
-    if (is_chromeos && enable_screen_ai_service) {
-      public_deps = [ ":pdf_progressive_searchifier" ]
-    }
   }
 
   source_set("features") {
@@ -303,39 +299,6 @@ if (enable_pdf) {
       deps += [ "//pdf/mojom" ]
     }
 
-    if (enable_screen_ai_service) {
-      sources += [
-        "pdfium/pdfium_on_demand_searchifier.cc",
-        "pdfium/pdfium_on_demand_searchifier.h",
-        "pdfium/pdfium_searchify.cc",
-        "pdfium/pdfium_searchify.h",
-        "pdfium/pdfium_searchify_font.cc",
-        "pdfium/pdfium_searchify_font.h",
-      ]
-
-      public_deps += [ "//services/screen_ai/public/mojom" ]
-      deps += [ "//services/screen_ai/public/cpp:utilities" ]
-
-      if (is_chromeos) {
-        sources += [
-          "pdfium/pdfium_progressive_searchifier.cc",
-          "pdfium/pdfium_progressive_searchifier.h",
-        ]
-
-        deps += [ ":pdf_progressive_searchifier" ]
-      }
-    }
-  }
-
-  if (is_chromeos && enable_screen_ai_service) {
-    source_set("pdf_progressive_searchifier") {
-      public = [ "pdf_progressive_searchifier.h" ]
-
-      public_deps = [
-        "//services/screen_ai/public/mojom",
-        "//skia",
-      ]
-    }
   }
 
   source_set("pdf_watermark_overlayer") {
@@ -624,13 +587,6 @@ if (enable_pdf) {
       ]
 
       data_deps += [ "//third_party/test_fonts" ]
-    }
-
-    if (enable_screen_ai_service) {
-      sources += [
-        "pdfium/pdfium_on_demand_searchifier_unittest.cc",
-        "pdfium/pdfium_searchify_unittest.cc",
-      ]
     }
 
     if (v8_use_external_startup_data) {

@@ -27,21 +27,9 @@ namespace system_permission_settings {
 class PlatformHandle;
 }  // namespace system_permission_settings
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-namespace whats_new {
-class WhatsNewRegistry;
-}  // namespace whats_new
 
-namespace default_browser {
-class DefaultBrowserManager;
-}  // namespace default_browser
 #endif
 
-namespace glic {
-class GlicBackgroundModeManager;
-class GlicGlobalEnabling;
-class GlicProfileManager;
-class GlicSyntheticTrialManager;
-}  // namespace glic
 
 namespace omnibox_everywhere {
 class OmniboxEverywhereController;
@@ -82,10 +70,6 @@ class UnexportableKeyObsoleteProfileGarbageCollector;
 namespace local_network_access {
 class IPAddressSpaceOverridesPrefsObserver;
 }  // namespace local_network_access
-
-namespace on_device_translation {
-class OnDeviceTranslationInstaller;
-}
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 namespace scheduled_restart {
@@ -163,34 +147,12 @@ class GlobalFeatures {
   system_permissions_platform_handle() {
     return system_permissions_platform_handle_.get();
   }
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  whats_new::WhatsNewRegistry* whats_new_registry() {
-    return whats_new_registry_.get();
-  }
-#endif
-
-  glic::GlicProfileManager* glic_profile_manager() {
-    return glic_profile_manager_.get();
-  }
-#if !BUILDFLAG(IS_ANDROID)
-  glic::GlicBackgroundModeManager* glic_background_mode_manager() {
-    return glic_background_mode_manager_.get();
-  }
-#endif
 #if !BUILDFLAG(IS_ANDROID)
   omnibox_everywhere::OmniboxEverywhereController*
   omnibox_everywhere_controller() {
     return omnibox_everywhere_controller_.get();
   }
 #endif
-
-  glic::GlicSyntheticTrialManager* glic_synthetic_trial_manager() {
-    return synthetic_trial_manager_.get();
-  }
-
-  glic::GlicGlobalEnabling& glic_global_enabling() {
-    return *glic_global_enabling_.get();
-  }
 
   ApplicationLocaleStorage* application_locale_storage() {
     return application_locale_storage_.get();
@@ -257,9 +219,6 @@ class GlobalFeatures {
 
   virtual std::unique_ptr<system_permission_settings::PlatformHandle>
   CreateSystemPermissionsPlatformHandle();
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  virtual std::unique_ptr<whats_new::WhatsNewRegistry> CreateWhatsNewRegistry();
-#endif
   virtual std::unique_ptr<GlobalBrowserCollection>
   CreateGlobalBrowserCollection();
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -281,23 +240,10 @@ class GlobalFeatures {
 
   std::unique_ptr<system_permission_settings::PlatformHandle>
       system_permissions_platform_handle_;
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  std::unique_ptr<whats_new::WhatsNewRegistry> whats_new_registry_;
-
-  std::unique_ptr<default_browser::DefaultBrowserManager>
-      default_browser_manager_;
-#endif
-
-  std::unique_ptr<glic::GlicGlobalEnabling> glic_global_enabling_;
-  std::unique_ptr<glic::GlicProfileManager> glic_profile_manager_;
 #if !BUILDFLAG(IS_ANDROID)
-  std::unique_ptr<glic::GlicBackgroundModeManager>
-      glic_background_mode_manager_;
   std::unique_ptr<omnibox_everywhere::OmniboxEverywhereController>
       omnibox_everywhere_controller_;
 #endif
-  std::unique_ptr<glic::GlicSyntheticTrialManager> synthetic_trial_manager_;
-
   std::unique_ptr<ApplicationLocaleStorage> application_locale_storage_;
 
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -333,9 +279,6 @@ class GlobalFeatures {
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 
 #if !BUILDFLAG(IS_ANDROID)
-  std::unique_ptr<on_device_translation::OnDeviceTranslationInstaller>
-      on_device_translation_installer_;
-
   std::unique_ptr<ProfileLaunchObserver> profile_launch_observer_;
 
   std::unique_ptr<smart_restart::SmartRestartMetricsObserver>

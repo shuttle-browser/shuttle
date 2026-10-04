@@ -15,7 +15,6 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/importer/importer_progress_observer.h"
 #include "chrome/browser/importer/profile_writer.h"
-#include "components/bookmarks/browser/base_bookmark_model_observer.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/user_data_importer/common/importer_data_types.h"
 #include "ui/gfx/native_ui_types.h"
@@ -24,18 +23,13 @@ class ExternalProcessImporterClient;
 class FirefoxProfileLock;
 class Profile;
 
-namespace bookmarks {
-class BookmarkModel;
-}  // namespace bookmarks
-
 namespace user_data_importer {
 struct SourceProfile;
 }  // namespace user_data_importer
 
 // This class manages the import process. It creates the in-process half of the
 // importer bridge and the external process importer client.
-class ExternalProcessImporterHost
-    : public bookmarks::BaseBookmarkModelObserver {
+class ExternalProcessImporterHost {
  public:
   ExternalProcessImporterHost();
 
@@ -83,18 +77,13 @@ class ExternalProcessImporterHost
 
  private:
   // ExternalProcessImporterHost deletes itself in OnImportEnded().
-  ~ExternalProcessImporterHost() override;
+  virtual ~ExternalProcessImporterHost();
 
   // Launches the utility process that starts the import task, unless bookmark
   // or template model are not yet loaded. If load is not detected, this method
   // will be called when the loading observer sees that model loading is
   // complete.
   virtual void LaunchImportIfReady();
-
-  // bookmarks::BaseBookmarkModelObserver:
-  void BookmarkModelLoaded(bool ids_reassigned) override;
-  void BookmarkModelBeingDeleted() override;
-  void BookmarkModelChanged() override;
 
   // Called when TemplateURLService has been loaded.
   void OnTemplateURLServiceLoaded();
@@ -137,12 +126,6 @@ class ExternalProcessImporterHost
 
   // Profile we're importing from.
   raw_ptr<Profile> profile_;
-
-  // Set if we're waiting for the model to finish loading, and represents
-  // the BookmarkModel instance we are waiting for.
-  base::ScopedObservation<bookmarks::BookmarkModel,
-                          bookmarks::BaseBookmarkModelObserver>
-      bookmark_model_observation_for_loading_{this};
 
   // Non-empty when waiting for the TemplateURLService to finish loading.
   base::CallbackListSubscription template_service_subscription_;

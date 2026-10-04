@@ -18,7 +18,6 @@
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/sync/base/features.h"
-#include "components/sync_bookmarks/constants.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "url/gurl.h"
 
@@ -38,6 +37,10 @@
 #endif
 
 namespace {
+
+// Bookmark sync is not part of this build; this is the former sync bookmarks
+// limit, only used to format the "too many bookmarks" prompt body.
+constexpr size_t kSyncBookmarksLimit = 100000;
 
 constexpr int kIconSize = extension_misc::EXTENSION_ICON_SMALLISH;
 
@@ -93,7 +96,7 @@ std::string ComputeDialogSubtitle(
     case ChromeSignoutConfirmationPromptVariant::kTooManyBookmarks:
       return l10n_util::GetStringFUTF8(
           IDS_CHROME_SIGNOUT_CONFIRMATION_PROMPT_TOO_MANY_BOOKMARKS_BODY,
-          base::FormatNumber(sync_bookmarks::kSyncBookmarksLimit));
+          base::FormatNumber(kSyncBookmarksLimit));
     default:
       NOTREACHED();
   }

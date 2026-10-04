@@ -48,14 +48,10 @@
 #include "components/autofill/core/browser/foundations/autofill_driver.h"
 #include "components/autofill/core/browser/foundations/autofill_driver_factory.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_import_util.h"
-#include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_wallet_util.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_logger.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h"
-#include "components/autofill/core/browser/integrators/autofill_ai/metrics/personal_context_metrics.h"
 #include "components/autofill/core/browser/logging/log_manager.h"
 #include "components/autofill/core/browser/ml_model/autofill_ai/autofill_ai_model_executor.h"
-#include "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager.h"
-#include "components/autofill/core/browser/network/autofill_ai/wallet_pass_access_manager.h"
 #include "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_util.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_save_strike_database_by_attribute.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_save_strike_database_by_host.h"
@@ -74,8 +70,6 @@
 #include "components/autofill/core/common/logging/log_macros.h"
 #include "components/autofill/core/common/signatures.h"
 #include "components/autofill/core/common/unique_ids.h"
-#include "components/consent_auditor/consent_auditor.h"
-#include "components/wallet/core/common/wallet_features.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 
@@ -172,32 +166,6 @@ bool IsSaveAsynchronous(EntityType type,
          EntityInstance::WalletPassType::kPrivate;
 }
 
-void PrefetchAmbientAutofillContext(AutofillClient& client,
-                                    AutofillManager& manager) {
-  DenseSet<EntityType> types;
-  manager.ForEachCachedForm([&](const FormStructure& form) {
-    types.insert_all(GetRelevantEntityTypesForFields(form.fields()));
-  });
-
-  // Filter for allowed types in a separate pass to avoid redundant
-  // `MayPerformAutofillAiAction` calls.
-  for (EntityType type : types) {
-    if (!MayPerformAutofillAiAction(
-            client, AutofillAiAction::kTypeSupportsAmbientAutofillData, type)) {
-      types.erase(type);
-    }
-  }
-
-  if (types.empty()) {
-    return;
-  }
-
-  if (AutofillAiPersonalContextAccessManager* access_manager =
-          client.GetAutofillAiPersonalContextAccessManager()) {
-    access_manager->PrefetchContext(types);
-  }
-}
-
 }  // namespace
 
 AutofillAiManager::EntityImportPromptCandidate::EntityImportPromptCandidate(
@@ -234,16 +202,6 @@ AutofillAiManager::AutofillAiManager(
         std::make_unique<AutofillAiSaveStrikeDatabaseByHost>(strike_database);
     update_strike_db_ =
         std::make_unique<AutofillAiUpdateStrikeDatabase>(strike_database);
-  }
-  if (base::FeatureList::IsEnabled(features::kAutofillAmbientAutofill)) {
-    autofill_managers_observation_.Observe(
-        client, ScopedAutofillManagersObservation::InitializationPolicy::
-                    kObservePreexistingManagers);
-  }
-  if (AutofillAiPersonalContextAccessManager* access_manager =
-          client_->GetAutofillAiPersonalContextAccessManager()) {
-    autofill_ai_personal_context_access_manager_observation_.Observe(
-        access_manager);
   }
 }
 
@@ -329,22 +287,6 @@ void AutofillAiManager::OnFormInteracted(const FormStructure& form,
       last_logged_ukm_source_id_for_interaction_ = ukm_source_id;
     }
   }
-
-  if (last_logged_ukm_source_id_for_cache_readiness_ != ukm_source_id) {
-    if (std::optional<EntityType> supported_type =
-            GetSupportedEntityTypeForField(form, field)) {
-      AutofillAiPersonalContextAccessManager* access_manager =
-          client_->GetAutofillAiPersonalContextAccessManager();
-      if (access_manager) {
-        LogPersonalContextCacheReadinessOnFirstInteraction(
-            *supported_type,
-            GetCacheReadinessState(*access_manager,
-                                   client_->GetEntityDataManager(),
-                                   *supported_type));
-        last_logged_ukm_source_id_for_cache_readiness_ = ukm_source_id;
-      }
-    }
-  }
 }
 
 std::optional<EntityType> AutofillAiManager::GetSupportedEntityTypeForField(
@@ -395,33 +337,6 @@ void AutofillAiManager::OnEditedAutofilledField(const FormStructure& form,
                                                 const AutofillField& field,
                                                 ukm::SourceId ukm_source_id) {
   logger_.OnEditedAutofilledField(form, field, ukm_source_id);
-}
-
-void AutofillAiManager::OnAfterLoadedServerPredictions(
-    AutofillManager& manager,
-    base::span<const FormGlobalId> forms) {
-  if (MayPerformAutofillAiAction(*client_,
-                                 AutofillAiAction::kAmbientAutofill)) {
-    PrefetchAmbientAutofillContext(*client_, manager);
-  }
-}
-
-void AutofillAiManager::OnPrefetchContextComplete(
-    const AutofillAiPersonalContextAccessManager& manager,
-    std::optional<base::span<const EntityInstance>> entities) {
-  if (!std::ranges::contains(client_->GetAutofillSuggestions(),
-                             SuggestionType::kFetchingAmbientData,
-                             &Suggestion::type)) {
-    return;
-  }
-
-  if (!entities.has_value()) {
-    client_->ShowAutofillAiPreFetchFailureNotification();
-  }
-
-  if (generate_suggestions_and_update_popup_callback_) {
-    generate_suggestions_and_update_popup_callback_.Run();
-  }
 }
 
 void AutofillAiManager::UpdateLoggerReadinessData(const FormStructure& form) {
@@ -535,58 +450,13 @@ void AutofillAiManager::HandlePromptResult(
     return;
   }
 
-  // Wallet import eligibility can change while the import bubble is visible
-  // (e.g., if the user disables Payments Sync in the settings). If the entity
-  // is no longer eligible by the time the user clicks "Accept", we abort the
-  // Wallet save.
-  if (entity.record_type() == EntityInstance::RecordType::kServerWallet &&
-      !MayPerformAutofillAiAction(*client_, AutofillAiAction::kImportToWallet,
-                                  entity.type())) {
+  // Saving to Wallet is not supported in this fork: fall back to a local save.
+  if (entity.record_type() == EntityInstance::RecordType::kServerWallet) {
     HandleIneligibleWalletFallback(prompt_type, std::move(entity));
     return;
   }
 
-  if (!IsSaveAsynchronous(entity.type(), entity.record_type())) {
-    entity_manager.AddOrUpdateEntityInstance(std::move(entity));
-    return;
-  }
-
-  // PersonalContext entities do not support saving,
-  // thus the record type must be `kServerWallet`.
-  CHECK_EQ(entity.record_type(), EntityInstance::RecordType::kServerWallet);
-
-  base::OnceCallback<void(std::optional<EntityInstance>)> callback =
-      base::BindOnce(&HandleWalletUpsertResponse,
-                     client_->GetEntityDataManager()->GetWeakPtr(),
-                     client_->GetWeakPtr(), prompt_type, entity);
-
-  if (WalletPassAccessManager* wallet_manager =
-          client_->GetWalletPassAccessManager()) {
-    switch (prompt_type) {
-      case AutofillClient::AutofillAiImportPromptType::kSave:
-      case AutofillClient::AutofillAiImportPromptType::kMigrate: {
-        consent_auditor::ConsentAuditor::SessionId session_id;
-        // When the feature flag is disabled, `SaveWalletEntityInstance()`
-        // doesn't require a valid `session_id`.
-        if (base::FeatureList::IsEnabled(
-                wallet::features::kWalletApiPrivatePassesConsent)) {
-          CHECK(ui_context.accepted_consent_string_id.has_value());
-          CHECK(ui_context.accept_button_string_id.has_value());
-          session_id = RecordWalletPrivatePassConsent(
-              ui_context.accepted_consent_string_id.value(),
-              ui_context.accept_button_string_id.value(),
-              *client_->GetConsentAuditor(), *client_->GetIdentityManager());
-        }
-        wallet_manager->SaveWalletEntityInstance(entity, session_id,
-                                                 std::move(callback));
-        break;
-      }
-      case AutofillClient::AutofillAiImportPromptType::kUpdate: {
-        wallet_manager->UpdateWalletEntityInstance(entity, std::move(callback));
-        break;
-      }
-    }
-  }
+  entity_manager.AddOrUpdateEntityInstance(std::move(entity));
 }
 
 void AutofillAiManager::HandleIneligibleWalletFallback(

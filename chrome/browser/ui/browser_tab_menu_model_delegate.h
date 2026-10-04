@@ -14,9 +14,6 @@
 class BrowserWindowInterface;
 class Profile;
 
-namespace web_app {
-class AppBrowserController;
-}
 
 namespace chrome {
 
@@ -27,7 +24,6 @@ class BrowserTabMenuModelDelegate : public TabMenuModelDelegate {
   BrowserTabMenuModelDelegate(
       SessionID session_id,
       const Profile* profile,
-      const web_app::AppBrowserController* app_controller,
       tab_groups::TabGroupSyncService* tgss,
       ui::UnownedUserDataHost& host);
   ~BrowserTabMenuModelDelegate() override;
@@ -44,7 +40,6 @@ class BrowserTabMenuModelDelegate : public TabMenuModelDelegate {
 
   const SessionID session_id_;
   const raw_ptr<const Profile> profile_;
-  const raw_ptr<const web_app::AppBrowserController> app_controller_;
   raw_ptr<tab_groups::TabGroupSyncService> tab_group_sync_service_ = nullptr;
 };
 

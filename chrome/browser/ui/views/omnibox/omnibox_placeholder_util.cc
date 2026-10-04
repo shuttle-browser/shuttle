@@ -17,7 +17,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/contextual_tasks/public/features.h"
 #include "components/omnibox/browser/omnibox_pref_names.h"
 #include "components/search/search.h"
 #include "components/search_engines/ai_mode_button_service.h"
@@ -217,29 +216,7 @@ bool IsAimPlaceholderText(LocationBar* location_bar, std::u16string_view text) {
 }
 
 bool ShouldInstallContextualTasksPlaceholderText(LocationBar* location_bar) {
-  if (!location_bar) {
-    return false;
-  }
-
-  content::WebContents* web_contents = location_bar->GetWebContents();
-  if (!web_contents) {
-    return false;
-  }
-
-  content::NavigationEntry* entry =
-      web_contents->GetController().GetLastCommittedEntry();
-  if (!entry) {
-    return false;
-  }
-
-  // Check if the URL is under chrome://contextual-tasks and the contextual
-  // tasks feature is enabled.
-  const auto is_contextual_tasks = [](const GURL& url) {
-    return url.SchemeIs(content::kChromeUIScheme) &&
-           url.GetHost() == chrome::kChromeUIContextualTasksHost &&
-           base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks);
-  };
-  return is_contextual_tasks(entry->GetURL());
+  return false;
 }
 
 void RecordAimHintImpression(LocationBar* location_bar) {

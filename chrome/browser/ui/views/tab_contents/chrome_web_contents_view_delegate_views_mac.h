@@ -18,7 +18,6 @@
 
 class ChromeWebContentsViewFocusHelper;
 class RenderViewContextMenuBase;
-class WebDragBookmarkHandlerMac;
 
 namespace content {
 class RenderWidgetHostView;
@@ -48,7 +47,6 @@ class ChromeWebContentsViewDelegateViewsMac
   NSObject<RenderWidgetHostViewMacDelegate>* GetDelegateForHost(
       content::RenderWidgetHost* render_widget_host,
       bool is_popup) override;
-  content::WebDragDestDelegate* GetDragDestDelegate() override;
   void ShowContextMenu(content::RenderFrameHost& render_frame_host,
                        const content::ContextMenuParams& params) override;
   void StoreFocus() override;
@@ -94,9 +92,6 @@ class ChromeWebContentsViewDelegateViewsMac
 
   // The context menu. Callbacks are asynchronous so we need to keep it around.
   std::unique_ptr<RenderViewContextMenuBase> context_menu_;
-
-  // The chrome specific delegate that receives events from WebDragDestMac.
-  std::unique_ptr<WebDragBookmarkHandlerMac> bookmark_handler_;
 
   bool is_paste_enabled_ = false;
   bool is_paste_and_match_style_enabled_ = false;

@@ -187,18 +187,5 @@ bool PreviewModeClient::IsInAnnotationMode() const {
 }
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-void PreviewModeClient::OnSearchifyStateChange(bool busy) {
-  NOTREACHED();
-}
-
-void PreviewModeClient::OnHasSearchifyText() {
-  NOTREACHED();
-}
-
-void PreviewModeClient::MaybeShowSearchifyInProgress() {
-  NOTREACHED();
-}
-#endif
 
 }  // namespace chrome_pdf

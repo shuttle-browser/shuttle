@@ -75,13 +75,11 @@ InMemoryURLIndex::RebuildPrivateDataFromHistoryDBTask::
 
 // InMemoryURLIndex ------------------------------------------------------------
 
-InMemoryURLIndex::InMemoryURLIndex(bookmarks::BookmarkModel* bookmark_model,
-                                   history::HistoryService* history_service,
+InMemoryURLIndex::InMemoryURLIndex(history::HistoryService* history_service,
                                    TemplateURLService* template_url_service,
                                    const base::FilePath& history_dir,
                                    const SchemeSet& client_schemes_to_allowlist)
-    : bookmark_model_(bookmark_model),
-      history_service_(history_service),
+    : history_service_(history_service),
       template_url_service_(template_url_service),
       private_data_(new URLIndexPrivateData),
       task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
@@ -133,8 +131,8 @@ ScoredHistoryMatches InMemoryURLIndex::HistoryItemsForTerms(
     size_t max_matches,
     OmniboxTriggeredFeatureService* triggered_feature_service) {
   return private_data_->HistoryItemsForTerms(
-      term_string, cursor_position, max_matches, bookmark_model_,
-      template_url_service_, triggered_feature_service);
+      term_string, cursor_position, max_matches, template_url_service_,
+      triggered_feature_service);
 }
 
 // Updating --------------------------------------------------------------------

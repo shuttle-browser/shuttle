@@ -9,32 +9,22 @@
  */
 
 import 'chrome://resources/cr_elements/icons.html.js';
-import 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import 'chrome://resources/cr_elements/cr_collapse/cr_collapse.js';
 import 'chrome://resources/cr_elements/cr_expand_button/cr_expand_button.js';
 import 'chrome://resources/cr_elements/cr_link_row/cr_link_row.js';
 import 'chrome://resources/cr_elements/cr_shared_style.css.js';
-import '../controls/settings_toggle_button.js';
 import '../privacy_icons.html.js';
-import '../safety_hub/safety_hub_module.js';
 import '../settings_page/settings_subpage.js';
 import '../settings_shared.css.js';
 import './recent_site_permissions.js';
 import './site_settings_list.js';
 
-import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
-import {PluralStringProxyImpl} from 'chrome://resources/js/plural_string_proxy.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import type {FocusConfig} from '../focus_config.js';
 import {loadTimeData} from '../i18n_setup.js';
-import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
-import {MetricsBrowserProxyImpl, SafetyHubEntryPoint} from '../metrics_browser_proxy.js';
 import {routes} from '../route.js';
-import type {Route} from '../router.js';
-import {RouteObserverMixin, Router} from '../router.js';
-import type {SafetyHubBrowserProxy, UnusedSitePermissions} from '../safety_hub/safety_hub_browser_proxy.js';
-import {SafetyHubBrowserProxyImpl, SafetyHubEvent} from '../safety_hub/safety_hub_browser_proxy.js';
+import {Router} from '../router.js';
 import {SettingsViewMixin} from '../settings_page/settings_view_mixin.js';
 import {ContentSettingsTypes} from '../site_settings/constants.js';
 
@@ -299,13 +289,6 @@ function getCategoryItemMap(): Map<ContentSettingsTypes, CategoryListItem> {
       icon: 'privacy:notifications',
     },
     {
-      route: routes.OFFER_WRITING_HELP,
-      id: Id.OFFER_WRITING_HELP,
-      label: 'siteSettingsOfferWritingHelp',
-      icon: 'settings:pen-spark',
-      shouldShow: () => loadTimeData.getBoolean('enableComposeProactiveNudge'),
-    },
-    {
       route: routes.SITE_SETTINGS_PAYMENT_HANDLER,
       id: Id.PAYMENT_HANDLER,
       label: 'siteSettingsPaymentHandler',
@@ -488,7 +471,7 @@ export interface SettingsSiteSettingsPageElement {
 }
 
 const SettingsSiteSettingsPageElementBase =
-    RouteObserverMixin(SettingsViewMixin(WebUiListenerMixin(PolymerElement)));
+    SettingsViewMixin(PolymerElement);
 
 export class SettingsSiteSettingsPageElement extends
     SettingsSiteSettingsPageElementBase {
@@ -571,7 +554,6 @@ export class SettingsSiteSettingsPageElement extends
               Id.PERFORMANCE,
               Id.JAVASCRIPT_OPTIMIZER,
               Id.AUTOMATIC_FULLSCREEN,
-              Id.OFFER_WRITING_HELP,
             ]),
           };
         },
@@ -580,41 +562,13 @@ export class SettingsSiteSettingsPageElement extends
       permissionsExpanded_: Boolean,
       contentExpanded_: Boolean,
       noRecentSitePermissions_: Boolean,
-
-      showUnusedSitePermissions_: {
-        type: Boolean,
-        value: false,
-      },
-
-      unusedSitePermissionsHeader_: String,
-      unusedSitePermissionsSubheader_: String,
     };
-  }
-
-  override connectedCallback() {
-    super.connectedCallback();
-
-    this.addWebUiListener(
-        SafetyHubEvent.UNUSED_PERMISSIONS_MAYBE_CHANGED,
-        (sites: UnusedSitePermissions[]) =>
-            this.onUnusedSitePermissionListChanged_(sites));
-
-    this.safetyHubBrowserProxy_.getRevokedUnusedSitePermissionsList().then(
-        (sites: UnusedSitePermissions[]) =>
-            this.onUnusedSitePermissionListChanged_(sites));
   }
 
   declare prefs: Object;
   declare private permissionsExpanded_: boolean;
   declare private contentExpanded_: boolean;
   declare private noRecentSitePermissions_: boolean;
-  declare private showUnusedSitePermissions_: boolean;
-  declare private unusedSitePermissionsHeader_: string;
-  declare private unusedSitePermissionsSubheader_: string;
-  private safetyHubBrowserProxy_: SafetyHubBrowserProxy =
-      SafetyHubBrowserProxyImpl.getInstance();
-  private metricsBrowserProxy_: MetricsBrowserProxy =
-      MetricsBrowserProxyImpl.getInstance();
 
   declare private lists_: {
     all: CategoryListItem[],
@@ -624,53 +578,13 @@ export class SettingsSiteSettingsPageElement extends
     contentAdvanced: CategoryListItem[],
   };
 
-  override currentRouteChanged(newRoute: Route, oldRoute?: Route) {
-    super.currentRouteChanged(newRoute, oldRoute);
-
-    if (Router.getInstance().getCurrentRoute() !== routes.SITE_SETTINGS) {
-      return;
-    }
-    // Only record the metrics when the user navigates to the privacy page
-    // that shows the entry point.
-    if (this.showUnusedSitePermissions_) {
-      this.metricsBrowserProxy_.recordSafetyHubEntryPointShown(
-          SafetyHubEntryPoint.SITE_SETTINGS);
-    }
-  }
-
   private onSiteSettingsAllClick_() {
     Router.getInstance().navigateTo(routes.SITE_SETTINGS_ALL);
-  }
-
-  private async onUnusedSitePermissionListChanged_(
-      permissions: UnusedSitePermissions[]) {
-    // The unused site permissions review is shown when there are items to
-    // review (provided the feature is enabled). Once visible it remains that
-    // way to show completion info, even if the list is emptied.
-    if (this.showUnusedSitePermissions_) {
-      return;
-    }
-
-    this.showUnusedSitePermissions_ =
-        permissions.length > 0 && !loadTimeData.getBoolean('isGuest');
-    this.unusedSitePermissionsHeader_ =
-        await PluralStringProxyImpl.getInstance().getPluralString(
-            'safetyHubUnusedSitePermissionsPrimaryLabel', permissions.length);
-    // TODO(crbug/342210522): Add test for this.
-    this.unusedSitePermissionsSubheader_ =
-        await PluralStringProxyImpl.getInstance().getPluralString(
-            'safetyHubRevokedPermissionsSecondaryLabel', permissions.length);
   }
 
   /** @return Class for the all site settings link */
   private getClassForSiteSettingsAllLink_(): string {
     return this.noRecentSitePermissions_ ? '' : 'hr';
-  }
-
-  private onSafetyHubButtonClick_() {
-    this.metricsBrowserProxy_.recordSafetyHubEntryPointClicked(
-        SafetyHubEntryPoint.SITE_SETTINGS);
-    Router.getInstance().navigateTo(routes.SAFETY_HUB);
   }
 
   // SettingsViewMixin implementation.

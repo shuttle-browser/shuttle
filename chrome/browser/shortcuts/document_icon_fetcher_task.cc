@@ -17,11 +17,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/types/expected.h"
 #include "chrome/browser/shortcuts/shortcut_icon_generator.h"
-#include "components/webapps/common/web_page_metadata.mojom.h"
-#include "components/webapps/common/web_page_metadata_agent.mojom.h"
 #include "content/public/browser/web_contents.h"
-#include "mojo/public/cpp/bindings/associated_remote.h"
-#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/geometry/size.h"
@@ -47,39 +43,9 @@ DocumentIconFetcherTask::~DocumentIconFetcherTask() {
 }
 
 void DocumentIconFetcherTask::StartIconFetching() {
-  mojo::AssociatedRemote<webapps::mojom::WebPageMetadataAgent> metadata_agent;
-  web_contents_->GetPrimaryMainFrame()
-      ->GetRemoteAssociatedInterfaces()
-      ->GetInterface(&metadata_agent);
-
-  // Set the error handler so that we can run abort this task if the WebContents
-  // or the RenderFrameHost are destroyed and the connection to
-  // ChromeRenderFrame is lost.
-  metadata_agent.set_disconnect_handler(
-      base::BindOnce(&DocumentIconFetcherTask::OnMetadataFetchError,
-                     weak_factory_.GetWeakPtr()));
-
-  // Bind the InterfacePtr into the callback so that it's kept alive
-  // until there's either a connection error or a response.
-  auto* web_page_metadata_proxy = metadata_agent.get();
-  web_page_metadata_proxy->GetWebPageMetadata(
-      base::BindOnce(&DocumentIconFetcherTask::OnWebPageMetadataObtained,
-                     weak_factory_.GetWeakPtr(), std::move(metadata_agent)));
-}
-
-void DocumentIconFetcherTask::OnMetadataFetchError() {
-  OnIconFetchingCompleteSelfDestruct(
-      base::unexpected(FetchIconsForDocumentError::kMetadataFetchFailed));
-}
-
-void DocumentIconFetcherTask::OnWebPageMetadataObtained(
-    mojo::AssociatedRemote<webapps::mojom::WebPageMetadataAgent> metadata_agent,
-    webapps::mojom::WebPageMetadataPtr web_page_metadata) {
-  metadata_fetch_complete_ = true;
+  // Only favicons are used: the web page metadata agent (manifest-less icon
+  // links) was part of the removed web app stack.
   std::vector<GURL> icons;
-  for (const auto& icon_info : web_page_metadata->icons) {
-    icons.push_back(icon_info->url);
-  }
   for (const auto& favicon_url : web_contents_->GetFaviconURLs()) {
     icons.push_back(favicon_url->icon_url);
   }
@@ -117,7 +83,7 @@ void DocumentIconFetcherTask::DidDownloadFavicon(
 }
 
 void DocumentIconFetcherTask::MaybeCompleteImageDownloadAndSelfDestruct() {
-  if (!metadata_fetch_complete_ || num_pending_image_requests_ > 0) {
+  if (num_pending_image_requests_ > 0) {
     return;
   }
   OnIconFetchingCompleteSelfDestruct(base::ok(std::move(icons_)));

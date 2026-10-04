@@ -7,7 +7,6 @@
 
 #import <Cocoa/Cocoa.h>
 
-class BookmarkTabHelperObserver;
 class BrowserWindowInterface;
 @class BrowserWindowTouchBarController;
 
@@ -53,10 +52,6 @@ class BrowserWindowInterface;
 @property(readonly, class) NSString* homeItemIdentifier;
 
 - (NSButton*)searchButton;
-
-// Returns the bridge object that BrowserWindowDefaultTouchBar uses to receive
-// notifications.
-- (BookmarkTabHelperObserver*)bookmarkTabObserver;
 
 @end
 

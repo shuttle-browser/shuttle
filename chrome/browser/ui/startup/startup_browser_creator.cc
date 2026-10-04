@@ -11,7 +11,6 @@
 #include <string>
 #include <utility>
 
-#include "apps/switches.h"
 #include "base/command_line.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/feature_list.h"
@@ -35,10 +34,6 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
-#include "chrome/browser/apps/app_service/app_service_proxy.h"
-#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
-#include "chrome/browser/apps/platform_apps/app_load_service.h"
-#include "chrome/browser/apps/platform_apps/platform_app_launch.h"
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/startup_helper.h"
@@ -63,7 +58,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/extensions/application_launch.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/startup/launch_mode_recorder.h"
@@ -71,11 +65,7 @@
 #include "chrome/browser/ui/startup/startup_browser_creator_impl.h"
 #include "chrome/browser/ui/startup/startup_tab_provider.h"
 #include "chrome/browser/ui/startup/startup_types.h"
-#include "chrome/browser/ui/startup/web_app_startup_utils.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/web_applications/web_app_ui_manager_impl.h"
-#include "chrome/browser/web_applications/web_app_ui_manager.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_features.h"
@@ -122,7 +112,6 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -132,18 +121,15 @@
 #include "chrome/browser/notifications/win/notification_launch_id.h"
 #include "chrome/browser/ui/startup/credential_provider_signin_dialog_win.h"
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/credential_provider/common/gcp_strings.h"
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #include "chrome/browser/headless/headless_mode_util.h"
-#include "chrome/browser/ui/startup/web_app_info_recorder_utils.h"
 #include "components/headless/policy/headless_mode_policy.h"
 #endif
 
 #if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/web_applications/isolated_web_apps/install/isolated_web_app_dev_install_manager.h"
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -361,80 +347,6 @@ bool IsSilentLaunchEnabled(const base::CommandLine& command_line,
 #else
   return false;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-}
-
-bool CanOpenWebApp(Profile* profile) {
-  return web_app::AreWebAppsEnabled(profile) &&
-         apps::AppServiceProxyFactory::IsAppServiceAvailableForProfile(profile);
-}
-
-// Handles the --app switch.
-bool MaybeLaunchAppShortcutWindow(const base::CommandLine& command_line,
-                                  const base::FilePath& cur_dir,
-                                  chrome::startup::IsFirstRun is_first_run,
-                                  Profile* profile) {
-  if (!profile) {
-    return false;
-  }
-
-  if (!command_line.HasSwitch(switches::kApp)) {
-    return false;
-  }
-
-  std::string url_string = command_line.GetSwitchValueASCII(switches::kApp);
-  if (url_string.empty()) {
-    return false;
-  }
-
-#if BUILDFLAG(IS_WIN)  // Fix up Windows shortcuts.
-  base::ReplaceSubstringsAfterOffset(&url_string, 0, "\\x", "%");
-#endif
-  GURL url(url_string);
-
-  // Restrict allowed URLs for --app switch.
-  if (!url.is_empty() && url.is_valid()) {
-    content::ChildProcessSecurityPolicy* policy =
-        content::ChildProcessSecurityPolicy::GetInstance();
-    if (policy->IsWebSafeScheme(url.GetScheme()) ||
-        url.SchemeIs(url::kFileScheme)) {
-      const content::WebContents* web_contents =
-          apps::OpenExtensionAppShortcutWindow(profile, url);
-      if (web_contents) {
-        web_app::startup::FinalizeWebAppLaunch(
-            web_app::startup::OpenMode::kInWindowByUrl, command_line,
-            is_first_run,
-            GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-                web_contents),
-            apps::LaunchContainer::kLaunchContainerWindow);
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool MaybeLaunchExtensionApp(const base::CommandLine& command_line,
-                             const base::FilePath& cur_dir,
-                             chrome::startup::IsFirstRun is_first_run,
-                             Profile* profile) {
-  if (!command_line.HasSwitch(switches::kAppId)) {
-    return false;
-  }
-
-  std::string app_id = command_line.GetSwitchValueASCII(switches::kAppId);
-  const extensions::Extension* extension =
-      extensions::ExtensionRegistry::Get(profile)->GetInstalledExtension(
-          app_id);
-  if (!extension) {
-    return false;
-  }
-
-  LaunchAppWithCallback(
-      profile, app_id, command_line, cur_dir,
-      base::BindOnce(&web_app::startup::FinalizeWebAppLaunch,
-                     web_app::startup::OpenMode::kInWindowByAppId, command_line,
-                     is_first_run));
-  return true;
 }
 
 // These values are persisted to logs. Entries should not be renumbered and
@@ -1038,7 +950,6 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
   ProfileSetupResult profile_setup =
       SetupProfileAndIncognito(command_line, profile_info);
   bool silent_launch = profile_setup.silent_launch;
-  bool can_use_profile = profile_setup.can_use_profile;
   Profile* privacy_safe_profile = profile_setup.privacy_safe_profile;
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -1099,22 +1010,6 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
     silent_launch = true;
   }
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  // Writes open and installed web apps to the specified file without
-  // launching a new browser window or tab.
-  if (base::FeatureList::IsEnabled(features::kListWebAppsSwitch) &&
-      command_line.HasSwitch(switches::kListApps)) {
-    base::FilePath output_file(
-        command_line.GetSwitchValuePath(switches::kListApps));
-    if (!output_file.empty() && output_file.IsAbsolute()) {
-      base::FilePath profile_base_name(
-          command_line.GetSwitchValuePath(switches::kProfileBaseName));
-      chrome::startup::WriteWebAppsToFile(output_file, profile_base_name);
-    }
-    return true;
-  }
-#endif  //  BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-
 #if !BUILDFLAG(IS_CHROMEOS)
   if (base::FeatureList::IsEnabled(features::kOnConnectNative) &&
       command_line.HasSwitch(switches::kNativeMessagingConnectHost) &&
@@ -1148,25 +1043,6 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
     }
   }
 
-  if (web_app::IsolatedWebAppDevInstallManager::HasIwaInstallSwitch(
-          command_line)) {
-    if (profile_info.mode == StartupProfileMode::kProfilePicker) {
-      auto* profile_manager = g_browser_process->profile_manager();
-      LOG(ERROR) << "Command line switches to install IWAs are incompatible "
-                    "with the Profile Picker. If you have multiple profiles, "
-                    "consider using the --"
-                 << switches::kProfileDirectory
-                 << " switch to select a profile (it accepts the name of a "
-                    "profile directory in "
-                 << profile_manager->user_data_dir() << ", such as '"
-                 << profile_manager->GetLastUsedProfileDir().BaseName()
-                 << "').";
-      return false;
-    } else {
-      web_app::IsolatedWebAppDevInstallManager::MaybeInstallIwaFromCommandLine(
-          command_line, *privacy_safe_profile);
-    }
-  }
 #endif  //  !BUILDFLAG(IS_CHROMEOS)
 
   // If --no-startup-window is specified then do not open a new window.
@@ -1188,72 +1064,6 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
       startup_metric_utils::GetBrowser().SetNonBrowserUIDisplayed();
     }
     return true;
-  }
-
-#if BUILDFLAG(IS_WIN)
-  // If --uninstall-app-id is specified, remove the target web app.
-  if (command_line.HasSwitch(switches::kUninstallAppId)) {
-    // `switches::kUninstallAppId` is expected to be set together with a
-    // specific profile dir, which suppresses the profile picker, see
-    // `ShouldShowProfilePickerAtProcessLaunch()`.
-    // TODO(http://crbug.com/40819749): Refactor command line processing logic
-    // to validate the flag sets and reliably determine the startup mode.
-    CHECK_EQ(profile_info.mode, StartupProfileMode::kBrowserWindow)
-        << "Failed to uninstall app: couldn't pick a profile";
-    std::string app_id =
-        command_line.GetSwitchValueASCII(switches::kUninstallAppId);
-
-    web_app::WebAppProvider::GetForWebApps(privacy_safe_profile)
-        ->ui_manager()
-        .AsImpl()
-        ->UninstallWebAppFromStartupSwitch(app_id);
-
-    // Return true to allow startup to continue and for the main event loop to
-    // run. The process will shut down if no browser windows are open when the
-    // uninstall completes thanks to UninstallWebAppFromStartupSwitch's
-    // ScopedKeepAlive.
-    return true;
-  }
-#endif  // BUILDFLAG(IS_WIN)
-
-  if (command_line.HasSwitch(extensions::switches::kLoadApps) &&
-      can_use_profile) {
-    if (!ProcessLoadApps(command_line, cur_dir, privacy_safe_profile)) {
-      return false;
-    }
-
-    // Return early here to avoid opening a browser window.
-    // The exception is when there are no browser windows, since we don't want
-    // chrome to shut down.
-    // TODO(jackhou): Do this properly once keep-alive is handled by the
-    // background page of apps. Tracked at http://crbug.com/40301548
-    auto* browser_collection =
-        ProfileBrowserCollection::GetForProfile(privacy_safe_profile);
-    if (browser_collection && browser_collection->GetSize() != 0) {
-      return true;
-    }
-  }
-
-  // Check for --load-and-launch-app.
-  if (command_line.HasSwitch(apps::kLoadAndLaunchApp) && can_use_profile) {
-    base::CommandLine::StringType path =
-        command_line.GetSwitchValueNative(apps::kLoadAndLaunchApp);
-
-    if (!apps::AppLoadService::Get(privacy_safe_profile)
-             ->LoadAndLaunch(base::FilePath(path), command_line, cur_dir)) {
-      return false;
-    }
-
-    // Return early here since we don't want to open a browser window.
-    // The exception is when there are no browser windows, since we don't want
-    // chrome to shut down.
-    // TODO(jackhou): Do this properly once keep-alive is handled by the
-    // background page of apps. Tracked at http://crbug.com/40301548
-    auto* browser_collection =
-        ProfileBrowserCollection::GetForProfile(privacy_safe_profile);
-    if (browser_collection && browser_collection->GetSize() != 0) {
-      return true;
-    }
   }
 
 #if BUILDFLAG(IS_WIN)
@@ -1325,77 +1135,6 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
                            /*fallback_profile=*/privacy_safe_profile);
   }
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-
-  if (command_line.HasSwitch(switches::kAppId)) {
-    // `switches::kAppId` presence suppresses the profile picker, see
-    // `ShouldShowProfilePickerAtProcessLaunch()`.
-    // TODO(http://crbug.com/40819749): Refactor command line processing logic
-    // to validate the flag sets and reliably determine the startup mode.
-    CHECK_EQ(profile_info.mode, StartupProfileMode::kBrowserWindow)
-        << "Failed launch with app: couldn't pick a profile";
-    std::string app_id = command_line.GetSwitchValueASCII(switches::kAppId);
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-    // If Chrome Apps are deprecated and |app_id| is a Chrome App, display the
-    // deprecation UI instead of launching the app.
-    if (apps::OpenDeprecatedApplicationPrompt(privacy_safe_profile, app_id)) {
-      return true;
-    }
-#endif
-    // If |app_id| is a disabled or terminated platform app we handle it
-    // specially here, otherwise it will be handled below.
-    if (apps::OpenExtensionApplicationWithReenablePrompt(
-            privacy_safe_profile, app_id, command_line, cur_dir)) {
-      return true;
-    }
-  }
-
-  // TODO(http://crbug.com/40819749): Refactor command line processing logic to
-  // validate the flag sets and reliably determine the startup mode.
-  // Try a shortcut app launch (--app is present).
-  // When running in incognito or guest mode, there typically won't be an
-  // AppServiceProxyFactory available. The --app command line switch does not
-  // require the AppServiceProxyFactory. This also allows the --app parameter
-  // to work in conjunction with the --incognito command line parameter.
-  if (MaybeLaunchAppShortcutWindow(command_line, cur_dir, is_first_run,
-                                   privacy_safe_profile)) {
-    return true;
-  }
-
-  // Launch the browser if the profile is unable to open web apps.
-  if (!CanOpenWebApp(privacy_safe_profile)) {
-    LaunchBrowserForLastProfiles(
-        command_line, cur_dir, process_startup, is_first_run, profile_info,
-        last_opened_profiles, /*restore_tabbed_browser=*/true);
-    return true;
-  }
-
-  // Try a platform app launch.
-  if (MaybeLaunchExtensionApp(command_line, cur_dir, is_first_run,
-                              privacy_safe_profile)) {
-    return true;
-  }
-
-  // This path is mostly used for Window and Linux.
-  // On Chrome OS, app launches are routed through the AppService and
-  // WebAppPublisherHelper.
-  //
-  // On Mac, PWA launch is normally handled in
-  // web_app_shim_manager_delegate_mac.cc, but if an app shim for whatever
-  // reason fails to dlopen chrome we can still end up here. While in that case
-  // the launch behavior here isn't quite the correct behavior for an app launch
-  // on Mac OS, this behavior is better than nothing and should result in the
-  // app shim getting regenerated to hopefully fix future app launches.
-  // TODO(crbug.com/40191242): Some integration tests also rely on this
-  // code. Ideally those would be fixed to test the normal app launch path on
-  // Mac instead, and this code should be changed to make it harder to
-  // accidentally write tests that don't test the normal app launch path.
-#if !BUILDFLAG(IS_CHROMEOS)
-  // Try a web app launch.
-  if (web_app::startup::MaybeHandleWebAppLaunch(
-          command_line, cur_dir, privacy_safe_profile, is_first_run)) {
-    return true;
-  }
-#endif
 
   LaunchBrowserForLastProfiles(command_line, cur_dir, process_startup,
                                is_first_run, profile_info, last_opened_profiles,
@@ -1471,41 +1210,6 @@ void StartupBrowserCreator::ProcessLastOpenedProfiles(
   {
     ProfileLaunchObserver::set_profile_to_activate(last_used_profile);
   }
-}
-
-// static
-bool StartupBrowserCreator::ProcessLoadApps(
-    const base::CommandLine& command_line,
-    const base::FilePath& cur_dir,
-    Profile* profile) {
-  base::CommandLine::StringType path_list =
-      command_line.GetSwitchValueNative(extensions::switches::kLoadApps);
-
-  base::StringTokenizerT<base::CommandLine::StringType,
-                         base::CommandLine::StringType::const_iterator>
-      tokenizer(path_list, FILE_PATH_LITERAL(","));
-
-  if (!tokenizer.GetNext()) {
-    return false;
-  }
-
-  base::FilePath app_absolute_dir =
-      base::MakeAbsoluteFilePath(base::FilePath(tokenizer.token_piece()));
-  if (!apps::AppLoadService::Get(profile)->LoadAndLaunch(
-          app_absolute_dir, command_line, cur_dir)) {
-    return false;
-  }
-
-  while (tokenizer.GetNext()) {
-    app_absolute_dir =
-        base::MakeAbsoluteFilePath(base::FilePath(tokenizer.token_piece()));
-
-    if (!apps::AppLoadService::Get(profile)->Load(app_absolute_dir)) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 // static
@@ -1649,25 +1353,6 @@ StartupProfilePathInfo GetStartupProfilePath(
     }
   }
 
-#if BUILDFLAG(IS_MAC)
-  // On Mac OS, when an app shim fails to dlopen chrome, the app shim falls back
-  // to trying to launch chrome passing its app-id on the command line. In this
-  // situation, the profile directory passed on the command line could be an
-  // empty string. When this happens, arbitrarily pick one of the profiles the
-  // app is installed in as profile directory. While this isn't necesarilly the
-  // right profile to use, it is good enough for the purpose of (indirectly)
-  // triggering a rebuild of the app shim, which should resolve whatever
-  // problem existed that let to this situation.
-  if (command_line_profile_directory.empty() &&
-      command_line.HasSwitch(switches::kAppId)) {
-    std::string app_id = command_line.GetSwitchValueASCII(switches::kAppId);
-    std::set<base::FilePath> profile_paths =
-        AppShimRegistry::Get()->GetInstalledProfilesForApp(app_id);
-    if (!profile_paths.empty()) {
-      command_line_profile_directory = profile_paths.begin()->BaseName();
-    }
-  }
-#endif
   if (!command_line_profile_directory.empty()) {
     return {.path = user_data_dir.Append(command_line_profile_directory),
             .mode = StartupProfileMode::kBrowserWindow};

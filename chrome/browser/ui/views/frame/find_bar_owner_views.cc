@@ -10,7 +10,6 @@
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/translate/translate_bubble_controller.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "components/strings/grit/components_strings.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -61,9 +60,4 @@ void FindBarOwnerViews::OnFindBarVisibilityChanged(gfx::Rect visible_bounds) {
       ->OnFindBarVisibilityChanged();
 }
 
-void FindBarOwnerViews::CloseOverlappingBubbles() {
-  if (TranslateBubbleController* controller =
-      TranslateBubbleController::From(browser_view_->browser())) {
-    controller->CloseBubble();
-  }
-}
+void FindBarOwnerViews::CloseOverlappingBubbles() {}

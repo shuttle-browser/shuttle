@@ -70,9 +70,6 @@ std::u16string GetLocalizedTitle(const std::u16string& title,
         case ChildProcessTask::ProcessSubtype::kSpareRenderProcess:
           return l10n_util::GetStringUTF16(
               IDS_TASK_MANAGER_SPARE_RENDERER_PREFIX);
-        case ChildProcessTask::ProcessSubtype::kGlicRenderProcess:
-          return l10n_util::GetStringUTF16(
-              IDS_TASK_MANAGER_GLIC_RENDERER_PREFIX);
         case ChildProcessTask::ProcessSubtype::kUnknownRenderProcess:
           return l10n_util::GetStringUTF16(
               IDS_TASK_MANAGER_UNKNOWN_RENDERER_PREFIX);
@@ -218,7 +215,6 @@ Task::SubType ChildProcessTask::GetSubType() const {
   switch (process_subtype_) {
     case ChildProcessTask::ProcessSubtype::kSpareRenderProcess:
       return Task::SubType::kSpareRenderer;
-    case ChildProcessTask::ProcessSubtype::kGlicRenderProcess:
     case ChildProcessTask::ProcessSubtype::kUnknownRenderProcess:
       return Task::SubType::kUnknownRenderer;
     default:

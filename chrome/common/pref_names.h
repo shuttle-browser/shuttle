@@ -2417,13 +2417,6 @@ inline constexpr char kMaxConnectionsPerProxyForWebSocket[] =
 inline constexpr char kAllowSocketPoolSizeRandomizationForProxies[] =
     "net.allow_socket_pool_size_randomization_for_proxies";
 
-#if BUILDFLAG(IS_MAC)
-// A boolean that tracks whether to show a notification when trying to quit
-// while there are apps running.
-inline constexpr char kNotifyWhenAppsKeepChromeAlive[] =
-    "apps.notify-when-apps-keep-chrome-alive";
-#endif
-
 // Set to true if background mode is enabled on this browser.
 inline constexpr char kBackgroundModeEnabled[] = "background_mode.enabled";
 

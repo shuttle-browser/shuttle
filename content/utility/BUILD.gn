@@ -130,16 +130,8 @@ source_set("utility") {
     deps += [ "//services/proxy_resolver:lib" ]
   }
 
-  if (enable_screen_ai_service && (is_linux || is_chromeos)) {
-    deps += [ "//services/screen_ai:screen_ai_sandbox_hook" ]
-  }
-
   if (enable_accessibility_service) {
     deps += [ "//services/accessibility:lib" ]
-  }
-
-  if (enable_on_device_translation) {
-    deps += [ "//components/on_device_translation/service:on_device_translation_service" ]
   }
 
   if (enable_vr && !is_android) {

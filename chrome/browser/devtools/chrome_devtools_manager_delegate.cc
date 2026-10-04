@@ -10,7 +10,6 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "build/build_config.h"
@@ -36,13 +35,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/webui_browser/webui_browser.h"
-#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
-#include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/grit/browser_resources.h"
 #include "components/guest_view/browser/guest_view_base.h"
@@ -91,33 +83,6 @@ enum class DevToolsRemoteDebuggingConnectionPermission {
   kMaxValue = kDenied,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/dev/enums.xml:DevToolsRemoteDebuggingConnectionPermission)
-
-std::optional<std::string> GetIsolatedWebAppNameAndVersion(
-    content::WebContents* web_contents) {
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(web_contents);
-  if (!app_id) {
-    return std::nullopt;
-  }
-  const web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebContents(web_contents);
-  if (!provider) {
-    return std::nullopt;
-  }
-  if (const web_app::WebApp* iwa = provider->registrar_unsafe().GetAppById(
-          *app_id, web_app::WebAppFilter::IsIsolatedApp())) {
-    // Version is a key part of IWA so should be displayed in inspect tool
-    return base::StrCat({provider->registrar_unsafe().GetAppShortName(*app_id),
-                         " (", iwa->isolation_data()->version().GetString(),
-                         ")"});
-  }
-
-  return std::nullopt;
-}
-
-bool IsIsolatedWebApp(content::WebContents* web_contents) {
-  return GetIsolatedWebAppNameAndVersion(web_contents).has_value();
-}
 
 bool GetExtensionInfo(content::WebContents* wc,
                       std::string* name,
@@ -305,10 +270,6 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
     return DevToolsAgentHost::kTypeBrowserUI;
   }
 
-  if (IsIsolatedWebApp(web_contents)) {
-    return ChromeDevToolsManagerDelegate::kTypeApp;
-  }
-
   if (tabs::TabInterface::MaybeGetFromContents(web_contents)) {
     return DevToolsAgentHost::kTypePage;
   }
@@ -345,10 +306,6 @@ std::optional<bool> ChromeDevToolsManagerDelegate::ShouldReportAsTabTarget(
 
 std::string ChromeDevToolsManagerDelegate::GetTargetTitle(
     content::WebContents* web_contents) {
-  if (auto iwa_name_version = GetIsolatedWebAppNameAndVersion(web_contents)) {
-    return *iwa_name_version;
-  }
-
   std::string extension_name;
   std::string extension_type;
   if (!GetExtensionInfo(web_contents, &extension_name, &extension_type)) {

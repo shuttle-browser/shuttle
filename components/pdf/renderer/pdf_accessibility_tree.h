@@ -17,7 +17,6 @@
 #include "pdf/accessibility_structs.h"
 #include "pdf/page_character_index.h"
 #include "pdf/pdf_accessibility_data_handler.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/blink/public/web/web_ax_object.h"
 #include "ui/accessibility/ax_node.h"
 #include "ui/accessibility/ax_node_id_forward.h"
@@ -110,9 +109,6 @@ class PdfAccessibilityTree : public ui::AXTreeSource<const ui::AXNode*,
       std::vector<chrome_pdf::AccessibilityTextRunInfo> text_runs,
       std::vector<chrome_pdf::AccessibilityCharInfo> chars,
       chrome_pdf::AccessibilityPageObjects page_objects) override;
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  void OnHasSearchifyText() override;
-#endif
 
   void HandleAction(const chrome_pdf::AccessibilityActionData& action_data);
   std::optional<AnnotationInfo> GetPdfAnnotationInfoFromAXNode(
@@ -317,13 +313,6 @@ class PdfAccessibilityTree : public ui::AXTreeSource<const ui::AXNode*,
   // plugin container is nullptr. Enables lower level tests to function.
   blink::WebAXObject force_plugin_ax_object_for_testing_;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Flag indicating if any text was converted from images by OCR.
-  bool was_text_converted_from_image_ = false;
-
-  // Flag indicating that searchify (OCR) ran on some pages.
-  bool did_searchify_run_ = false;
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   base::WeakPtrFactory<PdfAccessibilityTree> weak_ptr_factory_{this};
 };

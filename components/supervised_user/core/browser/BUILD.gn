@@ -160,7 +160,6 @@ static_library("browser") {
     ":synthetic_field_trial_delegate",
     "//base",
     "//components/content_settings/core/browser",
-    "//components/feed/core/shared_prefs:feed_shared_prefs",
     "//components/google/core/common",
     "//components/prefs",
     "//components/resources:components_resources",

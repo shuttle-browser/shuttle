@@ -5,7 +5,11 @@
 #ifndef COMPONENTS_VISITED_URL_RANKING_INTERNAL_TRANSFORMER_RECENCY_FILTER_TRANSFORMER_H_
 #define COMPONENTS_VISITED_URL_RANKING_INTERNAL_TRANSFORMER_RECENCY_FILTER_TRANSFORMER_H_
 
-#include "components/visited_url_ranking/internal/transformer/bookmarks_url_visit_aggregates_transformer.h"
+#include <vector>
+
+#include "base/functional/callback.h"
+#include "components/visited_url_ranking/public/url_visit.h"
+#include "components/visited_url_ranking/public/url_visit_aggregates_transformer.h"
 
 namespace visited_url_ranking {
 

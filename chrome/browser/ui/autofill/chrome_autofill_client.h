@@ -41,8 +41,6 @@
 #include "components/autofill/core/browser/studies/autofill_ablation_study.h"
 #include "components/autofill/core/browser/ui/payments/card_unmask_prompt_options.h"
 #include "components/autofill/core/common/unique_ids.h"
-#include "components/personal_context/core/personal_context_eligibility_service.h"
-#include "components/personal_context/core/personal_context_types.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "content/public/browser/visibility.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -58,10 +56,6 @@ class ToastController;
 
 namespace optimization_guide {
 class RemoteModelExecutor;
-}
-
-namespace personal_context {
-class PersonalContextFirstRunService;
 }
 
 namespace tabs {
@@ -82,7 +76,6 @@ class EmailVerificationBottomSheetBridge;
 #endif
 
 class ActorAutofillManager;
-class AutofillAiPersonalContextAccessManager;
 class AutofillOptimizationGuideDecider;
 class EmailVerificationPopupController;
 class EmailVerifierDelegate;
@@ -131,12 +124,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
   ChromeAutofillClient& operator=(const ChromeAutofillClient&) = delete;
   ~ChromeAutofillClient() override;
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-  // Triggers the AtMemory promo bubble.
-  void ShowAutofillAtMemoryPromo();
-#endif
-
   // AutofillClient:
   base::WeakPtr<AutofillClient> GetWeakPtr() final;
   const std::string& GetAppLocale() const final;
@@ -156,28 +143,15 @@ class ChromeAutofillClient : public ContentAutofillClient {
   PersonalDataManager& GetPersonalDataManager() final;
   ValuablesDataManager* GetValuablesDataManager() final;
   EntityDataManager* GetEntityDataManager() final;
-  WalletPassAccessManager* GetWalletPassAccessManager() final;
   SingleFieldFillRouter& GetSingleFieldFillRouter() final;
-  personal_context::PersonalContextFirstRunService*
-  GetPersonalContextFirstRunService() override;
   AutocompleteHistoryManager* GetAutocompleteHistoryManager() final;
-  AutofillComposeDelegate* GetComposeDelegate() final;
-  AtMemoryQueryService* GetAtMemoryQueryService() override;
-  AtMemoryManager* GetAtMemoryManager() override;
-  personal_context::PersonalContextEligibilityState
-  GetPersonalContextEligibilityState() const override;
-  personal_context::PersonalContextEligibilityService*
-  GetPersonalContextEligibilityService() const override;
   PasswordManagerDelegate* GetPasswordManagerDelegate(
       const FieldGlobalId& field_id) final;
   void GetAiPageContent(GetAiPageContentCallback callback) final;
   AutofillAiManager* GetAutofillAiManager() final;
-  AutofillAiPersonalContextAccessManager*
-  GetAutofillAiPersonalContextAccessManager() final;
   EntitySuppressionManager* GetEntitySuppressionManager() final;
   AutofillAiModelCache* GetAutofillAiModelCache() final;
   AutofillAiModelExecutor* GetAutofillAiModelExecutor() final;
-  consent_auditor::ConsentAuditor* GetConsentAuditor() final;
   optimization_guide::RemoteModelExecutor* GetRemoteModelExecutor() final;
   IdentityCredentialDelegate* GetIdentityCredentialDelegate() final;
   PrefService* GetPrefs() final;
@@ -195,8 +169,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
   const GURL& GetLastCommittedPrimaryMainFrameURL() const final;
   url::Origin GetLastCommittedPrimaryMainFrameOrigin() const final;
   security_state::SecurityLevel GetSecurityLevelForUmaHistograms() final;
-  const translate::LanguageState* GetLanguageState() final;
-  translate::TranslateDriver* GetTranslateDriver() final;
   GeoIpCountryCode GetVariationConfigCountryCode() const final;
   profile_metrics::BrowserProfileType GetProfileType() const final;
   void ShowAutofillSettings(SuggestionType suggestion_type) final;
@@ -221,17 +193,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
       AutofillSuggestionsIgnoreFocusLoss ignore_focus_loss) final;
   void HideSuggestions(SuggestionHidingReason reason,
                        std::optional<FillingProduct> product) final;
-  void OpenGeminiInSidebar(const std::u16string& prompt) final;
-  bool IsGlicEnabled() const final;
-  void TriggerUserPerceptionOfAutofillSurvey(
-      FillingProduct filling_product,
-      const std::map<std::string, std::string>& field_filling_stats_data) final;
-  void TriggerDeclinedSaveAddressReasonSurvey() final;
-  void TriggerAutofillAiFillingJourneySurvey(
-      bool suggestion_accepted,
-      EntityType entity_type,
-      const base::flat_set<EntityTypeName>& saved_entities,
-      const FieldTypeSet& triggering_field_types) final;
   bool IsTabInActorMode() const final;
   ActorAutofillManager* GetActorAutofillManager() final;
   int64_t GetNavigationId() const final;
@@ -303,8 +264,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
   void ShowAutofillAiLocalSaveNotification() final;
   void ShowAutofillAiSaveToWalletFailureNotification() final;
   void ShowAutofillAiFetchEntityFailureNotification() final;
-  void ShowAtMemoryFetchFailureNotification(
-      std::optional<std::u16string> message_override) final;
   void ShowAutofillAiPreFetchFailureNotification() final;
   void ShowAutofillAiPrivateInferenceNotice() final;
   void ShowEmailVerifiedToast(const GURL& issuer) final;
@@ -366,22 +325,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
   one_time_tokens::OneTimeTokenService* GetOneTimeTokenService() const final;
 
  protected:
-  class AtMemoryCopyPasteObserver : public content::WebContentsObserver {
-   public:
-    explicit AtMemoryCopyPasteObserver(ChromeAutofillClient* client);
-    ~AtMemoryCopyPasteObserver() override = default;
-
-    // content::WebContentsObserver:
-    void OnTextCopiedToClipboard(content::RenderFrameHost* render_frame_host,
-                                 const std::u16string& copied_text) override;
-    void OnPaste() override;
-    void DidGetUserInteraction(const blink::WebInputEvent& event) override;
-
-   private:
-    const base::raw_ref<ChromeAutofillClient> client_;
-  };
-
-  AtMemoryCopyPasteObserver& at_memory_copy_paste_observer();
   explicit ChromeAutofillClient(content::WebContents* web_contents);
 
  private:
@@ -411,7 +354,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
       this};
 
   std::unique_ptr<AutofillAiManager> autofill_ai_manager_;
-  std::unique_ptr<AtMemoryManager> at_memory_manager_;
 
   // These members are initialized lazily in their respective getters.
   // Therefore, do not access the members directly.
@@ -466,8 +408,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
 
   std::unique_ptr<FormPredictionsTracker> form_predictions_tracker_;
   std::unique_ptr<ActorAutofillManager> actor_autofill_manager_;
-
-  AtMemoryCopyPasteObserver at_memory_copy_paste_observer_{this};
 
   SEQUENCE_CHECKER(sequence_checker_);
 

@@ -31,7 +31,6 @@
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
 #include "components/autofill/core/browser/field_type_util.h"
 #include "components/autofill/core/browser/field_types.h"
-#include "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager_impl.h"
 
 namespace autofill {
 
@@ -371,7 +370,6 @@ void SetDataForEDM(base::WeakPtr<EntityDataManager> edm,
     return;
   }
   if (!import_data->entities->empty()) {
-    std::vector<EntityInstance> personal_context_entities;
     for (const EntityInstance& entity : *import_data->entities) {
       switch (entity.record_type()) {
         case EntityInstance::RecordType::kLocal:
@@ -379,12 +377,10 @@ void SetDataForEDM(base::WeakPtr<EntityDataManager> edm,
           edm->AddOrUpdateEntityInstance(entity);
           break;
         case EntityInstance::RecordType::kPersonalContext:
-          personal_context_entities.emplace_back(entity);
+          // Personal Context entities are not supported in this fork.
           break;
       }
     }
-    edm->SetPersonalContextEntitiesForTesting(
-        std::move(personal_context_entities));
   }
 }
 

@@ -84,7 +84,6 @@ class SplitTabMenuModel : public ui::SimpleMenuModel,
       split_tabs::SplitTabActiveLocation active_split_tab_location) const;
   split_tabs::SplitTabLayout GetSplitLayout() const;
   void CloseWebContents(content::WebContents* contents);
-  void SendFeedback();
 
   raw_ptr<TabStripModel> tab_strip_model_ = nullptr;
 

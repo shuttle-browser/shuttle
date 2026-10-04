@@ -9,7 +9,6 @@
 #include "chrome/browser/download/bubble/download_bubble_accessible_alerts_map.h"
 #include "chrome/browser/download/download_ui_model.h"
 #include "components/offline_items_collection/core/offline_item.h"
-#include "components/webapps/common/web_app_id.h"
 
 class BrowserWindowInterface;
 
@@ -52,10 +51,5 @@ DownloadBubbleAccessibleAlertsMap::Alert GetAccessibleAlertForModel(
 BrowserWindowInterface* FindBrowserToShowAnimation(
     download::DownloadItem* item,
     Profile* profile);
-
-// Gets a pointer to the web app id, if the browser is for a web app, otherwise
-// nullptr.
-const webapps::AppId* GetWebAppIdForBrowser(
-    const BrowserWindowInterface* browser);
 
 #endif  // CHROME_BROWSER_DOWNLOAD_BUBBLE_DOWNLOAD_BUBBLE_UTILS_H_

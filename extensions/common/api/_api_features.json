@@ -204,48 +204,6 @@
     "contexts": "all",
     "matches": ["<all_urls>"]
   },
-  "feedbackPrivate": [
-    {
-      "dependencies": ["permission:feedbackPrivate"],
-      "contexts": ["privileged_extension"],
-      "default_parent": true
-    },
-    {
-      "channel": "stable",
-      "contexts": ["webui"],
-      "matches": [
-        "chrome://feedback/*",
-        "chrome://cast-feedback/*",
-        "chrome://os-feedback/*"
-      ],
-      // "desktop_android" is not supported.
-      "platforms": ["chromeos", "linux", "mac", "win"]
-    }
-  ],
-  "feedbackPrivate.openFeedback": {
-    "dependencies": [],
-    "channel": "stable",
-    "contexts": ["privileged_extension"],
-    "extension_types": ["extension"],
-    "allowlist": [
-      "2FC374607C2DF285634B67C64A2E356C607091C3",  // http://crbug.com/1352358
-      "3727DD3E564B6055387425027AD74C58784ACC15",  // http://crbug.com/1352358
-      "12E618C3C6E97495AAECF2AC12DEB082353241C6"   // http://crbug.com/1352358
-    ]
-  },
-  "feedbackPrivate.readLogSource": [
-    {
-      "platforms": ["chromeos"],
-      "session_types": ["kiosk"]
-    },
-    {
-      "channel": "stable",
-      "contexts": ["webui"],
-      "matches": [
-        "chrome://feedback/*"
-      ]
-    }
-  ],
   "fileSystem": {
     "dependencies": ["permission:fileSystem"],
     "contexts": ["privileged_extension"],

@@ -23,9 +23,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/commerce/merchant_viewer/merchant_viewer_data_manager.h"
 #include "chrome/browser/commerce/merchant_viewer/merchant_viewer_data_manager_factory.h"
-#include "chrome/browser/commerce/shopping_service_factory.h"
-#include "components/commerce/core/feature_utils.h"
-#include "components/commerce/core/shopping_service.h"
 #endif
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)

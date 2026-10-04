@@ -9,7 +9,6 @@
 
 #import "chrome/browser/chrome_browser_application_mac.h"
 
-@class BookmarkFolderAppleScript;
 @class WindowAppleScript;
 
 // Represent the top level application scripting object in applescript.
@@ -36,23 +35,6 @@
 
 // Always returns nil to indicate that it is the root container object.
 @property(readonly) NSScriptObjectSpecifier* objectSpecifier;
-
-// Returns the other bookmarks bookmark folder,
-// returns nil if there is an error.
-@property(readonly) BookmarkFolderAppleScript* otherBookmarks;
-
-// Returns the bookmarks bar bookmark folder, return nil if there is an error.
-@property(readonly) BookmarkFolderAppleScript* bookmarksBar;
-
-// Returns the Bookmarks Bar and Other Bookmarks Folders.
-@property(readonly) NSArray<BookmarkFolderAppleScript*>* bookmarkFolders;
-
-// Required functions, even though bookmarkFolders is declared as
-// read-only, cocoa scripting does not currently prevent writing.
-- (void)insertInBookmarksFolders:(BookmarkFolderAppleScript*)aBookmarkFolder;
-- (void)insertInBookmarksFolders:(BookmarkFolderAppleScript*)aBookmarkFolder
-                         atIndex:(int)index;
-- (void)removeFromBookmarksFoldersAtIndex:(int)index;
 
 @end
 

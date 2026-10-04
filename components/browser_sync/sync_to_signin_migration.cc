@@ -18,8 +18,6 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/bookmarks/common/bookmark_constants.h"
-#include "components/bookmarks/common/bookmark_features.h"
 #include "components/browser_sync/browser_sync_switches.h"
 #include "components/password_manager/core/browser/password_manager_constants.h"
 #include "components/prefs/pref_service.h"
@@ -444,16 +442,6 @@ void MaybeMigrateSyncingUserToSignedInInternal(
       decision == SyncToSigninMigrationDecision::kMigrate ||
       decision == SyncToSigninMigrationDecision::kMigrateForced;
 
-  const SyncToSigninMigrationDataTypeDecision bookmarks_decision =
-      GetSyncToSigninMigrationDataTypeDecision(
-          pref_service, syncer::BOOKMARKS,
-          syncer::prefs::internal::kSyncBookmarks);
-  base::UmaHistogramEnumeration(
-      base::StrCat({"Sync.SyncToSigninMigrationDecision.",
-                    GetHistogramMigratingOrNotInfix(doing_migration),
-                    syncer::DataTypeToHistogramSuffix(syncer::BOOKMARKS)}),
-      bookmarks_decision);
-
 #if !BUILDFLAG(IS_ANDROID)
   // On Android no password migration is required here, because other layers
   // were responsible for migrating the user to the local+account model in the
@@ -585,26 +573,6 @@ void MaybeMigrateSyncingUserToSignedInInternal(
         syncer::SyncToSigninMigrationStatsTableCleanupStep::kCleanupRequested);
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-  // Move bookmarks json file, if bookmark sync is enabled.
-  if (bookmarks_decision == SyncToSigninMigrationDataTypeDecision::kMigrate) {
-    base::FilePath from_path =
-        profile_path.Append(bookmarks::kLocalOrSyncableBookmarksFileName);
-    base::FilePath to_path =
-        profile_path.Append(bookmarks::kAccountBookmarksFileName);
-    blocking_operations.push_back(
-        base::BindOnce(&RenameFileAndReportSuccess, from_path, to_path,
-                       "Sync.SyncToSigninMigrationOutcome.BookmarksFileMove"));
-    if (base::FeatureList::IsEnabled(bookmarks::kEncryptBookmarks)) {
-      base::FilePath encrypted_from_path = profile_path.Append(
-          bookmarks::kEncryptedLocalOrSyncableBookmarksFileName);
-      base::FilePath encrypted_to_path =
-          profile_path.Append(bookmarks::kEncryptedAccountBookmarksFileName);
-      blocking_operations.push_back(base::BindOnce(
-          &RenameFileAndReportSuccess, encrypted_from_path, encrypted_to_path,
-          "Sync.SyncToSigninMigrationOutcome.EncryptedBookmarksFileMove"));
-    }
-  }
 
   // Reading list: Set migration pref. The DataTypeStoreServiceImpl will read
   // it, and instruct the DataTypeStoreBackend to actually migrate the data.

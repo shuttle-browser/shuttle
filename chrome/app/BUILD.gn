@@ -156,7 +156,6 @@ static_library("test_support") {
     "//chrome/browser:process_singleton",
     "//chrome/browser:shell_integration",
     "//chrome/browser:startup_data",
-    "//chrome/browser/diagnostics",
     "//chrome/browser/lifetime",
     "//chrome/browser/policy:path_parser",
     "//chrome/child",
@@ -183,7 +182,6 @@ static_library("test_support") {
   public_deps = [ "//ui/lottie" ]
 
   if (is_mac || is_win || is_linux || is_chromeos) {
-    deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
 
   if (is_android) {

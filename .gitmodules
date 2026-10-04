@@ -629,10 +629,6 @@
 	path = chrome/app/theme/google_chrome
 	url = https://chrome-internal.googlesource.com/chrome/theme/google_chrome
 	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/glic/e2e_test/internal"]
-	path = chrome/browser/glic/e2e_test/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/glic/test/internal
-	gclient-condition = checkout_glic_e2e_tests
 [submodule "chrome/test/data/firefox3_profile/searchplugins"]
 	path = chrome/test/data/firefox3_profile/searchplugins
 	url = https://chrome-internal.googlesource.com/chrome/data/osdd/firefox3_profile_searchplugins
@@ -656,10 +652,6 @@
 [submodule "chrome/test/data/pdf_private"]
 	path = chrome/test/data/pdf_private
 	url = https://chrome-internal.googlesource.com/chrome/data/pdf_private
-	gclient-condition = checkout_src_internal
-[submodule "chrome/test/media_router/internal"]
-	path = chrome/test/media_router/internal
-	url = https://chrome-internal.googlesource.com/chrome/test/media_router/internal
 	gclient-condition = checkout_src_internal
 [submodule "chrome/tools/memory"]
 	path = chrome/tools/memory

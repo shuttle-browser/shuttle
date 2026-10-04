@@ -11,16 +11,10 @@
 
 #include "base/feature_list.h"
 #include "build/build_config.h"
-#include "chrome/browser/glic/glic_pref_names.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/metrics/chrome_metrics_service_accessor.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/chrome_device_id_helper.h"
 #include "chrome/browser/sync/sync_invalidations_service_factory.h"
-#include "components/personal_context/core/personal_context_features.h"
-#include "components/personal_context/core/personal_context_key_manager.h"
-#include "components/sharing_message/sharing_sync_preference.h"
 #include "components/sync/invalidations/sync_invalidations_service.h"
 #include "components/sync/service/sync_prefs.h"
 #include "components/sync_device_info/device_info_proto_enum_util.h"
@@ -65,8 +59,7 @@ DeviceInfoSyncClientImpl::GetSendTabToSelfReceivingType() const {
 // syncer::DeviceInfoSyncClient:
 std::optional<syncer::DeviceInfo::SharingInfo>
 DeviceInfoSyncClientImpl::GetLocalSharingInfo() const {
-  return SharingSyncPreference::GetLocalSharingInfoForSync(
-      profile_->GetPrefs());
+  return std::nullopt;
 }
 
 // syncer::DeviceInfoSyncClient:
@@ -115,36 +108,17 @@ DeviceInfoSyncClientImpl::GetDesktopToIOSPromoReceivingTypes() const {
 
 syncer::DeviceInfo::GlicExperimentalTriggeringState
 DeviceInfoSyncClientImpl::GetGlicExperimentalTriggeringState() const {
-  auto* service = glic::GlicKeyedService::Get(profile_);
-  if (!service) {
-    return syncer::DeviceInfo::GlicExperimentalTriggeringState::kUnavailable;
-  }
-  return service->enabling().GetExperimentalTriggeringState();
+  return syncer::DeviceInfo::GlicExperimentalTriggeringState::kUnavailable;
 }
 
 std::optional<int>
 DeviceInfoSyncClientImpl::GetGlicExperimentalTriggeringVersion() const {
-  auto* service = glic::GlicKeyedService::Get(profile_);
-  if (!service) {
-    return std::nullopt;
-  }
-  return service->enabling().GetExperimentalTriggeringVersion();
+  return std::nullopt;
 }
 
 std::optional<syncer::DeviceInfo::PersonalContextInfo>
 DeviceInfoSyncClientImpl::GetLocalPersonalContextInfo() const {
-  if (!base::FeatureList::IsEnabled(
-          personal_context::features::kPersonalContextHandleEncryptedPayloads)) {
-    return std::nullopt;
-  }
-  std::vector<uint8_t> public_key =
-      personal_context::PersonalContextKeyManager::
-          GetOrCreateLocalPublicKeyBytes(profile_->GetPrefs());
-  if (public_key.empty()) {
-    return std::nullopt;
-  }
-  return syncer::DeviceInfo::PersonalContextInfo{
-      .serialized_tink_keyset = std::move(public_key)};
+  return std::nullopt;
 }
 
 }  // namespace browser_sync

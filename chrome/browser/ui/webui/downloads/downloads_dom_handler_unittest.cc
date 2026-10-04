@@ -14,8 +14,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_service.h"
 #include "chrome/browser/safe_browsing/test_safe_browsing_service.h"
-#include "chrome/browser/ui/hats/mock_trust_safety_sentiment_service.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom.h"
 #include "chrome/browser/ui/webui/downloads/mock_downloads_page.h"
 #include "chrome/test/base/testing_browser_process.h"
@@ -428,75 +426,4 @@ TEST_F(DownloadsDOMHandlerWithFakeSafeBrowsingTest,
   EXPECT_TRUE(test_safe_browsing_factory_->test_safe_browsing_service()
                   ->serialized_download_report()
                   .empty());
-}
-
-class DownloadsDOMHandlerWithFakeSafeBrowsingTestTrustSafetySentimentService
-    : public DownloadsDOMHandlerWithFakeSafeBrowsingTest {
- public:
-  DownloadsDOMHandlerWithFakeSafeBrowsingTestTrustSafetySentimentService() =
-      default;
-
-  void ExpectTrustSafetySentimentServiceCall(
-      DownloadItemWarningData::WarningSurface surface,
-      DownloadItemWarningData::WarningAction action) {
-    mock_sentiment_service_ = static_cast<MockTrustSafetySentimentService*>(
-        TrustSafetySentimentServiceFactory::GetInstance()
-            ->SetTestingFactoryAndUse(
-                profile(),
-                base::BindRepeating(&BuildMockTrustSafetySentimentService)));
-    EXPECT_CALL(*mock_sentiment_service_,
-                InteractedWithDownloadWarningUI(surface, action));
-  }
-
- private:
-  raw_ptr<MockTrustSafetySentimentService> mock_sentiment_service_;
-};
-
-TEST_F(DownloadsDOMHandlerWithFakeSafeBrowsingTestTrustSafetySentimentService,
-       DiscardDangerous_CallsTrustSafetySentimentService) {
-  profile()->GetPrefs()->SetBoolean(prefs::kSafeBrowsingSurveysEnabled, true);
-  SetUpDangerousDownload();
-  ExpectTrustSafetySentimentServiceCall(
-      DownloadItemWarningData::WarningSurface::DOWNLOADS_PAGE,
-      DownloadItemWarningData::WarningAction::DISCARD);
-
-  TestDownloadsDOMHandler handler(page_.BindAndGetRemote(), manager(),
-                                  web_ui());
-
-  EXPECT_CALL(dangerous_download_, Remove());
-  handler.DiscardDangerous("1");
-}
-
-TEST_F(DownloadsDOMHandlerWithFakeSafeBrowsingTestTrustSafetySentimentService,
-       SaveSuspicious_CallsTrustSafetySentimentService) {
-  profile()->GetPrefs()->SetBoolean(prefs::kSafeBrowsingSurveysEnabled, true);
-  SetUpDangerousDownload();
-  ExpectTrustSafetySentimentServiceCall(
-      DownloadItemWarningData::WarningSurface::DOWNLOADS_PAGE,
-      DownloadItemWarningData::WarningAction::PROCEED);
-
-  TestDownloadsDOMHandler handler(page_.BindAndGetRemote(), manager(),
-                                  web_ui());
-
-  SimulateMouseGestureOnWebUI();
-
-  EXPECT_CALL(dangerous_download_, ValidateDangerousDownload());
-  handler.SaveSuspiciousRequiringGesture("1");
-}
-
-TEST_F(DownloadsDOMHandlerWithFakeSafeBrowsingTestTrustSafetySentimentService,
-       SaveDangerousFromDialog_CallsTrustSafetySentimentService) {
-  profile()->GetPrefs()->SetBoolean(prefs::kSafeBrowsingSurveysEnabled, true);
-  SetUpDangerousDownload();
-  ExpectTrustSafetySentimentServiceCall(
-      DownloadItemWarningData::WarningSurface::DOWNLOAD_PROMPT,
-      DownloadItemWarningData::WarningAction::PROCEED);
-
-  TestDownloadsDOMHandler handler(page_.BindAndGetRemote(), manager(),
-                                  web_ui());
-
-  SimulateMouseGestureOnWebUI();
-
-  EXPECT_CALL(dangerous_download_, ValidateDangerousDownload());
-  handler.SaveDangerousFromDialogRequiringGesture("1");
 }

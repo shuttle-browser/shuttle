@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "components/data_sharing/public/features.h"
 #include "components/favicon/core/favicon_service.h"
 #include "components/favicon_base/favicon_callback.h"
 #include "components/favicon_base/favicon_types.h"
@@ -189,23 +188,7 @@ void SavedTabGroupWebContentsListener::NavigateToUrlInternal(const GURL& url) {
     return;
   }
 
-  // If deferring remote navigations is enabled (sharing) and the tab is in the
-  // background, then dont actually perform the navigation, instead cache the
-  // URL for performing the navigation later.
-  if (!data_sharing::features::IsDataSharingFunctionalityEnabled() ||
-      local_tab_->IsActivated()) {
-    PerformNavigation(url);
-  } else {
-    favicon::FaviconService* favicon_service =
-        FaviconServiceFactory::GetForProfile(
-            local_tab_->GetBrowserWindowInterface()->GetProfile(),
-            ServiceAccessType::EXPLICIT_ACCESS);
-
-    g_browser_process->GetTabManager()->DiscardTabByExtension(
-        local_tab_->GetContents());
-    deferred_tab_state_.emplace(local_tab_, url, saved_tab->title(),
-                                favicon_service);
-  }
+  PerformNavigation(url);
 }
 
 void SavedTabGroupWebContentsListener::PerformNavigation(const GURL& url) {

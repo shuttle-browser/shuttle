@@ -13,7 +13,6 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "pdf/document_metadata.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "pdf/flatten_pdf_result.h"
@@ -23,13 +22,6 @@
 #include <windows.h>
 #endif
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include <memory>
-
-#include "base/functional/callback_forward.h"
-#include "services/screen_ai/public/mojom/screen_ai_service.mojom.h"
-#include "third_party/skia/include/core/SkBitmap.h"
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 namespace gfx {
 class Rect;
@@ -41,9 +33,6 @@ namespace chrome_pdf {
 
 class PdfWatermarkOverlayer;
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-class PdfProgressiveSearchifier;
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 void SetUseSkiaRendererPolicy(bool use_skia);
 
@@ -236,26 +225,6 @@ std::vector<uint8_t> ConvertPdfDocumentToNupPdf(
     const gfx::Size& page_size,
     const gfx::Rect& printable_area);
 
-#if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-// Converts an inaccessible PDF to a searchable PDF.
-// `pdf_buffer` is the buffer of the inaccessible PDF.
-// `perform_ocr_callback` is the callback that takes an image and outputs
-//     the OCR result. It may be called multiple times.
-//
-// The conversion is done by performing OCR on each image in the PDF and adding
-// a layer of invisible text to the PDF to make text on images accessible. Each
-// execution should take place in an isolated process, and each process should
-// be terminated upon completion of the conversion. An empty vector is returned
-// on failure.
-std::vector<uint8_t> Searchify(
-    base::span<const uint8_t> pdf_buffer,
-    base::RepeatingCallback<screen_ai::mojom::VisualAnnotationPtr(
-        const SkBitmap& bitmap)> perform_ocr_callback);
-
-// Creates a PDF searchifier for future operations, such as adding and deleting
-// pages, and saving PDFs. Crashes if failed to create.
-std::unique_ptr<PdfProgressiveSearchifier> CreateProgressiveSearchifier();
-#endif  // BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 }  // namespace chrome_pdf
 

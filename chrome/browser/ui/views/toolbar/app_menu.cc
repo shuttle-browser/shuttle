@@ -26,19 +26,15 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/bookmarks/bookmark_merged_surface_service.h"
-#include "chrome/browser/bookmarks/bookmark_merged_surface_service_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/sharing_hub/sharing_hub_features.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/ui/bookmarks/bookmark_stats.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -47,15 +43,11 @@
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/profiles/profile_view_utils.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_hats_service.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_hats_service_factory.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/bookmarks/bookmark_menu_delegate.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/frame/app_menu_button.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -140,12 +132,8 @@ namespace {
 // Horizontal padding on the edges of the in-menu buttons.
 constexpr int kHorizontalPadding = 15;
 
-constexpr int kBookmarksCommandIdOffset =
-    AppMenuModel::kMinBookmarksCommandId - IDC_FIRST_UNBOUNDED_MENU;
 constexpr int kRecentTabsCommandIdOffset =
     AppMenuModel::kMinRecentTabsCommandId - IDC_FIRST_UNBOUNDED_MENU;
-constexpr int kTabGroupsCommandIdOffset =
-    AppMenuModel::kMinTabGroupsCommandId - IDC_FIRST_UNBOUNDED_MENU;
 
 #if BUILDFLAG(IS_CHROMEOS)
 // Extra horizontal space to reserve for the fullscreen button.
@@ -157,28 +145,12 @@ constexpr int kFullscreenPadding = 38;
 constexpr int kZoomLabelHorizontalPadding = 2;
 #endif
 
-// Returns true if |command_id| identifies a bookmark menu item.
-bool IsBookmarkCommand(int command_id) {
-  return command_id >= IDC_FIRST_UNBOUNDED_MENU &&
-         ((command_id - IDC_FIRST_UNBOUNDED_MENU) %
-              AppMenuModel::kNumUnboundedMenuTypes ==
-          kBookmarksCommandIdOffset);
-}
-
 // Returns true if |command_id| identifies a recent tabs menu item.
 bool IsRecentTabsCommand(int command_id) {
   return command_id >= IDC_FIRST_UNBOUNDED_MENU &&
          ((command_id - IDC_FIRST_UNBOUNDED_MENU) %
               AppMenuModel::kNumUnboundedMenuTypes ==
           kRecentTabsCommandIdOffset);
-}
-
-// Returns true if |command_id| identifies a tab group menu item.
-bool IsTabGroupsCommand(int command_id) {
-  return command_id >= IDC_FIRST_UNBOUNDED_MENU &&
-         ((command_id - IDC_FIRST_UNBOUNDED_MENU) %
-              AppMenuModel::kNumUnboundedMenuTypes ==
-          kTabGroupsCommandIdOffset);
 }
 
 // Computes the target row height for the "Other profiles" section based on
@@ -1120,16 +1092,7 @@ AppMenu::AppMenu(BrowserWindowInterface* browser,
   menu_runner_ = std::make_unique<views::MenuRunner>(std::move(root), types);
 }
 
-AppMenu::~AppMenu() {
-  if (bookmark_menu_delegate_.get()) {
-    BookmarkMergedSurfaceService* service =
-        BookmarkMergedSurfaceServiceFactory::GetForProfile(
-            browser_->GetProfile());
-    if (service) {
-      service->RemoveObserver(this);
-    }
-  }
-}
+AppMenu::~AppMenu() = default;
 
 void AppMenu::RunMenu(views::MenuButtonController* host,
                       ui::mojom::MenuSourceType source_type) {
@@ -1197,100 +1160,7 @@ std::optional<SkColor> AppMenu::GetLabelColor(int command_id) const {
              : std::nullopt;
 }
 
-std::u16string AppMenu::GetTooltipText(int command_id,
-                                       const gfx::Point& p) const {
-  return IsBookmarkCommand(command_id)
-             ? bookmark_menu_delegate_->GetTooltipText(command_id, p)
-             : std::u16string();
-}
-
-bool AppMenu::IsTriggerableEvent(views::MenuItemView* menu,
-                                 const ui::Event& e) {
-  return IsBookmarkCommand(menu->GetCommand())
-             ? bookmark_menu_delegate_->IsTriggerableEvent(menu, e)
-             : MenuDelegate::IsTriggerableEvent(menu, e);
-}
-
-bool AppMenu::GetDropFormats(MenuItemView* menu,
-                             int* formats,
-                             std::set<ui::ClipboardFormatType>* format_types) {
-  CreateBookmarkMenu();
-  return bookmark_menu_delegate_.get() &&
-         bookmark_menu_delegate_->GetDropFormats(menu, formats, format_types);
-}
-
-bool AppMenu::AreDropTypesRequired(MenuItemView* menu) {
-  CreateBookmarkMenu();
-  return bookmark_menu_delegate_.get() &&
-         bookmark_menu_delegate_->AreDropTypesRequired(menu);
-}
-
-bool AppMenu::CanDrop(MenuItemView* menu, const ui::OSExchangeData& data) {
-  CreateBookmarkMenu();
-  return bookmark_menu_delegate_.get() &&
-         bookmark_menu_delegate_->CanDrop(menu, data);
-}
-
-ui::mojom::DragOperation AppMenu::GetDropOperation(
-    MenuItemView* item,
-    const ui::DropTargetEvent& event,
-    DropPosition* position) {
-  return IsBookmarkCommand(item->GetCommand())
-             ? bookmark_menu_delegate_->GetDropOperation(item, event, position)
-             : ui::mojom::DragOperation::kNone;
-}
-
-views::View::DropCallback AppMenu::GetDropCallback(
-    views::MenuItemView* menu,
-    DropPosition position,
-    const ui::DropTargetEvent& event) {
-  if (!IsBookmarkCommand(menu->GetCommand())) {
-    return base::DoNothing();
-  }
-
-  return bookmark_menu_delegate_->GetDropCallback(menu, position, event);
-}
-
-bool AppMenu::ShowContextMenu(MenuItemView* source,
-                              int command_id,
-                              const gfx::Point& p,
-                              ui::mojom::MenuSourceType source_type) {
-  return IsBookmarkCommand(command_id)
-             ? bookmark_menu_delegate_->ShowContextMenu(source, command_id, p,
-                                                        source_type)
-             : false;
-}
-
-bool AppMenu::CanDrag(MenuItemView* menu) {
-  return IsBookmarkCommand(menu->GetCommand())
-             ? bookmark_menu_delegate_->CanDrag(menu)
-             : false;
-}
-
-void AppMenu::WriteDragData(MenuItemView* sender, ui::OSExchangeData* data) {
-  DCHECK(IsBookmarkCommand(sender->GetCommand()));
-  return bookmark_menu_delegate_->WriteDragData(sender, data);
-}
-
-int AppMenu::GetDragOperations(MenuItemView* sender) {
-  return IsBookmarkCommand(sender->GetCommand())
-             ? bookmark_menu_delegate_->GetDragOperations(sender)
-             : MenuDelegate::GetDragOperations(sender);
-}
-
-int AppMenu::GetMaxWidthForMenu(MenuItemView* menu) {
-  if (menu->GetCommand() == AppMenuModel::kBookmarksMenuPlaceholder ||
-      IsBookmarkCommand(menu->GetCommand())) {
-    return bookmark_menu_delegate_->GetMaxWidthForMenu(menu);
-  }
-  return MenuDelegate::GetMaxWidthForMenu(menu);
-}
-
 bool AppMenu::IsItemChecked(int command_id) const {
-  if (IsBookmarkCommand(command_id)) {
-    return false;
-  }
-
   const Entry& entry = command_id_to_entry_.find(command_id)->second;
   return entry.first->IsItemCheckedAt(entry.second);
 }
@@ -1298,20 +1168,6 @@ bool AppMenu::IsItemChecked(int command_id) const {
 bool AppMenu::IsCommandEnabled(int command_id) const {
   if (command_id <= 0) {
     return false;  // The root item, a separator, or a title.
-  }
-
-  if (command_id == IDC_CREATE_NEW_TAB_GROUP) {
-    return true;
-  }
-
-
-  if (IsTabGroupsCommand(command_id)) {
-    return stg_everything_menu_->ShouldEnableCommand(command_id);
-  }
-
-  if (IsBookmarkCommand(command_id) ||
-      command_id == IDC_SHOW_BOOKMARK_SIDE_PANEL) {
-    return true;
   }
 
   if (command_id == AppMenuModel::kMoreToolsMenuPlaceholder) {
@@ -1344,25 +1200,6 @@ bool AppMenu::IsCommandEnabled(int command_id) const {
 }
 
 void AppMenu::ExecuteCommand(int command_id, int mouse_event_flags) {
-  if (command_id == IDC_CREATE_NEW_TAB_GROUP ||
-      IsTabGroupsCommand(command_id)) {
-    if (command_id != IDC_CREATE_NEW_TAB_GROUP) {
-      base::RecordAction(base::UserMetricsAction(
-          "TabGroups_SavedTabGroups_OpenedFromAppMenu"));
-    }
-    stg_everything_menu_->ExecuteCommand(command_id, mouse_event_flags);
-    return;
-  }
-
-  if (IsBookmarkCommand(command_id)) {
-    DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES(
-        "WrenchMenu.TimeToAction.OpenBookmark", menu_opened_timer_.Elapsed());
-    UMA_HISTOGRAM_ENUMERATION("WrenchMenu.MenuAction",
-                              MENU_ACTION_BOOKMARK_OPEN, LIMIT_MENU_ACTION);
-    bookmark_menu_delegate_->ExecuteCommand(command_id, mouse_event_flags);
-    return;
-  }
-
   if (command_id == AppMenuModel::kEditMenuPlaceholder ||
       command_id == AppMenuModel::kZoomMenuPlaceholder) {
     // These items are represented by child views. If ExecuteCommand is invoked
@@ -1383,24 +1220,6 @@ bool AppMenu::GetAccelerator(int command_id,
     return false;
   }
 
-  if (command_id == IDC_CREATE_NEW_TAB_GROUP) {
-    if (stg_everything_menu_) {
-      return stg_everything_menu_->GetAccelerator(command_id, accelerator);
-    }
-
-    return false;
-  }
-
-
-  if (IsTabGroupsCommand(command_id)) {
-    return false;
-  }
-
-  if (IsBookmarkCommand(command_id) ||
-      command_id == IDC_SHOW_BOOKMARK_SIDE_PANEL) {
-    return false;
-  }
-
   if (command_id == AppMenuModel::kEditMenuPlaceholder ||
       command_id == AppMenuModel::kZoomMenuPlaceholder) {
     // These have special child views; don't show the accelerator for them.
@@ -1417,30 +1236,6 @@ bool AppMenu::GetAccelerator(int command_id,
   *accelerator = ui::Accelerator(menu_accelerator.key_code(),
                                  menu_accelerator.modifiers());
   return true;
-}
-
-void AppMenu::WillShowMenu(MenuItemView* menu) {
-  if (menu == saved_tab_groups_menu_) {
-    DEPRECATED_UMA_HISTOGRAM_MEDIUM_TIMES(
-        "WrenchMenu.TimeToAction.ShowSavedTabGroups",
-        menu_opened_timer_.Elapsed());
-    UMA_HISTOGRAM_ENUMERATION("WrenchMenu.MenuAction",
-                              MENU_ACTION_SHOW_SAVED_TAB_GROUPS,
-                              LIMIT_MENU_ACTION);
-    if (!stg_everything_menu_) {
-      // Only recreate the menu if we have to.
-      stg_everything_menu_ = std::make_unique<tab_groups::STGEverythingMenu>(
-          nullptr, browser_,
-          tab_groups::STGEverythingMenu::MenuContext::kAppMenu);
-      stg_everything_menu_->PopulateMenu(menu);
-    }
-  } else if (IsTabGroupsCommand(menu->GetCommand())) {
-    stg_everything_menu_->PopulateTabGroupSubMenu(menu);
-  } else if (menu == bookmark_menu_) {
-    CreateBookmarkMenu();
-  } else if (bookmark_menu_delegate_) {
-    bookmark_menu_delegate_->WillShowMenu(menu);
-  }
 }
 
 void AppMenu::WillHideMenu(MenuItemView* menu) {
@@ -1463,34 +1258,7 @@ bool AppMenu::ShouldCloseOnDragDropCompleted() {
 }
 
 void AppMenu::OnMenuClosed(views::MenuItemView* menu) {
-  // If the menu contained a Safety Hub notification, mark as trigger for HaTS
-  // survey if the menu was open for at least 5 seconds.
-  static constexpr auto kSafetyHubCommandIds =
-      std::array{IDC_OPEN_SAFETY_HUB, IDC_SAFETY_HUB_MANAGE_EXTENSIONS,
-                 IDC_SAFETY_HUB_SHOW_PASSWORD_CHECKUP};
-  const bool has_safety_hub_notification = std::ranges::any_of(
-      kSafetyHubCommandIds,
-      [&](int id) { return command_id_to_entry_.contains(id); });
-  if (has_safety_hub_notification &&
-      menu_opened_timer_.Elapsed() >= base::Seconds(5)) {
-    if (SafetyHubHatsService* hats_service =
-            SafetyHubHatsServiceFactory::GetForProfile(
-                browser_->GetProfile())) {
-      hats_service->SafetyHubNotificationSeen();
-    }
-  }
-
   on_menu_closed_callback_.Run();
-
-  if (bookmark_menu_delegate_.get()) {
-    BookmarkMergedSurfaceService* service =
-        BookmarkMergedSurfaceServiceFactory::GetForProfile(
-            browser_->GetProfile());
-    if (service) {
-      service->RemoveObserver(this);
-    }
-    bookmark_menu_delegate_.reset();
-  }
 
   if (selected_menu_model_) {
     selected_menu_model_->ActivatedAt(selected_index_);
@@ -1502,9 +1270,6 @@ bool AppMenu::ShouldExecuteCommandWithoutClosingMenu(int command_id,
   return (IsRecentTabsCommand(command_id) && event.IsMouseEvent() &&
           (ui::DispositionFromEventFlags(event.flags()) ==
            WindowOpenDisposition::NEW_BACKGROUND_TAB)) ||
-         (IsBookmarkCommand(command_id) &&
-          bookmark_menu_delegate_->ShouldExecuteCommandWithoutClosingMenu(
-              command_id, event)) ||
          // TODO(crbug.com/40272266) Currently the UI for
          // OtherProfileCommand has bespoke child views which will block
          // activation in ui/views/controls/menu/menu_controller.cc. The correct
@@ -1521,55 +1286,6 @@ bool AppMenu::ShouldTryPositioningBesideAnchor() const {
   // be switched over to bubble borders on all platforms, but shadow-related
   // hurdles need to be resolved for that.
   return false;
-}
-
-void AppMenu::BookmarkMergedSurfaceServiceChanged() {
-  DCHECK(bookmark_menu_delegate_.get());
-  if (!bookmark_menu_delegate_->is_mutating_model()) {
-    root_->Cancel();
-  }
-}
-
-void AppMenu::BookmarkMergedSurfaceServiceLoaded() {
-  BookmarkMergedSurfaceServiceChanged();
-}
-
-void AppMenu::BookmarkMergedSurfaceServiceBeingDeleted() {
-  BookmarkMergedSurfaceServiceChanged();
-}
-
-void AppMenu::BookmarkNodeAdded(const BookmarkParentFolder& parent,
-                                size_t index) {
-  BookmarkMergedSurfaceServiceChanged();
-}
-
-void AppMenu::BookmarkNodesRemoved(
-    const BookmarkParentFolder& parent,
-    const base::flat_set<const bookmarks::BookmarkNode*>& nodes) {
-  BookmarkMergedSurfaceServiceChanged();
-}
-
-void AppMenu::BookmarkNodeMoved(const BookmarkParentFolder& old_parent,
-                                size_t old_index,
-                                const BookmarkParentFolder& new_parent,
-                                size_t new_index) {
-  // The delegate is also an observer and will handle updating the menu.
-  // Overriding the BookmarkNodeMoved method prevents the base class from
-  // invoking `BookmarkMergedSurfaceServiceChanged`, which would close the menu.
-  CHECK(bookmark_menu_delegate_.get());
-}
-
-void AppMenu::BookmarkNodeChanged(const bookmarks::BookmarkNode* node) {
-  BookmarkMergedSurfaceServiceChanged();
-}
-
-void AppMenu::BookmarkParentFolderChildrenReordered(
-    const BookmarkParentFolder& folder) {
-  BookmarkMergedSurfaceServiceChanged();
-}
-
-void AppMenu::BookmarkAllUserNodesRemoved() {
-  BookmarkMergedSurfaceServiceChanged();
 }
 
 void AppMenu::OnGlobalErrorsChanged() {
@@ -1694,16 +1410,6 @@ void AppMenu::PopulateMenu(MenuItemView* parent, MenuModel* model) {
         break;
       }
 
-      case AppMenuModel::kBookmarksMenuPlaceholder:
-        DCHECK(!bookmark_menu_);
-        bookmark_menu_ = item;
-        break;
-
-      case AppMenuModel::kSavedTabGroupsMenuPlaceholder:
-        DCHECK(!saved_tab_groups_menu_);
-        saved_tab_groups_menu_ = item;
-        break;
-
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
       case IDC_FEEDBACK:
         DCHECK(!feedback_menu_item_);
@@ -1777,28 +1483,6 @@ void AppMenu::CancelAndEvaluate(ButtonMenuItemModel* model, size_t index) {
   selected_menu_model_ = model;
   selected_index_ = index;
   root_->Cancel();
-}
-
-void AppMenu::CreateBookmarkMenu() {
-  if (bookmark_menu_delegate_.get()) {
-    return;  // Already created the menu.
-  }
-
-  BookmarkMergedSurfaceService* service =
-      BookmarkMergedSurfaceServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  if (!service->loaded()) {
-    return;
-  }
-
-  service->AddObserver(this);
-
-  // TODO(oshima): Replace with views only API.
-  views::Widget* parent = views::Widget::GetWidgetForNativeWindow(
-      browser_->GetWindow()->GetNativeWindow());
-  bookmark_menu_delegate_ = std::make_unique<BookmarkMenuDelegate>(
-      browser_, parent, this, BookmarkLaunchLocation::kAppMenu);
-  bookmark_menu_delegate_->BuildFullMenu(bookmark_menu_);
 }
 
 size_t AppMenu::ModelIndexFromCommandId(int command_id) const {

@@ -57,7 +57,6 @@
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/web_applications/web_app_browser_controller.h"
 #endif
 
 #if defined(USE_AURA)
@@ -617,14 +616,9 @@ content::WebContents* GetWebContentsFromWindowIfCaptureHandleAllowed(
     return nullptr;
   }
 
-  web_app::WebAppBrowserController* app_controller =
-      web_app::WebAppBrowserController::From(browser);
-  if (!app_controller || !app_controller->IsWindowCaptureHandleAllowed()) {
-    return nullptr;
-  }
-
-  tabs::TabInterface* active_tab = browser->GetActiveTabInterface();
-  return active_tab ? active_tab->GetContents() : nullptr;
+  // Capture handles were only allowed for web app windows, which have been
+  // removed.
+  return nullptr;
 #else
   return nullptr;
 #endif

@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/extensions/api/bookmarks/bookmarks_api.h"
-#include "chrome/browser/extensions/api/bookmarks/bookmarks_api_watcher.h"
 #include "chrome/browser/extensions/api/cookies/cookies_api.h"
 #include "chrome/browser/extensions/api/developer_private/developer_private_api.h"
 #include "chrome/browser/extensions/api/font_settings/font_settings_api.h"
@@ -34,7 +32,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/extensions/api/activity_log_private/activity_log_private_api.h"
 #include "chrome/browser/extensions/api/autofill_private/autofill_private_event_router_factory.h"
-#include "chrome/browser/extensions/api/bookmark_manager_private/bookmark_manager_private_api.h"
 #include "chrome/browser/extensions/api/braille_display_private/braille_display_private_api.h"
 #include "chrome/browser/extensions/api/enterprise_reporting_private/enterprise_reporting_private_event_router.h"
 #include "chrome/browser/extensions/api/image_writer_private/operation_manager.h"
@@ -69,10 +66,6 @@
 #include "extensions/browser/api/bluetooth_low_energy/bluetooth_low_energy_api.h"
 #endif
 
-#if BUILDFLAG(ENABLE_SERVICE_DISCOVERY)
-#include "chrome/browser/extensions/api/mdns/mdns_api.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_CUPS)
 #include "chrome/browser/extensions/api/printing/printing_api_handler.h"
 #endif
@@ -81,8 +74,6 @@ namespace chrome_extensions {
 
 void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   // APIs supported on Win/Mac/Linux plus desktop Android go here.
-  extensions::BookmarksAPI::GetFactoryInstance();
-  extensions::BookmarksApiWatcher::EnsureFactoryBuilt();
   extensions::CommandService::GetFactoryInstance();
   extensions::CookiesAPI::GetFactoryInstance();
   extensions::DeveloperPrivateAPI::GetFactoryInstance();
@@ -92,9 +83,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::HistoryAPI::GetFactoryInstance();
   extensions::IdentityAPI::GetFactoryInstance();
   extensions::IncognitoConnectability::EnsureFactoryBuilt();
-#if BUILDFLAG(ENABLE_SERVICE_DISCOVERY)
-  extensions::MDnsAPI::GetFactoryInstance();
-#endif
   extensions::OmniboxAPI::GetFactoryInstance();
   extensions::PermissionsEventRouterFactory::GetInstance();
   extensions::PreferenceAPI::GetFactoryInstance();
@@ -112,7 +100,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
 #if BUILDFLAG(IS_CHROMEOS)
   extensions::BluetoothLowEnergyAPI::GetFactoryInstance();
 #endif
-  extensions::BookmarkManagerPrivateAPI::GetFactoryInstance();
   extensions::BrailleDisplayPrivateAPI::GetFactoryInstance();
 #if BUILDFLAG(IS_CHROMEOS)
   extensions::DocumentScanAPIHandler::GetFactoryInstance();

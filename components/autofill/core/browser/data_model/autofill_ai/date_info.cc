@@ -10,7 +10,6 @@
 #include "base/i18n/unicodestring.h"
 #include "base/time/time.h"
 #include "components/autofill/core/browser/data_model/data_model_util.h"
-#include "components/personal_context/proto/features/common_data.pb.h"
 #include "third_party/icu/source/common/unicode/locid.h"
 #include "third_party/icu/source/common/unicode/unistr.h"
 #include "third_party/icu/source/common/unicode/utypes.h"
@@ -72,14 +71,6 @@ std::u16string DateInfo::GetIcuDate(std::u16string_view format,
   }
   formatter.format(time.InMillisecondsFSinceUnixEpoch(), date_string);
   return base::i18n::UnicodeStringToString16(date_string);
-}
-
-personal_context::proto::Date DateInfo::GetDateProto() const {
-  personal_context::proto::Date proto_date;
-  proto_date.set_year(date_.year);
-  proto_date.set_month(date_.month);
-  proto_date.set_day(date_.day);
-  return proto_date;
 }
 
 }  // namespace autofill

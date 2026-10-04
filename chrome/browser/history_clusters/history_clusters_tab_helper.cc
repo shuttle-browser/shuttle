@@ -9,7 +9,6 @@
 
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/history/history_utils.h"
@@ -17,7 +16,6 @@
 #include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/history/core/browser/url_row.h"
 #include "components/history_clusters/core/history_clusters_service.h"
@@ -66,12 +64,8 @@ bool IsPageInTabGroup(content::WebContents* contents) {
 // Pass in a separate `url` parameter to ensure that we check the same URL that
 // is being logged in History.
 bool IsPageBookmarked(content::WebContents* contents, const GURL& url) {
-  DCHECK(contents);
-  DCHECK(contents->GetBrowserContext());
-
-  bookmarks::BookmarkModel* model =
-      BookmarkModelFactory::GetForBrowserContext(contents->GetBrowserContext());
-  return model && model->IsBookmarked(url);
+  // Bookmarks have been removed.
+  return false;
 }
 
 base::TimeDelta TimeElapsedBetweenVisits(const history::VisitRow& visit1,

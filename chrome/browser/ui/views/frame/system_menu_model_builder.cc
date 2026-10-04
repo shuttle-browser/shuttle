@@ -10,7 +10,6 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -21,7 +20,6 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
@@ -166,27 +164,11 @@ void SystemMenuModelBuilder::BuildSystemMenuForBrowserWindow(
       kSystemMenuRestoreTabElementId);
 
 #if BUILDFLAG(IS_MAC)
-  model->AddItemWithStringId(IDC_BOOKMARK_ALL_TABS, IDS_BOOKMARK_ALL_TABS_MAC);
   model->AddItemWithStringId(IDC_NAME_WINDOW, IDS_NAME_WINDOW_MAC);
 #else
-  AddItemWithIconMaybe(model, IDC_BOOKMARK_ALL_TABS, IDS_BOOKMARK_ALL_TABS,
-                       kBookmarkAllTabsChromeRefreshOldIcon);
   AddItemWithIconMaybe(model, IDC_NAME_WINDOW, IDS_NAME_WINDOW,
                        kNameWindowOldIcon);
 #endif  // BUILDFLAG(IS_MAC)
-  model->AddSeparator(ui::NORMAL_SEPARATOR);
-  model->AddItemWithStringId(IDC_TAB_SEARCH_TOGGLE_PIN,
-                             IDS_TAB_STRIP_PIN_TAB_SEARCH);
-
-#if BUILDFLAG(IS_WIN)
-  // On Windows we can not remove an item when showing the menu. So only add
-  // the glic toggle option if glic is enabled when building the menu.
-  if (glic::GlicEnabling::IsEnabledForProfile(browser()->GetProfile())) {
-#endif  // BUILDFLAG(IS_WIN)
-    model->AddItemWithStringId(IDC_GLIC_TOGGLE_PIN, IDS_GLIC_PIN);
-#if BUILDFLAG(IS_WIN)
-  }
-#endif  // BUILDFLAG(IS_WIN)
 
   if (auto* controller =
           tabs::VerticalTabStripStateController::From(browser())) {
@@ -303,7 +285,7 @@ void SystemMenuModelBuilder::BuildSystemMenuForAppOrPopupWindow(
   model->AddItemWithStringId(IDC_BACK, IDS_CONTENT_CONTEXT_BACK);
   model->AddItemWithStringId(IDC_FORWARD, IDS_CONTENT_CONTEXT_FORWARD);
   model->AddItemWithStringId(IDC_RELOAD, IDS_APP_MENU_RELOAD);
-  if (!web_app::AppBrowserController::IsWebApp(browser())) {
+  {
     bool is_captive_portal_signin = false;
 #if BUILDFLAG(IS_CHROMEOS)
     is_captive_portal_signin =

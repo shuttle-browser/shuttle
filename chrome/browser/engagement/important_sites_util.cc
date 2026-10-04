@@ -13,13 +13,9 @@
 
 #include "base/values.h"
 #include "build/build_config.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/webapps/installable/installable_utils.h"
 #include "chrome/common/pref_names.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/bookmarks/browser/url_and_title.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_utils.h"
@@ -29,7 +25,6 @@
 #include "components/site_engagement/content/site_engagement_score.h"
 #include "components/site_engagement/content/site_engagement_service.h"
 #include "components/site_engagement/core/mojom/site_engagement_details.mojom.h"
-#include "components/webapps/browser/banners/app_banner_settings_helper.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/blink/public/mojom/site_engagement/site_engagement.mojom.h"
@@ -41,8 +36,6 @@ namespace site_engagement {
 
 namespace {
 
-using bookmarks::BookmarkModel;
-using bookmarks::UrlAndTitle;
 using ImportantDomainInfo = ImportantSitesUtil::ImportantDomainInfo;
 using ImportantReason = ImportantSitesUtil::ImportantReason;
 
@@ -54,11 +47,6 @@ static const int kSuppressionExpirationTimeDays = 30 * 5;
 
 static const char kNumTimesIgnoredName[] = "NumTimesIgnored";
 static const int kTimesIgnoredForSuppression = 3;
-
-// These are the maximum # of bookmarks we can use as signals. If the user has
-// <= kMaxBookmarks, then we just use those bookmarks. Otherwise we filter all
-// bookmarks on site engagement > 0, sort, and trim to kMaxBookmarks.
-static const int kMaxBookmarks = 5;
 
 void RecordIgnore(base::DictValue& dict) {
   int times_ignored = dict.FindInt(kNumTimesIgnoredName).value_or(0);
@@ -238,53 +226,6 @@ void PopulateInfoMapWithContentTypeAllowed(
   }
 }
 
-void PopulateInfoMapWithBookmarks(
-    Profile* profile,
-    const std::map<GURL, double>& engagement_map,
-    std::map<std::string, ImportantDomainInfo>* output) {
-  BookmarkModel* model =
-      BookmarkModelFactory::GetForBrowserContextIfExists(profile);
-  if (!model)
-    return;
-  std::vector<UrlAndTitle> untrimmed_bookmarks = model->GetUniqueUrls();
-
-  // Process the bookmarks and optionally trim them if we have too many.
-  std::vector<UrlAndTitle> result_bookmarks;
-  if (untrimmed_bookmarks.size() > kMaxBookmarks) {
-    std::ranges::copy_if(
-        untrimmed_bookmarks, std::back_inserter(result_bookmarks),
-        [&engagement_map](const UrlAndTitle& entry) {
-          auto it = engagement_map.find(entry.url.DeprecatedGetOriginAsURL());
-          double score = it == engagement_map.end() ? 0 : it->second;
-          return SiteEngagementService::IsEngagementAtLeast(
-              score, blink::mojom::EngagementLevel::LOW);
-        });
-    // TODO(dmurph): Simplify this (and probably much more) once
-    // SiteEngagementService::GetAllDetails lands (crbug.com/41308686), as that
-    // will allow us to remove most of these lookups and merging of signals.
-    std::sort(
-        result_bookmarks.begin(), result_bookmarks.end(),
-        [&engagement_map](const UrlAndTitle& a, const UrlAndTitle& b) {
-          auto a_it = engagement_map.find(a.url.DeprecatedGetOriginAsURL());
-          auto b_it = engagement_map.find(b.url.DeprecatedGetOriginAsURL());
-          double a_score = a_it == engagement_map.end() ? 0 : a_it->second;
-          double b_score = b_it == engagement_map.end() ? 0 : b_it->second;
-          return a_score > b_score;
-        });
-    if (result_bookmarks.size() > kMaxBookmarks)
-      result_bookmarks.resize(kMaxBookmarks);
-  } else {
-    result_bookmarks = std::move(untrimmed_bookmarks);
-  }
-
-  std::set<GURL> content_origins;
-  for (const UrlAndTitle& bookmark : result_bookmarks) {
-    MaybePopulateImportantInfoForReason(bookmark.url, &content_origins,
-                                        ImportantReason::BOOKMARKS,
-                                        std::nullopt, output);
-  }
-}
-
 }  // namespace
 
 ImportantDomainInfo::ImportantDomainInfo() = default;
@@ -322,7 +263,8 @@ void ImportantSitesUtil::RegisterProfilePrefs(
 // static
 std::set<std::string> ImportantSitesUtil::GetInstalledRegisterableDomains(
     Profile* profile) {
-  std::set<GURL> installed_origins = GetOriginsWithInstalledWebApps(profile);
+  // Web apps have been removed, so there are no installed origins.
+  std::set<GURL> installed_origins;
   std::set<std::string> registerable_domains;
 
   for (auto& origin : installed_origins) {
@@ -348,8 +290,6 @@ ImportantSitesUtil::GetImportantRegisterableDomains(Profile* profile,
   PopulateInfoMapWithContentTypeAllowed(
       profile, ContentSettingsType::PERSISTENT_STORAGE,
       ImportantReason::PERSISTENT, &important_info);
-
-  PopulateInfoMapWithBookmarks(profile, engagement_map, &important_info);
 
   absl::flat_hash_set<std::string> suppressed_domains =
       GetSuppressedImportantDomains(profile);

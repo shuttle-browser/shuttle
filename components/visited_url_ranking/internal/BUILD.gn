@@ -21,8 +21,6 @@ static_library("internal") {
     "history_url_visit_data_fetcher.h",
     "session_url_visit_data_fetcher.cc",
     "session_url_visit_data_fetcher.h",
-    "transformer/bookmarks_url_visit_aggregates_transformer.cc",
-    "transformer/bookmarks_url_visit_aggregates_transformer.h",
     "transformer/default_app_url_visit_aggregates_transformer.cc",
     "transformer/default_app_url_visit_aggregates_transformer.h",
     "transformer/history_url_visit_aggregates_browser_type_transformer.cc",
@@ -43,7 +41,6 @@ static_library("internal") {
   #requirement below for `embedder/default_model`.
   deps = [
     "//base",
-    "//components/bookmarks/browser",
     "//components/history/core/browser",
     "//components/segmentation_platform/embedder/default_model",
     "//components/segmentation_platform/internal",
@@ -128,7 +125,6 @@ source_set("unit_tests") {
   sources = [
     "history_url_visit_data_fetcher_unittest.cc",
     "session_url_visit_data_fetcher_unittest.cc",
-    "transformer/bookmarks_url_visit_aggregates_transformer_unittest.cc",
     "transformer/default_app_url_visit_aggregates_transformer_unittest.cc",
     "transformer/history_url_visit_aggregates_browser_type_transformer_unittest.cc",
     "transformer/history_url_visit_aggregates_categories_transformer_unittest.cc",
@@ -155,8 +151,6 @@ source_set("unit_tests") {
     ":test_support",
     "//base",
     "//base/test:test_support",
-    "//components/bookmarks/browser",
-    "//components/bookmarks/test",
     "//components/history/core/browser",
     "//components/prefs:test_support",
     "//components/segmentation_platform/embedder/default_model",

@@ -22,7 +22,6 @@
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/types/expected.h"
-#include "components/content_extraction/content/browser/inner_text.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/page_content_annotations/content/page_context_fetcher_options.h"
@@ -83,15 +82,6 @@ struct ScreenshotResult {
   base::TimeTicks end_time;
 };
 
-struct InnerTextResultWithTruncation
-    : public content_extraction::InnerTextResult {
-  InnerTextResultWithTruncation(std::string inner_text,
-                                std::optional<unsigned> node_offset,
-                                bool truncated);
-  ~InnerTextResultWithTruncation();
-  bool truncated = false;
-};
-
 struct PageContentResultWithEndTime
     : public optimization_guide::AIPageContentResult {
   explicit PageContentResultWithEndTime(
@@ -107,7 +97,6 @@ struct FetchPageContextResult {
   FetchPageContextResult& operator=(FetchPageContextResult&&);
   ~FetchPageContextResult();
   base::expected<ScreenshotResult, std::string> screenshot_result;
-  std::optional<InnerTextResultWithTruncation> inner_text_result;
   std::optional<PdfResult> pdf_result;
   base::expected<PageContentResultWithEndTime, std::string>
       annotated_page_content_result;
@@ -252,8 +241,6 @@ class PageContextFetcher : public content::WebContentsObserver {
       base::expected<std::pair<std::vector<uint8_t>, SkBitmap>, std::string>
           screenshot_data);
 
-  void ReceivedInnerText(
-      std::unique_ptr<content_extraction::InnerTextResult> result);
 
   void ReceivedAnnotatedPageContent(
       optimization_guide::AIPageContentResultOrError content);
@@ -276,7 +263,6 @@ class PageContextFetcher : public content::WebContentsObserver {
   const GetScreenshotServiceCallback get_screenshot_service_callback_;
   FetchPageContextResultCallback callback_;
 
-  uint32_t inner_text_bytes_limit_ = 0;
 
   // screenshot processing dependencies.
   std::optional<SkBitmap> screenshot_bitmap_;
@@ -292,7 +278,6 @@ class PageContextFetcher : public content::WebContentsObserver {
   bool initialization_done_ = false;
   bool screenshot_capture_done_ = false;
   bool screenshot_done_ = false;
-  bool inner_text_done_ = false;
   bool pdf_done_ = false;
   bool annotated_page_content_done_ = false;
   SkColor4f screenshot_redaction_color_ = SkColors::kBlack;

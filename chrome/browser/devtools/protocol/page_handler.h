@@ -9,11 +9,9 @@
 
 #include "base/memory/weak_ptr.h"
 #include "chrome/browser/devtools/protocol/page.h"
-#include "components/webapps/browser/installable/installable_manager.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "printing/buildflags/buildflags.h"
-#include "third_party/blink/public/common/manifest/manifest.h"
 
 #if BUILDFLAG(ENABLE_PRINTING)
 #include "components/printing/browser/headless/headless_print_manager.h"
@@ -21,11 +19,8 @@
 #endif  // BUILDFLAG(ENABLE_PRINTING)
 
 namespace content {
-struct InstallabilityError;
 class WebContents;
 }  // namespace content
-
-class SkBitmap;
 
 class PageHandler : public protocol::Page::Backend {
  public:
@@ -46,16 +41,8 @@ class PageHandler : public protocol::Page::Backend {
       std::optional<bool> enable_file_chooser_opened_event) override;
   protocol::Response Disable() override;
   protocol::Response SetAdBlockingEnabled(bool enabled) override;
-  protocol::Response SetSPCTransactionMode(
-      const protocol::String& mode) override;
   protocol::Response SetRPHRegistrationMode(
       const protocol::String& mode) override;
-  void GetInstallabilityErrors(
-      std::unique_ptr<GetInstallabilityErrorsCallback> callback) override;
-
-  void GetManifestIcons(
-      std::unique_ptr<GetManifestIconsCallback> callback) override;
-
   void PrintToPDF(std::optional<bool> landscape,
                   std::optional<bool> display_header_footer,
                   std::optional<bool> print_background,
@@ -75,20 +62,7 @@ class PageHandler : public protocol::Page::Backend {
                   std::optional<bool> generate_document_outline,
                   std::unique_ptr<PrintToPDFCallback> callback) override;
 
-  void GetAppId(std::unique_ptr<GetAppIdCallback> callback) override;
-
  private:
-  static void GotInstallabilityErrors(
-      std::unique_ptr<GetInstallabilityErrorsCallback> callback,
-      std::vector<content::InstallabilityError> installability_errors);
-
-  static void GotManifestIcons(
-      std::unique_ptr<GetManifestIconsCallback> callback,
-      const SkBitmap* primary_icon);
-
-  void OnDidGetManifest(std::unique_ptr<GetAppIdCallback> callback,
-                        const webapps::InstallableData& data);
-
 #if BUILDFLAG(ENABLE_PRINTING)
   void OnPDFCreated(bool return_as_stream,
                     std::unique_ptr<PrintToPDFCallback> callback,

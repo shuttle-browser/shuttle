@@ -31,7 +31,7 @@ import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bu
 import {EntityTypeName} from '../autofill_ai_enums.mojom-webui.js';
 import {loadTimeData} from '../i18n_setup.js';
 import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
-import {MetricsBrowserProxyImpl, SuggestionsFromGeminiEntryPoint, YourSavedInfoDataCategory, YourSavedInfoDataChip, YourSavedInfoRelatedService} from '../metrics_browser_proxy.js';
+import {MetricsBrowserProxyImpl, YourSavedInfoDataCategory, YourSavedInfoDataChip, YourSavedInfoRelatedService} from '../metrics_browser_proxy.js';
 import {routes} from '../route.js';
 import {Router} from '../router.js';
 import {SettingsViewMixin} from '../settings_page/settings_view_mixin.js';
@@ -65,7 +65,6 @@ interface DataTypeHierarchy {
   contactInfo: DataCategory;
   identityDocs: DataCategory;
   travel: DataCategory;
-  shopping: DataCategory;
 }
 
 interface DataCategory {
@@ -108,40 +107,11 @@ export class SettingsAutofillPageElement extends
       hierarchy_: {
         type: Object,
       },
-
-      isShoppingEnabled_: {
-        type: Boolean,
-        value() {
-          return loadTimeData.getBoolean('shoppingIntegrationEnabled');
-        },
-      },
-
-      showSuggestionsFromGeminiSettings_: {
-        type: Boolean,
-        value() {
-          return loadTimeData.getBoolean('showSuggestionsFromGeminiSettings');
-        },
-      },
-      spark_: {
-        type: String,
-        value: () => {
-          // <if expr="_google_chrome">
-          return loadTimeData.getBoolean('glicAssetsV2Enabled') ?
-              'settings-internal:sparkv2' :
-              'settings-internal:spark';
-          // </if>
-          // <if expr="not _google_chrome">
-          return 'settings20:lightbulb';
-          // </if>
-        },
-      },
     };
   }
 
   declare prefs: Record<string, unknown>;
   declare private hierarchy_: DataTypeHierarchy;
-  declare private isShoppingEnabled_: boolean;
-  declare private showSuggestionsFromGeminiSettings_: boolean;
 
   private dataChipIdToChip_: Map<YourSavedInfoDataChip, DataChip> = new Map();
   private dataChipIdToCategory_: Map<YourSavedInfoDataChip, DataCategory> =
@@ -161,7 +131,6 @@ export class SettingsAutofillPageElement extends
   private setPersonalDataListener_: PersonalDataChangedListener|null = null;
   private onAutofillAiEntitiesChangedListener_: EntityInstancesChangedListener|
       null = null;
-  declare private spark_: string;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -286,25 +255,6 @@ export class SettingsAutofillPageElement extends
           },
         ],
       },
-      shopping: {
-        id: YourSavedInfoDataCategory.SHOPPING,
-        chips: [
-          {
-            id: YourSavedInfoDataChip.ORDERS,
-            label: this.i18n('yourSavedInfoOrdersChip'),
-            icon: 'settings20:orders',
-            isVisibleWhenNoEntitiesOfTypeExists: () =>
-                this.availableAutofillAiTypes_.has(EntityTypeName.kOrder),
-          },
-          {
-            id: YourSavedInfoDataChip.SHIPMENTS,
-            label: this.i18n('yourSavedInfoShipmentsChip'),
-            icon: 'settings20:local-shipping',
-            isVisibleWhenNoEntitiesOfTypeExists: () =>
-                this.availableAutofillAiTypes_.has(EntityTypeName.kShipment),
-          },
-        ],
-      },
     };
 
     for (const [categoryName, category] of Object.entries(this.hierarchy_)) {
@@ -384,13 +334,7 @@ export class SettingsAutofillPageElement extends
           }
           this.notifyPath('hierarchy_.identityDocs.chips');
           this.notifyPath('hierarchy_.travel.chips');
-          this.notifyPath('hierarchy_.shopping.chips');
         });
-
-    if (this.isShoppingEnabled_) {
-      this.availableAutofillAiTypes_.add(EntityTypeName.kOrder);
-      this.availableAutofillAiTypes_.add(EntityTypeName.kShipment);
-    }
 
     // Wallet: Loyalty cards count.
     const setLoyaltyCardsCount = (loyaltyCardsCount?: number) => {
@@ -427,12 +371,6 @@ export class SettingsAutofillPageElement extends
     this.setChipCount_(
         YourSavedInfoDataChip.FLIGHT_RESERVATIONS,
         entityCounts.get(EntityTypeName.kFlightReservation) ?? 0);
-    this.setChipCount_(
-        YourSavedInfoDataChip.ORDERS,
-        entityCounts.get(EntityTypeName.kOrder) ?? 0);
-    this.setChipCount_(
-        YourSavedInfoDataChip.SHIPMENTS,
-        entityCounts.get(EntityTypeName.kShipment) ?? 0);
   }
 
   override disconnectedCallback() {
@@ -468,13 +406,6 @@ export class SettingsAutofillPageElement extends
     if (routes.TRAVEL) {
       map.set(routes.TRAVEL.path, '#travelManagerButton');
     }
-    if (routes.SHOPPING) {
-      map.set(routes.SHOPPING.path, '#shoppingManagerButton');
-    }
-    if (routes.SUGGESTIONS_FROM_GEMINI) {
-      map.set(
-          routes.SUGGESTIONS_FROM_GEMINI.path, '#suggestionsFromGeminiLinkRow');
-    }
     return map;
   }
 
@@ -498,12 +429,6 @@ export class SettingsAutofillPageElement extends
         break;
       case 'travel':
         triggerId = 'travelManagerButton';
-        break;
-      case 'shopping':
-        triggerId = 'shoppingManagerButton';
-        break;
-      case 'suggestionsFromGemini':
-        triggerId = 'suggestionsFromGeminiLinkRow';
         break;
       default:
         assertNotReached(`Unrecognized child view ID: ${childViewId}`);
@@ -573,19 +498,11 @@ export class SettingsAutofillPageElement extends
         Router.getInstance().navigateTo(routes.TRAVEL);
         break;
       case YourSavedInfoDataCategory.SHOPPING:
-        Router.getInstance().navigateTo(routes.SHOPPING);
-        break;
       case YourSavedInfoDataCategory.COUNT:
         assertNotReached();
       default:
         assertNotReachedCase(categoryId);
     }
-  }
-
-  private onSuggestionsFromGeminiClick_() {
-    this.metricsBrowserProxy_.recordSuggestionsFromGeminiEntryPointClick(
-        SuggestionsFromGeminiEntryPoint.YOUR_SAVED_INFO);
-    Router.getInstance().navigateTo(routes.SUGGESTIONS_FROM_GEMINI);
   }
 
   /**

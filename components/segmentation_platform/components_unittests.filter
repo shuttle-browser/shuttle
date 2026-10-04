@@ -9,7 +9,6 @@
 *CardSelectionSignalsTest.*
 *ChromeUserEngagementTest.*
 *ClientResultPrefsTest.*
-*ComposePromotionTest.*
 *ConfigParserTest.*
 *ContextualPageActionsModelTest.*
 *CrossDeviceUserModelTest.*
@@ -59,7 +58,6 @@
 *PostProcessorTest.*
 *PowerUserModelTest.*
 *PrefsMigratorTest.*
-*PriceTrackingNotificationPromoTest.*
 *QuickDeletePromoTest.*
 *RankFetcherHelperTest.*
 *RequestDispatcherTest.*
@@ -83,7 +81,6 @@
 *SegmentationResultPrefsTest.*
 *SegmentationUkmHelperTest.*
 *SelectionUtilsTest.*
-*SendTabNotificationPromoTest.*
 *ServiceProxyImplTest.*
 *ShoppingUserModelTest.*
 *SignalDatabaseImplTest.*

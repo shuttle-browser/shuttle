@@ -128,7 +128,6 @@ if (!is_android) {
 
     if (is_win || is_mac || is_linux) {
       deps += [
-        "//chrome/browser/ui/startup/default_browser_prompt",
         "//chrome/browser/ui/views/session_restore_infobar",
       ]
     }

@@ -23,10 +23,6 @@ namespace base {
 class SequencedTaskRunner;
 }  // namespace base
 
-namespace bookmarks {
-class BookmarkModel;
-}  // namespace bookmarks
-
 namespace history {
 class HistoryService;
 }  // namespace history
@@ -62,7 +58,6 @@ class SafariDataImporter {
                      password_manager::SavedPasswordsPresenter* presenter,
                      autofill::PaymentsDataManager* payments_data_manager,
                      history::HistoryService* history_service,
-                     bookmarks::BookmarkModel* bookmark_model,
                      ReadingListModel* reading_list_model,
                      syncer::SyncService* sync_service,
                      PrefService* pref_service,
@@ -258,9 +253,6 @@ class SafariDataImporter {
 
   // Service used to import history URLs.
   const raw_ref<history::HistoryService> history_service_;
-
-  // Service used to import bookmarks.
-  const raw_ref<bookmarks::BookmarkModel> bookmark_model_;
 
   // Service used to import reading lists.
   const raw_ref<ReadingListModel> reading_list_model_;

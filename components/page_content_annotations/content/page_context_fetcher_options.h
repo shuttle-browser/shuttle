@@ -139,10 +139,6 @@ struct FetchPageContextOptions {
   FetchPageContextOptions();
   ~FetchPageContextOptions();
 
-  // Limit defining the number of bytes for inner text returned. A value
-  // of 0 indicates no inner text should be returned.
-  uint32_t inner_text_bytes_limit = 0;
-
   // Options for taking a screenshot. If not set, no screenshot will be taken.
   std::optional<ScreenshotOptions> screenshot_options = std::nullopt;
 

@@ -157,7 +157,6 @@ static_library("test_support") {
     ":test_support_proto",
     "//base",
     "//base/test:test_support",
-    "//components/bookmarks/browser",
     "//components/os_crypt/browser:test_support",
     "//components/pref_registry",
     "//components/prefs:test_support",

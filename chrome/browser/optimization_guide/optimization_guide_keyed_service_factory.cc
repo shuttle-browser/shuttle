@@ -13,7 +13,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/common/chrome_features.h"
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/private_ai/private_ai_service_factory.h"
 #endif
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "content/public/browser/browser_context.h"
@@ -58,7 +57,6 @@ OptimizationGuideKeyedServiceFactory::OptimizationGuideKeyedServiceFactory()
   DependsOn(BackgroundDownloadServiceFactory::GetInstance());
   DependsOn(IdentityManagerFactory::GetInstance());
 #if !BUILDFLAG(IS_ANDROID)
-  DependsOn(private_ai::PrivateAiServiceFactory::GetInstance());
 #endif
 }
 

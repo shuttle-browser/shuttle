@@ -18,12 +18,6 @@
 #include "chrome/browser/device_api/device_attribute_api.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_features.h"
-#include "chrome/browser/web_applications/policy/web_app_policy_constants.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/common/pref_names.h"
 #include "components/permissions/features.h"
 #include "content/public/browser/browser_thread.h"
@@ -92,29 +86,6 @@ Profile* GetProfile(content::RenderFrameHost& host) {
   return Profile::FromBrowserContext(host.GetBrowserContext());
 }
 
-std::optional<std::reference_wrapper<const web_app::WebAppRegistrar>>
-GetRegistrar(content::RenderFrameHost& host) {
-  const web_app::WebAppProvider* web_app_provider =
-      web_app::WebAppProvider::GetForWebApps(GetProfile(host));
-  if (!web_app_provider) {
-    return std::nullopt;
-  }
-  return web_app_provider->registrar_unsafe();
-}
-
-// Check whether an app with the target origin is in the WebAppRegistrar and is
-// a dev mode installed IWA.
-bool IsDevModeInstalledIwaOrigin(content::RenderFrameHost& host,
-                                 const url::Origin& origin) {
-  ASSIGN_OR_RETURN(const web_app::WebAppRegistrar& registrar,
-                   GetRegistrar(host), [] { return false; });
-  return registrar
-      .FindBestAppWithUrlInScope(origin.GetURL(),
-                                 web_app::WebAppFilter::IsDevModeIsolatedApp(),
-                                 {.exclude_scope_extensions = true})
-      .has_value();
-}
-
 bool IsAffiliatedUser(Profile* profile) {
 #if BUILDFLAG(IS_CHROMEOS)
   const user_manager::User* user =
@@ -146,15 +117,8 @@ bool IsTrustedContext(content::RenderFrameHost& host,
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  ASSIGN_OR_RETURN(const web_app::WebAppRegistrar& registrar,
-                   GetRegistrar(host), [] { return false; });
-  return registrar
-      .FindBestAppWithUrlInScope(
-          origin.GetURL(),
-          web_app::WebAppFilter::PolicyInstalledIsolatedWebApp() |
-              web_app::WebAppFilter::IsDevModeIsolatedApp(),
-          {.exclude_scope_extensions = true})
-      .has_value();
+  // Only Isolated Web Apps (removed) were trusted outside of kiosk mode.
+  return false;
 }
 
 bool IsAllowedByPermissionsPolicy(content::RenderFrameHost& host) {
@@ -201,8 +165,6 @@ DeviceServiceImpl::DeviceServiceImpl(
 #endif  // BUILDFLAG(IS_CHROMEOS)
   content_settings_observation_.Observe(
       HostContentSettingsMapFactory::GetForProfile(profile));
-  auto& provider = CHECK_DEREF(web_app::WebAppProvider::GetForWebApps(profile));
-  install_manager_observation_.Observe(&provider.install_manager());
 }
 
 DeviceServiceImpl::~DeviceServiceImpl() = default;
@@ -252,20 +214,6 @@ void DeviceServiceImpl::CreateForTest(
   Create(host, std::move(receiver), std::move(device_attribute_api));
 }
 
-void DeviceServiceImpl::OnWebAppSourceRemoved(const webapps::AppId& app_id) {
-  OnDisposingIfNeeded();
-}
-
-void DeviceServiceImpl::OnWebAppUninstalled(
-    const webapps::AppId& app_id,
-    webapps::WebappUninstallSource uninstall_source) {
-  OnDisposingIfNeeded();
-}
-
-void DeviceServiceImpl::OnWebAppInstallManagerDestroyed() {
-  install_manager_observation_.Reset();
-}
-
 void DeviceServiceImpl::OnContentSettingChanged(
     const ContentSettingsPattern& primary_pattern,
     const ContentSettingsPattern& secondary_pattern,
@@ -311,8 +259,7 @@ void DeviceServiceImpl::GetAnnotatedLocation(
 void DeviceServiceImpl::GetDeviceAttribute(
     void (DeviceAttributeApi::*method)(DeviceAttributeCallback callback),
     DeviceAttributeCallback callback) {
-  if (!IsAffiliatedUser(GetProfile(render_frame_host())) &&
-      !IsDevModeInstalledIwaOrigin(render_frame_host(), origin())) {
+  if (!IsAffiliatedUser(GetProfile(render_frame_host()))) {
     device_attribute_api_->ReportNotAffiliatedError(std::move(callback));
     return;
   }

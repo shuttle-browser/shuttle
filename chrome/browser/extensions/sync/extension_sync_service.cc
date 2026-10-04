@@ -46,10 +46,6 @@
 #include "extensions/common/permissions/permission_set.h"
 #include "extensions/common/permissions/permissions_data.h"
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/web_applications/preinstalled_web_apps/preinstalled_web_apps.h"
-#endif
-
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
 using extensions::AccountExtensionTracker;
@@ -654,15 +650,9 @@ void ExtensionSyncService::ApplySyncData(
         PendingUpdate(extension_sync_data.version(), reenable_after_update);
     check_for_updates = true;
   } else if (state == NOT_INSTALLED) {
-    if (IsMigratingPreinstalledWebApp(id)) {
-      // Don't install the item. It's no longer relevant and is a zombie sync
-      // node.
-      base::UmaHistogramBoolean(
-          "Extensions.SyncBlockedByDefaultWebAppMigration", true);
-    } else if (!extensions::PendingExtensionManager::Get(profile_)->AddFromSync(
-                   id, extension_sync_data.update_url(),
-                   extension_sync_data.version(), ShouldAllowInstall,
-                   extension_sync_data.remote_install())) {
+    if (!extensions::PendingExtensionManager::Get(profile_)->AddFromSync(
+            id, extension_sync_data.update_url(), extension_sync_data.version(),
+            ShouldAllowInstall, extension_sync_data.remote_install())) {
       LOG(WARNING) << "Could not add pending extension for " << id;
       // This means that the extension is already pending installation, with a
       // non-INTERNAL location.  Add to pending_sync_data, even though it will
@@ -902,27 +892,4 @@ bool ExtensionSyncService::ShouldSync(const Extension& extension) const {
   // Any otherwise syncable extension that can receive sync data can be synced
   // or uploaded.
   return ShouldReceiveSyncData(extension);
-}
-
-bool ExtensionSyncService::IsMigratingPreinstalledWebApp(
-    const extensions::ExtensionId& extension_id) {
-#if BUILDFLAG(IS_ANDROID)
-  // Android does not support Chrome Apps.
-  return false;
-#else
-  if (!migrating_default_chrome_app_ids_cache_) {
-    std::vector<web_app::PreinstalledWebAppMigration> migrations =
-        web_app::GetPreinstalledWebAppMigrations(*profile_);
-
-    std::vector<std::string> chrome_app_ids;
-    chrome_app_ids.reserve(migrations.size());
-    for (const web_app::PreinstalledWebAppMigration& migration : migrations) {
-      chrome_app_ids.push_back(migration.old_chrome_app_id);
-    }
-
-    migrating_default_chrome_app_ids_cache_.emplace(std::move(chrome_app_ids));
-  }
-
-  return migrating_default_chrome_app_ids_cache_->contains(extension_id);
-#endif  // BUILDFLAG(IS_ANDROID)
 }

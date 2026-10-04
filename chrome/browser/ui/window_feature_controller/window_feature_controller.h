@@ -13,9 +13,6 @@
 
 class BrowserWindowFullscreenController;
 
-namespace web_app {
-class AppBrowserController;
-}
 
 // Controls and queries whether specific UI elements (toolbar, tabstrip,
 // bookmark bar) are supported or currently visible on a browser window.
@@ -35,7 +32,6 @@ class WindowFeatureController {
 
   WindowFeatureController(
       BrowserWindowFullscreenController* fullscreen_controller,
-      web_app::AppBrowserController* app_controller,
       BrowserWindowInterface::Type browser_type,
       bool is_trusted_source,
       ui::UnownedUserDataHost& host);
@@ -76,8 +72,6 @@ class WindowFeatureController {
                                          bool check_can_support) const;
   bool AppPopupBrowserSupportsWindowFeature(WindowFeature feature,
                                             bool check_can_support) const;
-  bool AppBrowserSupportsWindowFeature(WindowFeature feature,
-                                       bool check_can_support) const;
   bool PictureInPictureBrowserSupportsWindowFeature(
       WindowFeature feature,
       bool check_can_support) const;
@@ -87,8 +81,6 @@ class WindowFeatureController {
 
   const raw_ref<BrowserWindowFullscreenController> fullscreen_controller_;
 
-  // Can be null.
-  const raw_ptr<web_app::AppBrowserController> app_controller_;
 
   const BrowserWindowInterface::Type browser_type_;
   const bool is_trusted_source_;

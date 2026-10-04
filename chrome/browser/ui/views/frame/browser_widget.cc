@@ -32,7 +32,6 @@
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "chrome/browser/ui/views/frame/system_menu_model_builder.h"
 #include "chrome/browser/ui/views/frame/top_container_view.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/chrome_switches.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/mojom/menu_source_type.mojom-forward.h"
@@ -85,14 +84,6 @@ class ThemeChangedObserver : public views::WidgetObserver {
   base::ScopedObservation<views::Widget, views::WidgetObserver>
       widget_observation{this};
 };
-
-bool IsUsingLinuxSystemTheme(Profile* profile) {
-#if BUILDFLAG(IS_LINUX)
-  return ThemeServiceFactory::GetForProfile(profile)->UsingSystemTheme();
-#else
-  return false;
-#endif
-}
 
 }  // namespace
 
@@ -344,15 +335,6 @@ const ui::ThemeProvider* BrowserWidget::GetThemeProvider() const {
 
 const ui::ThemeProvider* BrowserWidget::GetBaseThemeProvider() const {
   BrowserWindowInterface* browser = browser_view_->browser();
-  auto* app_controller = web_app::AppBrowserController::From(browser);
-  // Ignore the system theme for web apps with window-controls-overlay as the
-  // display_override so the web contents can blend with the overlay by using
-  // the developer-provided theme color for a better experience. Context:
-  // https://crbug.com/40771982.
-  if (app_controller && (!IsUsingLinuxSystemTheme(browser->GetProfile()) ||
-                         app_controller->AppUsesWindowControlsOverlay())) {
-    return app_controller->GetThemeProvider();
-  }
   return &ThemeService::GetThemeProviderForProfile(browser->GetProfile());
 }
 
@@ -367,15 +349,6 @@ ui::ColorProviderKey::ThemeInitializerSupplier* BrowserWidget::GetCustomTheme()
   }
 
   BrowserWindowInterface* browser = browser_view_->browser();
-  auto* app_controller = web_app::AppBrowserController::From(browser);
-  // Ignore the system theme for web apps with window-controls-overlay as the
-  // display_override so the web contents can blend with the overlay by using
-  // the developer-provided theme color for a better experience. Context:
-  // https://crbug.com/40771982.
-  if (app_controller && (!IsUsingLinuxSystemTheme(browser->GetProfile()) ||
-                         app_controller->AppUsesWindowControlsOverlay())) {
-    return app_controller->GetThemeSupplier();
-  }
   auto* theme_service =
       ThemeServiceFactory::GetForProfile(browser->GetProfile());
   return theme_service->UsingDeviceTheme() ? nullptr
@@ -503,16 +476,6 @@ ui::ColorProviderKey BrowserWidget::GetColorProviderKey() const {
   }
 
   // Apply BrowserWidget overrides:
-  key.app_controller =
-      web_app::AppBrowserController::From(browser_view_->browser());
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // ChromeOS SystemWebApps use the OS theme all the time.
-  if (web_app::GetSystemWebAppType(browser_view_->browser()).has_value()) {
-    return key;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
   // frame_type.
   const bool use_custom_frame =
       browser_native_widget_ && browser_native_widget_->UseCustomFrame();
@@ -554,10 +517,8 @@ void BrowserWidget::SelectNativeTheme() {
   // https://crbug.com/40771982.
   const auto* linux_ui_theme =
       ui::LinuxUiTheme::GetForWindow(GetNativeWindow());
-  SetNativeTheme(linux_ui_theme &&
-                         !browser_view_->AppUsesWindowControlsOverlay()
-                     ? linux_ui_theme->GetNativeTheme()
-                     : native_theme);
+  SetNativeTheme(linux_ui_theme ? linux_ui_theme->GetNativeTheme()
+                                : native_theme);
 #endif
 }
 

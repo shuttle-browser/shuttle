@@ -40,7 +40,6 @@ source_set("prediction_service") {
   ]
   deps = [
     "//components/keyed_service/content",
-    "//components/passage_embeddings/core",
     "//components/permissions:permissions_common",
     "//components/version_info",
     "//content/public/browser",

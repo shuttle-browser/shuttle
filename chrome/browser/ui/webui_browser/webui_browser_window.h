@@ -9,7 +9,6 @@
 
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
 #include "chrome/browser/ui/webui/webui_toolbar/icon_table.h"
@@ -44,7 +43,6 @@ class WebUIBrowserWindow : public BrowserWindow,
                            public ui::AcceleratorProvider,
                            public ui::AcceleratorTarget,
                            public views::WidgetObserver,
-                           public BookmarkBarController::Delegate,
                            public webui_toolbar::IconTable::Delegate {
  public:
   explicit WebUIBrowserWindow(BrowserWindowInterface* browser);
@@ -78,8 +76,6 @@ class WebUIBrowserWindow : public BrowserWindow,
   void SetTopControlsGestureScrollInProgress(bool in_progress) override;
   std::vector<StatusBubble*> GetStatusBubbles() override;
   void UpdateTitleBar() override;
-  void OnBookmarkBarStateChanged(
-      BookmarkBar::AnimateChangeType change_type) override;
   void UpdateLoadingAnimations(bool is_visible) override;
   void OnActiveTabChanged(content::WebContents* old_contents,
                           content::WebContents* new_contents,
@@ -94,38 +90,21 @@ class WebUIBrowserWindow : public BrowserWindow,
   void UpdateReloadStopState(bool is_loading, bool force) override;
   void UpdateToolbar(content::WebContents* contents) override;
   bool UpdateToolbarSecurityState() override;
-  void UpdateCustomTabBarVisibility(bool visible, bool animate) override;
   void ResetToolbarTabState(content::WebContents* contents) override;
   void FocusToolbar() override;
   void ToolbarSizeChanged(bool is_animating) override;
   void TabDraggingStatusChanged(bool is_dragging) override;
   void LinkOpeningFromGesture(WindowOpenDisposition disposition) override;
   void FocusAppMenu() override;
-  void OnFocusBookmarksToolbar() override;
   bool IsTabStripEditable() const override;
   void DisableTabStripEditingForTesting() override;
   bool IsToolbarVisible() const override;
   bool IsToolbarShowing() const override;
   bool IsLocationBarVisible() const override;
   void ShowUpdateChromeDialog() override;
-  void ShowIntentPickerBubble(
-      std::vector<apps::IntentPickerAppInfo> app_info,
-      bool show_stay_in_chrome,
-      bool show_remember_selection,
-      apps::IntentPickerBubbleType bubble_type,
-      const std::optional<url::Origin>& initiating_origin,
-      IntentPickerResponse callback) override;
-  void ShowBookmarkBubble(const GURL& url, bool already_bookmarked) override;
 #if BUILDFLAG(IS_CHROMEOS)
   void ToggleMultitaskMenu() override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  ShowTranslateBubbleResult ShowTranslateBubble(
-      content::WebContents* contents,
-      translate::TranslateStep step,
-      const std::string& source_language,
-      const std::string& target_language,
-      translate::TranslateErrors error_type,
-      bool is_user_gesture) override;
 
   DownloadBubbleUIController* GetDownloadBubbleUIController() override;
   void ConfirmBrowserCloseWithPendingDownloads(
@@ -148,14 +127,6 @@ class WebUIBrowserWindow : public BrowserWindow,
   void ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) override;
   void MaybeShowProfileSwitchIPH() override;
   void MaybeShowSupervisedUserProfileSignInIPH() override;
-  void ShowHatsDialog(
-      const std::string& site_id,
-      const std::optional<std::string>& hats_histogram_name,
-      const std::optional<uint64_t> hats_survey_ukm_id,
-      base::OnceClosure success_callback,
-      base::OnceClosure failure_callback,
-      const SurveyBitsData& product_specific_bits_data,
-      const SurveyStringData& product_specific_string_data) override;
   ExclusiveAccessContext* GetExclusiveAccessContext() override;
   std::string GetWorkspace() const override;
   bool IsVisibleOnAllWorkspaces() const override;
@@ -164,8 +135,6 @@ class WebUIBrowserWindow : public BrowserWindow,
       content::RenderFrameHost* frame,
       content::EyeDropperListener* listener) override;
   void ShowCaretBrowsingDialog() override;
-  void CreateTabSearchBubble() override;
-  void CloseTabSearchBubble() override;
   void ShowIncognitoClearBrowsingDataDialog() override;
   void ShowIncognitoHistoryDisclaimerDialog() override;
   bool IsUnframedModeEnabled() const override;

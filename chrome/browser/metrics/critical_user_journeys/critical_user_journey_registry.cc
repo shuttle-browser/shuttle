@@ -20,17 +20,6 @@ CriticalUserJourneyRegistry::CriticalUserJourneyRegistry() = default;
 CriticalUserJourneyRegistry::~CriticalUserJourneyRegistry() = default;
 
 void CriticalUserJourneyRegistry::AddJourneys() {
-  HatsParams download_hats_params;
-  download_hats_params.trigger = metrics::kHatsSurveyTriggerDownloadJourney;
-
-  HatsParams pin_extension_hats_params;
-  pin_extension_hats_params.trigger =
-      metrics::kHatsSurveyTriggerPinExtensionJourney;
-
-  HatsParams clear_browsing_history_hats_params;
-  clear_browsing_history_hats_params.trigger =
-      metrics::kHatsSurveyTriggerClearBrowsingHistory;
-
   // ---------------------------------------------------------------------------
   // Existing Browser Journeys
   // ---------------------------------------------------------------------------
@@ -51,7 +40,6 @@ void CriticalUserJourneyRegistry::AddJourneys() {
           .AddStep(kDownloadBubbleOpenButtonId,
                    ui::InteractionSequence::StepType::kActivated,
                    ViewDownloadedFileJourneySteps::kClickDownloadedFile)
-          .LaunchHatsSurveyOnCompletion(download_hats_params)
           .Build());
 
   AddJourney(
@@ -71,7 +59,6 @@ void CriticalUserJourneyRegistry::AddJourneys() {
               kDownloadedFileOpenedCustomEventId,
               ui::InteractionSequence::StepType::kCustomEvent,
               ViewDownloadedFileFromAppMenuJourneySteps::kDownloadedFileClicked)
-          .LaunchHatsSurveyOnCompletion(download_hats_params)
           .Build());
 
   AddJourney(
@@ -85,7 +72,6 @@ void CriticalUserJourneyRegistry::AddJourneys() {
                Branch(kExtensionsSidePanelPinExtensionsEventId,
                       PinExtensionJourneySteps::
                           kPinExtensionsViaSidePanelPinButton)})
-          .LaunchHatsSurveyOnCompletion(pin_extension_hats_params)
           .Build());
 
   AddJourney(
@@ -109,7 +95,6 @@ void CriticalUserJourneyRegistry::AddJourneys() {
                   kClearBrowsingDataHistoryEventId,
               ui::InteractionSequence::StepType::kCustomEvent,
               ClearBrowsingHistoryJourneySteps::kClearBrowsingDataHistoryEvent)
-          .LaunchHatsSurveyOnCompletion(clear_browsing_history_hats_params)
           .Build());
 
   // ---------------------------------------------------------------------------

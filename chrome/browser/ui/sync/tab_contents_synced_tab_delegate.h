@@ -18,10 +18,6 @@ namespace content {
 class WebContents;
 }
 
-namespace tasks {
-class TaskTabHelper;
-}
-
 // Partial implementation of SyncedTabDelegate for the cases where the tab has
 // (either initially or late) a WebContents.
 class TabContentsSyncedTabDelegate : public sync_sessions::SyncedTabDelegate {
@@ -63,8 +59,6 @@ class TabContentsSyncedTabDelegate : public sync_sessions::SyncedTabDelegate {
   void SetWebContents(content::WebContents* web_contents);
 
  private:
-  const tasks::TaskTabHelper* task_tab_helper() const;
-
   raw_ptr<content::WebContents, DanglingUntriaged> web_contents_ = nullptr;
 
   // Cached value of last_active_time_ticks and last_active_time, sometimes

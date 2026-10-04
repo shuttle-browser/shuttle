@@ -33,14 +33,7 @@
 
 class ActorBorderViewController;
 class ActorUiWindowController;
-class BookmarkBarController;
-class BookmarksSidePanelCoordinator;
-class BookmarksServiceFeature;
-class BreadcrumbManagerBrowserAgent;
 
-namespace geic {
-class GeicSidePanelCoordinator;
-}  // namespace geic
 class Browser;
 class BrowserActions;
 class BrowserActiveStateManager;
@@ -73,7 +66,6 @@ class ContentsBorderController;
 class ContextHighlightWindowFeature;
 
 class CookieControlsBubbleCoordinator;
-class DataSharingBubbleController;
 class DesktopBrowserWindowCapabilities;
 class DevtoolsUIController;
 class EmbedderBrowserWindowFeatures;
@@ -89,19 +81,15 @@ class ImmersiveModeController;
 class IncognitoClearBrowsingDataDialogCoordinator;
 class InitialWebUIManager;
 class InitialWebUIWindowMetricsManager;
-class IOSPromoController;
 class LocationBar;
 class LocationBarModel;
-class MemorySaverOptInIPHController;
 class PinnedToolbarActions;
 class ProfileMenuCoordinator;
 class OrganizerPanelStateController;
 class ReadingListSidePanelCoordinator;
-class RecentActivityBubbleCoordinator;
 class ScrimViewController;
 class SearchboxContextData;
 class SessionServiceBrowserHelper;
-class SharingWindowController;
 class SidePanelCoordinator;
 class SidePanelRegistry;
 class SidePanelUI;
@@ -110,17 +98,12 @@ class SplitViewIphController;
 class TabDragServiceFeature;
 class TabListBridge;
 
-namespace send_tab_to_self {
-class SendTabToSelfIphController;
-}  // namespace send_tab_to_self
 class TabMenuModelDelegate;
 class TabStripModel;
 class TabStripServiceFeature;
 class TabsFromOtherDevicesSidePanelCoordinator;
 class ToastController;
 class ToastService;
-class TranslateBubbleController;
-class UIControllerFactory;
 class UnloadController;
 class UpgradeNotificationController;
 class VerticalTabIphController;
@@ -173,16 +156,6 @@ namespace content_settings {
 class CookieControlsController;
 }  // namespace content_settings
 
-namespace contextual_tasks {
-class ContextualTasksBrowserController;
-}  // namespace contextual_tasks
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-namespace default_browser {
-class PinInfoBarController;
-}  // namespace default_browser
-#endif
-
 namespace enterprise_data_protection {
 class DataProtectionUIController;
 }  // namespace enterprise_data_protection
@@ -194,25 +167,6 @@ class ExtensionBrowserWindowHelper;
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 class ExtensionSidePanelManager;
 }  // namespace extensions
-
-namespace glic {
-class GlicIphController;
-class GlicNudgeController;
-class GlicSplitButtonController;
-}  // namespace glic
-
-namespace lens {
-class LensOverlayEntryPointController;
-class LensRegionSearchController;
-}  // namespace lens
-
-namespace media_router {
-class CastBrowserController;
-}  // namespace media_router
-
-namespace memory_saver {
-class MemorySaverBubbleController;
-}  // namespace memory_saver
 
 namespace new_tab_footer {
 class NewTabFooterController;
@@ -229,27 +183,11 @@ class PdfInfoBarController;
 }  // namespace pdf::infobar
 #endif
 
-namespace qrcode_generator {
-class QRCodeWindowController;
-}  // namespace qrcode_generator
-
-namespace send_tab_to_self {
-class SendTabToSelfToolbarBubbleController;
-}  // namespace send_tab_to_self
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 namespace session_restore_infobar {
 class SessionRestoreInfobarController;
 }  // namespace session_restore_infobar
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-namespace sharing_hub {
-class SharingHubWindowController;
-}  // namespace sharing_hub
-
-namespace skills {
-class SkillsUiWindowController;
-}  // namespace skills
 
 namespace split_tabs {
 class SplitTabHighlightController;
@@ -259,7 +197,6 @@ namespace tab_groups {
 class DeletionDialogController;
 class MostRecentSharedTabUpdateStore;
 class SessionServiceTabGroupSyncObserver;
-class SharedTabGroupFeedbackController;
 }  // namespace tab_groups
 
 namespace tabs {
@@ -270,17 +207,9 @@ namespace tabs_api {
 class TabStripUIControllerImpl;
 }  // namespace tabs_api
 
-namespace ttc {
-class AiOverlayDialogController;
-}  // namespace ttc
-
 namespace ui {
 class AcceleratorProvider;
 }  // namespace ui
-
-namespace web_app {
-class AppBrowserController;
-}  // namespace web_app
 
 // This class owns the core controllers for features that are scoped to a given
 // browser window on desktop.
@@ -351,8 +280,6 @@ class BrowserWindowFeatures {
 
   actions::ActionItem* GetRootActionItem();
 
-  glic::GlicNudgeController* glic_nudge_controller();
-
   // Returns true if a FindBarController exists for this browser window.
   bool HasFindBarController() const;
 
@@ -420,22 +347,6 @@ class BrowserWindowFeatures {
   // Members owned by all browser window types.
   std::unique_ptr<UnloadController> unload_controller_;
   std::unique_ptr<ActorBorderViewController> actor_border_view_controller_;
-  std::unique_ptr<ttc::AiOverlayDialogController> ai_overlay_dialog_controller_;
-
-  // Helper which handles bookmark app specific browser configuration.
-  // This must be initialized before |command_controller_| to ensure the correct
-  // set of commands are enabled.
-  std::unique_ptr<web_app::AppBrowserController> app_browser_controller_;
-
-  std::unique_ptr<BookmarkBarController> bookmark_bar_controller_;
-  std::unique_ptr<BookmarksServiceFeature> bookmarks_service_feature_;
-  std::unique_ptr<BookmarksSidePanelCoordinator>
-      bookmarks_side_panel_coordinator_;
-  std::unique_ptr<geic::GeicSidePanelCoordinator> geic_side_panel_coordinator_;
-
-  // Listens for browser-related breadcrumb events to be added to crash reports.
-  std::unique_ptr<BreadcrumbManagerBrowserAgent>
-      breadcrumb_manager_browser_agent_;
 
   std::unique_ptr<BrowserActions> browser_actions_;
   std::unique_ptr<BrowserActiveStateManager> browser_active_state_manager_;
@@ -464,17 +375,13 @@ class BrowserWindowFeatures {
       context_highlight_window_feature_;
 
   // Member order dependencies:
-  //   glic_nudge_controller_ depends on tab_list_bridge_.
   //   extension_window_controller_ depends on tab_list_bridge_.
   std::unique_ptr<TabListBridge> tab_list_bridge_;
 
-  std::unique_ptr<contextual_tasks::ContextualTasksBrowserController>
-      contextual_tasks_browser_controller_;
   std::unique_ptr<CookieControlsBubbleCoordinator>
       cookie_controls_bubble_coordinator_;
   std::unique_ptr<content_settings::CookieControlsController>
       cookie_controls_controller_;
-  std::unique_ptr<DataSharingBubbleController> data_sharing_bubble_controller_;
 
   // A collection of features specific to desktop versions of Chrome.
   // Member order dependencies:
@@ -502,9 +409,6 @@ class BrowserWindowFeatures {
 
   std::unique_ptr<FindBarOwner> find_bar_owner_;
   std::unique_ptr<BrowserWindowFullscreenController> fullscreen_controller_;
-  std::unique_ptr<glic::GlicIphController> glic_iph_controller_;
-  std::unique_ptr<glic::GlicSplitButtonController>
-      glic_split_button_controller_;
   std::unique_ptr<HistoryClustersSidePanelCoordinator>
       history_clusters_side_panel_coordinator_;
   std::unique_ptr<HistorySidePanelCoordinator> history_side_panel_coordinator_;
@@ -514,11 +418,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<InitialWebUIWindowMetricsManager>
       initial_webui_window_metrics_manager_;
   std::unique_ptr<BrowserInstantController> instant_controller_;
-  std::unique_ptr<IOSPromoController> ios_promo_controller_;
-  std::unique_ptr<lens::LensOverlayEntryPointController>
-      lens_overlay_entry_point_controller_;
-  std::unique_ptr<lens::LensRegionSearchController>
-      lens_region_search_controller_;
 
   // Helper which implements the LiveTabContext interface.
   std::unique_ptr<BrowserLiveTabContext> live_tab_context_;
@@ -529,28 +428,17 @@ class BrowserWindowFeatures {
   // The model for the toolbar view.
   std::unique_ptr<LocationBarModel> location_bar_model_;
 
-  std::unique_ptr<memory_saver::MemorySaverBubbleController>
-      memory_saver_bubble_controller_;
   std::unique_ptr<tab_groups::MostRecentSharedTabUpdateStore>
       most_recent_shared_tab_update_store_;
   std::unique_ptr<ProfileMenuCoordinator> profile_menu_coordinator_;
   std::unique_ptr<OrganizerPanelStateController>
       organizer_panel_state_controller_;
-  std::unique_ptr<qrcode_generator::QRCodeWindowController>
-      qrcode_window_controller_;
   std::unique_ptr<ReadingListSidePanelCoordinator>
       reading_list_side_panel_coordinator_;
-  std::unique_ptr<RecentActivityBubbleCoordinator>
-      recent_activity_bubble_coordinator_;
   std::unique_ptr<SearchboxContextData> searchbox_context_data_;
-  std::unique_ptr<send_tab_to_self::SendTabToSelfToolbarBubbleController>
-      send_tab_to_self_toolbar_bubble_controller_;
   std::unique_ptr<SessionServiceBrowserHelper> session_service_browser_helper_;
   std::unique_ptr<tab_groups::SessionServiceTabGroupSyncObserver>
       session_service_tab_group_sync_observer_;
-  std::unique_ptr<sharing_hub::SharingHubWindowController>
-      sharing_hub_window_controller_;
-  std::unique_ptr<SharingWindowController> sharing_window_controller_;
   std::unique_ptr<SidePanelRegistry> side_panel_registry_;
   std::unique_ptr<SigninViewController> signin_view_controller_;
   std::unique_ptr<SplitViewIphController> split_view_iph_controller_;
@@ -569,12 +457,9 @@ class BrowserWindowFeatures {
   std::unique_ptr<TabsFromOtherDevicesSidePanelCoordinator>
       tabs_from_other_devices_side_panel_coordinator_;
   std::unique_ptr<ToastService> toast_service_;
-  std::unique_ptr<TranslateBubbleController> translate_bubble_controller_;
   std::unique_ptr<UpgradeNotificationController>
       upgrade_notification_controller_;
   std::unique_ptr<BrowserUserEducationInterface> user_education_;
-  std::unique_ptr<send_tab_to_self::SendTabToSelfIphController>
-      send_tab_to_self_iph_controller_;
   std::unique_ptr<VerticalTabIphController> vertical_tab_iph_controller_;
   std::unique_ptr<tabs::VerticalTabStripStateController>
       vertical_tab_strip_state_controller_;
@@ -593,7 +478,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<ActorUiWindowController> actor_ui_window_controller_;
   std::unique_ptr<omnibox::AiModePageActionController>
       ai_mode_page_action_controller_;
-  std::unique_ptr<media_router::CastBrowserController> cast_browser_controller_;
   std::unique_ptr<ColorProviderBrowserHelper> color_provider_browser_helper_;
   std::unique_ptr<ContentsBorderController> contents_border_controller_;
   std::unique_ptr<enterprise_data_protection::DataProtectionUIController>
@@ -606,18 +490,11 @@ class BrowserWindowFeatures {
       extension_side_panel_manager_;
 
   std::unique_ptr<FullscreenControlHost> fullscreen_control_host_;
-  std::unique_ptr<MemorySaverOptInIPHController>
-      memory_saver_opt_in_iph_controller_;
   std::unique_ptr<new_tab_footer::NewTabFooterController>
       new_tab_footer_controller_;
   std::unique_ptr<omnibox::OmniboxPopupCloser> omnibox_popup_closer_;
   std::unique_ptr<ScrimViewController> scrim_view_controller_;
-  std::unique_ptr<tab_groups::SharedTabGroupFeedbackController>
-      shared_tab_group_feedback_controller_;
   std::unique_ptr<SidePanelCoordinator> side_panel_coordinator_;
-  std::unique_ptr<UIControllerFactory> ui_controller_factory_;
-  std::unique_ptr<skills::SkillsUiWindowController>
-      skills_ui_window_controller_;
   std::unique_ptr<split_tabs::SplitTabHighlightController>
       split_tab_highlight_controller_;
 
@@ -633,8 +510,6 @@ class BrowserWindowFeatures {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
   std::unique_ptr<pdf::infobar::PdfInfoBarController> pdf_infobar_controller_;
-  std::unique_ptr<default_browser::PinInfoBarController>
-      pin_infobar_controller_;
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)

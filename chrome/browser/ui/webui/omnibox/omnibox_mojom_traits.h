@@ -18,10 +18,6 @@
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
 
-namespace bookmarks {
-class BookmarkModel;
-}
-
 // A small wrapper around `AutocompleteMatch`, since the type lives in
 // `//components`, but the serialization for some fields requires data that is
 // only available in `//chrome`.
@@ -30,12 +26,11 @@ struct AutocompleteMatchWrapper {
   // This only exists so the Mojo bindings compile, but it is never used and
   // simply calls NOTREACHED().
   AutocompleteMatchWrapper();
-  // Does not take ownership of `bookmark_model` or `match`; the caller must
+  // Does not take ownership of `match`; the caller must
   // ensure they outlive `this`. This should not be a problem, since instances
   // are typically only constructed before calling a Mojo method that needs to
   // pass `AutocompleteMatch`s.
-  AutocompleteMatchWrapper(bookmarks::BookmarkModel* bookmark_model,
-                           const ::AutocompleteMatch& match);
+  explicit AutocompleteMatchWrapper(const ::AutocompleteMatch& match);
 
   const ::AutocompleteMatch& wrapped_match() const { return *wrapped_match_; }
   bool starred() const { return starred_; }

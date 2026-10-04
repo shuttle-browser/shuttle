@@ -5,7 +5,6 @@
 import {HistoryEmbeddingsUserActions, QUERY_RESULT_MINIMUM_AGE} from 'chrome://resources/cr_components/history/constants.js';
 import type {QueryResult, QueryState} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {EventTracker} from 'chrome://resources/js/event_tracker.js';
-import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {BrowserProxyImpl} from './browser_proxy.js';
@@ -111,20 +110,12 @@ export class HistoryQueryManagerElement extends CrLitElement {
       incremental: incremental,
     };
 
-    let afterTimestamp;
-    if (loadTimeData.getBoolean('enableHistoryEmbeddings') &&
-        this.queryState.after) {
-      const afterDate = new Date(this.queryState.after);
-      afterDate.setHours(0, 0, 0, 0);
-      afterTimestamp = afterDate.getTime();
-    }
-
     const browserProxy = BrowserProxyImpl.getInstance();
     const promise = incremental ?
         browserProxy.handler.queryHistoryContinuation() :
         browserProxy.handler.queryHistory(
             this.queryState.searchTerm, RESULTS_PER_PAGE,
-            afterTimestamp ? afterTimestamp : null,
+            null,
             this.queryState.includeUserVisits,
             this.queryState.includeActorVisits);
     // Ignore rejected (cancelled) queries.
@@ -139,13 +130,6 @@ export class HistoryQueryManagerElement extends CrLitElement {
         changes.search !== this.queryState.searchTerm) {
       this.queryState = {...this.queryState, searchTerm: changes.search};
       this.searchTermChanged_();
-      needsUpdate = true;
-    }
-
-    if (loadTimeData.getBoolean('enableHistoryEmbeddings') &&
-        changes.after !== null && changes.after !== this.queryState.after &&
-        (Boolean(changes.after) || Boolean(this.queryState.after))) {
-      this.queryState = {...this.queryState, after: changes.after};
       needsUpdate = true;
     }
 

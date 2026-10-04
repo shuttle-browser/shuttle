@@ -41,10 +41,6 @@ namespace chrome_pdf {
 
 namespace {
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-// The maximum image dimension which is processed without downsampling by OCR.
-constexpr uint32_t kMaxImageDimensionForOcr = 2048;
-#endif
 
 void CompareTextRuns(const AccessibilityTextRunInfo& expected_text_run,
                      const AccessibilityTextRunInfo& actual_text_run) {
@@ -601,107 +597,6 @@ TEST_P(PDFiumPageImageTest, TextAndImagesWithAltText) {
 
 INSTANTIATE_TEST_SUITE_P(All, PDFiumPageImageTest, testing::Bool());
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-using PDFiumPageImageForOcrTest = PDFiumPageImageTest;
-
-TEST_P(PDFiumPageImageForOcrTest, LowResolutionImage) {
-  TestClient client(/*use_skia_renderer=*/GetParam());
-  std::unique_ptr<PDFiumEngine> engine =
-      InitializeEngine(&client, FILE_PATH_LITERAL("text_with_image.pdf"));
-  ASSERT_TRUE(engine);
-  ASSERT_EQ(1, engine->GetNumberOfPages());
-
-  PDFiumPage& page = GetPDFiumPage(*engine, 0);
-  page.PopulateTextRunTypeAndImageAltText();
-  ASSERT_EQ(3u, page.images_.size());
-
-  ASSERT_FALSE(page.images_[0].alt_text.empty());
-  SkBitmap image_bitmap = page.GetImageForOcr(page.images_[0].page_object_index,
-                                              kMaxImageDimensionForOcr);
-  EXPECT_FALSE(image_bitmap.drawsNothing());
-  EXPECT_EQ(image_bitmap.width(), 50);
-  EXPECT_EQ(image_bitmap.height(), 50);
-
-  ASSERT_TRUE(page.images_[1].alt_text.empty());
-  image_bitmap = page.GetImageForOcr(page.images_[1].page_object_index,
-                                     kMaxImageDimensionForOcr);
-  EXPECT_FALSE(image_bitmap.drawsNothing());
-  // While the scaled image size is 20x20, `image_data` has the same size as
-  // the image in the PDF file, which is 50x50, and is not scaled.
-  EXPECT_EQ(image_bitmap.width(), 50);
-  EXPECT_EQ(image_bitmap.height(), 50);
-}
-
-TEST_P(PDFiumPageImageForOcrTest, HighResolutionImage) {
-  TestClient client(/*use_skia_renderer=*/GetParam());
-  std::unique_ptr<PDFiumEngine> engine =
-      InitializeEngine(&client, FILE_PATH_LITERAL("big_image.pdf"));
-  ASSERT_TRUE(engine);
-  ASSERT_EQ(1, engine->GetNumberOfPages());
-
-  PDFiumPage& page = GetPDFiumPage(*engine, 0);
-  page.PopulateTextRunTypeAndImageAltText();
-  ASSERT_EQ(1u, page.images_.size());
-
-  SkBitmap image_bitmap = page.GetImageForOcr(page.images_[0].page_object_index,
-                                              kMaxImageDimensionForOcr);
-  EXPECT_FALSE(image_bitmap.drawsNothing());
-  // While the original image is 5000x5000, the returned image is
-  // `kMaxImageDimensionForOcr` x `kMaxImageDimensionForOcr` which is the
-  // highest optimal size for OCR.
-  EXPECT_EQ(image_bitmap.width(), static_cast<float>(kMaxImageDimensionForOcr));
-  EXPECT_EQ(image_bitmap.height(),
-            static_cast<float>(kMaxImageDimensionForOcr));
-}
-
-TEST_P(PDFiumPageImageForOcrTest, RotatedPage) {
-  TestClient client(/*use_skia_renderer=*/GetParam());
-  std::unique_ptr<PDFiumEngine> engine =
-      InitializeEngine(&client, FILE_PATH_LITERAL("rotated_page.pdf"));
-  ASSERT_TRUE(engine);
-  ASSERT_EQ(1, engine->GetNumberOfPages());
-
-  PDFiumPage& page = GetPDFiumPage(*engine, 0);
-  page.PopulateTextRunTypeAndImageAltText();
-  ASSERT_EQ(1u, page.images_.size());
-
-  SkBitmap image_bitmap = page.GetImageForOcr(page.images_[0].page_object_index,
-                                              kMaxImageDimensionForOcr);
-
-  // Page rotation does not affect the images that are sent to OCR.
-  EXPECT_EQ(image_bitmap.width(), 100);
-  EXPECT_EQ(image_bitmap.height(), 25);
-}
-
-TEST_P(PDFiumPageImageForOcrTest, NonImage) {
-  TestClient client(/*use_skia_renderer=*/GetParam());
-  std::unique_ptr<PDFiumEngine> engine =
-      InitializeEngine(&client, FILE_PATH_LITERAL("text_with_image.pdf"));
-  ASSERT_TRUE(engine);
-  ASSERT_EQ(1, engine->GetNumberOfPages());
-
-  PDFiumPage& page = GetPDFiumPage(*engine, 0);
-  page.PopulateTextRunTypeAndImageAltText();
-  ASSERT_EQ(3u, page.images_.size());
-  ASSERT_EQ(1, page.images_[0].page_object_index);
-
-  // Existing non-image object.
-  SkBitmap image_bitmap = page.GetImageForOcr(
-      /*image_index=*/0, kMaxImageDimensionForOcr);
-  EXPECT_TRUE(image_bitmap.drawsNothing());
-  EXPECT_EQ(image_bitmap.width(), 0);
-  EXPECT_EQ(image_bitmap.height(), 0);
-
-  // Out of range.
-  image_bitmap =
-      page.GetImageForOcr(/*image_index=*/1000, kMaxImageDimensionForOcr);
-  EXPECT_TRUE(image_bitmap.drawsNothing());
-  EXPECT_EQ(image_bitmap.width(), 0);
-  EXPECT_EQ(image_bitmap.height(), 0);
-}
-
-INSTANTIATE_TEST_SUITE_P(All, PDFiumPageImageForOcrTest, testing::Bool());
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 class PDFiumPageTextTest : public PDFiumTestBase {
  protected:

@@ -5,7 +5,6 @@
 #include "chrome/browser/ui/sync/tab_contents_synced_tab_delegate.h"
 
 #include "base/memory/ref_counted.h"
-#include "chrome/browser/complex_tasks/task_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
 #include "components/sessions/content/content_serialized_navigation_builder.h"
@@ -20,7 +19,6 @@
 #include "extensions/buildflags/buildflags.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
 #endif
 
 using content::NavigationEntry;
@@ -74,11 +72,7 @@ bool TabContentsSyncedTabDelegate::IsBeingDestroyed() const {
 }
 
 std::string TabContentsSyncedTabDelegate::GetExtensionAppId() const {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  return apps::GetAppIdForWebContents(web_contents_);
-#else
   return std::string();
-#endif
 }
 
 bool TabContentsSyncedTabDelegate::IsInitialBlankNavigation() const {
@@ -181,31 +175,16 @@ bool TabContentsSyncedTabDelegate::ShouldSync(
 
 int64_t TabContentsSyncedTabDelegate::GetTaskIdForNavigationId(
     int nav_id) const {
-  const tasks::TaskTabHelper* task_tab_helper = this->task_tab_helper();
-  if (task_tab_helper &&
-      task_tab_helper->get_task_id_for_navigation(nav_id) != nullptr) {
-    return task_tab_helper->get_task_id_for_navigation(nav_id)->id();
-  }
   return -1;
 }
 
 int64_t TabContentsSyncedTabDelegate::GetParentTaskIdForNavigationId(
     int nav_id) const {
-  const tasks::TaskTabHelper* task_tab_helper = this->task_tab_helper();
-  if (task_tab_helper &&
-      task_tab_helper->get_task_id_for_navigation(nav_id) != nullptr) {
-    return task_tab_helper->get_task_id_for_navigation(nav_id)->parent_id();
-  }
   return -1;
 }
 
 int64_t TabContentsSyncedTabDelegate::GetRootTaskIdForNavigationId(
     int nav_id) const {
-  const tasks::TaskTabHelper* task_tab_helper = this->task_tab_helper();
-  if (task_tab_helper &&
-      task_tab_helper->get_task_id_for_navigation(nav_id) != nullptr) {
-    return task_tab_helper->get_task_id_for_navigation(nav_id)->root_id();
-  }
   return -1;
 }
 
@@ -220,12 +199,4 @@ content::WebContents* TabContentsSyncedTabDelegate::web_contents() {
 void TabContentsSyncedTabDelegate::SetWebContents(
     content::WebContents* web_contents) {
   web_contents_ = web_contents;
-}
-
-const tasks::TaskTabHelper* TabContentsSyncedTabDelegate::task_tab_helper()
-    const {
-  if (web_contents_ == nullptr) {
-    return nullptr;
-  }
-  return tasks::TaskTabHelper::FromWebContents(web_contents_);
 }

@@ -27,9 +27,7 @@
 #include "build/buildflag.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_context_service.h"
 #include "chrome/browser/preloading/autocomplete_dictionary_preload_service.h"
 #include "chrome/browser/preloading/autocomplete_dictionary_preload_service_factory.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service.h"
@@ -47,16 +45,12 @@
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/bookmarks/browser/bookmark_model.h"
-#include "components/contextual_tasks/public/features.h"
-#include "components/contextual_tasks/public/prefs.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/browser/aim_eligibility_service_features.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_controller_emitter.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_result.h"
-#include "components/omnibox/browser/contextual_search_provider.h"
 #include "components/omnibox/browser/fusebox_action.mojom.h"
 #include "components/omnibox/browser/fusebox_action_mojo_utils.h"
 #include "components/omnibox/browser/omnibox_client.h"
@@ -110,23 +104,6 @@ const char* kReplyRotated180IconResourceName =
 }  // namespace searchbox_internal
 
 namespace {
-
-std::u16string GetSmartTabSharingMegaplusString() {
-  switch (contextual_tasks::kSmartTabSharingMegaplusStringOption.Get()) {
-    case contextual_tasks::SmartTabSharingMegaplusStringOption::kMegaplusV1:
-      return l10n_util::GetStringUTF16(
-          IDS_STS_MEGAPLUS_SHARE_RELEVANT_OPEN_TABS);
-    case contextual_tasks::SmartTabSharingMegaplusStringOption::kMegaplusV2:
-      return l10n_util::GetStringUTF16(
-          IDS_STS_MEGAPLUS_SHARE_RELEVANT_OPEN_TABS_V2);
-    case contextual_tasks::SmartTabSharingMegaplusStringOption::kMegaplusV3:
-      return l10n_util::GetStringUTF16(
-          IDS_STS_MEGAPLUS_SHARE_RELEVANT_OPEN_TABS_V3);
-    default:
-      return l10n_util::GetStringUTF16(
-          IDS_STS_MEGAPLUS_SHARE_RELEVANT_OPEN_TABS);
-  }
-}
 
 constexpr int kPromptHeightBuffer = 40;
 constexpr int kPromptWidthBuffer = 40;
@@ -584,12 +561,10 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
       base::FeatureList::IsEnabled(omnibox::kAimUseSearchboxConfigIconIds));
   dict.Set("ShowContextMenuHeaders",
            ntp_composebox::kShowContextMenuHeaders.Get());
-  dict.Set("composeboxSmartTabSharingVisible",
-           options.is_lens ? false
-                           : contextual_tasks::ContextualTasksContextService::
-                                 GetIsSmartTabSharingEnabled(profile));
+  // Smart tab sharing depended on contextual tasks, which was removed.
+  dict.Set("composeboxSmartTabSharingVisible", false);
   dict.Set("stsMegaplusShareRelevantOpenTabs",
-           GetSmartTabSharingMegaplusString());
+           l10n_util::GetStringUTF16(IDS_STS_MEGAPLUS_SHARE_RELEVANT_OPEN_TABS));
 
   return dict;
 }
@@ -822,14 +797,13 @@ SearchboxHandler::CreateAutocompleteResult(
     int32_t query_id,
     const std::u16string& input,
     const AutocompleteResult& result,
-    bookmarks::BookmarkModel* bookmark_model,
     const PrefService* prefs,
     const TemplateURLService* turl_service) const {
   return searchbox::mojom::AutocompleteResult::New(
       query_id, result.sequence_id(), input,
       CreateSuggestionGroupsMap(result, prefs, result.suggestion_groups_map()),
-      CreateAutocompleteMatches(result, bookmark_model,
-                                result.suggestion_groups_map(), turl_service),
+      CreateAutocompleteMatches(result, result.suggestion_groups_map(),
+                                turl_service),
       base::UTF8ToUTF16(result.smart_compose_inline_hint()));
 }
 
@@ -862,7 +836,6 @@ SearchboxHandler::CreateSuggestionGroupsMap(
 std::vector<searchbox::mojom::AutocompleteMatchPtr>
 SearchboxHandler::CreateAutocompleteMatches(
     const AutocompleteResult& result,
-    bookmarks::BookmarkModel* bookmark_model,
     const omnibox::GroupConfigMap& suggestion_groups_map,
     const TemplateURLService* turl_service) const {
   // Tracks whether the first contextual match has been flagged to force show
@@ -871,8 +844,8 @@ SearchboxHandler::CreateAutocompleteMatches(
   std::vector<searchbox::mojom::AutocompleteMatchPtr> matches;
   for (const auto& match : result) {
     auto mojom_match =
-        CreateAutocompleteMatch(match, matches.size(), bookmark_model,
-                                suggestion_groups_map, turl_service);
+        CreateAutocompleteMatch(match, matches.size(), suggestion_groups_map,
+                                turl_service);
     if (mojom_match) {
       if (!flagged_contextual && ShouldShowFirstContextualDescription() &&
           match.suggestion_group_id ==
@@ -917,7 +890,6 @@ std::optional<searchbox::mojom::AutocompleteMatchPtr>
 SearchboxHandler::CreateAutocompleteMatch(
     const AutocompleteMatch& match,
     size_t line,
-    bookmarks::BookmarkModel* bookmark_model,
     const omnibox::GroupConfigMap& suggestion_groups_map,
     const TemplateURLService* turl_service) const {
   // Skip the primary column horizontal matches. This check guards against
@@ -960,8 +932,8 @@ SearchboxHandler::CreateAutocompleteMatch(
   mojom_match->destination_url = match.destination_url;
   mojom_match->suggestion_group_id =
       match.suggestion_group_id.value_or(omnibox::GROUP_INVALID);
-  const bool is_bookmarked =
-      bookmark_model->IsBookmarked(match.destination_url);
+  // Bookmarks were removed.
+  const bool is_bookmarked = false;
   // For starter pack suggestions, use template url to generate proper vector
   // icon.
   const TemplateURL* associated_keyword_turl =
@@ -1319,24 +1291,6 @@ void SearchboxHandler::QueryAutocomplete(
   //   when not in keyword mode.
   autocomplete_input.set_allow_exact_keyword_match(is_keyword_selected);
   autocomplete_input.set_in_keyword_mode(is_keyword_selected);
-  // Set the lens overlay suggest inputs, if available.
-  if (std::optional<lens::proto::LensOverlaySuggestInputs> suggest_inputs =
-          client()->GetLensOverlaySuggestInputs()) {
-    // Don't set lens params if in "Create Image" with an image present or in
-    // "Canvas" mode. This prevents the contextual client from being used in
-    // this tool mode.
-    autocomplete_input.set_lens_overlay_suggest_inputs(*suggest_inputs);
-  }
-  if (client()->GetContextualInputData().has_value()) {
-    auto context_data = client()->GetContextualInputData().value();
-    if (context_data.page_title.has_value() &&
-        context_data.page_url.has_value()) {
-      autocomplete_input.set_context_tab_title(
-          base::UTF8ToUTF16(context_data.page_title.value()));
-      autocomplete_input.set_context_tab_url(context_data.page_url.value());
-    }
-  }
-
   autocomplete_input.set_input_state(GetInputState());
   autocomplete_input.set_previous_query(GetPreviousQuery());
   autocomplete_input.set_suggest_inventory(suggest_inventory);
@@ -1737,7 +1691,6 @@ void SearchboxHandler::OnResultChanged(AutocompleteController* controller,
 
   page_->AutocompleteResultChanged(CreateAutocompleteResult(
       current_query_id_, input_text, autocomplete_controller()->result(),
-      BookmarkModelFactory::GetForBrowserContext(profile_),
       profile_->GetPrefs(), template_url_service));
 
   // If the AutocompleteController is owned by the handler, notify the prerender

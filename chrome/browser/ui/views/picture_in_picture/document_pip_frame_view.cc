@@ -36,7 +36,6 @@
 #include "components/omnibox/browser/location_bar_model_impl.h"
 #include "components/security_state/core/security_state.h"
 #include "components/vector_icons/vector_icons.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_constants.h"
 #include "extensions/buildflags/buildflags.h"
@@ -764,11 +763,10 @@ void DocumentPipFrameView::UpdateOriginAndSecurity() {
   // for display, so a long origin could otherwise be pushed out of view.
   gfx::ElideBehavior elide_behavior =
       url.SchemeIsFile() ? gfx::ELIDE_TAIL : gfx::ELIDE_HEAD;
-  // Extension and isolated-app URLs are like file URLs: the tail is the
-  // spoofable part, so elide it.
+  // Extension URLs are like file URLs: the tail is the spoofable part, so
+  // elide it.
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (url.SchemeIs(extensions::kExtensionScheme) ||
-      url.SchemeIs(webapps::kIsolatedAppScheme)) {
+  if (url.SchemeIs(extensions::kExtensionScheme)) {
     elide_behavior = gfx::ELIDE_TAIL;
   }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)

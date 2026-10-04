@@ -5,11 +5,7 @@
 #include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
 
 #include "base/notimplemented.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
-#include "chrome/browser/contextual_search/contextual_search_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
-#include "chrome/browser/ui/bookmarks/bookmarks_service_feature.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -22,8 +18,8 @@
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/searchbox/realbox_handler.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_extensions_container.h"
-#include "chrome/browser/ui/webui_browser/bookmark_bar_page_handler.h"
 #include "chrome/browser/ui/webui_browser/webui_browser.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_page_handler.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_side_panel_ui.h"
@@ -36,8 +32,6 @@
 #include "chrome/grit/webui_browser_resources_map.h"
 #include "chrome/grit/webui_toolbar_shared_resources.h"
 #include "chrome/grit/webui_toolbar_shared_resources_map.h"
-#include "components/contextual_search/contextual_search_service.h"
-#include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/guest_contents/browser/guest_contents_host_impl.h"
 #include "components/surface_embed/common/features.h"
@@ -70,8 +64,6 @@ std::string SidePanelEntryIdToTitle(SidePanelEntryId id) {
       return l10n_util::GetStringUTF8(IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE);
     case SidePanelEntryId::kReadingList:
       return l10n_util::GetStringUTF8(IDS_READ_LATER_TITLE);
-    case SidePanelEntryId::kBookmarks:
-      return l10n_util::GetStringUTF8(IDS_BOOKMARK_MANAGER_TITLE);
     default:
       NOTREACHED();
   }
@@ -177,8 +169,7 @@ void WebUIBrowserUI::BindInterface(
 
 void WebUIBrowserUI::BindInterface(
     mojo::PendingReceiver<bookmark_bar::mojom::PageHandlerFactory> receiver) {
-  bookmark_bar_page_factory_receiver_.reset();
-  bookmark_bar_page_factory_receiver_.Bind(std::move(receiver));
+  // Bookmarks were removed; the bookmark bar page handler is never created.
 }
 
 void WebUIBrowserUI::BindInterface(
@@ -202,24 +193,7 @@ void WebUIBrowserUI::CreatePageHandler(
   // WebUIOmniboxHandler.
   realbox_handler_ = std::make_unique<RealboxHandler>(
       std::move(pending_page_handler), std::move(page),
-      Profile::FromWebUI(web_ui()), web_contents,
-      base::BindRepeating(&WebUIBrowserUI::GetOrCreateContextualSessionHandle,
-                          base::Unretained(this)));
-}
-
-void WebUIBrowserUI::BindInterface(
-    mojo::PendingReceiver<bookmarks_api::mojom::BookmarksService> receiver) {
-  WebUIBrowserWindow* window =
-      WebUIBrowserWindow::FromWebShellWebContents(web_ui()->GetWebContents());
-  if (window) {
-    BrowserWindowInterface* browser_window = window->browser();
-    if (browser_window) {
-      auto* feature = BookmarksServiceFeature::From(browser_window);
-      if (feature) {
-        feature->Accept(std::move(receiver));
-      }
-    }
-  }
+      Profile::FromWebUI(web_ui()), web_contents);
 }
 
 void WebUIBrowserUI::BindInterface(
@@ -277,9 +251,7 @@ void WebUIBrowserUI::CreatePageHandler(
 void WebUIBrowserUI::CreatePageHandler(
     mojo::PendingRemote<bookmark_bar::mojom::Page> page,
     mojo::PendingReceiver<bookmark_bar::mojom::PageHandler> receiver) {
-  bookmark_bar_page_handler_ =
-      std::make_unique<WebUIBrowserBookmarkBarPageHandler>(
-          std::move(receiver), std::move(page), web_ui(), browser_);
+  // Bookmarks were removed; drop the pipes.
 }
 
 void WebUIBrowserUI::CreatePageHandler(
@@ -301,15 +273,6 @@ WebUIBrowserUI::GetKnownElementIdentifiers() const {
   return kKnownElementIdentifiers;
 }
 
-void WebUIBrowserUI::BookmarkBarStateChanged(
-    BookmarkBar::AnimateChangeType change_type) {
-  if (bookmark_bar_page_handler_) {
-    bookmark_bar_page_handler_->SetBookmarkBarState(
-        BookmarkBarController::From(browser_)->bookmark_bar_state(),
-        change_type);
-  }
-}
-
 void WebUIBrowserUI::ShowSidePanel(SidePanelEntryKey side_panel_entry_key) {
   // Create guest contents.
   WebUIBrowserSidePanelUI* side_panel_ui =
@@ -328,26 +291,6 @@ void WebUIBrowserUI::ShowSidePanel(SidePanelEntryKey side_panel_entry_key) {
 
 void WebUIBrowserUI::CloseSidePanel() {
   page_->CloseSidePanel();
-}
-
-contextual_search::ContextualSearchSessionHandle*
-WebUIBrowserUI::GetOrCreateContextualSessionHandle() {
-  if (!session_handle_) {
-    auto* service = ContextualSearchServiceFactory::GetForProfile(
-        Profile::FromWebUI(web_ui()));
-    if (service) {
-      // TODO(crbug.com/445510209): Use appropriate config and source
-      session_handle_ = service->CreateSession(
-          omnibox::CreateQueryControllerConfigParams(),
-          contextual_search::ContextualSearchSource::kOmnibox,
-          lens::LensOverlayInvocationSource::kOmniboxContextualQuery);
-      // TODO(crbug.com/469877646): Determine what to do with the return value
-      // of this call, or move this call to a different location.
-      session_handle_->CheckSearchContentSharingSettings(
-          Profile::FromWebUI(web_ui())->GetPrefs());
-    }
-  }
-  return session_handle_.get();
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(WebUIBrowserUI)

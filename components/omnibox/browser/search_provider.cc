@@ -35,7 +35,6 @@
 #include "components/history/core/browser/in_memory_database.h"
 #include "components/history/core/browser/keyword_search_term.h"
 #include "components/history/core/browser/keyword_search_term_util.h"
-#include "components/lens/lens_features.h"
 #include "components/omnibox/browser/autocomplete_enums.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
@@ -104,10 +103,8 @@ bool HasMultipleWords(const std::u16string& text) {
 
 bool ShouldOnlyShowVerbatimMatches(const AutocompleteInput& input) {
 #if BUILDFLAG(IS_IOS)
-  const bool has_lens_inputs_in_composebox =
-      omnibox::IsComposebox(input.current_page_classification()) &&
-      input.lens_overlay_suggest_inputs().has_value() &&
-      !base::FeatureList::IsEnabled(omnibox::kComposeboxAttachmentsTypedState);
+  // Lens contextual inputs were removed from this fork.
+  const bool has_lens_inputs_in_composebox = false;
   const bool is_image_gen_mode =
       input.input_state().active_tool ==
           omnibox::ToolMode::TOOL_MODE_IMAGE_GEN_UPLOAD ||
@@ -757,8 +754,7 @@ void SearchProvider::StartOrStopSuggestQuery(bool minimal_changes) {
   // suggest, lens contextual searchboxes and the composebox, shouldn't query
   // suggest and only the verbatim matches should be shown.
   if (input_.current_page_classification() ==
-          OmniboxEventProto::CONTEXTUAL_SEARCHBOX &&
-      !lens::features::ShowContextualSearchboxSearchSuggest()) {
+      OmniboxEventProto::CONTEXTUAL_SEARCHBOX) {
     return;
   }
   // Make sure the current query can be sent to at least one suggest service.
@@ -940,8 +936,6 @@ std::unique_ptr<network::SimpleURLLoader> SearchProvider::CreateSuggestLoader(
   // Session token and prefetch data required for answers.
   search_term_args.session_token =
       client()->GetTemplateURLService()->GetSessionToken();
-  search_term_args.lens_overlay_suggest_inputs =
-      input.lens_overlay_suggest_inputs();
   search_term_args.input_state = input.input_state();
   search_term_args.previous_query = input.previous_query();
   search_term_args.suggest_inventory = input.suggest_inventory();

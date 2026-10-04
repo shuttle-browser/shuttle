@@ -123,6 +123,7 @@ if (!is_chromeos_device) {
 
     deps = [
       ":chip",
+      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/permissions",
       "//chrome/browser/ui/views:content_setting_bubble_contents",
       "//chrome/browser/ui/views/location_bar:test_support",

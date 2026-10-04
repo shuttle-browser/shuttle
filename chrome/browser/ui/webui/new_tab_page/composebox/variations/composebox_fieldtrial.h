@@ -8,7 +8,6 @@
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/contextual_search/contextual_search_context_controller.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "third_party/omnibox_proto/ntp_composebox_config.pb.h"
 
@@ -47,12 +46,6 @@ extern const base::FeatureParam<bool> kShowSmartCompose;
 extern const base::FeatureParam<bool> kCloseComposeboxByClickOutside;
 
 bool IsNtpComposeboxEnabled(Profile* profile);
-
-// Helper to create a QueryControllerConfigParams object from the feature
-// params.
-std::unique_ptr<
-    contextual_search::ContextualSearchContextController::ConfigParams>
-CreateQueryControllerConfigParams();
 
 class FeatureConfig : public omnibox_feature_configs::Config<FeatureConfig> {
  public:

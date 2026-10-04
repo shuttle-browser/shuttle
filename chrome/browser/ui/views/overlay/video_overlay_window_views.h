@@ -13,7 +13,6 @@
 #include "chrome/browser/picture_in_picture/auto_pip_setting_overlay_view.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_widget_fade_animator.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window.h"
-#include "components/global_media_controls/public/views/media_progress_view.h"
 #include "content/public/browser/immersive_playback_options.h"
 #include "content/public/browser/overlay_window.h"
 #include "content/public/browser/video_picture_in_picture_window_controller.h"
@@ -218,7 +217,6 @@ class VideoOverlayWindowViews : public content::VideoOverlayWindow,
   ToggleCameraButton* toggle_camera_button_for_testing() const;
   HangUpButton* hang_up_button_for_testing() const;
   ToggleMuteButton* toggle_mute_button_for_testing() const;
-  global_media_controls::MediaProgressView* progress_view_for_testing() const;
   views::Label* timestamp_for_testing() const;
   views::Label* live_status_for_testing() const;
   OverlayWindowLiveCaptionButton* live_caption_button_for_testing() const;
@@ -364,13 +362,6 @@ class VideoOverlayWindowViews : public content::VideoOverlayWindow,
   // Removes the `overlay_view_` if it exists.
   void RemoveOverlayViewIfExists();
 
-  void OnProgressDragStateChanged(global_media_controls::DragState drag_state);
-  void ChangePlaybackStateForProgressDrag(
-      global_media_controls::PlaybackStateChangeForDragging
-          playback_state_change);
-  void SeekForProgressBarInteraction(double seek_progress);
-  void OnProgressViewUpdateCurrentTime(base::TimeDelta current_time);
-
   void UpdateTimestampLabel(base::TimeDelta current_time,
                             base::TimeDelta duration);
 
@@ -495,7 +486,6 @@ class VideoOverlayWindowViews : public content::VideoOverlayWindow,
   raw_ptr<ToggleCameraButton> toggle_camera_button_ = nullptr;
   raw_ptr<HangUpButton> hang_up_button_ = nullptr;
   raw_ptr<ToggleMuteButton> toggle_mute_button_ = nullptr;
-  raw_ptr<global_media_controls::MediaProgressView> progress_view_ = nullptr;
   raw_ptr<views::Label> timestamp_ = nullptr;
   raw_ptr<views::Label> live_status_ = nullptr;
   raw_ptr<OverlayWindowLiveCaptionButton> live_caption_button_ = nullptr;
@@ -537,11 +527,6 @@ class VideoOverlayWindowViews : public content::VideoOverlayWindow,
 
   // True if the Media Session "nextslide" action is handled by the website.
   bool show_next_slide_button_ = false;
-
-  // Tracks whether or not the progress bar is currently being dragged by the
-  // user. Used to ensure that controls don't hide while dragging.
-  global_media_controls::DragState progress_view_drag_state_ =
-      global_media_controls::DragState::kDragEnded;
 
   // Tracks the current position of media playback. Used for seeking to the
   // proper time when the user interacts with the progress bar.

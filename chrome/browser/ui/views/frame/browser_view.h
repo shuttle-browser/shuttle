@@ -20,13 +20,11 @@
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
-#include "chrome/browser/ui/translate/partial_translate_bubble_model.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/contents_container_view.h"
@@ -35,9 +33,7 @@
 #include "chrome/browser/ui/views/frame/shadow_overlay_view.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.h"
-#include "chrome/browser/ui/views/intent_picker_bubble_view.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
-#include "chrome/browser/ui/webui/tab_search/tab_search.mojom.h"
 #include "chrome/common/buildflags.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/infobars/core/infobar_container.h"
@@ -71,8 +67,6 @@
 // view: http://dev.chromium.org/developers/design-documents/browser-window
 
 class AccessibilityFocusHighlight;
-class BookmarkBarController;
-class BookmarkBarView;
 class BrowserWindowInterface;
 class BrowserViewLayout;
 class ContentsContainerView;
@@ -87,7 +81,6 @@ class ScrimView;
 class SidePanel;
 class SidePanelAnimationContentView;
 class TabDragTarget;
-class TabSearchBubbleHost;
 class TabStrip;
 class TabStripRegionView;
 class ToolbarButtonProvider;
@@ -96,7 +89,6 @@ class TopContainerView;
 class TopControlsSlideController;
 class TopControlsSlideControllerTest;
 class VerticalTabStripRegionView;
-class WebAppFrameToolbarView;
 
 namespace gfx {
 class AnimationRunner;
@@ -136,8 +128,7 @@ class BrowserView : public BrowserWindow,
                     public views::ClientView,
                     public infobars::InfoBarContainer::Delegate,
                     public ImmersiveModeController::Observer,
-                    public views::FocusChangeListener,
-                    public BookmarkBarController::Delegate {
+                    public views::FocusChangeListener {
   METADATA_HEADER(BrowserView, views::ClientView)
 
  public:
@@ -198,11 +189,6 @@ class BrowserView : public BrowserWindow,
   // Returns information about elements that want to render in the top window
   // frame area.
   ClientFrameElementInfo GetFrameElementInfo() const;
-
-  // Returns the preferred size of the Web App Frame Toolbar. Used for example
-  // to determine the height of the title bar.
-  // Returns an empty size if this browser is not for a web app.
-  gfx::Size GetWebAppFrameToolbarPreferredSize() const;
 
   // Adds provided |content| as a child of BrowserView so that layout can be
   // handled by BrowserViewLayout. Used when opening the side panel using
@@ -288,9 +274,6 @@ class BrowserView : public BrowserWindow,
   const ToolbarView* toolbar() const { return toolbar_; }
   ToolbarView* toolbar() { return toolbar_; }
 
-  // Bookmark bar may be null, for example for pop-ups.
-  BookmarkBarView* bookmark_bar() { return bookmark_bar_view_; }
-
   // Returns the do-nothing view which controls the z-order of the find bar
   // widget relative to views which paint into layers and views which have an
   // associated NativeView. The presence / visibility of this view is not
@@ -315,14 +298,6 @@ class BrowserView : public BrowserWindow,
     return weak_ptr_factory_.GetWeakPtr();
   }
 
-  views::LabelButton* GetGlicButton();
-
-  // Accessor for the BrowserView's TabSearchBubbleHost instance.
-  TabSearchBubbleHost* GetTabSearchBubbleHost();
-
-  // Setter for the BrowserView's TabSearchBubbleHost instance.
-  void UpdateTabSearchBubbleHost();
-
   // Accessor for the ExclusiveAccessBubble.
   ExclusiveAccessBubbleViews* GetExclusiveAccessBubble();
 
@@ -339,9 +314,6 @@ class BrowserView : public BrowserWindow,
 
   // Returns whether a vertical tabstrip should be shown.
   bool ShouldDrawVerticalTabStrip() const;
-
-  // Returns whether the webapp frame toolbar should be drawn.
-  bool ShouldDrawWebAppFrameToolbar() const;
 
   // Returns whether or not strokes should be drawn around and under the tabs.
   bool ShouldDrawTabStrokes() const;
@@ -380,10 +352,6 @@ class BrowserView : public BrowserWindow,
   // Returns true if the Browser object associated with this BrowserView is a
   // normal window (i.e. a browser window, not an app or popup).
   bool GetIsNormalType() const;
-
-  // Returns true if the Browser object associated with this BrowserView is a
-  // for an installed web app.
-  bool GetIsWebAppType() const;
 
   // Returns true if the Browser object associated with this BrowserView is for
   // a Picture in Picture window.
@@ -439,42 +407,6 @@ class BrowserView : public BrowserWindow,
   base::CallbackListSubscription AddOnLinkOpeningFromGestureCallback(
       OnLinkOpeningFromGestureCallback callback);
 
-  // Updates the state that determines if this app window should be in unframed
-  // display mode.
-  void UpdateUnframedModeEnabled();
-
-  // Returns true when an app's effective display mode is
-  // window-controls-overlay.
-  bool AppUsesWindowControlsOverlay() const;
-
-  // Returns true when an app's effective display mode is tabbed.
-  bool AppUsesTabbed() const;
-
-  // Returns true when an app's effective display mode is unframed.
-  bool AppUsesUnframedMode() const;
-
-  // Returns whether any of the features enabling draggable regions is enabled.
-  bool AreDraggableRegionsEnabled() const;
-
-  // Returns true when the window controls overlay should be displayed instead
-  // of a full titlebar. This is only supported for desktop web apps.
-  bool IsWindowControlsOverlayEnabled() const;
-
-  // Enable or disable the window controls overlay and notify the browser frame
-  // view of the update.
-  void ToggleWindowControlsOverlayEnabled(base::OnceClosure done);
-
-  bool WidgetOwnedByAnchorContainsPoint(
-      const gfx::Point& point_in_browser_view_coords);
-
-  bool unframed_mode_enabled_for_testing() const {
-    return unframed_mode_enabled_;
-  }
-
-  bool window_management_permission_granted_for_testing() const {
-    return window_management_permission_granted_;
-  }
-
   bool is_layout_deferred_for_testing() const {
     return layout_deferred_while_invisible_;
   }
@@ -486,8 +418,6 @@ class BrowserView : public BrowserWindow,
   bool is_startup_layout_disabled_for_testing() const {
     return startup_layout_state_ == StartupLayoutState::kDisabled;
   }
-
-  void UpdateWebAppStatusIconsVisiblity();
 
   // Getter for the `window.setResizable(bool)` state.
   std::optional<bool> GetWebApiWindowResizable() const;
@@ -551,7 +481,6 @@ class BrowserView : public BrowserWindow,
   void UpdateReloadStopState(bool is_loading, bool force) override;
   void UpdateToolbar(content::WebContents* contents) override;
   bool UpdateToolbarSecurityState() override;
-  void UpdateCustomTabBarVisibility(bool visible, bool animate) override;
   void ResetToolbarTabState(content::WebContents* contents) override;
   void FocusToolbar() override;
   void ToolbarSizeChanged(bool is_animating) override;
@@ -567,24 +496,9 @@ class BrowserView : public BrowserWindow,
   void ShowChromeLabs() override;
   BrowserView* AsBrowserView() override;
   void ShowUpdateChromeDialog() override;
-  void ShowIntentPickerBubble(
-      std::vector<IntentPickerBubbleView::AppInfo> app_info,
-      bool show_stay_in_chrome,
-      bool show_remember_selection,
-      apps::IntentPickerBubbleType bubble_type,
-      const std::optional<url::Origin>& initiating_origin,
-      IntentPickerResponse callback) override;
-  void ShowBookmarkBubble(const GURL& url, bool already_bookmarked) override;
 #if BUILDFLAG(IS_CHROMEOS)
   void ToggleMultitaskMenu() override;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  ShowTranslateBubbleResult ShowTranslateBubble(
-      content::WebContents* contents,
-      translate::TranslateStep step,
-      const std::string& source_language,
-      const std::string& target_language,
-      translate::TranslateErrors error_type,
-      bool is_user_gesture) override;
 
   DownloadBubbleUIController* GetDownloadBubbleUIController() override;
   void ConfirmBrowserCloseWithPendingDownloads(
@@ -607,14 +521,6 @@ class BrowserView : public BrowserWindow,
   void ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) override;
   void MaybeShowProfileSwitchIPH() override;
   void MaybeShowSupervisedUserProfileSignInIPH() override;
-  void ShowHatsDialog(
-      const std::string& site_id,
-      const std::optional<std::string>& hats_histogram_name,
-      const std::optional<uint64_t> hats_survey_ukm_id,
-      base::OnceClosure success_callback,
-      base::OnceClosure failure_callback,
-      const SurveyBitsData& product_specific_bits_data,
-      const SurveyStringData& product_specific_string_data) override;
   ExclusiveAccessContext* GetExclusiveAccessContext() override;
   std::string GetWorkspace() const override;
   bool IsVisibleOnAllWorkspaces() const override;
@@ -626,7 +532,6 @@ class BrowserView : public BrowserWindow,
       content::RenderFrameHost* frame,
       content::EyeDropperListener* listener) override;
 
-  BookmarkBarView* GetBookmarkBarView() const;
   LocationBarView* GetLocationBarView() const;
 
   void ShowIncognitoClearBrowsingDataDialog() override;
@@ -743,11 +648,6 @@ class BrowserView : public BrowserWindow,
   void OnWillChangeFocus(View* focused_before, View* focused_now) override;
   void OnDidChangeFocus(View* focused_before, View* focused_now) override;
 
-  // BookmarkBarController::Delegate:
-  void OnBookmarkBarStateChanged(
-      BookmarkBar::AnimateChangeType change_type) override;
-  void OnFocusBookmarksToolbar() override;
-
   // Testing interface:
   BrowserViewLayout* GetBrowserViewLayoutForTesting() {
     return GetBrowserViewLayout();
@@ -759,12 +659,6 @@ class BrowserView : public BrowserWindow,
   // WebContents, and the one hosting the webui tabstrip contents (if the
   // feature is enabled).
   std::vector<views::NativeViewHost*> GetNativeViewHostsForTopControlsSlide();
-
-  void CreateTabSearchBubble() override;
-  void CloseTabSearchBubble() override;
-
-  bool IsBookmarkBarVisible() const;
-  bool IsBookmarkBarAnimating() const;
 
 #if !BUILDFLAG(IS_CHROMEOS)
   AccessibilityFocusHighlight* GetAccessibilityFocusHighlightForTesting() {
@@ -778,16 +672,8 @@ class BrowserView : public BrowserWindow,
   // It returns > 1 elements when there is a split view that is active.
   std::vector<ContentsWebView*> GetAllVisibleContentsWebViews();
 
-  bool is_window_controls_overlay_available() const {
-    return is_window_controls_overlay_available_;
-  }
-
   void SetLoadingAnimationStateChangeClosureForTesting(
       base::OnceClosure closure);
-
-  WebAppFrameToolbarView* web_app_frame_toolbar_for_testing() {
-    return web_app_frame_toolbar();
-  }
 
   // This value is used in a common calculation in FrameView
   // subclasses. This must be added to the origin of the first painted pixel of
@@ -839,13 +725,6 @@ class BrowserView : public BrowserWindow,
     kTouchMode = 1,
     kMaxValue = kTouchMode,
   };
-
-  // Sets or clears the flags to force showing bookmark bar.
-  void SetForceShowBookmarkBarFlag(BookmarkBarController::ForceShowFlag flag);
-  void ClearForceShowBookmarkBarFlag(BookmarkBarController::ForceShowFlag flag);
-
-  // Returns the state of the bookmark bar.
-  BookmarkBar::State bookmark_bar_state() const;
 
   // Display the current active split view as a series of multiple side-by-side
   // web contents.
@@ -903,12 +782,6 @@ class BrowserView : public BrowserWindow,
 
   // Returns the BrowserViewLayout.
   BrowserViewLayout* GetBrowserViewLayout() const;
-
-  // Prepare to show the Bookmark Bar for the specified WebContents.
-  // Returns true if the Bookmark Bar can be shown (i.e. it's supported for this
-  // Browser type) and there should be a subsequent re-layout to show it.
-  // |contents| can be null.
-  bool MaybeShowBookmarkBar(content::WebContents* contents);
 
   // Prepare to show an Info Bar for the specified WebContents. Returns
   // true if there is an Info Bar to show and one is supported for this Browser
@@ -1032,27 +905,8 @@ class BrowserView : public BrowserWindow,
   // after the sync-to-signin migration.
   void MaybeShowSignInBenefitsIPH();
 
-  void UpdateWindowControlsOverlayEnabled();
-  void RefreshWindowControlsOverlayAfterFullscreenTransition();
-
   // Called each time the browser window is shown.
   void OnWindowDidShow();
-
-  // Updates the Window Controls Overlay availability in this window.
-  void UpdateWindowControlsOverlayAvailable();
-
-  // Updates the variable keeping track of the Window Management permission,
-  // which together with `unframed_mode_enabled_` controls whether the title bar
-  // is shown or not.
-  void UpdateWindowManagementPermission(content::PermissionResult result);
-
-  // Sets the callback which is called when the status of the Window Management
-  // permission changes.
-  void SetWindowManagementPermissionSubscriptionForUnframedMode(
-      content::WebContents* web_contents);
-
-  WebAppFrameToolbarView* web_app_frame_toolbar();
-  const WebAppFrameToolbarView* web_app_frame_toolbar() const;
 
   void PaintAsActiveChanged();
   void FrameColorsChanged();
@@ -1150,15 +1004,6 @@ class BrowserView : public BrowserWindow,
   // details)
   std::optional<int> theme_background_y_offset_;
 
-  // Menu button and page status icons. Only used by web-app windows.
-  raw_ptr<WebAppFrameToolbarView> web_app_frame_toolbar_ = nullptr;
-
-  // Normally the BrowserFrameView is responsible for rendering the title of a
-  // window when appropriate. However for web applications the title needs to be
-  // more integrated with other UI components part of BrowserView, so have a
-  // title Label for them here.
-  raw_ptr<views::Label> web_app_window_title_ = nullptr;
-
   // The view that contains the tabstrip, new tab button, and grab handle space.
   raw_ptr<TabStripRegionView> horizontal_tab_strip_region_view_ = nullptr;
 
@@ -1192,13 +1037,6 @@ class BrowserView : public BrowserWindow,
   raw_ptr<views::View> tab_overlay_view_ = nullptr;
 
 #endif
-
-  // The Bookmark Bar View for this window. Lazily created. May be null for
-  // non-tabbed browsers like popups. May not be visible.
-  std::unique_ptr<BookmarkBarView> detached_bookmark_bar_view_;
-  raw_ptr<BookmarkBarView> bookmark_bar_view_ = nullptr;
-
-  std::unique_ptr<TabSearchBubbleHost> tab_search_bubble_host_;
 
   // Separator between top container and contents.
   // Note: when `SideBySide` feature is disabled, this separator is also
@@ -1356,11 +1194,6 @@ class BrowserView : public BrowserWindow,
   std::optional<ui::ThroughputTracker> loading_animation_tracker_;
 #endif
 
-  bool window_controls_overlay_enabled_ = false;
-  bool is_window_controls_overlay_available_ = false;
-  bool unframed_mode_enabled_ = false;
-  bool window_management_permission_granted_ = false;
-
   // True if the browser window has been shown at least once.
   bool window_has_shown_ = false;
 
@@ -1368,8 +1201,6 @@ class BrowserView : public BrowserWindow,
   class PipExclusionObserverImpl;
   std::unique_ptr<PipExclusionObserverImpl> pip_exclusion_observer_;
 #endif
-  std::optional<content::PermissionController::SubscriptionId>
-      window_management_subscription_id_;
 
   std::optional<bool> resizable_from_web_api_;
 

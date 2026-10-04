@@ -511,12 +511,8 @@ void AboutHandler::PromoteUpdater(const base::ListValue& args) {
 #endif
 
 void AboutHandler::HandleOpenFeedbackDialog(const base::ListValue& args) {
+  // Feedback is not part of this build.
   DCHECK(args.empty());
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-          web_ui()->GetWebContents());
-  chrome::OpenFeedbackDialog(browser,
-                             feedback::kFeedbackSourceMdSettingsAboutPage);
 }
 
 void AboutHandler::HandleOpenHelpPage(const base::ListValue& args) {

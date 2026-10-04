@@ -22,7 +22,6 @@
 #include "pdf/buildflags.h"
 #include "pdf/page_orientation.h"
 #include "pdf/ui/thumbnail.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "third_party/pdfium/public/cpp/fpdf_scopers.h"
 #include "third_party/pdfium/public/fpdf_doc.h"
 #include "third_party/pdfium/public/fpdf_formfill.h"
@@ -156,26 +155,6 @@ class PDFiumPage {
   // Returns the indices of image objects.
   std::vector<int> GetImageObjectIndices();
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Returns if the page has images.
-  bool HasImages();
-
-  // Returns the image as a 32-bit bitmap format for OCR. The image dimensions
-  // will be at most `max_image_dimension`.
-  SkBitmap GetImageForOcr(int page_object_index, int max_image_dimension);
-
-  // Called to inform PDFiumPage that OCR operations performed on this page
-  // added text into the page or not.
-  // May only be called once per PDFiumPage instance.
-  void OnSearchifyGotOcrResult(bool added_text);
-
-  // Returns if Searchify has run on the page, regardless of whether it added
-  // any text to the page or not.
-  bool IsPageSearchified() const;
-
-  // Returns if it is safe to call `ReloadTextPage()`.
-  bool CanReloadTextPage() const;
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
   // For all the highlights on the page, get their underlying text ranges and
   // bounding boxes.
@@ -565,11 +544,6 @@ class PDFiumPage {
   base::OnceClosure thumbnail_callback_;
   bool available_ = false;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Indicates whether Searchify added text to this page or not. Note that if
-  // this page has never been Searchified, then this is null.
-  std::optional<bool> has_searchify_added_text_;
-#endif
 
   base::WeakPtrFactory<PDFiumPage> weak_factory_{this};
 };

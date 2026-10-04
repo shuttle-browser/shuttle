@@ -159,7 +159,6 @@ class ComponentLoader : public KeyedService {
   friend class ComponentLoaderFactory;
   friend class TtsApiTest;
   FRIEND_TEST_ALL_PREFIXES(ComponentLoaderTest, ParseManifest);
-  FRIEND_TEST_ALL_PREFIXES(ComponentLoaderTest, AddGlicExtension);
 
   // Information about a registered component extension.
   struct ComponentExtensionInfo {
@@ -212,10 +211,6 @@ class ComponentLoader : public KeyedService {
   void AddNetworkSpeechSynthesisExtension();
 
   void AddAimEligibilityExtension();
-
-  void AddGlicExtension();
-
-  void AddContextualTasksExtension();
 
   void AddWithNameAndDescription(int manifest_resource_id,
                                  const base::FilePath& root_directory,

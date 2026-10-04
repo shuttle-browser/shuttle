@@ -122,7 +122,6 @@ class PasswordsModelDelegateMock : public PasswordsModelDelegate {
               OnAddUsernameSaveClicked,
               (const std::u16string&, const password_manager::PasswordForm&),
               (override));
-  MOCK_METHOD(void, MaybeShowIOSPasswordPromo, (), (override));
   MOCK_METHOD(void, RelaunchChrome, (), (override));
   MOCK_METHOD(PasswordChangeDelegate*,
               GetPasswordChangeDelegate,

@@ -23,7 +23,6 @@ source_set("navigator") {
     "//chrome/browser/ui/tabs:tab_enums",
     "//components/captive_portal/core",
     "//components/tab_groups",
-    "//components/webapps/browser",
     "//content/public/browser",
     "//content/public/common",
     "//services/network/public/cpp",
@@ -85,16 +84,12 @@ source_set("impl") {
     ]
 
     deps += [
-      "//chrome/browser/apps/app_service",
-      "//chrome/browser/apps/link_capturing",
       "//chrome/browser/ui:browser_init_state",
       "//chrome/browser/ui:status_bubble",
       "//chrome/browser/ui/browser_ui_controller",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/web_applications",
-      "//chrome/browser/ui/web_applications:launch_utils",
       "//chrome/browser/ui/window_feature_controller",
     ]
   }

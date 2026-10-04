@@ -32,7 +32,6 @@
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "extensions/browser/api/api_resource_manager.h"
 #include "extensions/browser/api/audio/audio_api.h"
-#include "extensions/browser/api/feedback_private/feedback_private_api.h"
 #include "extensions/browser/api/hid/hid_connection_resource.h"
 #include "extensions/browser/api/hid/hid_device_manager.h"
 #include "extensions/browser/api/networking_private/networking_private_event_router_factory.h"
@@ -66,7 +65,6 @@
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
-#include "extensions/browser/api/feedback_private/log_source_resource.h"
 #include "extensions/browser/api/media_perception_private/media_perception_api_manager.h"
 #include "extensions/browser/api/virtual_keyboard_private/virtual_keyboard_private_api.h"  // nogncheck
 #endif
@@ -107,7 +105,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
 #endif
   ApiResourceManager<HidConnectionResource>::GetFactoryInstance();
 #if BUILDFLAG(IS_CHROMEOS)
-  ApiResourceManager<LogSourceResource>::GetFactoryInstance();
 #endif
   ApiResourceManager<ResumableTCPServerSocket>::GetFactoryInstance();
   ApiResourceManager<ResumableTCPSocket>::GetFactoryInstance();
@@ -133,7 +130,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   BluetoothPrivateAPI::GetFactoryInstance();
   ClipboardAPI::GetFactoryInstance();
 #endif
-  FeedbackPrivateAPI::GetFactoryInstance();
   HidDeviceManager::GetFactoryInstance();
 #if BUILDFLAG(IS_CHROMEOS)
   MediaPerceptionAPIManager::GetFactoryInstance();

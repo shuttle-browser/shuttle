@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_metrics.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/tab_group_menu_utils.h"
 #include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
-#include "components/data_sharing/public/group_data.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
 #include "components/saved_tab_groups/public/types.h"
 #include "components/sync/base/collaboration_id.h"
@@ -29,10 +28,6 @@ namespace content {
 class NavigationHandle;
 class WebContents;
 }  // namespace content
-
-namespace collaboration::messaging {
-struct ActivityLogItem;
-}  // namespace collaboration::messaging
 
 namespace tab_groups {
 
@@ -153,25 +148,6 @@ class SavedTabGroupUtils {
   // Returns true if the user is the owner of the shared tab group.
   static bool IsOwnerOfSharedTabGroup(Profile* profile,
                                       const base::Uuid& sync_id);
-
-  // Returns a list of the members of the group if the group data exists in the
-  // collaboration service in that profile. returns empty in any case where data
-  // is missing or not accessible.
-  static std::vector<data_sharing::GroupMember> GetMembersOfSharedTabGroup(
-      Profile* profile,
-      const syncer::CollaborationId& collaboration_id);
-
-  // Returns the GroupId for this tab group's collaboration.
-  static std::optional<data_sharing::GroupId> GetDataSharingGroupId(
-      Profile* profile,
-      LocalTabGroupID group_id);
-
-  // Returns the Recent Activity Log for this tab group. Optionally, filter for
-  // the given tab.
-  static std::vector<collaboration::messaging::ActivityLogItem>
-  GetRecentActivity(Profile* profile,
-                    LocalTabGroupID group_id,
-                    std::optional<LocalTabID> tab_id = std::nullopt);
 
   // Returns the tab with this id if contained in this group. The group
   // must exist.

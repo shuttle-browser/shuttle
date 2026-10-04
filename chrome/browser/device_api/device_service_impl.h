@@ -13,8 +13,6 @@
 #include "base/scoped_observation.h"
 #include "base/types/expected.h"
 #include "chrome/browser/device_api/device_attribute_api.h"
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "content/public/browser/document_service.h"
@@ -28,7 +26,6 @@ class RenderFrameHost;
 // API. Available only to trusted web applications.
 class DeviceServiceImpl final
     : public content::DocumentService<blink::mojom::DeviceAPIService>,
-      public web_app::WebAppInstallManagerObserver,
       public content_settings::Observer {
  public:
   using DeviceAttributeCallback = base::OnceCallback<void(
@@ -71,13 +68,6 @@ class DeviceServiceImpl final
       void (DeviceAttributeApi::*method)(DeviceAttributeCallback callback),
       DeviceAttributeCallback callback);
 
-  // WebAppInstallManagerObserver:
-  void OnWebAppSourceRemoved(const webapps::AppId& app_id) override;
-  void OnWebAppUninstalled(
-      const webapps::AppId& app_id,
-      webapps::WebappUninstallSource uninstall_source) override;
-  void OnWebAppInstallManagerDestroyed() override;
-
   // content_settings::Observer:
   void OnContentSettingChanged(
       const ContentSettingsPattern& primary_pattern,
@@ -87,9 +77,6 @@ class DeviceServiceImpl final
   void OnDisposingIfNeeded();
 
   PrefChangeRegistrar pref_change_registrar_;
-  base::ScopedObservation<web_app::WebAppInstallManager,
-                          web_app::WebAppInstallManagerObserver>
-      install_manager_observation_{this};
   base::ScopedObservation<HostContentSettingsMap, content_settings::Observer>
       content_settings_observation_{this};
   std::unique_ptr<DeviceAttributeApi> device_attribute_api_;

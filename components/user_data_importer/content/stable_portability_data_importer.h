@@ -19,10 +19,6 @@ class File;
 class SequencedTaskRunner;
 }  // namespace base
 
-namespace bookmarks {
-class BookmarkModel;
-}  // namespace bookmarks
-
 namespace history {
 class HistoryService;
 }  // namespace history
@@ -47,12 +43,10 @@ class StablePortabilityDataImporter {
   // to ImportHistory() for testing purposes.
   static constexpr size_t kHistoryBatchSize = 1000;
 
-  // `history_service`, `bookmark_model`, and `reading_list_model` may be null,
-  // but if non-null must outlive this class. `bookmark_parser` must not be
-  // null.
+  // `history_service` and `reading_list_model` may be null, but if non-null
+  // must outlive this class. `bookmark_parser` must not be null.
   StablePortabilityDataImporter(
       history::HistoryService* history_service,
-      bookmarks::BookmarkModel* bookmark_model,
       ReadingListModel* reading_list_model,
       std::unique_ptr<ContentBookmarkParser> bookmark_parser);
   ~StablePortabilityDataImporter();
@@ -175,9 +169,6 @@ class StablePortabilityDataImporter {
 
   // Service used to import history URLs.
   const raw_ptr<history::HistoryService> history_service_;
-
-  // Service used to import bookmarks.
-  const raw_ptr<bookmarks::BookmarkModel> bookmark_model_;
 
   // Service used to import reading list items.
   const raw_ptr<ReadingListModel> reading_list_model_;

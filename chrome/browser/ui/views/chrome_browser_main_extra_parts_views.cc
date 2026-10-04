@@ -12,22 +12,17 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "chrome/browser/bookmarks/bookmark_merged_surface_service.h"
-#include "chrome/browser/bookmarks/bookmark_merged_surface_service_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/ui/infobars/browser_infobar_registry.h"
-#include "chrome/browser/ui/views/bookmarks/bookmark_account_storage_move_dialog.h"
 #include "chrome/browser/ui/views/chrome_constrained_window_views_client.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/chrome_views_delegate.h"
-#include "chrome/browser/ui/views/media_router/media_router_dialog_controller_views.h"
 #include "chrome/browser/ui/views/relaunch_notification/relaunch_notification_controller.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/constrained_window/constrained_window_views.h"
 #include "components/infobars/core/infobar_delegate.h"
-#include "components/media_router/browser/media_router_dialog_controller.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/ui_devtools/devtools_server.h"
 #include "components/ui_devtools/switches.h"
@@ -126,18 +121,6 @@ void ChromeBrowserMainExtraPartsViews::PreProfileInit() {
     ui_devtools::ServerHolder::GetInstance()->CreateUiDevTools(output_dir);
   }
 
-  media_router::MediaRouterDialogController::SetGetOrCreate(
-      base::BindRepeating([](content::WebContents* web_contents) {
-        DCHECK(web_contents);
-        media_router::MediaRouterDialogController* controller = nullptr;
-        // This call does nothing if the controller already exists.
-        media_router::MediaRouterDialogControllerViews::CreateForWebContents(
-            web_contents);
-        controller =
-            media_router::MediaRouterDialogControllerViews::FromWebContents(
-                web_contents);
-        return controller;
-      }));
 
 #if BUILDFLAG(IS_LINUX)
   // On the Linux desktop, we want to prevent the user from logging in as root,
@@ -174,20 +157,6 @@ void ChromeBrowserMainExtraPartsViews::PreProfileInit() {
 
   exit(EXIT_FAILURE);
 #endif  // BUILDFLAG(IS_LINUX)
-}
-
-void ChromeBrowserMainExtraPartsViews::PostProfileInit(
-    Profile* profile,
-    bool is_initial_profile) {
-  auto* service = BookmarkMergedSurfaceServiceFactory::GetForProfile(profile);
-  if (service) {
-    service->SetShowMoveStorageDialogCallback(base::BindRepeating(
-        [](BrowserWindowInterface* browser, const bookmarks::BookmarkNode* node,
-           const bookmarks::BookmarkNode* target_folder, size_t index) {
-          ShowBookmarkAccountStorageMoveDialog(browser, node, target_folder,
-                                               index);
-        }));
-  }
 }
 
 void ChromeBrowserMainExtraPartsViews::PostBrowserStart() {

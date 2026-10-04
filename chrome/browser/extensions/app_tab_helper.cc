@@ -9,6 +9,7 @@
 #include "base/check_op.h"
 #include "base/functional/bind.h"
 #include "base/notreached.h"
+#include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_tab_helper_factory.h"
@@ -18,7 +19,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
@@ -54,6 +54,20 @@
 using content::WebContents;
 
 namespace extensions {
+
+namespace {
+
+// Extracts the app id from an app window name of the form "_crx_<app_id>".
+// Returns an empty string if `app_name` is not of that form.
+ExtensionId GetAppIdFromApplicationName(const std::string& app_name) {
+  static constexpr char kCrxAppPrefix[] = "_crx_";
+  if (!base::StartsWith(app_name, kCrxAppPrefix)) {
+    return ExtensionId();
+  }
+  return app_name.substr(sizeof(kCrxAppPrefix) - 1);
+}
+
+}  // namespace
 
 AppTabHelper::~AppTabHelper() = default;
 
@@ -132,7 +146,7 @@ void AppTabHelper::DidFinishNavigation(
       (browser->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
        browser->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP)) {
     const Extension* extension =
-        registry->GetInstalledExtension(web_app::GetAppIdFromApplicationName(
+        registry->GetInstalledExtension(GetAppIdFromApplicationName(
             BrowserInitState::From(browser)->create_params().app_name));
     if (extension && AppLaunchInfo::GetFullLaunchURL(extension).is_valid()) {
       DCHECK(extension->is_app());

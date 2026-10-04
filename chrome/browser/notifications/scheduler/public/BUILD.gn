@@ -40,15 +40,10 @@ source_set("public") {
     "schedule_service_utils.h",
     "throttle_config.cc",
     "throttle_config.h",
-    "tips_agent.cc",
-    "tips_agent.h",
     "user_action_handler.h",
   ]
 
-  public_deps = [
-    "//base",
-    "//chrome/browser/tips/core:types",
-  ]
+  public_deps = [ "//base" ]
   deps = [
     "//chrome/app:generated_resources",
     "//chrome/common",

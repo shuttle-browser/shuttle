@@ -82,10 +82,6 @@
       "platform_app", "extension", "legacy_packaged_app", "hosted_app"
     ]
   },
-  "bookmarks": {
-    "channel": "stable",
-    "extension_types": ["extension", "legacy_packaged_app"]
-  },
   "brailleDisplayPrivate": {
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app", "platform_app"],
@@ -197,16 +193,6 @@
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app", "platform_app"]
   },
-  "contextualTasksPrivate": {
-    "channel": "stable",
-    "extension_types": ["extension"],
-    "location": "component",
-    "platforms": ["chromeos", "linux", "mac", "win"],
-    "feature_flag": "ApiContextualTasksPrivate",
-    "allowlist": [
-      "37358CF0945B962A2F3783C2F8DB929B169818A4" // Contextual Tasks Component Extension
-    ]
-  },
   "cookies": {
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app"]
@@ -256,17 +242,6 @@
   "desktopCapture": {
     "channel": "stable",
     "extension_types": ["extension", "platform_app"]
-  },
-  "dictationPrivate": {
-    "channel": "stable",
-    "extension_types": ["extension"],
-    "location": "component",
-    "component_extensions_auto_granted": false,
-    "allowlist": [
-      "C811DB5C295612ABA7EBB8380EAE8380E30800D9"  // Dictation Component Extension
-    ],
-    // TODO(crbug.com/502587072): Support "desktop_android".
-    "platforms": ["chromeos", "linux", "mac", "win"]
   },
   "documentScan": {
     "channel": "stable",
@@ -430,27 +405,6 @@
     // "desktop_android" is not supported.
     "platforms": ["chromeos", "linux", "mac", "win"]
   },
-  "glicPrivate": {
-    "extension_types": ["extension"],
-    "channel": "stable",
-    "location": "component",
-    "platforms": ["chromeos", "desktop_android", "linux", "mac", "win"],
-    "allowlist": [
-      "56D158B3E10A304CB840CD4C28C7AF74A4B11433"  // Glic Component Extension
-    ],
-    "feature_flag": "ApiGlicPrivate"
-  },
-  "glicPrivate.invoke": {
-    "channel": "stable",
-    "extension_types": ["extension"],
-    "location": "component",
-    // "desktop_android" is not supported.
-    "platforms": ["chromeos", "linux", "mac", "win"],
-    "allowlist": [
-      "56D158B3E10A304CB840CD4C28C7AF74A4B11433"  // Glic Component Extension
-    ],
-    "feature_flag": "ApiGlicPrivate"
-  },
   "favicon": {
     "channel": "stable",
     "extension_types": ["extension"]
@@ -508,12 +462,6 @@
   "identity.email": {
     "channel": "stable",
     "extension_types": ["extension", "platform_app"]
-  },
-  "indigoPrivate": {
-    "channel": "stable",
-    "extension_types": ["extension"],
-    "allowlist": ["632DD33AD22AD33ED4197BB6F191F3841C52A9D6"],
-    "location": "component"
   },
   "input": {
     "channel": "stable",
@@ -758,21 +706,6 @@
     "location": "component",
     "platforms": ["chromeos"]
   },
-  "mdns": [{
-    "channel": "stable",
-    "extension_types": ["extension"],
-    "allowlist": [
-      "1BFB3A47AA4A1E1C4714D919217602685CDD0FA7",  // http://crbug.com/40451135
-      "DD87C93131FF8D3DE4E483DC1EB298D73C7223A6",  // http://crbug.com/40226408
-      "13E3107CEF097680EF38F4C405F0014ECC2428C6",  // https://crbug.com/333576806
-      "F14B6BF9F5B9205222E568B3C838D9E99C3F5032"   // https://crbug.com/333576806
-    ]
-  },
-  {
-    "channel": "stable",
-    "extension_types": ["platform_app"],
-    "platforms": ["chromeos", "linux", "mac", "win"]
-  }],
   "notifications": [{
     // The chrome.notifications functionality listed in notifications.webidl
     // is available only to extension/platform_app types. The implementation

@@ -9,8 +9,6 @@
 
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/execution_engine.h"
-#include "chrome/browser/glic/public/glic_instance.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/tabs/public/tab_interface.h"
@@ -52,37 +50,9 @@ bool IsRunningBackgroundActorTask(content::WebContents& source_contents) {
     return false;
   }
 
-  // Determine whether the active tab is showing the conversation instance of
-  // the actor task. If the conversation is showing, consider the task to be in
-  // the foreground.
-
-  glic::GlicKeyedService* glic_service =
-      glic::GlicKeyedService::Get(source_contents.GetBrowserContext());
-  if (!glic_service) {
-    // Without Glic, there'd be no conversation to provide context to the user
-    // while the tab isn't active, so consider the task backgrounded.
-    return true;
-  }
-
-  const glic::GlicInstance* task_instance =
-      glic_service->GetInstanceForTab(task_tab);
-  if (!task_instance) {
-    // There's no Glic instance for the tab running the task (e.g. something
-    // else is invoking the actor framework). As above, there's no conversation,
-    // so consider the task backgrounded.
-    return true;
-  }
-  BrowserWindowInterface* task_window = task_tab->GetBrowserWindowInterface();
-  const glic::GlicInstance* active_instance =
-      glic_service->GetInstanceForActiveTab(task_window);
-  if (task_instance != active_instance) {
-    // The active tab has no Glic instance or an unrelated instance. The user
-    // doesn't see the conversation related to the task, so consider the task
-    // backgrounded.
-    return true;
-  }
-
-  return !task_instance->IsShowing();
+  // Without a conversation UI there is nothing to provide context to the user
+  // while the tab isn't active, so consider the task backgrounded.
+  return true;
 }
 
 bool HasActorTaskPreventingNewWebContents(content::RenderFrameHost* rfh) {

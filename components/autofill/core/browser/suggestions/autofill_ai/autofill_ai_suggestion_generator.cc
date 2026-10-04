@@ -50,7 +50,6 @@
 #include "components/autofill/core/browser/form_processing/autofill_ai/determine_attribute_types.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_labels.h"
-#include "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager.h"
 #include "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_util.h"
 #include "components/autofill/core/browser/suggestions/suggestion.h"
 #include "components/autofill/core/browser/suggestions/suggestion_type.h"
@@ -62,9 +61,6 @@
 #include "components/autofill/core/common/form_field_data.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/feature_engagement/public/feature_constants.h"
-#include "components/personal_context/core/personal_context_features.h"
-#include "components/personal_context/core/personal_context_prefs.h"
-#include "components/personal_context/first_run/personal_context_first_run_service.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
@@ -88,12 +84,6 @@ int GetRecordTypePriority(EntityInstance::RecordType record_type) {
   }
   NOTREACHED();
 }
-
-// In order to avoid showing too many notices to users, we add a cool off
-// period for the private inference notice to be shown after Ambient Autofill
-// notice is shown.
-constexpr base::TimeDelta kAmbientAutofillToPrivateInferenceNoticeCoolOff =
-    base::Days(7);
 
 // In order to avoid showing the same private inference notice repeatedly (for
 // example every time the user focus a field in the form), use a cool off period
@@ -922,15 +912,6 @@ std::vector<Suggestion> CreateFetchingAmbientSuggestions() {
   return PrepareLoadingStateSuggestions({suggestion}, suggestion);
 }
 
-// The Personal Context Notice suggestion is only supported on Desktop.
-constexpr bool IsPersonalContextNoticeSuggestionSupported() {
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
-  return false;
-#else
-  return true;
-#endif
-}
-
 // Returns a list of `Suggestion` generated for the given
 // `entities_to_suggest`.
 std::vector<Suggestion> CreateSuggestionsForEntities(
@@ -992,28 +973,6 @@ bool CanFieldBeFilledByEntityType(const AttributeTypeAssignment& assignment,
   base::span<const AutofillFieldWithAttributeType> fields =
       assignment.Find(entity_type);
   return FindField(fields, field_id).has_value();
-}
-
-// Returns true if any suggestion in `suggestions` (or recursively in their
-// children) was generated from an entity stored in Personal Context.
-bool HasPersonalContextSuggestion(
-    base::span<const Suggestion> suggestions,
-    base::span<const EntityInstance> all_entities) {
-  for (const Suggestion& suggestion : suggestions) {
-    if (const auto* payload =
-            std::get_if<Suggestion::AutofillAiPayload>(&suggestion.payload)) {
-      auto it =
-          std::ranges::find(all_entities, payload->guid, &EntityInstance::guid);
-      if (it != all_entities.end() &&
-          it->record_type() == EntityInstance::RecordType::kPersonalContext) {
-        return true;
-      }
-    }
-    if (HasPersonalContextSuggestion(suggestion.children, all_entities)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // Returns the parent `Suggestion` for a fallback menu which displays entities
@@ -1187,31 +1146,6 @@ bool ShouldShowPrivateInferenceNotice(const AutofillField& trigger_field,
     return true;
   }
 
-  const base::Time ambient_autofill_notice_acked =
-      prefs ? prefs->GetTime(personal_context::prefs::
-                                 kAmbientAutofillNoticeAcknowledgedTimestamp)
-            : base::Time();
-
-  const bool ambient_autofill_notice_impression_shown =
-      prefs &&
-      prefs->GetInteger(
-          personal_context::prefs::
-              kPersonalContextAmbientAutofillNoticeImpressionCount) > 0;
-
-  if (ambient_autofill_notice_impression_shown &&
-      ambient_autofill_notice_acked.is_null()) {
-    return false;
-  }
-
-  const bool ambient_autofill_notice_acked_not_long_ago =
-      !ambient_autofill_notice_acked.is_null() &&
-      (base::Time::Now() - ambient_autofill_notice_acked) <
-          kAmbientAutofillToPrivateInferenceNoticeCoolOff;
-
-  if (ambient_autofill_notice_acked_not_long_ago) {
-    return false;
-  }
-
   const base::Time private_inference_notice_seen =
       prefs ? prefs->GetTime(
                   prefs::kAutofillAiPrivateInferenceNoticeShownTimestamp)
@@ -1274,19 +1208,6 @@ std::vector<Suggestion> CreateAutofillAiFillingSuggestions(
     return {};
   }
 
-  bool personal_context_notice_added = false;
-  if (IsPersonalContextNoticeSuggestionSupported() &&
-      HasPersonalContextSuggestion(suggestions, all_entities)) {
-    personal_context::PersonalContextFirstRunService* service =
-        client.GetPersonalContextFirstRunService();
-    if (service && service->ShouldShowPersonalContextAmbientAutofillNotice()) {
-      Suggestion& suggestion =
-          suggestions.emplace_back(SuggestionType::kPersonalContextNotice);
-      suggestion.filtration_policy = Suggestion::FiltrationPolicy::kStatic;
-      personal_context_notice_added = true;
-    }
-  }
-
   if (should_show_fetching_suggestions) {
     base::Extend(suggestions, CreateFetchingAmbientSuggestions());
     for (EntityType entity_type : entity_types_being_fetched) {
@@ -1294,7 +1215,7 @@ std::vector<Suggestion> CreateAutofillAiFillingSuggestions(
     }
   }
 
-  if (should_show_private_inference_notice && !personal_context_notice_added) {
+  if (should_show_private_inference_notice) {
     suggestions.emplace_back(SuggestionType::kAutofillAiPrivateInferenceNotice);
   }
 

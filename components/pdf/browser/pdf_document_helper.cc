@@ -203,14 +203,6 @@ void PDFDocumentHelper::SetPluginCanSave(bool can_save) {
   client_->SetPluginCanSave(pdf_host_receivers_.CurrentTargetFrame(), can_save);
 }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-void PDFDocumentHelper::OnSearchifyStarted() {
-  if (!searchify_started_) {
-    searchify_started_ = true;
-    client_->OnSearchifyStarted(render_frame_host());
-  }
-}
-#endif
 
 void PDFDocumentHelper::DidScroll() {
   if (!touch_selection_controller_client_manager_) {

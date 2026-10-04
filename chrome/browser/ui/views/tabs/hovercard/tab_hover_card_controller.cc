@@ -27,7 +27,6 @@
 #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_bubble_view.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_thumbnail_observer.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "ui/events/event.h"
@@ -150,11 +149,7 @@ base::TimeDelta GetShowDelay(BrowserWindowInterface* browser,
 
 bool IsBrowserForSystemWebApp(
     const BrowserWindowInterface* browser_window_interface) {
-#if BUILDFLAG(IS_CHROMEOS)
-  return web_app::GetSystemWebAppType(browser_window_interface).has_value();
-#else
   return false;
-#endif
 }
 
 views::WidgetFadeAnimator::SlideDirection ComputeSlideDirection(
@@ -240,8 +235,7 @@ TabHoverCardController::TabHoverCardController(
     TabStripRegionView* tab_strip,
     BrowserWindowInterface* browser_window_interface)
     : tab_strip_(tab_strip),
-      browser_window_interface_(browser_window_interface),
-      tab_resource_usage_collector_(TabResourceUsageCollector::Get()) {
+      browser_window_interface_(browser_window_interface) {
   if (PrefService* pref_service = g_browser_process->local_state()) {
     // Hovercard image previews are still not fully rolled out to all platforms
     // so we default the pref to the state of the feature rollout.
@@ -423,13 +417,6 @@ void TabHoverCardController::OnViewVisibilityChanged(views::View* observed_view,
   }
 }
 
-void TabHoverCardController::OnTabResourceMetricsRefreshed() {
-  if (hover_card_ && target_tab_) {
-    UpdateHoverCard(target_tab_,
-                    TabSlotController::HoverCardUpdateType::kTabDataChanged);
-  }
-}
-
 bool TabHoverCardController::ArePreviewsEnabled() const {
   return static_cast<bool>(thumbnail_observer_);
 }
@@ -466,9 +453,6 @@ void TabHoverCardController::CreateHoverCard(
         base::BindRepeating(&TabHoverCardController::OnPreviewImageAvailable,
                             weak_ptr_factory_.GetWeakPtr()));
   }
-
-  tab_resource_usage_collector_observation_.Observe(
-      tab_resource_usage_collector_);
 }
 
 void TabHoverCardController::UpdateCardContent(
@@ -900,7 +884,6 @@ void TabHoverCardController::CloseCardWidget() {
 }
 
 void TabHoverCardController::OnCardClosing() {
-  tab_resource_usage_collector_observation_.Reset();
   delayed_show_timer_.Stop();
   hover_card_observation_.Reset();
   event_sniffer_.reset();

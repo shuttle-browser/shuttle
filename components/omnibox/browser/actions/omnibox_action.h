@@ -12,7 +12,6 @@
 #include "base/memory/ref_counted.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/lens/lens_overlay_invocation_source.h"
 #include "components/omnibox/browser/actions/omnibox_action_concepts.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
 #include "components/omnibox/browser/buildflags.h"
@@ -107,12 +106,6 @@ class OmniboxAction : public base::RefCountedThreadSafe<OmniboxAction> {
     // early exit. If this returns false, the caller should open the WebUI.
     virtual bool OpenJourneys(const std::string& query);
 
-    // Opens the lens overlay. If `show` is true, the overlay UI is presented
-    // and if it's false then lens is used to contextualize without showing UI.
-    virtual void OpenLensOverlay(
-        bool show,
-        lens::LensOverlayInvocationSource invocation_source) = 0;
-
     // Returns true if the client should open the Cobrowse panel (bypassing
     // Lens).
     virtual bool ShouldOpenCoBrowsePanel() const = 0;
@@ -125,14 +118,6 @@ class OmniboxAction : public base::RefCountedThreadSafe<OmniboxAction> {
 
     // Opens the Composebox for AskG.
     virtual void OpenComposeboxForAskG() = 0;
-
-    // Passes the contextual search request to Lens to handle fulfillment. Lens
-    // uses the destination URL to grab the query and keep any additional
-    // params that are attached to the URL.
-    virtual void IssueContextualSearchRequest(
-        const GURL& destination_url,
-        AutocompleteMatchType::Type match_type,
-        bool is_zero_prefix_suggestion) = 0;
   };
 
   // ExecutionContext provides the necessary structure for Action

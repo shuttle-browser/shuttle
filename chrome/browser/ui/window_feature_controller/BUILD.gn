@@ -18,7 +18,6 @@ source_set("window_feature_controller") {
 
   deps = [
     "//chrome/browser/ui/fullscreen",
-    "//chrome/browser/ui/web_applications",
   ]
 }
 

@@ -19,7 +19,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/omnibox/browser/autocomplete_controller.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
@@ -160,11 +159,8 @@ ui::ImageModel OmniboxView::GetIcon(int dip_size,
   // generic vector icon. |on_icon_fetched| may or may not be called later.
   // If it's never called, the vector icon we provide below should remain.
 
-  // For bookmarked suggestions, display bookmark icon.
-  const bookmarks::BookmarkModel* bookmark_model =
-      controller()->client()->GetBookmarkModel();
-  const bool is_bookmarked =
-      bookmark_model && bookmark_model->IsBookmarked(match.destination_url);
+  // Bookmarks are not supported.
+  const bool is_bookmarked = false;
 
   // For starter pack suggestions, use template url to generate proper vector
   // icon.

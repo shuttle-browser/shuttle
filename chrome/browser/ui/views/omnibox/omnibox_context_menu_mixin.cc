@@ -15,18 +15,14 @@
 #include "chrome/browser/command_updater.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
-#include "chrome/browser/send_tab_to_self/send_tab_to_self_util.h"
-#include "chrome/browser/ui/lens/lens_overlay_entry_point_controller.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/omnibox/clipboard_utils.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_controller.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/lens/lens_features.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/omnibox_pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -35,6 +31,7 @@
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -243,7 +240,6 @@ bool OmniboxContextMenuMixinBase::HandleIsCommandIdEnabled(
 
   // These menu items are only shown when they are valid.
   if (command_id == IDC_SHOW_FULL_URLS ||
-      command_id == IDC_SHOW_GOOGLE_LENS_SHORTCUT ||
       command_id == IDC_SHOW_AI_MODE_OMNIBOX_BUTTON ||
       command_id == IDC_SHOW_SEARCH_TOOLS) {
     return true;
@@ -280,19 +276,10 @@ bool OmniboxContextMenuMixinBase::HandleExecuteCommand(int command_id,
 
     case IDC_EDIT_SEARCH_ENGINES:
     case IDC_SHOW_FULL_URLS:
-    case IDC_SHOW_GOOGLE_LENS_SHORTCUT:
     case IDC_SHOW_AI_MODE_OMNIBOX_BUTTON:
     case IDC_SHOW_SEARCH_TOOLS:
       if (location_bar_) {
         location_bar_->command_updater()->ExecuteCommand(command_id);
-      }
-      return true;
-
-    case IDC_SEND_TAB_TO_SELF:
-      if (location_bar_ && location_bar_->GetWebContents()) {
-        send_tab_to_self::SendTabToSelfBubbleController::
-            GetOrCreateForWebContents(location_bar_->GetWebContents())
-                ->ShowBubble(send_tab_to_self::ShareEntryPoint::kOmniboxMenu);
       }
       return true;
 
@@ -404,7 +391,6 @@ void OmniboxContextMenuMixinBase::AddTextfieldItems(
 
 void OmniboxContextMenuMixinBase::AddOmniboxSpecificItems(
     ui::SimpleMenuModel* menu_contents) {
-  MaybeAddSendTabToSelfItem(menu_contents);
 
   const std::optional<size_t> paste_position =
       menu_contents->GetIndexOfCommandId(
@@ -436,23 +422,6 @@ void OmniboxContextMenuMixinBase::AddOmniboxSpecificItems(
         kShowFullUrlsMenuItem);
   }
 
-  // Location bar is also used in non-browser UI in production environment.
-  // The only known case so far is simple_web_view_dialog for ChromeOS to draw
-  // captive portal during OOBE signin. Null check to avoid crash before these
-  // UIs are migrated away. See crbug.com/379534750 for a production crash
-  // example. There is an effort to move simple_web_view_dialog away from
-  // location_bar_view and from this nullptr situation.
-  if (lens::features::IsOmniboxEntryPointEnabled() &&
-      location_bar_->GetBrowser()) {
-    if (auto* controller = lens::LensOverlayEntryPointController::From(
-            location_bar_->GetBrowser());
-        controller && controller->IsEnabled()) {
-      menu_contents->AddCheckItemWithStringId(
-          IDC_SHOW_GOOGLE_LENS_SHORTCUT,
-          IDS_CONTEXT_MENU_SHOW_GOOGLE_LENS_SHORTCUT);
-    }
-  }
-
   if (omnibox::ShouldShowAimContextMenuOption(location_bar_->GetProfile())) {
     auto* config = GetAiModeUiConfig();
     if (config) {
@@ -477,10 +446,6 @@ bool OmniboxContextMenuMixinBase::HandleIsCommandIdChecked(int id) const {
     return location_bar_->GetProfile()->GetPrefs()->GetBoolean(
         omnibox::kPreventUrlElisionsInOmnibox);
   }
-  if (id == IDC_SHOW_GOOGLE_LENS_SHORTCUT) {
-    return location_bar_->GetProfile()->GetPrefs()->GetBoolean(
-        omnibox::kShowGoogleLensShortcut);
-  }
   if (id == IDC_SHOW_SEARCH_TOOLS) {
     return location_bar_->GetProfile()->GetPrefs()->GetBoolean(
         omnibox::kShowSearchTools);
@@ -502,33 +467,3 @@ const AiModeButtonUiConfig* OmniboxContextMenuMixinBase::GetAiModeUiConfig()
   return service ? service->GetCurrentConfig() : nullptr;
 }
 
-void OmniboxContextMenuMixinBase::MaybeAddSendTabToSelfItem(
-    ui::SimpleMenuModel* menu_contents) {
-  // Only add this menu entry if SendTabToSelf feature is enabled.
-  if (!send_tab_to_self::ShouldDisplayEntryPoint(
-          location_bar_->GetWebContents())) {
-    return;
-  }
-
-  if (features::IsMenuSimplificationEnabled()) {
-    return;
-  }
-
-  size_t index =
-      menu_contents->GetIndexOfCommandId(views::Textfield::kUndo).value();
-  // Add a separator if this is not the first item.
-  if (index) {
-    menu_contents->InsertSeparatorAt(index++, ui::NORMAL_SEPARATOR);
-  }
-
-  menu_contents->InsertItemAt(
-      index, IDC_SEND_TAB_TO_SELF,
-      l10n_util::GetStringUTF16(IDS_MENU_SEND_TAB_TO_SELF));
-#if !BUILDFLAG(IS_MAC)
-  menu_contents->SetIcon(
-      index, ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
-                                                ? kDevicesIcon
-                                                : kDevicesOldIcon));
-#endif
-  menu_contents->InsertSeparatorAt(++index, ui::NORMAL_SEPARATOR);
-}

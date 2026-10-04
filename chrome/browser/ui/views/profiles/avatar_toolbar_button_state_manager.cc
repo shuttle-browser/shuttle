@@ -58,7 +58,6 @@
 #include "chrome/browser/ui/views/profiles/avatar_toolbar_button.h"
 #include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/browser/webauthn/passkey_unlock_manager.h"
@@ -2456,14 +2455,6 @@ void AvatarToolbarButtonStateManager::CreateStatesAndListeners(
 
   Profile* profile = browser->GetProfile();
 
-  // Web app has limited toolbar space, thus always show kNormal state.
-  if (web_app::AppBrowserController::IsWebApp(browser)) {
-    // This state is always active.
-    states_[ButtonState::kNormal] =
-        std::make_unique<NormalStateProvider>(profile, /*state_observer=*/this);
-    return;
-  }
-
   if (profile->IsRegularProfile()) {
     if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
       RegisterObserver(static_cast<Observer*>(
@@ -2663,20 +2654,8 @@ void AvatarToolbarButtonStateManager::MaybeShowProfileSwitchIPH() {
   }
 
   // This will show the promo only after the IPH system is properly initialized.
-  if (!web_app::AppBrowserController::IsWebApp(browser_)) {
-    BrowserUserEducationInterface::From(browser_)->MaybeShowStartupFeaturePromo(
-        feature_engagement::kIPHProfileSwitchFeature);
-  } else {
-    // Installable PasswordManager WebUI is the only web app that has an avatar
-    // toolbar button.
-    auto app_url =
-        web_app::AppBrowserController::From(browser_)->GetAppStartUrl();
-    CHECK(
-        content::HasWebUIScheme(app_url) &&
-        (app_url.GetHost() == password_manager::kChromeUIPasswordManagerHost));
-    BrowserUserEducationInterface::From(browser_)->MaybeShowStartupFeaturePromo(
-        feature_engagement::kIPHPasswordsWebAppProfileSwitchFeature);
-  }
+  BrowserUserEducationInterface::From(browser_)->MaybeShowStartupFeaturePromo(
+      feature_engagement::kIPHProfileSwitchFeature);
 }
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)

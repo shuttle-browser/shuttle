@@ -13,10 +13,6 @@ namespace content {
 class BrowserContext;
 }  // namespace content
 
-namespace payments {
-class WebPaymentsWebDataService;
-}  // namespace payments
-
 class WebDataServiceWrapper;
 
 namespace webdata_services {
@@ -34,11 +30,6 @@ class WebDataServiceWrapperFactory : public BrowserContextKeyedServiceFactory {
       ServiceAccessType access_type);
 
   static WebDataServiceWrapper* GetForBrowserContextIfExists(
-      content::BrowserContext* context,
-      ServiceAccessType access_type);
-
-  static scoped_refptr<payments::WebPaymentsWebDataService>
-  GetWebPaymentsWebDataServiceForBrowserContext(
       content::BrowserContext* context,
       ServiceAccessType access_type);
 

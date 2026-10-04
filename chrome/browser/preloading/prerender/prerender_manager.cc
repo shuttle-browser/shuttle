@@ -53,7 +53,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -570,17 +569,6 @@ PrerenderManager::PrewarmDecision PrerenderManager::ShouldPrewarm(
     // https://wicg.github.io/document-picture-in-picture/#close-on-navigate.
     return PrewarmDecision::kInPictureInPicture;
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  if (auto* tab = tabs::TabInterface::MaybeGetFromContents(web_contents())) {
-    if (web_app::AppBrowserController::IsIsolatedWebApp(
-            tab->GetBrowserWindowInterface())) {
-      // Disable the feature in the Isolated Web App window as it disallows
-      // cross-origin navigation.
-      return PrewarmDecision::kInIsolatedWebApp;
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
   if (chromeos::IsKioskSession()) {

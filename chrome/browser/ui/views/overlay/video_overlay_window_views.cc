@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ui/views/overlay/video_overlay_window_views.h"
 
+#include <algorithm>
+#include <cinttypes>
 #include <memory>
 #include <string>
 
@@ -14,6 +16,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
@@ -45,7 +48,6 @@
 #include "chrome/browser/ui/views/overlay/toggle_mute_button.h"
 #include "chrome/browser/ui/views/picture_in_picture/picture_in_picture_tucker.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/global_media_controls/public/format_duration.h"
 #include "components/vector_icons/vector_icons.h"
 #include "content/public/browser/immersive_playback_options.h"
 #include "content/public/browser/media_session.h"
@@ -102,6 +104,20 @@
 #endif  // BUILDFLAG(IS_MAC)
 
 namespace {
+
+// Formats `duration` as "H:MM:SS" or "M:SS".
+std::u16string FormatDuration(base::TimeDelta duration) {
+  const int64_t total_seconds = std::max<int64_t>(0, duration.InSeconds());
+  const int64_t hours = total_seconds / 3600;
+  const int64_t minutes = (total_seconds / 60) % 60;
+  const int64_t seconds = total_seconds % 60;
+  if (hours > 0) {
+    return base::UTF8ToUTF16(base::StringPrintf(
+        "%" PRId64 ":%02" PRId64 ":%02" PRId64, hours, minutes, seconds));
+  }
+  return base::UTF8ToUTF16(
+      base::StringPrintf("%" PRId64 ":%02" PRId64, minutes, seconds));
+}
 
 // Lower bound size of the window is a fixed value to allow for minimal sizes
 // on UI affordances, such as buttons.
@@ -665,9 +681,7 @@ void VideoOverlayWindowViews::OnMouseEvent(ui::MouseEvent* event) {
       // since setting visibility to false during the drag will prevent the drag
       // from functioning properly (and we'll lose the drag end).
       const bool should_update_control_visibility =
-          !GetWindowBackgroundView()->bounds().Contains(event->location()) &&
-          progress_view_drag_state_ ==
-              global_media_controls::DragState::kDragEnded;
+          !GetWindowBackgroundView()->bounds().Contains(event->location());
       if (should_update_control_visibility) {
         UpdateControlsVisibility(false);
       }
@@ -788,13 +802,6 @@ void VideoOverlayWindowViews::UpdateControlsVisibility(bool is_visible,
       // Otherwise, queue this visibility change as-is.
       queued_controls_visibility_status_ = {is_visible, should_animate};
     }
-    return;
-  }
-
-  // We should not change visibility while the progress bar is being dragged, as
-  // this gets us stuck in the `kDragStarted` state.
-  if (progress_view_drag_state_ ==
-      global_media_controls::DragState::kDragStarted) {
     return;
   }
 
@@ -1190,32 +1197,6 @@ void VideoOverlayWindowViews::SetUpViews() {
               IDS_PICTURE_IN_PICTURE_NEXT_TRACK_CONTROL_ACCESSIBLE_TEXT));
   next_track_controls_view->SetSize(kActionButtonSize);
 
-  // `base::Unretained()` is okay here since we own the progress view.
-  auto progress_view =
-      std::make_unique<global_media_controls::MediaProgressView>(
-          /*use_squiggly_line=*/false,
-          /*playing_foreground_color_id=*/ui::kColorSysPrimary,
-          /*playing_background_color_id=*/ui::kColorSysStateDisabled,
-          /*paused_foreground_color_id=*/ui::kColorSysStateDisabled,
-          /*paused_background_color_id=*/ui::kColorSysStateDisabled,
-          /*focus_ring_color_id=*/ui::kColorSysStateFocusRing,
-          /*drag_state_change_callback=*/
-          base::BindRepeating(
-              &VideoOverlayWindowViews::OnProgressDragStateChanged,
-              base::Unretained(this)),
-          /*playback_state_change_for_dragging_callback=*/
-          base::BindRepeating(
-              &VideoOverlayWindowViews::ChangePlaybackStateForProgressDrag,
-              base::Unretained(this)),
-          /*seek_callback=*/
-          base::BindRepeating(
-              &VideoOverlayWindowViews::SeekForProgressBarInteraction,
-              base::Unretained(this)),
-          /*on_update_progress_callback=*/
-          base::BindRepeating(
-              &VideoOverlayWindowViews::OnProgressViewUpdateCurrentTime,
-              base::Unretained(this)));
-
   auto timestamp = std::make_unique<views::Label>(std::u16string(),
                                                   views::style::CONTEXT_LABEL,
                                                   views::style::STYLE_BODY_4);
@@ -1365,8 +1346,6 @@ void VideoOverlayWindowViews::SetUpViews() {
   previous_track_controls_view_ =
       playback_controls_container_view_->AddChildView(
           std::move(previous_track_controls_view));
-  progress_view_ =
-      playback_controls_container_view_->AddChildView(std::move(progress_view));
   next_track_controls_view_ = playback_controls_container_view_->AddChildView(
       std::move(next_track_controls_view));
 
@@ -1501,7 +1480,6 @@ void VideoOverlayWindowViews::OnUpdateControlsBounds() {
   constexpr int kOriginTopMargin = 5;
   constexpr int kOriginHeight = 24;
   constexpr int kOriginRightMargin = 80;
-  constexpr int kProgressBarHeight = 26;
   constexpr int kCenterControlMargin = 16;
   constexpr int kBottomControlsHorizontalMargin = 12;
   constexpr int kBottomControlsVerticalMargin = 4;
@@ -1634,22 +1612,6 @@ void VideoOverlayWindowViews::OnUpdateControlsBounds() {
   previous_track_controls_view_->SetEnabled(should_enable_prev);
   next_track_controls_view_->SetEnabled(should_enable_next);
 
-  // The progress bars should take up all the space that is left after the
-  // previous and next buttons. Here we calculate how much horizontal space
-  // one of those buttons takes up and use that to calculate the width and x
-  // position of the progress view.
-  constexpr int kPreviousNextTrackWidthPlusHorizontalMargins =
-      kBottomControlsHorizontalMargin + kActionButtonSize.width();
-  const int used_horizontal_space_left_of_progress_bar =
-      should_show_prev_next ? kPreviousNextTrackWidthPlusHorizontalMargins
-                            : kBottomControlsHorizontalMargin;
-  progress_view_->SetPosition(
-      {bottom_controls_bounds.x() + used_horizontal_space_left_of_progress_bar,
-       bottom_controls_bounds.y() + kBottomControlsVerticalMargin});
-  progress_view_->SetSize(
-      {bounds.width() - (2 * used_horizontal_space_left_of_progress_bar),
-       kProgressBarHeight});
-
   gfx::Point timestamp_position(
       bottom_controls_bounds.x() + kTimestampHorizontalMargin,
       bottom_controls_bounds.y() + bottom_controls_bounds.height() -
@@ -1687,16 +1649,11 @@ void VideoOverlayWindowViews::OnUpdateControlsBounds() {
       {live_caption_button_bounds.right() - live_caption_dialog_->width(),
        live_caption_button_bounds.y() - live_caption_dialog_->height()});
 
-  // The play/pause button and replay/forward 10 seconds buttons should not be
-  // visible while dragging the progress bar or for live media.
-  const bool is_dragging_progress_bar =
-      progress_view_drag_state_ ==
-      global_media_controls::DragState::kDragStarted;
-  play_pause_controls_view_->SetVisible(show_play_pause_button_ &&
-                                        !is_dragging_progress_bar);
-  replay_10_seconds_button_->SetVisible(!is_dragging_progress_bar && !is_live_);
-  forward_10_seconds_button_->SetVisible(!is_dragging_progress_bar &&
-                                         !is_live_);
+  // The replay/forward 10 seconds buttons should not be visible for live
+  // media.
+  play_pause_controls_view_->SetVisible(show_play_pause_button_);
+  replay_10_seconds_button_->SetVisible(!is_live_);
+  forward_10_seconds_button_->SetVisible(!is_live_);
 }
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -1939,7 +1896,6 @@ void VideoOverlayWindowViews::SetHangUpButtonVisibility(bool is_visible) {
 void VideoOverlayWindowViews::SetMediaPosition(
     const media_session::MediaPosition& position) {
   position_ = position;
-  progress_view_->UpdateProgress(position);
   UpdateTimestampLabel(position_.GetPosition(), position_.duration());
 }
 
@@ -2106,7 +2062,8 @@ gfx::Rect VideoOverlayWindowViews::GetHangUpButtonBounds() {
 }
 
 gfx::Rect VideoOverlayWindowViews::GetProgressViewBounds() {
-  return progress_view_->GetMirroredBounds();
+  // The media progress view was removed along with global media controls.
+  return gfx::Rect();
 }
 
 gfx::Rect VideoOverlayWindowViews::GetLiveCaptionButtonBounds() {
@@ -2250,11 +2207,6 @@ ToggleMuteButton* VideoOverlayWindowViews::toggle_mute_button_for_testing()
   return toggle_mute_button_;
 }
 
-global_media_controls::MediaProgressView*
-VideoOverlayWindowViews::progress_view_for_testing() const {
-  return progress_view_;
-}
-
 views::Label* VideoOverlayWindowViews::timestamp_for_testing() const {
   return timestamp_;
 }
@@ -2359,43 +2311,14 @@ void VideoOverlayWindowViews::RemoveOverlayViewIfExists() {
   }
 }
 
-void VideoOverlayWindowViews::OnProgressDragStateChanged(
-    global_media_controls::DragState drag_state) {
-  progress_view_drag_state_ = drag_state;
-  OnUpdateControlsBounds();
-}
-
-void VideoOverlayWindowViews::ChangePlaybackStateForProgressDrag(
-    global_media_controls::PlaybackStateChangeForDragging
-        playback_state_change) {
-  if (playback_state_change ==
-      global_media_controls::PlaybackStateChangeForDragging::
-          kPauseForDraggingStarted) {
-    controller_->Pause();
-  } else {
-    controller_->Play();
-  }
-}
-
-void VideoOverlayWindowViews::SeekForProgressBarInteraction(
-    double seek_progress) {
-  controller_->SeekTo(seek_progress * position_.duration());
-}
-
-void VideoOverlayWindowViews::OnProgressViewUpdateCurrentTime(
-    base::TimeDelta current_time) {
-  UpdateTimestampLabel(current_time, position_.duration());
-}
-
 void VideoOverlayWindowViews::UpdateTimestampLabel(base::TimeDelta current_time,
                                                    base::TimeDelta duration) {
   bool was_live = is_live_;
   is_live_ = duration.is_max();
 
   if (!is_live_) {
-    timestamp_->SetText(base::StrCat(
-        {global_media_controls::GetFormattedDuration(current_time), u" / ",
-         global_media_controls::GetFormattedDuration(duration)}));
+    timestamp_->SetText(base::StrCat({FormatDuration(current_time), u" / ",
+                                      FormatDuration(duration)}));
   }
   if (was_live != is_live_) {
     OnUpdateControlsBounds();
@@ -2422,7 +2345,6 @@ void VideoOverlayWindowViews::SetLiveCaptionDialogVisibility(
       play_pause_controls_view_.get(),
       forward_10_seconds_button_.get(),
       previous_track_controls_view_.get(),
-      progress_view_.get(),
       next_track_controls_view_.get(),
       toggle_camera_button_.get(),
       toggle_microphone_button_.get(),

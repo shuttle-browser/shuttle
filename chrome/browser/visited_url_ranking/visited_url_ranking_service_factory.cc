@@ -10,8 +10,6 @@
 #include "base/containers/flat_set.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
-#include "chrome/browser/commerce/shopping_service_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_keyed_service_factory.h"
@@ -21,7 +19,6 @@
 #include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/visited_url_ranking/url_deduplication/search_engine_url_strip_handler.h"
 #include "chrome/common/channel_info.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history_clusters/core/config.h"
 #include "components/keyed_service/core/keyed_service.h"
@@ -29,7 +26,6 @@
 #include "components/url_deduplication/url_deduplication_helper.h"
 #include "components/visited_url_ranking/internal/history_url_visit_data_fetcher.h"
 #include "components/visited_url_ranking/internal/session_url_visit_data_fetcher.h"
-#include "components/visited_url_ranking/internal/transformer/bookmarks_url_visit_aggregates_transformer.h"
 #include "components/visited_url_ranking/internal/transformer/default_app_url_visit_aggregates_transformer.h"
 #include "components/visited_url_ranking/internal/transformer/history_url_visit_aggregates_browser_type_transformer.h"
 #include "components/visited_url_ranking/internal/transformer/history_url_visit_aggregates_categories_transformer.h"
@@ -78,7 +74,6 @@ VisitedURLRankingServiceFactory::VisitedURLRankingServiceFactory()
   DependsOn(
       segmentation_platform::SegmentationPlatformServiceFactory::GetInstance());
   DependsOn(SessionSyncServiceFactory::GetInstance());
-  DependsOn(BookmarkModelFactory::GetInstance());
   DependsOn(HistoryServiceFactory::GetInstance());
   DependsOn(DeviceInfoSyncServiceFactory::GetInstance());
 }
@@ -157,14 +152,6 @@ VisitedURLRankingServiceFactory::BuildServiceInstanceForBrowserContext(
   transformers.emplace(
       URLVisitAggregatesTransformType::kSegmentationMetricsData,
       std::make_unique<URLVisitAggregatesSegmentationMetricsTransformer>(sps));
-  auto* bookmark_model = BookmarkModelFactory::GetForBrowserContext(profile);
-  if (bookmark_model) {
-    auto bookmarks_transformer =
-        std::make_unique<BookmarksURLVisitAggregatesTransformer>(
-            bookmark_model);
-    transformers.emplace(URLVisitAggregatesTransformType::kBookmarkData,
-                         std::move(bookmarks_transformer));
-  }
   transformers.emplace(
       URLVisitAggregatesTransformType::kHistoryVisibilityScoreFilter,
       std::make_unique<HistoryURLVisitAggregatesVisibilityScoreTransformer>(

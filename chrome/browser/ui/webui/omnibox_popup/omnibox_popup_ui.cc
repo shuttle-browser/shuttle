@@ -8,7 +8,6 @@
 #include <string_view>
 
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
-#include "chrome/browser/contextual_search/contextual_search_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
@@ -27,7 +26,6 @@
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
 #include "chrome/browser/ui/webui/plural_string_handler.h"
 #include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
-#include "chrome/browser/ui/webui/searchbox/omnibox_composebox_handler.h"
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_full_handler.h"
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_handler.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
@@ -35,10 +33,7 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/omnibox_popup_resources.h"
 #include "chrome/grit/omnibox_popup_resources_map.h"
-#include "components/contextual_search/contextual_search_metrics_recorder.h"
-#include "components/contextual_search/contextual_search_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
-#include "components/lens/lens_features.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_features.h"
@@ -123,11 +118,7 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       profile_, chrome::kChromeUIOmniboxPopupHost);
 
-  bool session_allows_drag_and_drop = false;
-  if (auto* session_handle = GetOrCreateContextualSessionHandle()) {
-    session_allows_drag_and_drop =
-        session_handle->CheckSearchContentSharingSettings(profile_->GetPrefs());
-  }
+  const bool session_allows_drag_and_drop = false;
 
   source->AddLocalizedStrings(SearchboxHandler::GetWebUIDataSourceDict(
       Profile::FromWebUI(web_ui),
@@ -181,8 +172,7 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   const std::string image_mime_types =
       composebox_config.image_upload().mime_types_allowed();
   source->AddString("composeboxImageFileTypes", image_mime_types);
-  source->AddBoolean("lensSendRawFileMediaTypesEnabled",
-                     lens::features::IsLensSendRawFileMediaTypesEnabled());
+  source->AddBoolean("lensSendRawFileMediaTypesEnabled", false);
   source->AddBoolean(
       "caretAnimationEnabled",
       base::FeatureList::IsEnabled(omnibox::kOmniboxAnimatedCaret));
@@ -247,11 +237,7 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   auto searchbox_layout_mode = AddContextButtonVariantToSearchboxLayoutMode(
       omnibox::kWebUIOmniboxAimPopupAddContextButtonVariantParam.Get());
   source->AddString("searchboxLayoutMode", searchbox_layout_mode);
-  source->AddString(
-      "composeboxSource",
-      contextual_search::ContextualSearchMetricsRecorder::
-          ContextualSearchSourceToString(
-              contextual_search::ContextualSearchSource::kOmnibox));
+  source->AddString("composeboxSource", "Omnibox");
   source->AddBoolean("caretColorAnimationDisabled",
                      base::FeatureList::IsEnabled(
                          omnibox::kWebUIOmniboxDisableCaretColorAnimation));
@@ -323,16 +309,12 @@ void OmniboxPopupUI::CreatePageHandler(
         std::move(pending_page_handler), std::move(page),
         Profile::FromWebUI(web_ui()), web_ui()->GetWebContents(),
         std::make_unique<ChromeOmniboxClient>(
-            client->GetLocationBar(), client->browser(), client->profile()),
-        base::BindRepeating(&OmniboxPopupUI::GetOrCreateContextualSessionHandle,
-                            base::Unretained(this)));
+            client->GetLocationBar(), client->browser(), client->profile()));
   } else {
     omnibox_handler_ = std::make_unique<WebuiOmniboxHandler>(
         std::move(pending_page_handler), std::move(page),
         metrics_reporter_service->metrics_reporter(), omnibox_controller,
-        web_ui(),
-        base::BindRepeating(&OmniboxPopupUI::GetOrCreateContextualSessionHandle,
-                            base::Unretained(this)));
+        web_ui());
   }
 }
 
@@ -374,75 +356,15 @@ void OmniboxPopupUI::CreatePageHandler(
 
 void OmniboxPopupUI::BindInterface(
     mojo::PendingReceiver<composebox::mojom::PageHandlerFactory> receiver) {
-  if (!omnibox::IsAimPopupFeatureEnabled()) {
-    return;
-  }
-  if (composebox_page_factory_receiver_.is_bound()) {
-    composebox_page_factory_receiver_.reset();
-  }
-  composebox_page_factory_receiver_.Bind(std::move(receiver));
+  // The composebox was removed; drop the receiver.
 }
 
 void OmniboxPopupUI::CreatePageHandler(
     mojo::PendingReceiver<composebox::mojom::PageHandler> pending_page_handler,
     mojo::PendingRemote<searchbox::mojom::Page> pending_searchbox_page,
     mojo::PendingReceiver<searchbox::mojom::PageHandler>
-        pending_searchbox_handler) {
-  composebox_handler_ = std::make_unique<OmniboxComposeboxHandler>(
-      std::move(pending_page_handler), std::move(pending_searchbox_handler),
-      std::move(pending_searchbox_page), profile_, web_ui()->GetWebContents(),
-      base::BindRepeating(&OmniboxPopupUI::GetOrCreateContextualSessionHandle,
-                          base::Unretained(this)),
-      base::BindRepeating(&OmniboxPopupUI::ClearContextualSessionHandle,
-                          base::Unretained(this)));
-
-  // If presenter delegate is connected, set the delegate in the handler so the
-  // handler can notify the delegate when there are embedded permissions prompt
-  // changes. Otherwise, once the presenter delegate connects itself, connect
-  // the two there instead. `composebox_handler_` is used since composebox page
-  // handler is where PEPC mojo call lives.
-  if (presenter_delegate_) {
-    composebox_handler_->set_delegate(presenter_delegate_);
-  }
-}
-
-ContextualSearchboxHandler* OmniboxPopupUI::GetContextualSearchboxHandler() {
-  if (composebox_handler_) {
-    return composebox_handler_.get();
-  }
-  return omnibox_handler_.get();
-}
-
-contextual_search::ContextualSearchSessionHandle*
-OmniboxPopupUI::GetOrCreateContextualSessionHandle() {
-  if (!shared_session_handle_) {
-    auto* contextual_search_service =
-        ContextualSearchServiceFactory::GetForProfile(profile_);
-    if (contextual_search_service) {
-      shared_session_handle_ = contextual_search_service->CreateSession(
-          omnibox::CreateQueryControllerConfigParams(),
-          contextual_search::ContextualSearchSource::kOmnibox,
-          lens::LensOverlayInvocationSource::kOmniboxContextualQuery);
-      shared_session_handle_->CheckSearchContentSharingSettings(
-          Profile::FromWebUI(web_ui())->GetPrefs());
-    }
-  }
-  return shared_session_handle_.get();
-}
-
-void OmniboxPopupUI::ClearContextualSessionHandle() {
-  shared_session_handle_.reset();
-}
+        pending_searchbox_handler) {}
 
 void OmniboxPopupUI::SetPresenterDelegate(OmniboxPopupPresenterBase* delegate) {
   presenter_delegate_ = delegate;
-
-  // If the handler is initialized already, set the delegate in the handler so
-  // the handler can notify the delegate when there are embedded permissions
-  // prompt changes. Otherwise, once the handler is initialized, connect the two
-  // there instead. `composebox_handler_` is used since composebox page handler
-  // is where PEPC mojo call lives.
-  if (composebox_handler_) {
-    composebox_handler_->set_delegate(presenter_delegate_);
-  }
 }

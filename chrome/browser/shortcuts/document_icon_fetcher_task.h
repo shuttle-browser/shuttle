@@ -9,13 +9,10 @@
 #include <vector>
 
 #include "base/containers/flat_map.h"
-#include "base/functional/callback_forward.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/types/expected.h"
-#include "components/webapps/common/web_page_metadata.mojom-forward.h"
-#include "components/webapps/common/web_page_metadata_agent.mojom-forward.h"
 #include "content/public/browser/document_user_data.h"
-#include "mojo/public/cpp/bindings/associated_remote.h"
 
 namespace content {
 class WebContents;
@@ -55,13 +52,6 @@ class DocumentIconFetcherTask {
   void StartIconFetching();
 
  private:
-  void OnMetadataFetchError();
-
-  void OnWebPageMetadataObtained(
-      mojo::AssociatedRemote<webapps::mojom::WebPageMetadataAgent>
-          metadata_agent,
-      webapps::mojom::WebPageMetadataPtr web_page_metadata);
-
   void DidDownloadFavicon(int id,
                           int http_status_code,
                           const GURL& image_url,
@@ -75,7 +65,6 @@ class DocumentIconFetcherTask {
   base::WeakPtr<content::WebContents> web_contents_;
   std::u16string fallback_letter_;
   FetchIconsFromDocumentCallback final_callback_;
-  bool metadata_fetch_complete_ = false;
   int num_pending_image_requests_ = 0;
   std::vector<SkBitmap> icons_;
 

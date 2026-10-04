@@ -13,7 +13,6 @@
 #include "base/functional/bind.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "components/feed/core/shared_prefs/pref_names.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_value_map.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -73,7 +72,6 @@ FamilyLinkSettingsPrefMappingEntry kFamilyLinkWebFilteringPrefMapping[] = {
 void SetSupervisedUserPrefStoreDefaults(PrefValueMap& pref_values) {
 
   pref_values.SetBoolean(policy::policy_prefs::kHideWebStoreIcon, false);
-  pref_values.SetBoolean(feed::prefs::kEnableSnippets, false);
   pref_values.SetInteger(
       policy::policy_prefs::kIncognitoModeAvailability,
       static_cast<int>(policy::IncognitoModeAvailability::kDisabled));

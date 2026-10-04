@@ -31,7 +31,6 @@ source_set("overlay") {
   public_deps = [
     "//base",
     "//chrome/browser/picture_in_picture",
-    "//components/global_media_controls",
     "//content/public/browser",
     "//ui/base",
     "//ui/base/metadata",
@@ -77,7 +76,6 @@ source_set("impl") {
     "//chrome/browser/media",
     "//chrome/browser/ui:browser_init_state",
     "//chrome/browser/ui/color:color_headers",
-    "//chrome/browser/ui/global_media_controls",
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/browser/ui/views/picture_in_picture",
     "//components/live_caption:constants",
@@ -113,7 +111,6 @@ source_set("unit_tests") {
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/test:test_support",
-    "//components/global_media_controls",
     "//components/live_caption:constants",
     "//components/prefs",
     "//components/prefs:test_support",

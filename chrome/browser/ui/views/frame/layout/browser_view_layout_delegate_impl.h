@@ -25,14 +25,11 @@ class BrowserViewLayoutDelegateImpl : public BrowserViewLayoutDelegate {
   bool ShouldDrawTabStrip() const override;
   bool ShouldDrawVerticalTabStrip() const override;
   bool IsVerticalTabStripCollapsed() const override;
-  bool ShouldDrawWebAppFrameToolbar() const override;
-  bool GetUnframedModeEnabled() const override;
   BrowserLayoutParams GetBrowserLayoutParams(
       bool use_browser_bounds) const override;
   WindowState GetBrowserWindowState() const override;
   views::LayoutAlignment GetWindowTitleAlignment() const override;
   bool IsToolbarVisible() const override;
-  bool IsBookmarkBarVisible() const override;
   bool IsInfobarVisible() const override;
   bool IsContentsSeparatorEnabled() const override;
   bool IsActiveTabSplit() const override;
@@ -45,9 +42,6 @@ class BrowserViewLayoutDelegateImpl : public BrowserViewLayoutDelegate {
   gfx::NativeView GetHostViewForAnchoring() const override;
   bool HasFindBarController() const override;
   void MoveWindowForFindBarIfNecessary() const override;
-  bool IsWindowControlsOverlayEnabled() const override;
-  void UpdateWindowControlsOverlay(
-      const gfx::Rect& available_titlebar_area) override;
   bool ShouldLayoutTabStrip() const override;
   int GetExtraInfobarOffset() const override;
   bool IsOrganizerPanelVisible() const override;

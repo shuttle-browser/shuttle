@@ -20,7 +20,6 @@
 #include "base/threading/thread_checker.h"
 #include "base/timer/timer.h"
 #include "base/uuid.h"
-#include "components/data_sharing/public/personal_collaboration_data/personal_collaboration_data_service.h"
 #include "components/optimization_guide/core/hints/optimization_guide_decider.h"
 #include "components/saved_tab_groups/delegate/tab_group_sync_delegate.h"
 #include "components/saved_tab_groups/internal/saved_tab_group_model.h"
@@ -29,7 +28,6 @@
 #include "components/saved_tab_groups/internal/shared_tab_group_data_sync_bridge.h"
 #include "components/saved_tab_groups/internal/tab_group_sync_bridge_mediator.h"
 #include "components/saved_tab_groups/internal/tab_group_sync_coordinator.h"
-#include "components/saved_tab_groups/internal/tab_group_sync_personal_collaboration_data_handler.h"
 #include "components/saved_tab_groups/public/collaboration_finder.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
 #include "components/saved_tab_groups/public/tab_group_sync_metrics_logger.h"
@@ -40,10 +38,6 @@
 #include "components/sync/base/collaboration_id.h"
 
 class PrefService;
-
-namespace data_sharing {
-class Logger;
-}  // namespace data_sharing
 
 namespace tab_groups {
 
@@ -67,10 +61,7 @@ class TabGroupSyncServiceImpl : public TabGroupSyncService,
       std::unique_ptr<TabGroupSyncMetricsLogger> metrics_logger,
       optimization_guide::OptimizationGuideDecider* optimization_guide_decider,
       signin::IdentityManager* identity_manager,
-      data_sharing::personal_collaboration_data::
-          PersonalCollaborationDataService* personal_collaboration_data_service,
-      std::unique_ptr<CollaborationFinder> collaboration_finder,
-      data_sharing::Logger* logger);
+      std::unique_ptr<CollaborationFinder> collaboration_finder);
   ~TabGroupSyncServiceImpl() override;
 
   // Disallow copy/assign.
@@ -423,14 +414,11 @@ class TabGroupSyncServiceImpl : public TabGroupSyncService,
   std::unique_ptr<CollaborationFinder> collaboration_finder_;
 
   // Logger for logging to debug UI.
-  raw_ptr<data_sharing::Logger> logger_ = nullptr;
 
   // The pref service for storing migration status.
   raw_ptr<PrefService> pref_service_ = nullptr;
 
   // Handles personal collaboration data updates.
-  std::unique_ptr<TabGroupSyncPersonalCollaborationDataHandler>
-      personal_collaboration_data_handler_;
 
   // Whether the initialization has been completed, i.e. all the groups and the
   // ID mappings have been loaded into memory.

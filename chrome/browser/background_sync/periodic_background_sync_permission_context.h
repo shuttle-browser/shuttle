@@ -12,8 +12,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "base/scoped_observation.h"
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
 #include "url/origin.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -48,12 +46,7 @@ struct PermissionPromptDecision;
 // If there is a PWA installed, grant/deny permission based on whether the
 // one-shot Background Sync content setting is set to allow/block.
 class PeriodicBackgroundSyncPermissionContext
-    : public permissions::ContentSettingPermissionContextBase
-#if !BUILDFLAG(IS_ANDROID)
-    ,
-      public web_app::WebAppInstallManagerObserver
-#endif  // !BUILDFLAG(IS_ANDROID)
-{
+    : public permissions::ContentSettingPermissionContextBase {
  public:
   explicit PeriodicBackgroundSyncPermissionContext(
       content::BrowserContext* browser_context);
@@ -96,24 +89,6 @@ class PeriodicBackgroundSyncPermissionContext
       const ContentSettingsPattern& primary_pattern,
       const ContentSettingsPattern& secondary_pattern,
       ContentSettingsTypeSet content_type_set) override;
-
-#if !BUILDFLAG(IS_ANDROID)
-  // web_app::WebAppInstallManagerObserver:
-  void OnWebAppInstalled(const webapps::AppId& app_id) override;
-  void OnWebAppWillBeUninstalled(const webapps::AppId& app_id) override;
-  // TODO(crbug.com/340952100): Remove after the InstallState is saved in the
-  // database & available from OnWebAppInstalled.
-  void OnWebAppInstalledWithOsHooks(const webapps::AppId& app_id) override;
-  void OnWebAppInstallManagerDestroyed() override;
-  void OnWebAppUninstalled(
-      const webapps::AppId& app_id,
-      webapps::WebappUninstallSource uninstall_source) override;
-
-  std::map<webapps::AppId, GURL> app_id_origin_map_;
-  base::ScopedObservation<web_app::WebAppInstallManager,
-                          web_app::WebAppInstallManagerObserver>
-      install_manager_observation_{this};
-#endif  // !BUILDFLAG(IS_ANDROID)
 };
 
 #endif  // CHROME_BROWSER_BACKGROUND_SYNC_PERIODIC_BACKGROUND_SYNC_PERMISSION_CONTEXT_H_

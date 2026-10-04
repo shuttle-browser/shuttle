@@ -49,40 +49,12 @@ void AccessibilityMainHandler::OnJavascriptAllowed() {
           &AccessibilityMainHandler::OnAccessibilityStatusChanged,
           base::Unretained(this)));
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-  if (features::IsMainNodeAnnotationsEnabled()) {
-    CHECK(!component_ready_observer_.IsObserving());
-    component_ready_observer_.Observe(
-        screen_ai::ScreenAIInstallState::GetInstance());
-  }
 }
 
 void AccessibilityMainHandler::OnJavascriptDisallowed() {
 #if BUILDFLAG(IS_CHROMEOS)
   accessibility_subscription_ = {};
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-  if (features::IsMainNodeAnnotationsEnabled()) {
-    component_ready_observer_.Reset();
-  }
-}
-
-void AccessibilityMainHandler::DownloadProgressChanged(double progress) {
-  CHECK_GE(progress, 0.0);
-  CHECK_LE(progress, 1.0);
-  const int progress_num = progress * 100;
-  FireWebUIListener("screen-ai-downloading-progress-changed",
-                    base::Value(progress_num));
-}
-
-void AccessibilityMainHandler::StateChanged(
-    screen_ai::ScreenAIInstallState::State state) {
-  base::Value state_value = base::Value(static_cast<int>(state));
-  FireWebUIListener("screen-ai-state-changed", state_value);
-}
-
-void AccessibilityMainHandler::OnScreenAIInstallStateDestroying() {
-  component_ready_observer_.Reset();
 }
 
 void AccessibilityMainHandler::HandleGetScreenAIInstallState(
@@ -90,11 +62,8 @@ void AccessibilityMainHandler::HandleGetScreenAIInstallState(
   CHECK_EQ(1U, args.size());
   const base::Value& callback_id = args[0];
   AllowJavascript();
-  // Get the current install state and send it back to a UI callback.
-  screen_ai::ScreenAIInstallState::State current_install_state =
-      screen_ai::ScreenAIInstallState::GetInstance()->get_state();
-  ResolveJavascriptCallback(
-      callback_id, base::Value(static_cast<int>(current_install_state)));
+  // Screen AI is not part of this build: always report "not downloaded" (0).
+  ResolveJavascriptCallback(callback_id, base::Value(0));
 }
 
 void AccessibilityMainHandler::HandleGetScreenReaderState(

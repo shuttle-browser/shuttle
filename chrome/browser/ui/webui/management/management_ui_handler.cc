@@ -56,13 +56,8 @@
 #include "extensions/buildflags/buildflags.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/apps/app_service/app_icon_source.h"
 #include "chrome/browser/device_api/managed_configuration_api.h"
 #include "chrome/browser/device_api/managed_configuration_api_factory.h"
-#include "chrome/browser/web_applications/web_app_constants.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #endif
 
 #include "build/android_buildflags.h"
@@ -590,40 +585,7 @@ base::ListValue ManagementUIHandler::GetManagedWebsitesInfo(
 
 base::ListValue ManagementUIHandler::GetApplicationsInfo(
     Profile* profile) const {
-  base::ListValue applications;
-#if !BUILDFLAG(IS_ANDROID)
-  auto* provider = web_app::WebAppProvider::GetForWebApps(profile);
-  // Only display web apps for the profile that contains them.
-  if (provider == nullptr || !provider->is_registry_ready()) {
-    return applications;
-  }
-
-  auto& registrar = provider->registrar_unsafe();
-
-  for (const webapps::AppId& app_id : registrar.GetAppIds()) {
-    base::ListValue permission_messages;
-    // Display RunOnOsLogin if it is set to autostart by admin policy.
-    web_app::ValueWithPolicy<web_app::RunOnOsLoginMode> policy =
-        registrar.GetAppRunOnOsLoginMode(app_id);
-    if (!policy.user_controllable &&
-        web_app::IsRunOnOsLoginModeEnabledForAutostart(policy.value)) {
-      permission_messages.Append(l10n_util::GetStringUTF16(
-          IDS_MANAGEMENT_APPLICATIONS_RUN_ON_OS_LOGIN));
-    }
-
-    if (!permission_messages.empty()) {
-      base::DictValue app_info;
-      app_info.Set("name", registrar.GetAppShortName(app_id));
-      // We try to match the same icon size as used for the extensions
-      GURL icon = apps::AppIconSource::GetIconURL(
-          app_id, extension_misc::EXTENSION_ICON_SMALLISH);
-      app_info.Set("icon", icon.spec());
-      app_info.Set("permissions", std::move(permission_messages));
-      applications.Append(std::move(app_info));
-    }
-  }
-#endif
-  return applications;
+  return base::ListValue();
 }
 
 policy::PolicyService* ManagementUIHandler::GetPolicyService() {

@@ -16,7 +16,6 @@ include_rules = [
   "+components/sync_preferences",
   "+components/url_formatter",
   "+components/variations",
-  "+components/webapps",
   "+extensions/buildflags/buildflags.h",
   "+extensions/common/constants.h",
   "+jni",

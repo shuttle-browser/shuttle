@@ -33,7 +33,6 @@
 #include "components/omnibox/browser/location_bar_model_impl.h"
 #include "components/vector_icons/vector_icons.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #include "content/public/browser/document_picture_in_picture_window_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_constants.h"
@@ -229,11 +228,9 @@ PictureInPictureBrowserFrameView::PictureInPictureBrowserFrameView(
                             ? gfx::ELIDE_TAIL
                             : gfx::ELIDE_HEAD;
 
-  // Similarly for extension URLs and isolated-app URLs, the tail is more
-  // important to elide.
+  // Similarly for extension URLs, the tail is more important to elide.
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (location_bar_model_->GetURL().SchemeIs(extensions::kExtensionScheme) ||
-      location_bar_model_->GetURL().SchemeIs(webapps::kIsolatedAppScheme)) {
+  if (location_bar_model_->GetURL().SchemeIs(extensions::kExtensionScheme)) {
     elide_behavior = gfx::ELIDE_TAIL;
   }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -356,10 +353,6 @@ PictureInPictureBrowserFrameView::~PictureInPictureBrowserFrameView() {
 
 ///////////////////////////////////////////////////////////////////////////////
 // BrowserFrameView implementations:
-
-bool PictureInPictureBrowserFrameView::ShouldShowWebAppFrameToolbar() const {
-  return false;
-}
 
 int PictureInPictureBrowserFrameView::GetTopInset(bool restored) const {
   return GetTopAreaHeight();

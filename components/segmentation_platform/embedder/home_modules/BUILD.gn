@@ -16,12 +16,8 @@ static_library("home_modules") {
     "ephemeral_module_utils.h",
     "home_modules_card_registry.cc",
     "home_modules_card_registry.h",
-    "price_tracking_notification_promo.cc",
-    "price_tracking_notification_promo.h",
     "rank_fetcher_helper.cc",
     "rank_fetcher_helper.h",
-    "send_tab_notification_promo.cc",
-    "send_tab_notification_promo.h",
   ]
 
   if (is_ios) {
@@ -69,13 +65,11 @@ static_library("home_modules") {
   deps = [
     ":constants",
     "//base",
-    "//components/commerce/core:feature_list",
     "//components/prefs",
     "//components/segmentation_platform/embedder/home_modules/tips_manager:constants",
     "//components/segmentation_platform/embedder/home_modules/tips_manager:signal_constants",
     "//components/segmentation_platform/internal",
     "//components/segmentation_platform/public",
-    "//components/send_tab_to_self",
     "//components/signin/public/base:signin_switches",
   ]
 }
@@ -97,9 +91,7 @@ source_set("unit_tests") {
   sources = [
     "card_selection_signals_unittest.cc",
     "ephemeral_home_module_backend_unittest.cc",
-    "price_tracking_notification_promo_unittest.cc",
     "rank_fetcher_helper_unittest.cc",
-    "send_tab_notification_promo_unittest.cc",
     "test_home_modules_card_registry.cc",
     "test_home_modules_card_registry.h",
     "test_utils.cc",
@@ -137,7 +129,6 @@ source_set("unit_tests") {
     ":home_modules",
     "//base",
     "//base/test:test_support",
-    "//components/commerce/core:feature_list",
     "//components/prefs",
     "//components/prefs:test_support",
     "//components/segmentation_platform/embedder/default_model:default_model_test_base",
@@ -146,7 +137,6 @@ source_set("unit_tests") {
     "//components/segmentation_platform/internal",
     "//components/segmentation_platform/public",
     "//components/segmentation_platform/public:test_support",
-    "//components/send_tab_to_self",
     "//components/signin/public/base:signin_switches",
     "//testing/gmock",
     "//testing/gtest",

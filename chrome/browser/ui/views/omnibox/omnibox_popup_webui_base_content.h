@@ -21,8 +21,6 @@
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/metadata/view_factory.h"
 #include "ui/views/view_observer.h"
-
-class OmniboxContextMenu;
 class OmniboxController;
 class OmniboxPopupPresenterBase;
 class OmniboxPopupDeactivationBlocker;
@@ -164,7 +162,6 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
   bool top_rounded_corners_ = true;
 
   std::unique_ptr<WebUIContentsWrapperT<OmniboxPopupUI>> contents_wrapper_;
-  std::unique_ptr<OmniboxContextMenu> context_menu_;
 
   std::unique_ptr<OmniboxPopupTabSelectionListener> tab_selection_listener_;
 

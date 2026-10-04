@@ -7,7 +7,6 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/values.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -32,10 +31,6 @@ void PerformanceHandler::RegisterMessages() {
   web_ui()->RegisterMessageCallback(
       "getDeviceHasBattery",
       base::BindRepeating(&PerformanceHandler::HandleGetDeviceHasBattery,
-                          base::Unretained(this)));
-  web_ui()->RegisterMessageCallback(
-      "openPerformanceFeedbackDialog",
-      base::BindRepeating(&PerformanceHandler::HandleOpenFeedbackDialog,
                           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
       "validateTabDiscardExceptionRule",
@@ -119,20 +114,6 @@ void PerformanceHandler::HandleGetDeviceHasBattery(
       callback_id, base::Value(performance_manager::user_tuning::
                                    BatterySaverModeManager::GetInstance()
                                        ->DeviceHasBattery()));
-}
-
-void PerformanceHandler::HandleOpenFeedbackDialog(const base::ListValue& args) {
-  CHECK_EQ(1U, args.size());
-  const std::string category_tag = args[0].GetString();
-
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-          web_ui()->GetWebContents());
-  DCHECK(browser);
-  std::string unused;
-  chrome::ShowFeedbackPage(browser,
-                           feedback::kFeedbackSourceSettingsPerformancePage,
-                           unused, unused, category_tag, unused);
 }
 
 void PerformanceHandler::HandleValidateTabDiscardExceptionRule(

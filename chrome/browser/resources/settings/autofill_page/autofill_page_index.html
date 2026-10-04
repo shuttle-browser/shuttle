@@ -32,18 +32,4 @@
   <settings-travel-page slot="view" id="travel" prefs="{{prefs}}"
       data-parent-view-id="parent">
   </settings-travel-page>
-
-  <template is="dom-if" if="[[isShoppingEnabled_]]">
-    <settings-shopping-page slot="view" id="shopping" prefs="{{prefs}}"
-        data-parent-view-id="parent">
-    </settings-shopping-page>
-  </template>
-
-  <template is="dom-if" if="[[showSuggestionsFromGeminiSettings_]]">
-    <settings-suggestions-from-gemini-page slot="view"
-        id="suggestionsFromGemini" data-parent-view-id="parent"
-        prefs="{{prefs}}">
-    </settings-suggestions-from-gemini-page>
-  </template>
-
 </cr-view-manager>

@@ -29,12 +29,6 @@
 #include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/extensions/extension_ui_util.h"
-#include "chrome/browser/feedback/report_unsafe_site_dialog.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
-#include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
-#include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
@@ -45,8 +39,6 @@
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/send_tab_to_self/send_tab_to_self_util.h"
-#include "chrome/browser/sharing_hub/sharing_hub_features.h"
 #include "chrome/browser/signin/account_preview_data_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_ui_util.h"
@@ -54,7 +46,6 @@
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/themes/theme_service_factory.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -62,23 +53,13 @@
 #include "chrome/browser/ui/global_error/global_error.h"
 #include "chrome/browser/ui/global_error/global_error_service.h"
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/lens/lens_overlay_controller.h"
-#include "chrome/browser/ui/lens/lens_overlay_entry_point_controller.h"
-#include "chrome/browser/ui/lens/lens_string_utils.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
 #include "chrome/browser/ui/profiles/profile_view_utils.h"
-#include "chrome/browser/ui/safety_hub/menu_notification_service_factory.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_constants.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_hats_service.h"
-#include "chrome/browser/ui/safety_hub/safety_hub_hats_service_factory.h"
-#include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_context_menu_delegate.h"
 #include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
-#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/recent_tabs_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -90,20 +71,12 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
-#include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
 #include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
-#include "chrome/browser/ui/webui/whats_new/whats_new_util.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
 #include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/browser/user_education/user_education_service_factory.h"
-#include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
-#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_paths.h"
@@ -113,15 +86,12 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "components/autofill/core/common/autofill_features.h"
-#include "components/bookmarks/common/bookmark_bar_visibility_state.h"
-#include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/dom_distiller/content/browser/distillable_page_utils.h"
 #include "components/dom_distiller/content/browser/uma_helper.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/dom_distiller/core/url_utils.h"
 #include "components/feature_engagement/public/event_constants.h"
 #include "components/feature_engagement/public/feature_constants.h"
-#include "components/lens/lens_features.h"
 #include "components/omnibox/browser/vector_icons.h"
 #include "components/password_manager/content/common/web_ui_constants.h"
 #include "components/password_manager/core/common/password_manager_features.h"
@@ -130,7 +100,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/profile_metrics/browser_profile_type.h"
 #include "components/saved_tab_groups/public/features.h"
-#include "components/send_tab_to_self/features.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
@@ -140,11 +109,6 @@
 #include "components/sync/service/sync_service.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/vector_icons/vector_icons.h"
-#include "components/webapps/browser/banners/app_banner_manager.h"
-#include "components/webapps/browser/banners/install_banner_config.h"
-#include "components/webapps/browser/banners/installable_web_app_check_result.h"
-#include "components/webapps/browser/banners/web_app_banner_data.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/profiling.h"
@@ -251,11 +215,6 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
                                      ui::SimpleMenuModel::kDefaultIconSize));
 }
 
-const gfx::VectorIcon& GetSendTabToSelfIcon() {
-  return features::IsRoundedIconsEnabled() ? kDevicesIcon
-                                           : kDevicesChromeRefreshOldIcon;
-}
-
 // Conditionally return the update app menu item title based on upgrade detector
 // state.
 std::u16string GetUpgradeDialogTitleText() {
@@ -269,168 +228,6 @@ std::u16string GetUpgradeDialogTitleText() {
 #else
   return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE);
 #endif
-}
-
-// Returns the appropriate menu label for the IDC_INSTALL_PWA command if
-// available.
-std::u16string GetInstallPWALabel(BrowserWindowInterface* browser) {
-  // There may be no active web contents in tests.
-  auto* const web_contents = browser->tab_strip_model()->GetActiveWebContents();
-  if (!web_contents) {
-    return std::u16string();
-  }
-  if (!web_app::CanCreateWebApp(browser)) {
-    return std::u16string();
-  }
-  // Don't allow apps created from chrome-extension urls.
-  if (web_contents->GetLastCommittedURL().SchemeIs("chrome-extension")) {
-    return std::u16string();
-  }
-
-  // TODO(b/328077967): Support async nature of AppBannerManager pipeline runs
-  // with the menu model instead of needing this workaround to verify if an
-  // non-installable site is installed.
-  const webapps::AppId* app_id =
-      web_app::WebAppTabHelper::GetAppId(web_contents);
-  web_app::WebAppProvider* const provider =
-      web_app::WebAppProvider::GetForLocalAppsUnchecked(browser->GetProfile());
-  if (app_id &&
-      provider->registrar_unsafe().GetInstallState(*app_id) ==
-          web_app::proto::INSTALLED_WITH_OS_INTEGRATION &&
-      provider->registrar_unsafe().GetAppUserDisplayMode(*app_id) !=
-          web_app::mojom::UserDisplayMode::kBrowser) {
-    return std::u16string();
-  }
-
-  std::u16string install_page_as_app_label =
-      l10n_util::GetStringUTF16(IDS_INSTALL_DIY_TO_OS_LAUNCH_SURFACE);
-  webapps::AppBannerManager* banner =
-      webapps::AppBannerManager::FromWebContents(web_contents);
-  if (!banner) {
-    // Showing `Install Page as App` allows the user to refetch the manifest and
-    // go through the install flow without relying on the AppBannerManager to
-    // finish working.
-    return install_page_as_app_label;
-  }
-
-  std::optional<webapps::InstallBannerConfig> install_config =
-      banner->GetCurrentBannerConfig();
-  if (!install_config) {
-    // In some edge cases where the `AppBannerManager` pipeline hasn't run yet,
-    // the information populated to be used for determining installability and
-    // other parameters is not available. In this case, allow users to try
-    // installability by refetching the manifest.
-    return install_page_as_app_label;
-  }
-  CHECK_EQ(install_config->mode, webapps::AppBannerMode::kWebApp);
-  webapps::InstallableWebAppCheckResult installable =
-      banner->GetInstallableWebAppCheckResult();
-
-  switch (installable) {
-    case webapps::InstallableWebAppCheckResult::kUnknown:
-      // Loading of the menu model is synchronous, so there could be a condition
-      // where the `AppBannerManager` has not yet finished the pipeline while
-      // the menu item has been triggered. In such a case,
-      // `banner->GetInstallableWebAppCheckResult()` returns the default value
-      // of `kUnknown`.
-      // Show `Install Page as App` for that use-case, since that allows the
-      // user to trigger the install flow to verify all the data required for
-      // installability. The correct dialog will be shown to the user depending
-      // on whether the app turns out to be installable or not.
-      return install_page_as_app_label;
-    case webapps::InstallableWebAppCheckResult::kNo_AlreadyInstalled:
-      // Returning an empty string here allows the `launch page as app` field to
-      // get populated in place of the `install` strings.
-      return std::u16string();
-    case webapps::InstallableWebAppCheckResult::kNo:
-      return install_page_as_app_label;
-    case webapps::InstallableWebAppCheckResult::kYes_ByUserRequest:
-    case webapps::InstallableWebAppCheckResult::kYes_Promotable:
-      std::u16string app_name = install_config->GetWebOrNativeAppName();
-      if (app_name.empty()) {
-        // Prefer showing `Install Page as App` here, as users can set the name
-        // of the installed app on the DIY app dialog anyway.
-        return install_page_as_app_label;
-      }
-      return l10n_util::GetStringFUTF16(
-          IDS_INSTALL_TO_OS_LAUNCH_SURFACE,
-          ui::EscapeMenuLabelAmpersands(app_name));
-  }
-}
-
-// TODO(b/328077967): Implement async updates of menu for app icon.
-ui::ImageModel GetInstallPWAIcon(BrowserWindowInterface* browser) {
-  ui::ImageModel app_icon_to_use = ui::ImageModel::FromVectorIcon(
-      features::IsRoundedIconsEnabled() ? vector_icons::kInstallDesktopIcon
-                                        : kInstallDesktopChromeRefreshOldIcon,
-      ui::kColorMenuIcon, ui::SimpleMenuModel::kDefaultIconSize);
-
-  content::WebContents* const web_contents =
-      browser->tab_strip_model()->GetActiveWebContents();
-  if (!web_contents) {
-    return app_icon_to_use;
-  }
-
-  webapps::AppBannerManager* const banner =
-      webapps::AppBannerManager::FromWebContents(web_contents);
-  if (!banner) {
-    return app_icon_to_use;
-  }
-
-  // For sites that are not installable (DIY apps), do not return any icons,
-  // instead use the default chrome refresh icon for installing.
-  auto installable_check_result = banner->GetInstallableWebAppCheckResult();
-  if (installable_check_result == webapps::InstallableWebAppCheckResult::kNo ||
-      installable_check_result ==
-          webapps::InstallableWebAppCheckResult::kUnknown) {
-    return app_icon_to_use;
-  }
-
-  std::optional<webapps::WebAppBannerData> install_config =
-      banner->GetCurrentWebAppBannerData();
-
-  // If no data or no icons have been obtained by the AppBannerManager, return
-  // the default icon.
-  if (!install_config || install_config->primary_icon.empty()) {
-    return app_icon_to_use;
-  }
-
-  gfx::ImageSkia primary_icon =
-      gfx::ImageSkia::CreateFrom1xBitmap(install_config->primary_icon);
-  gfx::ImageSkia resized_app_icon =
-      gfx::ImageSkiaOperations::CreateResizedImage(
-          primary_icon, skia::ImageOperations::RESIZE_BEST,
-          gfx::Size(ui::SimpleMenuModel::kDefaultIconSize,
-                    ui::SimpleMenuModel::kDefaultIconSize));
-  app_icon_to_use = ui::ImageModel::FromImageSkia(resized_app_icon);
-  return app_icon_to_use;
-}
-
-// Returns the appropriate menu label for the IDC_OPEN_IN_PWA_WINDOW command if
-// available.
-std::u16string GetOpenPWALabel(BrowserWindowInterface* browser) {
-  std::optional<webapps::AppId> app_id =
-      web_app::GetWebAppForActiveTab(browser);
-  if (!app_id.has_value()) {
-    return std::u16string();
-  }
-
-  // Only show this menu item for apps that open in an app window.
-  const auto* const provider =
-      web_app::WebAppProvider::GetForLocalAppsUnchecked(browser->GetProfile());
-  if (provider->registrar_unsafe().GetAppUserDisplayMode(*app_id) ==
-      web_app::mojom::UserDisplayMode::kBrowser) {
-    return std::u16string();
-  }
-
-  const std::u16string short_name =
-      base::UTF8ToUTF16(provider->registrar_unsafe().GetAppShortName(*app_id));
-  return l10n_util::GetStringFUTF16(
-      IDS_OPEN_IN_APP_WINDOW,
-      ui::EscapeMenuLabelAmpersands(gfx::TruncateString(
-          short_name,
-          GetLayoutConstant(LayoutConstant::kAppMenuMaximumCharacterLength),
-          gfx::CHARACTER_BREAK)));
 }
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -955,131 +752,23 @@ class SaveAndShareSubMenuModel : public ui::SimpleMenuModel {
   SaveAndShareSubMenuModel(const SaveAndShareSubMenuModel&) = delete;
   SaveAndShareSubMenuModel& operator=(const SaveAndShareSubMenuModel&) = delete;
   ~SaveAndShareSubMenuModel() override = default;
-
- private:
-  // Builds Send Tab to Self target device submenu when enhanced desktop UI is
-  // enabled.
-  void BuildSendTabToSelfSubmenu(BrowserWindowInterface* browser,
-                                 content::WebContents* web_contents);
-
-  // Fallback helper to add simple Send Tab to Self menu item.
-  void BuildSendTabToSelfSimpleItem();
-
-  std::unique_ptr<send_tab_to_self::SendTabToSelfContextMenuDelegate>
-      send_tab_to_self_submenu_delegate_;
-  std::unique_ptr<ui::SimpleMenuModel> send_tab_to_self_submenu_;
 };
-
-void SaveAndShareSubMenuModel::BuildSendTabToSelfSubmenu(
-    BrowserWindowInterface* browser,
-    content::WebContents* web_contents) {
-  CHECK(web_contents);
-
-  send_tab_to_self_submenu_delegate_ =
-      std::make_unique<send_tab_to_self::SendTabToSelfContextMenuDelegate>(
-          web_contents, send_tab_to_self::ShareEntryPoint::kShareMenu);
-  send_tab_to_self_submenu_ = std::make_unique<ui::SimpleMenuModel>(
-      send_tab_to_self_submenu_delegate_.get());
-  send_tab_to_self_submenu_delegate_->PopulateSubmenu(
-      send_tab_to_self_submenu_.get());
-
-  AddSubMenuWithStringIdAndIcon(
-      IDC_SEND_TAB_TO_SELF, IDS_MENU_SEND_TAB_TO_SELF,
-      send_tab_to_self_submenu_.get(),
-      ui::ImageModel::FromVectorIcon(GetSendTabToSelfIcon()));
-
-  SetIsNewFeatureAt(GetItemCount() - 1,
-                    UserEducationService::MaybeShowNewBadge(
-                        browser->GetProfile(),
-                        send_tab_to_self::kSendTabToSelfEnhancedDesktopUIv2));
-}
-
-void SaveAndShareSubMenuModel::BuildSendTabToSelfSimpleItem() {
-  AddItemWithStringIdAndVectorIcon(this, IDC_SEND_TAB_TO_SELF,
-                                   IDS_MENU_SEND_TAB_TO_SELF,
-                                   GetSendTabToSelfIcon());
-}
 
 SaveAndShareSubMenuModel::SaveAndShareSubMenuModel(
     ui::SimpleMenuModel::Delegate* delegate,
-    BrowserWindowInterface* browser)
+    BrowserWindowInterface* /*browser*/)
     : SimpleMenuModel(delegate) {
-  if (media_router::MediaRouterEnabled(browser->GetProfile())) {
-    AddTitle(l10n_util::GetStringUTF16(IDS_SAVE_AND_SHARE_MENU_CAST));
-    SetElementIdentifierAt(GetItemCount() - 1, AppMenuModel::kCastTitleItem);
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_ROUTE_MEDIA, IDS_MEDIA_ROUTER_MENU_ITEM_TITLE,
-        features::IsRoundedIconsEnabled() ? kCastIcon
-                                          : kCastChromeRefreshOldIcon);
-    AddSeparator(ui::NORMAL_SEPARATOR);
-  }
   AddTitle(l10n_util::GetStringUTF16(IDS_SAVE_AND_SHARE_MENU_SAVE));
   AddItemWithStringIdAndVectorIcon(this, IDC_SAVE_PAGE, IDS_SAVE_PAGE,
                                    features::IsRoundedIconsEnabled()
                                        ? kFileSaveIcon
                                        : kFileSaveChromeRefreshOldIcon);
   AddSeparator(ui::NORMAL_SEPARATOR);
-  if (std::u16string install_item = GetInstallPWALabel(browser);
-      !install_item.empty()) {
-    AddItemWithIcon(IDC_INSTALL_PWA, install_item, GetInstallPWAIcon(browser));
-    SetElementIdentifierAt(GetItemCount() - 1, AppMenuModel::kInstallAppItem);
-  } else if (std::u16string open_item = GetOpenPWALabel(browser);
-             !open_item.empty()) {
-    AddItemWithIcon(IDC_OPEN_IN_PWA_WINDOW, open_item,
-                    ui::ImageModel::FromVectorIcon(
-                        features::IsRoundedIconsEnabled()
-                            ? kDesktopWindowsIcon
-                            : kDesktopWindowsChromeRefreshOldIcon,
-                        ui::kColorMenuIcon, kDefaultIconSize));
-  }
+  AddTitle(l10n_util::GetStringUTF16(IDS_SAVE_AND_SHARE_MENU_SHARE));
   AddItemWithStringIdAndVectorIcon(
-      this, IDC_CREATE_SHORTCUT, IDS_ADD_TO_OS_LAUNCH_SURFACE,
-      features::IsRoundedIconsEnabled() ? kDriveShortcutIcon
-                                        : kDriveShortcutChromeRefreshOldIcon);
-  SetElementIdentifierAt(GetItemCount() - 1, AppMenuModel::kCreateShortcutItem);
-  if (!sharing_hub::SharingIsDisabledByPolicy(browser->GetProfile()) ||
-      sharing_hub::DesktopScreenshotsFeatureEnabled(browser->GetProfile())) {
-    AddSeparator(ui::NORMAL_SEPARATOR);
-    AddTitle(l10n_util::GetStringUTF16(IDS_SAVE_AND_SHARE_MENU_SHARE));
-    if (!sharing_hub::SharingIsDisabledByPolicy(browser->GetProfile())) {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_COPY_URL, IDS_APP_MENU_COPY_LINK,
-          features::IsRoundedIconsEnabled() ? vector_icons::kLinkIcon
-                                            : kLinkChromeRefreshOldIcon);
-
-      // WebContents is required to query target devices and display state for
-      // Send Tab to Self.
-      content::WebContents* web_contents =
-          browser->tab_strip_model()->GetActiveWebContents();
-      std::optional<send_tab_to_self::EntryPointDisplayReason> reason =
-          web_contents
-              ? send_tab_to_self::GetEntryPointDisplayReason(web_contents)
-              : std::nullopt;
-
-      // When enhanced desktop UI v2 feature flag is enabled and feature is
-      // offered, build submenu with available devices. Otherwise, build simple
-      // command item.
-      if (web_contents &&
-          base::FeatureList::IsEnabled(
-              send_tab_to_self::kSendTabToSelfEnhancedDesktopUIv2) &&
-          reason == send_tab_to_self::EntryPointDisplayReason::kOfferFeature) {
-        BuildSendTabToSelfSubmenu(browser, web_contents);
-      } else {
-        BuildSendTabToSelfSimpleItem();
-      }
-
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_QRCODE_GENERATOR, IDS_APP_MENU_CREATE_QR_CODE,
-          features::IsRoundedIconsEnabled() ? kQrCodeIcon
-                                            : kQrCodeChromeRefreshOldIcon);
-    }
-    if (sharing_hub::DesktopScreenshotsFeatureEnabled(browser->GetProfile())) {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_SHARING_HUB_SCREENSHOT, IDS_SHARING_HUB_SCREENSHOT_LABEL,
-          features::IsRoundedIconsEnabled() ? kScreenshotRegionIcon
-                                            : kSharingHubScreenshotOldIcon);
-    }
-  }
+      this, IDC_COPY_URL, IDS_APP_MENU_COPY_LINK,
+      features::IsRoundedIconsEnabled() ? vector_icons::kLinkIcon
+                                        : kLinkChromeRefreshOldIcon);
 }
 
 bool ArePromotionsEnabled() {
@@ -1131,14 +820,6 @@ void HelpMenuModel::Build(BrowserWindowInterface* browser) {
                                    features::IsRoundedIconsEnabled()
                                        ? vector_icons::kInfoIcon
                                        : vector_icons::kInfoRefreshOldIcon);
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  if (whats_new::IsEnabled()) {
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_CHROME_WHATS_NEW, IDS_CHROME_WHATS_NEW,
-        features::IsRoundedIconsEnabled() ? kReleaseAlertIcon
-                                          : kReleaseAlertOldIcon);
-  }
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
   AddItemWithStringId(IDC_HELP_PAGE_VIA_MENU, help_string_id);
   if (browser_defaults::kShowHelpMenuItemIcon) {
     ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
@@ -1150,23 +831,6 @@ void HelpMenuModel::Build(BrowserWindowInterface* browser) {
         this, IDC_HELP_PAGE_VIA_MENU,
         features::IsRoundedIconsEnabled() ? kHelpCustomIcon : kHelpMenuOldIcon);
   }
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  if (chrome::CanShowFeedback(browser->GetProfile())) {
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_FEEDBACK, IDS_FEEDBACK,
-        features::IsRoundedIconsEnabled() ? kFeedbackIcon : kReportOldIcon);
-
-    if (feedback::ReportUnsafeSiteDialog::IsEnabled(*browser->GetProfile())) {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_REPORT_UNSAFE_SITE, IDS_REPORT_UNSAFE_SITE,
-          features::IsRoundedIconsEnabled() ? vector_icons::kWarningFilledIcon
-                                            : vector_icons::kWarningOldIcon);
-      SetElementIdentifierAt(
-          GetIndexOfCommandId(IDC_REPORT_UNSAFE_SITE).value(),
-          HelpMenuModel::kReportUnsafeSiteMenuItem);
-    }
-  }
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1187,19 +851,6 @@ ToolsMenuModel::~ToolsMenuModel() = default;
 // - Developer tools.
 // - Option to enable profiling.
 void ToolsMenuModel::Build(BrowserWindowInterface* browser) {
-  // Tablet mode does not have a Tab Search button. We should not show tablet
-  // mode users these menu items.
-  bool is_tablet_mode = false;
-#if BUILDFLAG(IS_CHROMEOS)
-  is_tablet_mode = display::Screen::Get()->InTabletMode();
-#endif  // BUILDFLAG(IS_CHROMEOS)
-  if (!is_tablet_mode) {
-    AddItemWithStringIdAndVectorIcon(this, IDC_TAB_SEARCH, IDS_TAB_SEARCH_MENU,
-                                     features::IsRoundedIconsEnabled()
-                                         ? kManageSearchIcon
-                                         : kTabSearchTabStripOldIcon);
-  }
-
   AddItemWithStringIdAndVectorIcon(
       this, IDC_NAME_WINDOW, IDS_NAME_WINDOW,
       features::IsRoundedIconsEnabled() ? kWebAssetIcon : kNameWindowOldIcon);
@@ -1420,23 +1071,6 @@ void AppMenuModel::ExecuteCommand(int command_id, int event_flags) {
     default:
       chrome::ExecuteCommand(browser_, command_id);
       break;
-  }
-}
-
-void AppMenuModel::LogSafetyHubInteractionMetrics(
-    safety_hub::SafetyHubModuleType sh_module,
-    int event_flags) {
-  base::UmaHistogramEnumeration("Settings.SafetyHub.Interaction",
-                                safety_hub::SafetyHubSurfaces::kThreeDotMenu);
-  base::UmaHistogramEnumeration(
-      "Settings.SafetyHub.EntryPointInteraction",
-      safety_hub::SafetyHubEntryPoint::kMenuNotifications);
-  base::UmaHistogramEnumeration("Settings.SafetyHub.MenuNotificationClicked",
-                                sh_module);
-
-  if (SafetyHubHatsService* hats_service =
-          SafetyHubHatsServiceFactory::GetForProfile(browser_->GetProfile())) {
-    hats_service->SafetyHubNotificationClicked(sh_module);
   }
 }
 
@@ -2105,23 +1739,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
 }
 
 bool AppMenuModel::IsCommandIdChecked(int command_id) const {
-  PrefService* prefs = browser_->GetProfile()->GetPrefs();
-  if (command_id == IDC_SHOW_BOOKMARK_BAR) {
-    return prefs->GetBoolean(bookmarks::prefs::kShowBookmarkBar);
-  }
-  if (command_id == IDC_BOOKMARK_BAR_SUBMENU_ALWAYS_SHOW) {
-    return prefs->GetInteger(bookmarks::prefs::kBookmarkBarVisibilityState) ==
-           static_cast<int>(bookmarks::BookmarkBarVisibilityState::kAlwaysShow);
-  }
-  if (command_id == IDC_BOOKMARK_BAR_SUBMENU_ALWAYS_HIDE) {
-    return prefs->GetInteger(bookmarks::prefs::kBookmarkBarVisibilityState) ==
-           static_cast<int>(bookmarks::BookmarkBarVisibilityState::kAlwaysHide);
-  }
-  if (command_id == IDC_BOOKMARK_BAR_SUBMENU_ONLY_ON_NTP) {
-    return prefs->GetInteger(bookmarks::prefs::kBookmarkBarVisibilityState) ==
-           static_cast<int>(
-               bookmarks::BookmarkBarVisibilityState::kOnlyShowOnNtp);
-  }
   if (command_id == IDC_PROFILING_ENABLED) {
     return content::Profiling::BeingProfiled();
   }
@@ -2219,8 +1836,7 @@ void AppMenuModel::Build() {
     }
   }
 
-  if (AddSafetyHubMenuItem() || AddGlobalErrorMenuItems() ||
-      AddDefaultBrowserMenuItems()) {
+  if (AddGlobalErrorMenuItems()) {
     AddSeparator(ui::NORMAL_SEPARATOR);
   }
   // TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
@@ -2329,19 +1945,6 @@ void AppMenuModel::Build() {
         kBookmarksMenuItem);
   }
 
-  if (browser_->GetProfile()->IsRegularProfile()) {
-    auto saved_tab_groups_model = std::make_unique<ui::SimpleMenuModel>(this);
-    sub_menus_.push_back(std::move(saved_tab_groups_model));
-    AddSubMenuWithStringIdAndVectorIcon(
-        this, kSavedTabGroupsMenuPlaceholder, IDS_SAVED_TAB_GROUPS_MENU,
-        sub_menus_.back().get(),
-        features::IsRoundedIconsEnabled() ? kGridViewIcon
-                                          : kSavedTabGroupBarEverythingOldIcon);
-    SetElementIdentifierAt(
-        GetIndexOfCommandId(kSavedTabGroupsMenuPlaceholder).value(),
-        kTabGroupsMenuItem);
-  }
-
   // Extensions sub menu.
   if (ArePromotionsEnabled() &&
       base::FeatureList::IsEnabled(features::kExtensionsCollapseMainMenu) &&
@@ -2381,51 +1984,13 @@ void AppMenuModel::Build() {
       this, IDC_PRINT, IDS_PRINT,
       features::IsRoundedIconsEnabled() ? kPrintIcon : kPrintMenuOldIcon);
 
-  if (glic::GlicEnabling::IsEnabledForProfile(browser_->GetProfile())) {
-    AddItemWithStringIdAndVectorIcon(this, IDC_OPEN_GLIC,
-                                     IDS_GLIC_THREE_DOT_MENU_ITEM,
-                                     glic::GlicVectorIconManager::GetVectorIcon(
-                                         IDR_GLIC_BUTTON_VECTOR_ICON));
-    SetIsNewFeatureAt(
-        GetIndexOfCommandId(IDC_OPEN_GLIC).value(),
-        BrowserUserEducationInterface::From(browser())->MaybeShowNewBadgeFor(
-            features::kGlicAppMenuNewBadge));
-  }
-
-  if (auto* controller = lens::LensOverlayEntryPointController::From(browser());
-      controller && controller->IsEnabled()) {
-    const gfx::VectorIcon& icon =
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-        vector_icons::kGoogleLensMonochromeLogoIcon;
-#else
-        features::IsRoundedIconsEnabled()
-            ? vector_icons::kSearchIcon
-            : vector_icons::kSearchChromeRefreshOldIcon;
-#endif
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_CONTENT_CONTEXT_LENS_OVERLAY,
-        lens::GetLensOverlayEntrypointLabelAltIds(), icon);
-    const int lens_command_index =
-        GetIndexOfCommandId(IDC_CONTENT_CONTEXT_LENS_OVERLAY).value();
-    SetElementIdentifierAt(lens_command_index, kShowLensOverlay);
-    SetIsNewFeatureAt(
-        lens_command_index,
-        BrowserUserEducationInterface::From(browser())->MaybeShowNewBadgeFor(
-            lens::features::kLensOverlay));
-  }
-
-  AddItemWithStringIdAndVectorIcon(this, IDC_SHOW_TRANSLATE, IDS_SHOW_TRANSLATE,
-                                   vector_icons::kGTranslateIcon);
-
   CreateFindAndEditSubMenu();
 
   sub_menus_.push_back(
       std::make_unique<SaveAndShareSubMenuModel>(this, browser_));
-  int string_id = media_router::MediaRouterEnabled(browser()->GetProfile())
-                      ? IDS_CAST_SAVE_AND_SHARE_MENU
-                      : IDS_SAVE_AND_SHARE_MENU;
   AddSubMenuWithStringIdAndVectorIcon(
-      this, kSaveAndShareMenuPlaceholder, string_id, sub_menus_.back().get(),
+      this, kSaveAndShareMenuPlaceholder, IDS_SAVE_AND_SHARE_MENU,
+      sub_menus_.back().get(),
       features::IsRoundedIconsEnabled() ? kFileSaveIcon
                                         : kFileSaveChromeRefreshOldIcon);
   SetElementIdentifierAt(
@@ -2564,64 +2129,6 @@ bool AppMenuModel::AddGlobalErrorMenuItems() {
     }
   }
   return menu_items_added;
-}
-// TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
-// should be revisited when deciding on the final integration of Isolated
-// mode.
-bool AppMenuModel::AddDefaultBrowserMenuItems() {
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  if (browser_->GetProfile()->IsIncognitoProfile() ||
-      browser_->GetProfile()->IsGuestSession() ||
-      browser_->GetProfile()->IsEnterpriseIsolatedModeProfile()) {
-    return false;
-  }
-
-  if (DefaultBrowserPromptManager::GetInstance()->show_app_menu_item()) {
-    AddItemWithIcon(
-        IDC_SET_BROWSER_AS_DEFAULT,
-        l10n_util::GetStringUTF16(IDS_SET_BROWSER_AS_DEFAULT_MENU_ITEM),
-        ui::ImageModel::FromVectorIcon(
-            features::IsRoundedIconsEnabled()
-                ? omnibox::kChromeProductIcon
-                : omnibox::kProductChromeRefreshOldIcon,
-            ui::kColorMenuIcon, kDefaultIconSize));
-    SetElementIdentifierAt(GetItemCount() - 1,
-                           AppMenuModel::kSetBrowserAsDefaultMenuItem);
-    return true;
-  }
-#endif
-  return false;
-}
-
-bool AppMenuModel::AddSafetyHubMenuItem() {
-  auto* safety_hub_menu_notification_service =
-      SafetyHubMenuNotificationServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  if (!safety_hub_menu_notification_service) {
-    return false;
-  }
-
-  std::optional<MenuNotificationEntry> notification =
-      safety_hub_menu_notification_service->GetNotificationToShow();
-  if (!notification.has_value()) {
-    return false;
-  }
-  base::UmaHistogramEnumeration("Settings.SafetyHub.Impression",
-                                safety_hub::SafetyHubSurfaces::kThreeDotMenu);
-  base::UmaHistogramEnumeration(
-      "Settings.SafetyHub.EntryPointImpression",
-      safety_hub::SafetyHubEntryPoint::kMenuNotifications);
-  base::UmaHistogramEnumeration("Settings.SafetyHub.MenuNotificationImpression",
-                                notification->module);
-  const auto safety_hub_icon = ui::ImageModel::FromVectorIcon(
-      features::IsRoundedIconsEnabled() ? kSecurityIcon : kSecurityOldIcon,
-      ui::kColorMenuIcon, kDefaultIconSize);
-  AddItemWithIcon(notification->command, notification->label, safety_hub_icon);
-  SetExecuteCallbackAt(
-      GetIndexOfCommandId(notification->command).value(),
-      base::BindRepeating(&AppMenuModel::LogSafetyHubInteractionMetrics,
-                          base::Unretained(this), notification->module));
-  return true;
 }
 
 #if BUILDFLAG(IS_CHROMEOS)

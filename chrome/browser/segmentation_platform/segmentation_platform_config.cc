@@ -13,7 +13,6 @@
 #include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
 #include "chrome/browser/metrics/chrome_metrics_service_accessor.h"
-#include "components/compose/buildflags.h"
 #include "components/search/ntp_features.h"
 #include "components/segmentation_platform/embedder/default_model/chrome_user_engagement.h"
 #include "components/segmentation_platform/embedder/default_model/cross_device_user_segment.h"
@@ -28,7 +27,6 @@
 #include "components/segmentation_platform/embedder/default_model/password_manager_user_segment.h"
 #include "components/segmentation_platform/embedder/default_model/resume_heavy_user_model.h"
 #include "components/segmentation_platform/embedder/default_model/search_user_model.h"
-#include "components/segmentation_platform/embedder/default_model/shopping_user_model.h"
 #include "components/segmentation_platform/embedder/default_model/tab_resumption_ranker.h"
 #include "components/segmentation_platform/embedder/default_model/tips_notifications_ranker.h"
 #include "components/segmentation_platform/embedder/default_model/url_visit_resumption_ranker.h"
@@ -38,15 +36,10 @@
 #include "components/segmentation_platform/public/constants.h"
 #include "components/segmentation_platform/public/features.h"
 #include "components/segmentation_platform/public/proto/segmentation_platform.pb.h"
-#include "components/webapps/browser/features.h"
 #include "content/public/browser/browser_context.h"
 
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
-#include "chrome/browser/commerce/shopping_service_factory.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
-#include "components/commerce/core/commerce_feature_list.h"
-#include "components/commerce/core/shopping_service.h"
 #include "components/segmentation_platform/embedder/default_model/android_home_module_ranker.h"
 #include "components/segmentation_platform/embedder/default_model/contextual_page_actions_model.h"
 #include "components/segmentation_platform/embedder/default_model/device_tier_segment.h"
@@ -54,10 +47,6 @@
 #include "components/segmentation_platform/embedder/default_model/most_visited_tiles_user.h"
 #include "components/segmentation_platform/embedder/default_model/power_user_segment.h"
 #include "components/segmentation_platform/embedder/default_model/tablet_productivity_user_model.h"
-#endif
-
-#if BUILDFLAG(ENABLE_COMPOSE)
-#include "components/segmentation_platform/embedder/default_model/compose_promotion.h"
 #endif
 
 namespace segmentation_platform {
@@ -110,16 +99,6 @@ std::unique_ptr<Config> GetConfigForContextualPageActions(
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
-std::unique_ptr<Config> GetConfigForWebAppInstallationPromo() {
-  auto config = std::make_unique<Config>();
-  config->segmentation_key = kWebAppInstallationPromoKey;
-  config->segmentation_uma_name = kWebAppInstallationPromoUmaName;
-  config->AddSegmentId(
-      SegmentId::OPTIMIZATION_TARGET_WEB_APP_INSTALLATION_PROMO);
-  config->auto_execute_and_cache = false;
-  return config;
-}
-
 std::unique_ptr<Config> GetConfigForDesktopNtpModule() {
   auto config = std::make_unique<Config>();
   config->segmentation_key = kDesktopNtpModuleKey;
@@ -154,7 +133,6 @@ std::vector<std::unique_ptr<Config>> GetSegmentationPlatformConfig(
   configs.emplace_back(LowUserEngagementModel::GetConfig());
   configs.emplace_back(SearchUserModel::GetConfig());
   configs.emplace_back(FeedUserSegment::GetConfig());
-  configs.emplace_back(ShoppingUserModel::GetConfig());
   configs.emplace_back(CrossDeviceUserSegment::GetConfig());
   configs.emplace_back(ResumeHeavyUserModel::GetConfig());
   configs.emplace_back(DeviceSwitcherModel::GetConfig());
@@ -172,17 +150,8 @@ std::vector<std::unique_ptr<Config>> GetSegmentationPlatformConfig(
         home_modules_card_registry));
   }
 
-#if BUILDFLAG(ENABLE_COMPOSE)
-  configs.emplace_back(ComposePromotion::GetConfig());
-#endif  // BUILDFLAG(ENABLE_COMPOSE)
-
   // Model used for testing.
   configs.emplace_back(OptimizationTargetSegmentationDummy::GetConfig());
-
-  if (base::FeatureList::IsEnabled(
-          webapps::features::kWebAppsEnableMLModelForPromotion)) {
-    configs.emplace_back(GetConfigForWebAppInstallationPromo());
-  }
 
   if (base::FeatureList::IsEnabled(ntp_features::kNtpDriveModuleSegmentation)) {
     configs.emplace_back(GetConfigForDesktopNtpModule());

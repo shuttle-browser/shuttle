@@ -23,7 +23,6 @@
 #include "base/value_iterators.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "chrome/browser/apps/user_type_filter.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_paths.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -211,10 +210,7 @@ class ExternalPrefLoader::PrioritySyncReadyWaiter
 ExternalPrefLoader::ExternalPrefLoader(int base_path_id,
                                        int options,
                                        Profile* profile)
-    : base_path_id_(base_path_id),
-      options_(options),
-      profile_(profile),
-      user_type_(profile ? apps::DetermineUserType(profile) : std::string()) {
+    : base_path_id_(base_path_id), options_(options), profile_(profile) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 }
 
@@ -352,13 +348,6 @@ void ExternalPrefLoader::ReadStandaloneExtensionPrefFiles(
     return;
   }
 
-  // TODO(crbug.com/40887866): Remove this once migration is completed.
-  std::unique_ptr<base::ListValue> default_user_types;
-  if (options_ & USE_USER_TYPE_PROFILE_FILTER) {
-    default_user_types = std::make_unique<base::ListValue>();
-    default_user_types->Append(base::Value(apps::kUserTypeUnmanaged));
-  }
-
   // For each file read the json description & build the proper
   // associated prefs.
   for (auto it = candidates.begin(); it != candidates.end(); ++it) {
@@ -378,13 +367,6 @@ void ExternalPrefLoader::ReadStandaloneExtensionPrefFiles(
     JSONFileValueDeserializer deserializer(extension_candidate_path);
     auto ext_prefs =
         ExtractExtensionPrefs(&deserializer, extension_candidate_path);
-
-    if (options_ & USE_USER_TYPE_PROFILE_FILTER &&
-        !apps::UserTypeMatchesJsonUserType(
-            user_type_, id /* app_id */, ext_prefs, default_user_types.get())) {
-      // Already logged.
-      continue;
-    }
 
     DVLOG(1) << "Adding extension with id: " << id;
     prefs.Set(id, std::move(ext_prefs));

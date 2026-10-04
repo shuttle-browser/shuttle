@@ -28,7 +28,6 @@
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/buildflags.h"
-#include "chrome/browser/contextual_search/contextual_search_service_factory.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/new_tab_page/feature_promo_helper/new_tab_page_feature_promo_helper.h"
 #include "chrome/browser/new_tab_page/modules/file_suggestion/drive_service.h"
@@ -57,7 +56,6 @@
 #include "chrome/browser/ui/search/ntp_user_data_logger.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/webui/browser_command/browser_command_handler.h"
-#include "chrome/browser/ui/webui/cr_components/composebox/composebox_handler.h"
 #include "chrome/browser/ui/webui/cr_components/most_visited/most_visited_handler.h"
 #include "chrome/browser/ui/webui/cr_components/most_visited/most_visited_pref_observer.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
@@ -87,17 +85,11 @@
 #include "chrome/grit/new_tab_page_resources.h"
 #include "chrome/grit/new_tab_page_resources_map.h"
 #include "chrome/grit/theme_resources.h"
-#include "components/commerce/core/commerce_feature_list.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
-#include "components/contextual_search/contextual_search_metrics_recorder.h"
-#include "components/contextual_search/contextual_search_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/google/core/common/google_util.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/history_clusters/core/features.h"
-#include "components/lens/lens_features.h"
-#include "components/lens/lens_overlay_invocation_source.h"
-#include "components/lens/lens_url_utils.h"
 #include "components/ntp_tiles/features.h"
 #include "components/ntp_tiles/most_visited_sites.h"
 #include "components/ntp_tiles/pref_names.h"
@@ -229,9 +221,6 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(
       base::NumberToString(omnibox::DESKTOP_CHROME_NTP_THREADS_ENTRY_POINT));
   threads_url =
       net::AppendQueryParameter(threads_url, "atvm", kAIMThreadsVisibilityMode);
-  threads_url = lens::AppendInvocationSourceParamToURL(
-      threads_url, lens::LensOverlayInvocationSource::kNtpContextualQuery,
-      /*is_contextual_tasks=*/true);
   source->AddString("threadsUrl", threads_url.spec());
 
   source->AddInteger(
@@ -668,21 +657,14 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(
   const std::string image_mime_types =
       composebox_config.image_upload().mime_types_allowed();
   source->AddString("composeboxImageFileTypes", image_mime_types);
-  source->AddBoolean("lensSendRawFileMediaTypesEnabled",
-                     lens::features::IsLensSendRawFileMediaTypesEnabled());
-  source->AddBoolean("lensBypassCompressionForC2pa",
-                     base::FeatureList::IsEnabled(
-                         lens::features::kLensBypassCompressionForC2pa));
+  source->AddBoolean("lensSendRawFileMediaTypesEnabled", false);
+  source->AddBoolean("lensBypassCompressionForC2pa", false);
   const std::string attachment_mime_types =
       composebox_config.attachment_upload().mime_types_allowed();
   source->AddString("composeboxAttachmentFileTypes", attachment_mime_types);
   source->AddInteger("composeboxFileMaxSize",
                      composebox_config.attachment_upload().max_size_bytes());
-  source->AddString(
-      "composeboxSource",
-      contextual_search::ContextualSearchMetricsRecorder::
-          ContextualSearchSourceToString(
-              contextual_search::ContextualSearchSource::kNewTabPage));
+  source->AddString("composeboxSource", "NewTabPage");
 
   auto* service = AimEligibilityServiceFactory::GetForProfile(profile);
   bool aim_eligible = service && service->IsAimEligible();
@@ -909,11 +891,7 @@ NewTabPageUI::NewTabPageUI(content::WebUI* web_ui)
 
   instance_count_++;
   base::UmaHistogramCounts100("NewTabPage.Count", instance_count_);
-  bool session_allows_drag_and_drop = false;
-  if (auto* session_handle = GetOrCreateContextualSessionHandle()) {
-    session_allows_drag_and_drop =
-        session_handle->CheckSearchContentSharingSettings(profile_->GetPrefs());
-  }
+  const bool session_allows_drag_and_drop = false;
 
   auto* source = CreateAndAddNewTabPageUiHtmlSource(
       profile_, session_allows_drag_and_drop);
@@ -1309,9 +1287,7 @@ void NewTabPageUI::CreatePageHandler(
     mojo::PendingReceiver<searchbox::mojom::PageHandler> pending_page_handler) {
   realbox_handler_ = std::make_unique<RealboxHandler>(
       std::move(pending_page_handler), std::move(pending_page), profile_,
-      web_contents(),
-      base::BindRepeating(&NewTabPageUI::GetOrCreateContextualSessionHandle,
-                          base::Unretained(this)));
+      web_contents());
 }
 
 void NewTabPageUI::CreatePageHandler(
@@ -1319,13 +1295,7 @@ void NewTabPageUI::CreatePageHandler(
     mojo::PendingRemote<searchbox::mojom::Page> pending_searchbox_page,
     mojo::PendingReceiver<searchbox::mojom::PageHandler>
         pending_searchbox_handler) {
-  composebox_handler_ = std::make_unique<ComposeboxHandler>(
-      std::move(pending_page_handler), std::move(pending_searchbox_handler),
-      std::move(pending_searchbox_page), profile_, web_contents(),
-      base::BindRepeating(&NewTabPageUI::GetOrCreateContextualSessionHandle,
-                          base::Unretained(this)),
-      base::BindRepeating(&NewTabPageUI::ClearContextualSessionHandle,
-                          base::Unretained(this)));
+  // The composebox was removed; drop the pipes.
 }
 
 void NewTabPageUI::CreateHelpBubbleHandler(
@@ -1355,9 +1325,7 @@ void NewTabPageUI::CreateActionChipsHandler(
     mojo::PendingRemote<action_chips::mojom::Page> page) {
   action_chips_handler_ = std::make_unique<ActionChipsHandler>(
       std::move(handler), std::move(page), profile_, web_ui(),
-      std::make_unique<ActionChipsGeneratorImpl>(profile_),
-      base::BindRepeating(&NewTabPageUI::GetOrCreateContextualSessionHandle,
-                          base::Unretained(this)));
+      std::make_unique<ActionChipsGeneratorImpl>(profile_));
 }
 
 // OnColorProviderChanged can be called during the destruction process and
@@ -1393,29 +1361,6 @@ void NewTabPageUI::OnCustomBackgroundImageUpdated() {
           : "");
   content::WebUIDataSource::Update(profile_, chrome::kChromeUINewTabPageHost,
                                    std::move(update));
-}
-
-contextual_search::ContextualSearchSessionHandle*
-NewTabPageUI::GetOrCreateContextualSessionHandle() {
-  if (!shared_session_handle_) {
-    auto* contextual_search_service =
-        ContextualSearchServiceFactory::GetForProfile(profile_);
-    if (contextual_search_service) {
-      shared_session_handle_ = contextual_search_service->CreateSession(
-          ntp_composebox::CreateQueryControllerConfigParams(),
-          contextual_search::ContextualSearchSource::kNewTabPage,
-          lens::LensOverlayInvocationSource::kNtpContextualQuery);
-      // TODO(crbug.com/469875247): Determine what to do with the return value
-      // of this call, or move this call to a different location.
-      shared_session_handle_->CheckSearchContentSharingSettings(
-          profile_->GetPrefs());
-    }
-  }
-  return shared_session_handle_.get();
-}
-
-void NewTabPageUI::ClearContextualSessionHandle() {
-  shared_session_handle_.reset();
 }
 
 void NewTabPageUI::DidStartNavigation(

@@ -36,7 +36,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/device_info.h"
 #endif
-#include "components/autofill/core/browser/at_memory/at_memory_manager.h"
 #include "components/autofill/core/browser/autofill_ai_form_rationalization.h"
 #include "components/autofill/core/browser/autofill_trigger_source.h"
 #include "components/autofill/core/browser/autofill_type.h"
@@ -60,7 +59,6 @@
 #include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_manager.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h"
-#include "components/autofill/core/browser/integrators/compose/autofill_compose_delegate.h"
 #include "components/autofill/core/browser/integrators/identity_credential/identity_credential_delegate.h"
 #include "components/autofill/core/browser/integrators/one_time_tokens/otp_suggestion.h"
 #include "components/autofill/core/browser/metrics/autofill_in_devtools_metrics.h"
@@ -92,8 +90,6 @@
 #include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
 #include "components/autofill/core/common/signatures.h"
 #include "components/autofill/core/common/unique_ids.h"
-#include "components/personal_context/core/personal_context_prefs.h"
-#include "components/personal_context/first_run/personal_context_first_run_service.h"
 #include "ui/accessibility/ax_mode.h"
 #include "ui/accessibility/platform/ax_platform.h"
 #include "ui/gfx/geometry/rect.h"
@@ -560,17 +556,11 @@ void AutofillExternalDelegate::AttemptToDisplayAutofillSuggestions(
   }
 
   CHECK(trigger_field);
-  AutofillComposeDelegate* delegate = manager_->client().GetComposeDelegate();
-  const bool show_proactive_nudge_at_caret =
-      shown_suggestion_types_.size() == 1 &&
-      shown_suggestion_types_[0] == SuggestionType::kComposeProactiveNudge &&
-      (delegate && delegate->ShouldAnchorNudgeOnCaret());
   const bool are_caret_bounds_valid =
       caret_bounds_ != gfx::Rect() &&
       trigger_field->bounds().Contains(gfx::RectF(caret_bounds_));
   const bool is_at_memory = IsAtMemoryTriggerSource(trigger_source_);
-  const bool should_use_caret_bounds =
-      (show_proactive_nudge_at_caret || is_at_memory) && are_caret_bounds_valid;
+  const bool should_use_caret_bounds = is_at_memory && are_caret_bounds_valid;
 
   const PopupAnchorType default_anchor_type =
 #if BUILDFLAG(IS_ANDROID)
@@ -688,24 +678,6 @@ void AutofillExternalDelegate::OnSuggestionsShown(
         AutofillMetrics::OnAutocompleteSuggestionsShown();
       }
     }
-
-    if (shown_suggestion_types.contains(
-            SuggestionType::kPersonalContextNotice)) {
-      if (personal_context::PersonalContextFirstRunService* service =
-              manager_->client().GetPersonalContextFirstRunService()) {
-        std::optional<AutofillClient::SuggestionUiSessionId> session_id =
-            manager_->client().GetSessionIdForCurrentAutofillSuggestions();
-        if (session_id) {
-          if (IsAtMemoryTriggerSource(trigger_source_)) {
-            service->RecordAtMemoryNoticeImpression(
-                session_id->GetUnsafeValue());
-          } else {
-            service->RecordAmbientAutofillNoticeImpression(
-                session_id->GetUnsafeValue());
-          }
-        }
-      }
-    }
   }
 
   manager_->DidShowSuggestions(
@@ -715,30 +687,18 @@ void AutofillExternalDelegate::OnSuggestionsShown(
 
 void AutofillExternalDelegate::OnSuggestionsHidden(
     SuggestionHidingReason reason) {
-  if (AtMemoryManager* amm = manager_->client().GetAtMemoryManager()) {
-    amm->OnPopupHidden();
-  }
   manager_->OnSuggestionsHidden(reason);
 }
 
 bool AutofillExternalDelegate::OnFilterChanged(const std::u16string& filter) {
-  if (AtMemoryManager* amm = manager_->client().GetAtMemoryManager()) {
-    return amm->OnFilterChanged(filter);
-  }
   return false;
 }
 
 bool AutofillExternalDelegate::OnSearchSubmitted(const std::u16string& filter) {
-  if (AtMemoryManager* amm = manager_->client().GetAtMemoryManager()) {
-    return amm->OnSearchSubmitted(filter);
-  }
   return false;
 }
 
 bool AutofillExternalDelegate::IsSearching() const {
-  if (const AtMemoryManager* amm = manager_->client().GetAtMemoryManager()) {
-    return amm->IsSearching();
-  }
   return false;
 }
 
@@ -993,31 +953,10 @@ void AutofillExternalDelegate::DidAcceptSuggestion(
     case SuggestionType::kComposeProactiveNudge:
     case SuggestionType::kComposeResumeNudge:
     case SuggestionType::kComposeSavedStateNotification:
-      if (AutofillComposeDelegate* delegate =
-              manager_->client().GetComposeDelegate()) {
-        delegate->OpenCompose(
-            manager_->driver(), last_query_.field_id,
-            AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
-      }
-      break;
     case SuggestionType::kComposeDisable:
-      if (AutofillComposeDelegate* delegate =
-              manager_->client().GetComposeDelegate()) {
-        delegate->DisableCompose();
-      }
-      break;
     case SuggestionType::kComposeGoToSettings:
-      if (AutofillComposeDelegate* delegate =
-              manager_->client().GetComposeDelegate()) {
-        delegate->GoToSettings();
-      }
-      break;
     case SuggestionType::kComposeNeverShowOnThisSiteAgain:
-      if (AutofillComposeDelegate* delegate =
-              manager_->client().GetComposeDelegate()) {
-        delegate->NeverShowComposeForOrigin(
-            manager_->client().GetLastCommittedPrimaryMainFrameOrigin());
-      }
+      // Compose was removed from this fork.
       break;
     case SuggestionType::kFillAutofillAi: {
       autofill_metrics::LogSuggestionAcceptedIndex(
@@ -1160,44 +1099,17 @@ void AutofillExternalDelegate::DidAcceptSuggestion(
           last_query_.field_id,
           AutofillSuggestionTriggerSource::kAtMemoryTriggerString);
       break;
-    case SuggestionType::kAtMemorySearchResult: {
-      const IsAsync is_async =
-          manager_->client().GetAtMemoryManager()->FillSearchResult(
-              *manager_, last_query_.form_id, last_query_.field_id, suggestion,
-              metadata);
-      if (is_async) {
-        manager_->client().UpdateAutofillSuggestions(
-            PrepareLoadingStateSuggestions(
-                base::ToVector(manager_->client().GetAutofillSuggestions()),
-                suggestion),
-            FillingProduct::kAtMemory, trigger_source_,
-            AutofillSuggestionsIgnoreFocusLoss(true));
-        // If the filled suggestion is sensitive and obfuscated,
-        // `AtMemoryManager` fetches the entity asynchronously from the server
-        // or reauthenticates. The popup has to remain open and show the loading
-        // UI.
-        return;
-      }
-      break;
-    }
+    case SuggestionType::kAtMemorySearchResult:
     case SuggestionType::kAtMemoryOpenGemini:
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-      manager_->client().OpenGeminiInSidebar(
-          suggestion.GetPayload<Suggestion::OpenGeminiPayload>().prompt);
+      // AtMemory was removed from this fork.
       break;
-#else
-      NOTREACHED();
-#endif
     case SuggestionType::kWebauthnPasskeyQrCode:
     case SuggestionType::kWebauthnSignInWithAnotherDevice:
       manager_->DelegateAcceptToPasswordManager(suggestion, metadata,
                                                 last_query_.field_id);
       break;
     case SuggestionType::kAtMemorySearchAffordance:
-      if (AtMemoryManager* amm = manager_->client().GetAtMemoryManager()) {
-        amm->OnSearchSubmitted(suggestion.main_text.value);
-      }
-      // The popup remains open to show search results once the query completes.
+      // AtMemory was removed from this fork.
       return;
     case SuggestionType::kPersonalContextNotice:
       // Accepting the suggestion is a no-op - accepting the notice happens via
@@ -1310,22 +1222,9 @@ bool AutofillExternalDelegate::RemoveSuggestion(const Suggestion& suggestion) {
       }
       return true;
     }
-    // This suggestion type represents a notice about the usage of personal
-    // context in ambient autofill and AtMemory. The user can acknowledge it to
-    // dismiss it.
-    case SuggestionType::kPersonalContextNotice: {
-      if (personal_context::PersonalContextFirstRunService* service =
-              manager_->client().GetPersonalContextFirstRunService()) {
-        if (IsAtMemoryTriggerSource(trigger_source_)) {
-          service->MarkPersonalContextInAtMemoryNoticeAsAcknowledged();
-        } else {
-          // This assumes only autofill and AtMemory embed this notice. If this
-          // changes in the future, this needs to be updated.
-          service->MarkPersonalContextAmbientAutofillNoticeAsAcknowledged();
-        }
-      }
+    // Personal Context was removed from this fork; the notice is a no-op.
+    case SuggestionType::kPersonalContextNotice:
       return true;
-    }
     case SuggestionType::kAutofillAiPrivateInferenceNotice: {
       if (PrefService* const prefs = manager_->client().GetPrefs()) {
         prefs->SetTime(

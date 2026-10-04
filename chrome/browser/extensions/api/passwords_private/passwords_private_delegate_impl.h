@@ -28,7 +28,6 @@
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_utils.h"
 #include "chrome/browser/ui/passwords/settings/password_export_controller.h"
 #include "chrome/browser/ui/passwords/settings/password_import_controller.h"
-#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
 #include "chrome/common/extensions/api/passwords_private.h"
 #include "components/device_reauth/device_authenticator.h"
 #include "components/keyed_service/core/keyed_service.h"
@@ -45,7 +44,6 @@
 
 class EnclaveManagerInterface;
 class PrefService;
-class TrustSafetySentimentService;
 
 namespace affiliations {
 class AffiliationService;
@@ -78,10 +76,6 @@ namespace syncer {
 class SyncService;
 }  // namespace syncer
 
-namespace web_app {
-class WebAppInstallManager;
-}  // namespace web_app
-
 namespace webauthn {
 class PasskeyModel;
 }  // namespace webauthn
@@ -95,8 +89,7 @@ class PasswordsPrivateDelegateImpl
     : public PasswordsPrivateDelegate,
       public password_manager::SavedPasswordsPresenter::Observer,
       public password_manager::PasswordStoreInterface::Observer,
-      public syncer::SyncServiceObserver,
-      public web_app::WebAppInstallManagerObserver {
+      public syncer::SyncServiceObserver {
  public:
   using AuthResultCallback = base::OnceCallback<void(bool)>;
   using DeviceAuthenticatorFactory = base::RepeatingCallback<
@@ -110,7 +103,6 @@ class PasswordsPrivateDelegateImpl
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
       password_manager::PasswordSenderService* password_sender_service,
       syncer::SyncService* sync_service,
-      TrustSafetySentimentService* trust_safety_sentiment_service,
       affiliations::AffiliationService* affiliation_service,
       scoped_refptr<password_manager::PasswordStoreInterface>
           profile_password_store,
@@ -119,10 +111,8 @@ class PasswordsPrivateDelegateImpl
       webauthn::PasskeyModel* passkey_model,
       password_manager::BulkLeakCheckServiceInterface* bulk_leak_check_service,
       PasswordsPrivateEventRouter* event_router,
-      web_app::WebAppInstallManager* web_app_install_manager,
       EnclaveManagerInterface* enclave_manager,
-      const DeviceAuthenticatorFactory& device_authenticator_factory,
-      const base::RepeatingClosure& maybe_show_profile_switch_iph_cb);
+      const DeviceAuthenticatorFactory& device_authenticator_factory);
   // LINT.ThenChange(//chrome/browser/extensions/api/passwords_private/passwords_private_delegate_factory.cc:Dependencies)
 
   PasswordsPrivateDelegateImpl(const PasswordsPrivateDelegateImpl&) = delete;
@@ -262,10 +252,6 @@ class PasswordsPrivateDelegateImpl
   void OnErrorStateChanged(password_manager::PasswordStoreInterface* store,
                            password_manager::ActionableError error) override;
 
-  // web_app::WebAppInstallManagerObserver implementation.
-  void OnWebAppInstalledWithOsHooks(const webapps::AppId& app_id) override;
-  void OnWebAppInstallManagerDestroyed() override;
-
   void SetCredentials(
       std::vector<password_manager::CredentialUIEntry> credentials);
 
@@ -350,7 +336,6 @@ class PasswordsPrivateDelegateImpl
   const raw_ptr<password_manager::PasswordSenderService>
       password_sender_service_;
   const raw_ptr<syncer::SyncService> sync_service_;
-  const raw_ptr<TrustSafetySentimentService> trust_safety_sentiment_service_;
   const scoped_refptr<password_manager::PasswordStoreInterface>
       profile_password_store_;
   const scoped_refptr<password_manager::PasswordStoreInterface>
@@ -358,7 +343,6 @@ class PasswordsPrivateDelegateImpl
   const raw_ptr<PasswordsPrivateEventRouter> event_router_;
   const raw_ptr<EnclaveManagerInterface> enclave_manager_;
   const DeviceAuthenticatorFactory device_authenticator_factory_;
-  const base::RepeatingClosure maybe_show_profile_switch_iph_cb_;
 
   // Used to add/edit passwords and to create |password_check_delegate_|.
   password_manager::SavedPasswordsPresenter saved_passwords_presenter_;
@@ -405,10 +389,6 @@ class PasswordsPrivateDelegateImpl
   base::ScopedObservation<password_manager::PasswordStoreInterface,
                           password_manager::PasswordStoreInterface::Observer>
       account_password_store_observation_{this};
-
-  base::ScopedObservation<web_app::WebAppInstallManager,
-                          web_app::WebAppInstallManagerObserver>
-      install_manager_observation_{this};
 
   std::unique_ptr<password_manager::RecipientsFetcher>
       sharing_password_recipients_fetcher_;

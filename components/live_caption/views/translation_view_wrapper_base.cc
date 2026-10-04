@@ -6,17 +6,19 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "base/check.h"
 #include "base/check_op.h"
 #include "base/feature_list.h"
 #include "base/i18n/language_tag.h"
+#include "base/i18n/rtl.h"
 #include "base/i18n/tag_converters.h"
 #include "components/live_caption/caption_bubble_settings.h"
 #include "components/live_caption/views/format_constants.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/translate/core/browser/translate_download_manager.h"
-#include "components/translate/core/browser/translate_ui_languages_manager.h"
 #include "components/vector_icons/vector_icons.h"
 #include "media/base/media_switches.h"
 #include "ui/base/cursor/cursor.h"
@@ -121,6 +123,102 @@ class LanguageDropdownButton
 BEGIN_METADATA(LanguageDropdownButton)
 END_METADATA
 
+// Minimal list of languages offered for Live Translate. This replaces the
+// translate component's language list (removed in this fork).
+class LiveTranslateLanguagesManager {
+ public:
+  static constexpr size_t kNoIndex = static_cast<size_t>(-1);
+
+  LiveTranslateLanguagesManager(const std::vector<std::string>& language_codes,
+                                const std::string& source_language,
+                                const std::string& target_language) {
+    const std::string locale = base::i18n::GetConfiguredLocale();
+    // Index 0 is the unknown language, mirroring the old behavior.
+    languages_.emplace_back("und", std::u16string());
+    for (const std::string& code : language_codes) {
+      languages_.emplace_back(
+          code, l10n_util::GetDisplayNameForLocale(code, locale, true));
+    }
+    source_language_index_ = FindIndex(source_language);
+    target_language_index_ = FindIndex(target_language);
+  }
+
+  size_t GetNumberOfLanguages() const { return languages_.size(); }
+  size_t GetSourceLanguageIndex() const { return source_language_index_; }
+  size_t GetTargetLanguageIndex() const { return target_language_index_; }
+  std::string GetSourceLanguageCode() const {
+    return GetCodeOrUnknown(source_language_index_);
+  }
+  std::string GetTargetLanguageCode() const {
+    return GetCodeOrUnknown(target_language_index_);
+  }
+  std::string GetLanguageCodeAt(size_t index) const {
+    CHECK_LT(index, languages_.size());
+    return languages_[index].first;
+  }
+  std::u16string GetLanguageNameAt(size_t index) const {
+    if (index == kNoIndex) {
+      return std::u16string();
+    }
+    CHECK_LT(index, languages_.size());
+    return languages_[index].second;
+  }
+  bool UpdateTargetLanguageIndex(size_t index) {
+    CHECK_LT(index, languages_.size());
+    if (target_language_index_ == index) {
+      return false;
+    }
+    target_language_index_ = index;
+    return true;
+  }
+  bool UpdateSourceLanguage(const std::string& code) {
+    if (GetSourceLanguageCode() == code) {
+      return false;
+    }
+    size_t index = FindIndex(code);
+    if (index == kNoIndex) {
+      return false;
+    }
+    source_language_index_ = index;
+    return true;
+  }
+  bool UpdateTargetLanguage(const std::string& code) {
+    if (GetTargetLanguageCode() == code) {
+      return false;
+    }
+    size_t index = FindIndex(code);
+    if (index == kNoIndex) {
+      return false;
+    }
+    target_language_index_ = index;
+    return true;
+  }
+
+ private:
+  std::string GetCodeOrUnknown(size_t index) const {
+    return index == kNoIndex ? "und" : languages_[index].first;
+  }
+  size_t FindIndex(const std::string& code) const {
+    for (size_t i = 0; i < languages_.size(); ++i) {
+      if (languages_[i].first == code) {
+        return i;
+      }
+    }
+    // Fall back to the primary language subtag (e.g. "en-US" -> "en").
+    const std::string primary = code.substr(0, code.find('-'));
+    for (size_t i = 0; i < languages_.size(); ++i) {
+      if (languages_[i].first == primary) {
+        return i;
+      }
+    }
+    return kNoIndex;
+  }
+
+  std::vector<std::pair<std::string, std::u16string>> languages_;
+  size_t source_language_index_ = kNoIndex;
+  size_t target_language_index_ = kNoIndex;
+};
+
 TranslationViewWrapperBase::TranslationViewWrapperBase() = default;
 
 TranslationViewWrapperBase::~TranslationViewWrapperBase() = default;
@@ -130,8 +228,8 @@ void TranslationViewWrapperBase::Init(views::View* translate_container,
   caption_bubble_settings()->SetObserver(weak_ptr_factory_.GetWeakPtr());
   delegate_ = delegate;
   std::vector<std::string> language_codes;
-  translate::TranslateDownloadManager::GetSupportedLanguages(true,
-                                                             &language_codes);
+  language_codes = {"ar", "de", "en", "es", "fr", "hi", "id", "it", "ja",
+                    "ko", "nl", "pl", "pt", "ru", "th", "tr", "vi", "zh"};
   std::string source_language_code =
       caption_bubble_settings()->GetLiveCaptionLanguageCode();
   std::string target_language_code =
@@ -139,7 +237,7 @@ void TranslationViewWrapperBase::Init(views::View* translate_container,
                       ->GetLiveTranslateTargetLanguageCode()
                       .tag_string());
   translate_ui_languages_manager_ =
-      std::make_unique<translate::TranslateUILanguagesManager>(
+      std::make_unique<LiveTranslateLanguagesManager>(
           language_codes, source_language_code, target_language_code);
 
   auto translation_text = std::make_unique<views::Label>();

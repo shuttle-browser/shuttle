@@ -29,8 +29,6 @@
 #include "chrome/browser/file_system_access/chrome_file_system_access_permission_context.h"
 #include "chrome/browser/file_system_access/file_system_access_features.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
-#include "chrome/browser/glic/public/features.h"
-#include "chrome/browser/glic/selection/inline_cue_blocklist_utils.h"
 #include "chrome/browser/hid/hid_chooser_context.h"
 #include "chrome/browser/hid/hid_chooser_context_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -41,11 +39,6 @@
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/usb/usb_chooser_context.h"
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
-#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
-#include "chrome/browser/web_applications/web_app.h"
-#include "chrome/browser/web_applications/web_app_filter.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/content_settings/core/browser/content_settings_provider.h"
@@ -68,7 +61,6 @@
 #include "components/subresource_filter/core/browser/subresource_filter_features.h"
 #include "components/url_formatter/elide_url.h"
 #include "components/url_formatter/url_formatter.h"
-#include "components/webapps/isolated_web_apps/scheme.h"
 #include "content/public/browser/permission_controller.h"
 #include "content/public/browser/permission_descriptor_util.h"
 #include "content/public/browser/permission_result.h"
@@ -284,7 +276,7 @@ bool ShouldShowIwaContentSettingForOrigin(Profile* profile,
                                           std::string_view origin,
                                           ContentSettingsType content_setting) {
   // Show for non-origin-specific lists, IWAs, and non-default values.
-  if (origin.empty() || GURL(origin).SchemeIs(webapps::kIsolatedAppScheme)) {
+  if (origin.empty()) {
     return true;
   }
   if (!profile) {
@@ -382,8 +374,7 @@ bool IsFromWebUIAllowlistSource(const ContentSettingPatternSource& pattern) {
 std::string GetDisplayNameForPattern(Profile* profile,
                                      const ContentSettingsPattern& pattern) {
   GURL url(pattern.ToString());
-  if (url.is_valid() && (url.SchemeIs(extensions::kExtensionScheme) ||
-                         url.SchemeIs(webapps::kIsolatedAppScheme))) {
+  if (url.is_valid() && url.SchemeIs(extensions::kExtensionScheme)) {
     return GetDisplayNameForGURL(profile, url, /*hostname_only=*/false);
   }
   return pattern.ToString();
@@ -898,8 +889,7 @@ std::string GetStorageAccessDisplayNameForPattern(
     Profile* profile,
     ContentSettingsPattern pattern) {
   GURL url(pattern.ToString());
-  if (url.is_valid() && (url.SchemeIs(extensions::kExtensionScheme) ||
-                         url.SchemeIs(webapps::kIsolatedAppScheme))) {
+  if (url.is_valid() && url.SchemeIs(extensions::kExtensionScheme)) {
     return GetDisplayNameForGURL(profile, url, /*hostname_only=*/false);
   }
 
@@ -994,8 +984,7 @@ UrlIdentity GetUrlIdentityForGURL(Profile* profile,
             .name = base::UTF8ToUTF16(url.spec())};
   }
 
-  GURL url_to_use =
-      url.SchemeIs(webapps::kIsolatedAppScheme) ? url : origin.GetURL();
+  GURL url_to_use = origin.GetURL();
 
   return UrlIdentity::CreateFromUrl(
       profile, url_to_use, kUrlIdentityAllowedTypes,
@@ -1153,22 +1142,6 @@ void GetExceptionsForContentType(ContentSettingsType type,
     auto& urls_with_granted_entries =
         all_provider_exceptions[ProviderType::kDefaultProvider];
     GetFileSystemGrantedEntries(&urls_with_granted_entries, profile, incognito);
-  }
-
-  // Display default blocked sites for the inline cue in the
-  // settings so users can see and manage those sites.
-  if (type == ContentSettingsType::INLINE_CUE_MENU) {
-    auto& pref_exceptions =
-        all_provider_exceptions[ProviderType::kPrefProvider];
-    std::vector<std::string> blocked_sites =
-        glic::GetActiveDefaultBlockedSitePatternsForInlineCue(profile);
-    for (const std::string& site : blocked_sites) {
-      ContentSettingsPattern pattern = ContentSettingsPattern::FromString(site);
-      pref_exceptions.push_back(GetExceptionForPage(
-          type, profile, pattern, ContentSettingsPattern::Wildcard(),
-          GetDisplayNameForPattern(profile, pattern), CONTENT_SETTING_BLOCK,
-          SiteSettingSource::kPreference, base::Time(), incognito));
-    }
   }
 
   for (auto& one_provider_exceptions : all_provider_exceptions) {
@@ -1467,29 +1440,6 @@ base::ListValue GetChooserExceptionListFromProfile(
   }
 
   return exceptions;
-}
-
-std::vector<web_app::IsolatedWebAppUrlInfo> GetInstalledIsolatedWebApps(
-    Profile* profile) {
-  auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(profile);
-  if (!web_app_provider) {
-    return {};
-  }
-
-  std::vector<web_app::IsolatedWebAppUrlInfo> iwas;
-  web_app::WebAppRegistrar& registrar = web_app_provider->registrar_unsafe();
-  for (const web_app::WebApp& web_app : registrar.GetApps()) {
-    if (!registrar.AppMatches(web_app.app_id(),
-                              web_app::WebAppFilter::IsIsolatedApp())) {
-      continue;
-    }
-    base::expected<web_app::IsolatedWebAppUrlInfo, std::string> url_info =
-        web_app::IsolatedWebAppUrlInfo::Create(web_app.scope());
-    if (url_info.has_value()) {
-      iwas.push_back(*url_info);
-    }
-  }
-  return iwas;
 }
 
 }  // namespace site_settings

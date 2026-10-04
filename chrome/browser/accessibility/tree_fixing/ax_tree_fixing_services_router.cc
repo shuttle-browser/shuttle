@@ -6,7 +6,6 @@
 
 #include "base/check.h"
 #include "base/functional/bind.h"
-#include "chrome/browser/accessibility/tree_fixing/internal/ax_tree_fixing_screen_ai_service.h"
 #include "chrome/browser/accessibility/tree_fixing/pref_names.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/prefs/pref_service.h"
@@ -118,76 +117,8 @@ bool AXTreeFixingServicesRouter::IdentifyMainNode(
   // This should never be called if the feature is not enabled.
   CHECK(features::IsAXTreeFixingEnabled());
 
-  // If this is the first time any client has requested tree fixing in a form
-  // that is handled by the ScreenAI service, then create an instance to connect
-  // to the service now.
-  if (!screen_ai_service_) {
-    screen_ai_service_ =
-        std::make_unique<AXTreeFixingScreenAIService>(*this, profile_);
-  }
-
-  // If the AXTreeUpdate is empty, do not process the request.
-  if (ax_tree.nodes.empty()) {
-    return false;
-  }
-
-  // We must wait for the ScreenAI service to be ready for requests. We will
-  // queue the request for convenience and to keep the services layer obscured
-  // from clients.
-  if (!can_make_main_node_identification_requests_) {
-    // TODO(401308988): Handle queueing requests, or allow observer to have
-    // clearer signal of when to make additional requests; pending UX.
-    // screen_ai_request_queue_.emplace(ax_tree, std::move(callback));
-    return false;
-  }
-
-  MakeMainNodeRequestToScreenAI(ax_tree, std::move(callback));
-  return true;
-}
-
-void AXTreeFixingServicesRouter::MakeMainNodeRequestToScreenAI(
-    const ui::AXTreeUpdate& ax_tree,
-    MainNodeIdentificationCallback callback) {
-  // Store the callback for later use, and make a request to ScreenAI.
-  pending_screen_ai_callbacks_.emplace_back(next_screen_ai_request_id_,
-                                            std::move(callback));
-  screen_ai_service_->IdentifyMainNode(ax_tree, next_screen_ai_request_id_);
-  next_screen_ai_request_id_++;
-}
-
-void AXTreeFixingServicesRouter::OnMainNodeIdentified(
-    const ui::AXTreeID& tree_id,
-    ui::AXNodeID node_id,
-    int request_id) {
-  CHECK(!pending_screen_ai_callbacks_.empty());
-
-  // Find the callback associated with the returned request ID, and call it with
-  // the identified tree_id and node_id for the upstream client to use. Remove
-  // the pending callback since we have fulfilled the contract.
-  for (auto it = pending_screen_ai_callbacks_.begin();
-       it != pending_screen_ai_callbacks_.end(); ++it) {
-    if (it->first == request_id) {
-      MainNodeIdentificationCallback callback = std::move(it->second);
-      pending_screen_ai_callbacks_.erase(it);
-      std::move(callback).Run(tree_id, node_id);
-      return;
-    }
-  }
-  NOTREACHED();
-}
-
-void AXTreeFixingServicesRouter::OnServiceStateChanged(bool service_ready) {
-  can_make_main_node_identification_requests_ = service_ready;
-
-  // If the service is now ready, process any queued requests.
-  if (service_ready) {
-    while (!screen_ai_request_queue_.empty()) {
-      auto& [ax_tree, callback] = screen_ai_request_queue_.front();
-      auto ax_tree_copy = std::move(ax_tree);
-      screen_ai_request_queue_.pop();
-      MakeMainNodeRequestToScreenAI(ax_tree_copy, std::move(callback));
-    }
-  }
+  // Main node identification relied on the removed ScreenAI service.
+  return false;
 }
 
 void AXTreeFixingServicesRouter::IdentifyHeadings(

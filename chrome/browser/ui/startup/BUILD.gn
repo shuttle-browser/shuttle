@@ -75,15 +75,9 @@ source_set("startup") {
     sources += [ "chrome_for_testing_infobar_delegate.h" ]
   }
 
-  if (is_win || is_mac || is_linux || is_chromeos) {
-    sources += [ "web_app_startup_utils.h" ]
-    public_deps += [ "//components/services/app_service/public/cpp:app_types" ]
-  }
-
   if (is_win || is_mac || is_linux) {
     sources += [
       "first_run_service.h",
-      "web_app_info_recorder_utils.h",
     ]
 
     public_deps += [
@@ -162,13 +156,11 @@ source_set("impl") {
     "//components/history_clusters/core",
     "//components/infobars/content",
     "//components/infobars/core",
-    "//components/media_router/common/providers/cast/certificate",
     "//components/network_session_configurator/common",
     "//components/prefs",
     "//components/signin/public/base",
     "//components/signin/public/identity_manager",
     "//components/startup_metric_utils",
-    "//components/translate/core/common",
     "//components/vector_icons",
     "//content/public/browser",
     "//content/public/common",
@@ -210,15 +202,12 @@ source_set("impl") {
     ]
     deps += [
       ":startup_tab",
-      "//apps",
       "//base:i18n",
       "//build:branding_buildflags",
       "//build:buildflag_header_h",
       "//chrome/browser:global_features",
       "//chrome/browser:shell_integration",
       "//chrome/browser/app_mode",
-      "//chrome/browser/apps/app_service",
-      "//chrome/browser/apps/platform_apps",
       "//chrome/browser/custom_handlers",
       "//chrome/browser/extensions",
       "//chrome/browser/headless:command_processor",
@@ -249,8 +238,6 @@ source_set("impl") {
       "//chrome/browser/ui/waap:manager",
       "//chrome/browser/ui/waap:window_metrics_manager",
       "//chrome/browser/ui/webui/settings",
-      "//chrome/browser/ui/webui/whats_new",
-      "//chrome/browser/web_applications",
       "//chrome/common",
       "//chrome/common:buildflags",
       "//chrome/common:version_header",
@@ -330,22 +317,15 @@ source_set("impl") {
   }
 
   if (is_win || is_mac || is_linux || is_chromeos) {
-    sources += [ "web_app_startup_utils.cc" ]
-    deps += [
-      "//chrome/browser/lifetime:termination_notification",
-      "//components/webapps/common",
-    ]
+    deps += [ "//chrome/browser/lifetime:termination_notification" ]
   }
 
   if (is_win || is_mac || is_linux) {
     sources += [
       "first_run_service.cc",
-      "web_app_info_recorder_utils.cc",
     ]
     deps += [
-      "//chrome/browser/ui/startup/default_browser_prompt",
       "//chrome/browser/ui/views/profiles:profile_picker_utils",
-      "//chrome/browser/ui/web_applications",
     ]
   }
 
@@ -503,11 +483,7 @@ if (!is_android) {
       "//chrome/browser/ui/search:test_support_ui",
       "//chrome/browser/ui/startup/focus:browser_tests",
       "//chrome/browser/ui/toasts",
-      "//chrome/browser/ui/views/web_apps:launch_dialogs",
-      "//chrome/browser/ui/web_applications",
       "//chrome/browser/ui/window_metadata",
-      "//chrome/browser/web_applications",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/common:chrome_features",
       "//chrome/common:constants",
       "//chrome/common:non_code_constants",
@@ -525,8 +501,6 @@ if (!is_android) {
       "//components/policy/core/common:test_support",
       "//components/prefs",
       "//components/signin/public/base",
-      "//components/webapps/browser",
-      "//components/webapps/browser:constants",
       "//content/public/browser",
       "//content/public/common",
       "//content/test:test_support",
@@ -565,7 +539,6 @@ if (!is_android) {
     if (is_mac) {
       deps += [
         "//chrome/browser:chrome_browser_application_mac",
-        "//chrome/browser/apps/app_shim",
       ]
     }
   }
@@ -607,7 +580,6 @@ if (!is_android && !is_chromeos_device) {
     }
 
     if (!is_chromeos) {
-      deps += [ "//chrome/browser/default_browser" ]
     }
   }
 }

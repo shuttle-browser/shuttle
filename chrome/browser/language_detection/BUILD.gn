@@ -16,7 +16,6 @@ source_set("impl") {
   deps = [
     ":language_detection",
     "//chrome/browser/optimization_guide",
-    "//components/translate/core/common",
   ]
 }
 
@@ -38,8 +37,6 @@ if (!is_android) {
       "//components/optimization_guide/core",
       "//components/optimization_guide/core:test_support",
       "//components/optimization_guide/proto:optimization_guide_proto",
-      "//components/translate/core/common",
-      "//components/translate/core/language_detection",
       "//content/public/common",
       "//content/test:test_support",
       "//net",

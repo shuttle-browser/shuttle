@@ -15,7 +15,6 @@
 #include "chrome/browser/ui/views/extensions/extensions_menu_view.h"
 #include "chrome/browser/ui/views/extensions/extensions_request_access_button.h"
 #include "chrome/browser/ui/views/extensions/extensions_toolbar_desktop.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/grit/generated_resources.h"
 #include "extensions/common/extension_features.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -188,7 +187,7 @@ bool ExtensionsToolbarButton::GetExtensionsMenuShowing() const {
 
 int ExtensionsToolbarButton::GetIconSize() const {
   const bool touch_ui = ui::TouchUiController::Get()->touch_ui();
-  if (touch_ui && !web_app::AppBrowserController::IsWebApp(browser_)) {
+  if (touch_ui) {
     return kDefaultTouchableIconSize;
   }
 

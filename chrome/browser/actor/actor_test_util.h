@@ -267,10 +267,6 @@ std::unique_ptr<ToolRequest> MakeScriptToolRequest(
 std::unique_ptr<ToolRequest> MakeMediaControlRequest(
     tabs::TabInterface& tab,
     MediaControl media_control);
-std::unique_ptr<ToolRequest> MakeTranslatePageRequest(tabs::TabInterface& tab);
-std::unique_ptr<ToolRequest> MakeTranslatePageRequest(
-    tabs::TabInterface& tab,
-    std::string_view target_language);
 std::unique_ptr<ToolRequest> MakeFindAndHighlightRequest(
     tabs::TabInterface& tab,
     const std::string& query);

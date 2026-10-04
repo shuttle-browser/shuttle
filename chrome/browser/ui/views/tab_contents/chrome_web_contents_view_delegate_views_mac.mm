@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.h"
 #include "chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_remote_cocoa.h"
-#include "chrome/browser/ui/cocoa/tab_contents/web_drag_bookmark_handler_mac.h"
 #include "chrome/browser/ui/sad_tab_helper.h"
 #include "chrome/browser/ui/tab_contents/chrome_web_contents_menu_helper.h"
 #include "chrome/browser/ui/tab_contents/chrome_web_contents_view_handle_drop.h"
@@ -34,8 +33,7 @@
 ChromeWebContentsViewDelegateViewsMac::ChromeWebContentsViewDelegateViewsMac(
     content::WebContents* web_contents)
     : ContextMenuDelegate(web_contents),
-      web_contents_(web_contents),
-      bookmark_handler_(new WebDragBookmarkHandlerMac) {
+      web_contents_(web_contents) {
   ChromeWebContentsViewFocusHelper::CreateForWebContents(web_contents);
 }
 
@@ -60,11 +58,6 @@ ChromeWebContentsViewDelegateViewsMac::GetDelegateForHost(
   }
   return [[ChromeRenderWidgetHostViewMacDelegate alloc]
       initWithRenderWidgetHost:render_widget_host];
-}
-
-content::WebDragDestDelegate*
-ChromeWebContentsViewDelegateViewsMac::GetDragDestDelegate() {
-  return bookmark_handler_.get();
 }
 
 void ChromeWebContentsViewDelegateViewsMac::ShowContextMenu(

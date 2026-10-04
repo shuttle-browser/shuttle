@@ -38,7 +38,6 @@
 #include "components/autofill/core/browser/suggestions/suggestion_type.h"
 #include "components/autofill/core/browser/ui/autofill_resource_util.h"
 #include "components/omnibox/browser/vector_icons.h"
-#include "components/qr_code_generator/bitmap_generator.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -976,41 +975,8 @@ std::unique_ptr<PopupRowContentView> CreatePasskeyQrCodePopupRowContentView(
       views::style::STYLE_BODY_4_MEDIUM);
   text_container->AddChildView(std::move(main_text_label));
 
-  std::string qr_string =
-      std::holds_alternative<Suggestion::Guid>(suggestion.payload)
-          ? suggestion.GetPayload<Suggestion::Guid>().value()
-          : std::string();
-
-  if (qr_string.empty()) {
-    LOG(ERROR) << "Passkey QR code string is empty";
-    view->UpdateStyle(/*selected=*/false);
-    return view;
-  }
-
-  base::expected<gfx::ImageSkia, qr_code_generator::Error> qr_code =
-      qr_code_generator::GenerateImage(
-          base::as_byte_span(qr_string),
-          qr_code_generator::ModuleStyle::kCircles,
-          qr_code_generator::LocatorStyle::kRounded,
-          qr_code_generator::CenterImage::kPasskey,
-          qr_code_generator::QuietZone::kIncluded);
-  if (!qr_code.has_value()) {
-    LOG(ERROR) << "Failed to generate Passkey QR code image.";
-    view->UpdateStyle(/*selected=*/false);
-    return view;
-  }
-
-  auto qr_image_view = std::make_unique<views::ImageView>();
-  qr_image_view->SetImage(ui::ImageModel::FromImageSkia(qr_code.value()));
-  qr_image_view->SetImageSize(gfx::Size(140, 140));
-  qr_image_view->SetHorizontalAlignment(views::ImageView::Alignment::kCenter);
-  qr_image_view->SetVerticalAlignment(views::ImageView::Alignment::kCenter);
-  qr_image_view->SetProperty(views::kMarginsKey,
-                             gfx::Insets::TLBR(0, 0, 16, 0));
-  qr_image_view->GetViewAccessibility().SetName(
-      l10n_util::GetStringUTF16(IDS_WEBAUTHN_QR_CODE_ALT_TEXT));
-  view->AddChildView(std::move(qr_image_view));
-
+  // QR code rendering is unavailable: components/qr_code_generator was removed
+  // from this build.
   view->UpdateStyle(/*selected=*/false);
   return view;
 }

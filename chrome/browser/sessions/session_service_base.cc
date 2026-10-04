@@ -19,7 +19,6 @@
 #include "base/strings/to_string.h"
 #include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
-#include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_base_observer.h"
@@ -62,12 +61,6 @@
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/app_controller_mac.h"
 #endif
-
-#if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_OZONE)
 #include "ui/ozone/public/ozone_platform.h"
@@ -279,12 +272,6 @@ void SessionServiceBase::TabInserted(WebContents* contents) {
   }
   SetTabWindow(session_tab_helper->window_id(),
                session_tab_helper->session_id());
-  std::string app_id = apps::GetAppIdForWebContents(contents);
-  if (!app_id.empty()) {
-    SetTabExtensionAppID(session_tab_helper->window_id(),
-                         session_tab_helper->session_id(), app_id);
-  }
-
   // Record the association between the SessionStorageNamespace and the
   // tab.
   //
@@ -631,15 +618,6 @@ void SessionServiceBase::BuildCommandsForTab(
       sessions::CreateLastActiveTimeCommand(session_id,
                                             tab->GetLastActiveTime()));
 
-  // TODO(stahon@microsoft.com) This might be movable to SessionService
-  // when Chrome OS uses AppSessionService for app restores.
-  // For now it needs to stay to support SessionService restoring apps.
-  std::string app_id = apps::GetAppIdForWebContents(tab);
-  if (!app_id.empty()) {
-    command_storage_manager()->AppendRebuildCommand(
-        sessions::CreateSetTabExtensionAppIDCommand(session_id, app_id));
-  }
-
   for (int i = min_index; i < max_index; ++i) {
     NavigationEntry* entry = (i == pending_index)
                                  ? tab->GetController().GetPendingEntry()
@@ -856,23 +834,6 @@ bool SessionServiceBase::ShouldTrackBrowser(
       !WindowFeatureController::From(browser)->IsTrustedSource()) {
     return false;
   }
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // Windows that are auto-started and prevented from closing are exempted from
-  // tracking for session restore to prevent multiple unclosable open instances
-  // of the same app.
-  web_app::AppBrowserController* app_controller =
-      web_app::AppBrowserController::From(browser);
-  web_app::WebAppProvider* provider =
-      web_app::WebAppProvider::GetForWebApps(profile());
-  // Checking for close prevention does not require an `AppLock` and
-  // therefore `registrar_unsafe()` is safe to use.
-  if (app_controller && provider &&
-      provider->registrar_unsafe().IsPreventCloseEnabled(
-          app_controller->app_id())) {
-    return false;
-  }
-#endif  // #if BUILDFLAG(IS_CHROMEOS)
 
   return ShouldRestoreWindowOfType(
       WindowTypeForBrowserType(browser->GetType()));

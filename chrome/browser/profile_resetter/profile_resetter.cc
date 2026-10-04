@@ -29,7 +29,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/background/ntp_custom_background_service.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -452,9 +451,6 @@ void ProfileResetter::ResetLanguages() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   PrefService* prefs = profile_->GetPrefs();
   DCHECK(prefs);
-
-  auto translate_prefs = ChromeTranslateClient::CreateTranslatePrefs(prefs);
-  translate_prefs->ResetToDefaults();
 
   language::ResetLanguagePrefs(prefs);
 

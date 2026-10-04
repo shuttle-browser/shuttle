@@ -35,32 +35,6 @@
     flex-direction: column;
     gap: 16px;
   }
-
-  #suggestionsFromGeminiCard {
-    background-color: var(--cr-card-background-color);
-    border-radius: var(--cr-card-border-radius);
-    box-shadow: var(--cr-card-shadow);
-    overflow: hidden;
-  }
-
-  #suggestionsFromGeminiCard hr {
-    border: none;
-    border-top: 1px solid var(--cr-separator-color);
-    margin: -1px var(--cr-section-padding) 0;
-  }
-
-  #suggestionsFromGeminiSubLabel {
-    align-items: center;
-    color: var(--cr-secondary-text-color);
-    column-gap: 8px;
-    display: flex;
-    font-size: 12px;
-    padding: 16px var(--cr-section-padding);
-  }
-
-  #suggestionsFromGeminiSubLabel cr-icon {
-    margin-inline-start: 2px;
-  }
 </style>
 
 <h1 id="title">$i18n{autofillPageTitle}</h1>
@@ -98,26 +72,6 @@
       category-id="[[hierarchy_.travel.id]]"
       chips="[[getVisibleChips_(hierarchy_.travel.chips)]]">
   </category-reference-card>
-  <template is="dom-if" if="[[isShoppingEnabled_]]">
-    <category-reference-card id="shoppingManagerButton"
-        card-title="$i18n{shoppingCardTitle}"
-        category-id="[[hierarchy_.shopping.id]]"
-        chips="[[getVisibleChips_(hierarchy_.shopping.chips)]]">
-    </category-reference-card>
-  </template>
-  <template is="dom-if" if="[[showSuggestionsFromGeminiSettings_]]">
-    <div id="suggestionsFromGeminiCard">
-      <cr-link-row id="suggestionsFromGeminiLinkRow"
-        label="$i18n{personalContextAutofillSettingsTitle}"
-        on-click="onSuggestionsFromGeminiClick_">
-      </cr-link-row>
-      <hr>
-      <div id="suggestionsFromGeminiSubLabel" class="secondary">
-        <cr-icon icon="[[spark_]]" aria-hidden="true"></cr-icon>
-        $i18n{personalContextAutofillSettingsSummary}
-      </div>
-    </div>
-  </template>
 </div>
 
 <settings-section page-title="$i18n{yourSavedInfoAutofillSettingsLabel}">

@@ -17,12 +17,10 @@
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
 #include "chrome/browser/signin/web_signin_interceptor.h"
 #include "chrome/browser/ui/webui/signin/signin_utils.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/policy/core/browser/signin/profile_separation_policies.h"
-#include "components/search_engines/template_url_data.h"
 #include "components/signin/core/browser/account_preview_data_service.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_prefs.h"
@@ -249,8 +247,6 @@ class DiceWebSigninInterceptor : public KeyedService,
   // Profile presets that will be passed from the previous profile to the newly
   // created one during sign in intercept.
   struct ProfilePresets {
-    // This constructor is needed to be able to set just the profile theme until
-    // the `SearchEngineChoice` feature is enabled.
     explicit ProfilePresets(SkColor profile_color);
 
     ~ProfilePresets();
@@ -262,7 +258,6 @@ class DiceWebSigninInterceptor : public KeyedService,
     ProfilePresets& operator=(ProfilePresets&) = delete;
 
     SkColor profile_color = SK_ColorTRANSPARENT;
-    std::optional<search_engines::ChoiceData> search_engine_choice_data;
   };
 
   // Cancels any current signin interception and resets the interceptor to its
@@ -393,9 +388,6 @@ class DiceWebSigninInterceptor : public KeyedService,
   // Records the heuristic outcome and latency metrics.
   void RecordSigninInterceptionHeuristicOutcome(
       SigninInterceptionHeuristicOutcome outcome) const;
-
-  // Shows HaTS survey to eligible users.
-  void LaunchHatsSurvey(const std::string& trigger);
 
   // Returns true if we have all the extended account information which might
   // factor in to the intercept heuristic. If we don't have 'Full' information,

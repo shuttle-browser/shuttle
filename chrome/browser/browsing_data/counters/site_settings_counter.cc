@@ -7,7 +7,6 @@
 #include "base/json/values_util.h"
 #include "build/build_config.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_performance_tuning_manager.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/content_settings/core/browser/permission_settings_info.h"
 #include "components/content_settings/core/browser/permission_settings_registry.h"
@@ -101,12 +100,6 @@ void SiteSettingsCounter::Count() {
       handler_registry_->GetUserDefinedHandlers(period_start, period_end);
   for (const custom_handlers::ProtocolHandler& handler : handlers)
     hosts.insert(handler.url().GetHost());
-
-  std::vector<std::string> never_prompt_sites =
-      ChromeTranslateClient::CreateTranslatePrefs(pref_service_)
-          ->GetNeverPromptSitesBetween(period_start, period_end);
-  for (const auto& site : never_prompt_sites)
-    hosts.insert(site);
 
   const std::vector<std::string> tab_discard_exceptions =
       performance_manager::user_tuning::prefs::GetTabDiscardExceptionsBetween(

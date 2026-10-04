@@ -13,10 +13,26 @@
 #include <variant>
 #include <vector>
 
+#include "base/containers/enum_set.h"
 #include "base/time/time.h"
 #include "base/types/strong_alias.h"
-#include "components/desktop_to_mobile_promos/features.h"
 #include "components/sync/base/data_type.h"
+
+// Inlined from the removed components/desktop_to_mobile_promos (agent-chrome).
+enum class MobilePromoOnDesktopPromoType {
+  kMinValue = 0,
+  kAllPromos = kMinValue,
+  kLensPromo = 1,
+  kESBPromo = 2,
+  kAutofillPromo = 3,
+  kTabGroups = 4,
+  kPriceTracking = 5,
+  kMaxValue = kPriceTracking,
+};
+using MobilePromoOnDesktopPromoTypeSet =
+    base::EnumSet<MobilePromoOnDesktopPromoType,
+                  MobilePromoOnDesktopPromoType::kMinValue,
+                  MobilePromoOnDesktopPromoType::kMaxValue>;
 
 namespace syncer {
 

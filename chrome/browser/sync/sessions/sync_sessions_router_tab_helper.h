@@ -6,10 +6,8 @@
 #define CHROME_BROWSER_SYNC_SESSIONS_SYNC_SESSIONS_ROUTER_TAB_HELPER_H_
 
 #include "base/memory/raw_ptr.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
 #include "components/favicon/core/favicon_driver_observer.h"
 #include "components/sessions/core/session_id.h"
-#include "components/translate/core/browser/translate_driver.h"
 #include "content/public/browser/visibility.h"
 #include "content/public/browser/web_contents_observer.h"
 
@@ -29,15 +27,12 @@ class SyncSessionsWebContentsRouter;
 // https://chromium.googlesource.com/chromium/src/+/main/docs/tab_helpers.md
 class SyncSessionsRouterTabHelper
     : public content::WebContentsObserver,
-      public translate::TranslateDriver::LanguageDetectionObserver,
       public favicon::FaviconDriverObserver {
  public:
-  // TODO(https://crbug.com/373057420): `chrome_translate_client` and
-  // `favicon_driver` can be null in tests but not in production code. The tests
-  // should be fixed.
+  // TODO(https://crbug.com/373057420): `favicon_driver` can be null in tests
+  // but not in production code. The tests should be fixed.
   SyncSessionsRouterTabHelper(content::WebContents* web_contents,
                               SyncSessionsWebContentsRouter* router,
-                              ChromeTranslateClient* chrome_translate_client,
                               favicon::FaviconDriver* favicon_driver);
   SyncSessionsRouterTabHelper(const SyncSessionsRouterTabHelper&) = delete;
   SyncSessionsRouterTabHelper& operator=(const SyncSessionsRouterTabHelper&) =
@@ -61,10 +56,6 @@ class SyncSessionsRouterTabHelper
                            bool renderer_initiated) override;
   void OnVisibilityChanged(content::Visibility visibility) override;
 
-  // TranslateDriver::LanguageDetectionObserver implementation.
-  void OnLanguageDetermined(
-      const translate::LanguageDetectionDetails& details) override;
-
   // favicon::FaviconDriverObserver implementation.
   void OnFaviconUpdated(
       favicon::FaviconDriver* favicon_driver,
@@ -79,8 +70,6 @@ class SyncSessionsRouterTabHelper
 
   // |router_| is a KeyedService and is guaranteed to outlive |this|.
   const raw_ptr<SyncSessionsWebContentsRouter, DanglingUntriaged> router_;
-
-  const raw_ptr<ChromeTranslateClient> chrome_translate_client_;
 
   const raw_ptr<favicon::FaviconDriver> favicon_driver_;
 };

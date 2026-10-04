@@ -22,7 +22,6 @@ source_set("multistep_filter_internals") {
 
   deps = [
     "//base",
-    "//chrome/browser/contextual_cueing",
     "//chrome/browser/multistep_filter/core",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/resources/multistep_filter_internals:resources",

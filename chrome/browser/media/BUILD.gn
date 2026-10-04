@@ -126,16 +126,10 @@ source_set("unittests") {
     ]
   }
 
-  if (enable_extensions) {
-    sources += [ "cast_mirroring_service_host_unittest.cc" ]
-    deps += [ ":impl" ]
-  }
-
   if (enable_media_remoting && !is_android) {
     sources += [ "cast_remoting_connector_unittest.cc" ]
     deps += [
       ":impl",
-      "//components/media_router/common",
       "//components/sync_preferences:test_support",
       "//content/public/browser",
       "//content/test:test_support",
@@ -190,7 +184,6 @@ source_set("browser_tests") {
     sources += [
       "audio_ducker_browsertest.cc",
       "autoplay_metrics_browsertest.cc",
-      "cast_mirroring_service_host_browsertest.cc",
       "defer_background_media_browsertest.cc",
       "encrypted_media_supported_types_browsertest.cc",
       "media_browsertest.cc",
@@ -212,7 +205,6 @@ source_set("browser_tests") {
       "//chrome/browser/component_updater",
       "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/content_settings:content_settings_util",
-      "//chrome/browser/media/router/discovery/access_code:access_code_cast_feature",
       "//chrome/browser/prefs:util",
       "//chrome/browser/preloading/prefetch/no_state_prefetch",
       "//chrome/browser/preloading/prefetch/no_state_prefetch:test_support",
@@ -279,10 +271,7 @@ source_set("media") {
   if (!is_android) {
     public += [
       "audio_ducker.h",
-      "cast_mirroring_service_host.h",
-      "cast_mirroring_service_host_factory.h",
       "mirroring_service_host.h",
-      "offscreen_tab.h",
     ]
     public_deps += [
       "//components/mirroring/mojom:service",
@@ -425,18 +414,12 @@ source_set("impl") {
   if (!is_android) {
     sources += [
       "audio_ducker.cc",
-      "cast_mirroring_service_host.cc",
-      "cast_mirroring_service_host_factory.cc",
       "mirroring_service_host.cc",
-      "offscreen_tab.cc",
     ]
     deps += [
-      "//chrome/browser/media/router:media_router_feature",
-      "//chrome/browser/media/router/discovery/access_code:access_code_cast_feature",
       "//chrome/browser/net",
       "//chrome/browser/ui/tab_sharing",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//components/media_router/browser",
       "//components/mirroring/browser",
       "//media/mojo/services",
     ]
@@ -475,12 +458,10 @@ source_set("impl") {
       "remoting_bridge.cc",
     ]
     deps += [
-      "//chrome/browser/media/router:media_router_feature",
       "//media/mojo/mojom:remoting",
     ]
 
     if (toolkit_views) {
-      deps += [ "//chrome/browser/ui/views/media_router" ]
     }
   }
 

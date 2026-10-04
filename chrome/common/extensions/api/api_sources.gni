@@ -13,7 +13,6 @@ assert(enable_extensions_core)
 # TODO(https://crbug.com/356905053): Continue moving more here.
 schema_sources_ = [
   "activity_log_private.json",
-  "bookmarks.json",
   "content_settings.json",
   "context_menus.json",
   "cookies.json",
@@ -25,7 +24,6 @@ schema_sources_ = [
   "enterprise_hardware_platform.webidl",
   "font_settings.json",
   "gcm.json",
-  "glic_private.webidl",
   "history.json",
   "identity.webidl",
   "instance_id.json",
@@ -48,10 +46,6 @@ schema_sources_ = [
   "webrtc_logging_private.idl",
   "windows.json",
 ]
-
-if (enable_service_discovery) {
-  schema_sources_ += [ "mdns.idl" ]
-}
 
 if (enable_guest_view) {
   schema_sources_ += [ "chrome_web_view_internal.json" ]
@@ -78,16 +72,13 @@ if (enable_extensions) {
   schema_sources_ += [
     "autofill_private.idl",
     "autotest_private.webidl",
-    "bookmark_manager_private.json",
     "braille_display_private.webidl",
     "command_line_private.json",
     "crash_report_private.webidl",
-    "dictation_private.webidl",
     "enterprise_reporting_private.webidl",
     "experimental_actor.webidl",
     "experimental_ai_data.webidl",
     "image_writer_private.webidl",
-    "indigo_private.webidl",
     "language_settings_private.webidl",
     "passwords_private.idl",
     "resources_private.idl",
@@ -102,10 +93,6 @@ if (enable_extensions) {
 
   if (is_win || is_mac || is_linux) {
     schema_sources_ += [ "web_authentication_proxy.webidl" ]
-  }
-
-  if (is_win || is_mac || is_linux || is_chromeos) {
-    schema_sources_ += [ "contextual_tasks_private.webidl" ]
   }
 
   if (is_chromeos) {

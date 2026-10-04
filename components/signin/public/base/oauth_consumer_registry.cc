@@ -6,8 +6,6 @@
 
 #include "base/feature_list.h"
 #include "base/notreached.h"
-#include "components/contextual_tasks/public/features.h"
-#include "components/wallet/core/common/wallet_features.h"
 #include "google_apis/gaia/gaia_constants.h"
 
 namespace {
@@ -725,8 +723,6 @@ OAuthConsumer OAuthConsumerRegistry::GetOAuthConsumerFromId(
           /*name=*/kPrivateAiServiceName,
           /*scopes=*/{kPrivateAiAuthScope});
     case OAuthConsumerId::kWalletPasses: {
-      CHECK(base::FeatureList::IsEnabled(
-          wallet::features::kWalletApiPrivatePassesEnabled));
       return signin::OAuthConsumer(
           /*name=*/kWalletPassesName,
           /*scopes=*/{kWalletPassesOAuth2Scope});

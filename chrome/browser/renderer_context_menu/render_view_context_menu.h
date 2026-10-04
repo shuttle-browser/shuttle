@@ -21,7 +21,6 @@
 #include "components/compose/buildflags.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/lens/buildflags.h"
-#include "components/lens/lens_overlay_invocation_source.h"
 #include "components/renderer_context_menu/context_menu_content_type.h"
 #include "components/renderer_context_menu/render_view_context_menu_base.h"
 #include "components/renderer_context_menu/render_view_context_menu_observer.h"
@@ -62,10 +61,6 @@ class SpellingOptionsSubMenuObserver;
 class TemplateURL;
 class ToastController;
 
-namespace send_tab_to_self {
-class SendTabToSelfContextMenuDelegate;
-}
-
 namespace content {
 class RenderFrameHost;
 class WebContents;
@@ -84,10 +79,6 @@ namespace mojom {
 class MediaPlayerAction;
 }
 }  // namespace blink
-
-namespace dictation {
-class DictationMenuObserver;
-}
 
 namespace ui {
 class DataTransferEndpoint;
@@ -489,20 +480,6 @@ class RenderViewContextMenu
 
   void MaybeAppendOpenGlicItem(bool add_separator = true);
 
-  // Opens the Lens overlay to search a region defined by the given bounds of
-  // the view and the image to be searched. Tab bounds and view bounds are
-  // relative to the screen and in DP, while image bounds are relative to the
-  // view and in physical pixels. The device scale factor is supplied to scale
-  // the image bounds properly.
-  void OpenLensOverlayWithPreselectedRegion(
-      mojo::AssociatedRemote<chrome::mojom::ChromeRenderFrame>
-          chrome_render_frame,
-      lens::LensOverlayInvocationSource invocation_source,
-      const gfx::Rect& tab_bounds,
-      const gfx::Rect& view_bounds,
-      float device_scale_factor,
-      const SkBitmap& region_bytes,
-      const gfx::Rect& region_bitmap);
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Shows the standalone clipboard history menu. `event_flags` describes the
@@ -588,7 +565,6 @@ class RenderViewContextMenu
 
   std::unique_ptr<LinkToTextMenuObserver> link_to_text_menu_observer_;
 
-  std::unique_ptr<dictation::DictationMenuObserver> dictation_menu_observer_;
 
   // In the case of a MimeHandlerView this will point to the WebContents that
   // embeds the MimeHandlerViewGuest. Otherwise this will be the same as
@@ -616,10 +592,6 @@ class RenderViewContextMenu
 
   // Whether the "Paste and Match Style" menu item should be enabled.
   const bool is_paste_and_match_style_enabled_;
-
-  std::unique_ptr<ui::SimpleMenuModel> send_tab_to_self_submenu_;
-  std::unique_ptr<send_tab_to_self::SendTabToSelfContextMenuDelegate>
-      send_tab_to_self_submenu_delegate_;
 
   std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
 

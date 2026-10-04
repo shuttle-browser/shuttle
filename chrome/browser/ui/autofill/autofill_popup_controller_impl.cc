@@ -36,8 +36,6 @@
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/foundations/autofill_manager.h"
-#include "components/autofill/core/browser/integrators/at_memory/at_memory_query_service.h"
-#include "components/autofill/core/browser/integrators/at_memory/memory_data_type_util.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics_util.h"
 #include "components/autofill/core/browser/suggestions/suggestion.h"
@@ -50,8 +48,6 @@
 #include "components/autofill/core/common/aliases.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_util.h"
-#include "components/compose/core/browser/compose_features.h"
-#include "components/compose/core/browser/config.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/browser_accessibility_state.h"
@@ -441,16 +437,6 @@ void AutofillPopupControllerImpl::Show(
     // and only permit a single call to `Show`.
     key_press_observer_.Reset();
     key_press_observer_.Observe(rfh);
-
-    if (non_filtered_suggestions_.size() == 1 &&
-        non_filtered_suggestions_[0].type ==
-            SuggestionType::kComposeSavedStateNotification) {
-      const compose::Config& config = compose::GetComposeConfig();
-      fading_popup_timer_.Start(
-          FROM_HERE, config.saved_state_timeout,
-          base::BindOnce(&AutofillSuggestionController::Hide, GetWeakPtr(),
-                         SuggestionHidingReason::kFadeTimerExpired));
-    }
   }
   delegate_->OnSuggestionsShown(
       non_filtered_suggestions_,

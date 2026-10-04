@@ -32,10 +32,6 @@ namespace permissions {
 class ObjectPermissionContextBase;
 }
 
-namespace web_app {
-class IsolatedWebAppUrlInfo;
-}  // namespace web_app
-
 namespace site_settings {
 
 struct SiteExceptionInfo {
@@ -280,10 +276,6 @@ UrlIdentity GetUrlIdentityForGURL(Profile* profile,
 std::string GetDisplayNameForGURL(Profile* profile,
                                   const GURL& url,
                                   bool hostname_only);
-
-// Returns data about all currently installed Isolated Web Apps.
-std::vector<web_app::IsolatedWebAppUrlInfo> GetInstalledIsolatedWebApps(
-    Profile* profile);
 
 }  // namespace site_settings
 

@@ -33,7 +33,6 @@ generate_grd("build_grd") {
   }
 
   public_deps = [
-    "cr_components/commerce:build_grdp",
     "cr_elements:build_grdp",
     "css:build_grdp",
     "images:build_grdp",
@@ -43,7 +42,6 @@ generate_grd("build_grd") {
   ]
   grdp_files = [
     "$root_gen_dir/third_party/lit/v3_0/resources.grdp",
-    "$target_gen_dir/cr_components/commerce/resources.grdp",
     "$target_gen_dir/cr_elements/resources.grdp",
     "$target_gen_dir/css/resources.grdp",
     "$target_gen_dir/images/resources.grdp",
@@ -59,7 +57,6 @@ generate_grd("build_grd") {
       "cr_components/customize_color_scheme_mode:build_grdp",
       "cr_components/history:build_grdp",
       "cr_components/history_clusters:build_grdp",
-      "cr_components/history_embeddings:build_grdp",
       "cr_components/managed_dialog:build_grdp",
       "cr_components/managed_footnote:build_grdp",
       "cr_components/most_visited:build_grdp",
@@ -80,7 +77,6 @@ generate_grd("build_grd") {
       "$target_gen_dir/cr_components/cr_shortcut_input/resources.grdp",
       "$target_gen_dir/cr_components/customize_color_scheme_mode/resources.grdp",
       "$target_gen_dir/cr_components/history_clusters/resources.grdp",
-      "$target_gen_dir/cr_components/history_embeddings/resources.grdp",
       "$target_gen_dir/cr_components/history/resources.grdp",
       "$target_gen_dir/cr_components/managed_dialog/resources.grdp",
       "$target_gen_dir/cr_components/managed_footnote/resources.grdp",
@@ -168,7 +164,6 @@ if (enable_webui_generate_code_cache) {
       "$root_gen_dir/third_party/polymer/v3_0/code_cache_resources.grdp",
       "$target_gen_dir/cr_elements/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/color_change_listener/code_cache_resources.grdp",
-      "$target_gen_dir/cr_components/commerce/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/customize_color_scheme_mode/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/help_bubble/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/managed_dialog/code_cache_resources.grdp",
@@ -177,7 +172,6 @@ if (enable_webui_generate_code_cache) {
 
     public_deps = [
       "cr_components/color_change_listener:build_code_cache_grdp",
-      "cr_components/commerce:build_code_cache_grdp",
       "cr_components/customize_color_scheme_mode:build_code_cache_grdp",
       "cr_components/help_bubble:build_code_cache_grdp",
       "cr_components/managed_dialog:build_code_cache_grdp",

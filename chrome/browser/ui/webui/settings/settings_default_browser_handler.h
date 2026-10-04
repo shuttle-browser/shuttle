@@ -12,10 +12,6 @@
 #include "chrome/browser/ui/webui/settings/settings_page_ui_handler.h"
 #include "components/prefs/pref_change_registrar.h"
 
-namespace default_browser {
-class DefaultBrowserController;
-}
-
 namespace settings {
 
 // The application used by the OS to open web documents (e.g. *.html)
@@ -73,12 +69,6 @@ class DefaultBrowserHandler : public SettingsPageUIHandler {
   void OnDefaultCheckFinished(const std::optional<std::string>& js_callback_id,
                               bool can_pin,
                               shell_integration::DefaultWebClientState state);
-
-  // Tracks whether user interacted with the "Set as Default" button.
-  bool did_user_interact_ = false;
-
-  std::unique_ptr<default_browser::DefaultBrowserController>
-      default_browser_controller_;
 
   // Used to listen for changes to if the default browser setting is managed.
   PrefChangeRegistrar local_state_pref_registrar_;

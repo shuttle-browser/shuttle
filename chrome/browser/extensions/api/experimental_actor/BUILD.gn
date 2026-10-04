@@ -29,7 +29,5 @@ source_set("experimental_actor") {
   # TODO(bokan): This is here to preserve behavior but extension API shouldn't
   # be using Glic enterprise policies and can be removed.
   deps += [
-    "//chrome/browser/glic",
-    "//chrome/browser/glic/actor",
   ]
 }

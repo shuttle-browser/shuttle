@@ -12,6 +12,7 @@
 #include "base/base_switches.h"
 #include "base/check.h"
 #include "base/command_line.h"
+#include "base/debug/leak_annotations.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -39,12 +40,10 @@
 #include "chrome/browser/component_updater/registration.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/enterprise/chrome_browser_main_extra_parts_enterprise.h"
-#include "chrome/browser/first_run/bookmark_importer.h"
 #include "chrome/browser/first_run/first_run_features.h"
 #include "chrome/browser/gpu/chrome_browser_main_extra_parts_gpu.h"
 #include "chrome/browser/language/url_language_histogram_factory.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
-#include "chrome/browser/media/router/chrome_media_router_factory.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/webrtc_log_util.h"
 #include "chrome/browser/memory/chrome_browser_main_extra_parts_memory.h"
@@ -70,8 +69,6 @@
 #include "chrome/browser/sessions/chrome_serialized_navigation_driver.h"
 #include "chrome/browser/shell_integration.h"
 #include "chrome/browser/startup_data.h"
-#include "chrome/browser/translate/chrome_translate_client.h"
-#include "chrome/browser/translate/translate_service.h"
 #include "chrome/browser/ui/actions/chrome_actions.h"
 #include "chrome/browser/ui/color/chrome_color_mixers.h"
 #include "chrome/browser/ui/javascript_dialogs/chrome_javascript_app_modal_dialog_view_factory.h"
@@ -120,7 +117,6 @@
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
 #include "components/startup_metric_utils/common/startup_metric_utils.h"
 #include "components/tracing/common/background_tracing_utils.h"
-#include "components/translate/core/browser/translate_metrics_logger_impl.h"
 #include "components/variations/service/variations_service.h"
 #include "components/variations/synthetic_trials_active_group_id_provider.h"
 #include "components/variations/variations_ids_provider.h"
@@ -160,8 +156,6 @@
 #include <vector>
 
 #include "base/no_destructor.h"
-#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
-#include "chrome/browser/apps/app_service/publishers/publisher_host_factory_impl.h"
 #include "chrome/browser/headless/chrome_browser_main_extra_parts_headless.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/resource_coordinator/tab_manager.h"
@@ -1525,11 +1519,6 @@ void ChromeBrowserMainParts::PreProfileInit() {
   g_browser_process->profile_manager()
       ->GetDeleteProfileHelper()
       .CleanUpDeletedProfiles();
-
-  // Inject the publisher dependency to AppService.
-  publisher_host_factory_resetter_ =
-      apps::AppServiceProxyFactory::GetInstance()->SetPublisherHostFactory(
-          std::make_unique<apps::PublisherHostFactoryImpl>());
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -1550,8 +1539,6 @@ void ChromeBrowserMainParts::PreProfileInit() {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   SetChromeAppModalDialogManagerDelegate();
 #endif
-
-  media_router::ChromeMediaRouterFactory::DoPlatformInit();
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   // Start up the platform auth SSO policy observer.
@@ -1662,8 +1649,6 @@ void ChromeBrowserMainParts::PostProfileInit(Profile* profile,
 
   language::LanguageUsageMetrics::RecordAcceptLanguages(
       profile->GetPrefs()->GetString(language::prefs::kAcceptLanguages));
-  translate::TranslateMetricsLoggerImpl::LogApplicationStartMetrics(
-      ChromeTranslateClient::CreateTranslatePrefs(profile->GetPrefs()));
 // On ChromeOS results in a crash. https://crbug.com/40158352
 #if !BUILDFLAG(IS_CHROMEOS)
   language::LanguageUsageMetrics::RecordPageLanguages(
@@ -1921,7 +1906,6 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
 
   // Post-profile init ---------------------------------------------------------
 
-  TranslateService::Initialize();
   if (language::GetOverrideLanguageModel() ==
       language::OverrideLanguageModel::GEO) {
     language::GeoLanguageProvider::GetInstance()->StartUp(
@@ -1961,12 +1945,6 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
     // "BrowserSignin" policy is set to "Force". If so, skip the auto import.
     if (profile) {
       first_run::AutoImport(profile, master_prefs_->import_bookmarks_path);
-
-      if (base::FeatureList::IsEnabled(features::kBookmarksImportOnFirstRun) &&
-          !master_prefs_->import_bookmarks_dict.empty()) {
-        first_run::StartBookmarkImportFromDict(
-            profile, std::move(master_prefs_->import_bookmarks_dict));
-      }
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
       if (base::FeatureList::IsEnabled(features::kInitialExternalExtensions)) {
@@ -2246,8 +2224,6 @@ void ChromeBrowserMainParts::PostMainMessageLoopRun() {
     chrome_extra_part->PostMainMessageLoopRun();
   }
 
-  TranslateService::Shutdown();
-
 #if BUILDFLAG(ENABLE_PROCESS_SINGLETON)
   ChromeProcessSingleton::GetInstance()->Cleanup();
 #endif
@@ -2261,8 +2237,6 @@ void ChromeBrowserMainParts::PostMainMessageLoopRun() {
 
   restart_mode_ = browser_shutdown::ShutdownPreThreadsStop();
   browser_process_->StartTearDown();
-
-  publisher_host_factory_resetter_.reset();
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)

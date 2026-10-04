@@ -8,10 +8,8 @@
 #include "base/files/file_path.h"
 #include "base/metrics/histogram_functions.h"
 #include "chrome/browser/download/download_stats.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/pdf/pdf_extension_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/screen_ai/screen_ai_install_state.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/common/chrome_content_client.h"
@@ -21,7 +19,6 @@
 #include "components/pdf/browser/pdf_document_helper.h"
 #include "components/pdf/browser/pdf_frame_util.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/translate/core/common/translate_features.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
@@ -55,31 +52,6 @@ bool MaybeShowFeaturePromo(const base::Feature& feature,
   return true;
 }
 
-void MaybeHideSearchifyFeaturePromo(tabs::TabInterface* tab_interface) {
-  auto* user_education_interface = BrowserUserEducationInterface::From(
-      tab_interface->GetBrowserWindowInterface());
-  if (user_education_interface) {
-    user_education_interface->AbortFeaturePromo(
-        feature_engagement::kIPHPdfSearchifyFeature);
-  }
-}
-
-void LogGlicSummarizeMetrics(content::RenderFrameHost& render_frame_host) {
-  content::WebContents* web_contents_to_use =
-      GetWebContentsToUse(render_frame_host);
-  if (!web_contents_to_use) {
-    return;
-  }
-
-  bool glic_enabled = glic::GlicEnabling::IsEnabledForProfile(
-      Profile::FromBrowserContext(web_contents_to_use->GetBrowserContext()));
-  base::UmaHistogramBoolean("PDF.GlicEnabled", glic_enabled);
-  bool glic_summarize_button_enabled =
-      pdf_extension_util::ShouldShowGlicSummarizeButton(web_contents_to_use);
-  base::UmaHistogramBoolean("PDF.GlicSummarizeButtonEnabled",
-                            glic_summarize_button_enabled);
-}
-
 }  // namespace
 
 ChromePDFDocumentHelperClient::ChromePDFDocumentHelperClient() = default;
@@ -93,61 +65,6 @@ void ChromePDFDocumentHelperClient::OnDocumentLoadComplete(
                         web_contents);
   MaybeShowFeaturePromo(feature_engagement::kIPHPdfTextAnnotationsFeature,
                         web_contents);
-
-  auto* parent = render_frame_host.GetParent();
-  bool is_pdf_viewer =
-      parent && parent->GetLastCommittedURL().GetWithEmptyPath() ==
-                    base::FilePath(ChromeContentClient::kPDFExtensionPluginPath)
-                        .MaybeAsASCII();
-
-  if (is_pdf_viewer) {
-    LogGlicSummarizeMetrics(render_frame_host);
-    if (web_contents &&
-        pdf_extension_util::ShouldShowGlicSummarizeButton(web_contents)) {
-      MaybeShowFeaturePromo(feature_engagement::kIPHPdfGlicSummarizeFeature,
-                            web_contents);
-    }
-  }
-
-  if (base::FeatureList::IsEnabled(translate::kEnableTranslatePdf)) {
-    auto* pdf_helper =
-        pdf::PDFDocumentHelper::GetForCurrentDocument(&render_frame_host);
-    if (pdf_helper) {
-      // Get the text of the first page and send it to the main frame for
-      // language detection.
-      pdf_helper->GetPageText(
-          0, base::BindOnce(&ChromePDFDocumentHelperClient::OnPdfTextExtracted,
-                            weak_factory_.GetWeakPtr(),
-                            render_frame_host.GetGlobalId()));
-    }
-  }
-}
-
-void ChromePDFDocumentHelperClient::OnPdfTextExtracted(
-    content::GlobalRenderFrameHostId render_frame_host_id,
-    const std::u16string& text) {
-  auto* render_frame_host =
-      content::RenderFrameHost::FromID(render_frame_host_id);
-  if (!render_frame_host) {
-    return;
-  }
-
-  content::WebContents* web_contents = GetWebContentsToUse(*render_frame_host);
-  if (!web_contents) {
-    return;
-  }
-
-  content::RenderFrameHost* main_frame = web_contents->GetPrimaryMainFrame();
-  if (!main_frame) {
-    return;
-  }
-
-  mojo::AssociatedRemote<chrome::mojom::ChromeRenderFrame> chrome_render_frame;
-  main_frame->GetRemoteAssociatedInterfaces()->GetInterface(
-      &chrome_render_frame);
-  // TODO(b/502015383): Use the actual PDF language tag.
-  chrome_render_frame->PdfPageCaptured(text, /*pdf_lang=*/"",
-                                       main_frame->GetLastCommittedURL());
 }
 
 void ChromePDFDocumentHelperClient::UpdateContentRestrictions(
@@ -199,22 +116,3 @@ void ChromePDFDocumentHelperClient::SetPluginCanSave(
   }
 }
 
-void ChromePDFDocumentHelperClient::OnSearchifyStarted(
-    content::RenderFrameHost& render_frame_host) {
-  // Show the promo only when ScreenAI component is available and OCR can be
-  // done.
-  if (!screen_ai::ScreenAIInstallState::GetInstance()->IsComponentAvailable()) {
-    return;
-  }
-  content::WebContents* web_contents = GetWebContentsToUse(render_frame_host);
-  if (!MaybeShowFeaturePromo(feature_engagement::kIPHPdfSearchifyFeature,
-                             web_contents)) {
-    return;
-  }
-  auto* const tab = tabs::TabInterface::MaybeGetFromContents(web_contents);
-  if (!tab) {
-    return;
-  }
-  tab_subscriptions_.push_back(tab->RegisterWillDeactivate(
-      base::BindRepeating(&MaybeHideSearchifyFeaturePromo)));
-}

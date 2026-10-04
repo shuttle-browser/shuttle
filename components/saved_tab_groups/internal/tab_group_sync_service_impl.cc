@@ -16,8 +16,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/uuid.h"
-#include "components/data_sharing/public/logger.h"
-#include "components/data_sharing/public/logger_utils.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/optimization_guide/proto/page_entities_metadata.pb.h"
@@ -53,23 +51,6 @@ namespace tab_groups {
 namespace {
 constexpr base::TimeDelta kDelayBeforeMetricsLogged = base::Seconds(10);
 constexpr base::TimeDelta kDelayBeforeTabGroupCleanUp = base::Seconds(10);
-
-void LogTabGroupEvent(data_sharing::Logger* logger,
-                      const std::string_view prefix,
-                      const SavedTabGroup* group) {
-  DATA_SHARING_LOG(logger_common::mojom::LogSource::TabGroupSyncService, logger,
-                   TabGroupToShortLogString(prefix, group));
-}
-
-void LogTabGroupEvent(
-    data_sharing::Logger* logger,
-    const std::string_view prefix,
-    base::Uuid group_id,
-    const std::optional<syncer::CollaborationId> collaboration_id) {
-  DATA_SHARING_LOG(
-      logger_common::mojom::LogSource::TabGroupSyncService, logger,
-      TabGroupIdsToShortLogString(prefix, group_id, collaboration_id));
-}
 
 bool IsSanitizationRequired(const SavedTabGroup& tab_group, const GURL url) {
   return tab_group.is_shared_tab_group() && url.SchemeIsHTTPOrHTTPS();
@@ -181,30 +162,21 @@ TabGroupSyncServiceImpl::TabGroupSyncServiceImpl(
     std::unique_ptr<TabGroupSyncMetricsLogger> metrics_logger,
     optimization_guide::OptimizationGuideDecider* optimization_guide_decider,
     signin::IdentityManager* identity_manager,
-    data_sharing::personal_collaboration_data::PersonalCollaborationDataService*
-        personal_collaboration_data_service,
-    std::unique_ptr<CollaborationFinder> collaboration_finder,
-    data_sharing::Logger* logger)
+    std::unique_ptr<CollaborationFinder> collaboration_finder)
     : model_(std::move(model)),
       sync_bridge_mediator_(std::make_unique<TabGroupSyncBridgeMediator>(
           model_.get(),
           pref_service,
-          logger,
           std::move(saved_tab_group_configuration),
           std::move(shared_tab_group_configuration))),
       metrics_logger_(std::move(metrics_logger)),
       collaboration_finder_(std::move(collaboration_finder)),
-      logger_(logger),
       pref_service_(pref_service),
       opt_guide_(optimization_guide_decider),
       versioning_message_controller_(
           std::make_unique<VersioningMessageControllerImpl>(pref_service_,
                                                             this)) {
-  if (personal_collaboration_data_service) {
-    personal_collaboration_data_handler_ =
-        std::make_unique<TabGroupSyncPersonalCollaborationDataHandler>(
-            model_.get(), personal_collaboration_data_service);
-  } else if (shared_tab_group_account_configuration) {
+  if (shared_tab_group_account_configuration) {
     shared_tab_group_account_data_bridge_ =
         std::make_unique<SharedTabGroupAccountDataSyncBridge>(
             std::move(shared_tab_group_account_configuration), *model_);
@@ -455,7 +427,6 @@ void TabGroupSyncServiceImpl::RemoveGroup(const LocalTabGroupID& local_id) {
     return;
   }
 
-  LogTabGroupEvent(logger_, "RemoveGroup", group);
   base::Uuid sync_id = group->saved_guid();
   LogEvent(TabGroupEvent::kTabGroupRemoved, local_id);
   model_->RemovedLocally(local_id);
@@ -465,8 +436,6 @@ void TabGroupSyncServiceImpl::RemoveGroup(const base::Uuid& sync_id) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   VLOG(2) << __func__;
   // TODO(shaktisahu): Provide LogEvent API to work with sync ID.
-  LogTabGroupEvent(logger_, "RemoveGroup", sync_id,
-                   std::optional<syncer::CollaborationId>());
   model_->RemovedLocally(sync_id);
 }
 
@@ -757,7 +726,6 @@ void TabGroupSyncServiceImpl::MakeTabGroupShared(
 
   RegisterPageEntityOptimizationTypeIfNeeded();
 
-  LogTabGroupEvent(logger_, "MakeTabGroupShared", saved_group);
 
   std::optional<GaiaId> gaia_id =
       sync_bridge_mediator_->GetTrackingGaiaIdForSharedBridge();
@@ -786,7 +754,6 @@ void TabGroupSyncServiceImpl::MakeTabGroupShared(
     tab.SetUpdatedByAttribution(gaia_id.value());
   }
 
-  LogTabGroupEvent(logger_, "MakeTabGroupShared - Starting Timer", saved_group);
   // The same group must never be shared twice at the same time.
   CHECK(shared_group.is_transitioning_to_shared());
   CHECK(!tab_group_sharing_timeout_info_.contains(shared_group.saved_guid()));
@@ -806,8 +773,6 @@ void TabGroupSyncServiceImpl::AboutToUnShareTabGroup(
     const LocalTabGroupID& local_group_id,
     base::OnceClosure on_complete_callback) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  const SavedTabGroup* saved_group = model_->Get(local_group_id);
-  LogTabGroupEvent(logger_, "AboutToUnShareTabGroup", saved_group);
   model_->SetIsTransitioningToSaved(local_group_id, true);
   std::move(on_complete_callback).Run();
 }
@@ -821,11 +786,6 @@ void TabGroupSyncServiceImpl::OnTabGroupUnShareComplete(
     return;
   }
 
-  {
-    std::string prefix = "OnTabGroupUnShareComplete ";
-    prefix += success ? "Success" : "Failure";
-    LogTabGroupEvent(logger_, prefix, saved_group);
-  }
   if (!success) {
     return;
   }
@@ -842,7 +802,6 @@ void TabGroupSyncServiceImpl::OnTabGroupUnShareComplete(
         model_->Get(originating_tab_group_guid.value());
     if (originating_group) {
       DCHECK(!originating_group->local_group_id());
-      LogTabGroupEvent(logger_, "Cleanup Saved Group", originating_group);
       RemoveGroup(originating_tab_group_guid.value());
     }
   }
@@ -863,8 +822,6 @@ void TabGroupSyncServiceImpl::OnCollaborationRemoved(
     return;
   }
 
-  LogTabGroupEvent(logger_, "OnCollaborationRemoved",
-                   std::addressof(shared_group.value()));
   // Call the sync bridge to stop tracking the group, so the
   // tombstone won't be uploaded to the sync server. This method is invoked
   // during Leave Group / Delete Group flow, and not for Unshare flow.
@@ -878,10 +835,6 @@ void TabGroupSyncServiceImpl::OnCollaborationRemoved(
     const SavedTabGroup* originating_group =
         model_->Get(originating_tab_group_guid.value());
     CHECK(!originating_group || !originating_group->local_group_id());
-    if (originating_group) {
-      LogTabGroupEvent(logger_, "Removing Originating Group",
-                       originating_group);
-    }
     RemoveGroup(originating_tab_group_guid.value());
   }
 
@@ -1287,7 +1240,6 @@ void TabGroupSyncServiceImpl::HandleTabGroupAdded(const base::Uuid& guid,
     return;
   }
 
-  LogTabGroupEvent(logger_, "HandleTabGroupAdded", saved_tab_group);
 
   if (saved_tab_group->is_hidden()) {
     // Ignore any updates to the groups which were hidden.
@@ -1299,7 +1251,6 @@ void TabGroupSyncServiceImpl::HandleTabGroupAdded(const base::Uuid& guid,
   }
 
   if (saved_tab_group->saved_tabs().empty()) {
-    LogTabGroupEvent(logger_, "HandleTabGroupAdded - Empty", saved_tab_group);
     empty_groups_.emplace(guid);
     // Wait for another sync update with tabs before notifying the UI.
     return;
@@ -1324,8 +1275,6 @@ void TabGroupSyncServiceImpl::HandleTabGroupAdded(const base::Uuid& guid,
     const syncer::CollaborationId& collaboration_id =
         saved_tab_group->collaboration_id().value();
     if (!collaboration_finder_->IsCollaborationAvailable(collaboration_id)) {
-      LogTabGroupEvent(logger_, "Missing CollaborationId - Waiting",
-                       saved_tab_group);
       shared_tab_groups_waiting_for_collaboration_.emplace_back(
           collaboration_id, guid, source);
       return;
@@ -1430,7 +1379,6 @@ void TabGroupSyncServiceImpl::NotifyTabGroupAdded(const base::Uuid& guid,
     return;
   }
 
-  LogTabGroupEvent(logger_, "NotifyTabGroupAdded", saved_tab_group);
 
   // Saved tab group should be transitions to shared before notifying observers
   // because the new group may be opened automatically on some platforms.
@@ -1505,7 +1453,6 @@ void TabGroupSyncServiceImpl::NotifyTabGroupMigrated(
   CHECK(new_group);
   // Originating saved tab group must exist if it was transitioned.
   CHECK(new_group->GetOriginatingTabGroupGuid().has_value());
-  LogTabGroupEvent(logger_, "NotifyTabGroupMigrated", new_group);
   for (TabGroupSyncService::Observer& observer : observers_) {
     observer.OnTabGroupMigrated(
         *new_group, new_group->GetOriginatingTabGroupGuid().value(), source);
@@ -1516,7 +1463,6 @@ void TabGroupSyncServiceImpl::HandleTabGroupRemoved(
     const SavedTabGroup& removed_group,
     TriggerSource source) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  LogTabGroupEvent(logger_, "HandleTabGroupRemoved", &removed_group);
 
   // When a group is deleted, there's no more need to keep any "was locally
   // closed" pref entry around.
@@ -1786,12 +1732,8 @@ void TabGroupSyncServiceImpl::OnCollaborationAvailable(
   if (iter != shared_tab_groups_waiting_for_collaboration_.end()) {
     auto [unused, group_id, source] = std::move(*iter);
     shared_tab_groups_waiting_for_collaboration_.erase(iter);
-    LogTabGroupEvent(logger_, "OnCollaborationAvailable Found", group_id,
-                     collaboration_id);
     HandleTabGroupAdded(group_id, source);
   } else {
-    LogTabGroupEvent(logger_, "OnCollaborationAvailable Unknown", base::Uuid(),
-                     collaboration_id);
   }
 }
 
@@ -1901,8 +1843,6 @@ void TabGroupSyncServiceImpl::CleanUpOriginatingSavedTabGroupsIfNeeded() {
   // For originating tab group that are not hidden ahd shared, they need to be
   // cleaned up after some time..
   for (const auto& group_id : group_ids_to_delete) {
-    LogTabGroupEvent(logger_, "CleanupOriginatingGroup", group_id,
-                     std::optional<syncer::CollaborationId>());
     RemoveGroup(group_id);
   }
 
@@ -1991,7 +1931,6 @@ bool TabGroupSyncServiceImpl::TransitionOriginatingTabGroupToNewGroupIfNeeded(
     return false;
   }
 
-  LogTabGroupEvent(logger_, "TransitionLocalIds", &tab_group);
   model_->SetGroupHidden(originating_tab_group_guid.value());
 
   if (originating_tab_group->local_group_id().has_value()) {
@@ -2145,7 +2084,6 @@ void TabGroupSyncServiceImpl::OnTabGroupSharingTimeout(
 
   CHECK(group->is_shared_tab_group());
 
-  LogTabGroupEvent(logger_, "OnTabGroupSharingTimeout", group);
   // Remove the shared group after timeout.
   model_->RemovedLocally(group->saved_guid());
 }
@@ -2211,8 +2149,6 @@ void TabGroupSyncServiceImpl::FinishTransitionToSharedIfNotCompleted() {
   for (const auto& shared_group_id :
        shared_group_with_visible_originating_group) {
     const SavedTabGroup* shared_group = model_->Get(shared_group_id);
-    LogTabGroupEvent(logger_, "MigrateUnfinishedSharedGroup", shared_group_id,
-                     std::optional<syncer::CollaborationId>());
     if (TransitionSavedToSharedTabGroupIfNeeded(*shared_group)) {
       NotifyTabGroupMigrated(shared_group_id, TriggerSource::REMOTE);
     }

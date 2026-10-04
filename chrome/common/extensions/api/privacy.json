@@ -116,11 +116,6 @@
             "$ref": "types.ChromeSetting",
             "value": ["spellingServiceEnabled", {"type":"boolean"}],
             "description": "If enabled, Chrome uses a web service to help correct spelling errors. This preference's value is a boolean, defaulting to <code>false</code>."
-          },
-          "translationServiceEnabled": {
-            "$ref": "types.ChromeSetting",
-            "value": ["translationServiceEnabled", {"type":"boolean"}],
-            "description": "If enabled, Chrome offers to translate pages that aren't in a language you read. This preference's value is a boolean, defaulting to <code>true</code>."
           }
         }
       },

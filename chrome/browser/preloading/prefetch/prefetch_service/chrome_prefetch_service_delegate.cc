@@ -5,7 +5,6 @@
 #include "chrome/browser/preloading/prefetch/prefetch_service/chrome_prefetch_service_delegate.h"
 
 #include "chrome/browser/battery/battery_saver.h"
-#include "chrome/browser/data_saver/data_saver.h"
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -92,7 +91,7 @@ bool ChromePrefetchServiceDelegate::IsPreloadingPrefEnabled() {
 }
 
 bool ChromePrefetchServiceDelegate::IsDataSaverEnabled() {
-  return data_saver::IsDataSaverEnabled();
+  return false;
 }
 
 bool ChromePrefetchServiceDelegate::IsBatterySaverEnabled() {

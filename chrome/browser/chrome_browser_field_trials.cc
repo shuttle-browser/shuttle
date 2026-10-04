@@ -22,7 +22,6 @@
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
-#include "components/feed/feed_feature_list.h"
 #include "components/metrics/metrics_features.h"
 #include "components/metrics/metrics_pref_names.h"
 #include "components/metrics/persistent_histograms.h"
@@ -39,8 +38,6 @@
 #include "cc/base/features.h"
 #include "chrome/browser/android/flags/chrome_cached_flags.h"  // nogncheck crbug.com/40147906
 #include "chrome/browser/flags/android/chrome_feature_list.h"
-#include "chrome/browser/glic/public/features.h"
-#include "chrome/browser/glic/suggestions/contextual_cueing_features.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker.h"
 #include "chrome/common/chrome_features.h"
 #include "components/autofill/core/common/autofill_features.h"

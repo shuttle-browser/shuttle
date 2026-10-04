@@ -153,10 +153,8 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser:global_features",
-      "//chrome/browser/background/glic",
       "//chrome/browser/download",
       "//chrome/browser/first_run",
-      "//chrome/browser/glic",
       "//chrome/browser/metrics",
       "//chrome/browser/metrics/desktop_session_duration",
       "//chrome/browser/notifications",
@@ -164,12 +162,10 @@ source_set("impl") {
       "//chrome/browser/sessions",
       "//chrome/browser/ui:browser_init_state",
       "//chrome/browser/ui:chrome_pages",
-      "//chrome/browser/ui/lens",
       "//chrome/browser/ui/omnibox/omnibox_everywhere",
       "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/startup",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/web_applications",
       "//components/keep_alive_registry",
       "//components/performance_manager",
       "//components/site_engagement/content",

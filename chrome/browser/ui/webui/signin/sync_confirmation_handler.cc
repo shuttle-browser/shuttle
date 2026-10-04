@@ -13,7 +13,6 @@
 #include "base/metrics/user_metrics.h"
 #include "base/notreached.h"
 #include "base/time/time.h"
-#include "chrome/browser/consent_auditor/consent_auditor_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -23,7 +22,6 @@
 #include "chrome/browser/ui/webui/signin/signin_utils.h"
 #include "chrome/browser/ui/webui/signin/sync_confirmation_ui.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/consent_auditor/consent_auditor.h"
 #include "components/signin/public/base/avatar_icon_util.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/signin_metrics.h"
@@ -181,32 +179,18 @@ void SyncConfirmationHandler::RecordConsent(
   // a pre-determined set of strings (stored in |string_to_grd_id_map_|). As
   // this has privacy and legal implications, CHECK the integrity of the strings
   // received from the renderer process before recording the consent.
-  std::vector<int> consent_text_ids;
   for (const base::Value& text : consent_description) {
     auto iter = string_to_grd_id_map_.find(text.GetString());
     CHECK(iter != string_to_grd_id_map_.end()) << "Unexpected string:\n"
                                                << text.GetString();
-    consent_text_ids.push_back(iter->second);
   }
 
   auto iter = string_to_grd_id_map_.find(consent_confirmation);
   CHECK(iter != string_to_grd_id_map_.end()) << "Unexpected string:\n"
                                              << consent_confirmation;
-  int consent_confirmation_id = iter->second;
 
-  sync_pb::UserConsentTypes::SyncConsent sync_consent;
-  sync_consent.set_confirmation_grd_id(consent_confirmation_id);
-  for (int id : consent_text_ids) {
-    sync_consent.add_description_grd_ids(id);
-  }
-  sync_consent.set_status(sync_pb::UserConsentTypes::ConsentStatus::
-                              UserConsentTypes_ConsentStatus_GIVEN);
-
-  consent_auditor::ConsentAuditor* consent_auditor =
-      ConsentAuditorFactory::GetForProfile(profile_);
-  consent_auditor->RecordSyncConsent(
-      identity_manager_->GetPrimaryAccountInfo(ConsentLevel::kSignin).gaia,
-      sync_consent);
+  // The consent auditor is not part of this build, so the (validated) consent
+  // is not recorded.
 }
 
 void SyncConfirmationHandler::OnAvatarChanged(const AccountInfo& info) {

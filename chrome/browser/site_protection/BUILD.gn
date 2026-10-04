@@ -88,7 +88,6 @@ if (!is_android) {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/safe_browsing:test_support",
       "//chrome/browser/search_engines",
-      "//chrome/browser/ui/safety_hub:test_support",
       "//chrome/common:chrome_features",
       "//chrome/common:constants",
       "//chrome/test:test_support",

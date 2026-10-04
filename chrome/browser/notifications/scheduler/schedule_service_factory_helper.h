@@ -24,7 +24,6 @@ class DisplayAgent;
 class FindsAgent;
 class NotificationBackgroundTaskScheduler;
 class NotificationSchedulerClientRegistrar;
-class TipsAgent;
 
 // Creates the notification schedule service with all the embedder level
 // dependencies. This layer is mainly to forbid the embedder to depend on
@@ -34,7 +33,6 @@ std::unique_ptr<KeyedService> CreateNotificationScheduleService(
     std::unique_ptr<NotificationBackgroundTaskScheduler>
         background_task_scheduler,
     std::unique_ptr<DisplayAgent> display_agent,
-    std::unique_ptr<TipsAgent> tips_agent,
     std::unique_ptr<FindsAgent> finds_agent,
     leveldb_proto::ProtoDatabaseProvider* db_provider,
     const base::FilePath& storage_dir,

@@ -21,19 +21,15 @@ source_set("engagement") {
   ]
 
   deps = [
-    "//chrome/browser/bookmarks",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/history",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
-    "//chrome/browser/webapps/installable",
     "//chrome/common",
-    "//components/bookmarks/browser",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/common",
     "//components/pref_registry",
     "//components/prefs",
     "//components/site_engagement/core/mojom:mojo_bindings",
-    "//components/webapps/browser",
     "//net",
     "//third_party/abseil-cpp:absl",
   ]
@@ -51,12 +47,9 @@ source_set("unit_tests") {
 
   deps = [
     ":engagement",
-    "//chrome/browser/bookmarks",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/history",
     "//chrome/test:test_support",
-    "//components/bookmarks/browser",
-    "//components/bookmarks/test",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/common",
     "//components/history/core/browser",
@@ -64,7 +57,6 @@ source_set("unit_tests") {
     "//components/prefs",
     "//components/site_engagement/content",
     "//components/site_engagement/core",
-    "//components/webapps/common",
     "//content/public/browser",
     "//content/test:test_support",
     "//testing/gmock",
@@ -83,7 +75,6 @@ if (!is_android) {
       "//chrome/browser/ui",
       "//chrome/test:test_support_ui",
       "//components/site_engagement/content",
-      "//components/webapps/common",
       "//content/public/browser",
       "//content/test:test_support",
       "//net:test_support",

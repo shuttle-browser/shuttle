@@ -21,8 +21,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/uuid.h"
-#include "components/data_sharing/public/logger.h"
-#include "components/data_sharing/public/logger_utils.h"
 #include "components/prefs/pref_service.h"
 #include "components/saved_tab_groups/internal/stats.h"
 #include "components/saved_tab_groups/internal/sync_bridge_tab_group_model_wrapper.h"
@@ -557,13 +555,11 @@ SharedTabGroupDataSyncBridge::SharedTabGroupDataSyncBridge(
     SyncBridgeTabGroupModelWrapper* model_wrapper,
     syncer::OnceDataTypeStoreFactory create_store_callback,
     std::unique_ptr<syncer::DataTypeLocalChangeProcessor> change_processor,
-    PrefService* pref_service,
-    data_sharing::Logger* logger)
+    PrefService* pref_service)
     : syncer::DataTypeSyncBridge(std::move(change_processor)),
       model_wrapper_(model_wrapper),
       did_enable_shared_tab_groups_in_last_session_(pref_service->GetBoolean(
-          prefs::kDidEnableSharedTabGroupsInLastSession)),
-      logger_(logger) {
+          prefs::kDidEnableSharedTabGroupsInLastSession)) {
   CHECK(model_wrapper_);
 
   std::move(create_store_callback)

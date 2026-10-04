@@ -199,9 +199,9 @@ ExtensionFunction::ResponseAction TabGroupsQueryFunction::Run() {
             continue;
           }
 
-          if (params->query_info.shared.has_value() &&
-              ExtensionTabUtil::GetSharedStateOfGroup(id) !=
-                  params->query_info.shared.value()) {
+          // Shared tab groups (data sharing) are removed, so no group is
+          // shared.
+          if (params->query_info.shared.value_or(false)) {
             continue;
           }
 

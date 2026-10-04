@@ -17,7 +17,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "components/captive_portal/core/captive_portal_types.h"
-#include "components/webapps/browser/navigation_data.h"
 #include "content/public/browser/child_process_host.h"
 #include "content/public/browser/global_request_id.h"
 #include "content/public/browser/initiator_navigation_state.h"
@@ -380,10 +379,6 @@ struct NavigateParams {
 
   // Indicates whether this navigation was started by an ad.
   bool started_by_ad = false;
-
-  // An optional struct containing data webapps needs for navigation. Usually
-  // nullopt.
-  std::optional<webapps::NavigationData> web_app_navigation_data;
 
  private:
   NavigateParams();

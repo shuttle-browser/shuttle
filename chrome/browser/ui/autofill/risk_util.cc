@@ -12,7 +12,6 @@
 #include "base/functional/callback.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "chrome/browser/apps/platform_apps/app_window_registry_util.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/profile.h"
@@ -61,11 +60,7 @@ ui::BaseWindow* GetBaseWindowForWebContents(
     return browser->GetWindow();
   }
 
-  gfx::NativeWindow native_window = web_contents->GetTopLevelNativeWindow();
-  extensions::AppWindow* app_window =
-      AppWindowRegistryUtil::GetAppWindowForNativeWindowAnyProfile(
-          native_window);
-  return app_window ? app_window->GetBaseWindow() : nullptr;
+  return nullptr;
 }
 #endif
 

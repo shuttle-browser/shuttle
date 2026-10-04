@@ -15,7 +15,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "base/values.h"
-#include "chrome/browser/contextual_cueing/features.h"
 #include "chrome/browser/multistep_filter/core/multistep_filter_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/multistep_filter/core/features.h"
@@ -216,7 +215,6 @@ void MultistepFilterInternalsPageHandler::GetDebugInfo(
 
   add_flag(multistep_filter::kMultistepFilter);
   add_flag(multistep_filter::kMultistepFilterSendFeedback);
-  add_flag(contextual_cueing::kContextualCueingV2);
 
   std::move(callback).Run(std::move(info));
 }

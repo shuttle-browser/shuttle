@@ -40,15 +40,12 @@ source_set("picture_in_picture") {
   ]
 
   if (is_mac || is_win || is_linux || is_chromeos) {
-    public_deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
   if (!is_android) {
     sources += [
       "auto_picture_in_picture_tab_strip_observer_helper.h",
       "auto_pip_setting_overlay_view.h",
       "auto_pip_setting_view.h",
-      "hats/auto_picture_in_picture_hats_service.h",
-      "hats/auto_picture_in_picture_hats_service_factory.h",
       "picture_in_picture_input_protector.h",
       "picture_in_picture_occlusion_observer.h",
       "picture_in_picture_occlusion_tracker.h",
@@ -140,8 +137,6 @@ source_set("impl") {
       "auto_picture_in_picture_tab_strip_observer_helper.cc",
       "auto_pip_setting_overlay_view.cc",
       "auto_pip_setting_view.cc",
-      "hats/auto_picture_in_picture_hats_service.cc",
-      "hats/auto_picture_in_picture_hats_service_factory.cc",
       "picture_in_picture_input_protector.cc",
       "picture_in_picture_occlusion_observer.cc",
       "picture_in_picture_occlusion_tracker.cc",
@@ -156,7 +151,6 @@ source_set("impl") {
       "//chrome/app:generated_resources",
       "//chrome/browser/ui:browser_tab_strip",
       "//chrome/browser/ui/color:color_headers",
-      "//chrome/browser/ui/hats",
       "//chrome/browser/ui/views/picture_in_picture",
       "//components/strings:components_strings",
       "//components/unified_consent",
@@ -213,18 +207,12 @@ source_set("unit_tests") {
       "auto_pip_setting_helper_unittest.cc",
       "auto_pip_setting_overlay_view_unittest.cc",
       "auto_pip_setting_view_unittest.cc",
-      "hats/auto_picture_in_picture_hats_service_factory_unittest.cc",
-      "hats/auto_picture_in_picture_hats_service_unittest.cc",
-      "hats/auto_picture_in_picture_hats_test_base.cc",
-      "hats/auto_picture_in_picture_hats_test_base.h",
       "picture_in_picture_input_protector_unittest.cc",
       "picture_in_picture_occlusion_tracker_unittest.cc",
       "picture_in_picture_widget_fade_animator_unittest.cc",
       "picture_in_picture_window_manager_uma_helper_unittest.cc",
     ]
     deps += [
-      "//chrome/browser/ui/hats:test_support",
-      "//chrome/browser/ui/safety_hub:test_support",
       "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
       "//components/unified_consent",
       "//ui/events:test_support",
@@ -252,7 +240,6 @@ if (!is_android) {
       "document_picture_in_picture_pixel_browsertest.cc",
       "document_picture_in_picture_window_controller_browsertest.cc",
       "document_pip_standalone_browsertest.cc",
-      "hats/auto_picture_in_picture_hats_service_browsertest.cc",
       "picture_in_picture_metric_integration_browsertest.cc",
       "video_picture_in_picture_window_controller_browsertest.cc",
     ]
@@ -274,13 +261,10 @@ if (!is_android) {
       "//chrome/browser/ui:recently_audible_helper",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/hats:test_support",
       "//chrome/browser/ui/views/overlay",
       "//chrome/browser/ui/views/page_info",
       "//chrome/browser/ui/views/picture_in_picture",
       "//chrome/browser/ui/views/tabs/tab",
-      "//chrome/browser/ui/web_applications",
-      "//chrome/browser/web_applications",
       "//chrome/test:test_support",
       "//components/content_settings/core/browser",
       "//components/metrics:content",

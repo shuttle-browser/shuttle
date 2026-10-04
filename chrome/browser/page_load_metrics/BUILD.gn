@@ -41,7 +41,6 @@ source_set("page_load_metrics") {
     "observers/security_state_page_load_metrics_observer.h",
     "observers/signed_exchange_page_load_metrics_observer.h",
     "observers/tab_strip_page_load_metrics_observer.h",
-    "observers/translate_page_load_metrics_observer.h",
     "observers/webui_page_load_metrics_observer.h",
     "page_load_metrics_initialize.h",
   ]
@@ -123,7 +122,6 @@ source_set("impl") {
     "observers/security_state_page_load_metrics_observer.cc",
     "observers/signed_exchange_page_load_metrics_observer.cc",
     "observers/tab_strip_page_load_metrics_observer.cc",
-    "observers/translate_page_load_metrics_observer.cc",
     "observers/webui_page_load_metrics_observer.cc",
     "page_load_metrics_initialize.cc",
   ]
@@ -136,7 +134,6 @@ source_set("impl") {
   deps = [
     "//chrome/browser:after_startup_task_utils",
     "//chrome/browser/actor",
-    "//chrome/browser/bookmarks",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/engagement",
@@ -150,7 +147,6 @@ source_set("impl") {
     "//chrome/browser/search_engines",
     "//chrome/browser/signin",
     "//chrome/browser/ssl",
-    "//chrome/browser/translate",
     "//chrome/browser/ui/browser_window",
     "//chrome/common",
     "//components/content_settings/core/browser",
@@ -187,7 +183,6 @@ source_set("impl") {
       "//chrome/browser/ui/webui/metrics_reporter",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/top_chrome",
-      "//components/webapps/isolated_web_apps:scheme",
     ]
   }
 
@@ -244,7 +239,6 @@ source_set("unit_tests") {
     "observers/protocol_page_load_metrics_observer_unittest.cc",
     "observers/scheme_page_load_metrics_observer_unittest.cc",
     "observers/signed_exchange_page_load_metrics_observer_unittest.cc",
-    "observers/translate_page_load_metrics_observer_unittest.cc",
   ]
 
   deps = [
@@ -259,13 +253,13 @@ source_set("unit_tests") {
     "//components/page_load_metrics/browser",
     "//components/page_load_metrics/browser:test_support",
     "//components/page_load_metrics/common:test_support",
-    "//components/translate/core/browser:test_support",
     "//content/test:test_support",
     "//testing/gmock",
     "//testing/gtest",
 
     # Inherits -Wno-sign-compare via fuzztest_public_config. See
     # crbug.com/527094632.
+    "//chrome/browser/content_settings:content_settings_factory",
     "//third_party/fuzztest",
   ]
 
@@ -289,8 +283,6 @@ source_set("unit_tests") {
     sources += [ "observers/android_page_load_metrics_observer_unittest.cc" ]
     deps += [
       "//chrome/browser/actor",
-      "//chrome/browser/bookmarks",
-      "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/history_clusters",
       "//chrome/browser/navigation_predictor",
       "//components/ukm:test_support",
@@ -374,6 +366,7 @@ if (!is_android) {
 
       # Inherits -Wno-sign-compare via fuzztest_public_config. See
       # crbug.com/527094632.
+      "//chrome/browser/content_settings:content_settings_factory",
       "//third_party/fuzztest",
     ]
 

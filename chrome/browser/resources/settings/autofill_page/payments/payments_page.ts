@@ -39,7 +39,7 @@ import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bu
 
 import type {SettingsToggleButtonElement} from '../../controls/settings_toggle_button.js';
 import {loadTimeData} from '../../i18n_setup.js';
-import {CvcDeletionUserAction, MetricsBrowserProxyImpl, PrivacyElementInteractions} from '../../metrics_browser_proxy.js';
+import {CvcDeletionUserAction, MetricsBrowserProxyImpl} from '../../metrics_browser_proxy.js';
 import {SettingsViewMixin} from '../../settings_page/settings_view_mixin.js';
 import type {SettingsSimpleConfirmationDialogElement} from '../../simple_confirmation_dialog.js';
 import type {PersonalDataChangedListener} from '../autofill_manager_proxy.js';
@@ -620,11 +620,6 @@ export class SettingsPaymentsPageElement extends
    * Records changes made to the "Allow sites to check if you have payment
    * methods saved" setting to a histogram.
    */
-  private onCanMakePaymentChange_() {
-    MetricsBrowserProxyImpl.getInstance().recordSettingsPageHistogram(
-        PrivacyElementInteractions.PAYMENT_METHOD);
-  }
-
   /**
    * Listens for the save-credit-card event, and calls the private API.
    */

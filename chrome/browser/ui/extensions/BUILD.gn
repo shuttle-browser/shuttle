@@ -92,11 +92,8 @@ source_set("extensions") {
   if (enable_extensions) {
     sources += [
       "accelerator_priority.h",
-      "app_launch_params.h",
-      "application_launch.h",
       "extension_action_delegate.h",
       "extension_enable_flow.h",
-      "hosted_app_browser_controller.h",
       "installation_error_infobar_delegate.h",
       "web_file_handlers/multiclient_util.h",
     ]
@@ -105,7 +102,6 @@ source_set("extensions") {
       "//base",
       "//chrome/browser/ui/tabs:tab_strip_model_observer",
       "//chrome/browser/ui/toolbar",
-      "//chrome/browser/ui/web_applications",
       "//components/infobars/core",
       "//components/omnibox/browser",
       "//components/services/app_service",
@@ -196,7 +192,6 @@ source_set("impl") {
     "//chrome/browser/ui/browser_window:create_browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/dialogs",
-    "//chrome/browser/ui/hats",
     "//chrome/browser/ui/side_panel:side_panel_views_dependent",
     "//chrome/browser/ui/toolbar",
     "//components/google/core/common",
@@ -263,11 +258,8 @@ source_set("impl") {
 
   if (enable_extensions) {
     sources += [
-      "app_launch_params.cc",
-      "application_launch.cc",
       "confirm_protocol_handler_dialog.cc",
       "extension_enable_flow.cc",
-      "hosted_app_browser_controller.cc",
       "installation_error_infobar_delegate.cc",
       "web_file_handlers/multiclient_util.cc",
     ]
@@ -275,10 +267,7 @@ source_set("impl") {
     deps += [
       ":extension_enable_flow_delegate",
       ":extension_popup_types",
-      "//apps",
       "//chrome/browser/app_mode",
-      "//chrome/browser/apps/app_service",
-      "//chrome/browser/apps/platform_apps",
       "//chrome/browser/extensions",
       "//chrome/browser/favicon",
       "//chrome/browser/infobars",
@@ -290,11 +279,7 @@ source_set("impl") {
       "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/side_panel:side_panel_views_dependent",
       "//chrome/browser/ui/startup",
-      "//chrome/browser/ui/tabs/organizer",
-      "//chrome/browser/ui/views/tabs/organizer",
-      "//chrome/browser/ui/web_applications:launch_utils",
       "//chrome/browser/ui/window_metadata",
-      "//chrome/browser/web_applications",
       "//components/prefs",
       "//components/security_state/content",
       "//components/services/app_service",
@@ -395,7 +380,6 @@ source_set("browser_tests") {
       "extension_installed_watcher_browsertest.cc",
       "extension_multiple_uninstall_dialog_browsertest.cc",
       "extension_uninstall_dialog_impl_browsertest.cc",
-      "hosted_app_browsertest.cc",
       "notifications_custom_bindings_browsertest.cc",
       "reload_page_dialog_controller_browsertest.cc",
       "settings_overridden_params_providers_browsertest.cc",
@@ -409,7 +393,6 @@ source_set("browser_tests") {
     deps += [
       "//chrome/app:command_ids",
       "//chrome/browser:chrome_content_browser_client",
-      "//chrome/browser/apps/app_service:test_support",
       "//chrome/browser/extensions:test_support",
       "//chrome/browser/preloading/prerender",
       "//chrome/browser/profiles:profile",
@@ -417,12 +400,6 @@ source_set("browser_tests") {
       "//chrome/browser/themes",
       "//chrome/browser/ui/color:color_headers",
       "//chrome/browser/ui/views/toolbar",
-      "//chrome/browser/ui/web_applications",
-      "//chrome/browser/ui/web_applications:launch_utils",
-      "//chrome/browser/web_applications",
-      "//chrome/browser/web_applications:features",
-      "//chrome/browser/web_applications:web_applications_test_support",
-      "//chrome/browser/web_applications/mojom:mojom_web_apps_enum",
       "//chrome/common",
       "//chrome/common:chrome_features",
       "//chrome/common:non_code_constants",
@@ -433,8 +410,6 @@ source_set("browser_tests") {
       "//components/search_engines",
       "//components/search_engines:test_support",
       "//components/sessions",
-      "//components/webapps/browser",
-      "//components/webapps/common",
       "//content/public/browser",
       "//content/public/common",
       "//extensions/browser",
@@ -461,9 +436,7 @@ source_set("browser_tests") {
       deps += [ "//ui/linux:linux_ui" ]
     }
 
-    if (is_chromeos) {
-      sources += [ "application_launch_browsertest.cc" ]
-    } else {
+    if (!is_chromeos) {
       sources += [ "upload_extension_to_account_dialog_browsertest.cc" ]
     }
   }

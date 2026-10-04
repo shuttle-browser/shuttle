@@ -14,10 +14,8 @@
 #include "chrome/browser/task_manager/providers/web_contents/printing_tag.h"
 #include "chrome/browser/task_manager/providers/web_contents/tab_contents_tag.h"
 #include "chrome/browser/task_manager/providers/web_contents/tool_tag.h"
-#include "chrome/browser/task_manager/providers/web_contents/web_app_tag.h"
 #include "chrome/browser/task_manager/providers/web_contents/web_contents_tags_manager.h"
 #include "components/guest_view/buildflags/buildflags.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_features.h"
 #include "extensions/buildflags/buildflags.h"
@@ -172,18 +170,6 @@ void WebContentsTags::CreateForExtension(
   }
 }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-
-// static
-void WebContentsTags::CreateForWebApp(content::WebContents* web_contents,
-                                      const webapps::AppId& app_id,
-                                      const bool is_isolated_web_app) {
-  if (!WebContentsTag::FromWebContents(web_contents)) {
-    TagWebContents(web_contents,
-                   base::WrapUnique(new WebAppTag(web_contents, app_id,
-                                                  is_isolated_web_app)),
-                   WebContentsTag::kTagKey);
-  }
-}
 
 // static
 void WebContentsTags::CreateForToolContents(content::WebContents* web_contents,

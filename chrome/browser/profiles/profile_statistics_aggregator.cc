@@ -12,7 +12,6 @@
 #include "chrome/browser/profiles/profile_statistics_common.h"
 #include "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
 #include "components/browsing_data/core/counters/autofill_counter.h"
-#include "components/browsing_data/core/counters/bookmark_counter.h"
 #include "components/browsing_data/core/counters/history_counter.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "content/public/browser/browser_thread.h"
@@ -23,7 +22,6 @@ ProfileStatisticsAggregator::ProfileStatisticsAggregator(
     scoped_refptr<autofill::AutofillWebDataService> autofill_web_data_service,
     autofill::PersonalDataManager* personal_data_manager,
     const autofill::EntityDataManager* entity_data_manager,
-    bookmarks::BookmarkModel* bookmark_model,
     history::HistoryService* history_service,
     scoped_refptr<password_manager::PasswordStoreInterface>
         profile_password_store,
@@ -34,7 +32,6 @@ ProfileStatisticsAggregator::ProfileStatisticsAggregator(
     : autofill_web_data_service_(std::move(autofill_web_data_service)),
       personal_data_manager_(personal_data_manager),
       entity_data_manager_(entity_data_manager),
-      bookmark_model_(bookmark_model),
       history_service_(history_service),
       profile_password_store_(profile_password_store),
       pref_service_(pref_service),
@@ -67,9 +64,6 @@ void ProfileStatisticsAggregator::StartAggregator() {
   // Cancel tasks.
   counters_.clear();
 
-  // Initiate bookmark counting.
-  AddCounter(std::make_unique<browsing_data::BookmarkCounter>(bookmark_model_));
-
   // Initiate history counting.
   AddCounter(std::make_unique<browsing_data::HistoryCounter>(
       history_service_,
@@ -96,9 +90,7 @@ void ProfileStatisticsAggregator::OnCounterResult(
   auto* finished_result =
       static_cast<BrowsingDataCounter::FinishedResult*>(result.get());
   int count = finished_result->Value();
-  if (pref_name == browsing_data::BookmarkCounter::kPrefName) {
-    StatisticsCallback(profiles::kProfileStatisticsBookmarks, count);
-  } else if (pref_name == browsing_data::prefs::kDeleteBrowsingHistory) {
+  if (pref_name == browsing_data::prefs::kDeleteBrowsingHistory) {
     StatisticsCallback(profiles::kProfileStatisticsBrowsingHistory, count);
   } else if (pref_name == browsing_data::prefs::kDeletePasswords) {
     const auto* signin_result =

@@ -20,8 +20,6 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/serialize_host_descriptions.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/media_router/browser/presentation/local_presentation_manager.h"
-#include "components/media_router/browser/presentation/local_presentation_manager_factory.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_observer.h"
@@ -88,7 +86,6 @@ private:
  bool AllowDevToolsFor(DevToolsAgentHost* host);
 
  raw_ptr<Profile> profile_;
- raw_ptr<media_router::LocalPresentationManager> local_presentation_manager_;
  std::unique_ptr<base::OneShotTimer> timer_;
  base::WeakPtrFactory<LocalTargetsUIHandler> weak_factory_{this};
 };
@@ -96,10 +93,7 @@ private:
 LocalTargetsUIHandler::LocalTargetsUIHandler(const Callback& callback,
                                              Profile* profile)
     : DevToolsTargetsUIHandler(kTargetSourceLocal, callback),
-      profile_(profile),
-      local_presentation_manager_(
-          media_router::LocalPresentationManagerFactory::
-              GetOrCreateForBrowserContext(profile_)) {
+      profile_(profile) {
   DevToolsAgentHost::AddObserver(this);
   UpdateTargets();
 }
@@ -153,10 +147,8 @@ void LocalTargetsUIHandler::UpdateTargets() {
 }
 
 bool LocalTargetsUIHandler::AllowDevToolsFor(DevToolsAgentHost* host) {
-  return local_presentation_manager_->IsLocalPresentation(
-             host->GetWebContents()) ||
-         (Profile::FromBrowserContext(host->GetBrowserContext()) == profile_ &&
-          DevToolsWindow::AllowDevToolsFor(profile_, host));
+  return Profile::FromBrowserContext(host->GetBrowserContext()) == profile_ &&
+         DevToolsWindow::AllowDevToolsFor(profile_, host);
 }
 
 // AdbTargetsUIHandler --------------------------------------------------------

@@ -18,7 +18,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
@@ -73,11 +72,9 @@ bool IsAnotherScreen(const WebContents& web_contents,
 
 FullscreenController::FullscreenController(
     ExclusiveAccessManager* manager,
-    chrome::BrowserCommandController* browser_command_controller,
-    BookmarkBarController* bookmark_bar_controller)
+    chrome::BrowserCommandController* browser_command_controller)
     : ExclusiveAccessControllerBase(manager),
-      browser_command_controller_(browser_command_controller),
-      bookmark_bar_controller_(bookmark_bar_controller) {}
+      browser_command_controller_(browser_command_controller) {}
 
 FullscreenController::~FullscreenController() = default;
 
@@ -424,19 +421,11 @@ void FullscreenController::WindowFullscreenStateChanged() {
   if (browser_command_controller_) {
     browser_command_controller_->FullscreenStateChanged();
   }
-  if (bookmark_bar_controller_) {
-    bookmark_bar_controller_->UpdateBookmarkBarState(
-        BookmarkBarController::StateChangeReason::kToggleFullscreen);
-  }
 }
 
 void FullscreenController::FullscreenTopUIStateChanged() {
   if (browser_command_controller_) {
     browser_command_controller_->FullscreenStateChanged();
-  }
-  if (bookmark_bar_controller_) {
-    bookmark_bar_controller_->UpdateBookmarkBarState(
-        BookmarkBarController::StateChangeReason::kToolbarOptionChange);
   }
 }
 

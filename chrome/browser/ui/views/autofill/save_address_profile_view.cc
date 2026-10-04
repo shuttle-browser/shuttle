@@ -9,8 +9,6 @@
 
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/hats/hats_service.h"
-#include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/browser/ui/views/accessibility/theme_tracking_non_accessible_image_view.h"
 #include "chrome/browser/ui/views/autofill/autofill_bubble_utils.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
@@ -224,14 +222,6 @@ SaveAddressProfileView::SaveAddressProfileView(
             .Build());
   }
   AlignIcons();
-
-  Profile* browser_profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  HatsService* hats_service = HatsServiceFactory::GetForProfile(
-      browser_profile, /*create_if_necessary=*/true);
-  CHECK(hats_service);
-  hats_service->LaunchDelayedSurveyForWebContents(
-      kHatsSurveyTriggerAutofillAddress, web_contents, 10000);
 }
 
 SaveAddressProfileView::~SaveAddressProfileView() = default;

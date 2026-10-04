@@ -18,15 +18,6 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
   r.CLEAR_BROWSER_DATA = r.PRIVACY.createChild('/clearBrowserData');
   r.CLEAR_BROWSER_DATA.isNavigableDialog = true;
 
-  const visibility = pageVisibility || {};
-
-  if (visibility.safetyHub !== false) {
-    r.SAFETY_HUB = r.PRIVACY.createChild('/safetyCheck');
-  }
-
-  if (loadTimeData.getBoolean('showPrivacyGuide')) {
-    r.PRIVACY_GUIDE = r.PRIVACY.createChild('guide');
-  }
   r.SITE_SETTINGS = r.PRIVACY.createChild('/content');
   r.SECURITY = r.PRIVACY.createChild('/security');
 
@@ -177,33 +168,6 @@ function createRoutes(): SettingsRoutes {
   if (visibility.ai !== false && loadTimeData.getBoolean('showAiPage')) {
     r.AI = r.BASIC.createSection(
         '/ai', 'ai', loadTimeData.getString('aiPageTitle'));
-    if (loadTimeData.getBoolean('enableAiModeSearchSetting')) {
-      r.AI_MODE_SEARCH = r.AI.createChild('/ai/aiModeSearch');
-    }
-    if (loadTimeData.getBoolean('showHistorySearchControl')) {
-      r.HISTORY_SEARCH = r.AI.createChild('/ai/historySearch');
-    }
-    if (loadTimeData.getBoolean('showComposeControl')) {
-      r.OFFER_WRITING_HELP = r.AI.createChild('/ai/helpMeWrite');
-    }
-    if (loadTimeData.getBoolean('showGlicSettings')) {
-      r.GEMINI = r.AI.createChild('/ai/gemini');
-      if (loadTimeData.getBoolean('actorLoginFederatedLoginSupportEnabled')) {
-        r.GEMINI_LOGIN = r.GEMINI.createChild('/ai/gemini/login');
-      }
-    }
-    if (loadTimeData.getBoolean('showAiSuggestionsControl')) {
-      r.AI_SUGGESTIONS = r.AI.createChild('/ai/suggestions');
-    }
-    if (loadTimeData.getBoolean('showInlineCueMenuControl')) {
-      r.INLINE_CUE_MENU = r.AI.createChild('/ai/inlineCueMenu');
-    }
-    if (loadTimeData.getBoolean('showSkillsSettingPage')) {
-      r.SKILLS = r.AI.createChild('/ai/skills');
-    }
-    if (loadTimeData.getBoolean('showDictationControl')) {
-      r.DICTATION = r.AI.createChild('/ai/dictation');
-    }
   }
 
   if (visibility.appearance !== false) {
@@ -224,13 +188,6 @@ function createRoutes(): SettingsRoutes {
     r.IDENTITY_DOCS =
         r.AUTOFILL.createChild('/identityDocs');
     r.TRAVEL = r.AUTOFILL.createChild('/travel');
-    if (loadTimeData.getBoolean('shoppingIntegrationEnabled')) {
-      r.SHOPPING = r.AUTOFILL.createChild('/shopping');
-    }
-    if (loadTimeData.getBoolean('showSuggestionsFromGeminiSettings')) {
-      r.SUGGESTIONS_FROM_GEMINI =
-          r.AUTOFILL.createChild('/enhancedAutofill');
-    }
     // <if expr="is_win or is_macosx">
     r.PASSKEYS = r.AUTOFILL.createChild('/passkeys');
     // </if>

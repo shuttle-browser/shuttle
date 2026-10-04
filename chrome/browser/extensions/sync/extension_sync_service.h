@@ -161,11 +161,6 @@ class ExtensionSyncService : public syncer::SyncableService,
   // can be uploaded to the sync server).
   bool ShouldSync(const extensions::Extension& extension) const;
 
-  // Returns true if the given `extension_id` corresponds to an item that has
-  // migrated to a pre-installed web app.
-  bool IsMigratingPreinstalledWebApp(
-      const extensions::ExtensionId& extension_id);
-
   // The normal profile associated with this ExtensionSyncService.
   raw_ptr<Profile> profile_;
 
@@ -201,14 +196,6 @@ class ExtensionSyncService : public syncer::SyncableService,
   // have started happening. It will cause sync to call us back
   // asynchronously via MergeDataAndStartSyncing as soon as possible.
   SyncableService::StartSyncFlare flare_;
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Caches the set of Chrome app IDs undergoing migration to web apps because
-  // it is expensive to generate every time (multiple SkBitmap copies).
-  // Android does not support Chrome apps.
-  std::optional<base::flat_set<std::string>>
-      migrating_default_chrome_app_ids_cache_;
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   // Tracks extension IDs currently being installed from sync to prevent race
   // conditions in observer notification order. Populated during

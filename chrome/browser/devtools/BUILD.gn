@@ -31,14 +31,10 @@ if (enable_devtools_frontend) {
     "protocol/autofill.h",
     "protocol/extensions.cc",
     "protocol/extensions.h",
-    "protocol/cast.cc",
-    "protocol/cast.h",
     "protocol/emulation.cc",
     "protocol/emulation.h",
     "protocol/page.cc",
     "protocol/page.h",
-    "protocol/pwa.cc",
-    "protocol/pwa.h",
     "protocol/security.cc",
     "protocol/security.h",
     "protocol/storage.cc",
@@ -156,7 +152,6 @@ static_library("devtools") {
     "//components/paint_preview/buildflags",
     "//components/variations/service",
     "//components/vector_icons",
-    "//components/webapps/common",
     "//content/public/browser",
     "//net",
     "//services/metrics/public/cpp:ukm_builders",
@@ -227,7 +222,6 @@ static_library("devtools") {
       "//chrome/browser/signin",
       "//chrome/browser/task_manager",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/hats",
       "//chrome/browser/ui/prefs",
       "//components/infobars/content",
       "//components/infobars/core",
@@ -244,7 +238,6 @@ static_library("devtools") {
   }
 
   if (is_mac || is_win || is_linux || is_chromeos) {
-    deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
   if (is_android) {
     sources += [
@@ -277,7 +270,6 @@ static_library("devtools") {
       "//chrome:strings",
       "//chrome/app/theme:theme_resources",
       "//chrome/browser/infobars",
-      "//chrome/browser/media/router:media_router_feature",
       "//chrome/browser/themes",
       "//chrome/browser/ui:tab_modal_confirm_dialog",
       "//chrome/browser/ui/exclusive_access",
@@ -289,7 +281,6 @@ static_library("devtools") {
       "//chrome/browser/ui/views/frame:scrim_view",
       "//chrome/browser/ui/webui_browser:headers",
       "//chrome/browser/user_education",
-      "//chrome/browser/web_applications",
       "//chrome/common",
       "//components/guest_view/browser",
       "//components/input",
@@ -317,7 +308,6 @@ static_library("devtools") {
       "//ui/views/controls/webview",
     ]
     if (is_mac || is_win || is_linux || is_chromeos) {
-      deps += [ "//components/webapps/isolated_web_apps:scheme" ]
     }
     if (is_chromeos) {
       deps += [
@@ -408,24 +398,18 @@ static_library("devtools") {
   if (!is_android) {
     deps += [
       "//chrome/app:command_ids",
-      "//chrome/browser/badging",
       "//chrome/browser/custom_handlers",
       "//chrome/browser/first_party_sets",
-      "//chrome/browser/ui/media_router",
       "//chrome/browser/ui/startup",
       "//chrome/browser/ui/views/frame:contents_web_view",
       "//components/constrained_window",
       "//components/content_settings/core/common",
       "//components/custom_handlers",
-      "//components/media_router/browser",
-      "//components/media_router/common/mojom:media_router",
       "//components/origin_gating/core",
-      "//components/payments/content",
       "//components/privacy_sandbox/privacy_sandbox_attestations",
       "//components/security_state/content",
       "//components/subresource_filter/content/browser",
       "//components/web_package",
-      "//components/webapps/browser",
       "//third_party/blink/public/common:headers",
       "//ui/display/",
       "//ui/display/util",
@@ -440,16 +424,12 @@ static_library("devtools") {
       "protocol/ads_handler.h",
       "protocol/browser_handler.cc",
       "protocol/browser_handler.h",
-      "protocol/cast_handler.cc",
-      "protocol/cast_handler.h",
       "protocol/emulation_handler.cc",
       "protocol/emulation_handler.h",
       "protocol/extensions_handler.cc",
       "protocol/extensions_handler.h",
       "protocol/page_handler.cc",
       "protocol/page_handler.h",
-      "protocol/pwa_handler.cc",
-      "protocol/pwa_handler.h",
       "protocol/security_handler.cc",
       "protocol/security_handler.h",
       "protocol/storage_handler.cc",
@@ -585,18 +565,10 @@ source_set("unit_tests") {
       "device/android_device_manager_unittest.cc",
       "device/devtools_device_discovery_unittest.cc",
       "device/usb/android_rsa_unittest.cc",
-      "protocol/cast_handler_unittest.cc",
       "serialize_host_descriptions_unittest.cc",
     ]
 
-    deps += [
-      "//chrome/browser/media/router",
-      "//chrome/browser/web_applications:web_applications_test_support",
-      "//components/media_router/browser",
-      "//components/media_router/browser:test_support",
-      "//components/media_router/common:test_support",
-      "//crypto:test_support",
-    ]
+    deps += [ "//crypto:test_support" ]
 
     if (enable_service_discovery) {
       sources += [ "device/cast_device_provider_unittest.cc" ]
@@ -639,7 +611,6 @@ if (enable_devtools_frontend) {
       "//chrome/browser/actor:tools_test_support",
       "//chrome/browser/autofill:test_support",
       "//chrome/browser/custom_handlers",
-      "//chrome/browser/data_saver",
       "//chrome/browser/infobars",
       "//chrome/browser/lifetime",
       "//chrome/browser/prefs:util",
@@ -661,11 +632,7 @@ if (enable_devtools_frontend) {
     ]
 
     if (!is_android) {
-      deps += [
-        "//chrome/browser/apps/app_service",
-        "//chrome/browser/web_applications:web_applications_test_support",
-        "//chrome/test:test_support_ui",
-      ]
+      deps += [ "//chrome/test:test_support_ui" ]
     }
 
     if (enable_extensions_core) {
@@ -704,8 +671,6 @@ if (!is_android) {
       "devtools_policy_browsertest.cc",
       "protocol/audits_protocol_test.cc",
       "protocol/devtools_extensions_browsertest.cc",
-      "protocol/devtools_iwa_browsertest.cc",
-      "protocol/devtools_pwa_browsertest.cc",
       "protocol/form_devtools_issues_browsertest.cc",
     ]
 
@@ -716,9 +681,9 @@ if (!is_android) {
       "//chrome/browser/ui/extensions",
       "//chrome/browser/ui/side_panel",
       "//chrome/browser/ui/side_panel:side_panel_views_dependent",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
+      "//components/web_package",
       "//content/test:browsertest_support",
       "//content/test:test_support",
       "//testing/gtest",
@@ -753,7 +718,6 @@ if (!is_android) {
         ":devtools",
         ":test_support",
         "//base",
-        "//chrome/browser/web_applications:web_applications_test_support",
         "//chrome/test:test_support",
         "//chrome/test:test_support_ui",
         "//content/test:test_support",

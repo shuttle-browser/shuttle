@@ -7,7 +7,6 @@
 
 #include "base/scoped_observation.h"
 #include "build/build_config.h"
-#include "chrome/browser/screen_ai/screen_ai_install_state.h"
 #include "chrome/browser/ui/webui/settings/settings_page_ui_handler.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -18,9 +17,7 @@ namespace settings {
 
 // Settings handler for the main accessibility settings page,
 // chrome://settings/accessibility.
-class AccessibilityMainHandler
-    : public ::settings::SettingsPageUIHandler,
-      public screen_ai::ScreenAIInstallState::Observer {
+class AccessibilityMainHandler : public ::settings::SettingsPageUIHandler {
  public:
   AccessibilityMainHandler();
   ~AccessibilityMainHandler() override;
@@ -31,11 +28,6 @@ class AccessibilityMainHandler
   void RegisterMessages() override;
   void OnJavascriptAllowed() override;
   void OnJavascriptDisallowed() override;
-
-  // screen_ai::ScreenAIInstallState::Observer:
-  void DownloadProgressChanged(double progress) override;
-  void StateChanged(screen_ai::ScreenAIInstallState::State state) override;
-  void OnScreenAIInstallStateDestroying() override;
 
  private:
   void HandleGetScreenReaderState(const base::ListValue& args);
@@ -51,10 +43,6 @@ class AccessibilityMainHandler
 
   base::CallbackListSubscription accessibility_subscription_;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-  base::ScopedObservation<screen_ai::ScreenAIInstallState,
-                          screen_ai::ScreenAIInstallState::Observer>
-      component_ready_observer_{this};
 };
 
 }  // namespace settings

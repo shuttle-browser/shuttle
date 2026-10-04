@@ -26,8 +26,6 @@
 #include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
 #include "chrome/browser/ui/toasts/toast_controller.h"
@@ -158,8 +156,6 @@ void ClearBrowsingDataHandler::HandleClearBrowsingData(
 
   CHECK(args_list[1].is_list());
   const base::ListValue& data_type_list = args_list[1].GetList();
-  auto* sentiment_service = TrustSafetySentimentServiceFactory::GetForProfile(
-      Profile::FromWebUI(web_ui()));
   for (const base::Value& type : data_type_list) {
     const std::string pref_name = type.GetString();
     std::optional<BrowsingDataType> data_type =
@@ -204,11 +200,6 @@ void ClearBrowsingDataHandler::HandleClearBrowsingData(
         // Tab closure is not implemented yet.
         NOTIMPLEMENTED();
         break;
-    }
-
-    // Inform the T&S sentiment service that this datatype was cleared.
-    if (sentiment_service) {
-      sentiment_service->ClearedBrowsingData(*data_type);
     }
   }
 

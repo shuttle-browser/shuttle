@@ -18,7 +18,6 @@ namespace permissions {
 
 using ModelInput = PermissionsAiv4Executor::ModelInput;
 using ModelOutput = PermissionsAiv4Executor::ModelOutput;
-using ::passage_embeddings::Embedding;
 using ::tflite::task::core::PopulateTensor;
 
 // The default size of the text input tensor for the model. This is

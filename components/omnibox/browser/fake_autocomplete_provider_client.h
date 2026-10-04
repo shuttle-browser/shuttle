@@ -10,9 +10,7 @@
 
 #include "base/files/scoped_temp_dir.h"
 #include "base/memory/raw_ptr.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/history/core/browser/top_sites.h"
-#include "components/history_embeddings/core/history_embeddings_search.h"
 #include "components/omnibox/browser/fake_autocomplete_scoring_model_service.h"
 #include "components/omnibox/browser/fake_on_device_tail_model_service.h"
 #include "components/omnibox/browser/fake_tab_matcher.h"
@@ -23,10 +21,6 @@
 #include "components/omnibox/browser/test_scheme_classifier.h"
 #include "components/saved_tab_groups/test_support/fake_tab_group_sync_service.h"
 #include "components/search_engines/search_engines_test_environment.h"
-
-namespace bookmarks {
-class BookmarkModel;
-}  // namespace bookmarks
 
 namespace history {
 class HistoryService;
@@ -65,9 +59,6 @@ class FakeAutocompleteProviderClient : public MockAutocompleteProviderClient {
   history::HistoryService* GetHistoryService() override;
   history_clusters::HistoryClustersService* GetHistoryClustersService()
       override;
-  history_embeddings::HistoryEmbeddingsSearch* GetHistoryEmbeddingsSearch()
-      override;
-  bookmarks::BookmarkModel* GetBookmarkModel() override;
   InMemoryURLIndex* GetInMemoryURLIndex() override;
   DocumentSuggestionsService* GetDocumentSuggestionsService() const override;
   scoped_refptr<ShortcutsBackend> GetShortcutsBackend() override;
@@ -92,10 +83,6 @@ class FakeAutocompleteProviderClient : public MockAutocompleteProviderClient {
   }
 
   // Test-only setters
-  void set_bookmark_model(std::unique_ptr<bookmarks::BookmarkModel> model) {
-    bookmark_model_ = std::move(model);
-  }
-
   void set_history_service(std::unique_ptr<history::HistoryService> service) {
     history_service_ = std::move(service);
   }
@@ -103,11 +90,6 @@ class FakeAutocompleteProviderClient : public MockAutocompleteProviderClient {
   void set_history_clusters_service(
       history_clusters::HistoryClustersService* service) {
     history_clusters_service_ = service;
-  }
-
-  void set_history_embeddings_search(
-      std::unique_ptr<history_embeddings::HistoryEmbeddingsSearch> search) {
-    history_embeddings_search_ = std::move(search);
   }
 
   // There should be no reason to set this unless the tested provider actually
@@ -129,14 +111,11 @@ class FakeAutocompleteProviderClient : public MockAutocompleteProviderClient {
   search_engines::SearchEnginesTestEnvironment search_engines_test_enviroment_;
   std::unique_ptr<DocumentSuggestionsService> document_suggestions_service_;
   base::ScopedTempDir history_dir_;
-  std::unique_ptr<bookmarks::BookmarkModel> bookmark_model_;
   TestSchemeClassifier scheme_classifier_;
   std::unique_ptr<InMemoryURLIndex> in_memory_url_index_;
   std::unique_ptr<history::HistoryService> history_service_;
   raw_ptr<history_clusters::HistoryClustersService> history_clusters_service_ =
       nullptr;
-  std::unique_ptr<history_embeddings::HistoryEmbeddingsSearch>
-      history_embeddings_search_;
   scoped_refptr<ShortcutsBackend> shortcuts_backend_;
   FakeTabMatcher fake_tab_matcher_;
   scoped_refptr<history::TopSites> top_sites_;

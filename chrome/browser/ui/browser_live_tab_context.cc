@@ -15,8 +15,7 @@
 #include "base/token.h"
 #include "base/uuid.h"
 #include "base/values.h"
-#include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
-#include "chrome/browser/glic/glic_tab_restore_helper.h"
+#include "base/strings/string_util.h"
 #include "chrome/browser/performance_manager/public/background_tab_loading_policy.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_utils.h"
@@ -40,7 +39,6 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
 #include "components/saved_tab_groups/public/features.h"
 #include "components/saved_tab_groups/public/saved_tab_group.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
@@ -77,14 +75,10 @@ bool ShouldCreateAppWindowForAppName(Profile* profile,
     return false;
   }
 
-  // Only need to check that the app is installed if |app_name| is for a
-  // platform app or web app. (|app_name| could also be for a devtools window.)
-  const std::string app_id = web_app::GetAppIdFromApplicationName(app_name);
-  if (app_id.empty()) {
-    return true;
-  }
-
-  return apps::IsInstalledApp(profile, app_id);
+  // Platform apps and web apps (whose app names are prefixed with "_crx_") are
+  // not supported in this build, so never restore an app window for them.
+  // (|app_name| could also be for a devtools window.)
+  return !base::StartsWith(app_name, "_crx_");
 }
 
 sessions::LiveTabContext* GetLiveTabContext(BrowserWindowInterface* browser) {
@@ -168,12 +162,7 @@ sessions::LiveTab* BrowserLiveTabContext::GetActiveLiveTab() const {
 
 std::map<std::string, std::string> BrowserLiveTabContext::GetExtraDataForTab(
     int index) const {
-  std::map<std::string, std::string> extra_data;
-
-  glic::PopulateGlicExtraData(tab_strip_model_->GetTabAtIndex(index),
-                              &extra_data);
-
-  return extra_data;
+  return {};
 }
 
 std::map<std::string, std::string>

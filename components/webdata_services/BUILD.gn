@@ -14,7 +14,6 @@ static_library("webdata_services") {
 
   deps = [
     "//base",
-    "//build:blink_buildflags",
     "//components/autofill/core/browser",
     "//components/autofill/core/common",
     "//components/keyed_service/core",
@@ -35,7 +34,6 @@ static_library("webdata_services") {
     ]
     deps += [
       "//components/keyed_service/content",
-      "//components/payments/content:utils",
       "//content/public/browser",
     ]
   }

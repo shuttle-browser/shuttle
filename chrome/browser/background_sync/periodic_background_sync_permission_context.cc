@@ -9,7 +9,6 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/webapps/installable/installable_utils.h"
 #include "chrome/common/chrome_features.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/permissions/permission_prompt_decision.h"
@@ -22,11 +21,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/android/shortcut_helper.h"
 #else
-#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"  // nogncheck
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #endif
 
 namespace features {
@@ -45,15 +39,7 @@ PeriodicBackgroundSyncPermissionContext::
     : ContentSettingPermissionContextBase(
           browser_context,
           ContentSettingsType::PERIODIC_BACKGROUND_SYNC,
-          network::mojom::PermissionsPolicyFeature::kNotFound) {
-#if !BUILDFLAG(IS_ANDROID)
-  auto* provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(browser_context));
-  if (provider) {
-    install_manager_observation_.Observe(&provider->install_manager());
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
-}
+          network::mojom::PermissionsPolicyFeature::kNotFound) {}
 
 PeriodicBackgroundSyncPermissionContext::
     ~PeriodicBackgroundSyncPermissionContext() = default;
@@ -67,7 +53,8 @@ bool PeriodicBackgroundSyncPermissionContext::IsPwaInstalled(
   // google.com/travel, and a request to register Periodic Background Sync comes
   // in from google.com/maps, this method will return true and registration will
   // succeed, provided other required conditions are met.
-  return DoesOriginContainAnyInstalledWebApp(browser_context(), origin);
+  // Web apps have been removed, so no PWA is ever installed.
+  return false;
 }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -163,68 +150,3 @@ void PeriodicBackgroundSyncPermissionContext::OnContentSettingChanged(
       primary_pattern, secondary_pattern,
       ContentSettingsTypeSet(ContentSettingsType::PERIODIC_BACKGROUND_SYNC));
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-void PeriodicBackgroundSyncPermissionContext::OnWebAppInstalled(
-    const webapps::AppId& app_id) {
-  auto* provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(browser_context()));
-  if (provider) {
-    const auto& registrar = provider->registrar_unsafe();
-    // TODO(crbug.com/340952100): Evaluate call sites of IsInstallState for
-    // correctness.
-    if (registrar.GetInstallState(app_id) !=
-        web_app::proto::InstallState::INSTALLED_WITH_OS_INTEGRATION) {
-      return;
-    }
-    auto gurl = registrar.GetAppScope(app_id);
-    if (!gurl.is_valid()) {
-      return;
-    }
-    OnContentSettingChanged(
-        ContentSettingsPattern::FromURL(gurl),
-        ContentSettingsPattern::Wildcard(),
-        ContentSettingsTypeSet(ContentSettingsType::PERIODIC_BACKGROUND_SYNC));
-  }
-}
-
-void PeriodicBackgroundSyncPermissionContext::OnWebAppInstalledWithOsHooks(
-    const webapps::AppId& app_id) {
-  // TODO(crbug.com/340952100): Remove the method after the InstallState is
-  // saved in the database & available from OnWebAppInstalled.
-  OnWebAppInstalled(app_id);
-}
-
-void PeriodicBackgroundSyncPermissionContext::OnWebAppWillBeUninstalled(
-    const webapps::AppId& app_id) {
-  auto* provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(browser_context()));
-  if (provider) {
-    const auto& registrar = provider->registrar_unsafe();
-    auto gurl = registrar.GetAppScope(app_id);
-    if (!gurl.is_valid()) {
-      return;
-    }
-    app_id_origin_map_[app_id] = gurl;
-  }
-}
-
-void PeriodicBackgroundSyncPermissionContext::OnWebAppUninstalled(
-    const webapps::AppId& app_id,
-    webapps::WebappUninstallSource uninstall_source) {
-  if (app_id_origin_map_.find(app_id) != app_id_origin_map_.end()) {
-    auto gurl = app_id_origin_map_[app_id];
-    app_id_origin_map_.erase(app_id);
-    OnContentSettingChanged(
-        ContentSettingsPattern::FromURL(gurl),
-        ContentSettingsPattern::Wildcard(),
-        ContentSettingsTypeSet(ContentSettingsType::PERIODIC_BACKGROUND_SYNC));
-  }
-}
-
-void PeriodicBackgroundSyncPermissionContext::
-    OnWebAppInstallManagerDestroyed() {
-  install_manager_observation_.Reset();
-  app_id_origin_map_.clear();
-}
-#endif  // !BUILDFLAG(IS_ANDROID)

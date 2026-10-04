@@ -8,7 +8,6 @@
 #include "base/notreached.h"
 #include "build/build_config.h"
 #include "chrome/browser/page_info/about_this_site_tab_helper.h"
-#include "chrome/browser/page_info/merchant_trust_service_factory.h"
 #include "chrome/browser/page_info/page_info_features.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/permissions/system/system_permission_settings.h"
@@ -16,7 +15,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/page_info/merchant_trust_side_panel.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -24,7 +22,6 @@
 #include "components/content_settings/core/common/features.h"
 #include "components/page_info/core/about_this_site_service.h"
 #include "components/page_info/core/features.h"
-#include "components/page_info/core/merchant_trust_service.h"
 #include "components/permissions/permission_decision_auto_blocker.h"
 #include "components/permissions/permission_manager.h"
 #include "components/permissions/permissions_client.h"
@@ -47,15 +44,11 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/page_info/about_this_site_side_panel.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/web_applications/web_app_ui_utils.h"
 #endif
 
 #if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
 #include "chrome/browser/media/webrtc/system_media_capture_permissions_mac.h"
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
-#include "chrome/browser/web_applications/os_integration/mac/web_app_shortcut_mac.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #endif
 
 ChromePageInfoUiDelegate::ChromePageInfoUiDelegate(
@@ -162,11 +155,6 @@ bool ChromePageInfoUiDelegate::ShouldShowSiteSettings(int* link_text_id,
     return false;
   }
 
-  if (web_app::GetLabelIdsForAppManagementLinkInPageInfo(
-          web_contents_, link_text_id, tooltip_text_id)) {
-    return true;
-  }
-
   *link_text_id = IDS_PAGE_INFO_SITE_SETTINGS_LINK;
   *tooltip_text_id = IDS_PAGE_INFO_SITE_SETTINGS_TOOLTIP;
 
@@ -217,47 +205,6 @@ bool ChromePageInfoUiDelegate::ShouldShowSettingsLinkForPermission(
     int* link_id) {
   switch (type) {
     case ContentSettingsType::NOTIFICATIONS:
-#if BUILDFLAG(IS_MAC)
-      // This can be extracted into
-      // SystemPermissionSettings::IsPermissionDenied() in a similar way as it
-      // is done for camera and mic. I attempted to do this (see
-      // https://chromium-review.googlesource.com/c/chromium/src/+/5424111/27..28
-      // ), however as we don't have any testcase for this branch, the changes
-      // were refused by the test coverage bot.
-      // TODO(b/345431801): Add a testcase to cover this case.
-      if (web_app::UseNotificationAttributionForWebAppShims()) {
-        // If this notification permission is associated with a locally
-        // installed web app, the corresponding app shim needs to have system
-        // level notification permission for notifications to work. If system
-        // permissions are missing, guide the user to system settings to fix
-        // this.
-        std::optional<webapps::AppId> app_id =
-            web_app::WebAppTabHelper::GetAppIdForNotificationAttribution(
-                web_contents_);
-        if (!app_id.has_value()) {
-          return false;
-        }
-
-        // If the system permission is already granted linking to system
-        // settings doesn't really add anything. If system permissions is
-        // "not determined", there won't be a page in system settings to link
-        // to for this app, and Chrome will still be able to display a system
-        // permission prompt, so there is no reason to guide the user to system
-        // settings yet.
-        auto system_permission_status =
-            AppShimRegistry::Get()->GetNotificationPermissionStatusForApp(
-                *app_id);
-        if (system_permission_status ==
-                mac_notifications::mojom::PermissionStatus::kGranted ||
-            system_permission_status ==
-                mac_notifications::mojom::PermissionStatus::kNotDetermined) {
-          return false;
-        }
-        *text_id = IDS_PAGE_INFO_NOTIFICATIONS_SYSTEM_SETTINGS_DESCRIPTION;
-        *link_id = IDS_PAGE_INFO_SYSTEM_SETTINGS_LINK;
-        return true;
-      }
-#endif
       return false;
     case ContentSettingsType::MEDIASTREAM_CAMERA:
       if (base::FeatureList::IsEnabled(
@@ -324,40 +271,6 @@ ChromePageInfoUiDelegate::GetEmbargoResult(ContentSettingsType type) {
   return permissions::PermissionsClient::Get()
       ->GetPermissionDecisionAutoBlocker(GetProfile())
       ->GetEmbargoResult(site_url_, type);
-}
-
-#if !BUILDFLAG(IS_ANDROID)
-void ChromePageInfoUiDelegate::OpenMerchantTrustSidePanel(const GURL& url) {
-  DCHECK(page_info::IsMerchantTrustFeatureEnabled());
-  ShowMerchantTrustSidePanel(web_contents_, url);
-}
-#endif
-
-void ChromePageInfoUiDelegate::GetMerchantTrustInfo(
-    page_info::MerchantDataCallback callback) {
-  if (auto* service =
-          MerchantTrustServiceFactory::GetForProfile(GetProfile())) {
-    service->GetMerchantTrustInfo(web_contents_->GetVisibleURL(),
-                                  std::move(callback));
-  }
-}
-
-void ChromePageInfoUiDelegate::RecordMerchantTrustButtonShown() {
-  if (auto* service =
-          MerchantTrustServiceFactory::GetForProfile(GetProfile())) {
-    service->RecordMerchantTrustInteraction(
-        web_contents_->GetVisibleURL(),
-        page_info::MerchantTrustInteraction::kPageInfoRowShown);
-  }
-}
-
-void ChromePageInfoUiDelegate::RecordMerchantTrustSidePanelOpened() {
-  if (auto* service =
-          MerchantTrustServiceFactory::GetForProfile(GetProfile())) {
-    service->RecordMerchantTrustInteraction(
-        web_contents_->GetVisibleURL(),
-        page_info::MerchantTrustInteraction::kSidePanelOpened);
-  }
 }
 
 Profile* ChromePageInfoUiDelegate::GetProfile() const {

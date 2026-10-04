@@ -34,7 +34,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/data_sharing/public/features.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -78,7 +77,7 @@ namespace {
 constexpr int kSyncIconPaddingFromLabel = 2;
 
 bool SupportsDataSharing() {
-  return data_sharing::features::IsDataSharingFunctionalityEnabled();
+  return false;
 }
 
 #if BUILDFLAG(IS_MAC)

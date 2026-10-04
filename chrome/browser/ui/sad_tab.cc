@@ -13,7 +13,6 @@
 #include "base/time/time.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
-#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/net/referrer.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
@@ -44,8 +43,6 @@ void RecordEvent(bool feedback, ui_metrics::SadTabEvent event) {
                               ui_metrics::SadTabEvent::COUNT);
   }
 }
-
-constexpr char kCategoryTagCrash[] = "Crash";
 
 // Return true if this function has been called in the last 10 seconds.
 bool IsRepeatedlyCrashing() {
@@ -205,20 +202,7 @@ void SadTab::PerformAction(SadTab::Action action) {
     case Action::kButton:
       RecordEvent(show_feedback_button_,
                   ui_metrics::SadTabEvent::BUTTON_CLICKED);
-      if (show_feedback_button_) {
-        chrome::ShowFeedbackPage(
-            GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-                web_contents_),
-            feedback::kFeedbackSourceSadTabPage,
-            std::string() /* description_template */,
-            l10n_util::GetStringUTF8(kind_ == SAD_TAB_KIND_CRASHED
-                                         ? IDS_CRASHED_TAB_FEEDBACK_MESSAGE
-                                         : IDS_KILLED_TAB_FEEDBACK_MESSAGE),
-            std::string(kCategoryTagCrash), std::string());
-      } else {
-        web_contents_->GetController().Reload(content::ReloadType::NORMAL,
-                                              true);
-      }
+      web_contents_->GetController().Reload(content::ReloadType::NORMAL, true);
       break;
     case Action::kHelpLink:
       RecordEvent(show_feedback_button_,
@@ -263,8 +247,4 @@ SadTab::SadTab(content::WebContents* web_contents, SadTabKind kind)
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  // Only Google Chrome-branded browsers may show the Feedback button.
-  show_feedback_button_ = is_repeatedly_crashing_;
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 }

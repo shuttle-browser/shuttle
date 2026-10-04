@@ -32,7 +32,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/search/ntp_features.h"
 #include "components/supervised_user/core/common/buildflags.h"
-#include "components/webapps/common/constants.h"
 #include "extensions/buildflags/buildflags.h"
 #include "third_party/re2/src/re2/re2.h"
 
@@ -998,13 +997,8 @@ bool MostVisitedSites::IsNtpTileFromPreinstalledApp(GURL url) {
 
 // static
 bool MostVisitedSites::WasNtpAppMigratedToWebApp(PrefService* prefs, GURL url) {
-  const base::ListValue& migrated_apps =
-      prefs->GetList(webapps::kWebAppsMigratedPreinstalledApps);
-  for (const auto& val : migrated_apps) {
-    if (val.is_string() && val.GetString() == url.GetHost()) {
-      return true;
-    }
-  }
+  // Web apps (PWAs) were removed from this fork, so no preinstalled app is ever
+  // migrated to one.
   return false;
 }
 

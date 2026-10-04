@@ -9,10 +9,8 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
-#include "base/strings/strcat.h"
 #include "base/time/time.h"
 #include "chrome/browser/notifications/scheduler/public/notification_data.h"
-#include "chrome/browser/tips/core/tips_types.h"
 
 namespace notifications {
 namespace stats {
@@ -44,34 +42,6 @@ std::string ToHistogramSuffix(SchedulerClientType client_type) {
   }
 }
 
-// Returns the histogram tips suffix for a feature type. Should match suffix
-// NotificationTipsFeatureType in histograms.xml.
-std::string ToHistogramTipsFeatureSuffix(
-    tips::TipsNotificationsFeatureType feature_type) {
-  switch (feature_type) {
-    case tips::TipsNotificationsFeatureType::kEnhancedSafeBrowsing:
-      return ".EnhancedSafeBrowsing";
-    case tips::TipsNotificationsFeatureType::kQuickDelete:
-      return ".QuickDelete";
-    case tips::TipsNotificationsFeatureType::kGoogleLens:
-      return ".GoogleLens";
-    case tips::TipsNotificationsFeatureType::kBottomOmnibox:
-      return ".BottomOmnibox";
-    case tips::TipsNotificationsFeatureType::kPasswordAutofill:
-      return ".PasswordAutofill";
-    case tips::TipsNotificationsFeatureType::kSignin:
-      return ".Signin";
-    case tips::TipsNotificationsFeatureType::kCreateTabGroups:
-      return ".CreateTabGroups";
-    case tips::TipsNotificationsFeatureType::kCustomizeMVT:
-      return ".CustomizeMVT";
-    case tips::TipsNotificationsFeatureType::kRecentTabs:
-      return ".RecentTabs";
-    default:
-      NOTREACHED();
-  }
-}
-
 // Logs a histogram enumeration with client type suffix.
 template <typename T>
 void LogHistogramEnumWithSuffix(const std::string& name,
@@ -81,17 +51,6 @@ void LogHistogramEnumWithSuffix(const std::string& name,
   auto name_with_suffix = name;
   name_with_suffix.append(".").append(ToHistogramSuffix(client_type));
   base::UmaHistogramEnumeration(name_with_suffix, value);
-}
-
-// Logs a histogram enumeration with a tips feature type suffix.
-template <typename T>
-void LogHistogramEnumWithTipsFeatureSuffix(
-    std::string_view name,
-    T value,
-    tips::TipsNotificationsFeatureType feature_type) {
-  base::UmaHistogramEnumeration(name, value);
-  base::UmaHistogramEnumeration(
-      base::StrCat({name, ToHistogramTipsFeatureSuffix(feature_type)}), value);
 }
 
 }  // namespace
@@ -129,17 +88,5 @@ void LogNotificationLifeCycleEvent(NotificationLifeCycleEvent event,
       "Notifications.Scheduler.NotificationLifeCycleEvent", event, client_type);
 }
 
-void LogTipsNotificationFeatureTypeAction(
-    UserActionType action,
-    tips::TipsNotificationsFeatureType feature_type) {
-  LogHistogramEnumWithTipsFeatureSuffix(
-      "Notifications.Scheduler.Tips.FeatureTypeAction", action, feature_type);
-}
-
-void LogTipsNotificationFeatureTypeShown(
-    tips::TipsNotificationsFeatureType feature_type) {
-  base::UmaHistogramEnumeration("Notifications.Scheduler.Tips.FeatureTypeShown",
-                                feature_type);
-}
 }  // namespace stats
 }  // namespace notifications

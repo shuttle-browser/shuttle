@@ -1,5 +1,0 @@
-include_rules = [
-  "+chrome/browser/sharing",
-  "+components/sharing_message",
-  "+components/one_time_tokens",
-]

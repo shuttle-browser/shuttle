@@ -21,8 +21,7 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
-#include "chrome/browser/ui/bookmarks/bookmark_stats.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -35,6 +34,7 @@
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/dom_distiller/core/url_utils.h"
 #include "components/profile_metrics/browser_profile_type.h"
 #include "components/reading_list/core/reading_list_entry.h"
 #include "components/url_formatter/url_formatter.h"
@@ -209,9 +209,6 @@ void ReadingListPageHandler::OpenURL(
                       : "DesktopReadingList.Navigation.FromUnreadList"));
   base::RecordAction(
       base::UserMetricsAction("SidePanel.ReadingList.Navigation"));
-  RecordBookmarkLaunch(
-      BookmarkLaunchLocation::kSidePanelPendingList,
-      profile_metrics::GetBrowserProfileType(Profile::FromWebUI(web_ui_)));
 }
 
 void ReadingListPageHandler::UpdateReadStatus(const GURL& url, bool read) {
@@ -352,8 +349,21 @@ const std::optional<GURL> ReadingListPageHandler::GetActiveTabURL() {
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser();
   if (browser) {
-    return chrome::GetURLToBookmark(
-        browser->GetTabStripModel()->GetActiveWebContents());
+    content::WebContents* active_contents =
+        browser->GetTabStripModel()->GetActiveWebContents();
+    if (!active_contents) {
+      return std::nullopt;
+    }
+    if (search::IsInstantNTP(active_contents)) {
+      return GURL(chrome::kChromeUINewTabURL);
+    }
+    // Reader Mode pages are treated as the original page.
+    if (dom_distiller::url_utils::IsDistilledPage(
+            active_contents->GetVisibleURL())) {
+      return dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(
+          active_contents->GetVisibleURL());
+    }
+    return active_contents->GetVisibleURL();
   }
   return std::nullopt;
 }

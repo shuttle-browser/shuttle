@@ -77,8 +77,6 @@ if (!is_android) {
       "//chrome/browser/renderer_context_menu:test_support",
       "//chrome/browser/ui",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/web_applications",
-      "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/custom_handlers",

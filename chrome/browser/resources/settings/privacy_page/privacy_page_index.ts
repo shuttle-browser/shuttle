@@ -4,10 +4,8 @@
 
 import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
 import '/shared/settings/prefs/prefs.js';
-import '../safety_hub/safety_hub_entry_point.js';
 import '../settings_page/settings_section.js';
 import '../settings_shared.css.js';
-import './privacy_guide/privacy_guide_promo.js';
 import './privacy_page.js';
 
 import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
@@ -17,17 +15,12 @@ import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
 import {beforeNextRender, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {loadTimeData} from '../i18n_setup.js';
-import {pageVisibility} from '../page_visibility.js';
-import type {PageVisibility} from '../page_visibility.js';
 import {routes} from '../route.js';
 import {RouteObserverMixin} from '../router.js';
 import type {Route, SettingsRoutes} from '../router.js';
 import type {SettingsPlugin} from '../settings_main/settings_plugin.js';
 import {SearchableViewContainerMixin} from '../settings_page/searchable_view_container_mixin.js';
 
-import {PrivacyGuideAvailabilityMixin} from './privacy_guide/privacy_guide_availability_mixin.js';
-import type {PrivacyGuideBrowserProxy} from './privacy_guide/privacy_guide_browser_proxy.js';
-import {MAX_PRIVACY_GUIDE_PROMO_IMPRESSION, PrivacyGuideBrowserProxyImpl} from './privacy_guide/privacy_guide_browser_proxy.js';
 import {getTemplate} from './privacy_page_index.html.js';
 
 // clang-format off
@@ -44,8 +37,8 @@ export interface SettingsPrivacyPageIndexElement {
 }
 
 const SettingsPrivacyPageIndexElementBase =
-    SearchableViewContainerMixin(PrivacyGuideAvailabilityMixin(
-        PrefsMixin(RouteObserverMixin(PolymerElement))));
+    SearchableViewContainerMixin(
+        PrefsMixin(RouteObserverMixin(PolymerElement)));
 
 export class SettingsPrivacyPageIndexElement extends
     SettingsPrivacyPageIndexElementBase implements SettingsPlugin {
@@ -61,21 +54,9 @@ export class SettingsPrivacyPageIndexElement extends
     return {
       prefs: Object,
 
-      pageVisibility_: {
-        type: Object,
-        value: () => {
-          return pageVisibility || {};
-        },
-      },
-
       routes_: {
         type: Object,
         value: () => routes,
-      },
-
-      showPrivacyGuidePromo_: {
-        type: Boolean,
-        value: false,
       },
 
       enableBundledSecuritySettings_: {
@@ -175,16 +156,8 @@ export class SettingsPrivacyPageIndexElement extends
     };
   }
 
-  static get observers() {
-    return [
-      'updatePrivacyGuidePromoVisibility_(isPrivacyGuideAvailable, prefs.privacy_guide.viewed.value)',
-    ];
-  }
-
   declare prefs: Record<string, unknown>;
-  declare private pageVisibility_: PageVisibility;
   declare private routes_: SettingsRoutes;
-  declare private showPrivacyGuidePromo_: boolean;
   declare private enableBundledSecuritySettings_: boolean;
   declare private enableCapturedSurfaceControl_: boolean;
   declare private enableFederatedIdentityApiContentSetting_: boolean;
@@ -204,9 +177,6 @@ export class SettingsPrivacyPageIndexElement extends
   declare private enableWebBluetoothNewPermissionsBackend_: boolean;
 
   private pendingViewSwitching_: PromiseResolver<void> = new PromiseResolver();
-  private privacyGuidePromoWasShown_: boolean;
-  private privacyGuideBrowserProxy_: PrivacyGuideBrowserProxy =
-      PrivacyGuideBrowserProxyImpl.getInstance();
 
   private beforeNextRenderPromise_(): Promise<void> {
     return new Promise(res => {
@@ -215,25 +185,11 @@ export class SettingsPrivacyPageIndexElement extends
   }
 
   private getDefaultViews_(): string[] {
-    const defaultViews = ['privacy'];
-
-    if (this.isPrivacyGuideAvailable) {
-      defaultViews.push('privacyGuidePromo');
-    }
-
-    if (this.showPage_(this.pageVisibility_.safetyHub)) {
-      defaultViews.push('safetyHubEntryPoint');
-    }
-
-    return defaultViews;
+    return ['privacy'];
   }
 
   private isRouteHostedWithinPrivacyView_(route: Route): boolean {
-    const nestedRoutes = [routes.CLEAR_BROWSER_DATA];
-    if (loadTimeData.getBoolean('showPrivacyGuide')) {
-      nestedRoutes.push(routes.PRIVACY_GUIDE);
-    }
-    return nestedRoutes.includes(route);
+    return route === routes.CLEAR_BROWSER_DATA;
   }
 
   // Return the list of view IDs to be displayed, or null if a view should
@@ -278,10 +234,6 @@ export class SettingsPrivacyPageIndexElement extends
 
   override currentRouteChanged(newRoute: Route, oldRoute?: Route) {
     super.currentRouteChanged(newRoute, oldRoute);
-
-    if (newRoute === routes.PRIVACY) {
-      this.updatePrivacyGuidePromoVisibility_();
-    }
 
     this.pendingViewSwitching_ = new PromiseResolver();
 
@@ -329,10 +281,6 @@ export class SettingsPrivacyPageIndexElement extends
     return this.pendingViewSwitching_.promise;
   }
 
-  private showPage_(visibility?: boolean): boolean {
-    return visibility !== false;
-  }
-
   private renderView_(route: Route): boolean {
     return this.inSearchMode ||
         (!!this.currentRoute && this.currentRoute === route);
@@ -352,22 +300,6 @@ export class SettingsPrivacyPageIndexElement extends
         (!!this.currentRoute &&
          (this.currentRoute === routes.PRIVACY ||
           this.isRouteHostedWithinPrivacyView_(this.currentRoute)));
-  }
-
-  private updatePrivacyGuidePromoVisibility_() {
-    if (!this.isPrivacyGuideAvailable || this.prefs === undefined ||
-        this.getPref('privacy_guide.viewed').value ||
-        this.privacyGuideBrowserProxy_.getPromoImpressionCount() >=
-            MAX_PRIVACY_GUIDE_PROMO_IMPRESSION ||
-        this.currentRoute !== routes.PRIVACY) {
-      this.showPrivacyGuidePromo_ = false;
-      return;
-    }
-    this.showPrivacyGuidePromo_ = true;
-    if (!this.privacyGuidePromoWasShown_) {
-      this.privacyGuideBrowserProxy_.incrementPromoImpressionCount();
-      this.privacyGuidePromoWasShown_ = true;
-    }
   }
 }
 

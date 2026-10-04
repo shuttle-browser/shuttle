@@ -26,7 +26,6 @@ static_library("browser") {
     "//components/search_engines",
     "//components/touch_to_search:buildflags",
     "//components/touch_to_search/core/proto:client_discourse_context_proto",
-    "//components/translate/core/language_detection",
     "//components/variations",
     "//components/variations/net",
     "//content/public/browser",

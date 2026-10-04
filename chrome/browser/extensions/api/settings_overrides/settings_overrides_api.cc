@@ -16,12 +16,10 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
 #include "chrome/browser/search_engines/template_url_prepopulate_data_resolver_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/common/extensions/manifest_handlers/settings_overrides_handler.h"
 #include "chrome/common/pref_names.h"
-#include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/search_engines_pref_names.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_data_util.h"
@@ -285,7 +283,6 @@ void BrowserContextKeyedAPIFactory<
   DependsOn(ExtensionPrefsFactory::GetInstance());
   DependsOn(ExtensionPrefsHelperFactory::GetInstance());
   DependsOn(TemplateURLServiceFactory::GetInstance());
-  DependsOn(search_engines::SearchEngineChoiceServiceFactory::GetInstance());
 }
 
 }  // namespace extensions

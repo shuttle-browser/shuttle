@@ -15,7 +15,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "components/language_detection/core/browser/language_detection_model_service.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/translate/core/common/translate_util.h"
 
 // static
 language_detection::LanguageDetectionModelService*
@@ -43,10 +42,8 @@ LanguageDetectionModelServiceFactory::LanguageDetectionModelServiceFactory()
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kOwnInstance)
               .Build()) {
-  if (translate::IsTFLiteLanguageDetectionEnabled()) {
-    DependsOn(
-        OptimizationGuideGlobalStateHolderKeyedServiceFactory::GetInstance());
-  }
+  DependsOn(
+      OptimizationGuideGlobalStateHolderKeyedServiceFactory::GetInstance());
 }
 
 LanguageDetectionModelServiceFactory::~LanguageDetectionModelServiceFactory() =
@@ -55,10 +52,6 @@ LanguageDetectionModelServiceFactory::~LanguageDetectionModelServiceFactory() =
 std::unique_ptr<KeyedService>
 LanguageDetectionModelServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
-  if (!translate::IsTFLiteLanguageDetectionEnabled()) {
-    return nullptr;
-  }
-
   // The optimization guide service must be available for the translate model
   // service to be created.
   auto* global_state_service =

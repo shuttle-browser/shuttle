@@ -20,7 +20,6 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "pdf/buildflags.h"
 #include "pdf/mojom/pdf.mojom.h"
-#include "services/screen_ai/buildflags/buildflags.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/touch_selection/selection_event_type.h"
 #include "ui/touch_selection/touch_selection_controller.h"
@@ -104,9 +103,6 @@ class PDFDocumentHelper
                         const gfx::PointF& right,
                         int32_t right_height) override;
   void SetPluginCanSave(bool can_save) override;
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  void OnSearchifyStarted() override;
-#endif
 
   // Returns whether document is loaded, at which point, the other calls to
   // document metadata such as `GetPdfBytes`, `GetPageText` can return data.
@@ -142,10 +138,6 @@ class PDFDocumentHelper
   // `PDFDocumentHelperClient::OnDocumentLoadComplete()`.
   void RegisterForDocumentLoadComplete(base::OnceClosure callback);
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // Returns whether document is searchified.
-  bool SearchifyStarted() const { return searchify_started_; }
-#endif
 
   // Queries whether the PDF document has meaningful text. If called before the
   // document is loaded, the callback will be invoked with false.
@@ -193,9 +185,6 @@ class PDFDocumentHelper
   // Callbacks to invoke when document load is completed.
   std::vector<base::OnceClosure> document_load_complete_callbacks_;
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  bool searchify_started_ = false;
-#endif
 
   mojo::Remote<mojom::PdfListener> remote_pdf_client_;
 

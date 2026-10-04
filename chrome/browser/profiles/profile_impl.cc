@@ -43,7 +43,6 @@
 #include "chrome/browser/background_fetch/background_fetch_delegate_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_impl.h"
 #include "chrome/browser/background_sync/background_sync_controller_factory.h"
-#include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_delegate.h"
@@ -78,7 +77,6 @@
 #include "chrome/browser/prefs/profile_pref_store_manager.h"
 #include "chrome/browser/privacy/privacy_metrics_service_factory.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
-#include "chrome/browser/profiles/bookmark_model_loaded_observer.h"
 #include "chrome/browser/profiles/chrome_version_service.h"
 #include "chrome/browser/profiles/pref_service_builder_utils.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
@@ -94,7 +92,6 @@
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/reduce_accept_language/reduce_accept_language_factory.h"
 #include "chrome/browser/sessions/exit_type_service.h"
-#include "chrome/browser/sharing/sharing_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/ssl/https_first_mode_settings_tracker.h"
@@ -124,7 +121,6 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "components/background_sync/background_sync_controller_impl.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "components/browser_sync/sync_to_signin_migration.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
@@ -141,7 +137,6 @@
 #include "components/language/core/common/locale_util.h"
 #include "components/metrics/metrics_service.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
-#include "components/payments/core/payment_request_metrics.h"
 #include "components/permissions/permission_manager.h"
 #include "components/policy/core/common/cloud/cloud_policy_manager.h"
 #include "components/policy/core/common/cloud/profile_cloud_policy_manager.h"
@@ -225,7 +220,6 @@
 #include "chrome/browser/password_manager/factories/password_manager_settings_service_factory.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #else
-#include "chrome/browser/accessibility/ax_main_node_annotator_controller_factory.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/ui/startup/features.h"
 #include "content/public/common/page_zoom.h"
@@ -280,7 +274,6 @@
 #include "chrome/browser/themes/theme_service_factory.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-using bookmarks::BookmarkModel;
 using content::BrowserThread;
 using content::DownloadManagerDelegate;
 
@@ -844,15 +837,9 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
 #endif
 
 #if !BUILDFLAG(IS_CHROMEOS)
-  // Listen for bookmark model load, to bootstrap the sync service.
-  // Not necessary for profiles that don't have a BookmarkModel.
-  // On CrOS sync service will be initialized after sign in.
-  BookmarkModel* model = BookmarkModelFactory::GetForBrowserContext(this);
-  if (model) {
-    // `BookmarkModelLoadedObserver` destroys itself eventually, when loading
-    // completes.
-    new BookmarkModelLoadedObserver(this, model);
-  }
+  // Bootstrap the sync service (this used to happen once the bookmark model
+  // finished loading). On CrOS sync service will be initialized after sign in.
+  SyncServiceFactory::GetForProfile(this);
 #endif
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
@@ -909,8 +896,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
 
   RecordPrefValuesAfterProfileInitialization();
 
-  SharingServiceFactory::GetForBrowserContext(this);
-
   HttpsFirstModeServiceFactory::GetForProfile(this);
 
   // The Privacy Metrics service should start alongside each profile session.
@@ -925,10 +910,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
   // changes from Google Mobile Services, as early as possible.
   PasswordManagerSettingsServiceFactory::GetForProfile(this);
 #else
-
-  if (features::IsMainNodeAnnotationsEnabled()) {
-    screen_ai::AXMainNodeAnnotatorControllerFactory::GetForProfile(this);
-  }
 #endif  // BUILDFLAG(IS_ANDROID)
 
   // The announcement notification  service might not be available for some
@@ -1170,7 +1151,6 @@ void ProfileImpl::OnLocaleReady(CreateMode create_mode) {
   CHECK(GetPrefs());
   CHECK(!IdentityManagerFactory::GetForProfileIfExists(this));
   CHECK(!SyncServiceFactory::HasSyncService(this));
-  CHECK(!BookmarkModelFactory::GetForBrowserContextIfExists(this));
   CHECK(!ProfilePasswordStoreFactory::HasStore(this));
   CHECK(!AccountPasswordStoreFactory::HasStore(this));
   CHECK(!ReadingListModelFactory::HasModel(this));
@@ -1780,14 +1760,4 @@ void ProfileImpl::UpdateAiSubscriptionTierInStorage() {
   }
 }
 
-void ProfileImpl::RecordPrefValuesAfterProfileInitialization() {
-  // Measure whether users have the "Allow sites to check if you have payment
-  // methods saved" toggle enabled or disabled in chrome://settings/payments
-  //
-  // This is only relevant for regular profiles, as guest and incognito profiles
-  // do not have access to this settings page nor will any changes to the pref
-  // in those profiles affect future browsing sessions.
-  if (IsRegularProfile()) {
-    payments::RecordCanMakePaymentPrefMetrics(*GetPrefs(), "Startup");
-  }
-}
+void ProfileImpl::RecordPrefValuesAfterProfileInitialization() {}

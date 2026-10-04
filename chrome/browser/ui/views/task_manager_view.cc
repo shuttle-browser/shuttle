@@ -60,7 +60,6 @@
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/public/cpp/shelf_item.h"
 #include "ash/public/cpp/window_properties.h"
-#include "chrome/browser/apps/icon_standardizer.h"
 #include "chrome/grit/theme_resources.h"
 #include "ui/aura/window.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -269,15 +268,7 @@ bool TaskManagerView::ExecuteWindowsCommand(int command_id) {
 
 ui::ImageModel TaskManagerView::GetWindowIcon() {
   TRACE_EVENT0("ui", "TaskManagerView::GetWindowIcon");
-#if BUILDFLAG(IS_CHROMEOS)
-  // TODO(crbug.com/40739545): Move apps::CreateStandardIconImage to some
-  // where lower in the stack.
-  return ui::ImageModel::FromImageSkia(apps::CreateStandardIconImage(
-      *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
-          IDR_ASH_SHELF_ICON_TASK_MANAGER)));
-#else
   return views::DialogDelegateView::GetWindowIcon();
-#endif
 }
 
 std::string TaskManagerView::GetWindowName() const {

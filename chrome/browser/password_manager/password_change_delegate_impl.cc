@@ -19,7 +19,6 @@
 #include "chrome/browser/password_manager/password_change/change_password_form_waiter.h"
 #include "chrome/browser/password_manager/password_change/cross_origin_navigation_observer.h"
 #include "chrome/browser/password_manager/password_change/features.h"
-#include "chrome/browser/password_manager/password_change/glic_password_change_actuator.h"
 #include "chrome/browser/password_manager/password_change/login_state_checker.h"
 #include "chrome/browser/password_manager/password_change/script_password_change_actuator.h"
 #include "chrome/browser/password_manager/password_field_classification_model_handler_factory.h"
@@ -308,16 +307,9 @@ void PasswordChangeDelegateImpl::StartPasswordChangeFlow() {
   logs_uploader_->SetLoginPasswordFormInfo(password_form_info_);
 
   if (!actuator_) {
-    if (base::FeatureList::IsEnabled(
-            password_change::features::kPasswordChangeWithGlic)) {
-      actuator_ = std::make_unique<GlicPasswordChangeActuator>(
-          password_manager::FromPasswordForm(password_form_info_), originator_,
-          profile_, change_password_url_);
-    } else {
-      actuator_ = std::make_unique<ScriptPasswordChangeActuator>(
-          change_password_url_, password_form_info_, profile_,
-          logs_uploader_.get());
-    }
+    actuator_ = std::make_unique<ScriptPasswordChangeActuator>(
+        change_password_url_, password_form_info_, profile_,
+        logs_uploader_.get());
     actuator_->AddObserver(this);
   }
 

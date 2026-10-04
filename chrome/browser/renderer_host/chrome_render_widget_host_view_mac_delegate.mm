@@ -9,8 +9,6 @@
 #include "base/auto_reset.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/actor/ui/actor_overlay_ui.h"
-#include "chrome/browser/glic/host/guest_util.h"
-#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/profiles/profile.h"
 #import "chrome/browser/renderer_host/chrome_render_widget_host_view_mac_history_swiper.h"
 #include "chrome/browser/renderer_host/chrome_render_widget_host_view_mac_history_swiping_control.h"
@@ -449,14 +447,6 @@
   // mimics the behavior of views UI.
   if (IsTopChromeWebUIURL(webContents->GetVisibleURL()) ||
       IsTopChromeUntrustedWebUIURL(webContents->GetVisibleURL())) {
-    return AcceptMouseEvents::kWhenInActiveApp;
-  }
-
-  // WebContents managed by glic should be allowed to accept mouse events while
-  // inactive, aligning with the expected behavior of native chrome dialogs.
-  // TODO(crbug.com/399119513): Consider making this a single WebContents
-  // scoped setting, allowing this behavior to be configured by feature code.
-  if (glic::GetGlicGuestWebContents(webContents) != nullptr) {
     return AcceptMouseEvents::kWhenInActiveApp;
   }
 

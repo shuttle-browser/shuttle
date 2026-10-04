@@ -1,6 +1,5 @@
 include_rules = [
   "+components/multistep_filter/core",
-  "+chrome/browser/contextual_cueing",
   "+chrome/browser/multistep_filter/core",
   "+chrome/browser/profiles",
 ]

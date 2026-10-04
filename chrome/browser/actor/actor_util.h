@@ -23,10 +23,7 @@ bool HaveActiveTaskForContents(content::WebContents* source_contents);
 
 // Returns true if the given WebContents is associated with an actor task and
 // the task is running in the background.
-// This is based not just on whether the tab for the task is active, but also on
-// the Glic instance that could be seen by the user. If the Glic instance
-// associated with the task is showing, then the task is not considered to be in
-// the background.
+// This is true whenever the tab for the task is not active.
 bool IsRunningBackgroundActorTask(content::WebContents& source_contents);
 
 // Returns true if the given RenderFrameHost belongs to a tab being controlled

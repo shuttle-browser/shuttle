@@ -13,8 +13,8 @@
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/omnibox/omnibox_pedal_implementations.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
-#include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_handler.h"
-#include "components/lens/lens_features.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_omnibox_client.h"
 #include "components/navigation_metrics/navigation_metrics.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_controller.h"
@@ -37,13 +37,9 @@
 #include "ui/base/webui/resource_path.h"
 #include "ui/base/window_open_disposition_utils.h"
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/bookmarks/bookmark_stats.h"
-#endif  // !BUILDFLAG(IS_ANDROID)
-
 namespace {
 
-class RealboxOmniboxClient final : public ContextualOmniboxClient {
+class RealboxOmniboxClient final : public SearchboxOmniboxClient {
  public:
   RealboxOmniboxClient(Profile* profile, content::WebContents* web_contents);
   ~RealboxOmniboxClient() override;
@@ -51,12 +47,11 @@ class RealboxOmniboxClient final : public ContextualOmniboxClient {
   // OmniboxClient:
   metrics::OmniboxEventProto::PageClassification GetPageClassification(
       bool is_prefetch) const override;
-  void OnBookmarkLaunched() override;
 };
 
 RealboxOmniboxClient::RealboxOmniboxClient(Profile* profile,
                                            content::WebContents* web_contents)
-    : ContextualOmniboxClient(profile, web_contents) {}
+    : SearchboxOmniboxClient(profile, web_contents) {}
 
 RealboxOmniboxClient::~RealboxOmniboxClient() = default;
 
@@ -65,34 +60,19 @@ RealboxOmniboxClient::GetPageClassification(bool is_prefetch) const {
   return metrics::OmniboxEventProto::NTP_REALBOX;
 }
 
-void RealboxOmniboxClient::OnBookmarkLaunched() {
-#if !BUILDFLAG(IS_ANDROID)
-  RecordBookmarkLaunch(BookmarkLaunchLocation::kOmnibox,
-                       profile_metrics::GetBrowserProfileType(profile_));
-#endif  // !BUILDFLAG(IS_ANDROID)
-}
-
 }  // namespace
 
 RealboxHandler::RealboxHandler(
     mojo::PendingReceiver<searchbox::mojom::PageHandler> pending_page_handler,
     mojo::PendingRemote<searchbox::mojom::Page> pending_page,
     Profile* profile,
-    content::WebContents* web_contents,
-    GetSessionHandleCallback get_session_callback)
-    : ContextualSearchboxHandler(
+    content::WebContents* web_contents)
+    : SearchboxHandler(
           std::move(pending_page_handler),
           std::move(pending_page),
           profile,
           web_contents,
-          std::make_unique<RealboxOmniboxClient>(profile, web_contents),
-          std::move(get_session_callback)) {
-  // Set the callback for getting suggest inputs from the session.
-  // The session is owned by WebUI controller and accessed via callback.
-  // It is safe to use Unretained because omnibox client is owned by `this`.
-  static_cast<ContextualOmniboxClient*>(client())->SetSuggestInputsCallback(
-      base::BindRepeating(&RealboxHandler::GetSuggestInputs,
-                          base::Unretained(this)));
+          std::make_unique<RealboxOmniboxClient>(profile, web_contents)) {
   autocomplete_controller_observation_.Observe(autocomplete_controller());
 }
 

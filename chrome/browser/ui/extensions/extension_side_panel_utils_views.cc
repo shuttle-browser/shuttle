@@ -9,8 +9,6 @@
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
-#include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
-#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/common/extension_id.h"
@@ -35,15 +33,6 @@ bool IsKeyActiveInRegistry(SidePanelRegistry* registry,
 // Defined in extension_side_panel_utils.h
 void ToggleExtensionSidePanel(BrowserWindowInterface* browser_window,
                               const ExtensionId& extension_id) {
-  auto* organizer_controller =
-      organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
-          ? OrganizerPanelStateController::From(browser_window)
-          : nullptr;
-  if (organizer_controller) {
-    organizer_controller->ToggleForExtension(extension_id);
-    return;
-  }
-
   SidePanelUI* side_panel_ui = browser_window->GetFeatures().side_panel_ui();
 
   SidePanelEntry::Key extension_key =
@@ -55,15 +44,6 @@ void ToggleExtensionSidePanel(BrowserWindowInterface* browser_window,
 void OpenGlobalExtensionSidePanel(BrowserWindowInterface& browser_window,
                                   content::WebContents* web_contents,
                                   const ExtensionId& extension_id) {
-  auto* organizer_controller =
-      organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
-          ? OrganizerPanelStateController::From(&browser_window)
-          : nullptr;
-  if (organizer_controller) {
-    organizer_controller->OpenForExtension(extension_id);
-    return;
-  }
-
   SidePanelUI* side_panel_ui = browser_window.GetFeatures().side_panel_ui();
 
   SidePanelEntry::Key extension_key =
@@ -131,15 +111,6 @@ void OpenGlobalExtensionSidePanel(BrowserWindowInterface& browser_window,
 void OpenContextualExtensionSidePanel(BrowserWindowInterface& browser_window,
                                       content::WebContents& web_contents,
                                       const ExtensionId& extension_id) {
-  auto* organizer_controller =
-      organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
-          ? OrganizerPanelStateController::From(&browser_window)
-          : nullptr;
-  if (organizer_controller) {
-    organizer_controller->OpenForExtension(extension_id);
-    return;
-  }
-
   SidePanelEntry::Key extension_key =
       SidePanelEntry::Key(SidePanelEntry::Id::kExtension, extension_id);
 
@@ -159,15 +130,6 @@ void OpenContextualExtensionSidePanel(BrowserWindowInterface& browser_window,
 // Declared in extension_side_panel_utils.h
 void CloseGlobalExtensionSidePanel(BrowserWindowInterface* browser_window,
                                    const ExtensionId& extension_id) {
-  auto* organizer_controller =
-      organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
-          ? OrganizerPanelStateController::From(browser_window)
-          : nullptr;
-  if (organizer_controller) {
-    organizer_controller->CloseForExtension(extension_id);
-    return;
-  }
-
   SidePanelUI* side_panel_ui = browser_window->GetFeatures().side_panel_ui();
   SidePanelEntry::Key extension_key =
       SidePanelEntry::Key(SidePanelEntry::Id::kExtension, extension_id);
@@ -201,15 +163,6 @@ void CloseGlobalExtensionSidePanel(BrowserWindowInterface* browser_window,
 void CloseContextualExtensionSidePanel(BrowserWindowInterface* browser_window,
                                        content::WebContents* web_contents,
                                        const ExtensionId& extension_id) {
-  auto* organizer_controller =
-      organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
-          ? OrganizerPanelStateController::From(browser_window)
-          : nullptr;
-  if (organizer_controller) {
-    organizer_controller->CloseForExtension(extension_id);
-    return;
-  }
-
   const SidePanelEntry::Key extension_key(SidePanelEntry::Id::kExtension,
                                           extension_id);
 

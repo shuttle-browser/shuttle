@@ -55,7 +55,6 @@ class ContentRulesRegistry;
 class DisplayInfoProvider;
 class ExtensionOptionsGuest;
 class ExtensionOptionsGuestDelegate;
-class FeedbackPrivateDelegate;
 class FileSystemDelegate;
 class ManagementAPIDelegate;
 class MediaPerceptionAPIDelegate;
@@ -226,9 +225,6 @@ class ExtensionsAPIClient {
 #if !BUILDFLAG(IS_ANDROID)
   // Returns a delegate for embedder-specific chrome.fileSystem behavior.
   virtual FileSystemDelegate* GetFileSystemDelegate();
-
-  // Returns a delegate for the chrome.feedbackPrivate API.
-  virtual FeedbackPrivateDelegate* GetFeedbackPrivateDelegate();
 
   virtual AutomationInternalApiDelegate* GetAutomationInternalApiDelegate();
 #endif  // !BUILDFLAG(IS_ANDROID)

@@ -17,7 +17,6 @@
 #include "base/memory/weak_ptr.h"
 #include "base/timer/elapsed_timer.h"
 #include "base/types/expected.h"
-#include "components/content_extraction/content/browser/inner_text.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/page_content_annotations/content/browser/page_settled_monitor.h"
 #include "components/page_content_annotations/content/page_content_extraction_service.h"
@@ -207,10 +206,6 @@ class AnnotatedPageContentRequest
   void OnPageContextFetched(TriggerSource trigger_source,
                             FetchPageContextResultCallbackArg result);
 
-  void OnInnerTextReceived(
-      base::TimeTicks start_time,
-      std::unique_ptr<content_extraction::InnerTextResult> result);
-
   void RecordAnnotatedPageContentMetrics(
       const optimization_guide::proto::AnnotatedPageContent& proto);
 
@@ -243,7 +238,6 @@ class AnnotatedPageContentRequest
   raw_ref<PageContentExtractionService> page_content_extraction_service_;
   raw_ptr<optimization_guide::PageContextEligibility> page_context_eligibility_;
   const blink::mojom::AIPageContentOptionsPtr options_;
-  const bool include_inner_text_;
   const bool is_pdf_text_extraction_enabled_;
   // Whether the `PageSettledMonitor` should be used to determine when to
   // trigger the extraction. If false, the legacy mechanism (waiting for

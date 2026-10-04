@@ -128,10 +128,6 @@ class PageInfoMainView : public views::View,
   // the label depending on the number of visible permissions.
   void UpdateResetButton(const PermissionInfoList& permission_info_list);
 
-  void OnMerchantTrustDataFetched(
-      const GURL& url,
-      std::optional<page_info::MerchantData> merchant_data);
-
   // Creates 'About this site' button that opens a subpage.
   [[nodiscard]] std::unique_ptr<views::View> CreateAboutThisSiteButton(
       const page_info::proto::SiteInfo& info);
@@ -140,19 +136,6 @@ class PageInfoMainView : public views::View,
   [[nodiscard]] std::unique_ptr<views::View> CreateSuspiciousSiteBannerView(
       const IdentityInfo& identity_info);
 
-  // Creates 'Merchant trust' button.
-  [[nodiscard]] std::unique_ptr<views::View> CreateMerchantTrustButton(
-      page_info::MerchantData value);
-
-  // Creates 'Merchant trust' button that opens a subpage.
-  [[nodiscard]] std::unique_ptr<RichHoverButton>
-  CreateMerchantTrustSubpageButton(page_info::MerchantData value);
-
-  // Creates 'Merchant trust' button that opens a side panel.
-  [[nodiscard]] std::unique_ptr<RichHoverButton>
-  CreateMerchantTrustLaunchButton(GURL url);
-
-  void OpenMerchantTrustSidePanel(const GURL& url);
 
   raw_ptr<PageInfo, AcrossTasksDanglingUntriaged> presenter_;
 
@@ -187,9 +170,6 @@ class PageInfoMainView : public views::View,
 
   // "About this site" button that opens a subpage.
   raw_ptr<views::View> about_this_site_section_ = nullptr;
-
-  // "Merchant trust" button that opens a subpage.
-  raw_ptr<views::View> merchant_trust_section_ = nullptr;
 
   // The view that contains `SecurityInformationView` and a certificate button.
   raw_ptr<PageInfoSecurityContentView, AcrossTasksDanglingUntriaged>

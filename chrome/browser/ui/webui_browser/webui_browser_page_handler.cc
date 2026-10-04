@@ -8,6 +8,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/notimplemented.h"
+#include "base/unguessable_token.h"
 #if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
 #endif
@@ -25,7 +26,6 @@
 #include "chrome/browser/ui/views/page_info/page_info_bubble_specification.h"
 #include "chrome/browser/ui/views/page_info/page_info_bubble_view.h"
 #include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
-#include "chrome/browser/ui/views/tab_search_bubble_host.h"
 #include "chrome/browser/ui/views/toolbar/app_menu.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_side_panel_ui.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
@@ -41,6 +41,7 @@
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/gfx/vector_icon_types.h"
+#include "ui/views/controls/menu/menu_item_view.h"
 #include "ui/views/controls/menu/menu_model_adapter.h"
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/interaction/element_tracker_views.h"
@@ -219,23 +220,13 @@ void WebUIBrowserPageHandler::GetGuestIdForTabId(
 }
 
 void WebUIBrowserPageHandler::LoadTabSearch(LoadTabSearchCallback callback) {
-  content::WebContents::CreateParams params(GetBrowser()->GetProfile());
-  tab_search_contents_ = content::WebContents::Create(params);
-  tab_search_contents_->SetColorProviderSource(GetBrowserWindow());
-  content::NavigationController::LoadURLParams url_params{
-      GURL(chrome::kChromeUITabSearchURL)};
-  tab_search_contents_->GetController().LoadURLWithParams(url_params);
-  guest_contents::GuestContentsHandle::CreateForWebContents(
-      tab_search_contents_.get());
-  auto* guest_handle = guest_contents::GuestContentsHandle::FromWebContents(
-      tab_search_contents_.get());
-  std::move(callback).Run(guest_handle->id());
+  // Tab search was removed; there is no guest contents to load.
+  std::move(callback).Run(base::UnguessableToken());
 }
 
 void WebUIBrowserPageHandler::ShowTabSearchBubble(
     const std::string& anchor_name) {
-  // TODO(webium): Call TabSearchBubbleHost::ShowTabSearchBubble().
-  NOTIMPLEMENTED();
+  // Tab search was removed.
 }
 
 void WebUIBrowserPageHandler::OpenAppMenu() {

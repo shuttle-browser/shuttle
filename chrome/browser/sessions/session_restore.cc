@@ -81,9 +81,7 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
-#include "chrome/browser/ui/webui/whats_new/whats_new_util.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/extension_metrics.h"
 #include "chrome/common/pref_names.h"
@@ -119,17 +117,11 @@
 #include "ash/shell.h"
 #include "chrome/browser/ash/boot_times_recorder/boot_times_recorder.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
-#include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "components/app_restore/window_properties.h"
 #include "ui/aura/window_occlusion_tracker.h"
 #include "ui/compositor/layer.h"
 #include "ui/wm/core/scoped_animation_disabler.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "chrome/browser/ui/webui/whats_new/whats_new_fetcher.h"
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 using content::NavigationController;
 using content::RenderWidgetHost;
@@ -374,17 +366,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       app_service->GetLastSession(base::BindOnce(
           &SessionRestoreImpl::OnGotSession, weak_factory_.GetWeakPtr(),
           /* for_apps */ true));
-
-      // Ensure the registry is ready so that when we reopen apps they work
-      // properly. If we don't wait, it's possible that apps are restored in
-      // an incoherent state.
-      web_app::WebAppProvider* provider =
-          web_app::WebAppProvider::GetForLocalAppsUnchecked(profile_);
-      DCHECK(provider);
-
-      provider->on_registry_ready().Post(
-          FROM_HERE, base::BindOnce(&SessionRestoreImpl::WebAppRegistryReady,
-                                    weak_factory_.GetWeakPtr()));
     }
 
     if (synchronous_) {
@@ -545,12 +526,9 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
         manager->SetWindowCreationInfo(
             waap::NewWindowCreationSource::kBrowserInitiated, now);
       }
-      if (startup_tabs_.empty() ||
-          (startup_tabs_.size() == 1 && whats_new::IsEnabled() &&
-           startup_tabs_[0].url == whats_new::GetWebUIStartupURL())) {
+      if (startup_tabs_.empty()) {
         // No tab browsers were created and no URLs were supplied on the command
-        // line, or only the What's New page is specified at startup and may or
-        // may not add a tab. Open the new tab page.
+        // line. Open the new tab page.
         startup_tabs_.emplace_back(chrome::ChromeUINewTabURLAsGURL());
       }
       AppendURLsToBrowser(browser, startup_tabs_);
@@ -648,14 +626,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     ProcessSessionWindowsIfReady();
   }
 
-  void WebAppRegistryReady() {
-    DCHECK_EQ(web_app_registry_ready_, false);
-    DCHECK(restore_apps_);
-    web_app_registry_ready_ = true;
-
-    ProcessSessionWindowsIfReady();
-  }
-
   // This is called by callback handlers and may trigger session restore if
   // all the required conditions have been met. It also handles the differences
   // between async/sync restores.
@@ -684,19 +654,17 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   // This helper, based on the restore_apps_ state tells us if we're ready to
   // begin restoring windows. There's two ways we are ready to process:
   // 1. we aren't restoring apps, and have browser_windows.
-  // 2. we are restoring apps, we have both browser and app windows and
-  //   WebAppRegistryReady() has been called.
+  // 2. we are restoring apps and have both browser and app windows.
   bool IsReadyToProcessSessionWindows() const {
     if (!restore_apps_) {
       return got_browser_windows_;
     }
 
     if (!restore_browser_) {
-      return got_app_windows_ && web_app_registry_ready_;
+      return got_app_windows_;
     }
 
-    return (got_app_windows_ && got_browser_windows_ &&
-            web_app_registry_ready_);
+    return got_app_windows_ && got_browser_windows_;
   }
 
   BrowserWindowInterface* ProcessSessionWindowsAndNotify(
@@ -719,31 +687,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     return result;
   }
 
-  void PruneWindows(
-      std::vector<std::unique_ptr<sessions::SessionWindow>>* windows) {
-#if BUILDFLAG(IS_CHROMEOS)
-    web_app::WebAppProvider* provider =
-        web_app::WebAppProvider::GetForWebApps(profile_);
-    if (!provider) {
-      return;
-    }
-
-    auto to_remove = std::ranges::remove_if(
-        *windows,
-        [provider](
-            const std::unique_ptr<sessions::SessionWindow>& window) -> bool {
-          // Windows that are auto-started and prevented from closing are
-          // exempted from session restore.
-          webapps::AppId app_id =
-              web_app::GetAppIdFromApplicationName(window->app_name);
-          // Checking for close prevention does not require an `AppLock`
-          // and therefore `registrar_unsafe()` is safe to use.
-          return provider->registrar_unsafe().IsPreventCloseEnabled(app_id);
-        });
-    windows->erase(to_remove.begin(), to_remove.end());
-#endif  // BUIDLFLAG(IS_CHROMEOS)
-  }
-
   // Creates browsers for `windows` and returns the last tabbed browser or the
   // one needs to be activated. If there is no tabbed browser (e.g. only PWAs
   // open in the last session, see b/40275406) returns the last app browser in
@@ -756,8 +699,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       int* tab_count,
       SessionRestore::StateCounts* counts) {
     DVLOG(1) << "ProcessSessionWindows " << windows->size();
-
-    PruneWindows(windows);
 
     if (windows->empty()) {
       // Restore was unsuccessful. The cookie/storage systems can also delete
@@ -1360,12 +1301,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     bool is_first_tab = true;
     for (const auto& startup_tab : startup_tabs) {
       const GURL& url = startup_tab.url;
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-      if (url == whats_new::GetWebUIStartupURL()) {
-        whats_new::StartWhatsNewFetch(browser);
-        continue;
-      }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
       int add_types = AddTabTypes::ADD_FORCE_INDEX;
       if (is_first_tab) {
         add_types |= AddTabTypes::ADD_ACTIVE;
@@ -1474,11 +1409,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
 
   // If true, restores the normal browser.
   bool restore_browser_ = true;
-
-  // App restores depend on web_app::WebAppProvider on_registry_ready(). This
-  // bool will track that and hold up restores until that's ready too if apps
-  // are being restored.
-  bool web_app_registry_ready_ = false;
 
   // During app restores, we make two GetLastSession calls to
   // [App]SessionService, we need to wait till they both return before

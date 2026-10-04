@@ -32,10 +32,6 @@
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
-#include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
-#include "chrome/browser/web_applications/policy/web_app_policy_manager.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/common/chrome_features.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
 #include "components/performance_manager/public/execution_context_priority/execution_context_priority.h"
@@ -43,7 +39,6 @@
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/buildflags/buildflags.h"
@@ -236,11 +231,6 @@ bool UnloadController::CanCloseContents(content::WebContents* contents) {
     ClearUnloadState(contents, true);
   }
 
-  if (!web_app::IsTabClosable(
-          browser_->tab_strip_model(),
-          browser_->tab_strip_model()->GetIndexOfWebContents(contents))) {
-    return false;
-  }
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Tabs cannot be closed when the app is locked for OnTask. Only relevant for
@@ -402,9 +392,6 @@ bool UnloadController::BeforeUnloadFired(content::WebContents* contents,
 
 BrowserWindowInterface::ClosingStatus
 UnloadController::GetBrowserClosingStatus() {
-  if (IsUnclosableApp()) {
-    return BrowserWindowInterface::ClosingStatus::kDeniedByPolicy;
-  }
 
   if (HasCompletedUnloadProcessing()) {
     return BrowserWindowInterface::ClosingStatus::kPermitted;
@@ -766,21 +753,6 @@ void UnloadController::OnCustomConfirmationClosed(
   }
 }
 
-bool UnloadController::IsUnclosableApp() const {
-  if (!web_app::AppBrowserController::IsWebApp(browser_.get())) {
-    return false;
-  }
-
-  content::WebContents* const active_web_contents =
-      browser_->tab_strip_model()->GetActiveWebContents();
-  if (!active_web_contents) {
-    return false;
-  }
-  auto* const app_controller = web_app::AppBrowserController::From(browser_);
-  return web_app::WebAppProvider::GetForWebContents(active_web_contents)
-      ->policy_manager()
-      .IsPreventCloseEnabled(app_controller->app_id());
-}
 
 UnloadController::WarnBeforeClosingResult
 UnloadController::MaybeWarnBeforeClosing(

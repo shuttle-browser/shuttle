@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import './bookmark_bar.js';
 import './content_region.js';
 import './extensions_bar.js';
 import './icons.html.js';
@@ -157,15 +156,6 @@ export class WebuiBrowserAppElement extends CrLitElement {
 
   protected onAppMenuClick_(_: Event) {
     browserProxyFactory.getInstance().handler.openAppMenu();
-  }
-
-  protected onBookmarksClick_() {
-    if (this.showingSidePanel_ && this.$.sidePanel.isShowingBookmarks()) {
-      this.closeSidePanel_();
-    } else {
-      this.showingSidePanel_ = true;
-      this.$.sidePanel.showBookmarks();
-    }
   }
 
   protected onAvatarClick_(_: Event) {

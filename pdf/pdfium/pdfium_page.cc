@@ -54,9 +54,6 @@
 #include "ui/gfx/geometry/vector2d_f.h"
 #include "ui/gfx/range/range.h"
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-#include "third_party/skia/include/core/SkBitmap.h"
-#endif
 
 using printing::ConvertUnitFloat;
 using printing::kPixelsPerInch;
@@ -477,9 +474,6 @@ FPDF_PAGE PDFiumPage::GetPage() {
     ScopedPageUnloadPreventer scoped_unload_preventer(this);
     page_.reset(FPDF_LoadPage(engine_->doc(), index_));
     if (page_) {
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-      engine_->ScheduleSearchifyIfNeeded(this);
-#endif
       if (engine_->form()) {
         FORM_OnAfterLoadPage(page(), engine_->form());
       }
@@ -943,36 +937,6 @@ std::vector<int> PDFiumPage::GetImageObjectIndices() {
       images_, [](const Image& image) { return image.page_object_index; });
 }
 
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-bool PDFiumPage::HasImages() {
-  CalculateImages();
-  return images_.size();
-}
-
-SkBitmap PDFiumPage::GetImageForOcr(int page_object_index,
-                                    int max_image_dimension) {
-  FPDF_PAGE page = GetPage();
-  FPDF_PAGEOBJECT page_object = FPDFPage_GetObject(page, page_object_index);
-  return ::chrome_pdf::GetImageForOcr(engine_->doc(), page, page_object,
-                                      max_image_dimension);
-}
-
-void PDFiumPage::OnSearchifyGotOcrResult(bool added_text) {
-  CHECK(!has_searchify_added_text_.has_value());
-  has_searchify_added_text_ = added_text;
-  if (added_text) {
-    engine_->OnHasSearchifyText();
-  }
-}
-
-bool PDFiumPage::IsPageSearchified() const {
-  return has_searchify_added_text_.has_value();
-}
-
-bool PDFiumPage::CanReloadTextPage() const {
-  return preventing_text_page_unload_count_ == 0;
-}
-#endif  // BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
 
 std::vector<AccessibilityHighlightInfo> PDFiumPage::GetHighlightInfo() {
   std::vector<AccessibilityHighlightInfo> highlight_info;
@@ -1298,11 +1262,6 @@ AccessibilityTextRunInfo PDFiumPage::CalculateTextRunInfoAt(
     uint32_t chars_count) {
   AccessibilityTextRunInfo info;
   info.start_index = start_char_index;
-#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
-  // This assumes all text on the page are either from the PDF itself, or from
-  // Searchify.
-  info.is_searchified = has_searchify_added_text_.value_or(false);
-#endif
 
   FPDF_TEXTPAGE text_page = GetTextPage();
   uint32_t actual_start_char_index = GetFirstNonUnicodeWhiteSpaceCharIndex(

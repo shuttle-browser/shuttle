@@ -9,7 +9,6 @@
 #include <string>
 #include <utility>
 
-#include "ash/constants/web_app_id_constants.h"
 #include "base/check.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -29,13 +28,9 @@
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_params.h"
 #include "chrome/browser/webauthn/change_pin_controller.h"
 #include "chrome/browser/webauthn/enclave_manager.h"
 #include "chrome/common/channel_info.h"
@@ -307,7 +302,6 @@ PasswordsPrivateDelegateImpl::PasswordsPrivateDelegateImpl(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     password_manager::PasswordSenderService* password_sender_service,
     syncer::SyncService* sync_service,
-    TrustSafetySentimentService* trust_safety_sentiment_service,
     affiliations::AffiliationService* affiliation_service,
     scoped_refptr<password_manager::PasswordStoreInterface>
         profile_password_store,
@@ -316,22 +310,18 @@ PasswordsPrivateDelegateImpl::PasswordsPrivateDelegateImpl(
     webauthn::PasskeyModel* passkey_model,
     password_manager::BulkLeakCheckServiceInterface* bulk_leak_check_service,
     PasswordsPrivateEventRouter* event_router,
-    web_app::WebAppInstallManager* web_app_install_manager,
     EnclaveManagerInterface* enclave_manager,
-    const DeviceAuthenticatorFactory& device_authenticator_factory,
-    const base::RepeatingClosure& maybe_show_profile_switch_iph_cb)
+    const DeviceAuthenticatorFactory& device_authenticator_factory)
     : prefs_(prefs),
       identity_manager_(identity_manager),
       url_loader_factory_(std::move(url_loader_factory)),
       password_sender_service_(password_sender_service),
       sync_service_(sync_service),
-      trust_safety_sentiment_service_(trust_safety_sentiment_service),
       profile_password_store_(profile_password_store),
       account_password_store_(account_password_store),
       event_router_(event_router),
       enclave_manager_(enclave_manager),
       device_authenticator_factory_(device_authenticator_factory),
-      maybe_show_profile_switch_iph_cb_(maybe_show_profile_switch_iph_cb),
       saved_passwords_presenter_(affiliation_service,
                                  profile_password_store,
                                  account_password_store,
@@ -365,15 +355,10 @@ PasswordsPrivateDelegateImpl::PasswordsPrivateDelegateImpl(
   if (sync_service_) {
     sync_service_observation_.Observe(sync_service_);
   }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  install_manager_observation_.Observe(web_app_install_manager);
-#endif
 }
 
 PasswordsPrivateDelegateImpl::~PasswordsPrivateDelegateImpl() {
   saved_passwords_presenter_.RemoveObserver(this);
-  install_manager_observation_.Reset();
 #if !BUILDFLAG(IS_WIN)
   if (device_authenticator_) {
     device_authenticator_->Cancel();
@@ -857,10 +842,6 @@ void PasswordsPrivateDelegateImpl::StartPasswordCheck(
   password_check_delegate_.StartPasswordCheck(
       password_manager::LeakDetectionInitiator::kBulkSyncedPasswordsCheck,
       std::move(callback));
-  if (!trust_safety_sentiment_service_) {
-    return;
-  }
-  trust_safety_sentiment_service_->RanPasswordCheck();
 }
 
 std::optional<password_manager::CredentialUIEntry>
@@ -896,15 +877,7 @@ void PasswordsPrivateDelegateImpl::SwitchBiometricAuthBeforeFillingState(
 
 void PasswordsPrivateDelegateImpl::ShowAddShortcutDialog(
     content::WebContents* web_contents) {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents);
-  DCHECK(browser);
-  web_app::CreateWebAppFromCurrentWebContents(
-      browser, web_app::WebAppInstallFlow::kInstallSite);
-  base::UmaHistogramEnumeration(
-      "PasswordManager.ShortcutMetric",
-      password_manager::metrics_util::PasswordManagerShortcutMetric::
-          kAddShortcutClicked);
+  // Web app shortcuts are removed; there is nothing to show.
 }
 
 void PasswordsPrivateDelegateImpl::ShowLastExportedFileInShell(
@@ -1249,25 +1222,6 @@ void PasswordsPrivateDelegateImpl::OnErrorStateChanged(
     event_router_->OnPasswordManagerActionableErrorChanged(
         ToActionableApiError(GetActionableError()));
   }
-}
-
-void PasswordsPrivateDelegateImpl::OnWebAppInstalledWithOsHooks(
-    const webapps::AppId& app_id) {
-  if (app_id != ash::kPasswordManagerAppId) {
-    return;
-  }
-  // Post task with delay because new browser window for an app isn't created
-  // yet.
-  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-      FROM_HERE, maybe_show_profile_switch_iph_cb_, base::Seconds(1));
-  base::UmaHistogramEnumeration(
-      "PasswordManager.ShortcutMetric",
-      password_manager::metrics_util::PasswordManagerShortcutMetric::
-          kShortcutInstalled);
-}
-
-void PasswordsPrivateDelegateImpl::OnWebAppInstallManagerDestroyed() {
-  install_manager_observation_.Reset();
 }
 
 void PasswordsPrivateDelegateImpl::EmitHistogramsForCredentialAccess(

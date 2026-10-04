@@ -42,9 +42,6 @@
 #include "base/trace_event/memory_dump_manager.h"
 #include "build/android_buildflags.h"
 #include "build/build_config.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
-#include "components/lens/lens_features.h"
-#include "components/omnibox/browser/actions/contextual_search_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
 #include "components/omnibox/browser/actions/omnibox_pedal_provider.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
@@ -55,17 +52,13 @@
 #include "components/omnibox/browser/autocomplete_provider.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
 #include "components/omnibox/browser/autocomplete_scoring_signals_annotator.h"
-#include "components/omnibox/browser/bookmark_provider.h"
-#include "components/omnibox/browser/bookmark_scoring_signals_annotator.h"
 #include "components/omnibox/browser/builtin_provider.h"
 #include "components/omnibox/browser/calculator_provider.h"
 #include "components/omnibox/browser/clipboard_provider.h"
-#include "components/omnibox/browser/contextual_search_provider.h"
 #include "components/omnibox/browser/cross_device_tab_provider.h"
 #include "components/omnibox/browser/document_provider.h"
 #include "components/omnibox/browser/enterprise_search_aggregator_provider.h"
 #include "components/omnibox/browser/featured_search_provider.h"
-#include "components/omnibox/browser/history_embeddings_provider.h"
 #include "components/omnibox/browser/history_fuzzy_provider.h"
 #include "components/omnibox/browser/history_quick_provider.h"
 #include "components/omnibox/browser/history_scoring_signals_annotator.h"
@@ -587,9 +580,6 @@ AutocompleteController::AutocompleteController(
         std::make_unique<HistoryScoringSignalsAnnotator>(
             provider_client_.get()));
     url_scoring_signals_annotators_.push_back(
-        std::make_unique<BookmarkScoringSignalsAnnotator>(
-            provider_client_.get()));
-    url_scoring_signals_annotators_.push_back(
         std::make_unique<UrlScoringSignalsAnnotator>());
     url_scoring_signals_annotators_.push_back(
         std::make_unique<SearchScoringSignalsAnnotator>());
@@ -1088,26 +1078,6 @@ std::u16string AutocompleteController::GetSuggestionGroupHeaderText(
     auto header_text =
         result().GetHeaderForSuggestionGroup(suggestion_group_id.value());
 
-    bool has_toolbelt_lens_action =
-        contextual_search_provider() &&
-        contextual_search_provider()->HasToolbeltLensAction();
-    const auto* client = autocomplete_provider_client();
-    bool has_contextual_chip =
-        (client->IsOmniboxNextLensSearchChipEnabled() ||
-         client->IsAskGShowChipEnabled()) &&
-        ContextualSearchProvider::LensEntrypointEligible(input_, client);
-
-    if (suggestion_group_id.value() == omnibox::GROUP_CONTEXTUAL_SEARCH &&
-        (has_toolbelt_lens_action || has_contextual_chip)) {
-      if (base::FeatureList::IsEnabled(omnibox::kHideContextualGroupHeaders) ||
-          has_contextual_chip) {
-        return u"";
-      }
-      return header_text.empty()
-                 ? l10n_util::GetStringUTF16(
-                       IDS_CONTEXTUAL_SEARCH_OPEN_LENS_ACTION_LABEL)
-                 : header_text;
-    }
     return force_hide_row_header ? u"" : header_text;
   }
   return u"";
@@ -1117,14 +1087,6 @@ bool AutocompleteController::ShouldRunProvider(
     AutocompleteProvider* provider) const {
   if (!provider) {
     return false;
-  }
-
-  // If zero prefix suggest is disabled for the Lens contextual searchbox, only
-  // run the typed search provider. Else, will use the IsLensSearchbox check
-  // below.
-  if (input_.current_page_classification() == OEP::CONTEXTUAL_SEARCHBOX &&
-      !lens::features::ShowContextualSearchboxZeroPrefixSuggest()) {
-    return provider->type() == AutocompleteProvider::TYPE_SEARCH;
   }
 
   // Only a subset of providers are run for the Lens searchboxes.
@@ -1145,14 +1107,6 @@ bool AutocompleteController::ShouldRunProvider(
     return false;
   }
 #endif
-
-  // For contextual realbox queries, we only want to run a subset of providers
-  // to filter out irrelevant suggestions (like history suggestions).
-  if (input_.current_page_classification() == OEP::NTP_REALBOX &&
-      input_.lens_overlay_suggest_inputs().has_value()) {
-    return provider->type() == AutocompleteProvider::TYPE_ZERO_SUGGEST ||
-           provider->type() == AutocompleteProvider::TYPE_SEARCH;
-  }
 
 #if BUILDFLAG(IS_ANDROID)
   if (omnibox::IsAndroidHubOrTabSearch(input_.current_page_classification())) {
@@ -1277,10 +1231,9 @@ bool AutocompleteController::ShouldRunProvider(
 
     case AutocompleteProvider::TYPE_OPEN_TAB:
       return config_.unscoped_open_tab_suggestions;
-#if !BUILDFLAG(IS_IOS)
     case AutocompleteProvider::TYPE_HISTORY_EMBEDDINGS:
-      return history_embeddings::GetFeatureParameters().omnibox_unscoped;
-#endif
+      // History embeddings were removed from this fork.
+      return false;
     default:
       break;
   }
@@ -1352,12 +1305,6 @@ void AutocompleteController::InitializeAsyncProviders(int provider_types) {
     providers_.push_back(base::MakeRefCounted<CalculatorProvider>(
         provider_client_.get(), this, search_provider_));
   }
-#if !BUILDFLAG(IS_IOS)
-  if (provider_types & AutocompleteProvider::TYPE_HISTORY_EMBEDDINGS) {
-    providers_.push_back(base::MakeRefCounted<HistoryEmbeddingsProvider>(
-        provider_client_.get(), this));
-  }
-#endif
   if (provider_types & AutocompleteProvider::TYPE_UNSCOPED_EXTENSION) {
     auto unscoped_extension_provider =
         base::MakeRefCounted<UnscopedExtensionProvider>(provider_client_.get(),
@@ -1365,22 +1312,9 @@ void AutocompleteController::InitializeAsyncProviders(int provider_types) {
     unscoped_extension_provider_ = unscoped_extension_provider.get();
     providers_.push_back(std::move(unscoped_extension_provider));
   }
-  if (provider_types & AutocompleteProvider::TYPE_CONTEXTUAL_SEARCH) {
-    auto contextual_search_provider =
-        base::MakeRefCounted<ContextualSearchProvider>(provider_client_.get(),
-                                                       this);
-    contextual_search_provider_ = contextual_search_provider.get();
-    providers_.push_back(std::move(contextual_search_provider));
-  }
 }
 
 void AutocompleteController::InitializeSyncProviders(int provider_types) {
-  if (provider_types & AutocompleteProvider::TYPE_BOOKMARK) {
-    auto bookmark_provider =
-        base::MakeRefCounted<BookmarkProvider>(provider_client_.get());
-    bookmark_provider_ = bookmark_provider.get();
-    providers_.push_back(std::move(bookmark_provider));
-  }
   if (provider_types & AutocompleteProvider::TYPE_BUILTIN) {
     providers_.push_back(
         base::MakeRefCounted<BuiltinProvider>(provider_client_.get()));
@@ -1786,40 +1720,6 @@ void AutocompleteController::AttachActions() {
     return;
   }
 
-#if !BUILDFLAG(IS_IOS)
-  if (omnibox_feature_configs::ContextualSearch::Get()
-          .contextual_zero_suggest_lens_fulfillment &&
-      input_.IsZeroSuggest()) {
-    internal_result_.AttachContextualSearchFulfillmentActionToMatches();
-
-    // This should intentionally override the fulfillment action if present.
-    if (omnibox_feature_configs::ContextualSearch::Get()
-            .suggestions_fulfilled_by_lens_supported) {
-      internal_result_.AttachContextualSearchOpenLensActionToMatches();
-    }
-
-  } else if (input_.in_keyword_mode()) {
-    AutocompleteInput keyword_input = input_;
-    const TemplateURL* keyword_turl =
-        AutocompleteInput::GetSubstitutingTemplateURLForInput(
-            template_url_service_, &keyword_input);
-    // Attach the contextual search fulfillment actions in the @page keyword
-    // mode.
-    if (keyword_turl &&
-        keyword_turl->starter_pack_id() ==
-            template_url_starter_pack_data::StarterPackId::kPage) {
-      internal_result_.AttachContextualSearchFulfillmentActionToMatches();
-
-      // This should intentionally override the fulfillment action if present.
-      if (omnibox_feature_configs::ContextualSearch::Get()
-              .suggestions_fulfilled_by_lens_supported) {
-        internal_result_.AttachContextualSearchOpenLensActionToMatches();
-      }
-      return;
-    }
-  }
-#endif  // !BUILDFLAG(IS_IOS)
-
   // TabMatcher should run for ZPS for the Hub since open tab suggestions are
   // shown there.
   if (!input_.IsZeroSuggest() ||
@@ -2207,20 +2107,6 @@ void AutocompleteController::UpdateSearchboxStats(AutocompleteResult* result) {
                 match->GetTemplateURL(template_url_service_),
                 *search_terms_args)
                 .spec());
-      }
-    }
-
-    // If the match's takeover action is contextual search fulfillment, update
-    // it's destination url with the updated search_terms_args.
-    if (match->takeover_action) {
-      auto* contextual_takover_action =
-          ContextualSearchFulfillmentAction::FromAction(
-              match->takeover_action.get());
-      if (contextual_takover_action) {
-        contextual_takover_action->set_fulfillment_url(
-            ComputeURLFromSearchTermsArgs(
-                match->GetTemplateURL(template_url_service_),
-                *match->search_terms_args));
       }
     }
   }

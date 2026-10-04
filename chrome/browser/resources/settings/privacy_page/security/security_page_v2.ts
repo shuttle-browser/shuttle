@@ -25,8 +25,7 @@ import type {SecureDnsSetting, SecurityPageBrowserProxy} from '/shared/settings/
 import {SecureDnsMode, SecureDnsUiManagementMode, SecurityPageBrowserProxyImpl} from '/shared/settings/security_page/security_page_browser_proxy.js';
 import type {CrButtonElement} from 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
-import {assert, assertNotReachedCase} from 'chrome://resources/js/assert.js';
-import {EventTracker} from 'chrome://resources/js/event_tracker.js';
+import {assert} from 'chrome://resources/js/assert.js';
 import {focusWithoutInk} from 'chrome://resources/js/focus_without_ink.js';
 import {OpenWindowProxyImpl} from 'chrome://resources/js/open_window_proxy.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
@@ -42,11 +41,8 @@ import type {Route} from '../../router.js';
 import {RouteObserverMixin, Router} from '../../router.js';
 import {SettingsViewMixin} from '../../settings_page/settings_view_mixin.js';
 import {JavascriptOptimizerSetting} from '../../site_settings/constants.js';
-import type {HatsBrowserProxy} from '../hats_browser_proxy.js';
-import {HatsBrowserProxyImpl, SecurityPageV2Interaction} from '../hats_browser_proxy.js';
 
 import {SafeBrowsingSetting} from './safe_browsing_types.js';
-import {SecureDnsV2ResolverType} from './secure_dns_v2.js';
 import type {SettingsSecureDnsV2Element} from './secure_dns_v2.js';
 import type {SecurityPageFeatureRowElement} from './security_page_feature_row.js';
 import {getTemplate} from './security_page_v2.html.js';
@@ -295,17 +291,8 @@ export class SettingsSecurityPageV2Element extends
   declare private showDisableSafebrowsingDialog_: boolean;
   declare private showNewBadge_: boolean;
 
-  private lastFocusTime_: number|undefined;
-  private totalTimeInFocus_: number = 0;
-  private interactions_: Set<SecurityPageV2Interaction> = new Set();
-  private safeBrowsingStateOnOpen_: SafeBrowsingSetting;
-  private securitySettingsBundleStateOnOpen_: SecuritySettingsBundleSetting;
-  private isRouteSecurity_: boolean = true;
-  private eventTracker_: EventTracker = new EventTracker();
   private browserProxy_: SecurityPageBrowserProxy =
       SecurityPageBrowserProxyImpl.getInstance();
-  private hatsBrowserProxy_: HatsBrowserProxy =
-      HatsBrowserProxyImpl.getInstance();
   private metricsBrowserProxy_: MetricsBrowserProxy =
       MetricsBrowserProxyImpl.getInstance();
 
@@ -320,36 +307,13 @@ export class SettingsSecurityPageV2Element extends
         (setting: SecureDnsSetting) => this.onSecureDnsPrefsChanged_(setting));
   }
 
-  override ready() {
-    super.ready();
-
-    // Initialize the last focus time on page load.
-    this.lastFocusTime_ = this.hatsBrowserProxy_.now();
-  }
-
   /**
    * RouteObserverMixin
    */
   override currentRouteChanged(route: Route) {
     if (route !== routes.SECURITY) {
-      this.onBeforeUnload_();
-      this.isRouteSecurity_ = false;
-      this.eventTracker_.removeAll();
       return;
     }
-    this.eventTracker_.add(window, 'focus', this.onFocus_.bind(this));
-    this.eventTracker_.add(window, 'blur', this.onBlur_.bind(this));
-    this.eventTracker_.add(
-        window, 'beforeunload', this.onBeforeUnload_.bind(this));
-
-    // When the route changes to the security page, reset the state.
-    // This is done here instead of in ready() because the user may navigate to
-    // another settings page in the same tab and then come back to this
-    // security page. These would be treated as two different sessions.
-    this.isRouteSecurity_ = true;
-    this.interactions_.clear();
-    this.totalTimeInFocus_ = 0;
-    this.lastFocusTime_ = this.hatsBrowserProxy_.now();
 
     const queryParams = Router.getInstance().getQueryParameters();
     const highlight = queryParams.get('highlight');
@@ -373,69 +337,14 @@ export class SettingsSecurityPageV2Element extends
       // subsequent visits.
       this.setPrefValue('https_first_mode_bundle_toast_queued', true);
 
-      this.safeBrowsingStateOnOpen_ =
-          this.getPref<SafeBrowsingSetting>('generated.safe_browsing').value;
       this.currentSafeBrowsingSetting_ =
           this.getPref<SafeBrowsingSetting>('generated.safe_browsing').value;
-      this.securitySettingsBundleStateOnOpen_ =
-          this.getPref<SecuritySettingsBundleSetting>(
-                  'generated.security_settings_bundle')
-              .value;
     });
-  }
-
-  /** Updates the total time in focus when the page loses focus. */
-  private onBlur_() {
-    // If the user is not on the security page, we will not add to the total
-    // time in focus.
-    if (!this.isRouteSecurity_) {
-      return;
-    }
-    // Add the amount of time a user spent on the page for the
-    // current session to the total time in focus.
-    const timeSinceLastFocus =
-        this.hatsBrowserProxy_.now() - (this.lastFocusTime_ as number);
-    this.totalTimeInFocus_ += timeSinceLastFocus;
-
-    // Set the lastFocusTime_ variable to undefined. This indicates that the
-    // totalTimeInFocus_ variable is up to date.
-    this.lastFocusTime_ = undefined;
-  }
-
-  /**
-   * Updates the timestamp when the user returns to this security page from
-   * another tab.
-   */
-  private onFocus_() {
-    this.lastFocusTime_ = this.hatsBrowserProxy_.now();
   }
 
   private onSecureDnsPrefsChanged_(setting: SecureDnsSetting) {
     this.isSecureDnsManagedByProxy_ =
         setting.managementMode !== SecureDnsUiManagementMode.NO_OVERRIDE;
-  }
-
-  /**
-   * Trigger the securityPageHatsRequest api to potentially start the survey.
-   */
-  private onBeforeUnload_() {
-    if (!this.isRouteSecurity_) {
-      return;
-    }
-    if (this.safeBrowsingStateOnOpen_ === undefined ||
-        this.securitySettingsBundleStateOnOpen_ === undefined) {
-      return;
-    }
-    // Calculate the total time spent on the page.
-    if (this.lastFocusTime_ !== undefined) {
-      this.totalTimeInFocus_ +=
-          this.hatsBrowserProxy_.now() - this.lastFocusTime_;
-    }
-
-    const interactions = Array.from(this.interactions_);
-    this.hatsBrowserProxy_.securityPageV2HatsRequest(
-        interactions, this.safeBrowsingStateOnOpen_, this.totalTimeInFocus_,
-        this.securitySettingsBundleStateOnOpen_);
   }
 
   /**
@@ -445,8 +354,6 @@ export class SettingsSecurityPageV2Element extends
     // Contains the new state of the row (true if expanded, false if collapsed).
     const isExpanded = e.detail.value;
     if (isExpanded) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.SAFE_BROWSING_ROW_EXPANDED);
       this.metricsBrowserProxy_.recordAction(
           'SafeBrowsing.Settings.SafeBrowsingRowExpanded');
     }
@@ -462,8 +369,6 @@ export class SettingsSecurityPageV2Element extends
   }
 
   private onSafeBrowsingToggleChange_() {
-    this.interactions_.add(
-        SecurityPageV2Interaction.SAFE_BROWSING_TOGGLE_CLICK);
 
     if (!this.isSafeBrowsingEnabled_) {
       this.metricsBrowserProxy_.recordAction(
@@ -480,14 +385,10 @@ export class SettingsSecurityPageV2Element extends
     const selected =
         Number.parseInt(this.$.safeBrowsingRadioGroup.selected || '', 10);
     if (selected === SafeBrowsingSetting.STANDARD) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.STANDARD_SAFE_BROWSING_RADIO_BUTTON_CLICK);
       this.metricsBrowserProxy_.recordAction(
           'SafeBrowsing.Settings.StandardProtectionClicked');
       this.currentSafeBrowsingSetting_ = SafeBrowsingSetting.STANDARD;
     } else if (selected === SafeBrowsingSetting.ENHANCED) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.ENHANCED_SAFE_BROWSING_RADIO_BUTTON_CLICK);
       this.metricsBrowserProxy_.recordAction(
           'SafeBrowsing.Settings.EnhancedProtectionClicked');
       this.currentSafeBrowsingSetting_ = SafeBrowsingSetting.ENHANCED;
@@ -529,76 +430,6 @@ export class SettingsSecurityPageV2Element extends
     focusWithoutInk(this.$.safeBrowsingRow);
   }
 
-  private onSecureDnsRowExpandedChange_(e: CustomEvent<{value: boolean}>) {
-    // Contains the new state of the row (true if expanded, false if collapsed).
-    const isExpanded = e.detail.value;
-    if (isExpanded) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.SECURE_DNS_V2_ROW_EXPANDED);
-    }
-  }
-
-  private onSecureDnsToggleChange_() {
-    this.interactions_.add(
-        SecurityPageV2Interaction.SECURE_DNS_V2_TOGGLE_CLICK);
-  }
-
-  private onSecureDnsToggleClick_() {
-    this.interactions_.add(SecurityPageV2Interaction.SECURE_DNS_TOGGLE_CLICK);
-  }
-
-  /**
-   * Handles changes of the radio button selection inside the secure DNS
-   * settings row.
-   */
-  private onSecureDnsRadioGroupChange_(e: CustomEvent<{value: string}>) {
-    const selected = e.detail.value as SecureDnsV2ResolverType;
-
-    switch (selected) {
-      case SecureDnsV2ResolverType.AUTOMATIC:
-        this.interactions_.add(SecurityPageV2Interaction
-                                   .SECURE_DNS_V2_AUTOMATIC_RADIO_BUTTON_CLICK);
-        break;
-      case SecureDnsV2ResolverType.FALLBACK:
-        this.interactions_.add(SecurityPageV2Interaction
-                                   .SECURE_DNS_V2_FALLBACK_RADIO_BUTTON_CLICK);
-        break;
-      case SecureDnsV2ResolverType.CUSTOM:
-        this.interactions_.add(
-            SecurityPageV2Interaction.SECURE_DNS_V2_CUSTOM_RADIO_BUTTON_CLICK);
-        break;
-      case SecureDnsV2ResolverType.BUILT_IN:
-        // There is technically no button for the built-in resolver type.
-        break;
-      default:
-        assertNotReachedCase(
-            selected,
-            'Received unknown secure DNS radio button selection: ' + selected);
-    }
-  }
-
-  private onHttpsFirstModeToggleChange_() {
-    this.interactions_.add(
-        SecurityPageV2Interaction.HTTPS_FIRST_MODE_TOGGLE_CLICK);
-  }
-
-  private onHttpsFirstModeRadioGroupChange_() {
-    const selected =
-        Number.parseInt(this.$.httpsFirstModeRadioGroup.selected || '', 10);
-    if (selected === HttpsFirstModeSetting.ENABLED_BALANCED) {
-      this.interactions_.add(SecurityPageV2Interaction
-                                 .BALANCED_HTTPS_FIRST_MODE_RADIO_BUTTON_CLICK);
-    } else if (selected === HttpsFirstModeSetting.ENABLED_FULL) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.STRICT_HTTPS_FIRST_MODE_RADIO_BUTTON_CLICK);
-    }
-  }
-
-  private onPasswordsLeakToggleChange_() {
-    this.interactions_.add(
-        SecurityPageV2Interaction.PASSWORD_LEAK_DETECTION_TOGGLE_CLICK);
-  }
-
   private onManageCertificatesClick_() {
     this.metricsBrowserProxy_.recordSettingsPageHistogram(
         PrivacyElementInteractions.MANAGE_CERTIFICATES);
@@ -628,16 +459,6 @@ export class SettingsSecurityPageV2Element extends
   }
 
   private onSecurityBundleChanged_() {
-    const selected =
-        Number.parseInt(this.$.bundlesRadioGroup.selected || '', 10);
-    if (selected === SecuritySettingsBundleSetting.STANDARD) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.STANDARD_BUNDLE_RADIO_BUTTON_CLICK);
-    } else if (selected === SecuritySettingsBundleSetting.ENHANCED) {
-      this.interactions_.add(
-          SecurityPageV2Interaction.ENHANCED_BUNDLE_RADIO_BUTTON_CLICK);
-    }
-
     this.resetBundleToDefaults_();
   }
 

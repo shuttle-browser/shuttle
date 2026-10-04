@@ -13,7 +13,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
-#include "chrome/browser/permissions/prediction_service/passage_embedder_delegate.h"
 #include "chrome/browser/permissions/prediction_service/prediction_model_handler_provider.h"
 #include "chrome/browser/permissions/prediction_service/prediction_model_handler_provider_factory.h"
 #include "chrome/browser/permissions/prediction_service/prediction_service_factory.h"
@@ -23,7 +22,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/passage_embeddings/core/passage_embeddings_types.h"
 #include "components/permissions/features.h"
 #include "components/permissions/permission_actions_history.h"
 #include "components/permissions/permission_request.h"
@@ -31,7 +29,6 @@
 #include "components/permissions/permission_uma_util.h"
 #include "components/permissions/permission_util.h"
 #include "components/permissions/prediction_service/permission_ui_selector.h"
-#include "components/permissions/prediction_service/permissions_aiv4_handler.h"
 #include "components/permissions/prediction_service/prediction_common.h"
 #include "components/permissions/prediction_service/prediction_model_handler.h"
 #include "components/permissions/prediction_service/prediction_service.h"
@@ -40,19 +37,11 @@
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/unified_consent/pref_names.h"
-#include "components/viz/common/frame_sinks/copy_output_result.h"
-#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
-#include "mojo/public/cpp/bindings/callback_helpers.h"
 
 namespace {
-using ComputePassagesEmbeddingsCallback =
-    ::passage_embeddings::Embedder::ComputePassagesEmbeddingsCallback;
-using ::permissions::LanguageDetectionObserver;
-using ::permissions::PassageEmbedderDelegate;
 using ::permissions::PermissionRequest;
 using ::permissions::PermissionRequestRelevance;
-using ::permissions::PermissionsAiv4Handler;
 using ::permissions::PermissionUiSelector;
 using ::permissions::PermissionUmaUtil;
 using ::permissions::PredictionModelHandlerProvider;
@@ -74,14 +63,6 @@ constexpr base::TimeDelta kPermissionActionCutoffAge = base::Days(28);
 // Only send requests if there are at least 4 action in the user's history for
 // the particular permission type.
 constexpr size_t kRequestedPermissionMinimumHistoricalActions = 4;
-
-// The minimum length of a page's content. It is needed to avoid analyzing pages
-// with too short text.
-constexpr size_t kPageContentMinLength = 10;
-
-// After this amount of time we will give up waiting for the readback. Our
-// global timeout will not allow for further delays here, anyways.
-const base::TimeDelta kSnapshotReadbackTimeout = base::Seconds(1);
 
 std::optional<
     permissions::PermissionPrediction_Likelihood_DiscretizedLikelihood>
@@ -141,27 +122,8 @@ PermissionUiSelector::GeolocationAccuracy GetPredictedGeolocationAccuracy(
 
 }  // namespace
 
-inline PermissionsAiUiSelector::ModelExecutionData::ModelExecutionData() =
-    default;
-inline PermissionsAiUiSelector::ModelExecutionData::ModelExecutionData(
-    PermissionsAiUiSelector::ModelExecutionData&&) = default;
-inline PermissionsAiUiSelector::ModelExecutionData::~ModelExecutionData() =
-    default;
-
-PermissionsAiUiSelector::ModelExecutionData::ModelExecutionData(
-    permissions::PredictionRequestFeatures features,
-    PredictionRequestMetadata request_metadata,
-    permissions::PredictionModelType model_type)
-    : features(std::move(features)),
-      request_metadata(std::move(request_metadata)),
-      model_type(model_type) {}
-
 PermissionsAiUiSelector::PermissionsAiUiSelector(Profile* profile)
-    : profile_(profile),
-      passage_embedder_delegate_(
-          std::make_unique<PassageEmbedderDelegate>(profile_)),
-      language_detection_observer_(
-          std::make_unique<LanguageDetectionObserver>()) {
+    : profile_(profile) {
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kPredictionServiceMockLikelihood)) {
     auto mock_likelihood = ParsePredictionServiceMockLikelihood(
@@ -222,77 +184,6 @@ void PermissionsAiUiSelector::InquireCpssV1OnDeviceModelIfAvailable(
   FinishRequest(Decision::UseNormalUiAndShowNoWarning());
 }
 
-void PermissionsAiUiSelector::InquireOnDeviceAiv4AndServerModelIfAvailable(
-    content::WebContents* web_contents,
-    permissions::PredictionRequestFeatures features,
-    PredictionRequestMetadata request_metadata) {
-  VLOG(1) << "[PermissionsAIv4] On device AI prediction requested";
-
-  last_permission_ai_relevance_model_ =
-      permissions::PermissionAiRelevanceModel::kAIv4;
-
-  auto language_detected_cbk = base::BindOnce(
-      &PermissionsAiUiSelector::GetInnerText, weak_ptr_factory_.GetWeakPtr(),
-      web_contents->GetWeakPtr(),
-      ModelExecutionData{features, request_metadata,
-                         PredictionModelType::kOnDeviceAiV4Model},
-      base::BindOnce(&PermissionsAiUiSelector::TakeSnapshot,
-                     weak_ptr_factory_.GetWeakPtr(),
-                     web_contents->GetWeakPtr()));
-
-  language_detection_observer_->Init(
-      web_contents, std::move(language_detected_cbk),
-      /*on_fallback=*/
-      base::BindOnce(&PermissionsAiUiSelector::InquireServerModel,
-                     weak_ptr_factory_.GetWeakPtr(), std::move(features),
-                     std::move(request_metadata)));
-}
-
-void PermissionsAiUiSelector::OnSnapshotTakenForOnDeviceModel(
-    base::TimeTicks snapshot_inquire_start_time,
-    ModelExecutionData model_data,
-    const SkBitmap* snapshot) {
-  VLOG(1) << "[PermissionsAI] OnSnapshotTakenForOnDeviceModel";
-  PermissionUmaUtil::RecordSnapshotTakenTimeAndSuccessForAivX(
-      model_data.model_type, snapshot_inquire_start_time,
-      /*success=*/snapshot != nullptr);
-  if (snapshot == nullptr || snapshot->drawsNothing()) {
-    VLOG(1) << "[PermissionsAI] The page's snapshot is empty; skipping AivX "
-               "on-device model execution.";
-    return InquireServerModel(model_data.features,
-                              std::move(model_data.request_metadata));
-  }
-  model_data.snapshot = std::move(*snapshot);
-  ExecuteOnDeviceAivXModel(std::move(model_data));
-}
-
-void PermissionsAiUiSelector::OnDeviceTfliteAivXModelExecutionCallback(
-    base::TimeTicks model_inquire_start_time,
-    permissions::PredictionRequestFeatures features,
-    PredictionRequestMetadata request_metadata,
-    permissions::PredictionModelType model_type,
-    const std::optional<PermissionRequestRelevance>& relevance) {
-  PermissionUmaUtil::RecordPredictionModelInquireTime(model_type,
-                                                      model_inquire_start_time);
-  VLOG(1) << "[PermissionsAI]: Model execution callback called "
-          << (relevance.has_value() ? "with value" : "without value");
-  if (relevance.has_value()) {
-    VLOG(1) << "[PermissionsAI]: PermissionRequest has a relevance of "
-            << static_cast<int>(relevance.value());
-    last_permission_request_relevance_ = relevance.value();
-  } else {
-    last_permission_request_relevance_ =
-        PermissionRequestRelevance::kUnspecified;
-  }
-
-  features.permission_relevance = last_permission_request_relevance_.value();
-
-  PermissionUmaUtil::RecordPermissionRequestRelevance(
-      request_metadata.request_type, features.permission_relevance, model_type);
-
-  InquireServerModel(features, std::move(request_metadata));
-}
-
 void PermissionsAiUiSelector::SelectUiToUse(
     content::WebContents* web_contents,
     permissions::PermissionRequest* request,
@@ -328,8 +219,6 @@ void PermissionsAiUiSelector::SelectUiToUse(
   last_request_grant_likelihood_ = std::nullopt;
   cpss_v1_model_holdback_probability_ = std::nullopt;
   was_decision_held_back_ = std::nullopt;
-  language_detection_observer_->Reset();
-  passage_embedder_delegate_->Reset();
 
   const PredictionSource prediction_source =
       GetPredictionTypeToUse(request->request_type());
@@ -380,9 +269,6 @@ void PermissionsAiUiSelector::SelectUiToUse(
   switch (prediction_source) {
     case PredictionSource::kServerSideCpssV3Model:
       return InquireServerModel(features, std::move(request_metadata));
-    case PredictionSource::kOnDeviceAiv4AndServerSideModel:
-      return InquireOnDeviceAiv4AndServerModelIfAvailable(
-          web_contents, std::move(features), std::move(request_metadata));
     case PredictionSource::kOnDeviceCpssV1Model:
       return InquireCpssV1OnDeviceModelIfAvailable(features,
                                                    std::move(request_metadata));
@@ -391,61 +277,6 @@ void PermissionsAiUiSelector::SelectUiToUse(
     default:
       NOTREACHED();
   }
-}
-
-void PermissionsAiUiSelector::OnGetInnerTextForOnDeviceModel(
-    ModelExecutionData model_data,
-    ModelExecutionCallback model_execution_callback,
-    std::unique_ptr<content_extraction::InnerTextResult> result) {
-  VLOG(1) << "[PermissionsAI] OnGetInnerTextForOnDeviceModel";
-  if (result) {
-    PermissionUmaUtil::RecordRenderedTextSize(
-        model_data.model_type, model_data.request_metadata.request_type,
-        result->inner_text.size());
-  }
-
-  bool rendered_text_useful =
-      result && result->inner_text.size() > kPageContentMinLength;
-  PermissionUmaUtil::RecordRenderedTextAcquireSuccessForAivX(
-      model_data.model_type,
-      /*success=*/rendered_text_useful);
-
-  if (rendered_text_useful) {
-    VLOG(1) << "[PermissionsAI] OnGetInnerTextForOnDeviceModel: "
-               "rendered_text_useful true";
-
-    int passage_count = 1;
-    if (PredictionModelHandlerProvider* prediction_model_handler_provider =
-            PredictionModelHandlerProviderFactory::GetForBrowserContext(
-                profile_)) {
-      if (PermissionsAiv4Handler* handler =
-              prediction_model_handler_provider->GetPermissionsAiv4Handler(
-                  model_data.request_metadata.request_type)) {
-        passage_count = handler->GetPassageCount().value_or(1);
-      }
-    }
-
-    auto fallback_callback =
-        base::BindOnce(&PermissionsAiUiSelector::InquireServerModel,
-                       weak_ptr_factory_.GetWeakPtr(),
-                       PredictionRequestFeatures(model_data.features),
-                       model_data.request_metadata);
-
-    auto on_passage_embeddings_computed_callback =
-        base::BindOnce(&PermissionsAiUiSelector::OnPassageEmbeddingsComputed,
-                       weak_ptr_factory_.GetWeakPtr(), std::move(model_data),
-                       std::move(model_execution_callback));
-
-    return passage_embedder_delegate_->CreatePassageEmbeddingsFromRenderedText(
-        std::move(result->inner_text), passage_count,
-        std::move(on_passage_embeddings_computed_callback),
-        std::move(fallback_callback));
-  }
-
-  VLOG(1) << "[PermissionsAI] The page's content is too short or empty; "
-             "skipping execution of AivX on-device model";
-  InquireServerModel(model_data.features,
-                     std::move(model_data.request_metadata));
 }
 
 void PermissionsAiUiSelector::OnTimeout() {
@@ -475,8 +306,6 @@ void PermissionsAiUiSelector::FinishRequest(Decision decision, bool timeout) {
 
 void PermissionsAiUiSelector::Cleanup() {
   request_.reset();
-  passage_embedder_delegate_->Reset();
-  language_detection_observer_->Reset();
 }
 
 bool PermissionsAiUiSelector::IsPermissionRequestSupported(
@@ -527,15 +356,8 @@ PermissionsAiUiSelector::BuildPredictionRequestFeatures(
   // `ConvertToProtoRelevance` execution.
   features.permission_relevance = PermissionRequestRelevance::kUnspecified;
 
-  switch (prediction_source) {
-    case PredictionSource::kOnDeviceAiv4AndServerSideModel:
-      features.experiment_id =
-          PredictionRequestFeatures::ExperimentId::kAiV4ExperimentId;
-      break;
-    default:
-      features.experiment_id =
-          PredictionRequestFeatures::ExperimentId::kNoExperimentId;
-  }
+  features.experiment_id =
+      PredictionRequestFeatures::ExperimentId::kNoExperimentId;
 
   base::Time cutoff = base::Time::Now() - kPermissionActionCutoffAge;
 
@@ -642,11 +464,6 @@ bool PermissionsAiUiSelector::ShouldHoldBack(
       should_holdback = holdback_chance < *cpss_v1_model_holdback_probability_;
       prediction_model = PredictionModelType::kOnDeviceCpssV1Model;
       break;
-      // For on-device model + server-side model requests we will use the
-      // holdback logic for the server-side model execution.
-    case PredictionSource::kOnDeviceAiv4AndServerSideModel:
-      prediction_model = PredictionModelType::kOnDeviceAiV4Model;
-      break;
     case PredictionSource::kServerSideCpssV3Model:
       prediction_model = PredictionModelType::kServerSideCpssV3Model;
       break;
@@ -703,12 +520,6 @@ PredictionSource PermissionsAiUiSelector::GetPredictionTypeToUse(
 #endif  // BUILDFLAG(IS_ANDROID)
   }
   if (use_server_side) {
-    // The AIv4 model takes priority over the server-side CPSSv3 model if
-    // enabled.
-    if (PredictionModelHandlerProvider::IsAIv4FeatureEnabled()) {
-      VLOG(1) << "[CPSS] GetPredictionTypeToUse AIv4";
-      return PredictionSource::kOnDeviceAiv4AndServerSideModel;
-    }
     VLOG(1) << "[CPSS] GetPredictionTypeToUse CPSSv3";
     return PredictionSource::kServerSideCpssV3Model;
   }
@@ -726,136 +537,4 @@ PredictionSource PermissionsAiUiSelector::GetPredictionTypeToUse(
 
   VLOG(1) << "[CPSS] GetPredictionTypeToUse NoCpssModel";
   return PredictionSource::kNoCpssModel;
-}
-
-void PermissionsAiUiSelector::set_language_detection_observer_for_testing(
-    std::unique_ptr<permissions::LanguageDetectionObserver>
-        language_detection_observer) {
-  CHECK_IS_TEST();
-  language_detection_observer_ = std::move(language_detection_observer);
-}
-
-void PermissionsAiUiSelector::set_inner_text_for_testing(
-    content_extraction::InnerTextResult inner_text_) {
-  CHECK_IS_TEST();
-  inner_text_for_testing_ = std::move(inner_text_);
-}
-
-void PermissionsAiUiSelector::set_snapshot_for_testing(SkBitmap snapshot) {
-  CHECK_IS_TEST();
-  snapshot_for_testing_ = snapshot;
-}
-
-void PermissionsAiUiSelector::TakeSnapshot(
-    base::WeakPtr<content::WebContents> web_contents,
-    ModelExecutionData model_data) {
-  VLOG(1) << "[PermissionsAIvX] TakeSnapshot";
-  auto snapshot_inquire_start_time = base::TimeTicks::Now();
-
-  content::RenderWidgetHostView* host_view =
-      web_contents ? web_contents->GetRenderWidgetHostView() : nullptr;
-
-  if (snapshot_for_testing_.has_value()) {
-    OnSnapshotTakenForOnDeviceModel(snapshot_inquire_start_time,
-                                    std::move(model_data),
-                                    &snapshot_for_testing_.value());
-  } else if (!host_view) {
-    VLOG(1) << "[CPSS] Snapshot cannot be taken because host_view is nullptr.";
-    OnSnapshotTakenForOnDeviceModel(snapshot_inquire_start_time,
-                                    std::move(model_data),
-                                    /*snapshot=*/nullptr);
-  } else {
-    host_view->CopyFromSurface(
-        /*src_rect=*/gfx::Rect(), /*output_size=*/gfx::Size(),
-        /*timeout=*/kSnapshotReadbackTimeout,
-        /*callback=*/
-        base::BindOnce([](const content::CopyFromSurfaceResult& result) {
-          // TODO(crbug.com/466199824): Update callsite to handle error
-          // case.
-          return result.has_value() ? &result->bitmap : nullptr;
-        })
-            .Then(base::BindOnce(
-                &PermissionsAiUiSelector::OnSnapshotTakenForOnDeviceModel,
-                weak_ptr_factory_.GetWeakPtr(), snapshot_inquire_start_time,
-                std::move(model_data))));
-  }
-}
-
-void PermissionsAiUiSelector::GetInnerText(
-    base::WeakPtr<content::WebContents> web_contents,
-    ModelExecutionData model_data,
-    ModelExecutionCallback model_execution_callback) {
-  VLOG(1) << "[PermissionsAI] GetInnerText";
-  if (inner_text_for_testing_.has_value()) {
-    return OnGetInnerTextForOnDeviceModel(
-        std::move(model_data), std::move(model_execution_callback),
-        std::make_unique<content_extraction::InnerTextResult>(
-            std::move(inner_text_for_testing_.value())));
-  }
-
-  content::RenderFrameHost* render_frame_host =
-      web_contents ? web_contents->GetPrimaryMainFrame() : nullptr;
-
-  if (!render_frame_host) {
-    return OnGetInnerTextForOnDeviceModel(
-        std::move(model_data), std::move(model_execution_callback), nullptr);
-  }
-
-  content_extraction::GetInnerText(
-      *render_frame_host, /*node_id=*/std::nullopt,
-      base::BindOnce(&PermissionsAiUiSelector::OnGetInnerTextForOnDeviceModel,
-                     weak_ptr_factory_.GetWeakPtr(), std::move(model_data),
-                     std::move(model_execution_callback)));
-}
-
-void PermissionsAiUiSelector::ExecuteOnDeviceAivXModel(
-    ModelExecutionData model_data) {
-  VLOG(1) << "[PermissionsAI] ExecuteOnDeviceAivXModel";
-  PredictionModelHandlerProvider* prediction_model_handler_provider =
-      PredictionModelHandlerProviderFactory::GetForBrowserContext(profile_);
-  if (prediction_model_handler_provider) {
-    permissions::RequestType request_type =
-        model_data.request_metadata.request_type;
-
-    switch (model_data.model_type) {
-      case PredictionModelType::kOnDeviceAiV4Model: {
-        DCHECK(model_data.snapshot.has_value());
-        DCHECK(model_data.inner_text_embedding.has_value());
-        if (PermissionsAiv4Handler* aiv4_handler =
-                prediction_model_handler_provider->GetPermissionsAiv4Handler(
-                    request_type)) {
-          VLOG(1) << "[PermissionsAIv4] Inquire model";
-          return aiv4_handler->ExecuteModel(
-              /*callback=*/base::BindOnce(
-                  &PermissionsAiUiSelector::
-                      OnDeviceTfliteAivXModelExecutionCallback,
-                  weak_ptr_factory_.GetWeakPtr(),
-                  /*model_inquire_start_time=*/base::TimeTicks::Now(),
-                  std::move(model_data.features),
-                  std::move(model_data.request_metadata),
-                  model_data.model_type),
-              /*model_input=*/PermissionsAiv4Handler::ModelInput(
-                  std::move(model_data.snapshot.value()),
-                  std::move(model_data.inner_text_embedding.value())));
-        }
-        break;
-      }
-      default:
-        NOTREACHED();
-    }
-  } else {
-    VLOG(1) << "[PermissionsAIvX] On device AI model session unavailable";
-  }
-
-  InquireServerModel(model_data.features,
-                     std::move(model_data.request_metadata));
-}
-
-void PermissionsAiUiSelector::OnPassageEmbeddingsComputed(
-    ModelExecutionData model_data,
-    ModelExecutionCallback model_execution_callback,
-    std::vector<float> embedding) {
-  VLOG(1) << "[PermissionsAIv4] OnPassageEmbeddingsComputed";
-  model_data.inner_text_embedding = std::move(embedding);
-  std::move(model_execution_callback).Run(std::move(model_data));
 }

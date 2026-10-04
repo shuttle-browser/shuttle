@@ -8,7 +8,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
-#include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_handler.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -23,7 +23,7 @@ class WebUI;
 
 // Custom handler for OmniboxEverywhere searchbox.
 // It owns its own OmniboxController and OmniboxEverywhereClient.
-class OmniboxEverywhereHandler : public ContextualSearchboxHandler,
+class OmniboxEverywhereHandler : public SearchboxHandler,
                                  public ProfileAttributesStorage::Observer {
  public:
   OmniboxEverywhereHandler(
@@ -31,9 +31,7 @@ class OmniboxEverywhereHandler : public ContextualSearchboxHandler,
       mojo::PendingRemote<searchbox::mojom::Page> pending_page,
       MetricsReporter* metrics_reporter,
       content::WebUI* web_ui,
-      OmniboxEverywhereService* service,
-      GetSessionHandleCallback get_session_callback,
-      ScreenshareDelegate* screenshare_delegate = nullptr);
+      OmniboxEverywhereService* service);
 
   OmniboxEverywhereHandler(const OmniboxEverywhereHandler&) = delete;
   OmniboxEverywhereHandler& operator=(const OmniboxEverywhereHandler&) = delete;
@@ -59,21 +57,7 @@ class OmniboxEverywhereHandler : public ContextualSearchboxHandler,
   // SearchboxHandler:
   bool SupportsKeywordMode() const override;
 
-  // Overridden to intercept the Drive upload request, dynamically associate the
-  // standalone WebContents with the latest active BrowserWindowInterface, and
-  // update the OmniboxEverywhereService state.
-  void OnDriveUploadClicked(OnDriveUploadClickedCallback callback) override;
   void OpenProfilePicker() override;
-
-  // ContextualSearchboxHandler:
-  void OpenUrl(GURL url,
-               const WindowOpenDisposition disposition,
-               base::OnceCallback<void(content::NavigationHandle&)>
-                   navigation_handle_callback) override;
-
-  // Overridden to notify the OmniboxEverywhereService when the Drive picker is
-  // dismissed, allowing the standalone widget to regain activation and focus.
-  void CleanupDrivePicker() override;
 
   // ProfileAttributesStorage::Observer:
   void OnProfileAvatarChanged(const base::FilePath& profile_path) override;

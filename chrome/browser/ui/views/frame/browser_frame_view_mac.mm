@@ -32,19 +32,14 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/view_ids.h"
-#include "chrome/browser/ui/views/bookmarks/bookmark_bar_view.h"
 #include "chrome/browser/ui/views/frame/browser_native_widget.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
-#include "chrome/browser/ui/views/frame/caption_button_placeholder_container.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/views/web_apps/frame_toolbar/web_app_frame_toolbar_utils.h"
-#include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -101,17 +96,10 @@ BrowserFrameViewMac::BrowserFrameViewMac(BrowserWidget* frame,
                 base::Unretained(this)));
   }
 
-  if (web_app::AppBrowserController::IsWebApp(browser_view->browser())) {
-    auto* provider =
-        web_app::WebAppProvider::GetForWebApps(browser_view->GetProfile());
-    always_show_toolbar_in_fullscreen_observation_.Observe(
-        &provider->registrar_unsafe());
-  } else {
-    show_fullscreen_toolbar_.Init(
-        prefs::kShowFullscreenToolbar, browser_view->GetProfile()->GetPrefs(),
-        base::BindRepeating(&BrowserFrameViewMac::UpdateFullscreenTopUI,
-                            base::Unretained(this)));
-  }
+  show_fullscreen_toolbar_.Init(
+      prefs::kShowFullscreenToolbar, browser_view->GetProfile()->GetPrefs(),
+      base::BindRepeating(&BrowserFrameViewMac::UpdateFullscreenTopUI,
+                          base::Unretained(this)));
   if (!WindowFeatureController::From(browser_view->browser())
            ->UsesImmersiveFullscreenMode()) {
     fullscreen_toolbar_controller_ =
@@ -120,13 +108,6 @@ BrowserFrameViewMac::BrowserFrameViewMac(BrowserWidget* frame,
         setToolbarStyle:GetUserPreferredToolbarStyle(
                             fullscreen_utils::IsAlwaysShowToolbarEnabled(
                                 browser_view->browser()))];
-  }
-
-  if (browser_view->GetIsWebAppType()) {
-    if (browser_view->IsWindowControlsOverlayEnabled()) {
-      caption_button_placeholder_container_ =
-          AddChildView(std::make_unique<CaptionButtonPlaceholderContainer>());
-    }
   }
 }
 
@@ -316,19 +297,6 @@ void BrowserFrameViewMac::UpdateFullscreenTopUI() {
   }
 }
 
-void BrowserFrameViewMac::OnAlwaysShowToolbarInFullscreenChanged(
-    const webapps::AppId& app_id,
-    bool show) {
-  if (web_app::AppBrowserController::IsForWebApp(GetBrowserView()->browser(),
-                                                 app_id)) {
-    UpdateFullscreenTopUI();
-  }
-}
-
-void BrowserFrameViewMac::OnAppRegistrarDestroyed() {
-  always_show_toolbar_in_fullscreen_observation_.Reset();
-}
-
 bool BrowserFrameViewMac::ShouldHideTopUIInFullscreen() const {
   return [fullscreen_toolbar_controller_ toolbarStyle] !=
          FullscreenToolbarStyle::TOOLBAR_PRESENT;
@@ -337,12 +305,10 @@ bool BrowserFrameViewMac::ShouldHideTopUIInFullscreen() const {
 void BrowserFrameViewMac::UpdateThrobber(bool running) {}
 
 void BrowserFrameViewMac::PaintAsActiveChanged() {
-  UpdateCaptionButtonPlaceholderContainerBackground();
   BrowserFrameView::PaintAsActiveChanged();
 }
 
 void BrowserFrameViewMac::OnThemeChanged() {
-  UpdateCaptionButtonPlaceholderContainerBackground();
   BrowserFrameView::OnThemeChanged();
 }
 
@@ -406,15 +372,6 @@ void BrowserFrameViewMac::UpdateMinimumSize() {
   GetWidget()->OnSizeConstraintsChanged();
 }
 
-void BrowserFrameViewMac::WindowControlsOverlayEnabledChanged() {
-  if (GetBrowserView()->IsWindowControlsOverlayEnabled()) {
-    caption_button_placeholder_container_ =
-        AddChildView(std::make_unique<CaptionButtonPlaceholderContainer>());
-    UpdateCaptionButtonPlaceholderContainerBackground();
-  } else {
-    RemoveChildViewT(caption_button_placeholder_container_.ExtractAsDangling());
-  }
-}
 ///////////////////////////////////////////////////////////////////////////////
 // BrowserFrameViewMac, views::View implementation:
 
@@ -495,8 +452,7 @@ BrowserFrameViewMac::GetCaptionButtonBounds() const {
 // views::View:
 
 void BrowserFrameViewMac::OnPaint(gfx::Canvas* canvas) {
-  if (!GetBrowserView()->GetIsNormalType() &&
-      !GetBrowserView()->GetIsWebAppType()) {
+  if (!GetBrowserView()->GetIsNormalType()) {
     return;
   }
 
@@ -518,9 +474,6 @@ void BrowserFrameViewMac::OnPaint(gfx::Canvas* canvas) {
 }
 
 void BrowserFrameViewMac::Layout(PassKey) {
-  if (GetBrowserView()->IsWindowControlsOverlayEnabled()) {
-    LayoutWindowControlsOverlay();
-  }
   LayoutSuperclass<BrowserFrameView>(this);
 }
 
@@ -566,28 +519,6 @@ int BrowserFrameViewMac::TopUIFullscreenYOffset() const {
                                        styleMask:NSWindowStyleMaskTitled]);
   return [[fullscreen_toolbar_controller_ menubarTracker] menubarFraction] *
          (menu_bar_height + title_bar_height);
-}
-
-void BrowserFrameViewMac::LayoutWindowControlsOverlay() {
-  const int frame_available_height =
-      GetBrowserView()->GetWebAppFrameToolbarPreferredSize().height() +
-      2 * kWebAppMenuMargin;
-  gfx::Rect container_bounds = GetCaptionButtonBounds().ToEnclosingRect();
-  container_bounds.set_height(frame_available_height);
-
-  // Layout CaptionButtonPlaceholderContainer which would have the traffic
-  // lights.
-  caption_button_placeholder_container_->SetBoundsRect(container_bounds);
-}
-
-void BrowserFrameViewMac::UpdateCaptionButtonPlaceholderContainerBackground() {
-  if (caption_button_placeholder_container_) {
-    caption_button_placeholder_container_->SetBackground(
-        views::CreateSolidBackground(
-            is_glass_frame_eligible_
-                ? SK_ColorTRANSPARENT
-                : GetFrameColor(BrowserFrameActiveState::kUseCurrent)));
-  }
 }
 
 void BrowserFrameViewMac::EmitFullscreenSessionHistograms() {

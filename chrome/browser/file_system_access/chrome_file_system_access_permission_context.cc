@@ -81,7 +81,6 @@
 #include "base/android/apk_info.h"
 #include "base/android/content_uri_utils.h"
 #include "base/strings/string_util.h"
-#include "chrome/browser/glic/host/guest_util.h"  // nogncheck
 #include "chrome/browser/ui/android/tab_model/tab_model.h"
 #include "chrome/browser/ui/android/tab_model/tab_model_list.h"
 #else
@@ -91,11 +90,6 @@
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_page_action_controller.h"
-#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"  // nogncheck
-#include "chrome/browser/web_applications/web_app_install_manager.h"
-#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
-#include "chrome/browser/web_applications/web_app_provider.h"
-#include "chrome/browser/web_applications/web_app_registrar.h"
 #include "components/tabs/public/tab_interface.h"
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
 #include "extensions/browser/extension_registry.h"  // nogncheck
@@ -1536,10 +1530,6 @@ struct ChromeFileSystemAccessPermissionContext::OriginState {
 
   PersistedGrantStatus persisted_grant_status = PersistedGrantStatus::kLoaded;
 
-  // Cached data about whether this origin has an actively installed web app.
-  // This is used to determine the origin's extended permission eligibility.
-  WebAppInstallStatus web_app_install_status = WebAppInstallStatus::kUnknown;
-
   // Timer that is triggered whenever the user navigates away from this origin.
   // This is used to give a website a little bit of time for background work
   // before revoking all permissions for the origin.
@@ -1575,11 +1565,6 @@ ChromeFileSystemAccessPermissionContext::
   one_time_permissions_tracker_.Observe(
       OneTimePermissionsTrackerFactory::GetForBrowserContext(context));
 #else
-  auto* provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(profile_));
-  if (provider) {
-    install_manager_observation_.Observe(&provider->install_manager());
-  }
   if (base::FeatureList::IsEnabled(
           features::kFileSystemAccessPersistentPermissions)) {
     one_time_permissions_tracker_.Observe(
@@ -2385,16 +2370,6 @@ ChromeFileSystemAccessPermissionContext::CanShowFilePicker(
   // contexts. Note that on desktop, <webview> is explicitly allowed to use FSA
   // in the block above to avoid breaking existing usage.
   if (rfh->GetSiteInstance()->GetSecurityPrincipal().IsGuest()) {
-#if BUILDFLAG(IS_ANDROID)
-    // Allow Glic guest contexts to use File System Access API file pickers.
-    content::WebContents* web_contents =
-        content::WebContents::FromRenderFrameHost(rfh);
-    if (glic::IsGlicGuest(web_contents) &&
-        glic::GetGuestOrigin().IsSameOriginWith(
-            rfh->GetLastCommittedOrigin())) {
-      return base::ok();
-    }
-#endif  // BUILDFLAG(IS_ANDROID)
     return base::unexpected(kDefaultNotAllowedMessage);
   }
 
@@ -3054,108 +3029,6 @@ void ChromeFileSystemAccessPermissionContext::OnShutdown() {
   one_time_permissions_tracker_.Reset();
 }
 
-#if !BUILDFLAG(IS_ANDROID)
-void ChromeFileSystemAccessPermissionContext::OnWebAppInstalled(
-    const webapps::AppId& app_id) {
-  if (!base::FeatureList::IsEnabled(
-          features::kFileSystemAccessPersistentPermissions)) {
-    return;
-  }
-
-  auto* provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(profile()));
-  const auto& registrar = provider->registrar_unsafe();
-  // TODO(crbug.com/340952100): Evaluate call sites of IsInstallState for
-  // correctness.
-  if (registrar.GetInstallState(app_id) !=
-      web_app::proto::InstallState::INSTALLED_WITH_OS_INTEGRATION) {
-    return;
-  }
-
-  // TODO(crbug.com/40283362): Ensure that `GetAppScope` retrieves the correct
-  // GURL when Scope Extensions is launched, which allows web apps to have more
-  // than one origin as a scope.
-  const auto gurl = registrar.GetAppScope(app_id);
-  if (!gurl.is_valid()) {
-    return;
-  }
-  const auto origin = url::Origin::Create(gurl);
-  auto origin_it = active_permissions_map_.find(origin);
-  if (origin_it == active_permissions_map_.end()) {
-    // Ignore the origin if it does not have any active permissions.
-    return;
-  }
-
-  // Update the cache value for web app state.
-  OriginState& origin_state = origin_it->second;
-  origin_state.web_app_install_status = WebAppInstallStatus::kInstalled;
-
-  // Update the persisted grants, if needed.
-  auto content_setting_value = content_settings_->GetContentSetting(
-      origin.GetURL(), origin.GetURL(),
-      ContentSettingsType::FILE_SYSTEM_ACCESS_EXTENDED_PERMISSION);
-  if (content_setting_value == ContentSetting::CONTENT_SETTING_ALLOW ||
-      content_setting_value == ContentSetting::CONTENT_SETTING_BLOCK) {
-    // The user has already enabled or disabled extended permissions from the
-    // Restore Prompt or Page Info bubble. Installing a WebApp should not
-    // change the extended permission state.
-    return;
-  }
-  UpgradeToExtendedPermission(origin);
-}
-
-void ChromeFileSystemAccessPermissionContext::OnWebAppInstalledWithOsHooks(
-    const webapps::AppId& app_id) {
-  // TODO(crbug.com/340952100): Remove the method after the InstallState is
-  // saved in the database & available from OnWebAppInstalled.
-  OnWebAppInstalled(app_id);
-}
-
-void ChromeFileSystemAccessPermissionContext::OnWebAppWillBeUninstalled(
-    const webapps::AppId& app_id) {
-  if (!base::FeatureList::IsEnabled(
-          features::kFileSystemAccessPersistentPermissions)) {
-    return;
-  }
-
-  auto* provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(profile()));
-  const auto& registrar = provider->registrar_unsafe();
-  auto gurl = registrar.GetAppScope(app_id);
-  if (!gurl.is_valid()) {
-    return;
-  }
-  const auto origin = url::Origin::Create(gurl);
-  auto origin_it = active_permissions_map_.find(origin);
-  if (origin_it == active_permissions_map_.end()) {
-    // Ignore the origin if it does not have any active permission.
-    return;
-  }
-
-  // Update the cache value for web app state.
-  OriginState& origin_state = origin_it->second;
-  origin_state.web_app_install_status = WebAppInstallStatus::kUninstalled;
-
-  // Update the persisted grants, if needed.
-  auto content_setting_value = content_settings_->GetContentSetting(
-      origin.GetURL(), origin.GetURL(),
-      ContentSettingsType::FILE_SYSTEM_ACCESS_EXTENDED_PERMISSION);
-  if (content_setting_value == ContentSetting::CONTENT_SETTING_ALLOW ||
-      content_setting_value == ContentSetting::CONTENT_SETTING_BLOCK) {
-    // The user has already enabled or disabled extended permissions from the
-    // Restore Prompt or Page Info bubble. Uninstalling a WebApp should not
-    // change the extended permission state.
-    return;
-  }
-  RemoveExtendedPermission(origin);
-}
-
-void ChromeFileSystemAccessPermissionContext::
-    OnWebAppInstallManagerDestroyed() {
-  install_manager_observation_.Reset();
-}
-#endif
-
 void ChromeFileSystemAccessPermissionContext::NavigatedAwayFromOrigin(
     const url::Origin& origin) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -3646,40 +3519,9 @@ bool ChromeFileSystemAccessPermissionContext::OriginHasExtendedPermission(
   auto content_setting_value = content_settings_->GetContentSetting(
       origin.GetURL(), origin.GetURL(),
       ContentSettingsType::FILE_SYSTEM_ACCESS_EXTENDED_PERMISSION);
-  if (content_setting_value == ContentSetting::CONTENT_SETTING_ALLOW) {
-    return true;
-  }
-  if (content_setting_value == ContentSetting::CONTENT_SETTING_BLOCK) {
-    return false;
-  }
-
-  // If user has not set the extended permission preference, the extended
-  // permission state depends on whether the origin has an web app actively
-  // installed. First, check the cached value.
-  auto& origin_state = active_permissions_map_[origin];
-  if (origin_state.web_app_install_status != WebAppInstallStatus::kUnknown) {
-    return origin_state.web_app_install_status ==
-           WebAppInstallStatus::kInstalled;
-  }
-  // No cached value for web app install status. Retrieve the install status.
-  DCHECK(profile());
-  auto* web_app_provider = web_app::WebAppProvider::GetForWebApps(
-      Profile::FromBrowserContext(profile()));
-  if (!web_app_provider) {
-    return false;
-  }
-  auto app_id = web_app_provider->registrar_unsafe().FindBestAppWithUrlInScope(
-      origin.GetURL(), web_app::WebAppFilter::InstalledInChrome());
-
-  auto app_has_os_integration =
-      app_id.has_value() &&
-      web_app_provider->registrar_unsafe().GetInstallState(app_id.value()) ==
-          web_app::proto::InstallState::INSTALLED_WITH_OS_INTEGRATION;
-  // Update the cached value.
-  origin_state.web_app_install_status = app_has_os_integration
-                                            ? WebAppInstallStatus::kInstalled
-                                            : WebAppInstallStatus::kUninstalled;
-  return app_has_os_integration;
+  // No installed web apps in this build, so only an explicit user choice
+  // grants extended permission.
+  return content_setting_value == ContentSetting::CONTENT_SETTING_ALLOW;
 #endif  // BUILDFLAG(IS_ANDROID)
 }
 

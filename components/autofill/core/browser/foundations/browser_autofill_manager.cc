@@ -48,9 +48,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/at_memory/at_memory_enablement_util.h"
-#include "components/autofill/core/browser/at_memory/at_memory_manager.h"
-#include "components/autofill/core/browser/at_memory/at_memory_search_state.h"
 #include "components/autofill/core/browser/autofill_browser_util.h"
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/autofill_trigger_source.h"
@@ -85,7 +82,6 @@
 #include "components/autofill/core/browser/form_types.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
 #include "components/autofill/core/browser/geo/phone_number_i18n.h"
-#include "components/autofill/core/browser/integrators/compose/autofill_compose_delegate.h"
 #include "components/autofill/core/browser/integrators/identity_credential/identity_credential_delegate.h"
 #include "components/autofill/core/browser/integrators/one_time_tokens/otp_manager_impl.h"
 #include "components/autofill/core/browser/integrators/one_time_tokens/otp_suggestion.h"
@@ -121,10 +117,8 @@
 #include "components/autofill/core/browser/studies/autofill_ablation_study.h"
 #include "components/autofill/core/browser/studies/autofill_experiments.h"
 #include "components/autofill/core/browser/suggestions/addresses/address_suggestion_generator.h"
-#include "components/autofill/core/browser/suggestions/at_memory/at_memory_nudge_generator.h"
 #include "components/autofill/core/browser/suggestions/autocomplete_suggestion_generator.h"
 #include "components/autofill/core/browser/suggestions/autofill_ai/autofill_ai_suggestion_generator.h"
-#include "components/autofill/core/browser/suggestions/compose/compose_suggestion_generator.h"
 #include "components/autofill/core/browser/suggestions/one_time_passwords/otp_suggestion_generator.h"
 #include "components/autofill/core/browser/suggestions/passkeys/passkey_suggestion_generator.h"
 #include "components/autofill/core/browser/suggestions/payments/credit_card_suggestion_generator.h"
@@ -159,7 +153,6 @@
 #include "components/autofill/core/common/password_form_fill_data.h"
 #include "components/autofill/core/common/signatures.h"
 #include "components/autofill/core/common/unique_ids.h"
-#include "components/personal_context/core/personal_context_types.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
@@ -557,36 +550,6 @@ void MaybeImportFromSubmittedForm(AutofillClient& client,
         ukm_source_id);
   }
   client.GetSingleFieldFillRouter().OnWillSubmitForm(form.ToFormData(), &form);
-}
-
-// Generates a compose suggestion for the given `form` and `field` if conditions
-// are met, returns `std::nullopt` otherwise.
-// TODO(crbug.com/409962888): Remove once new suggestion generator architecture
-// is launched.
-std::optional<Suggestion> GenerateComposeSuggestion(
-    const FormData& form,
-    const FormFieldData& field,
-    AutofillSuggestionTriggerSource trigger_source,
-    AutofillClient& client) {
-  ComposeSuggestionGenerator suggestion_generator(trigger_source);
-  std::vector<Suggestion> suggestions;
-
-  auto on_suggestions_generated =
-      [&suggestions](
-          SuggestionGenerator::ReturnedSuggestions returned_suggestions) {
-        suggestions = std::move(returned_suggestions.second);
-      };
-
-  // Since the `on_suggestions_generated` callback is called synchronously, we
-  // can assume that `suggestions` will hold the correct value.
-  suggestion_generator.GenerateSuggestions(
-      form, field, /*form_structure=*/nullptr,
-      /*trigger_autofill_field=*/nullptr, client, on_suggestions_generated);
-  if (suggestions.empty()) {
-    return std::nullopt;
-  }
-  CHECK_EQ(suggestions.size(), 1u);
-  return suggestions[0];
 }
 
 bool ShouldShowWebauthnHybridEntryPoint(const FormFieldData& field) {
@@ -1128,37 +1091,12 @@ void BrowserAutofillManager::OnAskForValuesToFillImpl(
     return;
   }
 
+  // The AtMemory feature was removed from this fork.
   if (IsAtMemoryTriggerSource(trigger_source)) {
-    const GURL& main_frame_url = client().GetLastCommittedPrimaryMainFrameURL();
-    const GURL& field_url = field.origin().GetURL();
-    std::string debug_reason;
-    if (!MayPerformAtMemoryAction(AtMemoryAction::kTriggerSearchUI, client(),
-                                  main_frame_url, std::nullopt,
-                                  &debug_reason)) {
-      LogAtMemorySuppression(AtMemoryAction::kTriggerSearchUI, log_manager(),
-                             debug_reason);
-      return;
-    }
-    if (!MayPerformAtMemoryAction(AtMemoryAction::kTriggerSearchUI, client(),
-                                  field_url, std::nullopt, &debug_reason)) {
-      LogAtMemorySuppression(AtMemoryAction::kTriggerSearchUI, log_manager(),
-                             debug_reason);
-      return;
-    }
+    return;
   }
 
   external_delegate_->OnQuery(form, field, caret_bounds, trigger_source);
-
-  if (AtMemoryManager* amm = client().GetAtMemoryManager();
-      amm && IsAtMemoryTriggerSource(trigger_source)) {
-    AtMemorySearchState state =
-        amm->GetStateForField(field.global_id(), field.origin());
-
-    // Show suggestions with a search bar to start the flow.
-    external_delegate_->OnSuggestionsReturned(
-        field, std::move(state.suggestions), std::move(state.filter));
-    return;
-  }
 
   // TODO(crbug.com/409962888): Cleanup once the new logic is launched.
   if (!base::FeatureList::IsEnabled(
@@ -1569,16 +1507,7 @@ void BrowserAutofillManager::GenerateSuggestionsAndMaybeShowUIPhase2(
     return;
   }
 
-  if (field.form_control_type() == FormControlType::kTextArea ||
-      field.form_control_type() == FormControlType::kContentEditable) {
-    std::optional<Suggestion> maybe_compose_suggestion =
-        GenerateComposeSuggestion(form, field, trigger_source, client());
-    if (maybe_compose_suggestion) {
-      std::move(callback).Run(/*show_suggestions=*/true,
-                              {*std::move(maybe_compose_suggestion)});
-      return;
-    }
-  } else if (IsTriggerSourceOnlyRelevantForCompose(trigger_source)) {
+  if (IsTriggerSourceOnlyRelevantForCompose(trigger_source)) {
     std::move(callback).Run(/*show_suggestions=*/true,
                             /*suggestions=*/{});
     return;
@@ -2173,11 +2102,6 @@ void BrowserAutofillManager::DidShowSuggestions(
   auto [form_structure, autofill_field] =
       FindMutableFormAndField(form_id, field_id);
 
-  if (AtMemoryManager* amm = client().GetAtMemoryManager()) {
-    amm->OnPopupShown(*this, form_id, field_id, trigger_source,
-                      parent_suggestion_metadata, update_suggestions_callback,
-                      driver().GetPageUkmSourceId());
-  }
   if (parent_suggestion_metadata.has_value()) {
     // The shown suggestions were in a sub-popup and the code below is not
     // relevant for those.
@@ -3172,13 +3096,6 @@ std::vector<Suggestion> BrowserAutofillManager::GetAvailableSuggestions(
     const std::vector<std::string>& one_time_passwords) {
   // TODO(crbug.com/489659527): This currently overrides Autofill suggestions if
   // suggestions were presented to the user after typing started. Fix that.
-  if (trigger_source ==
-      AutofillSuggestionTriggerSource::kAtMemoryInactivityNudge) {
-    // TODO(crbug.com/489659527): Localize the string.
-    return {Suggestion(u"Try searching in Chrome Memory",
-                       SuggestionType::kAtMemoryInactivityNudge)};
-  }
-
   std::vector<Suggestion> suggestions;
   switch (GetPreferredSuggestionFillingProduct(autofill_field.Type())) {
     case FillingProduct::kAddress:
@@ -3440,12 +3357,6 @@ void BrowserAutofillManager::InitializeSuggestionGenerators(
   const FillingProductSet relevant_filling_products =
       GetFillingProductsToSuggest(trigger_source);
 
-  if (trigger_source ==
-      AutofillSuggestionTriggerSource::kAtMemoryInactivityNudge) {
-    suggestion_generators_.push_back(
-        std::make_unique<AtMemoryNudgeGenerator>());
-  }
-
   if (relevant_filling_products.contains(FillingProduct::kAutofillAi)) {
     suggestion_generators_.push_back(
         std::make_unique<AutofillAiSuggestionGenerator>());
@@ -3475,11 +3386,6 @@ void BrowserAutofillManager::InitializeSuggestionGenerators(
     suggestion_generators_.push_back(
         std::make_unique<LoyaltyCardSuggestionGenerator>(
             password_form_classification));
-  }
-  if (relevant_filling_products.contains(FillingProduct::kCompose) &&
-      client().GetComposeDelegate()) {
-    suggestion_generators_.push_back(
-        std::make_unique<ComposeSuggestionGenerator>(trigger_source));
   }
   if (relevant_filling_products.contains(FillingProduct::kIdentityCredential)) {
     if (IdentityCredentialDelegate* delegate =

@@ -25,7 +25,6 @@
 #include "chrome/browser/enterprise/data_controls/chrome_rules_service.h"
 #include "chrome/browser/enterprise/data_controls/data_controls_dialog_factory.h"
 #include "chrome/browser/enterprise/data_protection/paste_allowed_request.h"
-#include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/dom_distiller/core/url_utils.h"
 #include "components/enterprise/common/files_scan_data.h"
@@ -964,9 +963,7 @@ BasicPasteSource CacheBasicPasteSource(
   if (source.browser_context()) {
     cached.browser_context = source.browser_context()->GetWeakPtr();
   }
-  cached.gemini_in_chrome =
-      source.web_contents() && (glic::IsGlicGuest(source.web_contents()) ||
-                                glic::IsGlicWebUI(source.web_contents()));
+  cached.gemini_in_chrome = false;
   return cached;
 }
 

@@ -49,7 +49,6 @@ source_set("most_visited") {
     "//url",
   ]
   if (!is_android) {
-    deps += [ "//chrome/browser/web_applications" ]
   } else {
     # most_visited_handler.cc includes android/tab_features.h.
     deps += [ "//chrome/browser/android:tabs_public" ]

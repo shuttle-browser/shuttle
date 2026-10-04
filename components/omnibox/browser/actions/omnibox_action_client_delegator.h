@@ -29,14 +29,8 @@ class OmniboxActionClientDelegator : public OmniboxAction::Client {
   void CloseIncognitoWindows() override;
   void PromptPageTranslation() override;
   bool OpenJourneys(const std::string& query) override;
-  void OpenLensOverlay(
-      bool show,
-      lens::LensOverlayInvocationSource invocation_source) override;
   bool ShouldOpenCoBrowsePanel() const override;
   void OpenCoBrowsePanel() override;
-  void IssueContextualSearchRequest(const GURL& destination_url,
-                                    AutocompleteMatchType::Type match_type,
-                                    bool is_zero_prefix_suggestion) override;
   bool ShouldOpenComposeboxForAskG() const override;
   void OpenComposeboxForAskG() override;
 

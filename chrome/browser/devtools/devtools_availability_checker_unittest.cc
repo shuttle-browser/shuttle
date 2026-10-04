@@ -29,12 +29,6 @@
 #include "extensions/common/mojom/manifest.mojom-shared.h"
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/web_applications/test/web_app_test_utils.h"
-#include "chrome/browser/web_applications/web_app.h"
-#include "components/webapps/common/web_app_id.h"
-#endif
-
 class DevToolsAvailabilityCheckerTest : public testing::Test {
  public:
   void SetUp() override {
@@ -500,55 +494,6 @@ TEST_F(DevToolsAvailabilityCheckerTest,
 
   EXPECT_FALSE(IsInspectionAllowed(profile_.get(), web_contents_.get()));
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-
-TEST_F(DevToolsAvailabilityCheckerTest, WebAppAllowedByPolicy) {
-  base::ListValue allowlist;
-  allowlist.Append("https://allowed-app.com");
-  profile_->GetPrefs()->SetList(prefs::kDeveloperToolsAvailabilityAllowlist,
-                                std::move(allowlist));
-
-  auto web_app = web_app::test::CreateWebApp(GURL("https://allowed-app.com"));
-  EXPECT_TRUE(IsInspectionAllowed(profile_.get(), web_app.get()));
-}
-
-TEST_F(DevToolsAvailabilityCheckerTest, WebAppBlockedByPolicy) {
-  base::ListValue blocklist;
-  blocklist.Append("blocked-app.com");
-  profile_->GetPrefs()->SetList(prefs::kDeveloperToolsAvailabilityBlocklist,
-                                std::move(blocklist));
-
-  auto web_app = web_app::test::CreateWebApp(GURL("https://blocked-app.com/"));
-  EXPECT_FALSE(IsInspectionAllowed(profile_.get(), web_app.get()));
-}
-
-TEST_F(DevToolsAvailabilityCheckerTest, WebAppDisallowedByPolicy) {
-  profile_->GetPrefs()->SetInteger(
-      prefs::kDevToolsAvailability,
-      static_cast<int>(
-          policy::DeveloperToolsAvailability::kDisallowed));
-
-  auto web_app = web_app::test::CreateWebApp(GURL("https://example.com/"));
-  EXPECT_FALSE(IsInspectionAllowed(profile_.get(), web_app.get()));
-}
-
-TEST_F(DevToolsAvailabilityCheckerTest, WebAppAllowedWhenPolicyIsAllowed) {
-  profile_->GetPrefs()->SetInteger(
-      prefs::kDevToolsAvailability,
-      static_cast<int>(
-          policy::DeveloperToolsAvailability::kAllowed));
-
-  auto web_app = web_app::test::CreateWebApp(GURL("https://example.com/"));
-  EXPECT_TRUE(IsInspectionAllowed(profile_.get(), web_app.get()));
-}
-
-TEST_F(DevToolsAvailabilityCheckerTest, IsInspectionAllowedNullWebApp) {
-  // Passing nullptr for WebApp should default to allowed.
-  EXPECT_TRUE(IsInspectionAllowed(profile_.get(),
-                                  static_cast<web_app::WebApp*>(nullptr)));
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 TEST_F(DevToolsAvailabilityCheckerTest, TargetLevelSubframeBlocked) {
   base::ListValue blocklist;
