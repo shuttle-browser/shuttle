@@ -30,7 +30,6 @@ class AutocompleteResult;
 class GURL;
 class SessionID;
 class SkBitmap;
-class AiModeButtonService;
 class TemplateURL;
 class TemplateURLService;
 struct AutocompleteMatch;
@@ -135,10 +134,6 @@ class OmniboxClient {
   virtual TemplateURLService* GetTemplateURLService();
   const TemplateURLService* GetTemplateURLService() const {
     return const_cast<OmniboxClient*>(this)->GetTemplateURLService();
-  }
-  virtual AiModeButtonService* GetAiModeButtonService();
-  const AiModeButtonService* GetAiModeButtonService() const {
-    return const_cast<OmniboxClient*>(this)->GetAiModeButtonService();
   }
   virtual const AutocompleteSchemeClassifier& GetSchemeClassifier() const = 0;
   virtual AutocompleteClassifier* GetAutocompleteClassifier();
@@ -375,10 +370,6 @@ class OmniboxClient {
   // Optionally warm-up for the default search engine so that we can navigate to
   // the search result page effectively.
   virtual void MaybePrewarmForDefaultSearchEngine(PrewarmTrigger trigger) {}
-
-  // Whether WebUi Omnibox's aim popup is enabled and the user is eligible to
-  // use it.
-  virtual bool IsAimPopupEnabled() const;
 
   // Returns the current input state if any.
   virtual omnibox::InputState GetInputState() const;

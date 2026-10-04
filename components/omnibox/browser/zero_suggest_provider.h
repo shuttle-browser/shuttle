@@ -140,9 +140,6 @@ class ZeroSuggestProvider : public BaseSearchProvider {
   // Called by `debouncer_`.
   void RunZeroSuggestPrefetch(const AutocompleteInput& input,
                               const ResultType result_type);
-  // Called by 'composebox_debouncer_'
-  void RunComposeboxPrefetch(const AutocompleteInput& input);
-
   // Called either in Start() with |results| populated from the cached response,
   // where |matches_| are empty; or in OnURLLoadComplete() with |results|
   // populated from the remote response, where |matches_| may not be empty.
@@ -172,13 +169,9 @@ class ZeroSuggestProvider : public BaseSearchProvider {
   // Loader used to retrieve results for ZPS prefetch requests on SRP/Web.
   std::unique_ptr<network::SimpleURLLoader> srp_web_prefetch_loader_;
 
-  // Loader used to retrieve results for composebox prefetch requests.
-  std::unique_ptr<network::SimpleURLLoader> composebox_prefetch_loader_;
-
   // Debouncer used to throttle the frequency of ZPS prefetch requests (to
   // minimize the performance impact on the remote Suggest service).
   std::unique_ptr<AutocompleteProviderDebouncer> debouncer_;
-  std::unique_ptr<AutocompleteProviderDebouncer> composebox_debouncer_;
 
   // The list of experiment stats corresponding to |matches_|.
   SearchSuggestionParser::ExperimentStatsV2s experiment_stats_v2s_;

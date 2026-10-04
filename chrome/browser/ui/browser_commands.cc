@@ -2336,13 +2336,6 @@ void ToggleShowFullURLs(BrowserWindowInterface* browser) {
       omnibox::kPreventUrlElisionsInOmnibox, !pref_enabled);
 }
 
-void ToggleShowAiModeOmniboxButton(BrowserWindowInterface* browser) {
-  bool pref_enabled = browser->GetProfile()->GetPrefs()->GetBoolean(
-      omnibox::kShowAiModeOmniboxButton);
-  browser->GetProfile()->GetPrefs()->SetBoolean(
-      omnibox::kShowAiModeOmniboxButton, !pref_enabled);
-}
-
 void ToggleShowSearchTools(BrowserWindowInterface* browser) {
   bool pref_enabled =
       browser->GetProfile()->GetPrefs()->GetBoolean(omnibox::kShowSearchTools);

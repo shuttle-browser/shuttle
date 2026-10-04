@@ -41,8 +41,6 @@
 #else
 #include "chrome/browser/search/instant_service.h"
 #include "chrome/browser/search/instant_service_factory.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
-#include "chrome/browser/ui/webui/new_tab_page_third_party/new_tab_page_third_party_ui.h"
 #endif
 
 namespace search {
@@ -96,16 +94,6 @@ enum NewTabURLState {
   NEW_TAB_URL_MAX
 };
 
-const TemplateURL* GetDefaultSearchProviderTemplateURL(Profile* profile) {
-  if (profile) {
-    TemplateURLService* template_url_service =
-        TemplateURLServiceFactory::GetForProfile(profile);
-    if (template_url_service) {
-      return template_url_service->GetDefaultSearchProvider();
-    }
-  }
-  return nullptr;
-}
 
 bool IsMatchingServiceWorker(const GURL& my_url, const GURL& document_url) {
   // The origin should match.
@@ -143,20 +131,6 @@ bool IsNTPOrRelatedURLHelper(const GURL& url, Profile* profile) {
                                     IsMatchingServiceWorker(url, new_tab_url));
 }
 
-bool IsURLAllowedForSupervisedUser(const GURL& url, Profile& profile) {
-  if (!profile.IsChild()) {
-    return true;
-  }
-
-  supervised_user::SupervisedUserUrlFilteringService* url_filtering_service =
-      supervised_user::SupervisedUserUrlFilteringServiceFactory::GetForProfile(
-          &profile);
-  if (url_filtering_service->GetFilteringBehavior(url).IsBlocked()) {
-    return false;
-  }
-  return true;
-}
-
 // Used to look up the URL to use for the New Tab page. Also tracks how we
 // arrived at that URL so it can be logged with UMA.
 struct NewTabURLDetails {
@@ -172,40 +146,10 @@ struct NewTabURLDetails {
       return NewTabURLDetails(GURL(), NEW_TAB_URL_INCOGNITO);
     }
 
-#if BUILDFLAG(IS_ANDROID)
-    const GURL local_url;
-#else
-    const bool default_is_google = DefaultSearchProviderIsGoogle(profile);
-    const GURL local_url(default_is_google
-                             ? chrome::ChromeUINewTabPageURLAsGURL()
-                             : GURL(chrome::kChromeUINewTabPageThirdPartyURL));
-    if (default_is_google) {
-      return NewTabURLDetails(local_url, NEW_TAB_URL_VALID);
-    }
-#endif
-
-    const TemplateURL* template_url =
-        GetDefaultSearchProviderTemplateURL(profile);
-    if (!profile || !template_url) {
-      return NewTabURLDetails(local_url, NEW_TAB_URL_BAD);
-    }
-
-    GURL search_provider_url(template_url->new_tab_url_ref().ReplaceSearchTerms(
-        TemplateURLRef::SearchTermsArgs(std::u16string()),
-        UIThreadSearchTermsData()));
-
-    if (!search_provider_url.is_valid()) {
-      return NewTabURLDetails(local_url, NEW_TAB_URL_NOT_SET);
-    }
-    if (!search_provider_url.SchemeIsCryptographic()) {
-      return NewTabURLDetails(local_url, NEW_TAB_URL_INSECURE);
-    }
-    if (!IsURLAllowedForSupervisedUser(search_provider_url,
-                                       CHECK_DEREF(profile))) {
-      return NewTabURLDetails(local_url, NEW_TAB_URL_BLOCKED);
-    }
-
-    return NewTabURLDetails(search_provider_url, NEW_TAB_URL_VALID);
+    // Agent Chrome: there is no WebUI or third-party (search provider) New
+    // Tab Page. chrome://newtab is never rewritten and NewTabUI serves a
+    // blank page for regular profiles.
+    return NewTabURLDetails(GURL(), NEW_TAB_URL_NOT_SET);
   }
 
   const GURL url;
@@ -261,8 +205,8 @@ bool IsNTPURL(const GURL& url) {
   return (url.SchemeIs(chrome::kChromeNativeScheme) &&
           url.host() == chrome::kChromeUINewTabHost);
 #else
-  return NewTabPageUI::IsNewTabPageOrigin(url) ||
-         NewTabPageThirdPartyUI::IsNewTabPageOrigin(url);
+  return url.SchemeIs(content::kChromeUIScheme) &&
+         url.host() == chrome::kChromeUINewTabHost;
 #endif
 }
 

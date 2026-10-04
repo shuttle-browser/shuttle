@@ -89,7 +89,6 @@ OmniboxPopupSelection OmniboxPopupSelection::GetNextSelection(
     const AutocompleteInput& input,
     const AutocompleteResult& result,
     TemplateURLService* template_url_service,
-    bool aim_button_visible,
     Direction direction,
     Step step) const {
   if (result.empty()) {
@@ -107,7 +106,7 @@ OmniboxPopupSelection OmniboxPopupSelection::GetNextSelection(
   // easy to reason about.
   std::vector<OmniboxPopupSelection> all_available_selections =
       GetAllAvailableSelectionsSorted(input, result, template_url_service,
-                                      aim_button_visible, step);
+                                      step);
   if (all_available_selections.empty()) {
     return *this;
   }
@@ -159,7 +158,6 @@ OmniboxPopupSelection::GetAllAvailableSelectionsSorted(
     const AutocompleteInput& input,
     const AutocompleteResult& result,
     TemplateURLService* template_url_service,
-    bool aim_button_visible,
     Step step) {
   // First enumerate all the accessible states based on `direction` and `step`,
   // as well as enabled feature flags. This doesn't mean each match will have
@@ -176,7 +174,6 @@ OmniboxPopupSelection::GetAllAvailableSelectionsSorted(
       all_states.push_back(NORMAL);
       all_states.push_back(KEYWORD_MODE);
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-      all_states.push_back(FOCUSED_BUTTON_AIM);
       all_states.push_back(FOCUSED_BUTTON_ACTION);
 #endif
       all_states.push_back(FOCUSED_BUTTON_THUMBS_UP);
@@ -189,58 +186,10 @@ OmniboxPopupSelection::GetAllAvailableSelectionsSorted(
       << "Line states must be added in sorted order for the algorithm to work.";
 
   std::vector<OmniboxPopupSelection> available_selections;
-  // The AIM button is included as a special case selection on the `kNoMatch`
-  // line if:
-  // - The AIM button is visible,
-  // - The user is moving focus with tab or shift-tab (`kStateOrLine`).
-  // - The user is in zero suggest state. When they're not in zero suggest, the
-  //   AIM button selection will instead be added to the default match, below.
-  // Note that the ordering logic in `operator<=>` ensures that `kNoMatch` comes
-  // before other selections.
-  if (aim_button_visible && step == kStateOrLine && input.IsZeroSuggest()) {
-    available_selections.emplace_back(kNoMatch, FOCUSED_BUTTON_AIM);
-  }
   // Now, for each accessible line, add all the available line states to a list.
   for (size_t line_number = 0; line_number < result.size(); ++line_number) {
     for (LineState line_state : all_states) {
-      if (line_state == FOCUSED_BUTTON_AIM) {
-        // The AIM button is included in the focus order if:
-        // - The AIM button is visible.
-        // - This is the first match (`line_number == 0`).
-        // - The match is not from a keyword; i.e. user didn't type
-        //   'youtube<tab>query'. Checking `from_keyword` isn't strictly
-        //   necessary because `aim_button_visible` should be false in this
-        //   case, but it's good to check and not depend on button visibility
-        //   logic staying constant.
-        // - The omnibox is not tabbed into keyword mode; i.e. user didn't type
-        //   'youtube<tab>'. Otherwise, tab traversal wouldn't be consistent
-        //   when tabbing v shift+tabbing. E.g. 'youtube<tab><tab><shift+tab>'
-        //   would skip the AI button tabbing forward but not backward. Checking
-        //   `associated_keyword` suffices though it also catches the case where
-        //   before the user has tabbed into keyword mode; but that's ok since
-        //   `FOCUSED_BUTTON_AIM` is ordered after `KEYWORD_MODE` anyways.
-        // - The match does not have other actions, e.g. switch to tab, to avoid
-        //   disrupting muscle memory and for consistency with keyword chips.
-        // - The 2nd match isn't an instant keyword to avoid disrupting muscle
-        //   memory e.g. '@gemini<tab>'. Don't have to similarly consider
-        //   non-instant keywords since same-line `KEYWORD_MODE` is ordered
-        //   before `FOCUSED_BUTTON_AIM`.
-        // - The 2nd match has a takeover action to avoid disrupting muscle
-        //   memory e.g. 'create doc<tab>'.
-        // - The input is not ZeroSuggest (i.e., the user has typed something).
-        bool second_match_has_instant_keyword_or_takeover_action =
-            result.size() >= 2 &&
-            (result.match_at(1).HasInstantKeyword(template_url_service) ||
-             result.match_at(1).takeover_action);
-        if (aim_button_visible && line_number == 0 &&
-            !result.match_at(0).from_keyword &&
-            result.match_at(0).associated_keyword.empty() &&
-            result.match_at(0).actions.size() == 0 &&
-            !second_match_has_instant_keyword_or_takeover_action &&
-            !input.IsZeroSuggest()) {
-          available_selections.emplace_back(line_number, line_state);
-        }
-      } else if (line_state == FOCUSED_BUTTON_ACTION) {
+      if (line_state == FOCUSED_BUTTON_ACTION) {
         constexpr size_t kMaxActionCount = 8;
         for (size_t i = 0; i < kMaxActionCount; i++) {
           OmniboxPopupSelection selection(line_number, line_state, i);

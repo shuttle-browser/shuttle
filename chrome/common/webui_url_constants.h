@@ -106,10 +106,6 @@ inline constexpr char kChromeUICrossDeviceSigninQrBubbleHost[] =
     "cross-device-signin-qr-bubble";
 inline constexpr char kChromeUICrossDeviceSigninQrBubbleURL[] =
     "chrome://cross-device-signin-qr-bubble/";
-inline constexpr char kChromeUICustomizeChromeSidePanelHost[] =
-    "customize-chrome-side-panel.top-chrome";
-inline constexpr char kChromeUICustomizeChromeSidePanelURL[] =
-    "chrome://customize-chrome-side-panel.top-chrome";
 inline constexpr char kChromeUIDataSharingInternalsHost[] =
     "data-sharing-internals";
 inline constexpr char kChromeUIDefaultHost[] = "version";
@@ -216,7 +212,6 @@ inline constexpr char kChromeUINetExportHost[] = "net-export";
 inline constexpr char kChromeUINetInternalsHost[] = "net-internals";
 inline constexpr char kChromeUINetInternalsURL[] = "chrome://net-internals/";
 inline constexpr char kChromeUINewTabHost[] = "newtab";
-inline constexpr char kChromeUINewTabFooterHost[] = "newtab-footer";
 inline constexpr char kChromeUINewTabPageHost[] = "new-tab-page";
 inline constexpr char kChromeUINewTabPageThirdPartyHost[] =
     "new-tab-page-third-party";
@@ -226,20 +221,8 @@ inline constexpr char kChromeUINewTabPageURL[] = "chrome://new-tab-page/";
 const GURL& ChromeUINewTabPageURLAsGURL();
 inline constexpr char kChromeUINewTabURL[] = "chrome://newtab/";
 const GURL& ChromeUINewTabURLAsGURL();
-inline constexpr char kChromeUINewTabFooterURL[] = "chrome://newtab-footer/";
-inline constexpr char kChromeUIUntrustedNtpMicrosoftAuthHost[] =
-    "ntp-microsoft-auth";
-inline constexpr char kChromeUIUntrustedNtpMicrosoftAuthURL[] =
-    "chrome-untrusted://ntp-microsoft-auth/";
-inline constexpr char kChromeUINTPTilesInternalsHost[] = "ntp-tiles-internals";
 inline constexpr char kChromeUIOmniboxHost[] = "omnibox";
-inline constexpr char kChromeUIOmniboxAimEligibilityPage[] =
-    "omnibox/aim-eligibility";
 inline constexpr char kChromeUIOmniboxPopupHost[] = "omnibox-popup.top-chrome";
-inline constexpr char kChromeUIOmniboxEverywhereHost[] =
-    "omnibox-everywhere.top-chrome";
-inline constexpr char kChromeUIOmniboxEverywhereURL[] =
-    "chrome://omnibox-everywhere.top-chrome/";
 inline constexpr char kChromeUIOmniboxPopupURL[] =
     "chrome://omnibox-popup.top-chrome/";
 inline constexpr char kChromeUIOmniboxPopupAimURL[] =
@@ -503,8 +486,6 @@ inline constexpr char kChromeUIProfileCustomizationURL[] =
 inline constexpr char kChromeUIProfilePickerHost[] = "profile-picker";
 inline constexpr char kChromeUIProfilePickerStartupQuery[] = "startup";
 inline constexpr char kChromeUIProfilePickerGlicQuery[] = "glic";
-inline constexpr char kChromeUIProfilePickerOmniboxEverywhereQuery[] =
-    "omnibox-everywhere";
 inline constexpr char kChromeUIProfilePickerUrl[] = "chrome://profile-picker/";
 inline constexpr char kChromeUIHistorySyncOptinHost[] = "history-sync-optin";
 inline constexpr char kChromeUIHistorySyncOptinURL[] =

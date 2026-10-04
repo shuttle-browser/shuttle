@@ -219,8 +219,6 @@ bool ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(
   // - NTP has an empty omnibox.
   // - Contextual Tasks Tab has an empty omnibox.
   // - Omnibox Popup is an embedded WebUI that itself may request permissions.
-  // - Omnibox Everywhere is an embedded WebUI that itself may request
-  // permissions.
   const url::Origin committed_origin =
       web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
   if (committed_origin.IsSameOriginWith(chrome::ChromeUINewTabURLAsGURL()) ||
@@ -229,9 +227,7 @@ bool ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(
       committed_origin.IsSameOriginWith(
           GURL(chrome::kChromeUIOmniboxPopupURL)) ||
       committed_origin.IsSameOriginWith(
-          GURL(chrome::kChromeUIContextualTasksURL)) ||
-      committed_origin.IsSameOriginWith(
-          GURL(chrome::kChromeUIOmniboxEverywhereURL))) {
+          GURL(chrome::kChromeUIContextualTasksURL))) {
     return true;
   }
   return false;

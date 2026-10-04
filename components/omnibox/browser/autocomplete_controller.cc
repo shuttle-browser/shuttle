@@ -44,7 +44,6 @@
 #include "build/build_config.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
 #include "components/omnibox/browser/actions/omnibox_pedal_provider.h"
-#include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/browser/autocomplete_enums.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
@@ -1498,9 +1497,7 @@ void AutocompleteController::UpdateResult(UpdateType update_type,
       !autocomplete_provider_client()->AreLensEntrypointsVisible();
   const bool can_show_contextual_suggestions = CanShowContextualSuggestions(
       autocomplete_provider_client()->IsPagePaywalled());
-  const bool mia_enabled =
-      omnibox_feature_configs::MiaZPS::Get().enabled &&
-      AimEligibilityService::IsAimAllowedByPolicy(provider_client_->GetPrefs());
+  const bool mia_enabled = false;
   const bool is_incognito = provider_client_->IsOffTheRecord();
 
   if (update_type == UpdateType::kSyncPass ||
@@ -1527,11 +1524,7 @@ void AutocompleteController::UpdateResult(UpdateType update_type,
   PostProcessMatches();
   // TODO (crbug.com/555355466): Refactor or remove this logic when we remove
   // OB simplification code paths.
-  const auto* client = autocomplete_provider_client();
-  internal_result_.set_has_contextual_chips(
-      client->IsOmniboxNextAimPopupEnabled() &&
-      (client->IsLensEnabled() || client->IsAskGShowChipEnabled() ||
-       can_show_contextual_suggestions));
+  internal_result_.set_has_contextual_chips(false);
 
   bool default_match_changed = CheckWhetherDefaultMatchChanged(
       old_result.last_default_match,

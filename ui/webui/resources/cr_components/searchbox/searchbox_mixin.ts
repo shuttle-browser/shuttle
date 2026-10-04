@@ -4,11 +4,9 @@
 
 import {assert, assertNotReached} from '//resources/js/assert.js';
 import {EventTracker} from '//resources/js/event_tracker.js';
-import {loadTimeData} from '//resources/js/load_time_data.js';
 import {isMac} from '//resources/js/platform.js';
 import {hasKeyModifiers} from '//resources/js/util.js';
 import type {CrLitElement, PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
-import {SuggestInventory} from '//resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 import {NavigationPredictor} from '//resources/mojo/components/omnibox/browser/omnibox.mojom-webui.js';
 import type {AutocompleteMatch, AutocompleteResult, InputKeywordModel, OmniboxPopupSelection, PageCallbackRouter, PageHandlerInterface} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {InputMethod, SelectionDirection, SelectionLineState, SelectionStep} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
@@ -91,9 +89,6 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         },
       };
     }
-    composeboxSource: string = loadTimeData.valueExists('composeboxSource') ?
-        loadTimeData.getString('composeboxSource') :
-        'Unknown';
     accessor searchboxAriaDescription: string = '';
     accessor dropdownIsVisible: boolean = false;
     // Tracks the latest query sent for autocompletion. Used to filter out
@@ -297,8 +292,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       const keyword = this.keywordModeManager_.activeKeyword;
       this.pageHandler().queryAutocomplete(
           this.activeQueryId, this.getTabId(), input, preventInlineAutocomplete,
-          cursorPosition, SuggestInventory.kDefault, isOnFocus, keyword,
-          InputMethod.kKeyboard);
+          cursorPosition, isOnFocus, keyword, InputMethod.kKeyboard);
 
       this.dispatchEvent(new CustomEvent('query-autocomplete', {
         bubbles: true,
@@ -361,11 +355,6 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         moveCursorToEnd: true,
       });
       this.clearAutocompleteMatches();
-    }
-
-    openContextMenu(): void {
-      // Overridden by embedders with contextual entrypoints (e.g. Full WebUI
-      // popup).
     }
 
     isAutocompleteResultStale(result: AutocompleteResult): boolean {
@@ -566,9 +555,8 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
 
     /**
      * Determines whether the key event originated from an element participating
-     * in virtual focus navigation (the input, dropdown matches, or compose
-     * button). Events from nested controls (e.g. contextual entrypoints, lens
-     * button, voice search) return false so native browser Tab navigation
+     * in virtual focus navigation (the input or dropdown matches). Events
+     * from nested controls (e.g. lens button, voice search) return false so native browser Tab navigation
      * applies.
      */
     private isVirtualFocusEventTarget_(e: KeyboardEvent): boolean {
@@ -577,36 +565,14 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         return true;
       }
       return path.includes(this.getInputElement()) ||
-          path.includes(this.getDropdownElement()) || path.some(el => {
-            const node = el as HTMLElement;
-            return node.tagName === 'CR-SEARCHBOX-COMPOSE-BUTTON';
-          });
+          path.includes(this.getDropdownElement());
     }
 
     /**
-     * Handles Enter key presses on virtually focused elements (AIM, Action,
+     * Handles Enter key presses on virtually focused elements (Action,
      * Remove Suggestion). Returns true if the event was handled.
      */
     private handleVirtualFocusEnter_(e: KeyboardEvent): boolean {
-      if (this.selection.state === SelectionLineState.kFocusedButtonAim) {
-        e.preventDefault();
-        const button =
-            this.shadowRoot.querySelector('cr-searchbox-compose-button');
-        if (button) {
-          button.dispatchEvent(new CustomEvent('compose-click', {
-            bubbles: true,
-            composed: true,
-            detail: {
-              button: 0,
-              ctrlKey: e.ctrlKey,
-              metaKey: e.metaKey,
-              shiftKey: e.shiftKey,
-            },
-          }));
-        }
-        return true;
-      }
-
       if (this.selection.state === SelectionLineState.kFocusedButtonAction) {
         e.preventDefault();
         const action = this.selectedMatch?.actions[this.selection.actionIndex];
@@ -627,13 +593,6 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
           this.pageHandler().deleteAutocompleteMatch(
               this.selection.line, this.selectedMatch.destinationUrl);
         }
-        return true;
-      }
-
-      if (this.selection.state ===
-          SelectionLineState.kFocusedButtonContextEntrypoint) {
-        e.preventDefault();
-        this.openContextMenu();
         return true;
       }
 
@@ -1025,7 +984,6 @@ export interface SearchboxMixinInterface extends
     SearchboxSelectionMixinInterface {
   virtualFocusEnabled: boolean;
   matchIndex: number;
-  composeboxSource: string;
   dropdownIsVisible: boolean;
   initialInputScrollHeight: number;
   inputAriaLive: string;
@@ -1061,7 +1019,6 @@ export interface SearchboxMixinInterface extends
   onMatchClick(): void;
   onMatchFocusin(e: CustomEvent<number>): void;
   onKeywordClick(e: Event): void;
-  openContextMenu(): void;
   openCtrlEnterMatch(matchIndex: number): void;
   onSearchboxInputTextUpdated(
       e: CustomEvent<{value: string, isComposing: boolean}>): void;

@@ -147,24 +147,12 @@ bool ShouldCacheResultTypeInContext(const ResultType result_type,
   const auto page_class = input.current_page_classification();
   // Lens contextual inputs were removed from this fork.
   const bool has_contextual_input = false;
-  const auto& input_state = input.input_state();
 
   switch (result_type) {
     case ResultType::kRemoteNoURL:
       // Only cache results for the NTP realbox if there is no contextual input.
       if (page_class == OEP::NTP_REALBOX) {
         return !has_contextual_input;
-      }
-      // Composebox requests can't have contextual inputs and must not have any
-      // tools or suggest inventory enabled to use stored response.
-      if (omnibox::IsNTPComposebox(page_class)) {
-        return base::FeatureList::IsEnabled(
-                   omnibox::kZeroSuggestPrefetchingForComposebox) &&
-               !has_contextual_input &&
-               input_state.active_tool ==
-                   omnibox::ToolMode::TOOL_MODE_UNSPECIFIED &&
-               input.suggest_inventory() ==
-                   omnibox::SuggestInventory::SUGGEST_INVENTORY_DEFAULT;
       }
       // All other composebox's should not be using cached zps results.
       return !(omnibox::IsLensSearchbox(page_class) ||
@@ -538,20 +526,6 @@ void ZeroSuggestProvider::StartPrefetch(const AutocompleteInput& input) {
   } else {
     RunZeroSuggestPrefetch(input, result_type);
   }
-
-  // Make a composebox prefetch request when the NTP zero suggest prefetch is
-  // requested.
-  if (input.current_page_classification() == OEP::NTP_ZPS_PREFETCH &&
-      base::FeatureList::IsEnabled(
-          omnibox::kZeroSuggestPrefetchingForComposebox)) {
-    if (base::FeatureList::IsEnabled(omnibox::kZeroSuggestPrefetchDebouncing)) {
-      composebox_debouncer_->RequestRun(
-          base::BindOnce(&ZeroSuggestProvider::RunComposeboxPrefetch,
-                         base::Unretained(this), input));
-    } else {
-      RunComposeboxPrefetch(input);
-    }
-  }
 }
 
 void ZeroSuggestProvider::StartZeroSuggestPrefetchRequest(
@@ -615,33 +589,6 @@ void ZeroSuggestProvider::RunZeroSuggestPrefetch(const AutocompleteInput& input,
 
   StartZeroSuggestPrefetchRequest(input, result_type, search_terms_args,
                                   prefetch_loader);
-}
-
-void ZeroSuggestProvider::RunComposeboxPrefetch(
-    const AutocompleteInput& input) {
-  auto* aim_eligibility_service = client()->GetAimEligibilityService();
-  if (!aim_eligibility_service ||
-      !aim_eligibility_service->IsFuseboxEligible()) {
-    return;
-  }
-
-  TemplateURLRef::SearchTermsArgs search_terms_args;
-  search_terms_args.page_classification = OEP::NTP_COMPOSEBOX_PREFETCH;
-  search_terms_args.request_source = TemplateURLRef::RequestSource::COMPOSEBOX;
-  search_terms_args.focus_type = input.focus_type();
-  search_terms_args.current_page_url = std::string();
-  search_terms_args.input_state = input.input_state();
-  search_terms_args.suggest_inventory = input.suggest_inventory();
-
-  AutocompleteInput composebox_input(input.text(), OEP::NTP_COMPOSEBOX_PREFETCH,
-                                     client()->GetSchemeClassifier());
-  composebox_input.set_current_url(input.current_url());
-  composebox_input.set_current_title(input.current_title());
-  composebox_input.set_focus_type(input.focus_type());
-
-  StartZeroSuggestPrefetchRequest(composebox_input, ResultType::kRemoteNoURL,
-                                  search_terms_args,
-                                  &composebox_prefetch_loader_);
 }
 
 void ZeroSuggestProvider::Start(const AutocompleteInput& input,
@@ -755,9 +702,6 @@ ZeroSuggestProvider::ZeroSuggestProvider(AutocompleteProviderClient* client,
     debouncer_ = std::make_unique<AutocompleteProviderDebouncer>(
         OmniboxFieldTrial::kZeroSuggestPrefetchDebounceFromLastRun.Get(),
         OmniboxFieldTrial::kZeroSuggestPrefetchDebounceDelay.Get());
-    composebox_debouncer_ = std::make_unique<AutocompleteProviderDebouncer>(
-        OmniboxFieldTrial::kZeroSuggestPrefetchDebounceFromLastRun.Get(),
-        OmniboxFieldTrial::kZeroSuggestPrefetchDebounceDelay.Get());
   }
 }
 
@@ -861,8 +805,6 @@ void ZeroSuggestProvider::OnPrefetchURLLoadComplete(
     prefetch_loader = &ntp_prefetch_loader_;
   } else if (source == srp_web_prefetch_loader_.get()) {
     prefetch_loader = &srp_web_prefetch_loader_;
-  } else if (source == composebox_prefetch_loader_.get()) {
-    prefetch_loader = &composebox_prefetch_loader_;
   } else {
     NOTREACHED();
   }

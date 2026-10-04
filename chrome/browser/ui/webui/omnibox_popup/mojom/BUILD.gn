@@ -9,7 +9,6 @@ assert(!is_android && !is_ios)
 mojom("mojom") {
   sources = [
     "omnibox_popup.mojom",
-    "omnibox_popup_aim.mojom",
   ]
   webui_module_path = "/"
   deps = [

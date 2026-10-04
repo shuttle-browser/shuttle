@@ -345,8 +345,6 @@ void OmniboxPopupViewViews::InvalidateLine(size_t line) {
 void OmniboxPopupViewViews::UpdatePopupAppearance() {
   const auto* autocomplete_controller = controller()->autocomplete_controller();
   const bool should_be_open =
-      controller()->popup_state_manager()->popup_state() !=
-          OmniboxPopupState::kAim &&
       !autocomplete_controller->result().empty() &&
       !omnibox_view_->IsImeShowingPopup();
   const bool was_open = !!widget_;
@@ -368,8 +366,7 @@ void OmniboxPopupViewViews::UpdatePopupAppearance() {
       // Do this AFTER widget operations. `LocationBarView` is subscribed to
       // state changes and attempts to call `UpdatePopupAppearance()` again if
       // the widget is open.
-      // Only update the state if it's currently `kClassic`. If it's already
-      // transitioning to another state (e.g., `kAim`), don't override it.
+      // Only update the state if it's currently `kClassic`.
       if (controller()->popup_state_manager()->popup_state() ==
           OmniboxPopupState::kClassic) {
         controller()->popup_state_manager()->SetPopupState(
@@ -760,7 +757,6 @@ gfx::Rect OmniboxPopupViewViews::GetTargetBounds() const {
 
   if (omnibox::IsWebUIOmniboxPopupEnabled() &&
       !omnibox::IsWebUIOmniboxFullPopupEnabled() &&
-      !omnibox::IsAimPopupFeatureEnabled() &&
       base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxPopupDebug) &&
       omnibox::kWebUIOmniboxPopupDebugSxSParam.Get()) {
     if (auto bounds = GetDebugWidgetBounds(location_bar_view_, popup_height)) {

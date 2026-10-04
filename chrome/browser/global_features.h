@@ -31,10 +31,6 @@ class PlatformHandle;
 #endif
 
 
-namespace omnibox_everywhere {
-class OmniboxEverywhereController;
-}
-
 class ApplicationLocaleStorage;
 class AudioProcessMlModelForwarder;
 class BrowserProcess;
@@ -147,12 +143,6 @@ class GlobalFeatures {
   system_permissions_platform_handle() {
     return system_permissions_platform_handle_.get();
   }
-#if !BUILDFLAG(IS_ANDROID)
-  omnibox_everywhere::OmniboxEverywhereController*
-  omnibox_everywhere_controller() {
-    return omnibox_everywhere_controller_.get();
-  }
-#endif
 
   ApplicationLocaleStorage* application_locale_storage() {
     return application_locale_storage_.get();
@@ -240,10 +230,6 @@ class GlobalFeatures {
 
   std::unique_ptr<system_permission_settings::PlatformHandle>
       system_permissions_platform_handle_;
-#if !BUILDFLAG(IS_ANDROID)
-  std::unique_ptr<omnibox_everywhere::OmniboxEverywhereController>
-      omnibox_everywhere_controller_;
-#endif
   std::unique_ptr<ApplicationLocaleStorage> application_locale_storage_;
 
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)

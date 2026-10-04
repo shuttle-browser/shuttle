@@ -18,7 +18,6 @@
 #include "components/supervised_user/core/common/buildflags.h"
 #include "components/sync/base/data_type.h"
 
-class AimEligibilityService;
 class GoogleGroupsManager;
 class PrefService;
 class TemplateURLService;
@@ -114,7 +113,6 @@ class CommonControllerBuilder {
           web_data_service_on_disk,
       const scoped_refptr<autofill::AutofillWebDataService>&
           web_data_service_in_memory);
-  void SetAimEligibilityService(AimEligibilityService* aim_eligibility_service);
   void SetDeviceInfoSyncService(
       syncer::DeviceInfoSyncService* device_info_sync_service);
   void SetFaviconService(favicon::FaviconService* favicon_service);
@@ -313,7 +311,6 @@ class CommonControllerBuilder {
       profile_autofill_web_data_service_;
   SafeOptional<scoped_refptr<autofill::AutofillWebDataService>>
       account_autofill_web_data_service_;
-  SafeOptional<raw_ptr<AimEligibilityService>> aim_eligibility_service_;
   SafeOptional<scoped_refptr<password_manager::PasswordStoreInterface>>
       profile_password_store_;
   SafeOptional<scoped_refptr<password_manager::PasswordStoreInterface>>

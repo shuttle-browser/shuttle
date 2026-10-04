@@ -2950,9 +2950,7 @@ void TemplateURLService::UpdateKeywordSearchTermsForURL(
   // AI mode URLs should not be stored. Otherwise, since they fit the
   // traditional search `TemplateURL`'s URL, those would be incorrectly
   // attributed.
-  if (omnibox_feature_configs::AiMode::Get()
-          .do_not_show_historic_aim_suggestions &&
-      IsGoogleAiModeUrl(details.url)) {
+  if (IsGoogleAiModeUrl(details.url)) {
     return;
   }
 

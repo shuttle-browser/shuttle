@@ -20,7 +20,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_tab_selection_listener.h"
 #include "chrome/browser/ui/views/omnibox/rounded_omnibox_results_frame.h"
@@ -171,7 +170,7 @@ void OmniboxPopupWebUIBaseContent::ShowUI() {
   // Pre-initialize the presenter's content height and preferred size from
   // RenderWidgetHostView when Full WebUI is enabled.
   //
-  // When switching between WebUI popups (e.g. `kFull` <-> `kAim`), the incoming
+  // When switching between WebUI popups (e.g. between popup states), the incoming
   // WebContents was already loaded and rendered, with no subsequent DOM
   // changes. Because Blink's auto-resize mechanism suppresses emitting a new
   // `ResizeDueToAutoResize` IPC when the content dimensions have not changed,

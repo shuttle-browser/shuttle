@@ -4,17 +4,14 @@
 
 import '//resources/cr_components/searchbox/searchbox_dropdown.js';
 import '//resources/cr_components/searchbox/searchbox_input.js';
-import '//resources/cr_components/searchbox/searchbox_compose_button.js';
-import './omnibox_popup_contextual_entrypoint.js';
 
 import {SearchboxBrowserProxy} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
-import type {ComposeClickEventDetail, SearchboxComposeButtonElement} from '//resources/cr_components/searchbox/searchbox_compose_button.js';
 import type {SearchboxDropdownElement} from '//resources/cr_components/searchbox/searchbox_dropdown.js';
 import type {SearchboxInputElement} from '//resources/cr_components/searchbox/searchbox_input.js';
 import {kDefaultSelection} from '//resources/cr_components/searchbox/searchbox_match.js';
 import type {SearchboxMixinInterface} from '//resources/cr_components/searchbox/searchbox_mixin.js';
 import {SearchboxMixin} from '//resources/cr_components/searchbox/searchbox_mixin.js';
-import {selectionIsNativelySupported, selectionsEqual} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
+import {selectionsEqual} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
 import {markOnce, sanitizeTextForPaste} from '//resources/cr_components/searchbox/utils.js';
 import {I18nMixinLit} from '//resources/cr_elements/i18n_mixin_lit.js';
 import {WebUiListenerMixinLit} from '//resources/cr_elements/web_ui_listener_mixin_lit.js';
@@ -25,12 +22,9 @@ import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import {SelectionLineState} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import type {PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerInterface as SearchboxPageHandlerInterface} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
-import type {Url} from '//resources/mojo/url/mojom/url.mojom-webui.js';
 
 import {browserProxyFactory, OmniboxEscapeAction} from './omnibox_popup.mojom-webui.js';
 import type {OmniboxInputState, PageCallbackRouter as PopupPageCallbackRouter, PageHandlerInterface as PopupPageHandlerInterface} from './omnibox_popup.mojom-webui.js';
-import type {OmniboxPopupContextualEntrypointElement} from './omnibox_popup_contextual_entrypoint.js';
-import type {OmniboxPopupContextualEntrypointButtonElement} from './omnibox_popup_contextual_entrypoint_button.js';
 import {getCss} from './omnibox_popup_searchbox.css.js';
 import {getHtml} from './omnibox_popup_searchbox.html.js';
 import {TextfieldModel} from './textfield_model.js';
@@ -63,16 +57,8 @@ function isNtpUrl(url: string): boolean {
       url.startsWith('chrome-search://local-ntp') || url === 'about:blank';
 }
 
-export interface AimButtonConfig {
-  text: string;
-  title: string;
-  a11yLabel: string;
-  icon: string;
-}
-
 export interface OmniboxPopupSearchboxElement {
   $: {
-    composeButton: SearchboxComposeButtonElement,
     input: SearchboxInputElement,
     inputWrapper: HTMLElement,
     matches: SearchboxDropdownElement,
@@ -85,10 +71,6 @@ const OmniboxPopupSearchboxElementBase =
 
 export class OmniboxPopupSearchboxElement extends
     OmniboxPopupSearchboxElementBase implements SearchboxMixinInterface {
-  override get isAimButtonVisible(): boolean {
-    return this.aimButtonVisible_;
-  }
-
   protected isVirtualFocusEnabled_(): boolean {
     return this.virtualFocusEnabled;
   }
@@ -145,22 +127,6 @@ export class OmniboxPopupSearchboxElement extends
         type: Boolean,
         reflect: true,
       },
-      searchboxDynamicColorScheme_: {
-        type: Boolean,
-        reflect: true,
-      },
-      hasUserInput_: {
-        type: Boolean,
-      },
-      searchboxDynamicAnimation_: {
-        type: Boolean,
-      },
-      aimButtonVisible_: {
-        type: Boolean,
-      },
-      aimButtonConfig_: {
-        type: Object,
-      },
       /**
        * Whether the secondary side can be shown based on the feature state and
        * the width available to the dropdown.
@@ -201,10 +167,6 @@ export class OmniboxPopupSearchboxElement extends
       permanentDisplayText_: {
         type: String,
       },
-      aimButtonIconOnly_: {
-        type: Boolean,
-        reflect: true,
-      },
     };
   }
 
@@ -234,27 +196,6 @@ export class OmniboxPopupSearchboxElement extends
   // TODO(b/519185419): Remove `isTouchUi_` property and from `loadTimeData` and
   // get layout constants and font sizes from a C++ layout helper instead.
   protected accessor isTouchUi_: boolean = loadTimeData.getBoolean('isTouchUi');
-  protected accessor searchboxDynamicColorScheme_: boolean =
-      loadTimeData.getBoolean('searchboxDynamicColorScheme');
-  protected accessor searchboxDynamicAnimation_: boolean =
-      loadTimeData.getBoolean('searchboxDynamicAnimation');
-  protected accessor hasUserInput_: boolean = false;
-  protected accessor aimButtonVisible_: boolean = false;
-  protected accessor aimButtonConfig_: AimButtonConfig = {
-    text: '',
-    title: '',
-    a11yLabel: '',
-    icon: '',
-  };
-
-  override get showContextEntrypoint(): boolean {
-    return this.shadowRoot
-               ?.querySelector<OmniboxPopupContextualEntrypointElement>(
-                   'omnibox-popup-contextual-entrypoint')
-               ?.showContextEntrypoint ??
-        false;
-  }
-
   private eventTracker_ = new EventTracker();
   private searchboxPageHandler_: SearchboxPageHandlerInterface;
   private searchboxCallbackRouter_: SearchboxPageCallbackRouter;
@@ -271,7 +212,6 @@ export class OmniboxPopupSearchboxElement extends
   protected accessor userInputInProgress_: boolean = false;
   protected accessor fullUrl_: string = '';
   protected accessor permanentDisplayText_: string = '';
-  protected accessor aimButtonIconOnly_: boolean = false;
   // True during an active IME (Input Method Editor) text composition session.
   // Used to suppress intermediate selection updates until composition finishes.
   private isComposing_: boolean = false;
@@ -297,18 +237,6 @@ export class OmniboxPopupSearchboxElement extends
   // executing. Used to suppress recording spurious history edits when input
   // text updates programmatically during undo/redo execution.
   private isUndoRedo_: boolean = false;
-  // Observes resize events on `#inputWrapper` to evaluate AIM button
-  // expanded/collapsed state.
-  private inputResizeObserver_: ResizeObserver|null = null;
-  // Cached width of the AIM button in its expanded state (when rendered as
-  // on-screen pixels).
-  private expandedAimButtonWidth_: number = 0;
-  // Cached Canvas 2D context used to measure text width.
-  private canvasContext_: CanvasRenderingContext2D|null = null;
-  // Cached font style string of input element for text width measurement.
-  // NOTE: This is used to avoid repeated calls to `window.getComputedStyle()`
-  // which normally triggers layout flushes.
-  private inputFontStyle_: string = '';
 
   constructor() {
     super();
@@ -327,20 +255,6 @@ export class OmniboxPopupSearchboxElement extends
     this.listenerIds_ = [
       this.searchboxCallbackRouter_.autocompleteResultChanged.addListener(
           this.onAutocompleteResultChanged.bind(this)),
-      this.searchboxCallbackRouter_.setAimButtonVisible.addListener(
-          (visible: boolean) => {
-            this.aimButtonVisible_ = visible;
-            this.updateAimButtonCollapse_();
-          }),
-      this.searchboxCallbackRouter_.setAimButtonConfig.addListener(
-          (text: string, tooltip: string, a11yLabel: string, iconUrl: Url) => {
-            this.aimButtonConfig_ = {
-              text,
-              title: tooltip,
-              a11yLabel,
-              icon: iconUrl,
-            };
-          }),
     ];
     this.popupListenerIds_ = [
       this.popupCallbackRouter_.setInputState.addListener(
@@ -373,11 +287,6 @@ export class OmniboxPopupSearchboxElement extends
       this.onSelectionChanged_();
     });
 
-    this.inputResizeObserver_ = new ResizeObserver(() => {
-      this.updateAimButtonCollapse_();
-    });
-    this.inputResizeObserver_.observe(this.$.inputWrapper);
-
     // When `selectAllOnMouseRelease_` is true (set during `onInputMousedown_`
     // when the input is focused and the selection is collapsed), prevent the
     // default `mouseup` behavior. This stops the text from being unselected
@@ -402,7 +311,6 @@ export class OmniboxPopupSearchboxElement extends
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.inputResizeObserver_?.disconnect();
     this.listenerIds_.forEach(
         id => this.searchboxCallbackRouter_.removeListener(id));
     this.listenerIds_ = [];
@@ -420,15 +328,6 @@ export class OmniboxPopupSearchboxElement extends
     }
   }
 
-  getContextualEntrypointButton(): OmniboxPopupContextualEntrypointButtonElement
-      |null {
-    return this.shadowRoot
-               ?.querySelector<OmniboxPopupContextualEntrypointElement>(
-                   'omnibox-popup-contextual-entrypoint')
-               ?.getContextEntrypointElement() ??
-        null;
-  }
-
   override firstUpdated(changedProperties: PropertyValues<this>) {
     super.firstUpdated(changedProperties);
     this.initialInputScrollHeight = this.$.input.inputElement.scrollHeight;
@@ -440,14 +339,7 @@ export class OmniboxPopupSearchboxElement extends
     if (this.virtualFocusEnabled) {
       if (changedProperties.has('selection')) {
         this.searchboxPageHandler_.setPopupSelection(
-            selectionIsNativelySupported(this.selection) ? this.selection :
-                                                           kDefaultSelection);
-
-        const entrypoint = this.getContextualEntrypointButton();
-        if (entrypoint) {
-          entrypoint.hasPopupFocus = this.selection.state ===
-              SelectionLineState.kFocusedButtonContextEntrypoint;
-        }
+            this.selection);
       }
     } else {
       if (changedProperties.has('selectedMatchIndex')) {
@@ -513,10 +405,6 @@ export class OmniboxPopupSearchboxElement extends
 
   override pageHandler(): SearchboxPageHandlerInterface {
     return this.searchboxPageHandler_;
-  }
-
-  override openContextMenu(): void {
-    this.getContextualEntrypointButton()?.showContextMenu();
   }
 
   /**
@@ -697,7 +585,6 @@ export class OmniboxPopupSearchboxElement extends
     const cursorPos = this.lastInputSelection_.end;
 
     this.userInputInProgress_ = true;
-    this.hasUserInput_ = !!newValue.trim();
     this.getInputElement().setInput({text: newValue, inline: ''});
     this.getInputElement().setSelectionRange(cursorPos, cursorPos);
 
@@ -738,7 +625,6 @@ export class OmniboxPopupSearchboxElement extends
     if (isCut) {
       const newValue = oldValue.substring(0, start) + oldValue.substring(end);
       this.userInputInProgress_ = true;
-      this.hasUserInput_ = !!newValue.trim();
       this.getInputElement().setInput({text: newValue, inline: ''});
       this.getInputElement().setSelectionRange(start, start);
 
@@ -842,7 +728,6 @@ export class OmniboxPopupSearchboxElement extends
     const isTabSwitch = this.tabId_ !== state.tabId;
     this.$.input.setInputText(state.text);
     this.userInputInProgress_ = state.userInputInProgress;
-    this.hasUserInput_ = state.userInputInProgress && !!state.text.trim();
     this.currentSequenceNum_ = state.sequenceNumber;
     this.tabId_ = state.tabId;
     this.fullUrl_ = state.fullUrl;
@@ -960,8 +845,7 @@ export class OmniboxPopupSearchboxElement extends
   }
   /**
    * Resets selection range, blurs input, clears autocomplete matches, and
-   * resets AIM button visibility when focus is lost to external targets or when
-   * clicking outside.
+   * when focus is lost to external targets or when clicking outside.
    */
   private handleFocusLost_() {
     this.getInputElement().setSelectionRange(0, 0);
@@ -971,10 +855,6 @@ export class OmniboxPopupSearchboxElement extends
     // select_all_on_mouse_release_ (in omnibox_view_views) to be set to the
     // correct value.
     this.clearAutocompleteMatches();
-    // Due to inconsistent focus detection, resetting AIM button visibility
-    // here is necessary in order to guarantee that the AIM button is hidden
-    // when the user defocuses the Omnibox.
-    this.aimButtonVisible_ = false;
   }
 
   /**
@@ -1123,12 +1003,9 @@ export class OmniboxPopupSearchboxElement extends
   protected onSearchboxInputTextUpdated_(
       e: CustomEvent<{value: string, isComposing: boolean}>) {
     this.userInputInProgress_ = true;
-    this.hasUserInput_ = !!e.detail.value.trim();
 
     this.updateTextfieldModel_(e.detail.value, e.detail.isComposing);
     this.lastInputText_ = e.detail.value;
-
-    this.updateAimButtonCollapse_();
 
     if (!e.detail.value.trim()) {
       // Notify the backend when the user clears all input (`onInputCleared`) so
@@ -1173,11 +1050,6 @@ export class OmniboxPopupSearchboxElement extends
     this.dispatchEvent(new Event('open-lens-search'));
   }
 
-  protected onComposeClick_(e: CustomEvent<ComposeClickEventDetail>) {
-    this.dropdownIsVisible = false;
-    this.popupPageHandler_.openAimPopup(e.detail?.viaKeyboard || false);
-  }
-
   protected onHasSecondarySideChanged_(e: CustomEvent<{value: boolean}>) {
     this.hasSecondarySide = e.detail.value;
   }
@@ -1214,7 +1086,6 @@ export class OmniboxPopupSearchboxElement extends
     this.isUndoRedo_ = true;
     try {
       this.userInputInProgress_ = true;
-      this.hasUserInput_ = !!result.text.trim();
       this.lastInputText_ = result.text;
       this.lastInputSelection_ = result.selection;
 
@@ -1375,78 +1246,6 @@ export class OmniboxPopupSearchboxElement extends
     this.popupPageHandler_.closeUI();
     this.popupPageHandler_.logEscapeAction(OmniboxEscapeAction.kBlur);
     return;
-  }
-
-  /**
-   * Helper function to measure the rendered pixel width of a text string,
-   * using a cached off-screen Canvas 2D context to avoid layout flushes during
-   * resize.
-   */
-  private getTextWidth_(text: string, element: HTMLElement): number {
-    if (!text) {
-      return 0;
-    }
-
-    if (!this.canvasContext_) {
-      const canvas = document.createElement('canvas');
-      this.canvasContext_ = canvas.getContext('2d');
-    }
-
-    if (!this.inputFontStyle_) {
-      const computedStyle = window.getComputedStyle(element);
-      this.inputFontStyle_ = `${computedStyle.fontWeight} ${
-          computedStyle.fontSize} ${computedStyle.fontFamily}`;
-    }
-
-    this.canvasContext_!.font = this.inputFontStyle_;
-    return this.canvasContext_!.measureText(text).width;
-  }
-
-  private updateAimButtonCollapse_() {
-    if (!this.aimButtonVisible_) {
-      this.aimButtonIconOnly_ = false;
-      return;
-    }
-
-    const composeButton =
-        this.shadowRoot?.querySelector<HTMLElement>('#composeButton');
-    if (!composeButton) {
-      return;
-    }
-
-    // Capture the latest "expanded" AIM button width.
-    if (!this.aimButtonIconOnly_) {
-      this.expandedAimButtonWidth_ = composeButton.offsetWidth;
-    }
-
-    const input = this.$.input.inputElement;
-
-    // Collapse AIM button to icon-only variant when input text overflows
-    // visible bounds.
-    if (input.scrollWidth > input.clientWidth) {
-      this.aimButtonIconOnly_ = true;
-      return;
-    }
-
-    if (this.aimButtonIconOnly_) {
-      const text = input.value;
-      // If input text is empty, always render the "expanded" variant.
-      if (!text) {
-        this.aimButtonIconOnly_ = false;
-        return;
-      }
-      const textWidth = this.getTextWidth_(text, input);
-      const expandedWidth = this.expandedAimButtonWidth_ || 104;
-      const collapsedWidth = composeButton.offsetWidth || 24;
-      // If non-empty input text can fit comfortably alongside the "expanded"
-      // AIM button, then render the "expanded" variant.
-      // NOTE: `threshold` uses a 4px safety margin in order to limit any
-      // potential layout thrashing (i.e. infinite expand/collapse loop).
-      const threshold = (expandedWidth - collapsedWidth) + 4;
-      if (textWidth < input.clientWidth - threshold) {
-        this.aimButtonIconOnly_ = false;
-      }
-    }
   }
 }
 

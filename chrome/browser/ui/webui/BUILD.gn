@@ -46,7 +46,6 @@ source_set("configs") {
   deps = [
     ":gcm_internals_ui",
     ":net_export_ui",
-    ":ntp_tiles_internals_ui",
     ":signin_internals_ui",
     ":webui",
     "//chrome/browser/actor/ui:actor_overlay",
@@ -102,9 +101,6 @@ source_set("configs") {
       "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/infobar_internals",
       "//chrome/browser/ui/webui/inspect",
-      "//chrome/browser/ui/webui/new_tab_page_third_party",
-      "//chrome/browser/ui/webui/new_tab_page_third_party:impl",
-      "//chrome/browser/ui/webui/omnibox_everywhere",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/page_action_internals",
       "//chrome/browser/ui/webui/profile_internals",
@@ -237,7 +233,6 @@ source_set("configs") {
   }
 
   if (enable_webui_ntp) {
-    deps += [ "//chrome/browser/ui/webui/ntp_microsoft_auth" ]
   }
 }
 
@@ -524,7 +519,6 @@ source_set("chrome_web_ui_controller_factory") {
     "//chrome/browser/ui/webui/components",
     "//chrome/browser/ui/webui/download_internals",
     "//chrome/browser/ui/webui/flags",
-    "//chrome/browser/ui/webui/new_tab_page",
     "//chrome/browser/ui/webui/version",
     "//chrome/common",
     "//chrome/common:constants",
@@ -776,33 +770,6 @@ if (!is_android) {
       "//base",
       "//content/public/browser",
     ]
-  }
-}
-
-source_set("ntp_tiles_internals_ui") {
-  sources = [ "ntp_tiles_internals_ui.cc" ]
-  public = [ "ntp_tiles_internals_ui.h" ]
-
-  public_deps = [ "//chrome/common" ]
-
-  deps = [
-    "//base",
-    "//chrome/browser/favicon",
-    "//chrome/browser/history",
-    "//chrome/browser/new_tab_page/prefs",
-    "//chrome/browser/ntp_tiles",
-    "//chrome/browser/search_engines",
-    "//components/history/core/browser",
-    "//components/image_fetcher/core",
-    "//components/prefs",
-    "//ui/webui",
-  ]
-
-  if (is_android) {
-    deps += [ "//chrome/browser/flags:flags_android" ]
-  }
-  if (enable_webui_ntp) {
-    deps += [ "//chrome/browser/new_tab_page" ]
   }
 }
 

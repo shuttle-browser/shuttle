@@ -12,7 +12,6 @@
 enum class OmniboxPopupState {
   kNone,     // No popup is visible
   kClassic,  // Classic popup (suggestions dropdown only) is visible
-  kAim,      // AI Mode popup is visible
   kFull,     // Full popup (input row + suggestions dropdown) is visible
 };
 

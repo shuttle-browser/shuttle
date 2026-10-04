@@ -28,7 +28,6 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/views/app_menu/action_app_menu_zoom_view.h"
 #include "chrome/browser/ui/views/app_menu/recent_tabs_dynamic_menu.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"
@@ -394,12 +393,6 @@ void ActionAppMenuManager::AddToolsAndActionsActions(
   builder.AddSubmenu(kActionDeveloperSubmenu, [profile](AppMenuBuilder& sub) {
     sub.AddAction(kActionNameWindow)
         .AddAction(kActionToggleVerticalTabs);
-
-    if (CustomizeChromePageHandler::IsSupported(
-            NtpCustomBackgroundServiceFactory::GetForProfile(profile),
-            profile)) {
-      sub.AddAction(kActionSidePanelShowCustomizeChrome);
-    }
 
     sub.AddDivider()
         .AddAction(kActionShowReadingModeSidePanel)

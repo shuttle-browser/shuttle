@@ -31,8 +31,6 @@ class OmniboxActionClientDelegator : public OmniboxAction::Client {
   bool OpenJourneys(const std::string& query) override;
   bool ShouldOpenCoBrowsePanel() const override;
   void OpenCoBrowsePanel() override;
-  bool ShouldOpenComposeboxForAskG() const override;
-  void OpenComposeboxForAskG() override;
 
  protected:
   const raw_ptr<OmniboxAction::Client> delegate_;

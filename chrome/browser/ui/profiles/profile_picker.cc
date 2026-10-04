@@ -96,14 +96,6 @@ ProfilePicker::Params ProfilePicker::Params::ForGlicManager(
 }
 
 // static
-ProfilePicker::Params ProfilePicker::Params::ForOmniboxEverywhere(
-    base::OnceCallback<void(Profile*)> picked_profile_callback) {
-  Params params(EntryPoint::kOmniboxEverywhere, GetPickerProfilePath());
-  params.picked_profile_callback_ = std::move(picked_profile_callback);
-  return params;
-}
-
-// static
 ProfilePicker::Params ProfilePicker::Params::ForTesting(  // IN-TEST
     EntryPoint entry_point,
     const base::FilePath& profile_path) {

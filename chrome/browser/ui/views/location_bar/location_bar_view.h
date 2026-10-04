@@ -56,8 +56,6 @@ class CommandUpdater;
 class ContentSettingBubbleModelDelegate;
 class OmniboxController;
 enum class OmniboxPart;
-class OmniboxPopupAimPresenter;
-class OmniboxPopupUI;
 class OmniboxPopupView;
 class OmniboxViewViews;
 class PermissionChipView;
@@ -260,7 +258,6 @@ class LocationBarView
 
   // OmniboxPopupPresenterDelegate:
   views::Widget* GetLocationBarWidget() override;
-  OmniboxPopupAimPresenter* GetOmniboxPopupAimPresenter() const override;
   views::View* GetLocationBarFocusRestoreView() override;
 
   static bool IsVirtualKeyboardVisible(views::Widget* widget);
@@ -310,8 +307,6 @@ class LocationBarView
 
   SkColor GetBackgroundColorForTesting() const { return background_color_; }
 
-  OmniboxPopupUI* GetOmniboxPopupUI();
-
  private:
   FRIEND_TEST_ALL_PREFIXES(SecurityIndicatorTest, CheckIndicatorText);
   FRIEND_TEST_ALL_PREFIXES(TouchLocationBarViewBrowserTest,
@@ -348,9 +343,6 @@ class LocationBarView
   // Updates the visibility state of the PageActionIconViews to reflect what
   // actions are available on the current page.
   void RefreshPageActionIconViews();
-
-  // Updates the visibility state of the AIM page action.
-  void RefreshAiModePageAction();
 
   // Updates PageActionContainerView's action controller to the active tab's
   // controller. At the same time, the page actions visibility will be set based
@@ -429,8 +421,6 @@ class LocationBarView
   bool ShouldHidePageActionIcons() const;
 
   struct PageActionInfo {
-    // Is the AIM page action the right-most visible page action?
-    bool is_aim_last_visible_page_action = false;
     // How many page actions are shown?
     size_t num_page_actions_shown = 0;
   };
@@ -471,8 +461,6 @@ class LocationBarView
   // destroyed.
   page_actions::PageActionController* GetPageActionController();
 
-  content::WebContents* GetWrappedWebContents();
-
 #if BUILDFLAG(OS_LEVEL_GEOLOCATION_PERMISSION_SUPPORTED)
   // Manage a subscription to GeolocationSystemPermissionManager, which may
   // outlive this object.
@@ -500,7 +488,6 @@ class LocationBarView
   // The view holding the regular results popup.
   std::unique_ptr<OmniboxPopupView> omnibox_popup_view_;
   // The presenter controlling the showing of the AI mode popup.
-  std::unique_ptr<OmniboxPopupAimPresenter> omnibox_popup_aim_presenter_;
 
   base::CallbackListSubscription popup_state_changed_subscription_;
 
@@ -555,9 +542,6 @@ class LocationBarView
   // user to clear all text.
   raw_ptr<views::ImageButton> clear_all_button_ = nullptr;
 
-  // A label to show the AI Mode hint text.
-  raw_ptr<views::Label> ai_mode_hint_label_ = nullptr;
-
   // Animation to change whole location bar background color on hover.
   gfx::SlideAnimation hover_animation_{this};
 
@@ -572,8 +556,6 @@ class LocationBarView
   // The focus manager associated with this view. The focus manager is expected
   // to outlive this view.
   raw_ptr<views::FocusManager> focus_manager_ = nullptr;
-
-  std::unique_ptr<PrefChangeRegistrar> pref_registrar_;
 
   base::CallbackListSubscription subscription_ =
       ui::TouchUiController::Get()->RegisterCallback(

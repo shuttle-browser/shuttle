@@ -48,10 +48,6 @@ struct OmniboxPopupSelection {
     // focused.
     KEYWORD_MODE,
 
-    // FOCUSED_BUTTON_AIM state means that the AIM page action button in the
-    // omnibox text field is focused.
-    FOCUSED_BUTTON_AIM,
-
     // FOCUSED_BUTTON_ACTION state means an Action button (such as a Pedal)
     // is in focus.
     FOCUSED_BUTTON_ACTION,
@@ -110,10 +106,9 @@ struct OmniboxPopupSelection {
   friend bool operator==(const OmniboxPopupSelection&,
                          const OmniboxPopupSelection&) = default;
 
-  // Special handling is required for ordering, since `kNoMatch` can have an
-  // associated `FOCUSED_BUTTON_AIM` state and we need `kNoMatch` to be treated
-  // as the smallest value while it is being represented as the maximum value of
-  // size_t (static_cast<size_t>(-1)).
+  // Special handling is required for ordering, since we need `kNoMatch` to be
+  // treated as the smallest value while it is being represented as the maximum
+  // value of size_t (static_cast<size_t>(-1)).
   friend std::strong_ordering operator<=>(const OmniboxPopupSelection& a,
                                           const OmniboxPopupSelection& b) {
     auto sort_key = [](const OmniboxPopupSelection& selection) {
@@ -142,7 +137,6 @@ struct OmniboxPopupSelection {
       const AutocompleteInput& input,
       const AutocompleteResult& result,
       TemplateURLService* template_url_service,
-      bool aim_button_visible,
       Direction direction,
       Step step) const;
 
@@ -152,7 +146,6 @@ struct OmniboxPopupSelection {
       const AutocompleteInput& input,
       const AutocompleteResult& result,
       TemplateURLService* template_url_service,
-      bool aim_button_visible,
       Step step);
 };
 

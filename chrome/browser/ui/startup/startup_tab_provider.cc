@@ -58,7 +58,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
 #include "chrome/common/webui_url_constants.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/manifest_handlers/chrome_url_overrides_handler.h"

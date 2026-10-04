@@ -21,7 +21,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h"
 #include "chrome/browser/ui/omnibox/chrome_omnibox_client.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
@@ -33,7 +32,6 @@
 #include "chrome/browser/ui/views/location_bar/location_icon_state_helper.h"
 #include "chrome/browser/ui/views/location_bar/selected_keyword_view.h"
 #include "chrome/browser/ui/views/location_bar/webui_content_setting_image_control.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_view_full_webui.h"
@@ -145,12 +143,6 @@ void WebUILocationBar::Init(WebUIToolbarControlDelegate* delegate) {
       browser_->GetType() == BrowserWindowInterface::Type::TYPE_DEVTOOLS;
   DCHECK(!is_devtools);
 
-  if (omnibox::IsAimPopupFeatureEnabled()) {
-    omnibox_popup_aim_presenter_ = std::make_unique<OmniboxPopupAimPresenter>(
-        /*location_bar=*/this, omnibox_controller_.get(),
-        /*presenter_delegate=*/*this);
-  }
-
   content_setting_image_control_.Init(delegate);
   page_action_control_.Init(delegate);
 
@@ -184,11 +176,6 @@ void WebUILocationBar::PropagateOmniboxUpdate(
   if (toolbar_delegate_) {
     toolbar_delegate_->OnOmniboxViewStateChanged(std::move(omnibox_state));
   }
-}
-
-void WebUILocationBar::PropagateApplyFocusRingToAimButton(bool force_focus) {
-  force_aim_button_focus_ring_ = force_focus;
-  UpdateLocationBarFlagsState();
 }
 
 void WebUILocationBar::PropagateFocusRequest(
@@ -246,9 +233,6 @@ WebUILocationBar::OnOmniboxAction(
 
 void WebUILocationBar::SetFocusWithin(bool focused) {
   focus_within_ = focused;
-
-  // Focus state affects whether AI mode button is visible or not.
-  RefreshAiModePageAction();
 
   NotifyFocusChanged();
 }
@@ -428,7 +412,6 @@ void WebUILocationBar::OnChanged() {
   UpdateLhsChipsState();
   UpdateLocationBarFlagsState();
   UpdateSelectedKeywordState();
-  RefreshAiModePageAction();
 }
 
 void WebUILocationBar::UpdateWithoutTabRestore() {
@@ -941,11 +924,6 @@ views::Widget* WebUILocationBar::GetLocationBarWidget() {
                            : nullptr;
 }
 
-OmniboxPopupAimPresenter* WebUILocationBar::GetOmniboxPopupAimPresenter()
-    const {
-  return omnibox_popup_aim_presenter_.get();
-}
-
 views::View* WebUILocationBar::GetLocationBarFocusRestoreView() {
   return toolbar_delegate_ ? toolbar_delegate_->GetInternalWebView() : nullptr;
 }
@@ -1004,7 +982,7 @@ void WebUILocationBar::OnPopupStateChanged(OmniboxPopupState old_state,
       // Normally, the classic/full popup hides itself in
       // `UpdatePopupAppearance()` before updating the popup state. However,
       // explicitly hide the classic/full popup for scenario of transitioning
-      // from the classic/full to the aim popup.
+      // from the classic popup to the full popup.
       if (omnibox_popup_view_->IsOpen()) {
         omnibox_popup_view_->UpdatePopupAppearance();
       }
@@ -1012,11 +990,6 @@ void WebUILocationBar::OnPopupStateChanged(OmniboxPopupState old_state,
     case OmniboxPopupState::kFull:
       if (omnibox_popup_view_->presenter()) {
         omnibox_popup_view_->presenter()->Hide();
-      }
-      break;
-    case OmniboxPopupState::kAim:
-      if (omnibox_popup_aim_presenter_) {
-        omnibox_popup_aim_presenter_->Hide();
       }
       break;
     case OmniboxPopupState::kNone:
@@ -1034,11 +1007,6 @@ void WebUILocationBar::OnPopupStateChanged(OmniboxPopupState old_state,
         omnibox_popup_view_->presenter()->Show();
       }
       break;
-    case OmniboxPopupState::kAim:
-      if (omnibox_popup_aim_presenter_) {
-        omnibox_popup_aim_presenter_->Show();
-      }
-      break;
     case OmniboxPopupState::kNone:
       break;
   }
@@ -1048,14 +1016,6 @@ void WebUILocationBar::OnPopupStateChanged(OmniboxPopupState old_state,
 
 void WebUILocationBar::ClearInPopupStateTransition() {
   in_popup_state_transition_ = false;
-  // AIM Placeholder text gets deferred during transition if
-  // kOmniboxAimDeferShowUntilVisualStateReady is on,
-  // so request a repaint when the transition period expires.
-  if (omnibox_view_ &&
-      base::FeatureList::IsEnabled(
-          omnibox::kOmniboxAimDeferShowUntilVisualStateReady)) {
-    omnibox_view_->RequestUpdateWebUI();
-  }
 }
 
 // If omnibox is open, notify Omnibox presenter that a permission prompt is
@@ -1065,12 +1025,8 @@ void WebUILocationBar::ClearInPopupStateTransition() {
 // events during the whole time that the embedded permission prompt is showing.
 void WebUILocationBar::SetPermissionPromptShowing(bool showing) {
   OmniboxPopupPresenterBase* presenter = nullptr;
-  // Get Omnibox popup presenter for AIM or normal omnibox, depending
-  // on which is showing.
-  if (omnibox_popup_aim_presenter_ && omnibox_popup_aim_presenter_->IsShown()) {
-    presenter = omnibox_popup_aim_presenter_.get();
-  } else if (GetOmniboxPopupView() && GetOmniboxPopupView()->presenter() &&
-             GetOmniboxPopupView()->presenter()->IsShown()) {
+  if (GetOmniboxPopupView() && GetOmniboxPopupView()->presenter() &&
+      GetOmniboxPopupView()->presenter()->IsShown()) {
     presenter = GetOmniboxPopupView()->presenter();
   }
   if (presenter) {
@@ -1087,8 +1043,6 @@ void WebUILocationBar::UpdateLocationBarFlagsState() {
   location_bar_flags->user_input_in_progress =
       omnibox_controller_->edit_model()->user_input_in_progress();
   location_bar_flags->popup_open = omnibox_controller_->IsPopupOpen();
-  location_bar_flags->force_aim_button_focus_ring =
-      force_aim_button_focus_ring_;
   views::Widget* widget = toolbar_delegate_->GetView()->GetWidget();
   location_bar_flags->is_virtual_keyboard_visible =
       widget && LocationBarView::IsVirtualKeyboardVisible(widget);
@@ -1135,16 +1089,6 @@ void WebUILocationBar::UpdateSelectedKeywordState() {
     keyword_state->icon = keyword_icon_;
   }
   toolbar_delegate_->OnSelectedKeywordChanged(std::move(keyword_state));
-}
-
-void WebUILocationBar::RefreshAiModePageAction() {
-  auto* aim_page_action_controller =
-      omnibox::AiModePageActionController::From(browser_);
-  if (aim_page_action_controller) {
-    aim_page_action_controller->UpdatePageAction();
-  }
-
-  // TODO(crbug.com/491707187): kShowRhsAimHint support, if relevant.
 }
 
 void WebUILocationBar::OnMiddleClickPaste(base::TimeTicks event_timestamp,

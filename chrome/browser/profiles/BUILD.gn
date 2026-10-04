@@ -714,7 +714,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/affiliations",
     "//chrome/browser/ai",
     "//chrome/browser/autocomplete",
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/autofill",
     "//chrome/browser/background",
     "//chrome/browser/background_fetch",
@@ -849,12 +848,10 @@ source_set("profiles_extra_parts_impl") {
 
   if (is_android) {
     deps += [
-      "//chrome/browser/ntp_customization",
       "//chrome/browser/tab",
       "//chrome/browser/ui/android",
     ]
     if (enable_webui_ntp) {
-      deps += [ "//chrome/browser/new_tab_page" ]
     }
   } else {
     deps += [
@@ -864,7 +861,6 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/device_api",
       "//chrome/browser/devtools",
       "//chrome/browser/metrics/critical_user_journeys",
-      "//chrome/browser/new_tab_page",
       "//chrome/browser/profile_resetter",
       "//chrome/browser/search",
       "//chrome/browser/themes",
@@ -942,7 +938,6 @@ source_set("profiles_extra_parts_impl") {
   if (enable_extensions_core) {
     deps += [
       "//chrome/browser/extensions/keyed_services:keyed_service_factories",
-      "//chrome/browser/ui/webui/omnibox/aim_eligibility_extension",
       "//extensions/browser",
     ]
   }

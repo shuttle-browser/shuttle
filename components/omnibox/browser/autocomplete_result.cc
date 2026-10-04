@@ -1788,9 +1788,7 @@ AutocompleteResult::GetMatchComparisonFields(const AutocompleteMatch& match) {
     type = AutocompleteMatchDedupeType::kVerbatimProvider;
   } else if (match.type == ACMatchType::CALCULATOR) {
     type = AutocompleteMatchDedupeType::kCalculator;
-  } else if (match.IsSearchAimSuggestion() &&
-             omnibox_feature_configs::AiMode::Get()
-                 .do_not_dedupe_aim_suggestions) {
+  } else if (match.IsSearchAimSuggestion()) {
     type = AutocompleteMatchDedupeType::kAiMode;
   } else if (base::FeatureList::IsEnabled(omnibox::kInlineLocationSignaling) &&
              match.extra_headers.contains(kXGeoHeader)) {

@@ -49,14 +49,6 @@ void AppearanceHandler::RegisterMessages() {
 #endif
 
   web_ui()->RegisterMessageCallback(
-      "openCustomizeChrome",
-      base::BindRepeating(&AppearanceHandler::OpenCustomizeChrome,
-                          base::Unretained(this)));
-  web_ui()->RegisterMessageCallback(
-      "openCustomizeChromeToolbarSection",
-      base::BindRepeating(&AppearanceHandler::OpenCustomizeChromeToolbarSection,
-                          base::Unretained(this)));
-  web_ui()->RegisterMessageCallback(
       "resetPinnedToolbarActions",
       base::BindRepeating(&AppearanceHandler::ResetPinnedToolbarActions,
                           base::Unretained(this)));
@@ -75,23 +67,6 @@ void AppearanceHandler::HandleUseTheme(ui::SystemTheme system_theme,
                                        const base::ListValue& args) {
   DCHECK(system_theme != ui::SystemTheme::kDefault || !profile_->IsChild());
   ThemeServiceFactory::GetForProfile(profile_)->UseTheme(system_theme);
-}
-
-void AppearanceHandler::OpenCustomizeChrome(const base::ListValue& args) {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser();
-  if (!browser) {
-    return;
-  }
-  chrome::ExecuteCommand(browser, IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL);
-}
-
-void AppearanceHandler::OpenCustomizeChromeToolbarSection(
-    const base::ListValue& args) {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser();
-  CHECK(browser);
-  chrome::ExecuteCommand(browser, IDC_SHOW_CUSTOMIZE_CHROME_TOOLBAR);
 }
 
 void AppearanceHandler::ResetPinnedToolbarActions(const base::ListValue& args) {

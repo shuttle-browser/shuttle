@@ -4,18 +4,16 @@
 
 import '//resources/cr_components/searchbox/searchbox_dropdown.js';
 import '//resources/cr_elements/icons.html.js';
-import './omnibox_popup_contextual_entrypoint.js';
 import '/strings.m.js';
 
 import {ColorChangeUpdater} from '//resources/cr_components/color_change_listener/colors_css_updater.js';
 import {SearchboxBrowserProxy} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import type {SearchboxDropdownElement} from '//resources/cr_components/searchbox/searchbox_dropdown.js';
 import {kDefaultSelection} from '//resources/cr_components/searchbox/searchbox_match.js';
-import {SearchboxSelectionMixin, selectionIsNativelySupported, selectionsEqual, selectionToString} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
+import {SearchboxSelectionMixin, selectionsEqual} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
 import type {AutocompleteResult, OmniboxPopupSelection, SelectionDirection, SelectionStep} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
 import {SelectionLineState} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
 import {I18nMixinLit} from '//resources/cr_elements/i18n_mixin_lit.js';
-import {assertNotReached} from '//resources/js/assert.js';
 import {EventTracker} from '//resources/js/event_tracker.js';
 import {loadTimeData} from '//resources/js/load_time_data.js';
 import {MetricsReporterImpl} from '//resources/js/metrics_reporter/metrics_reporter.js';
@@ -25,8 +23,6 @@ import type {WindowOpenDisposition} from '//resources/mojo/ui/base/mojom/window_
 
 import {getCss} from './app.css.js';
 import {getHtml} from './app.html.js';
-import type {OmniboxPopupContextualEntrypointElement} from './omnibox_popup_contextual_entrypoint.js';
-import type {OmniboxPopupContextualEntrypointButtonElement} from './omnibox_popup_contextual_entrypoint_button.js';
 
 // 675px ~= 449px (--cr-realbox-primary-side-min-width) * 1.5 + some margin.
 const canShowSecondarySideMediaQueryList =
@@ -84,7 +80,6 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
       },
 
       result_: {type: Object},
-      isAimButtonVisible_: {type: Boolean},
       webuiOmniboxPopupSelectionControlEnabled_: {type: Boolean},
     };
   }
@@ -97,20 +92,6 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
   protected accessor result_: AutocompleteResult|null = null;
   protected accessor webuiOmniboxPopupSelectionControlEnabled_: boolean =
       loadTimeData.getBoolean('webuiOmniboxPopupSelectionControlEnabled');
-  protected accessor isAimButtonVisible_: boolean = false;
-
-  override get isAimButtonVisible(): boolean {
-    return this.isAimButtonVisible_;
-  }
-
-  override get showContextEntrypoint(): boolean {
-    return this.shadowRoot
-               ?.querySelector<OmniboxPopupContextualEntrypointElement>(
-                   'omnibox-popup-contextual-entrypoint')
-               ?.showContextEntrypoint ??
-        false;
-  }
-
   private searchboxBrowserProxy_: SearchboxBrowserProxy;
   private eventTracker_ = new EventTracker();
   private listenerIds_: number[] = [];
@@ -139,11 +120,7 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
           this.searchboxBrowserProxy_.callbackRouter.stepSelection.addListener(
               this.stepSelection_.bind(this)),
           this.searchboxBrowserProxy_.callbackRouter.openCurrentSelection
-              .addListener(this.openCurrentSelection_.bind(this)),
-          this.searchboxBrowserProxy_.callbackRouter.setAimButtonVisible
-              .addListener((visible: boolean) => {
-                this.isAimButtonVisible_ = visible;
-              }));
+              .addListener(this.openCurrentSelection_.bind(this)));
     }
     this.eventTracker_.add(
         canShowSecondarySideMediaQueryList, 'change',
@@ -221,15 +198,6 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
     }
   }
 
-  private getContextualEntrypointButton_():
-      OmniboxPopupContextualEntrypointButtonElement|null {
-    return this.shadowRoot
-               .querySelector<OmniboxPopupContextualEntrypointElement>(
-                   'omnibox-popup-contextual-entrypoint')
-               ?.getContextEntrypointElement() ??
-        null;
-  }
-
   protected onDropdownDomChange_() {
     const metricsReporter = MetricsReporterImpl.getInstance();
     metricsReporter.measure('ResultChanged')
@@ -258,14 +226,7 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
     this.getDropdown().updateSelection(oldSelection, this.selection);
     if (notify && this.webuiOmniboxPopupSelectionControlEnabled_) {
       this.searchboxBrowserProxy_.handler.setPopupSelection(
-          selectionIsNativelySupported(this.selection) ? this.selection :
-                                                         kDefaultSelection);
-    }
-
-    const entrypoint = this.getContextualEntrypointButton_();
-    if (entrypoint) {
-      entrypoint.hasPopupFocus = this.selection.state ===
-          SelectionLineState.kFocusedButtonContextEntrypoint;
+          this.selection);
     }
   }
 
@@ -285,17 +246,8 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
   // Opens the current popup selection (the one visually indicated by the
   // element with popup-focus).
   private openCurrentSelection_(disposition: WindowOpenDisposition) {
-    if (this.selection.state ===
-        SelectionLineState.kFocusedButtonContextEntrypoint) {
-      this.getContextualEntrypointButton_()?.showContextMenu();
-    } else if (selectionIsNativelySupported(this.selection)) {
-      this.searchboxBrowserProxy_.handler.openPopupSelection(
-          this.result_?.sequenceId || 0, this.selection, disposition);
-    } else {
-      assertNotReached(
-          `openCurrentSelection_ called for unsupported selection: ${
-              selectionToString(this.selection)}`);
-    }
+    this.searchboxBrowserProxy_.handler.openPopupSelection(
+        this.result_?.sequenceId || 0, this.selection, disposition);
   }
 
   protected onHasSecondarySideChanged_(e: CustomEvent<{value: boolean}>) {

@@ -312,10 +312,6 @@ NSMenuItem* BuildViewMenu(NSApplication* nsapp,
                   .command_id(IDC_TOGGLE_FULLSCREEN_TOOLBAR),
               Item(IDS_CONTEXT_MENU_SHOW_FULL_URLS)
                   .command_id(IDC_SHOW_FULL_URLS),
-               Item(IDS_AI_MODE_ENTRYPOINT_CONTEXT_MENU_SHOW)
-                   .string_format_1(
-                       l10n_util::GetStringUTF16(IDS_AI_MODE_ENTRYPOINT_LABEL))
-                   .command_id(IDC_SHOW_AI_MODE_OMNIBOX_BUTTON),
               Item(IDS_CONTEXT_MENU_SHOW_SEARCH_TOOLS)
                   .command_id(IDC_SHOW_SEARCH_TOOLS),
                Item(IDS_SWITCH_TO_VERTICAL_TAB_MAC)

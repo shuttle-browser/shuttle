@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/customize_chrome/side_panel_controller.h"
 #include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -65,13 +64,11 @@ PinnedActionToolbarButtonMenuModel::PinnedActionToolbarButtonMenuModel(
     actions::ActionId action_id)
     : browser_(browser_interface), action_id_(action_id) {
   AddActionSpecificItems();
-  // Add the pin/unpin and customize toolbar items.
+  // Add the pin/unpin items.
   items_.emplace_back(kActionPinActionToToolbar, TYPE_COMMAND,
                       kPinnedActionToolbarPinElementId);
   items_.emplace_back(kActionUnpinActionFromToolbar, TYPE_COMMAND,
                       kPinnedActionToolbarUnpinElementId);
-  items_.emplace_back(kActionSidePanelShowCustomizeChromeToolbar, TYPE_COMMAND,
-                      kPinnedActionToolbarCustomizeElementId);
 }
 
 PinnedActionToolbarButtonMenuModel::~PinnedActionToolbarButtonMenuModel() =
@@ -167,18 +164,6 @@ bool PinnedActionToolbarButtonMenuModel::IsEnabledAt(size_t index) const {
       items_[index].action_id == kActionUnpinActionFromToolbar) {
     const bool is_pinnable = IsPinnable();
     return browser_->GetProfile()->IsRegularProfile() && is_pinnable;
-  }
-  if (items_[index].action_id == kActionSidePanelShowCustomizeChromeToolbar) {
-    // TODO(https://crbug.com/365591184) This check should become a static
-    // method on customize chrome's side panel controller once the
-    // abstract-base-class is removed and should be used to update the
-    // ActionItem's enabled property.
-    tabs::TabInterface* tab = browser_->GetTabStripModel()->GetActiveTab();
-    customize_chrome::SidePanelController* side_panel_controller =
-        customize_chrome::SidePanelController::Get(
-            tab->GetUnownedUserDataHost());
-    return side_panel_controller &&
-           side_panel_controller->IsCustomizeChromeEntryAvailable();
   }
   return GetActionItemFor(items_[index].action_id)->GetEnabled();
 }

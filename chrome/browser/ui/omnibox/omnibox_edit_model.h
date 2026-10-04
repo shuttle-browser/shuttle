@@ -39,8 +39,6 @@ class OmniboxController;
 class OmniboxPopupView;
 class TemplateURL;
 class Profile;
-namespace contextual_search {
-}
 namespace gfx {
 class Image;
 }
@@ -256,27 +254,6 @@ class OmniboxEditModel {
   void ClassifyString(const std::u16string& text,
                       AutocompleteMatch* match,
                       GURL* alternate_nav_url) const;
-
-  // How the user activated (or didn't activate) the AIM button.
-  enum class AimActivation {
-    // `kNotActivated` is used by `RecordAiModeMetrics()` to record metrics
-    // when the user did not activate AIM.
-    kNotActivated,
-    kKeyboard,
-    kClickOrGesture,
-    kContextMenu,
-  };
-  // Navigates to AI Mode, with the contents of the currently selected match, if
-  // any. `activation` affects whether AIM popup will open or an AI navigation
-  // will occur. It also affects metrics.
-  // Virtual for testing.
-  virtual void OpenAiMode(AimActivation activation);
-
-  // Opens the composebox for the AskG flow by setting the popup state.
-  virtual void OpenComposeboxForAskG();
-
-  // Returns true if the popup is open and is in in AI-Mode.
-  bool PopupInAiMode() const;
 
   // Opens given selection. Most kinds of selection invoke an action or
   // otherwise call `OpenMatch`, but some may `AcceptInput` which is not
@@ -537,8 +514,6 @@ class OmniboxEditModel {
       bool include_positional_info,
       int* label_prefix_length = nullptr);
 
-  std::u16string GetPopupAccessibilityLabelForAimButton();
-
   // The IPH message that sometimes appears at the bottom of the Omnibox is
   // informational only and cannot be selected/focused. Its a11y label therefore
   // has to be read at the end of the last suggestion.  Returns the label for
@@ -623,10 +598,6 @@ class OmniboxEditModel {
   };
 
   AutocompleteController* autocomplete_controller() const;
-
-  // Populates the SearchboxContextData with the currently active tab context.
-  // Only implemented on desktop.
-  void PopulateActiveTabContext();
 
   // If no query is in progress, starts working on an autocomplete query.
   // Returns true if started; false otherwise.
@@ -752,24 +723,6 @@ class OmniboxEditModel {
   // Returns view text if there is a view. Until the model is made the
   // primary data source, this should not be called when there's no view.
   std::u16string GetText() const;
-
-  // Record AIM metrics. `query` is the user text when activated. `activation`
-  // is how it was activated, or whether it was not activated.
-  void RecordAiModeMetrics(const std::u16string& query,
-                           AimActivation activation);
-
-  // Helper for `OpenAiMode()` to determine whether the AIM popup should open or
-  // a navigation should occur.
-  bool ShouldOpenAimPopup(AimActivation activation,
-                          AutocompleteMatchType::Type current_match_type);
-
-  // Helper for `OpenAiMode()` to navigate to Google's AI mode page without
-  // including context.
-  void NavigateToAiModeWithoutContextualizer(const std::u16string& query_text);
-
-  // Helper for `OpenAiMode()` to navigate to 3rd party DSE's AI mode page
-  // without including context.
-  void NavigateToThirdPartyAiMode(const std::u16string& query_text);
 
   // Owns this.
   const raw_ptr<OmniboxController> controller_;

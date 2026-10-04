@@ -68,7 +68,6 @@ source_set("impl") {
     "//chrome/browser:defaults",
     "//chrome/browser/ui/dialogs",
     "//chrome/browser/ui/select_file_policy",
-    "//chrome/browser/ui/webui/new_tab_page/composebox/variations",
   ]
 
   if (toolkit_views) {
@@ -101,7 +100,6 @@ source_set("impl") {
       "//chrome/browser:primitives",
       "//chrome/browser/actor/ui",
       "//chrome/browser/autocomplete",
-      "//chrome/browser/autocomplete:aim_eligibility_service",
       "//chrome/browser/extensions",
       "//chrome/browser/extensions/api/omnibox",
       "//chrome/browser/page_info",
@@ -118,7 +116,6 @@ source_set("impl") {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/call_to_action",
       "//chrome/browser/ui/color:color_headers",
-      "//chrome/browser/ui/contextual_search",
       "//chrome/browser/ui/find_bar",
       "//chrome/browser/ui/omnibox",
       "//chrome/browser/ui/passwords",

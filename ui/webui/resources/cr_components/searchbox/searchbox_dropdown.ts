@@ -143,8 +143,7 @@ export class SearchboxDropdownElement extends CrLitElement {
     }
 
     if (changedProperties.has('result') && this.virtualFocusEnabled) {
-      if (this.selection.state !== SelectionLineState.kNormal &&
-          this.selection.state !== SelectionLineState.kFocusedButtonAim) {
+      if (this.selection.state !== SelectionLineState.kNormal) {
         this.selection = {
           line: this.selection.line,
           state: SelectionLineState.kNormal,

@@ -181,10 +181,6 @@ class ProfilePicker {
     static Params ForGlicManager(
         base::OnceCallback<void(Profile*)> picked_profile_callback);
 
-    // Builds parameter for the `kOmniboxEverywhere` entry point.
-    static Params ForOmniboxEverywhere(
-        base::OnceCallback<void(Profile*)> picked_profile_callback);
-
     // Builds parameters for testing purposes, allowing any entry point and
     // profile path to be specified.
     static Params ForTesting(EntryPoint entry_point,

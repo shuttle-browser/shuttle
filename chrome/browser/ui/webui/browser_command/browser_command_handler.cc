@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/customize_chrome/side_panel_controller.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
@@ -128,7 +127,8 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = true;
       break;
     case Command::kOpenNTPAndStartCustomizeChromeTutorial:
-      can_execute = TutorialServiceExists() && DefaultSearchProviderIsGoogle();
+      // Agent Chrome: the Customize Chrome side panel was removed.
+      can_execute = false;
       break;
     case Command::kStartPasswordManagerTutorial:
       can_execute = TutorialServiceExists();
@@ -219,7 +219,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
                     disposition);
       break;
     case Command::kOpenNTPAndStartCustomizeChromeTutorial:
-      OpenNTPAndStartCustomizeChromeTutorial();
+      // Not executable; see CanExecuteCommand().
       break;
     case Command::kStartPasswordManagerTutorial:
       StartPasswordManagerTutorial();
@@ -317,19 +317,6 @@ bool BrowserCommandHandler::BrowserSupportsSavedTabGroups() {
   // Duplicated from chrome/browser/ui/views/bookmarks/bookmark_bar_view.cc
   // Which cannot be included here
   return browser->GetProfile()->IsRegularProfile();
-}
-
-void BrowserCommandHandler::OpenNTPAndStartCustomizeChromeTutorial() {
-  auto* tutorial_id = kSidePanelCustomizeChromeTutorialId;
-
-  if (DefaultSearchProviderIsGoogle()) {
-    StartTutorialInPage::Params params;
-    params.tutorial_id = tutorial_id;
-    params.callback = base::BindOnce(&BrowserCommandHandler::OnTutorialStarted,
-                                     base::Unretained(this), tutorial_id);
-    params.target_url = chrome::ChromeUINewTabPageURLAsGURL();
-    StartTutorial(std::move(params));
-  }
 }
 
 void BrowserCommandHandler::StartPasswordManagerTutorial() {

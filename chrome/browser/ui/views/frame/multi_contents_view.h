@@ -263,7 +263,6 @@ class MultiContentsView
   int GetInactiveIndex() const;
 
   void OnWebContentsFocused(views::WebView*);
-  void OnNtpFooterFocused(views::WebView*);
   void OnActorOverlayFocused(views::WebView*);
   void OnReadAnythingOverlayFocused(ContentsContainerView* container,
                                     views::WebView* web_view);

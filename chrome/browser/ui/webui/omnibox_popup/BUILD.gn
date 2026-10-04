@@ -5,13 +5,11 @@
 if (!is_android) {
   source_set("omnibox_popup") {
     sources = [
-      "omnibox_popup_aim_handler.cc",
       "omnibox_popup_handler.cc",
       "omnibox_popup_ui.cc",
       "omnibox_popup_web_contents_helper.cc",
     ]
     public = [
-      "omnibox_popup_aim_handler.h",
       "omnibox_popup_handler.h",
       "omnibox_popup_ui.h",
       "omnibox_popup_web_contents_helper.h",
@@ -19,7 +17,6 @@ if (!is_android) {
     public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps = [
       "//base",
-      "//chrome/browser/autocomplete:aim_eligibility_service",
       "//chrome/browser/devtools",
       "//chrome/browser/history_clusters",
       "//chrome/browser/profiles:profile",
@@ -27,12 +24,10 @@ if (!is_android) {
       "//chrome/browser/search_engines",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/contextual_search",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/omnibox",
       "//chrome/browser/ui/views/omnibox",
       "//chrome/browser/ui/webui:favicon_source",
-      "//chrome/browser/ui/webui:plural_string_handler",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/webui/metrics_reporter",
       "//chrome/browser/ui/webui/omnibox_popup/mojom",
@@ -40,7 +35,6 @@ if (!is_android) {
       "//chrome/browser/ui/webui/searchbox",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/common",
-      "//components/contextual_search:types",
       "//components/omnibox/browser",
       "//components/omnibox/browser:mojo_bindings",
       "//components/omnibox/common:features",
@@ -49,7 +43,6 @@ if (!is_android) {
       "//ui/base",
       "//ui/gfx/geometry",
       "//ui/native_theme",
-      "//ui/webui/resources/cr_components/composebox:mojo_bindings",
     ]
     allow_circular_includes_from = [
       # searchbox files include omnibox_popup headers and vice versa.
@@ -60,7 +53,6 @@ if (!is_android) {
   source_set("unit_tests") {
     testonly = true
     sources = [
-      "omnibox_popup_aim_handler_unittest.cc",
       "omnibox_popup_handler_unittest.cc",
       "omnibox_popup_ui_unittest.cc",
     ]
@@ -77,7 +69,6 @@ if (!is_android) {
       "//testing/gmock",
       "//testing/gtest",
       "//ui/base/clipboard:clipboard_test_support",
-      "//ui/webui/resources/cr_components/composebox:mojo_bindings",
     ]
   }
 }

@@ -516,9 +516,6 @@ inline constexpr char kNotebookHomeURL[] = "notebook-home-url";
 inline constexpr char kOnTheFlyMhtmlHashComputation[] =
     "on-the-fly-mhtml-hash-computation";
 
-// Directly launches the Omnibox Everywhere desktop UI widget.
-inline constexpr char kOmniboxEverywhere[] = "omnibox-everywhere";
-
 // Launches URL in new browser window.
 inline constexpr char kOpenInNewWindow[] = "new-window";
 

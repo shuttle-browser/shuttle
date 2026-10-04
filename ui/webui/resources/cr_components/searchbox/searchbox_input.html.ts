@@ -10,7 +10,6 @@ export function getHtml(this: SearchboxInputElement) {
   // clang-format off
   return html`<!--_html_template_start_-->
 <div id="inputInnerContainer" part="input-inner-container">
-    <slot name="contextual-entrypoint"></slot>
     <cr-searchbox-icon id="icon" .match="${this.selectedMatch}"
         page-url="${this.pageUrl}"
         default-icon="${this.searchboxIcon}"
@@ -51,7 +50,6 @@ export function getHtml(this: SearchboxInputElement) {
           @paste="${this.onInputPaste_}">
     `}
     <slot name="action-buttons"></slot>
-    <slot name="compose-button"></slot>
 </div>
 <!--_html_template_end_-->`;
   // clang-format on

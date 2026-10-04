@@ -193,7 +193,6 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
   // delay.
   bool is_window_resizing_ = false;
 
-  friend class OmniboxAimPopupBrowserTest;
 
   void OnFileChooserClosed();
 

@@ -60,17 +60,13 @@
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button.h"
 #include "chrome/browser/ui/views/user_education/autofill_help_bubble_factory.h"
 #include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
-#include "chrome/browser/ui/views/user_education/browser_ntp_promos.h"
 #include "chrome/browser/ui/views/user_education/custom_webui_help_bubble.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_controller.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_preconditions.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_user_education_context.h"
-#include "chrome/browser/ui/webui/customize_buttons/customize_buttons_handler.h"
 #include "chrome/browser/ui/webui/history/history_ui.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
 #include "chrome/browser/ui/webui/password_manager/password_manager_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_ui.h"
 #include "chrome/browser/user_education/ntp_promo_identifiers.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
 #include "chrome/browser/user_education/user_education_service.h"
@@ -148,7 +144,6 @@ namespace {
 
 using Platforms = user_education::Metadata::Platforms;
 constexpr char kTabGroupHeaderElementName[] = "TabGroupHeader";
-constexpr char kChromeThemeBackElementName[] = "ChromeThemeBackElement";
 constexpr char kLastInactiveTabElementName[] = "LastInactiveTab";
 
 class IfView : public user_education::TutorialDescription::If {
@@ -602,90 +597,6 @@ void MaybeRegisterChromeFeaturePromos(
                     .SetMetadata(89, "phillis@chromium.org",
                                  "Triggered after user navigates to a "
                                  "page with a promotable PWA.")));
-
-  // kIPHDesktopCustomizeChromeExperimentFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForCustomAction(
-          feature_engagement::kIPHDesktopCustomizeChromeExperimentFeature,
-          kBrowserDialogAnchorElementId,
-          IDS_TUTORIAL_CUSTOMIZE_CHROME_START_TUTORIAL_IPH,
-          IDS_PROMO_SHOW_TUTORIAL_BUTTON,
-          base::BindRepeating(
-              [](ContextPtr ctx,
-                 user_education::FeaturePromoHandle promo_handle) {
-                BrowserWindowInterface* const browser = GetBrowser(ctx);
-                if (!search::DefaultSearchProviderIsGoogle(
-                        browser->GetProfile())) {
-                  return;
-                }
-                auto* service =
-                    UserEducationServiceFactory::GetForBrowserContext(
-                        browser->GetProfile());
-                user_education::TutorialService* tutorial_service =
-                    service ? &service->tutorial_service() : nullptr;
-                if (!tutorial_service) {
-                  return;
-                }
-                TabStripModel* tab_strip_model = browser->GetTabStripModel();
-                if (tab_strip_model) {
-                  content::WebContents* web_contents =
-                      tab_strip_model->GetActiveWebContents();
-                  if (web_contents &&
-                      web_contents->GetURL() != chrome::GetNewTabURL(browser)) {
-                    NavigateParams params(browser,
-                                          chrome::ChromeUINewTabPageURLAsGURL(),
-                                          ui::PAGE_TRANSITION_LINK);
-                    params.disposition =
-                        WindowOpenDisposition::NEW_FOREGROUND_TAB;
-                    Navigate(&params);
-                  }
-                }
-                user_education::TutorialIdentifier tutorial_id =
-                    kSidePanelCustomizeChromeTutorialId;
-
-                tutorial_service->StartTutorial(tutorial_id,
-                                                ctx->GetElementContext());
-                tutorial_service->LogIPHLinkClicked(tutorial_id, true);
-              }))
-          .SetBubbleArrow(HelpBubbleArrow::kNone)
-          .SetBubbleIcon(kLightbulbOutlineIcon)
-          .SetCustomActionIsDefault(true)
-          .SetCustomActionDismissText(IDS_PROMO_SNOOZE_BUTTON)
-          // See: crbug.com/40075441
-          .OverrideFocusOnShow(false)
-          .SetMetadata(143, "rsult@google.com",
-                       "Intro for the Customize Chrome Tutorial. Triggered "
-                       "upon Chrome Startup for users who have not customized "
-                       "Chrome yet or have not interacted with the 'Customize "
-                       "Chrome' button.")));
-
-  // kIPHDesktopCustomizeChromeAutoPromoFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHDesktopCustomizeChromeAutoOpenFeature,
-          CustomizeButtonsHandler::kCustomizeChromeButtonElementId,
-          IDS_IPH_CUSTOMIZE_CHROME_AUTO_OPEN_BODY,
-          IDS_IPH_CUSTOMIZE_CHROME_AUTO_OPEN_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kBottomRight)
-          .SetInAnyContext(true)
-          .SetMetadata(143, "kbajkiewicz@google.com",
-                       "Attempts to trigger when user is on NTP to promote "
-                       "customization.")));
-
-  // kIPHDesktopRealboxContextualSearchFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHDesktopRealboxContextualSearchFeature,
-          NewTabPageUI::kRealboxContextualEntrypointElementId,
-          IDS_IPH_REALBOX_CONTEXTUAL_ENTRYPOINT,
-          IDS_IPH_REALBOX_CONTEXTUAL_ENTRYPOINT_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kTopLeft)
-          .SetInAnyContext(true)
-          .SetMetadata(144, "romanarora@chromium.org",
-                       "Attempts to trigger when a user is on the NTP and the "
-                       "Realbox contextual entrypoint button is displayed.")));
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   // kIPHExtensionsMenuFeature:
@@ -1587,66 +1498,6 @@ void MaybeRegisterChromeTutorials(
                                   std::move(tab_group_tutorial));
   }
 
-  {  // Side panel customize chrome
-    auto customize_chrome_tutorial = TutorialDescription::Create<
-        kSidePanelCustomizeChromeTutorialMetricPrefix>(
-        // Bubble step - customize chrome button
-        BubbleStep(CustomizeButtonsHandler::kCustomizeChromeButtonElementId)
-            .SetBubbleBodyText(IDS_TUTORIAL_CUSTOMIZE_CHROME_OPEN_SIDE_PANEL)
-            .SetBubbleArrow(HelpBubbleArrow::kBottomRight)
-            .InAnyContext(),
-
-        // Bubble step - change theme button
-        BubbleStep(CustomizeChromeUI::kChangeChromeThemeButtonElementId)
-            .SetBubbleBodyText(IDS_TUTORIAL_CUSTOMIZE_CHROME_CHANGE_THEME)
-            .SetBubbleArrow(HelpBubbleArrow::kRightCenter)
-            .AbortIfVisibilityLost(false)
-            .InAnyContext(),
-
-        // Bubble step - select collection
-        BubbleStep(CustomizeChromeUI::kChromeThemeCollectionElementId)
-            .SetBubbleBodyText(IDS_TUTORIAL_CUSTOMIZE_CHROME_SELECT_COLLECTION)
-            .SetBubbleArrow(HelpBubbleArrow::kRightCenter)
-            .AbortIfVisibilityLost(false)
-            .InAnyContext(),
-
-        // Bubble step - select theme
-        BubbleStep(CustomizeChromeUI::kChromeThemeElementId)
-            .SetBubbleBodyText(IDS_TUTORIAL_CUSTOMIZE_CHROME_APPLY_THEME)
-            .SetBubbleArrow(HelpBubbleArrow::kRightCenter)
-            .AbortIfVisibilityLost(false)
-            .InAnyContext(),
-
-        // Event step - select theme event
-        EventStep(kBrowserThemeChangedEventId, kBrowserViewElementId),
-
-        // Bubble step - back button
-        BubbleStep(CustomizeChromeUI::kChromeThemeBackElementId)
-            .SetBubbleBodyText(IDS_TUTORIAL_CUSTOMIZE_CHROME_CLICK_BACK_ARROW)
-            .SetBubbleArrow(HelpBubbleArrow::kRightCenter)
-            .NameElement(kChromeThemeBackElementName)
-            .AbortIfVisibilityLost(false)
-            .InAnyContext(),
-
-        // Hidden step - back button
-        HiddenStep::WaitForHidden(kChromeThemeBackElementName),
-
-        // Completion of the tutorial.
-        BubbleStep(CustomizeButtonsHandler::kCustomizeChromeButtonElementId)
-            .SetBubbleTitleText(IDS_TUTORIAL_GENERIC_SUCCESS_TITLE)
-            .SetBubbleArrow(HelpBubbleArrow::kBottomRight)
-            .SetBubbleBodyText(IDS_TUTORIAL_CUSTOMIZE_CHROME_SUCCESS_BODY)
-            .InAnyContext());
-
-    customize_chrome_tutorial.metadata.additional_description =
-        "Tutorial for customizing themes using side panel.";
-    customize_chrome_tutorial.metadata.launch_milestone = 143;
-    customize_chrome_tutorial.metadata.owners = "rsult@google.com";
-
-    tutorial_registry.AddTutorial(kSidePanelCustomizeChromeTutorialId,
-                                  std::move(customize_chrome_tutorial));
-  }
-
   {  // Split view tutorial
     auto split_view_tutorial = TutorialDescription::Create<
         kSplitViewTutorialMetricPrefix>(
@@ -1793,11 +1644,6 @@ CreateUserEducationResources(UserEducationService& user_education_service) {
 
   MaybeRegisterChromeNewBadges(*user_education_service.new_badge_registry());
   user_education_service.new_badge_controller()->InitData();
-
-  // Registry is valid if the NTP promo feature is enabled.
-  if (user_education_service.ntp_promo_registry()) {
-    MaybeRegisterNtpPromos(*user_education_service.ntp_promo_registry());
-  }
 
   auto result = std::make_unique<BrowserFeaturePromoController>(
       feature_engagement::TrackerFactory::GetForBrowserContext(profile),

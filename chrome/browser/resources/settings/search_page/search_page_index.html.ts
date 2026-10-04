@@ -14,11 +14,6 @@ export function getHtml(this: SettingsSearchPageIndexElement) {
       route-path="${this.routes_.SEARCH.path}">
   </settings-search-page>
 
-  ${this.omniboxEverywhereSettingsEnabled_ ? html`
-    <settings-omnibox-everywhere-section slot="view" id="omniboxEverywhere">
-    </settings-omnibox-everywhere-section>
-  ` : ''}
-
   ${this.searchSettingsUpdateEnabled_ ? html`
     <settings-site-shortcuts-page slot="view" id="siteShortcuts">
     </settings-site-shortcuts-page>

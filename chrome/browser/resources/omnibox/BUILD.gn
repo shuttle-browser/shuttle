@@ -59,11 +59,9 @@ build_webui("build") {
   ]
 
   extra_grdp_deps = [
-    "aim_eligibility:build_grdp",
     "logging:build_grdp",
   ]
   extra_grdp_files = [
-    "$target_gen_dir/aim_eligibility/resources.grdp",
     "$target_gen_dir/logging/resources.grdp",
   ]
 

@@ -549,9 +549,6 @@ struct LocationBarFlags {
   // Whether the omnibox popup is open
   bool popup_open = false;
 
-  // Whether to render the AIM button as focused even when it's not.
-  bool force_aim_button_focus_ring = false;
-
   // Whether the virtual keyboard is visible.
   bool is_virtual_keyboard_visible = false;
 };

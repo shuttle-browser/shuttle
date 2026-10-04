@@ -24,7 +24,6 @@
 #include "chrome/browser/net/qwac_web_contents_observer.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
-#include "chrome/browser/preloading/new_tab_page_preload/new_tab_page_preload_pipeline_manager.h"
 #include "chrome/browser/preloading/prefetch/zero_suggest_prefetch/zero_suggest_prefetch_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
@@ -81,7 +80,6 @@
 #include "chrome/browser/ui/views/js_optimization/js_optimizations_page_action_controller.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_page_action_controller.h"
 #include "chrome/browser/ui/views/passwords/manage_passwords_page_action_controller.h"
-#include "chrome/browser/ui/views/side_panel/customize_chrome/side_panel_controller_views.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/browser/ui/webui_browser/webui_browser.h"
@@ -245,9 +243,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
                 tab, tab, tab.GetContents());
   }
 
-  customize_chrome_side_panel_controller_ =
-      std::make_unique<customize_chrome::SidePanelControllerViews>(tab);
-
   extension_side_panel_manager_ =
       std::make_unique<extensions::ExtensionSidePanelManager>(
           profile, &tab, side_panel_registry_.get());
@@ -358,9 +353,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   context_highlight_tab_feature_ =
       GetUserDataFactory().CreateInstance<ContextHighlightTabFeature>(tab, tab);
-
-  new_tab_page_preload_pipeline_manager_ =
-      std::make_unique<NewTabPagePreloadPipelineManager>(tab.GetContents());
 
   tab_alert_controller_ =
       GetUserDataFactory().CreateInstance<TabAlertController>(tab, tab);
@@ -497,12 +489,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
             new_contents);
   }
 
-  if (new_tab_page_preload_pipeline_manager_) {
-    new_tab_page_preload_pipeline_manager_.reset();
-    new_tab_page_preload_pipeline_manager_ =
-        std::make_unique<NewTabPagePreloadPipelineManager>(new_contents);
-  }
-
   if (omnibox_autofill_bubble_controller_) {
     omnibox_autofill_bubble_controller_.reset();
     omnibox_autofill_bubble_controller_ =
@@ -527,15 +513,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
                 *tab, *tab, new_contents);
   }
 
-}
-
-customize_chrome::SidePanelController*
-TabFeatures::SetCustomizeChromeSidePanelControllerForTesting(
-    std::unique_ptr<customize_chrome::SidePanelController>
-        customize_chrome_side_panel_controller) {
-  customize_chrome_side_panel_controller_ =
-      std::move(customize_chrome_side_panel_controller);
-  return customize_chrome_side_panel_controller_.get();
 }
 
 TabAlertController* TabFeatures::SetTabAlertControllerForTesting(

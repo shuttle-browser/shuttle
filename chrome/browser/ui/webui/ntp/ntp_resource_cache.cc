@@ -191,7 +191,14 @@ base::RefCountedMemory* NTPResourceCache::GetNewTabHTML(
       return new_tab_non_primary_otr_html_.get();
 
     case NORMAL:
-      NOTREACHED();
+      if (!new_tab_normal_html_) {
+        // Agent Chrome: regular profiles get a blank New Tab page.
+        new_tab_normal_html_ = base::MakeRefCounted<base::RefCountedString>(
+            std::string("<!doctype html><html><head><meta charset=\"utf-8\">"
+                        "<style>:root{color-scheme:light dark}</style>"
+                        "</head><body></body></html>"));
+      }
+      return new_tab_normal_html_.get();
   }
 }
 

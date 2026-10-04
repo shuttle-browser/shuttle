@@ -67,7 +67,6 @@
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
 #include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/management/management_ui.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
 #include "chrome/browser/ui/webui/password_manager/password_manager_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_utils.h"
 #include "components/password_manager/core/common/password_manager_features.h"
@@ -324,9 +323,9 @@ ChromeWebUIControllerFactory::GetFaviconResourceBytes(
   }
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (page_url.host() == chrome::kChromeUINewTabPageHost ||
-      page_url.host() == chrome::kChromeUINewTabHost) {
-    return NewTabPageUI::GetFaviconResourceBytes(scale_factor);
+  if (page_url.host() == chrome::kChromeUINewTabHost) {
+    return ui::ResourceBundle::GetSharedInstance()
+        .LoadDataResourceBytesForScale(IDR_NTP_FAVICON, scale_factor);
   }
 
   if (page_url.host() == password_manager::kChromeUIPasswordManagerHost) {

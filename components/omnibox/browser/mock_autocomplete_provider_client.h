@@ -145,10 +145,6 @@ class MockAutocompleteProviderClient
     return session_sync_service_;
   }
 
-  AimEligibilityService* GetAimEligibilityService() const override {
-    return nullptr;
-  }
-
   MOCK_CONST_METHOD0(GetAcceptLanguages, std::string());
   MOCK_CONST_METHOD0(GetEmbedderRepresentationOfAboutScheme, std::string());
   MOCK_METHOD0(GetBuiltinURLs, std::vector<std::u16string>());
@@ -169,9 +165,7 @@ class MockAutocompleteProviderClient
   MOCK_METHOD(bool, ShouldSendPageTitleSuggestParam, (), (const));
   MOCK_METHOD(bool, IsOmniboxNextLensSearchChipEnabled, (), (const, override));
   MOCK_METHOD(bool, IsAskGShowChipEnabled, (), (const, override));
-  MOCK_METHOD(bool, IsOmniboxNextAimPopupEnabled, (), (const, override));
   MOCK_METHOD(bool, IsWebUiNtpEnabledForDesktopAndroid, (), (const, override));
-  MOCK_METHOD(bool, IsAimEligible, (), (const));
   MOCK_METHOD(bool,
               IsOmniboxNextFeatureParamEnabled,
               (const std::string&),
@@ -223,8 +217,6 @@ class MockAutocompleteProviderClient
   MOCK_METHOD0(PromptPageTranslation, void());
   MOCK_METHOD(bool, ShouldOpenCoBrowsePanel, (), (const, override));
   MOCK_METHOD(void, OpenCoBrowsePanel, (), (override));
-  MOCK_METHOD(bool, ShouldOpenComposeboxForAskG, (), (const, override));
-  MOCK_METHOD(void, OpenComposeboxForAskG, (), (override));
 
  private:
   network::TestURLLoaderFactory test_url_loader_factory_;

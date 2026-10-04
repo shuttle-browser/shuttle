@@ -51,11 +51,7 @@ namespace {
 
 using ::TemplateURLPrepopulateData::PrepopulatedEngine;
 
-constexpr char kQuerySubmissionTimeQueryParameter[] = "qsubts";
-constexpr char kClientUploadDurationQueryParameter[] = "cud";
 constexpr char kAimUdmQueryParameterValue[] = "50";
-constexpr char kMultimodalUdmQueryParameterValue[] = "24";
-constexpr char kUnimodalUdmQueryParameterValue[] = "26";
 
 // Computes whether updates to the search engines database are needed.
 //
@@ -89,63 +85,6 @@ WDKeywordsResult::Metadata ComputeMergeEnginesRequirements(
   }
 
   return out_metadata;
-}
-
-GURL GetBaseSearchUrl(TemplateURLService* turl_service,
-                      omnibox::ChromeAimEntryPoint aim_entrypoint,
-                      bool is_aim_search,
-                      const base::Time& query_start_time,
-                      const std::u16string& query_text,
-                      std::map<std::string, std::string> additional_params) {
-  const TemplateURLRef& url_ref =
-      turl_service->GetDefaultSearchProvider()->url_ref();
-  TemplateURLRef::SearchTermsArgs search_term_args =
-      TemplateURLRef::SearchTermsArgs(query_text);
-  search_term_args.append_extra_query_params_from_command_line = true;
-  GURL result_url = GURL(url_ref.ReplaceSearchTerms(
-      search_term_args, turl_service->search_terms_data()));
-
-  if (is_aim_search) {
-    // For AIM queries, add udm=50 as a fallback if no udm or nem param is
-    // present.
-    if (additional_params.count("udm") == 0 &&
-        additional_params.count("nem") == 0) {
-      additional_params["udm"] = kAimUdmQueryParameterValue;
-    }
-  }
-
-  // Append all additional params.
-  for (auto const& param : additional_params) {
-    result_url = net::AppendOrReplaceQueryParameter(result_url, param.first,
-                                                    param.second);
-  }
-
-  if (!is_aim_search) {
-    std::string udm_value = query_text.empty()
-                                ? kUnimodalUdmQueryParameterValue
-                                : kMultimodalUdmQueryParameterValue;
-    result_url =
-        net::AppendOrReplaceQueryParameter(result_url, "udm", udm_value);
-  }
-
-  // Don't override the aep param from `additional_params`. This value could be
-  // given alongside the match from the server. This should keep precedence
-  // over the generic entrypoint value.
-  if (!additional_params.contains("aep")) {
-    result_url = net::AppendOrReplaceQueryParameter(
-        result_url, "aep",
-        base::NumberToString(static_cast<int>(aim_entrypoint)));
-  }
-  base::Time query_submission_time = base::Time::Now();
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kClientUploadDurationQueryParameter,
-      base::NumberToString(
-          (query_submission_time - query_start_time).InMilliseconds()));
-  result_url = net::AppendOrReplaceQueryParameter(
-      result_url, kQuerySubmissionTimeQueryParameter,
-      base::NumberToString(
-          query_submission_time.InMillisecondsSinceUnixEpoch()));
-  return result_url;
 }
 
 std::string StringifyDuplicates(
@@ -1153,14 +1092,4 @@ bool IsAimZeroStateURL(const GURL& url) {
   bool has_udm = net::GetValueForKeyInQuery(url, "udm", &udm);
   return has_udm && udm == kAimUdmQueryParameterValue &&
          !google_util::IsGoogleSearchUrl(url);
-}
-
-GURL GetUrlForAim(TemplateURLService* turl_service,
-                  omnibox::ChromeAimEntryPoint aim_entrypoint,
-                  const base::Time& query_start_time,
-                  const std::u16string& query_text,
-                  std::map<std::string, std::string> additional_params) {
-  return GetBaseSearchUrl(turl_service, aim_entrypoint,
-                          /*is_aim_search=*/true, query_start_time, query_text,
-                          additional_params);
 }

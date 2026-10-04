@@ -59,7 +59,6 @@ generate_grd("build_grd") {
       "cr_components/history_clusters:build_grdp",
       "cr_components/managed_dialog:build_grdp",
       "cr_components/managed_footnote:build_grdp",
-      "cr_components/most_visited:build_grdp",
       "cr_components/page_image_service:build_grdp",
       "cr_components/searchbox:build_grdp",
       "cr_components/theme_color_picker:build_grdp",
@@ -80,7 +79,6 @@ generate_grd("build_grd") {
       "$target_gen_dir/cr_components/history/resources.grdp",
       "$target_gen_dir/cr_components/managed_dialog/resources.grdp",
       "$target_gen_dir/cr_components/managed_footnote/resources.grdp",
-      "$target_gen_dir/cr_components/most_visited/resources.grdp",
       "$target_gen_dir/cr_components/searchbox/resources.grdp",
       "$target_gen_dir/cr_components/theme_color_picker/resources.grdp",
     ]
@@ -90,14 +88,12 @@ generate_grd("build_grd") {
     # TODO(crbug.com/527601593): Revert by moving these components back into the
     # main desktop block at L53 if we disable composebox on Android phones.
     public_deps += [
-      "cr_components/composebox:build_grdp",
       "cr_components/help_bubble:build_grdp",
       "cr_components/localized_link:build_grdp",
       "cr_components/search:build_grdp",
       "cr_components/searchbox/icons:build_grdp",
     ]
     grdp_files += [
-      "$target_gen_dir/cr_components/composebox/resources.grdp",
       "$target_gen_dir/cr_components/help_bubble/resources.grdp",
       "$target_gen_dir/cr_components/localized_link/resources.grdp",
       "$target_gen_dir/cr_components/search/resources.grdp",

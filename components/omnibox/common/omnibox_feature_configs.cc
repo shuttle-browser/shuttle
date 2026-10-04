@@ -47,37 +47,6 @@ CalcProvider::CalcProvider() {
           .Get();
 }
 
-BASE_FEATURE(AiMode::kAllowAiModeMatches,
-             "AllowAiModeMatches",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-BASE_FEATURE(AiMode::kAiModeEligibility,
-             "kAiModeEligibility",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-AiMode::AiMode() {
-  allow_ai_mode_matches = base::FeatureList::IsEnabled(kAllowAiModeMatches);
-  do_not_dedupe_aim_suggestions =
-      base::FeatureParam<bool>(&kAllowAiModeMatches,
-                               "DoNotDedupeAimSuggestions",
-                               do_not_dedupe_aim_suggestions)
-          .Get();
-
-  do_not_show_historic_aim_suggestions =
-      base::FeatureParam<bool>(&kAllowAiModeMatches,
-                               "DoNotShowHistoricAimSuggestions",
-                               do_not_show_historic_aim_suggestions)
-          .Get();
-
-  check_ai_locale_client_side =
-      base::FeatureParam<bool>(&kAiModeEligibility, "CheckAiLocaleClientSide",
-                               check_ai_locale_client_side)
-          .Get();
-
-  check_ai_eligibility_gws_side =
-      base::FeatureParam<bool>(&kAiModeEligibility, "CheckAiEligibilityGWSSide",
-                               check_ai_eligibility_gws_side)
-          .Get();
-}
-
 BASE_FEATURE(ContextualSearch::kContextualSuggestionsAblateOthersWhenPresent,
              "ContextualSuggestionsAblateOthersWhenPresent",
              base::FEATURE_ENABLED_BY_DEFAULT);

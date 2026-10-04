@@ -75,7 +75,6 @@ source_set("impl") {
     "//chrome/browser/ui/views",
     "//chrome/browser/ui/views/controls",
     "//chrome/browser/ui/views/toolbar",
-    "//chrome/browser/ui/webui/side_panel/customize_chrome:customize_chrome_ui",
     "//components/favicon/core",
     "//components/feature_engagement/public",
     "//components/keyed_service/core",

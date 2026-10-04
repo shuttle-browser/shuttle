@@ -41,11 +41,3 @@ bool OmniboxActionClientDelegator::ShouldOpenCoBrowsePanel() const {
 void OmniboxActionClientDelegator::OpenCoBrowsePanel() {
   delegate_->OpenCoBrowsePanel();
 }
-
-bool OmniboxActionClientDelegator::ShouldOpenComposeboxForAskG() const {
-  return delegate_->ShouldOpenComposeboxForAskG();
-}
-
-void OmniboxActionClientDelegator::OpenComposeboxForAskG() {
-  delegate_->OpenComposeboxForAskG();
-}

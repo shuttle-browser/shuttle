@@ -1240,8 +1240,6 @@ source_set("impl") {
     "//components/blocked_content",
     "//components/certificate_transparency",
     "//components/content_settings/core/browser",
-    "//components/contextual_search:policy_handler",
-    "//components/contextual_search:prefs",
     "//components/custom_handlers",
     "//components/domain_reliability",
     "//components/domain_reliability:prefs",

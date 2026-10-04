@@ -55,7 +55,6 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/bubble_anchor_util.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/customize_chrome/side_panel_controller.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
 #include "chrome/browser/ui/managed_ui.h"
@@ -81,7 +80,6 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
 #include "chrome/browser/ui/webui/inspect/inspect_ui.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_section.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/channel_info.h"
@@ -474,25 +472,6 @@ void BrowserCommandController::TabKeyboardFocusChangedTo(
 
 void BrowserCommandController::WebContentsFocusChanged() {
   UpdateCommandsForWebContentsFocus();
-}
-
-void BrowserCommandController::ShowCustomizeChromeSidePanel(
-    SidePanelOpenTrigger trigger,
-    std::optional<CustomizeChromeSection> section) {
-  tabs::TabInterface* tab = browser_->tab_strip_model()->GetActiveTab();
-  if (!tab) {
-    return;
-  }
-
-  customize_chrome::SidePanelController* side_panel_controller =
-      customize_chrome::SidePanelController::Get(tab->GetUnownedUserDataHost());
-
-  if (!side_panel_controller ||
-      !side_panel_controller->IsCustomizeChromeEntryAvailable()) {
-    return;
-  }
-
-  side_panel_controller->OpenSidePanel(trigger, section);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1009,9 +988,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     case IDC_SHOW_FULL_URLS:
       ToggleShowFullURLs(browser_);
       break;
-    case IDC_SHOW_AI_MODE_OMNIBOX_BUTTON:
-      ToggleShowAiModeOmniboxButton(browser_);
-      break;
     case IDC_SHOW_SEARCH_TOOLS:
       ToggleShowSearchTools(browser_);
       break;
@@ -1264,18 +1240,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
       break;
     }
 
-    case IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL: {
-      ShowCustomizeChromeSidePanel(SidePanelOpenTrigger::kAppMenu,
-                                   CustomizeChromeSection::kAppearance);
-      break;
-    }
-
-    case IDC_SHOW_CUSTOMIZE_CHROME_TOOLBAR: {
-      ShowCustomizeChromeSidePanel(SidePanelOpenTrigger::kAppMenu,
-                                   CustomizeChromeSection::kToolbar);
-      break;
-    }
-
 #if !BUILDFLAG(IS_CHROMEOS)
     // Profile submenu commands
     // This menu item is not enabled on ChromeOS and certain capabilities such
@@ -1471,7 +1435,6 @@ void BrowserCommandController::InitCommandState() {
   // Omnibox commands
   command_updater_->UpdateCommandEnabled(IDC_SHOW_FULL_URLS, true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_SEARCH_TOOLS, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_AI_MODE_OMNIBOX_BUTTON, true);
 
   // Window management commands
   command_updater_->UpdateCommandEnabled(IDC_CLOSE_WINDOW, true);
@@ -1592,10 +1555,6 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_SIDE_PANEL,
                                          true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_KEYBOARD, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL,
-                                         true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_CUSTOMIZE_CHROME_TOOLBAR,
-                                         true);
   command_updater_->UpdateCommandEnabled(IDC_PASSWORDS_AND_AUTOFILL_MENU,
                                          !guest_session);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_PASSWORD_MANAGER,

@@ -194,7 +194,6 @@ source_set("impl") {
     "//chrome/browser/ui/actions:actions_headers",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:mixers",
-    "//chrome/browser/ui/customize_chrome",
     "//chrome/browser/ui/extensions",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/profiles",

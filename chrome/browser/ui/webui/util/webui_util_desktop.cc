@@ -26,7 +26,6 @@
 #if BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/grit/side_panel_bookmarks_code_cache_resources_map.h"
-#include "chrome/grit/side_panel_customize_chrome_code_cache_resources_map.h"
 #include "chrome/grit/side_panel_reading_list_code_cache_resources_map.h"
 #include "chrome/grit/side_panel_shared_code_cache_resources_map.h"
 #include "chrome/grit/side_panel_tabs_from_other_devices_code_cache_resources_map.h"
@@ -49,14 +48,10 @@ const std::string_view* GetWebUIMetricsHostname(const GURL& webui_url) {
           {chrome::kChromeUIBookmarksHost, "Bookmarks"},
           {chrome::kChromeUIBookmarksSidePanelHost, "BookmarksSidePanel"},
           {chrome::kChromeUICommentsSidePanelHost, "CommentsSidePanel"},
-          {chrome::kChromeUICustomizeChromeSidePanelHost,
-           "CustomizeChromeSidePanel"},
           {chrome::kChromeUIDownloadsHost, "Downloads"},
           {chrome::kChromeUIHistoryHost, "History"},
           {chrome::kChromeUIHistoryClustersSidePanelHost,
            "HistoryClustersSidePanel"},
-          {chrome::kChromeUINewTabPageHost, "NewTabPage"},
-          {chrome::kChromeUINewTabPageThirdPartyHost, "NewTabPageThirdParty"},
           {chrome::kChromeUIUntrustedReadAnythingSidePanelHost,
            "ReadAnythingSidePanel"},
           {chrome::kChromeUIReadLaterHost, "ReadLater"},
@@ -224,14 +219,6 @@ base::flat_map<GURL, int> GetWebUIResourceUrlToCodeCacheMap() {
     AppendWebUIResourceURLToCodeCachePairs(
         content::kChromeUIScheme, chrome::kChromeUIBookmarksSidePanelHost,
         kSidePanelBookmarksCodeCacheResources, url_to_code_cache_pairs);
-
-    // chrome://customize-chrome-side-panel.top-chrome
-    AppendWebUIResourceURLToCodeCachePairs(
-        content::kChromeUIScheme, chrome::kChromeUICustomizeChromeSidePanelHost,
-        kSidePanelSharedCodeCacheResources, url_to_code_cache_pairs);
-    AppendWebUIResourceURLToCodeCachePairs(
-        content::kChromeUIScheme, chrome::kChromeUICustomizeChromeSidePanelHost,
-        kSidePanelCustomizeChromeCodeCacheResources, url_to_code_cache_pairs);
 
     // chrome://read-later.top-chrome
     AppendWebUIResourceURLToCodeCachePairs(

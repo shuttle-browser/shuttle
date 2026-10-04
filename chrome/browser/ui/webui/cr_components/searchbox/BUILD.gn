@@ -12,10 +12,8 @@ source_set("searchbox") {
   sources = [
     "searchbox_handler.h",
     "searchbox_omnibox_client.h",
-    "searchbox_utils.h",
   ]
   public_deps = [
-    "//components/contextual_search/footprints/public",
     "//components/tabs:public",
     "//third_party/omnibox_proto",
   ]
@@ -25,35 +23,26 @@ source_set("searchbox") {
     "//chrome/browser/tab_list",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/views/permissions:permission_prompt_observer",
-    "//components/contextual_search:prefs",
-    "//components/contextual_search:types",
     "//components/omnibox/browser",
     "//components/omnibox/browser:mojo_bindings",
     "//components/omnibox/browser:vector_icons",
-    "//components/omnibox/composebox:mojo_bindings",
     "//components/sessions:session_id",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
     "//ui/gfx",
-    "//ui/webui/resources/cr_components/composebox:mojo_bindings",
   ]
-  if (!is_android) {
-    deps += []
-  }
 }
 
 source_set("searchbox_impl") {
   sources = [
     "searchbox_handler.cc",
     "searchbox_omnibox_client.cc",
-    "searchbox_utils.cc",
   ]
   deps = [
     ":searchbox",
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/autocomplete",
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/feature_engagement",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/omnibox",
@@ -67,38 +56,25 @@ source_set("searchbox_impl") {
     "//chrome/browser/tab_list",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/contextual_search",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/views/permissions:permission_prompt_observer",
     "//chrome/browser/ui/webui",
     "//chrome/browser/ui/webui:webui_util",
-    "//chrome/browser/ui/webui/new_tab_page/composebox/variations",
-    "//components/contextual_search:prefs",
-    "//components/contextual_search:types",
-    "//components/contextual_search/footprints/public",
     "//components/favicon/content",
     "//components/favicon/core",
     "//components/google/core/common",
     "//components/lens:buildflags",
-    "//components/omnibox/browser:fusebox_action_mojo_utils",
     "//components/omnibox/browser:vector_icons",
     "//components/omnibox/common:features",
     "//components/search",
     "//components/sessions",
     "//components/vector_icons",
-    "//ui/webui/resources/cr_components/composebox:mojo_bindings",
   ]
-  if (enable_lens_overlay_backend) {
-  }
   if (!is_android) {
     deps += [
-      "//chrome/browser/new_tab_page",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/views/location_bar",
       "//chrome/browser/ui/webui/omnibox_popup",
-      "//components/contextual_search/footprints/internal",
     ]
-  }
-  if (enable_dice_support) {
   }
 }

@@ -5,7 +5,6 @@
 #include "chrome/browser/ui/search_engines/keyword_editor_controller.h"
 
 #include "base/metrics/user_metrics.h"
-#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/search_engines/template_url_table_model.h"
@@ -55,15 +54,13 @@ KeywordEditorController::KeywordEditorController(Profile* profile)
   url_model_->Load();
 
   if (!base::FeatureList::IsEnabled(switches::kSearchSettingsUpdate)) {
-    bool ai_mode_enabled = OmniboxFieldTrial::IsAimStarterPackEnabled(
-        AimEligibilityServiceFactory::GetForProfile(profile));
     bool gemini_enabled =
         base::FeatureList::IsEnabled(omnibox::kStarterPackExpansion) &&
         profile->GetPrefs()->GetInteger(
             optimization_guide::prefs::kGeminiSettings) == 0;
     table_model_ = std::make_unique<TemplateURLTableModel>(
         url_model_,
-        internal::GetDisabledStarterPackIds(ai_mode_enabled, gemini_enabled));
+        internal::GetDisabledStarterPackIds(gemini_enabled));
   }
 }
 

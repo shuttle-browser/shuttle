@@ -17,8 +17,6 @@ build_webui("build") {
     "searchbox_action.html.ts",
     "searchbox_action.ts",
     "searchbox_browser_proxy.ts",
-    "searchbox_compose_button.html.ts",
-    "searchbox_compose_button.ts",
     "searchbox_dropdown.html.ts",
     "searchbox_dropdown.ts",
     "searchbox_icon.html.ts",
@@ -34,7 +32,6 @@ build_webui("build") {
   ]
   css_files = [
     "searchbox_action.css",
-    "searchbox_compose_button.css",
     "searchbox_dropdown.css",
     "searchbox_dropdown_shared_style.css",
     "searchbox_icon.css",
@@ -47,7 +44,6 @@ build_webui("build") {
   ts_composite = true
   ts_deps = [
     "//third_party/lit/v3_0:build_ts",
-    "//ui/webui/resources/cr_components/composebox:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
     "//ui/webui/resources/js:build_ts",
     "//ui/webui/resources/mojo:build_ts",

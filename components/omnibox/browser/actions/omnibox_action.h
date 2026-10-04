@@ -112,12 +112,6 @@ class OmniboxAction : public base::RefCountedThreadSafe<OmniboxAction> {
 
     // Opens the CoBrowse side panel.
     virtual void OpenCoBrowsePanel() = 0;
-
-    // Returns true if the client should open the Composebox for AskG.
-    virtual bool ShouldOpenComposeboxForAskG() const = 0;
-
-    // Opens the Composebox for AskG.
-    virtual void OpenComposeboxForAskG() = 0;
   };
 
   // ExecutionContext provides the necessary structure for Action

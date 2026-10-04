@@ -27,13 +27,10 @@ source_set("omnibox") {
   ]
   if (!is_android) {
     public += [
-      "ai_mode_page_action_controller.h",
       "alternate_nav_infobar_delegate.h",
       "chrome_omnibox_client.h",
       "chrome_omnibox_navigation_observer.h",
       "clipboard_utils.h",
-      "omnibox_everywhere_service.h",
-      "omnibox_everywhere_service_factory.h",
       "omnibox_popup_view.h",
       "omnibox_tab_helper.h",
       "omnibox_theme.h",
@@ -89,7 +86,6 @@ source_set("impl") {
     "//chrome/browser:file_select_helper",
     "//chrome/browser:shell_integration",
     "//chrome/browser/autocomplete",
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/bitmap_fetcher",
     "//chrome/browser/favicon",
     "//chrome/browser/history",
@@ -98,7 +94,6 @@ source_set("impl") {
     "//chrome/browser/preloading/prefetch/search_prefetch",
     "//chrome/browser/preloading/prerender",
     "//chrome/browser/search_engines",
-    "//chrome/browser/ui/webui/new_tab_page/composebox/variations",
     "//chrome/browser/ui/webui/searchbox",
     "//chrome/common",
     "//chrome/common:chrome_features",
@@ -123,13 +118,10 @@ source_set("impl") {
   ]
   if (!is_android) {
     sources += [
-      "ai_mode_page_action_controller.cc",
       "alternate_nav_infobar_delegate.cc",
       "chrome_omnibox_client.cc",
       "chrome_omnibox_navigation_observer.cc",
       "clipboard_utils.cc",
-      "omnibox_everywhere_service.cc",
-      "omnibox_everywhere_service_factory.cc",
       "omnibox_popup_view.cc",
       "omnibox_tab_helper.cc",
     ]
@@ -154,19 +146,16 @@ source_set("impl") {
       "//chrome/browser/ui:tab_ui_helper",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/contextual_search",
       "//chrome/browser/ui/extensions/",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/omnibox",
-      "//chrome/browser/ui/omnibox/omnibox_everywhere:impl",
       "//chrome/browser/ui/search",
       "//chrome/browser/ui/search_engines",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/views/location_bar",
       "//chrome/browser/ui/views/search_engines",
       "//chrome/browser/ui/webui:webui_util",
-      "//chrome/browser/ui/webui/omnibox_everywhere",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/browser/user_education",
@@ -248,7 +237,6 @@ if (!is_android) {
       "clipboard_utils_unittest.cc",
       "omnibox_controller_unittest.cc",
       "omnibox_edit_model_unittest.cc",
-      "omnibox_everywhere_service_unittest.cc",
       "omnibox_next_features_unittest.cc",
       "omnibox_pedal_implementations_unittest.cc",
       "omnibox_pedals_unittest.cc",
@@ -258,12 +246,9 @@ if (!is_android) {
       ":omnibox",
       ":test_support",
       "//base/test:test_support",
-      "//chrome/browser/autocomplete:aim_eligibility_service",
       "//chrome/browser/optimization_guide:test_support",
       "//chrome/browser/search_engines",
       "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/contextual_search",
-      "//chrome/browser/ui/omnibox/omnibox_everywhere:prefs",
       "//chrome/browser/ui/views:layout_provider",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/webui/cr_components/searchbox",
@@ -317,7 +302,6 @@ if (!is_android) {
       "//chrome/browser/search_engines",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/contextual_search",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/omnibox:test_support",
       "//chrome/browser/ui/search",
@@ -364,11 +348,10 @@ if (!is_android) {
     source_set("interactive_ui_tests") {
       testonly = true
       defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-      sources = [ "ai_mode_page_action_controller_interactive_uitest.cc" ]
+      sources = []
       deps = [
         "//base/test:test_support",
         "//chrome/browser/autocomplete",
-        "//chrome/browser/autocomplete:aim_eligibility_service",
         "//chrome/browser/profiles:profile",
         "//chrome/browser/search_engines",
         "//chrome/browser/ui:ui_features",

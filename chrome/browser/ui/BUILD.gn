@@ -199,7 +199,6 @@ if (!is_android) {
       "//chrome/browser/ui/actions:actions_util",
       "//chrome/browser/ui/autofill",
       "//chrome/browser/ui/autofill/payments",
-      "//chrome/browser/ui/customize_chrome",
       "//chrome/browser/ui/fuzzy_search",
       "//chrome/browser/ui/interaction",
       "//chrome/browser/ui/page_info",
@@ -929,7 +928,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui:chrome_web_contents_handler",
 
       # TODO(crbug.com/504627103): Remove this circular dependency.
-      "//chrome/browser/new_tab_page:impl",
 
       # views/data_sharing:impl includes headers still built as part of this
       # target (browser_element_identifiers.h and
@@ -1158,7 +1156,6 @@ static_library("ui") {
 
   if (!is_android || enable_webui_ntp) {
     deps += [
-      "//chrome/browser/preloading/new_tab_page_preload",
       "//chrome/browser/ui/color:mixers",
     ]
   }
@@ -1305,13 +1302,9 @@ static_library("ui") {
       "//chrome/browser/ui/tabs/saved_tab_groups:impl",
       "//chrome/browser/ui/task_manager",
       "//chrome/browser/ui/waap:window_metrics_manager",
-      "//chrome/browser/ui/webui/new_tab_page_third_party",
-      "//chrome/browser/ui/webui/new_tab_page_third_party:impl",
       "//chrome/browser/ui/webui/ntp:ntp_resource_cache",
-      "//chrome/browser/ui/webui/ntp_microsoft_auth",
       "//chrome/browser/ui/webui/omnibox",
       "//chrome/browser/ui/webui/omnibox/logging:mojo_bindings",
-      "//chrome/browser/ui/webui/omnibox_everywhere",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
       "//chrome/browser/ui/webui/side_panel/history:impl",
@@ -1335,7 +1328,6 @@ static_library("ui") {
       "//chrome/browser/ui/apps:impl",
       "//chrome/browser/ui/content_settings",
       "//chrome/browser/ui/content_settings:impl",
-      "//chrome/browser/ui/customize_chrome",
       "//chrome/browser/ui/exclusive_access",
       "//chrome/browser/ui/extensions:extensions_menu_handler",
       "//chrome/browser/ui/feature_first_run",
@@ -1365,7 +1357,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/app_menu:impl",
       "//chrome/browser/ui/views/js_optimization",
       "//chrome/browser/ui/views/location_bar",
-      "//chrome/browser/ui/views/new_tab_footer",
       "//chrome/browser/ui/views/picture_in_picture",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/views/toolbar:impl",
@@ -1373,19 +1364,14 @@ static_library("ui") {
       "//chrome/browser/ui/webui/browser_command",
       "//chrome/browser/ui/webui/color_pipeline_internals",
       "//chrome/browser/ui/webui/cr_components/history_clusters",
-      "//chrome/browser/ui/webui/customize_buttons",
-      "//chrome/browser/ui/webui/customize_buttons:impl",
       "//chrome/browser/ui/webui/infobar_internals",
       "//chrome/browser/ui/webui/inspect",
       "//chrome/browser/ui/webui/metrics_reporter",
       "//chrome/browser/ui/webui/metrics_reporter:impl",
-      "//chrome/browser/ui/webui/new_tab_footer",
-      "//chrome/browser/ui/webui/new_tab_footer:impl",
       "//chrome/browser/ui/webui/page_action_internals",
       "//chrome/browser/ui/webui/settings",
       "//chrome/browser/ui/webui/settings:impl",
       "//chrome/browser/ui/webui/side_panel/comments:impl",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome:impl",
       "//chrome/browser/ui/webui/side_panel/reading_list:impl",
       "//chrome/browser/ui/webui/side_panel/tabs_from_other_devices:impl",
       "//chrome/browser/ui/webui/signin:login_ui_service_impl",
@@ -1436,9 +1422,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/multistep_filter_internals",
       "//chrome/browser/ui/webui/password_manager:password_manager_ui",
       "//chrome/browser/ui/webui/side_panel/comments",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome:customize_chrome_ui",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome/customize_toolbar",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome/wallpaper_search",
       "//chrome/browser/ui/webui/side_panel/history",
       "//chrome/browser/ui/webui/side_panel/history_clusters",
       "//chrome/browser/ui/webui/side_panel/read_anything",
@@ -1484,9 +1467,6 @@ static_library("ui") {
       # //chrome/browser/ui:ui (browser.h, browser_window.h, browser_commands.h,
       # views/frame/browser_view.h).
       "//chrome/browser/ui/webui/side_panel/reading_list:impl",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome:impl",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome/customize_toolbar",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome/wallpaper_search",
 
       # //chrome/browser/ui/webui/util/webui_util_desktop.h is included by
       # :ui and its implementation is in //chrome/browser/ui/webui/util:impl.
@@ -1517,10 +1497,8 @@ static_library("ui") {
       "//chrome/browser/ui/fullscreen:impl",
       "//chrome/browser/ui/tabs/saved_tab_groups:impl",
       "//chrome/browser/ui/toasts:impl",
-      "//chrome/browser/ui/webui/customize_buttons:impl",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/views/toolbar:impl",
-      "//chrome/browser/ui/views/new_tab_footer",
       "//chrome/browser/ui/webui/searchbox",
       "//chrome/browser/ui/webui/top_chrome:impl",
       "//chrome/browser/ui/webui_browser",
@@ -1582,7 +1560,6 @@ static_library("ui") {
 
       # omnibox_popup includes browser_window.h and other headers from
       # //chrome/browser/ui.
-      "//chrome/browser/ui/webui/omnibox_everywhere",
       "//chrome/browser/ui/webui/omnibox_popup",
 
       # tab_search includes browser.h, browser_window.h,
@@ -1627,13 +1604,10 @@ static_library("ui") {
 
   if (enable_webui_ntp) {
     deps += [
-      "//chrome/browser/new_tab_page:impl",
       "//chrome/browser/ui/search",
       "//chrome/browser/ui/search:impl",
-      "//chrome/browser/ui/webui/new_tab_page:impl",
       "//chrome/browser/ui/webui/searchbox",
     ]
-    public_deps += [ "//chrome/browser/ui/webui/new_tab_page" ]
     allow_circular_includes_from += [
       # search:impl includes headers from //chrome/browser/ui (e.g.
       # browser_window.h, tab_modal_confirm_dialog.h) that can't be split out
@@ -1642,7 +1616,6 @@ static_library("ui") {
 
       # new_tab_page and new_tab_page:impl files include headers from
       # //chrome/browser/ui:ui that haven't been extracted yet.
-      "//chrome/browser/ui/webui/new_tab_page:impl",
     ]
   }
 
@@ -2030,8 +2003,6 @@ static_library("ui") {
         "views/profiles/cross_device_signin_qr_bubble_views.cc",
         "views/profiles/dice_web_signin_interception_bubble_view.cc",
         "views/profiles/dice_web_signin_interception_bubble_view.h",
-        "views/profiles/profile_picker_omnibox_everywhere_flow_controller.cc",
-        "views/profiles/profile_picker_omnibox_everywhere_flow_controller.h",
         "views/profiles/profile_picker_reauth_provider.cc",
         "views/profiles/profile_picker_sign_in_provider.cc",
       ]
@@ -2354,7 +2325,6 @@ static_library("ui") {
       "//chrome/browser:resources",
       "//chrome/browser/actor/ui/task_list_bubble:controller",
       "//chrome/browser/actor/ui/task_list_bubble:ui",
-      "//chrome/browser/preloading/new_tab_page_preload",
       "//chrome/browser/preloading/prerender",
       "//chrome/browser/ui:sad_tab",
       "//chrome/browser/ui:sad_tab_impl",
@@ -2556,7 +2526,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/zoom",
       "//chrome/browser/ui/webauthn:impl",
       "//chrome/browser/ui/webui/autofill_ml_internals",
-      "//chrome/browser/ui/webui/side_panel/customize_chrome",
       "//chrome/browser/ui/window_metadata",
       "//chrome/browser/ui/window_name_prompt",
       "//components/input",

@@ -122,51 +122,6 @@ struct CalcProvider : Config<CalcProvider> {
   size_t num_non_calc_inputs;
 };
 
-// AIM related omnibox features.
-struct AiMode : Config<AiMode> {
-  DECLARE_FEATURE(kAllowAiModeMatches);
-  DECLARE_FEATURE(kAiModeEligibility);
-
-  AiMode();
-
-  // Chromium-side guard for AI matches from the search server. Enabling this
-  // won't guarantee AI mode matches are shown; that mostly depends on server
-  // side. But disabling this will hide the server echo matches.
-  bool allow_ai_mode_matches;
-
-  // Deduping doesn't consider extra query params like `udm=50`.
-  // `google.com/?q=query&udm=50` and `google.com/?q=query` would usually be
-  // deduped. This param makes `udm=50` in the match's suggest template a
-  // differentiating signal in deduping. Does not apply to `udm=50` in normal
-  // URLs. Does not apply to e.g. `udm=49` in the suggest template.
-  bool do_not_dedupe_aim_suggestions = true;
-
-  // Navigations that match a site search update the `keyword_search_terms`
-  // table in the history DB. E.g. youtube.com/id/x, google.com/?q=x, or
-  // google.com/?q=x&udm=50. Determining which site search was used and should
-  // be attributed does not consider query params. Navigating to either
-  // google.com/?q=x or google.com/?q=x&udm=50 will each attribute both the
-  // Google and AI mode site searches. When
-  // `do_not_show_historic_aim_suggestions` is enabled, 2 things change:
-  // 1. AI mode navigations don't increment any site search. This ensures the
-  //    user won't see a traditional history search suggestion for an AI mode
-  //    search they've done.
-  // 2. No navigation increments the AI mode site search. This ensures the user
-  //    won't see AI mode history search suggestions for a traditional search
-  //    they've done.
-  // These changes apply to both omnibox and other (e.g. bookmark, web)
-  // navigations.
-  bool do_not_show_historic_aim_suggestions = true;
-
-  // Whether to check for AI mode eligibility on the client side
-  // `AimEligibilityService` based on the user's locale.
-  bool check_ai_locale_client_side = true;
-
-  // If true, use the gws side eligibility values. Otherwise, ignore the gws
-  // side response and use client side eligibility values.
-  bool check_ai_eligibility_gws_side = false;
-};
-
 // A config struct for features related to contextual search in omnibox.
 struct ContextualSearch : Config<ContextualSearch> {
   ContextualSearch();

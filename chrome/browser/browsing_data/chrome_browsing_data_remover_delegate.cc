@@ -178,8 +178,6 @@
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/new_tab_page/microsoft_auth/microsoft_auth_service.h"
-#include "chrome/browser/new_tab_page/microsoft_auth/microsoft_auth_service_factory.h"
 #include "chrome/browser/user_education/browser_user_education_storage_service.h"
 #include "content/public/browser/storage_partition_config.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -645,20 +643,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
           delete_begin_, delete_end_, std::move(storage_key_matcher),
           CreateTaskCompletionClosure(TracingDataType::kMediaDeviceSalts));
     }
-
-#if !BUILDFLAG(IS_ANDROID)
-    // Remove local storage data from New Tab page when whenever there's a
-    // Microsoft auth service and cookies and site data is cleared.
-    MicrosoftAuthService* microsoft_auth_service =
-        MicrosoftAuthServiceFactory::GetForProfile(profile_);
-    if (microsoft_auth_service) {
-      microsoft_auth_service->ClearAuthData();
-
-      profile_->GetDefaultStoragePartition()->ClearDataForOrigin(
-          content::StoragePartition::REMOVE_DATA_MASK_LOCAL_STORAGE,
-          chrome::ChromeUINewTabPageURLAsGURL(), base::DoNothing());
-    }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
     if (ash::SystemProxyManager::Get() &&

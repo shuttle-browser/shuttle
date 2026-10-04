@@ -34,7 +34,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 // This causes a gn error on Android builds, because gn does not understand
 // buildflags, so we include it only on platforms where it is used.
-#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_session_desktop_injector.h"
 #endif
@@ -119,12 +118,6 @@ void GlobalFeatures::PostBrowserProcessInit() {
 
   PostBrowserProcessInitCore();
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  if (base::FeatureList::IsEnabled(omnibox::kOmniboxEverywhere)) {
-    omnibox_everywhere_controller_ =
-        std::make_unique<omnibox_everywhere::OmniboxEverywhereController>();
-  }
-#endif
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
   if (unexportable_keys::UnexportableKeyServiceImpl::
@@ -239,7 +232,6 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-  omnibox_everywhere_controller_.reset();
 #endif
   audio_process_ml_model_forwarder_.reset();
   optimization_guide_global_feature_.reset();

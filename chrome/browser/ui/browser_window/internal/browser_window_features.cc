@@ -14,7 +14,6 @@
 #include "base/no_destructor.h"
 #include "chrome/browser/actor/ui/actor_border_view_controller.h"
 #include "chrome/browser/actor/ui/actor_ui_window_controller.h"
-#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
@@ -22,7 +21,6 @@
 #include "chrome/browser/enterprise/data_protection/data_protection_ui_controller.h"
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
@@ -47,7 +45,6 @@
 #include "chrome/browser/ui/browser_window_theme_observer.h"
 #include "chrome/browser/ui/call_to_action/call_to_action_lock.h"
 #include "chrome/browser/ui/context_highlight/context_highlight_window_feature.h"
-#include "chrome/browser/ui/contextual_search/searchbox_context_data.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/extensions/extension_installed_watcher.h"
 #include "chrome/browser/ui/extensions/extension_side_panel_manager.h"
@@ -58,7 +55,6 @@
 #include "chrome/browser/ui/focus/browser_focus_controller_webui.h"
 #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
-#include "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h"
 #include "chrome/browser/ui/sessions/session_service_browser_helper.h"
 #include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
@@ -105,7 +101,6 @@
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_coordinator.h"
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_manager_views.h"
-#include "chrome/browser/ui/views/new_tab_footer/footer_controller.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
 #include "chrome/browser/ui/views/profiles/profile_customization_bubble_sync_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
@@ -403,10 +398,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   reading_list_side_panel_coordinator_ =
       GetUserDataFactory().CreateInstance<ReadingListSidePanelCoordinator>(
           *browser, browser, profile, browser->GetTabStripModel());
-
-  searchbox_context_data_ =
-      GetUserDataFactory().CreateInstance<SearchboxContextData>(
-          *browser, browser->GetUnownedUserDataHost());
 
   session_service_browser_helper_ =
       GetUserDataFactory().CreateInstance<SessionServiceBrowserHelper>(
@@ -728,17 +719,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
           browser->GetSessionID());
 
   if (browser_view) {
-    if (base::FeatureList::IsEnabled(ntp_features::kNtpFooter)) {
-      new_tab_footer_controller_ =
-          GetUserDataFactory()
-              .CreateInstance<new_tab_footer::NewTabFooterController>(
-                  *browser, browser_view->browser()->GetProfile(),
-                  browser_view->GetContentsContainerViews(),
-                  browser->GetUnownedUserDataHost());
-    }
-  }
-
-  if (browser_view) {
     omnibox_popup_closer_ =
         GetUserDataFactory().CreateInstance<omnibox::OmniboxPopupCloser>(
             *browser, browser_view, browser->GetUnownedUserDataHost());
@@ -830,16 +810,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
       }
     }
 
-    if (browser_view && AiModeButtonServiceFactory::GetForProfile(profile)) {
-      LocationBar* location_bar = browser_view->GetLocationBar();
-      if (location_bar) {
-        ai_mode_page_action_controller_ =
-            GetUserDataFactory()
-                .CreateInstance<omnibox::AiModePageActionController>(
-                    *browser, *browser, *profile, *location_bar);
-      }
-    }
-
 
     if (IsChromeLabsEnabled()) {
       chrome_labs_coordinator_ =
@@ -917,7 +887,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   if (chrome_labs_coordinator_) {
     chrome_labs_coordinator_->TearDown();
   }
-  ai_mode_page_action_controller_.reset();
   if (actor_ui_window_controller_) {
     actor_ui_window_controller_->TearDown();
   }
@@ -942,9 +911,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   scrim_view_controller_.reset();
   profile_menu_coordinator_.reset();
   omnibox_popup_closer_.reset();
-  if (new_tab_footer_controller_) {
-    new_tab_footer_controller_->TearDown();
-  }
   live_tab_context_.reset();
   incognito_clear_browsing_data_dialog_coordinator_.reset();
   // Must be before exclusive_access_manager_ (destroy fullscreen control host

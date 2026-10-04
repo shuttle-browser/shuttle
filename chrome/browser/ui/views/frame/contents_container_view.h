@@ -30,10 +30,6 @@ namespace gfx {
 class Rect;
 }  // namespace gfx
 
-namespace new_tab_footer {
-class NewTabFooterWebView;
-}  // namespace new_tab_footer
-
 namespace views {
 class WebView;
 }  // namespace views
@@ -81,9 +77,6 @@ class ContentsContainerView : public views::View,
   }
   ReadAnythingImmersiveOverlayView* read_anything_immersive_overlay_view() {
     return read_anything_immersive_overlay_view_;
-  }
-  new_tab_footer::NewTabFooterWebView* new_tab_footer_view() {
-    return new_tab_footer_view_;
   }
   ContentsCaptureBorderView* capture_contents_border_view() {
     return capture_contents_border_view_;
@@ -183,11 +176,6 @@ class ContentsContainerView : public views::View,
   raw_ptr<ReadAnythingImmersiveOverlayView>
       read_anything_immersive_overlay_view_ = nullptr;
 
-  // The view that shows a footer at the bottom of the contents
-  // container on new tab pages.
-  raw_ptr<new_tab_footer::NewTabFooterWebView> new_tab_footer_view_ = nullptr;
-  // Separator between the web contents and the Footer.
-  raw_ptr<views::View> new_tab_footer_view_separator_ = nullptr;
 
   // The view that overlays the contents container.
   raw_ptr<enterprise_data_protection::DataProtectionOverlayView>

@@ -26,7 +26,6 @@
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/accelerator_table.h"
@@ -36,8 +35,6 @@
 #include "chrome/browser/ui/views/app_menu/action_app_menu_manager.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
-#include "components/search_engines/ai_mode_button_config.h"
-#include "components/search_engines/ai_mode_button_service.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/page_zoom.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -86,9 +83,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/bubble_anchor_util.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/customize_chrome/side_panel_controller.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_triggers.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
@@ -133,7 +128,6 @@
 #include "chrome/browser/ui/webauthn/ambient/ambient_signin_controller.h"
 #include "chrome/browser/ui/webid/account_selection_view.h"
 #include "chrome/browser/ui/webui/inspect/inspect_ui.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_section.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -334,15 +328,6 @@ void BrowserActions::InitializeSidePanelActions() {
                       IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE,
                       PageInfoViewFactory::GetAboutThisSiteVectorIcon(),
                       kActionSidePanelShowAboutThisSite, bwi, false)
-          .Build());
-  root_action_item_->AddChild(
-      SidePanelAction(SidePanelEntryId::kCustomizeChrome,
-                      IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE,
-                      IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE,
-                      features::IsRoundedIconsEnabled()
-                          ? kEditIcon
-                          : vector_icons::kEditChromeRefreshOldIcon,
-                      kActionSidePanelShowCustomizeChrome, bwi, false)
           .Build());
 
   if (side_panel::history_clusters::
@@ -1293,54 +1278,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               : kDownloadToolbarButtonChromeRefreshOldIcon)
           .Build());
 
-  auto* ai_mode_button_service =
-      AiModeButtonServiceFactory::GetForProfile(base::to_address(profile_));
-  if (ai_mode_button_service) {
-    // If `ai_mode_button_service` is null, it will remain null and the button
-    // will not be needed.
-    root_action_item_->AddChild(
-        actions::ActionItem::Builder(
-            base::BindRepeating(
-                [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                   actions::ActionInvocationContext context) {
-                  bool via_keyboard = false;
-
-                  std::underlying_type_t<page_actions::PageActionTrigger>
-                      page_action_trigger = context.GetProperty(
-                          page_actions::kPageActionTriggerKey);
-
-                  if ((page_action_trigger !=
-                       page_actions::kInvalidPageActionTrigger) &&
-                      page_action_trigger ==
-                          std::to_underlying(
-                              page_actions::PageActionTrigger::kKeyboard)) {
-                    via_keyboard = true;
-                  }
-
-                  tabs::TabInterface* active_tab = bwi->GetActiveTabInterface();
-                  CHECK(active_tab);
-
-                  content::WebContents* web_contents =
-                      active_tab->GetContents();
-                  CHECK(web_contents);
-
-                  OmniboxController* omnibox_controller =
-                      search::GetOmniboxController(web_contents);
-                  CHECK(omnibox_controller);
-
-                  omnibox::AiModePageActionController::OpenAiMode(
-                      *omnibox_controller, via_keyboard);
-                },
-                bwi))
-            .SetActionId(kActionAiMode)
-            .SetImage(ui::ImageModel::FromVectorIcon(
-                features::IsRoundedIconsEnabled()
-                    ? omnibox::kSearchSparkIcon
-                    : omnibox::kSearchSparkOldIcon))
-            .SetProperty(actions::kActionItemPinnableKey, false)
-            .Build());
-  }
-
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
           base::BindRepeating(
@@ -1388,27 +1325,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           .SetText(BrowserActions::GetCleanTitleAndTooltipText(
               l10n_util::GetStringUTF16(
                   IDS_SIDE_PANEL_TOOLBAR_BUTTON_CXMENU_UNPIN)))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                bwi->GetFeatures()
-                    .browser_command_controller()
-                    ->ShowCustomizeChromeSidePanel(
-                        SidePanelOpenTrigger::kAppMenu,
-                        CustomizeChromeSection::kToolbar);
-              },
-              bwi))
-          .SetActionId(kActionSidePanelShowCustomizeChromeToolbar)
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled() ? kSettingsIcon
-                                                : kSettingsMenuOldIcon,
-              ui::kColorIcon))
-          .SetText(BrowserActions::GetCleanTitleAndTooltipText(
-              l10n_util::GetStringUTF16(IDS_SHOW_CUSTOMIZE_CHROME_TOOLBAR)))
           .Build());
 
   // Actions that do not directly show up in chrome UI.
@@ -1493,21 +1409,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                                                 : kPasteMenuOldIcon))
           .SetAccelerator(GetAcceleratorForCommandId(IDC_PASTE))
           .Build());
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                bwi->GetFeatures()
-                    .browser_command_controller()
-                    ->ShowCustomizeChromeSidePanel(
-                        SidePanelOpenTrigger::kNewTabFooter,
-                        CustomizeChromeSection::kFooter);
-              },
-              bwi))
-          .SetActionId(kActionSidePanelShowCustomizeChromeFooter)
-          .Build());
-
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
     root_action_item_->AddChild(
         actions::ActionItem::Builder(
@@ -3147,17 +3048,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               },
               bwi))
           .SetActionId(kActionShowFullUrls)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ToggleShowAiModeOmniboxButton(bwi);
-              },
-              bwi))
-          .SetActionId(kActionShowAiModeOmniboxButton)
           .Build());
 
 #if !BUILDFLAG(IS_CHROMEOS)

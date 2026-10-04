@@ -19,7 +19,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/extensions/extension_constants.h"
-#include "chrome/grit/aim_eligibility_extension_resources_map.h"
 #include "chrome/grit/chrome_unscaled_resources.h"
 #include "chrome/grit/component_extension_resources_map.h"
 #include "chrome/grit/theme_resources.h"
@@ -114,10 +113,6 @@ ChromeComponentExtensionResourceManager::Data::Data() {
 
   AddComponentResourceEntries(kComponentExtensionResources);
   AddComponentResourceEntries(kExtraComponentExtensionResources);
-  if (base::FeatureList::IsEnabled(
-          omnibox::kAimEligibilityComponentExtension)) {
-    AddComponentResourceEntries(kAimEligibilityExtensionResources);
-  }
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Add Files app JS modules resources.

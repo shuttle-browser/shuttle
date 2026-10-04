@@ -17,7 +17,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
 #include "chrome/browser/autocomplete/document_suggestions_service_factory.h"
@@ -41,7 +40,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/session_sync_service_factory.h"
@@ -62,7 +60,6 @@
 #include "components/history_clusters/core/features.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/omnibox/browser/actions/omnibox_pedal_provider.h"
-#include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_scoring_model_service.h"
@@ -76,7 +73,6 @@
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/prefs/pref_service.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
-#include "components/search_engines/ai_mode_button_service.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/sync/service/sync_service.h"
@@ -155,45 +151,6 @@ content::WebContents* GetWebContents(
   return web_contents_getter ? web_contents_getter.Run() : nullptr;
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-constexpr char kEnglishLanguageCode[] = "en";
-constexpr std::string kEnglishExpansionCountryCodes[] = {"au", "ca", "gb",
-                                                         "nz", "us", "za"};
-
-// Whether the given contextual search `feature` is enabled.
-bool IsContextualSearchFeatureEnabled(
-    const base::Feature& feature,
-    AimEligibilityService* aim_eligibility_service) {
-  // If not AIM eligible, return false.
-  if (!aim_eligibility_service || !aim_eligibility_service->IsAimEligible()) {
-    return false;
-  }
-
-  // If the feature is overridden (e.g. via server-side config or command-line),
-  // use that state.
-  auto* feature_list = base::FeatureList::GetInstance();
-  if (feature_list && feature_list->IsFeatureOverridden(feature.name)) {
-    return base::FeatureList::IsEnabled(feature);
-  }
-
-  if (!g_browser_process) {
-    return false;
-  }
-
-  auto* variations_service = g_browser_process->variations_service();
-  auto* features = g_browser_process->GetFeatures();
-
-  if (!variations_service || !features) {
-    return false;
-  }
-
-  return std::ranges::contains(
-             kEnglishExpansionCountryCodes,
-             variations_service->GetStoredPermanentCountry()) &&
-         features->application_locale_storage() &&
-         features->application_locale_storage()->Get().starts_with(
-             kEnglishLanguageCode);
-}
 
 }  // namespace
 
@@ -457,16 +414,6 @@ ChromeAutocompleteProviderClient::GetSessionSyncService() const {
   return SessionSyncServiceFactory::GetForProfile(profile_);
 }
 
-AimEligibilityService*
-ChromeAutocompleteProviderClient::GetAimEligibilityService() const {
-  return AimEligibilityServiceFactory::GetForProfile(profile_);
-}
-
-AiModeButtonService* ChromeAutocompleteProviderClient::GetAiModeButtonService()
-    const {
-  return AiModeButtonServiceFactory::GetForProfile(profile_);
-}
-
 bool ChromeAutocompleteProviderClient::IsOffTheRecord() const {
   return profile_->IsOffTheRecord();
 }
@@ -615,38 +562,9 @@ std::optional<bool> ChromeAutocompleteProviderClient::IsPagePaywalled() const {
   return false;
 }
 
-bool ChromeAutocompleteProviderClient::ShouldSendContextualUrlSuggestParam()
-    const {
-  return IsContextualSearchFeatureEnabled(
-      omnibox_feature_configs::ContextualSearch::kSendContextualUrlSuggestParam,
-      GetAimEligibilityService());
-}
-
-bool ChromeAutocompleteProviderClient::ShouldSendPageTitleSuggestParam() const {
-  return IsContextualSearchFeatureEnabled(
-      omnibox_feature_configs::ContextualSearch::kSendPageTitleSuggestParam,
-      GetAimEligibilityService());
-}
-
 bool ChromeAutocompleteProviderClient::IsOmniboxNextLensSearchChipEnabled()
     const {
   return false;
-}
-
-bool ChromeAutocompleteProviderClient::IsAskGShowChipEnabled() const {
-#if !BUILDFLAG(IS_ANDROID)
-  return IsOmniboxNextAimPopupEnabled() && omnibox::kAskGShowChip.Get();
-#else
-  return false;
-#endif  // !BUILDFLAG(IS_ANDROID)
-}
-
-bool ChromeAutocompleteProviderClient::IsOmniboxNextAimPopupEnabled() const {
-#if !BUILDFLAG(IS_ANDROID)
-  return omnibox::IsAimPopupEnabled(profile_);
-#else
-  return false;
-#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 bool ChromeAutocompleteProviderClient::IsGeminiStarterPackEnabled() const {
@@ -718,13 +636,3 @@ void ChromeAutocompleteProviderClient::OpenCoBrowsePanel() {}
 
 void ChromeAutocompleteProviderClient::PromptPageTranslation() {}
 
-bool ChromeAutocompleteProviderClient::ShouldOpenComposeboxForAskG() const {
-#if !BUILDFLAG(IS_ANDROID)
-  return omnibox::IsAimPopupFeatureEnabled() && omnibox::kAskGComposeBox.Get();
-#else
-  return false;
-#endif
-}
-
-// This is implemented in OmniboxEditModelActionClient.
-void ChromeAutocompleteProviderClient::OpenComposeboxForAskG() {}

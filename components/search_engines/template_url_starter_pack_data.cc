@@ -77,23 +77,8 @@ const StarterPackEngine page = {
     .type = SEARCH_ENGINE_STARTER_PACK_PAGE,
 };
 
-const StarterPackEngine ai_mode = {
-    .name_message_id = IDS_SEARCH_ENGINES_STARTER_PACK_AI_MODE_NAME,
-    .keyword_message_id = IDS_SEARCH_ENGINES_STARTER_PACK_AI_MODE_KEYWORD,
-    .favicon_url = nullptr,
-    // - `udm=50` triggers AI mode as opposed to traditional search.
-    // - `aep=48` identifies source of the request as the omnibox as opposed to
-    //    e.g. the NTP realbox.
-    .search_url =
-        "https://www.google.com/"
-        "search?sourceid=chrome&udm=50&aep=48&q={searchTerms}",
-    .destination_url = "https://www.google.com",
-    .id = StarterPackId::kAiMode,
-    .type = SEARCH_ENGINE_STARTER_PACK_AI_MODE,
-};
-
 const StarterPackEngine* engines[] = {
-    &bookmarks, &history, &tabs, &gemini, &page, &ai_mode,
+    &bookmarks, &history, &tabs, &gemini, &page,
 };
 
 int GetDataVersion() {

@@ -37,7 +37,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/signin/account_preview_data_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -71,7 +70,6 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
 #include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
@@ -876,17 +874,6 @@ void ToolsMenuModel::Build(BrowserWindowInterface* browser) {
     }
   }
 
-  if (CustomizeChromePageHandler::IsSupported(
-          NtpCustomBackgroundServiceFactory::GetForProfile(
-              browser->GetProfile()),
-          browser->GetProfile())) {
-    AddItemWithStringIdAndVectorIcon(this, IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL,
-                                     IDS_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL,
-                                     features::IsRoundedIconsEnabled()
-                                         ? kEditIcon
-                                         : kEditChromeRefreshOldIcon);
-  }
-
   AddSeparator(ui::NORMAL_SEPARATOR);
 
   AddItemWithStringIdAndVectorIcon(
@@ -1054,8 +1041,7 @@ void AppMenuModel::ExecuteCommand(int command_id, int event_flags) {
     case IDC_SHOW_BOOKMARK_SIDE_PANEL:
     case IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL:
     case IDC_SHOW_READING_MODE_SIDE_PANEL:
-    case IDC_READING_LIST_MENU_SHOW_UI:
-    case IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL: {
+    case IDC_READING_LIST_MENU_SHOW_UI: {
       actions::ActionInvocationContext context =
           actions::ActionInvocationContext::Builder()
               .SetProperty(
@@ -1399,13 +1385,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
           ->NotifyFeaturePromoFeatureUsed(
               feature_engagement::kIPHReadingModeSidePanelFeature,
               FeaturePromoFeatureUsedAction::kIgnorePromoIfPresent);
-      break;
-    case IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowCustomizeChromeSidePanel", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL);
       break;
     // Zoom menu
     case IDC_ZOOM_MINUS:

@@ -71,24 +71,8 @@ void OmniboxPopupViewWebUI::InvalidateLine(size_t line) {}
 void OmniboxPopupViewWebUI::UpdatePopupAppearance() {
   const bool has_results =
       !controller()->autocomplete_controller()->result().empty();
-  // TODO(crbug.com/498556249): Consolidate/correct chip visibility logic.
-  // As written the code below is a bit misleading as the actual decision of
-  // whether or not to show chips is made in WebUI Typescript. This manifests as
-  // a bug where the popup will be visible if the user types something and
-  // backspaces when chips are enabled but no chips are actually shown due to
-  // the Typescript logic.
-  const bool has_contextual_chips =
-      controller()->autocomplete_controller()->result().has_contextual_chips();
-  const bool contextual_chips_feature_enabled =
-      omnibox::IsAimPopupEnabled(location_bar_->GetProfile()) &&
-      (omnibox::kShowLensSearchChip.Get() ||
-       omnibox::kAskGShowChip.Get());
-  const bool has_results_or_chips =
-      has_results || (contextual_chips_feature_enabled && has_contextual_chips);
   const bool should_be_visible =
-      controller()->popup_state_manager()->popup_state() !=
-          OmniboxPopupState::kAim &&
-      (has_results_or_chips ||
+      (has_results ||
        (base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxFullPopup) &&
         controller()->edit_model()->has_focus())) &&
       !omnibox_view_->IsImeShowingPopup();
@@ -99,8 +83,7 @@ void OmniboxPopupViewWebUI::UpdatePopupAppearance() {
     // Do this AFTER widget operations. LocationBarView is subscribed to state
     // changes and attempts to call `UpdatePopupAppearance()` again if the
     // widget is open.
-    // Only update the state if it's currently kClassic. If it's already
-    // transitioning to another state (e.g., kAim), don't override it.
+    // Only update the state if it's currently kClassic.
     if (controller()->popup_state_manager()->popup_state() ==
         OmniboxPopupState::kClassic) {
       controller()->popup_state_manager()->SetPopupState(

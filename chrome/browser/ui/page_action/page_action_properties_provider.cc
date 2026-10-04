@@ -17,17 +17,6 @@ constexpr auto kPageActionProperties = base::MakeFixedFlatMap<
     actions::ActionId,
     page_actions::PageActionProperties>({
     {
-        kActionAiMode,
-        {
-            .histogram_name = "AiMode",
-            .exempt_from_omnibox_suppression = true,
-            .type = PageActionIconType::kAiMode,
-            .element_identifier = kAiModePageActionIconElementId,
-            .priority =
-                page_actions::PageActionPriorityCategory::kCoreSiteUtility,
-        },
-    },
-    {
         kActionIndigo,
         {
             .histogram_name = "Indigo",
@@ -352,19 +341,17 @@ constexpr auto kPageActionProperties = base::MakeFixedFlatMap<
 
 constexpr bool CheckIgnoreFlagUsage() {
   for (const auto& [action_id, properties] : kPageActionProperties) {
-    if (properties.exempt_from_omnibox_suppression &&
-        action_id != kActionAiMode) {
+    if (properties.exempt_from_omnibox_suppression) {
       return false;
     }
   }
   return true;
 }
 
-// AI Mode page action is designed to be displayed by itself. Other page actions
-// should avoid using this property unless there is a strong reason.
-static_assert(
-    CheckIgnoreFlagUsage(),
-    "ignore_should_hide_page_actions should only be used by kActionAiMode");
+// No page action currently uses `exempt_from_omnibox_suppression`.
+static_assert(CheckIgnoreFlagUsage(),
+              "exempt_from_omnibox_suppression is unused; add an exemption "
+              "here if one is needed");
 
 }  // namespace
 

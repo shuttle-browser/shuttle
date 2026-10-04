@@ -362,11 +362,7 @@ std::u16string OmniboxView::ComputeFriendlySuggestionTextForAccessibility(
   std::u16string friendly_suggestion_text;
   suggestion_text_prefix_length = 0;
 
-  if (controller()->edit_model()->GetPopupSelection().state ==
-      OmniboxPopupSelection::LineState::FOCUSED_BUTTON_AIM) {
-    friendly_suggestion_text =
-        controller()->edit_model()->GetPopupAccessibilityLabelForAimButton();
-  } else if (controller()->edit_model()->GetPopupSelection().line ==
+  if (controller()->edit_model()->GetPopupSelection().line ==
              OmniboxPopupSelection::kNoMatch) {
     // If nothing is selected in the popup, we are in the no-default-match edge
     // case, and |match| is a synthetically generated match. In that case,

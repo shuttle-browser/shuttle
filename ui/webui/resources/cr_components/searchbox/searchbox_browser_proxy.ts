@@ -26,7 +26,6 @@ export function createAutocompleteMatch(
     isSearchType: false,
     isEnterpriseSearchAggregatorPeopleType: false,
     swapContentsAndDescription: false,
-    showContextualDescription: false,
     supportsDeletion: false,
     suggestionGroupId: -1,
     contents: '',
@@ -40,14 +39,11 @@ export function createAutocompleteMatch(
     iconUrl: '',
     imageDominantColor: '',
     imageUrl: '',
-    isContextualSuggestion: false,
-    isNoncannedAimSuggestion: false,
     removeButtonA11yLabel: '',
     type: '',
     isTwoRowSuggestion: false,
     tailSuggestCommonPrefix: null,
     keywordModel: null,
-    fuseboxAction: null,
     suggestStyle: SuggestStyle.kUnspecified,
   };
 

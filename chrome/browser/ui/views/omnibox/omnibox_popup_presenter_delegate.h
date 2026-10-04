@@ -10,13 +10,10 @@ class View;
 class Widget;
 }  // namespace views
 
-class OmniboxPopupAimPresenter;
-
 class OmniboxPopupPresenterDelegate {
  public:
   virtual ~OmniboxPopupPresenterDelegate() = default;
   virtual views::Widget* GetLocationBarWidget() = 0;
-  virtual OmniboxPopupAimPresenter* GetOmniboxPopupAimPresenter() const = 0;
 
   // This returns the view that will be given focus when the focus is given
   // back to the location bar.

@@ -29,14 +29,6 @@ FakeAutocompleteProviderClient::FakeAutocompleteProviderClient() {
 
   fake_tab_group_sync_service_ =
       std::make_unique<tab_groups::FakeTabGroupSyncService>();
-
-  AimEligibilityService::RegisterProfilePrefs(
-      search_engines_test_enviroment_.pref_service().registry());
-  mock_aim_eligibility_service_ = std::make_unique<MockAimEligibilityService>(
-      search_engines_test_enviroment_.pref_service(),
-      search_engines_test_enviroment_.template_url_service(),
-      /*url_loader_factory=*/nullptr,
-      /*identity_manager=*/nullptr, AimEligibilityService::Configuration());
 }
 
 FakeAutocompleteProviderClient::~FakeAutocompleteProviderClient() {
@@ -123,11 +115,6 @@ FakeAutocompleteProviderClient::GetOnDeviceTailModelService() const {
 FakeAutocompleteScoringModelService*
 FakeAutocompleteProviderClient::GetAutocompleteScoringModelService() const {
   return scoring_model_service_.get();
-}
-
-AimEligibilityService*
-FakeAutocompleteProviderClient::GetAimEligibilityService() const {
-  return mock_aim_eligibility_service_.get();
 }
 
 void FakeAutocompleteProviderClient::ResetGeolocationPermissionToAsk(

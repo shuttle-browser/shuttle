@@ -38,10 +38,6 @@ class AppearanceHandler : public SettingsPageUIHandler {
   // Changes the UI theme to the specified `system_theme`.
   void HandleUseTheme(ui::SystemTheme system_theme,
                       const base::ListValue& args);
-  // Opens the Customize Chrome side panel.
-  void OpenCustomizeChrome(const base::ListValue& args);
-  // Opens the Customize Chrome side panel to the toolbar section.
-  void OpenCustomizeChromeToolbarSection(const base::ListValue& args);
   // Reset toolbar pinning to the default settings.
   void ResetPinnedToolbarActions(const base::ListValue& args);
   // Whether toolbar pinning is in its default state or not.

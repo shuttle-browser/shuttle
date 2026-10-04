@@ -19,7 +19,6 @@
 #include "components/omnibox/browser/omnibox_client.h"
 #include "ui/gfx/image/image.h"
 
-class AiModeButtonService;
 class BrowserWindowInterface;
 class ChromeAutocompleteSchemeClassifier;
 class GURL;
@@ -66,7 +65,6 @@ class ChromeOmniboxClient final : public OmniboxClient {
   const PrefService* GetPrefs() const override;
   AutocompleteControllerEmitter* GetAutocompleteControllerEmitter() override;
   TemplateURLService* GetTemplateURLService() override;
-  AiModeButtonService* GetAiModeButtonService() override;
   const AutocompleteSchemeClassifier& GetSchemeClassifier() const override;
   AutocompleteClassifier* GetAutocompleteClassifier() override;
   omnibox::OmniboxPopupCloser* GetOmniboxPopupCloser() override;
@@ -146,7 +144,6 @@ class ChromeOmniboxClient final : public OmniboxClient {
       base::OnceCallback<void(base::WeakPtr<content::NavigationHandle>)>
           callback);
   void OpenIphLink(GURL gurl) override;
-  bool IsAimPopupEnabled() const override;
   void MaybePrewarmForDefaultSearchEngine(PrewarmTrigger trigger) override;
   base::WeakPtr<OmniboxClient> AsWeakPtr() override;
   Profile* profile() { return profile_; }

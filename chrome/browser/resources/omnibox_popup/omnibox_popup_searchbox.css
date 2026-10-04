@@ -242,10 +242,6 @@ cr-searchbox-dropdown::part(dropdown-content) {
   padding-top: unset;
 }
 
-omnibox-popup-contextual-entrypoint {
-  --contextual-entrypoint-and-carousel-context-menu-container-padding-inline-start: 0;
-}
-
 .searchbox-icon-button-container.lens {
   margin-inline-end: 10px;
 }
@@ -281,118 +277,6 @@ omnibox-popup-contextual-entrypoint {
 :host([multi-line-enabled]) cr-searchbox-input::part(searchbox-input) {
   height: auto;
   min-height: var(--cr-searchbox-input-height);
-}
-
-#composeButton {
-  --cr-button-height: 24px;
-  align-self: center;
-}
-
-#composeButton::part(glow-container) {
-  height: 24px;
-  margin-inline-end: 2px;
-  top: 0;
-}
-
-:host([dropdown-is-visible]) #composeButton::part(glow-container) {
-  margin-inline-end: 9px;
-  top: -2px;
-}
-
-#composeButton::part(compose-button) {
-  --cr-hover-background-color: transparent;
-  cursor: default;
-  background-color: var(--color-sys-tonal-container);
-  color: var(--color-sys-on-tonal-container);
-  font-size: 13px;
-  font-weight: 500;
-  padding-inline-end: 12.5px;
-  padding-inline-start: 8px;
-}
-
-#composeButton[dynamic]::part(compose-button) {
-  padding-inline-end: 10.5px;
-}
-
-:host([searchbox-dynamic-color-scheme_]) #composeButton::part(compose-button) {
-  background-color: var(--color-omnibox-results-background-hovered);
-}
-
-#composeButton::part(compose-icon) {
-  height: 15px;
-  max-width: 15px;
-}
-
-#composeButton[dynamic]::part(compose-icon) {
-  inset-inline-start: 6px;
-}
-
-:host(:not([aim-button-icon-only_])) #composeButton[dynamic][has-user-input]::part(compose-icon) {
-  max-width: 0;
-}
-
-#composeButton::part(compose-icon-favicon) {
-  height: 16px;
-  max-width: 16px;
-}
-
-#composeButton::part(label) {
-  margin-inline-start: 1px;
-}
-
-#composeButton[dynamic]::part(label) {
-  margin-inline-start: 18px;
-}
-
-#composeButton[dynamic][has-user-input]::part(label) {
-  transform: translateX(-16px);
-}
-
-#composeButton::part(arrow-icon) {
-  height: 15px;
-  max-width: 15px;
-}
-
-#composeButton[dynamic][has-user-input]::part(arrow-icon) {
-  inset-inline-end: 7px;
-}
-
-:host([aim-button-icon-only_]) #composeButton::part(compose-button) {
-  border-radius: 50%;
-  padding: 0;
-  /* Match width to height (24px) for a 1:1 circular icon button. */
-  min-width: var(--cr-button-height);
-  width: var(--cr-button-height);
-}
-
-:host([aim-button-icon-only_]) #composeButton::part(compose-icon) {
-  inset-inline-start: unset;
-  opacity: 1;
-  position: static;
-  scale: 1;
-  transform: none;
-  visibility: visible;
-  width: 15px;
-}
-
-:host([aim-button-icon-only_]) #composeButton::part(compose-icon-favicon) {
-  width: 16px;
-}
-
-:host([aim-button-icon-only_]) #composeButton::part(label),
-:host([aim-button-icon-only_]) #composeButton::part(arrow-icon) {
-  display: none;
-}
-
-#composeButton::part(hoverBackground) {
-  background-color: var(--color-sys-state-hover-dim-blend-protection);
-  display: block;
-  opacity: 0;
-  transition: opacity 250ms linear;
-}
-
-#composeButton:hover::part(hoverBackground) {
-  opacity: 1;
 }
 
 :host-context([webui-rounded-icons]):host(:not([use-webkit-search-icons_])) #voiceSearchButton {

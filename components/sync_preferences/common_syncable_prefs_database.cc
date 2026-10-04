@@ -13,7 +13,6 @@
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/contextual_search/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/metrics/demographics/user_demographics.h"
 #include "components/metrics/metrics_pref_names.h"
@@ -407,12 +406,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
         {autofill::prefs::kAutofillAmountExtractionAiTermsSeen,
          {syncable_prefs_ids::kAutofillAmountExtractionAiTermsSeen,
           syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {omnibox::kShowAiModeOmniboxButton,
-         {syncable_prefs_ids::kShowAiModeOmniboxButton, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {contextual_search::kDriveConsentState,
-         {syncable_prefs_ids::kDriveConsentState, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
         {subscription_eligibility::prefs::kAiSubscriptionTier,
          {syncable_prefs_ids::kSubscriptionEligibilityAiSubscriptionTier,
           syncer::PRIORITY_PREFERENCES,

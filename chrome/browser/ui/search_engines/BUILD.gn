@@ -37,7 +37,6 @@ source_set("search_engines") {
 
   deps = [
     "//base:i18n",
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/favicon",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search_engines",

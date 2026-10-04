@@ -34,7 +34,6 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension_constants.h"
-#include "chrome/grit/aim_eligibility_extension_resources.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/component_extension_resources.h"
@@ -397,14 +396,6 @@ void ComponentLoader::AddNetworkSpeechSynthesisExtension() {
   }
 }
 
-void ComponentLoader::AddAimEligibilityExtension() {
-  if (base::FeatureList::IsEnabled(
-          omnibox::kAimEligibilityComponentExtension)) {
-    Add(IDR_AIM_ELIGIBILITY_EXTENSION_MANIFEST_JSON,
-        base::FilePath(FILE_PATH_LITERAL("aim_eligibility_extension")));
-  }
-}
-
 void ComponentLoader::AddWithNameAndDescription(
     int manifest_resource_id,
     const base::FilePath& root_directory,
@@ -618,8 +609,6 @@ void ComponentLoader::AddDefaultComponentExtensionsWithBackgroundPages(
         base::FilePath(FILE_PATH_LITERAL("chromeos/arc_support")));
 #endif  // BUILDFLAG(IS_CHROMEOS)
   }
-
-  AddAimEligibilityExtension();
 
 // http://crbug.com/41070702
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)

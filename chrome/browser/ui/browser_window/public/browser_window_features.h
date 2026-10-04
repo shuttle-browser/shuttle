@@ -88,7 +88,6 @@ class ProfileMenuCoordinator;
 class OrganizerPanelStateController;
 class ReadingListSidePanelCoordinator;
 class ScrimViewController;
-class SearchboxContextData;
 class SessionServiceBrowserHelper;
 class SidePanelCoordinator;
 class SidePanelRegistry;
@@ -168,12 +167,7 @@ class ExtensionBrowserWindowHelper;
 class ExtensionSidePanelManager;
 }  // namespace extensions
 
-namespace new_tab_footer {
-class NewTabFooterController;
-}  // namespace new_tab_footer
-
 namespace omnibox {
-class AiModePageActionController;
 class OmniboxPopupCloser;
 }  // namespace omnibox
 
@@ -435,7 +429,6 @@ class BrowserWindowFeatures {
       organizer_panel_state_controller_;
   std::unique_ptr<ReadingListSidePanelCoordinator>
       reading_list_side_panel_coordinator_;
-  std::unique_ptr<SearchboxContextData> searchbox_context_data_;
   std::unique_ptr<SessionServiceBrowserHelper> session_service_browser_helper_;
   std::unique_ptr<tab_groups::SessionServiceTabGroupSyncObserver>
       session_service_tab_group_sync_observer_;
@@ -476,8 +469,6 @@ class BrowserWindowFeatures {
 
   // Members owned only when a BrowserView is attached.
   std::unique_ptr<ActorUiWindowController> actor_ui_window_controller_;
-  std::unique_ptr<omnibox::AiModePageActionController>
-      ai_mode_page_action_controller_;
   std::unique_ptr<ColorProviderBrowserHelper> color_provider_browser_helper_;
   std::unique_ptr<ContentsBorderController> contents_border_controller_;
   std::unique_ptr<enterprise_data_protection::DataProtectionUIController>
@@ -490,8 +481,6 @@ class BrowserWindowFeatures {
       extension_side_panel_manager_;
 
   std::unique_ptr<FullscreenControlHost> fullscreen_control_host_;
-  std::unique_ptr<new_tab_footer::NewTabFooterController>
-      new_tab_footer_controller_;
   std::unique_ptr<omnibox::OmniboxPopupCloser> omnibox_popup_closer_;
   std::unique_ptr<ScrimViewController> scrim_view_controller_;
   std::unique_ptr<SidePanelCoordinator> side_panel_coordinator_;

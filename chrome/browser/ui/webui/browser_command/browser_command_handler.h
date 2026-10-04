@@ -80,7 +80,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   virtual void OpenSplitView();
   virtual void EnableVerticalTabs();
   void StartTabGroupTutorial();
-  void OpenNTPAndStartCustomizeChromeTutorial();
   void StartPasswordManagerTutorial();
   void StartSavedTabGroupTutorial();
 

@@ -12,6 +12,7 @@
 #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
 #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_overlay_view.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/read_anything/read_anything_immersive_overlay_view.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -25,7 +26,6 @@
 #include "chrome/browser/ui/views/frame/scrim_view.h"
 #include "chrome/browser/ui/views/frame/tab_modal_dialog_host.h"
 #include "chrome/browser/ui/views/frame/top_container_view.h"
-#include "chrome/browser/ui/views/new_tab_footer/footer_web_view.h"
 #include "chrome/common/chrome_features.h"
 #include "components/search/ntp_features.h"
 #include "content/public/browser/web_contents.h"
@@ -50,8 +50,6 @@
 
 namespace {
 constexpr int kSplitViewContentPadding = 4;
-constexpr int kNewTabFooterSeparatorHeight = 1;
-constexpr int kNewTabFooterHeight = 56;
 }  // namespace
 
 ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
@@ -82,19 +80,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   contents_view_->set_use_default_deadline_when_animating_bounds(
       base::FeatureList::IsEnabled(
           features::kUseDefaultDeadlineWhenAnimatingBounds));
-
-  if (base::FeatureList::IsEnabled(ntp_features::kNtpFooter)) {
-    new_tab_footer_view_separator_ =
-        AddChildView(ContentsSeparator::CreateContentsSeparator());
-    new_tab_footer_view_separator_->SetVisible(false);
-    new_tab_footer_view_separator_->SetProperty(
-        views::kElementIdentifierKey, kFooterWebViewSeparatorElementId);
-
-    new_tab_footer_view_ =
-        AddChildView(std::make_unique<new_tab_footer::NewTabFooterWebView>(
-            browser_view->browser()));
-    new_tab_footer_view_->SetVisible(false);
-  }
 
   data_protection_overlay_view_ =
       AddChildView(std::make_unique<
@@ -216,32 +201,17 @@ void ContentsContainerView::SetBorderRoundedCornersFrom(
       (current_devtools_docked_placement_ == DevToolsDockedPlacement::kBottom ||
        current_devtools_docked_placement_ == DevToolsDockedPlacement::kRight);
 
-  const gfx::RoundedCornersF content_upper_rounded_corners =
-      gfx::RoundedCornersF{
-          devtools_in_upper_left ? 0 : corner_radii.upper_left(),
-          devtools_in_upper_right ? 0 : corner_radii.upper_right(), 0, 0};
-  const gfx::RoundedCornersF content_lower_rounded_corners =
-      gfx::RoundedCornersF{
-          0, 0, devtools_in_lower_right ? 0 : corner_radii.lower_right(),
-          devtools_in_lower_left ? 0 : corner_radii.lower_left()};
   const gfx::RoundedCornersF content_rounded_corners = gfx::RoundedCornersF{
       devtools_in_upper_left ? 0 : corner_radii.upper_left(),
       devtools_in_upper_right ? 0 : corner_radii.upper_right(),
       devtools_in_lower_right ? 0 : corner_radii.lower_right(),
       devtools_in_lower_left ? 0 : corner_radii.lower_left()};
 
-  auto radii = new_tab_footer_view_ && new_tab_footer_view_->GetVisible()
-                   ? content_upper_rounded_corners
-                   : content_rounded_corners;
+  auto radii = content_rounded_corners;
 
   contents_view_->SetBackgroundRadii(radii);
   contents_view_->holder()->SetNativeViewCornerRadii(radii);
   contents_scrim_view_->SetRoundedCorners(corner_radii);
-
-  if (new_tab_footer_view_) {
-    new_tab_footer_view_->holder()->SetNativeViewCornerRadii(
-        content_lower_rounded_corners);
-  }
 
   if (actor_overlay_web_view_) {
     // ActorOverlayWebView should use the same radii as the contents view since
@@ -256,7 +226,7 @@ void ContentsContainerView::UpdateBorderRoundedCorners() {
 }
 
 void ContentsContainerView::ChildVisibilityChanged(View* child) {
-  if ((child == new_tab_footer_view_ || child == devtools_web_view_) &&
+  if (child == devtools_web_view_ &&
       !rounded_corner_radii_.IsEmpty()) {
     UpdateBorderRoundedCorners();
   }
@@ -361,13 +331,6 @@ void ContentsContainerView::SetCaptureContentsBorderLocation(
 
 gfx::Rect ContentsContainerView::GetContentsViewBounds() const {
   gfx::Rect contents_view_bounds = contents_view_->bounds();
-  if (new_tab_footer_view_ && new_tab_footer_view_->GetVisible()) {
-    CHECK(new_tab_footer_view_separator_);
-    contents_view_bounds.set_height(contents_view_bounds.height() +
-                                    new_tab_footer_view_->height() +
-                                    new_tab_footer_view_separator_->height());
-  }
-
   return contents_view_bounds;
 }
 
@@ -424,7 +387,7 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
   gfx::Rect full_contents_bounds = GetContentsBounds();
   gfx::Rect devtools_bounds;
   // The area contents excluding devtools is drawn (ie |contents_view_|,
-  // |new_tab_footer_view_|, etc).
+  // etc).
   gfx::Rect non_devtools_contents_bounds;
 
   ApplyDevToolsContentsResizingStrategy(strategy_, full_contents_bounds,
@@ -442,29 +405,6 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
       devtools_scrim_view_.get(), devtools_scrim_view_->GetVisible(),
       GetMirroredRect(devtools_bounds),
       views::SizeBounds(full_contents_bounds.size()));
-
-  if (new_tab_footer_view_) {
-    gfx::Rect footer_separator_rect, footer_rect;
-    if (new_tab_footer_view_->GetVisible()) {
-      // Shrink the rect for the contents view if the ntp footer is visible.
-      contents_view_bounds.set_height(non_devtools_contents_bounds.height() -
-                                      kNewTabFooterHeight -
-                                      kNewTabFooterSeparatorHeight);
-      footer_separator_rect =
-          gfx::Rect(contents_view_bounds.x(), contents_view_bounds.bottom(),
-                    contents_view_bounds.width(), kNewTabFooterSeparatorHeight);
-      footer_rect =
-          gfx::Rect(contents_view_bounds.x(), contents_view_bounds.bottom(),
-                    contents_view_bounds.width(), kNewTabFooterHeight);
-    }
-
-    layouts.child_layouts.emplace_back(new_tab_footer_view_separator_.get(),
-                                       new_tab_footer_view_->GetVisible(),
-                                       footer_separator_rect);
-    layouts.child_layouts.emplace_back(new_tab_footer_view_.get(),
-                                       new_tab_footer_view_->GetVisible(),
-                                       footer_rect);
-  }
 
   const auto& contents_rect = GetMirroredRect(contents_view_bounds);
   layouts.child_layouts.emplace_back(

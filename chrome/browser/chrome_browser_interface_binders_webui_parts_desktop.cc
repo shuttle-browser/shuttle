@@ -9,18 +9,12 @@
 #include "chrome/browser/actor/ui/actor_overlay_ui.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/history_clusters/history_clusters_service_factory.h"
-#include "chrome/browser/new_tab_page/modules/file_suggestion/microsoft_files.mojom.h"
-#include "chrome/browser/new_tab_page/modules/v2/authentication/microsoft_auth.mojom.h"
-#include "chrome/browser/new_tab_page/modules/v2/calendar/outlook_calendar.mojom.h"
-#include "chrome/browser/new_tab_page/modules/v2/tab_groups/tab_groups.mojom.h"
-#include "chrome/browser/new_tab_page/new_tab_page_util.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/side_panel/history/history_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
 #include "chrome/browser/ui/webui/access_code_cast/access_code_cast.mojom.h"
 #include "chrome/browser/ui/webui/autofill_ml_internals/autofill_ml_internals_ui.h"
 #include "chrome/browser/ui/webui/color_pipeline_internals/color_pipeline_internals_ui.h"
-#include "chrome/browser/ui/webui/customize_buttons/customize_buttons.mojom.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom.h"
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
 #include "chrome/browser/ui/webui/history/history_ui.h"
@@ -30,17 +24,8 @@
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
 #include "chrome/browser/ui/webui/multistep_filter_internals/multistep_filter_internals.mojom.h"
 #include "chrome/browser/ui/webui/multistep_filter_internals/multistep_filter_internals_ui.h"
-#include "chrome/browser/ui/webui/new_tab_footer/new_tab_footer.mojom.h"
-#include "chrome/browser/ui/webui/new_tab_footer/new_tab_footer_ui.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page.mojom.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
-#include "chrome/browser/ui/webui/new_tab_page/ntp_promo/ntp_promo.mojom.h"
-#include "chrome/browser/ui/webui/new_tab_page_third_party/new_tab_page_third_party_ui.h"
-#include "chrome/browser/ui/webui/ntp_microsoft_auth/ntp_microsoft_auth_untrusted_ui.h"
 #include "chrome/browser/ui/webui/omnibox/logging/logs.mojom.h"
 #include "chrome/browser/ui/webui/omnibox/omnibox_ui.h"
-#include "chrome/browser/ui/webui/omnibox_everywhere/debug/omnibox_everywhere_debug.mojom.h"
-#include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals.mojom.h"
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals_ui.h"
@@ -48,9 +33,6 @@
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
 #include "chrome/browser/ui/webui/side_panel/comments/comments.mojom.h"
 #include "chrome/browser/ui/webui/side_panel/comments/comments_side_panel_ui.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome.mojom.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_ui.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/wallpaper_search/wallpaper_search.mojom.h"
 #include "chrome/browser/ui/webui/side_panel/history/history_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/history_clusters/history_clusters_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/read_anything/read_anything_untrusted_ui.h"
@@ -75,7 +57,6 @@
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
-#include "components/search/ntp_features.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/sync/base/features.h"
 #include "components/user_education/common/user_education_features.h"
@@ -90,13 +71,11 @@
 #include "ui/webui/color_change_listener/color_change_handler.h"
 #include "ui/webui/resources/cr_components/app_management/app_management.mojom.h"
 #include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
-#include "ui/webui/resources/cr_components/composebox/composebox.mojom.h"
 #include "ui/webui/resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom.h"
 #include "ui/webui/resources/cr_components/help_bubble/custom_help_bubble.mojom.h"
 #include "ui/webui/resources/cr_components/history/foreign_sessions.mojom.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
 #include "ui/webui/resources/cr_components/history_clusters/history_clusters.mojom.h"
-#include "ui/webui/resources/cr_components/most_visited/most_visited.mojom.h"
 #include "ui/webui/resources/cr_components/theme_color_picker/theme_color_picker.mojom.h"
 #include "ui/webui/resources/js/browser_command/browser_command.mojom.h"
 
@@ -146,7 +125,6 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if !defined(OFFICIAL_BUILD)
-#include "chrome/browser/ui/webui/new_tab_page/foo/foo.mojom.h"  // nogncheck crbug.com/40147906
 #endif  // defined(OFFICIAL_BUILD)
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -207,12 +185,6 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
         actor::ui::ActorOverlayUI>(map);
   }
 
-  if (user_education::features::GetNtpBrowserPromoType() !=
-      user_education::features::NtpBrowserPromoType::kNone) {
-    RegisterWebUIControllerInterfaceBinder<
-        ntp_promo::mojom::NtpPromoHandlerFactory, NewTabPageUI>(map);
-  }
-
   if (HistorySidePanelCoordinator::IsSupported()) {
     RegisterWebUIControllerInterfaceBinder<history::mojom::PageHandler,
                                            HistorySidePanelUI, HistoryUI>(map);
@@ -262,11 +234,11 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
   if (HistorySidePanelCoordinator::IsSupported()) {
     RegisterWebUIControllerInterfaceBinder<
         page_image_service::mojom::PageImageServiceHandler, HistoryUI,
-        HistorySidePanelUI, NewTabPageUI>(map);
+        HistorySidePanelUI>(map);
   } else {
     RegisterWebUIControllerInterfaceBinder<
         page_image_service::mojom::PageImageServiceHandler, HistoryUI,
-        HistoryClustersSidePanelUI, NewTabPageUI>(map);
+        HistoryClustersSidePanelUI>(map);
   }
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -292,16 +264,8 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
   RegisterWebUIControllerInterfaceBinder<
       batch_upload_promo::mojom::PageHandlerFactory, settings::SettingsUI>(map);
 
-  RegisterWebUIControllerInterfaceBinder<
-      browser_command::mojom::CommandHandlerFactory, NewTabPageUI>(map);
-
   RegisterWebUIControllerInterfaceBinder<searchbox::mojom::PageHandlerFactory,
-                                         NewTabPageUI, OmniboxPopupUI,
-                                         OmniboxEverywhereUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      omnibox_everywhere_debug::mojom::PageHandlerFactory, OmniboxEverywhereUI>(
-      map);
+                                         OmniboxPopupUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       password_manager::mojom::PageHandlerFactory, PasswordManagerUI>(map);
@@ -309,20 +273,11 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
   RegisterWebUIControllerInterfaceBinder<
       customize_color_scheme_mode::mojom::
           CustomizeColorSchemeModeHandlerFactory,
-      CustomizeChromeUI
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-      ,
-      FeatureShowcaseUI
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-      >(map);
+      FeatureShowcaseUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       theme_color_picker::mojom::ThemeColorPickerHandlerFactory,
-      CustomizeChromeUI
-#if !BUILDFLAG(IS_CHROMEOS)
-      ,
       ProfileCustomizationUI
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
       ,
       FeatureShowcaseUI
@@ -331,8 +286,7 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
 
   RegisterWebUIControllerInterfaceBinder<
       help_bubble::mojom::HelpBubbleHandlerFactory, UserEducationInternalsUI,
-      ReadingListUI, NewTabPageUI, CustomizeChromeUI, PasswordManagerUI,
-      HistoryUI, OmniboxEverywhereUI
+      ReadingListUI, PasswordManagerUI, HistoryUI
 #if !BUILDFLAG(IS_CHROMEOS)
       ,
       ProfilePickerUI
@@ -343,56 +297,11 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
       user_education::mojom::UserEducationMixedTrustHandlerFactory, HistoryUI,
       UserEducationInternalsUI>(map);
 
-#if !defined(OFFICIAL_BUILD)
-  RegisterWebUIControllerInterfaceBinder<foo::mojom::FooHandler, NewTabPageUI>(
-      map);
-#endif  // !defined(OFFICIAL_BUILD)
-
-  if (base::FeatureList::IsEnabled(ntp_features::kNtpTabGroupsModule)) {
-    RegisterWebUIControllerInterfaceBinder<ntp::tab_groups::mojom::PageHandler,
-                                           NewTabPageUI>(map);
-  }
-
-  if (IsOutlookCalendarModuleEnabledForProfile(Profile::FromBrowserContext(
-          render_frame_host->GetBrowserContext()))) {
-    RegisterWebUIControllerInterfaceBinder<
-        ntp::calendar::mojom::OutlookCalendarPageHandler, NewTabPageUI>(map);
-  }
-
-  if (IsMicrosoftModuleEnabledForProfile(Profile::FromBrowserContext(
-          render_frame_host->GetBrowserContext()))) {
-    RegisterWebUIControllerInterfaceBinder<
-        ntp::authentication::mojom::MicrosoftAuthPageHandler, NewTabPageUI>(
-        map);
-  }
-
-  if (IsMicrosoftFilesModuleEnabledForProfile(Profile::FromBrowserContext(
-          render_frame_host->GetBrowserContext()))) {
-    RegisterWebUIControllerInterfaceBinder<
-        file_suggestion::mojom::MicrosoftFilesPageHandler, NewTabPageUI>(map);
-  }
 
   RegisterWebUIControllerInterfaceBinder<
       reading_list::mojom::PageHandlerFactory, ReadingListUI>(map);
   RegisterWebUIControllerInterfaceBinder<comments::mojom::PageHandlerFactory,
                                          CommentsSidePanelUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      side_panel::mojom::CustomizeChromePageHandlerFactory, CustomizeChromeUI>(
-      map);
-
-  if (base::FeatureList::IsEnabled(
-          ntp_features::kCustomizeChromeWallpaperSearch) &&
-      base::FeatureList::IsEnabled(
-          optimization_guide::features::kOptimizationGuideModelExecution)) {
-    RegisterWebUIControllerInterfaceBinder<
-        side_panel::customize_chrome::mojom::WallpaperSearchHandlerFactory,
-        CustomizeChromeUI>(map);
-  }
-
-  RegisterWebUIControllerInterfaceBinder<
-      side_panel::customize_chrome::mojom::CustomizeToolbarHandlerFactory,
-      CustomizeChromeUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       read_anything::mojom::UntrustedPageHandlerFactory,
@@ -417,17 +326,6 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
   }
   RegisterWebUIControllerInterfaceBinder<
       guest_contents::mojom::GuestContentsHost, WebUIBrowserUI>(map);
-
-  // Registering bindings for all WebUIControllers, even if only one of the
-  // features is enabled, as it is too cumbersome and not scalable to account
-  // for all combinations of feature flags here.
-  // TODO(crbug.com/452983498): This should be fixed by following the
-  // registry.ForWebUI() pattern used in
-  // PopulateChromeWebUIFrameInterfaceBrokersUntrustedPartsDesktop below which
-  // eliminates the need to account for feature flag combinations.
-  RegisterWebUIControllerInterfaceBinder<
-      composebox::mojom::PageHandlerFactory, NewTabPageUI, OmniboxPopupUI,
-      OmniboxEverywhereUI>(map);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
@@ -460,17 +358,6 @@ void PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsDesktop(
   // WebUIs in the registry
   registry.AddGlobal<metrics_reporter::mojom::PageMetricsHost>(
       base::BindRepeating(&BindMetricsReporterService));
-
-  if (base::FeatureList::IsEnabled(ntp_features::kNtpFooter)) {
-    registry.ForWebUI<NewTabFooterUI>()
-        .Add<customize_buttons::mojom::CustomizeButtonsHandlerFactory>()
-        .Add<new_tab_footer::mojom::NewTabFooterHandlerFactory>()
-        .Add<help_bubble::mojom::HelpBubbleHandlerFactory>();
-  }
-
-  registry.ForWebUI<NewTabPageThirdPartyUI>()
-      .Add<most_visited::mojom::MostVisitedPageHandlerFactory>()
-      .Add<new_tab_page_third_party::mojom::PageHandlerFactory>();
 
   registry
       .ForWebUI<settings::SettingsUI>()
@@ -514,10 +401,6 @@ void PopulateChromeWebUIFrameInterfaceBrokersUntrustedPartsDesktop(
   registry.ForWebUI<ReadAnythingUntrustedUI>()
       .Add<help_bubble::mojom::HelpBubbleHandlerFactory>()
       .Add<user_education::mojom::UserEducationMixedTrustHandlerFactory>();
-
-  registry.ForWebUI<NtpMicrosoftAuthUntrustedUI>()
-      .Add<new_tab_page::mojom::
-               MicrosoftAuthUntrustedDocumentInterfacesFactory>();
 }
 
 }  // namespace chrome::internal

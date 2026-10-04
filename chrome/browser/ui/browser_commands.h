@@ -294,7 +294,6 @@ void OpenMoveWindow(BrowserWindowInterface* browser);
 void OpenSizeWindow(BrowserWindowInterface* browser);
 #endif  // BUILDFLAG(IS_WIN)
 void ToggleShowFullURLs(BrowserWindowInterface* browser);
-void ToggleShowAiModeOmniboxButton(BrowserWindowInterface* browser);
 void ToggleShowSearchTools(BrowserWindowInterface* browser);
 void ShowAppMenu(BrowserWindowInterface* browser);
 void ShowAvatarMenu(BrowserWindowInterface* browser);

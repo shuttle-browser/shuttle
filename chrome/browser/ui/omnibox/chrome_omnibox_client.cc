@@ -52,7 +52,6 @@
 #include "chrome/browser/preloading/prerender/prerender_utils.h"
 #include "chrome/browser/preloading/search_preload/search_preload_service.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ssl/typed_navigation_upgrade_throttle.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -370,10 +369,6 @@ ChromeOmniboxClient::GetAutocompleteControllerEmitter() {
 
 TemplateURLService* ChromeOmniboxClient::GetTemplateURLService() {
   return TemplateURLServiceFactory::GetForProfile(profile_);
-}
-
-AiModeButtonService* ChromeOmniboxClient::GetAiModeButtonService() {
-  return AiModeButtonServiceFactory::GetForProfile(profile_);
 }
 
 const AutocompleteSchemeClassifier& ChromeOmniboxClient::GetSchemeClassifier()
@@ -896,10 +891,6 @@ void ChromeOmniboxClient::OpenIphLink(GURL gurl) {
   NavigateParams params(profile_, gurl, transition);
   params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
   Navigate(&params);
-}
-
-bool ChromeOmniboxClient::IsAimPopupEnabled() const {
-  return omnibox::IsAimPopupEnabled(profile_);
 }
 
 void ChromeOmniboxClient::MaybePrewarmForDefaultSearchEngine(

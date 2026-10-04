@@ -44,56 +44,15 @@ inline constexpr char kAccelerated2dCanvasDescription[] =
     "Enables the use of the GPU to perform 2d canvas rendering instead of "
     "using software rendering.";
 
-inline constexpr char kAim3pEntrypointName[] = "AIM 3P entrypoint";
-inline constexpr char kAim3pEntrypointDescription[] =
-    "Enables the omnibox AI Mode entrypoint for third party search engines.";
 
-inline constexpr char kAiModeEntryPointAlwaysNavigatesName[] =
-    "AI Mode Omnibox Entrypoint always navigates";
-inline constexpr char kAiModeEntryPointAlwaysNavigatesDescription[] =
-    "If enabled, clicking aim button in omnibox always navigates directly to "
-    "google.com/aimode.";
 
-inline constexpr char kDynamicAiModeButtonName[] =
-    "Omnibox Dynamic AI Mode Button";
-inline constexpr char kDynamicAiModeButtonDescription[] =
-    "Enables dynamic behaviour for the AI mode button in the WebUI Omnibox.";
 
-inline constexpr char kNtpRealboxDynamicAiModeButtonName[] =
-    "NTP Realbox Dynamic AI Mode Button";
-inline constexpr char kNtpRealboxDynamicAiModeButtonDescription[] =
-    "Enables dynamic behaviour for the AI mode button in the NTP Realbox.";
 
-inline constexpr char kOmniboxDynamicAimSubmitName[] = "Dynamic Aim Submit";
-inline constexpr char kOmniboxDynamicAimSubmitDescription[] =
-    "Enables dynamic aim button submission variants.";
 
-inline constexpr char kOmniboxAiModeSpaceDoesNotActivateName[] =
-    "Omnibox AI Mode Space Does Not Activate";
-inline constexpr char kOmniboxAiModeSpaceDoesNotActivateDescription[] =
-    "If enabled, pressing space when the AI mode button has focus will "
-    "insert a space into the omnibox instead of activating the button.";
 
-inline constexpr char kOmniboxAimServerEligibilityName[] =
-    "AIM Server Eligibility";
-inline constexpr char kOmniboxAimServerEligibilityDescription[] =
-    "Enable AIM server eligibility checks.";
 
-inline constexpr char kOmniboxLoomName[] = "Enable Loom";
-inline constexpr char kOmniboxLoomDescription[] =
-    "Enables experimental Loom features.";
 
-inline constexpr char kZeroSuggestPrefetchingForComposeboxName[] =
-    "Zero suggest prefetching for composebox";
-inline constexpr char kZeroSuggestPrefetchingForComposeboxDescription[] =
-    "Enables prefetching of the zero prefix suggestions for composebox "
-    "contexts.";
 
-inline constexpr char kAimServerEligibilityIncludeClientLocaleName[] =
-    "AIM Server Eligibility: Include Client Locale";
-inline constexpr char kAimServerEligibilityIncludeClientLocaleDescription[] =
-    "Configures whether to include the client locale in the AIM eligibility "
-    "request.";
 
 inline constexpr char kCameraAndMicrophoneElementsName[] =
     "Camera and Microphone elements";
@@ -588,11 +547,6 @@ inline constexpr char kDesktopUAOnConnectedDisplayDescription[] =
     "When enabled, this feature will request a desktop user agent on external "
     "displays.";
 
-inline constexpr char kTabFaviconChipsToCoinsName[] =
-    "Tab favicon chips to coins";
-inline constexpr char kTabFaviconChipsToCoinsDescription[] =
-    "Removes existing tab chips from the composebox and instead adds favicon "
-    "coins next to the \"+\" button.";
 
 inline constexpr char kTabStripDeclutterName[] = "Tab Strip Declutter";
 inline constexpr char kTabStripDeclutterDescription[] =
@@ -1074,11 +1028,6 @@ inline constexpr char kIPHDesktopRealboxContextualSearchFeatureName[] =
 inline constexpr char kIPHDesktopRealboxContextualSearchFeatureDescription[] =
     "Enables In-Product Help for Desktop Realbox Contextual Search.";
 
-inline constexpr char kContextMenuAnimationLimitingName[] =
-    "Context Menu Animation Limiting";
-inline constexpr char kContextMenuAnimationLimitingDescription[] =
-    "When enabled, the impressions of the context menu animation "
-    "will be limited.";
 
 inline constexpr char kAutofillEnableDownstreamCardAwarenessIphName[] =
     "Enable showing in-product help UI for downstream card awareness";
@@ -1614,33 +1563,10 @@ inline constexpr char kCollaborationSharedTabGroupAccountDataName[] =
 inline constexpr char kCollaborationSharedTabGroupAccountDataDescription[] =
     "Enable the messaging sync backend for shared tab groups.";
 
-inline constexpr char kComposeboxRichImageSuggestionsName[] =
-    "Composebox Rich Image Suggestions";
-inline constexpr char kComposeboxRichImageSuggestionsDescription[] =
-    "Enables richer image suggestions in the Composebox for image generation.";
 
-inline constexpr char kComposeboxSkillsContextualTasksName[] =
-    "Composebox/Searchbox Skills (Contextual Tasks)";
-inline constexpr char kComposeboxSkillsContextualTasksDescription[] =
-    "Enables skills inside the composebox/searchbox input area for Contextual "
-    "Tasks.";
 
-inline constexpr char kComposeboxSkillsNtpName[] =
-    "Composebox/Searchbox Skills (NTP)";
-inline constexpr char kComposeboxSkillsNtpDescription[] =
-    "Enables skills inside the composebox/searchbox input area for NTP.";
 
-inline constexpr char kComposeboxSkillsOmniboxEverywhereName[] =
-    "Composebox/Searchbox Skills (Omnibox Everywhere)";
-inline constexpr char kComposeboxSkillsOmniboxEverywhereDescription[] =
-    "Enables skills inside the composebox/searchbox input area for Omnibox "
-    "Everywhere.";
 
-inline constexpr char kComposeboxSkillsOmniboxPopupName[] =
-    "Composebox/Searchbox Skills (Omnibox Popup)";
-inline constexpr char kComposeboxSkillsOmniboxPopupDescription[] =
-    "Enables skills inside the composebox/searchbox input area for Omnibox "
-    "Popup.";
 
 inline constexpr char kCompressionDictionaryTransportName[] =
     "Compression dictionary transport";
@@ -1653,21 +1579,8 @@ inline constexpr char kCompressionDictionaryTTLDescription[] =
     "Enables support for the 'ttl' parameter in the 'use-as-dictionary' HTTP "
     "response header.";
 
-inline constexpr char kContextManagementInComposeboxName[] =
-    "Context management in the Composebox";
-inline constexpr char kContextManagementInComposeboxDescription[] =
-    "Enables an updated tab context management UI in the plus button and "
-    "composebox context menu.";
 
-inline constexpr char kContextManagementInOmniboxName[] =
-    "Context management in the Omnibox";
-inline constexpr char kContextManagementInOmniboxDescription[] =
-    "Enables context menu and favicon coins for omnibox";
 
-inline constexpr char kContextMenuToolTipsName[] =
-    "Composebox context menu tooltips";
-inline constexpr char kContextMenuToolTipsDescription[] =
-    "Enables tooltips in the Composebox context menu.";
 
 inline constexpr char kContextualCueingName[] = "Contextual cueing";
 inline constexpr char kContextualCueingDescription[] =
@@ -2984,10 +2897,6 @@ inline constexpr char kHeavyAdPrivacyMitigationsDescription[] =
     "Enables privacy mitigations for the heavy ad intervention. Disabling "
     "this makes the intervention deterministic. Defaults to enabled.";
 
-inline constexpr char kHideAimOmniboxEntrypointOnUserInputName[] =
-    "AI Entrypoint Disabled on User Input";
-inline constexpr char kHideAimOmniboxEntrypointOnUserInputDescription[] =
-    "Hide the Omnibox entrypoint for AI Mode while user is typing.";
 
 inline constexpr char kHistoryEmbeddingsName[] = "History Embeddings";
 inline constexpr char kHistoryEmbeddingsDescription[] =
@@ -3602,10 +3511,6 @@ inline constexpr char kOmniboxAdjustIndentationDescription[] =
     "Adjusts the indentation of the omnibox and the suggestions to eliminate "
     "the visual shift when the popup opens.";
 
-inline constexpr char kOmniboxAllowAiModeMatchesName[] =
-    "Omnibox Allow AI Mode Matches";
-inline constexpr char kOmniboxAllowAiModeMatchesDescription[] =
-    "Allow showing AI mode matches if returned from the search server.";
 
 inline constexpr char kOmniboxAsyncViewInflationName[] =
     "Async Omnibox view inflation";
@@ -3639,17 +3544,7 @@ inline constexpr char kOmniboxDuiPrerenderingName[] =
 inline constexpr char kOmniboxDuiPrerenderingDescription[] =
     "Enables Direct URL Input (DUI) prerendering in the Omnibox.";
 
-inline constexpr char kOmniboxFuseboxAsyncInflationName[] =
-    "Fusebox Async View Inflation";
-inline constexpr char kOmniboxFuseboxAsyncInflationDescription[] =
-    "When enabled, Fusebox RecyclerView will be inflated on a background thread"
-    " instead of the UI thread.";
 
-inline constexpr char kOmniboxAimImageDownscalingName[] =
-    "Omnibox AIM Image Downscaling";
-inline constexpr char kOmniboxAimImageDownscalingDescription[] =
-    "When enabled, AIM image attachments will be downscaled on load before"
-    " reaching the C++ side.";
 
 inline constexpr char kOmniboxForceAllowedToBeDefaultName[] =
     "Omnibox Force Allowed To Be Default";
@@ -3668,10 +3563,6 @@ inline constexpr char kOmniboxMultimodalInputName[] =
 inline constexpr char kOmniboxMultimodalInputDescription[] =
     "When enabled, the multimodal input toolbar is shown in the Omnibox.";
 
-inline constexpr char kAndroidDesktopAimGateName[] = "Android Desktop AIM Gate";
-inline constexpr char kAndroidDesktopAimGateDescription[] =
-    "Gates the behavior of Omnibox Multimodal Input on android desktop "
-    "devices.";
 
 inline constexpr char kOmniboxDisableTabsForCanvasName[] =
     "Omnibox Disable Tabs For Canvas";
@@ -3899,13 +3790,6 @@ inline constexpr char kEmbeddedPermissionEnabledDescription[] =
     "and contextual "
     "tasks' permission requests.";
 
-inline constexpr char kVoiceSearchCoherenceComposeboxName[] =
-    "Composebox Voice Search Coherence";
-inline constexpr char kVoiceSearchCoherenceComposeboxDescription[] =
-    "Enables the voice search coherence (new recording animation, "
-    "new metrics, new stop/submit button, no live transcription) "
-    "for all the composeboxes by default. Options include cobrowsing "
-    "only.";
 
 inline constexpr char kVoiceSearchCoherenceSearchboxName[] =
     "NTP Searchbox (Realbox) Voice Search Coherence";
@@ -3952,22 +3836,8 @@ inline constexpr char kOmniboxZpsSuggestionLimitDescription[] =
     "Enables limits on the total number of suggestions, as well as separate "
     "limits for search and URL suggestions in the omnibox.";
 
-inline constexpr char kWebUIOmniboxAimPopupName[] = "WebUI Omnibox AIM Popup";
-inline constexpr char kWebUIOmniboxAimPopupDescription[] =
-    "If enabled, using certain trigger operations the omnibox suggestions "
-    "popup transition to showing the AI-Mode "
-    "compose-box input and suggestions.";
 
-inline constexpr char kWebUIOmniboxAimPopupDisableAnimationName[] =
-    "WebUI Omnibox AIM Popup Disable Animation";
-inline constexpr char kWebUIOmniboxAimPopupDisableAnimationDescription[] =
-    "If enabled, there will no longer be animation in the WebUI Omnibox AIM "
-    "popup.";
 
-inline constexpr char kWebUIOmniboxHideAimUrlName[] =
-    "WebUI Omnibox Hide AIM URL";
-inline constexpr char kWebUIOmniboxHideAimUrlDescription[] =
-    "If enabled, hides the AIM button when the default suggestion is a URL.";
 
 inline constexpr char kWebUIOmniboxFullPopupName[] = "WebUI Omnibox Full Popup";
 inline constexpr char kWebUIOmniboxFullPopupDescription[] =
@@ -3995,11 +3865,6 @@ inline constexpr char kWebUIOmniboxSimplificationDescription[] =
     "If enabled, the WebUI omnibox popup will have a different UX for the "
     "entrypoint to composebox.";
 
-inline constexpr char kWebUiOmniboxAskGAboutThisPageName[] =
-    "WebUI Omnibox Ask G About This Page";
-inline constexpr char kWebUiOmniboxAskGAboutThisPageDescription[] =
-    "If enabled, the 'Ask Google about this page' action will route to "
-    "cobrowse.";
 
 inline constexpr char kWebuiRefresh2026Name[] = "WebUI Refresh 2026";
 inline constexpr char kWebuiRefresh2026Description[] =
@@ -4336,11 +4201,6 @@ inline constexpr char kEnableOmniboxClientSearchPrefetchDescription[] =
     "Search Engine that the client thinks are likely to be navigated. Requires "
     "chrome://flags/#omnibox-search-prefetch";
 
-inline constexpr char kNtpComposeboxUsesChromeComposeClientName[] =
-    "Composebox uses chrome-compose client";
-inline constexpr char kNtpComposeboxUsesChromeComposeClientDescription[] =
-    "Composebox will use chrome-compose client when querying suggest for "
-    "unimodal typed inputs instead of chrome-omni.";
 
 inline constexpr char kPrivilegedWebContentsName[] = "Privileged WebContents";
 inline constexpr char kPrivilegedWebContentsDescription[] =
@@ -6732,16 +6592,7 @@ inline constexpr char kUpdateMenuTypeUpdateAvailable[] = "Update Available";
 inline constexpr char kUpdateMenuTypeUnsupportedOSVersion[] =
     "Unsupported OS Version";
 
-inline constexpr char kAimUsePecApiName[] = "Use PEC API";
-inline constexpr char kAimUsePecApiDescription[] =
-    "When enabled, all composebox context menus will use the `SearchboxConfig` "
-    "from the PEC API.";
 
-inline constexpr char kAimEligibilityComponentExtensionName[] =
-    "AIM Eligibility Component Extension";
-inline constexpr char kAimEligibilityComponentExtensionDescription[] =
-    "When enabled, registers the AIM Eligibility debugger as a component "
-    "extension.";
 
 inline constexpr char kUseAngleDescriptionAndroid[] =
     "Choose the graphics backend for ANGLE. The Vulkan backend is still "
@@ -6860,11 +6711,6 @@ inline constexpr char kComposeboxDriveContextMenuOptionName[] =
     "Composebox Drive Context Menu Option";
 inline constexpr char kComposeboxDriveContextMenuOptionDescription[] =
     "Enables Google Drive option in the Composebox context menu.";
-inline constexpr char kComposeboxDriveContextMenuOptionDisclaimerName[] =
-    "Composebox Drive Context Menu Option Disclaimer";
-inline constexpr char kComposeboxDriveContextMenuOptionDisclaimerDescription[] =
-    "Enables the disclaimer flow for the Google Drive option in the Composebox "
-    "context menu.";
 inline constexpr char kComposeboxDriveContextMenuOptionSigninPromoName[] =
     "Composebox Drive Context Menu Option Sign-in Promo";
 inline constexpr char
@@ -6885,11 +6731,6 @@ inline constexpr char kEnableInputProtectionDescription[] =
     "prevents unintended events on security-sensitive UI that appears and "
     "activates unexpectedly.";
 
-inline constexpr char kForceDriveDisclaimerAcceptedName[] =
-    "Force Drive Disclaimer Accepted";
-inline constexpr char kForceDriveDisclaimerAcceptedDescription[] =
-    "Whether to force the Google Drive disclaimer to be accepted. This flag is "
-    "only used for testing purposes.";
 
 inline constexpr char kHeadlessCaptionEarlyStartName[] =
     "Headless Caption Early Start";
@@ -7042,10 +6883,6 @@ inline constexpr char kNtpCalendarModuleName[] = "NTP Calendar Module";
 inline constexpr char kNtpCalendarModuleDescription[] =
     "Shows the Google Calendar module on the New Tab Page.";
 
-inline constexpr char kNtpComposeboxName[] = "NTP Composebox";
-inline constexpr char kNtpComposeboxDescription[] =
-    "Shows the Composebox on the New Tab Page Searchbox upon clicking the "
-    "entrypoint.";
 
 inline constexpr char kNtpCustomizeChromeAutoOpenName[] =
     "NTP Customize Chrome Auto Promo";
@@ -7057,14 +6894,7 @@ inline constexpr char kNtpCustomizeWebUiAndroidName[] =
 inline constexpr char kNtpCustomizeWebUiAndroidDescription[] =
     "Enables Customize WebUI on Android.";
 
-inline constexpr char kNtpRealboxNextName[] = "NTP Realbox Next";
-inline constexpr char kNtpRealboxNextDescription[] =
-    "Enables the Realbox 'Next' experience.";
 
-inline constexpr char kNtpRealboxCyclingPlaceholdersName[] =
-    "NTP Realbox Cycling Placeholders";
-inline constexpr char kNtpRealboxCyclingPlaceholdersDescription[] =
-    "Enables cycling placeholders within the Realbox 'Next' experience.";
 
 inline constexpr char kNtpDriveModuleName[] = "NTP Drive Module";
 inline constexpr char kNtpDriveModuleDescription[] =

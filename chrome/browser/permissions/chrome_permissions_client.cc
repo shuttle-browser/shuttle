@@ -150,12 +150,6 @@ const url::Origin& GetOmniboxPopupOrigin() {
   return *origin;
 }
 
-const url::Origin& GetOmniboxEverywhereOrigin() {
-  static const base::NoDestructor<url::Origin> origin(
-      url::Origin::Create(GURL(chrome::kChromeUIOmniboxEverywhereURL)));
-  return *origin;
-}
-
 const url::Origin& GetContextualTasksOrigin() {
   static const base::NoDestructor<url::Origin> origin(
       url::Origin::Create(GURL(chrome::kChromeUIContextualTasksURL)));
@@ -656,8 +650,7 @@ bool ChromePermissionsClient::CanBypassEmbeddingOriginCheck(
   // Bypass embedding origin check as the `requesting_origin` will later be
   // transformed to the DSE origin in `GetCanonicalOriginOverride()`.
   if (embedder == GetContextualTasksOrigin() ||
-      embedder == GetOmniboxPopupOrigin() ||
-      embedder == GetOmniboxEverywhereOrigin()) {
+      embedder == GetOmniboxPopupOrigin()) {
     return true;
   }
 
@@ -697,8 +690,7 @@ std::optional<GURL> ChromePermissionsClient::GetCanonicalOriginOverride(
   // Omnibox:
   // Transform chrome:// origins to the DSE origin so that permissions are
   // stored under and shared with the DSE.
-  if (requester == embedder && (requester == GetOmniboxPopupOrigin() ||
-                                requester == GetOmniboxEverywhereOrigin())) {
+  if (requester == embedder && requester == GetOmniboxPopupOrigin()) {
     return GURL(UIThreadSearchTermsData().GoogleBaseURLValue())
         .DeprecatedGetOriginAsURL();
   }
@@ -736,9 +728,8 @@ std::optional<GURL> ChromePermissionsClient::GetEmbeddingOriginOverride(
   }
 
   if (embedder == GetContextualTasksOrigin() ||
-      embedder == GetOmniboxPopupOrigin() ||
-      embedder == GetOmniboxEverywhereOrigin()) {
-    // Omnibox Popup, Omnibox Everywhere, and Contextual Tasks:
+      embedder == GetOmniboxPopupOrigin()) {
+    // Omnibox Popup, and Contextual Tasks:
     // Use the WebContents origin as the embedding origin.
     // Note that the embedding origin is later transformed to the DSE origin via
     // `GetCanonicalOriginOverride()`.
@@ -841,14 +832,12 @@ bool ChromePermissionsClient::
     IsPrivilegedInternalWebUIForUIRouting(  // overloaded private version
         const url::Origin& embedding_origin) {
   return embedding_origin == GetContextualTasksOrigin() ||
-         embedding_origin == GetOmniboxPopupOrigin() ||
-         embedding_origin == GetOmniboxEverywhereOrigin();
+         embedding_origin == GetOmniboxPopupOrigin();
 }
 
 bool ChromePermissionsClient::IsOmniboxEverywhere(
     content::WebContents* web_contents) {
-  url::Origin embedding_origin = GetEmbeddingOrigin(web_contents);
-  return embedding_origin == GetOmniboxEverywhereOrigin();
+  return false;
 }
 
 #if BUILDFLAG(IS_ANDROID)

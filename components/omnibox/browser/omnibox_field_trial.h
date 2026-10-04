@@ -15,7 +15,6 @@
 
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
-#include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
 #include "components/omnibox/browser/autocomplete_provider.h"
 #include "components/omnibox/common/omnibox_features.h"
@@ -25,7 +24,6 @@ namespace base {
 class TimeDelta;
 }  // namespace base
 
-class AiModeButtonService;
 class TemplateURLService;
 
 // The set of parameters customizing the HUP scoring.
@@ -392,18 +390,6 @@ bool IsOnFocusZeroSuggestEnabledInContext(
 // popup in the given context.
 bool IsHideSuggestionGroupHeadersEnabledInContext(
     metrics::OmniboxEventProto::PageClassification page_classification);
-
-// Returns whether AIM page action in Omnibox is enabled. This is a
-// runtime/dynamic check. I.e. its value can change without restarting the
-// browser.
-bool IsAimOmniboxEntrypointEnabled(
-    const AimEligibilityService* aim_eligibility_service,
-    const AiModeButtonService* ai_mode_button_service,
-    const TemplateURLService* template_url_service);
-
-// Returns whether AIM starter pack is enabled.
-bool IsAimStarterPackEnabled(
-    const AimEligibilityService* aim_eligibility_service);
 
 // Rich autocompletion.
 bool IsRichAutocompletionEnabled();

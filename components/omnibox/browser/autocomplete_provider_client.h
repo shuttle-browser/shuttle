@@ -16,8 +16,6 @@
 #include "components/omnibox/browser/actions/omnibox_action.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 
-class AiModeButtonService;
-class AimEligibilityService;
 class AutocompleteClassifier;
 class AutocompleteSchemeClassifier;
 class AutocompleteScoringModelService;
@@ -112,8 +110,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   virtual ProviderStateService* GetProviderStateService() const = 0;
   virtual tab_groups::TabGroupSyncService* GetTabGroupSyncService() const = 0;
   virtual sync_sessions::SessionSyncService* GetSessionSyncService() const = 0;
-  virtual AimEligibilityService* GetAimEligibilityService() const = 0;
-  virtual AiModeButtonService* GetAiModeButtonService() const;
 
   // The value to use for Accept-Languages HTTP header when making an HTTP
   // request.
@@ -261,9 +257,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   // Whether the Ask G search chip is enabled.
   virtual bool IsAskGShowChipEnabled() const;
 
-  // Whether the "Omnibox Next" AIM popup is enabled.
-  virtual bool IsOmniboxNextAimPopupEnabled() const;
-
   // Returns whether the Gemini starter pack is enabled by enterprise policy.
   virtual bool IsGeminiStarterPackEnabled() const;
 
@@ -278,8 +271,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   // OmniboxAction::Client overrides:
   bool ShouldOpenCoBrowsePanel() const override;
   void OpenCoBrowsePanel() override;
-  bool ShouldOpenComposeboxForAskG() const override;
-  void OpenComposeboxForAskG() override;
 };
 
 #endif  // COMPONENTS_OMNIBOX_BROWSER_AUTOCOMPLETE_PROVIDER_CLIENT_H_

@@ -19,8 +19,6 @@
 #include "extensions/common/switches.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
 
-class AimEligibilityExtensionBinderProvider;
-
 namespace extensions {
 
 class ExtensionMojoBinderRegistryTest;
@@ -39,13 +37,6 @@ ExtensionMojoBinderRegistry::~ExtensionMojoBinderRegistry() = default;
 // interfaces to different renderers. Thus, additions to these specializations
 // require review from IPC_SECURITY_OWNERS. To enforce this via presubmit,
 // binder provider files files must be named *_extension_binder_provider.h/cc.
-template <>
-void ExtensionMojoBinderRegistry::RegisterProvider(
-    base::PassKey<AimEligibilityExtensionBinderProvider>,
-    std::unique_ptr<ExtensionMojoBinderProvider> provider) {
-  RegisterProviderImpl(std::move(provider));
-}
-
 template <>
 void ExtensionMojoBinderRegistry::RegisterProvider(
     base::PassKey<ExtensionMojoBinderRegistryTest>,

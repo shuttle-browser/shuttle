@@ -190,7 +190,6 @@ source_set("impl") {
   }
 
   if (enable_webui_ntp) {
-    deps += [ "//chrome/browser/new_tab_page" ]
   }
   if (!is_android) {
     deps += [
@@ -298,7 +297,6 @@ source_set("unit_tests") {
   }
 
   if (enable_webui_ntp) {
-    deps += [ "//chrome/browser/new_tab_page" ]
   }
 
   if (enable_extensions) {

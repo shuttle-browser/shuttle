@@ -477,15 +477,6 @@ void BrowserNativeWidgetMac::ValidateUserInterfaceItem(
       result->enable = false;
       break;
     }
-    case IDC_SHOW_AI_MODE_OMNIBOX_BUTTON: {
-      PrefService* prefs = browser->GetProfile()->GetPrefs();
-      result->new_toggle_state =
-          prefs->GetBoolean(omnibox::kShowAiModeOmniboxButton);
-      // Disable this menu option if the AI Mode feature is not enabled.
-      result->enable =
-          omnibox::ShouldShowAimContextMenuOption(browser->GetProfile());
-      break;
-    }
     case IDC_SHOW_SEARCH_TOOLS: {
       PrefService* prefs = browser->GetProfile()->GetPrefs();
       result->new_toggle_state = prefs->GetBoolean(omnibox::kShowSearchTools);

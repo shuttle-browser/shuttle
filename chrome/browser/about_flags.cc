@@ -119,9 +119,7 @@
 #include "components/network_session_configurator/common/network_switches.h"
 #include "components/ntp_tiles/features.h"
 #include "components/offline_pages/core/offline_page_feature.h"
-#include "components/omnibox/browser/aim_eligibility_service_features.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
-#include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/open_from_clipboard/clipboard_recent_content_features.h"
@@ -336,7 +334,6 @@
 
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.h"  // nogncheck
 #endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) ||
         // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
 
@@ -903,39 +900,6 @@ const FeatureEntry::FeatureVariation
         {"with holdback", kSearchPrefetchWithHoldback, nullptr}};
 
 #if !BUILDFLAG(IS_ANDROID)
-const FeatureEntry::FeatureParam kAim3pEntrypointDebugEnabled[] = {
-    {"Aim3pEntrypointDebug", "true"}};
-
-const FeatureEntry::FeatureVariation kAim3pEntrypointVariations[] = {
-    {"with debug config", kAim3pEntrypointDebugEnabled, nullptr}};
-
-const FeatureEntry::FeatureParam kWebUIOmniboxDynamicAiModeButton_AnimOnly[] = {
-    {"Omnibox_DynamicAnimation", "true"},
-    {"Omnibox_DynamicColorScheme", "false"}};
-
-const FeatureEntry::FeatureParam kWebUIOmniboxDynamicAiModeButton_ColorOnly[] =
-    {{"Omnibox_DynamicAnimation", "false"},
-     {"Omnibox_DynamicColorScheme", "true"}};
-
-const FeatureEntry::FeatureParam kWebUIOmniboxDynamicAiModeButton_Both[] = {
-    {"Omnibox_DynamicAnimation", "true"},
-    {"Omnibox_DynamicColorScheme", "true"}};
-
-const FeatureEntry::FeatureVariation
-    kWebUIOmniboxDynamicAiModeButtonVariations[] = {
-        {"Animation Only", kWebUIOmniboxDynamicAiModeButton_AnimOnly, nullptr},
-        {"Color Scheme Only", kWebUIOmniboxDynamicAiModeButton_ColorOnly,
-         nullptr},
-        {"Animation and Color Scheme", kWebUIOmniboxDynamicAiModeButton_Both,
-         nullptr}};
-
-const FeatureEntry::FeatureParam kOmniboxDynamicAimSubmitRhsHint[] = {
-    {"Omnibox_ShowRhsAimHint", "true"},
-};
-
-const FeatureEntry::FeatureVariation kOmniboxDynamicSubmitVariations[] = {
-    {"- \"Input has hint", kOmniboxDynamicAimSubmitRhsHint, nullptr}};
-
 const FeatureEntry::FeatureParam kPedalRowWithPlusButtonOnly[] = {
     {"Omnibox_AddContextButtonVariant", "below_results"},
     {"Omnibox_HideClassicContextButton", "false"},
@@ -992,112 +956,6 @@ const FeatureEntry::FeatureVariation kWebUIOmniboxFullPopupVariations[] = {
     {"- with Multiline", kWebUIOmniboxFullPopupMultiline, nullptr},
 };
 
-const FeatureEntry::FeatureParam kOmniboxEverywhereProfilePicker[] = {
-    {"ProfilePicker", "true"}};
-
-const FeatureEntry::FeatureVariation kOmniboxEverywhereVariations[] = {
-    {"with Profile Picker", kOmniboxEverywhereProfilePicker, nullptr}};
-
-const FeatureEntry::FeatureParam
-    kWebUiOmniboxAskGAboutThisPageCobrowseAndLensEntrypoint[] = {
-        {"Omnibox_AskGCoBrowse", "true"},
-        {"Omnibox_AskGCoBrowseWithVisualSelection", "false"},
-        {"Omnibox_AskGComposeBox", "false"},
-        {"Omnibox_AskGLensChipRoute", "true"},
-        {"Omnibox_AskGSwapIcon", "true"},
-        {"Omnibox_AskGSwapSuggestionIcon", "false"},
-        {"Omnibox_AskGCurrentTabChip", "false"},
-        {"Omnibox_AskGLensIcon", "true"},
-        {"Omnibox_AskGLensSearchHintText", "true"},
-        {"Omnibox_AskGShowChip", "false"},
-        {"Omnibox_AskGComposeboxLensChip", "false"},
-        {"Omnibox_AskGBlockAutoTabZeroStateSuggestions", "false"},
-        {"Omnibox_AskGShowFirstDescription", "false"},
-        {"Omnibox_AskGComposeboxPlaceholder", "false"},
-        {"Omnibox_AskGBypassPrivacyNotice", "true"}};
-const FeatureEntry::FeatureParam
-    kWebUiOmniboxAskGAboutThisPageCobrowsePlusVisualSelection[] = {
-        {"Omnibox_AskGCoBrowse", "false"},
-        {"Omnibox_AskGCoBrowseWithVisualSelection", "true"},
-        {"Omnibox_AskGComposeBox", "false"},
-        {"Omnibox_AskGLensChipRoute", "false"},
-        {"Omnibox_AskGSwapIcon", "true"},
-        {"Omnibox_AskGSwapSuggestionIcon", "false"},
-        {"Omnibox_AskGCurrentTabChip", "false"},
-        {"Omnibox_AskGLensIcon", "false"},
-        {"Omnibox_AskGLensSearchHintText", "true"},
-        {"Omnibox_AskGShowChip", "false"},
-        {"Omnibox_AskGComposeboxLensChip", "false"},
-        {"Omnibox_AskGBlockAutoTabZeroStateSuggestions", "false"},
-        {"Omnibox_AskGShowFirstDescription", "false"},
-        {"Omnibox_AskGComposeboxPlaceholder", "false"},
-        {"Omnibox_AskGBypassPrivacyNotice", "true"}};
-const FeatureEntry::FeatureParam
-    kWebUiOmniboxAskGAboutThisPageOmniboxComposebox[] = {
-        {"Omnibox_AskGCoBrowse", "false"},
-        {"Omnibox_AskGCoBrowseWithVisualSelection", "false"},
-        {"Omnibox_AskGComposeBox", "true"},
-        {"Omnibox_AskGLensChipRoute", "true"},
-        {"Omnibox_AskGSwapIcon", "true"},
-        {"Omnibox_AskGSwapSuggestionIcon", "false"},
-        {"Omnibox_AskGCurrentTabChip", "false"},
-        {"Omnibox_AskGLensIcon", "false"},
-        {"Omnibox_AskGLensSearchHintText", "true"},
-        {"Omnibox_AskGShowChip", "false"},
-        {"Omnibox_AskGComposeboxLensChip", "true"},
-        {"Omnibox_AskGBlockAutoTabZeroStateSuggestions", "true"},
-        {"Omnibox_AskGShowFirstDescription", "false"},
-        {"Omnibox_AskGComposeboxPlaceholder", "true"},
-        {"Omnibox_AskGBypassPrivacyNotice", "true"}};
-const FeatureEntry::FeatureParam
-    kWebUiOmniboxAskGAboutThisPageOmniboxComposeboxAndLensEntrypoint[] = {
-        {"Omnibox_AskGCoBrowse", "false"},
-        {"Omnibox_AskGCoBrowseWithVisualSelection", "false"},
-        {"Omnibox_AskGComposeBox", "true"},
-        {"Omnibox_AskGLensChipRoute", "true"},
-        {"Omnibox_AskGSwapIcon", "true"},
-        {"Omnibox_AskGSwapSuggestionIcon", "false"},
-        {"Omnibox_AskGCurrentTabChip", "false"},
-        {"Omnibox_AskGLensIcon", "true"},
-        {"Omnibox_AskGLensSearchHintText", "true"},
-        {"Omnibox_AskGShowChip", "false"},
-        {"Omnibox_AskGComposeboxLensChip", "false"},
-        {"Omnibox_AskGBlockAutoTabZeroStateSuggestions", "true"},
-        {"Omnibox_AskGShowFirstDescription", "false"},
-        {"Omnibox_AskGComposeboxPlaceholder", "true"},
-        {"Omnibox_AskGBypassPrivacyNotice", "true"}};
-const FeatureEntry::FeatureParam
-    kWebUiOmniboxAskGAboutThisPageOmniboxChipComposeboxAndLensEntrypoint[] = {
-        {"Omnibox_AskGCoBrowse", "false"},
-        {"Omnibox_AskGCoBrowseWithVisualSelection", "false"},
-        {"Omnibox_AskGComposeBox", "false"},
-        {"Omnibox_AskGLensChipRoute", "true"},
-        {"Omnibox_AskGSwapIcon", "true"},
-        {"Omnibox_AskGSwapSuggestionIcon", "true"},
-        {"Omnibox_AskGCurrentTabChip", "true"},
-        {"Omnibox_AskGLensIcon", "true"},
-        {"Omnibox_AskGLensSearchHintText", "true"},
-        {"Omnibox_AskGShowChip", "true"},
-        {"Omnibox_AskGComposeboxLensChip", "false"},
-        {"Omnibox_AskGBlockAutoTabZeroStateSuggestions", "true"},
-        {"Omnibox_AskGShowFirstDescription", "true"},
-        {"Omnibox_AskGComposeboxPlaceholder", "true"},
-        {"Omnibox_AskGBypassPrivacyNotice", "true"}};
-
-const FeatureEntry::FeatureVariation
-    kWebUiOmniboxAskGAboutThisPageVariations[] = {
-        {"Ask G - Cobrowse and Lens entrypoint",
-         kWebUiOmniboxAskGAboutThisPageCobrowseAndLensEntrypoint, nullptr},
-        {"Ask G -  Cobrowse + Visual Selection",
-         kWebUiOmniboxAskGAboutThisPageCobrowsePlusVisualSelection, nullptr},
-        {"Ask G - Omnibox Composebox",
-         kWebUiOmniboxAskGAboutThisPageOmniboxComposebox, nullptr},
-        {"Ask G - Omnibox Composebox and Lens entrypoint",
-         kWebUiOmniboxAskGAboutThisPageOmniboxComposeboxAndLensEntrypoint,
-         nullptr},
-        {"Ask G - Omnibox Chip Composebox and Lens entrypoint",
-         kWebUiOmniboxAskGAboutThisPageOmniboxChipComposeboxAndLensEntrypoint,
-         nullptr}};
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 const FeatureEntry::Choice kEnableGpuRasterizationChoices[] = {
@@ -1245,21 +1103,6 @@ const FeatureEntry::FeatureVariation kJourneysVariations[] = {
 
 
 const FeatureEntry::FeatureParam
-    kAimServerEligibilityRequestModePostWithProto[] = {
-        {"mode", "post_with_proto"}};
-const FeatureEntry::FeatureParam
-    kAimServerEligibilityRequestModeGetWithLocale[] = {
-        {"mode", "get_with_locale"}};
-
-const FeatureEntry::FeatureVariation
-    kAimServerEligibilityIncludeClientLocaleVariations[] = {
-        {"GET with Locale", kAimServerEligibilityRequestModeGetWithLocale,
-         nullptr},
-        {"POST with Proto", kAimServerEligibilityRequestModePostWithProto,
-         nullptr},
-};
-
-const FeatureEntry::FeatureParam
     kVoiceSearchCoherenceLiveTranscriptionParams[] = {
         {"VoiceSearchCoherenceSearchboxWithLiveTranscription", "true"}};
 
@@ -1270,55 +1113,6 @@ const FeatureEntry::FeatureVariation
         {"(No Live Transcription)", {}, nullptr},
         {"(With Live Transcription)",
          kVoiceSearchCoherenceLiveTranscriptionParams, nullptr}};
-
-const FeatureEntry::FeatureParam
-    kVoiceSearchCoherenceComposeboxCobrowsingParams[] = {
-        {"VoiceSearchCoherenceComposeboxCobrowsingOnly", "true"}};
-
-// Normal 'Enabled' option is just 'all composeboxes' enabled by default.
-// 'Disabled' option disables all composeboxes, including cobrowsing (default
-// value is 'off').
-const FeatureEntry::FeatureVariation
-    kVoiceSearchCoherenceComposeboxVariations[] = {
-        {"(All composeboxes)", {}, nullptr},
-        {"(Cobrowsing only)", kVoiceSearchCoherenceComposeboxCobrowsingParams,
-         nullptr}};
-
-const FeatureEntry::FeatureParam
-    kContextManagementKeepMenuOpenOnTabSelectForRealboxParams[] = {
-        {"ContextManagementInComposebox", "true"},
-        {"KeepMenuOpenOnTabSelectForRealboxComposebox", "true"}};
-
-const FeatureEntry::FeatureParam
-    kContextManagementEnableTabDeselectionParams[] = {
-        {"enable_tab_deselection", "true"}};
-
-const FeatureEntry::FeatureParam
-    kContextManagementKeepMenuOpenAndTabDeselectionParams[] = {
-        {"KeepMenuOpenOnTabSelectForRealboxComposebox", "true"},
-        {"enable_tab_deselection", "true"}};
-
-const FeatureEntry::FeatureParam
-    kContextManagementEnableContextMenuTooltipsParams[] = {
-        {"enable_context_menu_tooltips", "true"}};
-
-// Normal 'Enabled' option is just the flag enabled with param 'realbox closes
-// menu on tab select' enabled by default. 'Disabled' option disables the flag,
-// and thus the context menu and 'realbox closes menu on tab select'.
-const FeatureEntry::FeatureVariation
-    kContextManagementInComposeboxVariations[] = {
-        {"Context Management in composebox (realbox closes menu on tab select)",
-         {}},
-        {"Context management in composebox (realbox keeps menu open on tab "
-         "select)",
-         kContextManagementKeepMenuOpenOnTabSelectForRealboxParams, nullptr},
-        {"Context Management in composebox (with tab deselection)",
-         kContextManagementEnableTabDeselectionParams, nullptr},
-        {"Context Management in composebox (keeps menu open, with tab "
-         "deselection)",
-         kContextManagementKeepMenuOpenAndTabDeselectionParams, nullptr},
-        {"Context Management in composebox (with tooltips)",
-         kContextManagementEnableContextMenuTooltipsParams, nullptr}};
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN)
@@ -6129,16 +5923,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kEmbeddedPermissionEnabledDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(omnibox_feature_configs::kEmbeddedPermissionEnabled)},
 
-    {"hide-aim-omnibox-entrypoint-on-user-input",
-     flag_descriptions::kHideAimOmniboxEntrypointOnUserInputName,
-     flag_descriptions::kHideAimOmniboxEntrypointOnUserInputDescription,
-     kOsDesktop, FEATURE_VALUE_TYPE(omnibox::kHideAimEntrypointOnUserInput)},
-
-    {"omnibox-allow-ai-mode-matches",
-     flag_descriptions::kOmniboxAllowAiModeMatchesName,
-     flag_descriptions::kOmniboxAllowAiModeMatchesDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox_feature_configs::AiMode::kAllowAiModeMatches)},
-
     {"omnibox-force-allowed-to-be-default",
      flag_descriptions::kOmniboxForceAllowedToBeDefaultName,
      flag_descriptions::kOmniboxForceAllowedToBeDefaultDescription, kOsDesktop,
@@ -6230,34 +6014,6 @@ const FeatureEntry kFeatureEntries[] = {
          kOmniboxToolbeltVariations,
          "OmniboxToolbelt")},
 
-    {"aim-server-eligibility",
-     flag_descriptions::kOmniboxAimServerEligibilityName,
-     flag_descriptions::kOmniboxAimServerEligibilityDescription, kOsAll,
-     FEATURE_VALUE_TYPE(omnibox::kAimServerEligibilityEnabled)},
-
-    {"omnibox-zero-suggest-prefetching-for-composebox",
-     flag_descriptions::kZeroSuggestPrefetchingForComposeboxName,
-     flag_descriptions::kZeroSuggestPrefetchingForComposeboxDescription, kOsAll,
-     FEATURE_VALUE_TYPE(omnibox::kZeroSuggestPrefetchingForComposebox)},
-
-    {"aim-server-eligibility-include-client-locale",
-     flag_descriptions::kAimServerEligibilityIncludeClientLocaleName,
-     flag_descriptions::kAimServerEligibilityIncludeClientLocaleDescription,
-     kOsAll,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         omnibox::kAimServerEligibilityIncludeClientLocale,
-         kAimServerEligibilityIncludeClientLocaleVariations,
-         "AimServerEligibilityIncludeClientLocale")},
-
-    {"aim-use-pec-api", flag_descriptions::kAimUsePecApiName,
-     flag_descriptions::kAimUsePecApiDescription, kOsAll,
-     FEATURE_VALUE_TYPE(omnibox::kAimUsePecApi)},
-
-    {"aim-eligibility-component-extension",
-     flag_descriptions::kAimEligibilityComponentExtensionName,
-     flag_descriptions::kAimEligibilityComponentExtensionDescription, kOsAll,
-     FEATURE_VALUE_TYPE(omnibox::kAimEligibilityComponentExtension)},
-
 #if BUILDFLAG(IS_ANDROID)
     {"omnibox-asynchronous-view-inflation",
      flag_descriptions::kOmniboxAsyncViewInflationName,
@@ -6278,25 +6034,11 @@ const FeatureEntry kFeatureEntries[] = {
      kOsAndroid,
      FEATURE_VALUE_TYPE(omnibox::kOmniboxDebounceKeyboardVisibility)},
 
-    {"omnibox-fusebox-async-inflation",
-     flag_descriptions::kOmniboxFuseboxAsyncInflationName,
-     flag_descriptions::kOmniboxFuseboxAsyncInflationDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(omnibox::kOmniboxFuseboxAsyncInflation)},
-
     {"omnibox-multimodal-input", flag_descriptions::kOmniboxMultimodalInputName,
      flag_descriptions::kOmniboxMultimodalInputDescription, kOsAndroid,
      FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kOmniboxMultimodalInput,
                                     kOmniboxMultimodalInputVariants,
                                     "OmniboxMultiModalInput")},
-
-    {"omnibox-aim-image-downscaling",
-     flag_descriptions::kOmniboxAimImageDownscalingName,
-     flag_descriptions::kOmniboxAimImageDownscalingDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(omnibox::kOmniboxAimImageDownscaling)},
-
-    {"android-desktop-aim-gate", flag_descriptions::kAndroidDesktopAimGateName,
-     flag_descriptions::kAndroidDesktopAimGateDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(omnibox::kAndroidDesktopAimGate)},
 
     {"omnibox-disable-tabs-for-canvas",
      flag_descriptions::kOmniboxDisableTabsForCanvasName,
@@ -6357,11 +6099,6 @@ const FeatureEntry kFeatureEntries[] = {
     {"force-color-profile", flag_descriptions::kForceColorProfileName,
      flag_descriptions::kForceColorProfileDescription, kOsAll,
      MULTI_VALUE_TYPE(kForceColorProfileChoices)},
-
-    {"force-drive-disclaimer-accepted",
-     flag_descriptions::kForceDriveDisclaimerAcceptedName,
-     flag_descriptions::kForceDriveDisclaimerAcceptedDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kForceDriveDisclaimerAccepted)},
 
     {"forced-colors", flag_descriptions::kForcedColorsName,
      flag_descriptions::kForcedColorsDescription, kOsAll,
@@ -6472,13 +6209,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     kNumSrpZpsRelatedSearches,
                                     "PowerTools")},
 
-    {"composebox-voice-search-coherence",
-     flag_descriptions::kVoiceSearchCoherenceComposeboxName,
-     flag_descriptions::kVoiceSearchCoherenceComposeboxDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         omnibox::kVoiceSearchCoherenceComposeboxes,
-         kVoiceSearchCoherenceComposeboxVariations,
-         "VoiceSearchCoherenceComposeboxVariations")},
         // BUILDFLAG(IS_WIN)
 
     {"history-journeys", flag_descriptions::kJourneysName,
@@ -6592,78 +6322,11 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxDriveContextMenuOption)},
 
-    {"composebox-drive-context-menu-option-disclaimer",
-     flag_descriptions::kComposeboxDriveContextMenuOptionDisclaimerName,
-     flag_descriptions::kComposeboxDriveContextMenuOptionDisclaimerDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxDriveContextMenuOptionDisclaimer)},
-
     {"composebox-drive-context-menu-option-signin-promo",
      flag_descriptions::kComposeboxDriveContextMenuOptionSigninPromoName,
      flag_descriptions::kComposeboxDriveContextMenuOptionSigninPromoDescription,
      kOsDesktop,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxDriveContextMenuOptionSigninPromo)},
-
-    {"composebox-uses-chrome-compose-client",
-     flag_descriptions::kNtpComposeboxUsesChromeComposeClientName,
-     flag_descriptions::kNtpComposeboxUsesChromeComposeClientDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxUsesChromeComposeClient)},
-
-    {"composebox-rich-image-suggestions",
-     flag_descriptions::kComposeboxRichImageSuggestionsName,
-     flag_descriptions::kComposeboxRichImageSuggestionsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxRichImageSuggestions)},
-
-    {"composebox-skills-contextual-tasks",
-     flag_descriptions::kComposeboxSkillsContextualTasksName,
-     flag_descriptions::kComposeboxSkillsContextualTasksDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxSkillsContextualTasks)},
-
-    {"composebox-skills-ntp", flag_descriptions::kComposeboxSkillsNtpName,
-     flag_descriptions::kComposeboxSkillsNtpDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxSkillsNtp)},
-
-    {"composebox-skills-omnibox-everywhere",
-     flag_descriptions::kComposeboxSkillsOmniboxEverywhereName,
-     flag_descriptions::kComposeboxSkillsOmniboxEverywhereDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxSkillsOmniboxEverywhere)},
-
-    {"composebox-skills-omnibox-popup",
-     flag_descriptions::kComposeboxSkillsOmniboxPopupName,
-     flag_descriptions::kComposeboxSkillsOmniboxPopupDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kComposeboxSkillsOmniboxPopup)},
-
-    {"context-management-in-composebox",
-     flag_descriptions::kContextManagementInComposeboxName,
-     flag_descriptions::kContextManagementInComposeboxDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kContextManagementInComposebox,
-                                    kContextManagementInComposeboxVariations,
-                                    "ContextManagementInComposeboxVariations")},
-
-    {"context-management-in-omnibox",
-     flag_descriptions::kContextManagementInOmniboxName,
-     flag_descriptions::kContextManagementInOmniboxDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kContextManagementInOmnibox)},
-
-    {"context-menu-tool-tips", flag_descriptions::kContextMenuToolTipsName,
-     flag_descriptions::kContextMenuToolTipsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kContextMenuToolTips)},
-
-    {"tab-favicon-chips-to-coins",
-     flag_descriptions::kTabFaviconChipsToCoinsName,
-     flag_descriptions::kTabFaviconChipsToCoinsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kTabFaviconChipsToCoins)},
-
-    {"ntp-composebox", flag_descriptions::kNtpComposeboxName,
-     flag_descriptions::kNtpComposeboxDescription, kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(ntp_composebox::kNtpComposebox)},
-
-    {"ntp-realbox-next", flag_descriptions::kNtpRealboxNextName,
-     flag_descriptions::kNtpRealboxNextDescription, kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(ntp_realbox::kNtpRealboxNext)},
 
     {"enable-realbox-virtual-focus",
      flag_descriptions::kRealboxVirtualFocusNavigationName,
@@ -6722,22 +6385,12 @@ const FeatureEntry kFeatureEntries[] = {
                                     kNtpCalendarModuleVariations,
                                     "DesktopNtpModules")},
 
-    {"ntp-realbox-cycling-placeholders",
-     flag_descriptions::kNtpRealboxCyclingPlaceholdersName,
-     flag_descriptions::kNtpRealboxCyclingPlaceholdersDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_realbox::kNtpRealboxCyclingPlaceholders)},
-
     {"iph-desktop-realbox-contextual-search",
      flag_descriptions::kIPHDesktopRealboxContextualSearchFeatureName,
      flag_descriptions::kIPHDesktopRealboxContextualSearchFeatureDescription,
      kOsDesktop,
      FEATURE_VALUE_TYPE(
          feature_engagement::kIPHDesktopRealboxContextualSearchFeature)},
-
-    {"context-menu-animation-limiting",
-     flag_descriptions::kContextMenuAnimationLimitingName,
-     flag_descriptions::kContextMenuAnimationLimitingDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kContextMenuAnimationLimiting)},
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -8954,62 +8607,8 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-    {"aim-3p-entrypoint", flag_descriptions::kAim3pEntrypointName,
-     flag_descriptions::kAim3pEntrypointDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kAim3pEntrypoint,
-                                    kAim3pEntrypointVariations,
-                                    "Aim3pEntrypoint")},
-
-    {"aim-entry-point-direct-navigation",
-     flag_descriptions::kAiModeEntryPointAlwaysNavigatesName,
-     flag_descriptions::kAiModeEntryPointAlwaysNavigatesDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kAiModeEntryPointAlwaysNavigates)},
-
 #if !BUILDFLAG(IS_ANDROID)
-    {"omnibox-dynamic-ai-mode-button",
-     flag_descriptions::kDynamicAiModeButtonName,
-     flag_descriptions::kDynamicAiModeButtonDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kWebUIOmniboxDynamicAiModeButton,
-                                    kWebUIOmniboxDynamicAiModeButtonVariations,
-                                    "WebUIOmniboxDynamicAiModeButton")},
-
-    {"ntp-realbox-dynamic-ai-mode-button",
-     flag_descriptions::kNtpRealboxDynamicAiModeButtonName,
-     flag_descriptions::kNtpRealboxDynamicAiModeButtonDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_realbox::kNtpRealboxDynamicAiModeButton)},
 #endif
-
-    {"omnibox-ai-mode-space-does-not-activate",
-     flag_descriptions::kOmniboxAiModeSpaceDoesNotActivateName,
-     flag_descriptions::kOmniboxAiModeSpaceDoesNotActivateDescription,
-     kOsDesktop, FEATURE_VALUE_TYPE(omnibox::kAiModeSpaceDoesNotActivate)},
-
-    {"omnibox-dynamic-aim-submit",
-     flag_descriptions::kOmniboxDynamicAimSubmitName,
-     flag_descriptions::kOmniboxDynamicAimSubmitDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kDynamicAimSubmit,
-                                    kOmniboxDynamicSubmitVariations,
-                                    "OmniboxDynamicSubmitVariations")},
-    {"omnibox-loom", flag_descriptions::kOmniboxLoomName,
-     flag_descriptions::kOmniboxLoomDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kOmniboxEverywhere,
-                                    kOmniboxEverywhereVariations,
-                                    "OmniboxEverywhere")},
-
-    {"webui-omnibox-aim-popup", flag_descriptions::kWebUIOmniboxAimPopupName,
-     flag_descriptions::kWebUIOmniboxAimPopupDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::internal::kWebUIOmniboxAimPopup)},
-
-    {"webui-omnibox-aim-popup-disable-animation",
-     flag_descriptions::kWebUIOmniboxAimPopupDisableAnimationName,
-     flag_descriptions::kWebUIOmniboxAimPopupDisableAnimationDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kWebUIOmniboxAimPopupDisableAnimation)},
-
-    {"webui-omnibox-hide-aim-url",
-     flag_descriptions::kWebUIOmniboxHideAimUrlName,
-     flag_descriptions::kWebUIOmniboxHideAimUrlDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(omnibox::kHideAimEntrypointForUrlSuggestions)},
 
     {"webui-omnibox-full-popup", flag_descriptions::kWebUIOmniboxFullPopupName,
      flag_descriptions::kWebUIOmniboxFullPopupDescription, kOsDesktop,
@@ -9042,12 +8641,6 @@ const FeatureEntry kFeatureEntries[] = {
          kWebUIOmniboxSimplificationVariations,
          "WebUIOmniboxSimplificationVariations")},
 
-    {"webui-omnibox-ask-g-about-this-page",
-     flag_descriptions::kWebUiOmniboxAskGAboutThisPageName,
-     flag_descriptions::kWebUiOmniboxAskGAboutThisPageDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kWebUIOmniboxAskGAboutThisPage,
-                                    kWebUiOmniboxAskGAboutThisPageVariations,
-                                    "WebUiOmniboxAskGAboutThisPage")},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)

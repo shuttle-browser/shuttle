@@ -43,7 +43,6 @@
 #include "chrome/browser/ui/views/profiles/profile_management_types.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_feature_promo_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_flow_controller.h"
-#include "chrome/browser/ui/views/profiles/profile_picker_omnibox_everywhere_flow_controller.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_toolbar.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_utils.h"
 #include "chrome/browser/ui/views/profiles/profile_picker_widget.h"
@@ -710,15 +709,6 @@ void ProfilePickerView::FinishInit() {
 std::unique_ptr<ProfileManagementFlowController>
 ProfilePickerView::CreateFlowController(Profile* picker_profile,
                                         ClearHostClosure clear_host_callback) {
-  if (params_.entry_point() == ProfilePicker::EntryPoint::kOmniboxEverywhere) {
-    auto profile_picked_callback =
-        base::BindOnce(&ProfilePicker::Params::NotifyProfilePicked,
-                       base::Unretained(&params_));
-    return std::make_unique<ProfilePickerOmniboxEverywhereFlowController>(
-        /*host=*/this, std::move(clear_host_callback),
-        std::move(profile_picked_callback));
-  }
-
   // The first-run and Glic flows were removed from this build; they fall back
   // to the classic profile picker flow.
   return std::make_unique<ProfilePickerFlowController>(

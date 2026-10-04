@@ -189,8 +189,6 @@ class OmniboxPopupPresenterBase
  protected:
   inline static constexpr std::string_view kWebUIPopupMetricPrefix =
       "Omnibox.Popup.WebUI";
-  inline static constexpr std::string_view kAimPopupMetricPrefix =
-      "Omnibox.Popup.Aim";
   inline static constexpr std::string_view kFullWebUIPopupMetricPrefix =
       "Omnibox.Popup.FullWebUI";
 

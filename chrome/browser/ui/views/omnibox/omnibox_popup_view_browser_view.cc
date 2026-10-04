@@ -107,8 +107,6 @@ void OmniboxPopupViewBrowserView::UpdatePopupAppearance() {
       !controller()->autocomplete_controller()->result().empty();
 
   const bool should_be_visible =
-      controller()->popup_state_manager()->popup_state() !=
-          OmniboxPopupState::kAim &&
       (has_results || (omnibox::IsWebUIOmniboxFullPopupEnabled() &&
                        controller()->edit_model()->has_focus())) &&
       !location_bar_view_->GetOmniboxView()->IsImeShowingPopup();

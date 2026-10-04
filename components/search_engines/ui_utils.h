@@ -70,7 +70,6 @@ void SortAndFilterRecentlyVisitedURLs(
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 
 template_url_starter_pack_data::StarterPackIdSet GetDisabledStarterPackIds(
-    bool ai_mode_enabled,
     bool gemini_enabled);
 
 }  // namespace internal

@@ -1,2 +1,0 @@
-per-file *_extension_binder_provider*.*=set noparent
-per-file *_extension_binder_provider*.*=file://ipc/SECURITY_OWNERS

@@ -67,7 +67,6 @@ source_set("impl") {
     "//chrome/browser:flags",
     "//chrome/browser/accessibility",
     "//chrome/browser/accessibility/accessibility_prefs",
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/component_updater",
     "//chrome/browser/devtools",
     "//chrome/browser/engagement",
@@ -128,7 +127,6 @@ source_set("impl") {
     "//components/browsing_data/core",
     "//components/certificate_transparency",
     "//components/content_settings/core/browser",
-    "//components/contextual_search:prefs",
     "//components/custom_handlers",
     "//components/domain_reliability:prefs",
     "//components/enterprise/browser/groups:prefs",
@@ -346,7 +344,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser/notifications",
       "//chrome/browser/notifications:notifications_java_enum_srcjar",
-      "//chrome/browser/ntp_customization",
       "//chrome/browser/partnerbookmarks:android",
       "//chrome/browser/password_manager/android:utils",
       "//chrome/browser/search_engines",
@@ -356,10 +353,8 @@ source_set("impl") {
       "//chrome/browser:intranet_redirect_detector",
       "//chrome/browser/actor/ui",
       "//chrome/browser/device_identity",
-      "//chrome/browser/new_tab_page",
       "//chrome/browser/search_engines",
       "//chrome/browser/speech",
-      "//chrome/browser/ui/omnibox/omnibox_everywhere:prefs",
       "//chrome/browser/ui/side_panel",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/tabs:tab_strip",
@@ -416,10 +411,6 @@ source_set("impl") {
 
   if (enable_webui_ntp) {
     deps += [
-      "//chrome/browser/new_tab_page",
-      "//chrome/browser/ui/webui/cr_components/most_visited",
-      "//chrome/browser/ui/webui/new_tab_page",
-      "//chrome/browser/ui/webui/new_tab_page:impl",
     ]
   }
 

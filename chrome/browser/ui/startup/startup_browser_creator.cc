@@ -58,7 +58,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/startup/launch_mode_recorder.h"
 #include "chrome/browser/ui/startup/profile_launch_observer.h"
@@ -225,12 +224,6 @@ StartupProfileMode GetStartupProfileMode(
   // side of not opening the app directly.
   if (command_line.HasSwitch(switches::kApp) ||
       command_line.HasSwitch(switches::kAppId)) {
-    return StartupProfileMode::kBrowserWindow;
-  }
-
-  // Don't show the picker if Omnibox Everywhere is explicitly requested to
-  // open. `OmniboxEverywhereController` will decide which profile to load.
-  if (command_line.HasSwitch(switches::kOmniboxEverywhere)) {
     return StartupProfileMode::kBrowserWindow;
   }
 
@@ -1121,20 +1114,6 @@ bool StartupBrowserCreator::ProcessCmdLineImpl(
     return true;
   }
 #endif  // BUILDFLAG(IS_WIN)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-  const bool is_omnibox_everywhere_enabled =
-      command_line.HasSwitch(switches::kOmniboxEverywhere) &&
-      base::FeatureList::IsEnabled(omnibox::kOmniboxEverywhere) &&
-      g_browser_process && g_browser_process->GetFeatures() &&
-      g_browser_process->GetFeatures()->omnibox_everywhere_controller();
-  if (is_omnibox_everywhere_enabled) {
-    return g_browser_process->GetFeatures()
-        ->omnibox_everywhere_controller()
-        ->InvokeForStartup(omnibox_everywhere::InvocationSource::kCommandLine,
-                           /*fallback_profile=*/privacy_safe_profile);
-  }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
   LaunchBrowserForLastProfiles(command_line, cur_dir, process_startup,
                                is_first_run, profile_info, last_opened_profiles,

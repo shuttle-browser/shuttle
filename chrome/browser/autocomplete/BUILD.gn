@@ -69,7 +69,6 @@ source_set("impl") {
     "zero_suggest_cache_service_factory.cc",
   ]
   deps = [
-    ":aim_eligibility_service",
     ":autocomplete",
     "//chrome/app:command_ids",
     "//chrome/browser:browser_process",
@@ -149,58 +148,17 @@ source_set("impl") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
-source_set("aim_eligibility_service") {
-  sources = [
-    "aim_eligibility_refresh_navigation_throttle.cc",
-    "aim_eligibility_refresh_navigation_throttle.h",
-    "aim_eligibility_service_factory.cc",
-    "aim_eligibility_service_factory.h",
-    "chrome_aim_eligibility_service.cc",
-    "chrome_aim_eligibility_service.h",
-  ]
-  deps = [
-    "//base",
-    "//chrome/browser:browser_process",
-    "//chrome/browser:global_features",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/search_engines",
-    "//chrome/browser/signin",
-    "//components/application_locale_storage",
-    "//components/embedder_support:user_agent",
-    "//components/keyed_service/core",
-    "//components/omnibox/browser",
-    "//components/prefs",
-    "//components/search_engines",
-    "//components/variations/service",
-    "//content/public/browser",
-    "//extensions/buildflags",
-    "//services/network/public/cpp",
-    "//third_party/blink/public/common:headers",
-  ]
-
-  if (enable_extensions_core) {
-    deps += [ "//extensions/common" ]
-  }
-
-  if (is_android) {
-    sources += [ "aim_eligibility_service_factory_android.cc" ]
-    deps += [ "//chrome/browser/search_engines/android:jni_headers" ]
-  }
-}
-
 if (!is_android) {
   source_set("browser_tests") {
     testonly = true
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
     sources = [
       "autocomplete_browsertest.cc",
-      "chrome_aim_eligibility_service_browsertest.cc",
       "chrome_autocomplete_provider_client_browsertest.cc",
       "tab_matcher_desktop_browsertest.cc",
     ]
     deps = [
-      ":aim_eligibility_service",
-      ":autocomplete",
+        ":autocomplete",
       "//base",
       "//base/test:test_support",
       "//build:buildflag_header_h",
@@ -247,7 +205,6 @@ if (!is_android) {
 source_set("unit_tests") {
   testonly = true
   sources = [
-    "aim_eligibility_refresh_navigation_throttle_unittest.cc",
     "chrome_autocomplete_scheme_classifier_unittest.cc",
     "provider_state_service_factory_unittest.cc",
     "remote_suggestions_service_factory_unittest.cc",
@@ -255,7 +212,6 @@ source_set("unit_tests") {
     "shortcuts_provider_extension_unittest.cc",
   ]
   deps = [
-    ":aim_eligibility_service",
     ":autocomplete",
     "//base",
     "//chrome/browser/content_settings:content_settings_factory",

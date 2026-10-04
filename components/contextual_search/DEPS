@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/prefs",
-  "+components/policy",
-  "+services/network/test",
-]

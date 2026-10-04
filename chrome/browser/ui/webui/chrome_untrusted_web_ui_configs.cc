@@ -23,7 +23,6 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui/ntp_microsoft_auth/ntp_microsoft_auth_untrusted_ui.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
@@ -56,8 +55,5 @@ void RegisterChromeUntrustedWebUIConfigs() {
 #if BUILDFLAG(IS_ANDROID)
   map.AddUntrustedWebUIConfig(
       std::make_unique<lens::LensOverlayUntrustedUIAndroidConfig>());
-#else
-  map.AddUntrustedWebUIConfig(
-      std::make_unique<NtpMicrosoftAuthUntrustedUIConfig>());
 #endif  // BUILDFLAG(IS_ANDROID)
 }

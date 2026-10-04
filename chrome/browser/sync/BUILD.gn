@@ -85,7 +85,6 @@ source_set("sync") {
 
     # TODO(crbug.com/483063966) Investigate why putting contextual_tasks
     # dependency behind !is_android leads to failures on android-binary-size.
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/gcm",
     "//chrome/browser/history",
     "//chrome/browser/metrics",
@@ -181,8 +180,6 @@ source_set("sync") {
     deps += [
       "//chrome/android:chrome_jni_headers",
       "//chrome/browser/android:tabs_public",
-      "//chrome/browser/ntp_customization",
-      "//chrome/browser/ntp_customization:jni_headers",
       "//chrome/browser/sync/android:jni_headers",
       "//chrome/browser/tab",
       "//chrome/browser/ui/android/tab_model",

@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/views/frame/multi_contents_view_mini_toolbar.h"
 #include "chrome/browser/ui/views/frame/scrim_view.h"
 #include "chrome/browser/ui/views/frame/themed_background.h"
-#include "chrome/browser/ui/views/new_tab_footer/footer_web_view.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
@@ -142,13 +141,6 @@ MultiContentsView::MultiContentsView(
     contents_focused_subscriptions_.push_back(
         contents_view->AddWebContentsFocusedCallback(base::BindRepeating(
             &MultiContentsView::OnWebContentsFocused, base::Unretained(this))));
-
-    if (auto* footer = contents_container_view->new_tab_footer_view()) {
-      view_map[footer->GetClassName()] = footer;
-      contents_focused_subscriptions_.push_back(
-          footer->AddWebContentsFocusedCallback(base::BindRepeating(
-              &MultiContentsView::OnNtpFooterFocused, base::Unretained(this))));
-    }
 
     if (auto* actor_overlay =
             contents_container_view->actor_overlay_web_view()) {
@@ -462,20 +454,6 @@ void MultiContentsView::OnActorOverlayFocused(views::WebView* web_view) {
     for (auto& contents_container_view : contents_container_views_) {
       if (contents_container_view->actor_overlay_web_view() &&
           contents_container_view->actor_overlay_web_view() == web_view &&
-          GetInactiveContentsView() ==
-              contents_container_view->contents_view()) {
-        return delegate_->WebContentsFocused(
-            GetInactiveContentsView()->web_contents());
-      }
-    }
-  }
-}
-
-void MultiContentsView::OnNtpFooterFocused(views::WebView* web_view) {
-  if (IsInSplitView() && GetWidget()->IsVisible()) {
-    for (auto& contents_container_view : contents_container_views_) {
-      if (contents_container_view->new_tab_footer_view() &&
-          contents_container_view->new_tab_footer_view() == web_view &&
           GetInactiveContentsView() ==
               contents_container_view->contents_view()) {
         return delegate_->WebContentsFocused(

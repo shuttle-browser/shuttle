@@ -87,7 +87,6 @@ export class LocationBarElement extends CrLitElement implements
     locationBarFlags: {
       userInputInProgress: false,
       popupOpen: false,
-      forceAimButtonFocusRing: false,
       isVirtualKeyboardVisible: false,
     },
     selectedKeyword: null,
@@ -155,13 +154,7 @@ export class LocationBarElement extends CrLitElement implements
           this.locationBarState.locationBarFlags.userInputInProgress);
       this.classList.toggle(
           'no-focus-ring',
-          this.locationBarState.locationBarFlags.popupOpen ||
-              this.locationBarState.locationBarFlags.forceAimButtonFocusRing);
-      const aimButton = this.$.pageActions.aiModePageAction();
-      if (aimButton) {
-        aimButton.forceFocusRing =
-            this.locationBarState.locationBarFlags.forceAimButtonFocusRing;
-      }
+          this.locationBarState.locationBarFlags.popupOpen);
     }
   }
 

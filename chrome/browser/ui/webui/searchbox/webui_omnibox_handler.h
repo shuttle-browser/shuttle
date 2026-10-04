@@ -27,8 +27,6 @@
 class MetricsReporter;
 class OmniboxController;
 
-struct AiModeButtonUiConfig;
-
 namespace content {
 class WebUI;
 }  // namespace content
@@ -71,7 +69,6 @@ class WebuiOmniboxHandler : public SearchboxHandler,
                          const std::u16string& input,
                          bool prevent_inline_autocomplete,
                          uint32_t cursor_position,
-                         omnibox::SuggestInventory suggest_inventory,
                          bool is_on_focus,
                          const std::string& keyword,
                          searchbox::mojom::InputMethod input_method) override;
@@ -79,7 +76,6 @@ class WebuiOmniboxHandler : public SearchboxHandler,
   void StepSelection(OmniboxPopupSelection::Direction direction,
                      OmniboxPopupSelection::Step step);
   void OpenCurrentSelection(WindowOpenDisposition disposition);
-  void SetAimButtonVisible(bool visible);
 
   // SearchboxHandler:
   WindowOpenDisposition ComputeWindowOpenDisposition(
@@ -89,7 +85,6 @@ class WebuiOmniboxHandler : public SearchboxHandler,
       bool meta_key,
       bool shift_key,
       bool via_keyboard) override;
-  bool ShouldShowFirstContextualDescription() const override;
   bool SupportsKeywordMode() const override;
   void OverrideIconPaths(
       const AutocompleteMatch& match,
@@ -121,39 +116,12 @@ class WebuiOmniboxHandler : public SearchboxHandler,
                        tabs::TabInterface::DetachReason reason);
   void OnTabDidInsert(tabs::TabInterface* tab);
 
-  void UpdateAimButtonVisibility();
   void UpdateTabListObservation(TabListInterface* tab_list);
-
-  // Delegate to observe WebContents.
-  // Managed as a separate class to prevent member naming conflicts
-  // of `web_contents_` with a member of the same name in `SearchboxHandler`.
-  class WebContentsObserver : public content::WebContentsObserver {
-   public:
-    explicit WebContentsObserver(WebuiOmniboxHandler* handler,
-                                 content::WebContents* web_contents);
-
-    void ScopedObserve(content::WebContents* web_contents);
-
-    void DidFinishNavigation(content::NavigationHandle* handle) override;
-
-   private:
-    raw_ptr<WebuiOmniboxHandler> handler_;
-  };
-
-  void OnContentSharingPolicyChanged();
-  void OnAimPopupEligibilityChanged();
-  void OnAiModeButtonConfigChanged(const AiModeButtonUiConfig* config);
-  void OnNavigationFinished(content::NavigationHandle* navigation_handle);
-
-  WebContentsObserver web_contents_observer_;
 
   // Observe `OmniboxEditModel` for updates that require updating the views.
   base::ScopedObservation<OmniboxEditModel, OmniboxEditModel::Observer>
       edit_model_observation_{this};
 
-  PrefChangeRegistrar pref_change_registrar_;
-  base::CallbackListSubscription aim_eligibility_subscription_;
-  base::CallbackListSubscription ai_mode_config_subscription_;
   base::ScopedObservation<TabListInterface, TabListInterfaceObserver>
       tab_list_observation_{this};
 

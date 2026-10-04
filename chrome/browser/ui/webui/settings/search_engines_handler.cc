@@ -19,7 +19,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "build/branding_buildflags.h"
-#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/metrics/profile_metrics_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -161,8 +160,6 @@ base::DictValue SearchEnginesHandler::GetCategorizedTemplateUrls() {
       TemplateURLServiceFactory::GetForProfile(profile);
   CHECK(template_url_service);
 
-  bool ai_mode_enabled = OmniboxFieldTrial::IsAimStarterPackEnabled(
-      AimEligibilityServiceFactory::GetForProfile(profile));
   bool gemini_enabled =
       base::FeatureList::IsEnabled(omnibox::kStarterPackExpansion) &&
       profile->GetPrefs()->GetInteger(
@@ -170,7 +167,7 @@ base::DictValue SearchEnginesHandler::GetCategorizedTemplateUrls() {
 
   TemplateURLService::CategorizedTemplateUrls data =
       template_url_service->GetCategorizedTemplateURLs(
-          internal::GetDisabledStarterPackIds(ai_mode_enabled, gemini_enabled));
+          internal::GetDisabledStarterPackIds(gemini_enabled));
 
   TemplateURL::TemplateURLVector displayed_engines;
   auto transform_urls =

@@ -22,8 +22,6 @@
 #include "chrome/browser/autocomplete/tab_matcher_desktop.h"
 #endif
 
-class AiModeButtonService;
-class AimEligibilityService;
 class AutocompleteScoringModelService;
 class OnDeviceTailModelService;
 class Profile;
@@ -101,8 +99,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   ProviderStateService* GetProviderStateService() const override;
   tab_groups::TabGroupSyncService* GetTabGroupSyncService() const override;
   sync_sessions::SessionSyncService* GetSessionSyncService() const override;
-  AimEligibilityService* GetAimEligibilityService() const override;
-  AiModeButtonService* GetAiModeButtonService() const override;
 
   bool IsOffTheRecord() const override;
   bool IsIncognitoProfile() const override;
@@ -133,11 +129,7 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   bool IsLensEnabled() const override;
   bool AreLensEntrypointsVisible() const override;
   std::optional<bool> IsPagePaywalled() const override;
-  bool ShouldSendContextualUrlSuggestParam() const override;
-  bool ShouldSendPageTitleSuggestParam() const override;
   bool IsOmniboxNextLensSearchChipEnabled() const override;
-  bool IsAskGShowChipEnabled() const override;
-  bool IsOmniboxNextAimPopupEnabled() const override;
   bool IsGeminiStarterPackEnabled() const override;
   base::WeakPtr<AutocompleteProviderClient> GetWeakPtr() override;
   bool IsWebUiNtpEnabledForDesktopAndroid() const override;
@@ -151,8 +143,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   bool OpenJourneys(const std::string& query) override;
   bool ShouldOpenCoBrowsePanel() const override;
   void OpenCoBrowsePanel() override;
-  bool ShouldOpenComposeboxForAskG() const override;
-  void OpenComposeboxForAskG() override;
 
   // For testing.
   void set_storage_partition(content::StoragePartition* storage_partition) {

@@ -17,7 +17,6 @@
 #include "chrome/browser/command_updater_impl.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
-#include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_section.h"
 #include "chrome/common/buildflags.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_member.h"
@@ -88,12 +87,6 @@ class BrowserCommandController : public CommandUpdater,
   void ExtensionStateChanged();
   void TabKeyboardFocusChangedTo(std::optional<int> index);
   void WebContentsFocusChanged();
-
-  // Helper method to show the customize chrome sidepanel and optionally scroll
-  // to a specific section.
-  void ShowCustomizeChromeSidePanel(
-      SidePanelOpenTrigger trigger,
-      std::optional<CustomizeChromeSection> section = std::nullopt);
 
   // Overriden from CommandUpdater:
   bool SupportsCommand(int id) const override;
@@ -269,11 +262,6 @@ class BrowserCommandController : public CommandUpdater,
   bool is_locked_fullscreen_ = false;
   bool is_tab_switching_enabled_ = true;
 #endif
-
-  // If the Customize Chrome side panel is shown, determines which section to
-  // display.
-  CustomizeChromeSection customize_chrome_section_ =
-      CustomizeChromeSection::kUnspecified;
 
   // Observes for extension state changes (load/unload).
   class ExtensionStateObserver;

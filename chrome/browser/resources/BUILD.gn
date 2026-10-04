@@ -27,18 +27,13 @@ group("resources") {
 
   if (enable_webui_ntp) {
     public_deps += [
-      "new_tab_page:resources",
-      "new_tab_page/untrusted:resources",
       "new_tab_page_instant:resources",
-      "new_tab_page_third_party:resources",
-      "new_tab_shared:resources",
     ]
   }
 
   if (enable_extensions_core) {
     public_deps += [
       ":component_extension_resources",
-      "omnibox/aim_eligibility_extension:resources",
     ]
   }
 
@@ -56,15 +51,12 @@ group("resources") {
       "history:resources",
       "inspect:resources",
       "key_value_pair_viewer_shared:resources",
-      "new_tab_footer:resources",
-      "omnibox_everywhere:resources",
       "omnibox_popup:resources",
       "password_manager:resources",
       "profile_internals:resources",
       "settings:resources",
       "settings_shared:resources",
       "side_panel/comments:resources",
-      "side_panel/customize_chrome:resources",
       "side_panel/history:resources",
       "side_panel/history_clusters:resources",
       "side_panel/read_anything:resources",
@@ -190,7 +182,6 @@ group("resources") {
 if (enable_webui_generate_code_cache) {
   group("code_cache_resources") {
     public_deps = [
-      "side_panel/customize_chrome:code_cache_resources",
       "side_panel/reading_list:code_cache_resources",
       "side_panel/shared:code_cache_resources",
       "side_panel/tabs_from_other_devices:code_cache_resources",
@@ -445,7 +436,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/components/history_clusters_internals_resources.pak",
     "$root_gen_dir/components/metrics_internals_resources.pak",
     "$root_gen_dir/components/net_export_resources.pak",
-    "$root_gen_dir/components/ntp_tiles_internals_resources.pak",
     "$root_gen_dir/components/optimization_guide_internals_resources.pak",
     "$root_gen_dir/components/policy_resources.pak",
     "$root_gen_dir/components/regional_capabilities_internals_resources.pak",

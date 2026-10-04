@@ -86,10 +86,6 @@ void OmniboxPopupCloser::CloseWithReason(PopupCloseReason reason) {
   // Clearing the autocomplete results closes the popup.
   location_bar->GetOmniboxController()->StopAutocomplete(
       /*clear_result=*/true);
-  // Reset focus ring for the AIM button if it was set.
-  if (auto* omnibox_view = location_bar->GetOmniboxView()) {
-    omnibox_view->ApplyFocusRingToAimButton(false);
-  }
   // For `kRevertAll` ensure the popup state is reset back to `kNone`.
   if (reason == PopupCloseReason::kRevertAll) {
     if (auto* state_manager =

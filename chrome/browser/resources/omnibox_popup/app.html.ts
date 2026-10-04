@@ -19,7 +19,6 @@ export function getHtml(this: OmniboxPopupAppElement) {
       @dom-change="${this.onDropdownDomChange_}"
       ?hidden="${!this.hasVisibleMatches_}">
   </cr-searchbox-dropdown>
-  <omnibox-popup-contextual-entrypoint></omnibox-popup-contextual-entrypoint>
 </div>
 <!--_html_template_end_-->`;
   // clang-format on

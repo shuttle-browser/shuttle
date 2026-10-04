@@ -53,7 +53,6 @@ template("build_webui") {
     # folders. A temporary exception is added for the folders below, which will
     # be removed once experimentation in these folders concludes.
     _in_folder_exceptions = [
-      "//chrome/browser/resources/omnibox/aim_eligibility_extension:build",
     ]
     _current_label = get_label_info(":$target_name", "label_no_toolchain")
     assert(
@@ -605,7 +604,6 @@ template("build_webui") {
         "//chrome/browser/resources/sandbox_internals",
         "//chrome/browser/resources/settings",
         "//chrome/browser/resources/settings_shared",
-        "//chrome/browser/resources/side_panel/customize_chrome",
         "//chrome/browser/resources/signin",
         "//chrome/browser/resources/signin/profile_picker",
         "//chrome/browser/resources/support_tool",

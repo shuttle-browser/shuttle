@@ -188,7 +188,6 @@ void SortAndFilterRecentlyVisitedURLs(
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 
 template_url_starter_pack_data::StarterPackIdSet GetDisabledStarterPackIds(
-    bool ai_mode_enabled,
     bool gemini_enabled) {
   template_url_starter_pack_data::StarterPackIdSet disabled_starter_pack_ids;
 
@@ -204,11 +203,9 @@ template_url_starter_pack_data::StarterPackIdSet GetDisabledStarterPackIds(
         template_url_starter_pack_data::StarterPackId::kPage);
   }
 
-  // Skip @aimode if feature disabled.
-  if (!ai_mode_enabled) {
-    disabled_starter_pack_ids.Put(
-        template_url_starter_pack_data::StarterPackId::kAiMode);
-  }
+  // @aimode is not supported.
+  disabled_starter_pack_ids.Put(
+      template_url_starter_pack_data::StarterPackId::kAiMode);
 
   return disabled_starter_pack_ids;
 }

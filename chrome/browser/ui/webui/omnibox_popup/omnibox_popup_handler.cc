@@ -307,15 +307,6 @@ void OmniboxPopupHandler::LogEscapeAction(
   base::UmaHistogramEnumeration("Omnibox.Escape", action);
 }
 
-void OmniboxPopupHandler::OpenAimPopup(bool via_keyboard) {
-  if (controller_) {
-    controller_->edit_model()->OpenSelection(
-        OmniboxPopupSelection(OmniboxPopupSelection::kNoMatch,
-                              OmniboxPopupSelection::FOCUSED_BUTTON_AIM),
-        via_keyboard);
-  }
-}
-
 void OmniboxPopupHandler::OnCutOrCopy(uint32_t sequence_number,
                                       bool is_cut,
                                       const std::string& full_text,

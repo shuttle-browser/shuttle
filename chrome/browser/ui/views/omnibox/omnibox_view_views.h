@@ -176,8 +176,6 @@ class OmniboxViewViews
   void SelectAll(bool reversed) override;
   void RevertAll() override;
   void SetFocus(bool is_user_initiated) override;
-  void ApplyFocusRingToAimButton(bool focus_aim) override;
-  bool AimButtonVisible() const override;
   bool IsImeShowingPopup() const override;
 
   // views::Textfield:
@@ -400,10 +398,6 @@ class OmniboxViewViews
   // DSE placeholder.
   void UpdatePlaceholderTextColor();
 
-  // Returns the AI Mode page action icon view, if present, or nullptr if the
-  // view doesn't exist.
-  IconLabelBubbleView* GetAiModePageActionIconView() const;
-
   // When true, the location bar view is read only and also is has a slightly
   // different presentation (smaller font size). This is used for popups.
   bool popup_window_mode_;
@@ -489,15 +483,6 @@ class OmniboxViewViews
   // For example,  "Google https://google.com location from history",
   // this is set to 7 (the length of "Google ").
   int friendly_suggestion_text_prefix_length_;
-
-  // Used to track whether focus indicators have been changed to show the AI
-  // mode page action icon as focused. Only used when keyboard accessibility is
-  // disabled (which currently only happens on Mac).
-  bool aim_page_action_icon_has_fake_focus_ = false;
-
-  // Used to track whether the AIM hint has been shown during a single focus
-  // session (omnibox focused -> omnibox blurred).
-  bool aim_hint_shown_ = false;
 
   base::ScopedObservation<ui::Compositor, ui::CompositorObserver>
       scoped_compositor_observation_{this};

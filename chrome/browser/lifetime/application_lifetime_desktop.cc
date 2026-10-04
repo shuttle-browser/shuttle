@@ -39,7 +39,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "chrome/common/buildflags.h"
@@ -302,12 +301,6 @@ void ShutdownIfNoBrowsers() {
 
   // Tell everyone that we are shutting down.
   browser_shutdown::SetTryingToQuit(true);
-
-  auto* browser_features =
-      g_browser_process ? g_browser_process->GetFeatures() : nullptr;
-  if (browser_features && browser_features->omnibox_everywhere_controller()) {
-    browser_features->omnibox_everywhere_controller()->ExitBackgroundMode();
-  }
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
   // If ShuttingDownWithoutClosingBrowsers() returns true, the session

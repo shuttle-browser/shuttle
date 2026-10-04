@@ -18,23 +18,17 @@
 #include "build/build_config.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/views/permissions/permission_prompt_observer.h"
-#include "components/contextual_search/contextual_search_types.h"
-#include "components/contextual_search/pref_names.h"
 #include "components/omnibox/browser/autocomplete_controller.h"
 #include "components/omnibox/browser/omnibox_client.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
 #include "components/omnibox/browser/searchbox_utils.h"
-#include "components/omnibox/common/input_state.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/omnibox_proto/chrome_searchbox_stats.pb.h"
-#include "third_party/omnibox_proto/model_mode.pb.h"
-#include "third_party/omnibox_proto/tool_mode.pb.h"
 #include "ui/gfx/vector_icon_types.h"
-#include "ui/webui/resources/cr_components/composebox/composebox.mojom.h"
 
 class GURL;
 class OmniboxController;
@@ -85,10 +79,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
     bool is_lens = false;
   };
 
-  static bool GetAllVoiceSearchCoherenceComposeboxesEnabled();
-  static bool GetVoiceSearchCoherenceAnySearchboxExperimentEnabled();
-  static bool GetVoiceSearchCoherenceCobrowsingComposeboxEnabled();
-
   static base::DictValue GetWebUIDataSourceDict(Profile* profile);
   static base::DictValue GetWebUIDataSourceDict(Profile* profile,
                                                 WebUIDataSourceOptions options);
@@ -97,17 +87,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
   // `OmniboxAction::GetIconImage()` to svg resource strings.
   virtual std::string AutocompleteIconToResourceName(
       const gfx::VectorIcon& icon) const;
-
-  // Adds file context to the searchbox from the browser.
-  void AddFileContextFromBrowser(
-      base::UnguessableToken token,
-      searchbox::mojom::SelectedFileInfoPtr file_info);
-
-  // Notifies the WebUI that the contextual input status has changed.
-  void OnContextualInputStatusChanged(
-      base::UnguessableToken token,
-      contextual_search::ContextUploadStatus status,
-      std::optional<contextual_search::ContextUploadErrorType> error_type);
 
   // AutocompleteController::Observer:
   void OnResultChanged(AutocompleteController* controller,
@@ -124,7 +103,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
                          const std::u16string& input,
                          bool prevent_inline_autocomplete,
                          uint32_t cursor_position,
-                         omnibox::SuggestInventory suggest_inventory,
                          bool is_on_focus,
                          const std::string& keyword,
                          searchbox::mojom::InputMethod input_method) override;
@@ -162,57 +140,8 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
                      bool shift_key) override;
   void GetCyclingPlaceholderConfig(
       GetCyclingPlaceholderConfigCallback callback) override;
-  void GetRecentTabs(GetRecentTabsCallback callback) override;
-  void GetTabPreview(int32_t tab_id, GetTabPreviewCallback callback) override {}
-  void WaitForTabFaviconLoad(int32_t tab_id,
-                             WaitForTabFaviconLoadCallback callback) override;
-  void GetInputState(GetInputStateCallback callback) override;
-  void NotifySessionStarted() override {}
-  void NotifySessionAbandoned() override {}
-  void AddFileContext(searchbox::mojom::SelectedFileInfoPtr file_info,
-                      mojo_base::BigBuffer file_bytes,
-                      AddFileContextCallback callback) override {}
-  void AddTabContext(int32_t tab_id,
-                     bool delay_upload,
-                     searchbox::mojom::TabAttachmentSource source,
-                     AddTabContextCallback) override {}
-  void DeleteContext(const base::UnguessableToken& file_token,
-                     bool from_automatic_chip) override {}
-  void DeleteTabContext(int32_t tab_id) override {}
-  void ClearFiles(bool should_block_auto_suggested_tabs) override {}
-  void SubmitQuery(const std::string& query_text,
-                   uint8_t mouse_button,
-                   bool alt_key,
-                   bool ctrl_key,
-                   bool meta_key,
-                   bool shift_key,
-                   bool is_voice_search) override {}
   void OpenLensSearch() override {}
-  void SetActiveToolMode(omnibox::ToolMode tool, bool is_set_by_aim) override {}
-  void RecordToolSelectionAction(omnibox::ToolMode tool) override {}
-  void SetActiveModelMode(omnibox::ModelMode model,
-                          bool is_set_by_aim) override {}
-  void RecordModelSelectionAction(omnibox::ModelMode model) override {}
-  void ActivateMetricsFunnel(const std::string& funnel_name) override {}
-  void GetDriveDisclaimerStatus(
-      GetDriveDisclaimerStatusCallback callback) override;
-  void OnDriveDisclaimerAccepted() override;
-  void OnDriveUploadClicked(OnDriveUploadClickedCallback callback) override;
-  void OpenProfilePicker() override {}
-  void ShowScreenshotMenu(const gfx::Rect& anchor_rect) override {}
-  virtual void OnScreenshotMenuClosed();
   void GetPageClassification(GetPageClassificationCallback callback) override;
-  void StartScreenshare(bool prefer_entire_screen,
-                        StartScreenshareCallback callback) override;
-  void CaptureRegionScreenshot(
-      CaptureRegionScreenshotCallback callback) override;
-#if !BUILDFLAG(IS_ANDROID)
-  void SetSmartTabSharingActive(bool active) override;
-  void GetSmartTabSharingActive(
-      GetSmartTabSharingActiveCallback callback) override;
-#endif
-  void DismissFre() override {}
-  void OpenHotkeySettings() override {}
   void set_delegate(Delegate* delegate) { omnibox_delegate_ = delegate; }
 
   ~SearchboxHandler() override;
@@ -235,7 +164,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
 
   const AutocompleteMatch* GetMatchWithUrl(size_t index, const GURL& url) const;
 
-  virtual omnibox::InputState GetInputState() const;
   virtual std::string GetPreviousQuery();
 
   void SetAutocompleteControllerForTesting(
@@ -296,7 +224,6 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       const AutocompleteResult& result,
       const omnibox::GroupConfigMap& suggestion_groups_map,
       const TemplateURLService* turl_service) const;
-  virtual bool ShouldShowFirstContextualDescription() const;
   virtual bool SupportsKeywordMode() const;
   virtual void OverrideIconPaths(
       const AutocompleteMatch& match,

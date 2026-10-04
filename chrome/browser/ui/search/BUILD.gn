@@ -8,9 +8,6 @@ assert(!is_ios)
 
 source_set("search") {
   sources = [
-    "most_visited_metrics_logger.h",
-    "ntp_user_data_logger.h",
-    "ntp_user_data_types.h",
   ]
   public_deps = [
     "//base",
@@ -24,7 +21,6 @@ source_set("search") {
     sources += [
       "chrome_search_navigation_throttle.h",
       "instant_controller.h",
-      "new_tab_page_navigation_throttle.h",
       "omnibox_utils.h",
       "search_ipc_router.h",
       "search_ipc_router_policy_impl.h",
@@ -43,8 +39,6 @@ source_set("search") {
 
 source_set("impl") {
   sources = [
-    "most_visited_metrics_logger.cc",
-    "ntp_user_data_logger.cc",
   ]
   deps = [
     ":search",
@@ -61,7 +55,6 @@ source_set("impl") {
     sources += [
       "chrome_search_navigation_throttle.cc",
       "instant_controller.cc",
-      "new_tab_page_navigation_throttle.cc",
       "search_ipc_router.cc",
       "search_ipc_router_policy_impl.cc",
 
@@ -100,7 +93,6 @@ if (!is_chromeos_device && !is_android) {
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
     sources = [
       "instant_extended_interactive_uitest.cc",
-      "third_party_ntp_interactive_uitest.cc",
     ]
 
     public_deps = [ "//net:test_support" ]
@@ -156,9 +148,7 @@ if (!is_android) {
     testonly = true
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
     sources = [
-      "new_tab_page_navigation_throttle_browsertest.cc",
       "search_ipc_router_policy_browsertest.cc",
-      "third_party_ntp_browsertest.cc",
     ]
 
     public_deps = [ "//net:test_support" ]
@@ -188,8 +178,6 @@ if (!is_android) {
     testonly = true
     sources = [
       "chrome_search_navigation_throttle_unittest.cc",
-      "most_visited_metrics_logger_unittest.cc",
-      "ntp_user_data_logger_unittest.cc",
       "search_ipc_router_unittest.cc",
     ]
     deps = [

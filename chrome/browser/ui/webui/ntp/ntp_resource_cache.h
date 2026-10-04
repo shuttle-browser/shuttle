@@ -103,6 +103,7 @@ class NTPResourceCache : public ThemeServiceObserver,
   scoped_refptr<base::RefCountedMemory> new_tab_isolated_html_;
   scoped_refptr<base::RefCountedMemory> new_tab_isolated_css_;
   scoped_refptr<base::RefCountedMemory> new_tab_non_primary_otr_html_;
+  scoped_refptr<base::RefCountedMemory> new_tab_normal_html_;
 
   base::ScopedObservation<ui::NativeTheme, ui::NativeThemeObserver>
       theme_observation_{this};

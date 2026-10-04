@@ -23,7 +23,6 @@
 #include "chrome/browser/image_fetcher/image_decoder_impl.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/background/ntp_background_service_factory.h"
-#include "chrome/browser/search/background/wallpaper_search/wallpaper_search_background_manager.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/search/instant_types.h"
 #include "chrome/common/url_constants.h"
@@ -72,13 +71,6 @@ std::string ReadFileToString(const base::FilePath& path) {
 }
 
 void RemoveLocalBackgroundImageCopy(Profile* profile) {
-  // Delete wallpaper search image.
-  if (base::FeatureList::IsEnabled(
-          ntp_features::kCustomizeChromeWallpaperSearch) &&
-      base::FeatureList::IsEnabled(
-          optimization_guide::features::kOptimizationGuideModelExecution)) {
-    WallpaperSearchBackgroundManager::RemoveWallpaperSearchBackground(profile);
-  }
   // Delete uploaded image.
   base::FilePath path = profile->GetPath().AppendASCII(
       chrome::kChromeUIUntrustedNewTabPageBackgroundFilename);
@@ -112,14 +104,6 @@ void NtpCustomBackgroundService::RegisterProfilePrefs(
                                 false);
   registry->RegisterStringPref(prefs::kNtpCustomBackgroundLocalToDeviceId, "");
   registry->RegisterBooleanPref(prefs::kNtpCustomBackgroundInspiration, false);
-
-  // Register wallpaper search profile prefs.
-  if (base::FeatureList::IsEnabled(
-          ntp_features::kCustomizeChromeWallpaperSearch) &&
-      base::FeatureList::IsEnabled(
-          optimization_guide::features::kOptimizationGuideModelExecution)) {
-    WallpaperSearchBackgroundManager::RegisterProfilePrefs(registry);
-  }
 }
 
 // static
@@ -134,13 +118,6 @@ void NtpCustomBackgroundService::ResetNtpTheme(Profile* profile) {
 
 // static
 void NtpCustomBackgroundService::ResetProfilePrefs(Profile* profile) {
-  // Clear wallpaper search profile prefs.
-  if (base::FeatureList::IsEnabled(
-          ntp_features::kCustomizeChromeWallpaperSearch) &&
-      base::FeatureList::IsEnabled(
-          optimization_guide::features::kOptimizationGuideModelExecution)) {
-    WallpaperSearchBackgroundManager::ResetProfilePrefs(profile);
-  }
   // Clear theme.
   ResetNtpTheme(profile);
 }
@@ -404,14 +381,6 @@ void NtpCustomBackgroundService::VerifyCustomBackgroundImageURL() {
 
 void NtpCustomBackgroundService::SetBackgroundToLocalResource() {
   background_updated_timestamp_ = base::TimeTicks::Now();
-  // If these conditions are true, a wallpaper search image is set so it must
-  // be removed.
-  if (pref_service_->GetBoolean(prefs::kNtpCustomBackgroundLocalToDevice) &&
-      !pref_service_->GetString(prefs::kNtpCustomBackgroundLocalToDeviceId)
-           .empty()) {
-    WallpaperSearchBackgroundManager::RemoveWallpaperSearchBackground(profile_);
-  }
-
   pref_service_->SetBoolean(prefs::kNtpCustomBackgroundLocalToDevice, true);
   pref_service_->ClearPref(prefs::kNtpCustomBackgroundLocalToDeviceId);
 

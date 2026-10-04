@@ -38,7 +38,6 @@ source_set("search") {
     public_deps += [ "//components/policy/core/browser" ]
     deps += [ "//components/prefs" ]
     if (enable_webui_ntp) {
-      public_deps += [ "//chrome/browser/ui/webui/new_tab_page" ]
     }
   } else {
     sources += [
@@ -58,8 +57,6 @@ source_set("search") {
       "//chrome/browser/ntp_tiles",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/themes",
-      "//chrome/browser/ui/webui/new_tab_page",
-      "//chrome/browser/ui/webui/new_tab_page_third_party",
       "//chrome/common",
       "//components/history/core/browser",
       "//components/keyed_service/core",
@@ -91,7 +88,6 @@ source_set("search") {
       "//mojo/public/cpp/bindings",
       "//ui/base",
       "//ui/gfx:color_utils",
-      "//ui/webui/resources/cr_components/composebox:mojo_bindings",
     ]
 
     # InstantService constructs ThemeSource while theme_source.cc includes
@@ -110,7 +106,6 @@ source_set("unit_tests") {
   if (!is_android) {
     sources += [
       "background/ntp_custom_background_service_unittest.cc",
-      "background/wallpaper_search/wallpaper_search_background_manager_unittest.cc",
       "most_visited_iframe_source_unittest.cc",
       "ntp_features_unittest.cc",
     ]
@@ -179,7 +174,6 @@ if (!is_android) {
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
     sources = [
-      "background/wallpaper_search/wallpaper_search_browsertest.cc",
       "instant_service_browsertest.cc",
       "ntp_custom_background_enabled_policy_handler_browsertest.cc",
       "search_browsertest.cc",

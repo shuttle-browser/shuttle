@@ -269,14 +269,4 @@ bool IsSearchEngineURLValidToUse(const std::string& url_input,
 std::string GetFixedUpSearchEngineUrl(const std::string& url_input,
                                       const SearchTermsData& search_terms_data);
 
-// Retrieves the URL for the AIM web page.
-// `aim_entrypoint` (aep) is required as it identifies the source of the
-// request. `query_start_time` is the time that the user clicked the submit
-// button.
-GURL GetUrlForAim(TemplateURLService* turl_service,
-                  omnibox::ChromeAimEntryPoint aim_entrypoint,
-                  const base::Time& query_start_time,
-                  const std::u16string& query_text,
-                  std::map<std::string, std::string> additional_params);
-
 #endif  // COMPONENTS_SEARCH_ENGINES_UTIL_H_

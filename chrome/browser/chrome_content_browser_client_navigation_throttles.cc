@@ -9,7 +9,6 @@
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/actor/actor_navigation_throttle.h"
-#include "chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/custom_handlers/chrome_protocol_handler_navigation_throttle.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
@@ -90,9 +89,7 @@
 #include "chrome/browser/page_info/web_view_side_panel_throttle.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_navigation_throttle.h"
 #include "chrome/browser/ui/search/chrome_search_navigation_throttle.h"
-#include "chrome/browser/ui/search/new_tab_page_navigation_throttle.h"
 #include "chrome/browser/ui/webui/image/image_navigation_throttle.h"
-#include "chrome/browser/ui/webui/ntp_microsoft_auth/ntp_microsoft_auth_response_capture_navigation_throttle.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -439,11 +436,6 @@ void CreateAndAddChromeThrottlesForNavigation(
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
         // BUILDFLAG(IS_CHROMEOS)
 
-  // AimEligibilityRefreshNavigationThrottle must be registered before
-  // ContextualTasksNavigationThrottle so it can detect AIM URL navigations
-  // before ContextualTasksNavigationThrottle intercepts them.
-  AimEligibilityRefreshNavigationThrottle::MaybeCreateAndAdd(registry);
-
 
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
   DevToolsWindow::MaybeCreateAndAddNavigationThrottle(registry);
@@ -454,7 +446,6 @@ void CreateAndAddChromeThrottlesForNavigation(
     ChromeSearchNavigationThrottle::MaybeCreateAndAdd(registry);
   }
 
-  NewTabPageNavigationThrottle::MaybeCreateAndAdd(registry);
 
 
 
@@ -510,8 +501,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   ReadAnythingSidePanelNavigationThrottle::CreateAndAdd(registry);
 
 
-  NtpMicrosoftAuthResponseCaptureNavigationThrottle::MaybeCreateAndAdd(
-      registry);
 #endif
 
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)

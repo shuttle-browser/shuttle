@@ -36,14 +36,6 @@ const WebuiBrowserSearchboxElementBase = SearchboxMixin(
 
 export class WebuiBrowserSearchboxElement extends
     WebuiBrowserSearchboxElementBase implements SearchboxMixinInterface {
-  override get isAimButtonVisible(): boolean {
-    return false;
-  }
-
-  override get showContextEntrypoint(): boolean {
-    return false;
-  }
-
   override get virtualFocusEnabled(): boolean {
     return loadTimeData.valueExists('webuiBrowserVirtualFocusNavigation') &&
         loadTimeData.getBoolean('webuiBrowserVirtualFocusNavigation');

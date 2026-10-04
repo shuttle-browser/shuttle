@@ -48,7 +48,6 @@ class FromGWSNavigationAndKeepAliveRequestObserver;
 class HttpAuthCacheStatus;
 class JsOptimizationsPageActionController;
 class ManagePasswordsPageActionController;
-class NewTabPagePreloadPipelineManager;
 class Profile;
 class QwacWebContentsObserver;
 class ReadAnythingController;
@@ -94,10 +93,6 @@ class SaasUsageNavigationObserver;
 namespace content {
 class WebContents;
 }  // namespace content
-
-namespace customize_chrome {
-class SidePanelController;
-}  // namespace customize_chrome
 
 namespace extensions {
 class ExtensionSidePanelManager;
@@ -162,13 +157,6 @@ class TabFeatures {
   permissions::PermissionIndicatorsTabData* permission_indicators_tab_data() {
     return permission_indicators_tab_data_.get();
   }
-
-  // Note: Temporary until there is a more uniform way to swap out features for
-  // testing.
-  customize_chrome::SidePanelController*
-  SetCustomizeChromeSidePanelControllerForTesting(
-      std::unique_ptr<customize_chrome::SidePanelController>
-          customize_chrome_side_panel_controller);
 
   extensions::ExtensionSidePanelManager* extension_side_panel_manager() {
     return extension_side_panel_manager_.get();
@@ -243,10 +231,6 @@ class TabFeatures {
     return back_to_opener_controller_.get();
   }
 
-  NewTabPagePreloadPipelineManager* new_tab_page_preload_pipeline_manager() {
-    return new_tab_page_preload_pipeline_manager_.get();
-  }
-
   // Called exactly once to initialize features.
   void Init(TabInterface& tab, Profile* profile);
 
@@ -270,10 +254,6 @@ class TabFeatures {
       permission_indicators_tab_data_;
 
   std::unique_ptr<SidePanelRegistry> side_panel_registry_;
-
-  // Responsible for the customize chrome tab-scoped side panel.
-  std::unique_ptr<customize_chrome::SidePanelController>
-      customize_chrome_side_panel_controller_;
 
   // Responsible for managing the read anything (Reading mode) feature.
   std::unique_ptr<ReadAnythingController> read_anything_controller_;
@@ -410,9 +390,6 @@ class TabFeatures {
   // Manages the sad tab view shown when the tab's main frame has crashed.
   // Null when the WebUI browser is enabled.
   std::unique_ptr<SadTabHelper> sad_tab_helper_;
-
-  std::unique_ptr<NewTabPagePreloadPipelineManager>
-      new_tab_page_preload_pipeline_manager_;
 
   std::unique_ptr<back_to_opener::BackToOpenerController>
       back_to_opener_controller_;

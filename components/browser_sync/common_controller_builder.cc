@@ -214,11 +214,6 @@ void CommonControllerBuilder::SetAutofillWebDataService(
   account_autofill_web_data_service_.Set(web_data_service_in_memory);
 }
 
-void CommonControllerBuilder::SetAimEligibilityService(
-    AimEligibilityService* aim_eligibility_service) {
-  aim_eligibility_service_.Set(aim_eligibility_service);
-}
-
 void CommonControllerBuilder::SetDeviceInfoSyncService(
     syncer::DeviceInfoSyncService* device_info_sync_service) {
   device_info_sync_service_.Set(device_info_sync_service);

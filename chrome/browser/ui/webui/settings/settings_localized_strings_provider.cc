@@ -2817,27 +2817,8 @@ void AddSearchStrings(content::WebUIDataSource* html_source, Profile* profile) {
        IDS_SETTINGS_CONTROLLED_BY_EXTENSION_WITH_DISABLE_AND_MANAGE_OPTION},
       {"controlledByExtensionWithoutDisableOption",
        IDS_SETTINGS_CONTROLLED_BY_EXTENSION_WITH_MANAGE_OPTION},
-      {"omniboxEverywhereTitle", IDS_SETTINGS_OMNIBOX_EVERYWHERE_TITLE},
-      {"omniboxEverywhereToggleTitle", IDS_SETTINGS_OMNIBOX_EVERYWHERE_TOGGLE},
-      {"omniboxEverywhereToggleSublabel",
-       IDS_SETTINGS_OMNIBOX_EVERYWHERE_TOGGLE_SUBLABEL},
-      {"omniboxEverywhereShortcutTitle",
-       IDS_SETTINGS_OMNIBOX_EVERYWHERE_SHORTCUT_TITLE},
-      {"omniboxEverywhereShortcutSublabel",
-       IDS_SETTINGS_OMNIBOX_EVERYWHERE_SHORTCUT_SUBLABEL},
-      {"omniboxEverywhereShowShortcutsTitle",
-       IDS_SETTINGS_OMNIBOX_EVERYWHERE_SHOW_SHORTCUTS_TITLE},
-      {"omniboxEverywhereShowShortcutsSublabel",
-       IDS_SETTINGS_OMNIBOX_EVERYWHERE_SHOW_SHORTCUTS_SUBLABEL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
-  // The Omnibox Everywhere settings section is displayed whenever a profile is
-  // eligible, regardless of whether the user currently has the feature toggled
-  // on or off.
-  html_source->AddBoolean("omniboxEverywhereSettingsEnabled",
-                          omnibox::IsOmniboxEverywhereEligible(profile));
-  html_source->AddString("omniboxEverywhereLearnMoreURL",
-                         chrome::kOmniboxLearnMoreURL);
   html_source->AddString("searchExplanationLearnMoreURL",
                          chrome::kOmniboxLearnMoreURL);
 

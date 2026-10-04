@@ -22,11 +22,6 @@ AutocompleteProviderClient::GetDocumentSuggestionsService() const {
   return nullptr;
 }
 
-AiModeButtonService* AutocompleteProviderClient::GetAiModeButtonService()
-    const {
-  return nullptr;
-}
-
 bool AutocompleteProviderClient::AllowDeletingBrowserHistory() const {
   return true;
 }
@@ -83,10 +78,6 @@ bool AutocompleteProviderClient::IsAskGShowChipEnabled() const {
   return false;
 }
 
-bool AutocompleteProviderClient::IsOmniboxNextAimPopupEnabled() const {
-  return false;
-}
-
 bool AutocompleteProviderClient::IsGeminiStarterPackEnabled() const {
   return OmniboxFieldTrial::IsStarterPackExpansionEnabled();
 }
@@ -105,9 +96,3 @@ bool AutocompleteProviderClient::ShouldOpenCoBrowsePanel() const {
 }
 
 void AutocompleteProviderClient::OpenCoBrowsePanel() {}
-
-bool AutocompleteProviderClient::ShouldOpenComposeboxForAskG() const {
-  return false;
-}
-
-void AutocompleteProviderClient::OpenComposeboxForAskG() {}

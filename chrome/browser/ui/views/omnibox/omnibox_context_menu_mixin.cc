@@ -14,7 +14,6 @@
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/command_updater.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/omnibox/clipboard_utils.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
@@ -25,8 +24,8 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/omnibox_pref_names.h"
+#include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/prefs/pref_service.h"
-#include "components/search_engines/ai_mode_button_service.h"
 #include "components/search_engines/search_engines_switches.h"
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/context_menu_params.h"
@@ -240,7 +239,6 @@ bool OmniboxContextMenuMixinBase::HandleIsCommandIdEnabled(
 
   // These menu items are only shown when they are valid.
   if (command_id == IDC_SHOW_FULL_URLS ||
-      command_id == IDC_SHOW_AI_MODE_OMNIBOX_BUTTON ||
       command_id == IDC_SHOW_SEARCH_TOOLS) {
     return true;
   }
@@ -276,7 +274,6 @@ bool OmniboxContextMenuMixinBase::HandleExecuteCommand(int command_id,
 
     case IDC_EDIT_SEARCH_ENGINES:
     case IDC_SHOW_FULL_URLS:
-    case IDC_SHOW_AI_MODE_OMNIBOX_BUTTON:
     case IDC_SHOW_SEARCH_TOOLS:
       if (location_bar_) {
         location_bar_->command_updater()->ExecuteCommand(command_id);
@@ -422,14 +419,6 @@ void OmniboxContextMenuMixinBase::AddOmniboxSpecificItems(
         kShowFullUrlsMenuItem);
   }
 
-  if (omnibox::ShouldShowAimContextMenuOption(location_bar_->GetProfile())) {
-    auto* config = GetAiModeUiConfig();
-    if (config) {
-      menu_contents->AddCheckItem(IDC_SHOW_AI_MODE_OMNIBOX_BUTTON,
-                                  config->context_menu_label);
-    }
-  }
-
   if (omnibox_feature_configs::Toolbelt::Get().enabled) {
     menu_contents->AddCheckItemWithStringId(IDC_SHOW_SEARCH_TOOLS,
                                             IDS_CONTEXT_MENU_SHOW_SEARCH_TOOLS);
@@ -450,20 +439,6 @@ bool OmniboxContextMenuMixinBase::HandleIsCommandIdChecked(int id) const {
     return location_bar_->GetProfile()->GetPrefs()->GetBoolean(
         omnibox::kShowSearchTools);
   }
-  if (id == IDC_SHOW_AI_MODE_OMNIBOX_BUTTON) {
-    return location_bar_->GetProfile()->GetPrefs()->GetBoolean(
-        omnibox::kShowAiModeOmniboxButton);
-  }
   return false;
-}
-
-const AiModeButtonUiConfig* OmniboxContextMenuMixinBase::GetAiModeUiConfig()
-    const {
-  if (!location_bar_) {
-    return nullptr;
-  }
-  auto* service =
-      AiModeButtonServiceFactory::GetForProfile(location_bar_->GetProfile());
-  return service ? service->GetCurrentConfig() : nullptr;
 }
 

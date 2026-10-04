@@ -57,7 +57,6 @@ source_set("common_syncable_prefs_database") {
     "//components/autofill/core/common",
     "//components/browsing_data/core",
     "//components/content_settings/core/common",
-    "//components/contextual_search:prefs",
     "//components/dom_distiller/core",
     "//components/language/core/browser",
     "//components/metrics",

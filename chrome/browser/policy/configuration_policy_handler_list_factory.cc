@@ -64,8 +64,6 @@
 #include "components/component_updater/pref_names.h"
 #include "components/content_settings/core/browser/cookie_settings_policy_handler.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/contextual_search/pref_names.h"
-#include "components/contextual_search/search_content_sharing_policy_handler.h"
 #include "components/custom_handlers/pref_names.h"
 #include "components/domain_reliability/domain_reliability_prefs.h"
 #include "components/embedder_support/pref_names.h"
@@ -527,9 +525,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kListenToThisPageEnabled,
     prefs::kListenToThisPageEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kSearchContentSharingSettings,
-    contextual_search::kSearchContentSharingSettings,
-    base::Value::Type::INTEGER },
 #else // !BUILDFLAG(IS_ANDROID)
   { key::kAbusiveExperienceInterventionEnforce,
     blocked_content::prefs::kAbusiveExperienceInterventionEnforce,
@@ -729,18 +724,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kLocalFontsBlockedForUrls,
     prefs::kManagedLocalFontsBlockedForUrls,
     base::Value::Type::LIST },
-  { key::kNTPCardsVisible,
-    prefs::kNtpModulesVisible,
-    base::Value::Type::BOOLEAN },
-  { key::kNTPMiddleSlotAnnouncementVisible,
-    prefs::kNtpPromoVisible,
-    base::Value::Type::BOOLEAN },
-  { key::kNTPOutlookCardVisible,
-    prefs::kNtpOutlookModuleVisible,
-    base::Value::Type::BOOLEAN },
-  { key::kNTPSharepointCardVisible,
-    prefs::kNtpSharepointModuleVisible,
-    base::Value::Type::BOOLEAN },
   { key::kOriginAgentClusterDefaultEnabled,
     prefs::kOriginAgentClusterDefaultEnabled,
     base::Value::Type::BOOLEAN},
@@ -3537,21 +3520,13 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-  handlers->AddHandler(std::make_unique<SimpleDeprecatingPolicyHandler>(
-      std::make_unique<SimplePolicyHandler>(key::kLensDesktopNTPSearchEnabled,
-                                            prefs::kLensDesktopNTPSearchEnabled,
-                                            base::Value::Type::BOOLEAN),
-      std::make_unique<contextual_search::SearchContentSharingPolicyHandler>(
-          prefs::kLensDesktopNTPSearchEnabled,
-          /* convert_policy_value_to_enabled_boolean= */ true)));
+  handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
+      key::kLensDesktopNTPSearchEnabled, prefs::kLensDesktopNTPSearchEnabled,
+      base::Value::Type::BOOLEAN));
 #else
-  handlers->AddHandler(std::make_unique<policy::SimpleDeprecatingPolicyHandler>(
-      std::make_unique<SimplePolicyHandler>(
-          key::kLensCameraAssistedSearchEnabled,
-          lens::kLensCameraAssistedSearchEnabled, base::Value::Type::BOOLEAN),
-      std::make_unique<contextual_search::SearchContentSharingPolicyHandler>(
-          lens::kLensCameraAssistedSearchEnabled,
-          /* convert_policy_value_to_enabled_boolean= */ true)));
+  handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
+      key::kLensCameraAssistedSearchEnabled,
+      lens::kLensCameraAssistedSearchEnabled, base::Value::Type::BOOLEAN));
 #endif  // !BUILDFLAG(IS_ANDROID)
   gen_ai_default_policies.emplace_back(
       key::kAIModeSettings, omnibox::kAIModeSettings,
@@ -3569,13 +3544,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   gen_ai_default_policies.emplace_back(key::kVoiceTypingSettings,
                                        prefs::kVoiceTypingSettings);
 #endif
-  // Default value for SearchContentSharingSettings is 0 if
-  // GenAiDefaultSettings value is 0 or 1, or 1 if the latter is 2.
-  gen_ai_default_policies.emplace_back(
-      key::kSearchContentSharingSettings,
-      contextual_search::kSearchContentSharingSettings,
-      GenAiDefaultSettingsPolicyHandler::PolicyValueToPrefMap(
-          {{0, 0}, {1, 0}, {2, 1}}));
   gen_ai_default_policies.emplace_back(
       key::kFindAndFillWithGeminiSettings,
       optimization_guide::prefs::kFindAndFillWithGeminiSettings);

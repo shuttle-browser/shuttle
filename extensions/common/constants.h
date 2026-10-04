@@ -325,10 +325,6 @@ inline constexpr char kChromeResourcesTestExtensionId[] =
 // replacement.
 inline constexpr char kIndigoExtensionId[] = "gcgachbpjjonjloecffgdajegokngglh";
 
-// The extension id of the AIM Eligibility component extension.
-inline constexpr char kAimEligibilityExtensionId[] =
-    "kgjeljgkbckpoekmgjfplammhcggiiaf";
-
 // The extension id of the Contextual Tasks component extension.
 inline constexpr char kContextualTasksExtensionId[] =
     "glbjnfimcajjenihimblfaponejbkoph";

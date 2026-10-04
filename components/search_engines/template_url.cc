@@ -1850,24 +1850,8 @@ std::string TemplateURL::GetSuggestionClient(
           metrics::OmniboxEventProto::CO_BROWSING_COMPOSEBOX) {
         return "chrome-cobrowse-compose";
       }
-      // SearchTermsData::RequestSource::COMPOSEBOX will use
-      // "chrome-omni" for delayed context uploads.
-      // TODO(crbug.com/460858102): Figure out how to support delayed uploads
-      // using "chrome-compose."
-      if (base::FeatureList::IsEnabled(
-              omnibox::kComposeboxUsesChromeComposeClient)) {
-        // `kComposeboxUsesChromeComposeClient` is ENABLED
-        if (search_terms_args.page_classification ==
-                metrics::OmniboxEventProto::NTP_COMPOSEBOX &&
-            !search_terms_args.current_page_url.empty()) {
-          return "chrome-omni";
-        } else {
-          return omnibox::kComposeboxClientOverride.Get();
-        }
-      } else {
-        // `kComposeboxUsesChromeComposeClient` is DISABLED
-        return "chrome-omni";
-      }
+      // SearchTermsData::RequestSource::COMPOSEBOX uses "chrome-omni".
+      return "chrome-omni";
     }
     case SearchTermsData::RequestSource::NTP_ACTION_CHIPS: {
       return "chrome-ntp-action";

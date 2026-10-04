@@ -60,10 +60,6 @@ TemplateURLService* OmniboxClient::GetTemplateURLService() {
   return nullptr;
 }
 
-AiModeButtonService* OmniboxClient::GetAiModeButtonService() {
-  return nullptr;
-}
-
 AutocompleteClassifier* OmniboxClient::GetAutocompleteClassifier() {
   return nullptr;
 }
@@ -155,10 +151,6 @@ gfx::Image OmniboxClient::GetFaviconForIconUrl(
 }
 
 bool OmniboxClient::IsHistoryEmbeddingsEnabled() const {
-  return false;
-}
-
-bool OmniboxClient::IsAimPopupEnabled() const {
   return false;
 }
 

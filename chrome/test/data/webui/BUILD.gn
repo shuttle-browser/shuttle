@@ -35,10 +35,8 @@ source_set("browser_tests") {
   deps = [
     "//chrome/browser:browser_features",
     "//chrome/browser:chrome_content_browser_client",
-    "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/tabs/tab_group_home:constants",
-    "//chrome/browser/ui/webui/new_tab_page/composebox/variations",
     "//chrome/test:test_support",
     "//components/metrics_services_manager",
     "//components/ukm",
@@ -54,7 +52,6 @@ source_set("browser_tests") {
   }
 
   if (enable_webui_ntp) {
-    sources += [ "new_tab_page/new_tab_page_a11y_browsertest.cc" ]
     deps += [ "//components/search" ]
   }
 
@@ -83,16 +80,12 @@ source_set("browser_tests") {
       "metrics_internals/metrics_internals_browsertest.cc",
       "multistep_filter_internals/multistep_filter_internals_browsertest.cc",
       "net_internals/net_internals_browsertest.cc",
-      "new_tab_footer/new_tab_footer_browsertest.cc",
-      "new_tab_page/new_tab_page_browsertest.cc",
-      "new_tab_shared/new_tab_shared_browsertest.cc",
       "omnibox_popup/omnibox_popup_browsertest.cc",
       "optimization_guide_internals/optimization_guide_internals_browsertest.cc",
       "password_manager/password_manager_browsertest.cc",
       "password_manager_internals/password_manager_internals_browsertest.cc",
       "sandbox/sandbox_browsertest.cc",
       "settings/settings_browsertest.cc",
-      "side_panel/customize_chrome/customize_chrome_browsertest.cc",
       "side_panel/history_clusters/history_clusters_browsertest.cc",
       "side_panel/read_anything/read_anything_browsertest.cc",
       "side_panel/reading_list/reading_list_browsertest.cc",
@@ -233,7 +226,6 @@ source_set("browser_tests") {
   }
 
   if (is_win || is_mac) {
-    sources += [ "omnibox_everywhere/omnibox_everywhere_browsertest.cc" ]
   }
 
   if (is_win || is_mac || is_linux || is_chromeos) {
@@ -345,14 +337,13 @@ source_set("interactive_ui_tests") {
 
   sources = [ "cr_elements/cr_elements_focus_interactive_uitest.cc" ]
 
-  deps = [ "//chrome/browser/ui/webui/new_tab_page/composebox/variations" ]
+  deps = []
 
   if (!is_android) {
     sources += [
       "cr_components/cr_components_interactive_uitest.cc",
       "downloads/downloads_focus_interactive_uitest.cc",
       "history/history_focus_interactive_uitest.cc",
-      "new_tab_page/new_tab_page_focus_interactive_uitest.cc",
       "password_manager/password_manager_focus_test.cc",
       "settings/settings_focus_interactive_uitest.cc",
       "support_tool/support_tool_focus_interactive_uitest.cc",
@@ -392,7 +383,6 @@ source_set("interactive_ui_tests") {
 
   if (!is_android) {
     deps += [
-      "//chrome/browser/autocomplete:aim_eligibility_service",
       "//chrome/browser/ui:ui_features",
       "//components/history_clusters/core",
       "//components/password_manager/content/common",
@@ -554,11 +544,9 @@ generate_grd("build_grd") {
   if (enable_webui_ntp) {
     deps += [
       "cr_components/searchbox:build_grdp",
-      "new_tab_page:build_grdp",
     ]
     grdp_files += [
       "$target_gen_dir/cr_components/searchbox/resources.grdp",
-      "$target_gen_dir/new_tab_page/resources.grdp",
     ]
   }
 
@@ -594,9 +582,6 @@ generate_grd("build_grd") {
       "mojo:build_grdp",
       "multistep_filter_internals:build_grdp",
       "net_internals:build_grdp",
-      "new_tab_footer:build_grdp",
-      "new_tab_shared:build_grdp",
-      "omnibox_everywhere:build_grdp",
       "omnibox_popup:build_grdp",
       "optimization_guide_internals:build_grdp",
       "password_manager:build_grdp",
@@ -604,7 +589,6 @@ generate_grd("build_grd") {
       "sandbox:build_grdp",
       "settings:build_grdp",
       "side_panel:build_grdp",
-      "side_panel/customize_chrome:build_grdp",
       "side_panel/read_anything:build_grdp",
       "subresource_filter:build_grdp",
       "support_tool:build_grdp",
@@ -642,16 +626,12 @@ generate_grd("build_grd") {
       "$target_gen_dir/multistep_filter_internals/resources.grdp",
       "$target_gen_dir/management/resources.grdp",
       "$target_gen_dir/net_internals/resources.grdp",
-      "$target_gen_dir/new_tab_footer/resources.grdp",
-      "$target_gen_dir/new_tab_shared/resources.grdp",
-      "$target_gen_dir/omnibox_everywhere/resources.grdp",
       "$target_gen_dir/omnibox_popup/resources.grdp",
       "$target_gen_dir/optimization_guide_internals/resources.grdp",
       "$target_gen_dir/password_manager/resources.grdp",
       "$target_gen_dir/password_manager_internals/resources.grdp",
       "$target_gen_dir/sandbox/resources.grdp",
       "$target_gen_dir/settings/resources.grdp",
-      "$target_gen_dir/side_panel/customize_chrome/resources.grdp",
       "$target_gen_dir/side_panel/read_anything/resources.grdp",
       "$target_gen_dir/side_panel/resources.grdp",
       "$target_gen_dir/subresource_filter/resources.grdp",
@@ -668,10 +648,8 @@ generate_grd("build_grd") {
   if (!is_android || is_desktop_android) {
     deps += [
       "cr_components:build_grdp",
-      "cr_components/composebox:build_grdp",
     ]
     grdp_files += [
-      "$target_gen_dir/cr_components/composebox/resources.grdp",
       "$target_gen_dir/cr_components/resources.grdp",
     ]
   }
