@@ -1,5 +1,0 @@
-# Owners for all BUILD.gn files under this directory and its subdirectories.
-
-file://chrome/browser/ui/browser_window/public/android/OWNERS
-
-rdevlin.cronin@chromium.org

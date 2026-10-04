@@ -629,86 +629,10 @@
 	path = chrome/app/theme/google_chrome
 	url = https://chrome-internal.googlesource.com/chrome/theme/google_chrome
 	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/actor/resources/internal"]
-	path = chrome/browser/actor/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/actor/resources/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/cpu_performance_internal"]
-	path = chrome/browser/cpu_performance_internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/cpu_performance_internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/enterprise/connectors/internal"]
-	path = chrome/browser/enterprise/connectors/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/enterprise/connectors/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/glic/resources/internal"]
-	path = chrome/browser/glic/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/glic/resources/internal
-	gclient-condition = checkout_src_internal
 [submodule "chrome/browser/glic/e2e_test/internal"]
 	path = chrome/browser/glic/e2e_test/internal
 	url = https://chrome-internal.googlesource.com/chrome/browser/glic/test/internal
 	gclient-condition = checkout_glic_e2e_tests
-[submodule "chrome/browser/indigo/resources/internal"]
-	path = chrome/browser/indigo/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/indigo/resources/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/google/linkdoctor_internal"]
-	path = chrome/browser/google/linkdoctor_internal
-	url = https://chrome-internal.googlesource.com/chrome/linkdoctor
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/internal"]
-	path = chrome/browser/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser_internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/media/engagement_internal"]
-	path = chrome/browser/media/engagement_internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/media/engagement_internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/nearby_sharing/internal"]
-	path = chrome/browser/nearby_sharing/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/nearby_sharing/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/payments/internal"]
-	path = chrome/browser/payments/internal
-	url = https://chrome-internal.googlesource.com/chrome/payments
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/platform_experience/win"]
-	path = chrome/browser/platform_experience/win
-	url = https://chrome-internal.googlesource.com/chrome/browser/platform_experience/win
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/resources/downloads/internal"]
-	path = chrome/browser/resources/downloads/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/resources/downloads_internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/resources/history/internal"]
-	path = chrome/browser/resources/history/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/resources/history/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/resources/settings/internal"]
-	path = chrome/browser/resources/settings/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/resources/settings_internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/resources/webui_browser/internal"]
-	path = chrome/browser/resources/webui_browser/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/resources/webui_browser/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/resources/webui_toolbar/internal"]
-	path = chrome/browser/resources/webui_toolbar/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/resources/webui_toolbar/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/ttc/resources/internal"]
-	path = chrome/browser/ttc/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/ttc/resources/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/browser/spellchecker/internal"]
-	path = chrome/browser/spellchecker/internal
-	url = https://chrome-internal.googlesource.com/chrome/spellchecker/internal
-	gclient-condition = checkout_src_internal
-[submodule "chrome/common/request_header_integrity/internal"]
-	path = chrome/common/request_header_integrity/internal
-	url = https://chrome-internal.googlesource.com/chrome/browser/request_header_integrity/internal
-	gclient-condition = checkout_src_internal
 [submodule "chrome/test/data/firefox3_profile/searchplugins"]
 	path = chrome/test/data/firefox3_profile/searchplugins
 	url = https://chrome-internal.googlesource.com/chrome/data/osdd/firefox3_profile_searchplugins
@@ -741,62 +665,6 @@
 	path = chrome/tools/memory
 	url = https://chrome-internal.googlesource.com/chrome/tools/memory
 	gclient-condition = checkout_win and checkout_src_internal
-[submodule "chrome/services/speech/internal"]
-	path = chrome/services/speech/internal
-	url = https://chrome-internal.googlesource.com/chromeos/speech
-	gclient-condition = checkout_chromeos and checkout_src_internal
-[submodule "chrome/updater/internal"]
-	path = chrome/updater/internal
-	url = https://chrome-internal.googlesource.com/chrome/updater/internal
-	gclient-condition = checkout_src_internal
-[submodule "components/accessibility/internal"]
-	path = components/accessibility/internal
-	url = https://chrome-internal.googlesource.com/chrome-accessibility
-	gclient-condition = checkout_src_internal
-[submodule "components/activity_reporter/internal"]
-	path = components/activity_reporter/internal
-	url = https://chrome-internal.googlesource.com/activity_reporter_internal
-	gclient-condition = checkout_src_internal
-[submodule "components/autofill/core/browser/geo/chrome_alternative_state_name_maps"]
-	path = components/autofill/core/browser/geo/chrome_alternative_state_name_maps
-	url = https://chrome-internal.googlesource.com/chrome/components/autofill_alternative_state_name_maps
-	gclient-condition = checkout_src_internal
-[submodule "components/autofill/core/browser/form_parsing/internal_resources"]
-	path = components/autofill/core/browser/form_parsing/internal_resources
-	url = https://chrome-internal.googlesource.com/chrome/components/autofill_regex_patterns
-	gclient-condition = checkout_src_internal
-[submodule "components/crash/core/app/internal"]
-	path = components/crash/core/app/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/crash
-	gclient-condition = checkout_src_internal
-[submodule "components/internal"]
-	path = components/internal
-	url = https://chrome-internal.googlesource.com/chrome/components
-	gclient-condition = checkout_src_internal
-[submodule "components/metrics/internal"]
-	path = components/metrics/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/metrics/internal
-	gclient-condition = checkout_src_internal
-[submodule "components/ntp_tiles/resources/internal"]
-	path = components/ntp_tiles/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/ntp_tiles/resources
-	gclient-condition = checkout_src_internal
-[submodule "components/optimization_guide/internal"]
-	path = components/optimization_guide/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/optimization_guide
-	gclient-condition = checkout_src_internal
-[submodule "components/record_replay/internal"]
-	path = components/record_replay/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/record_replay
-	gclient-condition = checkout_src_internal
-[submodule "components/safe_browsing/internal"]
-	path = components/safe_browsing/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/safe_browsing/internal
-	gclient-condition = checkout_src_internal
-[submodule "components/site_isolation/internal"]
-	path = components/site_isolation/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/site_isolation
-	gclient-condition = checkout_src_internal
 [submodule "components/test/data/autofill/heuristics-json/internal"]
 	path = components/test/data/autofill/heuristics-json/internal
 	url = https://chrome-internal.googlesource.com/chrome/test/autofill/structured_forms
@@ -805,10 +673,6 @@
 	path = components/test/data/autofill/label-doms/internal
 	url = https://chrome-internal.googlesource.com/chrome/test/autofill/field_labels
 	gclient-condition = checkout_chromium_autofill_test_dependencies
-[submodule "components/vector_icons/google_chrome"]
-	path = components/vector_icons/google_chrome
-	url = https://chrome-internal.googlesource.com/chrome/vector_icons/google_chrome
-	gclient-condition = checkout_src_internal
 [submodule "content/test/data/plugin"]
 	path = content/test/data/plugin
 	url = https://chrome-internal.googlesource.com/chrome/data/chrome_plugin_tests
@@ -836,10 +700,6 @@
 [submodule "remoting/tools/internal"]
 	path = remoting/tools/internal
 	url = https://chrome-internal.googlesource.com/chrome/remoting/tools/internal
-	gclient-condition = checkout_src_internal
-[submodule "services/shape_detection/internal"]
-	path = services/shape_detection/internal
-	url = https://chrome-internal.googlesource.com/chrome/services/shape_detection
 	gclient-condition = checkout_src_internal
 [submodule "signing_keys"]
 	path = signing_keys
@@ -877,10 +737,6 @@
 	path = tools/perf/data
 	url = https://chrome-internal.googlesource.com/chrome/tools/perf/data
 	gclient-condition = checkout_src_internal
-[submodule "ui/webui/internal"]
-	path = ui/webui/internal
-	url = https://chrome-internal.googlesource.com/chrome/ui-webui-internal
-	gclient-condition = checkout_chromeos and checkout_src_internal
 [submodule "webkit/data/bmp_decoder"]
 	path = webkit/data/bmp_decoder
 	url = https://chrome-internal.googlesource.com/chrome/data/bmp_decoder
