@@ -12,7 +12,6 @@
 #include "chrome/common/chrome_constants.h"
 #include "components/history/core/browser/history_constants.h"
 #include "components/sessions/core/session_constants.h"
-#include "components/strike_database/strike_database.h"
 #include "components/webdata/common/webdata_constants.h"
 #include "content/public/browser/browsing_data_remover.h"
 
@@ -82,11 +81,6 @@ std::vector<SnapshotItemDetails> CollectProfileItems() {
       SnapshotItemDetails(
           base::FilePath(kWebDataFilename),
           SnapshotItemDetails::ItemType::kFile,
-          chrome_browsing_data_remover::DATA_TYPE_PASSWORDS |
-              chrome_browsing_data_remover::DATA_TYPE_FORM_DATA),
-      SnapshotItemDetails(
-          base::FilePath(strike_database::kStrikeDatabaseFileName),
-          SnapshotItemDetails::ItemType::kDirectory,
           chrome_browsing_data_remover::DATA_TYPE_PASSWORDS |
               chrome_browsing_data_remover::DATA_TYPE_FORM_DATA),
       // Cookies

@@ -58,7 +58,7 @@ export class PageActionIconElement extends PageActionIconElementBase {
   }
 
   accessor state: PageActionState = {
-    pageActionId: PageActionId.kActionAiMode,
+    pageActionId: PageActionId.kActionIndigo,
     accessibleName: '',
     tooltipText: '',
     icon: {handleId: 0n},

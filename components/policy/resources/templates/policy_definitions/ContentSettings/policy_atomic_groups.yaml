@@ -17,18 +17,6 @@ JavascriptSettings:
   - DefaultJavaScriptSetting
   - JavaScriptAllowedForUrls
   - JavaScriptBlockedForUrls
-KeygenSettings:
-  caption: Keygen settings
-  policies:
-  - DefaultKeygenSetting
-  - KeygenAllowedForUrls
-  - KeygenBlockedForUrls
-LegacySameSiteCookieBehaviorSettings:
-  caption: Legacy <ph name="ATTRIBUTE_SAMESITE_NAME">SameSite</ph> cookie behavior
-    settings
-  policies:
-  - LegacySameSiteCookieBehaviorEnabled
-  - LegacySameSiteCookieBehaviorEnabledForDomainList
 LocalFontsSettings:
   caption: Local Fonts settings
   policies:
@@ -41,12 +29,6 @@ NotificationsSettings:
   - DefaultNotificationsSetting
   - NotificationsAllowedForUrls
   - NotificationsBlockedForUrls
-PluginsSettings:
-  caption: Plugins settings
-  policies:
-  - DefaultPluginsSetting
-  - PluginsAllowedForUrls
-  - PluginsBlockedForUrls
 PopupsSettings:
   caption: Pop-ups settings
   policies:
@@ -63,7 +45,6 @@ WebUsbSettings:
   caption: Web USB settings
   policies:
   - DefaultWebUsbGuardSetting
-  - DeviceLoginScreenWebUsbAllowDevicesForUrls
   - WebUsbAllowDevicesForUrls
   - WebUsbAskForUrls
   - WebUsbBlockedForUrls
@@ -76,12 +57,6 @@ WindowManagementSettings:
   - DefaultWindowPlacementSetting
   - WindowPlacementAllowedForUrls
   - WindowPlacementBlockedForUrls
-WebPrintingSettings:
-  caption: Web Printing settings
-  policies:
-  - DefaultWebPrintingSetting
-  - WebPrintingAllowedForUrls
-  - WebPrintingBlockedForUrls
 DirectSocketsSettings:
   caption: Direct Sockets settings
   policies:
@@ -97,23 +72,11 @@ ControlledFrameSettings:
   - DefaultControlledFrameSetting
   - ControlledFrameAllowedForUrls
   - ControlledFrameBlockedForUrls
-SmartCardConnectSettings:
-  caption: Smart Card Connect settings
-  policies:
-  - SmartCardConnectAllowedForUrls
-  - SmartCardConnectBlockedForUrls
-  - DefaultSmartCardConnectSetting
 LegacyCookieScopeSettings:
   caption: Legacy Cookie Scope settings
   policies:
   - LegacyCookieScopeEnabled
   - LegacyCookieScopeEnabledForDomainList
-DeviceAttributesSettings:
-  caption: Device Attributes settings
-  policies:
-  - DefaultDeviceAttributesSetting
-  - DeviceAttributesAllowedForOrigins
-  - DeviceAttributesBlockedForOrigins
 GeolocationSettings:
   caption: Geolocation settings
   policies:

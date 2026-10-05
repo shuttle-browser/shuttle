@@ -168,7 +168,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
       {"hostAccessOnAllSites", IDS_EXTENSIONS_HOST_ACCESS_ON_ALL_SITES},
       {"hostAccessAllowOnAllSites",
        IDS_EXTENSIONS_HOST_ACCESS_ALLOW_ON_ALL_SITES},
-      {"hostAllowedHosts", IDS_EXTENSIONS_ITEM_ALLOWED_HOSTS},
       {"itemId", IDS_EXTENSIONS_ITEM_ID},
       {"itemInspectViews", IDS_EXTENSIONS_ITEM_INSPECT_VIEWS},
       // NOTE: This text reads "<n> more". It's possible that it should be using
@@ -215,8 +214,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
       {"activityLogExpandAll", IDS_EXTENSIONS_ACTIVITY_LOG_EXPAND_ALL},
       {"activityLogCollapseAll", IDS_EXTENSIONS_ACTIVITY_LOG_COLLAPSE_ALL},
       {"activityLogExportHistory", IDS_EXTENSIONS_ACTIVITY_LOG_EXPORT_HISTORY},
-      {"appIcon", IDS_EXTENSIONS_APP_ICON},
-      {"extensionIcon", IDS_EXTENSIONS_EXTENSION_ICON},
       {"extensionA11yAssociation", IDS_EXTENSIONS_EXTENSION_A11Y_ASSOCIATION},
       {"extensionsSectionHeader", IDS_EXTENSIONS_SECTION_HEADER},
       {"pinNewExtensions", IDS_EXTENSIONS_PIN_NEW_EXTENSIONS},
@@ -254,7 +251,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
       // TODO(dpapad): Replace this with an Extensions specific string.
       {"itemSize", IDS_DIRECTORY_LISTING_SIZE},
       {"itemAllowOnFileUrls", IDS_EXTENSIONS_ALLOW_FILE_ACCESS},
-      {"itemAllowOnAllSites", IDS_EXTENSIONS_ALLOW_ON_ALL_URLS},
       {"itemAllowOnFollowingSites", IDS_EXTENSIONS_ALLOW_ON_FOLLOWING_SITES},
       {"itemCollectErrors", IDS_EXTENSIONS_ENABLE_ERROR_COLLECTION},
       {"itemCorruptInstall", IDS_EXTENSIONS_CORRUPTED_EXTENSION},
@@ -352,8 +348,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
        IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_ACTION_MENU_BUTTON_LABEL},
       {"mv2DeprecationPanelFindAlternativeButton",
        IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_FIND_ALTERNATIVE_BUTTON},
-      {"mv2DeprecationPanelFindAlternativeButtonAccLabel",
-       IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_FIND_ALTERNATIVE_BUTTON_ACC_LABEL},
       {"mv2DeprecationPanelRemoveButtonAccLabel",
        IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_REMOVE_BUTTON_ACC_LABEL},
       {"mv2DeprecationMessageDisabledHeader",
@@ -362,10 +356,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
        IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_DISABLED_SUBTITLE},
       {"mv2DeprecationMessageRemoveButton",
        IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_REMOVE_BUTTON},
-      {"mv2DeprecationMessageWarningHeader",
-       IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_WARNING_HEADER},
-      {"mv2DeprecationMessageWarningSubtitle",
-       IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_WARNING_SUBTITLE},
       {"mv2DeprecationUnsupportedExtensionOffText",
        IDS_EXTENSIONS_MV2_DEPRECATION_UNSUPPORTED_EXTENSION_OFF_TEXT},
       {"setShortcutInSystemSettings",
@@ -411,19 +401,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
        IDS_EXTENSIONS_SC_REMOVE_BUTTON_A11Y_LABEL},
       {"safetyCheckOptionMenuA11yLabel",
        IDS_EXTENSIONS_SC_OPTION_MENU_A11Y_LABEL},
-#if BUILDFLAG(IS_CHROMEOS)
-      {"manageKioskApp", IDS_EXTENSIONS_MANAGE_KIOSK_APP},
-      {"kioskAddApp", IDS_EXTENSIONS_KIOSK_ADD_APP},
-      {"kioskAddAppHint", IDS_EXTENSIONS_KIOSK_ADD_APP_HINT},
-      {"kioskEnableAutoLaunch", IDS_EXTENSIONS_KIOSK_ENABLE_AUTO_LAUNCH},
-      {"kioskDisableAutoLaunch", IDS_EXTENSIONS_KIOSK_DISABLE_AUTO_LAUNCH},
-      {"kioskAutoLaunch", IDS_EXTENSIONS_KIOSK_AUTO_LAUNCH},
-      {"kioskInvalidApp", IDS_EXTENSIONS_KIOSK_INVALID_APP},
-      {"kioskDisableBailout",
-       IDS_EXTENSIONS_KIOSK_DISABLE_BAILOUT_SHORTCUT_LABEL},
-      {"kioskDisableBailoutWarningTitle",
-       IDS_EXTENSIONS_KIOSK_DISABLE_BAILOUT_SHORTCUT_WARNING_TITLE},
-#endif  // BUILDFLAG(IS_CHROMEOS)
       {"pendingChangeWarning", IDS_PENDING_CHANGE_WARNING},
   };
   source->AddLocalizedStrings(kLocalizedStrings);
@@ -515,14 +492,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
                           webui::CurrentChannelLogoResourceId());
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(IS_CHROMEOS)
-  source->AddString(
-      "kioskDisableBailoutWarningBody",
-      l10n_util::GetStringFUTF16(
-          IDS_EXTENSIONS_KIOSK_DISABLE_BAILOUT_SHORTCUT_WARNING_BODY,
-          l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_OS_NAME)));
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
   source->AddString("webuiRefresh2026", features::IsWebuiRefresh2026Enabled()
                                             ? "webui-refresh-2026"
                                             : "");
@@ -574,12 +543,6 @@ ExtensionsUI::ExtensionsUI(content::WebUI* web_ui)
                                             IDS_EXTENSIONS_SC_DESCRIPTION);
   plural_string_handler->AddLocalizedString("safetyCheckAllDoneForNow",
                                             IDS_EXTENSIONS_SC_ALL_DONE_FOR_NOW);
-  plural_string_handler->AddLocalizedString(
-      "mv2DeprecationPanelWarningHeader",
-      IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_WARNING_HEADER);
-  plural_string_handler->AddLocalizedString(
-      "mv2DeprecationPanelWarningSubtitle",
-      IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_WARNING_SUBTITLE);
   plural_string_handler->AddLocalizedString(
       "mv2DeprecationPanelDisabledHeader",
       IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_DISABLED_HEADER);

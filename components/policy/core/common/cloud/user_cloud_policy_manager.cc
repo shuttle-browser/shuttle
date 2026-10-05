@@ -170,22 +170,6 @@ void UserCloudPolicyManager::DisconnectAndRemovePolicy() {
   SetPoliciesRequired(false, PolicyFetchReason::kDisconnect);
 }
 
-void UserCloudPolicyManager::GetChromePolicy(PolicyMap* policy_map) {
-  CloudPolicyManager::GetChromePolicy(policy_map);
-
-  // If the store has a verified policy blob received from the server then apply
-  // the defaults for policies that haven't been configured by the administrator
-  // given that this is an enterprise user.
-#if BUILDFLAG(IS_ANDROID)
-  if (store()->has_policy() &&
-      !policy_map->Get(key::kNTPContentSuggestionsEnabled)) {
-    policy_map->Set(key::kNTPContentSuggestionsEnabled, POLICY_LEVEL_MANDATORY,
-                    POLICY_SCOPE_USER, POLICY_SOURCE_ENTERPRISE_DEFAULT,
-                    base::Value(false), nullptr /* external_data_fetcher */);
-  }
-#endif
-}
-
 bool UserCloudPolicyManager::IsFirstPolicyLoadComplete(
     PolicyDomain domain) const {
   return !policies_required_ ||

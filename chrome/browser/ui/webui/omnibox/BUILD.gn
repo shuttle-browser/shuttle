@@ -77,7 +77,6 @@ source_set("omnibox") {
     "//chrome/browser/ui/webui/version",
     "//chrome/common",
     "//components/omnibox/browser",
-    "//components/omnibox/common:features",
     "//components/search_engines",
     "//content/public/common",
     "//services/network/public/mojom",

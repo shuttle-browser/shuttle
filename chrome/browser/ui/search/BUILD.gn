@@ -14,7 +14,6 @@ source_set("search") {
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search",
     "//chrome/common",
-    "//components/ntp_tiles",
     "//content/public/browser",
   ]
   if (!is_android) {
@@ -37,12 +36,8 @@ source_set("impl") {
   deps = [
     ":search",
     "//base",
-    "//chrome/browser:after_startup_task_utils",
     "//chrome/browser/search",
-    "//chrome/browser/search_engines",
     "//chrome/common",
-    "//components/prefs",
-    "//components/search",
   ]
   if (!is_android) {
     sources += [
@@ -52,22 +47,12 @@ source_set("impl") {
       "omnibox_utils.cc",
     ]
     deps += [
-      "//chrome/browser:after_startup_task_utils",
-      "//chrome/browser/history",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/signin",
-      "//chrome/browser/ui:tab_modal_confirm_dialog",
-      "//chrome/browser/ui:tab_modal_confirm_dialog_delegate",
+        "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/omnibox",
       "//chrome/browser/ui/tab_contents",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/user_education",
-      "//components/feature_engagement/public:feature_constants",
-      "//components/navigation_metrics",
-      "//components/profile_metrics",
-      "//components/vector_icons",
       "//content/public/browser",
     ]
 

@@ -233,11 +233,8 @@ bool GetDeletionPreferenceFromDataType(
       *out_pref = prefs::kDeleteCookies;
       return true;
     case BrowsingDataType::PASSWORDS:
-      *out_pref = prefs::kDeletePasswords;
-      return true;
     case BrowsingDataType::FORM_DATA:
-      *out_pref = prefs::kDeleteFormData;
-      return true;
+      return false;
     case BrowsingDataType::SITE_SETTINGS:
       *out_pref = prefs::kDeleteSiteSettings;
       return true;
@@ -262,8 +259,6 @@ std::optional<BrowsingDataType> GetDataTypeFromDeletionPreference(
           {prefs::kDeleteBrowsingHistory, BrowsingDataType::HISTORY},
           {prefs::kDeleteCache, BrowsingDataType::CACHE},
           {prefs::kDeleteCookies, BrowsingDataType::SITE_DATA},
-          {prefs::kDeletePasswords, BrowsingDataType::PASSWORDS},
-          {prefs::kDeleteFormData, BrowsingDataType::FORM_DATA},
           {prefs::kDeleteSiteSettings, BrowsingDataType::SITE_SETTINGS},
           {prefs::kDeleteDownloadHistory, BrowsingDataType::DOWNLOADS},
           {prefs::kDeleteHostedAppsData, BrowsingDataType::HOSTED_APPS_DATA},

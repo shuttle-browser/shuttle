@@ -89,12 +89,6 @@
       <message name="IDS_PARENTAL_LOCAL_APPROVAL_DIALOG_GENERIC_ERROR_BACK_BUTTON" desc="Button of the error dialog that is shown when a supervised user asks for local parental approval, but the request failed. In this scenario, we don't know why the request didn't work, so they need to go back to the previous screen and try again.">
       Back
       </message>
-      <message name="IDS_PARENTAL_LOCAL_APPROVAL_SNACKBAR_GENERIC_ERROR_TITLE" desc="Description of the error snackbar that is shown when a supervised user asks for parental approval, but the request couldn’t be sent. In this scenario, we don’t know why the request didn’t work, so they need to try again.">
-        Something went wrong. Try again.
-      </message>
-      <message name="IDS_PARENTAL_LOCAL_APPROVAL_SNACKBAR_GENERIC_ERROR_BACK_BUTTON" desc="Button of the error snackbar that is shown when a supervised user asks for parental approval, but the request couldn’t be sent. In this scenario, we don’t know why the request didn’t work, so they need to go back to the previous screen and try again.">
-        Close
-      </message>
 
       <if expr="is_android">
         <message name="IDS_NO_APPROVALS_BACK_BUTTON" desc="Button of the error snackbar that is shown when a supervised user can't request approvals. That's the only way out from the error page.">

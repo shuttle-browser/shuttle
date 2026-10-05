@@ -148,7 +148,6 @@
 #include "components/soda/soda_features.h"
 #include "components/spellcheck/common/spellcheck_features.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
-#include "components/strike_database/strike_database_features.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/supervised_user/core/common/features.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
@@ -156,7 +155,6 @@
 #include "components/sync/base/features.h"
 #include "components/sync_preferences/features.h"
 #include "components/tab_groups/features.h"
-#include "components/themes/cross_device/features.h"
 #include "components/thin_webview/features.h"
 #include "components/tracing/common/tracing_switches.h"
 #include "components/trusted_vault/features.h"
@@ -9809,10 +9807,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif  // BUILDFLAG(IS_WIN)
 
 
-    {"disable-autofill-strike-system",
-     flag_descriptions::kDisableAutofillStrikeSystemName,
-     flag_descriptions::kDisableAutofillStrikeSystemDescription, kOsAll,
-     FEATURE_VALUE_TYPE(strike_database::features::kDisableStrikeSystem)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"show-tab-list-animations", flag_descriptions::kShowTabListAnimationsName,
@@ -10118,10 +10112,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kEnableCrossDevicePrefTrackerDescription, kOsAll,
      FEATURE_VALUE_TYPE(
          sync_preferences::features::kEnableCrossDevicePrefTracker)},
-    {"enable-cross-device-theme-tracker",
-     flag_descriptions::kEnableCrossDeviceThemeTrackerName,
-     flag_descriptions::kEnableCrossDeviceThemeTrackerDescription, kOsAll,
-     FEATURE_VALUE_TYPE(themes::kCrossDeviceThemeTracker)},
 
 #if BUILDFLAG(IS_WIN)
     {

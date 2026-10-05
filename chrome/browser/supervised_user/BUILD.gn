@@ -203,7 +203,6 @@ source_set("impl") {
       "supervised_user_verification_page_youtube.cc",
     ]
     deps += [
-      "//chrome/browser/signin:signin_promo",
       "//chrome/browser/ui:browser_element_identifiers",
       "//chrome/browser/ui/color:color_headers",
       "//chrome/browser/ui/views:layout_provider",

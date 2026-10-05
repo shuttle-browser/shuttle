@@ -49,7 +49,6 @@ source_set("impl") {
   sources = [ "profile_error_dialog.cc" ]
   deps = [
     ":profiles",
-    "//chrome/browser/ui:incognito_allowed_url",
     "//chrome/browser/ui:simple_message_box_headers",
   ]
   public_deps = []

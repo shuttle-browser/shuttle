@@ -726,9 +726,6 @@ OAuthConsumer OAuthConsumerRegistry::GetOAuthConsumerFromId(
           /*name=*/kWalletPassesName,
           /*scopes=*/{kWalletPassesOAuth2Scope});
     }
-    case OAuthConsumerId::kAimEligibilityService:
-      // The AIM eligibility service was removed from this fork.
-      NOTREACHED();
     case OAuthConsumerId::kDevtoolsAiCode:
       return OAuthConsumer(
           /*name=*/kDevtoolsAiCodeName,

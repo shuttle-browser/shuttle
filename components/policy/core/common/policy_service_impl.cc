@@ -57,11 +57,7 @@ namespace {
 void DowngradeMetricsReportingToRecommendedPolicy(PolicyMap* policies) {
   // Capture both the Chrome-only and device-level policies on Chrome OS.
   const std::vector<const char*> metrics_keys = {
-#if BUILDFLAG(IS_CHROMEOS)
-      policy::key::kDeviceMetricsReportingEnabled,
-#else
       policy::key::kMetricsReportingEnabled,
-#endif
   };
   for (const char* policy_key : metrics_keys) {
     PolicyMap::Entry* policy = policies->GetMutable(policy_key);

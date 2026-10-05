@@ -485,12 +485,10 @@ inline constexpr char kDeskAPIThirdPartyAllowlist[] =
 inline constexpr char kPrintingAPIExtensionsAllowlist[] =
     "printing.printing_api_extensions_whitelist";
 
-
 // A boolean specifying whether the insights extension is enabled. If set to
 // true, the CCaaS Chrome component extension will be installed.
 inline constexpr char kInsightsExtensionEnabled[] =
     "insights_extension_enabled";
-
 
 // A boolean pref which turns on the mediaplayer.
 inline constexpr char kLabsMediaplayerEnabled[] = "settings.labs.mediaplayer";
@@ -498,8 +496,6 @@ inline constexpr char kLabsMediaplayerEnabled[] = "settings.labs.mediaplayer";
 // A string pref that contains version where "What's new" promo was shown.
 inline constexpr char kChromeOSReleaseNotesVersion[] =
     "settings.release_notes.version";
-
-
 
 // A boolean pref. If set to true, the Unified Desktop feature is made
 // available and turned on by default, which allows applications to span
@@ -537,7 +533,6 @@ inline constexpr char kMinimumAllowedChromeVersion[] = "minimum_req.version";
 inline constexpr char kShowArcSettingsOnSessionStart[] =
     "start_arc_settings_on_session_start";
 
-
 // Dictionary preference that maps language to default voice name preferences
 // for the users's text-to-speech settings. For example, this might map
 // 'en-US' to 'Chrome OS US English'.
@@ -558,7 +553,6 @@ inline constexpr char kTextToSpeechPitch[] = "settings.tts.speech_pitch";
 // relative to the system volume, where lower than 1.0 is quieter than the
 // system volume, and higher than 1.0 is louder.
 inline constexpr char kTextToSpeechVolume[] = "settings.tts.speech_volume";
-
 
 // A string pref storing the path of device wallpaper image file.
 inline constexpr char kDeviceWallpaperImageFilePath[] =
@@ -906,22 +900,6 @@ inline constexpr char kEnableDoNotTrack[] = "enable_do_not_track";
 inline constexpr char kEnableEncryptedMedia[] =
     "webkit.webprefs.encrypted_media_enabled";
 
-// Boolean that specifies whether to import bookmarks from the default browser
-// on first run.
-inline constexpr char kImportBookmarks[] = "import_bookmarks";
-
-// Boolean that specifies whether to import the browsing history from the
-// default browser on first run.
-inline constexpr char kImportHistory[] = "import_history";
-
-// Boolean that specifies whether to import the homepage from the default
-// browser on first run.
-inline constexpr char kImportHomepage[] = "import_home_page";
-
-// Boolean that specifies whether to import the search engine from the default
-// browser on first run.
-inline constexpr char kImportSearchEngine[] = "import_search_engine";
-
 // Profile avatar and name
 inline constexpr char kProfileAvatarIndex[] = "profile.avatar_index";
 inline constexpr char kProfileName[] = "profile.name";
@@ -1200,9 +1178,6 @@ inline constexpr char kSidePanelCompanionEntryPinnedToToolbar[] =
     "side_panel.companion_pinned_to_toolbar";
 // Stores the mapping of side panel IDs to their widths.
 inline constexpr char kSidePanelIdToWidth[] = "side_panel.id_to_width";
-// Corresponds to the enterprise policy.
-inline constexpr char kGoogleSearchSidePanelEnabled[] =
-    "side_panel.google_search_side_panel_enabled";
 
 // Boolean determining whether the tab search button is pinned to the tab strip.
 inline constexpr char kTabSearchPinnedToTabstrip[] =
@@ -1531,12 +1506,6 @@ inline constexpr char kCommandLineFlagSecurityWarningsEnabled[] =
     "browser.command_line_flag_security_warnings_enabled";
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
-// Boolean value that determines whether the NTP extension attribution on the
-// NTP footer is enabled. This is false when disabled by the
-// `NTPFooterExtensionAttributionEnabled` policy.
-inline constexpr char kNTPFooterExtensionAttributionEnabled[] =
-    "ntp_footer.settings.extension_attribution";
-
 // Pref name for controlling presentation of promotions, including full-tab
 // promotional and/or educational content.
 // This preference replaces browser.promotional_tabs_enabled.
@@ -1570,20 +1539,6 @@ inline constexpr char kUpdateOnZeroWindowEnabled[] =
 // Whether Extensions are enabled.
 inline constexpr char kDisableExtensions[] = "extensions.disabled";
 
-#if BUILDFLAG(IS_ANDROID)
-// Dictionary pref for custom background information.
-inline constexpr char kNtpAndroidCustomBackgroundDict[] =
-    "ntp.android_custom_background_dict";
-
-// Boolean pref for whether the custom background is local to device.
-inline constexpr char kNtpAndroidCustomBackgroundLocalToDevice[] =
-    "ntp.android_custom_background_local_to_device";
-#endif  // BUILDFLAG(IS_ANDROID)
-
-// Keeps track of which sessions are collapsed in the Other Devices menu.
-inline constexpr char kNtpCollapsedForeignSessions[] =
-    "ntp.collapsed_foreign_sessions";
-
 // LINT.IfChange
 inline constexpr char kNtpCustomBackgroundDict[] =
     "ntp.custom_background_dict2";
@@ -1595,100 +1550,15 @@ inline constexpr char kNtpCustomBackgroundLocalToDeviceId[] =
 inline constexpr char kNtpCustomBackgroundInspiration[] =
     "ntp.custom_background_inspiration";
 
-// Name of preference to count of times compose button was shown.
-inline const char kNtpComposeButtonShownCountPrefName[] =
-    "ntp.compose_button.shown_count";
-
-#if BUILDFLAG(IS_ANDROID)
-// Keeps track of recently closed tabs collapsed state in the Other Devices
-// menu.
-inline constexpr char kNtpCollapsedRecentlyClosedTabs[] =
-    "ntp.collapsed_recently_closed_tabs";
-
-// Keeps track of snapshot documents collapsed state in the Other Devices menu.
-inline constexpr char kNtpCollapsedSnapshotDocument[] =
-    "ntp.collapsed_snapshot_document";
-
-// Keeps track of sync promo collapsed state in the Other Devices menu.
-inline constexpr char kNtpCollapsedSyncPromo[] = "ntp.collapsed_sync_promo";
-#endif  // BUILDFLAG(IS_ANDROID)
-
 // Holds info for New Tab Page custom background
 // Use `kNtpCustomBackgroundDict` only.
 inline constexpr char kDeprecatedNtpCustomBackgroundDictDoNotUse[] =
     "ntp.custom_background_dict";
-// Number of times the user has opened the side panel with the customize chrome
-// button.
-inline constexpr char kNtpCustomizeChromeButtonOpenCount[] =
-    "NewTabPage.CustomizeChromeButtonOpenCount";
-// List keeping track of disabled NTP modules.
-inline constexpr char kNtpDisabledModules[] = "NewTabPage.DisabledModules";
 
 // Dictionary containing the state of the context menu button animation.
 inline constexpr char kContextMenuAnimationState[] =
     "context_menu_animation_state";
 
-// List keeping track of modules hidden in Customize Chrome.
-inline constexpr char kNtpCustomizeChromeHiddenModules[] =
-    "NewTabPage.CustomizeChromeHiddenModules";
-// Number of how many times Customize Chrome was auto opened on NTP.
-inline constexpr char kNtpCustomizeChromeSidePanelAutoOpeningsCount[] =
-    "NewTabPage.CustomizeChromeSidePanelAutoOpeningsCount";
-// Whether user has explicitly canceled Customize Chrome side panel.
-inline constexpr char kNtpCustomizeChromeExplicitlyClosed[] =
-    "NewTabPage.CustomizeChromeExplicitlyClosed";
-// Whether Customize Chrome IPH was auto opened on NTP.
-inline constexpr char kNtpCustomizeChromeIPHAutoOpened[] =
-    "NewTabPage.CustomizeChromeIPHAutoOpened";
-// List keeping track of modules not allowed to show on New Tab Page.
-inline constexpr char kNtpHiddenModules[] = "NewTabPage.HiddenModules";
-// Time the Microsoft files module was last dismissed.
-inline constexpr char kNtpMicrosoftFilesModuleLastDismissedTime[] =
-    "NewTabPage.MicrosoftFilesModuleLastDismissedTime";
-// The next time file suggestions can be requested after hitting a throttling
-// error.
-inline constexpr char kNtpMicrosoftFilesModuleRetryAfterTime[] =
-    "NewTabPage.MicrosoftFilesModuleRetryAfterTime";
-// List keeping track of NTP modules order.
-inline constexpr char kNtpModulesOrder[] = "NewTabPage.ModulesOrder";
-// Whether NTP modules are visible.
-inline constexpr char kNtpModulesVisible[] = "NewTabPage.ModulesVisible";
-// Whether the AI action chips are visible in the NTP.
-inline constexpr char kNtpToolChipsVisible[] = "NewTabPage.ToolChipsVisible";
-// Dictionary of number of times a module has loaded.
-inline constexpr char kNtpModulesLoadedCountDict[] =
-    "NewTabPage.ModulesLoadedCountDict";
-// Dictionary of number of times the user has interacted with a module.
-inline constexpr char kNtpModulesInteractedCountDict[] =
-    "NewTabPage.ModulesInteractedCountDict";
-// Whether a user's file attachment page can be successfully retrieved. Kept in
-// sync with `kOutlookCalendarLastAttachmentRequestTime.`
-inline constexpr char kNtpOutlookCalendarLastAttachmentRequestSuccess[] =
-    "NewTabPage.OutlookCalendar.LastAttachmentRequestSuccess";
-// The last time the validity of an attachment's resource URL was checked.
-inline constexpr char kNtpOutlookCalendarLastAttachmentRequestTime[] =
-    "NewTabPage.OutlookCalendar.LastAttachmentRequestTime";
-// Time the Outlook Calendar module was last dismissed.
-inline constexpr char kNtpOutlookCalendarLastDismissedTime[] =
-    "NewTabPage.OutlookCalendar.LastDismissedTime";
-// The next time a user's Outlook calendar data can be requested after hitting a
-// throttling error.
-inline constexpr char kNtpOutlookCalendarRetryAfterTime[] =
-    "NewTabPage.OutlookCalendar.RetryAfterTime";
-// Whether NTP Outlook Calendar module is visible.
-inline constexpr char kNtpOutlookModuleVisible[] =
-    "NewTabPage.OutlookModuleVisible";
-// Whether the promo is visible.
-inline constexpr char kNtpPromoVisible[] = "ntp.promo_visible";
-// Whether NTP Sharepoint module is visible.
-inline constexpr char kNtpSharepointModuleVisible[] =
-    "NewTabPage.SharepointModuleVisible";
-// Number of times NTP wallpaper search button animation has been visible.
-inline constexpr char kNtpWallpaperSearchButtonShownCount[] =
-    "NewTabPage.WallpaperSearchButtonShownCount";
-// List of ids for past wallpaper search themes.
-inline constexpr char kNtpWallpaperSearchHistory[] =
-    "ntp.wallpaper_search_history";
 // Number of times the seed color has been changed via the Customize Chrome
 // panel across NTP tabs. Incremented at most once per NTP tab.
 inline constexpr char kSeedColorChangeCount[] =
@@ -1895,13 +1765,6 @@ inline constexpr char kLastNavigationCapturingMigrationState[] =
 inline constexpr char kWebAppsPreviouslyAppSupportedLinks[] =
     "web_apps.previously_app_supported_links";
 #endif
-
-#if BUILDFLAG(IS_MAC)
-// A boolean that indicates whether ad-hoc code signing should be used for
-// PWA app shims. This is managed by enterprise policy.
-inline constexpr char kWebAppsUseAdHocCodeSigningForAppShims[] =
-    "web_apps.use_adhoc_code_signing_for_app_shims";
-#endif  // BUILDFLAG(IS_MAC)
 
 // The default audio capture device used by the Media content setting.
 // TODO(crbug.com/311205211): Remove this once users have been migrated to
@@ -2253,12 +2116,6 @@ inline constexpr char kDeviceRobotAnyApiRefreshTokenV2[] =
 inline constexpr char kDeviceRefreshTokenAnyApiIsV3Used[] =
     "device_refresh_token_is_v3_used.any-api";
 
-
-
-
-
-
-
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 // String which specifies where to store the disk cache.
@@ -2266,9 +2123,6 @@ inline constexpr char kDiskCacheDir[] = "browser.disk_cache_dir";
 // Pref name for the policy specifying the maximal cache size.
 inline constexpr char kDiskCacheSize[] = "browser.disk_cache_size";
 
-
-// Pref name for the policy controlling whether to enable Media Router.
-inline constexpr char kEnableMediaRouter[] = "media_router.enable_media_router";
 #if !BUILDFLAG(IS_ANDROID)
 // Pref name for the policy controlling whether to force the Cast icon to be
 // shown in the toolbar/overflow menu.
@@ -2395,7 +2249,6 @@ inline constexpr char kPreviousIsolationState[] = "isolation_state.previous";
 inline constexpr char kHardwareAccelerationModePrevious[] =
     "hardware_acceleration_mode_previous";
 
-
 #if !BUILDFLAG(IS_ANDROID)
 // A boolean where true means that the browser has previously attempted to
 // enable autoupdate and failed, so the next out-of-date browser start should
@@ -2505,10 +2358,6 @@ inline constexpr char kBrowserProfilePickerShown[] = "profile.picker_shown";
 // Whether to show the profile picker on startup or not.
 inline constexpr char kBrowserShowProfilePickerOnStartup[] =
     "profile.show_picker_on_startup";
-
-// Boolean which indicate if signin interception is enabled.
-inline constexpr char kSigninInterceptionEnabled[] =
-    "signin.interception_enabled";
 
 #if BUILDFLAG(IS_CHROMEOS)
 // A dictionary pref of the echo offer check flag. It sets offer info when
@@ -2934,7 +2783,6 @@ inline constexpr char kOriginAgentClusterDefaultEnabled[] =
 // sent by this client, across all profiles.
 inline constexpr char kSCTAuditingHashdanceReportCount[] =
     "sct_auditing.hashdance_report_count";
-
 
 #if !BUILDFLAG(IS_ANDROID)
 // An integer count of how many times the user has seen the memory saver mode

@@ -122,7 +122,6 @@ export {SettingsLiveCaptionElement} from './a11y_page/live_caption.js';
 export {SettingsLiveTranslateElement} from './a11y_page/live_translate.js';
 // </if>
 
-export {AiEnterpriseFeaturePrefName} from './ai_page/constants.js';
 export {SettingsAppearanceFontsPageElement} from './appearance_page/appearance_fonts_page.js';
 export {BrowsingDataType, ClearBrowsingDataBrowserProxyImpl, TimePeriod} from './clear_browsing_data_dialog/clear_browsing_data_browser_proxy.js';
 export type {ClearBrowsingDataBrowserProxy, ClearBrowsingDataResult, UpdateSyncStateEvent} from './clear_browsing_data_dialog/clear_browsing_data_browser_proxy.js';

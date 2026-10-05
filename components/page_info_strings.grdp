@@ -101,16 +101,6 @@
   <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_SAVED_PASSWORD_SUMMARY" desc="A one-line summary at the top of the Page Info bubble (which shows when you click the security indicator) if user has reuse a saved password on current website.">
     Check your passwords
   </message>
-  <if expr="_google_chrome">
-    <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_SAVED" desc="A short paragraph explaining to a Chrome user that they have reused their saved password on the current website.">
-      You just entered your password on a deceptive site. To secure your accounts, Chrome recommends checking your saved passwords.
-    </message>
-  </if>
-  <if expr="not _google_chrome">
-    <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_SAVED" desc="A short paragraph explaining to a Chromium user that they have reused their saved password on the current website.">
-      You just entered your password on a deceptive site. To secure your accounts, Chromium recommends checking your saved passwords.
-    </message>
-  </if>
   <if expr="use_titlecase">
     <message name="IDS_PAGE_INFO_CHECK_PASSWORDS_BUTTON" desc="In Title Case: The string used in the page info check passwords button.">
       Check Passwords
@@ -134,10 +124,6 @@
       Turn on warnings
     </message>
 
-    <!-- Old connection info UI. Only used on Android, but still compiled on desktop. -->
-    <message name="IDS_PAGE_INFO_HELP_CENTER_LINK" desc="This is the text of the link pointing to the Help Center. This appears at the bottom of the SSL dialog and 'this' refers to the sections within the bubble.">
-      What do these mean?
-    </message>
     <message name="IDS_PAGE_INFO_SECURITY_TAB_DEPRECATED_SIGNATURE_ALGORITHM" desc="The security summary phrase in the page information panel for a security problem where the site's certificate chain contains a SHA1 signature. Such certificates are treated as errors except when a policy override is present.">
       The certificate chain for this site contains a certificate signed using SHA-1.
     </message>
@@ -419,14 +405,6 @@
     </message>
 
     <!-- Link to guide users to system settings. -->
-    <if expr="is_macosx">
-      <message name="IDS_PAGE_INFO_SYSTEM_SETTINGS_LINK" desc="This is the text of the link pointing to macOS's System Settings. This sometimes appears under the notification permission in the Page Info bubble.">
-        System Settings
-      </message>
-      <message name="IDS_PAGE_INFO_NOTIFICATIONS_SYSTEM_SETTINGS_DESCRIPTION" desc="The description for the notifications permission with a link to macOS's System Settings.">
-        Enable notifications in the Notification Center. Open <ph name="LINK">$1<ex>System Settings</ex></ph>.
-      </message>
-    </if>
     <message name="IDS_PAGE_INFO_CAMERA_SYSTEM_SETTINGS_DESCRIPTION" desc="The description for the camera permission with a link to system settings.">
         To use your camera, give Chrome access in <ph name="LINK">$1<ex>system settings</ex></ph>.
     </message>
@@ -496,40 +474,6 @@
       Last used <ph name="NUM_HOURS_MINUTES_SECONDS">$1<ex>2 minutes</ex></ph> ago
     </message>
     <!-- Password Protection -->
-    <if expr="_google_chrome">
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS" desc="A short paragraph explaining to the user that they has reuse their google password on current website.">
-        You could lose access to your Google Account. Chrome recommends changing your password now. You'll be asked to sign in.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_SYNC" desc="A short paragraph explaining to a Chrome sync user that they have reused their Google password on the current website.">
-        Chrome can help you protect your Google Account and change your password.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_SIGNED_IN_NON_SYNC" desc="A short paragraph explaining to a non-sync user that they have reused their Google password on the current website.">
-        You just entered your password on a deceptive site. Chrome can help. To change your password and notify Google that your account may be at risk, click Protect Account.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_ENTERPRISE" desc="A short paragraph explaining to the user that they have reused their password on the current website.">
-        You could lose access to your organization's account or experience identity theft. Chrome recommends changing your password now.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_ENTERPRISE_WITH_ORG_NAME" desc="A short paragraph explaining to the user that they have reused their password on the current website.">
-        You could lose access to your <ph name="ORG_NAME">$1<ex>Google</ex></ph> account or experience identity theft. Chrome recommends changing your password now.
-      </message>
-    </if>
-    <if expr="not _google_chrome">
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS" desc="A short paragraph explaining to the user that they has reuse their google password on current website.">
-        You could lose access to your Google Account. Chromium recommends changing your password now. You'll be asked to sign in.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_SYNC" desc="A short paragraph explaining to a Chrome sync user that they have reused their Google password on the current website.">
-        Chromium can help you protect your Google Account and change your password.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_SIGNED_IN_NON_SYNC" desc="A short paragraph explaining to a non-sync user that they have reused their Google password on the current website.">
-        You just entered your password on a deceptive site. Chromium can help. To change your password and notify Google that your account may be at risk, click Protect Account.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_ENTERPRISE" desc="A short paragraph explaining to the user that they have reused their password on the current website.">
-        You could lose access to your organization's account or experience identity theft. Chromium recommends changing your password now.
-      </message>
-      <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_DETAILS_ENTERPRISE_WITH_ORG_NAME" desc="A short paragraph explaining to the user that they have reused their password on the current website.">
-        You could lose access to your <ph name="ORG_NAME">$1<ex>Google</ex></ph> account or experience identity theft. Chromium recommends changing your password now.
-      </message>
-    </if>
 
     <if expr="use_titlecase">
       <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_BUTTON" desc="In Title Case: The string used in the page info change password button.">
@@ -538,9 +482,6 @@
       <message name="IDS_PAGE_INFO_PROTECT_ACCOUNT_BUTTON" desc="In Title Case: The string used in the page info protect account button.">
         Protect Account
       </message>
-      <message name="IDS_PAGE_INFO_IGNORE_PASSWORD_WARNING_BUTTON" desc="In Title Case: The string used in the page info ignore password warning button.">
-        Ignore
-      </message>
     </if>
     <if expr="not use_titlecase">
       <message name="IDS_PAGE_INFO_CHANGE_PASSWORD_BUTTON" desc="The string used in the page info change password button.">
@@ -548,9 +489,6 @@
       </message>
       <message name="IDS_PAGE_INFO_PROTECT_ACCOUNT_BUTTON" desc="The string used in the page info protect account button.">
         Protect account
-      </message>
-      <message name="IDS_PAGE_INFO_IGNORE_PASSWORD_WARNING_BUTTON" desc="The string used in the page info ignore password warning button.">
-        Ignore
       </message>
     </if>
     <message name="IDS_PAGE_INFO_ALLOWLIST_PASSWORD_REUSE_BUTTON" desc="The string used in the page info allowlist password reuse button.">
@@ -589,9 +527,6 @@
   </message>
   <message name="IDS_CERT_INFO_ORGANIZATIONAL_UNIT_LABEL" desc="The label of the Organizational Unit field in the general page of the certificate info dialog.  (OU) is the name of this field in the standard">
     Organizational Unit (OU)
-  </message>
-  <message name="IDS_CERT_INFO_SERIAL_NUMBER_LABEL" desc="The label of the Serial Number field in the general page of the certificate info dialog.">
-    Serial Number
   </message>
   <message name="IDS_CERT_INFO_VALIDITY_GROUP" desc="The label of the group showing the validity (issued and expired dates) in the general page of the certificate info dialog">
     Validity Period
@@ -970,41 +905,10 @@
     Sync settings
   </message>
 
-  <!-- Merchant trust strings -->
-  <message name="IDS_MERCHANT_TRUST_SIDE_PANEL_TITLE" desc="The title of the merchant trust side panel.">
-    What people are saying
-  </message>
-  <message name="IDS_PAGE_INFO_MERCHANT_TRUST_HEADER" desc="The title of the merchant trust subpage in the page info.">
-    Store reviews
-  </message>
-  <message name="IDS_PAGE_INFO_MERCHANT_TRUST_DESCRIPTION" desc="The description of the merchant trust feature in the page info.">
-    This info comes from independent review websites like Trustpilot, ScamAdviser, Google, and more. Summaries are created with AI.
-  </message>
-  <message name="IDS_PAGE_INFO_MERCHANT_TRUST_VIEW_ALL_REVIEWS" desc="The title of the button to view all reviews of a store, located in the page info merchant trust subpage. It has a placeholder for the number of reviews">
-    {NUM_REVIEWS, plural,
-                    =0 {View 0 reviews}
-                    =1 {View 1 review}
-                    other {View all # reviews}}
-  </message>
-  <message name="IDS_PAGE_INFO_MERCHANT_TRUST_STAR_RATING_AND_COUNT_A11Y_DESCRIPTION" desc="The accessibility description of the button to view all reviews of a store, located in the page info merchant trust subpage. It has a placeholder for the number of reviews and the star rating." is_accessibility_with_no_ui="true">
-    {NUM_REVIEWS, plural,
-                    =0 {View 0 reviews. Average rating is <ph name="STARS">{1,number,0.0}<ex>4.2</ex></ph> stars.}
-                    =1 {View 1 review. Average rating is <ph name="STARS">{1,number,0.0}<ex>4.2</ex></ph> stars.}
-                    other {View all # reviews. Average rating is <ph name="STARS">{1,number,0.0}<ex>4.2</ex></ph> stars.}}
-  </message>
-    <message name="IDS_PAGE_INFO_MERCHANT_TRUST_STAR_RATING_A11Y_DESCRIPTION"  desc="The accessibility description of the button to open the merchant trust subpage" is_accessibility_with_no_ui="true">
-      Store reviews. Average rating is <ph name="STARS">{0, number, 0.0}<ex>4.2</ex></ph> stars.
-  </message>
-  <message name="IDS_PAGE_INFO_MERCHANT_TRUST_REVIEWS_SUMMARY_TITLE" desc="The title of the reviews summary section of the merchant trust feature in the page info">
-    What people are saying
-  </message>
 
   <!-- History strings -->
   <if expr="is_ios">
     <then>
-      <message name="IDS_PAGE_INFO_HISTORY" desc="Title of the Last Visited row in Page Info on iOS. The button opens history page for the site.">
-        Last visited
-      </message>
       <message name="IDS_PAGE_INFO_HISTORY_LAST_VISIT_TODAY" desc="Summary string for the Last Visited row in Page Info on iOS. The site was last visited today.">
         Today
       </message>
@@ -1019,9 +923,6 @@
       </message>
     </then>
     <else>
-      <message name="IDS_PAGE_INFO_HISTORY" desc="The button label of the 'History' row in Page Info bubble. The button opens history page for the site.">
-        History
-      </message>
       <message name="IDS_PAGE_INFO_HISTORY_LAST_VISIT_TODAY" desc="Summary string for page info history row. The site was last visited today.">
         Last visited today
       </message>

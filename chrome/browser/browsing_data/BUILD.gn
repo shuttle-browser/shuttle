@@ -126,7 +126,6 @@ source_set("impl") {
     "//chrome/browser/sessions",
     "//chrome/browser/signin",
     "//chrome/browser/spellchecker",
-    "//chrome/browser/strike_database",
     "//chrome/browser/sync",
     "//chrome/browser/sync:factories",
     "//chrome/browser/trusted_vault",

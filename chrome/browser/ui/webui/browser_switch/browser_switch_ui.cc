@@ -493,16 +493,6 @@ std::string BrowserSwitchHandler::GetBrowserSwitchInternalsJson() {
   policies.Set(policy::key::kBrowserSwitcherParsingMode,
                base::Value(static_cast<int>(service_prefs.GetParsingMode())));
 
-#if BUILDFLAG(IS_WIN)
-  policies.Set(policy::key::kBrowserSwitcherUseIeSitelist,
-               base::Value(service_prefs.UseIeSitelist()));
-  policies.Set(policy::key::kBrowserSwitcherChromePath,
-               base::Value(service_prefs.GetChromePath().LossyDisplayName()));
-  policies.Set(
-      policy::key::kBrowserSwitcherChromeParameters,
-      base::Value(base::ToValueList(service_prefs.GetChromeParameters())));
-#endif
-
   dict.Set("policies", std::move(policies));
 
   // Alternative Browser

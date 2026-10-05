@@ -67,18 +67,6 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
 
   HistoryUtil::PopulateCommonSourceForHistory(source, profile);
 
-  static constexpr webui::LocalizedString kStrings[] = {
-      // Localized strings (alphabetical order).
-      {"compareHistoryEmpty", IDS_COMPARE_HISTORY_EMPTY},
-      {"compareHistoryRemove", IDS_COMPARE_HISTORY_REMOVE},
-      {"compareHistoryHeader", IDS_COMPARE_HISTORY_HEADER},
-      {"compareHistoryInfo", IDS_COMPARE_HISTORY_INFO},
-      {"compareHistoryListsMenuItem", IDS_COMPARE_HISTORY_MENU_ITEM},
-      {"compareHistoryRow", IDS_COMPARE_HISTORY_ROW},
-      {"compareHistoryMenuAriaLabel", IDS_COMPARE_HISTORY_MENU_ARIA_LABEL},
-      {"historyPromoClose", IDS_HISTORY_EMBEDDINGS_PROMO_CLOSE}};
-  source->AddLocalizedStrings(kStrings);
-
   const bool is_critical_actions_enabled = base::FeatureList::IsEnabled(
       critical_actions::features::kCriticalActionHistory);
 

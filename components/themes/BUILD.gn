@@ -31,7 +31,6 @@ source_set("themes") {
     "//components/pref_registry",
     "//components/search",
     "//components/sync/protocol",
-    "//components/themes/cross_device:features",
     "//components/version_info",
     "//ui/base:features",
     "//ui/base/mojom",

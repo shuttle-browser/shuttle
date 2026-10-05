@@ -22,7 +22,4 @@ const char kPdfViewerOutOfProcessIframeEnabled[] =
 const char kPdfXfaFormsEnabled[] = "pdf.xfa_forms_enabled";
 
 // Pattern for accounts allowed to save PDF files to Google Drive.
-const char kRestrictPdfSaveToGoogleDriveAccountsToPattern[] =
-    "pdf.restrict_save_to_drive_accounts_to_pattern";
-
 }  // namespace prefs

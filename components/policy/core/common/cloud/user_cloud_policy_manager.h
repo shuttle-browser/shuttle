@@ -88,9 +88,6 @@ class POLICY_EXPORT UserCloudPolicyManager : public CloudPolicyManager {
   UserCloudPolicyStore* extension_install_store();
 
  private:
-  // CloudPolicyManager:
-  void GetChromePolicy(PolicyMap* policy_map) override;
-
   // Starts recording metrics.
   void StartRecordingMetric();
 

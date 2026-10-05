@@ -427,23 +427,6 @@ void AboutHandler::RegisterMessages() {
 void AboutHandler::OnJavascriptAllowed() {
   apply_changes_from_upgrade_observer_ = true;
   version_updater_ = VersionUpdater::Create(web_ui()->GetWebContents());
-  policy_registrar_ = std::make_unique<policy::PolicyChangeRegistrar>(
-      g_browser_process->policy_service(),
-      policy::PolicyNamespace(policy::POLICY_DOMAIN_CHROME, std::string()));
-// TODO(b/330932781): Investigate and fix mismatched BUILDFLAG and comment.
-#if BUILDFLAG(IS_CHROMEOS)
-  policy_registrar_->Observe(
-      policy::key::kDeviceAutoUpdateDisabled,
-      base::BindRepeating(&AboutHandler::OnDeviceAutoUpdatePolicyChanged,
-                          weak_factory_.GetWeakPtr()));
-  if (ash::CrosSettings::IsInitialized()) {
-    extended_updates_setting_change_subscription_ =
-        ash::CrosSettings::Get()->AddSettingsObserver(
-            ash::kDeviceExtendedAutoUpdateEnabled,
-            base::BindRepeating(&AboutHandler::OnExtendedUpdatesSettingChanged,
-                                weak_factory_.GetWeakPtr()));
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 void AboutHandler::OnJavascriptDisallowed() {
@@ -452,7 +435,6 @@ void AboutHandler::OnJavascriptDisallowed() {
 
   apply_changes_from_upgrade_observer_ = false;
   version_updater_.reset();
-  policy_registrar_.reset();
 }
 
 void AboutHandler::OnUpgradeRecommended() {
@@ -460,27 +442,6 @@ void AboutHandler::OnUpgradeRecommended() {
     // A version update is installed and ready to go. Refresh the UI so the
     // correct state will be shown.
     RequestUpdate();
-  }
-}
-
-void AboutHandler::OnDeviceAutoUpdatePolicyChanged(
-    const base::Value* previous_policy,
-    const base::Value* current_policy) {
-  bool previous_auto_update_disabled = false;
-  if (previous_policy) {
-    CHECK(previous_policy->is_bool());
-    previous_auto_update_disabled = previous_policy->GetBool();
-  }
-
-  bool current_auto_update_disabled = false;
-  if (current_policy) {
-    CHECK(current_policy->is_bool());
-    current_auto_update_disabled = current_policy->GetBool();
-  }
-
-  if (current_auto_update_disabled != previous_auto_update_disabled) {
-    // Refresh the update status to refresh the status of the UI.
-    RefreshUpdateStatus();
   }
 }
 

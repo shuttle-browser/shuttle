@@ -37,6 +37,7 @@ namespace settings {
 
 #if BUILDFLAG(IS_CHROMEOS)
 namespace {
+
 // Generates a Google Help URL which includes a "board type" parameter. Some
 // help pages need to be adjusted depending on the type of CrOS device that is
 // accessing the page.
@@ -45,6 +46,7 @@ std::u16string GetHelpUrlWithBoard(const std::u16string& original_url) {
       {original_url, u"&b=",
        base::ASCIIToUTF16(base::SysInfo::GetLsbReleaseBoard())});
 }
+
 }  // namespace
 #endif
 
@@ -64,12 +66,6 @@ void AddAxAnnotationsSectionStrings(content::WebUIDataSource* html_source) {
   html_source->AddBoolean(
       "mainNodeAnnotationsEnabled",
       base::FeatureList::IsEnabled(features::kMainNodeAnnotations));
-#if BUILDFLAG(IS_CHROMEOS)
-  html_source->AddBoolean(
-      "japaneseBrailleEnabled",
-      base::FeatureList::IsEnabled(
-          features::kAccessibilityChromeVoxJapaneseBraille));
-#endif
 }
 
 void AddCaptionSubpageStrings(content::WebUIDataSource* html_source) {
@@ -105,7 +101,6 @@ void AddCaptionSubpageStrings(content::WebUIDataSource* html_source) {
       {"captionsColorCyan", IDS_SETTINGS_CAPTIONS_COLOR_CYAN},
       {"captionsColorMagenta", IDS_SETTINGS_CAPTIONS_COLOR_MAGENTA},
       {"captionsDefaultSetting", IDS_SETTINGS_CAPTIONS_DEFAULT_SETTING},
-      {"captionsLanguage", IDS_SETTINGS_CAPTIONS_LANGUAGE},
       {"captionsManageLanguagesTitle",
        IDS_SETTINGS_CAPTIONS_MANAGE_LANGUAGES_TITLE},
       {"captionsLiveTranslateTargetLanguage",
@@ -136,7 +131,6 @@ void AddCaptionSubpageStrings(content::WebUIDataSource* html_source) {
   AddLiveCaptionSectionStrings(html_source);
 }
 
-
 void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source) {
   html_source->AddLocalizedString(
       "captionsEnableLiveCaptionTitle",
@@ -165,108 +159,8 @@ void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source) {
 
 #if BUILDFLAG(IS_CHROMEOS)
 void AddPasswordPromptDialogStrings(content::WebUIDataSource* html_source) {
-  static constexpr webui::LocalizedString kLocalizedStrings[] = {
-      {"passwordPromptTitle", IDS_SETTINGS_PEOPLE_PASSWORD_PROMPT_TITLE},
-      {"passwordPromptInvalidPassword",
-       IDS_SETTINGS_PEOPLE_PASSWORD_PROMPT_INVALID_PASSWORD},
-      {"passwordPromptPasswordLabel",
-       IDS_SETTINGS_PEOPLE_PASSWORD_PROMPT_PASSWORD_LABEL},
-  };
-  html_source->AddLocalizedStrings(kLocalizedStrings);
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-void AddSharedSyncPageStrings(content::WebUIDataSource* html_source) {
-  static constexpr webui::LocalizedString kLocalizedStrings[] = {
-      {"syncDisabledByAdministrator",
-       IDS_SIGNED_IN_WITH_SYNC_DISABLED_BY_POLICY},
-      {"passphrasePlaceholder", IDS_SETTINGS_PASSPHRASE_PLACEHOLDER},
-      {"existingPassphraseTitle", IDS_SETTINGS_EXISTING_PASSPHRASE_TITLE},
-      {"submitPassphraseButton", IDS_SETTINGS_SUBMIT_PASSPHRASE},
-      {"encryptionOptionsTitle", IDS_SETTINGS_ENCRYPTION_OPTIONS},
-      {"mismatchedPassphraseError", IDS_SETTINGS_MISMATCHED_PASSPHRASE_ERROR},
-      {"emptyPassphraseError", IDS_SETTINGS_EMPTY_PASSPHRASE_ERROR},
-      {"incorrectPassphraseError", IDS_SETTINGS_INCORRECT_PASSPHRASE_ERROR},
-      {"syncPageTitle", IDS_SETTINGS_SYNC_SYNC_AND_NON_PERSONALIZED_SERVICES},
-      {"passphraseConfirmationPlaceholder",
-       IDS_SETTINGS_PASSPHRASE_CONFIRMATION_PLACEHOLDER},
-      {"syncLoading", IDS_SETTINGS_SYNC_LOADING},
-      {"syncDataEncryptedText", IDS_SETTINGS_SYNC_DATA_ENCRYPTED_TEXT},
-      {"sync", IDS_SETTINGS_SYNC},
-      {"syncAdvancedBrowserPageTitle",
-       IDS_SETTINGS_NEW_SYNC_ADVANCED_BROWSER_PAGE_TITLE},
-      {"enterPassphraseLabel", IDS_SYNC_ENTER_PASSPHRASE_BODY},
-      {"enterPassphraseLabelWithDate",
-       IDS_SYNC_ENTER_PASSPHRASE_BODY_WITH_DATE},
-  };
-  html_source->AddLocalizedStrings(kLocalizedStrings);
-
-  std::string sync_dashboard_url =
-      google_util::AppendGoogleLocaleParam(
-          GURL(base::FeatureList::IsEnabled(
-                   syncer::kSyncEnableNewSyncDashboardUrl)
-                   ? chrome::kNewSyncGoogleDashboardURL
-                   : chrome::kLegacySyncGoogleDashboardURL),
-          g_browser_process->GetApplicationLocale())
-          .spec();
-
-  html_source->AddString(
-      "passphraseRecover",
-      l10n_util::GetStringFUTF8(IDS_SETTINGS_PASSPHRASE_RECOVER,
-                                base::ASCIIToUTF16(sync_dashboard_url)));
-  html_source->AddString("syncDashboardUrl", sync_dashboard_url);
-  html_source->AddString("syncErrorsHelpUrl", chrome::kSyncErrorsHelpURL);
-
-  const bool updateAccountSettingsStrings =
-      syncer::IsReplaceSyncPromosWithSignInPromosEnabled();
-
-  html_source->AddLocalizedString(
-      "encryptWithGoogleCredentialsLabel",
-      updateAccountSettingsStrings
-          ? IDS_SETTINGS_ENCRYPT_ACCOUNT_DATA_WITH_GOOGLE_CREDENTIALS_LABEL
-          : IDS_SETTINGS_ENCRYPT_WITH_GOOGLE_CREDENTIALS_LABEL);
-  html_source->AddLocalizedString(
-      "existingPassphraseLabelWithDate",
-      updateAccountSettingsStrings
-          ? IDS_SYNC_FULL_ACCOUNT_DATA_ENCRYPTION_BODY_CUSTOM_WITH_DATE
-          : IDS_SYNC_FULL_ENCRYPTION_BODY_CUSTOM_WITH_DATE);
-  html_source->AddLocalizedString(
-      "existingPassphraseLabel",
-      updateAccountSettingsStrings
-          ? IDS_SYNC_FULL_ACCOUNT_DATA_ENCRYPTION_BODY_CUSTOM
-          : IDS_SYNC_FULL_ENCRYPTION_BODY_CUSTOM);
-  html_source->AddLocalizedString(
-      "manageSyncedDataTitle",
-      updateAccountSettingsStrings
-          ? IDS_SETTINGS_ACCOUNT_DATA_DASHBOARD
-          : IDS_SETTINGS_NEW_MANAGE_SYNCED_DATA_TITLE_UNIFIED_CONSENT);
-
-  html_source->AddString(
-      "passphraseResetHintEncryption",
-      l10n_util::GetStringFUTF8(
-          updateAccountSettingsStrings
-              ? IDS_SETTINGS_PASSPHRASE_RESET_HINT_ACCOUNT_DATA_ENCRYPTION
-              : IDS_SETTINGS_PASSPHRASE_RESET_HINT_ENCRYPTION,
-          base::ASCIIToUTF16(sync_dashboard_url)));
-  html_source->AddString(
-      "passphraseExplanationText",
-      l10n_util::GetStringFUTF8(
-          updateAccountSettingsStrings
-              ? IDS_SETTINGS_ENCRYPT_ACCOUNT_DATA_WITH_PASSPHRASE_EXPLANATION_TEXT
-              : IDS_SETTINGS_PASSPHRASE_EXPLANATION_TEXT,
-          base::ASCIIToUTF16(sync_dashboard_url)));
-  html_source->AddString(
-      "encryptWithSyncPassphraseLabel",
-      l10n_util::GetStringFUTF8(
-          updateAccountSettingsStrings
-              ? IDS_SETTINGS_ENCRYPT_ACCOUNT_DATA_WITH_PASSPHRASE_LABEL
-              : IDS_SETTINGS_ENCRYPT_WITH_SYNC_PASSPHRASE_LABEL,
-#if BUILDFLAG(IS_CHROMEOS)
-          GetHelpUrlWithBoard(chrome::kSyncEncryptionHelpURL)));
-#else
-          chrome::kSyncEncryptionHelpURL));
-#endif
-}
 
 void AddSecureDnsStrings(content::WebUIDataSource* html_source) {
   webui::LocalizedString kLocalizedStrings[] = {
@@ -280,8 +174,6 @@ void AddSecureDnsStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_AUTOMATIC_MODE_DESCRIPTION},
       {"secureDnsCustomProviderDescription",
        IDS_SETTINGS_SECURE_DNS_CUSTOM_DESCRIPTION},
-      {"secureDnsDropdownA11yLabel",
-       IDS_SETTINGS_SECURE_DNS_DROPDOWN_ACCESSIBILITY_LABEL},
       {"secureDnsSecureDropdownModeDescription",
        IDS_SETTINGS_SECURE_DROPDOWN_MODE_DESCRIPTION},
       {"secureDnsSecureDropdownModePrivacyPolicy",

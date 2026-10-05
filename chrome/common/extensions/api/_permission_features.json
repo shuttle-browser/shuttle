@@ -391,13 +391,6 @@
     // "desktop_android" is not supported.
     "platforms": ["chromeos", "linux", "mac", "win"]
   },
-  "experimentalAiData": {
-    "extension_types": ["extension"],
-    "channel": "stable",
-    "command_line_switch": "extension-ai-data-collection",
-    // "desktop_android" is not supported.
-    "platforms": ["chromeos", "linux", "mac", "win"]
-  },
   "favicon": {
     "channel": "stable",
     "extension_types": ["extension"]

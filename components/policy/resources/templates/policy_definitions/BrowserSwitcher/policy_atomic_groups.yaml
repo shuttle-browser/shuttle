@@ -3,8 +3,6 @@ BrowserSwitcher:
   policies:
   - AlternativeBrowserPath
   - AlternativeBrowserParameters
-  - BrowserSwitcherChromePath
-  - BrowserSwitcherChromeParameters
   - BrowserSwitcherDelay
   - BrowserSwitcherEnabled
   - BrowserSwitcherExternalSitelistUrl
@@ -12,4 +10,3 @@ BrowserSwitcher:
   - BrowserSwitcherKeepLastChromeTab
   - BrowserSwitcherUrlList
   - BrowserSwitcherUrlGreylist
-  - BrowserSwitcherUseIeSitelist

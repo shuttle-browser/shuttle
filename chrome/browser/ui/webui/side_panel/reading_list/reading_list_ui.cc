@@ -60,7 +60,6 @@ ReadingListUI::ReadingListUI(content::WebUI* web_ui)
       {"tooltipMarkAsRead", IDS_READ_LATER_MENU_TOOLTIP_MARK_AS_READ},
       {"tooltipMarkAsUnread", IDS_READ_LATER_MENU_TOOLTIP_MARK_AS_UNREAD},
       {"unreadHeader", IDS_READ_LATER_MENU_UNREAD_HEADER},
-      {"cancelA11yLabel", IDS_CANCEL},
   };
   for (const auto& str : kLocalizedStrings) {
     webui::AddLocalizedString(source, str.name, str.id);
@@ -68,12 +67,6 @@ ReadingListUI::ReadingListUI(content::WebUI* web_ui)
 
   source->AddBoolean("isWebUIBrowser", webui_browser::IsWebUIBrowserEnabled());
   source->AddBoolean("useRipples", views::PlatformStyle::kUseRipples);
-
-  ReadingListModel* const reading_list_model =
-      ReadingListModelFactory::GetForBrowserContext(profile);
-  source->AddBoolean(
-      "hasUnseenReadingListEntries",
-      reading_list_model->loaded() ? reading_list_model->unseen_size() : false);
 
   content::URLDataSource::Add(
       profile, std::make_unique<FaviconSource>(

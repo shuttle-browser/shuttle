@@ -48,50 +48,6 @@ class PrintingEnumPolicyHandler : public TypeCheckingPolicyHandler {
   base::flat_map<std::string, Mode> policy_value_to_mode_;
 };
 
-#if BUILDFLAG(IS_CHROMEOS)
-class PrintingAllowedColorModesPolicyHandler
-    : public PrintingEnumPolicyHandler<printing::ColorModeRestriction> {
- public:
-  PrintingAllowedColorModesPolicyHandler();
-  ~PrintingAllowedColorModesPolicyHandler() override;
-};
-
-class PrintingColorDefaultPolicyHandler
-    : public PrintingEnumPolicyHandler<printing::ColorModeRestriction> {
- public:
-  PrintingColorDefaultPolicyHandler();
-  ~PrintingColorDefaultPolicyHandler() override;
-};
-
-class PrintingAllowedDuplexModesPolicyHandler
-    : public PrintingEnumPolicyHandler<printing::DuplexModeRestriction> {
- public:
-  PrintingAllowedDuplexModesPolicyHandler();
-  ~PrintingAllowedDuplexModesPolicyHandler() override;
-};
-
-class PrintingDuplexDefaultPolicyHandler
-    : public PrintingEnumPolicyHandler<printing::DuplexModeRestriction> {
- public:
-  PrintingDuplexDefaultPolicyHandler();
-  ~PrintingDuplexDefaultPolicyHandler() override;
-};
-
-class PrintingAllowedPinModesPolicyHandler
-    : public PrintingEnumPolicyHandler<printing::PinModeRestriction> {
- public:
-  PrintingAllowedPinModesPolicyHandler();
-  ~PrintingAllowedPinModesPolicyHandler() override;
-};
-
-class PrintingPinDefaultPolicyHandler
-    : public PrintingEnumPolicyHandler<printing::PinModeRestriction> {
- public:
-  PrintingPinDefaultPolicyHandler();
-  ~PrintingPinDefaultPolicyHandler() override;
-};
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 class PrintingAllowedBackgroundGraphicsModesPolicyHandler
     : public PrintingEnumPolicyHandler<

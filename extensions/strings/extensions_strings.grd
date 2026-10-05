@@ -277,9 +277,6 @@
       <message name="IDS_EXTENSION_PRIVATE_KEY_FAILED_TO_READ" desc="Warning displayed in pack dialog when was not possible to read the private key of the extension.">
         Failed to read private key.
       </message>
-      <message name="IDS_EXTENSION_PRIVATE_KEY_FAILED_TO_EXPORT" desc="Warning displayed in pack dialog when exporting a private key failed.">
-        Failed to export private key.
-      </message>
       <message name="IDS_EXTENSION_PRIVATE_KEY_FAILED_TO_OUTPUT" desc="Warning displayed in pack dialog when outputing a private key failed.">
         Failed to output private key.
       </message>
@@ -295,9 +292,6 @@
       <message name="IDS_EXTENSION_PRIVATE_KEY_INVALID_FORMAT" desc="Warning displayed in pack dialog when the private key must be a valid format.">
         Input value for private key must be a valid format (PKCS#8-format PEM-encoded RSA key).
       </message>
-      <message name="IDS_EXTENSION_PUBLIC_KEY_FAILED_TO_EXPORT" desc="Warning displayed in pack dialog when exporting a public key failed.">
-        Failed to export public key.
-      </message>
       <message name="IDS_EXTENSION_SHARING_VIOLATION" desc="Warning displayed in pack dialog when a sharing violation is found during creation of the crx.">
         Failed to replace crx file. Check to see if the file is in use.
       </message>
@@ -311,9 +305,6 @@
       </message>
       <message name="IDS_EXTENSION_CANT_UNINSTALL_POLICY_REQUIRED" desc="Error message when a user tries to uninstall an extension that is required by administrator policy.">
         The administrator of this machine requires <ph name="EXTENSION_NAME">$1<ex>Google Talk</ex></ph> to be installed. It cannot be uninstalled.
-      </message>
-      <message name="IDS_EXTENSION_MANIFEST_VERSION_NOT_SUPPORTED" desc="Error message when an extension doesn't meet minimum manifest version required by administrator policy.">
-        The administrator of this machine requires <ph name="EXTENSION_NAME">$1<ex>Google Talk</ex></ph> to have a minimum manifest version of 3.
       </message>
       <message name="IDS_EXTENSION_CANT_INSTALL_BLOCKED_BY_RISK_SCORE" desc="Error message when a user tries to install an extension that is blocked due to the extension's risk score heuristics.">
         Access to this extension is blocked under your organization's extension risk policy.
@@ -382,10 +373,6 @@
         <ph name="PRODUCT_NAME">$1<ex>SoundKnob</ex></ph> from <ph name="VENDOR_NAME">$2<ex>Griffin Technology</ex></ph>
       </message>
 
-      <!-- Extension task manager strings. Please keep alphabetized. -->
-      <message name="IDS_EXTENSION_TASK_MANAGER_APPVIEW_TAG_PREFIX" desc="The prefix for a guest page loaded in an appview tag in the Task Manager">
-        Appview: <ph name="APPVIEW_TAG_NAME">$1<ex>Google Hangouts</ex></ph>
-      </message>
       <message name="IDS_EXTENSION_TASK_MANAGER_EXTENSIONOPTIONS_TAG_PREFIX" desc="The prefix for a guest page loaded in an extensionoptions tag in the Task Manager">
         Options: <ph name="EXTENSIONOPTIONS_TAG_NAME">$1<ex>Google Hangouts</ex></ph>
       </message>
@@ -466,9 +453,6 @@
       </message>
       <message name="IDS_EXTENSION_OVERLAPPING_WEB_EXTENT" desc="Error message when a user tries to install an app with a web extent that overlaps another installed app.">
         Could not add application "<ph name="TO_INSTALL_APP_NAME">$1<ex>Google Mail</ex></ph>" because it conflicts with "<ph name="INSTALLED_APP_NAME">$2<ex>Google Calendar</ex></ph>".
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_PROCESS_CRASHED" desc="Error message in case package fails to install because a utility process crashed.">
-        Could not install package because a utility process crashed. Try restarting Chrome and trying again.
       </message>
       <message name="IDS_EXTENSION_INSTALL_UNEXPECTED_ID" desc="Error displayed during installation of a side-loaded app, extension, or theme when the ID of the referenced extension does not match the ID the developer declared during registration.">
         Expected ID "<ph name="EXPECTED_ID">$1<ex>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</ex></ph>", but ID was "<ph name="NEW_ID">$2<ex>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</ex></ph>"

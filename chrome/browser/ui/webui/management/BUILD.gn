@@ -87,7 +87,6 @@ source_set("management") {
       "//chromeos/ash/components/browser_context_helper",
       "//chromeos/ash/components/settings",
       "//net",
-      "//ui/chromeos",
     ]
   }
   if (enable_extensions_core) {

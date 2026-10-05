@@ -76,7 +76,6 @@ const ALL_BROWSING_DATATYPES_LIST: BrowsingDataType[] = [
   BrowsingDataType.SITE_DATA,
   BrowsingDataType.CACHE,
   BrowsingDataType.DOWNLOADS,
-  BrowsingDataType.FORM_DATA,
   BrowsingDataType.SITE_SETTINGS,
   BrowsingDataType.HOSTED_APPS_DATA,
 ];
@@ -102,8 +101,6 @@ function getDataTypeLabel(datatypes: BrowsingDataType) {
       return loadTimeData.getString('clearCache');
     case BrowsingDataType.SITE_DATA:
       return loadTimeData.getString('clearCookies');
-    case BrowsingDataType.FORM_DATA:
-      return loadTimeData.getString('clearFormData');
     case BrowsingDataType.SITE_SETTINGS:
       return loadTimeData.getString('siteSettings');
     case BrowsingDataType.DOWNLOADS:
@@ -123,8 +120,6 @@ export function getDataTypePrefName(datatypes: BrowsingDataType) {
       return 'browser.clear_data.cache';
     case BrowsingDataType.SITE_DATA:
       return 'browser.clear_data.cookies';
-    case BrowsingDataType.FORM_DATA:
-      return 'browser.clear_data.form_data';
     case BrowsingDataType.SITE_SETTINGS:
       return 'browser.clear_data.site_settings';
     case BrowsingDataType.DOWNLOADS:

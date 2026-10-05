@@ -25,13 +25,6 @@ base::flat_set<std::string> GetAllowedDictionaryPolicies() {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
       key::kExtensionSettings,
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-#if BUILDFLAG(IS_CHROMEOS)
-      key::kDeviceLoginScreenPowerManagement,
-      key::kKeyPermissions,
-      key::kPowerManagementIdleSettings,
-      key::kScreenBrightnessPercent,
-      key::kScreenLockDelays,
-#endif  // BUILDFLAG(IS_CHROMEOS)
   };
 }
 

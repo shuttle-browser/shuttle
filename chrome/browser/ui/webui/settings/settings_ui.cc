@@ -250,42 +250,11 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
                           metrics::MetricsReportingChoiceService::
                               ShouldUseMetricsConsentRestructure());
 
-  ProfileAttributesEntry* entry =
-      g_browser_process->profile_manager()
-          ->GetProfileAttributesStorage()
-          .GetProfileAttributesWithPath(profile->GetPath());
-
-  html_source->AddBoolean("isDasherlessProfile",
-                          entry && entry->IsDasherlessManagement());
-
-  html_source->AddBoolean("hasEnterpriseLabel",
-                          entry && !entry->GetEnterpriseProfileLabel().empty());
-
-  html_source->AddBoolean("changePriceEmailNotificationsEnabled", false);
-
   TemplateURLService* template_url_service =
       TemplateURLServiceFactory::GetForProfile(profile);
   html_source->AddBoolean(
       "showSearchAggregatorSuggest",
       template_url_service->GetEnterpriseSearchAggregatorEngine());
-
-  regional_capabilities::RegionalCapabilitiesService* regional_capabilties =
-      regional_capabilities::RegionalCapabilitiesServiceFactory::GetForProfile(
-          profile);
-  html_source->AddBoolean("isEeaChoiceCountry",
-                          regional_capabilties->IsInEeaCountry());
-
-#if BUILDFLAG(IS_CHROMEOS)
-  html_source->AddBoolean(
-      "userCannotManuallyEnterPassword",
-      !ash::password_visibility::AccountHasUserFacingPassword(
-          g_browser_process->local_state(), ash::ProfileHelper::Get()
-                                                ->GetUserByProfile(profile)
-                                                ->GetAccountId()));
-
-  // This is the browser settings page.
-  html_source->AddBoolean("isOSSettings", false);
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
   html_source->AddBoolean("enableHandTrackingContentSetting",
 #if BUILDFLAG(ENABLE_VR)
@@ -303,11 +272,8 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       base::FeatureList::IsEnabled(permissions::features::kKeyboardLockPrompt));
 
   // Compose is not part of this build.
-  html_source->AddBoolean("enableComposeProactiveNudge", false);
 
   // Glic (Gemini in Chrome) is not part of this build.
-  html_source->AddBoolean("showGeminiPersonalContextLink", false);
-  html_source->AddBoolean("showInstructionLink", false);
 
 #if BUILDFLAG(IS_CHROMEOS)
   const bool download_bubble_controlled_by_pref = false;
@@ -324,8 +290,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   auto plural_string_handler = std::make_unique<PluralStringHandler>();
   plural_string_handler->AddLocalizedString("securityKeysNewPIN",
                                             IDS_SETTINGS_SECURITY_KEYS_NEW_PIN);
-  plural_string_handler->AddLocalizedString(
-      "batchUploadPromoLabel", IDS_BATCH_UPLOAD_PROMO_SUBTITLE_ITEMS_WITH_LINK);
   plural_string_handler->AddLocalizedString("cpuPerformanceCores",
                                             IDS_SETTINGS_CPU_PERFORMANCE_CORES);
   web_ui->AddMessageHandler(std::move(plural_string_handler));
@@ -400,55 +364,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
           network::features::kLocalNetworkAccessChecks) &&
           !network::features::kLocalNetworkAccessChecksWarn.Get());
 
-  html_source->AddBoolean("enableInlineCueMenuContentSetting", false);
-
-  // AI. Glic (Gemini in Chrome) is not part of this build.
-
-  std::pair<const std::string_view, bool> optimization_guide_features[] = {
-      {"showComposeControl", false},
-      {"showHistorySearchControl", false},
-      {"showAiSuggestionsControl", false},
-      {"showInlineCueMenuControl", false},
-      {"showSkillsSettingPage", false},
-      {"showIndigoControl", false},
-      {"showGoogleSearchAiModeWorkspaceControl",
-       base::FeatureList::IsEnabled(features::kGoogleSearchAiModeWorkspace)},
-      {"showDictationControl", false},
-  };
-
-  html_source->AddString("aiSuggestionsHelpCenterArticleLink", std::string());
-
-  const bool enable_ai_mode_search = false;
-  html_source->AddBoolean("enableAiModeSearchSetting", enable_ai_mode_search);
-
-  const bool show_ai_settings_for_testing = base::FeatureList::IsEnabled(
-      optimization_guide::features::kAiSettingsPageForceAvailable);
-
-  // Show the AI features section in the AI page if any of the AI features are
-  // enabled.
-  bool show_ai_features_section = show_ai_settings_for_testing;
-  for (auto [name, visible] : optimization_guide_features) {
-    html_source->AddBoolean(name, visible || show_ai_settings_for_testing);
-    show_ai_features_section |= visible;
-  }
-
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  // On Device AI setting.
-  // TODO(crbug.com/466442880): Grey out toggle based on device capability and
-  // enterprise policy.
-  bool show_on_device_ai_settings =
-      base::FeatureList::IsEnabled(features::kShowOnDeviceAiSettings);
-  html_source->AddBoolean("showOnDeviceAiSettings", show_on_device_ai_settings);
-  show_ai_features_section |= show_on_device_ai_settings;
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
-
-  // Within the AI subpage are separate sections for Glic and for all other AI
-  // features, the visibility of these are separately controlled but we want to
-  // show the subpage if any of the AI features or Glic are enabled.
-  html_source->AddBoolean("showAiPage", show_ai_features_section ||
-                                            enable_ai_mode_search);
-  html_source->AddBoolean("showAiPageAiFeatureSection",
-                          show_ai_features_section);
 
   html_source->AddBoolean(
       "searchSettingsUpdate",
@@ -460,10 +375,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
           ? "settings-refresh-2026"
           : "");
 
-  html_source->AddBoolean("showSuggestionsFromGeminiSettings", false);
   // @memory is not part of this build.
-  html_source->AddBoolean("isAtMemoryEnabled", false);
-  html_source->AddBoolean("isAtMemoryTriggerCustomizationAllowed", false);
 
   html_source->AddString(
       "webuiRefresh2026",

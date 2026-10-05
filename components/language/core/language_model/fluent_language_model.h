@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
+
 #include "components/language/core/browser/language_model.h"
 
 class PrefService;
@@ -23,6 +25,9 @@ class FluentLanguageModel : public LanguageModel {
 
   // LanguageModel implementation.
   std::vector<LanguageDetails> GetLanguages() override;
+
+ private:
+  const raw_ptr<PrefService> pref_service_;
 };
 
 }  // namespace language

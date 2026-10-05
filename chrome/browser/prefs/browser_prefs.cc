@@ -487,7 +487,6 @@
 
 #if defined(TOOLKIT_VIEWS)
 #include "chrome/browser/ui/browser_view_prefs.h"
-#include "chrome/browser/ui/side_search/side_search_prefs.h"
 #endif
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
@@ -1596,10 +1595,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   system_media_permissions::RegisterSystemMediaPermissionStatesPrefs(registry);
   GlassFrameService::RegisterLocalStatePrefs(registry);
 
-  // The default value is not signicant as this preference is only consulted if
-  // it is explicitly set by an enterprise policy.
-  registry->RegisterBooleanPref(prefs::kWebAppsUseAdHocCodeSigningForAppShims,
-                                false);
   registry->RegisterBooleanPref(prefs::kUpdateOnZeroWindowEnabled, true);
 #endif
 
@@ -1659,11 +1654,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   registry->RegisterBooleanPref(prefs::kPdfViewerOutOfProcessIframeEnabled,
                                 true);
 #endif  // BUILDFLAG(ENABLE_PDF)
-
-#if BUILDFLAG(ENABLE_PDF_SAVE_TO_DRIVE)
-  registry->RegisterStringPref(
-      prefs::kRestrictPdfSaveToGoogleDriveAccountsToPattern, "");
-#endif  // BUILDFLAG(ENABLE_PDF_SAVE_TO_DRIVE)
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_ANDROID)
@@ -2065,7 +2055,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 
 #if defined(TOOLKIT_VIEWS)
   accessibility_prefs::RegisterInvertBubbleUserPrefs(registry);
-  side_search_prefs::RegisterProfilePrefs(registry);
   RegisterBrowserViewProfilePrefs(registry);
 #endif
 

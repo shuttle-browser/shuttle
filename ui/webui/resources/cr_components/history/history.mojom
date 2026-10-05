@@ -89,12 +89,6 @@ struct HistoryEntry {
   // Date to display on various services.
   string date_short;
 
-  // Name of device entry was visited on.
-  string device_name;
-
-  // Type of device entry was visited on.
-  string device_type;
-
   // Used in the screenreader entry summary.
   string date_time_of_day;
 

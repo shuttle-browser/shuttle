@@ -9,8 +9,4 @@
 
 bool IsAudioServiceSandboxEnabled();
 
-#if BUILDFLAG(IS_WIN)
-bool IsAudioProcessHighPriorityEnabled();
-#endif
-
 #endif  // CHROME_BROWSER_MEDIA_AUDIO_SERVICE_UTIL_H_

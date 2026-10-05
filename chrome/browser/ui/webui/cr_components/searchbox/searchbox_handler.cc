@@ -92,6 +92,7 @@ const char* kSearchSparkIconResourceName =
     "//resources/cr_components/searchbox/icons/search_spark.svg";
 const char* kReplyRotated180IconResourceName =
     "//resources/cr_components/searchbox/icons/reply_rotated180.svg";
+
 }  // namespace searchbox_internal
 
 namespace {
@@ -304,23 +305,7 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
       {"searchboxSeparator", IDS_AUTOCOMPLETE_MATCH_DESCRIPTION_SEPARATOR},
       {"removeSuggestion", IDS_OMNIBOX_REMOVE_SUGGESTION},
       {"searchBoxHint", IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MD},
-      {"searchBoxHintMultimodal", IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MULTIMODAL},
-      {"searchboxThumbnailLabel",
-       IDS_GOOGLE_SEARCH_BOX_MULTIMODAL_IMAGE_THUMBNAIL},
       {"voiceSearchButtonLabel", IDS_TOOLTIP_MIC_SEARCH},
-      {"voiceClose", IDS_NEW_TAB_VOICE_CLOSE_TOOLTIP},
-      {"voiceStop", IDS_FUSEBOX_VOICE_SEARCH_STOP_TITLE},
-      {"voiceDetails", IDS_NEW_TAB_VOICE_DETAILS},
-      {"voiceListening", IDS_NEW_TAB_VOICE_LISTENING},
-      {"voiceWaiting", IDS_NEW_TAB_VOICE_WAITING},
-      {"voicePermissionError", IDS_NEW_TAB_VOICE_PERMISSION_ERROR},
-      {"audioError", IDS_NEW_TAB_VOICE_AUDIO_ERROR},
-      {"languageError", IDS_NEW_TAB_VOICE_LANGUAGE_ERROR},
-      {"networkError", IDS_NEW_TAB_VOICE_NETWORK_ERROR},
-      {"noTranslation", IDS_NEW_TAB_VOICE_NO_TRANSLATION},
-      {"noVoice", IDS_NEW_TAB_VOICE_NO_VOICE},
-      {"otherError", IDS_NEW_TAB_VOICE_OTHER_ERROR},
-      {"tryAgain", IDS_NEW_TAB_VOICE_TRY_AGAIN},
   };
   for (const auto& entry : kStrings) {
     dict.Set(entry.name, l10n_util::GetStringUTF16(entry.id));
@@ -349,7 +334,6 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
   dict.Set("webuiBrowserVirtualFocusNavigation",
            base::FeatureList::IsEnabled(
                features::kWebuiBrowserVirtualFocusNavigation));
-
 
   return dict;
 }

@@ -56,9 +56,6 @@
     Command Line
   </message>
   <if expr="is_chromeos">
-    <message name="IDS_VERSION_UI_BUILD_DATE" desc="label for build date on the about:version page">
-      Build Date
-    </message>
     <message name="IDS_VERSION_UI_CUSTOMIZATION_ID" desc="label for the device customization ID if present on the about:version page">
       Customization ID
     </message>
@@ -99,9 +96,4 @@
   <message name="IDS_VERSION_UI_COPY_VARIATIONS_NOTICE" desc="text to be read by a screenreader when the variations string is done being copied">
     Copied variations string to clipboard
   </message>
-  <if expr="is_win">
-    <message translateable="false" name="IDS_VERSION_UI_COHORT_NAME" desc="Update cohort substring included in the version number line on the about:version page.">
-      (cohort: <ph name="UPDATE_COHORT_NAME">$1<ex>Stable</ex></ph>)
-    </message>
-  </if>
 </grit-part>

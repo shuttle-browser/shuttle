@@ -10,15 +10,6 @@
   </outputs>
   <release seq="1">
     <messages fallback_to_english="true">
-      <message translateable="false" name="IDS_WEBUI_EXAMPLES_WINDOW_TITLE">
-        WebUI Examples
-      </message>
-      <message translateable="false" name="IDS_WEBUI_EXAMPLES_WEBSHELL_TITLE">
-        Webshell
-      </message>
-      <message translateable="false" name="IDS_DEVTOOLS_WINDOW_TITLE">
-        Devtools
-      </message>
     </messages>
   </release>
 </grit>

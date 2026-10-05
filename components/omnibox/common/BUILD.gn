@@ -75,9 +75,4 @@ if (is_android) {
   }
 }
 
-source_set("features") {
-  sources = [
-  ]
-  deps = [ "//base" ]
-}
 

@@ -229,9 +229,6 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     date_time_of_day = base::TimeFormatTimeOfDay(entry.time);
   }
 
-  result_mojom->device_name = std::string();
-  result_mojom->device_type = std::string();
-
   supervised_user::FilteringBehavior filtering_behavior;
   if (profile.IsChild()) {
     filtering_behavior =

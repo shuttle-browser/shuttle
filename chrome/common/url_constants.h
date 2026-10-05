@@ -325,12 +325,6 @@ inline constexpr char16_t kMyActivityAiModeUrl[] =
 inline constexpr char16_t kMyActivitySearchServicesAppsUrl[] =
     u"https://myactivity.google.com/search-services/apps";
 
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-// "Learn more" URL for On-Device AI.
-inline constexpr char16_t kOnDeviceAiLearnMoreUrl[] =
-    u"https://support.google.com/chrome?p=on_device_genAI";
-#endif
-
 // Help URL for the Omnibox setting.
 inline constexpr char16_t kOmniboxLearnMoreURL[] =
 #if BUILDFLAG(IS_CHROMEOS)
@@ -543,9 +537,6 @@ inline constexpr char kSigninOnDesktopLearnMoreURL[] =
 inline constexpr char kAddNewProfileOnDesktopLearnMoreURL[] =
     "https://support.google.com/chrome/?p=add_profile";
 
-// The URL for the "Learn more" page for AI settings for managed users.
-inline constexpr char16_t kAiSettingsLearnMorePageManagedUrl[] =
-    u"https://support.google.com/chrome/a?p=generative_ai_settings";
 
 // The URL for the "Learn more" page for Help me Write.
 inline constexpr char kComposeLearnMorePageURL[] =

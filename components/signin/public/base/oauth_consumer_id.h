@@ -114,7 +114,7 @@ enum class OAuthConsumerId {
   kSyncDeviceStatisticsMetrics = 86,
   kPrivateAiService = 87,
   kWalletPasses = 88,
-  kAimEligibilityService = 89,
+  // kAimEligibilityService = 89,  // Removed with the AIM eligibility service.
   kDevtoolsAiCode = 90,
   // kAccessibilityAnnotator = 91, // Removed due to deprecation.
   kActorLoginPermissionService = 92,

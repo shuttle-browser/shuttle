@@ -42,14 +42,11 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"clearBrowsingData", IDS_CLEAR_BROWSING_DATA_TITLE},
       {"clearBrowsingDataLinkTooltip", IDS_SETTINGS_OPENS_IN_NEW_TAB},
       {"clearSearch", IDS_CLEAR_SEARCH},
-      {"collapseSessionButton", IDS_HISTORY_OTHER_SESSIONS_COLLAPSE_SESSION},
       {"delete", IDS_HISTORY_DELETE},
       {"deleteSuccess", IDS_HISTORY_REMOVE_PAGE_SUCCESS},
       {"deleteConfirm", IDS_HISTORY_DELETE_PRIOR_VISITS_CONFIRM_BUTTON},
-      {"deleteSession", IDS_HISTORY_OTHER_SESSIONS_HIDE_FOR_NOW},
       {"deleteWarning", IDS_HISTORY_DELETE_PRIOR_VISITS_WARNING},
       {"entrySummary", IDS_HISTORY_ENTRY_SUMMARY},
-      {"expandSessionButton", IDS_HISTORY_OTHER_SESSIONS_EXPAND_SESSION},
       {"foundSearchResults", IDS_HISTORY_FOUND_SEARCH_RESULTS},
       {"historyMenuButton", IDS_HISTORY_HISTORY_MENU_DESCRIPTION},
       {"historyMenuItem", IDS_HISTORY_HISTORY_MENU_ITEM},
@@ -58,9 +55,7 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"loading", IDS_HISTORY_LOADING},
       {"menu", IDS_MENU},
       {"moreFromSite", IDS_HISTORY_MORE_FROM_SITE},
-      {"openAll", IDS_HISTORY_OTHER_SESSIONS_OPEN_ALL},
       {"openSelected", IDS_HISTORY_OPEN},
-      {"openTabsMenuItem", IDS_HISTORY_OPEN_TABS_MENU_ITEM},
       {"noResults", IDS_HISTORY_NO_RESULTS},
       {"noSearchResults", IDS_HISTORY_NO_SEARCH_RESULTS},
       {"removeBookmark", IDS_HISTORY_REMOVE_BOOKMARK},
@@ -72,8 +67,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"searchPrompt", IDS_HISTORY_SEARCH_PROMPT},
       {"searchResult", IDS_HISTORY_SEARCH_RESULT},
       {"searchResults", IDS_HISTORY_SEARCH_RESULTS},
-      {"searchResultExactMatch", IDS_HISTORY_SEARCH_EXACT_MATCH_RESULT},
-      {"searchResultExactMatches", IDS_HISTORY_SEARCH_EXACT_MATCH_RESULTS},
       {"sourceFilterChipsAriaLabel",
        IDS_HISTORY_SOURCE_FILTER_CHIPS_ARIA_LABEL},
       {"sourceFilterChipUser", IDS_HISTORY_SOURCE_FILTER_CHIP_USER},
@@ -104,8 +97,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   source->AddBoolean("allowDeletingHistory", allow_deleting_history);
 
   source->AddBoolean("isGuestSession", profile->IsGuestSession());
-  source->AddBoolean("isSignInAllowed",
-                     prefs->GetBoolean(prefs::kSigninAllowed));
 
   source->AddInteger(
       "lastSelectedTab",
@@ -115,60 +106,11 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   // history frontend still reads.
   static constexpr webui::LocalizedString kHistoryEmbeddingsBaseStrings[] = {
       {"foundSearchResults", IDS_HISTORY_FOUND_SEARCH_RESULTS},
-      {"historyEmbeddingsSearchPrompt", IDS_HISTORY_EMBEDDINGS_SEARCH_PROMPT},
-      {"historyEmbeddingsHeading", IDS_HISTORY_EMBEDDINGS_HEADING},
-      {"historyEmbeddingsWithAnswersResultsHeading",
-       IDS_HISTORY_EMBEDDINGS_WITH_ANSWERS_RESULTS_HEADING},
-      {"historyEmbeddingsHeadingLoading",
-       IDS_HISTORY_EMBEDDINGS_HEADING_LOADING},
-      {"historyEmbeddingsFooter", IDS_HISTORY_EMBEDDINGS_FOOTER},
       {"learnMore", IDS_LEARN_MORE},
       {"thumbsUp", IDS_THUMBS_UP_RESULTS_A11Y_LABEL},
       {"thumbsDown", IDS_THUMBS_DOWN_OPENS_FEEDBACK_FORM_A11Y_LABEL},
-      {"historyEmbeddingsAnswerHeading", IDS_HISTORY_EMBEDDINGS_ANSWER_HEADING},
-      {"historyEmbeddingsAnswerLoadingHeading",
-       IDS_HISTORY_EMBEDDINGS_ANSWER_LOADING_HEADING},
-      {"historyEmbeddingsAnswerSourceDate",
-       IDS_HISTORY_EMBEDDINGS_ANSWER_SOURCE_VISIT_DATE_LABEL},
-      {"historyEmbeddingsAnswererErrorModelUnavailable",
-       IDS_HISTORY_EMBEDDINGS_ANSWERER_ERROR_MODEL_UNAVAILABLE},
-      {"historyEmbeddingsAnswererErrorTryAgain",
-       IDS_HISTORY_EMBEDDINGS_ANSWERER_ERROR_TRY_AGAIN},
-      {"historyEmbeddingsMatch", IDS_HISTORY_SEARCH_EMBEDDINGS_MATCH_RESULT},
-      {"historyEmbeddingsMatches", IDS_HISTORY_SEARCH_EMBEDDINGS_MATCH_RESULTS},
   };
   source->AddLocalizedStrings(kHistoryEmbeddingsBaseStrings);
-  source->AddBoolean("enableHistoryEmbeddingsAnswers", false);
-  source->AddBoolean("enableHistoryEmbeddingsImages", false);
-  source->AddInteger("historyEmbeddingsSearchMinimumWordCount", 0);
-  source->AddString("historyEmbeddingsSettingsUrl", std::string());
-  source->AddLocalizedString("historyEmbeddingsDisclaimer",
-                             IDS_HISTORY_EMBEDDINGS_DISCLAIMER);
-
-  static constexpr webui::LocalizedString kHistoryEmbeddingsStrings[] = {
-      {"historyEmbeddingsAnswersSearchAlternativePrompt1",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_1},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt2",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_2},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt3",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_3},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt4",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_4},
-      {"historyEmbeddingsShowByLabel",
-       IDS_HISTORY_EMBEDDINGS_SHOW_BY_ARIA_LABEL},
-      {"historyEmbeddingsShowByDate", IDS_HISTORY_EMBEDDINGS_SHOW_BY_DATE},
-      {"historyEmbeddingsShowByGroup", IDS_HISTORY_EMBEDDINGS_SHOW_BY_GROUP},
-      {"historyEmbeddingsSuggestion1", IDS_HISTORY_EMBEDDINGS_SUGGESTION_1},
-      {"historyEmbeddingsSuggestion2", IDS_HISTORY_EMBEDDINGS_SUGGESTION_2},
-      {"historyEmbeddingsSuggestion3", IDS_HISTORY_EMBEDDINGS_SUGGESTION_3},
-      {"historyEmbeddingsSuggestion1AriaLabel",
-       IDS_HISTORY_EMBEDDINGS_SUGGESTION_1_ARIA_LABEL},
-      {"historyEmbeddingsSuggestion2AriaLabel",
-       IDS_HISTORY_EMBEDDINGS_SUGGESTION_2_ARIA_LABEL},
-      {"historyEmbeddingsSuggestion3AriaLabel",
-       IDS_HISTORY_EMBEDDINGS_SUGGESTION_3_ARIA_LABEL},
-  };
-  source->AddLocalizedStrings(kHistoryEmbeddingsStrings);
 
   webui::SetupWebUIDataSource(source, kHistoryResources,
                               IDR_HISTORY_HISTORY_HTML);

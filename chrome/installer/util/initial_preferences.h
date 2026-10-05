@@ -52,13 +52,7 @@ namespace installer {
 //      "https://igoogle.com"
 //   ],
 //   "homepage": "http://example.org",
-//   "homepage_is_newtabpage": false,
-//   "import_autofill_form_data": false,
-//   "import_bookmarks": false,
-//   "import_history": false,
-//   "import_home_page": false,
-//   "import_saved_passwords": false,
-//   "import_search_engine": false
+//   "homepage_is_newtabpage": false
 // }
 //
 // A reserved "distribution" entry in the file is used to group related

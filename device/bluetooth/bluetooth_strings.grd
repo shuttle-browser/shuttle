@@ -202,9 +202,6 @@ This file contains the strings for bluetooth.
       <message name="IDS_BLUETOOTH_DEVICE_COMPUTER" desc="Text to identify Bluetooth devices of the computer class.">
       Computer (<ph name="ADDRESS">$1<ex>12:34:56:78:9A:BC</ex></ph>)
       </message>
-      <message name="IDS_BLUETOOTH_DEVICE_PERIPHERAL" desc="Text to identify Bluetooth devices of the peripheral class.">
-      Peripheral (<ph name="ADDRESS">$1<ex>12:34:56:78:9A:BC</ex></ph>)
-      </message>
       <message name="IDS_BLUETOOTH_DEVICE_PHONE" desc="Text to identify Bluetooth devices of the phone class.">
       Phone (<ph name="ADDRESS">$1<ex>12:34:56:78:9A:BC</ex></ph>)
       </message>

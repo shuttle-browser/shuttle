@@ -61,11 +61,6 @@ export type {AboutPageBrowserProxy} from './about_page/about_page_browser_proxy.
 export type {PromoteUpdaterStatus} from './about_page/about_page_browser_proxy.js';
 // </if>
 // clang-format on
-export {SettingsAiInfoCardElement} from './ai_page/ai_info_card.js';
-export {SettingsAiLoggingInfoBullet} from './ai_page/ai_logging_info_bullet.js';
-export {SettingsAiPageElement} from './ai_page/ai_page.js';
-export {SettingsAiPageIndexElement} from './ai_page/ai_page_index.js';
-export {ModelExecutionEnterprisePolicyValue} from './ai_page/constants.js';
 export {AppearanceBrowserProxyImpl} from './appearance_page/appearance_browser_proxy.js';
 export type {AppearanceBrowserProxy} from './appearance_page/appearance_browser_proxy.js';
 export {SettingsAppearancePageElement, SystemTheme} from './appearance_page/appearance_page.js';
@@ -81,7 +76,7 @@ export {loadTimeData} from './i18n_setup.js';
 // <if expr="not is_chromeos">
 export {convertLanguageCodeForChrome, convertLanguageCodeForTranslate, getBaseLanguage, isTranslateBaseLanguage} from './languages_page/languages_util.js';
 // </if>
-export {AiPageInteractions, AutofillSettingsReferrer, CardBenefitsUserAction, CvcDeletionUserAction, DeleteBrowsingDataAction, MetricsBrowserProxyImpl, PrivacyElementInteractions, SafeBrowsingInteractions, YourSavedInfoDataCategory, YourSavedInfoDataChip, YourSavedInfoRelatedService} from './metrics_browser_proxy.js';
+export {DeleteBrowsingDataAction, MetricsBrowserProxyImpl, PrivacyElementInteractions, SafeBrowsingInteractions} from './metrics_browser_proxy.js';
 export type {MetricsBrowserProxy} from './metrics_browser_proxy.js';
 export {OnStartupBrowserProxyImpl} from './on_startup_page/on_startup_browser_proxy.js';
 export type {NtpExtension, OnStartupBrowserProxy} from './on_startup_page/on_startup_browser_proxy.js';

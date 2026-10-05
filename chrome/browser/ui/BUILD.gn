@@ -222,7 +222,6 @@ if (!is_android) {
       "//chrome/browser/ui/webui/inspect",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//components/multistep_filter/core:features",
-      "//components/omnibox/common:features",
       "//components/spellcheck/browser",
     ]
     if (is_mac) {
@@ -255,19 +254,6 @@ source_set("simple_message_box_internal") {
   sources = [ "simple_message_box_internal.cc" ]
 }
 
-source_set("incognito_allowed_url") {
-  public = []
-  sources = []
-  deps = [
-    "//chrome/browser/signin:signin_promo",
-    "//chrome/common",
-    "//components/signin/public/base",
-    "//url",
-  ]
-  if (is_chromeos) {
-    deps += [ "//ash/constants" ]
-  }
-}
 
 source_set("browser_ui_prefs") {
   public = [ "browser_ui_prefs.h" ]
@@ -460,7 +446,6 @@ source_set("managed_ui") {
     deps += [
       "//chrome/browser/ui/webui/management",
       "//chromeos/ash/components/demo_mode",
-      "//ui/chromeos",
     ]
   }
 }
@@ -575,7 +560,6 @@ static_library("ui") {
     ":browser_otr_state",
     ":browser_ui_prefs",
     ":bubble_anchor_util",
-    ":incognito_allowed_url",
     ":managed_ui",
     ":recently_audible_helper",
     ":session_crashed_bubble",
@@ -1759,7 +1743,6 @@ static_library("ui") {
       "//media/capture:capture_lib",
       "//mojo/public/js:resources_grit",
       "//services/device/public/cpp:device_features",
-      "//ui/chromeos",
       "//ui/chromeos/resources",
       "//ui/chromeos/styles:cros_styles_resources",
       "//ui/chromeos/styles:cros_styles_views",
@@ -2151,7 +2134,6 @@ static_library("ui") {
       ":browser_init_state",
       ":idle_bubble",
       ":idle_dialog",
-      ":incognito_clear_browsing_data_dialog_interface",
       "//base",
       "//chrome/browser:resources",
       "//chrome/browser/actor/ui/task_list_bubble:controller",
@@ -2184,7 +2166,6 @@ static_library("ui") {
       "//chrome/browser/ui/views:external_protocol_dialog",
       "//chrome/browser/ui/views:flying_indicator",
       "//chrome/browser/ui/views:global_error_bubble_view",
-      "//chrome/browser/ui/views:incognito_clear_browsing_data_dialog",
       "//chrome/browser/ui/views:javascript_tab_modal_dialog_view_views",
       "//chrome/browser/ui/views:layout_provider_impl",
       "//chrome/browser/ui/views:login_handler_views",
@@ -2345,7 +2326,6 @@ static_library("ui") {
       # c/b/ui/browser.h
       "//chrome/browser/ui/views/bubble",
       "//chrome/browser/ui/views:global_error_bubble_view",
-      "//chrome/browser/ui/views:incognito_clear_browsing_data_dialog",
       "//chrome/browser/ui/views:upgrade_notification_controller",
 
       # TODO(crbug.com/353332589): Remove this circular dependency when the
@@ -3063,9 +3043,6 @@ if (!is_android) {
     ]
   }
 
-  source_set("incognito_clear_browsing_data_dialog_interface") {
-    public = []
-  }
 
   source_set("idle_bubble") {
     public = [ "idle_bubble.h" ]

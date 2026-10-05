@@ -222,33 +222,16 @@
       "contexts": ["webui"],
       "matches": [
         "chrome://add-supervision/*",
-        "chrome://contextual-tasks/*",
         "chrome://extensions/*",
-        "chrome://glic/*",
-        "chrome://glic-fre/*",
-        "chrome://glic-experimental-opt-in/*",
         "chrome://graduation/*",
         "chrome://home/*",
-        "chrome://chrome-signin/*",
         "chrome://mobilesetup/*",
         "chrome://oobe/*",
         "chrome://os-settings/*",
         "chrome://parent-access/*",
         "chrome://password-change/*",
-        "chrome://lock-reauth/*",
-        "chrome://skills/*"
+        "chrome://lock-reauth/*"
       ]
-    }, {
-      "internal": true,
-      "channel": "stable",
-      "contexts": [
-        "webui_untrusted"
-      ],
-      "matches": [
-        "chrome-untrusted://lens/*"
-      ],
-      // "desktop_android" is not supported.
-      "platforms": ["chromeos", "linux", "mac", "win"]
     }, {
       // This feature is used by the Controlled Frame API and is specifically
       // enabled by //chrome.
@@ -343,52 +326,31 @@
     "channel": "stable",
     "contexts": ["webui"],
     "matches": [
-      "chrome://apps/*",
-      "chrome://bookmarks/*",
-      "chrome://bookmarks-side-panel.top-chrome/*",
       "chrome://certificate-manager/*",
-      "chrome://compare/*",
-      "chrome://contextual-tasks/*",
-      "chrome://customize-chrome-side-panel.top-chrome/*",
-      "chrome://shopping-insights-side-panel.top-chrome/*",
       "chrome://eche-app/*",
       "chrome://extensions/*",
       "chrome://extensions-zero-state/*",
       "chrome://file-manager/*",
-      "chrome://glic/*",
-      "chrome://glic-fre/*",
       "chrome://help-app/*",
       "chrome://history/*",
-      "chrome://new-tab-page/*",
-      "chrome://newtab-footer/*",
       "chrome://omnibox-popup.top-chrome/*",
       "chrome://oobe/*",
       "chrome://os-settings/*",
-      "chrome://password-manager/*",
       "chrome://personalization/*",
-      "chrome://profile-picker/*",
       "chrome://read-later.top-chrome/*",
       "chrome://settings/*",
-      "chrome://sync-confirmation/*",
-      "chrome://tab-search.top-chrome/*",
-      "chrome://tab-strip.top-chrome/*",
-      "chrome://vc-background/*",
-      "chrome://app-settings/*",
-      "chrome://search-engine-choice/*"
+      "chrome://tab-strip.top-chrome/*"
     ]
   }, {
     "channel": "stable",
     "contexts": ["webui_untrusted"],
     "matches": [
       "chrome-untrusted://boca-app/*",
-      "chrome-untrusted://compose/*",
       "chrome-untrusted://help-app/*",
-      "chrome-untrusted://lens-overlay/*",
       "chrome-untrusted://media-app/*",
       "chrome-untrusted://mako/*",
       "chrome-untrusted://projector/*",
       "chrome-untrusted://read-anything-side-panel.top-chrome/*",
-      "chrome-untrusted://data-sharing/*",
       "chrome-untrusted://class-tools-remote-display/*"
     ]
   }],
@@ -444,7 +406,6 @@
     "channel": "stable",
     "contexts": ["webui_untrusted"],
     "matches": [
-      "chrome://apps/*",
       "chrome-untrusted://demo-mode-app/*"
     ]
   },
@@ -883,11 +844,6 @@
     "contexts": ["webui"],
     "matches": [
       "chrome://add-supervision/*",
-      "chrome://chrome-signin/*",
-      "chrome://contextual-tasks/*",
-      "chrome://glic/*",
-      "chrome://glic-fre/*",
-      "chrome://glic-experimental-opt-in/*",
       "chrome://graduation/*",
       "chrome://home/*",
       "chrome://mobilesetup/*",
@@ -895,17 +851,7 @@
       "chrome://os-settings/*",
       "chrome://parent-access/*",
       "chrome://password-change/*",
-      "chrome://lock-reauth/*",
-      "chrome://skills/*"
-    ]
-  }, {
-    "internal": true,
-    "channel": "stable",
-    "contexts": [
-      "webui_untrusted"
-    ],
-    "matches": [
-      "chrome-untrusted://lens/*"
+      "chrome://lock-reauth/*"
     ]
   }, {
     // This feature is used by the Controlled Frame API and is specifically
@@ -942,11 +888,6 @@
     "contexts": ["webui"],
     "matches": [
       "chrome://add-supervision/*",
-      "chrome://chrome-signin/*",
-      "chrome://contextual-tasks/*",
-      "chrome://glic/*",
-      "chrome://glic-fre/*",
-      "chrome://glic-experimental-opt-in/*",
       "chrome://graduation/*",
       "chrome://home/*",
       "chrome://mobilesetup/*",
@@ -954,17 +895,7 @@
       "chrome://os-settings/*",
       "chrome://parent-access/*",
       "chrome://password-change/*",
-      "chrome://lock-reauth/*",
-      "chrome://skills/*"
-    ]
-  }, {
-    "internal": true,
-    "channel": "stable",
-    "contexts": [
-      "webui_untrusted"
-    ],
-    "matches": [
-      "chrome-untrusted://lens/*"
+      "chrome://lock-reauth/*"
     ]
   }, {
     // This feature is used by the Controlled Frame API and is specifically
@@ -987,24 +918,12 @@
     "contexts": ["webui"],
     "matches": [
       "chrome://add-supervision/*",
-      "chrome://chrome-signin/*",
-      "chrome://contextual-tasks/*",
-      "chrome://glic/*",
       "chrome://graduation/*",
       "chrome://home/*",
       "chrome://mobilesetup/*",
       "chrome://oobe/*",
       "chrome://os-settings/*",
-      "chrome://parent-access/*",
-      "chrome://skills/*"
-    ]
-  }, {
-    "channel": "stable",
-    "contexts": [
-      "webui_untrusted"
-    ],
-    "matches": [
-      "chrome-untrusted://lens/*"
+      "chrome://parent-access/*"
     ]
   }]
 }

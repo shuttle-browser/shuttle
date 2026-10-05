@@ -56,7 +56,6 @@ source_set("impl") {
     "//chrome/browser/tab_contents",
     "//chrome/browser/tab_list",
     "//chrome/browser/ui",
-    "//chrome/browser/ui:incognito_allowed_url",
     "//chrome/browser/ui/browser_window:create_browser_window",
     "//chrome/common:chrome_features",
     "//components/captive_portal/content",

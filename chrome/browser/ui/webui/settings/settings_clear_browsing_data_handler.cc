@@ -65,7 +65,6 @@ const char* kCounterPrefs[] = {
     browsing_data::prefs::kDeleteCache,
     browsing_data::prefs::kDeleteCookies,
     browsing_data::prefs::kDeleteDownloadHistory,
-    browsing_data::prefs::kDeleteFormData,
     browsing_data::prefs::kDeleteHostedAppsData,
     browsing_data::prefs::kDeleteSiteSettings,
 };
@@ -182,12 +181,9 @@ void ClearBrowsingDataHandler::HandleClearBrowsingData(
             content::BrowsingDataRemover::ORIGIN_TYPE_UNPROTECTED_WEB;
         break;
       case BrowsingDataType::PASSWORDS:
-        // Passwords are no longer deletable via DBD modal
-        // (crbug.com/397187800).
-        NOTREACHED();
       case BrowsingDataType::FORM_DATA:
-        remove_mask |= chrome_browsing_data_remover::DATA_TYPE_FORM_DATA;
-        break;
+        // Passwords and form data are not deletable via the dialog.
+        NOTREACHED();
       case BrowsingDataType::SITE_SETTINGS:
         remove_mask |= chrome_browsing_data_remover::DATA_TYPE_CONTENT_SETTINGS;
         break;
@@ -264,12 +260,8 @@ void ClearBrowsingDataHandler::OnClearingTaskFinished(
         history_notice_shown_times + 1);
   }
 
-  bool show_passwords_notice =
-      (failed_data_types & chrome_browsing_data_remover::DATA_TYPE_PASSWORDS);
-
   base::DictValue result;
   result.Set("showHistoryNotice", show_history_notice);
-  result.Set("showPasswordsNotice", show_passwords_notice);
 
   tabs::TabInterface* const tab =
       tabs::TabInterface::MaybeGetFromContents(web_ui()->GetWebContents());
@@ -408,7 +400,7 @@ void ClearBrowsingDataHandler::UpdateHistoryDeletionDialog(bool show) {
 
 void ClearBrowsingDataHandler::AddCounter(
     std::unique_ptr<browsing_data::BrowsingDataCounter> counter) {
-  // Agent Chrome: no counters for removed data types (passwords, form data).
+  // Not every data type has a counter.
   if (!counter) {
     return;
   }

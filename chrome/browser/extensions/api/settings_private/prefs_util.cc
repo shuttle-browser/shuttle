@@ -455,10 +455,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[browsing_data::prefs::kDeleteCookies] =
       settings_api::PrefType::kBoolean;
-  (*s_allowlist)[browsing_data::prefs::kDeletePasswords] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[browsing_data::prefs::kDeleteFormData] =
-      settings_api::PrefType::kBoolean;
   (*s_allowlist)[browsing_data::prefs::kDeleteSiteSettings] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[browsing_data::prefs::kDeleteHostedAppsData] =

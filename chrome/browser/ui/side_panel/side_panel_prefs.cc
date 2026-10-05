@@ -30,7 +30,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   // replace false and true respectively.
   registry->RegisterBooleanPref(prefs::kSidePanelHorizontalAlignment,
                                 !base::i18n::IsRTL());
-  registry->RegisterBooleanPref(prefs::kGoogleSearchSidePanelEnabled, true);
   registry->RegisterDictionaryPref(prefs::kSidePanelIdToWidth);
 
   base::DictValue alignment_overrides;

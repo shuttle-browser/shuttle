@@ -146,11 +146,6 @@ function createRoutes(): SettingsRoutes {
 
   const visibility = pageVisibility || {};
 
-  if (visibility.ai !== false && loadTimeData.getBoolean('showAiPage')) {
-    r.AI = r.BASIC.createSection(
-        '/ai', 'ai', loadTimeData.getString('aiPageTitle'));
-  }
-
   if (visibility.appearance !== false) {
     r.APPEARANCE = r.BASIC.createSection(
         '/appearance', 'appearance',

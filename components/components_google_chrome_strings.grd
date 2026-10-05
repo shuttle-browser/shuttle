@@ -245,12 +245,6 @@
           Network &amp; internet &gt; Proxy
           and deselect &quot;Automatically detect settings&quot;.
         </message>
-        <message name="IDS_PAYMENTS_AUTOFILL_MANDATORY_REAUTH_PROMPT" desc="Message to be displayed to the user in the device authentication prompt when they click on the mandatory auth toggle on the Payments settings page, irrespective to enable or disable it. When mandatory auth toggle is enabled, we would authenticate the user before autofilling in the payment details.">
-          Google Chrome is trying to modify settings for filling payment methods.
-        </message>
-        <message name="IDS_PAYMENTS_AUTOFILL_EDIT_CARD_MANDATORY_REAUTH_PROMPT" desc="Message to be displayed to the user in the device authentication prompt when they try to edit a local card on the Payments settings page if the mandatory auth toggle is enabled. If the user auth was succesful, we would then show the edit card dialog.">
-          Google Chrome is trying to edit payment methods.
-        </message>
       </if>
 
       <!-- About Flags UI -->
@@ -279,15 +273,6 @@
         Chrome is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1" aria-description="$3"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project and other <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$2" aria-description="$3"&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
       </message>
 
-      <if expr="is_chromeos">
-        <message name="IDS_VERSION_UI_LICENSE_CHROMIUM" desc="The label below the copyright message, containing the link to the Chromium project.">
-          Chrome is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project.
-        </message>
-
-        <message name="IDS_VERSION_UI_LICENSE_OTHER" desc="The label below the copyright message, containing the link to other open source software.">
-          Chrome is also made possible by other <ph name="BEGIN_LINK_OSS">&lt;a href='#'&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
-        </message>
-      </if>
 
       <!-- Page Info -->
       <message name="IDS_PAGE_INFO_INTERNAL_PAGE" desc="Message to display in the page info bubble when the page you are on is a chrome:// page or about:something.">
@@ -310,17 +295,6 @@
       </message>
 
       <!-- Desktop-to-Mobile Promo Notifications -->
-      <if expr="not is_android">
-        <message name="IDS_IOS_DESKTOP_PASSWORD_PROMO_NOTIFICATION_TITLE" desc="The title for the iOS desktop Password promo notification.">
-          Chrome Tip: Save Passwords
-        </message>
-        <message name="IDS_IOS_DESKTOP_SAFE_BROWSING_PROMO_NOTIFICATION_TITLE" desc="The title for the iOS desktop Enhanced Safe Browsing promo notification.">
-          Chrome Tip: Enhanced Safe Browsing
-        </message>
-        <message name="IDS_IOS_DESKTOP_LENS_PROMO_NOTIFICATION_TITLE" desc="The title for the iOS desktop Lens promo notification.">
-          Chrome Tip: Search With Lens
-        </message>
-      </if>
     </messages>
   </release>
 </grit>

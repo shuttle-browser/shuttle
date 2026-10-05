@@ -27,10 +27,6 @@ void AddLiveCaptionSectionStrings(content::WebUIDataSource* html_source);
 void AddPasswordPromptDialogStrings(content::WebUIDataSource* html_source);
 #endif
 
-// Adds strings used by both <settings-sync-page> and <os-settings-sync-subpage>
-// elements.
-void AddSharedSyncPageStrings(content::WebUIDataSource* html_source);
-
 // Adds strings used by the <settings-secure-dns> element.
 void AddSecureDnsStrings(content::WebUIDataSource* html_source);
 }  // namespace settings

@@ -378,7 +378,7 @@ PageLoadMetricsEmbedder::GetNavigationScenario(
 }
 
 bool PageLoadMetricsEmbedder::IsNewTabPageUrl(const GURL& url) {
-  return false;
+  return search::IsNTPURL(url);
 }
 
 bool PageLoadMetricsEmbedder::IsNoStatePrefetch(

@@ -37,7 +37,6 @@ if (!is_android) {
       "//chrome/common",
       "//components/omnibox/browser",
       "//components/omnibox/browser:mojo_bindings",
-      "//components/omnibox/common:features",
       "//components/search_engines",
       "//content/public/browser",
       "//ui/base",

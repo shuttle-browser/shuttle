@@ -39,7 +39,6 @@ source_set("signin") {
     ]
     public_deps += [
       "//chrome/browser:browser_process",
-      "//chrome/browser/signin:signin_promo",
       "//components/keyed_service/core",
       "//components/policy/core/browser",
       "//components/search_engines",
@@ -70,7 +69,6 @@ source_set("signin") {
   if (!is_android) {
     public += [
     ]
-    public_deps += [ ":signin_promo" ]
   }
 
   if (!is_android && !is_chromeos) {
@@ -263,7 +261,6 @@ source_set("impl") {
     sources += [
     ]
     deps += [
-      ":signin_promo",
       "//chrome/browser/feature_engagement",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui:ui_features",
@@ -358,26 +355,7 @@ source_set("impl") {
   }
 }
 
-source_set("signin_promo") {
-  sources = []
-  public_deps = [ "//components/signin/public/base" ]
-  deps = [
-    "//components/signin/public/base:signin_buildflags",
-    "//url",
-  ]
-}
 
-source_set("google_accounts_private_api") {
-  sources = [
-  ]
-  public_deps = [
-    "//base",
-    "//chrome/common:mojo_bindings",
-    "//content/public/browser",
-    "//mojo/public/cpp/bindings",
-  ]
-  deps = [ "//google_apis" ]
-}
 
 # SigninBrowserTestBase derives from InProcessBrowserTest, which is not
 # built on Android.

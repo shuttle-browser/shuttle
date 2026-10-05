@@ -4,9 +4,6 @@
   <message name="IDS_EXTENSIONS_ALLOW_FILE_ACCESS" desc="The checkbox for allowing an extension access to run scripts on file URLs.">
     Allow access to file URLs
   </message>
-  <message name="IDS_EXTENSIONS_ALLOW_ON_ALL_URLS" desc="The checkbox for allowing an extension to run scripts on all websites without explicit permission.">
-    Allow on all websites
-  </message>
   <message name="IDS_EXTENSIONS_ALLOW_ON_FOLLOWING_SITES" desc="The label for the option to allow the extension to automatically access all sites listed below.">
     Automatically allow access on the following sites
   </message>
@@ -178,9 +175,6 @@
   <message name="IDS_EXTENSIONS_HOST_ACCESS_ALLOW_ON_ALL_SITES" desc="The text for the option to allow an extension to read and change data on all websites, for the new site access settings.">
     Allow on all sites
   </message>
-  <message name="IDS_EXTENSIONS_ITEM_ALLOWED_HOSTS" desc="The heading above the section listing any sites the extension is allowed to run on.">
-    Allowed sites
-  </message>
   <message name="IDS_EXTENSIONS_ACCESSIBILITY_ERROR_LINE" desc="Accessibility message to indicate what line an error is on. The line of code will be read to the user. The place holder will be a number.">
     Error on line <ph name="ERROR_LINE">$1</ph>
   </message>
@@ -285,12 +279,6 @@
   </message>
   <message name="IDS_EXTENSIONS_EXTENSION_A11Y_ASSOCIATION" desc="Label used to associate an app or extension with actions a user can take. This label is for screen readers and will only be read out lout. Ex: a button labeled 'Delete' would have the description 'Related to AdBlock'. Without the added description a user on a screen reader would not have context of the extension they want to delete. Note that the action can be 'view details', 'enable', 'delete', 'errors', or something else.">
     Related to <ph name="NAME_PH">$1<ex>AdBlock</ex></ph>
-  </message>
-  <message name="IDS_EXTENSIONS_APP_ICON" desc="The alt text for the app's icon. Used for accessibility.">
-    App Icon
-  </message>
-  <message name="IDS_EXTENSIONS_EXTENSION_ICON" desc="The alt text for the extension's icon. Used for accessibility.">
-    Extension Icon
   </message>
   <message name="IDS_EXTENSIONS_ITEM_ID_HEADING" desc="The heading above the ID of the extension.">
     ID
@@ -635,29 +623,11 @@
   <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_TITLE" desc="Title text displayed before the manifest v2 deprecation panel">
     Updates
   </message>
-  <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_WARNING_HEADER" desc="Header text displayed in the manifest v2 deprecation panel for the warning stage.">
-    {NUM_EXTENSIONS, plural,
-      =1 {This extension may soon no longer be supported}
-      other {These extensions may soon no longer be supported}
-    }
-  </message>
-  <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_WARNING_SUBTITLE" desc="Subtitle text displayed in the manifest v2 deprecation panel for the warning stage.">
-    {NUM_EXTENSIONS, plural,
-      =1 {Remove or replace it with similar extensions from the <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Chrome Web Store<ph name="END_LINK">&lt;/a&gt;</ph>.}
-      other {Remove or replace them with similar extensions from the <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Chrome Web Store<ph name="END_LINK">&lt;/a&gt;</ph>}
-    }
-  </message>
   <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_DISABLED_HEADER" desc="Header text displayed in the manifest v2 deprecation panel for the disabled stage.">
     {NUM_EXTENSIONS, plural,
       =1 {This extension was turned off because it's no longer supported}
       other {These extensions were turned off because they're no longer supported}
     }
-  </message>
-  <message name="IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_WARNING_HEADER" desc="Header text displayed in the manifest v2 deprecation message for a specific extension during the warning stage.">
-    This extension may soon no longer be supported
-  </message>
-  <message name="IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_WARNING_SUBTITLE" desc="Subtitle text displayed in the manifest v2 deprecation message for a specific extension during the warning stage.">
-    Remove or replace it with similar extensions from the <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Chrome Web Store<ph name="END_LINK">&lt;/a&gt;</ph>
   </message>
   <message name="IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_DISABLED_HEADER" desc="Header text displayed in the manifest v2 deprecation message for a specific extension during the disabled stage.">
     This extension was turned off because it is no longer supported
@@ -674,57 +644,13 @@
   <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_ACTION_MENU_BUTTON_LABEL" desc="The (accessible) label for the button whichs opens an extension's action menu.">
     More options for <ph name="EXTENSION_NAME">$1<ex>Google Translate</ex></ph>
   </message>
-  <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_FIND_ALTERNATIVE_BUTTON_ACC_LABEL" desc="The (accessible) label for the button to find an alternative extension.">
-    Find alternative for  <ph name="EXTENSION_NAME">$1<ex>Google Translate</ex></ph>
-  </message>
   <message name="IDS_EXTENSIONS_MV2_DEPRECATION_UNSUPPORTED_EXTENSION_OFF_TEXT" desc="The text that informs the user the extension was turned off because it's no longer supported.">
     This extension was turned off because it is no longer supported
   </message>
   <message name="IDS_EXTENSIONS_CANT_INSTALL_MV2_EXTENSION" desc="The text shown to a user when they try to install an extension that is no longer supported by the browser.">
     Cannot install extension because it uses an unsupported manifest version.
   </message>
-<if expr="is_chromeos">
-  <message name="IDS_EXTENSIONS_WFH_PERMISSION_HANDLER_FILES" desc="Label showing file names in singular or plural form.">
-    {FILE_COUNT, plural,
-      =1 {Open and edit <ph name="FILE1">{FILE1}<ex>1.txt</ex></ph> in this extension}
-      other {Open and edit <ph name="FILE1">{FILE1}<ex>1.txt</ex></ph>, ... in this app}
-    }
-  </message>
-</if>
 
-<if expr="is_chromeos">
-  <!-- Extensions Kiosk apps -->
-  <message name="IDS_EXTENSIONS_MANAGE_KIOSK_APP" desc="Label of the button to bring up kiosk management overlay on chrome extensions page.">
-    Manage kiosk applications
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_ADD_APP" desc="Label above the application id text input in the kiosk settings overlay.">
-    Add kiosk application
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_ADD_APP_HINT" desc="Placeholder hint in  the application id text input in the kiosk settings overlay.">
-    Enter application ID or webstore URL
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_ENABLE_AUTO_LAUNCH" desc="Text for a button that enables an application to auto launch on startup in the kiosk settings overlay.">
-    Set to auto-launch
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_DISABLE_AUTO_LAUNCH" desc="Text for a button that disables an application to auto launch on startup in the kiosk settings overlay.">
-    Disable auto-launch
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_AUTO_LAUNCH" desc="Text shows besides an application that is set to auto launch on start up in the kiosk settings overlay.">
-    (auto-launched)
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_INVALID_APP" desc="Text shows besides an application that is not valid in the kiosk settings overlay.">
-    Invalid application
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_DISABLE_BAILOUT_SHORTCUT_LABEL" desc="Label text for a checkbox to disable kiosk application launch bail out shortcut.">
-    Permanently keep this device in kiosk mode
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_DISABLE_BAILOUT_SHORTCUT_WARNING_TITLE" desc="Bold text of the warning dialog for disabling kiosk application launch bail out shortcut.">
-    Are you sure you want to permanently keep this device in kiosk mode?
-  </message>
-  <message name="IDS_EXTENSIONS_KIOSK_DISABLE_BAILOUT_SHORTCUT_WARNING_BODY" desc="Warning text of disabling kiosk application launch bail out shortcut.">
-    The only way to undo this is to re-install <ph name="IDS_SHORT_PRODUCT_OS_NAME">$1<ex>ChromeOS</ex></ph>
-  </message>
-</if>
 <if expr="enable_extensions">
   <!-- Extensions Zero State Promo IPH -->
   <message name="IDS_EXTENSIONS_ZERO_STATE_IPH_HEADER" desc="Header of the extensions zero state in-product help promo.">

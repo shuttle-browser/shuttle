@@ -384,7 +384,6 @@ struct ContentSettingImageState {
 // LINT.IfChange(PageActionId)
 // Enum of all page actions listed in kPageActionProperties.
 enum PageActionId {
-  kActionAiMode,
   kActionIndigo,
   kActionMultistepFilter,
   kActionSidePanelShowLensOverlayResults,

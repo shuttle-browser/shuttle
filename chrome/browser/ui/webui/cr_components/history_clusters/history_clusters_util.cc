@@ -69,10 +69,7 @@ void HistoryClustersUtil::PopulateSource(content::WebUIDataSource* source,
       {"removeFromHistory", IDS_HISTORY_CLUSTERS_REMOVE_PAGE},
       {"removeFromHistoryToast", IDS_HISTORY_CLUSTERS_REMOVE_ITEM_TOAST},
       {"removeSelected", IDS_HISTORY_CLUSTERS_REMOVE_SELECTED_ITEMS},
-      {"savedInTabGroup", IDS_HISTORY_CLUSTERS_SAVED_IN_TABGROUP_LABEL},
       {"historyClustersSearchPrompt", IDS_HISTORY_SEARCH_PROMPT},
-      {"toggleButtonLabelLess", IDS_HISTORY_CLUSTERS_SHOW_LESS_BUTTON_LABEL},
-      {"toggleButtonLabelMore", IDS_HISTORY_CLUSTERS_SHOW_MORE_BUTTON_LABEL},
   };
   source->AddLocalizedStrings(kHistoryClustersStrings);
 

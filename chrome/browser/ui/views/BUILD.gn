@@ -1192,31 +1192,6 @@ source_set("upgrade_notification_controller") {
   }
 }
 
-source_set("incognito_clear_browsing_data_dialog") {
-  public = [
-  ]
-  sources = [
-  ]
-  public_deps = [
-    "//base",
-    "//chrome/browser/ui:incognito_clear_browsing_data_dialog_interface",
-    "//ui/base/metadata",
-    "//ui/base/unowned_user_data",
-    "//ui/views",
-  ]
-  deps = [
-    ":layout_provider",
-    "//chrome/app:generated_resources",
-    "//chrome/app/theme:theme_resources",
-    "//chrome/browser/lifetime",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/views/accessibility",
-    "//ui/base",
-    "//ui/gfx",
-    "//ui/strings:ui_strings",
-  ]
-}
 
 source_set("task_manager_view") {
   public = [ "task_manager_view.h" ]

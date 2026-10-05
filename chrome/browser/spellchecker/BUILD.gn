@@ -22,7 +22,6 @@ source_set("spellchecker") {
 
   if (is_win || is_linux || is_chromeos) {
     public += [
-      "spellcheck_language_blocklist_policy_handler.h",
       "spellcheck_language_policy_handler.h",
     ]
   }
@@ -65,7 +64,6 @@ source_set("impl") {
 
   if (is_win || is_linux || is_chromeos) {
     sources += [
-      "spellcheck_language_blocklist_policy_handler.cc",
       "spellcheck_language_policy_handler.cc",
     ]
   }

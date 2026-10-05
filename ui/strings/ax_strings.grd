@@ -252,9 +252,6 @@ need to be translated for each locale.-->
         <message name="IDS_AX_ROLE_BUTTON" desc="Accessibility role description for a button">
           button
         </message>
-        <message name="IDS_AX_ROLE_CAPTION" desc="Accessibility role description for a section whose content represents a caption for a table, image, etc.">
-          caption
-        </message>
         <message name="IDS_AX_ROLE_CODE" desc="Accessibility role description for a section whose content represents a fragment of computer code">
           code
         </message>
@@ -264,9 +261,6 @@ need to be translated for each locale.-->
         </message>
         <message name="IDS_AX_ROLE_COLUMN_HEADER" desc="Accessibility role description for a column header">
           column header
-        </message>
-        <message name="IDS_AX_ROLE_COMBO_BOX" desc="Accessibility role description for a combo box, an editable text control with an associated drop-down list">
-          combo box
         </message>
         <message name="IDS_AX_ROLE_COMMENT" desc="Accessibility role description for a single comment">
           comment
@@ -310,9 +304,6 @@ need to be translated for each locale.-->
         </message>
         <message name="IDS_AX_ROLE_DIALOG" desc="Accessibility role description for a dialog">
           dialog
-        </message>
-        <message name="IDS_AX_ROLE_DIRECTORY" desc="Accessibility role description for a directory, for example a table of contents or list of employees">
-          directory
         </message>
         <message name="IDS_AX_ROLE_DISCLOSURE_TRIANGLE" desc="Accessibility role description for a disclosure triangle, a control shaped like a triangle that expands or collapses to show or hide extra content">
           disclosure triangle
@@ -483,9 +474,6 @@ need to be translated for each locale.-->
         <message name="IDS_AX_ROLE_HEADING" desc="Accessibility role description for headings">
           heading
         </message>
-        <message name="IDS_AX_ROLE_HEADING_WITH_LEVEL" desc="Accessibility role description for a heading with a heading level, for example 'heading 1' is the most important heading and 'heading 3' is less important">
-          heading <ph name="HEADING_LEVEL">$1<ex>1</ex></ph>
-        </message>
         <message name="IDS_AX_ROLE_INPUT_TIME" desc="Accessibility role description for a time picker control">
           time picker
         </message>
@@ -532,10 +520,6 @@ need to be translated for each locale.-->
         </message>
         <message name="IDS_AX_ROLE_NOTE" desc="Accessibility role description for a note">
           note
-        </message>
-        <!-- https://w3c.github.io/html-aam/#el-output -->
-        <message name="IDS_AX_ROLE_OUTPUT" desc="Accessibility role description for output">
-          output
         </message>
         <message name="IDS_AX_ROLE_PDF_HIGHLIGHT" desc="Accessibility role description for PDF highlight.">
           highlight
@@ -673,71 +657,7 @@ need to be translated for each locale.-->
         <message name="IDS_AX_ROLE_WEEK" desc="Accessibility role description for a week input">
           week picker
         </message>
-        <if expr="is_android">
-          <message name="IDS_AX_ROLE_POP_UP_BUTTON_MENU" desc="Accessibility role description for a pop up button that opens a menu">
-            menu pop up button
-          </message>
-          <message name="IDS_AX_ROLE_POP_UP_BUTTON_DIALOG" desc="Accessibility role description for a pop up button that opens a dialog">
-            dialog pop up button
-          </message>
-        </if>
         <!-- Accessibility state localized descriptions -->
-        <if expr="is_android">
-          <message name="IDS_AX_MULTISELECTABLE_STATE_DESCRIPTION" desc="Accessibility state description for a multiselectable node when some children are selected">
-            multiselectable, <ph name="SELECTED">$1<ex>3</ex></ph> of <ph name="COUNT">$2<ex>10</ex></ph> selected.
-          </message>
-          <message name="IDS_AX_MULTISELECTABLE_STATE_DESCRIPTION_NONE" desc="Accessibility state description for a multiselectable node when no children are selected">
-            multiselectable, none selected.
-          </message>
-          <message name="IDS_AX_TOGGLE_BUTTON_ON" desc="Accessibility state description for a toggle button when it is in the on/checked state">
-            On
-          </message>
-          <message name="IDS_AX_TOGGLE_BUTTON_OFF" desc="Accessibility state description for a toggle button when it is in the off/unchecked state">
-            Off
-          </message>
-          <message name="IDS_AX_ARIA_CURRENT_PAGE" desc="Accessibility state description for aria-current value of page.">
-            current page
-          </message>
-          <message name="IDS_AX_ARIA_CURRENT_STEP" desc="Accessibility state description for aria-current value of step.">
-            current step
-          </message>
-          <message name="IDS_AX_ARIA_CURRENT_LOCATION" desc="Accessibility state description for aria-current value of location.">
-            current location
-          </message>
-          <message name="IDS_AX_ARIA_CURRENT_DATE" desc="Accessibility state description for aria-current value of date.">
-            current date
-          </message>
-          <message name="IDS_AX_ARIA_CURRENT_TIME" desc="Accessibility state description for aria-current value of time.">
-            current time
-          </message>
-          <message name="IDS_AX_ARIA_CURRENT_TRUE" desc="Accessibility state description for aria-current value of true.">
-            current item
-          </message>
-          <message name="IDS_AX_COMBOBOX_EXPANDED_AUTOCOMPLETE_DEFAULT" desc="Accessibility utterance for when a combobox element is expanded with an unknown number of autocomplete options available to the user.">
-            expanded, autocomplete options available.
-          </message>
-          <message name="IDS_AX_COMBOBOX_EXPANDED_AUTOCOMPLETE_X_OPTIONS_AVAILABLE" desc="Accessibility utterance for when a combobox element is expanded with a known number of autocomplete options available to the user.">
-            expanded, <ph name="COUNT">$1<ex>4</ex></ph> autocomplete options available.
-          </message>
-          <message name="IDS_AX_COMBOBOX_EXPANDED_DIALOG" desc="Accessibility utterance for when a combobox element is expanded with a child dialog pop-up that appears.">
-            expanded, dialog opened.
-          </message>
-          <message name="IDS_AX_COMBOBOX_EXPANDED" desc="Accessibility utterance for when a combobox element is expanded, but due to authoring errors we cannot say any more information than that.">
-            expanded.
-          </message>
-          <message name="IDS_AX_INDETERMINATE_VALUE" desc="Accessibility utterance for when a progress bar/indicator has no value and is being used as an indeterminate progress bar.">
-            indeterminate
-          </message>
-          <message name="IDS_AX_RADIO_BUTTON_STATE_DESCRIPTION_UNCHECKED" desc="Accessibility state description for a radio button inside a group that has not been checked.">
-            Not checked. In group, option <ph name="INDEX">$1<ex>1</ex></ph> of <ph name="COUNT">$2<ex>3</ex></ph>
-          </message>
-          <message name="IDS_AX_RADIO_BUTTON_STATE_DESCRIPTION_CHECKED" desc="Accessibility state description for a radio button inside a group that is checked.">
-            Checked. In group, option <ph name="INDEX">$1<ex>1</ex></ph> of <ph name="COUNT">$2<ex>3</ex></ph>
-          </message>
-          <message name="IDS_AX_STATE_LINK_VISITED" desc="Accessibility role description suffix for links that have been visited.">
-            visited
-          </message>
-        </if>
       </if>
       <message name="IDS_AX_CALENDAR_SHOW_DATE_PICKER" desc="Accessible description of a button to show a calendar from a date input field.">
         Show date picker
@@ -823,9 +743,6 @@ need to be translated for each locale.-->
         Hours
       </message>
 
-      <message name="IDS_AX_MEDIA_DEFAULT" desc="Accessibility label of a media control.">
-        media control
-      </message>
 
       <message name="IDS_AX_MEDIA_VIDEO_ELEMENT" desc="Accessibility label of video">
         video
@@ -883,9 +800,6 @@ need to be translated for each locale.-->
         show closed captions menu
       </message>
 
-      <message name="IDS_AX_MEDIA_SHOW_AUDIO_DESCRIPTIONS_MENU_BUTTON" desc="Accessibility label for show audio descriptions menu button">
-        show audio descriptions menu
-      </message>
 
       <message name="IDS_AX_MEDIA_SHOW_PLAYBACK_SPEED_MENU_BUTTON" desc="Accessibility label for show playback speed menu button">
         show playback speed menu
@@ -919,9 +833,6 @@ need to be translated for each locale.-->
         show more media controls
       </message>
 
-      <message name="IDS_AX_MEDIA_VIDEO_ELEMENT_HELP" desc="Accessibility label for help of video">
-        video
-      </message>
 
       <message name="IDS_AX_MEDIA_AUDIO_SLIDER_HELP" desc="Accessibility label for audio timeline slider">
         audio time scrubber
@@ -931,17 +842,8 @@ need to be translated for each locale.-->
         video time scrubber
       </message>
 
-      <message name="IDS_AX_MEDIA_VOLUME_SLIDER_HELP" desc="Accessibility label for volume slider">
-        volume slider
-      </message>
 
-      <message name="IDS_AX_MEDIA_CURRENT_TIME_DISPLAY_HELP" desc="Accessibility label for elapsed time display">
-        current time in seconds
-      </message>
 
-      <message name="IDS_AX_MEDIA_TIME_REMAINING_DISPLAY_HELP" desc="Accessibility label for time remaining display">
-        number of seconds of video remaining
-      </message>
 
       <message name="IDS_AX_MEDIA_OVERFLOW_BUTTON_HELP" desc="Accessibility label for overflow button.">
         more options
@@ -971,12 +873,6 @@ need to be translated for each locale.-->
         Year
       </message>
 
-      <message name="IDS_AX_OBJECT_SELECTED" desc="The current object is selected, like an option in a list">
-        <ph name="accName">$1<ex>Hazelnuts</ex></ph> selected
-      </message>
-      <message name="IDS_AX_OBJECT_NOT_SELECTED" desc="The current object is selected, like an option in a list">
-        <ph name="accName">$1<ex>Hazelnuts</ex></ph> not selected
-      </message>
 
       <message name="CONTENT_INVALID_TRUE" desc="Error message for aria-invalid = true">
         Invalid entry

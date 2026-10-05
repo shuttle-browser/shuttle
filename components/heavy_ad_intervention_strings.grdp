@@ -9,7 +9,4 @@
   <message name="IDS_HEAVY_AD_INTERVENTION_SUMMARY" desc="Summary in heavy ad intervention page when ad was removed for using too many system resources.">
     This ad used too many resources for your device, so Chrome removed it.
   </message>
-  <message name="IDS_HEAVY_AD_INTERVENTION_BUTTON_RELOAD" desc="Label for the button that reloads the page and disables the intervention">
-    Reload and show anyway
-  </message>
 </grit-part>

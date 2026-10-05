@@ -185,11 +185,6 @@ void RecordSignalUploadSize(size_t size, ExtensionSignalType signal_type) {
       base::UmaHistogramCounts1M(
           "SafeBrowsing.ExtensionTelemetry.UploadSize.CookiesGetAll", size);
       break;
-    case ExtensionSignalType::kPotentialPasswordTheft:
-      base::UmaHistogramCounts1M(
-          "SafeBrowsing.ExtensionTelemetry.UploadSize.PotentialPasswordTheft",
-          size);
-      break;
     case ExtensionSignalType::kCookiesGet:
       base::UmaHistogramCounts1M(
           "SafeBrowsing.ExtensionTelemetry.UploadSize.CookiesGet", size);
@@ -209,9 +204,6 @@ void RecordSignalUploadSize(size_t size, ExtensionSignalType signal_type) {
           "DeclarativeNetRequestAction",
           size);
       break;
-    case ExtensionSignalType::kPasswordReuse:
-    // This signal is used to construct the potential password theft signal and
-    // is not itself included in a telemetry report.
     default:
       break;
   }
@@ -1257,54 +1249,6 @@ void ExtensionTelemetryService::DumpReportForTesting(
           }
         }
         continue;
-      }
-
-      // Potential Password Theft
-      if (signal_pb.has_potential_password_theft_info()) {
-        const auto& potential_password_theft_info_pb =
-            signal_pb.potential_password_theft_info();
-        const RepeatedPtrField<
-            ExtensionTelemetryReportRequest_SignalInfo_PotentialPasswordTheftInfo_PasswordReuseInfo>&
-            reused_password_infos =
-                potential_password_theft_info_pb.reused_password_infos();
-        const RepeatedPtrField<
-            ExtensionTelemetryReportRequest_SignalInfo_PotentialPasswordTheftInfo_RemoteHostData>&
-            remote_hosts_data =
-                potential_password_theft_info_pb.remote_hosts_data();
-        if (!reused_password_infos.empty() && !remote_hosts_data.empty()) {
-          ss << "  Signal: PotentialPasswordTheft\n";
-          for (const auto& remote_hosts_data_pb : remote_hosts_data) {
-            ss << "    RemoteHostData:\n"
-               << "      URL: " << remote_hosts_data_pb.remote_host_url()
-               << "\n"
-               << "      count: " << remote_hosts_data_pb.count() << "\n";
-          }
-          for (const auto& reused_password_infos_pb : reused_password_infos) {
-            ss << "    PasswordReuseInfo:\n";
-            ss << "      DomainsMatchingPassword:\n";
-            for (const std::string& matching_domain :
-                 reused_password_infos_pb.domains_matching_password()) {
-              ss << "        " << matching_domain << "\n";
-            }
-            ss << "      IsChromeSigninPassword: "
-               << (reused_password_infos_pb.is_chrome_signin_password() ? "Y"
-                                                                        : "N")
-               << "\n";
-            ss << "      ReusedPasswordAccountType:\n";
-            ss << "        IsAccountSyncing: "
-               << (reused_password_infos_pb.reused_password_account_type()
-                           .is_account_syncing()
-                       ? "Y"
-                       : "N")
-               << "\n";
-            ss << "        AccountType: "
-               << reused_password_infos_pb.reused_password_account_type()
-                      .account_type()
-               << "\n";
-            ss << "      ReuseCount: " << reused_password_infos_pb.count()
-               << "\n";
-          }
-        }
       }
 
       // Declarative Net Request Api

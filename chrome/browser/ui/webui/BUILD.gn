@@ -46,7 +46,6 @@ source_set("configs") {
   deps = [
     ":gcm_internals_ui",
     ":net_export_ui",
-    ":signin_internals_ui",
     ":webui",
     "//chrome/browser/actor/ui:actor_overlay",
     "//chrome/browser/ui",
@@ -552,19 +551,6 @@ if (enable_extensions_core) {
 }
 
 if (is_win || is_mac || is_linux) {
-  source_set("profile_helper") {
-    sources = [ "profile_helper.cc" ]
-    public = [ "profile_helper.h" ]
-    public_deps = [ "//chrome/browser/profiles:profile" ]
-    deps = [
-      "//chrome/browser:browser_process",
-      "//chrome/browser/profiles",
-      "//chrome/browser/signin",
-      "//chrome/browser/ui/profiles",
-      "//chrome/browser/ui/startup",
-      "//content/public/browser",
-    ]
-  }
 }
 
 if (is_chromeos) {
@@ -723,21 +709,6 @@ source_set("gcm_internals_ui") {
   ]
 }
 
-source_set("signin_internals_ui") {
-  sources = []
-  public = []
-
-  public_deps = [
-    "//base",
-    "//chrome/common",
-  ]
-
-  deps = [
-    "//chrome/browser/signin",
-    "//components/signin/public/base",
-    "//ui/webui",
-  ]
-}
 
 source_set("net_export_ui") {
   sources = [ "net_export_ui.cc" ]

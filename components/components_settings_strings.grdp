@@ -3,9 +3,6 @@
   <message name="IDS_SETTINGS_TITLE" desc="Title for the settings tab.">
     Settings
   </message>
-  <message name="IDS_SETTINGS_HIDE_ADVANCED_SETTINGS" desc="Title for the link to hide advanced settings.">
-    Hide advanced settings...
-  </message>
   <message name="IDS_SETTINGS_SHOW_ADVANCED_SETTINGS" desc="Title for the link to show advanced settings.">
     Show advanced settings...
   </message>

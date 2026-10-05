@@ -8,10 +8,6 @@
     Hide advanced
   </message>
 
-  <!-- Captive portal interstitial -->
-  <message name="IDS_CAPTIVE_PORTAL_AUTHORIZATION_DIALOG_NAME" desc="Name of the modal Web dialog (displayed in the title) displaying captive portal login page on ChromeOS.">
-    Captive Portal Authorization
-  </message>
   <message name="IDS_CAPTIVE_PORTAL_HEADING_WIRED" desc="Heading in the error page when a secure request is blocked because a captive portal is manipulating a wired connection (e.g. ethernet)">
     Connect to network
   </message>
@@ -314,13 +310,6 @@
     These charges could be one-time or recurring and may not be obvious. <ph name="BEGIN_LINK">&lt;a href="#" id="proceed-link"&gt;</ph>Show anyway<ph name="END_LINK">&lt;/a&gt;</ph>
   </message>
 
-  <!-- WebView Restricted Content interstitials -->
-  <message name="IDS_SUPERVISED_USER_URL_BLOCKED_MESSAGE" desc="Message in error page to inform the user that the content is blocked">
-    This content is blocked.
-  </message>
-  <message name="IDS_SUPERVISED_USER_LEARN_MORE" desc="Clickable link in the error page to guide the user to learn why the content was blocked">
-    Learn more
-  </message>
 
   <message name="IDS_CONNECTION_HELP_SHOW_MORE" desc="The button label to expand sections for the chrome://connection-help site. Paired with IDS_CONNECTION_HELP_SHOW_LESS">
     Show More
@@ -448,25 +437,8 @@
       </message>
     </if>
 
-    <!-- Known interception disclosure infobar strings -->
-    <message name="IDS_KNOWN_INTERCEPTION_INFOBAR_HEADING" desc="Text of the heading used to alert the user that Chrome has detected that their network connnection is being intercepted.">
-      Your activity on the web is being monitored
-    </message>
-    <message name="IDS_KNOWN_INTERCEPTION_INFOBAR_BUTTON_TEXT" desc="Text of the button to close the disclosure infobar and continue using Chrome.">
-      OK
-    </message>
   </if>
 
-  <!-- Legacy TLS interstitial -->
-  <message name="IDS_LEGACY_TLS_HEADING" desc="Large heading of the legacy TLS interstitial.">
-    Your connection is not fully secure
-  </message>
-  <message name="IDS_LEGACY_TLS_PRIMARY_PARAGRAPH" desc="Main paragraph of the legacy TLS interstitial. A user visits a website that uses an obsolete version of TLS and they are shown this error. Page title and additional description of the error are shown above.">
-    This site uses an outdated security configuration, which may expose your information (for example, passwords, messages, or credit cards) when it is sent to this site.
-  </message>
-  <message name="IDS_LEGACY_TLS_EXPLANATION" desc="Part of an extended description hidden behind an 'Advanced' button on an error page. A user visits a website that uses an obsolete version of TLS and they are shown this error. Page title and additional description of the error are shown above.">
-    The connection used to load this site used TLS 1.0 or TLS 1.1, which are deprecated and will be disabled in the future. Once disabled, users will be prevented from loading this site. The server should enable TLS 1.2 or later.
-  </message>
 
   <!-- Insecure form submission interstitial-->
   <message name="IDS_INSECURE_FORM_TITLE" desc="Tab Title for insecure form submission warning">
@@ -572,16 +544,6 @@
     </message>
   </if>
 
-  <!-- WebView Content Restriction Interstitial -->
-  <message name="IDS_WEBVIEW_CONTENT_RESTRICTION_BLOCKED_MESSAGE" desc="Message to inform the user that the content is blocked by admin policy">
-    Blocked by admin policy
-  </message>
-  <message name="IDS_WEBVIEW_CONTENT_RESTRICTION_LEARN_MORE" desc="Clickable link in the error page to guide the user to learn why the content was blocked">
-    Learn more
-  </message>
-  <message name="IDS_WEBVIEW_CONTENT_RESTRICTION_GO_BACK" desc="The text for the button that takes the user back to previous page.">
-    Back
-  </message>
   <!-- Suspicious Site warning -->
   <message name="IDS_SUSPICIOUS_SITE_TITLE" desc="Title of the suspicious site warning dialog">
     This site doesn't seem right
@@ -594,9 +556,6 @@
   </message>
   <message name="IDS_SUSPICIOUS_SITE_PROCEED_BUTTON" desc="The text for the secondary button that proceeds to the site">
     Mark as safe
-  </message>
-  <message name="IDS_SAFE_BROWSING_HATS_CUSTOM_INVITATION" desc="The custom invitation string shown in the Happiness Tracking Survey (HaTS) prompt banner for Safe Browsing warnings (such as red warning interstitials or suspicious site warnings) on Android">
-    Chrome just flagged a website you were trying to visit. Help us improve these warnings by taking a 1-minute survey.
   </message>
 
 </grit-part>

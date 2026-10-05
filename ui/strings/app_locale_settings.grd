@@ -171,21 +171,8 @@
            (Indian) have. In that case, this need to be enclosed
            by platform-dependent if-clause. -->
       <if expr="is_win">
-        <!-- Limit minimum UI font size to 5 by default. -->
-        <message name="IDS_MINIMUM_UI_FONT_SIZE" use_name_for_id="true">
-          5
-        </message>
 
-        <message name="IDS_UI_FONT_FAMILY" use_name_for_id="true">
-          default
-        </message>
 
-        <!-- To get the actual UI font size for native UI components
-             (e.g. menu), the system UI font size is scaled with this value/100.
-             This should be 100 for most locales. -->
-        <message name="IDS_UI_FONT_SIZE_SCALER" use_name_for_id="true">
-          100
-        </message>
 
         <!-- The font used in Web UI (e.g. History). -->
         <message name="IDS_WEB_FONT_FAMILY" use_name_for_id="true">

@@ -416,8 +416,6 @@ using MojomPageActionId = toolbar_ui_api::mojom::PageActionId;
 actions::ActionId MojomPageActionIdToActionId(
     MojomPageActionId page_action_id) {
   switch (page_action_id) {
-    case MojomPageActionId::kActionAiMode:
-      return kActionAiMode;
     case MojomPageActionId::kActionIndigo:
       return kActionIndigo;
     case MojomPageActionId::kActionMultistepFilter:
@@ -494,8 +492,6 @@ actions::ActionId MojomPageActionIdToActionId(
 
 MojomPageActionId ActionIdToMojomPageActionId(actions::ActionId action_id) {
   switch (action_id) {
-    case kActionAiMode:
-      return MojomPageActionId::kActionAiMode;
     case kActionIndigo:
       return MojomPageActionId::kActionIndigo;
     case kActionMultistepFilter:

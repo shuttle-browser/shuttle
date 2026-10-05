@@ -55,9 +55,6 @@ class AboutHandler : public settings::SettingsPageUIHandler,
   void set_clock(base::Clock* clock) { clock_ = clock; }
 
  private:
-  void OnDeviceAutoUpdatePolicyChanged(const base::Value* previous_policy,
-                                       const base::Value* current_policy);
-
   // Called once the JS page is ready to be called, serves as a signal to the
   // handler to register C++ observers.
   void HandlePageReady(const base::ListValue& args);
@@ -232,9 +229,6 @@ class AboutHandler : public settings::SettingsPageUIHandler,
 
   // Specialized instance of the VersionUpdater used to update the browser.
   std::unique_ptr<VersionUpdater> version_updater_;
-
-  // Used to observe changes in the |kDeviceAutoUpdateDisabled| policy.
-  std::unique_ptr<policy::PolicyChangeRegistrar> policy_registrar_;
 
   // If true changes to UpgradeObserver are applied, if false they are ignored.
   bool apply_changes_from_upgrade_observer_ = false;

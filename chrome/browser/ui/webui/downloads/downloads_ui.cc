@@ -80,7 +80,6 @@ content::WebUIDataSource* CreateAndAddDownloadsUIHTMLSource(Profile* profile) {
       {"actionMenuDescription", IDS_DOWNLOAD_ACTION_MENU_DESCRIPTION},
       {"clearAll", IDS_DOWNLOAD_LINK_CLEAR_ALL},
       {"clearSearch", IDS_CLEAR_SEARCH},
-      {"openDownloadsFolder", IDS_DOWNLOAD_LINK_OPEN_DOWNLOADS_FOLDER},
       {"moreActions", IDS_DOWNLOAD_MORE_ACTIONS},
       {"search", IDS_DOWNLOAD_HISTORY_SEARCH},
       {"inIncognito", IDS_DOWNLOAD_IN_INCOGNITO},
@@ -124,7 +123,6 @@ content::WebUIDataSource* CreateAndAddDownloadsUIHTMLSource(Profile* profile) {
       {"controlResume", IDS_DOWNLOAD_LINK_RESUME},
       {"controlRetry", IDS_DOWNLOAD_LINK_RETRY},
       {"controlledByUrl", IDS_DOWNLOAD_BY_EXTENSION_URL},
-      {"controlOpenNow", IDS_OPEN_DOWNLOAD_NOW},
       {"controlOpenAnyway", IDS_OPEN_DOWNLOAD_ANYWAY},
       {"toastClearedAll", IDS_DOWNLOAD_TOAST_CLEARED_ALL},
       {"toastDeletedFromHistoryStillOnDevice",
@@ -169,8 +167,6 @@ content::WebUIDataSource* CreateAndAddDownloadsUIHTMLSource(Profile* profile) {
        IDS_DOWNLOAD_WARNING_BYPASS_PROMPT_DESCRIPTION},
 
       // Warning bypass prompt accessibility text.
-      {"warningBypassPromptLearnMoreLinkAccessible",
-       IDS_DOWNLOAD_WARNING_BYPASS_PROMPT_LEARN_MORE_LINK_ACCESSIBLE},
 
       // Warning bypass dialog.
       {"warningBypassDialogTitle", IDS_DOWNLOAD_WARNING_BYPASS_DIALOG_TITLE},

@@ -65,7 +65,6 @@ source_set("searchbox_impl") {
     "//components/google/core/common",
     "//components/lens:buildflags",
     "//components/omnibox/browser:vector_icons",
-    "//components/omnibox/common:features",
     "//components/search",
     "//components/sessions",
     "//components/vector_icons",

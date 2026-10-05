@@ -157,33 +157,13 @@
         en-US
       </message>
 
-      <!-- The width and height of the Edit Bookmark dialog box in characters and lines -->
-      <!-- (See above). -->
-      <message name="IDS_EDITBOOKMARK_DIALOG_WIDTH_CHARS" use_name_for_id="true">
-        70
-      </message>
-      <message name="IDS_EDITBOOKMARK_DIALOG_HEIGHT_LINES" use_name_for_id="true">
-        25
-      </message>
 
       <!-- The URL for the webstore. -->
       <message name="IDS_WEBSTORE_URL" translateable="false">
         https://chrome.google.com/webstore?hl=[GRITLANGCODE]
       </message>
 
-      <!-- The width of the media galleries configuration dialog in characters. -->
-      <message name="IDS_MEDIA_GALLERIES_DIALOG_CONTENT_WIDTH_CHARS" use_name_for_id="true">
-        81
-      </message>
 
-      <if expr="is_chromeos">
-        <message name="IDS_FACTORY_RESET_HELP_URL" translateable="false">
-          https://support.google.com/chromebook/answer/183084?hl=[GRITLANGCODE]
-        </message>
-        <message name="IDS_SANITIZE_HELP_URL" translateable="false">
-          https://support.google.com/chromebook/answer/183084?hl=[GRITLANGCODE]
-        </message>
-      </if>
 
     </messages>
   </release>

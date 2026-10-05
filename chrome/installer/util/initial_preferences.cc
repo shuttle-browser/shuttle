@@ -235,29 +235,6 @@ void InitialPreferences::EnforceLegacyPreferences() {
         installer::initial_preferences::kDoNotCreateQuickLaunchShortcut, true);
   }
 
-  // Deprecated boolean import initial preferences now mapped to their
-  // duplicates in prefs::.
-  static constexpr char kDistroImportHistoryPref[] = "import_history";
-  static constexpr char kDistroImportHomePagePref[] = "import_home_page";
-  static constexpr char kDistroImportSearchPref[] = "import_search_engine";
-  static constexpr char kDistroImportBookmarksPref[] = "import_bookmarks";
-
-  static constexpr struct {
-    const char* old_distro_pref_path;
-    const char* modern_pref_path;
-  } kLegacyDistroImportPrefMappings[] = {
-      {kDistroImportBookmarksPref, prefs::kImportBookmarks},
-      {kDistroImportHistoryPref, prefs::kImportHistory},
-      {kDistroImportHomePagePref, prefs::kImportHomepage},
-      {kDistroImportSearchPref, prefs::kImportSearchEngine},
-  };
-
-  for (const auto& mapping : kLegacyDistroImportPrefMappings) {
-    bool value = false;
-    if (GetBool(mapping.old_distro_pref_path, &value))
-      initial_dictionary_->Set(mapping.modern_pref_path, value);
-  }
-
 #if BUILDFLAG(ENABLE_RLZ)
   // Map the RLZ ping delay shipped in the distribution dictionary into real
   // prefs.

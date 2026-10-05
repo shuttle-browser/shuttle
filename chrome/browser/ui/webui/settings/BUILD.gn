@@ -262,8 +262,6 @@ source_set("impl") {
       "system_handler.cc",
     ]
     deps += [
-      "//chrome/browser/profiles:gaia_info_update_service",
-      "//chrome/browser/ui/webui:profile_helper",
     ]
   }
 
@@ -321,7 +319,6 @@ source_set("impl") {
       "//chromeos/ash/components/fwupd",
       "//chromeos/ash/components/system",
       "//chromeos/version",
-      "//ui/chromeos",
     ]
   }
 

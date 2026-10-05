@@ -1,6 +1,0 @@
-include_rules = [
-  "+components/sync/base",
-  "+components/sync/model",
-  "+components/sync/protocol",
-  "+components/sync_device_info",
-]

@@ -206,10 +206,6 @@ void RegisterBrowserUserPrefs(user_prefs::PrefRegistrySyncable* registry) {
 
   registry->RegisterBooleanPref(prefs::kCaretBrowsingEnabled, false);
   registry->RegisterBooleanPref(prefs::kShowCaretBrowsingDialog, true);
-#if !BUILDFLAG(IS_ANDROID)
-  registry->RegisterBooleanPref(prefs::kNTPFooterExtensionAttributionEnabled,
-                                true);
-#endif
 
 #if !BUILDFLAG(IS_CHROMEOS)
   registry->RegisterBooleanPref(prefs::kAccessibilityFocusHighlightEnabled,

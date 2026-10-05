@@ -196,9 +196,6 @@
   </translations>
   <release seq="1">
     <messages fallback_to_english="true">
-      <message name="IDS_TASK_MANAGER_SLIM_WEB_VIEW_TAG_PREFIX" desc="The prefix for a guest page loaded in a slimwebview tag in the Task Manager">
-        Slim webview: <ph name="SLIM_WEB_VIEW_TAG_NAME">$1<ex>Google</ex></ph>
-      </message>
     </messages>
   </release>
 </grit>

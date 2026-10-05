@@ -63,7 +63,6 @@ source_set("impl") {
       "//components/enterprise",
       "//components/history/core/browser",
       "//components/sessions",
-      "//components/strike_database",
       "//components/webdata/common",
     ]
   }

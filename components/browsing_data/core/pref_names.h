@@ -42,8 +42,6 @@ inline constexpr char kDeleteDownloadHistory[] =
     "browser.clear_data.download_history";
 inline constexpr char kDeleteCache[] = "browser.clear_data.cache";
 inline constexpr char kDeleteCookies[] = "browser.clear_data.cookies";
-inline constexpr char kDeletePasswords[] = "browser.clear_data.passwords";
-inline constexpr char kDeleteFormData[] = "browser.clear_data.form_data";
 inline constexpr char kDeleteHostedAppsData[] =
     "browser.clear_data.hosted_apps_data";
 inline constexpr char kDeleteSiteSettings[] =

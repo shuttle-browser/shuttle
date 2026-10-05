@@ -18,8 +18,8 @@ enum class ExtensionSignalType {
   kTabsExecuteScript = 0,
   kRemoteHostContacted = 1,
   kCookiesGetAll = 2,
-  kPasswordReuse = 3,
-  kPotentialPasswordTheft = 4,
+  // 3 (kPasswordReuse) and 4 (kPotentialPasswordTheft) were removed with
+  // password protection; the values stay reserved for the logged enum.
   kCookiesGet = 5,
   kDeclarativeNetRequest = 6,
   kTabsApi = 7,

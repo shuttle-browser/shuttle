@@ -12,29 +12,11 @@ build_webui("build") {
   grd_prefix = "settings"
 
   static_files = [
-    "images/cvc.svg",
-    "images/cvc_amex.svg",
-    "images/gemini_spark.svg",
-    "images/googleg_standard_clr_32px.svg",
-    "images/iban.svg",
-    "images/iban_old.svg",
-    "images/password_check_neutral.svg",
-    "images/password_check_neutral_dark.svg",
-    "images/password_check_positive.svg",
-    "images/password_check_positive_dark.svg",
-    "images/signin_banner.svg",
-    "images/signin_banner_dark.svg",
-    "images/sync_banner.svg",
-    "images/sync_banner_dark.svg",
     "settings.html",
   ]
 
   # -----------------web_component_files start ---------------------------------
   web_component_files = [
-    "ai_page/ai_info_card.ts",
-    "ai_page/ai_logging_info_bullet.ts",
-    "ai_page/ai_page.ts",
-    "ai_page/ai_page_index.ts",
     "clear_browsing_data_dialog/clear_browsing_data_dialog.ts",
     "clear_browsing_data_dialog/clear_browsing_data_time_picker.ts",
     "clear_browsing_data_dialog/history_deletion_dialog.ts",
@@ -177,7 +159,6 @@ build_webui("build") {
     "about_page/about_page_browser_proxy.ts",
     "about_page/about_page.html.ts",
     "about_page/about_page.ts",
-    "ai_page/constants.ts",
     "appearance_page/appearance_browser_proxy.ts",
     "appearance_page/appearance_fonts_page.html.ts",
     "appearance_page/appearance_fonts_page.ts",

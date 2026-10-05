@@ -13,10 +13,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "printing/buildflags/buildflags.h"
 
-#if BUILDFLAG(IS_CHROMEOS)
-#include "ash/constants/ash_pref_names.h"
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
 namespace policy {
 
 template <class Mode>
@@ -70,84 +66,6 @@ bool PrintingEnumPolicyHandler<Mode>::GetValue(const PolicyMap& policies,
   }
   return false;
 }
-
-#if BUILDFLAG(IS_CHROMEOS)
-PrintingAllowedColorModesPolicyHandler::PrintingAllowedColorModesPolicyHandler()
-    : PrintingEnumPolicyHandler<printing::ColorModeRestriction>(
-          key::kPrintingAllowedColorModes,
-          ash::prefs::kPrintingAllowedColorModes,
-          {
-              {"any", printing::ColorModeRestriction::kUnset},
-              {"monochrome", printing::ColorModeRestriction::kMonochrome},
-              {"color", printing::ColorModeRestriction::kColor},
-          }) {}
-
-PrintingAllowedColorModesPolicyHandler::
-    ~PrintingAllowedColorModesPolicyHandler() = default;
-
-PrintingColorDefaultPolicyHandler::PrintingColorDefaultPolicyHandler()
-    : PrintingEnumPolicyHandler<printing::ColorModeRestriction>(
-          key::kPrintingColorDefault,
-          ash::prefs::kPrintingColorDefault,
-          {
-              {"monochrome", printing::ColorModeRestriction::kMonochrome},
-              {"color", printing::ColorModeRestriction::kColor},
-          }) {}
-
-PrintingColorDefaultPolicyHandler::~PrintingColorDefaultPolicyHandler() =
-    default;
-
-PrintingAllowedDuplexModesPolicyHandler::
-    PrintingAllowedDuplexModesPolicyHandler()
-    : PrintingEnumPolicyHandler<printing::DuplexModeRestriction>(
-          key::kPrintingAllowedDuplexModes,
-          ash::prefs::kPrintingAllowedDuplexModes,
-          {
-              {"any", printing::DuplexModeRestriction::kUnset},
-              {"simplex", printing::DuplexModeRestriction::kSimplex},
-              {"duplex", printing::DuplexModeRestriction::kDuplex},
-          }) {}
-
-PrintingAllowedDuplexModesPolicyHandler::
-    ~PrintingAllowedDuplexModesPolicyHandler() = default;
-
-PrintingDuplexDefaultPolicyHandler::PrintingDuplexDefaultPolicyHandler()
-    : PrintingEnumPolicyHandler<printing::DuplexModeRestriction>(
-          key::kPrintingDuplexDefault,
-          ash::prefs::kPrintingDuplexDefault,
-          {
-              {"simplex", printing::DuplexModeRestriction::kSimplex},
-              {"long-edge", printing::DuplexModeRestriction::kLongEdge},
-              {"short-edge", printing::DuplexModeRestriction::kShortEdge},
-          }) {}
-
-PrintingDuplexDefaultPolicyHandler::~PrintingDuplexDefaultPolicyHandler() =
-    default;
-
-PrintingAllowedPinModesPolicyHandler::PrintingAllowedPinModesPolicyHandler()
-    : PrintingEnumPolicyHandler<printing::PinModeRestriction>(
-          key::kPrintingAllowedPinModes,
-          ash::prefs::kPrintingAllowedPinModes,
-          {
-              {"any", printing::PinModeRestriction::kUnset},
-              {"pin", printing::PinModeRestriction::kPin},
-              {"no_pin", printing::PinModeRestriction::kNoPin},
-          }) {}
-
-PrintingAllowedPinModesPolicyHandler::~PrintingAllowedPinModesPolicyHandler() =
-    default;
-
-PrintingPinDefaultPolicyHandler::PrintingPinDefaultPolicyHandler()
-    : PrintingEnumPolicyHandler<printing::PinModeRestriction>(
-          key::kPrintingPinDefault,
-          ash::prefs::kPrintingPinDefault,
-          {
-              {"pin", printing::PinModeRestriction::kPin},
-              {"no_pin", printing::PinModeRestriction::kNoPin},
-          }) {}
-
-PrintingPinDefaultPolicyHandler::~PrintingPinDefaultPolicyHandler() = default;
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 PrintingAllowedBackgroundGraphicsModesPolicyHandler::

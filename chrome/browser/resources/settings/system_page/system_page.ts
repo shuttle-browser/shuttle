@@ -32,8 +32,6 @@ import {MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
 // </if>
 import {RelaunchMixinLit, RestartType} from '../relaunch_mixin_lit.js';
 // <if expr="_google_chrome">
-import {routes} from '../route.js';
-import {Router} from '../router.js';
 // </if>
 import {getSearchManager} from '../search_settings.js';
 import type {SettingsPlugin} from '../settings_main/settings_plugin.js';
@@ -253,12 +251,6 @@ export class SettingsSystemPageElement extends SettingsSystemPageElementBase
     }
     return this.isolationStateEnabledPref_.value !==
         this.processIsolationEnabledAtStartup_;
-  }
-  // </if>
-
-  // <if expr="_google_chrome">
-  protected onOnDeviceAiLinkClick_(): void {
-    Router.getInstance().navigateTo(routes.AI);
   }
   // </if>
 

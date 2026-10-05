@@ -68,10 +68,6 @@ content::WebUIDataSource* CreateAndAddManagementUIHtmlSource(Profile* profile) {
   source->SetDefaultResource(IDR_MANAGEMENT_MANAGEMENT_HTML);
 
 #if BUILDFLAG(IS_CHROMEOS)
-  source->AddString("managementDeviceLearnMoreUrl",
-                    chrome::kLearnMoreEnterpriseURL);
-  source->AddString("managementAccountLearnMoreUrl",
-                    chrome::kManagedUiLearnMoreUrl);
 
   const size_t dlp_events_count =
       policy::DlpRulesManagerFactory::GetForPrimaryProfile() &&
@@ -211,11 +207,9 @@ void ManagementUI::GetLocalizedStrings(
       {"browserReportingExplanation",
        IDS_MANAGEMENT_BROWSER_REPORTING_EXPLANATION},
       {"extensionReporting", IDS_MANAGEMENT_EXTENSION_REPORTING},
-      {"extensionReportingTitle", IDS_MANAGEMENT_EXTENSIONS_INSTALLED},
       {"extensionName", IDS_MANAGEMENT_EXTENSIONS_NAME},
       {"extensionPermissions", IDS_MANAGEMENT_EXTENSIONS_PERMISSIONS},
       {"applicationReporting", IDS_MANAGEMENT_APPLICATION_REPORTING},
-      {"applicationReportingTitle", IDS_MANAGEMENT_APPLICATIONS_INSTALLED},
       {"applicationName", IDS_MANAGEMENT_APPLICATIONS_NAME},
       {"applicationPermissions", IDS_MANAGEMENT_APPLICATIONS_PERMISSIONS},
       {"title", IDS_MANAGEMENT_TITLE},

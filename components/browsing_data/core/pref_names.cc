@@ -20,9 +20,7 @@ bool AreAllSelectionPrefsDefaultValue(PrefService* pref_service) {
       browsing_data::prefs::kDeleteTimePeriod,
       browsing_data::prefs::kDeleteBrowsingHistory,
       browsing_data::prefs::kDeleteCache,
-      browsing_data::prefs::kDeleteCookies,
-      browsing_data::prefs::kDeletePasswords,
-      browsing_data::prefs::kDeleteFormData};
+      browsing_data::prefs::kDeleteCookies};
 
   for (std::string_view pref_name : selection_pref_names) {
     if (!pref_service->FindPreference(pref_name)->IsDefaultValue()) {
@@ -50,8 +48,6 @@ void RegisterBrowserUserPrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterBooleanPref(kDeleteBrowsingHistory, true);
   registry->RegisterBooleanPref(kDeleteCache, true);
   registry->RegisterBooleanPref(kDeleteCookies, true);
-  registry->RegisterBooleanPref(kDeletePasswords, false);
-  registry->RegisterBooleanPref(kDeleteFormData, false);
   registry->RegisterIntegerPref(
       kClearBrowsingDataHistoryNoticeShownTimes, 0);
 

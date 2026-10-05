@@ -25,7 +25,6 @@ import type {CrMenuSelectorElement} from 'chrome://resources/cr_elements/cr_menu
 import {assert} from 'chrome://resources/js/assert.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {loadTimeData} from '../i18n_setup.js';
 import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
 import {MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
 import {pageVisibility} from '../page_visibility.js';
@@ -44,7 +43,6 @@ export interface SettingsMenuElement {
 const pathToActionMap: Map<string, string> = new Map([
   ['/privacy', 'SettingsMenu_PrivacyClicked'],
   ['/performance', 'SettingsMenu_PerformanceClicked'],
-  ['/ai', 'SettingsMenu_AiPageEntryPointClicked'],
   ['/appearance', 'SettingsMenu_AppearanceClicked'],
   ['/search', 'SettingsMenu_SearchClicked'],
   ['/defaultBrowser', 'SettingsMenu_DefaultBrowserClicked'],
@@ -77,23 +75,12 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
         type: Object,
         value: () => pageVisibility,
       },
-
-      showAiPage_: {
-        type: Boolean,
-        value: () => loadTimeData.getBoolean('showAiPage'),
-      },
     };
   }
 
   declare private pageVisibility_?: PageVisibility;
-  declare private showAiPage_: boolean;
   private metricsBrowserProxy_: MetricsBrowserProxy =
       MetricsBrowserProxyImpl.getInstance();
-
-  private showAiPageMenuItem_(): boolean {
-    return this.showAiPage_ &&
-        (!this.pageVisibility_ || this.pageVisibility_.ai !== false);
-  }
 
   override currentRouteChanged(newRoute: Route) {
     // Focus the initially selected path.

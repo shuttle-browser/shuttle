@@ -149,9 +149,6 @@
   </translations>
   <release seq="1">
     <messages fallback_to_english="true">
-      <message desc="Context menu option to speak the currently highlighted/selected text" name="IDS_SELECT_TO_SPEAK_LISTEN_CONTEXT_MENU_OPTION_TEXT">
-        Listen to selected text
-      </message>
     </messages>
   </release>
 </grit>
