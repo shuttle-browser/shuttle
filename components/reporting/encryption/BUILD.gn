@@ -27,21 +27,6 @@ static_library("primitives") {
   ]
 }
 
-static_library("testing_primitives") {
-  testonly = true
-  sources = [
-    "testing_primitives.cc",
-    "testing_primitives.h",
-  ]
-  deps = [
-    ":primitives",
-    "//base",
-    "//base/test:test_support",
-    "//crypto",
-    "//third_party/boringssl",
-  ]
-}
-
 static_library("encryption_module") {
   sources = [
     "encryption_module.cc",
@@ -69,22 +54,6 @@ static_library("encryption") {
   ]
 }
 
-static_library("decryption") {
-  testonly = true
-  sources = [
-    "decryption.cc",
-    "decryption.h",
-  ]
-  deps = [
-    ":encryption",
-    ":primitives",
-    ":testing_primitives",
-    "//base",
-    "//components/reporting/proto:record_proto",
-    "//components/reporting/util:status",
-  ]
-}
-
 static_library("verification") {
   sources = [
     "verification.cc",
@@ -97,57 +66,3 @@ static_library("verification") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "test_encryption_module.cc",
-    "test_encryption_module.h",
-  ]
-  deps = [
-    ":decryption",
-    ":encryption",
-    ":encryption_module",
-    ":encryption_module_interface",
-    ":primitives",
-    ":testing_primitives",
-    ":verification",
-    "//base",
-    "//base/test:test_support",
-    "//components/reporting/proto:record_proto",
-    "//components/reporting/resources:resource_manager",
-    "//components/reporting/util:status",
-    "//components/reporting/util:status_macros",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
-# All unit tests are built as part of the //components:components_unittests
-# target and must be one targets named "unit_tests".
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "encryption_module_unittest.cc",
-    "encryption_unittest.cc",
-    "verification_unittest.cc",
-  ]
-  deps = [
-    ":decryption",
-    ":encryption",
-    ":encryption_module",
-    ":encryption_module_interface",
-    ":primitives",
-    ":test_support",
-    ":testing_primitives",
-    ":verification",
-    "//base",
-    "//base/test:test_support",
-    "//components/reporting/proto:record_proto",
-    "//components/reporting/resources:resource_manager",
-    "//components/reporting/util:status",
-    "//components/reporting/util:status_macros",
-    "//components/reporting/util:test_callbacks_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

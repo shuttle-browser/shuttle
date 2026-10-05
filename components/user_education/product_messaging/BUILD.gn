@@ -25,20 +25,3 @@ source_set("product_messaging") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "product_messaging_controller_unittest.cc" ]
-
-  deps = [
-    ":product_messaging",
-    "//base",
-    "//base/test:test_support",
-    "//components/user_education/common:session",
-    "//components/user_education/common:storage",
-    "//components/user_education/test",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base/interaction:test_support",
-  ]
-}

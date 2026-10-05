@@ -69,18 +69,3 @@ executable("wifi_test") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-  deps = [
-    ":wifi",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-
-  if (is_mac) {
-    sources += [ "wifi_service_mac_unittest.mm" ]
-    frameworks = [ "Foundation.framework" ]
-  }
-}

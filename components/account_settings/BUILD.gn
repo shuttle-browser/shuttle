@@ -28,32 +28,3 @@ static_library("account_settings") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "mock_account_setting_service.cc",
-    "mock_account_setting_service.h",
-  ]
-
-  public_deps = [
-    ":account_settings",
-    "//testing/gmock",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "account_setting_service_impl_unittest.cc",
-    "account_setting_sync_bridge_unittest.cc",
-  ]
-
-  deps = [
-    ":account_settings",
-    "//base",
-    "//base/test:test_support",
-    "//components/sync:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

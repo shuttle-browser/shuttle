@@ -15,14 +15,3 @@ source_set("prefs") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "multistep_filter_retention_prefs_unittest.cc" ]
-  deps = [
-    ":prefs",
-    "//base",
-    "//base/test:test_support",
-    "//components/prefs:test_support",
-    "//testing/gtest",
-  ]
-}

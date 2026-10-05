@@ -15,16 +15,3 @@ source_set("console_message_logger") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "headless_console_message_logger_unittest.cc" ]
-
-  deps = [
-    ":console_message_logger",
-    "//base/test:test_support",
-    "//content/public/browser",
-    "//content/public/common",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

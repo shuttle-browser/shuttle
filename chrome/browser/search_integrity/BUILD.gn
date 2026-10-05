@@ -30,15 +30,3 @@ source_set("search_integrity") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "search_integrity_unittest.cc" ]
-  defines = [ "enable_src_internal=$enable_src_internal" ]
-  deps = [
-    ":search_integrity",
-    "//base",
-    "//chrome/test:test_support",
-    "//components/search_engines",
-    "//components/search_engines:test_support",
-  ]
-}

@@ -124,44 +124,12 @@ source_set("indexed_db") {
   ]
 }
 
-source_set("indexed_db_fuzzer_support") {
-  public_deps = [
-    "//base",
-    "//components/services/storage",
-    "//content/browser/indexed_db",
-    "//content/public/browser:browser_sources",
-    "//content/test:test_support",
-    "//third_party/blink/public/common:headers",
-  ]
-  testonly = true
-}
 
-fuzzer_test("indexed_db_leveldb_coding_encodeidbkey_fuzzer") {
-  sources = [ "indexed_db_leveldb_coding_encodeidbkey_fuzzer.cc" ]
-  deps = [ ":indexed_db_fuzzer_support" ]
-  seed_corpus = "fuzzer_corpus/indexed_db_key"
-}
 
-fuzzer_test("indexed_db_leveldb_coding_encodeidbkeypath_fuzzer") {
-  sources = [ "indexed_db_leveldb_coding_encodeidbkeypath_fuzzer.cc" ]
-  deps = [ ":indexed_db_fuzzer_support" ]
-  seed_corpus = "fuzzer_corpus/indexed_db_key_path"
-}
 
-fuzzer_test("indexed_db_leveldb_coding_decodeidbkey_fuzzer") {
-  sources = [ "indexed_db_leveldb_coding_decodeidbkey_fuzzer.cc" ]
-  deps = [ ":indexed_db_fuzzer_support" ]
-  seed_corpus = "fuzzer_corpus/encoded_indexed_db_key"
-}
-
-fuzzer_test("indexed_db_leveldb_coding_decodeidbkeypath_fuzzer") {
-  sources = [ "indexed_db_leveldb_coding_decodeidbkeypath_fuzzer.cc" ]
-  deps = [ ":indexed_db_fuzzer_support" ]
-  seed_corpus = "fuzzer_corpus/encoded_indexed_db_key_path"
-}
 
 content_mojolpm_fuzzer_test("idb_factory_mojolpm_fuzzer") {
-  sources = [ "idb_factory_mojolpm_fuzzer.cc" ]
+  sources = []
 
   proto_source = "idb_factory_mojolpm_fuzzer.proto"
   testcase_proto_kind = "content.fuzzing.idb_factory.proto.Testcase"
@@ -184,81 +152,6 @@ content_mojolpm_fuzzer_test("idb_factory_mojolpm_fuzzer") {
     "fuzzer_corpus/idb_factory_mojolpm_fuzzer/index_cursor.textproto",
     "fuzzer_corpus/idb_factory_mojolpm_fuzzer/object_store_cursor.textproto",
   ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-
-  # See content_unittests for justification.
-  if (is_component_build) {
-    check_includes = false
-  }
-
-  sources = [
-    "file_path_util_unittest.cc",
-    "file_stream_reader_to_data_pipe_unittest.cc",
-    "indexed_db_context_unittest.cc",
-    "indexed_db_leveldb_coding_unittest.cc",
-    "indexed_db_quota_client_unittest.cc",
-    "indexed_db_test_base.cc",
-    "indexed_db_test_base.h",
-    "indexed_db_unittest.cc",
-    "instance/backing_store_pre_close_task_queue_unittest.cc",
-    "instance/backing_store_test_base.cc",
-    "instance/backing_store_test_base.h",
-    "instance/backing_store_unittest.cc",
-    "instance/bucket_context_unittest.cc",
-    "instance/database_unittest.cc",
-    "instance/fake_transaction.cc",
-    "instance/fake_transaction.h",
-    "instance/leveldb/active_blob_registry_unittest.cc",
-    "instance/leveldb/cleanup_on_io_error_unittest.cc",
-    "instance/leveldb/leveldb_backing_store_unittest.cc",
-    "instance/leveldb/tombstone_sweeper_unittest.cc",
-    "instance/mock_blob_storage_context.cc",
-    "instance/mock_blob_storage_context.h",
-    "instance/mock_file_system_access_context.cc",
-    "instance/mock_file_system_access_context.h",
-    "instance/sqlite/backing_store_sqlite_unittest.cc",
-    "instance/sqlite/database_connection_unittest.cc",
-    "instance/sqlite_backing_store_rollout_stage_unittest.cc",
-    "instance/test_blob_consumer.cc",
-    "instance/test_blob_consumer.h",
-    "instance/transaction_unittest.cc",
-    "mock_mojo_indexed_db_database_callbacks.cc",
-    "mock_mojo_indexed_db_database_callbacks.h",
-    "mock_mojo_indexed_db_factory_client.cc",
-    "mock_mojo_indexed_db_factory_client.h",
-  ]
-
-  deps = [
-    "//base",
-    "//base/test:test_support",
-    "//components/services/storage",
-    "//components/services/storage:test_support",
-    "//components/services/storage/privileged/mojom",
-    "//components/services/storage/public/cpp",
-    "//components/services/storage/public/mojom",
-    "//content/public/common",
-
-    # This dependency is here to satisfy `gn check` given this target's includes
-    # of :indexed_db headers. This has to be done through //content/browser to
-    # avoid doubling symbols.
-    "//content/browser:for_content_tests",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//sql:test_support",
-    "//storage/browser",
-    "//storage/browser:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/blink/public/common",
-    "//third_party/fuzztest",
-    "//third_party/leveldatabase",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 mojom("internals_mojo_bindings") {

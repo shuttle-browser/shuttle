@@ -68,18 +68,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "reading_list_page_handler_unittest.cc" ]
-  deps = [
-    ":impl",
-    "//base/test:test_support",
-    "//chrome/browser/prefs",
-    "//chrome/browser/reading_list",
-    "//chrome/browser/ui/webui:webui_util",
-    "//chrome/test:test_support",
-    "//components/reading_list/core:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

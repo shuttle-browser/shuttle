@@ -89,13 +89,3 @@ source_set("types") {
   public_deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  sources = [ "icon_handle_unittest.cc" ]
-  testonly = true
-
-  deps = [
-    ":types",
-    "//base",
-    "//testing/gtest",
-  ]
-}

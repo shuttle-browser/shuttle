@@ -19,8 +19,6 @@ group("vr_perf_tests_base") {
     "./webxr_sample_pages.py",
 
     # For the ACL setup code.
-    "//chrome/browser/vr/test/run_xr_browser_tests.py",
-    "//chrome/test/data/xr/webvr_info/samples/",
     "//third_party/webxr_test_pages/webxr-samples/",
   ]
   data_deps = [ "//testing:run_perf_test" ]

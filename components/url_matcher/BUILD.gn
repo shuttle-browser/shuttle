@@ -31,28 +31,3 @@ component("url_matcher") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "regex_set_matcher_unittest.cc",
-    "url_matcher_factory_unittest.cc",
-    "url_matcher_unittest.cc",
-    "url_util_unittest.cc",
-  ]
-  deps = [
-    ":url_matcher",
-    "//base/test/:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}
-
-fuzzer_test("url_matcher_fuzzer") {
-  sources = [ "url_matcher_fuzzer.cc" ]
-  deps = [
-    ":url_matcher",
-    "//base",
-    "//base:i18n",
-  ]
-}

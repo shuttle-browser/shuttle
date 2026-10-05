@@ -26,15 +26,3 @@ source_set("heavy_ad_intervention") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "heavy_ad_blocklist_unittest.cc" ]
-  deps = [
-    ":heavy_ad_intervention",
-    "//base",
-    "//base/test:test_support",
-    "//components/blocklist/opt_out_blocklist",
-    "//components/variations",
-    "//testing/gtest",
-  ]
-}

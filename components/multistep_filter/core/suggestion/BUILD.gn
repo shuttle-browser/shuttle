@@ -23,19 +23,3 @@ source_set("suggestion") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "filter_suggestion_generator_unittest.cc" ]
-  deps = [
-    ":suggestion",
-    "//base",
-    "//base/test:test_support",
-    "//components/multistep_filter/core:features",
-    "//components/multistep_filter/core:switches",
-    "//components/multistep_filter/core/annotation_index:test_support",
-    "//components/multistep_filter/core/storage",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

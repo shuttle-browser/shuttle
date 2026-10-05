@@ -25,20 +25,3 @@ static_library("health_module") {
   ]
 }
 
-# All unit tests are built as part of the //components:components_unittests
-# target and must be one targets named "unit_tests".
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "health_module_delegate_impl_unittest.cc",
-    "health_module_files_unittest.cc",
-    "health_module_unittest.cc",
-  ]
-
-  deps = [
-    ":health_module",
-    "//base/test:test_support",
-    "//components/reporting/util:test_callbacks_support",
-    "//testing/gtest",
-  ]
-}

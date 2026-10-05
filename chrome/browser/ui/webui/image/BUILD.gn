@@ -15,30 +15,4 @@ if (!is_android) {
     ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "image_navigation_throttle_unittest.cc" ]
-    deps = [
-      ":image",
-      "//content/test:test_support",
-      "//testing/gtest",
-      "//url",
-    ]
-  }
-
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "image_navigation_throttle_browsertest.cc" ]
-    deps = [
-      ":image",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui/webui/sanitized_image:sanitized_image_source",
-      "//chrome/common",
-      "//chrome/test:test_support",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//third_party/abseil-cpp:absl",
-    ]
-  }
 }

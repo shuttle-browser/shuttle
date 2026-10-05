@@ -51,59 +51,5 @@ source_set("webui") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "help_bubble_handler_unittest.cc" ]
-  if (!is_android) {
-    sources += [
-      "whats_new_registry_feature_param_unittest.cc",
-      "whats_new_registry_unittest.cc",
-    ]
-  }
-
-  deps = [
-    ":webui",
-    "//base",
-    "//base/test:test_support",
-    "//components/feature_engagement/public",
-    "//components/strings",
-    "//components/user_education/common",
-    "//components/user_education/test",
-    "//components/variations",
-    "//components/vector_icons",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//skia",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/abseil-cpp:absl",
-    "//ui/accessibility",
-    "//ui/base/interaction:test_support",
-    "//ui/webui/resources/cr_components/help_bubble:mojo_bindings",
-    "//ui/webui/tracked_element",
-  ]
-  if (!is_android) {
-    deps += [
-      ":test_support",
-      "//ui/webui/resources/js/browser_command:mojo_bindings",
-    ]
-  }
-}
-
 if (!is_android) {
-  source_set("test_support") {
-    testonly = true
-
-    sources = [
-      "mock_whats_new_storage_service.cc",
-      "mock_whats_new_storage_service.h",
-    ]
-
-    deps = [
-      ":webui",
-      "//base",
-      "//testing/gmock",
-    ]
-  }
 }

@@ -20,19 +20,3 @@ component("error_reporting") {
   ]
 }
 
-source_set("mock_crash_endpoint") {
-  testonly = true
-  sources = [
-    "mock_crash_endpoint.cc",
-    "mock_crash_endpoint.h",
-  ]
-  deps = [
-    ":error_reporting",
-    "//base",
-    "//components/crash/core/app",
-    "//net",
-    "//net:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

@@ -56,27 +56,3 @@ static_library("browser") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "distillable_page_utils_unittest.cc",
-    "distiller_referrer_throttle_unittest.cc",
-    "dom_distiller_viewer_source_unittest.cc",
-    "uma_helper_unittest.cc",
-  ]
-  deps = [
-    ":browser",
-    "//base/test:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}
-
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_distillability_observer.cc",
-    "test_distillability_observer.h",
-  ]
-  deps = [ ":browser" ]
-}

@@ -16,8 +16,8 @@ mojom("mojom") {
 # to manage the test's ax_client.
 source_set("launcher") {
   testonly = true
-  public = [ "launcher.h" ]
-  sources = [ "launcher.cc" ]
+  public = []
+  sources = []
   public_deps = [
     ":mojom",
     "//base",
@@ -35,14 +35,6 @@ executable("client_exe") {
   output_name = "ax_client"
   testonly = true
   sources = [
-    "ax_client.cc",
-    "ax_client.h",
-    "ax_client_ia2.cc",
-    "ax_client_ia2.h",
-    "ax_client_impl.h",
-    "ax_client_main.cc",
-    "ax_client_uia.cc",
-    "ax_client_uia.h",
   ]
   deps = [
     ":mojom",

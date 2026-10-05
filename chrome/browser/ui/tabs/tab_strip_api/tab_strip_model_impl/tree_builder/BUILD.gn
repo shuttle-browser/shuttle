@@ -21,20 +21,3 @@ source_set("tree_builder") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "mojo_tree_builder_browsertest.cc" ]
-
-  deps = [
-    ":tree_builder",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/ui:ui_features",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

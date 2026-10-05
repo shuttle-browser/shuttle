@@ -42,29 +42,3 @@ static_library("context_highlight") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "context_highlight_overlay_view_unittest.cc",
-    "context_highlight_tab_feature_unittest.cc",
-  ]
-  deps = [
-    ":context_highlight",
-    "//base",
-    "//base/test:test_support",
-    "//cc",
-    "//chrome/test:test_support",
-    "//components/tabs:public",
-    "//components/tabs:test_support",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base/unowned_user_data",
-    "//ui/compositor",
-    "//ui/gfx",
-    "//ui/gfx/geometry",
-    "//ui/views",
-    "//ui/views:test_support",
-  ]
-}

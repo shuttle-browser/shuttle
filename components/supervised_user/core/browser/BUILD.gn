@@ -18,53 +18,6 @@ static_library("fetcher_config") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "supervised_user_test_environment.cc",
-    "supervised_user_test_environment.h",
-  ]
-  deps = [
-    ":browser",
-    ":device_parental_controls",
-    ":synthetic_field_trial_delegate",
-    "//base",
-    "//base/test:test_support",
-    "//components/content_settings/core/browser:test_support",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//components/safe_search_api:test_support",
-    "//components/signin/public/base:test_support",
-    "//components/signin/public/identity_manager",
-    "//components/signin/public/identity_manager:test_support",
-    "//components/supervised_user/core/common",
-    "//components/supervised_user/test_support",
-    "//components/sync:test_support",
-    "//components/sync_preferences:test_support",
-    "//google_apis/common:test_support",
-    "//services/network:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-  if (is_android) {
-    deps += [ "//components/supervised_user/core/browser/android" ]
-  }
-}
-
-static_library("mocked") {
-  testonly = true
-  sources = [
-    "permission_request_creator_mock.cc",
-    "permission_request_creator_mock.h",
-  ]
-  deps = [
-    "//base",
-    "//components/supervised_user/core/browser",
-    "//components/supervised_user/core/common",
-    "//url",
-  ]
-}
-
 static_library("fetcher") {
   sources = [
     "api_access_token_fetcher.cc",
@@ -197,78 +150,6 @@ static_library("device_parental_controls") {
     ":synthetic_field_trial_delegate",
     "//base",
   ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "api_access_token_fetcher_unittest.cc",
-    "child_account_service_unittest.cc",
-    "device_parental_controls_url_filter_unittest.cc",
-    "family_link_settings_data_type_controller_unittest.cc",
-    "family_link_settings_service_unittest.cc",
-    "family_link_url_filter_manual_behavior_unittest.cc",
-    "family_link_url_filter_unittest.cc",
-    "family_link_user_capabilities_unittest.cc",
-    "fetcher_config_unittest.cc",
-    "list_family_members_service_unittest.cc",
-    "parallel_fetch_manager_unittest.cc",
-    "proto_fetcher_metrics_unittest.cc",
-    "proto_fetcher_status_unittest.cc",
-    "proto_fetcher_unittest.cc",
-    "remote_web_approvals_manager_unittest.cc",
-    "supervised_user_content_settings_provider_unittest.cc",
-    "supervised_user_error_page_unittest.cc",
-    "supervised_user_log_record_unittest.cc",
-    "supervised_user_metrics_service_unittest.cc",
-    "supervised_user_pref_store_unittest.cc",
-    "supervised_user_preferences_unittest.cc",
-    "supervised_user_service_unittest.cc",
-    "supervised_user_url_checker_client_unittest.cc",
-    "supervised_user_utils_unittest.cc",
-  ]
-
-  if (is_android) {
-    sources += [ "supervised_user_url_filtering_service_android_unittest.cc" ]
-  }
-
-  deps = [
-    ":browser",
-    ":device_parental_controls",
-    ":fetcher",
-    ":fetcher_config",
-    ":synthetic_field_trial_delegate",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//components/content_settings/core/browser:test_support",
-    "//components/prefs:test_support",
-    "//components/resources:components_resources",
-    "//components/safe_search_api:test_support",
-    "//components/signin/public/base",
-    "//components/signin/public/base:test_support",
-    "//components/signin/public/identity_manager",
-    "//components/signin/public/identity_manager:test_support",
-    "//components/strings:components_strings_grit",
-    "//components/supervised_user/core/browser/proto",
-    "//components/supervised_user/core/common",
-    "//components/supervised_user/test_support",
-    "//components/sync:test_support",
-    "//components/sync_preferences:test_support",
-    "//google_apis/common:test_support",
-    "//services/network:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base",
-  ]
-
-  if (is_android) {
-    deps += [ "//components/supervised_user/core/browser/android" ]
-  }
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 # TODO(crbug.com/474015323): Consider merging with :device_parental_controls

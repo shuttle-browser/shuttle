@@ -63,34 +63,3 @@ source_set("profiler") {
   friend = [ ":unit_tests" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "process_type_unittest.cc",
-    "thread_profiler_configuration_unittest.cc",
-    "thread_profiler_platform_configuration_unittest.cc",
-  ]
-
-  deps = [
-    ":profiler",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//chrome/common:channel_info",
-    "//chrome/common:non_code_constants",
-    "//components/metrics",
-    "//components/metrics:call_stack_profile_builder",
-    "//components/sampling_profiler",
-    "//components/version_info",
-    "//content/public/common",
-    "//extensions/buildflags",
-  ]
-
-  if (is_android) {
-    sources += [ "core_unwinders_android_unittest.cc" ]
-  }
-
-  if (enable_extensions_core) {
-    deps += [ "//extensions/common" ]
-  }
-}

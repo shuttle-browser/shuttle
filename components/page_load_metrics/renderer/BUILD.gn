@@ -30,25 +30,3 @@ source_set("renderer") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "fake_page_timing_sender.cc",
-    "fake_page_timing_sender.h",
-    "metrics_render_frame_observer_unittest.cc",
-    "page_timing_metadata_recorder_unittest.cc",
-    "page_timing_metrics_sender_unittest.cc",
-  ]
-
-  deps = [
-    ":renderer",
-    "//base",
-    "//base/test:test_support",
-    "//components/page_load_metrics/common",
-    "//components/page_load_metrics/common:page_load_metrics_mojom",
-    "//components/page_load_metrics/common:test_support",
-    "//testing/gtest",
-    "//third_party/blink/public:blink_headers",
-    "//url",
-  ]
-}

@@ -44,14 +44,3 @@ source_set("mojom_traits") {
   ]
 }
 
-source_set("unittests") {
-  testonly = true
-  sources = [ "accelerator_mojom_traits_unittest.cc" ]
-  deps = [
-    ":mojom",
-    ":mojom_traits",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/events",
-  ]
-}

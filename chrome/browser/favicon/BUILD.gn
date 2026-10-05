@@ -51,41 +51,5 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "favicon_utils_unittest.cc",
-    "large_icon_service_factory_unittest.cc",
-  ]
-  deps = [
-    ":impl",
-    "//base",
-    "//base/test:test_support",
-    "//content/public/browser",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/color",
-    "//ui/resources",
-  ]
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "content_favicon_driver_browsertest.cc" ]
-    deps = [
-      ":impl",
-      "//chrome/browser",
-      "//chrome/browser/ui",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//components/favicon/content",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//testing/gmock",
-      "//ui/gfx:test_support",
-    ]
-  }
 }

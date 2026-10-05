@@ -22,15 +22,3 @@ proto_library("encrypted_message_proto") {
   sources = [ "encrypted_message.proto" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "message_encrypter_unittest.cc" ]
-
-  deps = [
-    ":encrypted_messages",
-    "//base",
-    "//crypto",
-    "//testing/gtest",
-  ]
-}

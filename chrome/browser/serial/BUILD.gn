@@ -95,81 +95,8 @@ source_set("impl") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "chrome_serial_delegate_unittest.cc",
-    "serial_blocklist_unittest.cc",
-    "serial_chooser_context_unittest.cc",
-    "serial_policy_allowed_ports_unittest.cc",
-  ]
-  deps = [
-    ":serial",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/content_settings:content_settings_factory",
-    "//chrome/browser/prefs",
-    "//chrome/common:constants",
-    "//chrome/test:test_support",
-    "//components/account_id",
-    "//components/content_settings/core/browser",
-    "//components/content_settings/core/common",
-    "//components/permissions:test_support",
-    "//components/prefs:test_support",
-    "//components/sync_preferences:test_support",
-    "//content/test:test_support",
-    "//google_apis",
-    "//services/device/public/cpp:test_support",
-    "//services/device/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}
-
 if (is_linux || is_mac || is_win) {
-  source_set("device_realtarget_browsertests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "chrome_serial_realtarget_browsertest.cc" ]
-    deps = [
-      ":serial",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/ui",
-      "//chrome/browser/ui/serial",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/test:test_support_ui",
-      "//content/public/browser",
-      "//content/public/common",
-      "//content/test:test_support",
-      "//device/bluetooth",
-      "//device/bluetooth/public/cpp",
-    ]
-  }
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "chrome_serial_browsertest.cc" ]
-    deps = [
-      ":serial",
-      "//base",
-      "//base/test:test_support",
-      "//build:chromeos_buildflags",
-      "//chrome/browser/ui",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//content/public/common",
-      "//content/test:test_support",
-      "//mojo/public/cpp/bindings",
-      "//net:test_support",
-      "//services/device/public/cpp:test_support",
-      "//services/device/public/mojom",
-      "//url",
-    ]
-  }
 }

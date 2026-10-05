@@ -1,8 +1,0 @@
-rootWebArea
-++genericContainer ignored
-++++genericContainer
-++++++labelText
-++++++++staticText name='Username:' nameFrom=contents
-++++++++++inlineTextBox name='Username:' nameFrom=contents
-++++++textField name='Username:' nameFrom=relatedElement
-++++++++genericContainer

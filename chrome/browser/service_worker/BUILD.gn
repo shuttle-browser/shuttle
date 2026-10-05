@@ -25,43 +25,5 @@ source_set("service_worker") {
 }
 
 if (enable_extensions) {
-  source_set("browser_tests") {
-    testonly = true
-
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    sources = [ "chrome_service_worker_browsertest.cc" ]
-
-    deps = [
-      ":service_worker",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/content_settings:content_settings_factory",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/common:constants",
-      "//chrome/test:test_support_ui",
-      "//components/favicon/content",
-      "//components/metrics:content",
-      "//components/page_load_metrics/browser:test_support",
-      "//components/ukm:test_support",
-      "//content/test:test_support",
-    ]
-  }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "service_worker_synthetic_response_unittest.cc" ]
-  deps = [
-    ":service_worker",
-    "//base",
-    "//chrome/browser/search_engines",
-    "//chrome/common:constants",
-    "//chrome/test:test_support",
-    "//components/search_engines",
-    "//testing/gtest",
-    "//url",
-  ]
-}

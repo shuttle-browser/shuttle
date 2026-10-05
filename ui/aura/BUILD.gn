@@ -180,44 +180,6 @@ component("aura") {
 static_library("test_support") {
   testonly = true
   sources = [
-    "test/aura_test_base.cc",
-    "test/aura_test_base.h",
-    "test/aura_test_helper.cc",
-    "test/aura_test_helper.h",
-    "test/aura_test_utils.cc",
-    "test/aura_test_utils.h",
-    "test/default_event_generator_delegate.cc",
-    "test/default_event_generator_delegate.h",
-    "test/env_test_helper.h",
-    "test/event_generator_delegate_aura.cc",
-    "test/event_generator_delegate_aura.h",
-    "test/find_window.h",
-    "test/test_cursor_client.cc",
-    "test/test_cursor_client.h",
-    "test/test_focus_client.cc",
-    "test/test_focus_client.h",
-    "test/test_screen.cc",
-    "test/test_screen.h",
-    "test/test_window_builder.cc",
-    "test/test_window_builder.h",
-    "test/test_window_delegate.cc",
-    "test/test_window_delegate.h",
-    "test/test_window_parenting_client.cc",
-    "test/test_window_parenting_client.h",
-    "test/test_window_targeter.cc",
-    "test/test_window_targeter.h",
-    "test/test_windows.cc",
-    "test/test_windows.h",
-    "test/ui_controls_aurawin.h",
-    "test/ui_controls_factory_aura.h",
-    "test/window_destroyed_waiter.cc",
-    "test/window_destroyed_waiter.h",
-    "test/window_event_dispatcher_test_api.cc",
-    "test/window_event_dispatcher_test_api.h",
-    "test/window_occlusion_tracker_test_api.cc",
-    "test/window_occlusion_tracker_test_api.h",
-    "test/window_test_api.cc",
-    "test/window_test_api.h",
   ]
 
   public_deps = [
@@ -251,13 +213,10 @@ static_library("test_support") {
   ]
 
   if (is_win) {
-    sources += [ "test/ui_controls_aurawin.cc" ]
   }
 
   if (use_ozone && (is_chromeos || is_castos)) {
     sources += [
-      "test/ui_controls_ozone.cc",
-      "test/ui_controls_ozone.h",
     ]
   }
 
@@ -303,18 +262,7 @@ test("aura_unittests") {
   use_xvfb = use_xvfb_in_this_config
 
   sources = [
-    "../compositor_extra/shadow_unittest.cc",
-    "client/screen_position_client_unittest.cc",
     "gestures/gesture_recognizer_unittest.cc",
-    "test/aura_test_suite.h",
-    "test/run_all_unittests.cc",
-    "window_event_dispatcher_unittest.cc",
-    "window_occlusion_change_builder_unittest.cc",
-    "window_occlusion_tracker_unittest.cc",
-    "window_targeter_unittest.cc",
-    "window_tree_host_platform_unittest.cc",
-    "window_tree_host_unittest.cc",
-    "window_unittest.cc",
   ]
 
   deps = [

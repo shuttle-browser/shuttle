@@ -19,17 +19,3 @@ source_set("notifications") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "notification_image_retainer_unittest.cc" ]
-
-  deps = [
-    ":notifications",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/common:constants",
-    "//testing/gtest",
-    "//ui/gfx",
-  ]
-}

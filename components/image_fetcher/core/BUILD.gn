@@ -51,52 +51,6 @@ static_library("metrics") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "fake_image_decoder.cc",
-    "fake_image_decoder.h",
-    "mock_image_decoder.cc",
-    "mock_image_decoder.h",
-    "mock_image_fetcher.cc",
-    "mock_image_fetcher.h",
-  ]
-  public_deps = [
-    ":core",
-    "//services/network:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx:test_support",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "cached_image_fetcher_unittest.cc",
-    "image_data_fetcher_unittest.cc",
-    "image_fetcher_impl_unittest.cc",
-    "image_fetcher_metrics_reporter_unittest.cc",
-    "reduced_mode_image_fetcher_unittest.cc",
-    "request_metadata_unittest.cc",
-  ]
-  deps = [
-    ":core",
-    ":metrics",
-    ":test_support",
-    "cache",
-    "cache:unit_tests",
-    "cache/proto",
-    "//components/leveldb_proto:test_support",
-    "//components/prefs:test_support",
-    "//net",
-    "//net:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx:test_support",
-  ]
-}
-
 if (is_android) {
   java_cpp_enum("java_enums_srcjar") {
     sources = [

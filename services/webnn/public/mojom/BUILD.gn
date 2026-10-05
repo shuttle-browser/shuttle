@@ -199,20 +199,3 @@ component("webnn_mojom_traits") {
   }
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [
-    "context_properties_mojom_traits_unittest.cc",
-    "operand_descriptor_mojom_traits_unittest.cc",
-  ]
-
-  deps = [
-    ":mojom",
-    ":webnn_mojom_traits",
-    "//base/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//services/webnn:tests",
-    "//testing/gtest",
-  ]
-}

@@ -72,14 +72,6 @@ source_set("help") {
 }
 
 if (!is_android) {
-  source_set("test_support") {
-    testonly = true
-    sources = [
-      "test_version_updater.cc",
-      "test_version_updater.h",
-    ]
-    deps = [ ":help" ]
-  }
 
   if (is_chromeos) {
     source_set("unit_tests") {

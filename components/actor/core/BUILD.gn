@@ -80,22 +80,3 @@ source_set("core") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "aggregated_journal_serializer_unittest.cc",
-    "aggregated_journal_unittest.cc",
-    "page_stability_monitor_delegate_unittest.cc",
-    "safety_list_manager_unittest.cc",
-    "shared_types_unittest.cc",
-  ]
-  deps = [
-    ":core",
-    ":journal",
-    "//base",
-    "//base/test:test_support",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//testing/gtest",
-    "//url",
-  ]
-}

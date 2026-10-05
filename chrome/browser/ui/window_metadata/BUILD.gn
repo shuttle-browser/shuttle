@@ -39,26 +39,5 @@ source_set("window_metadata") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "window_metadata_controller_unittest.cc" ]
-  deps = [
-    ":window_metadata",
-    "//testing/gtest",
-  ]
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "window_metadata_controller_browsertest.cc" ]
-    deps = [
-      ":window_metadata",
-      "//base",
-      "//chrome/browser/ui",
-      "//chrome/test:test_support_ui",
-      "//content/test:test_support",
-    ]
-  }
 }

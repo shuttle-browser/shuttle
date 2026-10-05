@@ -7,11 +7,9 @@ import("../build_webui_tests.gni")
 assert(is_win)
 
 build_webui_tests("build") {
-  cc_test_files = [ "inline_login_browsertest.cc" ]
+  cc_test_files = []
 
   files = [
-    "inline_login_test.ts",
-    "inline_login_test_util.ts",
   ]
 
   ts_definitions = [

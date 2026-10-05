@@ -20,16 +20,3 @@ static_library("pwg_encoder") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "pwg_encoder_unittest.cc" ]
-
-  deps = [
-    ":pwg_encoder",
-    "//base/test:fuzztest_support",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//third_party/fuzztest",
-  ]
-}

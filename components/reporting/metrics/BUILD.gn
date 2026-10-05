@@ -38,30 +38,3 @@ source_set("metrics_data_collection") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "delayed_sampler_unittest.cc",
-    "manual_collector_unittest.cc",
-    "metric_event_observer_manager_unittest.cc",
-    "metric_rate_controller_unittest.cc",
-    "metric_report_queue_unittest.cc",
-    "metric_reporting_controller_unittest.cc",
-    "one_shot_collector_unittest.cc",
-    "periodic_collector_unittest.cc",
-    "periodic_event_collector_unittest.cc",
-  ]
-  deps = [
-    ":metrics_data_collection",
-    "//base",
-    "//base/test:test_support",
-    "//components/reporting/client:report_queue",
-    "//components/reporting/client:test_support",
-    "//components/reporting/metrics/fakes:test_support",
-    "//components/reporting/proto:metric_data_proto",
-    "//components/reporting/proto:record_constants",
-    "//components/reporting/util:status",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

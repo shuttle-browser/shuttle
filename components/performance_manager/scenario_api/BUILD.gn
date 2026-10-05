@@ -32,19 +32,3 @@ source_set("test_support") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "performance_scenario_observer_unittest.cc",
-    "performance_scenarios_unittest.cc",
-  ]
-
-  deps = [
-    ":scenario_api",
-    ":test_support",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

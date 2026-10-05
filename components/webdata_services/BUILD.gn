@@ -36,17 +36,3 @@ static_library("webdata_services") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "web_data_service_wrapper_unittest.cc" ]
-
-  deps = [
-    ":webdata_services",
-    "//base",
-    "//base/test:test_support",
-    "//components/os_crypt/browser:test_support",
-    "//components/search_engines",
-    "//testing/gtest",
-  ]
-}

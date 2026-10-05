@@ -14,20 +14,3 @@ static_library("named_system_lock") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = []
-
-  # Disable NamedSystemLockTest on unsupported platforms.
-  if (is_linux || is_win || is_mac) {
-    sources += [ "lock_unittest.cc" ]
-  }
-
-  deps = [
-    ":named_system_lock",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

@@ -44,22 +44,3 @@ source_set("gpu") {
   ]
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [ "gpu_unittest.cc" ]
-
-  deps = [
-    "//base",
-    "//base/test:test_support",
-    "//gpu/ipc/common:test_support",
-    "//mojo/core/embedder",
-    "//mojo/public/cpp/system",
-    "//services/service_manager/public/cpp",
-    "//services/viz/public/cpp/gpu",
-    "//testing/gtest",
-    "//ui/gfx:test_support",
-    "//ui/gfx/geometry",
-    "//ui/gfx/geometry/mojom",
-  ]
-}

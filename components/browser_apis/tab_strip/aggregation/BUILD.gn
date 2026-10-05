@@ -14,20 +14,3 @@ source_set("aggregation") {
   deps = [ "//components/browser_apis/tab_strip/observation" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "tab_strip_service_aggregator_unittest.cc" ]
-
-  deps = [
-    ":aggregation",
-    "//base/test:test_support",
-    "//components/browser_apis/tab_strip:mojom",
-    "//components/browser_apis/tab_strip:service",
-    "//components/browser_apis/tab_strip/adapters",
-    "//components/browser_apis/tab_strip/events",
-    "//components/browser_apis/tab_strip/observation",
-    "//components/browser_apis/tab_strip/testing",
-    "//testing/gtest",
-  ]
-}

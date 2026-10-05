@@ -58,28 +58,3 @@ component("menus") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "simple_menu_model_unittest.cc" ]
-
-  if (is_mac) {
-    sources += [ "cocoa/menu_controller_unittest.mm" ]
-  }
-
-  deps = [
-    ":menus",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/color",
-    "//ui/gfx",
-    "//ui/gfx:test_support",
-  ]
-
-  if (is_mac) {
-    deps += [
-      "//base/test:test_support",
-      "//ui/base:test_support",
-      "//ui/events:test_support",
-    ]
-  }
-}

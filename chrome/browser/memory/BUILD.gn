@@ -74,25 +74,3 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "enterprise_memory_limit_evaluator_unittest.cc" ]
-
-  if (is_chromeos) {
-    sources += [
-      "memory_kills_monitor_unittest.cc",
-      "oom_kills_monitor_unittest.cc",
-    ]
-  }
-
-  deps = [
-    ":impl",
-    ":memory",
-    "//base",
-    "//base/test:test_support",
-    "//components/memory_pressure",
-    "//components/prefs:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

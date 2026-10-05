@@ -1,5 +1,0 @@
-[document web]
-++[section]
-++++[menu bar] horizontal
-++++++[menu item] name='File'
-++++++[menu item] name='Edit'

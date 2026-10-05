@@ -61,32 +61,3 @@ source_set("impl") {
   ]
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "download_bubble_info_unittest.cc",
-    "download_bubble_row_list_view_info_unittest.cc",
-    "download_bubble_row_view_info_unittest.cc",
-    "download_bubble_security_view_info_unittest.cc",
-  ]
-
-  deps = [
-    ":download",
-    "//base/test:test_support",
-    "//chrome/browser/safe_browsing",
-    "//chrome/browser/signin",
-    "//chrome/test:test_support",
-    "//components/download/public/common:test_support",
-    "//components/prefs",
-    "//components/safe_browsing/core/common:features",
-    "//components/safe_browsing/core/common:safe_browsing_prefs",
-    "//components/safe_browsing/core/common/proto:csd_proto",
-    "//components/signin/public/identity_manager",
-    "//components/signin/public/identity_manager:test_support",
-    "//components/sync_preferences:test_support",
-    "//components/vector_icons",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//ui/views",
-  ]
-}

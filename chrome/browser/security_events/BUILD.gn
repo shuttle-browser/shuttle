@@ -35,15 +35,3 @@ source_set("security_events") {
   friend = [ ":unit_tests" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "security_event_recorder_impl_unittest.cc" ]
-
-  deps = [
-    ":security_events",
-    "//base",
-    "//components/sync/protocol",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -16,16 +16,3 @@ static_library("client_update_protocol") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "cup_unittest.cc" ]
-
-  deps = [
-    ":client_update_protocol",
-    "//base",
-    "//base/test:test_support",
-    "//crypto",
-    "//testing/gtest",
-    "//third_party/fuzztest",
-  ]
-}

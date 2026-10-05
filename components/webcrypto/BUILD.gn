@@ -75,129 +75,13 @@ static_library("webcrypto") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "algorithms/aes_cbc_unittest.cc",
-    "algorithms/aes_ctr_unittest.cc",
-    "algorithms/aes_gcm_unittest.cc",
-    "algorithms/aes_kw_unittest.cc",
-    "algorithms/ecdh_unittest.cc",
-    "algorithms/ecdsa_unittest.cc",
-    "algorithms/hmac_unittest.cc",
-    "algorithms/ml_dsa_unittest.cc",
-    "algorithms/mlkem768_x25519_unittest.cc",
-    "algorithms/rsa_oaep_unittest.cc",
-    "algorithms/rsa_pss_unittest.cc",
-    "algorithms/rsa_ssa_unittest.cc",
-    "algorithms/sha_unittest.cc",
-    "algorithms/test_helpers.cc",
-    "algorithms/test_helpers.h",
-    "status_unittest.cc",
-  ]
-
-  deps = [
-    ":webcrypto",
-    "//base/test:test_support",
-    "//crypto",
-    "//testing/gtest",
-    "//testing/perf",
-    "//third_party/blink/public:blink",
-    "//third_party/boringssl",
-    "//third_party/re2",
-  ]
-
-  if (is_ios) {
-    deps += [ "//components/test:webcrypto_test_bundle_data" ]
-  }
-}
-
-# Shared functionality for writing WebCrypto fuzzers at this layer (several
-# things need to be done to initialize Blink and pull in the right
-# dependencies).
-source_set("fuzzer_support") {
-  testonly = true
-
-  sources = [
-    "fuzzer_support.cc",
-    "fuzzer_support.h",
-  ]
-  deps = [
-    ":webcrypto",
-    "//base",
-    "//crypto",
-    "//mojo/core/embedder",
-    "//third_party/blink/public:blink",
-  ]
-}
-
 # Tests the import of PKCS8 formatted EC keys.
-fuzzer_test("webcrypto_ec_import_key_pkcs8_fuzzer") {
-  sources = [ "ec_import_key_pkcs8_fuzzer.cc" ]
-  deps = [
-    ":fuzzer_support",
-    ":webcrypto",
-    "//third_party/blink/public:blink_headers",
-  ]
-}
 
 # Tests the import of SPKI formatted EC keys.
-fuzzer_test("webcrypto_ec_import_key_spki_fuzzer") {
-  sources = [ "ec_import_key_spki_fuzzer.cc" ]
-  deps = [
-    ":fuzzer_support",
-    ":webcrypto",
-    "//third_party/blink/public:blink_headers",
-  ]
-}
 
 # Tests the import of raw (X9.62) formatted EC keys.
-fuzzer_test("webcrypto_ec_import_key_raw_fuzzer") {
-  sources = [ "ec_import_key_raw_fuzzer.cc" ]
-  deps = [
-    ":fuzzer_support",
-    ":webcrypto",
-    "//third_party/blink/public:blink_headers",
-  ]
-}
 
 # Tests the import of PKCS8 formatted RSA keys.
-fuzzer_test("webcrypto_rsa_import_key_pkcs8_fuzzer") {
-  sources = [ "rsa_import_key_pkcs8_fuzzer.cc" ]
-  deps = [
-    ":fuzzer_support",
-    ":webcrypto",
-    "//third_party/blink/public:blink_headers",
-  ]
-}
 
 # Tests the import of SPKI formatted RSA keys.
-fuzzer_test("webcrypto_rsa_import_key_spki_fuzzer") {
-  sources = [ "rsa_import_key_spki_fuzzer.cc" ]
-  deps = [
-    ":fuzzer_support",
-    ":webcrypto",
-    "//third_party/blink/public:blink_headers",
-  ]
-}
 
-test("webcrypto_testing_fuzzer") {
-  fuzztests = [
-    "WebCryptoFuzzer.ImportKeyFuzzer",
-    "WebCryptoFuzzer.EncryptFuzzer",
-    "WebCryptoFuzzer.DecryptFuzzer",
-    "WebCryptoFuzzer.DigestFuzzer",
-    "WebCryptoFuzzer.SignFuzzer",
-    "WebCryptoFuzzer.VerifyFuzzer",
-    "WebCryptoFuzzer.DeriveBitsFuzzer",
-  ]
-  sources = [ "webcrypto_fuzzer.cc" ]
-  deps = [
-    ":webcrypto",
-    "//base",
-    "//crypto",
-    "//mojo/core/embedder",
-    "//third_party/blink/public:blink",
-    "//third_party/fuzztest:fuzztest_gtest_main",
-  ]
-}

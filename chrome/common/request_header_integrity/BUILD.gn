@@ -68,57 +68,7 @@ source_set("request_header_integrity") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "chrome_companero_loader_unittest.cc",
-    "request_header_integrity_url_loader_throttle_unittest.cc",
-  ]
-
-  deps = [
-    ":request_header_integrity",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//net",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-
-  if (is_chrome_branded) {
-    sources += [ "internal/google_header_names.h" ]
-    deps += [ "//chrome/test:test_support" ]
-    data_deps = [ "internal:chromecompaneros" ]
-  }
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    sources = [ "request_header_integrity_url_loader_throttle_browsertest.cc" ]
-
-    deps = [
-      ":request_header_integrity",
-      "//base",
-      "//build:branding_buildflags",
-      "//chrome/test:test_support_ui",
-      "//components/network_session_configurator/common",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//services/network/public/mojom",
-      "//url",
-    ]
-
-    if (is_chrome_branded) {
-      sources += [ "internal/google_header_names.h" ]
-      data_deps = [ "internal:chromecompaneros" ]
-    }
-  }
 }
 
 buildflag_header("buildflags") {

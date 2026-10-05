@@ -24,23 +24,3 @@ source_set("oauth") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "oauth_stream_connection_delegate_unittest.cc" ]
-
-  deps = [
-    ":oauth",
-    "//base",
-    "//base/test:test_support",
-    "//components/browser_actuator/internal/transport",
-    "//components/browser_actuator/internal/transport/test_support",
-    "//components/signin/public/identity_manager:test_support",
-    "//net",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  visibility = [ "//components/browser_actuator/internal:unit_tests" ]
-}

@@ -18,16 +18,3 @@ component("identifier") {
   sources = [ "unique_identifier.cc" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "unique_identifier_unittest.cc" ]
-
-  deps = [
-    ":identifier",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

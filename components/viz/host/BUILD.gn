@@ -75,30 +75,3 @@ viz_component("host") {
   }
 }
 
-viz_source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "host_frame_sink_manager_unittest.cc" ]
-
-  if (enable_skia_graphite_tests) {
-    sources += [ "persistent_cache_sandboxed_file_factory_unittest.cc" ]
-  }
-
-  deps = [
-    ":host",
-    "//base",
-    "//base/test:test_support",
-    "//components/viz/test:test_support",
-    "//gpu/ipc/host",
-    "//media:media_buildflags",
-    "//mojo/public/cpp/bindings",
-    "//services/viz/privileged/mojom",
-    "//services/viz/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (use_ozone) {
-    deps += [ "//ui/ozone" ]
-  }
-}

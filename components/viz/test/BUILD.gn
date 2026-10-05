@@ -136,35 +136,3 @@ viz_static_library("test_support") {
   }
 }
 
-viz_source_set("test_suite") {
-  testonly = true
-  sources = [
-    "viz_test_suite.cc",
-    "viz_test_suite.h",
-  ]
-  deps = [
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//components/vrp_flags:buildflags",
-    "//ui/events/platform",
-    "//ui/gl:test_support",
-  ]
-}
-
-viz_source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "begin_frame_source_test_unittest.cc",
-    "mock_helper_unittest.cc",
-    "test_gles2_interface_unittest.cc",
-  ]
-  deps = [
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//components/vrp_flags:buildflags",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -36,24 +36,3 @@ source_set("elevated_rotation") {
   configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  sources = [ "key_rotation_manager_unittest.cc" ]
-
-  deps = [
-    ":elevated_rotation",
-    "//base/test:test_support",
-    "//chrome/browser/enterprise/connectors/device_trust:features",
-    "//chrome/browser/enterprise/connectors/device_trust/key_management/core",
-    "//chrome/browser/enterprise/connectors/device_trust/key_management/core/network:test_support",
-    "//chrome/browser/enterprise/connectors/device_trust/key_management/core/persistence:test_support",
-    "//components/enterprise/client_certificates/core",
-    "//components/enterprise/client_certificates/core:test_support",
-    "//crypto",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

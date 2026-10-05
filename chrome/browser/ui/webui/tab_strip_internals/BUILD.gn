@@ -66,31 +66,3 @@ mojom("mojo_bindings") {
   webui_module_path = "/"
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [
-    "tab_strip_internals_handler_browsertest.cc",
-    "tab_strip_internals_observer_browsertest.cc",
-  ]
-
-  deps = [
-    ":tab_strip_internals",
-    "//base/test:test_support",
-    "//chrome/browser",
-    "//chrome/browser/prefs:util",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/profiles/keep_alive",
-    "//chrome/browser/ui",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/tabs",
-    "//chrome/browser/ui/tabs:tab_group",
-    "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/test:test_support_ui",
-    "//components/keep_alive_registry",
-    "//components/tabs:public",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//url",
-  ]
-}

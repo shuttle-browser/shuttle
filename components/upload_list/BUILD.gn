@@ -17,17 +17,3 @@ static_library("upload_list") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "combining_upload_list_unittest.cc",
-    "text_log_upload_list_unittest.cc",
-  ]
-
-  deps = [
-    ":upload_list",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

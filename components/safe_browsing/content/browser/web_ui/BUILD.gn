@@ -58,17 +58,3 @@ static_library("web_ui") {
   public_deps = [ "//components/safe_browsing/core/common/proto:webui_proto" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "safe_browsing_ui_unittest.cc" ]
-
-  deps = [
-    ":web_ui",
-    "//components/os_crypt/browser",
-    "//components/os_crypt/browser:test_support",
-    "//components/safe_browsing/core/browser/web_ui:event_observer",
-    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

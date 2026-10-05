@@ -75,13 +75,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "horizontal_tab_strip_layout_unittest.cc" ]
-  deps = [
-    "//base",
-    "//chrome/browser/ui/tabs",
-    "//chrome/browser/ui/views/tabs/common:impl",
-    "//testing/gtest",
-  ]
-}

@@ -1,3 +1,0 @@
-AXFocusedUIElementChanged on AXPopUpButton AXValue='Apple'
-=== Start Continuation ===
-AXValueChanged on AXPopUpButton AXValue='Orange'

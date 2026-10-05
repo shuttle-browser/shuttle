@@ -67,46 +67,6 @@ source_set("public") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  # IMPORTANT NOTE: When adding new tests, also remember to update the list of
-  # tests in //components/segmentation_platform/components_unittests.filter
-  sources = []
-
-  deps = [
-    ":public",
-    "//testing/gtest",
-  ]
-
-  if (is_android) {
-    sources += [ "android/input_context_android_unittest.cc" ]
-
-    deps += [
-      "//base",
-      "//url",
-    ]
-  }
-}
-
-source_set("test_support") {
-  testonly = true
-
-  sources = [
-    "testing/mock_database_client.h",
-    "testing/mock_field_trial_register.h",
-    "testing/mock_segmentation_platform_service.h",
-  ]
-
-  deps = [
-    ":public",
-    "//base",
-    "//components/segmentation_platform/embedder/default_model",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
 if (is_android) {
   android_library("public_java") {
     sources = [

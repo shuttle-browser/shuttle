@@ -21,23 +21,3 @@ source_set("transport") {
   deps = [ "//services/network/public/cpp" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "resume_body_connection_delegate_unittest.cc",
-    "stream_connection_delegate_unittest.cc",
-  ]
-
-  deps = [
-    ":transport",
-    "test_support",
-    "//base",
-    "//base/test:test_support",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  visibility = [ "//components/browser_actuator/internal:unit_tests" ]
-}

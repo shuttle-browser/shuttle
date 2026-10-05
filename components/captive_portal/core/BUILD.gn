@@ -50,32 +50,3 @@ buildflag_header("buildflags") {
   flags = [ "ENABLE_CAPTIVE_PORTAL_DETECTION=$enable_captive_portal_detection" ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "captive_portal_testing_utils.cc",
-    "captive_portal_testing_utils.h",
-  ]
-
-  deps = [
-    ":core",
-    "//base",
-    "//net:test_support",
-    "//services/network:test_support",
-    "//url",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "captive_portal_detector_unittest.cc" ]
-
-  deps = [
-    ":core",
-    ":features",
-    ":test_support",
-    "//base",
-    "//net:test_support",
-    "//testing/gtest",
-  ]
-}

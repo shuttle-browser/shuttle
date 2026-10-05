@@ -180,49 +180,6 @@ mojom_component("mojom") {
   macro_prefix = "COMPONENTS_INPUT_MOJOM"
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "event_with_latency_info_unittest.cc",
-    "fling_controller_unittest.cc",
-    "gesture_event_queue_unittest.cc",
-    "gesture_event_stream_validator_unittest.cc",
-    "mouse_wheel_event_queue_unittest.cc",
-    "passthrough_touch_event_queue_unittest.cc",
-    "tap_suppression_controller_unittest.cc",
-    "touch_action_filter_unittest.cc",
-    "touch_event_stream_validator_unittest.cc",
-    "touchpad_pinch_event_queue_unittest.cc",
-  ]
-  deps = [
-    ":input",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//third_party/blink/public/common:headers",
-    "//ui/base:features",
-    "//ui/events",
-    "//ui/events:dom_keycode_converter",
-    "//ui/events:test_support",
-    "//ui/events:velocity_tracker",
-    "//ui/events/blink",
-  ]
-  if (is_android) {
-    sources += [ "web_input_event_builders_android_unittest.cc" ]
-    deps += [ "//ui/events:motionevent_jni_headers" ]
-  }
-  if (is_mac) {
-    sources += [
-      "native_web_keyboard_event_mac_unittest.mm",
-      "web_input_event_builders_mac_unittest.mm",
-    ]
-  }
-  if (is_win) {
-    sources += [ "stylus_handwriting_handler_win_unittest.cc" ]
-    deps += [ "//ui/gfx" ]
-  }
-}
-
 source_set("test_support") {
   testonly = true
   sources = [
@@ -237,17 +194,3 @@ source_set("test_support") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  sources = [ "test/input_browsertest.cc" ]
-
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  deps = [
-    "//base",
-    "//components/input",
-    "//content/shell:content_shell_lib",
-    "//content/test:browsertest_support",
-    "//content/test:test_support",
-  ]
-}

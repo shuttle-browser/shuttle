@@ -55,21 +55,6 @@ if (use_blink) {
       ]
     }
   }
-  source_set("test_support") {
-    testonly = true
-
-    sources = [
-      "untrusted_web_ui_browsertest_util.cc",
-      "untrusted_web_ui_browsertest_util.h",
-    ]
-
-    deps = [
-      ":webui",
-      "//base",
-      "//content/public/browser",
-      "//content/test:test_support",
-    ]
-  }
 }  # !is_ios
 
 buildflag_header("buildflags") {

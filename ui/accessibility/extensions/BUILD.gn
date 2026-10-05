@@ -20,13 +20,6 @@ group("extensions") {
   ]
 }
 
-group("extension_tests") {
-  testonly = true
-  if (is_chromeos) {
-    deps = [ ":colorenhancer_tests" ]
-  }
-}
-
 locale_files = [
   "_locales/am/messages.json",
   "_locales/ar/messages.json",

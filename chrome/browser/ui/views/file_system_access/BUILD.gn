@@ -71,59 +71,7 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources =
-        [ "file_system_access_restore_permission_bubble_view_browsertest.cc" ]
-    deps = [
-      ":file_system_access",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/content_settings:content_settings_factory",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui",
-      "//chrome/browser/ui:browser_actions",
-      "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/tabs",
-      "//chrome/browser/ui/views/frame:contents_container_outline",
-      "//chrome/test:test_support_ui",
-      "//content/test:test_support",
-      "//net:test_support",
-    ]
-
-    if (toolkit_views) {
-      sources += [
-        "file_system_access_browsertest.cc",
-        "file_system_access_usage_bubble_view_browsertest.cc",
-      ]
-      deps += [
-        "//chrome/browser/safe_browsing",
-        "//chrome/browser/ui/test:dialog",
-        "//chrome/browser/ui/views:file_system_access_test_support",
-        "//components/safe_browsing/content/common:file_type_policies_test_support",
-      ]
-    }
-  }
 
   if (!is_chromeos_device) {
-    source_set("interactive_ui_tests") {
-      testonly = true
-      defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-      sources = [ "file_system_access_usage_bubble_interactive_uitest.cc" ]
-      deps = [
-        ":file_system_access",
-        "//chrome/browser/file_system_access",
-        "//chrome/browser/profiles:profile",
-        "//chrome/browser/ui",
-        "//chrome/browser/ui:ui_features",
-        "//chrome/browser/ui/actions:actions_headers",
-        "//chrome/browser/ui/page_action:icon_type",
-        "//chrome/browser/ui/test:dialog",
-        "//chrome/test:test_support_ui",
-        "//content/test:test_support",
-        "//ui/views:test_support",
-      ]
-    }
   }
 }

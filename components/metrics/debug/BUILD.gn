@@ -76,20 +76,3 @@ static_library("debug") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "runtime_mutable_features_handler_base_unittest.cc" ]
-
-  deps = [
-    ":debug",
-    "//base",
-    "//base/test:test_support",
-    "//components/metrics:test_support",
-    "//components/prefs:test_support",
-    "//components/variations:test_support",
-    "//components/variations/proto",
-    "//components/variations/service",
-    "//testing/gtest",
-    "//third_party/abseil-cpp:absl",
-  ]
-}

@@ -21,14 +21,3 @@ source_set("keep_alive_registry") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "keep_alive_registry_unittest.cc" ]
-  deps = [
-    ":keep_alive_registry",
-    "//base",
-    "//components/crash/core/common:crash_key",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

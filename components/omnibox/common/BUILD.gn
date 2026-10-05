@@ -81,18 +81,3 @@ source_set("features") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "logger_unittest.cc",
-    "string_cleaning_unittest.cc",
-  ]
-  deps = [
-    ":common",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/lens_server_proto:lens_overlay_proto",
-    "//url",
-  ]
-}

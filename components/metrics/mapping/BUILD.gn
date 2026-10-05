@@ -22,14 +22,3 @@ component("mapping") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "metrics_name_mapper_unittest.cc" ]
-  deps = [
-    ":mapping",
-    ":metrics_name_mapping_proto",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

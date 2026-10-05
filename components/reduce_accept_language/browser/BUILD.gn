@@ -29,32 +29,3 @@ source_set("in_memory") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "reduce_accept_language_service_test_util.cc",
-    "reduce_accept_language_service_test_util.h",
-  ]
-  deps = [
-    ":browser",
-    "//base/test:test_support",
-    "//components/content_settings/core/browser",
-    "//components/content_settings/core/common",
-    "//components/prefs",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "in_memory_reduce_accept_language_service_unittest.cc" ]
-
-  deps = [
-    ":in_memory",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

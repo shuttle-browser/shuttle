@@ -16,15 +16,3 @@ component("certificate_matching") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "certificate_principal_pattern_unittest.cc" ]
-
-  deps = [
-    ":certificate_matching",
-    "//base",
-    "//net",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

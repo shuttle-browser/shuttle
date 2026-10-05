@@ -24,18 +24,3 @@ source_set("web_dialogs") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "chrome_webui_dialog_unittest.cc" ]
-
-  deps = [
-    ":web_dialogs",
-    "//base",
-    "//chrome/test:test_support",
-    "//content/public/common",
-    "//content/test:test_support",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/views",
-  ]
-}

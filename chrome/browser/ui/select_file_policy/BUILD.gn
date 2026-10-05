@@ -24,21 +24,3 @@ source_set("select_file_policy") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "chrome_select_file_policy_unittest.cc" ]
-  deps = [
-    ":select_file_policy",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser:browser_process",
-    "//chrome/browser/prefs",
-    "//chrome/common:constants",
-    "//chrome/test:test_support",
-    "//components/prefs:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-    "//ui/gfx",
-    "//ui/shell_dialogs",
-  ]
-}

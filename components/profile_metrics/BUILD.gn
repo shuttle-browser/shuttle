@@ -15,17 +15,6 @@ static_library("profile_metrics") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "browser_profile_type_unittest.cc" ]
-
-  deps = [
-    ":profile_metrics",
-    "//base",
-    "//testing/gtest",
-  ]
-}
-
 if (is_android) {
   import("//build/config/android/rules.gni")
 

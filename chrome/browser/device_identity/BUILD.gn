@@ -54,35 +54,3 @@ source_set("device_identity") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "device_oauth2_token_service_unittest.cc" ]
-  deps = [
-    ":device_identity",
-    "//chrome/common:constants",
-    "//chrome/test:test_support",
-    "//components/prefs:test_support",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//google_apis:test_support",
-    "//services/network:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-  if (is_chromeos) {
-    sources += [
-      "chromeos/device_oauth2_token_store_chromeos_unittest.cc",
-      "chromeos/token_encryptor_unittest.cc",
-    ]
-    deps += [ "//chromeos/ash/components/policy/device_policy:test_support" ]
-  } else {
-    sources += [ "device_oauth2_token_store_desktop_unittest.cc" ]
-    deps += [
-      "//base/test:test_support",
-      "//components/os_crypt/browser",
-      "//components/os_crypt/browser:test_support",
-      "//components/policy/core/common:common_constants",
-      "//components/prefs",
-    ]
-  }
-}

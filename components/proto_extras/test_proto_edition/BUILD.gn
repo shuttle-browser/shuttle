@@ -18,12 +18,6 @@ proto_extras("test_proto_edition_extras") {
   custom_serialization_deps = [ ":custom_message_serialization" ]
 }
 
-proto_test_extras("test_proto_edition_test_extras") {
-  sources = [ "test_proto_edition.proto" ]
-  deps = [ ":test_proto_edition" ]
-  extras_deps = [ ":test_proto_edition_extras" ]
-}
-
 source_set("custom_message_serialization") {
   sources = [ "custom_message_serialization.cc" ]
   deps = [

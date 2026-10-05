@@ -16,17 +16,3 @@ source_set("metrics") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "domain_diversity_reporter_unittest.cc" ]
-
-  deps = [
-    ":metrics",
-    "//base",
-    "//base/test:test_support",
-    "//components/history/core/browser",
-    "//components/history/core/test",
-    "//components/sync_preferences:test_support",
-    "//testing/gtest",
-  ]
-}

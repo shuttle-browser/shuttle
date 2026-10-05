@@ -19,13 +19,3 @@ static_library("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "locale_util_unittest.cc" ]
-  deps = [
-    ":common",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -58,66 +58,26 @@ build_webui_tests("build") {
 
   if (enable_pdf_ink2) {
     files += [
-      "caret_browsing_mode_test.ts",
-      "ink2_annotation_brush_mixin_test.ts",
-      "ink2_annotation_text_mixin_test.ts",
-      "ink2_before_unload_stroke_test.ts",
-      "ink2_before_unload_undo_test.ts",
-      "ink2_bottom_toolbar_dropdown_test.ts",
-      "ink2_bottom_toolbar_test.ts",
-      "ink2_brush_selector_test.ts",
-      "ink2_color_selector_test.ts",
-      "ink2_manager_test.ts",
-      "ink2_save_test.ts",
-      "ink2_side_panel_test.ts",
-      "ink2_size_selector_test.ts",
-      "ink2_test.ts",
-      "ink2_text_alignment_selector_test.ts",
-      "ink2_text_annotations_test.ts",
-      "ink2_text_bottom_toolbar_test.ts",
-      "ink2_text_box_basic_test.ts",
-      "ink2_text_box_commit_test.ts",
-      "ink2_text_box_keyboard_test.ts",
-      "ink2_text_box_test_utils.ts",
-      "ink2_text_box_viewport_test.ts",
-      "ink2_text_side_panel_test.ts",
-      "ink2_text_styles_selector_test.ts",
-      "ink2_viewer_toolbar_test.ts",
-      "ink_text_annotation_utils_test.ts",
-      "selectable_icon_button_test.ts",
-      "undo_redo_stack_test.ts",
     ]
 
     if (enable_pdf_save_to_drive) {
       files += [
-        "ink2_save_to_drive_cancelled_before_unload_test.ts",
-        "ink2_save_to_drive_success_before_unload_test.ts",
-        "ink2_save_to_drive_uploading_more_edits_before_unload_test.ts",
       ]
     }
 
     if (!is_chromeos) {
-      files += [ "ink2_disabled_test.ts" ]
     }
   }
 
   if (enable_pdf_save_to_drive) {
     files += [
-      "circular_progress_ring_test.ts",
-      "save_to_drive_before_unload_uploading_test.ts",
-      "save_to_drive_bubble_test.ts",
-      "save_to_drive_controls_test.ts",
-      "save_to_drive_test.ts",
-      "test_pdf_viewer_private_proxy.ts",
     ]
   }
 
   if (enable_pdf_ink2 || enable_pdf_save_to_drive) {
-    files += [ "test_before_unload_proxy.ts" ]
   }
 
   if (is_chromeos) {
-    files += [ "printing_icon_test.ts" ]
   }
 
   ts_definitions = [

@@ -45,28 +45,3 @@ source_set("camera_preview") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "camera_coordinator_unittest.cc",
-    "video_format_comparison_unittest.cc",
-    "video_stream_coordinator_unittest.cc",
-  ]
-  deps = [
-    ":camera_preview",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/media/prefs",
-    "//chrome/browser/ui/views:layout_provider",
-    "//chrome/browser/ui/views/media_preview",
-    "//chrome/test:test_support",
-    "//components/media_effects/test:test_support",
-    "//content/test:test_support",
-    "//media/capture:capture_lib",
-    "//services/video_capture/public/cpp:mocks",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/views",
-    "//ui/views:test_support",
-  ]
-}

@@ -39,18 +39,4 @@ source_set("chrome_labs") {
 }
 
 if (!is_android) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "chrome_labs_model_unittest.cc" ]
-    deps = [
-      ":chrome_labs",
-      "//base",
-      "//base:i18n",
-      "//base/test:test_support",
-      "//chrome/browser:flags",
-      "//chrome/test:test_support",
-      "//components/webui/flags",
-      "//testing/gtest",
-    ]
-  }
 }

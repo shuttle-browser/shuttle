@@ -20,24 +20,4 @@ source_set("heavy_ad_intervention") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "heavy_ad_helper_browsertest.cc" ]
-
-    deps = [
-      ":heavy_ad_intervention",
-      "//chrome/browser:browser_process",
-      "//chrome/browser/ui",
-      "//chrome/test:test_support",
-      "//components/heavy_ad_intervention",
-      "//components/strings:components_strings_grit",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//testing/gtest",
-      "//ui/base",
-      "//url",
-    ]
-  }
 }

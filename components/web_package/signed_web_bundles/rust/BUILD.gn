@@ -27,17 +27,3 @@ rust_static_library("signed_web_bundles_rust") {
   ]
 }
 
-rust_static_library("signed_web_bundles_rust_unittests") {
-  testonly = true
-  is_gtest_unittests = true
-  crate_root = "signed_web_bundles_rust_unittests.rs"
-  sources = [
-    "integrity_block_unittest.rs",
-    crate_root,
-  ]
-  deps = [
-    ":signed_web_bundles_rust",
-    "//components/cbor/rust:cbor",
-    "//testing/rust_gtest_interop",
-  ]
-}

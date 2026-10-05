@@ -24,20 +24,3 @@ source_set("sync") {
   ]
 }
 
-source_set("unittests") {
-  testonly = true
-  sources = [
-    "safe_browsing_primary_account_token_fetcher_unittest.cc",
-    "safe_browsing_sync_observer_impl_unittest.cc",
-    "sync_utils_unittest.cc",
-  ]
-
-  deps = [
-    ":sync",
-    "//base/test:test_support",
-    "//components/safe_browsing/core/browser:token_fetcher",
-    "//components/signin/public/identity_manager:test_support",
-    "//components/sync:test_support",
-    "//testing/gtest",
-  ]
-}

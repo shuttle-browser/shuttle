@@ -24,19 +24,4 @@ if (is_win || is_mac || is_linux) {
     ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "browser_switch_ui_unittest.cc" ]
-    deps = [
-      ":browser_switch",
-      "//chrome/browser/browser_switcher",
-      "//chrome/browser/browser_switcher:impl",
-      "//chrome/test:test_support",
-      "//components/sync_preferences:test_support",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
 }

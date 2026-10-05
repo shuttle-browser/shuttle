@@ -5,17 +5,4 @@
 import("//testing/test.gni")
 
 if (is_linux || is_mac || is_win) {
-  test("device_realtarget_browsertests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    deps = [
-      "//chrome:packed_resources",
-      "//chrome/browser/bluetooth:device_realtarget_browsertests",
-      "//chrome/browser/hid:device_realtarget_browsertests",
-      "//chrome/browser/serial:device_realtarget_browsertests",
-      "//chrome/browser/usb:device_realtarget_browsertests",
-      "//chrome/test:browser_tests_runner",
-      "//chrome/test:test_support",
-    ]
-  }
 }

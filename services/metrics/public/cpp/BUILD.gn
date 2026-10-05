@@ -46,32 +46,6 @@ component("metrics_cpp") {
   ]
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [
-    "metrics_utils_unittest.cc",
-    "ukm_entry_builder_unittest.cc",
-    "ukm_source_id_unittest.cc",
-  ]
-
-  deps = [
-    ":metrics_cpp",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_recording_helper.cc",
-    "test_recording_helper.h",
-  ]
-  public_deps = [ ":metrics_cpp" ]
-}
-
 action("gen_ukm_builders") {
   script = "//tools/metrics/ukm/gen_builders.py"
 

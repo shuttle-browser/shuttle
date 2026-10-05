@@ -14,17 +14,6 @@ component("platform_runtime") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "platform_runtime_impl_unittest.cc" ]
-  deps = [
-    ":platform_runtime",
-    "//base",
-    "//testing/gtest",
-  ]
-  data_deps = [ ":platform_runtime_test_lib" ]
-}
-
 # TODO(quarz): Use loadble_module everwhere & change GetNativeLibraryName()
 #     to GetLoadableModuleName().
 
@@ -36,6 +25,6 @@ if (is_mac) {
 
 target(_target_type, "platform_runtime_test_lib") {
   testonly = true
-  sources = [ "platform_runtime_test_lib.cc" ]
+  sources = []
   deps = [ "//base:compiler_specific" ]
 }

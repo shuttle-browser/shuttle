@@ -31,10 +31,6 @@ source_set("smart_card") {
       # When making a chromeos build for a dev linux machine, use a fake smart
       # card device service to make manual testing during development possible.
       sources += [
-        "fake_smart_card_device_service.cc",
-        "fake_smart_card_device_service.h",
-        "fake_smart_card_device_service_factory.cc",
-        "fake_smart_card_device_service_factory.h",
       ]
     }
 
@@ -60,9 +56,6 @@ if (is_chromeos) {
   source_set("unit_tests") {
     testonly = true
     sources = [
-      "smart_card_permission_context_unittest.cc",
-      "smart_card_permission_request_unittest.cc",
-      "smart_card_reader_tracker_impl_unittest.cc",
     ]
     deps = [
       ":smart_card",
@@ -77,7 +70,7 @@ if (is_chromeos) {
 
   source_set("browser_tests") {
     testonly = true
-    sources = [ "chromeos_smart_card_delegate_browsertest.cc" ]
+    sources = []
 
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
@@ -97,7 +90,7 @@ if (is_chromeos) {
     # From test("interactive_ui_tests")
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
-    sources = [ "smart_card_permission_uitest.cc" ]
+    sources = []
     deps = [
       ":smart_card",
       "//chrome/browser",

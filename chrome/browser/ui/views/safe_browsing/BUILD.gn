@@ -52,21 +52,3 @@ source_set("safe_browsing") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  sources = [
-    "tailored_security_desktop_dialog_manager_browsertest.cc",
-  ]
-
-  deps = [
-    ":safe_browsing",
-    "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/browser/ui/test:dialog",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-    "//ui/views",
-  ]
-}

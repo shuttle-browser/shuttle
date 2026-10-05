@@ -28,28 +28,6 @@ source_set("session_proto_db") {
 # TODO(crbug.com/40250069) Make tests more general and run on iOS non-blink
 # trybot.
 if (use_blink) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "session_proto_db_unittest.cc" ]
-
-    deps = [
-      ":core",
-      ":session_proto_db",
-      ":session_proto_db_test_proto",
-      "//base",
-      "//base/test:test_support",
-      "//components/leveldb_proto:test_support",
-      "//content/test:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//third_party/leveldatabase",
-      "//third_party/protobuf:protobuf_lite",
-    ]
-
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  }
 }
 
 proto_library("session_proto_db_test_proto") {

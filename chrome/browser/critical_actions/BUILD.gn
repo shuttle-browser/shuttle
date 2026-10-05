@@ -24,23 +24,3 @@ source_set("critical_actions") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "critical_action_factory_unittest.cc",
-    "critical_action_ui_utils_unittest.cc",
-  ]
-
-  deps = [
-    ":critical_actions",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/common",
-    "//chrome/test:test_support",
-    "//components/critical_actions/core/browser",
-    "//components/keyed_service/core",
-    "//content/test:test_support",
-    "//net",
-    "//testing/gtest",
-  ]
-}

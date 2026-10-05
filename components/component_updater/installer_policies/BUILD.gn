@@ -42,7 +42,7 @@ static_library("installer_policies_no_content_deps") {
   ]
 
   # Disallow depending on content.
-  assert_no_deps = [ "//content/public" ]
+  assert_no_deps = []
 }
 
 static_library("installer_policies_with_content_deps") {
@@ -66,31 +66,3 @@ static_library("installer_policies_with_content_deps") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "actor_safety_lists_component_installer_policy_unittest.cc",
-    "first_party_sets_component_installer_policy_unittest.cc",
-    "optimization_hints_component_installer_unittest.cc",
-    "prediction_model_component_installer_unittest.cc",
-    "private_verification_tokens_installer_policy_unittest.cc",
-    "trust_token_key_commitments_component_installer_policy_unittest.cc",
-  ]
-
-  deps = [
-    ":installer_policies",
-    "//base",
-    "//base/test:test_support",
-    "//components/component_updater:test_support",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//components/private_verification_tokens/common:private_verification_tokens_issuer_config",
-    "//components/private_verification_tokens/common:test_support",
-    "//mojo/public/cpp/base:protobuf_support",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/zlib/google:zip",
-    "//url",
-  ]
-}

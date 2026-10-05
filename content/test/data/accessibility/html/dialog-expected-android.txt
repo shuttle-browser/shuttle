@@ -1,3 +1,0 @@
-android.webkit.WebView focusable focused
-++android.view.View
-++++android.app.AlertDialog focusable interesting name='Text in dialog'

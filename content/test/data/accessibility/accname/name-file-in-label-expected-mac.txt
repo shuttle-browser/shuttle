@@ -1,1 +1,0 @@
-AXButton AXTitle='foo David: No file chosen'

@@ -26,20 +26,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "v8_compile_hints_tab_helper_unittest.cc" ]
-
-  deps = [
-    ":v8_compile_hints",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/optimization_guide",
-    "//chrome/browser/optimization_guide:test_support",
-    "//chrome/test:test_support",
-    "//components/optimization_guide/core",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

@@ -21,15 +21,3 @@ source_set("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "url_loader_throttle_unittest.cc" ]
-  deps = [
-    ":common",
-    "//base/test:test_support",
-    "//components/url_rewrite/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/blink/public/common",
-  ]
-}

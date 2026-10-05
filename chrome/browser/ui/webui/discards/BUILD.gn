@@ -59,18 +59,4 @@ if (!is_android || is_desktop_android) {
     ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "graph_dump_impl_unittest.cc" ]
-    deps = [
-      ":discards",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/test:test_support",
-      "//components/performance_manager",
-      "//components/performance_manager/test_support:test_support_common",
-      "//content/test:test_support",
-      "//testing/gtest",
-    ]
-  }
 }

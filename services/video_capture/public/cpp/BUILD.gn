@@ -26,26 +26,3 @@ source_set("cpp") {
   deps = [ "//mojo/public/cpp/bindings" ]
 }
 
-source_set("mocks") {
-  testonly = true
-
-  sources = [
-    "mock_producer.cc",
-    "mock_producer.h",
-    "mock_push_subscription.cc",
-    "mock_push_subscription.h",
-    "mock_video_capture_service.cc",
-    "mock_video_capture_service.h",
-    "mock_video_frame_handler.cc",
-    "mock_video_frame_handler.h",
-    "mock_video_source.cc",
-    "mock_video_source.h",
-    "mock_video_source_provider.cc",
-    "mock_video_source_provider.h",
-  ]
-
-  public_deps = [
-    "//services/video_capture/public/mojom",
-    "//testing/gmock",
-  ]
-}

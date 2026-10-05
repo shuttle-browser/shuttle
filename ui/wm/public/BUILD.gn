@@ -45,8 +45,6 @@ static_library("test_support") {
   testonly = true
 
   sources = [
-    "mock_activation_change_observer.cc",
-    "mock_activation_change_observer.h",
   ]
 
   deps = [

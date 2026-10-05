@@ -15,23 +15,6 @@ group("feature_engagement") {
   deps = [ "//components/feature_engagement/internal" ]
 }
 
-group("unit_tests") {
-  testonly = true
-
-  deps = [
-    "//components/feature_engagement/internal:unit_tests",
-    "//components/feature_engagement/public:unit_tests",
-  ]
-
-  data_deps = [ ":components_unittests_gtest_filter" ]
-}
-
-source_set("components_unittests_gtest_filter") {
-  testonly = true
-
-  data = [ "components_unittests.filter" ]
-}
-
 if (is_android) {
   java_group("feature_engagement_java") {
     deps = [

@@ -57,12 +57,6 @@ static_library("desks_storage") {
 static_library("test_support") {
   testonly = true
   sources = [
-    "core/desk_test_util.cc",
-    "core/desk_test_util.h",
-    "core/fake_desk_sync_bridge.cc",
-    "core/fake_desk_sync_bridge.h",
-    "core/fake_desk_sync_service.cc",
-    "core/fake_desk_sync_service.h",
     "core/saved_desk_builder.cc",
     "core/saved_desk_builder.h",
   ]
@@ -80,16 +74,6 @@ static_library("test_support") {
 source_set("unit_tests") {
   testonly = true
   sources = [
-    "core/admin_template_service_unittest.cc",
-    "core/desk_model_wrapper_unittest.cc",
-    "core/desk_sync_bridge_unittest.cc",
-    "core/desk_template_conversion_unittest.cc",
-    "core/desk_template_semantics_unittest.cc",
-    "core/desk_template_util_unittest.cc",
-    "core/desk_test_util_unittest.cc",
-    "core/local_desk_data_manager_unittest.cc",
-    "core/saved_desk_test_util.cc",
-    "core/saved_desk_test_util.h",
   ]
   deps = [
     ":desks_storage",
@@ -109,17 +93,4 @@ source_set("unit_tests") {
 }
 
 if (use_libfuzzer) {
-  fuzzer_test("desk_template_fuzzer") {
-    sources = [ "core/desk_template_fuzzer.cc" ]
-    seed_corpus = "fuzzer_corpus"
-    deps = [
-      ":desks_storage",
-      ":test_support",
-      "//chromeos/ash/services/coral/public/mojom",
-      "//components/account_id",
-      "//components/services/app_service",
-      "//components/sync:test_support",
-      "//third_party/libprotobuf-mutator",
-    ]
-  }
 }

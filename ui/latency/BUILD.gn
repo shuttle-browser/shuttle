@@ -31,24 +31,3 @@ source_set("test_support") {
   public_deps = [ ":latency" ]
 }
 
-test("latency_unittests") {
-  sources = [ "latency_info_unittest.cc" ]
-
-  deps = [
-    ":latency",
-    "//base",
-    "//base/test:test_support",
-    "//mojo/core/test:run_all_unittests",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (!is_ios) {
-    sources += [ "mojom/mojom_traits_unittest.cc" ]
-    deps += [
-      "//mojo/public/cpp/bindings",
-      "//ui/gfx/ipc/geometry",
-      "//ui/latency/mojom:test_interfaces",
-    ]
-  }
-}

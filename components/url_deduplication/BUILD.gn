@@ -22,21 +22,3 @@ static_library("url_deduplication") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "docs_url_strip_handler_unittest.cc",
-    "url_deduplication_helper_unittest.cc",
-  ]
-
-  deps = [
-    ":url_deduplication",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

@@ -72,36 +72,3 @@ source_set("types") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  sources = [ "mock_attestation_service.cc" ]
-
-  public = [ "mock_attestation_service.h" ]
-
-  public_deps = [
-    ":attestation",
-    ":types",
-    "//components/enterprise/device_trust/core",
-    "//testing/gmock",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-
-  deps = [
-    ":attestation",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (is_linux || is_win || is_mac || is_chromeos || is_ios) {
-    sources += [ "browser_attestation_service_unittest.cc" ]
-  }
-}

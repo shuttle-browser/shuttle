@@ -41,35 +41,3 @@ source_set("impl") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "mock_serial_chooser_controller.cc",
-    "mock_serial_chooser_controller.h",
-  ]
-  deps = [ "//chrome/test:test_support" ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "serial_chooser_controller_unittest.cc" ]
-  deps = [
-    ":serial",
-    "//base/test:test_support",
-    "//chrome/browser/serial",
-    "//chrome/test:test_support",
-    "//components/permissions:test_support",
-    "//device/bluetooth",
-    "//device/bluetooth:mocks",
-    "//device/bluetooth/public/cpp",
-    "//mojo/public/cpp/bindings",
-    "//services/device/public/cpp:test_support",
-    "//services/device/public/cpp/bluetooth",
-    "//services/device/public/mojom",
-    "//third_party/blink/public/common",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

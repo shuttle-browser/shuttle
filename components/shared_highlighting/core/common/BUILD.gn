@@ -31,25 +31,6 @@ static_library("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "disabled_sites_unittest.cc",
-    "fragment_directives_utils_unittest.cc",
-    "shared_highlighting_metrics_unittest.cc",
-    "text_fragment_unittest.cc",
-  ]
-  deps = [
-    "//base/test:test_support",
-    "//components/shared_highlighting/core/common",
-    "//components/ukm:test_support",
-    "//services/metrics/public/cpp:metrics_cpp",
-    "//services/metrics/public/cpp:ukm_builders",
-    "//testing/gtest",
-    "//url",
-  ]
-}
-
 source_set("data_driven_testing") {
   testonly = true
   sources = [

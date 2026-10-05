@@ -25,19 +25,4 @@ source_set("hung_renderer") {
 }
 
 if (!is_chromeos_device) {
-  source_set("interactive_ui_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "hung_renderer_interactive_uitest.cc" ]
-    deps = [
-      "//chrome/browser:primitives",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//ui/base:buildflags",
-    ]
-  }
 }

@@ -42,11 +42,6 @@ mojom("test_mojom") {
         },
       ]
       traits_headers = [
-        "//device/vr/public/mojom/test/controller_frame_data.h",
-        "//device/vr/public/mojom/test/device_config.h",
-        "//device/vr/public/mojom/test/layer_data.h",
-        "//device/vr/public/mojom/test/view_data.h",
-        "//device/vr/public/mojom/test/xr_test_hook_mojom_traits.h",
       ]
       traits_public_deps = [
         ":vr_public_test_typemaps",
@@ -64,12 +59,6 @@ component("vr_public_test_typemaps") {
   defines = [ "IS_VR_PUBLIC_TEST_TYPEMAPS_IMPL" ]
 
   sources = [
-    "controller_frame_data.cc",
-    "controller_frame_data.h",
-    "device_config.h",
-    "layer_data.cc",
-    "layer_data.h",
-    "view_data.h",
   ]
 
   deps = [

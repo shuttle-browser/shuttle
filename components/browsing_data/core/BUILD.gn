@@ -66,31 +66,3 @@ if (is_android) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "browsing_data_policies_utils_unittest.cc",
-    "browsing_data_utils_unittest.cc",
-    "counters/browsing_data_counter_unittest.cc",
-    "history_notice_utils_unittest.cc",
-  ]
-
-  if (is_ios) {
-    # pref_names_unittest.cc tests a method only available in iOS.
-    sources += [ "pref_names_unittest.cc" ]
-  }
-
-  deps = [
-    ":core",
-    "//base/test:test_support",
-    "//components/history/core/test",
-    "//components/prefs:test_support",
-    "//components/sync",
-    "//components/sync:test_support",
-    "//components/sync_preferences:test_support",
-    "//components/version_info",
-    "//components/webdata/common",
-    "//net:test_support",
-    "//testing/gtest",
-  ]
-}

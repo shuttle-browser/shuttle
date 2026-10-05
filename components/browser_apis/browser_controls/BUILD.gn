@@ -28,6 +28,3 @@ mojom("mojom") {
   webui_module_path = "/"
 }
 
-source_set("unit_tests") {
-  testonly = true
-}

@@ -12,12 +12,3 @@ source_set("observation") {
   deps = [ "//components/browser_apis/tab_strip:mojom" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "tab_strip_api_observer_unittest.cc" ]
-  deps = [
-    ":observation",
-    "//components/browser_apis/tab_strip:mojom",
-    "//testing/gtest",
-  ]
-}

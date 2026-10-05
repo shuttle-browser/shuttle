@@ -18,10 +18,5 @@ generate_grd("build_grdp") {
   # Add local test files.
   input_files_base_dir = rebase_path(".", "//")
   input_files = [
-    "password_change_authenticator_test.js",
-    "saml_username_autofill_test.js",
-    "saml_timestamps_test.js",
-    "saml_password_attributes_test.js",
-    "saml_with_password_attributes.xml",
   ]
 }

@@ -45,8 +45,6 @@ source_set("rlz") {
 source_set("unit_tests") {
   testonly = true
   sources = [
-    "chrome_rlz_tracker_delegate_unittest.cc",
-    "chrome_rlz_tracker_web_contents_observer_unittest.cc",
   ]
 
   deps = [

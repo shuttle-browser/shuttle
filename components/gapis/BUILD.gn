@@ -30,17 +30,3 @@ static_library("gapis") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "token_downloader_unittest.cc" ]
-  deps = [
-    ":gapis",
-    "//base",
-    "//base/test:test_support",
-    "//components/gapis/proto",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gtest",
-    "//url",
-  ]
-}

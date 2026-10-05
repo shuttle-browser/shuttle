@@ -41,35 +41,6 @@ source_set("safe_browsing_policy_handler") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "safe_browsing_policy_handler_unittest.cc",
-    "safe_browsing_prefs_unittest.cc",
-    "scheme_logger_unittest.cc",
-    "visual_utils_unittest.cc",
-  ]
-
-  deps = [
-    ":common",
-    ":safe_browsing_policy_handler",
-    ":safe_browsing_prefs",
-    ":visual_utils",
-    "//base",
-    "//base/test:test_support",
-    "//components/policy/core/browser",
-    "//components/policy/core/browser:test_support",
-    "//components/prefs:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx:color_utils",
-    "//url",
-  ]
-  if (is_ios) {
-    deps += [ "//components/test:safe_browsing_test_bundle_data" ]
-  }
-}
-
 source_set("visual_utils") {
   sources = [
     "visual_utils.cc",

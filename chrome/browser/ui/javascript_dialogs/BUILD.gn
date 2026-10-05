@@ -64,44 +64,5 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("unit_tests") {
-    testonly = true
-    sources =
-        [ "javascript_tab_modal_dialog_manager_delegate_desktop_unittest.cc" ]
-    deps = [
-      ":impl",
-      ":javascript_dialogs",
-      "//chrome/test:test_support",
-      "//components/tabs:public",
-      "//content/test:test_support",
-      "//testing/gtest",
-    ]
-  }
 
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "javascript_dialog_browsertest.cc" ]
-    deps = [
-      ":javascript_dialogs",
-      "//base/test:test_support",
-      "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/tabs:tab_enums",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/views/tabs:tab_strip",
-      "//chrome/browser/ui/views/tabs/tab",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//components/embedder_support",
-      "//components/ukm:test_support",
-      "//content/public/browser",
-      "//content/public/common",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//services/metrics/public/cpp:gen_ukm_builders",
-      "//services/metrics/public/cpp:metrics_cpp",
-      "//services/metrics/public/cpp:ukm_builders",
-      "//third_party/blink/public/common:headers",
-    ]
-  }
 }

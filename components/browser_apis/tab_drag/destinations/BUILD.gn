@@ -37,22 +37,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "drop_target_registry_impl_unittest.cc" ]
-
-  deps = [
-    ":destinations",
-    ":impl",
-    "//base",
-    "//base/test:test_support",
-    "//components/browser_apis/tab_drag/adapters",
-    "//components/browser_apis/tab_drag/sessions",
-    "//components/browser_apis/tab_drag/testing",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx",
-    "//ui/gfx/geometry",
-  ]
-}

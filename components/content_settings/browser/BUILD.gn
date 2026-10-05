@@ -27,34 +27,3 @@ source_set("browser") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_page_specific_content_settings_delegate.cc",
-    "test_page_specific_content_settings_delegate.h",
-  ]
-  deps = [
-    ":browser",
-    "//content/public/browser",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "page_specific_content_settings_unittest.cc" ]
-  deps = [
-    ":browser",
-    ":test_support",
-    "//base",
-    "//components/browsing_data/content",
-    "//components/browsing_data/core",
-    "//components/content_settings/core/browser",
-    "//components/security_state/core",
-    "//components/services/storage/public/cpp",
-    "//components/sync_preferences:test_support",
-    "//content/test:test_support",
-    "//net",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

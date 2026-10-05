@@ -9,13 +9,6 @@ group("browser") {
   public_deps = [ "//components/os_crypt/async/browser" ]
 }
 
-group("test_support") {
-  testonly = true
-
-  # TODO(crbug.com/547814493): Move to this file.
-  public_deps = [ "//components/os_crypt/async/browser:test_support" ]
-}
-
 group("key_provider_interface") {
   # TODO(crbug.com/547814493): Move to this file.
   public_deps = [ "//components/os_crypt/async/browser:key_provider_interface" ]
@@ -65,9 +58,3 @@ if (is_linux && use_dbus) {
   }
 }
 
-group("unit_tests") {
-  testonly = true
-
-  # TODO(crbug.com/547814493): Move to this file.
-  public_deps = [ "//components/os_crypt/async/browser:unit_tests" ]
-}

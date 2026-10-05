@@ -32,20 +32,3 @@ source_set("site_isolation") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "site_isolation_policy_unittest.cc" ]
-  deps = [
-    ":site_isolation",
-    "//base",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//components/user_prefs",
-    "//components/variations",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

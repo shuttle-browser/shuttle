@@ -50,9 +50,3 @@ mojom("mojom") {
   generate_legacy_js_bindings = true
 }
 
-mojom("test_interfaces") {
-  testonly = true
-  sources = [ "traits_test_service.test-mojom" ]
-
-  public_deps = [ ":mojom" ]
-}

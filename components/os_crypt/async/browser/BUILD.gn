@@ -34,19 +34,6 @@ component("browser") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_utils.cc",
-    "test_utils.h",
-  ]
-  deps = [ "//crypto" ]
-  public_deps = [
-    ":browser",
-    "//components/os_crypt/async/common:test_support",
-  ]
-}
-
 source_set("key_provider_interface") {
   sources = [ "key_provider.h" ]
 
@@ -147,8 +134,6 @@ if (is_linux && use_dbus) {
     testonly = true
 
     sources = [
-      "test_secret_portal.cc",
-      "test_secret_portal.h",
     ]
 
     deps = [
@@ -163,52 +148,3 @@ if (is_linux && use_dbus) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "os_crypt_async_unittest.cc" ]
-  deps = [
-    ":browser",
-    ":key_provider_interface",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//components/os_crypt/async/common",
-    "//crypto",
-    "//testing/gtest",
-  ]
-
-  if (is_apple) {
-    sources += [ "keychain_key_provider_unittest.mm" ]
-    deps += [
-      ":keychain_key_provider",
-      "//crypto:mock_apple_keychain",
-    ]
-  }
-
-  if (is_win) {
-    sources += [
-      "dpapi_key_provider_unittest.cc",
-      "os_crypt_win_unittest.cc",
-    ]
-    deps += [
-      ":dpapi_key_provider",
-      "//components/prefs:test_support",
-    ]
-  }
-
-  if (is_linux && use_dbus) {
-    sources += [
-      "freedesktop_secret_key_provider_unittest.cc",
-      "secret_portal_key_provider_unittest.cc",
-    ]
-    deps += [
-      ":freedesktop_secret_key_provider",
-      ":posix_key_provider",
-      ":secret_portal_key_provider",
-      "//components/dbus",
-      "//components/prefs:test_support",
-      "//dbus:test_support",
-      "//testing/gmock",
-    ]
-  }
-}

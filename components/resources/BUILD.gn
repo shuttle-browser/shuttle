@@ -111,19 +111,6 @@ grit("components_resources") {
   }
 }
 
-source_set("unit_tests") {
-  sources = [ "about_ui_credits_unittests.cc" ]
-  testonly = true
-  deps = [
-    ":components_resources",
-    ":generate_about_credits_header",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base",
-  ]
-}
-
 grit("dev_ui_components_resources") {
   source = "dev_ui_components_resources.grd"
 

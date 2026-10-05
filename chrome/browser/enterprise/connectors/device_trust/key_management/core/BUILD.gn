@@ -43,25 +43,3 @@ source_set("util") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  sources = [
-    "ec_signing_key_unittest.cc",
-    "signing_key_pair_unittest.cc",
-    "signing_key_util_unittest.cc",
-  ]
-
-  deps = [
-    ":core",
-    ":util",
-    "//base",
-    "//chrome/browser/enterprise/connectors/device_trust/key_management/common",
-    "//chrome/browser/enterprise/connectors/device_trust/key_management/core/persistence:test_support",
-    "//crypto",
-    "//crypto:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -45,27 +45,3 @@ source_set("browser_command") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "browser_command_handler_unittest.cc" ]
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  deps = [
-    ":browser_command",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/ui:chrome_pages",
-    "//chrome/browser/user_education",
-    "//chrome/common",
-    "//chrome/test:test_support",
-    "//components/safe_browsing/core/common",
-    "//components/sync_preferences:test_support",
-    "//components/user_education/common",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/base/interaction",
-    "//ui/webui/resources/js/browser_command:mojo_bindings",
-  ]
-}

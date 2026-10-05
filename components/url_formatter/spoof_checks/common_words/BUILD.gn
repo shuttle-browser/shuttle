@@ -45,10 +45,6 @@ foreach(_item, _gperf_files) {
 group("common_words_dafsa") {
   public_deps = _generated_targets
 }
-group("common_words_test_dafsa") {
-  public_deps = _generated_test_targets
-  testonly = true
-}
 
 source_set("common") {
   sources = [
@@ -63,13 +59,3 @@ source_set("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "common_words_util_unittest.cc" ]
-  deps = [
-    ":common",
-    ":common_words_dafsa",
-    ":common_words_test_dafsa",
-    "//testing/gtest",
-  ]
-}

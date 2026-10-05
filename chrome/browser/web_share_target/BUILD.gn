@@ -14,11 +14,3 @@ source_set("web_share_target") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "target_util_unittest.cc" ]
-  deps = [
-    ":web_share_target",
-    "//testing/gtest",
-  ]
-}

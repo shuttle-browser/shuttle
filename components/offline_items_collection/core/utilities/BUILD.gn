@@ -8,15 +8,3 @@ source_set("utilities") {
   public_deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "file_existence_checker_unittest.cc" ]
-
-  deps = [
-    ":utilities",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

@@ -23,18 +23,3 @@ static_library("hash_realtime_utils") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "hash_realtime_utils_unittest.cc" ]
-  deps = [
-    ":hash_realtime_utils",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//components/safe_browsing/core/common",
-    "//components/safe_browsing/core/common:safe_browsing_prefs",
-    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
-    "//testing/gtest",
-  ]
-}

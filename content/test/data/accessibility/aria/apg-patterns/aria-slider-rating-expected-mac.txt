@@ -1,4 +1,0 @@
-AXWebArea
-++AXGroup
-++++AXStaticText AXValue='Rate your satisfaction with the service you received'
-++AXSlider AXTitle='Rate your satisfaction with the service you received' AXValue=0

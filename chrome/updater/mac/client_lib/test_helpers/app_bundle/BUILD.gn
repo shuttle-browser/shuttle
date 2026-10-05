@@ -16,14 +16,3 @@ bundle_data("updater_zip_resource") {
   outputs = [ "{{bundle_resources_dir}}/updater.zip" ]
 }
 
-mac_app_bundle("registration_test_app_bundle") {
-  testonly = true
-  info_plist_target = ":registration_test_plist"
-  sources = [ "registration_test_app.mm" ]
-  public_deps = [ ":updater_zip_resource" ]
-  deps = [
-    "//base",
-    "//chrome/updater/mac/client_lib:integration_test_sources",
-  ]
-  frameworks = [ "Foundation.framework" ]
-}

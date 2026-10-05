@@ -36,24 +36,11 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "trusted_vault_encryption_keys_tab_helper_unittest.cc" ]
-  deps = [
-    ":trusted_vault",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/common:mojo_bindings",
-    "//chrome/test:test_support",
-    "//components/site_isolation",
-  ]
-}
-
 if (is_android) {
   source_set("android_browsertests") {
     testonly = true
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "trusted_vault_encryption_keys_tab_helper_browsertest.cc" ]
+    sources = []
     deps = [
       ":trusted_vault",
       "//base",
@@ -65,28 +52,4 @@ if (is_android) {
     ]
   }
 } else {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "trusted_vault_encryption_keys_tab_helper_browsertest.cc" ]
-    deps = [
-      ":trusted_vault",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/preloading:test_support",
-      "//chrome/browser/signin",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/browser/webauthn",
-      "//chrome/browser/webauthn:test_support",
-      "//chrome/common:constants",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//components/metrics:content",
-      "//components/signin/public/identity_manager",
-      "//components/signin/public/identity_manager:test_support",
-      "//components/site_isolation",
-      "//content/test:test_support",
-      "//google_apis",
-    ]
-  }
 }

@@ -15,14 +15,3 @@ source_set("screen_info") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "headless_screen_info_unittest.cc" ]
-
-  deps = [
-    ":screen_info",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

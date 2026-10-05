@@ -100,12 +100,9 @@ group("gn_all") {
       "//base:base_unittests",
       "//build/modules",
       "//codelabs",
-      "//components:components_unittests",
-      "//components/gwp_asan:gwp_asan_unittests",
       "//infra/orchestrator:orchestrator_all",
       "//net:net_unittests",
       "//sandbox:sandbox_unittests",
-      "//services:services_unittests",
       "//services/service_manager/public/cpp",
       "//skia:skia_unittests",
       "//sql:sql_unittests",
@@ -119,9 +116,6 @@ group("gn_all") {
       "//third_party/rapidhash:rapidhash_fuzztests",
       "//tools/binary_size:binary_size_trybot_py",
       "//tools/metrics:metrics_metadata",
-      "//ui/base:ui_base_unittests",
-      "//ui/gfx:gfx_unittests",
-      "//ui/tests:ui_unittests",
       "//url:url_unittests",
     ]
 
@@ -150,9 +144,6 @@ group("gn_all") {
       if (!is_fuchsia) {
         deps += [
           "//chrome",
-          "//chrome/browser/ui/actions:dump_actions",
-          "//chrome/browser/ui/color:dump_colors",
-          "//chrome/test:browser_tests",
         ]
         if (!is_chromeos_device) {
           deps += [
@@ -162,14 +153,12 @@ group("gn_all") {
         }
       }
       deps += [
-        "//components/subresource_filter/tools:subresource_filter_tools",
         "//components/zucchini",
         "//net:hpack_example_generator",
         "//third_party/spirv-tools/src:SPIRV-Tools",
         "//tools/perf/clear_system_cache",
         "//tools/polymer:polymer_tools_python_unittests",
         "//ui/accessibility/extensions",
-        "//ui/webui/resources/tools:webui_resources_tools_python_unittests",
       ]
     }
 
@@ -187,9 +176,7 @@ group("gn_all") {
 
     if (!is_ios && !is_castos) {
       if (!is_fuchsia) {
-        deps += [ "//chrome/test:unit_tests" ]
       }
-      deps += [ "//ui/accessibility:accessibility_unittests" ]
     }
 
     if (use_blink) {
@@ -197,12 +184,6 @@ group("gn_all") {
         "//cc:cc_unittests",
         "//components/policy:policy_templates",
         "//components/url_formatter/tools:format_url",
-        "//components/viz:viz_perftests",
-        "//components/viz:viz_unittests",
-        "//content/shell:content_shell",
-        "//content/test:content_browsertests",
-        "//content/test:content_unittests",
-        "//device:device_unittests",
         "//gpu:gpu_unittests",
         "//media:media_unittests",
         "//media/capture:capture_unittests",
@@ -220,11 +201,6 @@ group("gn_all") {
         "//third_party/libjingle_xmpp:libjingle_xmpp_unittests",
         "//tools/imagediff",
         "//tools/memory:all",
-        "//ui/display:display_unittests",
-        "//ui/gl:gl_unittests",
-        "//ui/latency:latency_unittests",
-        "//ui/native_theme:native_theme_unittests",
-        "//ui/touch_selection:ui_touch_selection_unittests",
         "//v8:gn_all",
       ]
       if (is_ios) {
@@ -239,10 +215,8 @@ group("gn_all") {
     if (!is_ios) {
       deps += [
         ":chromedriver_group",
-        "//components:components_browsertests",
         "//ipc:ipc_tests",
         "//net:net_perftests",
-        "//ui/events:events_unittests",
         "//url/ipc:url_ipc_unittests",
       ]
     }
@@ -258,7 +232,6 @@ group("gn_all") {
       ]
       if (!is_android) {
         if (!is_castos && !is_fuchsia) {
-          deps += [ "//chrome/test:telemetry_perf_unittests" ]
         }
       } else {
         import("//tools/perf/chrome_telemetry_build/android_browser_types.gni")
@@ -294,8 +267,6 @@ group("gn_all") {
 
     if (enable_extensions) {
       deps += [
-        "//extensions:extensions_unittests",
-        "//extensions/browser/api/declarative_net_request/filter_list_converter",
       ]
     }
 
@@ -318,10 +289,6 @@ group("gn_all") {
 
     if (toolkit_views) {
       deps += [
-        "//ui/views:views_unittests",
-        "//ui/views/examples:views_examples",
-        "//ui/views/examples:views_examples_unittests",
-        "//ui/views/examples:views_examples_with_content",
       ]
     }
 
@@ -330,7 +297,6 @@ group("gn_all") {
     }
 
     if (enterprise_watermark && toolkit_views) {
-      deps += [ "//chrome/browser/enterprise/watermark:watermark_app" ]
     }
 
     if (use_aura) {
@@ -343,8 +309,6 @@ group("gn_all") {
 
     if (!is_android && !is_ios && !is_fuchsia) {
       deps += [
-        "//components/sync:sync_full_proto_unittests",
-        "//ui/webui/examples:webui_examples",
       ]
     }
 
@@ -535,7 +499,6 @@ group("gn_all") {
     if (!is_chromeos && use_blink) {
       deps += [
         "//cc:cc_perftests",
-        "//device:device_unittests",
         "//gin:gin_shell",
         "//gin:gin_unittests",
         "//gpu:command_buffer_perftests",
@@ -543,14 +506,12 @@ group("gn_all") {
         "//gpu:gpu_perftests",
         "//media:media_perftests",
         "//third_party/libphonenumber:libphonenumber_unittests",
-        "//ui/compositor:compositor_unittests",
       ]
 
       if (!is_ios) {
         deps += [
           "//base:build_utf8_validator_tables",
           "//base:check_example",
-          "//components:components_perftests",
           "//ipc:ipc_perftests",
           "//net:dump_cache",
         ]
@@ -558,7 +519,6 @@ group("gn_all") {
 
       if (!is_android && !is_castos && !is_ios && !is_fuchsia) {
         deps += [
-          "//chrome/test:load_library_perf_tests",
         ]
       }
 
@@ -705,7 +665,6 @@ group("gn_all") {
     }
 
     if (enable_message_center) {
-      deps += [ "//ui/message_center:message_center_unittests" ]
     }
 
     if (!is_android && !is_ios) {
@@ -764,7 +723,6 @@ group("gn_all") {
 
       if (target_cpu == "x86" || target_cpu == "x64") {
         if (!is_android) {
-          deps += [ "//chrome/test:load_library_perf_tests" ]
         }
         deps += [ "//third_party/libjpeg_turbo:simd_asm" ]
       }
@@ -961,7 +919,6 @@ if (is_win) {
       ":blink_wpt_tests",
       ":chrome_official_builder_no_unittests",
       "//base:base_unittests",
-      "//chrome/test:browser_tests",
       "//chrome/test:interactive_ui_tests",
       "//ipc:ipc_tests",
       "//media:media_unittests",
@@ -969,10 +926,6 @@ if (is_win) {
       "//net:net_unittests",
       "//sql:sql_unittests",
       "//third_party/breakpad:symupload",
-      "//ui/base:ui_base_unittests",
-      "//ui/gfx:gfx_unittests",
-      "//ui/touch_selection:ui_touch_selection_unittests",
-      "//ui/views:views_unittests",
       "//url:url_unittests",
     ]
 
@@ -1093,9 +1046,7 @@ if (use_blink && !is_cronet_build) {
     } else if (!is_castos && !is_ios) {
       deps = [
         "//chrome/test/chromedriver:chromedriver_server",
-        "//chrome/test/chromedriver:chromedriver_unittests",
         "//chrome/test/chromedriver:copy_license",
-        "//chrome/test/chromedriver:generate_chromedriver_notices",
       ]
     }
   }
@@ -1221,9 +1172,6 @@ if (use_blink && !is_cronet_build) {
     data_deps = [
       ":layout_test_data_mojo_bindings",
       ":layout_test_data_mojo_bindings_lite",
-      "//content/shell:content_shell",
-      "//content/test:mojo_bindings_web_test_mojom_js_data_deps",
-      "//content/test:mojo_web_test_bindings_js_data_deps",
       "//device/bluetooth/public/mojom:fake_bluetooth_interfaces_js_data_deps",
       "//device/vr/public/mojom:vr_service_js_data_deps",
       "//media/capture/mojom:image_capture_js_data_deps",
@@ -1542,7 +1490,6 @@ group("chromium_builder_perf") {
 
   if (!is_ios && !is_android && !is_castos && !is_cronet_build) {
     data_deps = [
-      "//components/tracing:tracing_perftests",
       "//gpu:command_buffer_perftests",
       "//gpu:gpu_perftests",
       "//media:media_perftests",
@@ -1551,13 +1498,10 @@ group("chromium_builder_perf") {
 
     if (!is_fuchsia) {
       data_deps += [
-        "//chrome/test:load_library_perf_tests",
-        "//chrome/test:performance_test_suite",
       ]
     }
 
     if (!is_chromeos && !is_fuchsia) {
-      data_deps += [ "//chrome/test:performance_browser_tests" ]
     }
 
     if (!is_win) {
@@ -1579,7 +1523,6 @@ group("chromium_builder_perf") {
   if (is_win) {
     data_deps += [
       "//chrome/installer/mini_installer",
-      "//components:components_perftests",
       "//third_party/angle/src/tests:angle_perftests",
     ]
   }
@@ -1591,7 +1534,6 @@ if (!is_ios && !is_android && !is_castos && !is_cronet_build) {
     write_runtime_deps = "${root_out_dir}/${target_name}.runtime_deps"
 
     data_deps = [
-      "//content/shell:content_shell",
       "//third_party/blink/public/mojom:mojom_modules_js",
       "//v8:d8",
     ]

@@ -78,23 +78,3 @@ source_set("printing") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-
-  deps = [
-    "//base",
-    "//chrome/common/printing",
-    "//content/test:test_support",
-    "//printing:test_support",
-    "//testing/gtest",
-  ]
-
-  if (enable_print_preview) {
-    sources += [ "printer_capabilities_unittest.cc" ]
-
-    if (is_mac) {
-      sources += [ "printer_capabilities_mac_unittest.mm" ]
-    }
-  }
-}

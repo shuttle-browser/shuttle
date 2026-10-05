@@ -1,2 +1,0 @@
-IsEnabled changed on role=button, name=Test Button
-IsEnabled changed on role=button, name=Test Button

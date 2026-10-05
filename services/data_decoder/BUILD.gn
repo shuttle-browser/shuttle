@@ -57,52 +57,6 @@ source_set("lib") {
   }
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [
-    "gzipper_unittest.cc",
-    "public/cpp/data_decoder_unittest.cc",
-    "public/cpp/safe_web_bundle_parser_unittest.cc",
-    "public/cpp/safe_xml_parser_unittest.cc",
-    "public/cpp/xml_dom_unittest.cc",
-    "xml/xml_parser_rs_unittest.cc",
-    "xml_parser_unittest.cc",
-  ]
-
-  deps = [
-    ":lib",
-    "//base",
-    "//base/test:test_support",
-    "//components/web_package",
-    "//components/web_package/test_support",
-    "//services/data_decoder/public/cpp",
-    "//services/data_decoder/public/cpp:test_support",
-    "//services/data_decoder/xml:xml_parser_rs",
-    "//skia",
-    "//testing/gtest",
-    "//ui/gfx",
-  ]
-
-  if (is_ios) {
-    deps += [ "//components/test:web_package_test_bundle_data" ]
-  } else {
-    data = [ "//components/test/data/web_package/" ]
-  }
-
-  if (use_blink) {
-    sources += [ "image_decoder_impl_unittest.cc" ]
-    deps += [
-      "//gin",
-      "//gin:gin_test",
-      "//third_party/blink/public:blink",
-      "//tools/v8_context_snapshot:buildflags",
-    ]
-    data_deps = [ "//tools/v8_context_snapshot" ]
-    configs += [ "//v8:external_startup_data" ]
-  }
-}
-
 # This is a separate target because //third_party/libxml:libxml_utils
 # wants to limit its visibility to a select number of target, but the
 # "fuzzer_test" template expands on iOS to many targets that need to
@@ -118,9 +72,3 @@ source_set("xml_parser_fuzzer_deps") {
   ]
 }
 
-fuzzer_test("xml_parser_fuzzer") {
-  sources = [ "xml_parser_fuzzer.cc" ]
-  deps = [ ":xml_parser_fuzzer_deps" ]
-  dict = "//third_party/libxml/fuzz/xml.dict"
-  seed_corpus = "//third_party/libxml/fuzz/seed_corpus"
-}

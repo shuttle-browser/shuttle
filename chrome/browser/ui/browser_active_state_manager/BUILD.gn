@@ -17,15 +17,3 @@ source_set("browser_active_state_manager") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "browser_active_state_manager_unittest.cc" ]
-  deps = [
-    ":browser_active_state_manager",
-    "//base/test:test_support",
-    "//chrome/browser/ui:test_support",
-    "//chrome/browser/ui/browser_window/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

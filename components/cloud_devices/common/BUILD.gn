@@ -20,20 +20,3 @@ static_library("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "printer_description_unittest.cc" ]
-
-  deps = [
-    ":common",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx/geometry",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

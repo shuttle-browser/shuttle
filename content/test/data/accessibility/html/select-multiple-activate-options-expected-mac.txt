@@ -1,5 +1,0 @@
-AXWebArea
-++AXGroup
-++++AXList
-++++++AXStaticText AXValue='one'
-++++++AXStaticText AXValue='two'

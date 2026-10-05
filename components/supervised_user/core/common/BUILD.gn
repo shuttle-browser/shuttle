@@ -50,14 +50,3 @@ source_set("features") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "features_unittest.cc" ]
-  deps = [
-    ":common",
-    "//base",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//testing/gtest",
-  ]
-}

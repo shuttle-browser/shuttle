@@ -11,27 +11,6 @@ import("//ui/views/features.gni")
 
 assert(toolkit_views)
 
-source_set("external_protocol_dialog_test_support") {
-  testonly = true
-
-  sources = [
-    "external_protocol_dialog_test_harness.cc",
-    "external_protocol_dialog_test_harness.h",
-  ]
-
-  public_deps = [
-    ":external_protocol_dialog",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/external_protocol",
-    "//chrome/browser/ui",
-    "//chrome/browser/ui/test:dialog",
-    "//url",
-  ]
-
-  deps = [ "//net:test_support" ]
-}
-
 component("views") {
   output_name = "browser_ui_views"
   sources = [
@@ -154,17 +133,6 @@ source_set("screen_sharing_util") {
   ]
 }
 
-source_set("file_system_access_test_support") {
-  testonly = true
-  sources = [
-    "file_system_access/file_system_access_test_utils.cc",
-    "file_system_access/file_system_access_test_utils.h",
-  ]
-  deps = [
-    "//ui/shell_dialogs",
-    "//url",
-  ]
-}
 source_set("confirm_bubble") {
   sources = [
     "confirm_bubble_views.cc",

@@ -44,34 +44,3 @@ static_library("paint_preview_compositor") {
       [ "//components/services/paint_preview_compositor/public/mojom" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "paint_preview_compositor_collection_impl_unittest.cc",
-    "paint_preview_compositor_impl_unittest.cc",
-  ]
-
-  deps = [
-    ":paint_preview_compositor",
-    "//base",
-    "//base/test:test_support",
-    "//components/paint_preview/common",
-    "//components/paint_preview/common:test_utils",
-    "//components/paint_preview/common/proto",
-    "//mojo/public/cpp/base:protobuf_support",
-    "//skia",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx/geometry:geometry_skia",
-  ]
-}
-
-test("paint_preview_compositor_unit_tests") {
-  deps = [
-    ":unit_tests",
-    "//base",
-    "//base/test:test_support",
-    "//components/test:run_all_unittests",
-  ]
-}

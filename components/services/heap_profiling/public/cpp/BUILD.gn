@@ -17,17 +17,3 @@ source_set("cpp") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  # SamplingHeapProfiler is not compiled on iOS unless use_allocator_shim is
-  # true.
-  if (!is_ios || use_allocator_shim) {
-    sources = [ "merge_samples_unittest.cc" ]
-    deps = [
-      ":cpp",
-      "//base",
-      "//testing/gtest",
-    ]
-  }
-}

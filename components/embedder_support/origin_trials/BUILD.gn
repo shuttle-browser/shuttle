@@ -27,21 +27,3 @@ source_set("origin_trials") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-
-  sources = [
-    "mock_origin_trials_settings_storage.cc",
-    "mock_origin_trials_settings_storage.h",
-  ]
-
-  deps = [
-    ":origin_trials",
-    "//testing/gmock",
-  ]
-
-  # fuchsia explicitly needs this for lib/zx.
-  if (is_fuchsia) {
-    deps += [ "//mojo/public/cpp/bindings" ]
-  }
-}

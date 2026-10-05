@@ -54,17 +54,6 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "vr_tab_helper_unittest.cc" ]
-
-  deps = [
-    ":vr",
-    "//testing/gtest",
-  ]
-}
-
 if (enable_vr) {
   component("vr_ui") {
     sources = [
@@ -249,8 +238,6 @@ if (enable_vr) {
       "render_info.h",
       "scheduler_ui_interface.h",
       "ui_interface.h",
-      "ui_test_input.cc",
-      "ui_test_input.h",
       "vr_base_export.h",
       "vr_geometry_util.cc",
       "vr_geometry_util.h",
@@ -284,7 +271,6 @@ if (enable_vr) {
 
   test("vr_common_unittests") {
     sources = [
-      "browser_renderer_unittest.cc",
       "databinding/binding_unittest.cc",
       "elements/linear_layout_unittest.cc",
       "elements/rect_unittest.cc",
@@ -294,13 +280,6 @@ if (enable_vr) {
       "elements/ui_element_unittest.cc",
       "elements/vector_icon_unittest.cc",
       "elements/viewport_aware_root_unittest.cc",
-      "test/paths.cc",
-      "test/paths.h",
-      "test/run_all_unittests.cc",
-      "test/ui_test.cc",
-      "test/ui_test.h",
-      "ui_scene_unittest.cc",
-      "ui_unittest.cc",
     ]
 
     if (is_win) {
@@ -335,8 +314,6 @@ if (enable_vr) {
 
   test("vr_common_perftests") {
     sources = [
-      "test/run_all_perftests.cc",
-      "text_perftest.cc",
     ]
     deps = [
       ":vr_gl_test_support",
@@ -355,14 +332,6 @@ if (enable_vr) {
     testonly = true
 
     sources = [
-      "test/animation_utils.cc",
-      "test/animation_utils.h",
-      "test/constants.cc",
-      "test/constants.h",
-      "test/mock_browser_ui_interface.cc",
-      "test/mock_browser_ui_interface.h",
-      "test/vr_test_suite.cc",
-      "test/vr_test_suite.h",
     ]
 
     public_deps = [
@@ -393,10 +362,6 @@ if (enable_vr) {
     testonly = true
 
     sources = [
-      "test/gl_test_environment.h",
-      "test/gl_test_environment_unittest.cc",
-      "test/vr_gl_test_suite.cc",
-      "test/vr_gl_test_suite.h",
     ]
 
     public_deps = [
@@ -412,13 +377,11 @@ if (enable_vr) {
     ]
 
     if (use_command_buffer) {
-      sources += [ "test/gl_test_environment_cmd_buffer.cc" ]
       deps += [
         "//gpu/command_buffer/client:gles2_implementation",
         "//gpu/ipc:gl_in_process_context",
       ]
     } else {
-      sources += [ "test/gl_test_environment_native_gl.cc" ]
     }
   }
 
@@ -448,10 +411,6 @@ if (enable_vr) {
 
       # Infrastructure
       sources = [
-        "test/mock_xr_device_hook_base.cc",
-        "test/mock_xr_device_hook_base.h",
-        "test/mock_xr_input_source.cc",
-        "test/mock_xr_input_source.h",
       ]
 
       deps = [
@@ -472,24 +431,10 @@ if (enable_vr) {
       if (is_win) {
         # Infrastructure.
         sources += [
-          "test/ui_utils.cc",
-          "test/ui_utils.h",
         ]
 
         # Tests.
         sources += [
-          "webxr_vr_frame_loop_browser_test.cc",
-          "webxr_vr_frame_pose_browser_test.cc",
-          "webxr_vr_indicators_browser_test.cc",
-          "webxr_vr_input_browser_test.cc",
-          "webxr_vr_isolated_device_service_test.cc",
-          "webxr_vr_lifecycle_browser_test.cc",
-          "webxr_vr_permission_browser_test.cc",
-          "webxr_vr_permission_request_browser_test.cc",
-          "webxr_vr_pixel_browser_test.cc",
-          "webxr_vr_secondary_views_browser_test.cc",
-          "webxr_vr_tab_browser_test.cc",
-          "webxr_vr_transition_browser_test.cc",
         ]
 
         deps += [

@@ -28,16 +28,3 @@ static_library("identifiers") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  public = [ "mock_profile_id_delegate.h" ]
-
-  sources = [ "mock_profile_id_delegate.cc" ]
-
-  public_deps = [
-    ":identifiers",
-    "//testing/gmock",
-  ]
-}

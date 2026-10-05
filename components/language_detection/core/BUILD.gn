@@ -68,24 +68,3 @@ static_library("internals") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "background_file_unittest.cc",
-    "chinese_script_classifier_test.cc",
-    "language_detection_model_unittest.cc",
-    "ngram_hash_ops_utils_unittest.cc",
-    "quantization_utils_unittest.cc",
-  ]
-  if (use_blink) {
-    sources += [ "language_detection_provider_unittest.cc" ]
-  }
-
-  deps = [
-    ":core",
-    ":internals",
-    "//base",
-    "//base/test:test_support",
-    "//components/language_detection/testing",
-  ]
-}

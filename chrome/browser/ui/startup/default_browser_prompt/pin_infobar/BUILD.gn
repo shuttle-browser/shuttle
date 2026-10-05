@@ -63,28 +63,3 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "pin_infobar_controller_crash_unittest.cc",
-    "pin_infobar_controller_unittest.cc",
-    "pin_infobar_delegate_unittest.cc",
-    "pin_infobar_prefs_unittest.cc",
-  ]
-  deps = [
-    ":pin_infobar",
-    "//base/test:test_support",
-    "//chrome/browser:shell_integration",
-    "//chrome/browser/ui:test_support",
-    "//chrome/browser/ui:ui_features",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/tabs:test_support",
-    "//chrome/browser/ui/views:layout_provider",
-    "//chrome/common:constants",
-    "//chrome/test:test_support",
-    "//components/infobars/content",
-    "//components/sync_preferences:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

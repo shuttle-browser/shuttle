@@ -118,69 +118,6 @@ component("native_theme") {
   }
 }
 
-component("test_support") {
-  testonly = true
-
-  sources = [
-    "mock_os_settings_provider.cc",
-    "mock_os_settings_provider.h",
-  ]
-
-  defines = [ "IS_NATIVE_THEME_IMPL" ]
-
-  deps = [
-    ":native_theme",
-    "//base",
-    "//ui/color:color_provider_key",
-  ]
-}
-
-test("native_theme_unittests") {
-  use_xvfb = use_xvfb_in_this_config
-
-  sources = [
-    "native_theme_base_unittest.cc",
-    "native_theme_unittest.cc",
-    "os_settings_provider_unittest.cc",
-  ]
-
-  deps = [
-    ":native_theme",
-    ":test_support",
-    "//base/test:run_all_unittests",
-    "//base/test:test_support",
-    "//skia",
-    "//testing/gtest",
-    "//ui/color",
-    "//ui/color:mixers",
-    "//ui/gfx:test_support",
-    "//ui/gfx/geometry",
-  ]
-
-  if (is_mac) {
-    sources += [
-      "native_theme_mac_unittest.mm",
-      "scrollbar_animator_mac_unittest.cc",
-    ]
-    deps += [ "//ui/gfx:test_support" ]
-  }
-
-  if (is_win) {
-    sources += [
-      "caption_style_win_unittest.cc",
-      "native_theme_win_unittest.cc",
-    ]
-  }
-
-  if (is_win || is_linux) {
-    sources += [ "native_theme_fluent_unittest.cc" ]
-  }
-
-  if (is_android) {
-    sources += [ "os_settings_provider_android_unittest.cc" ]
-  }
-}
-
 if (is_android) {
   android_library("os_settings_provider_android_bridge_java") {
     sources = [ "android/java/src/org/chromium/ui/native_theme/OsSettingsProviderAndroidBridge.java" ]

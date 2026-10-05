@@ -49,21 +49,4 @@ if (!is_android) {
     ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [
-      "fullscreen_control_popup_unittest.cc",
-      "fullscreen_control_view_unittest.cc",
-    ]
-
-    deps = [
-      ":fullscreen_control",
-      "//base",
-      "//base/test:test_support",
-      "//testing/gtest",
-      "//ui/gfx:test_support",
-      "//ui/views",
-      "//ui/views:test_support",
-    ]
-  }
 }

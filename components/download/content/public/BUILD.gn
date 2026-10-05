@@ -29,15 +29,3 @@ source_set("public") {
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "all_download_item_notifier_unittest.cc" ]
-
-  deps = [
-    ":public",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

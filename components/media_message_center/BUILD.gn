@@ -29,18 +29,3 @@ component("media_message_center") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-
-  sources = [
-    "mock_media_notification_item.cc",
-    "mock_media_notification_item.h",
-    "mock_media_notification_view.cc",
-    "mock_media_notification_view.h",
-  ]
-
-  deps = [
-    ":media_message_center",
-    "//testing/gmock",
-  ]
-}

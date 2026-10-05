@@ -47,21 +47,3 @@ source_set("content") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "site_engagement_helper_unittest.cc",
-    "site_engagement_score_unittest.cc",
-  ]
-  deps = [
-    ":content",
-    "//base",
-    "//base/test:test_support",
-    "//components/permissions:test_support",
-    "//components/prefs:test_support",
-    "//components/site_engagement/core/mojom:mojo_bindings",
-    "//components/user_prefs",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

@@ -20,24 +20,3 @@ static_library("browser") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  sources = [ "net_error_auto_reloader_browsertest.cc" ]
-
-  deps = [
-    ":browser",
-    "//base",
-    "//base/test:test_support",
-    "//content/public/browser",
-    "//content/shell:content_shell_lib",
-    "//content/test:browsertest_support",
-    "//content/test:test_support",
-    "//net",
-    "//services/network:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

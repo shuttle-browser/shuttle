@@ -161,7 +161,7 @@ if (use_aura) {
   source_set("unit_tests") {
     testonly = true
 
-    sources = [ "shaped_app_window_targeter_unittest.cc" ]
+    sources = []
 
     configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 

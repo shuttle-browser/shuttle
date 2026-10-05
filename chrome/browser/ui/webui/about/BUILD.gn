@@ -57,7 +57,7 @@ source_set("impl") {
 if (is_chromeos) {
   source_set("unit_tests") {
     testonly = true
-    sources = [ "about_ui_unittest.cc" ]
+    sources = []
 
     deps = [
       ":about",

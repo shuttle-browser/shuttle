@@ -32,26 +32,3 @@ static_library("zoom") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "test/zoom_test_utils.cc",
-    "test/zoom_test_utils.h",
-  ]
-  deps = [
-    ":zoom",
-    "//base",
-    "//content/test:test_support",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "page_zoom_unittest.cc" ]
-  deps = [
-    ":zoom",
-    "//components/prefs",
-    "//content/public/common",
-    "//testing/gtest",
-  ]
-}

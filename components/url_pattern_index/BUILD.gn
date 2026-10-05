@@ -32,39 +32,3 @@ static_library("url_pattern_index") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "url_rule_test_support.cc",
-    "url_rule_test_support.h",
-  ]
-  deps = [
-    ":url_pattern_index",
-    "//base",
-    "//net",
-    "//third_party/protobuf:protobuf_lite",
-    "//url",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "closed_hash_map_unittest.cc",
-    "fuzzy_pattern_matching_unittest.cc",
-    "ngram_extractor_unittest.cc",
-    "string_splitter_unittest.cc",
-    "url_pattern_index_unittest.cc",
-    "url_pattern_unittest.cc",
-    "url_rule_util_unittest.cc",
-  ]
-  deps = [
-    ":test_support",
-    ":url_pattern_index",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/protobuf:protobuf_lite",
-    "//url",
-  ]
-}

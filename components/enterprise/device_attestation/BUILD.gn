@@ -43,25 +43,3 @@ static_library("device_attestation") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  public = [
-    "mock_device_attestation_service.h",
-    "scoped_device_attestation_service_factory.h",
-  ]
-
-  sources = [
-    "mock_device_attestation_service.cc",
-    "scoped_device_attestation_service_factory.cc",
-  ]
-
-  public_deps = [
-    ":device_attestation",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  deps = [ "//base" ]
-}

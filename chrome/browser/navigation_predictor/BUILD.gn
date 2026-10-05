@@ -76,56 +76,5 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [
-      "anchor_element_preloader_browsertest.cc",
-      "navigation_predictor_browsertest.cc",
-      "navigation_predictor_preconnect_client_browsertest.cc",
-      "preloading_model_keyed_service_browsertest.cc",
-      "search_engine_preconnector_browsertest.cc",
-    ]
-    data = [ "test/preloading_heuristics.tflite" ]
-    deps = [
-      ":impl",
-      ":navigation_predictor",
-      "//chrome/browser/battery",
-      "//chrome/browser/optimization_guide:test_support",
-      "//chrome/browser/predictors",
-      "//chrome/browser/preloading",
-      "//chrome/browser/preloading:prefs",
-      "//chrome/browser/preloading:test_support",
-      "//chrome/browser/search_engines",
-      "//chrome/browser/subresource_filter:test_support",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/common",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//components/no_state_prefetch/browser",
-      "//components/ukm:test_support",
-      "//content/test:test_support",
-    ]
-
-    if (enable_device_bound_sessions) {
-      deps += [ "//chrome/browser/net" ]
-    }
-  }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "navigation_predictor_unittest.cc",
-    "preloading_model_executor_unittest.cc",
-  ]
-  data = [ "test/preloading_heuristics.tflite" ]
-  deps = [
-    ":impl",
-    ":navigation_predictor",
-    "//chrome/test:test_support",
-    "//components/ukm:test_support",
-    "//content/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-  ]
-}

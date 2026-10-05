@@ -1,1 +1,0 @@
-AXTextField AXTitle='foo baz' AXTitleUIElement=:unknown

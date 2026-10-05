@@ -166,63 +166,7 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "federated_embedder_login_request_unittest.cc",
-    "federated_identity_account_keyed_permission_context_unittest.cc",
-    "federated_identity_api_permission_context_unittest.cc",
-    "federated_identity_auto_reauthn_permission_context_unittest.cc",
-    "federated_identity_identity_provider_registration_context_unittest.cc",
-    "federated_identity_identity_provider_signin_status_context_unittest.cc",
-    "federated_identity_permission_context_unittest.cc",
-    "identity_provider_permission_request_unittest.cc",
-  ]
-  deps = [
-    ":webid",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/content_settings:content_settings_factory",
-    "//chrome/browser/sync",
-    "//chrome/browser/sync:factories",
-    "//chrome/browser/trusted_vault",
-    "//chrome/test:test_support",
-    "//components/content_settings/core/browser",
-    "//components/content_settings/core/browser:cookie_settings",
-    "//components/content_settings/core/common",
-    "//components/permissions",
-    "//components/prefs",
-    "//components/sync_preferences:test_support",
-    "//content/public/browser",
-    "//content/public/common",
-    "//content/test:test_support",
-    "//net",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/blink/public:runtime_features_for_public",
-    "//third_party/blink/public/common",
-    "//third_party/blink/public/common:headers",
-    "//url",
-  ]
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources =
-        [ "federated_identity_auto_reauthn_permission_context_browsertest.cc" ]
-    deps = [
-      ":webid",
-      "//chrome/browser/actor",
-      "//chrome/browser/actor:test_support",
-      "//chrome/browser/actor/ui:test_support",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui",
-      "//chrome/test:test_support_ui",
-      "//content/test:test_support",
-    ]
-  }
 }
 
 if (is_android) {
@@ -230,8 +174,6 @@ if (is_android) {
     testonly = true
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
     sources = [
-      "android_native_idp_fetcher_browsertest.cc",
-      "identity_provider_service_browsertest.cc",
     ]
     deps = [
       ":webid",

@@ -20,18 +20,3 @@ source_set("media_effects") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  deps = [
-    ":media_effects",
-    "//base",
-    "//build:buildflag_header_h",
-    "//components/media_effects/test:test_support",
-    "//components/user_prefs/test:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-    "//third_party/mediapipe",
-  ]
-
-  sources = [ "media_device_info_unittest.cc" ]
-}

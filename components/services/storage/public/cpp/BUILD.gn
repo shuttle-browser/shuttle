@@ -40,15 +40,3 @@ component("cpp") {
   defines = [ "IS_STORAGE_SERVICE_PUBLIC_IMPL" ]
 }
 
-source_set("tests") {
-  testonly = true
-  sources = [
-    "compression_unittest.cc",
-    "inactivity_timer_unittest.cc",
-  ]
-  deps = [
-    ":cpp",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

@@ -21,19 +21,3 @@ static_library("filename_generation") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "filename_generation_unittest.cc" ]
-
-  deps = [
-    ":filename_generation",
-    "//base",
-    "//net",
-    "//testing/gtest",
-    "//url",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

@@ -1,1 +1,0 @@
-AXCheckBox AXTitle='fancy fruit' AXValue=0

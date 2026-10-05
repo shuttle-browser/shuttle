@@ -230,29 +230,4 @@ static_library("utility") {
 }
 
 if (!is_android) {
-  source_set("unit_tests") {
-    testonly = true
-
-    sources = []
-    if (!is_chromeos) {
-    }
-    if (is_mac) {
-    }
-    if (is_win) {
-    }
-
-    deps = [
-      ":utility",
-      "//base",
-      "//chrome/common:constants",
-      "//components/favicon_base",
-      "//content/test:test_support",
-      "//sql",
-      "//sql:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//third_party/zlib/google:compression_utils",
-      "//url",
-    ]
-  }
 }

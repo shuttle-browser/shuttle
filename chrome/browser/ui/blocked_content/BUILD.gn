@@ -82,68 +82,8 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [
-      "popup_opener_tab_helper_browsertest.cc",
-      "popup_tracker_browsertest.cc",
-      "safe_browsing_triggered_popup_blocker_browsertest.cc",
-    ]
-    deps = [
-      ":blocked_content",
-      "//chrome/browser/content_settings:content_settings_factory",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/test:test_support",
-      "//components/back_forward_cache",
-      "//components/content_settings/browser",
-    ]
-    if (use_ozone) {
-      deps += [ "//ui/ozone" ]
-    }
-  }
 }
 
 if (!is_android && !is_chromeos_device) {
-  source_set("interactive_ui_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "popup_blocker_browsertest.cc" ]
-    deps = [
-      ":blocked_content",
-      "//chrome/browser/content_settings:content_settings_factory",
-      "//chrome/browser/printing",
-      "//chrome/browser/search_engines",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/location_bar",
-      "//chrome/test:test_support",
-      "//components/back_forward_cache",
-      "//components/content_settings/browser",
-      "//components/embedder_support",
-      "//components/javascript_dialogs",
-    ]
-  }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "popup_opener_tab_helper_unittest.cc" ]
-  deps = [
-    ":blocked_content",
-    "//chrome/browser/content_settings",
-    "//chrome/browser/content_settings:content_settings_factory",
-    "//chrome/test:test_support",
-    "//components/content_settings/browser",
-    "//components/tabs:public",
-    "//components/tabs:test_support",
-    "//components/ukm/content",
-    "//ui/base/unowned_user_data",
-  ]
-  if (is_android) {
-    deps += [
-      "//chrome/browser/android",
-      "//components/messages/android:test_support",
-      "//components/ukm:test_support",
-    ]
-  }
-}

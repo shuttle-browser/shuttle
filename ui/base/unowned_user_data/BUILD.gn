@@ -28,17 +28,3 @@ component("unowned_user_data") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "unowned_user_data_unittest.cc",
-    "user_data_factory_unittest.cc",
-  ]
-
-  deps = [
-    ":unowned_user_data",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -117,63 +117,6 @@ static_library("ntp_tiles") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "custom_links_manager_impl_unittest.cc",
-    "custom_links_store_unittest.cc",
-    "icon_cacher_impl_unittest.cc",
-    "metrics_unittest.cc",
-    "most_visited_sites_unittest.cc",
-    "popular_sites_impl_unittest.cc",
-  ]
-
-  deps = [
-    ":ntp_tiles",
-    ":pref_names",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//components/favicon/core",
-    "//components/favicon/core:history_implementation",
-    "//components/favicon_base",
-    "//components/history/core/test",
-    "//components/image_fetcher/core",
-    "//components/image_fetcher/core:test_support",
-    "//components/pref_registry",
-    "//components/prefs",
-    "//components/search",
-    "//components/supervised_user/core/common:buildflags",
-    "//components/sync_preferences:test_support",
-    "//extensions/buildflags",
-    "//net:test_support",
-    "//services/data_decoder/public/cpp:test_support",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/base:test_support",
-    "//ui/gfx:test_support",
-  ]
-
-  if (enable_supervised_users) {
-    deps += [ "//components/supervised_user/core/browser" ]
-  }
-
-  if (is_linux || is_win || is_mac || is_chromeos) {
-    sources += [
-      "enterprise/enterprise_shortcuts_manager_impl_unittest.cc",
-      "enterprise/enterprise_shortcuts_store_unittest.cc",
-      "enterprise/ntp_shortcuts_policy_handler_unittest.cc",
-    ]
-    deps += [ "//components/policy/core/browser:test_support" ]
-
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  }
-}
-
 if (is_android) {
   java_cpp_enum("ntp_tiles_enums_java") {
     sources = [

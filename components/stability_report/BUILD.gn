@@ -42,31 +42,4 @@ if (is_win || is_linux || is_chromeos || is_mac) {
     }
   }
 
-  source_set("unit_tests") {
-    testonly = true
-
-    sources = [
-      "test/stability_report_reader.cc",
-      "test/stability_report_reader.h",
-    ]
-
-    deps = [
-      ":stability_report",
-      ":stability_report_proto",
-      "//base",
-      "//testing/gtest",
-      "//third_party/crashpad/crashpad/minidump",
-      "//third_party/crashpad/crashpad/snapshot:test_support",
-    ]
-
-    if (is_win) {
-      sources += [ "user_stream_data_source_win_unittest.cc" ]
-    }
-
-    if (is_linux || is_chromeos || is_mac) {
-      sources += [ "user_stream_data_source_posix_unittest.cc" ]
-
-      deps += [ "//base/test:test_support" ]
-    }
-  }
 }

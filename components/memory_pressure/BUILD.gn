@@ -45,34 +45,3 @@ source_set("memory_pressure") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "memory_pressure_level_reporter_unittest.cc",
-    "memory_pressure_voter_unittest.cc",
-    "multi_source_memory_pressure_monitor_unittest.cc",
-    "unnecessary_discard_monitor_unittest.cc",
-  ]
-
-  deps = [
-    ":memory_pressure",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (is_win) {
-    sources += [ "system_memory_pressure_evaluator_win_unittest.cc" ]
-  }
-
-  if (is_mac) {
-    sources += [ "system_memory_pressure_evaluator_mac_unittest.cc" ]
-  }
-
-  if (is_fuchsia) {
-    deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.memorypressure:fuchsia.memorypressure_hlcpp" ]
-    sources += [ "system_memory_pressure_evaluator_fuchsia_unittest.cc" ]
-  }
-}

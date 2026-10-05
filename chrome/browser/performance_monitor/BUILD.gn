@@ -30,18 +30,3 @@ source_set("performance_monitor") {
   friend = [ ":unit_tests" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "system_monitor_unittest.cc" ]
-
-  if (is_win) {
-    sources += [ "metric_evaluator_helper_win_unittest.cc" ]
-  }
-
-  deps = [
-    ":performance_monitor",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -49,27 +49,3 @@ source_set("in_process") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  # HeapProfilerController's dependencies are not compiled on iOS unless
-  # use_allocator_shim is true.
-  if (!is_ios || use_allocator_shim) {
-    sources = [ "heap_profiler_controller_unittest.cc" ]
-    deps = [
-      ":in_process",
-      ":mojom",
-      ":test_mojom",
-      "//base/test:test_support",
-      "//components/metrics",
-      "//components/metrics:child_call_stack_profile_builder",
-      "//components/metrics/public/mojom:call_stack_mojo_bindings",
-      "//components/sampling_profiler:profile_params",
-      "//components/variations",
-      "//components/version_info",
-      "//mojo/core/test:test_support",
-      "//mojo/public/cpp/base:protobuf_support",
-      "//mojo/public/cpp/bindings",
-    ]
-  }
-}

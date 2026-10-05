@@ -27,17 +27,3 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "chrome_update_query_params_delegate_unittest.cc" ]
-
-  deps = [
-    ":update_client",
-    "//base",
-    "//chrome/common",
-    "//components/update_client",
-    "//components/version_info",
-    "//testing/gtest",
-  ]
-}

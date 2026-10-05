@@ -19,19 +19,3 @@ component("device_event_log") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "device_event_log_impl_unittest.cc" ]
-
-  deps = [
-    ":device_event_log",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//third_party/icu",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

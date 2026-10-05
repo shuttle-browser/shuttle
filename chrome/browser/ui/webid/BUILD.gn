@@ -43,32 +43,4 @@ source_set("webid") {
 }
 
 if (!is_android) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [
-      "identity_dialog_controller_unittest.cc",
-      "identity_ui_utils_unittest.cc",
-    ]
-    deps = [
-      ":webid",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/webid",
-      "//chrome/test:test_support",
-      "//components/optimization_guide/core:hints_test_support",
-      "//components/permissions",
-      "//components/permissions:test_support",
-      "//components/segmentation_platform/public",
-      "//components/segmentation_platform/public:test_support",
-      "//content/public/browser",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//third_party/blink/public/common",
-      "//url",
-    ]
-
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  }
 }

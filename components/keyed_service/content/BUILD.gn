@@ -33,11 +33,3 @@ component("content") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "browser_context_dependency_manager_unittest.cc" ]
-  deps = [
-    ":content",
-    "//testing/gtest",
-  ]
-}

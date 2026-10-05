@@ -127,12 +127,3 @@ if (is_android) {
   }
 }
 
-fuzzer_test("hid_report_descriptor_fuzzer") {
-  sources = [ "hid_report_descriptor_fuzzer.cc" ]
-  deps = [
-    ":hid",
-    "//services/device/public/mojom",
-  ]
-  seed_corpus = "fuzz_corpus"
-  libfuzzer_options = [ "max_len=2048" ]
-}

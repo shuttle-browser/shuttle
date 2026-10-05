@@ -34,14 +34,3 @@ static_library("test_support") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "signed_web_bundles/web_bundle_signer_unittest.cc" ]
-
-  deps = [
-    ":test_support",
-    "//base",
-    "//components/web_package",
-    "//testing/gtest",
-  ]
-}

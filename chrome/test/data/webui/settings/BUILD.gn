@@ -225,8 +225,6 @@ build_webui_tests("build") {
 
   if (is_chromeos) {
     files += [
-      "people_page_test_cros.ts",
-      "smart_card_readers_page_test.ts",
     ]
   } else {
     files += [
@@ -254,7 +252,6 @@ build_webui_tests("build") {
   }
 
   if (is_chrome_branded) {
-    files += [ "ai_page_official_test.ts" ]
   }
 
   if (is_mac) {
@@ -262,7 +259,6 @@ build_webui_tests("build") {
   }
 
   if (!is_mac && !is_chromeos) {
-    files += [ "edit_dictionary_page_test.ts" ]
   }
 
   if (is_win || is_mac) {

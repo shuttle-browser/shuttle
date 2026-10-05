@@ -3634,7 +3634,6 @@ if (is_android) {
 # See comment at the top of //content/BUILD.gn for how this works.
 group("for_content_tests") {
   visibility = [
-    "//content/browser/btm:unit_tests",
     "//content/browser/indexed_db:idb_factory_mojolpm_fuzzer",
     "//content/browser/indexed_db:unit_tests",
     "//content/public/test/android/*",
@@ -3684,18 +3683,3 @@ if (is_mac) {
   }
 }
 
-fuzzer_test("content_sms_parser_fuzzer") {
-  sources = [ "sms/sms_parser_fuzzer.cc" ]
-  deps = [
-    # This parser depends on `./sms/sms_parser.h` from `:browser`.
-    #
-    # However `:browser` doesn't properly declare its dependency on
-    # `//content/public/renderer:renderer_sources`, causing linker errors if
-    # it was used alone.
-    # As a result, we depend on both here:
-    ":browser",
-    "//components/vrp_flags:buildflags",
-    "//content/public/browser:browser_sources",
-    "//content/public/renderer:renderer_sources",
-  ]
-}

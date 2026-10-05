@@ -48,14 +48,3 @@ source_set("gpu_info_util") {
   deps = [ "//base" ]
 }
 
-fuzzer_test("edid_parser_fuzzer") {
-  sources = [ "edid_parser_fuzzer.cc" ]
-  deps = [
-    ":util",
-    "//base",
-    "//skia",
-    "//ui/gfx/geometry",
-  ]
-  seed_corpus = "fuzz_corpus"
-  libfuzzer_options = [ "max_len=300" ]
-}

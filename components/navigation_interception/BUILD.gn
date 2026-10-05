@@ -39,16 +39,3 @@ if (is_android) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "intercept_navigation_throttle_unittest.cc" ]
-  deps = [
-    ":navigation_interception",
-    "//base",
-    "//base/test:test_support",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

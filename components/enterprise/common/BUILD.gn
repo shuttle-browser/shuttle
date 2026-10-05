@@ -28,19 +28,3 @@ if (use_blink) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  if (!is_ios) {
-    sources = [ "files_scan_data_unittest.cc" ]
-
-    deps = [
-      ":files_scan_data",
-      "//base/test:test_support",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//testing/gtest",
-    ]
-  }
-}

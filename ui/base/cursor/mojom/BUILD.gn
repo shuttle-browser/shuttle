@@ -49,17 +49,3 @@ mojom("cursor_type") {
   sources = [ "cursor_type.mojom" ]
 }
 
-source_set("unittests") {
-  testonly = true
-  sources = [ "cursor_mojom_traits_unittest.cc" ]
-  deps = [
-    ":mojom",
-    ":mojom_traits",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/base/cursor",
-    "//ui/gfx:gfx_skia",
-    "//ui/gfx:test_support",
-    "//ui/gfx/geometry/mojom:mojom_traits",
-  ]
-}

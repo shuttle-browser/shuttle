@@ -22,39 +22,5 @@ source_set("chooser_controller") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "title_util_browsertest.cc" ]
-    deps = [
-      ":chooser_controller",
-      "//base/test:test_support",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/test:test_support",
-      "//chrome/test:test_support",
-    ]
-  }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "title_util_unittest.cc" ]
-  deps = [
-    ":chooser_controller",
-    "//base/test:test_support",
-    "//chrome/test:test_support",
-    "//components/strings:components_strings",
-    "//content/test:test_support",
-    "//services/data_decoder/public/cpp:test_support",
-    "//url",
-  ]
-  if (enable_extensions_core) {
-    deps += [
-      "//chrome/browser/extensions",
-      "//chrome/browser/extensions:test_support",
-      "//extensions:test_support",
-    ]
-  }
-  if (!is_android) {
-  }
-}

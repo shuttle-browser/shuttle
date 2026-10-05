@@ -52,53 +52,7 @@ source_set("actions_util") {
 }
 
 if (!is_android) {
-  executable("dump_actions") {
-    testonly = true
-
-    sources = [ "tools/dump_actions.cc" ]
-
-    deps = [
-      ":actions_headers",
-      "//ui/actions:actions_headers",
-    ]
-  }
-}
-
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "chrome_actions_unittest.cc" ]
-
-  deps = [
-    ":actions",
-    ":actions_headers",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-
-    sources = [ "command_action_updater_browsertest.cc" ]
-
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    deps = [
-      ":actions",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/ui",
-      "//chrome/browser/ui:browser_actions",
-      "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/side_panel",
-      "//chrome/browser/ui/side_panel:side_panel_views_dependent",
-      "//chrome/test:test_support",
-      "//content/test:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//ui/actions",
-    ]
-  }
 }

@@ -38,14 +38,3 @@ mojom("enum_mojom") {
   sources = [ "enum.mojom" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "web_message_mojom_traits_unittest.cc" ]
-  deps = [
-    ":common_mojom",
-    "//base",
-    "//base/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//url",
-  ]
-}

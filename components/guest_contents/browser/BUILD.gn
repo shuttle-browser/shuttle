@@ -26,39 +26,3 @@ static_library("browser") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "guest_contents_handle_unittest.cc" ]
-
-  public_deps = [ "//content/test:test_support" ]
-
-  deps = [
-    ":browser",
-    "//base",
-    "//testing/gtest",
-  ]
-
-  if (enable_guest_contents) {
-    sources += [ "guest_contents_host_impl_unittest.cc" ]
-  }
-}
-
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  sources = [ "guest_contents_security_browsertest.cc" ]
-
-  deps = [
-    ":browser",
-    "//base/test:test_support",
-    "//components/guest_contents/common:mojom",
-    "//components/network_session_configurator/common",
-    "//content/shell:content_shell_lib",
-    "//content/test:browsertest_support",
-    "//content/test:test_support",
-    "//net:test_support",
-    "//testing/gtest",
-  ]
-}

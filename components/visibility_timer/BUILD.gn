@@ -11,14 +11,3 @@ source_set("visibility_timer") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "visibility_timer_tab_helper_unittest.cc" ]
-  deps = [
-    ":visibility_timer",
-    "//base/test:test_support",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

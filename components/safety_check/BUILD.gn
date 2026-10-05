@@ -51,26 +51,5 @@ source_set("features") {
 }
 
 if (use_blink) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "update_check_helper_unittest.cc" ]
-
-    deps = [
-      ":safety_check",
-      "//content/test:test_support",
-      "//services/network:test_support",
-      "//services/network/public/cpp",
-      "//testing/gtest",
-    ]
-  }
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_update_check_helper.cc",
-    "test_update_check_helper.h",
-  ]
-
-  deps = [ ":safety_check" ]
-}

@@ -36,22 +36,3 @@ static_library("test_support") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "eula_accepted_notifier_unittest.cc",
-    "resource_request_allowed_notifier_unittest.cc",
-  ]
-
-  deps = [
-    ":test_support",
-    ":web_resource",
-    "//base",
-    "//base/test:test_support",
-    "//components/prefs:test_support",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gtest",
-    "//third_party/icu",
-  ]
-}

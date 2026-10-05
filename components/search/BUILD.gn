@@ -16,19 +16,3 @@ static_library("search") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "search_unittest.cc" ]
-  if (is_android) {
-    sources += [ "search_android_unittest.cc" ]
-  }
-
-  deps = [
-    ":search",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

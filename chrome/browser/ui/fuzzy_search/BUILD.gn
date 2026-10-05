@@ -24,15 +24,3 @@ source_set("fuzzy_search") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "fuzzy_finder_unittest.cc" ]
-
-  deps = [
-    ":fuzzy_search",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

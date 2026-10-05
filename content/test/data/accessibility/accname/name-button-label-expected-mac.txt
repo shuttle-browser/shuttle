@@ -1,1 +1,0 @@
-AXButton AXDescription='Rich' AXTitle='Rich'

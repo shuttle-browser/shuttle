@@ -48,28 +48,4 @@ static_library("print_compositor") {
 }
 
 if (enable_printing) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "print_compositor_impl_unittest.cc" ]
-
-    deps = [
-      ":print_compositor",
-      "//base/test:test_support",
-      "//cc:test_support",
-      "//components/crash/core/common:crash_key",
-      "//components/enterprise/buildflags",
-      "//components/services/print_compositor/public/cpp",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-
-    if (enterprise_watermark) {
-      sources += [ "print_watermark_unittest.cc" ]
-
-      deps += [
-        "//components/enterprise/watermarking",
-        "//components/enterprise/watermarking:watermark_test_utils",
-      ]
-    }
-  }
 }

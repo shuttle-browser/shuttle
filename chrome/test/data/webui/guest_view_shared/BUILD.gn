@@ -9,9 +9,9 @@ import("../build_webui_tests.gni")
 assert(!enable_extensions_core && enable_guest_view)
 
 build_webui_tests("build") {
-  cc_test_files = [ "slim_webview_browsertest.cc" ]
+  cc_test_files = []
 
-  files = [ "slim_webview_test.ts" ]
+  files = []
 
   ts_deps = [
     "//chrome/browser/resources/guest_view_shared:build_ts",

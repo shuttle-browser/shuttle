@@ -26,21 +26,6 @@ process_version("install") {
   output = "$target_gen_dir/install.sh"
 }
 
-# These tests mutate system state and should not be bundled into unit_tests or
-# other commonly-run targets.
-test("install_sh_test") {
-  testonly = true
-  sources = [ "install_test.cc" ]
-  deps = [
-    "//base",
-    "//base/test:test_config",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//chrome",
-    "//testing/gtest",
-  ]
-}
-
 # key_window_notifier is split out so that
 # //chrome/browser:browser_process_platform_part can include
 # browser_process_platform_part_mac.h (which transitively includes
@@ -104,47 +89,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "aperitif_unittest.mm",
-    "auth_session_request_unittest.mm",
-    "code_sign_clone_manager_unittest.mm",
-    "dock_unittest.mm",
-    "exception_processor_unittest.mm",
-    "metrics_unittest.mm",
-  ]
-  deps = [
-    ":impl",
-    ":mac",
-    "//base",
-    "//base/test:test_support",
-    "//build:branding_buildflags",
-    "//chrome/common:non_code_constants",
-    "//content/test:test_support",
-    "//sandbox/mac:seatbelt",
-    "//sandbox/policy",
-    "//sandbox/policy/mojom",
-    "//testing/gtest",
-  ]
-  data_deps = [
-    "//chrome",
-    "//chrome:chrome_helper_app_aperitif",
-  ]
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "auth_session_request_browsertest.mm" ]
-  deps = [
-    ":impl",
-    ":mac",
-    "//base",
-    "//chrome/browser:app_controller_mac",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

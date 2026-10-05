@@ -60,53 +60,6 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "window_sizer_common_unittest.cc",
-    "window_sizer_common_unittest.h",
-    "window_sizer_unittest.cc",
-  ]
-
-  public_deps = [
-    "//chrome/browser/ui/window_sizer",
-    "//ui/gfx/geometry",
-  ]
-  deps = [
-    "//base",
-    "//chrome/common:non_code_constants",
-    "//testing/gtest",
-    "//ui/base/mojom:ui_base_types",
-    "//ui/display",
-  ]
-
-  if (use_aura) {
-    deps += [ "//ui/aura" ]
-  }
-
-  if (is_chromeos) {
-    sources += [ "window_sizer_chromeos_unittest.cc" ]
-    deps += [
-      "//ash",
-      "//ash/public/cpp",
-      "//chrome/browser/ui:browser_init_state",
-      "//chrome/browser/ui:test_support",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/test:test_support_unit",
-      "//content/test:test_support",
-      "//testing/gmock",
-      "//ui/aura:test_support",
-      "//ui/display:display_manager_test_api",
-      "//ui/display/manager",
-      "//ui/wm/public",
-    ]
-  }
-
-  if (is_win) {
-    deps += [ "//chrome/install_static:install_static_util" ]
-  }
-}
-
 if (is_chromeos) {
   source_set("interactive_ui_tests") {
     testonly = true

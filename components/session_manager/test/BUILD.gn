@@ -6,8 +6,6 @@ static_library("test_support") {
   testonly = true
 
   sources = [
-    "test_user_session_manager.cc",
-    "test_user_session_manager.h",
   ]
 
   deps = [

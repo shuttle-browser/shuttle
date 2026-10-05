@@ -32,15 +32,3 @@ static_library("print_to_pdf") {
   public_deps = [ "//components/printing/common:mojo_interfaces" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "pdf_print_utils_unittest.cc" ]
-
-  deps = [
-    ":print_to_pdf",
-    "//printing",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

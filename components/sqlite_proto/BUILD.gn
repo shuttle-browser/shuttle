@@ -4,11 +4,6 @@
 
 import("//third_party/protobuf/proto_library.gni")
 
-proto_library("test_proto") {
-  testonly = true
-  sources = [ "test_proto.proto" ]
-}
-
 static_library("sqlite_proto") {
   sources = [
     "key_value_data.h",
@@ -26,21 +21,3 @@ static_library("sqlite_proto") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "key_value_data_unittest.cc",
-    "key_value_table_unittest.cc",
-    "proto_table_manager_unittest.cc",
-  ]
-  deps = [
-    ":sqlite_proto",
-    ":test_proto",
-    "//base",
-    "//base/test:test_support",
-    "//sql",
-    "//sql:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

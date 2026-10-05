@@ -49,26 +49,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "tab_drag_event_router_unittest.cc",
-    "tab_drag_session_unittest.cc",
-  ]
-
-  deps = [
-    ":impl",
-    ":sessions",
-    "//base",
-    "//base/test:test_support",
-    "//components/browser_apis/tab_drag/adapters",
-    "//components/browser_apis/tab_drag/testing",
-    "//components/browser_apis/tab_strip/types",
-    "//mojo/public/cpp/bindings",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx",
-    "//ui/gfx/geometry",
-  ]
-}

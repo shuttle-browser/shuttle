@@ -31,31 +31,3 @@ source_set("embedder") {
   public_deps = [ "//components/segmentation_platform/embedder/home_modules" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  # IMPORTANT NOTE: When adding new tests, also remember to update the list of
-  # tests in //components/segmentation_platform/components_unittests.filter
-  sources = [
-    "input_delegate/tab_session_source_unittest.cc",
-    "model_provider_factory_impl_unittest.cc",
-  ]
-
-  deps = [
-    ":embedder",
-    "//base",
-    "//base/test:test_support",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/core:test_support",
-    "//components/segmentation_platform/embedder/home_modules:unit_tests",
-    "//components/segmentation_platform/embedder/home_modules/tips_manager:unit_tests",
-    "//components/segmentation_platform/internal",
-    "//components/segmentation_platform/internal/proto",
-    "//components/segmentation_platform/public",
-    "//components/segmentation_platform/public:test_support",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

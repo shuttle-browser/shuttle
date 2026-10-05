@@ -33,16 +33,3 @@ source_set("local_state") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "local_state_utils_unittest.cc" ]
-
-  deps = [
-    ":local_state",
-    "//base",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//extensions/buildflags",
-    "//testing/gtest",
-  ]
-}

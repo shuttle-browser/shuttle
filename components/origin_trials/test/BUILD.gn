@@ -4,15 +4,3 @@
 
 testonly = true
 
-source_set("test") {
-  sources = [
-    "test_persistence_provider.cc",
-    "test_persistence_provider.h",
-  ]
-  deps = [
-    "//base",
-    "//components/origin_trials:common",
-    "//net",
-    "//url",
-  ]
-}

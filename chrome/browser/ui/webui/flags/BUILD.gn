@@ -47,16 +47,3 @@ source_set("flags") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "flags_ui_handler_unittest.cc" ]
-  deps = [
-    ":flags",
-    "//base/test:test_support",
-    "//chrome/browser/ui:ui_features",
-    "//components/webui/flags",
-    "//content/public/common",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

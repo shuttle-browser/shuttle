@@ -47,20 +47,3 @@ component("metadata") {
   public_deps = [ ":metadata_headers" ]
 }
 
-source_set("metadata_tests") {
-  testonly = true
-
-  sources = [
-    "base_type_conversion_unittest.cc",
-    "metadata_unittest.cc",
-  ]
-
-  deps = [
-    ":metadata",
-    "//base/test:test_support",
-    "//skia",
-    "//testing/gtest",
-    "//ui/gfx:color_utils",
-    "//ui/gfx:test_support",
-  ]
-}

@@ -51,44 +51,6 @@ source_set("public") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "url_visit_util_unittest.cc" ]
-
-  deps = [
-    ":public",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//components/history/core/browser",
-    "//components/segmentation_platform/public",
-    "//components/segmentation_platform/public:test_support",
-    "//components/sessions",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
-source_set("test_support") {
-  testonly = true
-
-  sources = [
-    "test_support.cc",
-    "test_support.h",
-    "testing/mock_visited_url_ranking_service.cc",
-    "testing/mock_visited_url_ranking_service.h",
-  ]
-
-  deps = [
-    ":public",
-    "//base",
-    "//components/history/core/browser",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
 if (is_android) {
   android_library("public_java") {
     srcjar_deps = [ ":group_suggestions_generated_enums" ]

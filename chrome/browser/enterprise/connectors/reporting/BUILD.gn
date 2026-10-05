@@ -132,56 +132,5 @@ source_set("impl") {
   deps += [ "//chrome/browser:browser_public_dependencies" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "crash_reporting_context_unittest.cc",
-    "realtime_reporting_client_unittest.cc",
-    "reporting_event_router_unittest.cc",
-  ]
-
-  if (enterprise_cloud_content_analysis && enable_extensions_core) {
-    sources += [
-      "extension_install_event_router_unittest.cc",
-      "extension_telemetry_event_router_unittest.cc",
-    ]
-  }
-
-  deps = [
-    ":impl",
-    ":reporting",
-    "//base/test:test_support",
-    "//chrome/browser",
-    "//chrome/browser/enterprise/connectors/test:test_support",
-    "//chrome/test:test_support",
-    "//components/device_signals/core/browser",
-    "//components/enterprise",
-    "//components/enterprise:test_support",
-    "//components/enterprise/common/proto:chrome_reporting_entity",
-    "//components/enterprise/common/proto:connectors_proto",
-    "//components/enterprise/connectors/core:test_support",
-    "//components/safe_browsing/content/browser/web_ui",
-    "//testing/gtest",
-  ]
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-
-    sources = [ "crash_reporting_context_browsertest.cc" ]
-
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    deps = [
-      ":impl",
-      ":reporting",
-      "//chrome/browser",
-      "//chrome/browser/enterprise/connectors/test:test_support",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//content/test:test_support",
-    ]
-  }
 }

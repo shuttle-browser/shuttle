@@ -93,42 +93,4 @@ source_set("mixers") {
 }
 
 if (!is_android) {
-  executable("dump_colors") {
-    testonly = true
-
-    sources = [ "tools/dump_colors.cc" ]
-
-    deps = [
-      ":color_headers",
-      ":mixers",
-      "//chrome/browser",
-      "//components/color",
-      "//ui/color:mixers",
-    ]
-
-    if (is_mac) {
-      sources += [
-        "//chrome/app/chrome_crash_reporter_client.cc",
-        "//chrome/app/chrome_crash_reporter_client_mac.mm",
-      ]
-
-      deps += [
-        "//components/upload_list",
-      ]
-    }
-
-    if (is_win) {
-      deps += [
-        "//chrome/chrome_elf:test_stubs",
-        "//components/crash/core/app:crash_export_thunks",
-      ]
-    }
-
-    if (is_chromeos) {
-      deps += [
-        "//chrome/services/sharing/nearby",
-        "//components/exo/wayland:ui_controls_protocol_stub",
-      ]
-    }
-  }
 }

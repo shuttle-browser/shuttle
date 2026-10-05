@@ -1,5 +1,0 @@
-LiveRegionChanged on role=alert, name=a
-=== Start Continuation ===
-LiveRegionChanged on role=alert, name=b
-=== Start Continuation ===
-LiveRegionChanged on role=alert, name=c

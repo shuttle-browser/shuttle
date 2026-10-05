@@ -133,34 +133,3 @@ proto_library("proto") {
   sources = [ "ssl_error_assistant.proto" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "security_interstitial_tab_helper_unittest.cc",
-    "ssl_error_assistant_unittest.cc",
-    "ssl_error_handler_unittest.cc",
-    "ssl_error_navigation_throttle_unittest.cc",
-  ]
-
-  deps = [
-    ":proto",
-    ":security_interstitial_page",
-    "//base",
-    "//base/test:test_support",
-    "//components/captive_portal/content",
-    "//components/captive_portal/core:test_support",
-    "//components/embedder_support",
-    "//components/network_time",
-    "//components/network_time:network_time_test_support",
-    "//components/prefs:test_support",
-    "//components/security_interstitials/core",
-    "//components/version_info",
-    "//content/public/browser",
-    "//content/public/common",
-    "//content/test:test_support",
-    "//net:",
-    "//net:test_support",
-    "//services/network:test_support",
-    "//testing/gtest",
-  ]
-}

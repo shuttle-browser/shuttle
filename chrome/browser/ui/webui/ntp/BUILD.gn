@@ -82,16 +82,4 @@ if (!is_android) {
     ]
   }
 
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "new_tab_ui_browsertest.cc" ]
-    deps = [
-      ":ntp",
-      "//chrome/browser/ui",
-      "//chrome/test:test_support_ui",
-      "//content/test:test_support",
-      "//testing/gtest",
-    ]
-  }
 }

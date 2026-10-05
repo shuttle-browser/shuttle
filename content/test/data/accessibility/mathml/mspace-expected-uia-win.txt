@@ -1,4 +1,0 @@
-Document
-++Group IsControlElement=false
-++++Text Name='This test passes if the 'math' node in the accessibility tree contains a single child, which is ignored:'
-++Custom MathML='<math><mspace class="test"></mspace></math>'

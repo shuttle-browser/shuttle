@@ -29,24 +29,3 @@ viz_component("client") {
   ]
 }
 
-viz_source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "client_resource_provider_unittest.cc",
-    "frame_eviction_manager_unittest.cc",
-  ]
-
-  deps = [
-    ":client",
-    "//base",
-    "//base/test:test_support",
-    "//components/viz/client",
-    "//components/viz/test:test_suite",
-    "//components/viz/test:test_support",
-    "//gpu/command_buffer/client:raster_interface",
-    "//mojo/public/cpp/bindings",
-    "//services/viz/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

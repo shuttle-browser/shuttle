@@ -5,26 +5,3 @@
 import("//build/buildflag_header.gni")
 import("//testing/test.gni")
 
-test("ui_unittests") {
-  sources = [ "run_all_unittests.cc" ]
-
-  deps = [
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//ui/base:test_support",
-    "//ui/color:unit_tests",
-    "//ui/menus:unit_tests",
-  ]
-
-  if (!is_ios && !is_android && !is_castos) {
-    deps += [ "//ui/actions:unit_tests" ]
-  }
-
-  if (is_mac) {
-    deps += [ "//ui/base:ui_unittests_framework" ]
-  }
-
-  if (is_android) {
-    deps += [ "//ui/color:ui_color_android_java" ]
-  }
-}

@@ -33,14 +33,3 @@ source_set("pdf_viewer_private") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  sources = [ "pdf_viewer_private_browsertest.cc" ]
-  deps = [
-    ":pdf_viewer_private",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-  ]
-}

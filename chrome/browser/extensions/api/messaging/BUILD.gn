@@ -113,118 +113,7 @@ source_set("messaging") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = []
-
-  if (enable_extensions) {
-    sources += [
-      "native_messaging_test_util.cc",
-      "native_messaging_test_util.h",
-    ]
-  }
-
-  deps = [
-    ":messaging",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/common:constants",
-    "//extensions/browser",
-    "//extensions/common",
-    "//testing/gtest",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-
-  if (enable_extensions) {
-    if (!is_chromeos) {
-      sources += [
-        "native_message_process_host_unittest.cc",
-        "native_messaging_host_manifest_unittest.cc",
-        "native_messaging_launch_from_native_unittest.cc",
-        "native_messaging_policy_handler_unittest.cc",
-      ]
-    }
-  }
-
-  deps = [
-    ":messaging",
-    ":test_support",
-    "//base",
-    "//base/test:test_config",
-    "//base/test:test_support",
-    "//chrome/browser/profiles:profile",
-    "//chrome/common:chrome_features",
-    "//chrome/common:non_code_constants",
-    "//chrome/test:test_support",
-    "//components/version_info",
-    "//extensions/browser",
-    "//extensions/common",
-    "//testing/gtest",
-  ]
-}
-
-source_set("platform_browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  sources = [
-    "externally_connectable_messaging_apitest.cc",
-    "messaging_apitest.cc",
-    "service_worker_messaging_apitest.cc",
-  ]
-
-  deps = [
-    ":messaging",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/ssl",
-    "//chrome/browser/ui",
-    "//chrome/test:test_support",
-    "//components/embedder_support",
-    "//components/infobars/content",
-    "//extensions:test_support",
-    "//extensions/browser",
-    "//extensions/browser:test_support",
-    "//extensions/common",
-    "//testing/gtest",
-  ]
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    sources = [
-      "message_tracker_browsertest.cc",
-      "native_messaging_apitest_desktop.cc",
-    ]
-
-    deps = [
-      ":messaging",
-      ":test_support",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui",
-      "//chrome/browser/ui/startup",
-      "//chrome/test:test_support",
-      "//extensions:test_support",
-      "//extensions/browser",
-      "//extensions/common",
-      "//testing/gtest",
-    ]
-
-    if (enable_background_mode) {
-      deps += [ "//chrome/browser/background/extensions" ]
-    }
-  }
 }
 
 if (is_win) {
@@ -233,7 +122,7 @@ if (is_win) {
   # cmd.exe. crbug.com/41084583
   executable("native_messaging_test_echo_host") {
     testonly = true
-    sources = [ "native_messaging_test_echo_host.cc" ]
+    sources = []
     deps = [ "//base" ]
   }
 

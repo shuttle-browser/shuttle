@@ -29,18 +29,3 @@ rust_static_library("athm_ffi") {
   ]
 }
 
-rust_static_library("privacy_pass_unittests") {
-  testonly = true
-  is_gtest_unittests = true
-  crate_root = "privacy_pass_unittest.rs"
-  sources = [ "privacy_pass_unittest.rs" ]
-  deps = [
-    ":athm_ffi",
-    "//testing/rust_gtest_interop",
-    "//third_party/anonymous_tokens:athm",
-  ]
-  visibility = [
-    "//components/private_verification_tokens:*",
-    "//components/private_verification_tokens/common:*",
-  ]
-}

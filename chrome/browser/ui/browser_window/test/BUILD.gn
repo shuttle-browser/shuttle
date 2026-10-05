@@ -87,15 +87,3 @@ if (is_android) {
   }
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "browser_event_waiter.cc",
-    "browser_event_waiter.h",
-    "fake_global_browser_collection.h",
-  ]
-  deps = [
-    "//base",
-    "//chrome/browser/ui/browser_window",
-  ]
-}

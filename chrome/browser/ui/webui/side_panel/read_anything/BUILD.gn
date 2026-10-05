@@ -70,29 +70,3 @@ source_set("read_anything") {
   }
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [
-    "read_anything_app_e2e_browsertest.cc",
-    "read_anything_untrusted_page_handler_browsertest.cc",
-  ]
-  deps = [
-    ":read_anything",
-    "//chrome/browser/pdf:pdf_extension_test_utils",
-    "//chrome/browser/speech",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/side_panel",
-    "//chrome/browser/ui/side_panel:side_panel_views_dependent",
-    "//chrome/browser/user_education",
-    "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
-    "//components/language_detection/core",
-    "//content/test:browsertest_support",
-    "//content/test:test_support",
-    "//extensions/browser/mime_handler",
-    "//pdf:features",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

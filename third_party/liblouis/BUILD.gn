@@ -32,8 +32,6 @@ if (!is_castos) {
     visibility = [ ":liblouis_test_data" ]
     testonly = true
     sources = [
-      "//chrome/test/data/chromeos/liblouis_wasm/manifest.json",
-      "//chrome/test/data/chromeos/liblouis_wasm/test.js",
     ]
     outputs = [ "${chromevox_test_data_dir}/{{source_file_part}}" ]
   }

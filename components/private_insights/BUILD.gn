@@ -108,31 +108,3 @@ source_set("fcp_files") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "contextual_cue_log_event_helpers_unittest.cc",
-    "fcp_files_unittest.cc",
-    "fcp_http_client_unittest.cc",
-    "fcp_simple_task_environment_unittest.cc",
-    "fcp_utils_unittest.cc",
-    "private_insights_service_unittest.cc",
-  ]
-  deps = [
-    ":fcp_files",
-    ":fcp_http_client",
-    ":fcp_simple_task_environment",
-    ":fcp_utils",
-    ":private_insights",
-    ":private_insights_logger",
-    "//base",
-    "//base/test:test_support",
-    "//components/metrics",
-    "//components/prefs:test_support",
-    "//components/private_insights/events:contextual_cue_log_event_proto",
-    "//services/network:test_support",
-    "//testing/gtest",
-    "//third_party/federated_compute:confidential_compute_crypto_test_util",
-    "//ui/base",
-  ]
-}

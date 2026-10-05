@@ -46,26 +46,4 @@ executable("crdmg") {
   ]
 }
 
-fuzzer_test("safe_browsing_dmg_fuzzer") {
-  sources = [ "dmg_fuzzer.cc" ]
 
-  deps = [
-    ":dmg_common",
-    "//base",
-    "//testing/libfuzzer:libfuzzer_base_wrappers",
-  ]
-}
-
-fuzzer_test("safe_browsing_hfs_fuzzer") {
-  sources = [ "hfs_fuzzer.cc" ]
-
-  deps = [
-    ":dmg_common",
-    "//base",
-    "//testing/libfuzzer:libfuzzer_base_wrappers",
-  ]
-
-  seed_corpus = rebase_path("//chrome/test/data/safe_browsing/dmg/data")
-
-  libfuzzer_options = [ "max_len=1488576" ]
-}

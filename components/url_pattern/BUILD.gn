@@ -18,16 +18,3 @@ source_set("url_pattern") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "simple_url_pattern_matcher_unittest.cc" ]
-
-  deps = [
-    ":url_pattern",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

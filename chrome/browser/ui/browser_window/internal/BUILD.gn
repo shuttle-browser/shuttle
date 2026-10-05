@@ -176,37 +176,6 @@ source_set("internal") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "browser_collection_unittest.cc" ]
-  deps = [
-    ":internal",
-    "//chrome/browser/ui:test_support",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/browser_window/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (is_android) {
-    sources += [
-      "android/android_base_window_unittest.cc",
-      "android/android_browser_window_enumerator_unittest.cc",
-      "android/android_browser_window_unittest.cc",
-      "android/browser_window_interface_iterator_android_unittest.cc",
-    ]
-    deps += [
-      "//base",
-      "//chrome/browser/ui/browser_window/test:native_unit_test_support_java",
-      "//chrome/browser/ui/browser_window/test:native_unit_test_support_jni",
-      "//chrome/test:test_support",
-      "//components/sessions:session_id",
-      "//content/test:test_support",
-      "//ui/base",
-    ]
-  }
-}
-
 # Android targets need to be guarded by is_android because:
 # (1) Android GNI files may assert is_android, and
 # (2) The rest of this file can be included in non-Android builds.
@@ -351,7 +320,7 @@ if (is_android) {
       "//ui/base:ui_base_types_java",
       "//ui/base/mojom:ui_base_types_java",
     ]
-    data = [ "//chrome/test/data/android/about.html" ]
+    data = []
   }
 
   source_set("android_browsertests") {

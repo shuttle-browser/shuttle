@@ -391,7 +391,6 @@ source_set("lib") {
   ]
 
   if (use_ozone) {
-    sources += [ "keycode_text_conversion_ozone.cc" ]
     deps += [ "//ui/events/ozone/layout" ]
 
     # TODO(crbug.com/40193891): clean up usages of ozone_platform_x11.
@@ -399,7 +398,6 @@ source_set("lib") {
     # use plain X11 keyboard conversion code until Ozone/X11 uses a non-stub
     # engine.
     if (ozone_platform_x11) {
-      sources += [ "keycode_text_conversion_x.cc" ]
       deps += [
         "//ui/base/x",
         "//ui/gfx/x",
@@ -488,203 +486,7 @@ if (is_win) {
   }
 }
 
-python_library("chromedriver_py_tests") {
-  testonly = true
-  deps = [
-    ":chromedriver_server",
-    "//chrome",
-  ]
-
-  pydeps_file = "test/run_py_tests.pydeps"
-  data = [
-    "//chrome/test/data/chromedriver/",
-    "//chrome/test/chromedriver/js/",
-    "//testing/scripts/run_chromedriver_tests.py",
-  ]
-
-  data_deps = [
-    "//chrome/test/chromedriver:chromedriver_server",
-    "//testing:test_scripts_shared",
-  ]
-  if (is_component_build && is_mac) {
-    data_deps += [ "//chrome:chrome_framework" ]
-  }
-
-  if (is_win) {
-    # On Windows, the following target produces the final chrome.exe
-    data_deps += [ "//chrome:reorder_imports" ]
-  }
-}
-
-python_library("chromedriver_py_tests_headless_shell") {
-  testonly = true
-  deps = [
-    ":chromedriver_server",
-    "//chrome",
-  ]
-
-  pydeps_file = "test/run_py_tests.pydeps"
-  data = [
-    "//chrome/test/data/chromedriver/",
-    "//chrome/test/chromedriver/js/",
-    "//testing/scripts/run_chromedriver_tests.py",
-  ]
-
-  data_deps = [
-    "//chrome/test/chromedriver:chromedriver_server",
-    "//headless:headless_shell",
-    "//testing:test_scripts_shared",
-  ]
-}
-
-python_library("chromedriver_replay_unittests") {
-  testonly = true
-  deps = [ ":chromedriver_server" ]
-
-  data_deps = [ "//testing:test_scripts_shared" ]
-
-  pydeps_file = "log_replay/client_replay_unittest.pydeps"
-}
-
-test("chromedriver_unittests") {
-  sources = [
-    "capabilities_unittest.cc",
-    "chrome/bidi_tracker_unittest.cc",
-    "chrome/browser_info_unittest.cc",
-    "chrome/cast_tracker_unittest.cc",
-    "chrome/chrome_finder_unittest.cc",
-    "chrome/console_logger_unittest.cc",
-    "chrome/device_manager_unittest.cc",
-    "chrome/devtools_client_impl_unittest.cc",
-    "chrome/devtools_endpoint_unittest.cc",
-    "chrome/devtools_http_client_unittest.cc",
-    "chrome/download_directory_override_manager_unittest.cc",
-    "chrome/fedcm_tracker_unittest.cc",
-    "chrome/frame_tracker_unittest.cc",
-    "chrome/geolocation_override_manager_unittest.cc",
-    "chrome/heap_snapshot_taker_unittest.cc",
-    "chrome/mobile_device_unittest.cc",
-    "chrome/mobile_emulation_override_manager_unittest.cc",
-    "chrome/navigation_tracker_unittest.cc",
-    "chrome/network_conditions_override_manager_unittest.cc",
-    "chrome/recorder_devtools_client.cc",
-    "chrome/recorder_devtools_client.h",
-    "chrome/status_unittest.cc",
-    "chrome/stub_chrome.cc",
-    "chrome/stub_chrome.h",
-    "chrome/stub_devtools_client.cc",
-    "chrome/stub_devtools_client.h",
-    "chrome/stub_web_view.cc",
-    "chrome/stub_web_view.h",
-    "chrome/web_view_impl_unittest.cc",
-    "chrome/web_view_info_unittest.cc",
-    "chrome_launcher_unittest.cc",
-    "command_listener_proxy_unittest.cc",
-    "commands_unittest.cc",
-    "element_commands_unittest.cc",
-    "fedcm_commands_unittest.cc",
-    "key_converter_unittest.cc",
-    "keycode_text_conversion_unittest.cc",
-    "log_replay/devtools_log_reader_unittest.cc",
-    "logging_unittest.cc",
-    "net/adb_client_socket_unittest.cc",
-    "net/net_util_unittest.cc",
-    "net/pipe_builder_unittest.cc",
-    "net/stub_sync_websocket.cc",
-    "net/stub_sync_websocket.h",
-    "net/sync_websocket_impl_unittest.cc",
-    "net/test_http_server.cc",
-    "net/test_http_server.h",
-    "net/test_http_server_unittest.cc",
-    "net/timeout_unittest.cc",
-    "net/websocket_unittest.cc",
-    "performance_logger_unittest.cc",
-    "prompt_behavior_unittest.cc",
-    "server/http_handler_unittest.cc",
-    "server/http_server_unittest.cc",
-    "session_commands_unittest.cc",
-    "session_unittest.cc",
-    "util_unittest.cc",
-    "window_commands_unittest.cc",
-  ]
-
-  if (is_posix) {
-    sources += [
-      "net/pipe_connection_unittest.cc",
-      "net/pipe_reader_posix_unittest.cc",
-      "net/pipe_writer_posix_unittest.cc",
-    ]
-  }
-
-  if (is_win) {
-    sources += [ "net/pipe_connection_unittest.cc" ]
-  }
-
-  data = [
-    "//chrome/test/data/chromedriver/",
-    "//chrome/test/chromedriver/log_replay/test_data",
-  ]
-
-  deps = [
-    ":automation_client_lib",
-    ":lib",
-    "//base",
-    "//base/test:run_all_unittests",
-    "//base/test:test_support",
-    "//chrome/common",
-    "//mojo/core/embedder",
-    "//net",
-    "//net:test_support",
-    "//services/network/public/cpp",
-    "//services/network/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/selenium-atoms:atoms",
-    "//ui/base",
-    "//ui/events:test_support",
-    "//ui/gfx",
-    "//ui/gfx/geometry",
-    "//url",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
 if (is_win || is_posix) {
-  test("chromedriver_integrationtests") {
-    sources = [
-      "net/test_http_server.cc",
-      "net/test_http_server.h",
-      "test/command_injecting_socket.cc",
-      "test/command_injecting_socket.h",
-      "test/commands_integrationtest.cc",
-      "test/devtools_client_impl_integrationtest.cc",
-      "test/integration_test.cc",
-      "test/integration_test.h",
-      "test/navigation_tracker_integrationtest.cc",
-      "test/sync_websocket_wrapper.cc",
-      "test/sync_websocket_wrapper.h",
-      "test/web_view_impl_integrationtest.cc",
-    ]
-
-    data_deps = [ "//chrome" ]
-
-    deps = [
-      ":automation_client_lib",
-      ":lib",
-      "//base",
-      "//base/test:run_all_unittests",
-      "//base/test:test_support",
-      "//chrome/common",
-      "//net",
-      "//net/traffic_annotation:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//url",
-    ]
-  }
 }
 
 copy("copy_license") {
@@ -692,31 +494,3 @@ copy("copy_license") {
   outputs = [ "$root_out_dir/LICENSE.chromedriver" ]
 }
 
-# Generate THIRD_PARTY_NOTICES file by recursively joining all dependent
-# licenses.
-action("generate_chromedriver_notices") {
-  testonly = true
-  _license_path = "$root_out_dir/THIRD_PARTY_NOTICES.chromedriver"
-  script = "//tools/licenses/licenses.py"
-  outputs = [ _license_path ]
-  args = [
-    "license_file",
-    rebase_path(_license_path, root_build_dir),
-    "--gn-target",
-    "//chrome/test/chromedriver:chromedriver_server",
-    "--gn-out-dir",
-    ".",
-    "--format",
-    "notice",
-  ]
-  deps = [ ":chromedriver_server" ]
-}
-
-group("chromedriver") {
-  testonly = true
-  deps = [
-    ":chromedriver_server",
-    ":copy_license",
-    ":generate_chromedriver_notices",
-  ]
-}

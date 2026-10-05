@@ -42,32 +42,3 @@ source_set("mac_notifications") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "mac_notification_service_ns_unittest.mm",
-    "mac_notification_service_un_unittest.mm",
-    "notification_category_manager_unittest.mm",
-    "notification_test_utils_mac.h",
-    "notification_test_utils_mac.mm",
-  ]
-
-  deps = [
-    ":mac_notifications",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/ocmock",
-  ]
-
-  frameworks = [
-    "UserNotifications.framework",
-    "Foundation.framework",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

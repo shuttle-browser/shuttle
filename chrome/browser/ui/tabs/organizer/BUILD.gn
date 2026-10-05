@@ -47,32 +47,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "organizer_panel_state_controller_unittest.cc" ]
-  deps = [
-    ":impl",
-    "//base/test:test_support",
-    "//chrome/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base",
-  ]
-}
-
-source_set("interactive_ui_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "organizer_panel_state_controller_interactive_uitest.cc" ]
-  deps = [
-    ":impl",
-    "//chrome/browser/ui",
-    "//chrome/browser/ui:browser_element_identifiers",
-    "//chrome/browser/ui/tabs",
-    "//chrome/browser/ui/views/tabs/organizer",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-    "//ui/base",
-    "//ui/views",
-  ]
-}

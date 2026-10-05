@@ -1,1 +1,0 @@
-AXComboBox AXTitle='Choose your language.'

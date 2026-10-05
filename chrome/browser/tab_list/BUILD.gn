@@ -23,21 +23,3 @@ source_set("tab_list") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "mock_tab_list_interface.cc",
-    "mock_tab_list_interface.h",
-  ]
-
-  deps = [
-    ":tab_list",
-    "//chrome/browser/ui/browser_window",
-    "//components/sessions:session_id",
-    "//components/tab_groups",
-    "//components/tabs:public",
-    "//testing/gmock",
-    "//ui/base/unowned_user_data",
-    "//ui/gfx/range",
-  ]
-}

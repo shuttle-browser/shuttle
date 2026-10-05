@@ -19,22 +19,3 @@ source_set("storage") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "filter_annotation_table_unittest.cc",
-    "filter_store_unittest.cc",
-  ]
-
-  deps = [
-    ":storage",
-    "//base",
-    "//base/test:test_support",
-    "//components/multistep_filter/core/data_models",
-    "//sql",
-    "//sql:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

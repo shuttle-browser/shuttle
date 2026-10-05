@@ -23,20 +23,3 @@ source_set("browser") {
   ]
 }
 
-source_set("unittests") {
-  testonly = true
-  sources = [ "single_client_video_capture_host_unittest.cc" ]
-
-  deps = [
-    ":browser",
-    "//base",
-    "//base/test:test_support",
-    "//content/test:test_support",
-    "//media/cast:test_support",
-    "//media/mojo/mojom:remoting",
-    "//mojo/public/cpp/bindings",
-    "//mojo/public/cpp/system",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

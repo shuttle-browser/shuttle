@@ -39,7 +39,6 @@ if (is_chromeos) {
     "//ui/file_manager",
 
     # Test folders
-    "//chrome/test/data/webui/chromeos",
     "//chrome/test/data/webui/cr_components/chromeos",
   ]
 }

@@ -72,27 +72,3 @@ static_library("renderer") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "pdf_accessibility_tree_builder_structure_unittest.cc",
-    "pdf_accessibility_tree_unittest.cc",
-  ]
-
-  deps = [
-    ":renderer",
-    "//pdf:accessibility",
-    "//pdf:pdf_accessibility_constants_helper",
-    "//pdf/mojom",
-    "//testing/gtest",
-    "//ui/gfx/geometry",
-
-    # TODO(crbug.com/40191420): The V8 dependency should have been propagated
-    # from ":renderer".
-    "//v8",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

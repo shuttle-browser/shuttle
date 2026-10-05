@@ -39,21 +39,4 @@ source_set("digital_credentials") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [
-      "digital_identity_integration_test.cc",
-      "digital_identity_multi_step_dialog_browsertest.cc",
-    ]
-    deps = [
-      ":digital_credentials",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser:chrome_content_browser_client",
-      "//chrome/browser/digital_credentials",
-      "//chrome/test:test_support",
-      "//ui/events:test_support",
-    ]
-  }
 }

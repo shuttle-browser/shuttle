@@ -32,16 +32,3 @@ source_set("impl") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "feature_first_run_helper_browsertest.cc" ]
-  deps = [
-    ":feature_first_run",
-    "//base/test:test_support",
-    "//chrome/browser/ui/views:layout_provider",
-    "//chrome/browser/ui/views/controls",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-  ]
-}

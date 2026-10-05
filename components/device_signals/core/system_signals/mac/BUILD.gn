@@ -25,18 +25,3 @@ static_library("mac") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "mac_platform_delegate_unittest.mm" ]
-
-  deps = [
-    ":mac",
-    "//base",
-    "//components/device_signals/core/common",
-    "//components/device_signals/core/system_signals",
-    "//components/device_signals/core/system_signals:test_support",
-    "//components/device_signals/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

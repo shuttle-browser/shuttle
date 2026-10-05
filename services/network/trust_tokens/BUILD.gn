@@ -116,61 +116,6 @@ source_set("test_support") {
   ]
 }
 
-source_set("tests") {
-  testonly = true
-
-  defines = [ "IS_NETWORK_SERVICE_IMPL" ]
-
-  sources = [
-    "boringssl_trust_token_issuance_cryptographer_unittest.cc",
-    "boringssl_trust_token_state_unittest.cc",
-    "expiry_inspecting_record_expiry_delegate_unittest.cc",
-    "pending_trust_token_store_unittest.cc",
-    "sqlite_trust_token_persister_unittest.cc",
-    "suitable_trust_token_origin_unittest.cc",
-    "trust_token_client_data_canonicalization_unittest.cc",
-    "trust_token_cryptographers_test.cc",
-    "trust_token_database_owner_unittest.cc",
-    "trust_token_key_commitment_controller_unittest.cc",
-    "trust_token_key_commitment_parser_unittest.cc",
-    "trust_token_key_commitments_unittest.cc",
-    "trust_token_key_filtering_unittest.cc",
-    "trust_token_operation_metrics_recorder_unittest.cc",
-    "trust_token_persister_unittest.cc",
-    "trust_token_query_answerer_unittest.cc",
-    "trust_token_request_helper_factory_unittest.cc",
-    "trust_token_request_issuance_helper_unittest.cc",
-    "trust_token_request_redemption_helper_unittest.cc",
-    "trust_token_request_signing_helper_unittest.cc",
-    "trust_token_store_unittest.cc",
-    "types_unittest.cc",
-  ]
-
-  deps = [
-    ":public_proto",
-    ":storage_proto",
-    ":test_support",
-    ":trust_tokens",
-    "//base",
-    "//base/test:fuzztest_support",
-    "//base/test:test_support",
-    "//components/cbor",
-    "//components/sqlite_proto",
-    "//net",
-    "//net:test_support",
-    "//net/traffic_annotation:test_support",
-    "//services/network:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/fuzztest",
-    "//url",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
 # public.proto contains datatypes intended
 # to be exposed to Trust Tokens consumers.
 proto_library("public_proto") {

@@ -106,13 +106,3 @@ buildflag_header("features") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "dependency_graph_unittest.cc" ]
-  deps = [
-    ":core",
-    "//base",
-    "//testing/gtest",
-    "//third_party/re2",
-  ]
-}

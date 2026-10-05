@@ -347,35 +347,6 @@ source_set("sb_store") {
   ]
 }
 
-# TODO(crbug.com/362791941): Handle v4 references
-static_library("v4_test_util") {
-  testonly = true
-  sources = [
-    "v4_embedded_test_server_util.cc",
-    "v4_embedded_test_server_util.h",
-    "v4_test_util.cc",
-    "v4_test_util.h",
-    "v5_embedded_test_server_util.cc",
-    "v5_embedded_test_server_util.h",
-  ]
-  deps = [
-    ":sb_database",
-    ":sb_store",
-    ":util",
-    ":v4_get_hash_protocol_manager",
-    ":v4_protocol_manager_util",
-    ":v5_search_hashes_util",
-    "//base",
-    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
-    "//net:test_support",
-    "//services/network/public/cpp",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
 static_library("sb_update_protocol_manager") {
   sources = [
     "sb_update_protocol_manager.cc",
@@ -429,98 +400,6 @@ static_library("v5_search_hashes_cache") {
   ]
 }
 
-source_set("unit_tests_shared") {
-  testonly = true
-  sources = [
-    "allowlist_checker_client_unittest.cc",
-    "database_manager_unittest.cc",
-    "sb_protocol_manager_util_unittest.cc",
-    "util_unittest.cc",
-    "v4_get_hash_protocol_manager_unittest.cc",
-    "v5_get_hash_protocol_manager_unittest.cc",
-    "v5_search_hashes_cache_unittest.cc",
-    "v5_search_hashes_util_unittest.cc",
-  ]
-  deps = [
-    ":allowlist_checker_client",
-    ":database_manager",
-    ":safebrowsing_proto",
-    ":test_database_manager",
-    ":util",
-    ":v4_get_hash_protocol_manager",
-    ":v4_protocol_manager_util",
-    ":v4_test_util",
-    ":v5_get_hash_protocol_manager",
-    ":v5_search_hashes_cache",
-    ":v5_search_hashes_util",
-    "//base",
-    "//base/test:test_support",
-    "//components/history/core/browser",
-    "//components/history/core/test",
-    "//components/safe_browsing/core/common",
-    "//components/safe_browsing/core/common/hashprefix_realtime:hash_realtime_utils",
-    "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
-    "//net",
-    "//net:test_support",
-    "//services/network:test_support",
-    "//testing/gtest",
-  ]
-}
-
-source_set("unit_tests_local_db") {
-  testonly = true
-  sources = [
-    "hash_prefix_list_unittest.cc",
-    "hash_prefix_map_unittest.cc",
-    "sb_database_unittest.cc",
-    "sb_local_database_manager_unittest.cc",
-    "v4_update_protocol_manager_unittest.cc",
-    "v5_update_protocol_manager_unittest.cc",
-  ]
-  deps = [
-    ":database_manager",
-    ":sb_database",
-    ":sb_local_database_manager",
-    ":sb_store",
-    ":sb_update_protocol_manager",
-    ":unit_tests_shared",
-    ":util",
-    ":v4_protocol_manager_util",
-    ":v4_store_proto",
-    ":v4_test_util",
-    ":v5_get_hash_protocol_manager",
-    ":v5_search_hashes_cache",
-    "//base",
-    "//build:branding_buildflags",
-    "//components/crx_file",
-    "//components/prefs:test_support",
-    "//components/safe_browsing:buildflags",
-    "//components/safe_browsing/core/common",
-    "//components/safe_browsing/core/common:safe_browsing_prefs",
-    "//crypto",
-    "//net",
-    "//net:test_support",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gtest",
-    "//url",
-  ]
-
-  if (safe_browsing_mode != 0 || is_ios) {
-    sources += [
-      "v4_rice_unittest.cc",
-      "v4_store_unittest.cc",
-      "v5_hash_list_rice_decoder_unittest.cc",
-      "v5_rice_unittest.cc",
-      "v5_store_unittest.cc",
-    ]
-    deps += [
-      ":v4_rice",
-      ":v5_rice",
-    ]
-  }
-}
-
 static_library("allowlist_checker_client") {
   sources = [
     "allowlist_checker_client.cc",
@@ -536,21 +415,4 @@ static_library("allowlist_checker_client") {
   ]
 }
 
-fuzzer_test("v4_get_hash_protocol_manager_fuzzer") {
-  sources = [ "v4_get_hash_protocol_manager_fuzzer.cc" ]
-  deps = [
-    ":safebrowsing_proto",
-    ":v4_get_hash_protocol_manager",
-  ]
-}
 
-fuzzer_test("v4_store_fuzzer") {
-  sources = [ "v4_store_fuzzer.cc" ]
-  deps = [
-    ":sb_store",
-    ":v4_protocol_manager_util",
-    ":v4_test_util",
-    "//base/test:test_support",
-    "//testing/libfuzzer:libfuzzer_base_wrappers",
-  ]
-}

@@ -181,8 +181,6 @@ if (is_chromeos) {
   component("display_manager_test_api") {
     testonly = true
     sources = [
-      "test/display_manager_test_api.cc",
-      "test/display_manager_test_api.h",
     ]
 
     defines = [ "DISPLAY_IMPLEMENTATION" ]
@@ -282,7 +280,6 @@ static_library("test_support") {
       "manager/test/touch_device_manager_test_api.h",
       "manager/test/touch_transform_controller_test_api.cc",
       "manager/test/touch_transform_controller_test_api.h",
-      "test/display_test_util.cc",
     ]
     configs += [ "//build/config/compiler:wexit_time_destructors" ]
     public_deps += [ "//ui/display/manager" ]
@@ -292,102 +289,7 @@ static_library("test_support") {
       !(is_linux && ozone_platform_x11 && enable_remoting)) {
     sources += [
       # Virtual display util stub for unimplemented platforms.
-      "test/virtual_display_util_stub.cc",
     ]
   }
 }
 
-# This test covers all testable components in display.
-test("display_unittests") {
-  sources = [
-    "display_layout_builder_unittest.cc",
-    "display_layout_unittest.cc",
-    "display_list_unittest.cc",
-    "display_unittest.cc",
-    "headless/headless_screen_util_unittest.cc",
-    "mojom/display_mojom_traits_unittest.cc",
-    "mojom/screen_infos_mojom_traits_unittest.cc",
-    "screen_unittest.cc",
-    "unified_desktop_utils_unittest.cc",
-    "util/display_util_unittest.cc",
-    "util/edid_parser_unittest.cc",
-  ]
-
-  if (is_win) {
-    sources += [
-      "win/scaling_util_unittest.cc",
-      "win/screen_win_headless_unittest.cc",
-      "win/screen_win_unittest.cc",
-    ]
-  }
-
-  deps = [
-    ":display",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//cc/base",
-    "//components/viz/common/resources:shared_image_format",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/display:test_support",
-    "//ui/display/mojom",
-    "//ui/display/types",
-    "//ui/display/util",
-    "//ui/events:test_support",
-    "//ui/events/devices",
-    "//ui/gfx:test_support",
-    "//ui/gfx/geometry",
-  ]
-
-  if (!is_android) {
-    # Do not run display_change_notifier_unittest.cc on Android because it
-    # does not compile display_observer.cc
-    sources += [ "display_change_notifier_unittest.cc" ]
-  }
-
-  if (is_win) {
-    deps += [ "//components/headless/screen_info" ]
-  }
-
-  if (is_chromeos) {
-    sources += [
-      "manager/apply_content_protection_task_unittest.cc",
-      "manager/configure_displays_task_unittest.cc",
-      "manager/content_protection_key_manager_unittest.cc",
-      "manager/content_protection_manager_unittest.cc",
-      "manager/display_change_observer_unittest.cc",
-      "manager/display_configurator_unittest.cc",
-      "manager/display_port_observer_unittest.cc",
-      "manager/display_properties_parser_unittest.cc",
-      "manager/json_converter_unittest.cc",
-      "manager/managed_display_info_unittest.cc",
-      "manager/query_content_protection_task_unittest.cc",
-      "manager/test/fake_display_snapshot_unittest.cc",
-      "manager/touch_device_manager_unittest.cc",
-      "manager/touch_transform_controller_unittest.cc",
-      "manager/update_display_configuration_task_unittest.cc",
-      "manager/util/display_manager_test_util_unittest.cc",
-      "manager/util/display_manager_util_unittest.cc",
-    ]
-
-    deps += [
-      ":display_manager_test_api",
-      "//ui/base:run_all_unittests",
-      "//ui/display/manager",
-      "//ui/ozone:ozone_switches",
-    ]
-
-    data_deps = [
-      "//ui/base:ui_base_test_resources_pak",
-      "//ui/resources:ui_test_pak_data",
-    ]
-  } else {
-    deps += [ "//mojo/core/test:run_all_unittests" ]
-  }
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

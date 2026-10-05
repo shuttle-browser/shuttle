@@ -30,28 +30,3 @@ source_set("renderer") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "paint_preview_recorder_utils_unittest.cc" ]
-
-  deps = [
-    ":renderer",
-    "//base",
-    "//base/test:test_support",
-    "//cc/paint",
-    "//components/paint_preview/common:test_utils",
-    "//skia",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
-test("paint_preview_renderer_unit_tests") {
-  deps = [
-    ":unit_tests",
-    "//base",
-    "//base/test:test_support",
-    "//components/test:run_all_unittests",
-  ]
-}

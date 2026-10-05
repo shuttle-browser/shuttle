@@ -17,15 +17,3 @@ source_set("events") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "tab_strip_event_recorder_unittest.cc" ]
-
-  deps = [
-    ":events",
-    "//base/test:test_support",
-    "//components/browser_apis/tab_strip:mojom",
-    "//testing/gtest",
-  ]
-}

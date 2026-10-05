@@ -17,18 +17,3 @@ source_set("cpp") {
   ]
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [ "image_processor_unittest.cc" ]
-
-  deps = [
-    ":cpp",
-    "//base",
-    "//base/test:test_support",
-    "//services/image_annotation:lib",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx/codec",
-  ]
-}

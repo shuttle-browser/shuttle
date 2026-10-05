@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/browsing_data/core",
-  "+components/safe_browsing/core/common",
-  "+device/fido/public/features.h",
-]

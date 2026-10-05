@@ -38,26 +38,3 @@ component("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "web_data_service_base_unittest.cc",
-    "web_database_migration_unittest.cc",
-    "web_database_service_unittest.cc",
-    "web_database_unittest.cc",
-  ]
-
-  deps = [
-    ":common",
-    "//base",
-    "//base/test:test_support",
-    "//components/os_crypt/browser:test_support",
-    "//components/search_engines",
-    "//components/signin/public/webdata",
-    "//sql:test_support",
-    "//testing/gtest",
-  ]
-  if (is_ios) {
-    deps += [ "//components/test:web_database_test_bundle_data" ]
-  }
-}

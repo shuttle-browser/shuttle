@@ -1,5 +1,0 @@
-Document
-++Group IsControlElement=false
-++++Custom MathML='<math><newline>  <mtext class="test">otherwise</mtext><newline></math>'
-++++++Custom IsControlElement=false
-++++++++Text Name='otherwise'

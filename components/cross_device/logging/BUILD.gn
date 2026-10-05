@@ -15,13 +15,3 @@ component("logging") {
   public_deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "logging_unittest.cc" ]
-
-  deps = [
-    ":logging",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

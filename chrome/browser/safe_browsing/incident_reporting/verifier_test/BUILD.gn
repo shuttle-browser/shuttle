@@ -7,7 +7,6 @@ assert(is_win)
 shared_library("verifier_test_dll_1") {
   testonly = true
   sources = [
-    "verifier_test_dll.cc",
     "verifier_test_dll_1.def",
   ]
 }
@@ -15,7 +14,6 @@ shared_library("verifier_test_dll_1") {
 shared_library("verifier_test_dll_2") {
   testonly = true
   sources = [
-    "verifier_test_dll.cc",
     "verifier_test_dll_2.def",
   ]
 }

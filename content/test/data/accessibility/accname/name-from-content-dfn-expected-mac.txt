@@ -1,1 +1,0 @@
-AXCheckBox AXTitle='This is an example' AXValue=0

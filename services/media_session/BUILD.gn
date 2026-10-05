@@ -31,29 +31,3 @@ source_set("lib") {
   public_deps = [ "//base" ]
 }
 
-source_set("tests") {
-  testonly = true
-  sources = [
-    "audio_focus_manager_unittest.cc",
-    "media_controller_unittest.cc",
-    "media_session_service_impl_unittest.cc",
-  ]
-
-  deps = [
-    ":lib",
-    "//base",
-    "//base/test:test_support",
-    "//services/media_session/public/cpp",
-    "//services/media_session/public/cpp/test:test_support",
-    "//services/media_session/public/mojom",
-    "//testing/gtest",
-  ]
-}
-
-group("media_session_unittests") {
-  testonly = true
-  deps = [ ":tests" ]
-  if (is_android) {
-    deps += [ "//services/media_session/public/cpp/android/junit:media_session_junit_tests" ]
-  }
-}

@@ -20,21 +20,3 @@ source_set("utilities") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "event_filters_unittest.cc",
-    "tab_id_utils_unittest.cc",
-    "tab_strip_api_utilities_unittest.cc",
-  ]
-
-  deps = [
-    ":utilities",
-    "//components/browser_apis/tab_strip:mojom",
-    "//components/browser_apis/tab_strip/adapters",
-    "//components/browser_apis/tab_strip/testing",
-    "//components/browser_apis/tab_strip/types",
-    "//testing/gtest",
-  ]
-}

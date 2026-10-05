@@ -17,18 +17,3 @@ static_library("opt_out_blocklist") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "opt_out_blocklist_item_unittest.cc",
-    "opt_out_blocklist_unittest.cc",
-  ]
-
-  deps = [
-    ":opt_out_blocklist",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -131,19 +131,6 @@ if (is_win || ((is_linux || is_chromeos) && use_udev) || is_mac || is_android) {
     }
   }
 
-  static_library("test_support") {
-    testonly = true
-
-    sources = [
-      "fake_serial_device_enumerator.cc",
-      "fake_serial_device_enumerator.h",
-    ]
-
-    deps = [
-      ":serial",
-      "//base",
-    ]
-  }
 }
 
 if (is_android) {

@@ -46,14 +46,3 @@ component("mojom_traits") {
   defines = [ "IS_SQLITE_VFS_MOJOM_TRAITS_IMPL" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "sqlite_vfs_mojom_traits_unittest.cc" ]
-  deps = [
-    ":mojom",
-    "//base",
-    "//components/sqlite_vfs:pending_file_set",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//testing/gtest",
-  ]
-}

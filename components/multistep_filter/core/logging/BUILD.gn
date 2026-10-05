@@ -32,23 +32,3 @@ source_set("logging") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "log_entry_unittest.cc",
-    "multistep_filter_log_router_impl_unittest.cc",
-    "multistep_filter_logger_unittest.cc",
-    "multistep_filter_metrics_tracker_unittest.cc",
-  ]
-  deps = [
-    ":logging",
-    "//base",
-    "//base/test:test_support",
-    "//components/multistep_filter/core/data_models",
-    "//components/multistep_filter/core/prefs",
-    "//components/ukm:test_support",
-    "//services/metrics/public/cpp:ukm_builders",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

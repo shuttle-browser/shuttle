@@ -53,7 +53,6 @@ if (is_win) {
     if (is_chrome_branded) {
       sources += [ "google_chrome_install_modes.h" ]
     } else if (is_chrome_for_testing_branded) {
-      sources += [ "google_chrome_for_testing_install_modes.h" ]
     } else {
       sources += [ "chromium_install_modes.h" ]
     }
@@ -82,10 +81,6 @@ if (is_win) {
   test("install_static_unittests") {
     output_name = "install_static_unittests"
     sources = [
-      "install_details_unittest.cc",
-      "install_modes_unittest.cc",
-      "install_util_unittest.cc",
-      "product_install_details_unittest.cc",
       "user_data_dir_win_unittest.cc",
     ]
     include_dirs = [ "$target_gen_dir" ]

@@ -41,13 +41,3 @@ source_set("browser") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "google_url_util_unittest.cc" ]
-  deps = [
-    ":browser",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

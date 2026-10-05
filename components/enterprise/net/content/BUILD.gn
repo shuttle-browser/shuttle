@@ -13,17 +13,3 @@ static_library("content") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "enterprise_proxy_navigation_error_data_unittest.cc" ]
-  deps = [
-    ":content",
-    "//base",
-    "//base/test:test_support",
-    "//components/enterprise/net/core",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

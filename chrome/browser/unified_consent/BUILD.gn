@@ -29,34 +29,3 @@ source_set("impl") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = []
-  deps = []
-
-  if (enable_dice_support) {
-    sources += [
-      "unified_consent_browsertest.cc",
-      "unified_consent_sync_to_signin_browsertest.cc",
-    ]
-
-    deps += [
-      ":unified_consent",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/signin",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/common",
-      "//components/prefs",
-      "//components/safe_browsing/core/common:safe_browsing_prefs",
-      "//components/signin/public/identity_manager",
-      "//components/signin/public/identity_manager:test_support",
-      "//components/sync:test_support",
-      "//components/sync/base",
-      "//components/sync/service",
-      "//components/unified_consent",
-      "//content/test:test_support",
-    ]
-  }
-}

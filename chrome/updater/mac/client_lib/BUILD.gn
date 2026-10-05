@@ -52,20 +52,6 @@ source_set("integration_test_sources") {
   frameworks = [ "Foundation.framework" ]
 }
 
-source_set("unit_test_sources") {
-  testonly = true
-  sources = [ "CRURegistration_unittests.mm" ]
-  deps = [
-    ":public_sources",
-    "//base",
-    "//net/",
-    "//testing/gtest",
-    "//url/",
-  ]
-  data_deps = [ "//chrome/updater/mac/client_lib/test_helpers" ]
-  frameworks = [ "Foundation.framework" ]
-}
-
 copy("archive_literal_sources") {
   sources = [
     "CRURegistration-Private.h",

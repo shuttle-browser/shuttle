@@ -6,10 +6,6 @@ import("//chrome/browser_exposed_mojom_targets.gni")
 import("//chrome/test/fuzzing/in_process_fuzzer.gni")
 import("//chrome/test/fuzzing/renderer_fuzzing/in_process_renderer_fuzzing.gni")
 
-group("test") {
-  testonly = true
-}
-
 # We want to make sure to only enable this fuzzer on platforms that have a CQ
 # bot so that the mojom target list is maintained up-to-date.
 # Similarly, if something goes wrong with those targets, this will "only" break
@@ -22,7 +18,7 @@ renderer_ipc_fuzzing_enabled =
 if (fuzzing_engine_supports_custom_main && !is_android) {
   source_set("renderer_in_process_fuzzer_runner") {
     testonly = true
-    sources = [ "in_process_renderer_fuzzing.h" ]
+    sources = []
     deps = [
       "//base",
       "//chrome/test:test_support",
@@ -45,7 +41,7 @@ if (renderer_ipc_fuzzing_enabled) {
   executable("ipc_interfaces_dumper") {
     testonly = true
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "ipc_fuzzing/ipc_interfaces_dumper.cc" ]
+    sources = []
     deps = [
       "//base",
       "//chrome/test:browser_tests_runner",
@@ -121,7 +117,7 @@ if (renderer_ipc_fuzzing_enabled) {
   }
   in_process_renderer_mojolpm_generated_fuzzer(
       "renderer_in_process_mojolpm_fuzzer") {
-    sources = [ "renderer_in_process_mojolpm_fuzzer.cc" ]
+    sources = []
 
     interface_file = "${target_gen_dir}/interfaces.json"
 

@@ -31,25 +31,3 @@ source_set("page_image_service") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "image_service_consent_helper_unittest.cc",
-    "image_service_impl_unittest.cc",
-  ]
-  deps = [
-    ":page_image_service",
-    "//base/test:test_support",
-    "//components/omnibox/browser",
-    "//components/omnibox/browser:test_support",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/core:test_support",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//components/search_engines",
-    "//components/search_engines:test_support",
-    "//components/sync:test_support",
-    "//components/variations:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

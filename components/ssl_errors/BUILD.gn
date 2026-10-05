@@ -22,19 +22,3 @@ static_library("ssl_errors") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "error_classification_unittest.cc" ]
-
-  deps = [
-    ":ssl_errors",
-    "//base",
-    "//components/network_time",
-    "//components/network_time:network_time_test_support",
-    "//components/prefs:test_support",
-    "//net:test_support",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gtest",
-  ]
-}

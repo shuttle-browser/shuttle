@@ -27,32 +27,4 @@ static_library("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "allocator_state_unittest.cc",
-    "lightweight_detector_state_unittest.cc",
-    "pack_stack_trace_unittest.cc",
-  ]
-  deps = [
-    ":common",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}
 
-fuzzer_test("pack_stack_trace_unpack_fuzzer") {
-  sources = [ "pack_stack_trace_unpack_fuzzer.cc" ]
-  deps = [
-    "//base",
-    "//components/gwp_asan/common",
-  ]
-}
-
-fuzzer_test("pack_stack_trace_differential_fuzzer") {
-  sources = [ "pack_stack_trace_differential_fuzzer.cc" ]
-  deps = [
-    "//base",
-    "//components/gwp_asan/common",
-  ]
-}

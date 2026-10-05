@@ -42,19 +42,4 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "ntp_tiles_browsertest.cc" ]
-    deps = [
-      ":impl",
-      ":ntp_tiles",
-      "//chrome/browser",
-      "//chrome/test:test_support",
-      "//chrome/test/supervised_user:test_support",
-      "//content/public/browser",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
 }

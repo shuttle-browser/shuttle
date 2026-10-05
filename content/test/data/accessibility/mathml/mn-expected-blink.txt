@@ -1,7 +1,0 @@
-rootWebArea
-++genericContainer ignored
-++++genericContainer
-++++++mathMLMath
-++++++++mathMLNumber
-++++++++++staticText name='42'
-++++++++++++inlineTextBox name='42'

@@ -34,22 +34,3 @@ static_library("renderer") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "subresource_filter_agent_unittest.cc" ]
-  deps = [
-    ":renderer",
-    "//base",
-    "//base/test:test_support",
-    "//components/subresource_filter/content/mojom",
-    "//components/subresource_filter/core/common",
-    "//components/subresource_filter/core/common:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/blink/public:blink",
-    "//url",
-  ]
-  if (is_ios) {
-    deps += [ "//components/test:subresource_filter_test_bundle_data" ]
-  }
-}

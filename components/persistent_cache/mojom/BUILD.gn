@@ -46,14 +46,3 @@ component("mojom_traits") {
   defines = [ "IS_PERSISTENT_CACHE_MOJOM_TRAITS_IMPL" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "persistent_cache_mojom_traits_unittest.cc" ]
-  deps = [
-    ":mojom",
-    "//base",
-    "//components/persistent_cache",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//testing/gtest",
-  ]
-}

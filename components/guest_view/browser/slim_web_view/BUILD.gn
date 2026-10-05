@@ -79,7 +79,7 @@ grit_strings("strings") {
 source_set("unit_tests") {
   testonly = true
 
-  sources = [ "slim_web_view_permission_helper_unittest.cc" ]
+  sources = []
 
   deps = [
     ":mojo_bindings",

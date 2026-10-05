@@ -4,20 +4,3 @@
 
 assert(!is_android)
 
-source_set("permissions") {
-  testonly = true
-  sources = [
-    "permission_request_manager_test_api.cc",
-    "permission_request_manager_test_api.h",
-  ]
-  deps = [
-    "//base",
-    "//chrome/browser/ui",
-    "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/browser/ui/views/permissions",
-    "//components/content_settings/core/common",
-    "//components/permissions",
-    "//components/permissions:permissions_common",
-    "//ui/views",
-  ]
-}

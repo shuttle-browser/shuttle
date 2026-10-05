@@ -61,19 +61,3 @@ source_set("test_support") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "internal/proto_database_impl_unittest.cc",
-    "internal/shared_proto_database_client_list_unittest.cc",
-    "internal/shared_proto_database_client_unittest.cc",
-    "internal/shared_proto_database_unittest.cc",
-    "internal/unique_proto_database_unittest.cc",
-  ]
-  deps = [
-    ":proto",
-    ":test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

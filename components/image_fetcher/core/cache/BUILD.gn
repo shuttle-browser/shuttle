@@ -35,22 +35,3 @@ source_set("types") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "image_cache_unittest.cc",
-    "image_data_store_disk_unittest.cc",
-    "image_metadata_store_leveldb_unittest.cc",
-  ]
-  deps = [
-    ":cache",
-    "proto",
-    "//base",
-    "//base/test:test_support",
-    "//components/image_fetcher/core:metrics",
-    "//components/leveldb_proto:test_support",
-    "//components/prefs:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

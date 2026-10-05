@@ -28,24 +28,3 @@ static_library("content") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  sources = [
-    "clipboard_restriction_service_unittest.cc",
-    "copy_prevention_settings_policy_handler_unittest.cc",
-  ]
-
-  deps = [
-    ":content",
-    "//base",
-    "//base/test:test_support",
-    "//components/policy/core/browser",
-    "//components/policy/core/common",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

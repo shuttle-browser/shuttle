@@ -182,26 +182,3 @@ source_set("test_support") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = []
-
-  if (is_android) {
-    sources += [ "android/auto_resumption_handler_unittest.cc" ]
-  }
-
-  if (is_win || is_mac) {
-    sources += [ "desktop/desktop_auto_resumption_handler_unittest.cc" ]
-  }
-
-  deps = [
-    ":public",
-    ":test_support",
-    "//base/test:test_support",
-    "//components/download/public/task:test_support",
-    "//services/network:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -33,19 +33,4 @@ if (enable_devtools_frontend) {
     allow_circular_includes_from = [ "//chrome/browser/devtools" ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "devtools_ui_data_source_unittest.cc" ]
-    deps = [
-      ":devtools",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/common",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//services/network:test_support",
-      "//services/network/public/cpp",
-      "//testing/gtest",
-    ]
-  }
 }

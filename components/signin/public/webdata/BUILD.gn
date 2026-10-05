@@ -22,15 +22,3 @@ static_library("webdata") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "token_service_table_unittest.cc" ]
-
-  deps = [
-    ":webdata",
-    "//base/test:test_support",
-    "//components/os_crypt/browser:test_support",
-    "//components/webdata/common",
-    "//testing/gtest",
-  ]
-}

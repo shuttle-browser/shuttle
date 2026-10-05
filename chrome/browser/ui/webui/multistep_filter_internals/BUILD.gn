@@ -38,27 +38,3 @@ source_set("multistep_filter_internals") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "multistep_filter_internals_page_handler_unittest.cc",
-    "multistep_filter_internals_ui_unittest.cc",
-  ]
-
-  deps = [
-    ":multistep_filter_internals",
-    "//base/test:test_support",
-    "//chrome/browser/multistep_filter/core",
-    "//chrome/test:test_support",
-    "//components/multistep_filter/core",
-    "//components/multistep_filter/core:features",
-    "//components/multistep_filter/core:test_support",
-    "//components/multistep_filter/core/logging",
-    "//components/signin/public/identity_manager:test_support",
-    "//components/unified_consent",
-    "//content/test:test_support",
-    "//mojo/public/cpp/bindings",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

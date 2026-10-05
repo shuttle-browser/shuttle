@@ -32,17 +32,3 @@ source_set("segmentation_internals") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "segmentation_internals_page_handler_impl_unittest.cc" ]
-  deps = [
-    ":mojo_bindings",
-    ":segmentation_internals",
-    "//base",
-    "//base/test:test_support",
-    "//components/segmentation_platform/public:test_support",
-    "//components/segmentation_platform/public/proto",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

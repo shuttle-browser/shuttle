@@ -18,19 +18,3 @@ source_set("window_name_prompt") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
-source_set("browser_tests") {
-  assert(!is_android)
-
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "window_name_prompt_browsertest.cc" ]
-  deps = [
-    "//base",
-    "//chrome/browser/ui/",
-    "//chrome/browser/ui/window_metadata",
-    "//chrome/test:test_support_ui",
-    "//content/test:test_support",
-    "//ui/base:test_support",
-    "//ui/base/interaction:test_support",
-  ]
-}

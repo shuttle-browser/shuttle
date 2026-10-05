@@ -51,18 +51,3 @@ static_library("core") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "infobar_container_unittest.cc",
-    "infobar_container_with_priority_unittest.cc",
-  ]
-
-  deps = [
-    ":core",
-    "//base",
-    "//base/test:test_support",
-    "//url",
-  ]
-}

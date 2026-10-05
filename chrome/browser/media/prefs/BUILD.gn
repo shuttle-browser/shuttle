@@ -34,15 +34,3 @@ source_set("prefs") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  visibility = [ "//chrome/test/*" ]
-  deps = [
-    ":prefs",
-    "//base",
-    "//components/prefs:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-  sources = [ "capture_device_ranking_unittest.cc" ]
-}

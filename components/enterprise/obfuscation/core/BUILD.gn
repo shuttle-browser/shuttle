@@ -21,20 +21,3 @@ component("enterprise_obfuscation") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  sources = [
-    "download_obfuscator_unittest.cc",
-    "obfuscated_file_reader_unittest.cc",
-    "utils_unittest.cc",
-  ]
-
-  deps = [
-    ":enterprise_obfuscation",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

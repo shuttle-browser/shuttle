@@ -42,28 +42,3 @@ source_set("service") {
   ]
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [ "annotator_unittest.cc" ]
-
-  deps = [
-    ":lib",
-    "//base",
-    "//base/test:test_support",
-    "//components/manta",
-    "//mojo/public/cpp/bindings",
-    "//net",
-    "//services/image_annotation/public/cpp",
-    "//services/image_annotation/public/mojom",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//services/service_manager/public/cpp",
-    "//services/service_manager/public/cpp/test:test_support",
-    "//services/service_manager/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/accessibility:ax_base",
-    "//url",
-  ]
-}

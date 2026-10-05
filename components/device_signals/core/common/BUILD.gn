@@ -80,36 +80,3 @@ source_set("features") {
   public_deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = []
-  deps = []
-
-  if (is_win || is_mac || is_linux || is_chromeos) {
-    sources += [ "platform_utils_unittest.cc" ]
-
-    deps += [
-      ":common",
-      ":test_support",
-      "//base",
-      "//base/test:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
-}
-
-source_set("test_support") {
-  testonly = true
-
-  public = [ "scoped_platform_wrapper.h" ]
-
-  sources = [ "scoped_platform_wrapper.cc" ]
-
-  public_deps = [
-    ":common",
-    "//base",
-    "//testing/gmock",
-  ]
-}

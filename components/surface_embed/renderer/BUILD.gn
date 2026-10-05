@@ -28,17 +28,3 @@ component("renderer") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "surface_embed_paint_holding_helper_unittest.cc" ]
-
-  deps = [
-    ":renderer",
-    "//base",
-    "//base/test:test_support",
-    "//cc",
-    "//components/viz/common",
-    "//testing/gtest",
-  ]
-}

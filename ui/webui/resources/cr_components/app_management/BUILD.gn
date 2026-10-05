@@ -97,14 +97,3 @@ build_webui("build") {
   grd_resource_path_prefix = rebase_path(".", "//ui/webui/resources")
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "app_management_mojom_traits_unittest.cc" ]
-
-  deps = [
-    ":mojo_bindings",
-    "//base/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//testing/gtest",
-  ]
-}

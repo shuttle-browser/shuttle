@@ -5,8 +5,6 @@
 source_set("test_support") {
   testonly = true
   sources = [
-    "scoped_install_details.cc",
-    "scoped_install_details.h",
   ]
   deps = [
     "//base",

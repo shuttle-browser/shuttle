@@ -4,17 +4,3 @@
 
 import("//testing/test.gni")
 
-group("mirroring_tests") {
-  testonly = true
-  public_deps = [
-    "browser:unittests",
-    "service:unittests",
-  ]
-}
-
-test("mirroring_unittests") {
-  deps = [
-    ":mirroring_tests",
-    "//media/test:run_all_unittests",
-  ]
-}

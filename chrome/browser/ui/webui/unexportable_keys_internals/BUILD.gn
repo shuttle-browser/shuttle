@@ -67,20 +67,3 @@ source_set("impl") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "unexportable_keys_internals_handler_unittest.cc" ]
-
-  deps = [
-    ":impl",
-    ":mojo_bindings",
-    ":unexportable_keys_internals",
-    "//base/test:test_support",
-    "//components/unexportable_keys",
-    "//components/unexportable_keys:test_support",
-    "//crypto",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

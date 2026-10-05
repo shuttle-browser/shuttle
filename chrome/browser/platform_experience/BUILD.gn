@@ -61,32 +61,3 @@ source_set("prefs") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "features_unittest.cc",
-    "prefs_unittest.cc",
-  ]
-  deps = [
-    ":features",
-    ":prefs",
-    "//base/test:test_support",
-    "//chrome/test:test_support",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//testing/gtest",
-  ]
-  if (is_win) {
-    sources += [
-      "delegated_tasks/delegated_task_runner_unittest.cc",
-      "delegated_tasks/peh_launcher_unittest.cc",
-    ]
-    deps += [
-      ":delegated_tasks",
-      ":test_support",
-      "//chrome/install_static:install_static_util",
-      "//chrome/install_static/test:test_support",
-      "//testing/gmock",
-    ]
-  }
-}

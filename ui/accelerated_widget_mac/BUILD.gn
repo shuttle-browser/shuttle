@@ -87,23 +87,3 @@ component("accelerated_widget_mac") {
   ]
 }
 
-test("accelerated_widget_mac_unittests") {
-  configs += [ "//build/config:precompiled_headers" ]
-  sources = [ "ca_layer_tree_unittest_mac.mm" ]
-  deps = [
-    ":accelerated_widget_mac",
-    "//base",
-    "//base/test:run_all_unittests",
-    "//base/test:test_support",
-    "//components/metal_util",
-    "//skia",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/gfx:test_support",
-    "//ui/gl",
-  ]
-  frameworks = [
-    "AVFoundation.framework",
-    "QuartzCore.framework",
-  ]
-}

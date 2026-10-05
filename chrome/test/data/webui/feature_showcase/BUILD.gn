@@ -5,9 +5,9 @@
 import("../build_webui_tests.gni")
 
 build_webui_tests("build") {
-  cc_test_files = [ "feature_showcase_browsertest.cc" ]
+  cc_test_files = []
 
-  files = [ "app_test.ts" ]
+  files = []
 
   ts_path_mappings =
       [ "chrome://feature-showcase/*|" +

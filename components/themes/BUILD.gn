@@ -40,44 +40,6 @@ source_set("themes") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "theme_utils_unittest.cc",
-  ]
-
-  deps = [
-    ":themes",
-    "//base",
-    "//base/test:test_support",
-    "//components/application_locale_storage",
-    "//components/policy/core/browser",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//components/search",
-    "//components/sync/protocol",
-    "//components/version_info",
-    "//services/network:test_support",
-    "//services/network/public/cpp:cpp_base",
-    "//testing/gtest",
-    "//ui/base",
-    "//url",
-  ]
-
-  if (is_win || is_mac || is_linux || is_ios) {
-    sources += [ "theme_color_policy_handler_unittest.cc" ]
-    deps += [
-      ":policy",
-      ":prefs",
-      "//components/policy/core/browser",
-      "//components/prefs",
-    ]
-  }
-
-  data = [ "//media/test/data/" ]
-}
-
 if (is_win || is_mac || is_linux || is_ios) {
   source_set("policy") {
     public = [ "theme_color_policy_handler.h" ]

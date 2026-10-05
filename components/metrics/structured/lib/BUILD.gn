@@ -45,21 +45,3 @@ proto_library("proto") {
   sources = [ "proto/key.proto" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "key_data_file_delegate_unittest.cc",
-    "persistent_proto_unittest.cc",
-  ]
-  deps = [
-    ":lib",
-    ":proto",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

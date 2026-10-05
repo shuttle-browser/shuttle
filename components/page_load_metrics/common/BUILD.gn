@@ -27,24 +27,6 @@ source_set("common") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test/page_load_metrics_test_util.cc",
-    "test/page_load_metrics_test_util.h",
-    "test/weak_mock_timer.cc",
-    "test/weak_mock_timer.h",
-  ]
-  deps = [
-    ":common",
-    ":page_load_metrics_mojom",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
 mojom("page_load_metrics_mojom") {
   sources = [ "page_load_metrics.mojom" ]
 
@@ -76,14 +58,3 @@ mojom("page_load_metrics_mojom") {
   component_deps = [ "//third_party/blink/public/common" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "page_load_metrics_debug_string_unittest.cc" ]
-  deps = [
-    ":common",
-    ":test_support",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//third_party/blink/public:blink_headers",
-  ]
-}

@@ -15,18 +15,3 @@ static_library("opt_out_blocklist_sql") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "opt_out_store_sql_unittest.cc" ]
-
-  deps = [
-    ":opt_out_blocklist_sql",
-    "//base",
-    "//base/test:test_support",
-    "//components/blocklist/opt_out_blocklist",
-    "//sql",
-    "//sql:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

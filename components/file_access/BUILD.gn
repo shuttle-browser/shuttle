@@ -23,24 +23,6 @@ component("file_access") {
   public_deps = [ "//url" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "file_access_copy_or_move_delegate_factory_unittest.cc",
-    "scoped_file_access_copy_unittest.cc",
-    "scoped_file_access_delegate_unittest.cc",
-  ]
-
-  deps = [
-    ":file_access",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
 source_set("test_support") {
   testonly = true
   sources = [

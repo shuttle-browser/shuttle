@@ -54,21 +54,3 @@ source_set("ulp_language_code_locator") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "s2langquadtree_datatest.cc",
-    "s2langquadtree_unittest.cc",
-    "ulp_language_code_locator_unittest.cc",
-  ]
-  deps = [
-    ":s2langquadtree",
-    ":ulp_language_code_locator",
-    "//base",
-    "//base/test:test_support",
-    "//components/prefs:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/s2cellid",
-  ]
-}

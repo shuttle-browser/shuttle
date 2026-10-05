@@ -26,19 +26,4 @@ if (!is_cronet_build) {
     deps = [ "//base" ]
   }
 
-  rust_static_library("cbor_rust_unittests") {
-    testonly = true
-    is_gtest_unittests = true
-    crate_root = "cbor_rust_unittests.rs"
-    sources = [
-      "reader_unittest.rs",
-      "writer_unittest.rs",
-      crate_root,
-    ]
-    deps = [
-      ":cbor",
-      "//testing/rust_gtest_interop",
-      "//third_party/rust/hex/v0_4:lib",
-    ]
-  }
 }

@@ -45,10 +45,6 @@ source_set("test_support") {
   testonly = true
 
   sources = [
-    "account_manager_test_util.cc",
-    "account_manager_test_util.h",
-    "mock_account_manager_facade.cc",
-    "mock_account_manager_facade.h",
   ]
 
   public_deps = [
@@ -64,7 +60,6 @@ source_set("unit_tests") {
   testonly = true
 
   sources = [
-    "account_manager_facade_impl_unittest.cc",
     "chromeos/account_manager_unittest.cc",
   ]
 

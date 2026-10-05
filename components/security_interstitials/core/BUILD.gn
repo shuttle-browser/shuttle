@@ -99,24 +99,6 @@ static_library("unsafe_resource") {
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "insecure_form_util_unittest.cc",
-    "metrics_helper_unittest.cc",
-    "ssl_error_options_mask_unittest.cc",
-  ]
-
-  deps = [
-    ":core",
-    ":insecure_form_util",
-    "//base",
-    "//base/test:test_support",
-    "//net",
-    "//testing/gtest",
-  ]
-}
-
 source_set("insecure_form_util") {
   sources = [
     "insecure_form_util.cc",

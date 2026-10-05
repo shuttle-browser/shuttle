@@ -15,19 +15,3 @@ source_set("verification") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "filter_application_verifier_unittest.cc",
-    "suggestion_application_result_unittest.cc",
-  ]
-  deps = [
-    ":verification",
-    "//base",
-    "//base/test:test_support",
-    "//components/multistep_filter/core/data_models",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

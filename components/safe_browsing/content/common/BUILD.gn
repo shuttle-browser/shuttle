@@ -50,43 +50,4 @@ if (safe_browsing_mode != 0) {
     ]
   }
 
-  source_set("file_type_policies_test_support") {
-    testonly = true
-    sources = [
-      "file_type_policies_test_util.cc",
-      "file_type_policies_test_util.h",
-    ]
-
-    deps = [ ":file_type_policies" ]
-  }
-
-  source_set("file_type_policies_policy_util_unittest") {
-    testonly = true
-    sources = [ "file_type_policies_policy_util_unittest.cc" ]
-
-    deps = [
-      ":file_type_policies",
-      ":file_type_policies_test_support",
-      "//base",
-      "//components/policy/core/browser:test_support",
-      "//components/prefs:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
-
-  source_set("file_type_policies_unittest") {
-    testonly = true
-    sources = [ "file_type_policies_unittest.cc" ]
-
-    deps = [
-      ":file_type_policies",
-      ":file_type_policies_test_support",
-      "//base",
-      "//components/policy/core/browser:test_support",
-      "//components/prefs:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
 }

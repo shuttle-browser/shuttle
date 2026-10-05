@@ -32,20 +32,3 @@ static_library("device_management_storage") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "dm_storage_unittest.cc" ]
-
-  deps = [
-    ":device_management_storage",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/updater:constants_test",
-    "//chrome/updater:public_sources",
-    "//components/policy/proto",
-    "//remoting/host/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

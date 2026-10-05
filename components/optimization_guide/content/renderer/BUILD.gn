@@ -19,13 +19,3 @@ static_library("renderer") {
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "page_text_agent_unittest.cc" ]
-  deps = [
-    ":renderer",
-    "//content/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

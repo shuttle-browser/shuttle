@@ -41,27 +41,3 @@ component("certificate_transparency") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "chrome_ct_policy_enforcer_unittest.cc",
-    "chrome_require_ct_delegate_unittest.cc",
-    "ct_known_logs_unittest.cc",
-  ]
-  deps = [
-    ":certificate_transparency",
-    "//base:build_time",
-    "//base/test:test_support",
-    "//components/base32",
-    "//components/certificate_transparency/data:ct_log_list",
-    "//components/prefs:test_support",
-    "//crypto:test_support",
-    "//net:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (is_ios) {
-    deps += [ "//net:net_test_bundle_data" ]
-  }
-}

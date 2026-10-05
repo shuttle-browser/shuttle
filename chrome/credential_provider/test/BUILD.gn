@@ -24,17 +24,6 @@ test("gcp_unittests") {
     "../gaiacp/scoped_user_profile_unittest.cc",
     "../gaiacp/user_policies_manager_unittest.cc",
     "../gaiacp/win_http_url_fetcher_unittest.cc",
-    "com_fakes.cc",
-    "com_fakes.h",
-    "gcp_fakes.cc",
-    "gcp_fakes.h",
-    "gcp_gls_output_unittest.cc",
-    "gcp_setup_unittest.cc",
-    "gcp_test_main.cc",
-    "gls_runner_test_base.cc",
-    "gls_runner_test_base.h",
-    "test_credential.h",
-    "test_credential_provider.h",
   ]
 
   deps = [

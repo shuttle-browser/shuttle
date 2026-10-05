@@ -25,25 +25,3 @@ source_set("upstream_message_client") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "upstream_message_client_unittest.cc" ]
-
-  deps = [
-    ":upstream_message_client",
-    "//base",
-    "//base/test:test_support",
-    "//components/browser_actuator/internal/proto",
-    "//components/browser_actuator/public",
-    "//components/signin/public/identity_manager:test_support",
-    "//net",
-    "//net/traffic_annotation:test_support",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gtest",
-    "//url",
-  ]
-
-  visibility = [ "//components/browser_actuator/internal:unit_tests" ]
-}

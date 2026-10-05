@@ -96,32 +96,3 @@ static_library("test_support") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "default_pref_store_unittest.cc",
-    "in_memory_pref_store_unittest.cc",
-    "json_pref_store_unittest.cc",
-    "overlay_user_pref_store_unittest.cc",
-    "persistent_pref_store_unittest.cc",
-    "persistent_pref_store_unittest.h",
-    "pref_change_registrar_unittest.cc",
-    "pref_member_unittest.cc",
-    "pref_notifier_impl_unittest.cc",
-    "pref_registry_unittest.cc",
-    "pref_service_unittest.cc",
-    "pref_value_map_unittest.cc",
-    "pref_value_store_unittest.cc",
-    "scoped_user_pref_update_unittest.cc",
-    "segregated_pref_store_unittest.cc",
-    "wrap_with_prefix_pref_store_unittest.cc",
-  ]
-
-  deps = [
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

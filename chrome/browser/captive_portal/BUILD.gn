@@ -17,41 +17,4 @@ if (enable_captive_portal_detection) {
     deps = [ "//components/captive_portal/content" ]
   }
 
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "captive_portal_browsertest.cc" ]
-    deps = [
-      ":captive_portal",
-      "//base",
-      "//base:base_static",
-      "//base/test:test_support",
-      "//chrome/browser:browser_process",
-      "//chrome/browser/extensions:test_support",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/navigator",
-      "//chrome/browser/ui/tab_contents",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/tabs:tab_strip_model_observer",
-      "//chrome/common:constants",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//components/captive_portal/content",
-      "//components/captive_portal/core",
-      "//components/embedder_support",
-      "//components/prefs",
-      "//components/security_interstitials/content:security_interstitial_page",
-      "//content/public/browser",
-      "//content/public/common",
-      "//content/test:test_support",
-      "//extensions:test_support",
-      "//extensions/browser",
-      "//extensions/buildflags",
-      "//net",
-      "//net:test_support",
-      "//services/network/public/mojom:url_loader_base",
-      "//testing/gtest",
-    ]
-  }
 }

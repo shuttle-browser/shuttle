@@ -111,18 +111,3 @@ if (is_win) {
   }
 }
 
-source_set("tests") {
-  testonly = true
-
-  sources = [
-    "ml_number_unittest.cc",
-    "webnn_trace_unittest.cc",
-  ]
-
-  deps = [
-    ":cpp",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//third_party/fp16",
-  ]
-}

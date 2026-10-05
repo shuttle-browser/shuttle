@@ -86,25 +86,6 @@ source_set("utils") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  if (is_chromeos) {
-    sources = [ "soda_installer_impl_chromeos_unittest.cc" ]
-
-    deps = [
-      ":constants",
-      ":soda",
-      "//ash/constants",
-      "//chromeos/ash/components/dbus/dlcservice",
-      "//components/live_caption:constants",
-      "//components/prefs:test_support",
-      "//content/test:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
-}
-
 static_library("test_support") {
   testonly = true
 

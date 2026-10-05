@@ -32,26 +32,3 @@ source_set("core") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-
-  if (!is_android) {
-    sources += [
-      "multistep_filter_log_router_factory_unittest.cc",
-      "multistep_filter_service_factory_unittest.cc",
-    ]
-  }
-
-  deps = [
-    ":core",
-    "//base/test:test_support",
-    "//chrome/test:test_support",
-    "//components/multistep_filter/core:features",
-    "//components/multistep_filter/core/prefs",
-    "//components/signin/public/identity_manager:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

@@ -8,10 +8,6 @@ static_library("test_support") {
   testonly = true
 
   sources = [
-    "accelerator_helpers.cc",
-    "accelerator_helpers.h",
-    "fake_origin_test_server_mixin.cc",
-    "fake_origin_test_server_mixin.h",
   ]
 
   deps = [

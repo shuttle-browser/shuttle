@@ -54,20 +54,3 @@ source_set("activity_reporter") {
   friend = [ ":unit_tests" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  if (report_activity) {
-    sources = [
-      "activity_reporter_for_testing.h",
-      "activity_reporter_impl_unittest.cc",
-    ]
-    deps = [
-      ":activity_reporter",
-      "//base/test:test_support",
-      "//components/prefs:test_support",
-      "//components/update_client",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
-}

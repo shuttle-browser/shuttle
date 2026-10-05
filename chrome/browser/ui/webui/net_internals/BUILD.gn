@@ -24,20 +24,4 @@ source_set("net_internals") {
 }
 
 if (!is_android) {
-  source_set("test_support") {
-    testonly = true
-    sources = [
-      "net_internals_ui_browsertest.cc",
-      "net_internals_ui_browsertest.h",
-    ]
-    deps = [
-      ":net_internals",
-      "//base",
-      "//chrome/browser/profiles:profile",
-      "//chrome/common",
-      "//chrome/test:test_support",
-      "//content/public/browser",
-      "//services/network:test_support",
-    ]
-  }
 }

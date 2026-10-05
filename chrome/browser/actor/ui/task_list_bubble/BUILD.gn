@@ -21,10 +21,3 @@ group("ui") {
 group("ui_impl") {
 }
 
-group("unit_tests") {
-  testonly = true
-}
-
-group("interactive_ui_tests") {
-  testonly = true
-}

@@ -1,1 +1,0 @@
-button name='Hello World!' nameFrom=relatedElement

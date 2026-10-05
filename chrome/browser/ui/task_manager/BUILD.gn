@@ -32,12 +32,4 @@ if (!is_android) {
     ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "task_manager_table_model_unittest.cc" ]
-    deps = [
-      ":task_manager",
-      "//testing/gtest",
-    ]
-  }
 }

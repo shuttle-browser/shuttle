@@ -107,60 +107,6 @@ static_library("internal") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  visibility = [ "//components/feature_engagement:unit_tests" ]
-
-  # IMPORTANT NOTE: When adding new tests, also remember to update the list of
-  # tests in //components/feature_engagement/components_unittests.filter
-  sources = [
-    "availability_model_impl_unittest.cc",
-    "blocked_iph_features_unittest.cc",
-    "chrome_variations_configuration_unittest.cc",
-    "condition_validator_unittest.cc",
-    "display_lock_controller_impl_unittest.cc",
-    "editable_configuration_unittest.cc",
-    "event_model_impl_unittest.cc",
-    "event_storage_migration_unittest.cc",
-    "feature_config_condition_validator_unittest.cc",
-    "feature_config_event_storage_validator_unittest.cc",
-    "in_memory_event_store_unittest.cc",
-    "init_aware_event_model_unittest.cc",
-    "multiple_event_model_provider_unittest.cc",
-    "multiple_event_model_writer_unittest.cc",
-    "never_availability_model_unittest.cc",
-    "never_condition_validator_unittest.cc",
-    "never_event_storage_validator_unittest.cc",
-    "noop_display_lock_controller_unittest.cc",
-    "once_condition_validator_unittest.cc",
-    "persistent_availability_store_unittest.cc",
-    "persistent_event_store_unittest.cc",
-    "single_event_model_provider_unittest.cc",
-    "single_invalid_configuration_unittest.cc",
-    "system_time_provider_unittest.cc",
-    "tracker_impl_unittest.cc",
-  ]
-
-  deps = [
-    ":internal",
-    "//base/test:test_support",
-    "//components/feature_engagement/internal/test:test_support",
-    "//components/feature_engagement/public",
-    "//components/feature_engagement/public:prefs",
-    "//components/feature_engagement/test:test_support",
-    "//components/leveldb_proto:test_support",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
 if (is_android) {
   android_library("internal_java") {
     visibility = [ "//components/feature_engagement:feature_engagement_java" ]

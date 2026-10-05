@@ -70,13 +70,3 @@ action("prepare_full_proto") {
   }
 }
 
-proto_library("full_proto") {
-  testonly = true
-  proto_in_dir = root_gen_dir
-  proto_out_dir = "."
-  sources = get_target_outputs(":prepare_full_proto")
-
-  proto_deps = [ ":prepare_full_proto" ]
-
-  use_protobuf_full = true
-}

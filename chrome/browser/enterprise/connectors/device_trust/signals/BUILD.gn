@@ -13,37 +13,6 @@ source_set("signals") {
   ]
 }
 
-source_set("test_support") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  public_deps = [
-    ":signals",
-    "//components/enterprise/device_trust/core/signals:test_support",
-    "//testing/gmock",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-
-  sources = []
-  deps = []
-
-  if (is_chromeos) {
-    sources += [ "ash/ash_signals_filterer_unittest.cc" ]
-    deps += [
-      ":signals",
-      ":test_support",
-      "//base",
-      "//chrome/browser/enterprise:impl",
-      "//chrome/test:test_support",
-      "//components/device_signals/core/common",
-      "//testing/gtest",
-    ]
-  }
-}
-
 if (!is_android && is_chromeos) {
   source_set("browser_tests") {
     testonly = true

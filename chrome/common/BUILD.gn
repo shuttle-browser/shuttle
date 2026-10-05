@@ -24,16 +24,6 @@ import("//tools/grit/grit_rule.gni")
 assert(enable_supervised_users)
 assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
-fuzzer_test("ini_parser_fuzzer") {
-  sources = [ "ini_parser_fuzzer.cc" ]
-  deps = [
-    "//base",
-    "//chrome/common:ini_parser",
-  ]
-
-  # Large ini files can cause test cases to timeout
-  libfuzzer_options = [ "max_len=100000" ]
-}
 grit("resources") {
   source = "common_resources.grd"
   inputs = [
@@ -614,31 +604,6 @@ static_library("constants") {
       "//media/cdm:cdm_paths",  # Needed by chrome_paths.cc.
       "//third_party/widevine/cdm:headers",
     ]
-  }
-}
-
-# Use a static library here because many test binaries depend on this but don't
-# require many files from it. This makes linking more efficient.
-static_library("test_support") {
-  testonly = true
-  visibility = [ "//chrome/test:*" ]
-
-  sources = [
-  ]
-
-  deps = [
-    ":common",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-
-  if (enable_extensions_core) {
-    sources += [
-      "extensions/extension_test_util.cc",
-      "extensions/extension_test_util.h",
-    ]
-    deps += [ "//chrome/common/extensions:test_features" ]
   }
 }
 

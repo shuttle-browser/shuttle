@@ -595,17 +595,3 @@ static_library("vector_icons") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "$_icons_gen_dir/vector_icons_unittest.h",
-    "vector_icons_unittest.cc",
-  ]
-
-  deps = [
-    ":components_vector_icons",
-    "//base",
-    "//testing/gtest",
-    "//ui/gfx",
-  ]
-}

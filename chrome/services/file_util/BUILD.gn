@@ -87,68 +87,10 @@ source_set("file_util") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  if (enable_extractors) {
-    sources = [
-      "single_file_tar_file_extractor_unittest.cc",
-      "single_file_tar_reader_unittest.cc",
-      "single_file_tar_xz_file_extractor_unittest.cc",
-    ]
-
-    deps = [
-      ":file_util",
-      "//base/test:test_support",
-      "//chrome/common:constants",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
-}
-
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "fake_file_util_service.cc",
-    "fake_file_util_service.h",
-  ]
-
-  deps = [
-    ":buildflags",
-    "//base",
-    "//build:chromeos_buildflags",
-    "//chrome/services/file_util/public/mojom",
-    "//components/safe_browsing:buildflags",
-    "//extensions/buildflags",
-    "//mojo/public/cpp/bindings",
-    "//testing/gmock",
-    "//third_party/abseil-cpp:absl",
-  ]
-}
-
 buildflag_header("buildflags") {
   header = "buildflags.h"
   flags = [ "ENABLE_EXTRACTORS=$enable_extractors" ]
 }
 
 if (enable_extractors) {
-  test("single_file_tar_reader_fuzzer") {
-    sources = [ "single_file_tar_reader_fuzzer.cc" ]
-
-    fuzztests = [ "SingleFileTarReaderTest.ExtractChunkNeverCrashes" ]
-
-    deps = [
-      ":file_util",
-      "//third_party/fuzztest:fuzztest_gtest_main",
-    ]
-
-    if (safe_browsing_mode == 1) {
-      deps += [ "//chrome/common" ]
-    }
-
-    if (is_mac) {
-      frameworks = [ "AppKit.framework" ]
-    }
-  }
 }

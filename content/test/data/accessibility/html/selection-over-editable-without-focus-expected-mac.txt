@@ -1,7 +1,0 @@
-AXWebArea AXSelectedText='raph1EditableTextEditableTextParagra'
-++AXGroup
-++++AXStaticText AXValue='Paragraph1'
-++AXTextField AXValue='EditableText'
-++AXTextField AXValue='EditableText'
-++AXGroup AXSelectedText='raph1EditableTextEditableTextParagra'
-++++AXStaticText AXSelectedText='raph1EditableTextEditableTextParagra' AXValue='Paragraph2'

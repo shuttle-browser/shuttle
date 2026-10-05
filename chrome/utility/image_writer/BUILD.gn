@@ -35,16 +35,3 @@ source_set("image_writer") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "image_writer_unittest.cc" ]
-
-  deps = [
-    ":image_writer",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

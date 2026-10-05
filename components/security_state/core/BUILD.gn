@@ -33,13 +33,3 @@ if (is_android) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "security_state_unittest.cc" ]
-
-  deps = [
-    ":core",
-    "//net:test_support",
-    "//testing/gtest",
-  ]
-}

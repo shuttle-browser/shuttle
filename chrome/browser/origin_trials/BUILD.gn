@@ -21,19 +21,3 @@ source_set("origin_trials") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "origin_trials_browsertest.cc" ]
-
-  deps = [
-    "//base",
-    "//chrome/browser/profiles:profile",
-    "//chrome/test:test_support",
-    "//components/origin_trials:browser",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

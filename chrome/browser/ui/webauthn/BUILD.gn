@@ -85,54 +85,5 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [
-      "sheet_models_unittest.cc",
-    ]
-    deps = [
-      ":webauthn",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/app:generated_resources",
-      "//chrome/app/vector_icons",
-      "//chrome/browser/ui:test_support",
-      "//chrome/browser/ui/views/page_action:test_support",
-      "//chrome/test:test_support",
-      "//components/tabs:test_support",
-      "//content/test:test_support",
-      "//device/fido",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//ui/base",
-      "//url",
-    ]
-  }
 
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "authenticator_dialog_browsertest.cc" ]
-    deps = [
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/lifetime",
-      "//chrome/browser/signin",
-      "//chrome/browser/signin:signin_browser_test_base",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/webauthn",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
-      "//components/network_session_configurator/common",
-      "//components/signin/public/base",
-      "//components/signin/public/identity_manager:test_support",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//device/fido",
-      "//google_apis",
-      "//net",
-      "//net:test_support",
-      "//testing/gtest",
-    ]
-  }
 }

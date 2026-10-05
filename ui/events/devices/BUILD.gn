@@ -96,30 +96,6 @@ if (is_android) {
   }
 }
 
-source_set("unittests") {
-  testonly = true
-
-  sources = [
-    "input_device_unittest.cc",
-    "touchscreen_device_unittest.cc",
-  ]
-
-  if (is_android) {
-    sources += [ "input_device_observer_android_unittest.cc" ]
-  }
-
-  if (is_ios && use_blink && target_platform == "iphoneos") {
-    sources += [ "input_device_observer_ios_unittest.cc" ]
-  }
-
-  deps = [
-    ":devices",
-    "//base",
-    "//base/test:test_support",
-    "//build:blink_buildflags",
-  ]
-}
-
 source_set("test_support") {
   sources = [
     "device_data_manager_test_api.cc",

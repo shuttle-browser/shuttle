@@ -62,30 +62,3 @@ if (is_android) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "about_this_site_service_unittest.cc",
-    "about_this_site_validation_unittest.cc",
-    "page_info_history_data_source_unittest.cc",
-  ]
-
-  deps = [
-    ":core",
-    ":proto",
-    "//base",
-    "//base/test:test_support",
-    "//components/history/core/browser",
-    "//components/optimization_guide/core",
-    "//components/optimization_guide/core:test_support",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//components/search_engines",
-    "//components/search_engines:test_support",
-    "//components/strings:components_strings_grit",
-    "//components/sync_preferences:test_support",
-    "//services/metrics/public/cpp:metrics_cpp",
-    "//testing/gtest",
-    "//ui/base",
-    "//url",
-  ]
-}

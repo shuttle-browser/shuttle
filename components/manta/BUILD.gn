@@ -54,32 +54,3 @@ component("manta") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "base_provider_test_helper.cc",
-    "base_provider_test_helper.h",
-  ]
-
-  if (is_chromeos) {
-    sources += [
-      "orca_provider_unittest.cc",
-      "scanner_provider_unittest.cc",
-      "snapper_provider_unittest.cc",
-      "walrus_provider_unittest.cc",
-    ]
-  }
-
-  deps = [
-    ":manta",
-    "proto",
-    "//base",
-    "//base/test:test_support",
-    "//components/endpoint_fetcher",
-    "//components/signin/public/identity_manager:test_support",
-    "//net/traffic_annotation:test_support",
-    "//services/network:test_support",
-    "//testing/gtest",
-  ]
-}

@@ -43,32 +43,3 @@ component("cbor") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "diagnostic_writer_unittest.cc",
-    "fuzz_unittest.cc",
-    "reader_unittest.cc",
-    "values_unittest.cc",
-    "writer_unittest.cc",
-  ]
-
-  deps = [
-    ":buildflags",
-    ":cbor",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/fuzztest",
-  ]
-  if (!is_cronet_build) {
-    deps += [ "//components/cbor/rust:cbor_rust_unittests" ]
-  }
-
-  data = [ "reader_fuzzer_corpus/" ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}

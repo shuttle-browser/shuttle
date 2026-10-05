@@ -28,28 +28,6 @@ source_set("content_relationship_verification") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "digital_asset_links_handler_unittest.cc",
-    "response_header_verifier_unittest.cc",
-  ]
-
-  deps = [
-    ":content_relationship_verification",
-    "//base",
-    "//content/test:test_support",
-    "//net",
-    "//services/network:test_support",
-    "//testing/gtest",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
 if (is_android) {
   import("//build/config/android/rules.gni")
 

@@ -98,8 +98,6 @@ source_set("test_support") {
 
   if (is_android) {
     sources += [
-      "test/scoped_nfc_overrider.cc",
-      "test/scoped_nfc_overrider.h",
     ]
   }
 

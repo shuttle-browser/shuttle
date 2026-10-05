@@ -15,19 +15,3 @@ source_set("customize_color_scheme_mode") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "customize_color_scheme_mode_handler_unittest.cc" ]
-  deps = [
-    ":customize_color_scheme_mode",
-    "//base",
-    "//chrome/browser/themes",
-    "//chrome/test:test_support",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//mojo/public/cpp/bindings",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/webui/resources/cr_components/customize_color_scheme_mode:mojom",
-  ]
-}

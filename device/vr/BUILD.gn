@@ -55,8 +55,6 @@ if (enable_vr) {
     sources = [
       "create_anchor_request.cc",
       "create_anchor_request.h",
-      "hit_test_subscription_data.cc",
-      "hit_test_subscription_data.h",
       "vr_device_base.cc",
       "vr_device_base.h",
       "vr_gl_util.cc",
@@ -344,8 +342,6 @@ if (enable_vr) {
     defines = [ "IS_VR_TEST_UTILS_IMPL" ]
 
     sources = [
-      "test/webxr_test_gamepad_utils.cc",
-      "test/webxr_test_gamepad_utils.h",
     ]
 
     deps = [
@@ -363,16 +359,6 @@ if (enable_vr) {
     defines = [ "DEVICE_VR_IMPLEMENTATION" ]
 
     sources = [
-      "test/fake_orientation_provider.cc",
-      "test/fake_orientation_provider.h",
-      "test/fake_sensor_provider.cc",
-      "test/fake_sensor_provider.h",
-      "test/fake_vr_device.cc",
-      "test/fake_vr_device.h",
-      "test/fake_vr_device_provider.cc",
-      "test/fake_vr_device_provider.h",
-      "test/fake_vr_service_client.cc",
-      "test/fake_vr_service_client.h",
       "vr_export.h",
     ]
 

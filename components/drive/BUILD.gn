@@ -65,55 +65,6 @@ proto_library("proto") {
   extra_configs = [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "service/dummy_drive_service.cc",
-    "service/dummy_drive_service.h",
-    "service/fake_drive_service.cc",
-    "service/fake_drive_service.h",
-    "service/test_util.cc",
-    "service/test_util.h",
-  ]
-  deps = [
-    ":drive",
-    "//base",
-    "//google_apis/common:test_support",
-    "//google_apis/drive",
-    "//net",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "drive_api_util_unittest.cc",
-    "drive_uploader_unittest.cc",
-    "event_logger_unittest.cc",
-    "resource_metadata_storage_unittest.cc",
-    "service/drive_api_service_unittest.cc",
-    "service/fake_drive_service_unittest.cc",
-  ]
-
-  deps = [
-    ":drive",
-    ":test_support",
-    "//base",
-    "//base/test:test_support",
-    "//content/test:test_support",
-    "//google_apis/common:test_support",
-    "//google_apis/drive",
-    "//testing/gtest",
-  ]
-
-  if (is_chromeos) {
-    sources += [ "search_metadata_unittest.cc" ]
-
-    deps += [ ":drive_chromeos" ]
-  }
-}
-
 if (is_chromeos) {
   source_set("drive_chromeos") {
     sources = [

@@ -59,7 +59,6 @@ config("content_shell_lib_warnings") {
 }
 
 # Web test support not built on android, but is everywhere else.
-support_web_tests = !is_android
 
 source_set("android_shell_descriptors") {
   testonly = true
@@ -68,84 +67,6 @@ source_set("android_shell_descriptors") {
   if (is_android) {
     sources += [ "android/shell_descriptors.h" ]
   }
-}
-
-# This component provides a ContentMainDelegate for Content Shell and derived
-# applications. This delegate is the central place that creates interfaces for
-# each type of process (browser, renderer, etc). This implementation of
-# ContentMainDelegate will create either production or test-based
-# implementations.
-#
-# This component needs to be linked into every process in a Content Shell-based
-# application that wants to use ShellMainDelegate.
-#
-# TODO(danakj): This component will depend on {renderer,browser}/web_test. The
-# content_shell_lib component will not, to avoid circular deps, as web_test
-# inherits from things in content_shell_lib.
-static_library("content_shell_app") {
-  testonly = true
-  sources = [
-    "app/shell_crash_reporter_client.cc",
-    "app/shell_crash_reporter_client.h",
-    "app/shell_main_delegate.cc",
-    "app/shell_main_delegate.h",
-  ]
-  deps = [
-    ":content_shell_lib",
-    "//components/crash/core/common:crash_key",
-    "//components/memory_system",
-    "//content/public/app",
-    "//v8",
-  ]
-  if (support_web_tests) {
-    deps += [
-      "//content/web_test:web_test_browser",
-      "//content/web_test:web_test_common",
-      "//content/web_test:web_test_renderer",
-      "//ui/native_theme",
-    ]
-  }
-  if (!is_fuchsia) {
-    deps += [
-      "//components/crash/core/app",
-      "//components/crash/core/app:test_support",
-    ]
-  }
-  if (is_apple) {
-    sources += [
-      "app/paths_apple.h",
-      "app/paths_apple.mm",
-    ]
-  }
-  if (is_mac) {
-    sources += [
-      "app/shell_main_delegate_mac.h",
-      "app/shell_main_delegate_mac.mm",
-    ]
-  }
-  if (is_ios) {
-    sources += [
-      "app/ios/shell_application_ios.h",
-      "app/ios/shell_application_ios.mm",
-      "app/ios/web_tests_support_ios.h",
-      "app/ios/web_tests_support_ios.mm",
-    ]
-
-    if (target_platform == "tvos") {
-      sources += [
-        "app/ios/shell_app_scene_delegate_tvos.h",
-        "app/ios/shell_app_scene_delegate_tvos.mm",
-      ]
-    }
-
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  }
-  defines = [
-    "CONTENT_SHELL_VERSION=\"$content_shell_version\"",
-    "CONTENT_SHELL_MAJOR_VERSION=\"$content_shell_major_version\"",
-  ]
 }
 
 inspector_protocol_generate("protocol_sources") {
@@ -541,7 +462,6 @@ repack("pak") {
     "$root_gen_dir/content/quota_internals_resources.pak",
     "$root_gen_dir/content/service_worker_resources.pak",
     "$root_gen_dir/content/shell/shell_resources.pak",
-    "$root_gen_dir/content/test/web_ui_mojo_test_resources.pak",
     "$root_gen_dir/mojo/public/js/mojo_bindings_resources.pak",
     "$root_gen_dir/net/net_resources.pak",
     "$root_gen_dir/third_party/blink/public/resources/blink_resources.pak",
@@ -567,7 +487,6 @@ repack("pak") {
     "//content/browser/resources",
     "//content/browser/resources/media:resources",
     "//content/browser/webrtc/resources",
-    "//content/test:web_ui_mojo_test_resources",
     "//mojo/public/js:resources",
     "//net:net_resources",
     "//third_party/blink/public:devtools_inspector_resources",
@@ -618,48 +537,7 @@ repack("pak") {
 }
 
 if (is_android) {
-  group("content_shell") {
-    testonly = true
-    deps = [ "//content/shell/android:content_shell_apk" ]
-  }
 } else if (is_mac) {
-  tweak_info_plist("content_shell_plist") {
-    testonly = true
-    info_plist = "app/app-Info.plist"
-    args = [
-      "--scm=1",
-      "--version",
-      content_shell_version,
-    ]
-  }
-  mac_app_bundle("content_shell") {
-    testonly = true
-    output_name = content_shell_product_name
-    sources = [ "app/shell_main_mac.cc" ]
-    defines = [ "SHELL_PRODUCT_NAME=\"$content_shell_product_name\"" ]
-
-    # Must have minimal dependencies. In particular cannot depend on //base.
-    # Depending on //base leads to loading //base twice (once in the exe, once
-    # in the main framework).
-    deps = [
-      ":content_shell_framework_bundle_data",
-      ":content_shell_resources_bundle_data",
-
-      # This target contains only macros. No C++ declarations/definitions.
-      "//base:compiler_specific",
-
-      # Despite its path, this does not add a //base dependency, see comments in
-      # the .cc file.
-      "//base/allocator:early_zone_registration_apple",
-      "//sandbox/mac:seatbelt",
-    ]
-    info_plist_target = ":content_shell_plist"
-    data_deps = [ ":content_shell_app" ]
-
-    if (is_component_build) {
-      ldflags = [ "-Wl,-rpath,@executable_path/../Frameworks" ]
-    }
-  }
 } else if (is_ios) {
   declare_args() {
     # The bundle identifier. Overriding this will affect the provisioning
@@ -686,54 +564,9 @@ if (is_android) {
         "$ios_content_shell_bundle_identifier.GPUProcessExtension"
   }
 
-  ios_app_bundle("content_shell") {
-    info_plist = "app/ios/ios-app.plist"
-    testonly = true
-
-    sources = [ "app/ios/shell_main_trampoline.cc" ]
-
-    deps = [ ":content_shell_framework+link" ]
-
-    if (target_platform == "iphoneos") {
-      deps += [
-        ":content_process_bundle",
-        ":gpu_process_bundle",
-        ":network_process_bundle",
-      ]
-    }
-
-    bundle_deps = [
-      ":content_shell_framework+bundle",
-      ":content_shell_framework_resources",
-      "app/ios/resources",
-    ]
-    entitlements_path = ios_content_shell_entitlements_path
-    bundle_identifier = ios_content_shell_bundle_identifier
-  }
-
   ios_app_ipa("content_shell_ipa") {
     testonly = true
     bundle_target = ":content_shell"
-  }
-
-  ios_framework_bundle("content_shell_framework") {
-    testonly = true
-    transparent = true
-
-    output_name = "content_shell_framework"
-    sources = [ "app/shell_main.cc" ]
-
-    deps = [
-      ":content_shell_app",
-      ":content_shell_lib",
-      "//content/public/app",
-      "//content/public/common",
-      "//third_party/icu:icudata",
-    ]
-    if (target_platform == "iphoneos") {
-      deps += [ "//content/app/ios/appex:child_process_bridge" ]
-    }
-    info_plist = "app/ios/ios-app.plist"
   }
 
   if (target_platform == "iphoneos") {
@@ -753,63 +586,6 @@ if (is_android) {
     }
   }
 } else {
-  executable("content_shell") {
-    testonly = true
-
-    sources = [ "app/shell_main.cc" ]
-
-    if (is_win) {
-      sources += [ "app/shell.rc" ]
-    }
-
-    defines = []
-
-    deps = [
-      ":content_shell_app",
-      ":content_shell_lib",
-      ":pak",
-      "//build/win:default_exe_manifest",
-      "//content/public/app",
-      "//sandbox",
-    ]
-
-    data_deps = [
-      ":pak",
-      "//tools/v8_context_snapshot",
-    ]
-
-    if (is_win) {
-      deps += [
-        "//base",
-        "//sandbox",
-      ]
-      if (win_console_app) {
-        defines += [ "WIN_CONSOLE_APP" ]
-      } else {
-        # Set /SUBSYSTEM:WINDOWS unless a console build has been requested.
-        configs -= [ "//build/config/win:console" ]
-        configs += [ "//build/config/win:windowed" ]
-      }
-
-      # Limit pre-loaded modules to improve sandbox coverage in content_shell.
-      configs += [ "//build/config/win:delayloads" ]
-
-      # Increase the initial stack size. The default is 1MB, this is 8MB.
-      # This matches the chrome.exe.
-      ldflags = [ "/STACK:0x800000" ]
-    }
-
-    if (is_win) {
-      data_deps +=
-          [ "//third_party/crashpad/crashpad/handler:crashpad_handler" ]
-    } else if (is_linux || is_chromeos) {
-      data_deps += [ "//components/crash/core/app:chrome_crashpad_handler" ]
-    }
-
-    if ((is_linux || is_chromeos) && !is_component_build) {
-      configs += [ "//build/config/gcc:rpath_for_built_shared_libraries" ]
-    }
-  }
 
   if (is_fuchsia) {
     fuchsia_component("content_shell_component") {
@@ -837,254 +613,7 @@ if (is_android) {
   }
 }
 
-if (is_apple) {
-  bundle_data("content_shell_framework_resources") {
-    testonly = true
-    sources = [ "$root_out_dir/content_shell.pak" ]
 
-    public_deps = [ ":pak" ]
-
-    if (is_mac && icu_use_data_file) {
-      sources += [ "$root_out_dir/icudtl.dat" ]
-      deps = [ "//third_party/icu:icudata" ]
-    }
-
-    if (is_mac) {
-      sources += [ "//ui/gl/resources/angle-metal/gpu_shader_cache.bin" ]
-    }
-
-    if (v8_use_external_startup_data) {
-      public_deps += [ "//v8" ]
-      if (use_v8_context_snapshot) {
-        sources += [ "$root_out_dir/$v8_context_snapshot_filename" ]
-        public_deps += [ "//tools/v8_context_snapshot" ]
-      }
-      if (!use_v8_context_snapshot || include_both_v8_snapshots) {
-        sources += [ "$root_out_dir/snapshot_blob.bin" ]
-      }
-    }
-
-    outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
-  }
-}
-
-if (is_mac) {
-  content_shell_framework_name = "$content_shell_product_name Framework"
-  content_shell_helper_name = "$content_shell_product_name Helper"
-
-  content_shell_mac_helpers = content_mac_helpers + content_mac_aperitif_helpers
-
-  bundle_data("content_shell_framework_helpers") {
-    testonly = true
-    sources = [ "$root_out_dir/chrome_crashpad_handler" ]
-    outputs = [ "{{bundle_contents_dir}}/Helpers/{{source_file_part}}" ]
-    public_deps = [ "//components/crash/core/app:chrome_crashpad_handler" ]
-    foreach(helper_params, content_shell_mac_helpers) {
-      sources += [
-        "$root_out_dir/${content_shell_helper_name}${helper_params[2]}.app",
-      ]
-      public_deps += [ ":content_shell_helper_app_${helper_params[0]}" ]
-    }
-  }
-
-  tweak_info_plist("content_shell_framework_plist") {
-    testonly = true
-    info_plist = "app/framework-Info.plist"
-    args = [
-      "--breakpad=0",
-      "--keystone=0",
-      "--scm=1",
-      "--version",
-      content_shell_version,
-      "--branding",
-      content_shell_product_name,
-    ]
-  }
-
-  mac_framework_bundle("content_shell_framework") {
-    testonly = true
-
-    output_name = content_shell_framework_name
-
-    framework_version = "C"
-
-    framework_contents = [
-      "Helpers",
-      "Libraries",
-      "Resources",
-    ]
-
-    sources = [
-      "app/shell_content_main.cc",
-      "app/shell_content_main.h",
-    ]
-
-    deps = [
-      ":content_shell_app",
-      "//content/public/app",
-      "//content/public/common",
-      "//third_party/icu:icudata",
-    ]
-
-    if (!use_static_angle) {
-      deps += [ ":content_shell_angle_binaries" ]
-    }
-
-    bundle_deps = [
-      ":content_shell_framework_helpers",
-      ":content_shell_framework_resources",
-      ":content_shell_swiftshader_binaries",
-    ]
-    bundle_deps += [ ":content_shell_vulkan_binaries" ]
-
-    if (!is_component_build) {
-      # Specify a sensible install_name for static builds. The library is
-      # dlopen()ed so this is not used to resolve the module.
-      ldflags = [ "-Wl,-install_name,@executable_path/../Frameworks/$output_name.framework/$output_name" ]
-      deps += [ "//base/test:test_trace_processor_bundle_data" ]
-    } else {
-      # Both the main :content_shell and :content_shell_helper_app executables
-      # need to link the framework. Because they are at different directory
-      # depths, using @executable_path as the install_name would require using
-      # install_name_tool on one of the executables. However install_name_tool
-      # only operates in-place, which is problematic to express in GN. Instead,
-      # use rpath-based loading.
-      ldflags =
-          [ "-Wl,-install_name,@rpath/$output_name.framework/$output_name" ]
-
-      # Set up the rpath for the framework so that it can find dylibs in the
-      # root output directory. The framework is at Content
-      # Shell.app/Contents/Frameworks/Content Shell
-      # Framework.framework/Versions/C/Content Shell Framework so use
-      # loader_path to go back to the root output directory.
-      ldflags += [ "-Wl,-rpath,@loader_path/../../../../../.." ]
-    }
-
-    info_plist_target = ":content_shell_framework_plist"
-  }
-
-  tweak_info_plist("content_shell_helper_plist") {
-    testonly = true
-    info_plist = "app/helper-Info.plist"
-    args = [
-      "--breakpad=0",
-      "--keystone=0",
-      "--scm=0",
-      "--version",
-      content_shell_version,
-    ]
-  }
-
-  template("content_shell_helper_app") {
-    mac_app_bundle(target_name) {
-      assert(defined(invoker.helper_name_suffix))
-      assert(defined(invoker.helper_bundle_id_suffix))
-
-      testonly = true
-
-      output_name = content_shell_helper_name + invoker.helper_name_suffix
-
-      sources = [ "app/shell_main_mac.cc" ]
-      defines = [
-        "HELPER_EXECUTABLE",
-        "SHELL_PRODUCT_NAME=\"$content_shell_product_name\"",
-      ]
-      extra_substitutions = [
-        "CONTENT_SHELL_HELPER_SUFFIX=${invoker.helper_name_suffix}",
-        "CONTENT_SHELL_HELPER_BUNDLE_ID_SUFFIX=${invoker.helper_bundle_id_suffix}",
-      ]
-      deps = [
-        # This target contains only macros. No C++ declarations/definitions.
-        "//base:compiler_specific",
-        "//base/allocator:early_zone_registration_apple",
-        "//sandbox/mac:seatbelt",
-      ]
-
-      info_plist_target = ":content_shell_helper_plist"
-
-      if (is_component_build) {
-        ldflags = [
-          # The helper is in Content Shell.app/Contents/Frameworks/Content Shell
-          # Framework.framework/Versions/C/Helpers/Content Shell
-          # Helper.app/Contents/MacOS
-
-          # Set up an rpath to the Contents/Frameworks/ directory so that
-          # Content Shell Framework.framework will be found there. This matches
-          # the path that app_shell_main.cc uses with `dlopen` and avoids
-          # loading the framework into memory twice.
-          "-Wl,-rpath,@executable_path/../../../../../../..",
-
-          # Add an rpath up to the base for all other libraries.
-          "-Wl,-rpath,@executable_path/../../../../../../../../../..",
-        ]
-
-        # In a component build, the framework is directly linked to the
-        # executable because dlopen() and loading all the dependent dylibs
-        # is time-consuming, see https://crbug.com/1197495.
-        deps += [ ":content_shell_framework+link_nested" ]
-      }
-    }
-  }
-
-  foreach(helper_params, content_shell_mac_helpers) {
-    _helper_target = helper_params[0]
-    _helper_bundle_id = helper_params[1]
-    _helper_suffix = helper_params[2]
-    content_shell_helper_app("content_shell_helper_app_${_helper_target}") {
-      helper_name_suffix = _helper_suffix
-      helper_bundle_id_suffix = _helper_bundle_id
-    }
-  }
-
-  bundle_data("content_shell_framework_bundle_data") {
-    testonly = true
-    sources = [ "$root_out_dir/$content_shell_framework_name.framework" ]
-    outputs = [ "{{bundle_contents_dir}}/Frameworks/{{source_file_part}}" ]
-    if (is_component_build) {
-      # In a component build, the framework is directly linked to the
-      # executable because dlopen() and loading all the dependent dylibs
-      # is time-consuming, see https://crbug.com/1197495.
-      public_deps = [ ":content_shell_framework+link" ]
-    } else {
-      public_deps = [ ":content_shell_framework" ]
-    }
-  }
-
-  bundle_data("content_shell_resources_bundle_data") {
-    testonly = true
-    sources = [ "app/app.icns" ]
-    outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
-  }
-
-  if (!use_static_angle) {
-    # Add the ANGLE .dylibs in the Libraries directory of the Framework.
-    bundle_data("content_shell_angle_binaries") {
-      sources = [
-        "$root_out_dir/egl_intermediates/libEGL.dylib",
-        "$root_out_dir/egl_intermediates/libGLESv2.dylib",
-      ]
-      outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
-      public_deps = [ "//ui/gl:angle_library_copy" ]
-    }
-  }
-
-  # Add the SwiftShader .dylibs in the Libraries directory of the Framework.
-  bundle_data("content_shell_swiftshader_binaries") {
-    sources = [
-      "$root_out_dir/vk_intermediates/libvk_swiftshader.dylib",
-      "$root_out_dir/vk_intermediates/vk_swiftshader_icd.json",
-    ]
-    outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
-    public_deps = [ "//ui/gl:swiftshader_vk_library_copy" ]
-  }
-
-  # Add the Vulkan loader .dylib in the Libraries directory of the Framework.
-  bundle_data("content_shell_vulkan_binaries") {
-    sources = [ "$root_out_dir/vulkan_intermediates/libvulkan.dylib" ]
-    outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
-    public_deps = [ "//ui/gl:vulkan_loader_library_copy" ]
-  }
-}
 
 mojom("content_browsertests_mojom") {
   cpp_only = true
@@ -1108,70 +637,12 @@ if (is_android) {
     testonly = true
     data = [
       "//content/shell/tools/aaudio_freezer_integration_test.py",
-      "//content/test/data/media/",
     ]
     data_deps = [
       ":content_shell",
       "//build/android:devil_chromium_py",
       "//build/android:test_runner_py",
       "//testing:test_scripts_shared",
-      "//tools/android/forwarder2",
-    ]
-  }
-}
-
-group("content_shell_crash_test") {
-  testonly = true
-  data_deps = [
-    ":content_shell",
-    "//testing:test_scripts_shared",
-    "//third_party/angle:includes",
-  ]
-  if (is_fuchsia) {
-    data_deps += [
-      ":content_shell_pkg",
-      ":content_shell_pkg__archive-manifest",
-      ":content_shell_script_meta",
-      "//build/config/fuchsia:deployment_resources",
-    ]
-  }
-  data = [
-    "//content/shell/tools/breakpad_integration_test.py",
-    "//testing/scripts/content_shell_crash_test.py",
-  ]
-  if (is_mac && !use_system_xcode) {
-    data += [
-      # Scripts call otool, which calls either llvm-otool or otool-classic,
-      # so we need all three.
-      # llvm-otool shells out to llvm-objdump, so that's needed as well.
-      mac_bin_path + "llvm-objdump",
-      mac_bin_path + "llvm-otool",
-      mac_bin_path + "otool",
-      mac_bin_path + "otool-classic",
-    ]
-  }
-  if (is_posix) {
-    data += [
-      "//components/crash/content/tools/generate_breakpad_symbols.py",
-      "//components/crash/content/tools/dmp2minidump.py",
-    ]
-  }
-  if (is_win) {
-    data_deps += [ "//build/win:copy_cdb_to_output" ]
-  }
-  if (is_posix) {
-    data_deps += [
-      "//third_party/breakpad:dump_syms",
-      "//third_party/breakpad:minidump_stackwalk",
-    ]
-  }
-  if (is_android) {
-    data_deps += [
-      "//build/android:devil_chromium_py",
-      "//build/android:test_runner_py",
-      "//third_party/breakpad:microdump_stackwalk",
-      "//third_party/breakpad:minidump_dump",
-      "//third_party/breakpad:symupload",
       "//tools/android/forwarder2",
     ]
   }

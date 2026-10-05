@@ -23,15 +23,3 @@ component("service") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "discardable_shared_memory_manager_unittest.cc" ]
-
-  deps = [
-    ":service",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

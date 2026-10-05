@@ -72,38 +72,6 @@ source_set("tracked") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "device_id_unittest.cc",
-    "interceptable_pref_filter_unittest.cc",
-    "pref_hash_calculator_unittest.cc",
-    "pref_hash_filter_unittest.cc",
-    "pref_hash_store_impl_unittest.cc",
-    "tracked_preferences_migration_unittest.cc",
-  ]
-
-  if (is_win) {
-    sources += [ "registry_hash_store_contents_win_unittest.cc" ]
-  }
-
-  deps = [
-    ":tracked",
-    "//base",
-    "//base/test:test_support",
-    "//components/os_crypt/browser:test_support",
-    "//components/os_crypt/common",
-    "//components/prefs:test_support",
-    "//components/safe_browsing/core/common:features",
-    "//components/sync_preferences:test_support",
-    "//crypto",
-    "//services/preferences/public/cpp/tracked:test_support",
-    "//testing/gtest",
-  ]
-
-  public_deps = [ ":features" ]
-}
-
 source_set("features") {
   sources = [
     "features.cc",

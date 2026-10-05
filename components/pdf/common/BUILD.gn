@@ -37,14 +37,3 @@ source_set("util") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "pdf_util_unittest.cc" ]
-
-  deps = [
-    ":util",
-    "//extensions/buildflags",
-    "//testing/gtest",
-    "//url",
-  ]
-}

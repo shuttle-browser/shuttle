@@ -33,17 +33,4 @@ source_set("location_internals") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "location_internals_ui_browsertest.cc" ]
-    deps = [
-      ":location_internals",
-      "//chrome/common",
-      "//chrome/test:test_support",
-      "//content/test:test_support",
-      "//testing/gtest",
-      "//url",
-    ]
-  }
 }

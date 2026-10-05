@@ -6,10 +6,6 @@ import("//chrome/test/fuzzing/in_process_fuzzer.gni")
 import("//testing/libfuzzer/research/domatolpm/domatolpm.gni")
 import("//third_party/blink/renderer/bindings/bindings.gni")
 
-group("test") {
-  testonly = true
-}
-
 renderer_ipc_fuzzing_enabled =
     fuzzing_engine_supports_custom_main && is_linux && enable_mojom_fuzzer
 
@@ -42,7 +38,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("mojo_js_in_process_fuzzer") {
-    sources = [ "mojo_js_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -93,7 +89,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("embedded_framesink_provider_in_process_fuzzer") {
-    sources = [ "embedded_framesink_provider_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -144,7 +140,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("bucket_manager_host_in_process_fuzzer") {
-    sources = [ "bucket_manager_host_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -191,7 +187,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("cache_storage_in_process_fuzzer") {
-    sources = [ "cache_storage_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -238,7 +234,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("clipboard_host_in_process_fuzzer") {
-    sources = [ "clipboard_host_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -286,7 +282,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("credential_manager_in_process_fuzzer") {
-    sources = [ "credential_manager_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -333,7 +329,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("digital_identity_request_in_process_fuzzer") {
-    sources = [ "digital_identity_request_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -381,7 +377,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("media_session_service_in_process_fuzzer") {
-    sources = [ "media_session_service_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -429,7 +425,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("storage_access_handle_in_process_fuzzer") {
-    sources = [ "storage_access_handle_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 
@@ -477,7 +473,7 @@ if (renderer_ipc_fuzzing_enabled && !is_msan) {
   }
 
   in_process_fuzzer("video_capture_host_in_process_fuzzer") {
-    sources = [ "video_capture_host_in_process_fuzzer.cc" ]
+    sources = []
 
     centipede_options = [ "symbolizer_path=/dev/null" ]
 

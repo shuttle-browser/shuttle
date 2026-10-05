@@ -36,46 +36,6 @@ static_library("browser") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "accept_languages_service_unittest.cc",
-    "language_model_manager_unittest.cc",
-    "language_prefs_unittest.cc",
-    "language_usage_metrics_unittest.cc",
-    "ulp_metrics_logger_unittest.cc",
-    "url_language_histogram_unittest.cc",
-  ]
-  deps = [
-    ":browser",
-    ":test_support",
-    "//base",
-    "//components/language/core/language_model",
-    "//components/pref_registry",
-    "//components/prefs",
-    "//components/prefs:test_support",
-    "//components/sync_preferences:test_support",
-    "//net:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "language_prefs_test_util.cc",
-    "language_prefs_test_util.h",
-  ]
-  deps = [
-    ":browser",
-    "//base",
-    "//components/prefs",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
 action("generate_incognito_language_list_map") {
   script = "generate_incognito_language_list_map.py"
   inputs = [

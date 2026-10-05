@@ -21,20 +21,3 @@ source_set("types") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "node_id_unittest.cc",
-    "path_unittest.cc",
-    "position_unittest.cc",
-    "tab_strip_service_mojom_traits_unittest.cc",
-  ]
-
-  deps = [
-    ":types",
-    "//base/test:test_support",
-    "//components/browser_apis/tab_strip:mojom",
-    "//testing/gtest",
-  ]
-}

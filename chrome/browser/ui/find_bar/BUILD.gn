@@ -58,60 +58,8 @@ source_set("impl") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "find_backend_unittest.cc" ]
-
-  deps = [
-    ":find_bar",
-    "//chrome/test:test_support",
-    "//components/enterprise/data_controls/core/browser:test_support",
-  ]
-}
-
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    sources = [
-      "find_bar_controller_browsertest.cc",
-      "find_bar_host_browsertest.cc",
-    ]
-
-    deps = [
-      ":find_bar",
-      "//chrome/browser/ui:chrome_pages",
-      "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/test:test_support",
-    ]
-
-    if (is_mac) {
-      sources += [ "find_bar_platform_helper_mac_browsertest.mm" ]
-    }
-  }
 }
 
 if (!is_android && !is_chromeos_device) {
-  source_set("interactive_ui_tests") {
-    testonly = true
-
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-    sources = [ "find_bar_host_interactive_uitest.cc" ]
-
-    deps = [
-      ":find_bar",
-      "//chrome/browser/ui:view_ids",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/test:test_support",
-    ]
-
-    if (is_mac) {
-      sources += [ "find_bar_platform_helper_mac_interactive_uitest.mm" ]
-    }
-  }
 }

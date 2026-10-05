@@ -28,8 +28,6 @@ if (is_chromeos) {
     testonly = true
 
     sources = [
-      "immersive_mode_tester.cc",
-      "immersive_mode_tester.h",
     ]
 
     public_deps = [
@@ -48,21 +46,6 @@ if (is_chromeos) {
       "//chrome/browser/ui/views",
     ]
   }
-}
-
-static_library("test_support") {
-  testonly = true
-
-  sources = [
-    "mock_immersive_mode_controller.cc",
-    "mock_immersive_mode_controller.h",
-  ]
-  deps = [
-    "//base",
-    "//chrome/browser/ui/browser_window",
-    "//chrome/browser/ui/immersive:immersive_mode_controller",
-    "//testing/gmock",
-  ]
 }
 
 source_set("toolbar_button_provider") {

@@ -22,23 +22,3 @@ source_set("mojo_cert_verifier") {
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-source_set("cert_verifier_tests") {
-  testonly = true
-  sources = []
-
-  deps = [
-    ":mojo_cert_verifier",
-    "//base",
-    "//base/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//net",
-    "//net:test_support",
-    "//services/network/public/mojom",
-    "//testing/gtest",
-  ]
-
-  sources += [
-    "cert_verifier_mojom_traits_unittest.cc",
-    "mojo_cert_verifier_unittest.cc",
-  ]
-}

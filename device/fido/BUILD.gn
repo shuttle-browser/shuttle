@@ -376,43 +376,9 @@ if (use_blink) {
 
   # Android implementation of FIDO is delegated to GMSCore.
   if (!is_android) {
-    fuzzer_test("fido_hid_message_fuzzer") {
-      sources = [ "hid/fido_hid_message_fuzzer.cc" ]
-      deps = [
-        ":fido",
-        "//base",
-        "//testing/libfuzzer:libfuzzer_base_wrappers",
-      ]
-      libfuzzer_options = [ "max_len=2048" ]
-    }
 
-    fuzzer_test("ctap_response_fuzzer") {
-      sources = [ "ctap_response_fuzzer.cc" ]
-      deps = [
-        ":fido",
-        "//base",
-        "//base:i18n",
-        "//components/cbor",
-        "//components/device_event_log",
-      ]
-      seed_corpus = "response_data_fuzzer_corpus/"
-      libfuzzer_options = [ "max_len=65537" ]
-    }
   }
 
-  fuzzer_test("v2_handshake_fuzzer") {
-    sources = [ "cable/v2_handshake_fuzzer.cc" ]
-    deps = [
-      ":fido",
-      "//base",
-      "//base/test:test_support",
-      "//device/bluetooth:mocks",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//testing/libfuzzer:libfuzzer_base_wrappers",
-    ]
-    libfuzzer_options = [ "max_len=2048" ]
-  }
 
   is_linux_without_udev = (is_linux || is_chromeos) && !use_udev
 
@@ -467,19 +433,4 @@ if (use_blink) {
 # AuthenticationServices framework to be linked in, and that can't just be done
 # as a dep/framework here.
 if (is_mac) {
-  static_library("icloud_keychain_test_support") {
-    testonly = true
-    sources = [
-      "mac/fake_icloud_keychain.h",
-      "mac/fake_icloud_keychain.mm",
-      "mac/fake_icloud_keychain_sys.h",
-      "mac/fake_icloud_keychain_sys.mm",
-      "mac/scoped_icloud_keychain_test_environment.h",
-      "mac/scoped_icloud_keychain_test_environment.mm",
-    ]
-    deps = [
-      "//base",
-      "//device/fido",
-    ]
-  }
 }

@@ -67,15 +67,3 @@ if (is_android) {
   }
 }
 
-fuzzer_test("media_metadata_parser_fuzzer") {
-  sources = [ "media_metadata_parser_fuzzer.cc" ]
-  deps = [
-    ":lib",
-    "//base",
-    "//content/test:test_support",
-    "//testing/libfuzzer:libfuzzer_base_wrappers",
-  ]
-  if (is_android) {
-    deps += [ "//base/test:test_support" ]
-  }
-}

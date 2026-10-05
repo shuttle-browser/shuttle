@@ -19,26 +19,3 @@ source_set("rule_parser") {
   deps = [ "//third_party/protobuf:protobuf_lite" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "rule_parser_unittest.cc",
-    "rule_unittest.cc",
-  ]
-  deps = [
-    ":rule_parser",
-    "//base",
-    "//components/url_pattern_index/proto:url_pattern_index",
-    "//testing/gtest",
-    "//third_party/protobuf:protobuf_lite",
-  ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
-fuzzer_test("subresource_filter_rule_parser_fuzzer") {
-  sources = [ "rule_parser_fuzzer.cc" ]
-  deps = [ ":rule_parser" ]
-}

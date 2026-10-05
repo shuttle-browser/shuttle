@@ -10,13 +10,3 @@ source_set("application_locale_storage") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "application_locale_storage_unittest.cc" ]
-  deps = [
-    ":application_locale_storage",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}

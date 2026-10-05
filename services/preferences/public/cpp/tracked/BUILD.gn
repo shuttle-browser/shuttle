@@ -15,15 +15,3 @@ static_library("tracked") {
   deps = [ "//base" ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "mock_validation_delegate.cc",
-    "mock_validation_delegate.h",
-  ]
-
-  deps = [
-    "//base",
-    "//services/preferences/public/mojom",
-  ]
-}

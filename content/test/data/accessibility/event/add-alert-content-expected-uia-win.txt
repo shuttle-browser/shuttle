@@ -1,8 +1,0 @@
-LayoutInvalidated on role=document
-LiveRegionChanged on role=alert, name=Foo
-=== Start Continuation ===
-LayoutInvalidated on role=document
-LiveRegionChanged on role=alert, name=Bar
-=== Start Continuation ===
-LayoutInvalidated on role=document
-LiveRegionChanged on role=alert, name=Baz

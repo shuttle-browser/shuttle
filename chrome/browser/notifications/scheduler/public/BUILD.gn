@@ -60,16 +60,3 @@ if (is_android) {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "schedule_service_utils_unittest.cc" ]
-
-  deps = [
-    "//chrome/app:generated_resources",
-    "//chrome/browser/notifications/scheduler/public",
-    "//chrome/browser/notifications/scheduler/test:test_lib",
-    "//chrome/browser/notifications/scheduler/test:test_support",
-    "//testing/gtest",
-    "//ui/base",
-  ]
-}

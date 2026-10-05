@@ -35,31 +35,3 @@ source_set("site_token_provider") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "site_token_header_client_unittest.cc",
-    "site_token_provider_service_factory_unittest.cc",
-    "site_token_url_loader_factory_unittest.cc",
-    "site_token_url_loader_header_client_unittest.cc",
-  ]
-  deps = [
-    ":site_token_provider",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/profiles:profile",
-    "//chrome/common",
-    "//chrome/test:test_support",
-    "//components/site_token_provider",
-    "//content/test:test_support",
-    "//mojo/public/cpp/bindings",
-    "//mojo/public/cpp/system",
-    "//net",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//services/network/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}

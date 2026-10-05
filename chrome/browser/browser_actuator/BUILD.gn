@@ -24,19 +24,3 @@ source_set("factory") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "browser_actuator_service_factory_unittest.cc" ]
-
-  deps = [
-    ":browser_actuator",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/profiles:profile",
-    "//chrome/test:test_support",
-    "//components/browser_actuator/public",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

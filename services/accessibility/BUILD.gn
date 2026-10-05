@@ -26,32 +26,3 @@ source_set("lib") {
   }
 }
 
-static_library("test_support") {
-  testonly = true
-
-  sources = [
-    "fake_service_client.cc",
-    "fake_service_client.h",
-  ]
-
-  deps = [
-    ":buildflags",
-    ":lib",
-  ]
-}
-
-source_set("tests") {
-  testonly = true
-
-  deps = [
-    ":lib",
-    ":test_support",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//ui/gfx:test_support",
-  ]
-
-  if (!is_chromeos && !is_fuchsia) {
-    sources = [ "browser_accessibility_service_unittest.cc" ]
-  }
-}

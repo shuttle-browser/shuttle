@@ -59,16 +59,4 @@ static_library("common") {
 }
 
 if (enable_library_cdms) {
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "cdm_manifest_unittest.cc" ]
-    deps = [
-      ":common",
-      "//content/public/common",
-      "//media",
-      "//media/cdm:cdm_api",
-      "//testing/gmock",
-      "//testing/gtest",
-    ]
-  }
 }

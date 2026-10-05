@@ -108,37 +108,3 @@ source_set("side_panel_ui_provider") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "mock_side_panel_ui.cc",
-    "mock_side_panel_ui.h",
-  ]
-
-  deps = [
-    ":side_panel",
-    ":side_panel_views_dependent",
-    "//testing/gmock",
-    "//ui/base/unowned_user_data",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "side_panel_entry_key_unittest.cc" ]
-
-  deps = [
-    ":side_panel",
-    "//chrome/browser/ui/actions:actions_headers",
-    "//testing/gtest",
-    "//ui/actions:actions_headers",
-  ]
-
-  if (!is_android) {
-    sources += [ "side_panel_metrics_unittest.cc" ]
-    deps += [
-      ":side_panel_views_dependent",
-      "//base/test:test_support",
-    ]
-  }
-}

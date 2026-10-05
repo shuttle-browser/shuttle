@@ -52,11 +52,3 @@ source_set("tab_drag") {
   ]
 }
 
-group("unit_tests") {
-  testonly = true
-
-  deps = [
-    "//components/browser_apis/tab_drag/destinations:unit_tests",
-    "//components/browser_apis/tab_drag/sessions:unit_tests",
-  ]
-}

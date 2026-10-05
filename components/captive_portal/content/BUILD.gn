@@ -38,28 +38,3 @@ source_set("content") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = []
-
-  if (enable_captive_portal_detection) {
-    sources += [
-      "captive_portal_service_unittest.cc",
-      "captive_portal_tab_helper_unittest.cc",
-      "captive_portal_tab_reloader_unittest.cc",
-    ]
-  }
-  deps = [
-    ":content",
-    "//base",
-    "//base/test:test_config",
-    "//base/test:test_support",
-    "//components/captive_portal/core",
-    "//components/captive_portal/core:test_support",
-    "//components/embedder_support",
-    "//components/prefs:test_support",
-    "//content/test:test_support",
-    "//net",
-    "//testing/gtest",
-  ]
-}

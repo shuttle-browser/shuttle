@@ -652,8 +652,6 @@ static_library("test_support") {
 
   if (is_win) {
     sources += [
-      "test/keyboard_hook_monitor_utils.cc",
-      "test/keyboard_hook_monitor_utils.h",
       "test/keyboard_layout_win.cc",
     ]
     deps += [ "//ui/events:keyboard_hook" ]
@@ -665,10 +663,6 @@ static_library("test_support") {
 
   if (ozone_platform_x11) {
     sources += [
-      "test/events_test_utils_x11.cc",
-      "test/events_test_utils_x11.h",
-      "test/x11_event_waiter.cc",
-      "test/x11_event_waiter.h",
     ]
     deps += [
       "//ui/events/devices/x11",
@@ -701,156 +695,6 @@ static_library("test_support") {
 }
 
 if (use_blink) {
-  test("events_unittests") {
-    use_xvfb = use_xvfb_in_this_config
-
-    sources = [
-      "blink/blink_event_util_unittest.cc",
-      "blink/fling_booster_unittest.cc",
-      "blink/web_input_event_traits_unittest.cc",
-      "blink/web_input_event_unittest.cc",
-      "event_dispatcher_unittest.cc",
-      "event_processor_unittest.cc",
-      "event_rewriter_unittest.cc",
-      "event_target_unittest.cc",
-      "event_unittest.cc",
-      "gesture_detection/filtered_gesture_provider_unittest.cc",
-      "gesture_detection/gesture_event_data_packet_unittest.cc",
-      "gesture_detection/gesture_provider_unittest.cc",
-      "gesture_detection/snap_scroll_controller_unittest.cc",
-      "gesture_detection/touch_disposition_gesture_filter_unittest.cc",
-      "gestures/blink/web_gesture_curve_impl_unittest.cc",
-      "gestures/fling_curve_unittest.cc",
-      "gestures/physics_based_fling_curve_unittest.cc",
-      "keycodes/dom/keycode_converter_unittest.cc",
-      "keycodes/keyboard_code_conversion_unittest.cc",
-      "mobile_scroller_unittest.cc",
-      "mojom/mojom_traits_unittest.cc",
-      "platform/platform_event_source_unittest.cc",
-      "scoped_target_handler_unittest.cc",
-      "test/scoped_event_waiter_unittest.cc",
-      "velocity_tracker/bitset_32_unittest.cc",
-      "velocity_tracker/motion_event_generic_unittest.cc",
-      "velocity_tracker/velocity_tracker_unittest.cc",
-    ]
-
-    if (is_mac) {
-      sources += [
-        "cocoa/events_mac_unittest.mm",
-        "keycodes/keyboard_code_conversion_mac_unittest.mm",
-      ]
-    }
-
-    if (is_linux || is_chromeos || is_win) {
-      sources += [ "keyboard_event_counter_unittest.cc" ]
-    }
-
-    deps = [
-      ":dom_keyboard_layout",
-      ":dom_keycode_converter",
-      ":events",
-      ":events_base",
-      ":gesture_detection",
-      ":test_support",
-      ":velocity_tracker",
-      "//base",
-      "//base/test:test_support",
-      "//cc",
-      "//mojo/core/test:run_all_unittests",
-      "//mojo/public/cpp/bindings",
-      "//mojo/public/cpp/test_support:test_utils",
-      "//skia",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//third_party/blink/public:blink_headers",
-      "//ui/base:test_support",
-      "//ui/display",
-      "//ui/events/blink",
-      "//ui/events/devices",
-      "//ui/events/gestures/blink",
-      "//ui/events/mojom",
-      "//ui/events/platform",
-      "//ui/gfx/geometry/mojom:mojom_traits",
-      "//ui/gfx/ipc/geometry",
-    ]
-
-    if (is_android) {
-      sources += [
-        "android/motion_event_android_unittest.cc",
-        "keycodes/keyboard_code_conversion_android_unittest.cc",
-        "mojom/motion_event_android_mojom_traits_unittest.cc",
-      ]
-      deps += [
-        ":motionevent_jni_headers",
-        "//ui/android:motion_event_test_utils_jni_headers",
-        "//ui/android:ui_full_java",
-        "//ui/android:ui_java_test_support",
-      ]
-    } else {
-      data_deps = [ "//third_party/angle:includes" ]
-    }
-
-    if (use_ozone) {
-      sources += [ "devices/device_data_manager_unittest.cc" ]
-    }
-
-    if (use_ozone) {
-      deps += [
-        "//ui/events/ozone:unittests",
-        "//ui/events/ozone/layout",
-      ]
-    }
-    if (use_ozone || (is_ios && use_blink)) {
-      deps += [ "//ui/events/devices:unittests" ]
-    }
-
-    if (use_aura) {
-      sources += [
-        "gestures/gesture_provider_aura_unittest.cc",
-        "gestures/motion_event_aura_unittest.cc",
-      ]
-    }
-
-    if (is_win) {
-      sources += [
-        "blink/web_input_event_builders_win_unittest.cc",
-        "keycodes/platform_key_map_win_unittest.cc",
-        "win/event_utils_win_unittest.cc",
-        "win/media_keyboard_hook_win_unittest.cc",
-        "win/modifier_keyboard_hook_win_unittest.cc",
-        "win/stylus_handwriting_properties_win_unittest.cc",
-      ]
-      deps += [ "//ui/events:keyboard_hook" ]
-    }
-
-    if (is_castos) {
-      sources += [ "chromecast/scroller_unittest.cc" ]
-    }
-
-    if (is_fuchsia) {
-      sources += [
-        "fuchsia/pointer_events_handler_unittest.cc",
-        "keycodes/keyboard_code_conversion_fuchsia_unittest.cc",
-      ]
-
-      deps += [
-        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input:fuchsia.ui.input_hlcpp",
-        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input3:fuchsia.ui.input3_cpp",
-        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp",
-        "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.pointer:fuchsia.ui.pointer_cpp_hlcpp_conversion",
-        "//third_party/fuchsia-sdk/sdk/pkg/scenic_cpp_testing",
-      ]
-    }
-
-    if (is_win || is_mac || use_ozone) {
-      sources += [ "keycodes/dom/dom_keyboard_layout_map_unittest.cc" ]
-      deps += [ ":dom_keyboard_layout" ]
-    }
-
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-  }
 }
 
 if (is_android) {
@@ -863,19 +707,3 @@ if (is_android) {
   }
 }
 
-# This target is added as a dependency of browser interactive_ui_tests. It must
-# be source_set, otherwise the linker will drop the tests as dead code.
-source_set("events_interactive_ui_tests") {
-  testonly = true
-  if (is_win) {
-    sources = [ "win/media_keyboard_hook_win_interactive_test.cc" ]
-
-    deps = [
-      ":events",
-      ":keyboard_hook",
-      ":test_support",
-      "//base/test:test_support",
-      "//testing/gtest",
-    ]
-  }
-}

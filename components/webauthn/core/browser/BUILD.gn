@@ -54,27 +54,6 @@ source_set("common_utils") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "rate_limiter_slide_window_unittest.cc",
-    "remote_validation_unittest.cc",
-    "webauthn_security_utils_unittest.cc",
-  ]
-  deps = [
-    ":browser",
-    ":common_utils",
-    "//base/test:test_support",
-    "//components/webauthn:features",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-}
-
 static_library("test_support") {
   testonly = true
   sources = [

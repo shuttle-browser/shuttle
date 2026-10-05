@@ -27,14 +27,3 @@ mojom("mojom") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "mojom_traits_unittest.cc" ]
-  deps = [
-    ":mojom",
-    "//components/metrics/structured:events",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

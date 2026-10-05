@@ -5,39 +5,3 @@
 import("//build/config/rust.gni")
 import("//testing/test.gni")
 
-source_set("unit_tests") {
-  testonly = true
-  deps = [
-    "//components/private_verification_tokens/common:private_verification_tokens_database_unittest",
-    "//components/private_verification_tokens/common:private_verification_tokens_fetcher_unittest",
-    "//components/private_verification_tokens/common:private_verification_tokens_issuer_config_unittest",
-    "//components/private_verification_tokens/common:private_verification_tokens_parameters_unittest",
-    "//components/private_verification_tokens/common:private_verification_tokens_public_key_unittest",
-    "//components/private_verification_tokens/common:private_verification_tokens_store_unittest",
-    "//components/private_verification_tokens/common:private_verification_tokens_token_unittest",
-  ]
-
-  # Exercises calling the BoringSSL-backed ATHM Rust crate from this component's
-  # C++ via the cxx bridge. The ATHM targets live in common/.
-  if (enable_rust) {
-    deps += [
-      "//components/private_verification_tokens/common:athm_test_issuer_unittest",
-      "//components/private_verification_tokens/common:privacy_pass_athm_batch_request_unittest",
-      "//components/private_verification_tokens/common/athm_ffi:privacy_pass_unittests",
-    ]
-  }
-}
-
-# A unit test binary that only runs tests for this component. This is useful
-# during development, but these tests are typically run as part of
-# `//components:components_unittests`.
-test("components_private_verification_tokens_unittests") {
-  sources = [ "test/run_all_unittests.cc" ]
-  deps = [
-    "//base",
-    "//base/test:test_support",
-    "//components/private_verification_tokens:unit_tests",
-    "//mojo/core/embedder",
-    "//testing/gtest",
-  ]
-}

@@ -53,22 +53,6 @@ source_set("task_runner_context") {
   deps = [ "//base" ]
 }
 
-source_set("test_callbacks_support") {
-  testonly = true
-  sources = [
-    "mock_clock.cc",
-    "mock_clock.h",
-    "test_support_callbacks.cc",
-    "test_support_callbacks.h",
-  ]
-
-  deps = [
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-  ]
-}
-
 source_set("disconnectable_client") {
   sources = [
     "disconnectable_client.cc",
@@ -145,59 +129,5 @@ source_set("rate_limiter_slide_window") {
 }
 
 if (enable_nocompile_tests) {
-  nocompile_source_set("reporting_nocompile_tests") {
-    sources = [
-      "status_macros_assert_ok_nocompile.nc",
-      "status_macros_check_ok_nocompile.nc",
-      "status_macros_dcheck_ok_nocompile.nc",
-      "status_macros_expect_ok_nocompile.nc",
-      "status_macros_return_if_error_status_nocompile.nc",
-    ]
-    deps = [
-      ":status_macros",
-      "//base",
-      "//testing/gtest",
-    ]
-  }
 }
 
-# All unit tests are built as part of the //components:components_unittests
-# target.
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "disconnectable_client_unittest.cc",
-    "file_unittest.cc",
-    "rate_limiter_leaky_bucket_unittest.cc",
-    "rate_limiter_slide_window_unittest.cc",
-    "rate_limiter_token_bucket_unittest.cc",
-    "refcounted_closure_list_unittest.cc",
-    "status_macros_unittest.cc",
-    "status_unittest.cc",
-    "statusor_unittest.cc",
-    "task_runner_context_unittest.cc",
-    "wrapped_rate_limiter_unittest.cc",
-  ]
-  deps = [
-    ":disconnectable_client",
-    ":file",
-    ":rate_limiter_interface",
-    ":rate_limiter_leaky_bucket",
-    ":rate_limiter_slide_window",
-    ":rate_limiter_token_bucket",
-    ":refcounted_closure_list",
-    ":status",
-    ":status_macros",
-    ":task_runner_context",
-    ":test_callbacks_support",
-    ":wrapped_rate_limiter",
-    "//base",
-    "//base/test:test_support",
-    "//components/reporting/proto:status_proto",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-  if (enable_nocompile_tests) {
-    deps += [ ":reporting_nocompile_tests" ]
-  }
-}

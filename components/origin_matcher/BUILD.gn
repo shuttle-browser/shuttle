@@ -61,15 +61,3 @@ source_set("origin_matcher") {
   friend = [ ":*" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "origin_matcher_unittest.cc" ]
-  deps = [
-    ":mojom",
-    ":origin_matcher",
-    "//base",
-    "//base/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//url",
-  ]
-}

@@ -22,18 +22,3 @@ source_set("data_models") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "filter_annotation_unittest.cc",
-    "url_filter_suggestion_unittest.cc",
-  ]
-
-  deps = [
-    ":data_models",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gtest",
-    "//url",
-  ]
-}

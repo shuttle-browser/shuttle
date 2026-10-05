@@ -81,40 +81,4 @@ if (chrome_root_store_cert_management_ui) {
     }
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [
-      "client_cert_sources_unittest.cc",
-      "user_cert_sources_unittest.cc",
-    ]
-    deps = [
-      ":certificate_manager",
-      "//base/test:test_support",
-      "//chrome/browser/resources/certificate_manager:mojom",
-      "//chrome/common:constants",
-      "//chrome/test:test_support",
-      "//components/prefs",
-      "//components/server_certificate_database",
-      "//content/test:test_support",
-      "//net",
-      "//net:test_support",
-      "//testing/gtest",
-      "//ui/shell_dialogs:test_support",
-    ]
-    if (use_nss_certs) {
-      sources += [ "client_cert_sources_writable_unittest.cc" ]
-      deps += [
-        "//chrome/browser/net",
-        "//net:test_support",
-      ]
-      if (is_chromeos) {
-        deps += [
-          "//chrome/browser/ash/kcer",
-          "//chrome/browser/ash/login/users:test_support",
-          "//chromeos/ash/components/login/login_state",
-          "//crypto:test_support",
-        ]
-      }
-    }
-  }
 }

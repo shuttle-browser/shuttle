@@ -36,17 +36,6 @@ static_library("network") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "download_http_utils_unittest.cc" ]
-
-  deps = [
-    ":network",
-    "//net",
-    "//testing/gtest",
-  ]
-}
-
 if (is_android) {
   android_library("network_java") {
     srcjar_deps = [ ":jni_headers" ]

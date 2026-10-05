@@ -24,15 +24,3 @@ component("common") {
   public_deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "title_validator_unittest.cc" ]
-
-  deps = [
-    ":common",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

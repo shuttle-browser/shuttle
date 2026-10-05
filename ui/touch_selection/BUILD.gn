@@ -70,50 +70,6 @@ component("touch_selection") {
   }
 }
 
-static_library("test_support") {
-  testonly = true
-
-  sources = [
-    "touch_selection_controller_test_api.cc",
-    "touch_selection_controller_test_api.h",
-  ]
-
-  deps = [
-    ":touch_selection",
-    "//base",
-  ]
-}
-
-test("ui_touch_selection_unittests") {
-  use_xvfb = use_xvfb_in_this_config
-
-  sources = [
-    "longpress_drag_selector_unittest.cc",
-    "touch_handle_unittest.cc",
-    "touch_selection_controller_unittest.cc",
-  ]
-
-  deps = [
-    ":test_support",
-    ":touch_selection",
-    "//base/test:run_all_unittests",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base",
-    "//ui/events:test_support",
-    "//ui/gfx",
-    "//ui/gfx:test_support",
-  ]
-
-  data_deps = [ "//third_party/angle:includes" ]
-
-  if (use_aura) {
-    deps += [ "//ui/compositor" ]
-
-    sources += [ "touch_selection_magnifier_aura_unittest.cc" ]
-  }
-}
-
 if (is_android) {
   java_cpp_enum("ui_touch_selection_enums_srcjar") {
     sources = [

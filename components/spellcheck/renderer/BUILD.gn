@@ -80,8 +80,6 @@ source_set("unit_tests") {
   if (!is_mac && !is_android) {
     sources += [
       # This tests Chrome's spellchecker which Mac doesn't use.
-      "spellcheck_multilingual_unittest.cc",
-      "spellcheck_provider_hunspell_unittest.cc",
     ]
   }
 

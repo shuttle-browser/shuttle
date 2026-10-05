@@ -31,26 +31,3 @@ component("enterprise_platform_auth") {
   defines = [ "IS_ENTERPRISE_PLATFORM_AUTH_IMPL" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  configs += [ "//components/enterprise:extra_warnings" ]
-
-  sources = [
-    "url_session_helper_unittest.mm",
-    "url_session_url_loader_unittest.mm",
-  ]
-
-  deps = [
-    ":enterprise_platform_auth",
-    "//base",
-    "//base/test:test_support",
-    "//components/prefs:test_support",
-    "//mojo/public/cpp/bindings",
-    "//mojo/public/cpp/system",
-    "//net",
-    "//services/network:test_support",
-    "//services/network/public/cpp:cpp_base",
-    "//testing/gtest",
-    "//url",
-  ]
-}

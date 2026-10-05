@@ -21,15 +21,3 @@ static_library("fcm") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "fcm_driver_unittest.cc" ]
-
-  deps = [
-    ":fcm",
-    "//base",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

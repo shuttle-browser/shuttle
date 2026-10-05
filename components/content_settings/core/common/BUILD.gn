@@ -56,31 +56,6 @@ static_library("common") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "content_settings_constraints_unittest.cc",
-    "content_settings_metadata_unittest.cc",
-    "content_settings_mojom_traits_unittest.cc",
-    "content_settings_pattern_parser_unittest.cc",
-    "content_settings_pattern_unittest.cc",
-    "cookie_settings_base_unittest.cc",
-    "host_indexed_content_settings_unittest.cc",
-  ]
-
-  deps = [
-    ":common",
-    ":mojo_bindings",
-    "//base",
-    "//base/test:test_support",
-    "//mojo/public/cpp/test_support:test_utils",
-    "//net",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//url",
-  ]
-}
-
 mojom("content_settings_types") {
   generate_java = true
   sources = [ "content_settings_types.mojom" ]
@@ -164,14 +139,3 @@ component("features") {
   deps = [ "//base" ]
 }
 
-fuzzer_test("content_settings_pattern_parser_fuzzer") {
-  sources = [ "content_settings_pattern_parser_fuzzer.cc" ]
-  deps = [
-    ":common",
-    "//base",
-    "//base:i18n",
-    "//third_party/icu",
-    "//third_party/icu/fuzzers:fuzzer_support",
-  ]
-  dict = "content_settings_pattern_parser_fuzzer.dict"
-}

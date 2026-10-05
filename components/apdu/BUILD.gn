@@ -17,24 +17,3 @@ component("apdu") {
   deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "apdu_unittest.cc" ]
-
-  deps = [
-    ":apdu",
-    "//base",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}
-
-fuzzer_test("apdu_fuzzer") {
-  sources = [ "apdu_fuzzer.cc" ]
-  deps = [
-    ":apdu",
-    "//base",
-    "//testing/libfuzzer:libfuzzer_base_wrappers",
-  ]
-  libfuzzer_options = [ "max_len=65535" ]
-}

@@ -1,3 +1,0 @@
-include_rules = [
-  "+components/multistep_filter/core",
-]

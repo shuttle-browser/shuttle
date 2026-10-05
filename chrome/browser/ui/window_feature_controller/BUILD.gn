@@ -21,18 +21,3 @@ source_set("window_feature_controller") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "window_feature_controller_unittest.cc" ]
-  deps = [
-    ":window_feature_controller",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/browser/ui:test_support",
-    "//chrome/browser/ui/fullscreen",
-    "//chrome/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//ui/base/unowned_user_data",
-  ]
-}

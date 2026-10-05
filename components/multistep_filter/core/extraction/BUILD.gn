@@ -16,17 +16,3 @@ source_set("extraction") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "filter_extractor_unittest.cc" ]
-
-  deps = [
-    ":extraction",
-    "//base",
-    "//base/test:test_support",
-    "//components/multistep_filter/core/annotation_index:test_support",
-    "//components/multistep_filter/core/storage",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

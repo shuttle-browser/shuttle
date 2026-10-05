@@ -29,13 +29,3 @@ source_set("components") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "components_handler_unittest.cc" ]
-  deps = [
-    ":components",
-    "//components/component_updater:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

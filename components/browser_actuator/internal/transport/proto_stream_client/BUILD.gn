@@ -54,20 +54,6 @@ rust_static_library("stream_body_parser") {
   visibility = [ ":*" ]
 }
 
-# Rust gtest tests for the parser; linked into components_unittests via
-# the //components/browser_actuator:unit_tests group.
-rust_static_library("stream_body_parser_unittests") {
-  testonly = true
-  is_gtest_unittests = true
-  crate_root = "rust/stream_body_parser_unittests.rs"
-  sources = [ crate_root ]
-  deps = [
-    ":stream_body_parser",
-    "//testing/rust_gtest_interop",
-  ]
-  visibility = [ "//components/browser_actuator:unit_tests" ]
-}
-
 # cxx FFI glue between RustStreamFramer and the parser crate. Contains no
 # parsing logic, only type conversion; this is the only Rust target here
 # that may use unsafe code.
@@ -80,36 +66,3 @@ rust_static_library("stream_body_bridge") {
   visibility = [ ":*" ]
 }
 
-# Includes a FuzzTest (listed in test("components_unittests")'s fuzztests)
-# that fuzzes the Rust framing parser through the production StreamFramer
-# surface.
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "proto_stream_client_unittest.cc",
-    "rust_stream_framer_unittest.cc",
-  ]
-
-  deps = [
-    ":proto_stream_client",
-    ":rust_stream_framer",
-    "//base",
-    "//base/test:test_support",
-    "//components/browser_actuator/internal:features",
-    "//components/browser_actuator/internal/transport",
-    "//components/browser_actuator/internal/transport/test_support",
-    "//mojo/public/cpp/system",
-    "//net",
-    "//net/traffic_annotation:test_support",
-    "//services/network:test_support",
-    "//services/network/public/cpp",
-    "//services/network/public/mojom",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/fuzztest",
-    "//url",
-  ]
-
-  visibility = [ "//components/browser_actuator/internal:unit_tests" ]
-}

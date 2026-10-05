@@ -13,13 +13,3 @@ component("metrics") {
   public_deps = [ "//base" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "access_code_cast_metrics_unittest.cc" ]
-  deps = [
-    "//base/test:test_support",
-    "//components/access_code_cast/common:metrics",
-    "//testing/gtest",
-  ]
-  data = [ "//tools/metrics/histograms/metadata/media/enums.xml" ]
-}

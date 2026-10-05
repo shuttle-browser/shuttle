@@ -92,39 +92,6 @@ if (is_chromeos) {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-
-  sources = [
-    "intent_test_util.cc",
-    "intent_test_util.h",
-    "stub_icon_loader.cc",
-    "stub_icon_loader.h",
-  ]
-
-  deps = [
-    ":app_types",
-    ":icon_loader",
-    ":intents",
-    "//skia",
-    "//third_party/abseil-cpp:absl",
-    "//ui/gfx",
-  ]
-
-  public_deps = []
-
-  if (is_chromeos) {
-    sources += [
-      "app_instance_waiter.cc",
-      "app_instance_waiter.h",
-    ]
-    public_deps += [
-      ":instance_update",
-      "//base",
-    ]
-  }
-}
-
 # The following targets are used for internal code organization, and are not
 # exposed publicly. Clients should depend on "//components/services/app_service"
 # instead of individual targets. New targets added below should also be added to
@@ -326,51 +293,3 @@ source_set("app_shortcut_image") {
   visibility = [ "//components/services/app_service/*" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "app_capability_access_cache_unittest.cc",
-    "app_capability_access_cache_wrapper_unittest.cc",
-    "app_registry_cache_unittest.cc",
-    "app_registry_cache_wrapper_unittest.cc",
-    "app_unittest.cc",
-    "app_update_unittest.cc",
-    "capability_access_update_unittest.cc",
-    "icon_cache_unittest.cc",
-    "icon_coalescer_unittest.cc",
-    "intent_filter_util_unittest.cc",
-    "intent_util_unittest.cc",
-    "package_id_unittest.cc",
-    "preferred_apps_converter_unittest.cc",
-    "preferred_apps_list_unittest.cc",
-  ]
-
-  deps = [
-    ":app_types",
-    ":app_update",
-    ":icon_loader",
-    ":intents",
-    ":preferred_apps",
-    ":test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-
-  if (is_chromeos) {
-    sources += [
-      "icon_types_unittest.cc",
-      "instance_registry_unittest.cc",
-      "instance_unittest.cc",
-      "instance_update_unittest.cc",
-      "permission_unittest.cc",
-      "run_on_os_login_types_unittest.cc",
-    ]
-
-    deps += [
-      ":instance_update",
-      "//chrome/test:test_support",
-      "//components/services/app_service/public/cpp/shortcut:unit_tests",
-    ]
-  }
-}

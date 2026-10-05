@@ -8,24 +8,11 @@ import("//build/config/ui.gni")
 import("//chrome/test/fuzzing/in_process_fuzzer.gni")
 import("//testing/libfuzzer/research/domatolpm/domatolpm.gni")
 
-# This target exists to reference other test executables to bring these files
-# into the build.
-group("test") {
-  testonly = true
-  deps = [
-    "mojo_js_fuzzing:test",
-    "renderer_fuzzing:test",
-    "webidl_fuzzing:test",
-  ]
-}
-
 # TODO(crbug.com/446587184): Enable in_process_fuzzer_runner on Android.
 if (fuzzing_engine_supports_custom_main && !is_android) {
   static_library("in_process_fuzzer_runner") {
     testonly = true
     sources = [
-      "in_process_fuzzer.cc",
-      "in_process_fuzzer.h",
     ]
     deps = [
       ":in_process_fuzzer_buildflags",
@@ -58,18 +45,18 @@ if (fuzzing_engine_supports_custom_main && !is_android) {
 
   source_set("in_process_proto_fuzzer_runner") {
     testonly = true
-    sources = [ "in_process_proto_fuzzer.h" ]
+    sources = []
     public_deps = [ ":in_process_fuzzer_runner" ]
   }
 }
 
 if (!is_android) {
   in_process_fuzzer("html_in_process_fuzzer") {
-    sources = [ "html_in_process_fuzzer.cc" ]
+    sources = []
     dict = "html_in_process_fuzzer.dictionary"
   }
   in_process_fuzzer("js_in_process_fuzzer") {
-    sources = [ "js_in_process_fuzzer.cc" ]
+    sources = []
     deps = [
       ":in_process_fuzzer_buildflags",
       "//chrome/browser",
@@ -85,7 +72,7 @@ if (!is_android) {
     is_fuzzilli_compatible = true
   }
   in_process_proto_fuzzer("page_load_in_process_fuzzer") {
-    sources = [ "page_load_in_process_fuzzer.cc" ]
+    sources = []
     proto_source = "page_load_in_process_fuzzer.proto"
     seed_corpus_sources = [
       "page_load_in_process_fuzzer_seed_corpus/cross_origin.textproto",
@@ -95,7 +82,7 @@ if (!is_android) {
     testcase_proto_kind = "test.fuzzing.page_load_fuzzing.FuzzCase"
   }
   in_process_proto_fuzzer("speech_synthesis_in_process_fuzzer") {
-    sources = [ "speech_synthesis_in_process_fuzzer.cc" ]
+    sources = []
     proto_source = "speech_synthesis_in_process_fuzzer.proto"
   }
 
@@ -131,16 +118,8 @@ if (!is_android) {
   # We cannot disable instrumenting protobuf generated files on MSAN builds,
   # which makes the build time explode and fail the CQ.
   if (!is_msan) {
-    domatolpm_fuzzer("domato_html_fuzzer_grammar") {
-      template_file = "//third_party/domato/src/template.html"
-      grammars = [
-        "jsfuzzer://chrome/test/fuzzing/domato_html_in_process_fuzzer_grammar/js.txt",
-        "cssfuzzer://third_party/domato/src/rules/css.txt",
-        "htmlfuzzer://chrome/test/fuzzing/domato_html_in_process_fuzzer_grammar/html.txt",
-      ]
-    }
     in_process_fuzzer("domato_html_in_process_fuzzer") {
-      sources = [ "domato_html_in_process_fuzzer.cc" ]
+      sources = []
 
       deps = [
         ":domato_html_fuzzer_grammar",
@@ -149,13 +128,8 @@ if (!is_android) {
       ]
     }
 
-    domatolpm_fuzzer("geolocation_element_css_fuzzer_grammar") {
-      template_file = "//chrome/test/fuzzing/geolocation_element_css_fuzzer_data/geolocation_element_css_fuzzer.html"
-      grammars = [ "geocssfuzzer://third_party/domato/src/rules/css.txt" ]
-    }
-
     in_process_fuzzer("geolocation_element_css_fuzzer") {
-      sources = [ "geolocation_element_css_fuzzer.cc" ]
+      sources = []
       deps = [
         ":geolocation_element_css_fuzzer_grammar",
         "//chrome/test/fuzzing:in_process_fuzzer_runner",
@@ -167,15 +141,8 @@ if (!is_android) {
     }
   }
 
-  domatolpm_fuzzer("webcodecs_fuzzer_grammar") {
-    template_file = "//chrome/test/fuzzing/webcodecs_in_process_fuzzer_grammar/template.html"
-    grammars = [ "webcodecs_fuzzer://chrome/test/fuzzing/webcodecs_in_process_fuzzer_grammar/webcodecs.txt" ]
-    inputs = [
-      "//chrome/test/fuzzing/webcodecs_in_process_fuzzer_grammar/helpers.txt",
-    ]
-  }
   in_process_fuzzer("webcodecs_in_process_fuzzer") {
-    sources = [ "webcodecs_in_process_fuzzer.cc" ]
+    sources = []
 
     deps = [
       ":webcodecs_fuzzer_grammar",
@@ -185,18 +152,13 @@ if (!is_android) {
     ]
   }
 
-  domatolpm_fuzzer("notification_service_fuzzer_grammar") {
-    template_file = "//chrome/test/fuzzing/notification_service_in_process_fuzzer_grammar/template.js"
-    grammars = [ "notification_service_fuzzer://chrome/test/fuzzing/notification_service_in_process_fuzzer_grammar/notification_service.txt" ]
-  }
-
   copy("notification_service_in_process_fuzzer_html") {
     sources = [ "//chrome/test/fuzzing/notification_service_in_process_fuzzer_grammar/notification_service_in_process_fuzzer.html" ]
     outputs = [ "$root_out_dir/notification_service_in_process_fuzzer.html" ]
   }
 
   in_process_fuzzer("notification_service_in_process_fuzzer") {
-    sources = [ "notification_service_in_process_fuzzer.cc" ]
+    sources = []
 
     deps = [
       ":notification_service_fuzzer_grammar",
@@ -211,7 +173,7 @@ if (!is_android) {
 
   if (is_linux) {
     in_process_proto_fuzzer("atspi_in_process_fuzzer") {
-      sources = [ "atspi_in_process_fuzzer.cc" ]
+      sources = []
       libfuzzer_options = [
         "max_len=4096",
         "timeout=90",

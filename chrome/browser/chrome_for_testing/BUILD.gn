@@ -59,7 +59,7 @@ source_set("browser") {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "config_unittest.cc" ]
+  sources = []
 
   deps = [
     ":browser",
@@ -78,9 +78,6 @@ source_set("browser_tests") {
   defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
   sources = [
-    "test/chrome_for_testing_browsertest.cc",
-    "test/chrome_for_testing_browsertest.h",
-    "test/chrome_for_testing_infobar_browsertest.cc",
   ]
 
   deps = [

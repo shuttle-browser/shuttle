@@ -14,7 +14,6 @@ if (is_win) {
     testonly = true
 
     sources = [
-      "main.cc",
       "test_installer.rc",
     ]
     deps = [
@@ -23,24 +22,6 @@ if (is_win) {
       "//chrome/updater:constants_test",
       "//chrome/updater/win/installer:lib",
     ]
-  }
-
-  copy("test_installer") {
-    testonly = true
-
-    sources = [
-      "$root_build_dir/test_meta_installer.exe",
-      "//chrome/tools/build/win/resedit.py",
-      "//chrome/updater/win/signing/sign.py",
-      "//third_party/lzma_sdk/bin/win64/7za.exe",
-      "create_test_installer_gn_wrapper.py",
-      "create_test_standalone_msi_installer_gn_wrapper.py",
-      "embed_install_scripts.py",
-    ]
-
-    deps = [ ":test_meta_installer" ]
-
-    outputs = [ "$root_build_dir/test_installer/{{source_file_part}}" ]
   }
 
   if (is_asan) {
@@ -251,28 +232,7 @@ if (is_win) {
     }
   }
 
-  group("app_installers") {
-    testonly = true
-
-    data_deps = [
-      ":test_app2_installer",
-      ":test_app2_installer_crx",
-      ":test_installer",
-      ":test_msi_installer1.0.0.0",
-      ":test_msi_installer_crx",
-    ]
-
-    # The resource editing script only works on Windows.
-    if (host_os == "win" && host_cpu == target_cpu) {
-      data_deps += [ ":test_standalone_msi_installer" ]
-    }
-  }
 } else {
-  copy("test_installer") {
-    testonly = true
-    sources = [ "test_app_setup.sh" ]
-    outputs = [ "$root_build_dir/test_installer/{{source_file_part}}" ]
-  }
 
   template("test_app_installer") {
     testonly = true
@@ -347,17 +307,4 @@ if (is_win) {
     script = "test_app_setup.sh"
   }
 
-  group("app_installers") {
-    testonly = true
-
-    data_deps = [
-      ":test_installer",
-      ":test_installer_test1_v1",
-      ":test_installer_test1_v2",
-      ":test_installer_test2_v1",
-      ":test_installer_test2_v2",
-      ":test_installer_test3_v1",
-      ":test_installer_test3_v2",
-    ]
-  }
 }

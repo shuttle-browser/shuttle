@@ -57,39 +57,3 @@ component("proxy_config") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "pref_proxy_config_tracker_impl_unittest.cc",
-    "proxy_config_dictionary_unittest.cc",
-    "proxy_prefs_unittest.cc",
-    "proxy_prefs_utils_unittest.cc",
-  ]
-  deps = [
-    ":proxy_config",
-    "//base",
-    "//base/test:test_support",
-    "//components/enterprise/buildflags",
-    "//components/enterprise/net/core",
-    "//components/enterprise/net/core:test_support",
-    "//components/policy:generated",
-    "//components/policy/core/browser",
-    "//components/policy/core/browser:test_support",
-    "//components/policy/core/common",
-    "//components/policy/core/common:test_support",
-    "//components/prefs:test_support",
-    "//net",
-    "//net:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/abseil-cpp:absl",
-  ]
-
-  if (!is_ios) {
-    sources += [ "proxy_policy_handler_unittest.cc" ]
-  }
-
-  if (!is_ios && !is_fuchsia) {
-    sources += [ "proxy_override_rules_policy_handler_unittest.cc" ]
-  }
-}

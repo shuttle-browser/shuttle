@@ -46,29 +46,3 @@ if (is_android) {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-
-  sources = [
-    "mock_task_manager.cc",
-    "mock_task_manager.h",
-  ]
-
-  public_deps = [
-    ":public",
-    "//testing/gmock",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "task_manager_unittest.cc" ]
-
-  deps = [
-    ":public",
-    "//base/test:test_support",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

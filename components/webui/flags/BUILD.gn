@@ -46,32 +46,3 @@ static_library("switches") {
   ]
 }
 
-static_library("test_support") {
-  testonly = true
-  sources = [
-    "flags_test_helpers.cc",
-    "flags_test_helpers.h",
-  ]
-
-  deps = [
-    ":flags",
-    "//base",
-    "//testing/gtest",
-  ]
-}
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "flags_state_unittest.cc" ]
-
-  deps = [
-    ":flags",
-    ":switches",
-    "//base",
-    "//base/test:test_support",
-    "//components/prefs:test_support",
-    "//components/strings",
-    "//components/variations",
-    "//testing/gtest",
-  ]
-}

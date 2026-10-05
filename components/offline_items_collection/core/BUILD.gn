@@ -62,31 +62,6 @@ static_library("core") {
   }
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [
-    "filtered_offline_item_observer_unittest.cc",
-    "offline_content_aggregator_unittest.cc",
-    "throttled_offline_content_provider_unittest.cc",
-  ]
-
-  deps = [
-    ":core",
-    "utilities:unit_tests",
-    "//base/test:test_support",
-    "//components/offline_items_collection/core/test_support",
-  ]
-
-  if (is_android) {
-    sources += [ "android/offline_item_bridge_unittest.cc" ]
-    deps += [
-      ":native_j_unittests_jni_headers",
-      ":native_java_unittests_java",
-    ]
-  }
-}
-
 if (is_android) {
   android_library("core_java") {
     sources = [

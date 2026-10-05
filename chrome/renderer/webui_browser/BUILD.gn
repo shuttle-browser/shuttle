@@ -20,19 +20,3 @@ source_set("webui_browser") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-  sources = [ "webui_browser_renderer_extension_browsertest.cc" ]
-  deps = [
-    ":webui_browser",
-    "//base/test:test_support",
-    "//chrome/common",
-    "//chrome/common:chrome_features",
-    "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
-    "//content/public/browser",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

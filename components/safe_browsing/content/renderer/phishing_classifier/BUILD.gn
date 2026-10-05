@@ -61,34 +61,7 @@ if (safe_browsing_mode != 0) {
     ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources = [ "murmurhash3_util_unittest.cc" ]
-    deps = [
-      ":phishing_classifier",
-      "//base",
-      "//testing/gtest",
-    ]
-  }
-
   if (use_fuzzing_engine_with_lpm) {
-    fuzzer_test("client_side_phishing_fuzzer") {
-      sources = [ "client_side_phishing_fuzzer.cc" ]
-      deps = [
-        ":client_side_phishing_fuzzer_proto",
-        ":client_side_phishing_fuzzer_proto_fuzzable",
-        ":phishing_classifier",
-        "//base",
-        "//components/safe_browsing/core/common/fbs:client_model",
-        "//components/safe_browsing/core/common/phishing_classifier",
-        "//components/safe_browsing/core/common/proto:client_model_proto",
-        "//skia",
-        "//third_party/libprotobuf-mutator",
-      ]
-
-      # TODO(crbug.com/505034799): Migrate to FUZZ_TEST.
-      is_fuzztest_compatible = false
-    }
 
     fuzzable_proto_library("client_side_phishing_fuzzer_proto") {
       proto_in_dir = "//"

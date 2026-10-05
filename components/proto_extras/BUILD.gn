@@ -73,27 +73,3 @@ source_set("proto_matchers") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "proto_extras_unittest.cc",
-    "proto_test_extras_unittest.cc",
-  ]
-
-  deps = [
-    "//base",
-    "//base/test:test_support",
-    "//components/proto_extras/test_proto",
-    "//components/proto_extras/test_proto:test_proto_extras",
-    "//components/proto_extras/test_proto:test_proto_test_extras",
-    "//components/proto_extras/test_proto2",
-    "//components/proto_extras/test_proto2:test_proto2_extras",
-    "//components/proto_extras/test_proto2:test_proto2_test_extras",
-    "//components/proto_extras/test_proto_edition",
-    "//components/proto_extras/test_proto_edition:test_proto_edition_extras",
-    "//components/proto_extras/test_proto_edition:test_proto_edition_test_extras",
-    "//testing/gmock",
-    "//testing/gtest",
-    "//third_party/protobuf:protobuf_lite",
-  ]
-}

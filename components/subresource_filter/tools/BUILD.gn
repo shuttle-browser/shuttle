@@ -20,38 +20,7 @@ static_library("tools_lib") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "filter_tool_unittest.cc",
-    "indexing_tool_unittest.cc",
-  ]
-
-  deps = [
-    ":tools_lib",
-    "../core/common",
-    "../core/common:test_support",
-    "rule_parser:unit_tests",
-    "ruleset_converter:unit_tests",
-    "//base",
-    "//base/test:test_support",
-    "//components/url_pattern_index:test_support",
-    "//testing/gtest",
-    "//third_party/protobuf:protobuf_lite",
-    "//url",
-  ]
-}
-
 if (use_blink) {
-  executable("subresource_filter_tool") {
-    # Production code should not depend on this.
-    testonly = true
-    sources = [ "filter_tool_main.cc" ]
-    deps = [
-      ":tools_lib",
-      "//base",
-    ]
-  }
 
   executable("subresource_indexing_tool") {
     # Production code should not depend on this.
@@ -70,16 +39,6 @@ if (use_blink) {
       "ruleset_converter:support",
       "//base",
       "//third_party/protobuf:protobuf_lite",
-    ]
-  }
-
-  group("subresource_filter_tools") {
-    # Production code should not depend on this.
-    testonly = true
-    deps = [
-      ":ruleset_converter",
-      ":subresource_filter_tool",
-      ":subresource_indexing_tool",
     ]
   }
 

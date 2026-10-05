@@ -1,1 +1,0 @@
-AXSelectedTextChanged on AXTextField AXDescription='Test Textfield' AXTitle='Test Textfield' AXValue='Hello World'
