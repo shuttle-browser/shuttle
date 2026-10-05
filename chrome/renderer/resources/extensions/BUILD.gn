@@ -28,7 +28,6 @@ generate_grd("build_grdp") {
     "omnibox_custom_bindings.js",
     "page_action_custom_bindings.js",
     "page_capture_custom_bindings.js",
-    "sync_file_system_custom_bindings.js",
     "system_indicator_custom_bindings.js",
     "tab_capture_custom_bindings.js",
     "tts_custom_bindings.js",

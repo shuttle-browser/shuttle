@@ -20,18 +20,12 @@ struct AnnotatedVisit;
 class HistoryService;
 }  // namespace history
 
-namespace syncer {
-class DeviceInfoSyncService;
-}
-
 namespace visited_url_ranking {
 
 // Fetches URL visit data from the history service.
 class HistoryURLVisitDataFetcher : public URLVisitDataFetcher {
  public:
-  HistoryURLVisitDataFetcher(
-      history::HistoryService* history_service,
-      syncer::DeviceInfoSyncService* device_info_sync_service);
+  explicit HistoryURLVisitDataFetcher(history::HistoryService* history_service);
   HistoryURLVisitDataFetcher(const HistoryURLVisitDataFetcher&) = delete;
   ~HistoryURLVisitDataFetcher() override;
 
@@ -50,8 +44,6 @@ class HistoryURLVisitDataFetcher : public URLVisitDataFetcher {
       std::vector<history::AnnotatedVisit> annotated_visits);
 
   const raw_ptr<history::HistoryService> history_service_;
-
-  const raw_ptr<syncer::DeviceInfoSyncService> device_info_sync_service_;
 
   // The task tracker for the HistoryService callbacks.
   base::CancelableTaskTracker task_tracker_;

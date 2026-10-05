@@ -27,7 +27,6 @@ source_set("tab_groups") {
     "//base",
     "//chrome/browser/extensions",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/tab_list",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
@@ -50,7 +49,6 @@ source_set("tab_groups") {
       "//chrome/browser/ui/tabs:tab_model",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/tabs:tab_strip_model_observer",
-      "//chrome/browser/ui/tabs/saved_tab_groups",
     ]
   }
 

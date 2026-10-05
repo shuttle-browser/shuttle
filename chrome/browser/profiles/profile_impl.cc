@@ -93,7 +93,6 @@
 #include "chrome/browser/reduce_accept_language/reduce_accept_language_factory.h"
 #include "chrome/browser/sessions/exit_type_service.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/ssl/https_first_mode_settings_tracker.h"
 #include "chrome/browser/ssl/stateful_ssl_host_state_delegate_factory.h"
 #include "chrome/browser/startup_data.h"
@@ -101,7 +100,6 @@
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/transition_manager/full_browser_transition_manager.h"
-#include "chrome/browser/ui/signin/dice_migration_service.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/webui/prefs_internals_source.h"
 #include "chrome/browser/updates/announcement_notification/announcement_notification_service.h"
@@ -121,7 +119,6 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "components/background_sync/background_sync_controller_impl.h"
-#include "components/browser_sync/sync_to_signin_migration.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/pref_names.h"
@@ -1144,30 +1141,9 @@ void ProfileImpl::OnLocaleReady(CreateMode create_mode) {
   }
 #endif
 
-  // Run the sync->signin-migration now that PrefService is ready but none of
-  // the services affected by the migration are.
-  // TODO(crbug.com/369297671): Remove one year after launching
-  // kForceMigrateSyncingUserToSignedIn on all //chrome platforms.
+  // Agent Chrome: the sync->signin migration is gone.
   CHECK(GetPrefs());
-  CHECK(!IdentityManagerFactory::GetForProfileIfExists(this));
-  CHECK(!SyncServiceFactory::HasSyncService(this));
-  CHECK(!ProfilePasswordStoreFactory::HasStore(this));
-  CHECK(!AccountPasswordStoreFactory::HasStore(this));
-  CHECK(!ReadingListModelFactory::HasModel(this));
-#if !BUILDFLAG(IS_ANDROID)
-  CHECK(!ThemeServiceFactory::GetForProfileIfExists(this));
-
-  if (create_mode == CreateMode::kAsynchronous) {
-    browser_sync::MaybeMigrateSyncingUserToSignedInAsync(
-        GetPath(), GetPrefs(),
-        base::BindOnce(&ProfileImpl::OnSyncToSigninMigrationMaybeCompleted,
-                       weak_ptr_factory_.GetWeakPtr(), create_mode));
-  } else
-#endif  // !BUILDFLAG(IS_ANDROID)
-  {
-    browser_sync::MaybeMigrateSyncingUserToSignedIn(GetPath(), GetPrefs());
-    OnSyncToSigninMigrationMaybeCompleted(create_mode);
-  }
+  OnSyncToSigninMigrationMaybeCompleted(create_mode);
 }
 
 void ProfileImpl::OnSyncToSigninMigrationMaybeCompleted(

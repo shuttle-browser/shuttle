@@ -45,7 +45,6 @@ class OmniboxTriggeredFeatureService;
 class OnDeviceHeadProvider;
 class OpenTabProvider;
 class SearchProvider;
-class TabGroupProvider;
 class TemplateURLService;
 class VoiceSuggestProvider;
 class ZeroSuggestProvider;
@@ -542,7 +541,6 @@ class AutocompleteController : public AutocompleteProviderListener,
   raw_ptr<VoiceSuggestProvider> voice_suggest_provider_ = nullptr;
   raw_ptr<HistoryFuzzyProvider> history_fuzzy_provider_ = nullptr;
   raw_ptr<OpenTabProvider> open_tab_provider_ = nullptr;
-  raw_ptr<TabGroupProvider> tab_group_provider_ = nullptr;
   raw_ptr<FeaturedSearchProvider> featured_search_provider_ = nullptr;
 
   // A vector of scoring signals annotators for URL suggestions.

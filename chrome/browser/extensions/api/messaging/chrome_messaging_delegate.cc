@@ -9,7 +9,6 @@
 #include "base/check_op.h"
 #include "base/functional/callback.h"
 #include "build/build_config.h"
-#include "chrome/browser/extensions/api/messaging/incognito_connectability.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/prefs/pref_service.h"
@@ -152,9 +151,8 @@ void ChromeMessagingDelegate::QueryIncognitoConnectability(
     content::WebContents* source_contents,
     const GURL& source_url,
     base::OnceCallback<void(bool)> callback) {
-  DCHECK(context->IsOffTheRecord());
-  IncognitoConnectability::Get(context)->Query(
-      target_extension, source_contents, source_url, std::move(callback));
+  // Agent Chrome: no incognito product; never allow incognito connections.
+  std::move(callback).Run(false);
 }
 
 }  // namespace extensions

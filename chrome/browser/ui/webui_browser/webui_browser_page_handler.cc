@@ -25,7 +25,6 @@
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/page_info/page_info_bubble_specification.h"
 #include "chrome/browser/ui/views/page_info/page_info_bubble_view.h"
-#include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/app_menu.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_side_panel_ui.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
@@ -249,9 +248,7 @@ void WebUIBrowserPageHandler::OpenAppMenu() {
 }
 
 void WebUIBrowserPageHandler::OpenProfileMenu() {
-  ProfileMenuCoordinator::From(GetBrowser())
-      ->Show(
-          /*is_source_accelerator=*/false);
+  // Agent Chrome: the profile menu was removed.
 }
 
 void WebUIBrowserPageHandler::LaunchDevToolsForBrowser() {

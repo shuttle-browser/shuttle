@@ -45,7 +45,6 @@
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension_constants.h"
@@ -576,17 +575,11 @@ void BackgroundModeManager::ExecuteCommand(int command_id, int event_flags) {
     case IDC_ABOUT:
       if (bmd) {
         chrome::ShowAboutChrome(bmd->GetBrowserWindow());
-      } else {
-        ProfilePicker::Show(ProfilePicker::Params::ForBackgroundManager(
-            GURL(chrome::kChromeUIHelpURL)));
       }
       break;
     case IDC_TASK_MANAGER:
       if (bmd) {
         chrome::OpenTaskManager(bmd->GetBrowserWindow());
-      } else {
-        ProfilePicker::Show(ProfilePicker::Params::ForBackgroundManager(
-            GURL(ProfilePicker::kTaskManagerUrl)));
       }
       break;
     case IDC_EXIT:
@@ -619,9 +612,6 @@ void BackgroundModeManager::ExecuteCommand(int command_id, int event_flags) {
     default:
       if (bmd) {
         bmd->ExecuteCommand(command_id, event_flags);
-      } else {
-        ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-            ProfilePicker::EntryPoint::kBackgroundModeManager));
       }
       break;
   }

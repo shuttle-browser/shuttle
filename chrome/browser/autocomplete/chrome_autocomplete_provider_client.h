@@ -15,7 +15,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
 #include "components/omnibox/browser/autocomplete_provider_client.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/android/autocomplete/tab_matcher_android.h"
 #else
@@ -31,10 +30,6 @@ namespace content {
 class StoragePartition;
 class WebContents;
 }  // namespace content
-
-namespace sync_sessions {
-class SessionSyncService;
-}  // namespace sync_sessions
 
 namespace unified_consent {
 class UrlKeyedDataCollectionConsentHelper;
@@ -97,8 +92,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
       const override;
   OnDeviceTailModelService* GetOnDeviceTailModelService() const override;
   ProviderStateService* GetProviderStateService() const override;
-  tab_groups::TabGroupSyncService* GetTabGroupSyncService() const override;
-  sync_sessions::SessionSyncService* GetSessionSyncService() const override;
 
   bool IsOffTheRecord() const override;
   bool IsIncognitoProfile() const override;

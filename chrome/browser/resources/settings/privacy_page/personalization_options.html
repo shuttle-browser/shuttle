@@ -1,52 +1,9 @@
 <!-- #html_wrapper_imports_start
 // <if expr="not is_chromeos">
-import {ChromeSigninUserChoice} from '/shared/settings/people_page/sync_browser_proxy.js';
 import {RestartType} from '../relaunch_mixin_lit.js';
 // </if>
 #html_wrapper_imports_end -->
 
-<if expr="not is_chromeos">
-    <div id="chromeSigninUserChoiceSetting" class="hr cr-row" role="group"
-        ?hidden="${!this.chromeSigninUserChoiceInfo_?.shouldShowSettings}"
-        aria-label="$i18n{chromeSigninChoiceTitle}">
-      <div id="labelWrapper" class="flex">
-          <div>
-            $i18n{chromeSigninChoiceTitle}
-          </div>
-          <div id="chromeSigninChoiceDescription" class="secondary">
-            ${this.i18n('chromeSigninChoiceDescription',
-                this.chromeSigninUserChoiceInfo_?.signedInEmail || '')}
-          </div>
-      </div>
-      <select id="chromeSigninUserChoiceSelection" class="md-select"
-          @change="${this.onChromeSigninChoiceChange_}">
-          <option selected disabled hidden
-              value="${ChromeSigninUserChoice.NO_CHOICE}">
-            $i18n{chromeSigninChoiceSelectOptionPlaceholder}
-          </option>
-          <option value="${ChromeSigninUserChoice.SIGNIN}">
-            $i18n{chromeSigninChoiceSignin}
-          </option>
-          <option value="${ChromeSigninUserChoice.DO_NOT_SIGNIN}">
-            $i18n{chromeSigninChoiceDoNotSignin}
-          </option>
-          <option value="${ChromeSigninUserChoice.ALWAYS_ASK}">
-            $i18n{chromeSigninChoiceAlwaysAsk}
-          </option>
-      </select>
-    </div>
-    <settings-toggle-button id="signinAllowedToggle"
-        class="hr"
-        ?hidden="${!this.signinAvailable_}"
-        ?disabled="${this.syncFirstSetupInProgress_}"
-        pref-key="signin.allowed_on_next_startup"
-        label="$i18n{signinAllowedTitle}"
-        sub-label="$i18n{signinAllowedDescription}"
-        @settings-boolean-control-change="${
-            this.onSigninAllowedSettingsBooleanControlChange_}"
-        no-set-pref>
-    </settings-toggle-button>
-</if><!-- not chromeos -->
 <if expr="_google_chrome">
 <if expr="is_chromeos">
     <!-- Ash Browser settings show a link to the OS settings instead. -->
@@ -140,12 +97,6 @@ import {RestartType} from '../relaunch_mixin_lit.js';
       </settings-toggle-button>
     ` : ''}
 
-    ${this.showSignoutDialog_ ? html`
-      <settings-signout-dialog .syncStatus="${this.syncStatus}"
-          @close="${this.onSignoutDialogClose_}">
-      </settings-signout-dialog>
-    ` : ''}
-
 <if expr="not is_chromeos">
     <cr-toast id="toast">
       <div>$i18n{restartToApplyChanges}</div>
@@ -156,7 +107,4 @@ import {RestartType} from '../relaunch_mixin_lit.js';
       <relaunch-confirmation-dialog .restartType="${RestartType.RESTART}"
           @close="${this.onRelaunchDialogClose}"></relaunch-confirmation-dialog>
     ` : ''}
-    <cr-toast id="chromeSigninUserChoiceToast" duration="5000">
-      <div>$i18n{chromeSigninChoiceToast}</div>
-    </cr-toast>
 </if>

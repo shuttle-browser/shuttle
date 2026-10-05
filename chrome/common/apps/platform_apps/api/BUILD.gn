@@ -13,11 +13,13 @@ assert(enable_platform_apps)
 # Public Targets
 
 group("api") {
-  public_deps = [
-    ":generated_api_json_strings",
-    ":generated_api_types",
-    "//extensions/buildflags",
-  ]
+  public_deps = [ "//extensions/buildflags" ]
+  if (chrome_apps_api_schema_files != []) {
+    public_deps += [
+      ":generated_api_json_strings",
+      ":generated_api_types",
+    ]
+  }
 }
 
 group("apps_features") {
@@ -30,25 +32,28 @@ group("apps_features") {
 ################################################################################
 # Private Targets
 
-generated_json_strings("generated_api_json_strings") {
-  sources = chrome_apps_api_schema_files
-  bundle_name = "ChromeApps"
-  root_namespace = apps_api_root_namespace
-  deps = [
-    "//base",
-    "//extensions/buildflags",
-  ]
-  visibility = [ ":api" ]
-}
+# Agent Chrome: no Chrome Apps API schemas are left on macOS.
+if (chrome_apps_api_schema_files != []) {
+  generated_json_strings("generated_api_json_strings") {
+    sources = chrome_apps_api_schema_files
+    bundle_name = "ChromeApps"
+    root_namespace = apps_api_root_namespace
+    deps = [
+      "//base",
+      "//extensions/buildflags",
+    ]
+    visibility = [ ":api" ]
+  }
 
-generated_types("generated_api_types") {
-  sources = chrome_apps_api_schema_files
-  root_namespace = apps_api_root_namespace
-  deps = [
-    "//base",
-    "//extensions/buildflags",
-  ]
-  visibility = [ ":api" ]
+  generated_types("generated_api_types") {
+    sources = chrome_apps_api_schema_files
+    root_namespace = apps_api_root_namespace
+    deps = [
+      "//base",
+      "//extensions/buildflags",
+    ]
+    visibility = [ ":api" ]
+  }
 }
 
 json_features("api_features") {

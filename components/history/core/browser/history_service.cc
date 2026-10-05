@@ -190,17 +190,13 @@ class HistoryService::BackendDelegate : public HistoryBackend::Delegate {
 };
 
 HistoryService::HistoryService()
-    : HistoryService(nullptr, nullptr, nullptr, nullptr) {}
+    : HistoryService(nullptr, nullptr) {}
 
 HistoryService::HistoryService(
     std::unique_ptr<HistoryClient> history_client,
-    std::unique_ptr<VisitDelegate> visit_delegate,
-    syncer::DeviceInfoTracker* device_info_tracker,
-    syncer::LocalDeviceInfoProvider* local_device_info_provider)
+    std::unique_ptr<VisitDelegate> visit_delegate)
     : history_client_(std::move(history_client)),
-      visit_delegate_(std::move(visit_delegate)),
-      device_info_tracker_(device_info_tracker),
-      local_device_info_provider_(local_device_info_provider) {}
+      visit_delegate_(std::move(visit_delegate)) {}
 
 HistoryService::~HistoryService() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -453,43 +449,6 @@ void HistoryService::SetCanAddForeignVisitsToSegmentsOnBackend(
       FROM_HERE,
       base::BindOnce(&HistoryBackend::SetCanAddForeignVisitsToSegments,
                      history_backend_, add_foreign_visits));
-}
-
-void HistoryService::OnDeviceInfoChange() {
-  TRACE_EVENT0("browser,startup", "HistoryService::OnDeviceInfoChange");
-  CHECK(device_info_tracker_ != nullptr);
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  SyncDeviceInfoMap sync_device_info;
-
-  for (const syncer::DeviceInfo* device_info :
-       device_info_tracker_->GetAllDeviceInfo()) {
-    sync_device_info[device_info->guid()] = {device_info->os_type(),
-                                             device_info->form_factor()};
-  }
-
-  backend_task_runner_->PostTask(
-      FROM_HERE, base::BindOnce(&HistoryBackend::SetSyncDeviceInfo,
-                                history_backend_, std::move(sync_device_info)));
-}
-
-void HistoryService::SendLocalDeviceOriginatorCacheGuidToBackend() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  CHECK(local_device_info_provider_ != nullptr);
-
-  const syncer::DeviceInfo* local_device_info =
-      local_device_info_provider_->GetLocalDeviceInfo();
-
-  if (!local_device_info) {
-    return;
-  }
-
-  const std::string guid = local_device_info->guid();
-
-  backend_task_runner_->PostTask(
-      FROM_HERE,
-      base::BindOnce(&HistoryBackend::SetLocalDeviceOriginatorCacheGuid,
-                     history_backend_, std::move(guid)));
 }
 
 base::CancelableTaskTracker::TaskId HistoryService::ScheduleDBTask(
@@ -1461,11 +1420,6 @@ void HistoryService::Cleanup() {
   // Clear `backend_task_runner_` to make sure it's not used after Cleanup().
   backend_task_runner_ = nullptr;
 
-  local_device_info_available_subscription_ = {};
-  local_device_info_provider_ = nullptr;
-
-  device_info_tracker_observation_.Reset();
-  device_info_tracker_ = nullptr;
 }
 
 bool HistoryService::Init(
@@ -1516,22 +1470,6 @@ bool HistoryService::Init(
     LOG(ERROR) << "HistoryService::Init() failed by way of "
                   "VisitDelegate::Init failing";
     base::Process::TerminateCurrentProcessImmediately(0);
-  }
-
-  if (device_info_tracker_) {
-    device_info_tracker_observation_.Observe(device_info_tracker_);
-
-    OnDeviceInfoChange();
-  }
-
-  if (local_device_info_provider_) {
-    local_device_info_available_subscription_ =
-        local_device_info_provider_->RegisterOnInitializedCallback(
-            base::BindRepeating(
-                &HistoryService::SendLocalDeviceOriginatorCacheGuidToBackend,
-                weak_ptr_factory_.GetSafeRef()));
-
-    SendLocalDeviceOriginatorCacheGuidToBackend();
   }
 
   if (history_client_) {

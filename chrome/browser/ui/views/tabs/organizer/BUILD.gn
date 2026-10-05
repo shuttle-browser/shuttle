@@ -49,11 +49,9 @@ source_set("impl") {
     "//chrome/browser/ui/tabs",
     "//chrome/browser/ui/tabs:tab_group",
     "//chrome/browser/ui/tabs/organizer:impl",
-    "//chrome/browser/ui/tabs/saved_tab_groups",
     "//chrome/browser/ui/views/tabs/shared",
     "//chrome/browser/ui/views/tabs/vertical",
     "//chrome/browser/ui/views/toolbar",
-    "//components/saved_tab_groups/public",
     "//ui/actions",
     "//ui/compositor_extra",
     "//ui/views/controls/webview",
@@ -105,7 +103,6 @@ source_set("interactive_ui_tests") {
   sources = [ "organizer_panel_view_interactive_uitest.cc" ]
   deps = [
     ":organizer",
-    "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/ui",
     "//chrome/browser/ui:browser_actions",
     "//chrome/browser/ui:browser_element_identifiers",
@@ -113,8 +110,6 @@ source_set("interactive_ui_tests") {
     "//chrome/browser/ui/tabs/organizer",
     "//chrome/test:test_support",
     "//components/omnibox/browser:test_support",
-    "//components/saved_tab_groups/public",
-    "//components/saved_tab_groups/test_support",
     "//ui/base",
     "//ui/compositor_extra",
     "//ui/views",

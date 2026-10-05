@@ -14,7 +14,6 @@ source_set("extension_post_install_dialog_view_utils") {
     "extension_post_install_dialog_view_utils.h",
   ]
   deps = [
-    "//chrome/browser/ui/signin",
     "//components/signin/public/base:signin_switches",
     "//extensions/common",
     "//ui/base",
@@ -352,7 +351,6 @@ source_set("browser_tests") {
     sources +=
         [ "extension_post_install_dialog_view_utils_signin_browsertest.cc" ]
     deps += [
-      "//chrome/browser/ui/signin",
       "//components/signin/public/identity_manager:test_support",
     ]
   }

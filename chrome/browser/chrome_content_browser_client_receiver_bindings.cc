@@ -21,7 +21,6 @@
 #include "chrome/browser/predictors/loading_predictor.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/extension_web_request_reporter_impl.h"
-#include "chrome/browser/signin/google_accounts_private_api_host.h"
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
 #include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"
 #include "chrome/common/buildflags.h"
@@ -501,15 +500,6 @@ void ChromeContentBrowserClient::
         TrustedVaultEncryptionKeysTabHelper::
             BindTrustedVaultEncryptionKeysExtension(std::move(receiver),
                                                     render_frame_host);
-      },
-      &render_frame_host));
-  associated_registry.AddInterface<
-      chrome::mojom::GoogleAccountsPrivateApiExtension>(base::BindRepeating(
-      [](content::RenderFrameHost* render_frame_host,
-         mojo::PendingAssociatedReceiver<
-             chrome::mojom::GoogleAccountsPrivateApiExtension> receiver) {
-        GoogleAccountsPrivateApiHost::BindHost(std::move(receiver),
-                                               render_frame_host);
       },
       &render_frame_host));
   associated_registry.AddInterface<

@@ -50,7 +50,6 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_lookup.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/accelerator_utils.h"
 #include "chrome/browser/ui/autofill/address_bubbles_controller.h"
 #include "chrome/browser/ui/autofill/payments/filled_card_information_bubble_controller_impl.h"
@@ -92,7 +91,6 @@
 #include "chrome/browser/ui/tabs/back_to_opener/back_to_opener_controller.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/new_tab_grouping_user_data.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/split_tab_util.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
@@ -129,7 +127,6 @@
 #include "components/reading_list/core/reading_list_entry.h"
 #include "components/reading_list/core/reading_list_model.h"
 #include "components/reading_list/core/reading_list_pref_names.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/sessions/core/live_tab_context.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_visual_data.h"
@@ -377,15 +374,6 @@ void MoveGroupToWindowImpl(BrowserWindowInterface* source,
       source->GetTabStripModel()->GetFocusedGroup() == group
           ? std::make_optional(group)
           : std::nullopt;
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          source->GetProfile());
-
-  std::unique_ptr<tab_groups::ScopedLocalObservationPauser> observation_pauser;
-  if (tab_group_service && tab_group_service->GetGroup(group)) {
-    observation_pauser = tab_group_service->CreateScopedLocalObserverPauser();
-  }
 
   std::unique_ptr<DetachedTabCollection> detached_group =
       source->GetTabStripModel()->DetachTabGroupForInsertion(group);
@@ -1173,11 +1161,6 @@ base::WeakPtr<content::NavigationHandle> OpenCurrentURL(
   GURL url(location_bar->navigation_params().destination_url);
   TRACE_EVENT1("navigation", "chrome::OpenCurrentURL", "url", url);
 
-  if (ShouldInterceptChromeURLNavigationInIncognito(browser, url)) {
-    ProcessInterceptedChromeURLNavigationInIncognito(browser, url);
-    return nullptr;
-  }
-
   NavigateParams params(browser, url,
                         location_bar->navigation_params().transition);
   params.disposition = location_bar->navigation_params().disposition;
@@ -1222,10 +1205,6 @@ void Stop(BrowserWindowInterface* browser) {
 void NewWindow(BrowserWindowInterface* browser) {
   Profile* const profile = browser->GetProfile();
   NewEmptyWindow(profile->GetOriginalProfile());
-}
-
-void NewIncognitoWindow(Profile* profile) {
-  NewEmptyWindow(profile->GetPrimaryOTRProfile(/*create_if_needed=*/true));
 }
 
 void CloseWindow(BrowserWindowInterface* browser) {
@@ -2346,11 +2325,6 @@ void ShowAppMenu(BrowserWindowInterface* browser) {
   BrowserWindow::FromBrowser(browser)->ShowAppMenu();
 }
 
-void ShowAvatarMenu(BrowserWindowInterface* browser) {
-  BrowserWindow::FromBrowser(browser)->ShowAvatarBubbleFromAvatarButton(
-      /*is_source_accelerator=*/true);
-}
-
 // TODO(crbug.com/345770406): Rename the function name.
 // We removed the extra confirmation step in the Chrome update flow. After the
 // full rollout of the code, this name will be misleading. We will clean up the
@@ -2559,43 +2533,5 @@ std::optional<int> GetKeyboardFocusedTabIndex(
   return std::nullopt;
 }
 #endif
-
-void ShowIncognitoClearBrowsingDataDialog(BrowserWindowInterface* browser) {
-  BrowserWindow::FromBrowser(browser)->ShowIncognitoClearBrowsingDataDialog();
-}
-
-void ShowIncognitoHistoryDisclaimerDialog(BrowserWindowInterface* browser) {
-  BrowserWindow::FromBrowser(browser)->ShowIncognitoHistoryDisclaimerDialog();
-}
-
-bool ShouldInterceptChromeURLNavigationInIncognito(
-    BrowserWindowInterface* browser,
-    const GURL& url) {
-  if (!browser || !browser->GetProfile()->IsIncognitoProfile()) {
-    return false;
-  }
-
-  bool show_clear_browsing_data_dialog =
-      url == GURL(chrome::kChromeUISettingsURL)
-                 .Resolve(chrome::kClearBrowserDataSubPage);
-
-  bool show_history_disclaimer_dialog =
-      url == GURL(chrome::kChromeUIHistoryURL);
-
-  return show_clear_browsing_data_dialog || show_history_disclaimer_dialog;
-}
-
-void ProcessInterceptedChromeURLNavigationInIncognito(
-    BrowserWindowInterface* browser,
-    const GURL& url) {
-  if (url == GURL(chrome::kChromeUISettingsURL)
-                 .Resolve(chrome::kClearBrowserDataSubPage)) {
-    ShowIncognitoClearBrowsingDataDialog(browser);
-  } else if (url == GURL(chrome::kChromeUIHistoryURL)) {
-    ShowIncognitoHistoryDisclaimerDialog(browser);
-  } else {
-    NOTREACHED();
-  }
-}
 
 }  // namespace chrome

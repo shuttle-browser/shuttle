@@ -51,7 +51,6 @@
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_tab_state.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #include "chrome/common/buildflags.h"
@@ -82,7 +81,6 @@
 #include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_search_api/safe_search_util.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/services/quarantine/public/mojom/quarantine.mojom.h"
 #include "components/services/quarantine/quarantine_impl.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -2416,13 +2414,6 @@ void ChromeDownloadManagerDelegate::CheckDownloadAllowed(
 #endif
   content::WebContents* web_contents = web_contents_getter.Run();
   if (!web_contents) {
-    OnCheckDownloadAllowedFailed(std::move(check_download_allowed_cb));
-    return;
-  }
-
-  // Check whether download is restricted for saved tab groups.
-  if (tab_groups::RestrictDownloadOnSyncedTabs() &&
-      TabGroupSyncTabState::FromWebContents(web_contents)) {
     OnCheckDownloadAllowedFailed(std::move(check_download_allowed_cb));
     return;
   }

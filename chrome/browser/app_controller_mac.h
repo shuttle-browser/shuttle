@@ -177,10 +177,6 @@ namespace app_controller_mac {
 // different models of application lifetime.
 bool IsOpeningNewWindow();
 
-// Create a guest profile if one is needed. Afterwards, even if the profile
-// already existed, notify the AppController of the profile in use.
-void CreateGuestProfileIfNeeded();
-
 // Called when Enterprise startup dialog is close and repost
 // applicationDidFinished notification.
 void EnterpriseStartupDialogClosed();
@@ -190,8 +186,6 @@ void EnterpriseStartupDialogClosed();
 enum ProfileLoadFailureBehavior {
   // Silently fail, and run |callback| with nullptr.
   kIgnoreOnFailure,
-  // Show the profile picker, and run |callback| with nullptr.
-  kShowProfilePickerOnFailure,
 };
 
 // Tries to load the profile returned by |-safeProfileForNewWindows:|. If it

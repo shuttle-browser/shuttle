@@ -15,17 +15,13 @@
 #include "chrome/browser/profiles/profile_keyed_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
-#include "chrome/browser/sync/device_info_sync_service_factory.h"
-#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/visited_url_ranking/url_deduplication/search_engine_url_strip_handler.h"
 #include "chrome/common/channel_info.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history_clusters/core/config.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "components/sync_device_info/device_info_sync_service.h"
 #include "components/url_deduplication/url_deduplication_helper.h"
 #include "components/visited_url_ranking/internal/history_url_visit_data_fetcher.h"
-#include "components/visited_url_ranking/internal/session_url_visit_data_fetcher.h"
 #include "components/visited_url_ranking/internal/transformer/default_app_url_visit_aggregates_transformer.h"
 #include "components/visited_url_ranking/internal/transformer/history_url_visit_aggregates_browser_type_transformer.h"
 #include "components/visited_url_ranking/internal/transformer/history_url_visit_aggregates_categories_transformer.h"
@@ -73,9 +69,7 @@ VisitedURLRankingServiceFactory::VisitedURLRankingServiceFactory()
               .Build()) {
   DependsOn(
       segmentation_platform::SegmentationPlatformServiceFactory::GetInstance());
-  DependsOn(SessionSyncServiceFactory::GetInstance());
   DependsOn(HistoryServiceFactory::GetInstance());
-  DependsOn(DeviceInfoSyncServiceFactory::GetInstance());
 }
 
 VisitedURLRankingServiceFactory::~VisitedURLRankingServiceFactory() = default;
@@ -126,21 +120,12 @@ VisitedURLRankingServiceFactory::BuildServiceInstanceForBrowserContext(
           profile));
 #endif
 
-  sync_sessions::SessionSyncService* sss =
-      SessionSyncServiceFactory::GetInstance()->GetForProfile(profile);
-  if (sss) {
-    data_fetchers.emplace(Fetcher::kSession,
-                          std::make_unique<SessionURLVisitDataFetcher>(sss));
-  }
   history::HistoryService* hs = HistoryServiceFactory::GetForProfile(
       profile, ServiceAccessType::IMPLICIT_ACCESS);
   if (hs) {
-    syncer::DeviceInfoSyncService* device_info_sync_service =
-        DeviceInfoSyncServiceFactory::GetForProfile(profile);
     data_fetchers.emplace(
         Fetcher::kHistory,
-        std::make_unique<visited_url_ranking::HistoryURLVisitDataFetcher>(
-            hs, device_info_sync_service));
+        std::make_unique<visited_url_ranking::HistoryURLVisitDataFetcher>(hs));
   }
 
   // TODO(crbug.com/349317344): Move transformers map to a shareable helper

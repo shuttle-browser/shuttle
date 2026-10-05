@@ -44,7 +44,6 @@ source_set("public") {
     "//components/keyed_service/core",
     "//components/segmentation_platform/public",
     "//components/strings",
-    "//components/sync_device_info",
     "//components/url_deduplication",
     "//services/metrics/public/cpp:metrics_cpp",
     "//ui/base",
@@ -66,7 +65,6 @@ source_set("unit_tests") {
     "//components/segmentation_platform/public",
     "//components/segmentation_platform/public:test_support",
     "//components/sessions",
-    "//components/sync_sessions",
     "//testing/gmock",
     "//testing/gtest",
   ]

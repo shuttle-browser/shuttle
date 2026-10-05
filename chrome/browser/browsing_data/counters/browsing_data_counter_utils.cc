@@ -15,7 +15,6 @@
 #include "chrome/browser/browsing_data/counters/cache_counter.h"
 #include "chrome/browser/browsing_data/counters/signin_data_counter.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
@@ -53,10 +52,6 @@
 #include "chrome/browser/browsing_data/counters/hosted_apps_counter.h"
 #endif
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/sync/sync_ui_util.h"
-#endif
-
 namespace browsing_data_counter_utils {
 
 using BrowsingDataCounter = browsing_data::BrowsingDataCounter;
@@ -77,23 +72,7 @@ std::u16string FormatBytesMBOrHigher(base::ByteSize bytes) {
 }  // namespace
 
 bool ShouldShowCookieException(Profile* profile) {
-  auto* identity_manager = IdentityManagerFactory::GetForProfile(profile);
-  if (AccountConsistencyModeManager::IsMirrorEnabledForProfile(profile)) {
-    signin::ConsentLevel consent_level =
-        syncer::IsReplaceSyncPromosWithSignInPromosEnabled()
-            ? signin::ConsentLevel::kSignin
-            : signin::ConsentLevel::kSync;
-    return identity_manager->HasPrimaryAccount(consent_level);
-  }
-
-  if (AccountConsistencyModeManager::IsDiceEnabledForProfile(profile)) {
-    CoreAccountId account_id =
-        identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin);
-    return !account_id.empty() &&
-           !identity_manager->HasAccountWithRefreshTokenInPersistentErrorState(
-               account_id);
-  }
-
+  // There is no sign-in in this browser.
   return false;
 }
 
@@ -163,18 +142,8 @@ std::u16string GetChromeCounterTextFromResult(
 
     return l10n_util::GetPluralStringFUTF16(del_cookie_counter_msg_id, origins);
 #else
-    std::u16string cookies_counter_text = l10n_util::GetPluralStringFUTF16(
-        IDS_DEL_COOKIES_COUNTER_ADVANCED, origins);
-
-    if (origins > 0 &&
-        ChromeSigninClientFactory::GetForProfile(profile)
-            ->IsClearPrimaryAccountAllowed() &&
-        ShouldShowCookieException(profile)) {
-      cookies_counter_text +=
-          (l10n_util::GetStringUTF16(IDS_SENTENCE_END) + u" " +
-           l10n_util::GetStringUTF16(IDS_DEL_GOOGLE_COOKIES_SIGNOUT_LINK));
-    }
-    return cookies_counter_text;
+    return l10n_util::GetPluralStringFUTF16(IDS_DEL_COOKIES_COUNTER_ADVANCED,
+                                            origins);
 #endif
   }
 

@@ -12,8 +12,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "components/sessions/core/session_id.h"
-#include "components/sync/protocol/device_info_specifics.pb.h"
-#include "components/sync_device_info/device_info.h"
 #include "ui/actions/action_id.h"
 #include "ui/base/models/image_model.h"
 #include "url/gurl.h"
@@ -66,13 +64,6 @@ class RecentTabItem {
   const ui::ImageModel& minor_icon() const { return minor_icon_; }
   void set_minor_icon(ui::ImageModel icon) { minor_icon_ = std::move(icon); }
 
-  syncer::DeviceInfo::FormFactor device_form_factor() const {
-    return device_form_factor_;
-  }
-  void set_device_form_factor(syncer::DeviceInfo::FormFactor factor) {
-    device_form_factor_ = factor;
-  }
-
   const std::vector<RecentTabItem>& children() const { return children_; }
   std::vector<RecentTabItem>& children() { return children_; }
   void add_child(RecentTabItem child) { children_.push_back(std::move(child)); }
@@ -88,8 +79,6 @@ class RecentTabItem {
   bool is_local_ = true;
   ui::ImageModel icon_;
   ui::ImageModel minor_icon_;
-  syncer::DeviceInfo::FormFactor device_form_factor_ =
-      syncer::DeviceInfo::FormFactor::kUnknown;
   std::vector<RecentTabItem> children_;
 };
 
@@ -105,7 +94,6 @@ class RecentTabsBuilder {
       Profile* profile,
       BrowserWindowFeatures* feature);
   static std::vector<RecentTabItem> BuildLocalEntries(Profile* profile);
-  static std::vector<RecentTabItem> BuildRemoteEntries(Profile* profile);
 };
 
 #endif  // CHROME_BROWSER_UI_TABS_RECENT_TABS_BUILDER_H_

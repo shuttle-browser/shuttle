@@ -21,7 +21,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/prefs/pref_value_map.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/saved_tab_groups/public/pref_names.h"
 #include "components/signin/public/base/gaia_id_hash.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -430,12 +429,6 @@ void SyncPrefs::KeepAccountSettingsPrefsOnlyForUsers(
   // "accounts on this device".
   SyncTransportDataPrefs::KeepAccountSettingsPrefsOnlyForUsers(pref_service_,
                                                                hashes);
-
-  // TODO(crbug.com/368409110): This is *absolutely* not the right place for
-  // clearing not-sync-related prefs. Move this elsewhere once signin code
-  // provides an observer API for "accounts on this device".
-  tab_groups::prefs::KeepAccountSettingsPrefsOnlyForUsers(pref_service_,
-                                                          hashes);
 }
 
 #if BUILDFLAG(IS_CHROMEOS)

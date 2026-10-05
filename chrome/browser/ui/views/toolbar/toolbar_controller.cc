@@ -230,7 +230,6 @@ std::string ToolbarController::GetActionNameFromElementIdentifier(
            {kActionClearBrowsingData, "PinnedClearBrowsingDataButton"},
            {kActionCopyUrl, "PinnedCopyLinkButton"},
            {kActionDevTools, "PinnedDeveloperToolsButton"},
-           {kActionNewIncognitoWindow, "PinnedNewIncognitoWindowButton"},
            {kActionPrint, "PinnedPrintButton"},
            {kActionQrCodeGenerator, "PinnedQrCodeGeneratorButton"},
            {kActionRouteMedia, "PinnedCastButton"},

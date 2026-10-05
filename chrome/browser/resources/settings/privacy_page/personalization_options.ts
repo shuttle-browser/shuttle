@@ -10,7 +10,6 @@
 import '//resources/cr_elements/cr_button/cr_button.js';
 import '//resources/cr_elements/cr_toggle/cr_toggle.js';
 import '../controls/settings_toggle_button.js';
-import '../people_page/signout_dialog.js';
 // <if expr="not is_chromeos">
 import '../relaunch_confirmation_dialog.js';
 // </if>
@@ -32,11 +31,8 @@ import type {CrToggleElement} from '//resources/cr_elements/cr_toggle/cr_toggle.
 // </if>
 import {I18nMixinLit} from '//resources/cr_elements/i18n_mixin_lit.js';
 import {WebUiListenerMixinLit} from '//resources/cr_elements/web_ui_listener_mixin_lit.js';
-import {assert} from '//resources/js/assert.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
-import type {ChromeSigninUserChoiceInfo, SyncBrowserProxy, SyncStatus} from '/shared/settings/people_page/sync_browser_proxy.js';
-import {ChromeSigninUserChoice, SignedInState, StatusAction, SyncBrowserProxyImpl} from '/shared/settings/people_page/sync_browser_proxy.js';
 import {PrefService} from '/shared/settings/prefs2/pref_service.js';
 import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_observer_mixin_lit.js';
 import type {MetricsReporting, PrivacyPageBrowserProxy} from '/shared/settings/privacy_page/privacy_page_browser_proxy.js';
@@ -51,7 +47,6 @@ import type {SettingsToggleButtonElement} from '../controls/settings_toggle_butt
 import {loadTimeData} from '../i18n_setup.js';
 import {pageVisibility} from '../page_visibility.js';
 import type {PrivacyPageVisibility} from '../page_visibility.js';
-import type {SettingsSignoutDialogElement} from '../people_page/signout_dialog.js';
 import {RelaunchMixinLit, RestartType} from '../relaunch_mixin_lit.js';
 
 import {getCss} from './personalization_options.css.js';
@@ -62,9 +57,6 @@ export interface SettingsPersonalizationOptionsElement {
     urlCollectionToggle: SettingsToggleButtonElement,
     // <if expr="not is_chromeos">
     toast: CrToastElement,
-    signinAllowedToggle: SettingsToggleButtonElement,
-    chromeSigninUserChoiceSelection: HTMLSelectElement,
-    chromeSigninUserChoiceToast: CrToastElement,
     // </if>
   };
 }
@@ -96,8 +88,6 @@ export class SettingsPersonalizationOptionsElement extends
 
   static override get properties() {
     return {
-      syncStatus: {type: Object},
-
       // <if expr="_google_chrome and not is_chromeos">
       metricsReporting_: {type: Object},
 
@@ -108,23 +98,11 @@ export class SettingsPersonalizationOptionsElement extends
 
       searchAggregatorSuggestFakePref_: {type: Object},
 
-      showSignoutDialog_: {type: Boolean},
-
       shouldUseMetricsConsentRestructure_: {type: Boolean},
-
-      syncFirstSetupInProgress_: {type: Boolean},
-
-      // <if expr="not is_chromeos">
-      signinAvailable_: {type: Boolean},
-
-      chromeSigninUserChoiceInfo_: {type: Object},
-      // </if>
 
       spellCheckDictionariesPref_: {type: Object},
     };
   }
-
-  accessor syncStatus: SyncStatus = {statusAction: StatusAction.NO_ACTION};
 
   // <if expr="_google_chrome and not is_chromeos">
   protected accessor metricsReporting_: MetricsReporting|undefined;
@@ -142,18 +120,8 @@ export class SettingsPersonalizationOptionsElement extends
     controlledBy: chrome.settingsPrivate.ControlledBy.USER_POLICY,
   };
 
-  protected accessor showSignoutDialog_: boolean = false;
-  protected accessor syncFirstSetupInProgress_: boolean = false;
   protected accessor shouldUseMetricsConsentRestructure_: boolean =
       loadTimeData.getBoolean('shouldUseMetricsConsentRestructure');
-
-  // <if expr="not is_chromeos">
-  protected accessor signinAvailable_: boolean =
-      loadTimeData.getBoolean('signinAvailable');
-
-  protected accessor chromeSigninUserChoiceInfo_: ChromeSigninUserChoiceInfo|
-      undefined;
-  // </if>
 
   protected accessor spellCheckDictionariesPref_:
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
@@ -161,21 +129,10 @@ export class SettingsPersonalizationOptionsElement extends
   private browserProxy_: PrivacyPageBrowserProxy =
       PrivacyPageBrowserProxyImpl.getInstance();
 
-  private syncBrowserProxy_: SyncBrowserProxy =
-      SyncBrowserProxyImpl.getInstance();
-
   override connectedCallback() {
     super.connectedCallback();
 
     this.mirrorPref('spellcheck.dictionaries', 'spellCheckDictionariesPref_');
-  }
-
-  override willUpdate(changedProperties: PropertyValues<this>) {
-    super.willUpdate(changedProperties);
-
-    if (changedProperties.has('syncStatus')) {
-      this.syncFirstSetupInProgress_ = this.computeSyncFirstSetupInProgress_();
-    }
   }
 
   override firstUpdated(changedProperties: PropertyValues<this>) {
@@ -188,21 +145,9 @@ export class SettingsPersonalizationOptionsElement extends
     this.browserProxy_.getMetricsReporting().then(setMetricsReporting);
     // </if>
 
-    // <if expr="not is_chromeos">
-    this.syncBrowserProxy_.getChromeSigninUserChoiceInfo().then(
-        this.setChromeSigninUserChoiceInfo_.bind(this));
-    this.addWebUiListener(
-        'chrome-signin-user-choice-info-change',
-        this.setChromeSigninUserChoiceInfo_.bind(this));
-    // </if>
-
     this.registerHelpBubble(
         ANONYMIZED_URL_COLLECTION_ID,
         this.$.urlCollectionToggle.getBubbleAnchor(), {paddingTop: 10});
-  }
-
-  private computeSyncFirstSetupInProgress_(): boolean {
-    return !!this.syncStatus.firstSetupInProgress;
   }
 
   // <if expr="is_chromeos">
@@ -290,51 +235,10 @@ export class SettingsPersonalizationOptionsElement extends
   // </if><!-- chromeos -->
   // </if><!-- _google_chrome -->
 
-  protected onSignoutDialogClose_() {
-    if (this.shadowRoot
-            .querySelector<SettingsSignoutDialogElement>(
-                'settings-signout-dialog')!.wasConfirmed()) {
-      // <if expr="not is_chromeos">
-      this.$.signinAllowedToggle.checked = false;
-      this.$.signinAllowedToggle.sendPrefChange();
-      this.$.toast.show();
-      // </if>
-    }
-    this.showSignoutDialog_ = false;
-  }
-
   // <if expr="not is_chromeos">
-  protected onSigninAllowedSettingsBooleanControlChange_() {
-    if (this.syncStatus.signedInState === SignedInState.SYNCING &&
-        !this.$.signinAllowedToggle.checked) {
-      // Switch the toggle back on and show the signout dialog.
-      this.$.signinAllowedToggle.checked = true;
-      this.showSignoutDialog_ = true;
-    } else {
-      this.$.signinAllowedToggle.sendPrefChange();
-      this.$.toast.show();
-    }
-  }
-
   protected onRestartClick_(e: Event) {
     e.stopPropagation();
     this.performRestart(RestartType.RESTART);
-  }
-
-  private setChromeSigninUserChoiceInfo_(info: ChromeSigninUserChoiceInfo) {
-    this.chromeSigninUserChoiceInfo_ = info;
-    if (info.choice !== ChromeSigninUserChoice.NO_CHOICE) {
-      this.$.chromeSigninUserChoiceSelection.value = info.choice.toString();
-    }
-  }
-
-  protected onChromeSigninChoiceChange_() {
-    const selected = Number(this.$.chromeSigninUserChoiceSelection.value);
-    assert(selected !== ChromeSigninUserChoice.NO_CHOICE);
-
-    this.$.chromeSigninUserChoiceToast.show();
-    this.syncBrowserProxy_.setChromeSigninUserChoice(
-        selected, this.chromeSigninUserChoiceInfo_?.signedInEmail || '');
   }
   // </if>
 }

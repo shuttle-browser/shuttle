@@ -29,10 +29,6 @@ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 class BrowserWindowInterface;
 class Profile;
 
-namespace sync_sessions {
-struct SyncedSession;
-}
-
 namespace extensions {
 
 class SessionId;
@@ -84,20 +80,6 @@ class SessionsGetDevicesFunction : public ExtensionFunction {
   ~SessionsGetDevicesFunction() override = default;
   ResponseAction Run() override;
   DECLARE_EXTENSION_FUNCTION("sessions.getDevices", SESSIONS_GETDEVICES)
-
- private:
-  api::tabs::Tab CreateTabModel(const std::string& session_tag,
-                                const sessions::SessionTab& tab,
-                                int tab_index,
-                                bool active);
-  std::optional<api::windows::Window> CreateWindowModel(
-      const sessions::SessionWindow& window,
-      const std::string& session_tag);
-  std::optional<api::sessions::Session> CreateSessionModel(
-      const sessions::SessionWindow& window,
-      const std::string& session_tag);
-  api::sessions::Device CreateDeviceModel(
-      const sync_sessions::SyncedSession* session);
 };
 
 class SessionsRestoreFunction : public ExtensionFunction {
@@ -118,10 +100,6 @@ class SessionsRestoreFunction : public ExtensionFunction {
   ResponseAction RestoreMostRecentlyClosed(BrowserWindowInterface* browser);
   ResponseAction RestoreLocalSession(const SessionId& session_id,
                                      BrowserWindowInterface* browser);
-  ResponseAction RestoreForeignSession(const SessionId& session_id,
-                                       BrowserWindowInterface* browser);
-  void OnRestoreForeignSessionWindows(
-      std::vector<BrowserWindowInterface*> browsers);
 
 #if BUILDFLAG(IS_ANDROID)
   // Uses JNI to query Java `RecentlyClosedEntitiesManager` for recently closed

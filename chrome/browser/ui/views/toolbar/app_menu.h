@@ -144,9 +144,6 @@ class AppMenu final : public views::MenuDelegate,
       nullptr;
   size_t selected_index_ = 0;
 
-  std::vector<base::CallbackListSubscription>
-      profile_menu_item_selected_subscription_list_;
-
   // Menu corresponding to IDC_FEEDBACK.
   raw_ptr<views::MenuItemView, DanglingUntriaged> feedback_menu_item_ = nullptr;
 

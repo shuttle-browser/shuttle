@@ -335,14 +335,6 @@ class ProfileAttributesStorage {
   // loading multiple times.
   mutable absl::flat_hash_map<std::string, bool> cached_avatar_images_loading_;
 
-  // Hash table of profile pictures currently being downloaded from the remote
-  // location and the ProfileAvatarDownloader instances downloading them.
-  // This prevents a picture from being downloaded multiple times. The
-  // ProfileAvatarDownloader instances are deleted when the download completes
-  // or when the ProfileAttributesStorage is destroyed.
-  absl::flat_hash_map<std::string, std::unique_ptr<ProfileAvatarDownloader>>
-      avatar_images_downloads_in_progress_;
-
   // Determines of the ProfileAvatarDownloader should be created and executed
   // or not. Only set to true for tests.
   bool disable_avatar_download_for_testing_ = false;

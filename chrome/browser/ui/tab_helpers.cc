@@ -71,8 +71,6 @@
 #include "chrome/browser/storage_access_api/storage_access_api_tab_helper.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
-#include "chrome/browser/sync/sessions/sync_sessions_router_tab_helper.h"
-#include "chrome/browser/sync/sessions/sync_sessions_web_contents_router_factory.h"
 #include "chrome/browser/tab_contents/navigation_metrics_recorder.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"

@@ -34,7 +34,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
-#include "chrome/browser/ui/incognito_allowed_url.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
@@ -2494,12 +2493,6 @@ ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
   // Navigate the tab to a new location if the url is different.
   if (params->update_properties.url) {
     std::string updated_url = *params->update_properties.url;
-    if (window->profile()->IsIncognitoProfile() &&
-        !IsURLAllowedInIncognito(GURL(updated_url))) {
-      return RespondNow(Error(ErrorUtils::FormatErrorMessage(
-          tabs_constants::kURLsNotAllowedInIncognitoError, updated_url)));
-    }
-
     // Get last committed or pending URL.
     std::string current_url = contents->GetVisibleURL().is_valid()
                                   ? contents->GetVisibleURL().spec()

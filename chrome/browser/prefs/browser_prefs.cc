@@ -76,7 +76,7 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/serial/serial_policy_allowed_ports.h"
 #include "chrome/browser/signin/chrome_signin_client.h"
-#include "chrome/browser/signin/signin_promo_util.h"
+#include "chrome/browser/signin/chrome_signin_pref_names.h"
 #include "chrome/browser/ssl/ssl_config_service_manager.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/tracing/chrome_tracing_delegate.h"
@@ -163,12 +163,10 @@
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/safety_check/safety_check_prefs.h"
-#include "components/saved_tab_groups/public/pref_names.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
 #include "components/search_engines/template_url_prepopulate_data.h"
 #include "components/security_interstitials/content/insecure_form_blocking_page.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
-#include "components/segmentation_platform/embedder/default_model/device_switcher_result_dispatcher.h"
 #include "components/segmentation_platform/public/segmentation_platform_service.h"
 #include "components/sessions/core/session_id_generator.h"
 #include "components/signin/core/browser/active_primary_accounts_metrics_recorder.h"
@@ -185,10 +183,7 @@
 #include "components/sync/service/device_statistics_scheduler.h"
 #include "components/sync/service/glue/sync_transport_data_prefs.h"
 #include "components/sync/service/sync_prefs.h"
-#include "components/sync_device_info/device_info_prefs.h"
-#include "components/sync_preferences/cross_device_pref_tracker/prefs/cross_device_pref_registry.h"
 #include "components/sync_preferences/pref_service_syncable.h"
-#include "components/sync_sessions/session_sync_prefs.h"
 #include "components/tracing/common/pref_names.h"
 #include "components/universal_optout/prefs.h"
 #include "components/update_client/update_client.h"
@@ -266,7 +261,6 @@
 #include "chrome/browser/actor/ui/actor_ui_state_manager_prefs.h"
 #include "chrome/browser/gcm/gcm_product_util.h"
 #include "chrome/browser/intranet_redirect_detector.h"
-#include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
 #include "chrome/browser/themes/theme_syncable_service.h"
@@ -274,11 +268,9 @@
 #include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_pref_names.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/webui/certificate_manager/certificate_manager_handler.h"
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
-#include "chrome/browser/ui/webui/history/foreign_session_handler.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/browser/user_education/browser_user_education_storage_service.h"
@@ -481,12 +473,10 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/browser_switcher/browser_switcher_prefs.h"
-#include "chrome/browser/enterprise/signin/enterprise_signin_prefs.h"
 #include "chrome/browser/lifetime/scheduled_restart_manager.h"
 #endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/ui/startup/first_run_service.h"
 #endif
 
 #if BUILDFLAG(ENABLE_DOWNGRADE_PROCESSING)
@@ -1525,9 +1515,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   scheduled_restart::ScheduledRestartManager::RegisterLocalStatePrefs(registry);
 #endif
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  FirstRunService::RegisterLocalStatePrefs(registry);
-#endif
 
 #if BUILDFLAG(IS_CHROMEOS)
   arc::prefs::RegisterLocalStatePrefs(registry);
@@ -1731,7 +1718,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   chrome_prefs::RegisterProfilePrefs(registry);
   registry->RegisterIntegerPref(prefs::kContextualTasksNextPanelOpenCount, 0);
   registry->RegisterBooleanPref(prefs::kCtrlTabMru, false);
-  cross_device::RegisterProfilePrefs(registry);
   enterprise::RegisterIdentifiersProfilePrefs(registry);
   enterprise_connectors::RegisterProfilePrefs(registry);
   enterprise_isolated_mode::RegisterProfilePrefs(registry);
@@ -1817,24 +1803,16 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
       registry);
   segmentation_platform::SegmentationPlatformService::RegisterProfilePrefs(
       registry);
-  segmentation_platform::DeviceSwitcherResultDispatcher::RegisterProfilePrefs(
-      registry);
   SearchPreloadService::RegisterProfilePrefs(registry);
   SessionStartupPref::RegisterProfilePrefs(registry);
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  signin::AvatarButtonPromoManager::RegisterProfilePrefs(registry);
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
   SigninPrefs::RegisterProfilePrefs(registry);
   site_engagement::SiteEngagementService::RegisterProfilePrefs(registry);
   subscription_eligibility::prefs::RegisterProfilePrefs(registry);
   supervised_user::RegisterProfilePrefs(registry);
-  sync_sessions::SessionSyncPrefs::RegisterProfilePrefs(registry);
-  syncer::DeviceInfoPrefs::RegisterProfilePrefs(registry);
   syncer::DeviceStatisticsScheduler::RegisterProfilePrefs(registry);
   syncer::SyncPrefs::RegisterProfilePrefs(registry);
   syncer::SyncTransportDataPrefs::RegisterProfilePrefs(registry);
   TemplateURLPrepopulateData::RegisterProfilePrefs(registry);
-  tab_groups::prefs::RegisterProfilePrefs(registry);
   universal_optout::prefs::RegisterProfilePrefs(registry);
   visited_url_ranking::GroupSuggestionsServiceImpl::RegisterProfilePrefs(
       registry);
@@ -1916,7 +1894,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   variations::VariationsService::RegisterProfilePrefs(registry);
   webapps::InstallPromptPrefs::RegisterProfilePrefs(registry);
 #else   // BUILDFLAG(IS_ANDROID)
-  browser_sync::ForeignSessionHandler::RegisterProfilePrefs(registry);
   BrowserUserEducationStorageService::RegisterProfilePrefs(registry);
   captions::LiveCaptionController::RegisterProfilePrefs(registry);
   captions::LiveTranslateController::RegisterProfilePrefs(registry);
@@ -1926,9 +1903,22 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   PinnedTabCodec::RegisterProfilePrefs(registry);
   RegisterReadAnythingProfilePrefs(registry);
   settings::SettingsUI::RegisterProfilePrefs(registry);
-  signin::RegisterProfilePrefs(registry);
+  // Sign-in promo prefs that kept code still reads (signin_promo.cc was
+  // removed in this fork).
+  registry->RegisterIntegerPref(
+      prefs::kAddressSignInPromoShownCountPerProfileForLimitsExperiment, 0);
+  registry->RegisterIntegerPref(
+      prefs::kBookmarkSignInPromoShownCountPerProfileForLimitsExperiment, 0);
+  registry->RegisterIntegerPref(
+      prefs::kPasswordSignInPromoShownCountPerProfileForLimitsExperiment, 0);
+  registry->RegisterIntegerPref(
+      prefs::kHistoryPageHistorySyncPromoShownCountPerProfile, 0);
+  registry->RegisterTimePref(
+      prefs::kHistoryPageHistorySyncPromoLastDismissedTimestampPerProfile,
+      base::Time());
+  registry->RegisterBooleanPref(
+      prefs::kHistoryPageHistorySyncPromoShownAfterDismissalPerProfile, false);
   StartupBrowserCreator::RegisterProfilePrefs(registry);
-  tab_groups::saved_tab_groups::prefs::RegisterProfilePrefs(registry);
   ThemeColorPickerHandler::RegisterProfilePrefs(registry);
   ThemeService::RegisterProfilePrefs(registry);
   toolbar::RegisterProfilePrefs(registry);
@@ -2073,7 +2063,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   browser_switcher::BrowserSwitcherPrefs::RegisterProfilePrefs(registry);
-  enterprise_signin::RegisterProfilePrefs(registry);
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE) && !BUILDFLAG(IS_CHROMEOS)

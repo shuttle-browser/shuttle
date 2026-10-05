@@ -57,7 +57,6 @@ source_set("unit_tests") {
     "//components/prefs:test_support",
     "//components/search",
     "//components/sync/protocol",
-    "//components/themes/cross_device:unit_tests",
     "//components/version_info",
     "//services/network:test_support",
     "//services/network/public/cpp:cpp_base",

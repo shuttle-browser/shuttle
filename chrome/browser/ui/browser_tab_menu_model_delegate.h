@@ -24,7 +24,6 @@ class BrowserTabMenuModelDelegate : public TabMenuModelDelegate {
   BrowserTabMenuModelDelegate(
       SessionID session_id,
       const Profile* profile,
-      tab_groups::TabGroupSyncService* tgss,
       ui::UnownedUserDataHost& host);
   ~BrowserTabMenuModelDelegate() override;
 
@@ -36,11 +35,9 @@ class BrowserTabMenuModelDelegate : public TabMenuModelDelegate {
   // TabMenuModelDelegate:
   std::vector<BrowserWindowInterface*> GetOtherBrowserWindows(
       bool is_app) override;
-  tab_groups::TabGroupSyncService* GetTabGroupSyncService() override;
 
   const SessionID session_id_;
   const raw_ptr<const Profile> profile_;
-  raw_ptr<tab_groups::TabGroupSyncService> tab_group_sync_service_ = nullptr;
 };
 
 }  // namespace chrome

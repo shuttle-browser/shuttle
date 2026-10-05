@@ -10,13 +10,11 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_util.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
@@ -487,12 +485,6 @@ TabStripCollectionController::ShowGroupEditorBubble(
       /*stop_context_menu_propagation=*/stop_context_menu_propagation);
 }
 
-tab_groups::TabGroupSyncService*
-TabStripCollectionController::GetTabGroupSyncService() {
-  return tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-      browser_view_->GetProfile());
-}
-
 tabs::VerticalTabStripStateController*
 TabStripCollectionController::GetStateController() {
   return const_cast<tabs::VerticalTabStripStateController*>(
@@ -627,25 +619,6 @@ void TabStripCollectionController::RecordMetricsOnTabSelectionChange(
   }
 
   base::RecordAction(base::UserMetricsAction("TabGroups_SwitchGroupedTab"));
-
-  if (!tab_groups::SavedTabGroupUtils::SupportsSharedTabGroups()) {
-    return;
-  }
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_view_->browser()->GetProfile());
-
-  if (!tab_group_service) {
-    return;
-  }
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(group.value());
-  if (saved_group && saved_group->collaboration_id()) {
-    base::RecordAction(
-        base::UserMetricsAction("TabGroups.Shared.SwitchGroupedTab"));
-  }
 }
 
 void TabStripCollectionController::ShiftTabRelative(

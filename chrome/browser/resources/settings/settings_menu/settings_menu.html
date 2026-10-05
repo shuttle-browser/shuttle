@@ -45,18 +45,6 @@
       <cr-menu-selector id="menu" selectable="a:not(#extensionsLink)"
           attr-for-selected="href" on-iron-activate="onSelectorActivate_"
           on-click="onLinkClick_" selected-attribute="selected">
-        <a role="menuitem"
-            id="people" href="/people" hidden="[[!pageVisibility_.people]]"
-            class="cr-nav-menu-item">
-<if expr="not _google_chrome">
-          <cr-icon icon="settings:person"></cr-icon>
-</if>
-<if expr="_google_chrome">
-          <cr-icon icon="settings-internal:google-g"></cr-icon>
-</if>
-          $i18n{peoplePageTitle}
-          <cr-ripple></cr-ripple>
-        </a>
         <a role="menuitem" id="autofill" href="/autofill"
             on-click="onAutofillClick_"
             class="cr-nav-menu-item"

@@ -2,8 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//components/signin/features.gni")
-
 source_set("history") {
   deps = [ "//chrome/browser/ui/tabs:tab_strip" ]
 
@@ -19,26 +17,14 @@ source_set("history") {
   } else {
     sources = [
       "browsing_history_handler.cc",
-      "foreign_session_handler.cc",
-      "history_identity_state_watcher.cc",
-      "history_login_handler.cc",
       "history_ui.cc",
       "navigation_handler.cc",
     ]
-    if (enable_dice_support) {
-      sources += [ "history_cross_device_signin_promo_handler.cc" ]
-    }
     public = [
       "browsing_history_handler.h",
-      "foreign_session_handler.h",
-      "history_identity_state_watcher.h",
-      "history_login_handler.h",
       "history_ui.h",
       "navigation_handler.h",
     ]
-    if (enable_dice_support) {
-      public += [ "history_cross_device_signin_promo_handler.h" ]
-    }
     public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps += [
       "//base",
@@ -51,15 +37,12 @@ source_set("history") {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/resources/history:resources",
       "//chrome/browser/sessions",
-      "//chrome/browser/signin",
       "//chrome/browser/supervised_user",
-      "//chrome/browser/sync",
       "//chrome/browser/ui:browser_element_identifiers",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui:url_identity",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/webui:favicon_source",
       "//chrome/browser/ui/webui:managed_ui_handler",
@@ -70,9 +53,6 @@ source_set("history") {
       "//chrome/browser/ui/webui/cr_components/history_clusters",
       "//chrome/browser/ui/webui/history_clusters",
       "//chrome/browser/ui/webui/ntp",
-      "//chrome/browser/ui/webui/page_not_available_for_guest",
-      "//chrome/browser/ui/webui/side_panel/tabs_from_other_devices",
-      "//chrome/browser/ui/webui/signin:signin_utils",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/browser/ui/webui/user_education",
       "//chrome/common",
@@ -86,14 +66,9 @@ source_set("history") {
       "//components/prefs",
       "//components/query_parser",
       "//components/sessions",
-      "//components/signin/public/base",
-      "//components/signin/public/identity_manager",
       "//components/strings:components_strings",
       "//components/supervised_user/core/browser",
-      "//components/sync/base",
       "//components/sync/service",
-      "//components/sync_device_info",
-      "//components/sync_sessions",
       "//components/user_education/webui",
       "//components/user_education/webui:mojo_bindings",
       "//content/public/browser",
@@ -115,16 +90,12 @@ if (!is_android) {
     testonly = true
     sources = [
       "browsing_history_handler_unittest.cc",
-      "foreign_session_handler_unittest.cc",
-      "history_identity_state_watcher_unittest.cc",
     ]
     deps = [
       ":history",
       "//base",
       "//base/test:test_support",
       "//chrome/browser/critical_actions",
-      "//chrome/browser/signin",
-      "//chrome/browser/sync",
       "//chrome/browser/ui:test_support",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/tabs:test_support",
@@ -135,13 +106,8 @@ if (!is_android) {
       "//components/history/core/browser",
       "//components/prefs",
       "//components/sessions",
-      "//components/signin/public/identity_manager",
       "//components/signin/public/identity_manager:test_support",
       "//components/sync:test_support",
-      "//components/sync/base",
-      "//components/sync_device_info",
-      "//components/sync_device_info:test_support",
-      "//components/sync_sessions",
       "//content/public/browser",
       "//content/test:test_support",
       "//mojo/public/cpp/bindings",

@@ -14,7 +14,6 @@ import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 export const Page = {
   HISTORY: 'history',
   HISTORY_CLUSTERS: 'grouped',
-  SYNCED_TABS: 'syncedTabs',
   PRODUCT_SPECIFICATIONS_LISTS: 'comparisonTables',
 };
 

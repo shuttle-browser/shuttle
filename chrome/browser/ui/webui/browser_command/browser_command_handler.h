@@ -59,7 +59,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
 
   virtual bool BrowserSupportsTabGroups();
   virtual bool DefaultSearchProviderIsGoogle();
-  virtual bool BrowserSupportsSavedTabGroups();
 
  private:
   FRIEND_TEST_ALL_PREFIXES(BrowserCommandHandlerTest,
@@ -81,7 +80,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   virtual void EnableVerticalTabs();
   void StartTabGroupTutorial();
   void StartPasswordManagerTutorial();
-  void StartSavedTabGroupTutorial();
 
   raw_ptr<Profile, DanglingUntriaged> profile_;
   std::vector<browser_command::mojom::Command> supported_commands_;

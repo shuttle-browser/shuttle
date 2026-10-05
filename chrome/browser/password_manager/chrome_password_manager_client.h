@@ -62,11 +62,7 @@
 #include "components/password_manager/core/browser/first_cct_page_load_passwords_ukm_recorder.h"
 #endif
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/password_manager/multi_profile_credentials_filter.h"
-#else
 #include "components/password_manager/core/browser/sync_credentials_filter.h"
-#endif
 
 class PasswordGenerationPopupObserver;
 class PasswordGenerationPopupControllerImpl;
@@ -580,12 +576,7 @@ class ChromePasswordManagerClient
   // Controls the generation popup.
   base::WeakPtr<PasswordGenerationPopupControllerImpl> popup_controller_;
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  // MultiProfileCredentialsFilter requires DICE support.
-  const MultiProfileCredentialsFilter credentials_filter_;
-#else
   const password_manager::SyncCredentialsFilter credentials_filter_;
-#endif
 
   const raw_ptr<autofill::LogRouter> log_router_;
   mutable std::unique_ptr<autofill::RoutingLogManager> log_manager_;

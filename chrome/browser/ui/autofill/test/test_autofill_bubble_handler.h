@@ -58,11 +58,6 @@ class TestAutofillBubbleHandler : public AutofillBubbleHandler {
       content::WebContents* contents,
       std::unique_ptr<UpdateAddressBubbleController> controller,
       bool is_user_gesture) override;
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  AutofillBubbleBase* ShowAddressSignInPromo(
-      content::WebContents* web_contents,
-      const AutofillProfile& autofill_profile) override;
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
   AutofillBubbleBase* ShowFilledCardInformationBubble(
       content::WebContents* web_contents,
       FilledCardInformationBubbleController* controller,

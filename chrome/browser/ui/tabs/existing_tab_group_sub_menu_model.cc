@@ -15,10 +15,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_on_close_helper.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/tab_group_menu_utils.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
-#include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/tabs/tab_menu_model_delegate.h"
@@ -222,12 +219,8 @@ void ExistingTabGroupSubMenuModel::ExecuteExistingCommand(size_t target_index) {
     return;
   }
 
-  tab_groups::EitherGroupID group_v =
-      target_index_to_group_mapping_.at(target_index);
-
-  CHECK(std::holds_alternative<tab_groups::LocalTabGroupID>(group_v));
+  tab_groups::TabGroupId group = target_index_to_group_mapping_.at(target_index);
   base::RecordAction(base::UserMetricsAction("TabContextMenu_NewTabInGroup"));
-  tab_groups::TabGroupId group = get<tab_groups::TabGroupId>(group_v);
   AddSelectedTabsToOpenGroup(group);
 }
 

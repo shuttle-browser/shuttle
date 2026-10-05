@@ -19,8 +19,7 @@ namespace segmentation_platform::processing {
 // because this is intended to be stored as user data in segmentation service.
 class LocalTabHandler : public TabFetcher, public base::SupportsUserData::Data {
  public:
-  LocalTabHandler(sync_sessions::SessionSyncService* session_sync_service,
-                  Profile* profile);
+  explicit LocalTabHandler(Profile* profile);
   ~LocalTabHandler() override;
 
   LocalTabHandler(const LocalTabHandler&) = delete;
@@ -37,8 +36,7 @@ class LocalTabHandler : public TabFetcher, public base::SupportsUserData::Data {
 // Tab session data source that adds info about local tabs.
 class LocalTabSource : public TabSessionSource {
  public:
-  LocalTabSource(sync_sessions::SessionSyncService* session_sync_service,
-                 TabFetcher* tab_fetcher);
+  explicit LocalTabSource(TabFetcher* tab_fetcher);
   ~LocalTabSource() override;
 
   LocalTabSource(const LocalTabSource&) = delete;

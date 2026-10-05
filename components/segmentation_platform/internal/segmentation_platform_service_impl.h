@@ -23,7 +23,6 @@
 #include "components/segmentation_platform/internal/service_proxy_impl.h"
 #include "components/segmentation_platform/internal/signals/signal_handler.h"
 #include "components/segmentation_platform/public/segmentation_platform_service.h"
-#include "components/sync_device_info/device_info_tracker.h"
 
 namespace base {
 class Clock;
@@ -70,12 +69,6 @@ class SegmentationPlatformServiceImpl : public SegmentationPlatformService {
     raw_ptr<history::HistoryService> history_service = nullptr;
     base::FilePath storage_dir;
     raw_ptr<PrefService> profile_prefs = nullptr;
-
-    // Device info tracker. It is owned by
-    // the DeviceInfoSynceService, which the segmentation platform service
-    // depends on. It is guaranteed to outlive the segmentation platform
-    // service.
-    raw_ptr<syncer::DeviceInfoTracker> device_info_tracker = nullptr;
 
     // Platform configuration:
     std::unique_ptr<ModelProviderFactory> model_provider;

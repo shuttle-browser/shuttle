@@ -559,7 +559,6 @@ group("gn_all") {
       if (!is_android && !is_castos && !is_ios && !is_fuchsia) {
         deps += [
           "//chrome/test:load_library_perf_tests",
-          "//chrome/test:sync_performance_tests",
         ]
       }
 

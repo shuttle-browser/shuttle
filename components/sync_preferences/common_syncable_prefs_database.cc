@@ -20,11 +20,9 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
-#include "components/saved_tab_groups/public/pref_names.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync/base/features.h"
-#include "components/sync_preferences/cross_device_pref_tracker/prefs/cross_device_pref_names.h"
 #include "components/variations/service/google_groups_manager_prefs.h"
 
 namespace sync_preferences {
@@ -279,43 +277,8 @@ constexpr auto kCommonSyncablePrefsAllowlist =
         {prefs::kCookieControlsMode,
          {syncable_prefs_ids::kCookieControlsMode, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {prefs::kCrossDeviceCrossPlatformPromosIOS16thActiveDay,
-         {syncable_prefs_ids::kCrossDeviceCrossPlatformPromosIOS16thActiveDay,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDeviceMagicStackHomeModuleEnabled,
-         {syncable_prefs_ids::kCrossDeviceMagicStackHomeModuleEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDeviceMostVisitedHomeModuleEnabled,
-         {syncable_prefs_ids::kCrossDeviceMostVisitedHomeModuleEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDeviceOmniboxIsInBottomPosition,
-         {syncable_prefs_ids::kCrossDeviceOmniboxIsInBottomPosition,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDevicePriceTrackingHomeModuleEnabled,
-         {syncable_prefs_ids::kCrossDevicePriceTrackingHomeModuleEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDeviceSafetyCheckHomeModuleEnabled,
-         {syncable_prefs_ids::kCrossDeviceSafetyCheckHomeModuleEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDeviceTabResumptionHomeModuleEnabled,
-         {syncable_prefs_ids::kCrossDeviceTabResumptionHomeModuleEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
-        {prefs::kCrossDeviceTipsHomeModuleEnabled,
-         {syncable_prefs_ids::kCrossDeviceTipsHomeModuleEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
         {prefs::kSafeBrowsingEnabled,
          {syncable_prefs_ids::kSafeBrowsingEnabled, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {tab_groups::prefs::kAutoPinNewTabGroups,
-         {syncable_prefs_ids::kAutoPinNewTabGroups, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
 // For Ash, the OS_PRIORITY_PREFERENCES equivalent is defined in
 // chrome/browser/sync/prefs/chrome_syncable_prefs_database.cc instead.
@@ -348,10 +311,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
          {syncable_prefs_ids::kSyncableHistorySensitiveListPrefForTesting,
           syncer::PREFERENCES, PrefSensitivity::kSensitiveRequiresHistory,
           MergeBehavior::kNone}},
-        {tab_groups::prefs::kSyncableTabGroups,
-         {syncable_prefs_ids::kSyncableTabGroups, syncer::PREFERENCES,
-          sync_preferences::PrefSensitivity::kNone,
-          sync_preferences::MergeBehavior::kNone}},
         {autofill::prefs::kAutofillPaymentCardBenefits,
          {syncable_prefs_ids::kAutofillPaymentCardBenefits, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},

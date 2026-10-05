@@ -12,11 +12,9 @@
 #include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_group_attention_indicator.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/tabs/tab_group_features.h"
@@ -34,7 +32,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_group.h"
@@ -587,33 +584,9 @@ int TabGroupHeader::GetChipY() const {
 }
 
 bool TabGroupHeader::ShouldShowHeaderIcon() const {
-  const bool supports_shared_groups = SupportsDataSharing();
-  if (!supports_shared_groups) {
-    return false;
-  }
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_slot_controller_->GetBrowserWindowInterface()
-          ? tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-                tab_slot_controller_->GetBrowserWindowInterface()->GetProfile())
-          : nullptr;
-  if (!tab_group_service) {
-    return false;
-  }
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(group().value());
-  if (!saved_group) {
-    return false;
-  }
-
-  if (supports_shared_groups) {
-    // DataSharing shows a share icon if the group is shared.
-    return saved_group->is_shared_tab_group();
-  }
-
-  // Show the V1 sync icon.
-  return true;
+  // Agent Chrome: no saved/shared tab groups, so there is never a sync or
+  // share icon.
+  return false;
 }
 
 void TabGroupHeader::SetCollapsedState() {

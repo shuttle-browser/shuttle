@@ -24,14 +24,10 @@
 #include "chrome/browser/segmentation_platform/segmentation_platform_config.h"
 #include "chrome/browser/segmentation_platform/segmentation_platform_profile_observer.h"
 #include "chrome/browser/segmentation_platform/ukm_database_client.h"
-#include "chrome/browser/sync/device_info_sync_service_factory.h"
-#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/common/chrome_constants.h"
 #include "components/pref_registry/pref_registry_syncable.h"
-#include "components/segmentation_platform/embedder/default_model/device_switcher_result_dispatcher.h"
 #include "components/segmentation_platform/embedder/home_modules/home_modules_card_registry.h"
-#include "components/segmentation_platform/embedder/input_delegate/tab_rank_dispatcher.h"
 #include "components/segmentation_platform/embedder/input_delegate/tab_session_source.h"
 #include "components/segmentation_platform/embedder/model_provider_factory_impl.h"
 #include "components/segmentation_platform/embedder/tab_fetcher.h"
@@ -42,8 +38,6 @@
 #include "components/segmentation_platform/public/features.h"
 #include "components/segmentation_platform/public/model_provider.h"
 #include "components/segmentation_platform/public/proto/model_metadata.pb.h"
-#include "components/sync_device_info/device_info_sync_service.h"
-#include "components/sync_sessions/session_sync_service.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
@@ -52,16 +46,13 @@ namespace segmentation_platform {
 namespace {
 const char kSegmentationPlatformProfileObserverKey[] =
     "segmentation_platform_profile_observer";
-const char kSegmentationDeviceSwitcherUserDataKey[] =
-    "segmentation_device_switcher_data";
-const char kSegmentationTabRankDispatcherUserDataKey[] =
-    "segmentation_tab_rank_dispatcher_data";
+const char kSegmentationTabFetcherUserDataKey[] =
+    "segmentation_tab_fetcher_data";
 const char kSegmentationHomeModulesCardRegistryDataKey[] =
     "segmentation_home_modules_card_registry";
 
 std::unique_ptr<processing::InputDelegateHolder> SetUpInputDelegates(
     std::vector<std::unique_ptr<Config>>& configs,
-    sync_sessions::SessionSyncService* session_sync_service,
     TabFetcher* tab_fetcher) {
   auto input_delegate_holder =
       std::make_unique<processing::InputDelegateHolder>();
@@ -74,21 +65,11 @@ std::unique_ptr<processing::InputDelegateHolder> SetUpInputDelegates(
   input_delegate_holder->SetDelegate(
       proto::CustomInput::FILL_TAB_METRICS,
       std::make_unique<segmentation_platform::processing::LocalTabSource>(
-          session_sync_service, tab_fetcher));
+          tab_fetcher));
 
   // Input delegates that are shared by multiple models.are added here.
 
   return input_delegate_holder;
-}
-
-void InitTabDataCollection(
-    SegmentationPlatformService* service,
-    sync_sessions::SessionSyncService* session_sync_service,
-    std::unique_ptr<TabFetcher> tab_fetcher) {
-  auto rank_dispatcher = std::make_unique<TabRankDispatcher>(
-      service, session_sync_service, std::move(tab_fetcher));
-  service->SetUserData(kSegmentationTabRankDispatcherUserDataKey,
-                       std::move(rank_dispatcher));
 }
 
 void InitializeUkmDatabaseIfNeeded(Profile* profile) {
@@ -132,9 +113,6 @@ SegmentationPlatformServiceFactory::SegmentationPlatformServiceFactory()
   DependsOn(
       OptimizationGuideGlobalStateHolderKeyedServiceFactory::GetInstance());
   DependsOn(HistoryServiceFactory::GetInstance());
-  DependsOn(DeviceInfoSyncServiceFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
-  DependsOn(SessionSyncServiceFactory::GetInstance());
 }
 
 SegmentationPlatformServiceFactory::~SegmentationPlatformServiceFactory() =
@@ -162,10 +140,7 @@ SegmentationPlatformServiceFactory::BuildServiceInstanceForBrowserContext(
       global_state_holder
           ? &global_state_holder->GetGlobalState().model_provider()
           : nullptr;
-  sync_sessions::SessionSyncService* session_sync_service =
-      SessionSyncServiceFactory::GetForProfile(profile);
-  auto tab_fetcher = std::make_unique<processing::LocalTabHandler>(
-      session_sync_service, profile);
+  auto tab_fetcher = std::make_unique<processing::LocalTabHandler>(profile);
   auto home_modules_card_registry =
       home_modules::HomeModulesCardRegistry::Create(
           profile->GetPrefs(), g_browser_process->local_state());
@@ -191,18 +166,11 @@ SegmentationPlatformServiceFactory::BuildServiceInstanceForBrowserContext(
   params->profile_prefs = profile->GetPrefs();
   params->configs =
       GetSegmentationPlatformConfig(context, home_modules_card_registry.get());
-  params->input_delegate_holder = SetUpInputDelegates(
-      params->configs, session_sync_service, tab_fetcher.get());
+  params->input_delegate_holder =
+      SetUpInputDelegates(params->configs, tab_fetcher.get());
   params->field_trial_register = std::make_unique<FieldTrialRegisterImpl>();
-  raw_ptr<FieldTrialRegister> field_trial_register =
-      params->field_trial_register.get();
   params->model_provider = std::make_unique<ModelProviderFactoryImpl>(
       optimization_guide, params->configs, params->task_runner);
-  // Guaranteed to outlive the SegmentationPlatformService, which depends on the
-  // DeviceInfoSynceService.
-  params->device_info_tracker =
-      DeviceInfoSyncServiceFactory::GetForProfile(profile)
-          ->GetDeviceInfoTracker();
 
   std::unique_ptr<SegmentationPlatformServiceImpl> service =
       std::make_unique<SegmentationPlatformServiceImpl>(std::move(params));
@@ -214,18 +182,12 @@ SegmentationPlatformServiceFactory::BuildServiceInstanceForBrowserContext(
         std::make_unique<SegmentationPlatformProfileObserver>(
             service.get(), g_browser_process->profile_manager()));
   }
-  service->SetUserData(kSegmentationDeviceSwitcherUserDataKey,
-                       std::make_unique<DeviceSwitcherResultDispatcher>(
-                           service.get(),
-                           DeviceInfoSyncServiceFactory::GetForProfile(profile)
-                               ->GetDeviceInfoTracker(),
-                           profile->GetPrefs(), field_trial_register));
-
   service->SetUserData(kSegmentationHomeModulesCardRegistryDataKey,
                        std::move(home_modules_card_registry));
 
-  InitTabDataCollection(service.get(), session_sync_service,
-                        std::move(tab_fetcher));
+  // The tab fetcher must outlive the input delegates; the service owns it.
+  service->SetUserData(kSegmentationTabFetcherUserDataKey,
+                       std::move(tab_fetcher));
 
   return service;
 }

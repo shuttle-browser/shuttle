@@ -22,7 +22,6 @@
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/sessions/core/tab_restore_service_observer.h"
 #include "components/sessions/core/tab_restore_types.h"
-#include "components/sync_sessions/synced_session.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/menus/simple_menu_model.h"
 
@@ -35,11 +34,6 @@ struct FaviconImageResult;
 namespace sessions {
 struct SessionTab;
 }
-
-namespace sync_sessions {
-class OpenTabsUIDelegate;
-class SessionSyncService;
-}  // namespace sync_sessions
 
 namespace ui {
 class AcceleratorProvider;
@@ -109,9 +103,6 @@ class RecentTabsSubMenuModel : public ui::SimpleMenuModel,
   // Build the recently closed tabs and windows items.
   void BuildLocalEntries();
 
-  // Build the tabs items from other devices.
-  void BuildTabsFromOtherDevices();
-
   // Build a recently closed tab item with parameters needed to restore it, and
   // add it to the menumodel at `curr_model_index`.
   void BuildLocalTabItem(const sessions::tab_restore::Tab& tab,
@@ -131,16 +122,6 @@ class RecentTabsSubMenuModel : public ui::SimpleMenuModel,
   // it, and add it to the menumodel at `curr_model_index`.
   void BuildLocalSplitItem(const sessions::tab_restore::Split& split,
                            size_t curr_model_index);
-
-  // Build the tab item for other devices with parameters needed to restore it.
-  void BuildOtherDevicesTabItem(SimpleMenuModel* containing_model,
-                                const std::string& session_tag,
-                                const sessions::SessionTab& tab);
-
-  // Build a sub menu model for given device session.
-  std::unique_ptr<ui::SimpleMenuModel> CreateOtherDeviceSubMenu(
-      const sync_sessions::SyncedSession* session,
-      const std::vector<const sessions::SessionTab*>& tabs_in_session);
 
   using TabIterator =
       std::vector<std::unique_ptr<sessions::tab_restore::Tab>>::const_iterator;
@@ -201,11 +182,6 @@ class RecentTabsSubMenuModel : public ui::SimpleMenuModel,
   // for all items whose parent is the RecentTabsSubMenuModel itself.
   int GetParentCommandId(int command_id) const;
 
-  // Add the favicon for the device section header.
-  void AddDeviceFavicon(SimpleMenuModel* containing_model,
-                        size_t index_in_menu,
-                        syncer::DeviceInfo::FormFactor device_form_factor);
-
   // Add the favicon for a local or other devices' tab asynchronously,
   // OnFaviconDataAvailable() will be invoked when the favicon is ready.
   void AddTabFavicon(int command_id,
@@ -219,23 +195,14 @@ class RecentTabsSubMenuModel : public ui::SimpleMenuModel,
   // Clear all recently closed tabs and windows.
   void ClearLocalEntries();
 
-  // Clears all tabs from other devices.
-  void ClearTabsFromOtherDevices();
-
   // Returns the corresponding local or other devices' TabItems in
   // `local_tab_items_` or `remote_tab_items_`.
   TabItems* GetTabVectorForCommandId(int command_id);
-
-  // Convenience function to access OpenTabsUIDelegate provided by
-  // SessionSyncService. Can return null if session sync is not running.
-  sync_sessions::OpenTabsUIDelegate* GetOpenTabsUIDelegate();
 
   // Overridden from TabRestoreServiceObserver:
   void TabRestoreServiceChanged(sessions::TabRestoreService* service) override;
   void TabRestoreServiceDestroyed(
       sessions::TabRestoreService* service) override;
-
-  void OnForeignSessionUpdated();
 
   // Returns true when the kSavingBrowserHistoryDisabled policy is not active,
   // meaning the dynamic menu section (local + remote entries) should be shown.
@@ -260,9 +227,6 @@ class RecentTabsSubMenuModel : public ui::SimpleMenuModel,
   const raw_ptr<BrowserWindowInterface> browser_;  // Weak.
 
   LogMenuMetricsCallback log_menu_metrics_callback_;
-
-  const raw_ptr<sync_sessions::SessionSyncService>
-      session_sync_service_;  // Weak.
 
   // Accelerator for reopening last closed tab.
   ui::Accelerator reopen_closed_tab_accelerator_;
@@ -307,8 +271,6 @@ class RecentTabsSubMenuModel : public ui::SimpleMenuModel,
   base::ScopedObservation<sessions::TabRestoreService,
                           sessions::TabRestoreServiceObserver>
       tab_restore_service_observation_{this};
-
-  base::CallbackListSubscription foreign_session_updated_subscription_;
 
   PrefChangeRegistrar pref_change_registrar_;
 

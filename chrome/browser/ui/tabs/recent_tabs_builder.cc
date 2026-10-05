@@ -19,7 +19,6 @@
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
-#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -28,7 +27,6 @@
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
-#include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -36,10 +34,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/sync/base/features.h"
 #include "components/sync/base/user_selectable_type.h"
-#include "components/sync_device_info/device_info.h"
-#include "components/sync_sessions/open_tabs_ui_delegate.h"
-#include "components/sync_sessions/session_sync_service.h"
-#include "components/sync_sessions/synced_session.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
@@ -49,12 +43,6 @@
 namespace {
 
 constexpr int kMaxLocalEntries = 8;
-constexpr size_t kMaxSessionsToShow = 8;
-
-bool SortSessionsByRecency(const sync_sessions::SyncedSession* s1,
-                           const sync_sessions::SyncedSession* s2) {
-  return s1->GetModifiedTime() > s2->GetModifiedTime();
-}
 
 ui::ImageModel CreateFavicon(const gfx::VectorIcon& icon) {
   return ui::ImageModel::FromVectorIcon(icon, ui::kColorMenuIcon,
@@ -69,21 +57,6 @@ std::u16string GetGroupItemLabel(const std::u16string& title, size_t num_tabs) {
   std::u16string item_label = l10n_util::GetPluralStringFUTF16(
       IDS_RECENTLY_CLOSED_GROUP, static_cast<int>(num_tabs));
   return base::ReplaceStringPlaceholders(item_label, title, nullptr);
-}
-
-const gfx::VectorIcon& GetDeviceIcon(
-    syncer::DeviceInfo::FormFactor device_form_factor) {
-  switch (device_form_factor) {
-    case syncer::DeviceInfo::FormFactor::kPhone:
-      return features::IsRoundedIconsEnabled() ? kMobileIcon
-                                               : kSmartphoneOldIcon;
-    case syncer::DeviceInfo::FormFactor::kTablet:
-      return features::IsRoundedIconsEnabled() ? kTabletFilledIcon
-                                               : kTabletOldIcon;
-    default:
-      return features::IsRoundedIconsEnabled() ? kLaptopWindowsIcon
-                                               : kLaptopOldIcon;
-  }
 }
 
 RecentTabItem BuildTabItem(const sessions::tab_restore::Tab& tab) {
@@ -224,10 +197,6 @@ std::vector<RecentTabItem> RecentTabsBuilder::BuildRecentTabs(
   items.insert(items.end(), std::make_move_iterator(local_items.begin()),
                std::make_move_iterator(local_items.end()));
 
-  auto remote_items = BuildRemoteEntries(profile);
-  items.insert(items.end(), std::make_move_iterator(remote_items.begin()),
-               std::make_move_iterator(remote_items.end()));
-
   return items;
 }
 
@@ -261,19 +230,6 @@ std::vector<RecentTabItem> RecentTabsBuilder::BuildHistoryEntries(
               : vector_icons::kHistoryChromeRefreshOldIcon,
           ui::kColorMenuIcon, gfx::kFaviconSize));
       items.push_back(std::move(clusters));
-    }
-
-    if (TabsFromOtherDevicesSidePanelCoordinator::IsSupported(profile)) {
-      RecentTabItem other_devices(
-          RecentTabItem::Type::kCommand,
-          l10n_util::GetStringUTF16(
-              IDS_SIDE_PANEL_SHOW_TABS_FROM_OTHER_DEVICES));
-      other_devices.set_action_id(kActionSidePanelShowTabsFromOtherDevices);
-      other_devices.set_icon(ui::ImageModel::FromVectorIcon(
-          features::IsRoundedIconsEnabled() ? kDevicesIcon
-                                            : kDevicesChromeRefreshOldIcon,
-          ui::kColorMenuIcon, gfx::kFaviconSize));
-      items.push_back(std::move(other_devices));
     }
   }
 
@@ -325,129 +281,6 @@ std::vector<RecentTabItem> RecentTabsBuilder::BuildLocalEntries(
       }
     }
     ++added_count;
-  }
-
-  return items;
-}
-
-std::vector<RecentTabItem> RecentTabsBuilder::BuildRemoteEntries(
-    Profile* profile) {
-  std::vector<RecentTabItem> items;
-  if (!profile) {
-    return items;
-  }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
-    syncer::SyncService* sync_service =
-        SyncServiceFactory::GetForProfile(profile);
-    if (!sync_service ||
-        !signin_util::IsSyncingUserSelectableTypesAllowedByPolicy(
-            sync_service, {syncer::UserSelectableType::kTabs})) {
-      return items;
-    }
-    signin::IdentityManager* identity_manager =
-        IdentityManagerFactory::GetForProfile(profile);
-    switch (signin_util::GetSignedInState(identity_manager)) {
-      case signin_util::SignedInState::kSignedIn:
-      case signin_util::SignedInState::kSignInPending:
-        if (signin_util::HasExplicitlyDisabledHistorySync(sync_service,
-                                                          identity_manager)) {
-          return items;
-        }
-        break;
-      case signin_util::SignedInState::kSignedOut:
-      case signin_util::SignedInState::kWebOnlySignedIn:
-      case signin_util::SignedInState::kSyncing:
-      case signin_util::SignedInState::kSyncPaused:
-        break;
-    }
-  }
-#endif
-
-  items.emplace_back(RecentTabItem::Type::kHeader,
-                     l10n_util::GetStringUTF16(IDS_YOUR_DEVICES));
-
-  sync_sessions::SessionSyncService* session_sync_service =
-      SessionSyncServiceFactory::GetInstance()->GetForProfile(profile);
-  sync_sessions::OpenTabsUIDelegate* open_tabs =
-      session_sync_service ? session_sync_service->GetOpenTabsUIDelegate()
-                           : nullptr;
-
-  std::vector<raw_ptr<const sync_sessions::SyncedSession, VectorExperimental>>
-      sessions;
-  if (!open_tabs || !open_tabs->GetAllForeignSessions(&sessions)) {
-    if (open_tabs) {
-      RecentTabItem no_tabs(
-          RecentTabItem::Type::kCommand,
-          l10n_util::GetStringUTF16(IDS_RECENT_TABS_NO_DEVICE_TABS));
-      no_tabs.set_enabled(false);
-      items.push_back(std::move(no_tabs));
-    } else if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
-      RecentTabItem see_tabs(
-          RecentTabItem::Type::kCommand,
-          l10n_util::GetStringUTF16(IDS_RECENT_TABS_SEE_DEVICE_TABS));
-      see_tabs.set_action_id(kActionRecentTabsSeeDeviceTabs);
-      see_tabs.set_icon(ui::ImageModel::FromVectorIcon(
-          features::IsRoundedIconsEnabled() ? vector_icons::kSyncIcon
-                                            : kSyncRefreshOldIcon,
-          ui::kColorMenuIcon, gfx::kFaviconSize));
-      items.push_back(std::move(see_tabs));
-    } else {
-      RecentTabItem login_tabs(
-          RecentTabItem::Type::kCommand,
-          l10n_util::GetStringUTF16(IDS_RECENT_TABS_LOGIN_FOR_DEVICE_TABS));
-      login_tabs.set_action_id(kActionRecentTabsLoginForDeviceTabs);
-      login_tabs.set_icon(ui::ImageModel::FromVectorIcon(
-          features::IsRoundedIconsEnabled() ? vector_icons::kSyncIcon
-                                            : kSyncRefreshOldIcon,
-          ui::kColorMenuIcon, gfx::kFaviconSize));
-      items.push_back(std::move(login_tabs));
-    }
-    return items;
-  }
-
-  std::sort(sessions.begin(), sessions.end(), SortSessionsByRecency);
-
-  size_t num_sessions_added = 0;
-  for (size_t i = 0;
-       i < sessions.size() && num_sessions_added < kMaxSessionsToShow; ++i) {
-    const sync_sessions::SyncedSession* session = sessions[i];
-    const std::string& session_tag = session->GetSessionTag();
-
-    std::vector<const sessions::SessionTab*> tabs_in_session;
-    if (!open_tabs->GetForeignSessionTabs(session_tag, &tabs_in_session) ||
-        tabs_in_session.empty()) {
-      continue;
-    }
-
-    RecentTabItem device_item(RecentTabItem::Type::kDevice,
-                              base::UTF8ToUTF16(session->GetSessionName()));
-    device_item.set_session_tag(session_tag);
-    device_item.set_device_form_factor(session->GetDeviceFormFactor());
-    device_item.set_icon(
-        CreateFavicon(GetDeviceIcon(session->GetDeviceFormFactor())));
-
-    for (const auto* tab : tabs_in_session) {
-      const sessions::SerializedNavigationEntry& current_navigation =
-          tab->navigations.at(tab->normalized_navigation_index());
-      std::u16string title =
-          current_navigation.title().empty()
-              ? base::UTF8ToUTF16(current_navigation.virtual_url().spec())
-              : current_navigation.title();
-
-      RecentTabItem foreign_tab(RecentTabItem::Type::kTab, title);
-      foreign_tab.set_session_tag(session_tag);
-      foreign_tab.set_session_id(tab->tab_id);
-      foreign_tab.set_url(current_navigation.virtual_url());
-      foreign_tab.set_icon(favicon::GetDefaultFaviconModel());
-      foreign_tab.set_is_local(false);
-
-      device_item.add_child(std::move(foreign_tab));
-    }
-
-    items.push_back(std::move(device_item));
-    ++num_sessions_added;
   }
 
   return items;

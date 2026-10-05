@@ -10,7 +10,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/webauthn/passkey_unlock_manager.h"
@@ -24,39 +23,7 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/webui/web_ui_util.h"
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/profiles/batch_upload/batch_upload_service.h"
-#include "chrome/browser/profiles/batch_upload/batch_upload_service_factory.h"
-#endif
-
 namespace password_manager {
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-namespace {
-
-// Entry points to the Batch Upload dialog in the passwords settings section.
-// It is a subset of the entry points in `BatchUploadService::EntryPoint`.
-// WARNING: Keep synced with
-// chrome/browser/resources/password_manager/sync_browser_proxy.ts.
-enum class BatchUploadPasswordsEntryPoint {
-  kPasswordManager = 0,
-  kPromoCard = 1,
-
-  kMaxValue = kPromoCard,
-};
-
-BatchUploadService::EntryPoint ToBatchUploadEntryPoint(
-    BatchUploadPasswordsEntryPoint password_entry_point) {
-  switch (password_entry_point) {
-    case BatchUploadPasswordsEntryPoint::kPasswordManager:
-      return BatchUploadService::EntryPoint::kPasswordManagerSettings;
-    case BatchUploadPasswordsEntryPoint::kPromoCard:
-      return BatchUploadService::EntryPoint::kPasswordPromoCard;
-  }
-}
-
-}  // namespace
-#endif
 
 SyncHandler::SyncHandler(Profile* profile) : profile_(profile) {}
 
@@ -81,12 +48,6 @@ void SyncHandler::RegisterMessages() {
       "StartPasskeyUnlockFlow",
       base::BindRepeating(&SyncHandler::HandleStartPasskeyUnlockFlow,
                           base::Unretained(this)));
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-  web_ui()->RegisterMessageCallback(
-      "OpenBatchUpload",
-      base::BindRepeating(&SyncHandler::HandleOpenBatchUploadDialog,
-                          base::Unretained(this)));
-#endif
 }
 
 void SyncHandler::OnJavascriptAllowed() {
@@ -186,27 +147,6 @@ void SyncHandler::HandleGetAccountInfo(const base::ListValue& args) {
 
   ResolveJavascriptCallback(callback_id, GetAccountInfo());
 }
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-void SyncHandler::HandleOpenBatchUploadDialog(const base::ListValue& args) {
-  AllowJavascript();
-  CHECK_EQ(1U, args.size());
-  CHECK(args[0].is_int());
-  int entry_point_int = args[0].GetInt();
-  CHECK(entry_point_int >= 0 &&
-        entry_point_int <=
-            static_cast<int>(BatchUploadPasswordsEntryPoint::kMaxValue));
-
-  BatchUploadService::EntryPoint entry_point = ToBatchUploadEntryPoint(
-      static_cast<BatchUploadPasswordsEntryPoint>(entry_point_int));
-  BatchUploadService* batch_upload =
-      BatchUploadServiceFactory::GetForProfile(profile_);
-  CHECK(batch_upload);
-  BrowserWindowInterface* browser =
-      ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
-  batch_upload->OpenBatchUpload(browser, entry_point);
-}
-#endif
 
 void SyncHandler::HandleGetLocalPasswordCount(const base::ListValue& args) {
   AllowJavascript();

@@ -29,6 +29,8 @@
 #include "chrome/browser/performance_manager/public/user_tuning/user_tuning_utils.h"
 #include "chrome/browser/preloading/preloading_features.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_attributes_entry.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
@@ -54,13 +56,10 @@
 #include "chrome/browser/ui/webui/settings/browser_lifetime_handler.h"
 #include "chrome/browser/ui/webui/settings/downloads_handler.h"
 #include "chrome/browser/ui/webui/settings/font_handler.h"
-#include "chrome/browser/ui/webui/settings/import_data_handler.h"
 #include "chrome/browser/ui/webui/settings/metrics_reporting_handler.h"
 #include "chrome/browser/ui/webui/settings/on_startup_handler.h"
 #include "chrome/browser/ui/webui/settings/password_manager_handler.h"
-#include "chrome/browser/ui/webui/settings/people_handler.h"
 #include "chrome/browser/ui/webui/settings/performance_handler.h"
-#include "chrome/browser/ui/webui/settings/profile_info_handler.h"
 #include "chrome/browser/ui/webui/settings/protocol_handlers_handler.h"
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
 #include "chrome/browser/ui/webui/settings/saved_info_handler.h"
@@ -162,12 +161,9 @@
 #include "components/user_manager/user.h"
 #include "ui/base/ui_base_features.h"
 #else  // !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
-#include "chrome/browser/ui/webui/cr_components/signin/signin_utils_handler.h"
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
 #include "chrome/browser/ui/webui/settings/captions_handler.h"
 #include "chrome/browser/ui/webui/settings/settings_default_browser_handler.h"
-#include "chrome/browser/ui/webui/settings/settings_manage_profile_handler.h"
 #include "chrome/browser/ui/webui/settings/system_handler.h"
 #include "components/language/core/common/language_experiments.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -187,7 +183,6 @@
 #include "device/vr/public/cpp/features.h"
 #endif
 
-#include "chrome/browser/ui/webui/batch_upload_promo/batch_upload_promo_handler.h"
 
 namespace settings {
 
@@ -229,7 +224,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   AddSettingsPageUIHandler(std::make_unique<DownloadsHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<ExtensionControlHandler>());
   AddSettingsPageUIHandler(std::make_unique<FontHandler>(profile));
-  AddSettingsPageUIHandler(std::make_unique<ImportDataHandler>());
 
 #if BUILDFLAG(IS_WIN)
   AddSettingsPageUIHandler(std::make_unique<LanguagesHandler>());
@@ -245,8 +239,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   AddSettingsPageUIHandler(std::make_unique<OnDeviceAiSettingsHandler>());
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
   AddSettingsPageUIHandler(std::make_unique<OnStartupHandler>(profile));
-  AddSettingsPageUIHandler(std::make_unique<PeopleHandler>(profile));
-  AddSettingsPageUIHandler(std::make_unique<ProfileInfoHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<ProtocolHandlersHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<SearchEnginesHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<SecureDnsHandler>());
@@ -269,7 +261,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   AddSettingsPageUIHandler(
       std::make_unique<CaptionsHandler>(profile->GetPrefs()));
   AddSettingsPageUIHandler(std::make_unique<DefaultBrowserHandler>());
-  AddSettingsPageUIHandler(std::make_unique<ManageProfileHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<SystemHandler>());
 
 #endif
@@ -277,10 +268,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
 #if BUILDFLAG(IS_MAC)
   AddSettingsPageUIHandler(std::make_unique<MacSystemSettingsHandler>());
 #endif
-
-  html_source->AddBoolean("signinAllowed", !profile->IsGuestSession() &&
-                                               profile->GetPrefs()->GetBoolean(
-                                                   prefs::kSigninAllowed));
 
   html_source->AddBoolean("shouldUseMetricsConsentRestructure",
                           metrics::MetricsReportingChoiceService::
@@ -528,14 +515,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddBoolean("showAiPageAiFeatureSection",
                           show_ai_features_section);
 
-  html_source->AddBoolean("replaceSyncPromosWithSignInPromos",
-                          syncer::IsReplaceSyncPromosWithSignInPromosEnabled());
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  html_source->AddBoolean("unoPhase2FollowUp", base::FeatureList::IsEnabled(
-                                                   syncer::kUnoPhase2FollowUp));
-#endif
-
   html_source->AddBoolean(
       "searchSettingsUpdate",
       base::FeatureList::IsEnabled(switches::kSearchSettingsUpdate));
@@ -632,25 +611,7 @@ void SettingsUI::BindInterface(
   theme_color_picker_handler_factory_receiver_.Bind(
       std::move(pending_receiver));
 }
-
-void SettingsUI::BindInterface(
-    mojo::PendingReceiver<signin::mojom::SigninPageHandlerFactory>
-        pending_receiver) {
-  if (signin_handler_factory_receiver_.is_bound()) {
-    signin_handler_factory_receiver_.reset();
-  }
-  signin_handler_factory_receiver_.Bind(std::move(pending_receiver));
-}
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-void SettingsUI::BindInterface(
-    mojo::PendingReceiver<batch_upload_promo::mojom::PageHandlerFactory>
-        pending_receiver) {
-  if (batch_upload_promo_factory_receiver_.is_bound()) {
-    batch_upload_promo_factory_receiver_.reset();
-  }
-  batch_upload_promo_factory_receiver_.Bind(std::move(pending_receiver));
-}
 
 void SettingsUI::BindInterface(
     mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
@@ -678,31 +639,7 @@ void SettingsUI::CreateThemeColorPickerHandler(
       web_ui()->GetWebContents());
 }
 
-void SettingsUI::CreateSigninPageHandler(
-    mojo::PendingReceiver<signin::mojom::SigninPageHandler> handler) {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  signin_handler_ = std::make_unique<SigninUtilsHandler>(
-      std::move(handler), Profile::FromWebUI(web_ui()));
-#endif
-}
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-void SettingsUI::CreateBatchUploadPromoHandler(
-    mojo::PendingRemote<batch_upload_promo::mojom::Page> pending_page,
-    mojo::PendingReceiver<batch_upload_promo::mojom::PageHandler>
-        pending_page_handler) {
-  Profile* profile = Profile::FromWebUI(web_ui());
-  CHECK(profile);
-
-  // Batch upload needs the sync service to be present in order to start.
-  if (!SyncServiceFactory::GetForProfile(profile)) {
-    return;
-  }
-
-  batch_upload_promo_handler_ = std::make_unique<BatchUploadPromoHandler>(
-      std::move(pending_page_handler), std::move(pending_page),
-      Profile::FromWebUI(web_ui()), web_ui()->GetWebContents());
-}
 
 void SettingsUI::CreateHelpBubbleHandler(
     mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,

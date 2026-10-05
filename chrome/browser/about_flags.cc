@@ -84,7 +84,6 @@
 #include "components/autofill/core/common/autofill_switches.h"
 #include "components/autofill/core/common/autofill_util.h"
 #include "components/browser_actuator/public/features.h"
-#include "components/browser_sync/browser_sync_switches.h"
 #include "components/browsing_data/core/features.h"
 #include "components/component_updater/component_updater_command_line_config_policy.h"
 #include "components/component_updater/component_updater_switches.h"
@@ -142,7 +141,6 @@
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/safebrowsing_switches.h"
 #include "components/safety_check/features.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/search/ntp_features.h"
 #include "components/search_engines/search_engines_switches.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
@@ -154,7 +152,6 @@
 #include "components/services/storage/dom_storage/features.h"
 #include "components/sessions/core/command_storage_features.h"
 #include "components/shared_highlighting/core/common/shared_highlighting_features.h"
-#include "components/signin/core/browser/dice_account_reconcilor_delegate.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/site_isolation/features.h"
@@ -9202,11 +9199,6 @@ const FeatureEntry kFeatureEntries[] = {
      MULTI_VALUE_TYPE(kDataSharingVersioningStateChoices)},
     // LINT.ThenChange(//ios/chrome/browser/flags/about_flags.mm:DataSharingVersioning)
 
-    {"history-sync-alternative-illustration",
-     flag_descriptions::kHistorySyncAlternativeIllustrationName,
-     flag_descriptions::kHistorySyncAlternativeIllustrationDescription, kOsAll,
-     FEATURE_VALUE_TYPE(tab_groups::kUseAlternateHistorySyncIllustration)},
-
 #if BUILDFLAG(IS_CHROMEOS)
     {"cros-content-adjusted-refresh-rate",
      flag_descriptions::kCrosContentAdjustedRefreshRateName,
@@ -10685,18 +10677,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(
          autofill::features::kAutofillDisableBnplCountryCheckForTesting)},
-
-    {"migrate-syncing-user-to-signed-in",
-     flag_descriptions::kMigrateSyncingUserToSignedInName,
-     flag_descriptions::kMigrateSyncingUserToSignedInDescription,
-     kOsMac | kOsWin | kOsLinux,
-     FEATURE_VALUE_TYPE(switches::kMigrateSyncingUserToSignedIn)},
-
-    {"undo-migration-of-syncing-user-to-signed-in",
-     flag_descriptions::kUndoMigrationOfSyncingUserToSignedInName,
-     flag_descriptions::kUndoMigrationOfSyncingUserToSignedInDescription,
-     kOsMac | kOsWin | kOsLinux,
-     FEATURE_VALUE_TYPE(switches::kUndoMigrationOfSyncingUserToSignedIn)},
 
 #if BUILDFLAG(IS_ANDROID)
 

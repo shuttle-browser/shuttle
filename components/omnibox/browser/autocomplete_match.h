@@ -28,7 +28,6 @@
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
 #include "components/omnibox/browser/buildflags.h"
-#include "components/saved_tab_groups/public/types.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_starter_pack_data.h"
 #include "components/url_formatter/url_formatter.h"

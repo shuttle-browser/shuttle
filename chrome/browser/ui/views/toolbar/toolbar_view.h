@@ -20,7 +20,6 @@
 #include "chrome/browser/ui/views/frame/browser_root_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
-#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/overflow_button.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
@@ -40,8 +39,6 @@
 #include "chromeos/ash/experiences/arc/intent_helper/arc_intent_helper_bridge.h"
 #include "chromeos/ash/experiences/arc/mojom/intent_helper.mojom-forward.h"  // nogncheck https://crbug.com/784179
 #endif  // BUILDFLAG(IS_CHROMEOS)
-class AvatarToolbarButton;
-class AvatarToolbarButtonInterface;
 class BrowserAppMenuButton;
 class BrowserWindowInterface;
 class ExtensionsToolbarButton;
@@ -52,7 +49,6 @@ class ReloadButton;
 class WebUIToolbarWebView;
 class PinnedToolbarActionsContainer;
 class ToolbarButton;
-class AvatarToolbarButtonBrowserTest;
 class ToolbarController;
 class ToolbarDivider;
 class OverflowButton;
@@ -144,7 +140,6 @@ class ToolbarView : public views::AccessiblePaneView,
 
   // TODO(crbug.com/513238408): Remove this once toolbar layout/overflow is
   // fixed.
-  AvatarToolbarButton* avatar_toolbar_button() { return avatar_; }
   AppMenuIconController* app_menu_icon_controller() {
     return &app_menu_icon_controller_;
   }
@@ -189,7 +184,6 @@ class ToolbarView : public views::AccessiblePaneView,
   void ChildPreferredSizeChanged(views::View* child) override;
   void ChildVisibilityChanged(View* child) override;
 
-  friend class AvatarToolbarButtonBaseBrowserTest;
 
  protected:
   // This controls Toolbar, LocationBar and CustomTabBar visibility.
@@ -235,7 +229,6 @@ class ToolbarView : public views::AccessiblePaneView,
   views::BubbleAnchor GetPageActionBubbleAnchor(
       actions::ActionId action_id) override;
   void ZoomChangedForActiveTab(bool can_show_bubble) override;
-  AvatarToolbarButtonInterface* GetAvatarToolbarButtonInterface() override;
   ToolbarButton* GetBackButton() override;
   ReloadControl* GetReloadButton() override;
   ToolbarButton* GetDownloadButton() override;
@@ -290,7 +283,6 @@ class ToolbarView : public views::AccessiblePaneView,
   // An alias for `pinned_toolbar_actions_container_` or
   // `toolbar_webview_->GetPinnedActionsContainer()`.
   raw_ptr<PinnedToolbarActions> pinned_toolbar_actions_ = nullptr;
-  raw_ptr<AvatarToolbarButton> avatar_ = nullptr;
   raw_ptr<BrowserAppMenuButton> app_menu_button_ = nullptr;
 
   const raw_ptr<BrowserWindowInterface> browser_;

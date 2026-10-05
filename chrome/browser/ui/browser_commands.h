@@ -120,7 +120,6 @@ base::WeakPtr<content::NavigationHandle> OpenCurrentURL(
     BrowserWindowInterface* browser);
 void Stop(BrowserWindowInterface* browser);
 void NewWindow(BrowserWindowInterface* browser);
-void NewIncognitoWindow(Profile* profile);
 void CloseWindow(BrowserWindowInterface* browser);
 content::WebContents& NewTab(BrowserWindowInterface* browser,
                              NewTabTypes context);
@@ -296,7 +295,6 @@ void OpenSizeWindow(BrowserWindowInterface* browser);
 void ToggleShowFullURLs(BrowserWindowInterface* browser);
 void ToggleShowSearchTools(BrowserWindowInterface* browser);
 void ShowAppMenu(BrowserWindowInterface* browser);
-void ShowAvatarMenu(BrowserWindowInterface* browser);
 void OpenUpdateChromeDialog(BrowserWindowInterface* browser);
 bool CanRequestTabletSite(content::WebContents* current_tab);
 bool IsRequestingTabletSite(BrowserWindowInterface* browser);
@@ -325,13 +323,6 @@ void ExecuteUIDebugCommand(int id, const BrowserWindowInterface* browser);
 
 std::optional<int> GetKeyboardFocusedTabIndex(
     const BrowserWindowInterface* browser);
-
-void ShowIncognitoClearBrowsingDataDialog(BrowserWindowInterface* browser);
-void ShowIncognitoHistoryDisclaimerDialog(BrowserWindowInterface* browser);
-bool ShouldInterceptChromeURLNavigationInIncognito(BrowserWindowInterface* browser,
-                                                   const GURL& url);
-void ProcessInterceptedChromeURLNavigationInIncognito(BrowserWindowInterface* browser,
-                                                      const GURL& url);
 
 }  // namespace chrome
 

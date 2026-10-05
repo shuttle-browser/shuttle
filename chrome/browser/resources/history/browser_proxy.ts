@@ -4,9 +4,6 @@
 
 import type {PageHandlerRemote} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {PageCallbackRouter, PageHandler} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
-import {sendWithPromise} from 'chrome://resources/js/cr.js';
-
-import type {HistoryIdentityState} from './externs.js';
 
 export type RemoveVisitsRequest = Array<{
   url: string,
@@ -24,11 +21,7 @@ export interface BrowserProxy {
   recordAction(action: string): void;
   recordTime(histogram: string, time: number): void;
   recordLongTime(histogram: string, time: number): void;
-  recordSigninPendingOffered(): void;
   navigateToUrl(url: string, target: string, e: MouseEvent): void;
-  otherDevicesInitialized(): void;
-  getInitialIdentityState(): Promise<HistoryIdentityState>;
-  startTurnOnSyncFlow(): void;
 }
 
 export class BrowserProxyImpl implements BrowserProxy {
@@ -64,26 +57,10 @@ export class BrowserProxyImpl implements BrowserProxy {
     chrome.metricsPrivate.recordLongTime(histogram, time);
   }
 
-  recordSigninPendingOffered() {
-    chrome.send('recordSigninPendingOffered');
-  }
-
   navigateToUrl(url: string, target: string, e: MouseEvent) {
     chrome.send(
         'navigateToUrl',
         [url, target, e.button, e.altKey, e.ctrlKey, e.metaKey, e.shiftKey]);
-  }
-
-  otherDevicesInitialized() {
-    chrome.send('otherDevicesInitialized');
-  }
-
-  getInitialIdentityState(): Promise<HistoryIdentityState> {
-    return sendWithPromise<HistoryIdentityState>('getInitialIdentityState');
-  }
-
-  startTurnOnSyncFlow() {
-    chrome.send('startTurnOnSyncFlow');
   }
 
   static getInstance(): BrowserProxy {

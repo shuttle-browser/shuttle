@@ -46,7 +46,6 @@ group("resources") {
     "../gcm_driver/resources",
     "../metrics:server_urls_grd",
     "../net_log/resources",
-    "../signin/core/browser/resources",
     "../webui:resources",
   ]
 

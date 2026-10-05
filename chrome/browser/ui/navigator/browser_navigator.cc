@@ -32,7 +32,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/incognito_allowed_url.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params_utils.h"
@@ -131,11 +130,6 @@ BrowserWindowInterface* GetOrCreateBrowser(Profile* profile,
   return browser;
 }
 
-bool IncognitoModeForced(const Profile* profile) {
-  return IncognitoModePrefs::GetAvailability(profile->GetPrefs()) ==
-         policy::IncognitoModeAvailability::kForced;
-}
-
 #if BUILDFLAG(IS_CHROMEOS)
 // Returns true if the navigation request originated from a captive portal
 // sign-in window. In non-Guest sessions, this is identified by checking if the
@@ -174,25 +168,7 @@ bool ShouldForceCaptivePortalSigninIntoCurrentTab(
 // Returns true on success. Otherwise, if changing params leads the browser
 // into an erroneous state, returns false.
 bool AdjustNavigateParamsForURL(NavigateParams* params) {
-  // Check for some chrome:// pages which we always want to open in a
-  // non-incognito window. Note that even though a ChromeOS guest session is
-  // technically an incognito window, these URLs are allowed.
-  Profile* profile = params->initiating_profile;
-  if (!params->contents_to_insert && !params->switch_to_singleton_tab &&
-      !IsURLAllowedInIncognito(params->url) && !profile->IsGuestSession() &&
-      (profile->IsOffTheRecord() ||
-       params->disposition == WindowOpenDisposition::OFF_THE_RECORD)) {
-    profile = profile->GetOriginalProfile();
-
-    // If incognito is forced, we punt.
-    if (IncognitoModeForced(profile)) {
-      return false;
-    }
-    params->disposition = WindowOpenDisposition::SINGLETON_TAB;
-    params->browser = GetOrCreateBrowser(profile, params->user_gesture);
-    params->window_action = NavigateParams::WindowAction::kShowWindow;
-  }
-
+  // Nothing to adjust: chrome:// pages are allowed in OTR profiles.
   return true;
 }
 

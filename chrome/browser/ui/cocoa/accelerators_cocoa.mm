@@ -39,8 +39,6 @@ const struct AcceleratorMapping {
     {IDC_DEV_TOOLS_CONSOLE, ui::EF_COMMAND_DOWN | ui::EF_ALT_DOWN, ui::VKEY_J},
     {IDC_DEV_TOOLS_INSPECT, ui::EF_COMMAND_DOWN | ui::EF_ALT_DOWN, ui::VKEY_C},
     {IDC_FIND, ui::EF_COMMAND_DOWN, ui::VKEY_F},
-    {IDC_NEW_INCOGNITO_WINDOW, ui::EF_COMMAND_DOWN | ui::EF_SHIFT_DOWN,
-     ui::VKEY_N},
     {IDC_NEW_TAB, ui::EF_COMMAND_DOWN, ui::VKEY_T},
     {IDC_NEW_WINDOW, ui::EF_COMMAND_DOWN, ui::VKEY_N},
     {IDC_PASTE, ui::EF_COMMAND_DOWN, ui::VKEY_V},

@@ -20,7 +20,6 @@ assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 group("resources") {
   public_deps = [
-    "saved_tab_groups_unsupported:resources",
     "segmentation_internals:resources",
     "//components/enterprise/connectors/resources",
   ]
@@ -45,23 +44,18 @@ group("resources") {
       "certificate_manager:resources",
       "content_settings:resources",
       "downloads:resources",
-      "gaia_auth_host:resources",
       "history:resources",
       "inspect:resources",
       "key_value_pair_viewer_shared:resources",
       "omnibox_popup:resources",
       "password_manager:resources",
-      "profile_internals:resources",
       "settings:resources",
       "settings_shared:resources",
-      "side_panel/comments:resources",
       "side_panel/history:resources",
       "side_panel/history_clusters:resources",
       "side_panel/read_anything:resources",
       "side_panel/reading_list:resources",
       "side_panel/shared:resources",
-      "side_panel/tabs_from_other_devices:resources",
-      "signin:resources",
       "tab_group_home:resources",
       "webnn_internals:resources",
       "webui_browser:resources",
@@ -115,32 +109,26 @@ group("resources") {
   if (is_win || is_mac || is_linux) {
     public_deps += [
       "browser_switch:resources",
-      "signin/history_sync_optin:resources",
       "updater:resources",
     ]
   }
 
   if (!is_android && !is_chromeos) {
     public_deps += [
-      "signin/profile_picker:resources",
     ]
   }
 
   if (is_win) {
     public_deps += [
       "conflicts:resources",
-      "inline_login:resources",
     ]
   }
 
   if (enable_dice_support || is_chromeos) {
-    public_deps += [ "signin/batch_upload:resources" ]
   }
 
   if (enable_dice_support) {
     public_deps += [
-      "feature_showcase:resources",
-      "signin/signout_confirmation:resources",
     ]
   }
 
@@ -181,7 +169,6 @@ if (enable_webui_generate_code_cache) {
     public_deps = [
       "side_panel/reading_list:code_cache_resources",
       "side_panel/shared:code_cache_resources",
-      "side_panel/tabs_from_other_devices:code_cache_resources",
       "webui_toolbar:code_cache_resources",
     ]
   }
@@ -354,8 +341,6 @@ group("dev_ui_resources") {
     "//components/optimization_guide/optimization_guide_internals/resources",
     "//components/policy/resources/webui:resources",
     "//components/resources:dev_ui_components_resources",
-    "//components/signin/core/browser/resources",
-    "//components/sync/service/resources",
     "//components/ukm/debug:resources",
     "//components/webui/regional_capabilities_internals/resources",
     "//content/browser/resources/gpu:resources",
@@ -435,8 +420,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/components/optimization_guide_internals_resources.pak",
     "$root_gen_dir/components/policy_resources.pak",
     "$root_gen_dir/components/regional_capabilities_internals_resources.pak",
-    "$root_gen_dir/components/signin_internals_resources.pak",
-    "$root_gen_dir/components/sync_service_sync_internals_resources.pak",
     "$root_gen_dir/components/ukm_resources.pak",
     "$root_gen_dir/content/browser/resources/media/media_internals_resources.pak",
     "$root_gen_dir/content/browser/webrtc/resources/webrtc_internals_resources.pak",

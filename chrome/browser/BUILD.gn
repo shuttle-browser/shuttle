@@ -1026,7 +1026,6 @@ source_set("core") {
     "//chrome/browser/status_icons",
     "//chrome/browser/subresource_filter",
     "//chrome/browser/supervised_user",
-    "//chrome/browser/tab_group_sync",
     "//chrome/browser/task_manager",
     "//chrome/browser/task_manager/common",
     "//chrome/browser/tracing",
@@ -1069,7 +1068,6 @@ source_set("core") {
     "//chrome/browser/ui/webui/omnibox",
     "//chrome/browser/ui/webui/policy",
     "//chrome/browser/ui/webui/segmentation_internals",
-    "//chrome/browser/ui/webui/signin/batch_upload:mojo_bindings",
     "//chrome/browser/ui/webui/subresource_filter",
     "//chrome/browser/ui/webui/suggest_internals",
     "//chrome/browser/ui/webui/usb_internals",
@@ -1091,7 +1089,6 @@ source_set("core") {
     "//components/browser_actuator/public",
     "//components/browser_apis/tab_drag/sessions",
     "//components/browser_apis/tab_drag/sessions:impl",
-    "//components/browser_sync:switches",
     "//components/captive_portal/content",
     "//components/color",
     "//components/content_capture/browser",
@@ -1248,7 +1245,6 @@ source_set("core") {
       "//chrome/browser/ui/webui:chrome_content_browser_client_webui_part",
       "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/image",
-      "//chrome/browser/ui/webui/signin/cross_device_signin_qr_bubble:mojo_bindings",
       "//chrome/browser/ui/webui/user_education_internals",
       "//chrome/browser/ui/webui/webnn_internals",
       "//chrome/browser/ui/webui_browser",
@@ -1305,7 +1301,6 @@ source_set("core") {
   }
 
   if (enable_dice_support || is_chromeos) {
-    deps += [ "//chrome/browser/ui/webui/signin:batch_upload" ]
   }
 
   if (enterprise_watermark) {
@@ -1712,8 +1707,6 @@ source_set("core") {
 
   if (enable_dice_support) {
     deps += [
-      "//chrome/browser/ui/webui/signin/signout_confirmation",
-      "//chrome/browser/ui/webui/signin/signout_confirmation:mojo_bindings",
     ]
   }
 
@@ -1774,7 +1767,6 @@ source_set("core") {
 
   if (enable_extensions_core) {
     deps += [
-      "//chrome/browser/enterprise/incognito",
       "//chrome/browser/extensions",
       "//chrome/browser/extensions:chrome_extensions_browser_client",
       "//chrome/browser/guest_view",
@@ -2094,10 +2086,6 @@ source_set("browser") {
     "//chrome/browser/supervised_user",
     "//chrome/browser/supervised_user:impl",
     "//chrome/browser/tab_contents:impl",
-    "//chrome/browser/tab_group_sync",
-    "//chrome/browser/tab_group_sync:factories_impl",
-    "//chrome/browser/tab_group_sync:impl",
-    "//chrome/browser/tab_group_sync:utils",
     "//chrome/browser/task_manager",
     "//chrome/browser/task_manager:impl",
     "//chrome/browser/task_manager/common",
@@ -2134,8 +2122,6 @@ source_set("browser") {
     "//chrome/browser/ui/search:impl",
     "//chrome/browser/ui/startup",
     "//chrome/browser/ui/startup:impl",
-    "//chrome/browser/ui/sync",
-    "//chrome/browser/ui/sync:impl",
     "//chrome/browser/unified_consent",
     "//chrome/browser/unified_consent:impl",
     "//chrome/browser/update_client",
@@ -2353,16 +2339,12 @@ source_set("browser") {
       "//chrome/browser/ui/omnibox",
       "//chrome/browser/ui/passwords/bubble_controllers:impl",
       "//chrome/browser/ui/search",
-      "//chrome/browser/ui/signin",
-      "//chrome/browser/ui/signin:impl",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/tabs:impl",
       "//chrome/browser/ui/tabs:tab_group_impl",
       "//chrome/browser/ui/tabs:tab_menu_impl",
       "//chrome/browser/ui/tabs:tab_model_impl",
       "//chrome/browser/ui/tabs:tab_strip_impl",
-      "//chrome/browser/ui/tabs/saved_tab_groups",
-      "//chrome/browser/ui/tabs/saved_tab_groups:impl",
       "//chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl",
       "//chrome/browser/ui/views/app_menu:impl",
       "//chrome/browser/ui/views/infobars",
@@ -2392,9 +2374,6 @@ source_set("browser") {
       "//chrome/browser/ui/webui/page_action_internals:impl",
       "//chrome/browser/ui/webui/settings",
       "//chrome/browser/ui/webui/settings:impl",
-      "//chrome/browser/ui/webui/signin:login_ui_service_impl",
-      "//chrome/browser/ui/webui/signin:signin_impl",
-      "//chrome/browser/ui/webui/signin:signin_utils_impl",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/browser/ui/webui/top_chrome:impl",
       "//chrome/browser/ui/webui/user_education",
@@ -2421,7 +2400,6 @@ source_set("browser") {
     ]
 
     if (is_win || is_chromeos) {
-      deps += [ "//chrome/browser/ui/webui/signin:inline_login_impl" ]
     }
 
     #!is_android
@@ -2434,7 +2412,6 @@ source_set("browser") {
 
         # TODO(crbug.com/369883710): Remove this dependency when
         # profiles/profile_manager.h gets componentized.
-        "//chrome/browser/ui/webui/signin:profile_impl",
       ]
 
       if (is_win) {
@@ -2648,7 +2625,6 @@ source_set("browser") {
       "//chrome/browser/ui/webui/ash/skyvault",
       "//chrome/browser/ui/webui/ash/system_web_dialog",
       "//chrome/browser/ui/webui/nearby_share",
-      "//chrome/browser/ui/webui/signin/ash",
       "//chromeos/ash/components/account_manager",
       "//chromeos/ash/components/assistant:buildflags",
       "//chromeos/ash/components/audio",
@@ -2894,14 +2870,10 @@ source_set("browser") {
 
   if (enable_dice_support) {
     public_deps += [
-      "//chrome/browser/profiles/batch_upload",
-      "//chrome/browser/profiles/batch_upload:impl",
     ]
 
     if (!is_android) {
       deps += [
-        "//chrome/browser/ui/webui/feature_showcase",
-        "//chrome/browser/ui/webui/feature_showcase:mojo_bindings",
       ]
     }
   }
@@ -2945,7 +2917,6 @@ source_set("browser") {
     deps += [
       "//chrome/browser/clipboard:impl",
       "//chrome/browser/controlled_frame:media_access_handler_impl",
-      "//chrome/browser/sync_file_system",
       "//components/drive",
     ]
     deps += [
@@ -3116,14 +3087,12 @@ group("browser_public_dependencies") {
     "//components/policy/proto",
     "//components/reporting/proto:configuration_file_proto",
     "//components/safe_browsing:buildflags",
-    "//components/saved_tab_groups/proto",
     "//components/search_engines",
     "//components/services/storage:storage_features",
     "//components/services/storage/public/mojom",
     "//components/session_proto_db",
     "//components/supervised_user/core/browser/proto",
     "//components/sync",
-    "//components/sync_device_info",
     "//components/system_cpu",
     "//components/url_deduplication",
     "//components/user_education/common",
@@ -3243,14 +3212,12 @@ group("browser_generated_files") {
   } else {
     public_deps += [
       "//chrome/browser/profile_resetter:profile_reset_report_proto",
-      "//chrome/browser/sync_file_system/drive_backend:sync_file_system_drive_proto",
       "//chrome/browser/ui:webui_name_variants",
       "//chrome/browser/ui/webui/downloads:mojo_bindings",
       "//chrome/browser/ui/webui/infobar_internals:mojo_bindings",
       "//chrome/browser/ui/webui/multistep_filter_internals:mojo_bindings",
       "//chrome/browser/ui/webui/omnibox_popup/mojom",
       "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
-      "//chrome/browser/ui/webui/side_panel/comments:mojo_bindings",
       "//chrome/browser/ui/webui/side_panel/reading_list:mojo_bindings",
       "//chrome/browser/ui/webui/user_education_internals:mojo_bindings",
       "//chrome/browser/ui/webui/webnn_internals:mojo_bindings",

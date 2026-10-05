@@ -525,7 +525,6 @@ source_set("extensions") {
     "//chrome/browser/signin",
     "//chrome/browser/signin:google_accounts_private_api",
     "//chrome/browser/ssl",
-    "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/tab_list",
     "//chrome/browser/ui:accelerator_utils_headers",
     "//chrome/browser/ui:browser_element_identifiers",
@@ -579,7 +578,6 @@ source_set("extensions") {
     "//components/safe_browsing/core/common",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
     "//components/safe_browsing/core/common/proto:crx_info_proto",
-    "//components/saved_tab_groups/public",
     "//components/services/patch/content",
     "//components/services/unzip/content",
     "//components/spellcheck/browser",
@@ -840,7 +838,6 @@ source_set("extensions") {
       "//chrome/browser/themes",
 
       # TODO(crbug.com/344921703): Remove circular dependencies.
-      "//chrome/browser/sync_file_system",
 
       # TODO(crbug.com/345487716): Remove this circular dependency.
       "//chrome/browser/ui/views/side_panel",
@@ -896,7 +893,6 @@ source_set("extensions") {
       "//chrome/browser/resource_coordinator",
       "//chrome/browser/search_engines",
       "//chrome/browser/sync",
-      "//chrome/browser/sync_file_system",
       "//chrome/browser/themes",
       "//chrome/browser/ui/apps",
       "//chrome/browser/ui/browser_window",
@@ -942,7 +938,6 @@ source_set("extensions") {
       "//components/autofill/content/browser",
       "//components/autofill/core/common:credit_card_number_validation",
       "//components/back_forward_cache",
-      "//components/browser_sync",
       "//components/browsing_data/content",
       "//components/browsing_data/core",
       "//components/device_signals/core/browser",
@@ -991,7 +986,6 @@ source_set("extensions") {
       "//components/strings",
       "//components/sync",
       "//components/sync_preferences",
-      "//components/sync_sessions",
       "//components/tab_groups",
       "//components/themes:prefs",
       "//components/unified_consent",
@@ -1586,7 +1580,6 @@ static_library("test_support") {
     "//chrome/browser/preloading:test_support",
     "//chrome/browser/signin:identity_test_support",
     "//chrome/browser/sync",
-    "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/tab_list",
     "//chrome/browser/trusted_vault",
     "//chrome/browser/ui:ui_features",
@@ -2003,7 +1996,6 @@ source_set("unit_tests") {
     "//chrome/browser/ui/supervised_user",
     "//chrome/browser/update_client",
     "//chrome/test:test_support",
-    "//components/browser_sync:switches",
     "//components/gcm_driver:test_support",
     "//components/language/core/browser",
     "//components/no_state_prefetch/browser",
@@ -2502,7 +2494,6 @@ source_set("browser_tests") {
   public_deps = []
 
   data = [
-    "//chrome/test/data/extensions/",
     "//extensions/test/data/",
   ]
 
@@ -2542,7 +2533,6 @@ source_set("browser_tests") {
 
     deps += [
       "//chrome/browser/ui/search:test_support_ui",
-      "//chrome/browser/ui/tabs/saved_tab_groups",
       "//chrome/browser/ui/views/location_bar",
       "//chrome/browser/ui/webui/history_clusters:browser_tests",
       "//chrome/browser/ui/webui/interstitials:browser_tests",
@@ -2945,7 +2935,6 @@ source_set("browser_tests") {
       "//chrome/browser/pdf:pdf_extension_test_utils",
       "//chrome/browser/prefetch",
       "//chrome/browser/service_worker:browser_tests",
-      "//chrome/browser/sync_file_system",
       "//chrome/browser/tab_list",
       "//chrome/browser/ui/global_error:test_support",
       "//chrome/browser/ui/hid",
@@ -2957,7 +2946,6 @@ source_set("browser_tests") {
       "//chrome/browser/ui/supervised_user",
       "//chrome/browser/ui/tabs:tab_menu",
       "//chrome/browser/ui/tabs/alert:tab_alert",
-      "//chrome/browser/ui/tabs/saved_tab_groups:test_support",
       "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views:file_system_access_test_support",
       "//chrome/browser/ui/webui/extensions_zero_state_promo",
@@ -3041,7 +3029,6 @@ source_set("browser_tests") {
     deps += [ "//chrome/browser/serial" ]
 
     data += [
-      "//chrome/test/data/extensions/",
       "//extensions/test/data/",
       "//third_party/blink/web_tests/external/wpt/resources/testharness.js",
       "//third_party/blink/web_tests/http/tests/wasm/resources/large.wasm",

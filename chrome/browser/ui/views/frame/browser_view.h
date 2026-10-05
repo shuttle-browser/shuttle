@@ -518,9 +518,6 @@ class BrowserView : public BrowserWindow,
       override;
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHostFor(
       content::WebContents* web_contents) override;
-  void ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) override;
-  void MaybeShowProfileSwitchIPH() override;
-  void MaybeShowSupervisedUserProfileSignInIPH() override;
   ExclusiveAccessContext* GetExclusiveAccessContext() override;
   std::string GetWorkspace() const override;
   bool IsVisibleOnAllWorkspaces() const override;
@@ -533,10 +530,6 @@ class BrowserView : public BrowserWindow,
       content::EyeDropperListener* listener) override;
 
   LocationBarView* GetLocationBarView() const;
-
-  void ShowIncognitoClearBrowsingDataDialog() override;
-
-  void ShowIncognitoHistoryDisclaimerDialog() override;
 
   // TabStripModelObserver:
   void OnTabStripModelChanged(
@@ -772,10 +765,6 @@ class BrowserView : public BrowserWindow,
   void CreateJumpList();
 #endif
 
-  // Helper method, returns if we should show the IPHs anchored on the avatar
-  // toolbar.
-  bool ShouldShowAvatarToolbarIPH();
-
   // Returns the frame view.
   BrowserFrameView* GetFrameView();
   const BrowserFrameView* GetFrameView() const;
@@ -900,10 +889,6 @@ class BrowserView : public BrowserWindow,
   // side panel. Should be called when the IPH backend is initialized or
   // whenever the touch mode changes.
   void MaybeShowReadingListInSidePanelIPH();
-
-  // Attempts showing the IPH promo listing benefits for signed-in users
-  // after the sync-to-signin migration.
-  void MaybeShowSignInBenefitsIPH();
 
   // Called each time the browser window is shown.
   void OnWindowDidShow();

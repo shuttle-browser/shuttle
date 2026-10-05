@@ -12,8 +12,6 @@
 #include "components/segmentation_platform/public/types/processed_value.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/session_types.h"
-#include "components/sync_sessions/open_tabs_ui_delegate.h"
-#include "components/sync_sessions/synced_session.h"
 #include "ui/base/page_transition_types.h"
 
 namespace segmentation_platform::processing {
@@ -39,10 +37,8 @@ float TabSessionSource::BucketizeLinear(int64_t value, int max_buckets) {
   return value;
 }
 
-TabSessionSource::TabSessionSource(
-    sync_sessions::SessionSyncService* session_sync_service,
-    TabFetcher* tab_fetcher)
-    : session_sync_service_(session_sync_service), tab_fetcher_(tab_fetcher) {}
+TabSessionSource::TabSessionSource(TabFetcher* tab_fetcher)
+    : tab_fetcher_(tab_fetcher) {}
 
 TabSessionSource::~TabSessionSource() = default;
 
@@ -68,82 +64,11 @@ void TabSessionSource::Process(const proto::CustomInput& input,
 
   TabFetcher::Tab tab = tab_fetcher_->FindTab(TabFetcher::TabEntry(
       SessionID::FromSerializedValue(tab_id), session_tag));
-  if (tab.session_tab) {
-    AddTabInfo(tab.session_tab, inputs);
-    AddTabRanks(session_tag, tab.session_tab, inputs);
-  }
   if (tab.webcontents || tab.tab_android) {
     AddLocalTabInfo(tab, feature_processor_state, inputs);
   }
 
   std::move(callback).Run(false, std::move(inputs));
-}
-
-void TabSessionSource::AddTabInfo(const sessions::SessionTab* session_tab,
-                                  Tensor& inputs) {
-  base::TimeDelta time_since_modified =
-      base::Time::Now() - session_tab->timestamp;
-
-  // The navigation index could be invalid if it is larger than the navigation
-  // list, so pick the index when available, else pick the last navigation
-  // available.
-  int navigation_index =
-      static_cast<size_t>(session_tab->current_navigation_index) >=
-              session_tab->navigations.size()
-          ? session_tab->navigations.size() - 1
-          : session_tab->current_navigation_index;
-  base::TimeDelta time_since_last_nav;
-  base::TimeDelta time_since_first_nav;
-  ui::PageTransition last_transition = ui::PAGE_TRANSITION_TYPED;
-
-  if (session_tab->navigations.size() > 0) {
-    const auto& current_navigation = session_tab->navigations[navigation_index];
-    time_since_last_nav = base::Time::Now() - current_navigation.timestamp();
-    time_since_first_nav =
-        base::Time::Now() - session_tab->navigations[0].timestamp();
-    last_transition = current_navigation.transition_type();
-  }
-  inputs[kInputTimeSinceModifiedSec] = ProcessedValue::FromFloat(
-      BucketizeExp(time_since_modified.InSeconds(), /*max_buckets*/50));
-  inputs[kInputTimeSinceLastNavSec] = ProcessedValue::FromFloat(
-      BucketizeExp(time_since_last_nav.InSeconds(), /*max_buckets*/50));
-  inputs[kInputTimeSinceFirstNavSec] = ProcessedValue::FromFloat(
-      BucketizeExp(time_since_first_nav.InSeconds(), /*max_buckets*/50));
-  inputs[kInputLastTransitionType] = ProcessedValue::FromFloat(last_transition);
-  // Removed 06/2024.
-  inputs[kInputPasswordFieldCount] = ProcessedValue(-1);
-}
-
-void TabSessionSource::AddTabRanks(const std::string& session_tag,
-                                   const sessions::SessionTab* session_tab,
-                                   Tensor& inputs) {
-  sync_sessions::OpenTabsUIDelegate* open_tab_delegate =
-      session_sync_service_->GetOpenTabsUIDelegate();
-  int tab_rank_in_session = 0;
-  std::vector<const sessions::SessionWindow*> windows =
-      open_tab_delegate->GetForeignSession(session_tag);
-  for (const auto* window : windows) {
-    for (const auto& tab : window->tabs) {
-      if (tab->timestamp > session_tab->timestamp) {
-        tab_rank_in_session++;
-      }
-    }
-  }
-  std::vector<raw_ptr<const sync_sessions::SyncedSession, VectorExperimental>>
-      sessions;
-  int session_rank_overall = 0;
-  if (open_tab_delegate->GetAllForeignSessions(&sessions)) {
-    for (const sync_sessions::SyncedSession* session : sessions) {
-      if (session->GetModifiedTime() > session_tab->timestamp) {
-        session_rank_overall++;
-      }
-    }
-  }
-
-  inputs[kInputTabRankInSession] =
-      ProcessedValue::FromFloat(BucketizeLinear(tab_rank_in_session, /*max_buckets*/10));
-  inputs[kInputSessionRank] =
-      ProcessedValue::FromFloat(BucketizeLinear(session_rank_overall, /*max_buckets*/10));
 }
 
 void TabSessionSource::AddLocalTabInfo(

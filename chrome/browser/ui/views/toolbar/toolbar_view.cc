@@ -61,13 +61,11 @@
 #include "chrome/browser/ui/views/page_action/page_action_container_view.h"
 #include "chrome/browser/ui/views/page_action/page_action_view.h"
 #include "chrome/browser/ui/views/page_action/page_action_view_interface.h"
-#include "chrome/browser/ui/views/profiles/avatar_toolbar_button.h"
 #include "chrome/browser/ui/views/side_panel/side_panel.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/browser/ui/views/toolbar/app_menu.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
-#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/back_forward_button.h"
 #include "chrome/browser/ui/views/toolbar/browser_app_menu_button.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
@@ -162,8 +160,7 @@ auto& GetViewCommandMap() {
       {{VIEW_ID_BACK_BUTTON, IDC_BACK},
        {VIEW_ID_FORWARD_BUTTON, IDC_FORWARD},
        {VIEW_ID_HOME_BUTTON, IDC_HOME},
-       {VIEW_ID_RELOAD_BUTTON, IDC_RELOAD},
-       {VIEW_ID_AVATAR_BUTTON, IDC_SHOW_AVATAR_MENU}});
+       {VIEW_ID_RELOAD_BUTTON, IDC_RELOAD}});
   return kViewCommandMap;
 }
 
@@ -437,13 +434,6 @@ void ToolbarView::Init() {
     }
   }
 
-  if (!features::IsWebUIAvatarButtonEnabled()) {
-    avatar_ = AddChildView(std::make_unique<AvatarToolbarButton>(browser_));
-    bool show_avatar_toolbar_button =
-        AvatarToolbarButtonInterface::CanShowForProfile(browser_->GetProfile());
-    avatar_->SetVisible(show_avatar_toolbar_button);
-  }
-
   // Only manage the overflow button when there are at least some views
   // controls. If there aren't any, the WebUIToolbarWebView will handle all
   // layout and overflow itself, in Javascript.
@@ -506,8 +496,8 @@ void ToolbarView::Init() {
   }
   InitLayout();
 
-  for (auto* button : std::array<views::Button*, 5>{back_, forward_, reload_,
-                                                    home_, avatar_}) {
+  for (auto* button :
+       std::array<views::Button*, 4>{back_, forward_, reload_, home_}) {
     if (button) {
       button->set_tag(GetViewCommandMap().at(button->GetID()));
     }
@@ -655,8 +645,8 @@ void ToolbarView::EnabledStateChangedForCommand(int id, bool enabled) {
     return;
   }
 
-  const std::array<views::Button*, 5> kButtons{back_, forward_, reload_, home_,
-                                               avatar_};
+  const std::array<views::Button*, 4> kButtons{back_, forward_, reload_,
+                                               home_};
   auto it = std::ranges::find_if(
       kButtons, [id](views::Button* b) { return b && b->tag() == id; });
   if (it != kButtons.end()) {
@@ -890,17 +880,6 @@ void ToolbarView::InitLayout() {
                                  views::MaximumFlexSizeRule::kPreferred));
   }
 
-  if (avatar_ &&
-      base::FeatureList::IsEnabled(features::kToolbarProfileChipResizing)) {
-    // Flex order for the profile avatar button is determined by the
-    // `toolbar_controller`.
-    avatar_->SetProperty(
-        views::kFlexBehaviorKey,
-        views::FlexSpecification(
-            views::MinimumFlexSizeRule::kScaleToMinimumSnapToZero,
-            views::MaximumFlexSizeRule::kPreferred));
-  }
-
   if (features::IsWebUIToolbarEnabled() && toolbar_webview_) {
     // Strip default C++ outer margins from `toolbar_webview_` since WebUI CSS
     // handles internal toolbar spacing.
@@ -960,12 +939,6 @@ void ToolbarView::LayoutCommon() {
       interior_margin.set_right(interior_margin.right() + 1);
     }
     SetRefreshMargins(app_menu_button_, expanded);
-  }
-
-  // The margins of the `avatar_` uses the same constants as the
-  // `app_menu_button_`.
-  if (avatar_) {
-    SetRefreshMargins(avatar_, avatar_->IsLabelPresentAndVisible());
   }
 
   const bool is_rtl = base::i18n::IsRTL();
@@ -1170,15 +1143,6 @@ void ToolbarView::ZoomChangedForActiveTab(bool can_show_bubble) {
   CHECK(zoom_view_controller);
   zoom_view_controller->UpdatePageActionIconAndBubbleVisibility(
       /*prefer_to_show_bubble=*/can_show_bubble, /*from_user_gesture=*/false);
-}
-
-AvatarToolbarButtonInterface* ToolbarView::GetAvatarToolbarButtonInterface() {
-  if (features::IsWebUIAvatarButtonEnabled()) {
-    return toolbar_webview_
-               ? toolbar_webview_->GetAvatarToolbarButtonInterface()
-               : nullptr;
-  }
-  return avatar_;
 }
 
 ToolbarButton* ToolbarView::GetBackButton() {

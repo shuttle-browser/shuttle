@@ -6,7 +6,6 @@
 
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 
 SigninErrorControllerFactory::SigninErrorControllerFactory()
@@ -44,9 +43,7 @@ SigninErrorControllerFactory::BuildServiceInstanceForBrowserContext(
 #if BUILDFLAG(IS_CHROMEOS)
       SigninErrorController::AccountMode::ANY_ACCOUNT;
 #else
-      AccountConsistencyModeManager::IsMirrorEnabledForProfile(profile)
-          ? SigninErrorController::AccountMode::ANY_ACCOUNT
-          : SigninErrorController::AccountMode::PRIMARY_ACCOUNT;
+      SigninErrorController::AccountMode::PRIMARY_ACCOUNT;
 #endif
   return std::make_unique<SigninErrorController>(
       account_mode, IdentityManagerFactory::GetForProfile(profile));

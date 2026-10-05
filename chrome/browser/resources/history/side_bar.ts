@@ -31,7 +31,6 @@ export interface HistorySideBarElement {
   $: {
     history: HTMLAnchorElement,
     menu: CrMenuSelectorElement,
-    syncedTabs: HTMLElement,
   };
 }
 

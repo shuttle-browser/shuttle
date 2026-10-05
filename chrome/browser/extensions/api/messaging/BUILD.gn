@@ -13,10 +13,6 @@ source_set("messaging") {
     "chrome_messaging_delegate.h",
     "chrome_native_message_port_dispatcher.cc",
     "chrome_native_message_port_dispatcher.h",
-    "incognito_connectability.cc",
-    "incognito_connectability.h",
-    "incognito_connectability_infobar_delegate.cc",
-    "incognito_connectability_infobar_delegate.h",
     "native_messaging_host_manifest.cc",
     "native_messaging_host_manifest.h",
   ]

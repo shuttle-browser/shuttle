@@ -146,7 +146,6 @@ source_set("impl") {
       "//chrome/browser/ui/tabs:tab_model",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/tabs/back_to_opener",
-      "//chrome/browser/ui/tabs/saved_tab_groups",
       "//chrome/browser/ui/toolbar/chrome_labs",
       "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views/tabs/common",
@@ -173,7 +172,6 @@ source_set("impl") {
       "//components/profile_metrics",
       "//components/resources:components_scaled_resources",
       "//components/resources:components_scaled_resources_grit",
-      "//components/saved_tab_groups/public:features",
       "//components/signin/public/base",
       "//components/signin/public/identity_manager",
       "//components/strings:components_strings",
@@ -200,8 +198,6 @@ source_set("impl") {
       deps += [ "//chrome/browser/policy:system_features_disable_list" ]
     } else {
       deps += [
-        "//chrome/browser/ui/webui/signin:signin_ui_error",
-        "//chrome/browser/ui/webui/signin:signin_utils",
       ]
     }
   }

@@ -54,11 +54,6 @@ if (use_blink) {
         "//ui/webui/resources/cr_components/theme_color_picker:mojom",
       ]
     }
-
-    if (enable_dice_support) {
-      public_deps +=
-          [ "//ui/webui/resources/js/batch_upload_promo:mojo_bindings" ]
-    }
   }
   source_set("test_support") {
     testonly = true

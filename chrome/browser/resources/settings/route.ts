@@ -146,25 +146,6 @@ function createRoutes(): SettingsRoutes {
 
   const visibility = pageVisibility || {};
 
-  if (visibility.people !== false) {
-    r.PEOPLE = r.BASIC.createSection(
-        '/people', 'people', loadTimeData.getString('peoplePageTitle'));
-    if (loadTimeData.getBoolean('replaceSyncPromosWithSignInPromos')) {
-      r.ACCOUNT = r.PEOPLE.createChild('/account');
-      r.GOOGLE_SERVICES = r.PEOPLE.createChild('/googleServices');
-    }
-    // <if expr="not is_chromeos">
-    r.SIGN_OUT = r.PEOPLE.createChild('/signOut');
-    r.SIGN_OUT.isNavigableDialog = true;
-    r.IMPORT_DATA = r.PEOPLE.createChild('/importData');
-    r.IMPORT_DATA.isNavigableDialog = true;
-    r.MANAGE_PROFILE = r.PEOPLE.createChild('/manageProfile');
-    // </if>
-
-    r.SYNC = r.PEOPLE.createChild('/syncSetup');
-    r.SYNC_ADVANCED = r.SYNC.createChild('/syncSetup/advanced');
-  }
-
   if (visibility.ai !== false && loadTimeData.getBoolean('showAiPage')) {
     r.AI = r.BASIC.createSection(
         '/ai', 'ai', loadTimeData.getString('aiPageTitle'));
@@ -295,8 +276,9 @@ export let routes: SettingsRoutes = Router.getInstance().getRoutes();
 
 // Returns the "effective" route when at chrome://settings/.
 export function getTopLevelRoute(): Route {
+  // Agent Chrome: no People section; Privacy is the first section.
   if (!loadTimeData.getBoolean('isGuest')) {
-    return routes.PEOPLE;
+    return routes.PRIVACY;
   }
 
   let guestTopLevelRoute = routes.SEARCH;

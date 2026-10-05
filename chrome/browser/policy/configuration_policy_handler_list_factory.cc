@@ -44,7 +44,6 @@
 #include "chrome/browser/profiles/chrome_incognito_mode_policy_handler.h"
 #include "chrome/browser/profiles/force_safe_search_policy_handler.h"
 #include "chrome/browser/profiles/force_youtube_safety_mode_policy_handler.h"
-#include "chrome/browser/profiles/guest_mode_policy_handler.h"
 #include "chrome/browser/sessions/restore_on_startup_policy_handler.h"
 #include "chrome/browser/spellchecker/spellcheck_language_blocklist_policy_handler.h"
 #include "chrome/browser/spellchecker/spellcheck_language_policy_handler.h"
@@ -245,7 +244,6 @@
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/browser_switcher/browser_switcher_prefs.h"
 #include "chrome/browser/enterprise/idle/action.h"
-#include "chrome/browser/enterprise/signin/enterprise_signin_prefs.h"
 #include "chrome/browser/external_protocol/auto_launch_protocols_policy_handler.h"
 #include "components/device_signals/core/browser/pref_names.h"  // nogncheck due to crbug.com/40147906
 #include "components/proxy_config/proxy_config_pref_names.h"
@@ -2936,7 +2934,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           enterprise_connectors::kUserContextAwareAccessSignalsAllowlistPref,
           chrome_schema));
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  handlers->AddHandler(std::make_unique<GuestModePolicyHandler>());
   handlers->AddHandler(std::make_unique<LocalSyncPolicyHandler>());
   handlers->AddHandler(std::make_unique<ThemeColorPolicyHandler>());
   handlers->AddHandler(
@@ -2961,12 +2958,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           key::kProfileSeparationDataMigrationSettings,
           prefs::kProfileSeparationDataMigrationSettings,
           base::Value::Type::INTEGER)));
-  handlers->AddHandler(std::make_unique<IntRangePolicyHandler>(
-      key::kProfileReauthPrompt, enterprise_signin::prefs::kProfileReauthPrompt,
-      static_cast<int>(enterprise_signin::ProfileReauthPrompt::kDoNotPrompt),
-      static_cast<int>(enterprise_signin::ProfileReauthPrompt::kPromptInTab),
-      false));
-
   handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
       key::kEnterpriseCustomLabelForBrowser,
       prefs::kEnterpriseCustomLabelForBrowser, base::Value::Type::STRING));
@@ -3378,12 +3369,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<AutoLaunchProtocolsPolicyHandler>(chrome_schema));
   handlers->AddHandler(std::make_unique<FileSelectionDialogsPolicyHandler>());
 
-  handlers->AddHandler(std::make_unique<SimpleSchemaValidatingPolicyHandler>(
-      key::kProfilePickerOnStartupAvailability,
-      prefs::kBrowserProfilePickerAvailabilityOnStartup, chrome_schema,
-      SCHEMA_ALLOW_UNKNOWN,
-      SimpleSchemaValidatingPolicyHandler::RECOMMENDED_PROHIBITED,
-      SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED));
 #endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   handlers->AddHandler(

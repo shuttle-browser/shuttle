@@ -90,7 +90,6 @@ grit("resources") {
     "extensions/page_action_custom_bindings.js",
     "extensions/page_capture_custom_bindings.js",
     "extensions/pdf_viewer_private_custom_bindings.js",
-    "extensions/sync_file_system_custom_bindings.js",
     "extensions/system_indicator_custom_bindings.js",
     "extensions/tab_capture_custom_bindings.js",
     "extensions/tts_custom_bindings.js",

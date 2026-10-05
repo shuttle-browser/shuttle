@@ -19,7 +19,6 @@
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_provider.h"
 #include "components/omnibox/browser/autocomplete_result.h"
-#include "components/omnibox/browser/cross_device_tab_provider.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/omnibox_log.h"
 #include "components/omnibox/common/logger.h"
@@ -545,8 +544,6 @@ void OmniboxMetricsProvider::RecordMetrics(const OmniboxLog& log) {
                       page_context}),
         ClientSummarizedResultType::kUrl);
   }
-
-  CrossDeviceTabProvider::RecordInteractionMetrics(log);
 
   // Log UKM event.
   if (log.ukm_source_id == ukm::kInvalidSourceId) {

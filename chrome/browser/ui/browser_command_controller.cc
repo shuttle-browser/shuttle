@@ -38,9 +38,6 @@
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/shell_integration.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_promo.h"
-#include "chrome/browser/signin/signin_ui_util.h"
-#include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/actions/command_action_updater.h"
@@ -61,8 +58,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
@@ -78,7 +73,6 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
 #include "chrome/browser/ui/webui/inspect/inspect_ui.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
@@ -401,8 +395,7 @@ bool BrowserCommandController::IsReservedCommandOrKey(
 #endif
 
   return command_id == IDC_CLOSE_TAB || command_id == IDC_CLOSE_WINDOW ||
-         command_id == IDC_NEW_INCOGNITO_WINDOW ||
-         command_id == IDC_NEW_ISOLATED_WINDOW || command_id == IDC_NEW_TAB ||
+         command_id == IDC_NEW_TAB ||
          command_id == IDC_NEW_WINDOW || command_id == IDC_RESTORE_TAB ||
          command_id == IDC_SELECT_NEXT_TAB ||
          command_id == IDC_SELECT_PREVIOUS_TAB ||
@@ -578,12 +571,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     // Window management commands
     case IDC_NEW_WINDOW:
       NewWindow(browser_);
-      break;
-    case IDC_NEW_INCOGNITO_WINDOW:
-      NewIncognitoWindow(profile());
-      break;
-    case IDC_NEW_ISOLATED_WINDOW:
-      NewIncognitoWindow(profile());
       break;
     case IDC_CLOSE_WINDOW:
       base::RecordAction(base::UserMetricsAction("CloseWindowByKey"));
@@ -805,30 +792,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     case IDC_SAVE_AUTOFILL_ADDRESS:
       SaveAutofillAddress(browser_);
       break;
-    case IDC_SHOW_SYNC_SETTINGS:
-      chrome::ShowSettingsSubPage(browser_, chrome::kSyncSetupSubPage);
-      break;
-#if !BUILDFLAG(IS_CHROMEOS)
-    case IDC_SHOW_SYNC_PASSPHRASE_DIALOG:
-      ShowSyncPassphraseDialogAndDecryptData(*browser_);
-      break;
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-    case IDC_TURN_ON_SYNC:
-      signin_ui_util::EnableSyncFromSingleAccountPromo(
-          browser_->GetProfile(),
-          GetAccountInfoFromProfile(browser_->GetProfile()),
-          signin_metrics::AccessPoint::kMenu);
-      break;
-    case IDC_SHOW_SIGNIN:
-      signin_ui_util::SignInFromSingleAccountPromo(
-          browser_->GetProfile(),
-          GetAccountInfoFromProfile(browser_->GetProfile()),
-          signin_metrics::AccessPoint::kMenu);
-      break;
-    case IDC_SHOW_SIGNIN_WHEN_PAUSED:
-      signin_ui_util::ShowReauthForPrimaryAccountWithAuthError(
-          browser_->GetProfile(), signin_metrics::AccessPoint::kMenu);
-      break;
     case IDC_SHOW_PASSWORD_MANAGER:
       ShowPasswordManager(browser_);
       break;
@@ -997,20 +960,9 @@ void BrowserCommandController::HandleCommandWithDisposition(
     case IDC_CARET_BROWSING_TOGGLE:
       ToggleCaretBrowsing(browser_);
       break;
-    case IDC_RECENT_TABS_LOGIN_FOR_DEVICE_TABS:
-      ShowSettingsSubPage(webui::GetBrowserForOpeningWebUi(browser_),
-                          chrome::kPeopleSubPage);
-      break;
-    case IDC_RECENT_TABS_SEE_DEVICE_TABS:
-      ShowHistorySubPage(webui::GetBrowserForOpeningWebUi(browser_),
-                         kChromeUIHistorySyncedTabs);
-      break;
     case IDC_SHOW_APP_MENU:
       base::RecordAction(base::UserMetricsAction("Accel_Show_App_Menu"));
       ShowAppMenu(browser_);
-      break;
-    case IDC_SHOW_AVATAR_MENU:
-      ShowAvatarMenu(browser_);
       break;
     case IDC_SHOW_HISTORY:
       ShowHistory(webui::GetBrowserForOpeningWebUi(browser_));
@@ -1019,17 +971,8 @@ void BrowserCommandController::HandleCommandWithDisposition(
       browser_->GetFeatures().side_panel_ui()->Show(
           SidePanelEntryId::kHistoryClusters, SidePanelOpenTrigger::kAppMenu);
       break;
-    case IDC_SHOW_TABS_FROM_OTHER_DEVICES_SIDE_PANEL:
-      browser_->GetFeatures().side_panel_ui()->Show(
-          SidePanelEntryId::kTabsFromOtherDevices,
-          SidePanelOpenTrigger::kAppMenu);
-      break;
     case IDC_SHOW_DOWNLOADS:
       ShowDownloads(webui::GetBrowserForOpeningWebUi(browser_));
-      break;
-    case IDC_SHOW_COMMENTS_SIDE_PANEL:
-      browser_->GetFeatures().side_panel_ui()->Show(
-          SidePanelEntryId::kComments, SidePanelOpenTrigger::kAppMenu);
       break;
     case IDC_MANAGE_EXTENSIONS:
     case IDC_SAFETY_HUB_MANAGE_EXTENSIONS:
@@ -1058,12 +1001,7 @@ void BrowserCommandController::HandleCommandWithDisposition(
           password_manager::ManagePasswordsReferrer::kChromeMenuItem);
       break;
     case IDC_CLEAR_BROWSING_DATA: {
-      if (profile()->IsIncognitoProfile()) {
-        ShowIncognitoClearBrowsingDataDialog(
-            webui::GetBrowserForOpeningWebUi(browser_));
-      } else {
-        ShowClearBrowsingDataDialog(webui::GetBrowserForOpeningWebUi(browser_));
-      }
+      ShowClearBrowsingDataDialog(webui::GetBrowserForOpeningWebUi(browser_));
 #if !BUILDFLAG(IS_ANDROID)
       ui::ElementContext context =
           BrowserElements::From(browser_)->GetContext();
@@ -1241,45 +1179,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     }
 
 #if !BUILDFLAG(IS_CHROMEOS)
-    // Profile submenu commands
-    // This menu item is not enabled on ChromeOS and certain capabilities such
-    // as the profile picker are not available.
-    case IDC_CUSTOMIZE_CHROME:
-      chrome::ShowSettingsSubPage(browser_, chrome::kManageProfileSubPage);
-      break;
-    case IDC_CLOSE_PROFILE: {
-      if (browser_->GetProfile()->IsIncognitoProfile()) {
-        chrome::CloseAllBrowsersWithIncognitoProfile(browser_->GetProfile());
-      } else {
-        profiles::CloseProfileWindows(browser_->GetProfile());
-      }
-      break;
-    }
-    case IDC_MANAGE_GOOGLE_ACCOUNT: {
-      Profile* profile = browser_->GetProfile();
-      signin::IdentityManager* identity_manager =
-          IdentityManagerFactory::GetForProfile(profile);
-      DCHECK(
-          identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin));
-      NavigateToGoogleAccountPage(
-          profile,
-          identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
-              .email);
-      break;
-    }
-    case IDC_OPEN_GUEST_PROFILE:
-      profiles::SwitchToGuestProfile();
-      break;
-    case IDC_ADD_NEW_PROFILE:
-      ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-          ProfilePicker::EntryPoint::kAppMenuProfileSubMenuAddNewProfile));
-      break;
-    case IDC_MANAGE_CHROME_PROFILES:
-      ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-          ProfilePicker::EntryPoint::kAppMenuProfileSubMenuManageProfiles));
-      break;
-#endif  // BUILDFLAG(IS_CHROMEOS)
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
     case IDC_SET_BROWSER_AS_DEFAULT:
       base::MakeRefCounted<shell_integration::DefaultBrowserWorker>()
           ->StartSetAsDefault(base::DoNothing());
@@ -1539,17 +1438,12 @@ void BrowserCommandController::InitCommandState() {
                                          CanOpenTaskManager());
   command_updater_->UpdateCommandEnabled(IDC_TASK_MANAGER_MAIN_MENU,
                                          CanOpenTaskManager());
-  command_updater_->UpdateCommandEnabled(IDC_PROFILE_MENU_IN_APP_MENU, true);
   command_updater_->UpdateCommandEnabled(
       IDC_SHOW_HISTORY, (!guest_session && !profile()->IsSystemProfile()));
   command_updater_->UpdateCommandEnabled(
       IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
       (!guest_session && !profile()->IsSystemProfile()));
-  command_updater_->UpdateCommandEnabled(
-      IDC_SHOW_TABS_FROM_OTHER_DEVICES_SIDE_PANEL,
-      TabsFromOtherDevicesSidePanelCoordinator::IsSupported(profile()));
   command_updater_->UpdateCommandEnabled(IDC_SHOW_DOWNLOADS, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_COMMENTS_SIDE_PANEL, true);
   command_updater_->UpdateCommandEnabled(IDC_FIND_AND_EDIT_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_SAVE_AND_SHARE_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_SIDE_PANEL,
@@ -1563,11 +1457,6 @@ void BrowserCommandController::InitCommandState() {
                                          !guest_session);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_PAYMENT_METHODS,
                                          !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_SYNC_SETTINGS, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_SYNC_PASSPHRASE_DIALOG, true);
-  command_updater_->UpdateCommandEnabled(IDC_TURN_ON_SYNC, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_SIGNIN_WHEN_PAUSED, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_SIGNIN, true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_ADDRESSES, !guest_session);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_CONTACT_INFO, !guest_session);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_IDENTITY_DOCS,
@@ -1580,44 +1469,15 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(
       IDC_CHROME_ENTERPRISE_RELEASE_NOTES,
       base::FeatureList::IsEnabled(features::kEnterpriseReleaseNotes));
-  command_updater_->UpdateCommandEnabled(IDC_SAVED_TAB_GROUPS_MENU, true);
-  command_updater_->UpdateCommandEnabled(
-      IDC_RECENT_TABS_MENU, (!guest_session && !profile()->IsSystemProfile() &&
-                             !profile()->IsIncognitoProfile()));
-  command_updater_->UpdateCommandEnabled(
-      IDC_RECENT_TABS_LOGIN_FOR_DEVICE_TABS,
-      (!guest_session && !profile()->IsSystemProfile() &&
-       !profile()->IsIncognitoProfile()));
-  command_updater_->UpdateCommandEnabled(
-      IDC_RECENT_TABS_SEE_DEVICE_TABS,
-      (!guest_session && !profile()->IsSystemProfile() &&
-       !profile()->IsIncognitoProfile()));
 #if !BUILDFLAG(IS_CHROMEOS)
-  command_updater_->UpdateCommandEnabled(IDC_CUSTOMIZE_CHROME, true);
-  command_updater_->UpdateCommandEnabled(IDC_CLOSE_PROFILE, true);
-  command_updater_->UpdateCommandEnabled(IDC_MANAGE_GOOGLE_ACCOUNT, true);
-  command_updater_->UpdateCommandEnabled(IDC_OPEN_GUEST_PROFILE, true);
-  command_updater_->UpdateCommandEnabled(IDC_ADD_NEW_PROFILE, true);
-  command_updater_->UpdateCommandEnabled(IDC_MANAGE_CHROME_PROFILES, true);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  if (profile()->IsIncognitoProfile()) {
-    command_updater_->UpdateCommandEnabled(IDC_CLEAR_BROWSING_DATA, true);
-  } else {
-    command_updater_->UpdateCommandEnabled(
-        IDC_CLEAR_BROWSING_DATA,
-        (!guest_session && !profile()->IsSystemProfile()));
-  }
+  command_updater_->UpdateCommandEnabled(
+      IDC_CLEAR_BROWSING_DATA,
+      (!guest_session && !profile()->IsSystemProfile()));
 
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_->UpdateCommandEnabled(IDC_TAKE_SCREENSHOT, true);
-  // Chrome OS uses the system tray menu to handle multi-profiles. Avatar menu
-  // is only required in incognito mode.
-  command_updater_->UpdateCommandEnabled(
-      IDC_SHOW_AVATAR_MENU, /*state=*/profile()->IsIncognitoProfile());
-#else
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_AVATAR_MENU,
-                                         /*state=*/normal_window);
 #endif
   command_updater_->UpdateCommandEnabled(IDC_CARET_BROWSING_TOGGLE, true);
   // Navigation commands
@@ -1716,15 +1576,6 @@ void BrowserCommandController::UpdateSharedCommandsForIncognitoAvailability(
   command_updater->UpdateCommandEnabled(
       IDC_NEW_WINDOW,
       incognito_availability != policy::IncognitoModeAvailability::kForced);
-  bool isolated_mode_enabled =
-      enterprise_isolated_mode::IsolatedModeReplacesIncognito(profile);
-
-  command_updater->UpdateCommandEnabled(
-      IDC_NEW_INCOGNITO_WINDOW,
-      IncognitoModePrefs::IsIncognitoAllowed(profile));
-
-  command_updater->UpdateCommandEnabled(IDC_NEW_ISOLATED_WINDOW,
-                                        isolated_mode_enabled);
 
   const bool forced_incognito =
       incognito_availability == policy::IncognitoModeAvailability::kForced;
@@ -1761,15 +1612,6 @@ void BrowserCommandController::UpdateCommandsForIncognitoAvailability() {
 
   UpdateSharedCommandsForIncognitoAvailability(command_updater_.get(),
                                                profile());
-  // Update the new incognito window ActionItem enabled state. Note, this cannot
-  // be done in UpdateSharedCommandsForIncognitoAvailability as the method is
-  // static to also handle states for NSApplication where no browser window are
-  // open.
-  if (auto* const incognito_action =
-          FindAction(kActionNewIncognitoWindow, browser_)) {
-    incognito_action->SetEnabled(
-        IncognitoModePrefs::IsIncognitoAllowed(profile()));
-  }
 
   if (!IsShowingMainUI()) {
     command_updater_->UpdateCommandEnabled(IDC_IMPORT_SETTINGS, false);

@@ -45,8 +45,6 @@ source_set("misc") {
     "incognito_helpers.cc",
     "off_the_record_profile_impl.cc",
     "off_the_record_profile_impl.h",
-    "profile_avatar_downloader.cc",
-    "profile_avatar_downloader.h",
     "profile_impl.cc",
     "profile_impl.h",
     "profile_key.cc",
@@ -173,7 +171,6 @@ source_set("misc") {
       "//chrome/browser/accessibility/tree_fixing:prefs",
       "//chrome/browser/themes",
       "//chrome/browser/ui/dialogs:browser_dialogs",
-      "//chrome/browser/ui/signin",
     ]
   }
 
@@ -184,14 +181,8 @@ source_set("misc") {
 
   if (!is_android && !is_chromeos) {
     sources += [
-      "avatar_menu.cc",
-      "avatar_menu.h",
-      "avatar_menu_desktop.cc",
-      "avatar_menu_observer.h",
       "profile_activity_metrics_recorder.cc",
       "profile_activity_metrics_recorder.h",
-      "profile_list_desktop.cc",
-      "profile_list_desktop.h",
     ]
     deps += [
       "//chrome/browser/metrics/desktop_session_duration",
@@ -211,7 +202,6 @@ source_set("misc") {
       "//chrome/browser/win",
     ]
   } else {
-    sources += [ "profile_shortcut_manager_stub.cc" ]
   }
 
   if (is_linux || is_mac) {
@@ -260,12 +250,8 @@ source_set("misc") {
 if (!is_chromeos) {
   source_set("gaia_info_update_service") {
     public = [
-      "gaia_info_update_service.h",
-      "gaia_info_update_service_factory.h",
     ]
     sources = [
-      "gaia_info_update_service.cc",
-      "gaia_info_update_service_factory.cc",
     ]
     public_deps = [
       ":profile",
@@ -320,8 +306,6 @@ source_set("policy_handlers") {
   }
 
   if (is_linux || is_win || is_mac) {
-    public += [ "guest_mode_policy_handler.h" ]
-    sources += [ "guest_mode_policy_handler.cc" ]
     deps += [
       "//chrome/browser/policy",
       "//chrome/common:constants",
@@ -438,7 +422,6 @@ source_set("profile_manager") {
     "profile_destroyer.h",
     "profile_manager.h",
     "profile_metrics.h",
-    "profile_shortcut_manager.h",
   ]
 
   deps = [
@@ -468,7 +451,6 @@ source_set("profile_manager_impl") {
     "profile_destroyer.cc",
     "profile_manager.cc",
     "profile_metrics.cc",
-    "profile_shortcut_manager.cc",
   ]
 
   deps = [
@@ -521,7 +503,6 @@ source_set("profile_manager_impl") {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/dialogs:browser_dialogs",
       "//chrome/browser/ui/profiles",
-      "//chrome/browser/ui/signin",
       "//chrome/browser/ui/startup",
       "//components/live_caption",
     ]
@@ -571,10 +552,6 @@ source_set("profile_util") {
     "profile_attributes_storage.h",
     "profile_attributes_storage_observer.h",
     "profile_avatar_icon_util.h",
-    "profile_statistics.h",
-    "profile_statistics_aggregator.h",
-    "profile_statistics_common.h",
-    "profile_statistics_factory.h",
     "reporting_util.h",
   ]
 
@@ -607,10 +584,6 @@ source_set("profile_util_impl") {
     "profile_attributes_init_params.cc",
     "profile_attributes_storage.cc",
     "profile_avatar_icon_util.cc",
-    "profile_statistics.cc",
-    "profile_statistics_aggregator.cc",
-    "profile_statistics_common.cc",
-    "profile_statistics_factory.cc",
     "reporting_util.cc",
   ]
 
@@ -800,7 +773,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/supervised_user",
     "//chrome/browser/sync",
-    "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/autofill",
@@ -865,15 +837,11 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/themes",
       "//chrome/browser/ui/global_error",
       "//chrome/browser/ui/read_anything",
-      "//chrome/browser/ui/tabs/saved_tab_groups",
-      "//chrome/browser/ui/views/profiles:avatar_toolbar_button",
       "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/waap",
       "//chrome/browser/ui/webui:theme_colors_source_manager",
       "//chrome/browser/ui/webui:theme_source",
       "//chrome/browser/ui/webui/ntp:ntp_resource_cache",
-      "//chrome/browser/ui/webui/signin",
-      "//chrome/browser/ui/webui/signin:login_ui_service",
       "//chrome/browser/user_education",
     ]
   }
@@ -944,7 +912,6 @@ source_set("profiles_extra_parts_impl") {
   if (enable_extensions) {
     deps += [
       "//chrome/browser/extensions",
-      "//chrome/browser/sync_file_system",
       "//components/omnibox/browser",
     ]
   }
@@ -957,11 +924,9 @@ source_set("profiles_extra_parts_impl") {
   }
 
   if (enable_dice_support || is_chromeos) {
-    deps += [ "//chrome/browser/profiles/batch_upload" ]
   }
 
   if (enable_dice_support) {
-    deps += [ "//chrome/browser/ui/signin" ]
   }
 
   if (enable_captive_portal_detection) {
@@ -990,11 +955,9 @@ source_set("profiles_extra_parts_impl") {
 
 source_set("profile_downloader") {
   public = [
-    "profile_downloader.h",
-    "profile_downloader_delegate.h",
   ]
 
-  sources = [ "profile_downloader.cc" ]
+  sources = []
 
   public_deps = [
     "//base",
@@ -1020,7 +983,6 @@ source_set("unit_tests") {
   sources = [
     "chrome_incognito_mode_policy_handler_unittest.cc",
     "profile_attributes_storage_unittest.cc",
-    "profile_downloader_unittest.cc",
     "profile_keyed_service_factory_unittest.cc",
     "profile_manager_unittest.cc",
     "profile_metrics_unittest.cc",
@@ -1082,7 +1044,6 @@ source_set("unit_tests") {
   }
 
   if (!is_chromeos) {
-    sources += [ "gaia_info_update_service_unittest.cc" ]
     deps += [
       ":gaia_info_update_service",
       "//chrome/browser:global_features",
@@ -1094,8 +1055,6 @@ source_set("unit_tests") {
   if (!is_android && !is_chromeos) {
     sources += [
       "profile_activity_metrics_recorder_unittest.cc",
-      "profile_list_desktop_unittest.cc",
-      "profile_statistics_aggregator_unittest.cc",
     ]
     deps += [
       "//chrome/browser/ui/browser_window/test:test_support",
@@ -1104,7 +1063,6 @@ source_set("unit_tests") {
   }
 
   if (is_linux || is_mac || is_win) {
-    sources += [ "guest_mode_policy_handler_unittest.cc" ]
   }
 
   if (!is_android) {
@@ -1166,9 +1124,7 @@ if (!is_android) {
 
     if (!is_chromeos) {
       sources += [
-        "avatar_menu_browsertest.cc",
         "delete_profile_helper_browsertest.cc",
-        "profile_list_desktop_browsertest.cc",
         "profile_window_browsertest.cc",
       ]
       deps += [
@@ -1178,7 +1134,6 @@ if (!is_android) {
     }
 
     if (is_mac || is_win || is_linux) {
-      sources += [ "profile_statistics_browsertest.cc" ]
     }
 
     if (is_win) {

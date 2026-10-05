@@ -23,7 +23,6 @@
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -45,8 +44,6 @@
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
-#include "chrome/browser/ui/signin/signin_view_controller.h"  // nogncheck crbug.com/423799622
 #endif
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -149,8 +146,8 @@ base::CallbackListSubscription IdentityAPI::RegisterOnShutdownCallback(
 }
 
 bool IdentityAPI::AreExtensionsRestrictedToPrimaryAccount() {
-  return !AccountConsistencyModeManager::IsDiceEnabledForProfile(profile_) &&
-         !AccountConsistencyModeManager::IsMirrorEnabledForProfile(profile_);
+  // Account consistency (DICE/Mirror) was removed in this fork.
+  return true;
 }
 
 bool IdentityAPI::HasAccessToChromeAccounts() const {
@@ -189,22 +186,8 @@ void IdentityAPI::MaybeShowChromeSigninDialog(
     return;
   }
 
-  chrome::ScopedTabbedBrowserDisplayer displayer(profile_);
-  BrowserWindowInterface* browser = displayer.browser_window_interface();
-  if (!browser) {
-    DVLOG(1) << "Could not create a browser to show Extensions Chrome Sign in "
-                "dialog.";
-    std::move(on_complete).Run();
-    return;
-  }
-  on_chrome_signin_dialog_completed_.push_back(std::move(on_complete));
-  is_chrome_signin_dialog_open_ = true;
-  browser->GetFeatures()
-      .signin_view_controller()
-      ->MaybeShowChromeSigninDialogForExtensions(
-          extension_name_for_display,
-          base::BindOnce(&IdentityAPI::OnChromeSigninDialogDestroyed,
-                         weak_ptr_factory_.GetWeakPtr()));
+  // The Chrome sign-in dialog was removed in this fork.
+  std::move(on_complete).Run();
 }
 
 void IdentityAPI::OnChromeSigninDialogDestroyed() {

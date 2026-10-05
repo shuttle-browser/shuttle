@@ -139,14 +139,6 @@ void GetManagementIcon(const GURL& url,
 // `truncated` indicates whether the label returned needs to be truncated.
 std::u16string GetEnterpriseLabel(Profile* profile, bool truncated = false);
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-base::ScopedClosureRunner DisableAutomaticManagementDisclaimerUntilReset(
-    Profile* profile);
-
-base::ScopedClosureRunner
-EnabledAutomaticManagementDisclaimerAcceptanceUntilReset(Profile* profile);
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
 }  // namespace enterprise_util
 
 #endif  // CHROME_BROWSER_ENTERPRISE_UTIL_MANAGED_BROWSER_UTILS_H_

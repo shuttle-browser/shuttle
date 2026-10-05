@@ -12,8 +12,8 @@
 
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/tabs/existing_base_sub_menu_model.h"
-#include "components/saved_tab_groups/public/saved_tab_group.h"
-#include "components/saved_tab_groups/public/types.h"
+#include "components/tab_groups/tab_group_color.h"
+#include "components/tab_groups/tab_group_id.h"
 
 class TabStripModel;
 class TabMenuModelDelegate;
@@ -83,7 +83,7 @@ class ExistingTabGroupSubMenuModel : public ExistingBaseSubMenuModel {
   // be used in cases where the tab groups returned from
   // GetOrderedTabGroupsInSubMenu changes after the menu has been opened but
   // before the action is taken from the menumodel.
-  std::map<size_t, tab_groups::EitherGroupID> target_index_to_group_mapping_;
+  std::map<size_t, tab_groups::TabGroupId> target_index_to_group_mapping_;
 
   // Used to retrieve a list of browsers which potentially hold tab groups.
   const raw_ptr<TabMenuModelDelegate> tab_menu_model_delegate_;

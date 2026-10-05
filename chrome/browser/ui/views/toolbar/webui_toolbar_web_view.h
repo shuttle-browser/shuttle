@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_controller.h"
 #include "chrome/browser/ui/views/toolbar/webui_app_menu_control.h"
-#include "chrome/browser/ui/views/toolbar/webui_avatar_toolbar_button.h"
 #include "chrome/browser/ui/views/toolbar/webui_back_forward_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_home_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_overflow_button.h"
@@ -118,8 +117,6 @@ class WebUIToolbarControlDelegate {
           state) = 0;
   virtual void OnPageActionChanged(
       std::vector<toolbar_ui_api::mojom::PageActionStatePtr> state) = 0;
-  virtual void OnAvatarControlStateChanged(
-      toolbar_ui_api::mojom::AvatarControlStatePtr state) = 0;
   virtual void OnFocusRequested(
       toolbar_ui_api::mojom::FocusRequestTarget target) = 0;
 
@@ -163,7 +160,6 @@ class WebUIToolbarWebView
   WebUIPinnedToolbarActions* GetPinnedToolbarActions() {
     return &pinned_toolbar_actions_;
   }
-  AvatarToolbarButtonInterface* GetAvatarToolbarButtonInterface();
   WebUIAppMenuControl* GetAppMenuControl() { return &app_menu_control_; }
   ExtensionsContainerViews* extensions_container_views();
   const WebUIAppMenuControl* GetAppMenuControl() const {
@@ -453,8 +449,6 @@ class WebUIToolbarWebView
       std::vector<toolbar_ui_api::mojom::PageActionStatePtr> state) override;
   const toolbar_ui_api::mojom::NavigationControlsState& GetState()
       const override;
-  void OnAvatarControlStateChanged(
-      toolbar_ui_api::mojom::AvatarControlStatePtr state) override;
   void OnFocusRequested(
       toolbar_ui_api::mojom::FocusRequestTarget target) override;
   std::optional<GURL> ConsumeDroppedUrl(
@@ -603,7 +597,6 @@ class WebUIToolbarWebView
   WebUISplitTabsControl split_tabs_control_;
   WebUIHomeControl home_control_;
   WebUIAppMenuControl app_menu_control_;
-  WebUIAvatarToolbarButton avatar_control_;
   // This is null if WebUILocationBar is off, or the window is in one of the
   // modes (e.g. popup) that don't use it yet.
   std::unique_ptr<WebUILocationBar> location_bar_;

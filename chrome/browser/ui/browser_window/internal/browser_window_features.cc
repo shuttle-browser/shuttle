@@ -22,7 +22,6 @@
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_factory.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -57,17 +56,11 @@
 #include "chrome/browser/ui/sessions/session_service_browser_helper.h"
 #include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
-#include "chrome/browser/ui/signin/signin_view_controller.h"
-#include "chrome/browser/ui/sync/browser_synced_window_delegate.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/most_recent_shared_tab_update_store.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/session_service_tab_group_sync_observer.h"
 #include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
 #include "chrome/browser/ui/tabs/split_view_iph_controller.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_window_adapter_impl.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/tab_drag_service_feature.h"
-#include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
 #include "chrome/browser/ui/tabs/tab_list_bridge.h"
 #include "chrome/browser/ui/tabs/tab_strip_api/controllers/tab_strip_ui_controller_impl.h"
 #include "chrome/browser/ui/tabs/tab_strip_api/controllers/tab_strip_ui_controller_injector_impl.h"
@@ -93,7 +86,6 @@
 #include "chrome/browser/ui/views/frame/multi_contents_view.h"
 #include "chrome/browser/ui/views/frame/scrim_view_controller.h"
 #include "chrome/browser/ui/views/fullscreen_control/fullscreen_control_host.h"
-#include "chrome/browser/ui/views/incognito_clear_browsing_data_dialog_coordinator.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views_impl.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_bubble_coordinator.h"
@@ -101,14 +93,10 @@
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_coordinator.h"
 #include "chrome/browser/ui/views/location_bar/zoom_bubble_manager_views.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
-#include "chrome/browser/ui/views/profiles/profile_customization_bubble_sync_controller.h"
-#include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
-#include "chrome/browser/ui/views/side_panel/comments/comments_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/history/history_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/reading_list/reading_list_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
-#include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
@@ -139,7 +127,6 @@
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/prefs/pref_service.h"
 #include "components/profile_metrics/browser_profile_type.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/search/ntp_features.h"
 #include "components/search/search.h"
 #include "content/public/common/content_constants.h"
@@ -285,12 +272,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   call_to_action_lock_ =
       GetUserDataFactory().CreateInstance<CallToActionLock>(*browser, browser);
 
-  if (CommentsSidePanelCoordinator::IsSupported()) {
-    comments_side_panel_coordinator_ =
-        GetUserDataFactory().CreateInstance<CommentsSidePanelCoordinator>(
-            *browser, browser);
-  }
-
   content_setting_bubble_model_delegate_ =
       GetUserDataFactory()
           .CreateInstance<BrowserContentSettingBubbleModelDelegate>(*browser,
@@ -383,10 +364,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  profile_customization_bubble_sync_controller_ =
-      GetUserDataFactory()
-          .CreateInstance<ProfileCustomizationBubbleSyncController>(
-              *browser, browser, profile);
   session_restore_infobar_controller_ =
       GetUserDataFactory()
           .CreateInstance<
@@ -410,9 +387,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   tab_list_bridge_ = std::make_unique<TabListBridge>(
       *tab_strip_model_, browser->GetUnownedUserDataHost());
 
-  signin_view_controller_ = std::make_unique<SigninViewController>(
-      browser, profile, tab_strip_model_);
-
   {
     auto adapter = std::make_unique<TabDragWindowAdapterImpl>(browser);
     tab_drag_service_feature_ =
@@ -420,14 +394,9 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
             *browser, std::move(adapter), browser->GetUnownedUserDataHost());
   }
 
-  tab_group_deletion_dialog_controller_ =
-      GetUserDataFactory().CreateInstance<tab_groups::DeletionDialogController>(
-          *browser, browser, profile, tab_strip_model_);
-
   tab_menu_model_delegate_ =
       GetUserDataFactory().CreateInstance<chrome::BrowserTabMenuModelDelegate>(
           *browser, browser->GetSessionID(), profile,
-          tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile),
           browser->GetUnownedUserDataHost());
 
   tab_strip_service_feature_ =
@@ -443,13 +412,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
           std::make_unique<tabs_api::TabStripUIControllerInjectorImpl>(
               browser, tab_strip_model_),
           browser->GetUnownedUserDataHost());
-
-  if (TabsFromOtherDevicesSidePanelCoordinator::IsSupported(profile)) {
-    tabs_from_other_devices_side_panel_coordinator_ =
-        GetUserDataFactory()
-            .CreateInstance<TabsFromOtherDevicesSidePanelCoordinator>(
-                *browser, browser, profile);
-  }
 
 
   user_education_ =
@@ -467,19 +429,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
 
     initial_web_ui_manager_ = std::make_unique<InitialWebUIManager>(browser);
-
-    if (profile->IsRegularProfile() &&
-        browser->GetTabStripModel()->SupportsTabGroups() &&
-        tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile)) {
-      most_recent_shared_tab_update_store_ =
-          GetUserDataFactory()
-              .CreateInstance<tab_groups::MostRecentSharedTabUpdateStore>(
-                  *browser, browser);
-
-      session_service_tab_group_sync_observer_ =
-          std::make_unique<tab_groups::SessionServiceTabGroupSyncObserver>(
-              profile, browser->GetTabStripModel(), browser->GetSessionID());
-    }
 
     if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
       organizer_panel_state_controller_ =
@@ -700,11 +649,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
             browser->GetUnownedUserDataHost());
   }
 
-  incognito_clear_browsing_data_dialog_coordinator_ =
-      GetUserDataFactory()
-          .CreateInstance<IncognitoClearBrowsingDataDialogCoordinator>(
-              *browser, profile, browser->GetUnownedUserDataHost());
-
   live_tab_context_ =
       GetUserDataFactory().CreateInstance<BrowserLiveTabContext>(
           *browser, browser, browser->GetTabStripModel(), profile,
@@ -717,10 +661,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
         GetUserDataFactory().CreateInstance<omnibox::OmniboxPopupCloser>(
             *browser, browser_view, browser->GetUnownedUserDataHost());
   }
-
-  profile_menu_coordinator_ =
-      GetUserDataFactory().CreateInstance<ProfileMenuCoordinator>(
-          *browser, browser, profile);
 
   if (browser_view) {
     scrim_view_controller_ =
@@ -741,10 +681,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
         std::make_unique<WebUIBrowserSidePanelUI>(browser);
   }
 
-
-  synced_window_delegate_ = std::make_unique<BrowserSyncedWindowDelegate>(
-      browser, browser->GetTabStripModel(), browser->GetSessionID(),
-      browser->GetType());
 
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL ||
       browser->GetType() == BrowserWindowInterface::Type::TYPE_APP) {
@@ -896,17 +832,14 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   }
   upgrade_notification_controller_.reset();
   toast_service_.reset();
-  synced_window_delegate_.reset();
   // TODO(crbug.com/346148093): This logic should not be gated behind a
   // conditional.
   if (side_panel_coordinator_) {
     side_panel_coordinator_->TearDownPreBrowserWindowDestruction();
   }
   scrim_view_controller_.reset();
-  profile_menu_coordinator_.reset();
   omnibox_popup_closer_.reset();
   live_tab_context_.reset();
-  incognito_clear_browsing_data_dialog_coordinator_.reset();
   // Must be before exclusive_access_manager_ (destroy fullscreen control host
   // before exclusive access manager).
   fullscreen_control_host_.reset();
@@ -947,7 +880,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   initial_web_ui_manager_.reset();
 
   // Owned-by-all members.
-  signin_view_controller_->TearDownPreBrowserWindowDestruction();
   // Must be before window_feature_controller_ (raw pointer).
   immersive_mode_controller_.reset();
   history_clusters_side_panel_coordinator_.reset();
@@ -956,7 +888,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   find_bar_controller_.reset();
   extension_installed_watcher_.reset();
   context_highlight_window_feature_.reset();
-  comments_side_panel_coordinator_.reset();
   if (auto* const provider = browser_elements_->AsA<BrowserElementsViews>()) {
     provider->TearDown();
   }

@@ -8,7 +8,6 @@
 #include "chrome/browser/extensions/api/gcm/extension_gcm_app_handler.h"
 #include "chrome/browser/extensions/api/history/history_api.h"
 #include "chrome/browser/extensions/api/identity/identity_api.h"
-#include "chrome/browser/extensions/api/messaging/incognito_connectability.h"
 #include "chrome/browser/extensions/api/notifications/extension_notification_display_helper_factory.h"
 #include "chrome/browser/extensions/api/omnibox/omnibox_api.h"
 #include "chrome/browser/extensions/api/permissions/permissions_event_router_factory.h"
@@ -82,7 +81,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::ExtensionGCMAppHandler::GetFactoryInstance();
   extensions::HistoryAPI::GetFactoryInstance();
   extensions::IdentityAPI::GetFactoryInstance();
-  extensions::IncognitoConnectability::EnsureFactoryBuilt();
   extensions::OmniboxAPI::GetFactoryInstance();
   extensions::PermissionsEventRouterFactory::GetInstance();
   extensions::PreferenceAPI::GetFactoryInstance();

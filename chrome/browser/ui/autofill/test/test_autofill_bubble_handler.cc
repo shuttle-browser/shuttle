@@ -60,16 +60,6 @@ AutofillBubbleBase* TestAutofillBubbleHandler::ShowSaveAddressProfileBubble(
   return save_address_profile_bubble_view_.get();
 }
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-AutofillBubbleBase* TestAutofillBubbleHandler::ShowAddressSignInPromo(
-    content::WebContents* web_contents,
-    const AutofillProfile& autofill_profile) {
-  if (!address_sign_in_promo_bubble_view_) {
-    address_sign_in_promo_bubble_view_ = std::make_unique<TestAutofillBubble>();
-  }
-  return address_sign_in_promo_bubble_view_.get();
-}
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 AutofillBubbleBase* TestAutofillBubbleHandler::ShowSaveAutofillAiDataBubble(
     content::WebContents* contents,

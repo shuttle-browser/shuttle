@@ -7,7 +7,6 @@
 #include <string_view>
 
 #include "chrome/common/apps/platform_apps/api/api_features.h"
-#include "chrome/common/apps/platform_apps/api/generated_schemas.h"
 #include "chrome/common/apps/platform_apps/api/permission_features.h"
 #include "chrome/common/apps/platform_apps/chrome_apps_api_permissions.h"
 #include "chrome/grit/common_resources.h"
@@ -46,11 +45,12 @@ void ChromeAppsAPIProvider::AddAPIJSONSources(
 }
 
 bool ChromeAppsAPIProvider::IsAPISchemaGenerated(const std::string& name) {
-  return api::ChromeAppsGeneratedSchemas::IsGenerated(name);
+  // Agent Chrome: no Chrome Apps API schemas are generated on macOS.
+  return false;
 }
 
 std::string_view ChromeAppsAPIProvider::GetAPISchema(const std::string& name) {
-  return api::ChromeAppsGeneratedSchemas::Get(name);
+  return {};
 }
 
 void ChromeAppsAPIProvider::RegisterPermissions(

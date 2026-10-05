@@ -18,14 +18,11 @@ source_set("settings") {
     "custom_home_pages_table_model.h",
     "downloads_handler.h",
     "font_handler.h",
-    "import_data_handler.h",
     "languages_handler.h",
     "metrics_reporting_handler.h",
     "on_startup_handler.h",
     "password_manager_handler.h",
-    "people_handler.h",
     "performance_handler.h",
-    "profile_info_handler.h",
     "protocol_handlers_handler.h",
     "recent_site_settings_helper.h",
     "reset_settings_handler.h",
@@ -60,7 +57,6 @@ source_set("settings") {
     "//chrome/browser/themes",
     "//chrome/browser/ui/search_engines",
     "//chrome/browser/ui/webui/help",
-    "//chrome/browser/ui/webui/signin:login_ui_service",
     "//chrome/browser/upgrade_detector",
     "//chrome/common",
     "//components/content_settings/core/browser",
@@ -90,19 +86,9 @@ source_set("settings") {
     "//url",
   ]
 
-  if (enable_dice_support || is_chromeos) {
-    public_deps +=
-        [ "//ui/webui/resources/js/batch_upload_promo:mojo_bindings" ]
-  }
-
-  if (enable_dice_support) {
-    public_deps += [ "//ui/webui/resources/cr_components/signin:mojo_bindings" ]
-  }
-
   if (is_win || is_mac || is_linux) {
     sources += [
       "settings_default_browser_handler.h",
-      "settings_manage_profile_handler.h",
       "system_handler.h",
     ]
   }
@@ -137,14 +123,11 @@ source_set("impl") {
     "custom_home_pages_table_model.cc",
     "downloads_handler.cc",
     "font_handler.cc",
-    "import_data_handler.cc",
     "languages_handler.cc",
     "metrics_reporting_handler.cc",
     "on_startup_handler.cc",
     "password_manager_handler.cc",
-    "people_handler.cc",
     "performance_handler.cc",
-    "profile_info_handler.cc",
     "protocol_handlers_handler.cc",
     "recent_site_settings_helper.cc",
     "reset_settings_handler.cc",
@@ -234,10 +217,7 @@ source_set("impl") {
     "//chrome/browser/ui/profiles",
     "//chrome/browser/ui/select_file_policy",
     "//chrome/browser/ui/side_panel",
-    "//chrome/browser/ui/signin",
-    "//chrome/browser/ui/sync",
     "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/browser/ui/tabs/saved_tab_groups",
     "//chrome/browser/ui/toasts",
     "//chrome/browser/ui/toasts/api:toasts",
     "//chrome/browser/ui/toolbar/pinned_toolbar",
@@ -250,7 +230,6 @@ source_set("impl") {
     "//chrome/browser/ui/webui:policy_indicator_localized_strings_provider",
     "//chrome/browser/ui/webui:theme_source",
     "//chrome/browser/ui/webui:webui_util",
-    "//chrome/browser/ui/webui/batch_upload_promo",
     "//chrome/browser/ui/webui/cr_components/customize_color_scheme_mode",
     "//chrome/browser/ui/webui/cr_components/theme_color_picker:impl",
     "//chrome/browser/ui/webui/management",
@@ -299,7 +278,6 @@ source_set("impl") {
   if (is_win || is_mac || is_linux) {
     sources += [
       "settings_default_browser_handler.cc",
-      "settings_manage_profile_handler.cc",
       "system_handler.cc",
     ]
     deps += [
@@ -366,9 +344,6 @@ source_set("impl") {
     ]
   }
 
-  if (enable_dice_support) {
-    deps += [ "//chrome/browser/ui/webui/cr_components/signin" ]
-  }
 }
 
 source_set("test_support") {
@@ -391,7 +366,6 @@ source_set("browser_tests") {
 
   sources = [
     "appearance_handler_browsertest.cc",
-    "people_handler_browsertest.cc",
     "performance_handler_browsertest.cc",
     "settings_clear_browsing_data_handler_browsertest.cc",
     "settings_secure_dns_handler_browsertest.cc",
@@ -403,7 +377,6 @@ source_set("browser_tests") {
     "//chrome/browser:browser_process",
     "//chrome/browser/net:test_support",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/profiles/batch_upload",
     "//chrome/browser/signin",
     "//chrome/browser/signin:signin_browser_test_base",
     "//chrome/browser/sync",
@@ -412,7 +385,6 @@ source_set("browser_tests") {
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/side_panel",
     "//chrome/browser/ui/side_panel:side_panel_views_dependent",
-    "//chrome/browser/ui/signin",
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/toasts",
     "//chrome/browser/ui/toolbar/pinned_toolbar",
@@ -469,8 +441,6 @@ if (!is_android) {
       "downloads_handler_unittest.cc",
       "metrics_reporting_handler_unittest.cc",
       "on_startup_handler_unittest.cc",
-      "people_handler_unittest.cc",
-      "profile_info_handler_unittest.cc",
       "recent_site_settings_helper_unittest.cc",
       "reset_settings_handler_unittest.cc",
       "saved_info_handler_unittest.cc",
@@ -526,7 +496,6 @@ if (!is_android) {
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui:test_support",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/signin",
       "//chrome/browser/ui/toasts",
       "//chrome/browser/ui/webui/version",
       "//chrome/browser/upgrade_detector",
@@ -610,7 +579,6 @@ if (!is_android) {
     if (is_win || is_mac || is_linux) {
       sources += [
         "accessibility_main_handler_unittest.cc",
-        "settings_manage_profile_handler_unittest.cc",
       ]
       deps += [
         "//chrome/browser/profiles",
@@ -682,13 +650,10 @@ source_set("interactive_ui_tests") {
   }
 
   if ((is_mac || is_linux || is_win) && enable_dice_support) {
-    sources += [ "sync_settings_interactive_uitest.cc" ]
     deps += [
       "//chrome/browser/signin",
       "//chrome/browser/signin:signin_browser_test_base",
       "//chrome/browser/sync",
-      "//chrome/browser/ui/signin",
-      "//chrome/browser/ui/webui/signin/signout_confirmation",
       "//components/signin/public/base",
       "//components/signin/public/identity_manager",
       "//components/signin/public/identity_manager:test_support",

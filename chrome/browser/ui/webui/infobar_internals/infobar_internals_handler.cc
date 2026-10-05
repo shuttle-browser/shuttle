@@ -69,8 +69,6 @@
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/api/debugger/extension_dev_tools_infobar_delegate.h"
-#include "chrome/browser/extensions/api/messaging/incognito_connectability.h"
-#include "chrome/browser/extensions/api/messaging/incognito_connectability_infobar_delegate.h"
 #include "chrome/browser/extensions/theme_installed_infobar_delegate.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -218,10 +216,6 @@ void InfoBarInternalsHandler::GetInfoBars(GetInfoBarsCallback callback) {
             "missing. This trigger shows the infobar.");
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-  add_entry(InfoBarType::kIncognitoConnectability, "Incognito Connectability",
-            "The Incognito Connectability infobar is used to ask the user if "
-            "they want to allow an extension to communicate with a website in "
-            "incognito mode. This trigger shows the infobar.");
   add_entry(InfoBarType::kInstallationError, "Installation Error",
             "The Installation Error infobar is shown when an extension "
             "installation fails.");
@@ -436,42 +430,9 @@ bool InfoBarInternalsHandler::TriggerInfoBarInternal(InfoBarType type) {
       }
       return true;
     }
-    case InfoBarType::kIncognitoConnectability: {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-      extensions::ExtensionRegistry* registry =
-          extensions::ExtensionRegistry::Get(profile);
-      const extensions::ExtensionSet& extensions =
-          registry->enabled_extensions();
-
-      const extensions::Extension* extension = nullptr;
-      if (!extensions.empty()) {
-        extension = extensions.begin()->get();
-      }
-
-      if (profile->IsOffTheRecord() && extension) {
-        extensions::IncognitoConnectability::Get(profile)->Query(
-            extension, web_contents,
-            GURL("https://infobar-internals.google.com"), base::DoNothing());
-        return true;
-      }
-
-      // Fallback: If not in incognito or no extension, show a visually
-      // accurate infobar using the delegate.
-      infobars::ContentInfoBarManager* infobar_manager =
-          infobars::ContentInfoBarManager::FromWebContents(web_contents);
-      std::u16string extension_name =
-          extension ? base::UTF8ToUTF16(extension->name()) : u"Dummy Extension";
-      std::u16string message = l10n_util::GetStringFUTF16(
-          IDS_EXTENSION_PROMPT_EXTENSION_CONNECT_FROM_INCOGNITO,
-          u"Infobar Internals", extension_name);
-
-      extensions::IncognitoConnectabilityInfoBarDelegate::Create(
-          infobar_manager, message, base::DoNothing());
-      return true;
-#else
+    case InfoBarType::kIncognitoConnectability:
+      // Agent Chrome: incognito connectability was removed.
       return false;
-#endif
-    }
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     case InfoBarType::kInstallationError: {
       const std::u16string msg =

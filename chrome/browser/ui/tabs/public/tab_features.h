@@ -35,7 +35,6 @@
 #include "ui/base/unowned_user_data/user_data_factory.h"
 
 class AskBeforeHttpDialogController;
-class BrowserSyncedTabDelegate;
 class CommitLimitOOMRecoveryTracker;
 class ConnectionHelpTabHelper;
 class CookieControlsPageActionController;
@@ -106,15 +105,6 @@ namespace permissions {
 class PermissionIndicatorsTabData;
 }  // namespace permissions
 
-namespace sync_sessions {
-class SyncSessionsRouterTabHelper;
-}  // namespace sync_sessions
-
-namespace tab_groups {
-class SavedTabGroupWebContentsListener;
-class SavedTabGroupOnCloseHelper;
-}  // namespace tab_groups
-
 namespace page_actions {
 class PageActionController;
 }  // namespace page_actions
@@ -160,16 +150,6 @@ class TabFeatures {
 
   extensions::ExtensionSidePanelManager* extension_side_panel_manager() {
     return extension_side_panel_manager_.get();
-  }
-
-  tab_groups::SavedTabGroupWebContentsListener*
-  saved_tab_group_web_contents_listener() const {
-    return saved_tab_group_web_contents_listener_.get();
-  }
-
-  tab_groups::SavedTabGroupOnCloseHelper* saved_tab_group_on_close_helper()
-      const {
-    return saved_tab_group_on_close_helper_.get();
   }
 
   TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
@@ -266,21 +246,6 @@ class TabFeatures {
   // Security-state-driven side effects (known-interception disclosure,
   // form-submission UKM).
   std::unique_ptr<SecurityStateEventObserver> security_state_event_observer_;
-
-  // Forwards tab-related events to sync.
-  std::unique_ptr<sync_sessions::SyncSessionsRouterTabHelper>
-      sync_sessions_router_;
-
-  // Provides this tab's session identity to sync.
-  std::unique_ptr<BrowserSyncedTabDelegate> browser_synced_tab_delegate_;
-
-  // Responsible for keeping a tab within a tab group in sync with its remote
-  // tab counterpart from sync.
-  std::unique_ptr<tab_groups::SavedTabGroupWebContentsListener>
-      saved_tab_group_web_contents_listener_;
-
-  std::unique_ptr<tab_groups::SavedTabGroupOnCloseHelper>
-      saved_tab_group_on_close_helper_;
 
   // Manages various tab modal dialogs.
   std::unique_ptr<TabDialogManager> tab_dialog_manager_;

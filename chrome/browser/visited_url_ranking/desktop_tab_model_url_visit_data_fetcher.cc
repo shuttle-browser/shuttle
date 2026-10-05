@@ -38,7 +38,7 @@ URLVisitAggregate::Tab MakeAggregateTabFromWebContents(
       sessions::SessionTabHelper::IdForTab(web_contents).id(),
       URLVisit(web_contents->GetURL(), web_contents->GetTitle(),
                last_entry->GetTimestamp(),
-               syncer::DeviceInfo::FormFactor::kDesktop, Source::kLocal));
+               DeviceFormFactor::kDesktop, Source::kLocal));
   return tab;
 }
 

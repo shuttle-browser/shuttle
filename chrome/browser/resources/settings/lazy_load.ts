@@ -13,7 +13,6 @@ import './autofill_page/payments/payments_page.js';
 import './autofill_page/travel/travel_page.js';
 import './autofill_page/walletable_pass_detection_toggle.js';
 // <if expr="not is_chromeos">
-import './clear_browsing_data_dialog/clear_browsing_data_account_indicator.js';
 // </if>
 import './clear_browsing_data_dialog/clear_browsing_data_dialog.js';
 import './clear_browsing_data_dialog/clear_browsing_data_time_picker.js';
@@ -81,14 +80,7 @@ import './site_settings/window_management_page.js';
 import './site_settings/zoom_levels.js';
 // <if expr="not is_chromeos">
 import './a11y_page/live_caption.js';
-import './people_page/import_data_dialog.js';
-import './people_page/manage_profile.js';
 // </if>
-import './people_page/account_page.js';
-import './people_page/google_services_page.js';
-import './people_page/signout_dialog.js';
-import './people_page/sync_controls_page.js';
-import './people_page/sync_page.js';
 // Sections
 import './a11y_page/a11y_page_index.js';
 import './downloads_page/downloads_page.js';
@@ -128,10 +120,6 @@ export {CrTextareaElement} from 'chrome://resources/cr_elements/cr_textarea/cr_t
 export {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 export {getToastManager} from 'chrome://resources/cr_elements/cr_toast/cr_toast_manager.js';
 export {CrTooltipElement} from 'chrome://resources/cr_elements/cr_tooltip/cr_tooltip.js';
-export {PageCallbackRouter, PageHandlerFactory, PageHandlerRemote, PageRemote} from 'chrome://resources/js/batch_upload_promo.mojom-webui.js';
-export type {PageHandlerInterface} from 'chrome://resources/js/batch_upload_promo.mojom-webui.js';
-export {BatchUploadPromoProxyImpl} from 'chrome://resources/js/batch_upload_promo/batch_upload_promo_proxy.js';
-export type {BatchUploadPromoProxy} from 'chrome://resources/js/batch_upload_promo/batch_upload_promo_proxy.js';
 export type {IronListElement} from 'chrome://resources/polymer/v3_0/iron-list/iron-list.js';
 export {AccessibilityBrowserProxyImpl} from './a11y_page/a11y_browser_proxy.js';
 export type {AccessibilityBrowserProxy} from './a11y_page/a11y_browser_proxy.js';
@@ -179,14 +167,12 @@ export {SettingsVirtualCardUnenrollDialogElement} from './autofill_page/payments
 export {SettingsTravelPageElement} from './autofill_page/travel/travel_page.js';
 export {SettingsWalletablePassDetectionToggleElement} from './autofill_page/walletable_pass_detection_toggle.js';
 // <if expr="not is_chromeos">
-export {SettingsClearBrowsingDataAccountIndicator} from './clear_browsing_data_dialog/clear_browsing_data_account_indicator.js';
 // </if>
 export {BrowsingDataType, ClearBrowsingDataBrowserProxyImpl, TimePeriod} from './clear_browsing_data_dialog/clear_browsing_data_browser_proxy.js';
 export type {ClearBrowsingDataBrowserProxy, ClearBrowsingDataResult, UpdateSyncStateEvent} from './clear_browsing_data_dialog/clear_browsing_data_browser_proxy.js';
 export {getDataTypePrefName, SettingsClearBrowsingDataDialogElement} from './clear_browsing_data_dialog/clear_browsing_data_dialog.js';
 export {getTimePeriodString, SettingsClearBrowsingDataTimePicker} from './clear_browsing_data_dialog/clear_browsing_data_time_picker.js';
 export {SettingsHistoryDeletionDialogElement} from './clear_browsing_data_dialog/history_deletion_dialog.js';
-export {SettingsOtherGoogleDataDialogElement} from './clear_browsing_data_dialog/other_google_data_dialog.js';
 export {SettingsCollapseRadioButtonElement} from './controls/collapse_radio_button.js';
 export {ControlledButtonElement} from './controls/controlled_button.js';
 export {SettingsCheckboxElement} from './controls/settings_checkbox.js';
@@ -212,19 +198,8 @@ export type {LanguageHelper, LanguagesModel} from './languages_page/languages_ty
 export {SettingsSpellCheckPageElement} from './languages_page/spell_check_page.js';
 // </if>
 
-export {SettingsAccountPageElement} from './people_page/account_page.js';
-export {SettingsGoogleServicesPageElement} from './people_page/google_services_page.js';
 // <if expr="not is_chromeos">
-export {ImportDataBrowserProxyImpl, ImportDataStatus} from './people_page/import_data_browser_proxy.js';
-export type {BrowserProfile, ImportDataBrowserProxy} from './people_page/import_data_browser_proxy.js';
-export {SettingsImportDataDialogElement} from './people_page/import_data_dialog.js';
-export {SettingsManageProfileElement} from './people_page/manage_profile.js';
-export {ManageProfileBrowserProxyImpl, ProfileShortcutStatus} from './people_page/manage_profile_browser_proxy.js';
-export type {ManageProfileBrowserProxy} from './people_page/manage_profile_browser_proxy.js';
 // </if>
-export {SettingsSyncControlsElement} from './people_page/sync_controls.js';
-export {SettingsSyncEncryptionOptionsElement} from './people_page/sync_encryption_options.js';
-export {SettingsSyncPageElement} from './people_page/sync_page.js';
 export {NetworkPredictionOptions} from './performance_page/constants.js';
 export {SettingsCookiesPageElement} from './privacy_page/cookies_page.js';
 export {SettingsDoNotTrackToggleElement} from './privacy_page/do_not_track_toggle.js';

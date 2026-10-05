@@ -10,7 +10,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_factory.h"
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 
 RendererUpdaterFactory::RendererUpdaterFactory()
@@ -27,9 +26,6 @@ RendererUpdaterFactory::RendererUpdaterFactory()
               .Build()) {
   DependsOn(IdentityManagerFactory::GetInstance());
   DependsOn(HostContentSettingsMapFactory::GetInstance());
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  DependsOn(BoundSessionCookieRefreshServiceFactory::GetInstance());
-#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 }
 
 RendererUpdaterFactory::~RendererUpdaterFactory() = default;

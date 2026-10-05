@@ -239,7 +239,6 @@ void OnLocalStatePrefsLoaded();
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/first_run/upgrade_util.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #endif
 
 #if BUILDFLAG(ENABLE_CHROME_NOTIFICATIONS)
@@ -619,11 +618,6 @@ void BrowserProcessImpl::StartTearDown() {
   {
     TRACE_EVENT0("shutdown",
                  "BrowserProcessImpl::StartTearDown:ProfileManager");
-#if !BUILDFLAG(IS_CHROMEOS)
-    // The desktop profile picker needs to be closed before the guest profile
-    // can be destroyed.
-    ProfilePicker::Hide();
-#endif  // !BUILDFLAG(IS_CHROMEOS)
     // `profile_manager_` must be destroyed before `background_mode_manager_`,
     // because the background mode manager does not stop observing profile
     // changes at destruction (notifying the observers would cause a use-after-

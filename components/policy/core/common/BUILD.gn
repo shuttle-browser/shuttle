@@ -55,6 +55,10 @@ source_set("util") {
       "//components/session_manager/core",
     ]
   }
+
+  if (is_mac) {
+    frameworks = [ "SystemConfiguration.framework" ]
+  }
 }
 
 source_set("internal") {

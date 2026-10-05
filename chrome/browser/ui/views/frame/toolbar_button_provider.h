@@ -13,7 +13,6 @@
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 
 class AppMenuControl;
-class AvatarToolbarButtonInterface;
 class BrowserWindowInterface;
 class PinnedToolbarActions;
 class ExtensionsContainerViews;
@@ -88,9 +87,6 @@ class ToolbarButtonProvider {
 
   // See comment in browser_window.h for more info.
   virtual void ZoomChangedForActiveTab(bool can_show_bubble) = 0;
-
-  // Returns the avatar button interface.
-  virtual AvatarToolbarButtonInterface* GetAvatarToolbarButtonInterface() = 0;
 
   // Returns the back button.
   virtual ToolbarButton* GetBackButton() = 0;

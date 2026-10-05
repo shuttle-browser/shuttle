@@ -26,7 +26,6 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/enterprise/signin/enterprise_signin_prefs.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/prefs/chrome_command_line_pref_store.h"
 #include "chrome/browser/prefs/chrome_pref_model_associator_client.h"
@@ -169,9 +168,7 @@ const auto kTrackedPrefs = std::to_array<prefs::TrackedPreferenceMetadata>({
     {33, prefs::kGoogleServicesLastSignedInUsername,
      EnforcementLevel::ENFORCE_ON_LOAD, PrefTrackingStrategy::ATOMIC,
      ValueType::PERSONAL},
-    {34, enterprise_signin::prefs::kPolicyRecoveryToken,
-     EnforcementLevel::ENFORCE_ON_LOAD, PrefTrackingStrategy::ATOMIC,
-     ValueType::IMPERSONAL},
+    // 34 was enterprise_signin kPolicyRecoveryToken (removed from the fork).
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
     {35, prefs::kExtensionsUIDeveloperMode, EnforcementLevel::ENFORCE_ON_LOAD,
      PrefTrackingStrategy::ATOMIC, ValueType::IMPERSONAL},

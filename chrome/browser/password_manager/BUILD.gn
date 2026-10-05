@@ -125,10 +125,6 @@ source_set("password_manager") {
       "//chrome/browser/password_manager/password_change",
     ]
   }
-
-  if (enable_dice_support) {
-    public += [ "multi_profile_credentials_filter.h" ]
-  }
 }
 
 source_set("impl") {
@@ -258,10 +254,6 @@ source_set("impl") {
       "//chrome/browser/ui/user_education",
       "//components/password_manager/core/browser/actor_login:actor_login_service_impl",
     ]
-  }
-
-  if (enable_dice_support) {
-    sources += [ "multi_profile_credentials_filter.cc" ]
   }
 }
 
@@ -515,7 +507,6 @@ source_set("unit_tests") {
   }
 
   if (enable_dice_support) {
-    sources += [ "multi_profile_credentials_filter_unittest.cc" ]
     deps += [
       "//chrome/browser:browser_process",
       "//chrome/browser/profiles:profile",

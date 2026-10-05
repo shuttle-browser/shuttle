@@ -30,7 +30,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
-#include "chrome/browser/profiles/profile_avatar_downloader.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/common/pref_names.h"
@@ -1001,27 +1000,7 @@ void ProfileAttributesStorage::DownloadHighResAvatarIfNeeded(
 void ProfileAttributesStorage::DownloadHighResAvatar(
     size_t icon_index,
     const base::FilePath& profile_path) {
-#if !BUILDFLAG(IS_ANDROID)
-  const char* file_name =
-      profiles::GetDefaultAvatarIconFileNameAtIndex(icon_index);
-  DCHECK(file_name);
-  // If the file is already being downloaded, don't start another download.
-  if (avatar_images_downloads_in_progress_.contains(file_name)) {
-    return;
-  }
-
-  // Start the download for this file. The profile attributes storage takes
-  // ownership of the avatar downloader, which will be deleted when the download
-  // completes, or if that never happens, when the storage is destroyed.
-  std::unique_ptr<ProfileAvatarDownloader>& current_downloader =
-      avatar_images_downloads_in_progress_[file_name];
-  current_downloader = std::make_unique<ProfileAvatarDownloader>(
-      icon_index,
-      base::BindOnce(&ProfileAttributesStorage::SaveAvatarImageAtPathNoCallback,
-                     weak_ptr_factory_.GetWeakPtr(), profile_path));
-
-  current_downloader->Start();
-#endif
+  // Agent Chrome: high-res avatar downloads were removed (no profile UI).
 }
 
 void ProfileAttributesStorage::SaveAvatarImageAtPath(
@@ -1035,17 +1014,6 @@ void ProfileAttributesStorage::SaveAvatarImageAtPath(
   scoped_refptr<base::RefCountedMemory> png_data = image.As1xPNGBytes();
   auto data = std::make_unique<ImageData>(png_data->size());
   base::span(*data).copy_from(*png_data);
-
-  // Remove the file from the list of downloads in progress. Note that this list
-  // only contains the high resolution avatars, and not the Gaia profile images.
-  auto downloader_iter = avatar_images_downloads_in_progress_.find(key);
-  if (downloader_iter != avatar_images_downloads_in_progress_.end()) {
-    // We mustn't delete the avatar downloader right here, since we're being
-    // called by it.
-    content::GetUIThreadTaskRunner({})->DeleteSoon(
-        FROM_HERE, downloader_iter->second.release());
-    avatar_images_downloads_in_progress_.erase(downloader_iter);
-  }
 
   if (data->empty()) {
     LOG(ERROR) << "Failed to PNG encode the image.";

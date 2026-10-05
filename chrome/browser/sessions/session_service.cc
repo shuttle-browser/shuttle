@@ -36,7 +36,6 @@
 #include "chrome/browser/sessions/session_service_log.h"
 #include "chrome/browser/sessions/session_service_utils.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -45,12 +44,10 @@
 #include "chrome/browser/ui/startup/profile_launch_observer.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/startup/startup_tab.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/chrome_switches.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/sessions/content/content_serialized_navigation_builder.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/command_storage_manager.h"
@@ -300,17 +297,10 @@ void SessionService::SetTabGroupMetadata(
     SessionID window_id,
     const tab_groups::TabGroupId& group_id,
     const tab_groups::TabGroupVisualData* visual_data) {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile());
   std::optional<std::string> saved_guid;
-  if (tab_group_service) {
-    if (const std::optional<tab_groups::SavedTabGroup> saved_group =
-            tab_group_service->GetGroup(group_id)) {
-      saved_guid = saved_group->saved_guid().AsLowercaseString();
-    } else if (auto it = local_to_sync_id_mapping_.find(group_id);
-               it != local_to_sync_id_mapping_.end()) {
-      saved_guid = it->second;
-    }
+  if (auto it = local_to_sync_id_mapping_.find(group_id);
+      it != local_to_sync_id_mapping_.end()) {
+    saved_guid = it->second;
   }
 
   SetTabGroupMetadata(window_id, group_id, visual_data, std::move(saved_guid));

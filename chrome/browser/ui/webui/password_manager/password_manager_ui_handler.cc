@@ -17,7 +17,6 @@
 #include "chrome/browser/password_manager/password_change_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/webui/password_manager/password_manager.mojom.h"
@@ -478,11 +477,5 @@ void PasswordManagerUIHandler::ContinueImport(
 }
 
 void PasswordManagerUIHandler::StartTrustedVaultUnlock() {
-  if (BrowserWindowInterface* browser =
-          GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-              web_contents_)) {
-    OpenTabForSyncKeyRetrieval(
-        browser, trusted_vault::TrustedVaultUserActionTriggerForUMA::
-                     kPasswordManagerSettings);
-  }
+  // Trusted vault key retrieval is not available.
 }

@@ -66,9 +66,7 @@ source_set("common_syncable_prefs_database") {
     "//components/omnibox/browser",
     "//components/password_manager/core/common",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
-    "//components/saved_tab_groups/public",
     "//components/subscription_eligibility",
-    "//components/sync_preferences/cross_device_pref_tracker/prefs",
     "//components/variations/service",
   ]
 }

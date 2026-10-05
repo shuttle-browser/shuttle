@@ -116,7 +116,6 @@ source_set("impl") {
     "//components/segmentation_platform/embedder/default_model",
     "//components/segmentation_platform/internal",
     "//components/segmentation_platform/internal/proto",
-    "//components/sync_sessions",
     "//components/ukm",
   ]
 
@@ -135,7 +134,6 @@ source_set("impl") {
   } else {
     deps += [
       "//chrome/browser/ui",
-      "//chrome/browser/ui/sync",
       "//components/tabs:public",
     ]
   }

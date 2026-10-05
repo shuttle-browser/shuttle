@@ -138,9 +138,6 @@ source_set("extension_post_install_dialog") {
   if (is_android) {
     deps += [ "//components/prefs" ]
   }
-  if (toolkit_views) {
-    deps += [ "//chrome/browser/ui/views/extensions:extension_post_install_dialog_view_utils" ]
-  }
 }
 
 source_set("impl") {

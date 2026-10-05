@@ -20,7 +20,6 @@
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
 #include "chrome/browser/ui/autofill/chrome_autofill_client.h"
@@ -75,17 +74,6 @@ AutofillBubbleBase* ShowUpdateBubble(
       ->ShowUpdateAddressProfileBubble(
           web_contents, std::move(update_controller), shown_by_user_gesture);
 }
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-AutofillBubbleBase* ShowSignInPromo(content::WebContents* web_contents,
-                                    const AutofillProfile& autofill_profile) {
-  // TODO(crbug.com/381390420): Expose the `AutofillBubbleHandler` in
-  // `BrowserWindowInterface` and use that instead.
-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
-      ->GetAutofillBubbleHandler()
-      ->ShowAddressSignInPromo(web_contents, autofill_profile);
-}
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 }  // namespace
 
@@ -166,7 +154,6 @@ void AddressBubblesController::OnUserDecision(
   }
   if (address_profile_save_prompt_callback_) {
     std::move(address_profile_save_prompt_callback_).Run(decision, profile);
-    MaybeShowSignInPromo(profile);
   }
 
   if (decision == AutofillClient::AddressPromptUserDecision::kDeclined &&
@@ -303,31 +290,6 @@ void AddressBubblesController::SetUpBubble(
   shown_by_user_gesture_ = false;
   is_migration_to_account_ = is_migration_to_account;
   user_has_any_profile_saved_ = user_has_any_profile_saved;
-}
-
-void AddressBubblesController::MaybeShowSignInPromo(
-    base::optional_ref<const AutofillProfile> autofill_profile) {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  // Do nothing if there is no autofill profile or the sign in promo should not
-  // be shown.
-  if (!autofill_profile.has_value() ||
-      !signin::ShouldShowAddressSignInPromo(
-          *Profile::FromBrowserContext(web_contents()->GetBrowserContext()),
-          autofill_profile.value())) {
-    return;
-  }
-
-  DoNotShowNextQueuedBubbleGuard guard = DoNotShowNextQueuedBubble();
-
-  // Close the current save bubble.
-  HideBubble(/*initiated_by_bubble_manager=*/false);
-
-  // Open the bubble with the sign in promo.
-  SetBubbleView(*ShowSignInPromo(web_contents(), autofill_profile.value()));
-  CHECK(bubble_view());
-  is_showing_sign_in_promo_ = true;
-  UpdatePageActionIcon();
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(AddressBubblesController);

@@ -20,7 +20,6 @@
 #include "build/build_config.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
-#include "components/browser_sync/browser_sync_switches.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/proxy_config/proxy_config_dictionary.h"
 #include "components/proxy_config/proxy_config_pref_names.h"
@@ -68,7 +67,6 @@ const CommandLinePrefStore::SwitchToPreferenceMapEntry
 const CommandLinePrefStore::SwitchToPreferenceMapEntry
     ChromeCommandLinePrefStore::path_switch_map_[] = {
       { switches::kDiskCacheDir, prefs::kDiskCacheDir },
-      { switches::kLocalSyncBackendDir, syncer::prefs::kLocalSyncBackendDir },
 };
 
 const CommandLinePrefStore::BooleanSwitchToPreferenceMapEntry
@@ -91,8 +89,6 @@ const CommandLinePrefStore::BooleanSwitchToPreferenceMapEntry
          prefs::kUnifiedDesktopEnabledByDefault, true},
         {ash::switches::kEnableCastReceiver, prefs::kCastReceiverEnabled, true},
 #endif
-        {switches::kEnableLocalSyncBackend,
-         syncer::prefs::kEnableLocalSyncBackend, true},
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
         {switches::kUseSystemDefaultPrinter,
          prefs::kPrintPreviewUseSystemDefaultPrinter, true},

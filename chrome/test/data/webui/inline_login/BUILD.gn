@@ -15,8 +15,6 @@ build_webui_tests("build") {
   ]
 
   ts_definitions = [
-    "//chrome/browser/resources/gaia_auth_host/authenticator.d.ts",
-    "//chrome/browser/resources/gaia_auth_host/saml_password_attributes.d.ts",
   ]
 
   ts_path_mappings = [
@@ -29,7 +27,6 @@ build_webui_tests("build") {
   ]
 
   ts_deps = [
-    "//chrome/browser/resources/inline_login:build_ts",
     "//ui/webui/resources/js:build_ts",
   ]
 }

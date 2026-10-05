@@ -98,8 +98,7 @@
   // Ignore new tab/window events if |event| is a key repeat to prevent
   // users from accidentally opening too many empty tabs or windows.
   if (event.isARepeat && (result.chrome_command == IDC_NEW_TAB ||
-                          result.chrome_command == IDC_NEW_WINDOW ||
-                          result.chrome_command == IDC_NEW_INCOGNITO_WINDOW)) {
+                          result.chrome_command == IDC_NEW_WINDOW)) {
     return ui::PerformKeyEquivalentResult::kDrop;
   }
 

@@ -49,7 +49,6 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/webui_content_setting_image_control.h"
 #include "chrome/browser/ui/views/location_bar/webui_location_bar.h"
-#include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_home_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_overflow_button.h"
@@ -349,7 +348,6 @@ WebUIToolbarWebView::WebUIToolbarWebView(
       split_tabs_control_(this),
       home_control_(this),
       app_menu_control_(*this),
-      avatar_control_(this),
       location_bar_(std::move(location_bar)),
       extensions_container_(this),
       back_control_(this, BackForwardButton::Direction::kBack),
@@ -546,7 +544,6 @@ void WebUIToolbarWebView::AddedToWidget() {
 void WebUIToolbarWebView::OnThemeChanged() {
   views::View::OnThemeChanged();
   UpdateProfileThemeColors(browser_, GetColorProvider());
-  avatar_control_.UpdateIcon();
   if (location_bar_) {
     location_bar_->OnThemeChanged();
   }
@@ -759,10 +756,6 @@ void WebUIToolbarWebView::MaybeInitializePageDependentControls() {
       !reload_control_.is_initialized()) {
     reload_control_.Init();
   }
-  if (features::IsWebUIAvatarButtonEnabled() &&
-      !avatar_control_.is_initialized()) {
-    avatar_control_.Initialize();
-  }
 }
 
 void WebUIToolbarWebView::OnPageInitialized() {
@@ -826,21 +819,15 @@ WebUIToolbarWebView::OnOmniboxAction(
   }
 }
 
-void WebUIToolbarWebView::ShowAvatarMenu() {
-  avatar_control_.ButtonPressed(/*is_source_accelerator=*/false);
-}
+// Agent Chrome has no avatar button (profile menu removed); the WebUI toolbar
+// never shows it (enableAvatarButton is false), so these are no-ops.
+void WebUIToolbarWebView::ShowAvatarMenu() {}
 
-void WebUIToolbarWebView::SetAvatarButtonHovered(bool hovered) {
-  avatar_control_.SetAvatarButtonHovered(hovered);
-}
+void WebUIToolbarWebView::SetAvatarButtonHovered(bool hovered) {}
 
-void WebUIToolbarWebView::SetAvatarButtonFocused(bool focused) {
-  avatar_control_.SetAvatarButtonFocused(focused);
-}
+void WebUIToolbarWebView::SetAvatarButtonFocused(bool focused) {}
 
-void WebUIToolbarWebView::SetAvatarButtonIPHPromoShowing(bool showing) {
-  avatar_control_.NotifyIPHPromoChanged(showing);
-}
+void WebUIToolbarWebView::SetAvatarButtonIPHPromoShowing(bool showing) {}
 
 void WebUIToolbarWebView::OnAppMenuFocusChanged(bool focused) {
   app_menu_control_.SetFocused(focused);
@@ -904,11 +891,6 @@ void WebUIToolbarWebView::OnPerformanceInterventionButtonMousePressed() {}
 
 ReloadControl* WebUIToolbarWebView::GetReloadControl() {
   return &reload_control_;
-}
-
-AvatarToolbarButtonInterface*
-WebUIToolbarWebView::GetAvatarToolbarButtonInterface() {
-  return &avatar_control_;
 }
 
 ExtensionsContainerViews* WebUIToolbarWebView::extensions_container_views() {
@@ -1578,14 +1560,6 @@ void WebUIToolbarWebView::OnPageActionChanged(
   }
 }
 
-void WebUIToolbarWebView::OnAvatarControlStateChanged(
-    toolbar_ui_api::mojom::AvatarControlStatePtr state) {
-  if (!mojo::Equals(state, last_queued_state_.avatar_control_state)) {
-    last_queued_state_.avatar_control_state = std::move(state);
-    PostPushNavigationState();
-  }
-}
-
 void WebUIToolbarWebView::OnFocusRequested(
     toolbar_ui_api::mojom::FocusRequestTarget target) {
   // We need to focus the WebView as well, besides the JS focus.
@@ -1672,7 +1646,6 @@ gfx::Size WebUIToolbarWebView::ComputeLayout(
   button_count += features::IsWebUISplitTabsButtonEnabled() &&
                   split_tabs_control_.IsVisible();
   button_count += features::IsWebUIBackForwardButtonEnabled();
-  button_count += features::IsWebUIAvatarButtonEnabled();
   button_count += features::IsWebUIAppMenuButtonEnabled();
 
   const int size = GetLayoutConstant(LayoutConstant::kToolbarButtonHeight);

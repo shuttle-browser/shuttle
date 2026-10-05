@@ -92,7 +92,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_controller.h"
@@ -107,7 +106,6 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/webauthn/context_menu_helper.h"
-#include "chrome/browser/ui/webui/history/foreign_session_handler.h"
 #include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/channel_info.h"
@@ -737,49 +735,6 @@ content::WebContents* GetWebContentsToUse(
 
 bool g_custom_id_ranges_initialized = false;
 
-#if !BUILDFLAG(IS_CHROMEOS)
-void AddAvatarToLastMenuItem(const gfx::Image& icon,
-                             ui::SimpleMenuModel* menu) {
-  // Don't try to scale too small icons.
-  if (icon.Width() < 16 || icon.Height() < 16) {
-    return;
-  }
-  int target_dip_width = icon.Width();
-  int target_dip_height = icon.Height();
-  gfx::CalculateFaviconTargetSize(&target_dip_width, &target_dip_height);
-  gfx::Image sized_icon = profiles::GetSizedAvatarIcon(
-      icon, target_dip_width, target_dip_height, profiles::SHAPE_CIRCLE);
-  menu->SetIcon(menu->GetItemCount() - 1,
-                ui::ImageModel::FromImage(sized_icon));
-}
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-
-void OnBrowserCreated(const GURL& link_url,
-                      url::Origin initiator_origin,
-                      BrowserWindowInterface* browser) {
-  if (!browser) {
-    // TODO(crbug.com/40242414): Make sure we do something or log an error if
-    // opening a browser window was not possible.
-    return;
-  }
-
-  NavigateParams nav_params(
-      browser, link_url,
-      /* |ui::PAGE_TRANSITION_TYPED| is used rather than
-         |ui::PAGE_TRANSITION_LINK| since this ultimately opens the link in
-         another browser. This parameter is used within the tab strip model of
-         the browser it opens in implying a link from the active tab in the
-         destination browser which is not correct. */
-      ui::PAGE_TRANSITION_TYPED);
-  nav_params.initiator_origin = initiator_origin;
-  nav_params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
-  // We are opening the link across profiles, so sending the referer
-  // header is a privacy risk.
-  nav_params.referrer = content::Referrer();
-  nav_params.window_action = NavigateParams::WindowAction::kShowWindow;
-  Navigate(&nav_params);
-}
-
 bool DoesFormControlTypeSupportEmoji(
     blink::mojom::FormControlType form_control_type) {
   switch (form_control_type) {
@@ -965,8 +920,6 @@ RenderViewContextMenu::RenderViewContextMenu(
               params_)),
       current_url_(render_frame_host.GetLastCommittedURL()),
       main_frame_url_(render_frame_host.GetMainFrame()->GetLastCommittedURL()),
-      profile_link_submenu_model_(this),
-      multiple_profiles_open_(false),
       protocol_handler_submenu_model_(this),
       protocol_handler_registry_(
           ProtocolHandlerRegistryFactory::GetForBrowserContext(GetProfile())),
@@ -1552,13 +1505,7 @@ void RenderViewContextMenu::RecordUsedItem(int id) {
       // Ignore using right click + open in new tab for internal links.
       !params_.link_url.SchemeIs(content::kChromeUIScheme)) {
     const GURL doc_url = params_.frame_url;
-    const GURL history_url = GURL(chrome::kChromeUIHistoryURL);
-    if (doc_url == history_url.Resolve(chrome::kChromeUIHistorySyncedTabs)) {
-      UMA_HISTOGRAM_ENUMERATION(
-          "HistoryPage.OtherDevicesMenu",
-          browser_sync::SyncedTabsHistogram::OPENED_LINK_VIA_CONTEXT_MENU,
-          browser_sync::SyncedTabsHistogram::LIMIT);
-    } else if (doc_url == GURL(chrome::kChromeUIDownloadsURL)) {
+    if (doc_url == GURL(chrome::kChromeUIDownloadsURL)) {
       base::RecordAction(base::UserMetricsAction(
           "Downloads_OpenUrlOfDownloadedItemFromContextMenu"));
     }
@@ -1748,7 +1695,6 @@ void RenderViewContextMenu::AppendLinkItems() {
 
     bool show_open_in_new_tab = true;
     bool show_open_in_new_window = true;
-    bool show_open_link_off_the_record = true;
 
     if (in_app) {
       show_open_in_new_window = false;
@@ -1761,7 +1707,6 @@ void RenderViewContextMenu::AppendLinkItems() {
     if (IsCaptivePortalProfile(profile)) {
       show_open_in_new_tab = false;
       show_open_in_new_window = false;
-      show_open_link_off_the_record = false;
     }
 
     const bool in_system_web_dialog =
@@ -1772,12 +1717,6 @@ void RenderViewContextMenu::AppendLinkItems() {
 
     // true if the link points to a WebUI page, including SWA.
     const bool link_to_webui = content::HasWebUIScheme(params_.link_url);
-
-    // Opening a WebUI page in an incognito window makes little sense, so we
-    // don't show the item.
-    if (link_to_webui) {
-      show_open_link_off_the_record = false;
-    }
 
     // Basically, we don't show "Open link in new tab" and "Open link in new
     // window" items inside SWAs/SystemWebDialogs if that link is to WebUI.
@@ -1809,7 +1748,6 @@ void RenderViewContextMenu::AppendLinkItems() {
     if ((system_app_ || in_system_web_dialog) && button_like_link) {
       show_open_in_new_tab = false;
       show_open_in_new_window = false;
-      show_open_link_off_the_record = false;
     }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -1820,7 +1758,6 @@ void RenderViewContextMenu::AppendLinkItems() {
     if (is_link_to_iwa) {
       show_open_in_new_tab = false;
       show_open_in_new_window = false;
-      show_open_link_off_the_record = false;
     }
 
     if (show_open_in_new_tab) {
@@ -1880,119 +1817,8 @@ void RenderViewContextMenu::AppendLinkItems() {
       AppendProtocolHandlerSubMenu();
     }
 
-    if (show_open_link_off_the_record) {
-      if (features::IsMenuSimplificationEnabled()) {
-        AddItemWithOptionalIcon(
-            IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
-            in_app ? IDS_CONTENT_CONTEXT_OPENLINKOFFTHERECORD_INAPP_V2
-                   : IDS_CONTENT_CONTEXT_OPENLINKOFFTHERECORD_V2,
-            features::IsRoundedIconsEnabled() ? kIncognitoIcon
-                                              : kIncognitoRefreshMenuOldIcon);
-      } else {
-        AddItemWithOptionalIcon(
-            IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
-            in_app ? IDS_CONTENT_CONTEXT_OPENLINKOFFTHERECORD_INAPP
-                   : IDS_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
-            features::IsRoundedIconsEnabled() ? kIncognitoIcon
-                                              : kIncognitoRefreshMenuOldIcon);
-      }
-    }
-
-    bool isolated_mode_enabled =
-        enterprise_isolated_mode::IsolatedModeReplacesIncognito(GetProfile());
-
-    if (show_open_link_off_the_record && isolated_mode_enabled) {
-      AddItemWithOptionalIcon(IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED,
-                              features::IsMenuSimplificationEnabled()
-                                  ? IDS_CONTENT_CONTEXT_OPENLINK_ISOLATED_V2
-                                  : IDS_CONTENT_CONTEXT_OPENLINK_ISOLATED,
-                              features::IsRoundedIconsEnabled()
-                                  ? vector_icons::kDomainIcon
-                                  : vector_icons::kBusinessChromeRefreshOldIcon);
-    }
-
     AppendOpenInWebAppLinkItems();
     AppendOpenWithLinkItems();
-
-    // ChromeOS supports multiple profiles, but only one can be open at a time.
-#if !BUILDFLAG(IS_CHROMEOS)
-    // g_browser_process->profile_manager() is null during unit tests.
-    if (g_browser_process->profile_manager() &&
-        !GetProfile()->IsOffTheRecord()) {
-      ProfileManager* profile_manager = g_browser_process->profile_manager();
-      // Find all regular profiles other than the current one which have at
-      // least one open window.
-      std::vector<ProfileAttributesEntry*> entries =
-          profile_manager->GetProfileAttributesStorage()
-              .GetAllProfilesAttributesSortedByNameWithCheck();
-      std::vector<ProfileAttributesEntry*> target_profiles_entries;
-      bool has_active_profiles = false;
-      for (ProfileAttributesEntry* entry : entries) {
-        base::FilePath profile_path = entry->GetPath();
-        Profile* profile_for_path =
-            profile_manager->GetProfileByPath(profile_path);
-        if (profile_for_path != GetProfile() && !entry->IsOmitted() &&
-            !entry->IsSigninRequired()) {
-          target_profiles_entries.push_back(entry);
-          ProfileBrowserCollection* collection =
-              ProfileBrowserCollection::GetForProfile(profile_for_path);
-          if (collection && collection->GetLastActiveBrowser()) {
-            multiple_profiles_open_ = true;
-          }
-          if (ProfileMetrics::IsProfileActive(entry)) {
-            has_active_profiles = true;
-          }
-        }
-      }
-
-      if (multiple_profiles_open_ || has_active_profiles) {
-        DCHECK(!target_profiles_entries.empty());
-        profiles::PlaceholderAvatarIconParams icon_params =
-            GetPlaceholderAvatarIconParamsVisibleAgainstColor(
-                GetWebContents()->GetColorProvider().GetColor(
-                    ui::kColorMenuBackground));
-        if (target_profiles_entries.size() == 1) {
-          int menu_index = static_cast<int>(profile_link_paths_.size());
-          ProfileAttributesEntry* entry = target_profiles_entries.front();
-          profile_link_paths_.push_back(entry->GetPath());
-          menu_model_.AddItem(
-              IDC_OPEN_LINK_IN_PROFILE_FIRST + menu_index,
-              l10n_util::GetStringFUTF16(IDS_CONTENT_CONTEXT_OPENLINKINPROFILE,
-                                         entry->GetName()));
-          AddAvatarToLastMenuItem(
-              entry->GetAvatarIcon(kDefaultSizeForPlaceholderAvatar,
-                                   /*use_high_res_file=*/true, icon_params),
-              &menu_model_);
-        } else {
-          for (ProfileAttributesEntry* entry : target_profiles_entries) {
-            int menu_index = static_cast<int>(profile_link_paths_.size());
-            // In extreme cases, we might have more profiles than available
-            // command ids. In that case, just stop creating new entries - the
-            // menu is probably useless at this point already.
-            if (IDC_OPEN_LINK_IN_PROFILE_FIRST + menu_index >
-                IDC_OPEN_LINK_IN_PROFILE_LAST) {
-              break;
-            }
-            profile_link_paths_.push_back(entry->GetPath());
-            profile_link_submenu_model_.AddItem(
-                IDC_OPEN_LINK_IN_PROFILE_FIRST + menu_index, entry->GetName());
-            AddAvatarToLastMenuItem(
-                entry->GetAvatarIcon(kDefaultSizeForPlaceholderAvatar,
-                                     /*use_high_res_file=*/true, icon_params),
-                &profile_link_submenu_model_);
-          }
-
-          const int open_link_in_profiles_string =
-              features::IsMenuSimplificationEnabled()
-                  ? IDS_CONTENT_CONTEXT_OPENLINKINPROFILES_V2
-                  : IDS_CONTENT_CONTEXT_OPENLINKINPROFILES;
-          menu_model_.AddSubMenuWithStringId(
-              IDC_CONTENT_CONTEXT_OPENLINKINPROFILE,
-              open_link_in_profiles_string, &profile_link_submenu_model_);
-        }
-      }
-    }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
     menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
 
@@ -2937,11 +2763,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     return true;
   }
 
-  if (id >= IDC_OPEN_LINK_IN_PROFILE_FIRST &&
-      id <= IDC_OPEN_LINK_IN_PROFILE_LAST) {
-    return params_.link_url.is_valid();
-  }
-
   // On ChromeOS a dedicated OTR profile is used for captive portal signin to
   // protect user privacy. Since some policies prevent Incognito browsing,
   // disable options that trigger navigation in the context menu.
@@ -2952,9 +2773,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     navigation_allowed = false;
   }
 #endif
-  bool isolated_mode_enabled =
-      enterprise_isolated_mode::IsolatedModeReplacesIncognito(GetProfile());
-
   switch (id) {
     case IDC_BACK:
       return embedder_web_contents_->GetController().CanGoBack();
@@ -2986,7 +2804,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
       return navigation_allowed;
 
     case IDC_CONTENT_CONTEXT_OPENLINKBOOKMARKAPP:
-    case IDC_CONTENT_CONTEXT_OPENLINKINPROFILE:
     case IDC_CONTENT_CONTEXT_OPENLINKNEWTAB:
     case IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW:
       return navigation_allowed && params_.link_url.is_valid() &&
@@ -3099,16 +2916,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
 
     case IDC_CONTENT_CONTEXT_SELECTALL:
       return !!(params_.edit_flags & ContextMenuDataEditFlags::kCanSelectAll);
-
-    case IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD: {
-      return navigation_allowed &&
-             IsOpenLinkOTREnabled(GetProfile(), params_.link_url) &&
-             !isolated_mode_enabled;
-    }
-
-    case IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED: {
-      return navigation_allowed && isolated_mode_enabled;
-    }
 
     case IDC_PRINT:
       return IsPrintPreviewEnabled();
@@ -3308,12 +3115,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
     return;
   }
 
-  if (id >= IDC_OPEN_LINK_IN_PROFILE_FIRST &&
-      id <= IDC_OPEN_LINK_IN_PROFILE_LAST) {
-    ExecOpenLinkInProfile(id - IDC_OPEN_LINK_IN_PROFILE_FIRST);
-    return;
-  }
-
   switch (id) {
     case IDC_CONTENT_CONTEXT_OPENLINKNEWTAB: {
       WindowOpenDisposition new_tab_disposition =
@@ -3345,19 +3146,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       OpenURLWithExtraHeaders(
           params_.link_url, params_.frame_url, params_.frame_origin,
           WindowOpenDisposition::NEW_WINDOW, ui::PAGE_TRANSITION_LINK,
-          /*extra_headers=*/std::string(),
-          /*started_from_context_menu=*/true);
-      break;
-
-    case IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED:
-    case IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD:
-      // Pass along the |referring_url| so we can show it in browser UI. Note
-      // that this won't and shouldn't be sent via the referrer header.
-      // Note that PWA app windows are never incognito, we always open an
-      // incognito browser tab.
-      OpenURLWithExtraHeaders(
-          params_.link_url, params_.frame_url, params_.frame_origin,
-          WindowOpenDisposition::OFF_THE_RECORD, ui::PAGE_TRANSITION_LINK,
           /*extra_headers=*/std::string(),
           /*started_from_context_menu=*/true);
       break;
@@ -4120,16 +3908,6 @@ void RenderViewContextMenu::ExecProtocolHandler(int event_flags,
   OpenURL(handlers[handler_index].TranslateUrl(params_.link_url),
           params_.frame_url, params_.frame_origin, disposition,
           ui::PAGE_TRANSITION_LINK);
-}
-
-void RenderViewContextMenu::ExecOpenLinkInProfile(int profile_index) {
-  DCHECK_GE(profile_index, 0);
-  DCHECK_LE(profile_index, static_cast<int>(profile_link_paths_.size()));
-
-  base::FilePath profile_path = profile_link_paths_[profile_index];
-  profiles::SwitchToProfile(
-      profile_path, false,
-      base::BindOnce(OnBrowserCreated, params_.link_url, params_.frame_origin));
 }
 
 void RenderViewContextMenu::ExecOpenInReadAnything() {

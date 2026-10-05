@@ -19,8 +19,6 @@ static_library("internal") {
   sources = [
     "history_url_visit_data_fetcher.cc",
     "history_url_visit_data_fetcher.h",
-    "session_url_visit_data_fetcher.cc",
-    "session_url_visit_data_fetcher.h",
     "transformer/default_app_url_visit_aggregates_transformer.cc",
     "transformer/default_app_url_visit_aggregates_transformer.h",
     "transformer/history_url_visit_aggregates_browser_type_transformer.cc",
@@ -47,7 +45,6 @@ static_library("internal") {
     "//components/segmentation_platform/public",
     "//components/sessions",
     "//components/strings",
-    "//components/sync_sessions",
     "//components/url_deduplication",
     "//components/visited_url_ranking/public",
     "//ui/base",
@@ -124,7 +121,6 @@ source_set("unit_tests") {
 
   sources = [
     "history_url_visit_data_fetcher_unittest.cc",
-    "session_url_visit_data_fetcher_unittest.cc",
     "transformer/default_app_url_visit_aggregates_transformer_unittest.cc",
     "transformer/history_url_visit_aggregates_browser_type_transformer_unittest.cc",
     "transformer/history_url_visit_aggregates_categories_transformer_unittest.cc",
@@ -159,8 +155,6 @@ source_set("unit_tests") {
     "//components/segmentation_platform/public:test_support",
     "//components/sessions",
     "//components/sync/protocol",
-    "//components/sync_device_info:test_support",
-    "//components/sync_sessions:test_support",
     "//components/ukm:test_support",
     "//components/url_deduplication",
     "//components/visited_url_ranking/public",

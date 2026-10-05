@@ -22,10 +22,8 @@
 #include "ui/webui/resources/cr_components/help_bubble/help_bubble.mojom.h"
 
 #if !BUILDFLAG(IS_CHROMEOS)
-#include "ui/webui/resources/cr_components/signin/signin.mojom.h"
 #include "ui/webui/resources/cr_components/theme_color_picker/theme_color_picker.mojom.h"
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-#include "ui/webui/resources/js/batch_upload_promo/batch_upload_promo.mojom.h"
 
 namespace content {
 class WebUIMessageHandler;
@@ -37,9 +35,7 @@ class PrefRegistrySyncable;
 
 #if !BUILDFLAG(IS_CHROMEOS)
 class ThemeColorPickerHandler;
-class SigninUtilsHandler;
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-class BatchUploadPromoHandler;
 
 class CustomizeColorSchemeModeHandler;
 namespace settings {
@@ -63,11 +59,9 @@ class SettingsUI
     ,
       // chrome://settings/manageProfile which only exists on !IS_CHROMEOS
       // requires mojo bindings.
-      public theme_color_picker::mojom::ThemeColorPickerHandlerFactory,
-      public signin::mojom::SigninPageHandlerFactory
+      public theme_color_picker::mojom::ThemeColorPickerHandlerFactory
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-    ,
-      public batch_upload_promo::mojom::PageHandlerFactory {
+{
  public:
   static void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
 
@@ -91,18 +85,7 @@ class SettingsUI
   void BindInterface(mojo::PendingReceiver<
                      theme_color_picker::mojom::ThemeColorPickerHandlerFactory>
                          pending_receiver);
-
-  void BindInterface(
-      mojo::PendingReceiver<signin::mojom::SigninPageHandlerFactory>
-          pending_receiver);
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-  // Instantiates the implementor of the
-  // batch_upload_promo::mojom::PageHandlerFactory mojo interface
-  // passing the pending receiver that will be internally bound.
-  void BindInterface(
-      mojo::PendingReceiver<batch_upload_promo::mojom::PageHandlerFactory>
-          pending_receiver);
 
   // Implements support for help bubbles (IPH, tutorials, etc.) in settings
   // pages.
@@ -130,25 +113,7 @@ class SettingsUI
   std::unique_ptr<ThemeColorPickerHandler> theme_color_picker_handler_;
   mojo::Receiver<theme_color_picker::mojom::ThemeColorPickerHandlerFactory>
       theme_color_picker_handler_factory_receiver_{this};
-
-  // signin::mojom::SigninPageHandlerFactory:
-  void CreateSigninPageHandler(
-      mojo::PendingReceiver<signin::mojom::SigninPageHandler> handler) override;
-
-  std::unique_ptr<SigninUtilsHandler> signin_handler_;
-  mojo::Receiver<signin::mojom::SigninPageHandlerFactory>
-      signin_handler_factory_receiver_{this};
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-  // batch_upload_promo::mojom::PageHandlerFactory:
-  void CreateBatchUploadPromoHandler(
-      mojo::PendingRemote<batch_upload_promo::mojom::Page> pending_page,
-      mojo::PendingReceiver<batch_upload_promo::mojom::PageHandler>
-          pending_page_handler) override;
-
-  std::unique_ptr<BatchUploadPromoHandler> batch_upload_promo_handler_;
-  mojo::Receiver<batch_upload_promo::mojom::PageHandlerFactory>
-      batch_upload_promo_factory_receiver_{this};
 
   // help_bubble::mojom::HelpBubbleHandlerFactory:
   void CreateHelpBubbleHandler(

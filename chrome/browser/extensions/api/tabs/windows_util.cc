@@ -15,7 +15,6 @@
 #include "chrome/browser/extensions/window_controller_list.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/incognito_allowed_url.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "extensions/browser/extension_function.h"
@@ -128,27 +127,6 @@ IncognitoResult ShouldOpenIncognitoWindow(Profile* profile,
     incognito_result = true;
   }
 
-  // Remove all URLs that are not allowed in an incognito session. Note that a
-  // ChromeOS guest session is not considered incognito in this case.
-  if (incognito_result && !profile->IsGuestSession()) {
-    std::string first_url_erased;
-    for (size_t i = 0; i < urls->size();) {
-      if (IsURLAllowedInIncognito((*urls)[i])) {
-        i++;
-      } else {
-        if (first_url_erased.empty()) {
-          first_url_erased = (*urls)[i].spec();
-        }
-        urls->erase(urls->begin() + i);
-      }
-    }
-    if (urls->empty() && !first_url_erased.empty()) {
-      *error = extensions::ErrorUtils::FormatErrorMessage(
-          extensions::tabs_constants::kURLsNotAllowedInIncognitoError,
-          first_url_erased);
-      return IncognitoResult::kError;
-    }
-  }
   return incognito_result ? IncognitoResult::kIncognito
                           : IncognitoResult::kRegular;
 }

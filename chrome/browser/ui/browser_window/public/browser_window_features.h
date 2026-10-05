@@ -47,7 +47,6 @@ class LiveTabContext;
 }
 class BrowserLocationBarModelDelegate;
 class BrowserSelectFileDialogController;
-class BrowserSyncedWindowDelegate;
 class BrowserUiController;
 class BrowserUserEducationInterface;
 class BrowserView;
@@ -60,7 +59,6 @@ class BrowserWindowZoomObserver;
 class CallToActionLock;
 class ChromeLabsCoordinator;
 class ColorProviderBrowserHelper;
-class CommentsSidePanelCoordinator;
 class ContentsBorderController;
 class ContextHighlightWindowFeature;
 
@@ -77,13 +75,11 @@ class FullscreenControlHost;
 class HistoryClustersSidePanelCoordinator;
 class HistorySidePanelCoordinator;
 class ImmersiveModeController;
-class IncognitoClearBrowsingDataDialogCoordinator;
 class InitialWebUIManager;
 class InitialWebUIWindowMetricsManager;
 class LocationBar;
 class LocationBarModel;
 class PinnedToolbarActions;
-class ProfileMenuCoordinator;
 class OrganizerPanelStateController;
 class ReadingListSidePanelCoordinator;
 class ScrimViewController;
@@ -91,7 +87,6 @@ class SessionServiceBrowserHelper;
 class SidePanelCoordinator;
 class SidePanelRegistry;
 class SidePanelUI;
-class SigninViewController;
 class SplitViewIphController;
 class TabDragServiceFeature;
 class TabListBridge;
@@ -99,7 +94,6 @@ class TabListBridge;
 class TabMenuModelDelegate;
 class TabStripModel;
 class TabStripServiceFeature;
-class TabsFromOtherDevicesSidePanelCoordinator;
 class ToastController;
 class ToastService;
 class UnloadController;
@@ -117,7 +111,6 @@ class WindowsTaskbarIconUpdater;
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-class ProfileCustomizationBubbleSyncController;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -185,12 +178,6 @@ class SessionRestoreInfobarController;
 namespace split_tabs {
 class SplitTabHighlightController;
 }  // namespace split_tabs
-
-namespace tab_groups {
-class DeletionDialogController;
-class MostRecentSharedTabUpdateStore;
-class SessionServiceTabGroupSyncObserver;
-}  // namespace tab_groups
 
 namespace tabs {
 class VerticalTabStripStateController;
@@ -299,9 +286,6 @@ class BrowserWindowFeatures {
     return pinned_toolbar_actions_;
   }
 
-  ProfileMenuCoordinator* profile_menu_coordinator() {
-    return profile_menu_coordinator_.get();
-  }
 
   // TODO(crbug.com/346158959): For historical reasons, side_panel_ui is an
   // abstract base class that contains some, but not all of the public interface
@@ -311,13 +295,7 @@ class BrowserWindowFeatures {
   // implementation is not inlined.
   SidePanelUI* side_panel_ui();
 
-  SigninViewController* signin_view_controller() {
-    return signin_view_controller_.get();
-  }
 
-  BrowserSyncedWindowDelegate* synced_window_delegate() {
-    return synced_window_delegate_.get();
-  }
 
   TabMenuModelDelegate* tab_menu_model_delegate() {
     return tab_menu_model_delegate_.get();
@@ -357,8 +335,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<BrowserWindowZoomObserver> browser_window_zoom_observer_;
   std::unique_ptr<CallToActionLock> call_to_action_lock_;
   std::unique_ptr<ChromeLabsCoordinator> chrome_labs_coordinator_;
-  std::unique_ptr<CommentsSidePanelCoordinator>
-      comments_side_panel_coordinator_;
 
   // Helper which implements the ContentSettingBubbleModel interface.
   std::unique_ptr<BrowserContentSettingBubbleModelDelegate>
@@ -405,8 +381,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<HistoryClustersSidePanelCoordinator>
       history_clusters_side_panel_coordinator_;
   std::unique_ptr<HistorySidePanelCoordinator> history_side_panel_coordinator_;
-  std::unique_ptr<IncognitoClearBrowsingDataDialogCoordinator>
-      incognito_clear_browsing_data_dialog_coordinator_;
   std::unique_ptr<InitialWebUIManager> initial_web_ui_manager_;
   std::unique_ptr<InitialWebUIWindowMetricsManager>
       initial_webui_window_metrics_manager_;
@@ -420,23 +394,14 @@ class BrowserWindowFeatures {
   // The model for the toolbar view.
   std::unique_ptr<LocationBarModel> location_bar_model_;
 
-  std::unique_ptr<tab_groups::MostRecentSharedTabUpdateStore>
-      most_recent_shared_tab_update_store_;
-  std::unique_ptr<ProfileMenuCoordinator> profile_menu_coordinator_;
   std::unique_ptr<OrganizerPanelStateController>
       organizer_panel_state_controller_;
   std::unique_ptr<ReadingListSidePanelCoordinator>
       reading_list_side_panel_coordinator_;
   std::unique_ptr<SessionServiceBrowserHelper> session_service_browser_helper_;
-  std::unique_ptr<tab_groups::SessionServiceTabGroupSyncObserver>
-      session_service_tab_group_sync_observer_;
   std::unique_ptr<SidePanelRegistry> side_panel_registry_;
-  std::unique_ptr<SigninViewController> signin_view_controller_;
   std::unique_ptr<SplitViewIphController> split_view_iph_controller_;
-  std::unique_ptr<BrowserSyncedWindowDelegate> synced_window_delegate_;
   std::unique_ptr<TabDragServiceFeature> tab_drag_service_feature_;
-  std::unique_ptr<tab_groups::DeletionDialogController>
-      tab_group_deletion_dialog_controller_;
   std::unique_ptr<TabMenuModelDelegate> tab_menu_model_delegate_;
 
   // This is an experimental API that interacts with the TabStripModel.
@@ -445,8 +410,6 @@ class BrowserWindowFeatures {
   // Controller for managing TabStrip UI decoupled TabStrip platform.
   std::unique_ptr<tabs_api::TabStripUIControllerImpl> tab_strip_ui_controller_;
 
-  std::unique_ptr<TabsFromOtherDevicesSidePanelCoordinator>
-      tabs_from_other_devices_side_panel_coordinator_;
   std::unique_ptr<ToastService> toast_service_;
   std::unique_ptr<UpgradeNotificationController>
       upgrade_notification_controller_;
@@ -500,8 +463,6 @@ class BrowserWindowFeatures {
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  std::unique_ptr<ProfileCustomizationBubbleSyncController>
-      profile_customization_bubble_sync_controller_;
   std::unique_ptr<session_restore_infobar::SessionRestoreInfobarController>
       session_restore_infobar_controller_;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)

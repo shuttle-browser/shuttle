@@ -10,16 +10,8 @@ build_webui("build") {
 
   static_files = [
     "history.html",
-    "images/avatar_surrounding_illustration_dark.svg",
-    "images/avatar_surrounding_illustration_light.svg",
-    "images/compare_sync_promo.svg",
-    "images/compare_sync_promo_dark.svg",
     "images/list.svg",
     "images/list_old.svg",
-    "images/sign_in_promo.svg",
-    "images/sign_in_promo_dark.svg",
-    "images/sync_history_promo.svg",
-    "images/sync_history_promo_dark.svg",
   ]
 
   ts_files = [
@@ -27,7 +19,6 @@ build_webui("build") {
     "app.ts",
     "browser_proxy.ts",
     "constants.ts",
-    "externs.ts",
     "history_filter_chips.html.ts",
     "history_filter_chips.ts",
     "history.ts",
@@ -43,20 +34,7 @@ build_webui("build") {
     "searched_label.ts",
     "side_bar.html.ts",
     "side_bar.ts",
-    "synced_device_card.html.ts",
-    "synced_device_card.ts",
-    "synced_device_manager.html.ts",
-    "synced_device_manager.ts",
   ]
-  if (!is_chromeos) {
-    ts_files += [
-      "history_cross_device_signin_promo.html.ts",
-      "history_cross_device_signin_promo.ts",
-      "history_cross_device_signin_promo_browser_proxy.ts",
-      "history_sync_promo.html.ts",
-      "history_sync_promo.ts",
-    ]
-  }
 
   # Files that are passed as input to css_to_wrapper().
   css_files = [
@@ -68,16 +46,7 @@ build_webui("build") {
     "shared_style.css",
     "shared_vars.css",
     "side_bar.css",
-    "synced_device_card.css",
-    "synced_device_manager.css",
   ]
-  if (!is_chromeos) {
-    css_files += [
-      "history_cross_device_signin_promo.css",
-      "history_sync_promo.css",
-    ]
-  }
-
   icons_html_files = [ "shared_icons.html" ]
 
   if (is_chrome_branded) {

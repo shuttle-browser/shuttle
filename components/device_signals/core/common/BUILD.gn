@@ -48,6 +48,7 @@ static_library("common") {
   if (is_mac) {
     sources += [ "mac/platform_utils_mac.mm" ]
     deps += [ ":features" ]
+    frameworks = [ "SystemConfiguration.framework" ]
   }
 
   if (is_linux || is_chromeos) {

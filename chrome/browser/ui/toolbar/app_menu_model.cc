@@ -38,12 +38,9 @@
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/signin/account_preview_data_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -56,7 +53,6 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/tabs/features.h"
@@ -70,7 +66,6 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
 #include "chrome/browser/user_education/user_education_service.h"
@@ -97,7 +92,6 @@
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
 #include "components/profile_metrics/browser_profile_type.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
@@ -139,8 +133,6 @@
 #include "components/policy/core/common/policy_pref_names.h"
 #include "ui/display/screen.h"
 #else
-#include "chrome/browser/ui/webui/signin/signin_ui_error.h"
-#include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -227,443 +219,6 @@ std::u16string GetUpgradeDialogTitleText() {
   return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE);
 #endif
 }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-std::u16string GetSyncSectionTitle(Profile* profile,
-                                   signin::IdentityManager* identity_manager) {
-  const AccountInfo account = GetAccountInfoFromProfile(profile);
-
-  if (IsSyncPaused(profile) || account.IsEmpty()) {
-    return l10n_util::GetStringUTF16(IDS_PROFILES_LOCAL_PROFILE_STATE);
-  }
-
-  if (signin_util::IsSigninPending(identity_manager)) {
-    return base::UTF8ToUTF16(account.GetEmail());
-  }
-
-  return l10n_util::GetStringFUTF16(
-      IDS_PROFILE_ROW_SIGNED_IN_MESSAGE_WITH_EMAIL,
-      {base::UTF8ToUTF16(account.GetEmail())});
-}
-
-class ProfileSubMenuModel : public ui::SimpleMenuModel,
-                            public ui::SimpleMenuModel::Delegate {
- public:
-  ProfileSubMenuModel(ui::SimpleMenuModel::Delegate* delegate,
-                      Profile* profile,
-                      const ui::ColorProvider* color_provider);
-  ProfileSubMenuModel(const ProfileSubMenuModel&) = delete;
-  ProfileSubMenuModel& operator=(const ProfileSubMenuModel&) = delete;
-  ~ProfileSubMenuModel() override = default;
-
-  const ui::ImageModel& avatar_image_model() const {
-    return avatar_image_model_;
-  }
-
-  const std::u16string& profile_name() const { return profile_name_; }
-  const std::u16string& accessible_name() const { return accessible_name_; }
-
-  // Returns |next_menu_id_| and increments it by n. This allows for 'sharing'
-  // command ids with the other variable sized menu, which also uses every other
-  // int as an id.
-  int GetAndIncrementNextMenuID();
-
-  // Overridden from ui::SimpleMenuModel::Delegate:
-  bool IsCommandIdChecked(int command_id) const override;
-  bool IsCommandIdEnabled(int command_id) const override;
-  bool GetAcceleratorForCommandId(int command_id,
-                                  ui::Accelerator* accelerator) const override;
-  void ExecuteCommand(int command_id, int event_flags) override;
-
- private:
-  bool BuildSyncSection();
-
-  void BuildGuestProfileRow(Profile* profile);
-  void BuildCustomizeProfileRow(Profile* profile);
-  void BuildCloseProfileRow(Profile* profile);
-  void BuildManageGoogleAccountRow(Profile* profile);
-
-  ui::ImageModel avatar_image_model_;
-  std::u16string profile_name_;
-  std::u16string accessible_name_;
-  raw_ptr<Profile> profile_;
-  raw_ptr<ui::SimpleMenuModel::Delegate> app_menu_model_delegate_;
-  // ID of the next menu item.
-  int next_other_profile_menu_id_;
-  base::flat_map<int, base::FilePath> other_profiles_;
-};
-
-ProfileSubMenuModel::ProfileSubMenuModel(
-    ui::SimpleMenuModel::Delegate* delegate,
-    Profile* profile,
-    const ui::ColorProvider* color_provider)
-    : SimpleMenuModel(this),
-      profile_(profile),
-      app_menu_model_delegate_(delegate),
-      next_other_profile_menu_id_(AppMenuModel::kMinOtherProfileCommandId) {
-  const int avatar_icon_size =
-      GetLayoutConstant(LayoutConstant::kAppMenuProfileRowAvatarIconSize);
-  avatar_image_model_ = ui::ImageModel::FromVectorIcon(
-      features::IsRoundedIconsEnabled() ? kAccountCircleIcon
-                                        : kAccountCircleChromeRefreshOldIcon,
-      ui::kColorMenuIcon, avatar_icon_size);
-  // TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
-  // should be revisited when deciding on the final integration of Isolated
-  // mode.
-  if (profile->IsIncognitoProfile() ||
-      profile->IsEnterpriseIsolatedModeProfile()) {
-    avatar_image_model_ = ui::ImageModel::FromVectorIcon(
-        features::IsRoundedIconsEnabled() ? kIncognitoCircleFilledIcon
-                                          : kIncognitoOldIcon,
-        ui::kColorAvatarIconIncognito, avatar_icon_size);
-    profile_name_ = l10n_util::GetStringUTF16(IDS_INCOGNITO_PROFILE_MENU_TITLE);
-  } else if (profile->IsGuestSession()) {
-    profile_name_ = l10n_util::GetStringUTF16(IDS_GUEST_PROFILE_NAME);
-  } else {
-    if (BuildSyncSection()) {
-      AddSeparator(ui::NORMAL_SEPARATOR);
-    }
-
-    ProfileAttributesEntry* profile_attributes =
-        GetProfileAttributesFromProfile(profile);
-    // If the profile is being deleted, profile_attributes may be null.
-    if (profile_attributes) {
-      profile_name_ = GetProfileMenuDisplayName(profile_attributes);
-      accessible_name_ = profile_name_;
-
-      AccountInfo account_info = GetAccountInfoFromProfile(profile);
-      auto [avatar_image, icon_type] =
-          account_info.IsEmpty()
-              ? profile_attributes->GetAvatarIconWithType(
-                    avatar_icon_size, /*use_high_res_file=*/true,
-                    GetPlaceholderAvatarIconParamsDependingOnTheme(
-                        ThemeServiceFactory::GetForProfile(profile),
-                        /*background_color_id=*/ui::kColorMenuBackground,
-                        *color_provider))
-              : std::make_pair(
-                    account_info.GetAvatarImage().value_or(gfx::Image()),
-                    AvatarIconType::kNonPlaceholder);
-      // The avatar image can be empty if the account image hasn't been
-      // fetched yet, if there is no image, or in tests.
-      // Keep the default vector icon for placeholder avatars so that
-      // MenuItemView can re-color it on hover in forced-colors mode.
-      if (!avatar_image.IsEmpty() &&
-          icon_type != AvatarIconType::kPlaceholder) {
-        ui::ImageModel avatar_model =
-            ui::ImageModel::FromImage(profiles::GetSizedAvatarIcon(
-                avatar_image, avatar_icon_size, avatar_icon_size,
-                profiles::SHAPE_CIRCLE));
-        // TODO(crbug.com/530147081): Clarify if the ring may show up for users
-        // with a placeholder icon. Signed in users should have always an
-        // account_info and thus they will never have a placeholder icon.
-        if (ShouldShowAvatarGradientRing(profile)) {
-          avatar_image_model_ =
-              ui::ImageModel::FromImageSkia(AddLinearGradientRingToAvatar(
-                  avatar_model, *color_provider, avatar_icon_size));
-          if (!profile_name_.empty()) {
-            accessible_name_ = l10n_util::GetStringFUTF16(
-                IDS_PROFILE_AVATAR_NAME_WITH_AI_MEMBERSHIP, profile_name_);
-          }
-        } else {
-          avatar_image_model_ = avatar_model;
-        }
-      }
-    }
-  }
-
-  BuildManageGoogleAccountRow(profile);
-  BuildCustomizeProfileRow(profile);
-  BuildCloseProfileRow(profile);
-
-  bool needs_separator = false;
-  const bool is_guest_mode_enabled = profiles::IsGuestModeEnabled(*profile);
-  // TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
-  // should be revisited when deciding on the final integration of Isolated
-  // mode.
-  if (!profile->IsIncognitoProfile() && !profile->IsGuestSession() &&
-      !profile->IsEnterpriseIsolatedModeProfile()) {
-    AddSeparator(ui::NORMAL_SEPARATOR);
-    AddTitle(l10n_util::GetStringUTF16(IDS_OTHER_CHROME_PROFILES_TITLE));
-    auto profile_entries = GetAllOtherProfileEntriesForProfileSubMenu(profile);
-    needs_separator = !profile_entries.empty();
-    profiles::PlaceholderAvatarIconParams icon_params =
-        GetPlaceholderAvatarIconParamsVisibleAgainstColor(
-            color_provider->GetColor(ui::kColorMenuBackground));
-    for (ProfileAttributesEntry* profile_entry : profile_entries) {
-      std::u16string display_name = GetProfileMenuDisplayName(profile_entry);
-      int menu_id = GetAndIncrementNextMenuID();
-
-      ui::ImageModel avatar_model =
-          ui::ImageModel::FromImage(profiles::GetSizedAvatarIcon(
-              profile_entry->GetAvatarIcon(
-                  avatar_icon_size, /*use_high_res_file=*/true, icon_params),
-              avatar_icon_size, avatar_icon_size, profiles::SHAPE_CIRCLE));
-
-      bool has_ai_ring = false;
-      if (base::FeatureList::IsEnabled(
-              switches::kEnableAiSubscriptionAvatarRing) &&
-          profile_entry->GetAiSubscriptionTier() > 0) {
-        has_ai_ring = true;
-        avatar_model =
-            ui::ImageModel::FromImageSkia(AddLinearGradientRingToAvatar(
-                avatar_model, *color_provider, avatar_icon_size));
-      }
-
-      AddItemWithIcon(
-          menu_id,
-          ui::EscapeMenuLabelAmpersands(gfx::TruncateString(
-              display_name,
-              GetLayoutConstant(LayoutConstant::kAppMenuMaximumCharacterLength),
-              gfx::CHARACTER_BREAK)),
-          avatar_model);
-      if (has_ai_ring && !display_name.empty()) {
-        std::optional<size_t> index = GetIndexOfCommandId(menu_id);
-        CHECK(index.has_value());
-        SetAccessibleNameAt(
-            index.value(),
-            l10n_util::GetStringFUTF16(
-                IDS_PROFILE_AVATAR_NAME_WITH_AI_MEMBERSHIP, display_name));
-      }
-      other_profiles_.insert({menu_id, profile_entry->GetPath()});
-    }
-
-    if (needs_separator) {
-      AddSeparator(ui::NORMAL_SEPARATOR);
-    }
-
-    if (profiles::IsProfileCreationAllowed()) {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_ADD_NEW_PROFILE, IDS_ADD_NEW_PROFILE,
-          features::IsRoundedIconsEnabled() ? kPersonAddIcon
-                                            : kAccountAddChromeRefreshOldIcon);
-    }
-    if (is_guest_mode_enabled) {
-      BuildGuestProfileRow(profile);
-    }
-
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_MANAGE_CHROME_PROFILES, IDS_MANAGE_CHROME_PROFILES,
-        features::IsRoundedIconsEnabled() ? kManageAccountsIcon
-                                          : kAccountManageChromeRefreshOldIcon);
-  }
-}
-
-bool ProfileSubMenuModel::IsCommandIdChecked(int command_id) const {
-  return false;
-}
-
-bool ProfileSubMenuModel::IsCommandIdEnabled(int command_id) const {
-  if (command_id >= AppMenuModel::kMinOtherProfileCommandId) {
-    return true;
-  }
-  return app_menu_model_delegate_ &&
-         app_menu_model_delegate_->IsCommandIdEnabled(command_id);
-}
-
-bool ProfileSubMenuModel::GetAcceleratorForCommandId(
-    int command_id,
-    ui::Accelerator* accelerator) const {
-  return app_menu_model_delegate_ &&
-         app_menu_model_delegate_->GetAcceleratorForCommandId(command_id,
-                                                              accelerator);
-}
-
-void ProfileSubMenuModel::ExecuteCommand(int command_id, int event_flags) {
-  if (other_profiles_.find(command_id) != other_profiles_.end()) {
-    return profiles::SwitchToProfile(other_profiles_[command_id],
-                                     /*always_create=*/false);
-  }
-  if (app_menu_model_delegate_) {
-    app_menu_model_delegate_->ExecuteCommand(command_id, event_flags);
-  }
-  return;
-}
-
-int ProfileSubMenuModel::GetAndIncrementNextMenuID() {
-  const int current_id = next_other_profile_menu_id_;
-  next_other_profile_menu_id_ += AppMenuModel::kNumUnboundedMenuTypes;
-  return current_id;
-}
-
-bool ProfileSubMenuModel::BuildSyncSection() {
-#if !BUILDFLAG(IS_CHROMEOS)
-  // TODO(crbug.com/440342282): Support personalized signin button.
-  if (!CanOfferSignin(profile_, GaiaId(), /*email=*/std::string(),
-                      /*allow_account_from_other_profile=*/true)
-           .IsOk()) {
-    return false;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
-  if (!SyncServiceFactory::IsSyncAllowed(profile_)) {
-    return false;
-  }
-
-  signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(profile_);
-  AddTitle(GetSyncSectionTitle(profile_, identity_manager));
-
-  // First, check for sync errors. They may exist even if sync-the-feature is
-  // disabled and only sync-the-transport is running.
-  syncer::SyncService* service = SyncServiceFactory::GetForProfile(profile_);
-  if (service) {
-    const syncer::SyncService::UserActionableError error =
-        service->GetUserActionableError();
-    if (error != syncer::SyncService::UserActionableError::kNone) {
-      int command_id = 0;
-      const gfx::VectorIcon* icon = nullptr;
-      int button_string_id =
-          GetSyncErrorButtonStringId(error, /*support_title_case=*/true);
-      switch (error) {
-        case syncer::SyncService::UserActionableError::kNone:
-          NOTREACHED();
-        case syncer::SyncService::UserActionableError::kSignInNeedsUpdate:
-          command_id = IDC_SHOW_SIGNIN_WHEN_PAUSED;
-          if (identity_manager->HasPrimaryAccount(
-                  signin::ConsentLevel::kSync)) {
-            button_string_id = IDS_SYNC_RELOGIN_BUTTON_MAYBE_TITLE_CASE;
-            icon = &(features::IsRoundedIconsEnabled()
-                         ? vector_icons::kSyncDisabledIcon
-                         : vector_icons::kSyncOffChromeRefreshOldIcon);
-          } else {
-            // Merge this case with the others below once ConsentLevel::kSync is
-            // gone.
-            icon = &(features::IsRoundedIconsEnabled()
-                         ? vector_icons::kAccountCircleOffIcon
-                         : vector_icons::kAccountCircleOffChromeRefreshOldIcon);
-          }
-          break;
-        case syncer::SyncService::UserActionableError::
-            kNeedsTrustedVaultKeyForPasswords:
-        case syncer::SyncService::UserActionableError::
-            kTrustedVaultRecoverabilityDegradedForPasswords:
-        case syncer::SyncService::UserActionableError::
-            kTrustedVaultRecoverabilityDegradedForEverything:
-        case syncer::SyncService::UserActionableError::
-            kNeedsTrustedVaultKeyForEverything:
-          command_id = IDC_SHOW_SIGNIN_WHEN_PAUSED;
-          icon = &(features::IsRoundedIconsEnabled()
-                       ? vector_icons::kAccountCircleOffIcon
-                       : vector_icons::kAccountCircleOffChromeRefreshOldIcon);
-          break;
-        case syncer::SyncService::UserActionableError::kNeedsClientUpgrade:
-          command_id = IDC_UPGRADE_DIALOG;
-          icon = &(features::IsRoundedIconsEnabled()
-                       ? vector_icons::kErrorIcon
-                       : vector_icons::kErrorOutlineOldIcon);
-          break;
-        case syncer::SyncService::UserActionableError::kNeedsPassphrase:
-          command_id = IDC_SHOW_SYNC_PASSPHRASE_DIALOG;
-          icon = &(features::IsRoundedIconsEnabled()
-                       ? vector_icons::kErrorIcon
-                       : vector_icons::kErrorOutlineOldIcon);
-          break;
-        case syncer::SyncService::UserActionableError::
-            kNeedsSettingsConfirmation:
-        case syncer::SyncService::UserActionableError::kUnrecoverableError:
-          // Only shown for "Sync-the-feature".
-          command_id = IDC_SHOW_SYNC_SETTINGS;
-          icon = &(features::IsRoundedIconsEnabled()
-                       ? vector_icons::kErrorIcon
-                       : vector_icons::kErrorOutlineOldIcon);
-          break;
-        case syncer::SyncService::UserActionableError::kBookmarksLimitExceeded:
-          // For this specific error (as opposed to all others), there is no
-          // error UI in the menu.
-          return true;
-      }
-      CHECK_NE(command_id, 0);
-      AddItemWithStringIdAndVectorIcon(this, command_id, button_string_id,
-                                       *icon);
-      return true;
-    }
-  }
-
-  if (identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSync)) {
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_SHOW_SYNC_SETTINGS, IDS_PROFILE_ROW_SYNC_IS_ON,
-        features::IsRoundedIconsEnabled()
-            ? vector_icons::kSyncIcon
-            : vector_icons::kSyncChromeRefreshOldIcon);
-  } else {
-    if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
-      if (!identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
-        AddItemWithStringIdAndVectorIcon(
-            this, IDC_SHOW_SIGNIN, IDS_PROFILE_MENU_SIGNIN_PROMO_BUTTON,
-            features::IsRoundedIconsEnabled()
-                ? kAccountCircleFilledIcon
-                : vector_icons::kAccountCircleOldIcon);
-        signin_metrics::LogSignInOffered(
-            signin_metrics::AccessPoint::kMenu,
-            signin_ui_util::GetSingleAccountForPromos(
-                identity_manager,
-                AccountPreviewDataServiceFactory::GetForProfile(profile_))
-                    .IsEmpty()
-                ? signin_metrics::PromoAction::
-                      PROMO_ACTION_NEW_ACCOUNT_NO_EXISTING_ACCOUNT
-                : signin_metrics::PromoAction::PROMO_ACTION_WITH_DEFAULT);
-      }
-    } else {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_TURN_ON_SYNC, IDS_PROFILE_ROW_TURN_ON_SYNC,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kSyncDisabledIcon
-              : vector_icons::kSyncOffChromeRefreshOldIcon);
-    }
-  }
-  return true;
-}
-
-void ProfileSubMenuModel::BuildGuestProfileRow(Profile* profile) {
-  AddItemWithStringIdAndVectorIcon(
-      this, IDC_OPEN_GUEST_PROFILE, IDS_OPEN_GUEST_PROFILE,
-      features::IsRoundedIconsEnabled() ? kAccountBoxIcon : kAccountBoxOldIcon);
-  SetElementIdentifierAt(GetIndexOfCommandId(IDC_OPEN_GUEST_PROFILE).value(),
-                         AppMenuModel::kProfileOpenGuestItem);
-}
-// TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
-// should be revisited when deciding on the final integration of Isolated
-// mode.
-void ProfileSubMenuModel::BuildCustomizeProfileRow(Profile* profile) {
-  if (!profile->IsIncognitoProfile() && !profile->IsGuestSession() &&
-      !profile->IsEnterpriseIsolatedModeProfile()) {
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_CUSTOMIZE_CHROME, IDS_CUSTOMIZE_CHROME,
-        features::IsRoundedIconsEnabled()
-            ? kEditIcon
-            : vector_icons::kEditChromeRefreshOldIcon);
-  }
-}
-
-void ProfileSubMenuModel::BuildCloseProfileRow(Profile* profile) {
-  AddItemWithIcon(IDC_CLOSE_PROFILE,
-                  l10n_util::GetPluralStringFUTF16(IDS_CLOSE_PROFILE,
-                                                   CountBrowsersFor(profile)),
-                  ui::ImageModel::FromVectorIcon(
-                      features::IsRoundedIconsEnabled()
-                          ? vector_icons::kCloseIcon
-                          : vector_icons::kCloseChromeRefreshOldIcon,
-                      ui::kColorMenuIcon, kDefaultIconSize));
-}
-
-void ProfileSubMenuModel::BuildManageGoogleAccountRow(Profile* profile) {
-  if (HasUnconstentedProfile(profile) && !IsSyncPaused(profile) &&
-      !profile->IsIncognitoProfile() &&
-      !profile->IsEnterpriseIsolatedModeProfile()) {
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-    const gfx::VectorIcon& manage_account_icon =
-        vector_icons::kGoogleGLogoMonochromeIcon;
-#else
-    const gfx::VectorIcon& manage_account_icon =
-        features::IsRoundedIconsEnabled() ? kManageAccountsIcon
-                                          : kAccountManageChromeRefreshOldIcon;
-#endif
-    AddItemWithStringIdAndVectorIcon(this, IDC_MANAGE_GOOGLE_ACCOUNT,
-                                     IDS_MANAGE_GOOGLE_ACCOUNT,
-                                     manage_account_icon);
-  }
-}
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 class PasswordsAndAutofillSubMenuModel : public ui::SimpleMenuModel {
  public:
@@ -1080,16 +635,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       }
       LogMenuAction(MENU_ACTION_NEW_WINDOW);
       break;
-    case IDC_NEW_INCOGNITO_WINDOW:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.NewIncognitoWindow", delta);
-      }
-      LogMenuAction(MENU_ACTION_NEW_INCOGNITO_WINDOW);
-      break;
-    case IDC_NEW_ISOLATED_WINDOW:
-      LogMenuAction(MENU_ACTION_NEW_ISOLATED_WINDOW);
-      break;
 
     // Bookmarks sub menu.
     case IDC_SHOW_BOOKMARK_BAR:
@@ -1184,20 +729,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
                                       delta);
       }
       LogMenuAction(MENU_ACTION_RECENT_TAB);
-      break;
-    case IDC_RECENT_TABS_LOGIN_FOR_DEVICE_TABS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.LoginForDeviceTabs", delta);
-      }
-      LogMenuAction(MENU_ACTION_RECENT_TABS_LOGIN_FOR_DEVICE_TABS);
-      break;
-    case IDC_RECENT_TABS_SEE_DEVICE_TABS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.SeeDeviceTabs",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_RECENT_TABS_SEE_DEVICE_TABS);
       break;
     case IDC_FIND:
       if (!uma_action_recorded_) {
@@ -1520,80 +1051,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       LogMenuAction(MENU_ACTION_PASSWORD_MANAGER);
       break;
 
-      // Profile submenu.
-#if !BUILDFLAG(IS_CHROMEOS)
-    case IDC_CUSTOMIZE_CHROME:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.CustomizeChrome",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_CUSTOMIZE_CHROME);
-      break;
-    case IDC_CLOSE_PROFILE:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.CloseProfile",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_CLOSE_PROFILE);
-      break;
-    case IDC_MANAGE_GOOGLE_ACCOUNT:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ManageGoogleAccount", delta);
-      }
-      LogMenuAction(MENU_ACTION_MANAGE_GOOGLE_ACCOUNT);
-      break;
-    case IDC_SHOW_SYNC_SETTINGS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowSyncSettings", delta);
-      }
-      LogMenuAction(MENU_SHOW_SYNC_SETTINGS);
-      break;
-    case IDC_SHOW_SIGNIN:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.ShowSignin",
-                                      delta);
-      }
-      LogMenuAction(MENU_SHOW_SIGNIN);
-      break;
-    case IDC_TURN_ON_SYNC:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.ShowTurnOnSync",
-                                      delta);
-      }
-      LogMenuAction(MENU_TURN_ON_SYNC);
-      break;
-    case IDC_SHOW_SIGNIN_WHEN_PAUSED:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowSigninWhenPaused", delta);
-      }
-      LogMenuAction(MENU_SHOW_SIGNIN_WHEN_PAUSED);
-      break;
-    case IDC_OPEN_GUEST_PROFILE:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.OpenGuestProfile", delta);
-      }
-      LogMenuAction(MENU_ACTION_OPEN_GUEST_PROFILE);
-      break;
-    case IDC_ADD_NEW_PROFILE:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.AddNewProfile",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_ADD_NEW_PROFILE);
-      break;
-    case IDC_MANAGE_CHROME_PROFILES:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ManageChromeProfiles", delta);
-      }
-      LogMenuAction(MENU_ACTION_MANAGE_CHROME_PROFILES);
-      break;
-#endif
-
     // Reading list submenu.
     case IDC_READING_LIST_MENU_ADD_TAB:
       if (!uma_action_recorded_) {
@@ -1699,16 +1156,8 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
             is_vertical, tabs::VerticalTabStripEntryPoint::kAppMenu);
       }
       break;
-    default: {
-      if (IsOtherProfileCommand(command_id)) {
-        if (!uma_action_recorded_) {
-          base::UmaHistogramMediumTimes(
-              "WrenchMenu.TimeToAction.SwitchToAnotherProfile", delta);
-        }
-        LogMenuAction(MENU_ACTION_SWITCH_TO_ANOTHER_PROFILE);
-      }
+    default:
       break;
-    }
   }
 
   if (!uma_action_recorded_) {
@@ -1736,12 +1185,7 @@ bool AppMenuModel::IsCommandIdEnabled(int command_id) const {
     return true;
   }
 
-  switch (command_id) {
-    case IDC_NEW_INCOGNITO_WINDOW:
-      return IncognitoModePrefs::IsIncognitoAllowed(browser_->GetProfile());
-    default:
-      return chrome::IsCommandEnabled(browser_, command_id);
-  }
+  return chrome::IsCommandEnabled(browser_, command_id);
 }
 
 bool AppMenuModel::IsCommandIdAlerted(int command_id) const {
@@ -1756,23 +1200,12 @@ bool AppMenuModel::IsCommandIdAlerted(int command_id) const {
 bool AppMenuModel::GetAcceleratorForCommandId(
     int command_id,
     ui::Accelerator* accelerator) const {
-  if (command_id == IDC_NEW_ISOLATED_WINDOW) {
-    return provider_->GetAcceleratorForCommandId(IDC_NEW_INCOGNITO_WINDOW,
-                                                 accelerator);
-  }
-
   // Reading mode uses different command IDs for different ways of opening
   // it, so adjust to use the command ID for the keyboard shortcut to grab
   // the proper accelerator.
   if (command_id == IDC_SHOW_READING_MODE_SIDE_PANEL) {
     return provider_->GetAcceleratorForCommandId(IDC_SHOW_READING_MODE_KEYBOARD,
                                                  accelerator);
-  }
-
-  if (command_id == IDC_NEW_INCOGNITO_WINDOW) {
-    if (!IncognitoModePrefs::IsIncognitoAllowed(browser_->GetProfile())) {
-      return false;
-    }
   }
 
   return provider_->GetAcceleratorForCommandId(command_id, accelerator);
@@ -1823,59 +1256,14 @@ void AppMenuModel::Build() {
   // mode.
   AddItemWithStringIdAndVectorIcon(
       this, IDC_NEW_TAB,
-      (browser_->GetProfile()->IsIncognitoProfile() ||
-       browser_->GetProfile()->IsEnterpriseIsolatedModeProfile()) &&
-              !browser_->GetProfile()->IsGuestSession()
-          ? IDS_NEW_INCOGNITO_TAB
-          : IDS_NEW_TAB,
+      IDS_NEW_TAB,
       features::IsRoundedIconsEnabled() ? kTabIcon : kNewTabRefreshOldIcon);
 
   AddItemWithStringIdAndVectorIcon(
       this, IDC_NEW_WINDOW, IDS_NEW_WINDOW,
       features::IsRoundedIconsEnabled() ? kNewWindowIcon : kNewWindowOldIcon);
 
-  // This menu item is not visible in Guest Mode. If incognito mode is not
-  // available, it will be shown in disabled state. (crbug.com/40703208)
-  if (!browser_->GetProfile()->IsGuestSession()) {
-    AddItemWithStringIdAndVectorIcon(
-        this, IDC_NEW_INCOGNITO_WINDOW, IDS_NEW_INCOGNITO_WINDOW,
-        features::IsRoundedIconsEnabled() ? kIncognitoIcon
-                                          : kIncognitoRefreshMenuOldIcon);
-    SetElementIdentifierAt(
-        GetIndexOfCommandId(IDC_NEW_INCOGNITO_WINDOW).value(),
-        kIncognitoMenuItem);
-
-    bool isolated_mode_enabled =
-        enterprise_isolated_mode::IsolatedModeReplacesIncognito(
-            browser_->GetProfile());
-
-    if (isolated_mode_enabled) {
-      AddItemWithStringIdAndVectorIcon(
-          this, IDC_NEW_ISOLATED_WINDOW, IDS_NEW_ISOLATED_WINDOW,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kDomainIcon
-              : vector_icons::kBusinessChromeRefreshOldIcon);
-    }
-  }
-
   AddSeparator(ui::NORMAL_SEPARATOR);
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  sub_menus_.push_back(std::make_unique<ProfileSubMenuModel>(
-      this, browser()->GetProfile(),
-      BrowserWindow::FromBrowser(browser())->GetColorProvider()));
-  auto* const profile_submenu_model =
-      static_cast<ProfileSubMenuModel*>(sub_menus_.back().get());
-  AddSubMenu(kProfileMenuPlaceholder, profile_submenu_model->profile_name(),
-             profile_submenu_model);
-  SetIconForCommandId(kProfileMenuPlaceholder,
-                      profile_submenu_model->avatar_image_model());
-  SetElementIdentifierAt(GetIndexOfCommandId(kProfileMenuPlaceholder).value(),
-                         kProfileMenuItem);
-  SetAccessibleNameAt(GetIndexOfCommandId(kProfileMenuPlaceholder).value(),
-                      profile_submenu_model->accessible_name());
-  AddSeparator(ui::SPACING_SEPARATOR);
-#endif
 
   if (!browser_->GetProfile()->IsGuestSession()) {
     sub_menus_.push_back(

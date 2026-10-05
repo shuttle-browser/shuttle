@@ -21,8 +21,7 @@ std::unique_ptr<KeyedService> BuildHistoryService(
     content::BrowserContext* context) {
   auto history_service = std::make_unique<history::HistoryService>(
       std::make_unique<ChromeHistoryClient>(),
-      std::make_unique<history::ContentVisitDelegate>(context),
-      /*device_info_tracker=*/nullptr, /*local_device_info_provider=*/nullptr);
+      std::make_unique<history::ContentVisitDelegate>(context));
   if (!history_service->Init(history::HistoryDatabaseParamsForPath(
           context->GetPath(), chrome::GetChannel()))) {
     return nullptr;

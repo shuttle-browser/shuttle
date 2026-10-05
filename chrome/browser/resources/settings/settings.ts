@@ -100,12 +100,7 @@ export type {StartupPageInfo, StartupUrlsPageBrowserProxy} from './on_startup_pa
 export {pageVisibility, resetPageVisibilityForTesting} from './page_visibility.js';
 export type {PrivacyPageVisibility} from './page_visibility.js';
 // <if expr="is_chromeos">
-export {AccountManagerBrowserProxyImpl} from './people_page/account_manager_browser_proxy.js';
-export type {Account, AccountManagerBrowserProxy} from './people_page/account_manager_browser_proxy.js';
 // </if>
-export {SettingsPeoplePageElement} from './people_page/people_page.js';
-export {SettingsPeoplePageIndexElement} from './people_page/people_page_index.js';
-export {SettingsSyncAccountControlElement} from './people_page/sync_account_control.js';
 export {BATTERY_SAVER_MODE_PREF, SettingsBatteryPageElement} from './performance_page/battery_page.js';
 export {MEMORY_SAVER_MODE_AGGRESSIVENESS_PREF, MEMORY_SAVER_MODE_PREF, SettingsMemoryPageElement} from './performance_page/memory_page.js';
 export {PerformanceBrowserProxyImpl} from './performance_page/performance_browser_proxy.js';

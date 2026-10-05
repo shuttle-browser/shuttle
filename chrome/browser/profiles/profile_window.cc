@@ -30,9 +30,7 @@
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/signin/account_reconcilor_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
@@ -58,7 +56,6 @@
 #endif  // !defined (OS_ANDROID)
 
 #if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
 using base::UserMetricsAction;
@@ -156,20 +153,6 @@ void OpenBrowserWindowForProfile(
     process_startup = chrome::startup::IsProcessStartup::kYes;
     is_first_run = chrome::startup::IsFirstRun::kYes;
   }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (!profile->IsGuestSession()) {
-    ProfileAttributesEntry* entry =
-        g_browser_process->profile_manager()
-            ->GetProfileAttributesStorage()
-            .GetProfileAttributesWithPath(profile->GetPath());
-    if (entry && entry->IsSigninRequired()) {
-      ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-          ProfilePicker::EntryPoint::kProfileLocked));
-      return;
-    }
-  }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   // If |always_create| is false, and we have a |callback| to run, check
   // whether a browser already exists so that we can run the callback. We don't

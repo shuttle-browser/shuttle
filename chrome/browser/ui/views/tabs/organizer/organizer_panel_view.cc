@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_view.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"

@@ -25,21 +25,18 @@
 #include "chrome/browser/sessions/session_service_log.h"
 #include "chrome/browser/sessions/session_service_utils.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/sessions/content/content_serialized_navigation_builder.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/command_storage_manager.h"
@@ -707,9 +704,6 @@ void SessionServiceBase::BuildCommandsForBrowser(
   TabStripModel* tab_strip = browser->GetTabStripModel();
   if (tab_strip->SupportsTabGroups()) {
     TabGroupModel* group_model = tab_strip->group_model();
-    tab_groups::TabGroupSyncService* tab_group_service =
-        tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-            browser->GetProfile());
 
     for (const tab_groups::TabGroupId& group_id :
          group_model->ListTabGroups()) {
@@ -717,13 +711,6 @@ void SessionServiceBase::BuildCommandsForBrowser(
           group_model->GetTabGroup(group_id)->visual_data();
 
       std::optional<std::string> saved_guid;
-      if (tab_group_service) {
-        const std::optional<tab_groups::SavedTabGroup> saved_group =
-            tab_group_service->GetGroup(group_id);
-        if (saved_group.has_value()) {
-          saved_guid = saved_group->saved_guid().AsLowercaseString();
-        }
-      }
 
       command_storage_manager()->AppendRebuildCommand(
           sessions::CreateTabGroupMetadataUpdateCommand(group_id, visual_data,

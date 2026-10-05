@@ -35,20 +35,12 @@
 #endif
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service.h"
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_factory.h"
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 
 RendererUpdater::RendererUpdater(Profile* profile)
     : profile_(profile),
       is_off_the_record_(profile_->IsOffTheRecord()),
-      original_profile_(profile->GetOriginalProfile())
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-      ,
-      bound_session_cookie_refresh_service_(
-          BoundSessionCookieRefreshServiceFactory::GetForProfile(profile))
-#endif
-{
+      original_profile_(profile->GetOriginalProfile()) {
 #if BUILDFLAG(IS_CHROMEOS)
   oauth2_login_manager_ =
       ash::OAuth2LoginManagerFactory::GetForProfile(original_profile_);
@@ -56,16 +48,6 @@ RendererUpdater::RendererUpdater(Profile* profile)
   merge_session_running_ =
       ash::merge_session_throttling_utils::ShouldDelayRequestForProfile(
           original_profile_);
-#endif
-
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  if (bound_session_cookie_refresh_service_) {
-    // `base::Unretained` is safe as `this` deregister itself on destruction.
-    bound_session_cookie_refresh_service_
-        ->SetRendererBoundSessionThrottlerParamsUpdaterDelegate(
-            base::BindRepeating(&RendererUpdater::UpdateAllRenderers,
-                                base::Unretained(this)));
-  }
 #endif
 
   PrefService* pref_service = profile_->GetPrefs();
@@ -93,13 +75,6 @@ RendererUpdater::RendererUpdater(Profile* profile)
 RendererUpdater::~RendererUpdater() {
 #if BUILDFLAG(IS_CHROMEOS)
   DCHECK(!oauth2_login_manager_);
-#endif
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  if (bound_session_cookie_refresh_service_) {
-    bound_session_cookie_refresh_service_
-        ->SetRendererBoundSessionThrottlerParamsUpdaterDelegate(
-            base::RepeatingClosure());
-  }
 #endif
 }
 
@@ -134,14 +109,6 @@ void RendererUpdater::InitializeRenderer(
       std::make_unique<ContentSettingsManagerDelegate>());
   mojo::PendingRemote<chrome::mojom::BoundSessionRequestThrottledHandler>
       bound_session_request_throttled_handler;
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  if (bound_session_cookie_refresh_service_) {
-    bound_session_cookie_refresh_service_
-        ->AddBoundSessionRequestThrottledHandlerReceiver(
-            bound_session_request_throttled_handler
-                .InitWithNewPipeAndPassReceiver());
-  }
-#endif
   renderer_configuration->SetInitialConfiguration(
       is_off_the_record_, std::move(chromeos_listener_receiver),
       std::move(content_settings_manager),
@@ -202,10 +169,6 @@ void RendererUpdater::OnSessionRestoreStateChanged(
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 std::vector<chrome::mojom::BoundSessionThrottlerParamsPtr>
 RendererUpdater::GetBoundSessionThrottlerParams() const {
-  if (bound_session_cookie_refresh_service_) {
-    return bound_session_cookie_refresh_service_
-        ->GetBoundSessionThrottlerParams();
-  }
   return {};
 }
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)

@@ -165,7 +165,6 @@ source_set("browser_tests") {
     "//chrome/browser/lookalikes:test_support",
     "//chrome/browser/privacy_sandbox:test_support",
     "//chrome/browser/sync",
-    "//chrome/browser/sync/test/integration:sync_integration_test_support",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:view_ids",

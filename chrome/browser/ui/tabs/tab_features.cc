@@ -31,11 +31,8 @@
 #include "chrome/browser/ssl/ask_before_http_dialog_controller.h"
 #include "chrome/browser/ssl/connection_help_tab_helper.h"
 #include "chrome/browser/ssl/security_state_event_observer.h"
-#include "chrome/browser/sync/sessions/sync_sessions_router_tab_helper.h"
-#include "chrome/browser/sync/sessions/sync_sessions_web_contents_router_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/tab_contents/form_interaction_tab_helper.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
@@ -59,16 +56,12 @@
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/sad_tab_helper.h"
 #include "chrome/browser/ui/side_panel/side_panel_registry.h"
-#include "chrome/browser/ui/sync/browser_synced_tab_delegate.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/back_to_opener/back_to_opener_controller.h"
 #include "chrome/browser/ui/tabs/inactive_window_mouse_event_controller.h"
 #include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_on_close_helper.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_web_contents_listener.h"
 #include "chrome/browser/ui/tabs/tab_creation_metrics_controller.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -183,13 +176,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         std::make_unique<permissions::PermissionIndicatorsTabData>(
             tab.GetContents());
 
-    if (tab_groups::TabGroupSyncService* tab_group_sync_service =
-            tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile)) {
-      saved_tab_group_web_contents_listener_ =
-          std::make_unique<tab_groups::SavedTabGroupWebContentsListener>(
-              tab_group_sync_service, &tab);
-    }
-
     // TODO(crbug.com/433973411): Move this logic to a helper function.
     if (base::FeatureList::IsEnabled(features::kGlicActor) &&
         base::FeatureList::IsEnabled(features::kGlicActorUi) &&
@@ -265,17 +251,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   security_state_event_observer_ =
       std::make_unique<SecurityStateEventObserver>(tab.GetContents());
-
-  sync_sessions_router_ =
-      std::make_unique<sync_sessions::SyncSessionsRouterTabHelper>(
-          tab.GetContents(),
-          sync_sessions::SyncSessionsWebContentsRouterFactory::GetForProfile(
-              profile),
-          favicon::ContentFaviconDriver::FromWebContents(tab.GetContents()));
-
-  browser_synced_tab_delegate_ =
-      GetUserDataFactory().CreateInstance<BrowserSyncedTabDelegate>(
-          tab, tab, tab.GetContents());
 
   focus_tab_after_navigation_helper_ =
       std::make_unique<FocusTabAfterNavigationHelper>(tab.GetContents());
@@ -406,8 +381,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
                                       content::WebContents* new_contents) {
   DCHECK_EQ(old_contents, tab->GetContents());
 
-  Profile* profile = tab->GetBrowserWindowInterface()->GetProfile();
-
   // Deregister side-panel entries that are web-contents scoped rather than tab
   // scoped.
   side_panel_registry_->Deregister(
@@ -466,22 +439,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
     sad_tab_helper_ = GetUserDataFactory().CreateInstance<SadTabHelper>(
         *tab, *tab, new_contents);
   }
-
-  sync_sessions_router_.reset();
-  sync_sessions_router_ =
-      std::make_unique<sync_sessions::SyncSessionsRouterTabHelper>(
-          new_contents,
-          sync_sessions::SyncSessionsWebContentsRouterFactory::GetForProfile(
-              profile),
-          favicon::ContentFaviconDriver::FromWebContents(new_contents));
-
-  // The reset() must happen first so that the old instance deregisters
-  // itself from the UnownedUserDataHost before the new instance registers
-  // itself.
-  browser_synced_tab_delegate_.reset();
-  browser_synced_tab_delegate_ =
-      GetUserDataFactory().CreateInstance<BrowserSyncedTabDelegate>(
-          *tab, *tab, new_contents);
 
   if (permission_indicators_tab_data_) {
     permission_indicators_tab_data_ =

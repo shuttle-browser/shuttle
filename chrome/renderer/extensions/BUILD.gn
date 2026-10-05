@@ -66,8 +66,6 @@ source_set("extensions") {
   # of them, or omit them behind more targeted GN flags.
   if (enable_platform_apps) {
     sources += [
-      "api/sync_file_system_custom_bindings.cc",
-      "api/sync_file_system_custom_bindings.h",
     ]
   }
 

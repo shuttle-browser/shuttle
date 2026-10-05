@@ -65,7 +65,6 @@
 #include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/browser/profiles/profile_selections.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/signin/account_reconcilor_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/supervised_user/child_accounts/child_account_service_factory.h"
@@ -162,8 +161,6 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/profiles/profile_statistics.h"
-#include "chrome/browser/profiles/profile_statistics_factory.h"
 #endif
 
 #if BUILDFLAG(IS_WIN) && BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -171,7 +168,6 @@
 #endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_factory.h"
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 
 using content::BrowserThread;
@@ -462,9 +458,6 @@ ProfileManager::ProfileManager(const base::FilePath& user_data_dir)
 #else
   profile_manager_android_ = std::make_unique<ProfileManagerAndroid>(this);
 #endif
-
-  if (ProfileShortcutManager::IsFeatureEnabled() && !user_data_dir_.empty())
-    profile_shortcut_manager_ = ProfileShortcutManager::Create(this);
 
   zombie_metrics_timer_.Start(FROM_HERE, base::Minutes(30), this,
                               &ProfileManager::RecordZombieMetrics);
@@ -1159,10 +1152,6 @@ ProfileAttributesStorage& ProfileManager::GetProfileAttributesStorage() {
   return *profile_attributes_storage_.get();
 }
 
-ProfileShortcutManager* ProfileManager::profile_shortcut_manager() {
-  return profile_shortcut_manager_.get();
-}
-
 void ProfileManager::AutoloadProfiles() {
   // If running in the background is disabled for the browser, do not autoload
   // any profiles.
@@ -1617,15 +1606,10 @@ void ProfileManager::DoFinalInitForServices(Profile* profile,
   PreloadingModelKeyedServiceFactory::GetForProfile(profile);
 
   IdentityManagerFactory::GetForProfile(profile)->OnNetworkInitialized();
-  AccountReconcilorFactory::GetForProfile(profile);
 #if BUILDFLAG(IS_ANDROID)
   // Should be after IdentityManager::OnNetworkInitialized.
   SigninManagerAndroidFactory::GetForProfile(profile);
 #endif
-
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  BoundSessionCookieRefreshServiceFactory::GetForProfile(profile);
-#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 
   // Initialization needs to happen after the browser context is available
   // because SyncService needs the URL context getter.

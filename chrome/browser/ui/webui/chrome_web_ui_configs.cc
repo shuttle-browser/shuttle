@@ -41,12 +41,9 @@
 #include "chrome/browser/ui/webui/policy/policy_ui.h"
 #include "chrome/browser/ui/webui/predictors/predictors_ui.h"
 #include "chrome/browser/ui/webui/regional_capabilities_internals/regional_capabilities_internals_ui.h"
-#include "chrome/browser/ui/webui/saved_tab_groups_unsupported/saved_tab_groups_unsupported_ui.h"
 #include "chrome/browser/ui/webui/segmentation_internals/segmentation_internals_ui.h"
-#include "chrome/browser/ui/webui/signin_internals_ui.h"
 #include "chrome/browser/ui/webui/subresource_filter/subresource_filter_internals_ui.h"
 #include "chrome/browser/ui/webui/suggest_internals/suggest_internals_ui.h"
-#include "chrome/browser/ui/webui/sync_internals/sync_internals_ui.h"
 #include "chrome/browser/ui/webui/usb_internals/usb_internals_ui.h"
 #include "chrome/browser/ui/webui/version/version_ui.h"
 #include "components/enterprise/buildflags/buildflags.h"
@@ -93,14 +90,10 @@
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals_ui.h"
 #include "chrome/browser/ui/webui/password_manager/password_manager_ui.h"
-#include "chrome/browser/ui/webui/profile_internals/profile_internals_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
-#include "chrome/browser/ui/webui/side_panel/comments/comments_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/history/history_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/history_clusters/history_clusters_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/reading_list/reading_list_ui.h"
-#include "chrome/browser/ui/webui/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_ui.h"
-#include "chrome/browser/ui/webui/signin/sync_confirmation_ui.h"
 #include "chrome/browser/ui/webui/user_education_internals/user_education_internals_ui.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals_ui.h"
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
@@ -139,7 +132,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/ui/webui/browser_switch/browser_switch_ui.h"
-#include "chrome/browser/ui/webui/signin/history_sync_optin/history_sync_optin_ui.h"
 #include "chrome/browser/ui/webui/updater/updater_ui.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
@@ -155,13 +147,8 @@
 #endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/webui/signin/batch_upload_ui.h"
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/ui/webui/feature_showcase/feature_showcase_ui.h"
-#include "chrome/browser/ui/webui/signin/cross_device_signin_qr_bubble_ui.h"
-#include "chrome/browser/ui/webui/signin/dice_web_signin_intercept_ui.h"
-#include "chrome/browser/ui/webui/signin/signout_confirmation/signout_confirmation_ui.h"
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
@@ -173,11 +160,6 @@
 #endif
 
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui/signin/managed_user_profile_notice_ui.h"
-#include "chrome/browser/ui/webui/signin/profile_customization_ui.h"
-#include "chrome/browser/ui/webui/signin/profile_picker_ui.h"
-#include "chrome/browser/ui/webui/signin/signin_email_confirmation_ui.h"
-#include "chrome/browser/ui/webui/signin/signin_error_ui.h"
 #endif  //  !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -249,14 +231,11 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(
       std::make_unique<
           security_interstitials::KnownInterceptionDisclosureUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SavedTabGroupsUnsupportedUIConfig>());
   map.AddWebUIConfig(std::make_unique<SegmentationInternalsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SignInInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<
                      subresource_filter::SubresourceFilterInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<SiteEngagementUIConfig>());
   map.AddWebUIConfig(std::make_unique<SuggestInternalsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SyncInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<UsbInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<user_actions_ui::UserActionsUIConfig>());
   map.AddWebUIConfig(std::make_unique<VersionUIConfig>());
@@ -281,7 +260,6 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<actor::ui::ActorOverlayUIConfig>());
   map.AddWebUIConfig(std::make_unique<AutofillMlInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<CommentsSidePanelUIConfig>());
   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
   map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
   map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
@@ -301,12 +279,9 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<OmniboxPopupUIConfig>());
   map.AddWebUIConfig(std::make_unique<PageActionInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<PasswordManagerUIConfig>());
-  map.AddWebUIConfig(std::make_unique<ProfileInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<ReadingListUIConfig>());
   map.AddWebUIConfig(std::make_unique<settings::SettingsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SyncConfirmationUIConfig>());
   map.AddWebUIConfig(std::make_unique<tabs::TabGroupHomeUIConfig>());
-  map.AddWebUIConfig(std::make_unique<TabsFromOtherDevicesUIConfig>());
   map.AddWebUIConfig(std::make_unique<TermsUIConfig>());
   map.AddWebUIConfig(std::make_unique<UserEducationInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebNNInternalsUIConfig>());
@@ -349,7 +324,6 @@ void RegisterChromeWebUIConfigs() {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   map.AddWebUIConfig(std::make_unique<BrowserSwitchUIConfig>());
-  map.AddWebUIConfig(std::make_unique<HistorySyncOptinUIConfig>());
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
@@ -368,14 +342,9 @@ void RegisterChromeWebUIConfigs() {
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-  map.AddWebUIConfig(std::make_unique<BatchUploadUIConfig>());
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  map.AddWebUIConfig(std::make_unique<CrossDeviceSigninQrBubbleUIConfig>());
-  map.AddWebUIConfig(std::make_unique<DiceWebSigninInterceptUIConfig>());
-  map.AddWebUIConfig(std::make_unique<FeatureShowcaseUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SignoutConfirmationUIConfig>());
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
@@ -387,11 +356,6 @@ void RegisterChromeWebUIConfigs() {
 #endif
 
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
-  map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
-  map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
-  map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
-  map.AddWebUIConfig(std::make_unique<SigninEmailConfirmationUIConfig>());
 #endif  //  !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)

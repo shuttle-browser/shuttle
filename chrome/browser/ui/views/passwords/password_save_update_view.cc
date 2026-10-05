@@ -15,11 +15,8 @@
 #include "chrome/browser/password_manager/factories/password_store_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_promo_util.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/ui/passwords/password_dialog_prompts.h"
 #include "chrome/browser/ui/passwords/ui_utils.h"
-#include "chrome/browser/ui/signin/promos/bubble_signin_promo_view.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
@@ -510,61 +507,8 @@ bool PasswordSaveUpdateView::CloseOrReplaceWithPromo() {
     custom_button_row_ = nullptr;
   }
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  // Close the bubble if the sign in promo should not be shown.
-  if (!signin::ShouldShowPasswordSignInPromo(*controller_.GetProfile())) {
-    return true;
-  }
-
-  // Remove current elements.
-  reveal_password_pin_ = nullptr;
-  username_dropdown_ = nullptr;
-  password_dropdown_ = nullptr;
-  accessibility_alert_ = nullptr;
-  custom_button_row_ = nullptr;
-  RemoveAllChildViews();
-  SetShowIcon(false);
-  SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
-  GetBubbleFrameView()->SetFootnoteView(nullptr);
-  // SetExtraView is not designed to be called multiple times, so hide the
-  // extra button if it exists. Note that we're intentionally keeping the width
-  // of the previous dialog, even if it's the wider 3-button width.
-  if (extra_view_) {
-    extra_view_->SetVisible(false);
-  }
-
-  SetLayoutManager(std::make_unique<views::FillLayout>());
-  set_margins(BubbleSignInPromoView::GetBubbleSigninPromoMargins());
-
-  SetTitle(IDS_AUTOFILL_SIGNIN_PROMO_TITLE_PASSWORD);
-  SetSubtitle(std::u16string());
-
-  // Add the accessibility alert view first so that it does not overlap with
-  // any other child view. Also make the view invisible.
-  auto accessibility_view = std::make_unique<views::View>();
-  accessibility_view->SetVisible(false);
-  accessibility_alert_ = AddChildView(std::move(accessibility_view));
-
-  // Show the sign in promo.
-  auto sign_in_promo = std::make_unique<BubbleSignInPromoView>(
-      controller_.GetWebContents(),
-      signin_metrics::AccessPoint::kPasswordBubble,
-      PasswordFormUniqueKey(controller_.pending_password()));
-  AddChildView(std::move(sign_in_promo));
-  // TODO(crbug.com/41493925) remove this SizeToContents() when the subsequent
-  // code no longer depends on the sync auto-size here.
-  SizeToContents();
-
-  // Notify the screen reader that the bubble changed.
-  AnnounceBubbleChange();
-
-  GetBubbleFrameView()->SetProperty(views::kElementIdentifierKey,
-                                    kPasswordBubbleElementId);
-
-  return false;
-#else
+  // The sign-in promo is not available: close the bubble.
   return true;
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 }
 
 views::View* PasswordSaveUpdateView::GetInitiallyFocusedView() {

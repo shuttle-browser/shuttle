@@ -10,7 +10,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -88,12 +87,6 @@ ExtendedExecutionOutcome SmartRestartPolicy::CanLockScreenRestartProceed(
     return ExtendedExecutionOutcome::kBlockedByPolicy;
   }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (ProfilePicker::IsOpen()) {
-    return ExtendedExecutionOutcome::kBlockedByPolicy;
-  }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-
 #if BUILDFLAG(IS_MAC)
   if (app_controller_mac::IsOpeningNewWindow()) {
     return ExtendedExecutionOutcome::kBlockedByPolicy;
@@ -116,8 +109,7 @@ bool SmartRestartPolicy::CanZeroWindowRestartProceed() {
   }
 
   // 1. Ensure the browser isn't in a delicate startup or profile-picking state.
-  if (StartupBrowserCreator::InSynchronousProfileLaunch() ||
-      ProfilePicker::IsOpen()) {
+  if (StartupBrowserCreator::InSynchronousProfileLaunch()) {
     return false;
   }
 

@@ -42,9 +42,7 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/omnibox/omnibox_pedal_implementations.h"
@@ -72,11 +70,9 @@
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/prefs/pref_service.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/sync/service/sync_service.h"
-#include "components/sync_sessions/session_sync_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/unified_consent/url_keyed_data_collection_consent_helper.h"
 #include "components/variations/service/variations_service.h"
@@ -404,16 +400,6 @@ ChromeAutocompleteProviderClient::GetProviderStateService() const {
   return ProviderStateServiceFactory::GetForProfile(profile_);
 }
 
-tab_groups::TabGroupSyncService*
-ChromeAutocompleteProviderClient::GetTabGroupSyncService() const {
-  return tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile_);
-}
-
-sync_sessions::SessionSyncService*
-ChromeAutocompleteProviderClient::GetSessionSyncService() const {
-  return SessionSyncServiceFactory::GetForProfile(profile_);
-}
-
 bool ChromeAutocompleteProviderClient::IsOffTheRecord() const {
   return profile_->IsOffTheRecord();
 }
@@ -586,18 +572,11 @@ bool ChromeAutocompleteProviderClient::IsWebUiNtpEnabledForDesktopAndroid()
 void ChromeAutocompleteProviderClient::OpenSharingHub() {}
 
 void ChromeAutocompleteProviderClient::NewIncognitoWindow() {
-#if !BUILDFLAG(IS_ANDROID)
-  chrome::NewIncognitoWindow(profile_);
-#endif  // !BUILDFLAG(IS_ANDROID)
+  // Agent Chrome: no incognito windows.
 }
 
 void ChromeAutocompleteProviderClient::OpenIncognitoClearBrowsingDataDialog() {
-#if !BUILDFLAG(IS_ANDROID)
-  if (BrowserWindowInterface* const bwi =
-          GetLastActiveBrowserWindowInterfaceWithAnyProfile()) {
-    chrome::ShowIncognitoClearBrowsingDataDialog(bwi);
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
+  // Agent Chrome: no incognito product.
 }
 
 void ChromeAutocompleteProviderClient::CloseIncognitoWindows() {

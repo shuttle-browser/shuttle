@@ -10,7 +10,6 @@
 #include "base/check_op.h"
 #include "base/notimplemented.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/tab_list/constants.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -20,7 +19,6 @@
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/tab_group.h"
@@ -567,18 +565,6 @@ bool TabListBridge::MoveTabGroupToWindow(tab_groups::TabGroupId group_id,
   CHECK_GE(static_cast<int>(target_index),
            target_tab_strip->IndexOfFirstNonPinnedTab());
   CHECK_GE(target_tab_strip->count(), target_index);
-
-  // When moving a group between windows, Saved Tab Groups must pause listening
-  // since the group is in an invalid state.
-  tab_groups::TabGroupSyncService* tab_group_sync_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          target_tab_strip->profile());
-  std::unique_ptr<tab_groups::ScopedLocalObservationPauser>
-      tab_groups_sync_movement_observation;
-  if (tab_group_sync_service) {
-    tab_groups_sync_movement_observation =
-        tab_group_sync_service->CreateScopedLocalObserverPauser();
-  }
 
   std::unique_ptr<DetachedTabCollection> detached_group =
       tab_strip_->DetachTabGroupForInsertion(group_id);

@@ -23,7 +23,6 @@
 #include "chrome/browser/ui/views/tabs/dragging/tab_drag_context.h"
 #include "chrome/browser/ui/views/tabs/dragging/tab_drag_target.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 // Not used directly in this header, but required: without it, some other
 // //chrome/browser/ui:ui translation unit that never itself includes this
 // header (see split_tabs_button_interactive_ui_test.cc) fails to compile.
@@ -538,12 +537,6 @@ class TabDragController : public views::WidgetObserver,
   // as a result of a drag finishing.
   void NotifyEventIfTabAddedToGroup();
 
-  // Similar implementations present in
-  // chrome/browser/ui/webui/tab_strip/tab_strip_page_handler.cc. If logic  is
-  // updated in one, the other should also be updated.
-  void MaybePauseTrackingSavedTabGroup();
-  void MaybeResumeTrackingSavedTabGroup();
-
   // Initializes `dragging_tabs_session_`, and performs a first MoveAttached
   // within `attached_context_`.
   void StartDraggingTabsSession(bool initial_move,
@@ -613,13 +606,6 @@ class TabDragController : public views::WidgetObserver,
   base::OneShotTimer bring_to_front_timer_;
 
   DragSessionData drag_data_;
-
-  // Used to pause observation of all open SavedTabGroups when a drag is
-  // occurring. This object is assigned when MaybePauseTrackingSavedTabGroup()
-  // is called and reset when MaybeResumeTrackingSavedTabGroup() is called. The
-  // primary use cases are when we are in the middle of a drag session (Paired
-  // Detach() and Attach() calls) or when reverting a drag (RevertDrag()).
-  std::unique_ptr<tab_groups::ScopedLocalObservationPauser> observation_pauser_;
 
   // The selection model before the drag started. See comment above Init() for
   // details.

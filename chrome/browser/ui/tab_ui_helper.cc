@@ -20,7 +20,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_web_contents_listener.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/common/webui_url_constants.h"
@@ -77,17 +76,6 @@ base::CallbackListSubscription TabUIHelper::AddTabUIChangeCallback(
 }
 
 std::u16string TabUIHelper::GetTitle() const {
-  if (auto* tab_features = tab().GetTabFeatures()) {
-    const tab_groups::SavedTabGroupWebContentsListener* wc_listener =
-        tab_features->saved_tab_group_web_contents_listener();
-    if (wc_listener) {
-      if (const std::optional<tab_groups::DeferredTabState>&
-              deferred_tab_state = wc_listener->deferred_tab_state()) {
-        return deferred_tab_state.value().title();
-      }
-    }
-  }
-
   const std::u16string& contents_title = web_contents()->GetTitle();
   if (!contents_title.empty()) {
     return contents_title;
@@ -134,16 +122,6 @@ bool TabUIHelper::IsMonochromeFavicon() {
 }
 
 ui::ImageModel TabUIHelper::GetFavicon() {
-  const tab_groups::SavedTabGroupWebContentsListener* wc_listener =
-      tab().GetTabFeatures()->saved_tab_group_web_contents_listener();
-  if (wc_listener) {
-    if (const std::optional<tab_groups::DeferredTabState>& deferred_tab_state =
-            wc_listener->deferred_tab_state()) {
-      return deferred_tab_state.value().favicon();
-    }
-  }
-
-
   return ui::ImageModel::FromImage(
       favicon::TabFaviconFromWebContents(web_contents()));
 }

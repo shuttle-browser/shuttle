@@ -44,7 +44,6 @@
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -57,7 +56,6 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "components/prefs/pref_service.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/zoom/page_zoom.h"
@@ -151,49 +149,6 @@ bool IsRecentTabsCommand(int command_id) {
          ((command_id - IDC_FIRST_UNBOUNDED_MENU) %
               AppMenuModel::kNumUnboundedMenuTypes ==
           kRecentTabsCommandIdOffset);
-}
-
-// Computes the target row height for the "Other profiles" section based on
-// the sizes of the profile icons. It ensures that all rows have the same
-// height, and that there is a minimum gap between adjacent icons.
-int ComputeTargetProfileRowHeight(int default_margin, ui::MenuModel* model) {
-  const int default_avatar_icon_size =
-      GetLayoutConstant(LayoutConstant::kAppMenuProfileRowAvatarIconSize);
-  // By default, the target height is the standard avatar row height.
-  int target_height = default_avatar_icon_size + 2 * default_margin;
-
-  // Iterate over all icons and pick a target height that allows for the icons
-  // to be displayed with a gap between them.
-  int previous_icon_height = 0;
-  constexpr int kMinIconSpacing = 1;
-  for (size_t i = 0, max = model->GetItemCount(); i < max; ++i) {
-    if (!IsOtherProfileCommand(model->GetCommandIdAt(i))) {
-      previous_icon_height = 0;
-      continue;
-    }
-
-    ui::ImageModel icon = model->GetIconAt(i);
-    int icon_height =
-        icon.IsEmpty() ? views::kMenuCheckSize : icon.Size().height();
-    // A row must be at least as tall as its icon.
-    target_height = std::max(target_height, icon_height);
-
-    if (previous_icon_height > 0) {
-      // Average the icon heights (rounded up) and add the minimum icon spacing.
-      int required_height =
-          (icon_height + previous_icon_height + 1) / 2 + kMinIconSpacing;
-      target_height = std::max(target_height, required_height);
-    }
-    previous_icon_height = icon_height;
-  }
-
-  // Ensure target_height has the same parity as avatar_icon_size so that
-  // integer division for margins doesn't truncate and cause varying heights.
-  if ((target_height - default_avatar_icon_size) % 2 != 0) {
-    ++target_height;
-  }
-
-  return target_height;
 }
 
 // Combination border/background for the buttons contained in the menu. The
@@ -392,101 +347,6 @@ std::u16string GetUpgradeDialogSubstringText() {
   }
 #endif
   return std::u16string();
-}
-
-std::u16string GetSigninStatusChipString(Profile* profile) {
-  const AccountInfo account_info = GetAccountInfoFromProfile(profile);
-
-  if (IsSyncPaused(profile) || account_info.IsEmpty()) {
-    return l10n_util::GetStringUTF16(IDS_PROFILES_LOCAL_PROFILE_STATE);
-  }
-
-  if (signin_util::IsSigninPending(
-          IdentityManagerFactory::GetForProfile(profile))) {
-    return l10n_util::GetStringUTF16(IDS_PROFILE_ROW_VERIFY_MESSAGE);
-  }
-
-  return l10n_util::GetStringUTF16(IDS_PROFILE_ROW_SIGNED_IN_MESSAGE);
-}
-
-// Helper method that adds a bespoke chip to the profile related menu items.
-void AddSignedInChipToProfileMenuItem(
-    Profile* profile,
-    views::MenuItemView* item,
-    const int horizontal_padding,
-    std::vector<base::CallbackListSubscription>&
-        profile_menu_subscription_list) {
-  if (!profile->GetPrefs()->GetBoolean(prefs::kSigninAllowed) ||
-      profile->IsIncognitoProfile()) {
-    return;
-  }
-  constexpr int profile_chip_corner_radii = 100;
-  raw_ptr<views::Label> profile_chip_label;
-  const MenuConfig& config = MenuConfig::instance();
-
-  // We need to have the label of the profile chip within a
-  // BoxLayoutView and inside border insets because MenuItemView will
-  // layout the child items to the full height of the menu item in
-  // MenuItemView::Layout().
-  auto profile_chip =
-      views::Builder<views::BoxLayoutView>()
-          .SetInsideBorderInsets(
-              gfx::Insets::VH(config.item_vertical_margin, 0))
-          .AddChildren(
-              views::Builder<views::Label>()
-                  .SetText(GetSigninStatusChipString(profile))
-                  .CopyAddressTo(&profile_chip_label)
-                  .SetAutoColorReadabilityEnabled(false)
-                  .SetEnabledColor(item->IsSelected()
-                                       ? ui::kColorMenuItemForegroundSelected
-                                       : ui::kColorMenuItemForeground)
-                  .SetBackground(views::CreateRoundedRectBackground(
-                      item->IsSelected()
-                          ? ui::kColorAppMenuProfileRowChipHovered
-                          : ui::kColorAppMenuProfileRowChipBackground,
-                      profile_chip_corner_radii))
-                  .SetBorder(views::CreateEmptyBorder(
-                      ChromeLayoutProvider::Get()
-                          ->GetInsetsMetric(
-                              INSETS_PROFILE_SIGNIN_STATUS_CHIP))))
-          .Build();
-
-  // MenuItemView has specific layout logic for child views which does not work
-  // very well with more custom menu items. We use this view to add the correct
-  // spacing between the profile chip and the edge of the menu.
-  auto profile_chip_edge_spacing_view =
-      views::Builder<views::View>()
-          .SetPreferredSize(gfx::Size(horizontal_padding, 0))
-          .Build();
-  profile_menu_subscription_list.push_back(
-      item->AddSelectedChangedCallback(base::BindRepeating(
-          [](MenuItemView* menu_item_view, views::Label* chip_label,
-             int corner_radius) {
-            const bool selected = menu_item_view->IsSelected();
-            chip_label->SetBackground(views::CreateRoundedRectBackground(
-                selected ? ui::kColorAppMenuProfileRowChipHovered
-                         : ui::kColorAppMenuProfileRowChipBackground,
-                corner_radius));
-            chip_label->SetEnabledColor(
-                selected ? ui::kColorMenuItemForegroundSelected
-                         : ui::kColorMenuItemForeground);
-          },
-          item, profile_chip_label, profile_chip_corner_radii)));
-  item->AddChildView(std::move(profile_chip));
-  item->AddChildView(std::move(profile_chip_edge_spacing_view));
-  item->SetHighlightWhenSelectedWithChildViews(true);
-  // MenuItemView only delegates accessible names when its title is empty with a
-  // single container view. The Profile MenuItemView has a title and multiple
-  // views. As a result, the accessible name must be manually computed to
-  // account for the profile chip.
-  std::u16string accessible_name =
-      views::MenuItemView::GetAccessibleNameForMenuItem(
-          item->title(), GetSigninStatusChipString(profile), std::nullopt);
-  if (ShouldShowAvatarGradientRing(profile)) {
-    accessible_name = l10n_util::GetStringFUTF16(
-        IDS_PROFILE_AVATAR_NAME_WITH_AI_MEMBERSHIP, accessible_name);
-  }
-  item->GetViewAccessibility().SetName(accessible_name);
 }
 
 // AppMenuView is a view that can contain label buttons.
@@ -1267,16 +1127,9 @@ void AppMenu::OnMenuClosed(views::MenuItemView* menu) {
 
 bool AppMenu::ShouldExecuteCommandWithoutClosingMenu(int command_id,
                                                      const ui::Event& event) {
-  return (IsRecentTabsCommand(command_id) && event.IsMouseEvent() &&
-          (ui::DispositionFromEventFlags(event.flags()) ==
-           WindowOpenDisposition::NEW_BACKGROUND_TAB)) ||
-         // TODO(crbug.com/40272266) Currently the UI for
-         // OtherProfileCommand has bespoke child views which will block
-         // activation in ui/views/controls/menu/menu_controller.cc. The correct
-         // fix will be to have the child view as part of
-         // ui/views/controls/menu/menu_item_view.cc but we will currently
-         // bypass this by using this method to allow the command to trigger.
-         (IsOtherProfileCommand(command_id) && event.IsMouseEvent());
+  return IsRecentTabsCommand(command_id) && event.IsMouseEvent() &&
+         (ui::DispositionFromEventFlags(event.flags()) ==
+          WindowOpenDisposition::NEW_BACKGROUND_TAB);
 }
 
 bool AppMenu::ShouldTryPositioningBesideAnchor() const {
@@ -1310,9 +1163,6 @@ views::View* AppMenu::GetZoomAppMenuViewForTest() {
 }
 
 void AppMenu::PopulateMenu(MenuItemView* parent, MenuModel* model) {
-  int target_profile_row_height = ComputeTargetProfileRowHeight(
-      views::MenuConfig::instance().item_vertical_margin, model);
-
   for (size_t i = 0, max = model->GetItemCount(); i < max; ++i) {
     // Add the menu item at the end.
     size_t menu_index = parent->HasSubmenu()
@@ -1336,22 +1186,6 @@ void AppMenu::PopulateMenu(MenuItemView* parent, MenuModel* model) {
     };
 
     switch (model->GetCommandIdAt(i)) {
-      case AppMenuModel::kProfileMenuPlaceholder: {
-        add_menu_row_background(ChromeLayoutProvider::Get()->GetDistanceMetric(
-                                    DISTANCE_CONTENT_LIST_VERTICAL_MULTI),
-                                ui::kColorAppMenuProfileRowBackground);
-        ProfileAttributesEntry* profile_attributes =
-            GetProfileAttributesFromProfile(browser_->GetProfile());
-        if (profile_attributes &&
-            !profile_attributes->GetLocalProfileName().empty()) {
-          const MenuConfig& config = MenuConfig::instance();
-          AddSignedInChipToProfileMenuItem(
-              browser_->GetProfile(), item,
-              config.arrow_to_edge_padding + config.arrow_size,
-              profile_menu_item_selected_subscription_list_);
-        }
-        break;
-      }
       case IDC_UPGRADE_DIALOG: {
         add_menu_row_background(12, ui::kColorAppMenuUpgradeRowBackground);
         if (const auto upgrade_substring_text = GetUpgradeDialogSubstringText();
@@ -1435,13 +1269,6 @@ void AppMenu::PopulateMenu(MenuItemView* parent, MenuModel* model) {
                            IDC_SHOW_MANAGEMENT_PAGE);
         break;
       default:
-        if (IsOtherProfileCommand(model->GetCommandIdAt(i))) {
-          ui::ImageModel icon = model->GetIconAt(i);
-          int icon_height =
-              icon.IsEmpty() ? views::kMenuCheckSize : icon.Size().height();
-          item->set_vertical_margin(
-              std::max(0, (target_profile_row_height - icon_height) / 2));
-        }
         break;
     }
   }

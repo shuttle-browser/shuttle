@@ -28,7 +28,6 @@ source_set("browser_tests") {
     "flags/flags_browsertest.cc",
     "js/js_browsertest.cc",
     "location_internals/location_internals_browsertest.cc",
-    "sync_internals/sync_internals_browsertest.cc",
     "usb_internals/usb_internals_browsertest.cc",
   ]
 
@@ -118,10 +117,8 @@ source_set("browser_tests") {
   }
 
   if (enable_dice_support || is_chromeos) {
-    sources += [ "signin/batch_upload_view_browsertest.cc" ]
   }
   if (enable_dice_support) {
-    sources += [ "feature_showcase/feature_showcase_browsertest.cc" ]
   }
 
   if (enable_extensions_core) {
@@ -207,13 +204,9 @@ source_set("browser_tests") {
     }
   } else if (!is_android) {
     sources += [
-      "signin/profile_picker_browsertest.cc",
-      "signin/signin_browsertest.cc",
     ]
 
     if (enable_dice_support) {
-      sources +=
-          [ "signin/signout_confirmation/signout_confirmation_browsertest.cc" ]
     }
   }
 
@@ -315,7 +308,6 @@ source_set("browser_tests") {
   if (!is_android && !is_chromeos) {
     deps += [
       "//chrome/browser/ui/toasts",
-      "//chrome/browser/ui/webui/signin:signin_utils",
     ]
   }
 
@@ -523,7 +515,6 @@ generate_grd("build_grd") {
     "flags:build_grdp",
     "js:build_grdp",
     "location_internals:build_grdp",
-    "sync_internals:build_grdp",
     "usb_internals:build_grdp",
   ]
 
@@ -536,7 +527,6 @@ generate_grd("build_grd") {
     "$target_gen_dir/js/resources.grdp",
     "$target_gen_dir/location_internals/resources.grdp",
     "$target_gen_dir/mocha_resources.grdp",
-    "$target_gen_dir/sync_internals/resources.grdp",
     "$target_gen_dir/usb_internals/resources.grdp",
   ]
 
@@ -752,7 +742,6 @@ generate_grd("build_grd") {
       "chromeos/sys_internals:build_grdp",
       "chromeos/traffic_counters:build_grdp",
       "chromeos/vc_background_ui:build_grdp",
-      "signin:build_grdp",
       "//ui/file_manager:build_tests_gen_grdp",
       "//ui/file_manager:build_tests_grdp",
     ]
@@ -762,7 +751,6 @@ generate_grd("build_grd") {
       "$target_gen_dir/chromeos/ash_common/post_message_api/resources.grdp",
       "$target_gen_dir/chromeos/ash_common/sea_pen/resources.grdp",
       "$target_gen_dir/chromeos/account_manager/resources.grdp",
-      "$target_gen_dir/signin/resources.grdp",
       "$target_gen_dir/chromeos/bluetooth/resources.grdp",
       "$target_gen_dir/chromeos/boca_ui/resources.grdp",
       "$target_gen_dir/chromeos/boca_receiver_app_ui/resources.grdp",
@@ -807,17 +795,8 @@ generate_grd("build_grd") {
       "$root_gen_dir/ui/file_manager/tests_gen_resources.grdp",
     ]
   } else if (!is_android) {
-    deps += [ "signin:build_grdp" ]
-    grdp_files += [ "$target_gen_dir/signin/resources.grdp" ]
-
     if (enable_dice_support) {
       deps += [
-        "feature_showcase:build_grdp",
-        "signin/signout_confirmation:build_grdp",
-      ]
-      grdp_files += [
-        "$target_gen_dir/feature_showcase/resources.grdp",
-        "$target_gen_dir/signin/signout_confirmation/resources.grdp",
       ]
     }
   }

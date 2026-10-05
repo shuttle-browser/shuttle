@@ -1006,19 +1006,6 @@ WebUIBrowserWindow::GetWebContentsModalDialogHostFor(
   return modal_dialog_host_.get();
 }
 
-void WebUIBrowserWindow::ShowAvatarBubbleFromAvatarButton(
-    bool is_source_accelerator) {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::MaybeShowProfileSwitchIPH() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::MaybeShowSupervisedUserProfileSignInIPH() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
 ExclusiveAccessContext* WebUIBrowserWindow::GetExclusiveAccessContext() {
   return WebUIBrowserExclusiveAccessContext::From(browser_);
 }
@@ -1045,14 +1032,6 @@ std::unique_ptr<content::EyeDropper> WebUIBrowserWindow::OpenEyeDropper(
 }
 
 void WebUIBrowserWindow::ShowCaretBrowsingDialog() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::ShowIncognitoClearBrowsingDataDialog() {
-  NOTIMPLEMENTED_LOG_ONCE();
-}
-
-void WebUIBrowserWindow::ShowIncognitoHistoryDisclaimerDialog() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 

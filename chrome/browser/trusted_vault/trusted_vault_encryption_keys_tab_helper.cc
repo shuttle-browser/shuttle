@@ -15,7 +15,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "build/buildflag.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/google_accounts_private_api_util.h"
 #include "chrome/browser/trusted_vault/trusted_vault_service_factory.h"
 #include "chrome/browser/webauthn/enclave_manager.h"
 #include "chrome/browser/webauthn/enclave_manager_factory.h"
@@ -30,10 +29,16 @@
 #include "content/public/browser/web_contents.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "google_apis/gaia/gaia_id.h"
+#include "google_apis/gaia/gaia_urls.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "url/origin.h"
 
 namespace {
+
+// Agent Chrome: formerly in chrome/browser/signin/google_accounts_private_api_util.
+const url::Origin& GetAllowedGoogleAccountsOrigin() {
+  return GaiaUrls::GetInstance()->gaia_origin();
+}
 
 #if !BUILDFLAG(IS_ANDROID)
 // Convert a vector from TrustedVaultKey mojo structs to
@@ -286,22 +291,16 @@ void TrustedVaultEncryptionKeysTabHelper::DidFinishNavigation(
     return;
   }
 
-  if (ShouldExposeGoogleAccountsPrivateApi(navigation_handle)) {
-    EncryptionKeyApi::CreateForCurrentDocument(
-        navigation_handle->GetRenderFrameHost(), enclave_manager_,
-        trusted_vault_service_, user_action_trigger_);
-  } else {
-    // NavigationHandle::GetRenderFrameHost() can only be accessed after a
-    // response has been delivered for processing, or after the navigation fails
-    // with an error page. See NavigationHandle::GetRenderFrameHost() for the
-    // details.
-    if (navigation_handle->HasCommitted() &&
-        navigation_handle->GetRenderFrameHost()) {
-      // The document this navigation is committing from should not have
-      // the existing EncryptionKeyApi.
-      CHECK(!EncryptionKeyApi::GetForCurrentDocument(
-          navigation_handle->GetRenderFrameHost()));
-    }
+  // Agent Chrome: the Google Accounts private API is never exposed, so no
+  // EncryptionKeyApi is ever created.
+  // NavigationHandle::GetRenderFrameHost() can only be accessed after a
+  // response has been delivered for processing, or after the navigation fails
+  // with an error page. See NavigationHandle::GetRenderFrameHost() for the
+  // details.
+  if (navigation_handle->HasCommitted() &&
+      navigation_handle->GetRenderFrameHost()) {
+    CHECK(!EncryptionKeyApi::GetForCurrentDocument(
+        navigation_handle->GetRenderFrameHost()));
   }
 }
 

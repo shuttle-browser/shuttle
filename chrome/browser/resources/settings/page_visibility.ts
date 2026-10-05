@@ -17,7 +17,6 @@ export interface PageVisibility {
   extensions?: boolean;
   languages?: boolean;
   onStartup?: boolean;
-  people?: boolean;
   performance?: boolean;
   privacy?: boolean|PrivacyPageVisibility;
   reset?: boolean;
@@ -54,7 +53,6 @@ function createPageVisibility(): PageVisibility|undefined {
     extensions: false,
     languages: false,
     onStartup: false,
-    people: false,
     performance: false,
     privacy: false,
     reset: false,
@@ -66,7 +64,6 @@ function createPageVisibility(): PageVisibility|undefined {
   const pageVisibility = {
     ai: false,
     autofill: false,
-    people: false,
     onStartup: false,
     reset: false,
     appearance: {

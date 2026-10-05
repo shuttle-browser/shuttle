@@ -28,7 +28,6 @@
 #include "ui/views/widget/widget.h"
 
 #if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
 using device_signals::prefs::kDeviceSignalsConsentReceived;
@@ -168,10 +167,6 @@ void ConsentDialogCoordinator::OnConsentDialogAccept() {
 void ConsentDialogCoordinator::OnConsentDialogCancel() {
   base::RecordAction(base::UserMetricsAction("DeviceSignalsConsent_Cancelled"));
   profiles::CloseProfileWindows(profile_);
-#if !BUILDFLAG(IS_CHROMEOS)
-  ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-      ProfilePicker::EntryPoint::kProfileLocked));
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 }
 
 void ConsentDialogCoordinator::OnConsentDialogClose() {

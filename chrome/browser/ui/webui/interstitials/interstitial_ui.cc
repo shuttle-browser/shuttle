@@ -19,8 +19,6 @@
 #include "chrome/browser/enterprise/connectors/interstitials/enterprise_block_page.h"
 #include "chrome/browser/enterprise/connectors/interstitials/enterprise_warn_controller_client.h"
 #include "chrome/browser/enterprise/connectors/interstitials/enterprise_warn_page.h"
-#include "chrome/browser/enterprise/signin/interstitials/managed_profile_required_controller_client.h"
-#include "chrome/browser/enterprise/signin/interstitials/managed_profile_required_page.h"
 #include "chrome/browser/lookalikes/lookalike_url_blocking_page.h"
 #include "chrome/browser/lookalikes/lookalike_url_controller_client.h"
 #include "chrome/browser/profiles/profile.h"
@@ -363,15 +361,6 @@ std::unique_ptr<EnterpriseBlockPage> CreateEnterpriseBlockPage(
                                                         kRequestUrl));
 }
 
-std::unique_ptr<ManagedProfileRequiredPage> CreateManagedProfileRequiredPage(
-    content::WebContents* web_contents) {
-  const GURL kRequestUrl("https://example.com");
-  return std::make_unique<ManagedProfileRequiredPage>(
-      web_contents, kRequestUrl, u"user@example.com",
-      std::make_unique<ManagedProfileRequiredControllerClient>(web_contents,
-                                                               kRequestUrl));
-}
-
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 std::unique_ptr<EnterpriseWarnPage> CreateEnterpriseWarnPage(
     content::WebContents* web_contents) {
@@ -621,8 +610,6 @@ void InterstitialHTMLSource::StartDataRequest(
     interstitial_delegate = CreateBadClockBlockingPage(web_contents);
   } else if (path_without_query == "/lookalike") {
     interstitial_delegate = CreateLookalikeInterstitialPage(web_contents);
-  } else if (path_without_query == "/managed-profile-required") {
-    interstitial_delegate = CreateManagedProfileRequiredPage(web_contents);
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
   } else if (path_without_query == "/captiveportal") {
     interstitial_delegate = CreateCaptivePortalBlockingPage(web_contents);

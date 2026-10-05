@@ -25,7 +25,6 @@
 #include "chrome/browser/file_system_access/file_system_access_features.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -72,7 +71,6 @@
 #include "chrome/browser/ui/settings_window_manager_chromeos.h"
 #include "chromeos/ash/experiences/settings_ui/settings_app_manager.h"
 #else
-#include "chrome/browser/ui/signin/signin_view_controller.h"
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -300,14 +298,6 @@ BrowserWindowInterface* GetOrCreateBrowserForProfile(Profile* profile) {
 
 void ShowHistory(BrowserWindowInterface* browser,
                  const std::string& host_name) {
-  // History UI should not be shown in Incognito mode, instead history
-  // disclaimer bubble should show up. This also updates the behavior of history
-  // keyboard shortcts in Incognito.
-  if (browser->GetProfile()->IsOffTheRecord()) {
-    BrowserWindow::FromBrowser(browser)->ShowIncognitoHistoryDisclaimerDialog();
-    return;
-  }
-
   base::RecordAction(UserMetricsAction("ShowHistory"));
   GURL url = GURL(kChromeUIHistoryURL);
   if (!host_name.empty()) {

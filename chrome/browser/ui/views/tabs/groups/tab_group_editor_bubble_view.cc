@@ -23,8 +23,6 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/tab_group_sync/feature_utils.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
@@ -33,11 +31,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_metrics.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_pref_names.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
-#include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
@@ -54,9 +48,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"
-#include "components/saved_tab_groups/public/saved_tab_group.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
-#include "components/saved_tab_groups/public/types.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -119,9 +110,6 @@ constexpr int kSeparatorPadding = 8;
 constexpr int kDialogWidth = 240;
 // The default size of icons that are displayed in the tab group editor bubble.
 static constexpr int kDefaultIconSize = 20;
-// The maximum number of times we will show the footer section with the learn
-// more link.
-constexpr int kFooterDisplayLimit = 5;
 
 int GetHorizontalSpacing() {
   return ChromeLayoutProvider::Get()->GetDistanceMetric(
@@ -175,8 +163,6 @@ std::u16string GetAcceleratorText(int command_id,
 
 }  // namespace
 
-namespace saved_tab_group_prefs = tab_groups::saved_tab_groups::prefs;
-namespace shared_tab_group_metrics = tab_groups::saved_tab_groups::metrics;
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabGroupEditorBubbleView,
                                       kTabGroupEditorBubbleViewId);
@@ -335,12 +321,6 @@ TabGroupEditorBubbleView::TabGroupEditorBubbleView(
 
   RebuildMenuContents();
 
-  // Add a separator for the delete menu item and footer v2 enabled.
-  if (CanSaveGroups() && ShouldShowSavedFooter()) {
-    PrefService* pref_service = browser_->GetProfile()->GetPrefs();
-    saved_tab_group_prefs::IncrementLearnMoreFooterShownCountPref(pref_service);
-  }
-
   // Setting up the layout.
   const gfx::Insets control_insets = GetControlInsets();
   const int vertical_spacing = control_insets.top();
@@ -435,84 +415,28 @@ void TabGroupEditorBubbleView::UpdateGroup() {
 }
 
 std::u16string TabGroupEditorBubbleView::GetTextForCloseButton() const {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-
-  if (!tab_group_service) {
-    return l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_DELETE_GROUP);
-  }
-
-  // The UI updates now just name this "Close group" instead of "Delete Group"
-  // Since delete group is separate if the group is saved.
   return l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_CLOSE_GROUP);
 }
 
+// Agent Chrome: saved and shared tab groups are removed.
 bool TabGroupEditorBubbleView::CanSaveGroups() const {
-  return browser_->GetProfile()->IsRegularProfile() &&
-         tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-             browser_->GetProfile());
+  return false;
 }
 
 bool TabGroupEditorBubbleView::IsGroupSaved() const {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-
-  if (!tab_group_service) {
-    return false;
-  }
-
-  const std::optional<tab_groups::SavedTabGroup> maybe_saved_group =
-      tab_group_service->GetGroup(group_);
-  if (!maybe_saved_group.has_value()) {
-    return false;
-  }
-
-  return !maybe_saved_group.value().is_shared_tab_group();
+  return false;
 }
 
 bool TabGroupEditorBubbleView::IsGroupShared() const {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-
-  if (!tab_group_service) {
-    return false;
-  }
-
-  const std::optional<tab_groups::SavedTabGroup> maybe_saved_group =
-      tab_group_service->GetGroup(group_);
-  if (!maybe_saved_group.has_value()) {
-    return false;
-  }
-
-  return maybe_saved_group.value().is_shared_tab_group();
+  return false;
 }
 
 bool TabGroupEditorBubbleView::ShouldShowSavedFooter() const {
-  PrefService* pref_service = browser_->GetProfile()->GetPrefs();
-  return (CanSaveGroups() && pref_service &&
-          saved_tab_group_prefs::GetLearnMoreFooterShownCount(pref_service) <
-              kFooterDisplayLimit);
+  return false;
 }
 
 bool TabGroupEditorBubbleView::OwnsGroup() const {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  if (!tab_group_service) {
-    return true;
-  }
-
-  const std::optional<tab_groups::SavedTabGroup> maybe_saved_group =
-      tab_group_service->GetGroup(group_);
-  if (!maybe_saved_group.has_value()) {
-    return true;
-  }
-
-  return tab_groups::SavedTabGroupUtils::IsOwnerOfSharedTabGroup(
-      browser_->GetProfile(), maybe_saved_group->saved_guid());
+  return true;
 }
 
 void TabGroupEditorBubbleView::RebuildMenuContents() {
@@ -811,22 +735,7 @@ void TabGroupEditorBubbleView::UngroupPressed() {
 
   base::WeakPtr<views::Widget> widget = GetWidget()->GetWeakPtr();
 
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-
-  if (tab_group_service) {
-    const std::optional<tab_groups::SavedTabGroup> saved_group =
-        tab_group_service->GetGroup(group_);
-    if (saved_group.has_value()) {
-      tab_groups::SavedTabGroupUtils::UngroupSavedGroup(
-          browser_, saved_group->saved_guid());
-    } else {
-      Ungroup(browser_, group_);
-    }
-  } else {
-    Ungroup(browser_, group_);
-  }
+  Ungroup(browser_, group_);
 
   if (widget) {
     widget->Close();
@@ -837,15 +746,9 @@ void TabGroupEditorBubbleView::CloseGroupPressed() {
   base::RecordAction(
       base::UserMetricsAction("TabGroups_TabGroupBubble_CloseGroup"));
 
-  bool is_group_shared = IsGroupShared();
   base::WeakPtr<views::Widget> widget = GetWidget()->GetWeakPtr();
 
   browser_->GetTabStripModel()->CloseAllTabsInGroup(group_);
-
-  if (is_group_shared) {
-    shared_tab_group_metrics::RecordSharedTabGroupRecallType(
-        shared_tab_group_metrics::SharedTabGroupRecallTypeDesktop::kClosed);
-  }
 
   if (widget) {
     widget->Close();
@@ -856,57 +759,12 @@ void TabGroupEditorBubbleView::CloseGroupPressed() {
 void TabGroupEditorBubbleView::DeleteGroupPressed() {
   base::RecordAction(
       base::UserMetricsAction("TabGroups_TabGroupBubble_DeleteGroup"));
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  if (!tab_group_service) {
-    return CloseGroupPressed();
-  }
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(group_);
-  if (!saved_group) {
-    return CloseGroupPressed();
-  }
-
-  base::WeakPtr<views::Widget> widget = GetWidget()->GetWeakPtr();
-
-  bool is_group_shared = saved_group->is_shared_tab_group();
-  tab_groups::SavedTabGroupUtils::DeleteSavedGroup(browser_,
-                                                   saved_group->saved_guid());
-  if (is_group_shared) {
-    shared_tab_group_metrics::RecordSharedTabGroupManageType(
-        shared_tab_group_metrics::SharedTabGroupManageTypeDesktop::
-            kDeleteGroup);
-  }
-
-  if (widget) {
-    widget->Close();
-  }
+  // Agent Chrome: without saved groups, deleting a group closes it.
+  CloseGroupPressed();
 }
 
 void TabGroupEditorBubbleView::LeaveGroupPressed() {
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser_->GetProfile());
-  if (!tab_group_service) {
-    return;
-  }
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(group_);
-  if (!saved_group) {
-    return;
-  }
-
-  base::WeakPtr<views::Widget> widget = GetWidget()->GetWeakPtr();
-
-  tab_groups::SavedTabGroupUtils::LeaveSharedGroup(browser_,
-                                                   saved_group->saved_guid());
-
-  if (widget) {
-    widget->Close();
-  }
+  // Agent Chrome: no shared groups to leave.
 }
 
 void TabGroupEditorBubbleView::MoveGroupToNewWindowPressed() {
@@ -1160,10 +1018,7 @@ TabGroupEditorBubbleView::Footer::Footer(BrowserWindowInterface* browser) {
 
   // Strings for the footer are different if the user has sync enabled.
   footer_text_substr.push_back(l10n_util::GetStringUTF16(
-      tab_groups::SavedTabGroupUtils::AreSavedTabGroupsSyncedForProfile(
-          browser->GetProfile())
-          ? IDS_TAB_GROUP_EDITOR_BUBBLE_FOOTER_SYNC_ENABLED
-          : IDS_TAB_GROUP_EDITOR_BUBBLE_FOOTER_SYNC_DISABLED));
+      IDS_TAB_GROUP_EDITOR_BUBBLE_FOOTER_SYNC_DISABLED));
 
   // Learn more link for the footer.
   footer_text_substr.push_back(

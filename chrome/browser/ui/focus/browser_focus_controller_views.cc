@@ -14,7 +14,6 @@
 #include "chrome/browser/ui/views/frame/multi_contents_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
-#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_button.h"
 #include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/browser/user_education/user_education_service_factory.h"
@@ -88,13 +87,6 @@ bool BrowserFocusControllerViews::
   }
 
   if (!bubble) {
-    if (auto* avatar =
-            toolbar_button_provider_->GetAvatarToolbarButtonInterface()) {
-      auto* dialog = avatar->GetDialogDelegate();
-      if (dialog && !user_education::HelpBubbleView::IsHelpBubble(dialog)) {
-        bubble = dialog;
-      }
-    }
     auto* multi_contents_view = views::AsViewClass<MultiContentsView>(
         GetViewForId(kMultiContentsViewElementId));
     for (auto* view : std::initializer_list<views::View*>{

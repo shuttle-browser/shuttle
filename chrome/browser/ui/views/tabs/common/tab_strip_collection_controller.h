@@ -31,10 +31,6 @@ class TabInterface;
 class VerticalTabStripStateController;
 }  // namespace tabs
 
-namespace tab_groups {
-class TabGroupSyncService;
-}
-
 namespace views {
 class View;
 }
@@ -87,8 +83,6 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
       const tab_groups::TabGroupId& group_id,
       views::View* anchor_view,
       bool stop_context_menu_propagation);
-
-  tab_groups::TabGroupSyncService* GetTabGroupSyncService();
 
   tabs::VerticalTabStripStateController* GetStateController();
   const tabs::VerticalTabStripStateController* GetStateController() const;

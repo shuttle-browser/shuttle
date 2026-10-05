@@ -9,7 +9,6 @@
  */
 import 'chrome://resources/cr_elements/cr_link_row/cr_link_row.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
-import './account_card.js';
 import './category_reference_card.js';
 import './collapsible_autofill_settings_card.js';
 import '/shared/settings/prefs/prefs.js';

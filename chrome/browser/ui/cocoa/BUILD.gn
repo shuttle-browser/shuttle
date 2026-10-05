@@ -27,7 +27,6 @@ source_set("cocoa") {
     "history_overlay_controller.h",
     "l10n_util.h",
     "main_menu_builder.h",
-    "profiles/profile_menu_controller.h",
     "renderer_context_menu/chrome_swizzle_services_menu_updater.h",
     "renderer_context_menu/render_view_context_menu_mac.h",
     "renderer_context_menu/render_view_context_menu_mac_cocoa.h",
@@ -37,7 +36,6 @@ source_set("cocoa") {
     "simple_message_box_cocoa.h",
     "status_icons/status_icon_mac.h",
     "status_icons/status_icons_features.h",
-    "tab_group_menu_bridge.h",
     "tab_menu_bridge.h",
     "touchbar/browser_window_default_touch_bar.h",
     "touchbar/browser_window_touch_bar_controller.h",
@@ -80,7 +78,6 @@ source_set("cocoa") {
     "l10n_util.mm",
     "main_menu_builder.mm",
     "main_menu_item.h",
-    "profiles/profile_menu_controller.mm",
     "renderer_context_menu/chrome_swizzle_services_menu_updater.mm",
     "renderer_context_menu/render_view_context_menu_mac.mm",
     "renderer_context_menu/render_view_context_menu_mac_cocoa.mm",
@@ -92,7 +89,6 @@ source_set("cocoa") {
     "status_icons/status_icons_features.cc",
     "status_icons/status_tray_mac.h",
     "status_icons/status_tray_mac.mm",
-    "tab_group_menu_bridge.mm",
     "tab_menu_bridge.mm",
     "touchbar/browser_window_default_touch_bar.mm",
     "touchbar/browser_window_touch_bar_controller.mm",
@@ -147,7 +143,6 @@ source_set("cocoa") {
     "//chrome/browser/ui/javascript_dialogs",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/ui/tabs:tab_strip_model_observer",
-    "//chrome/browser/ui/tabs/saved_tab_groups",
     "//chrome/browser/ui/window_metadata",
     "//components/favicon/core",
     "//components/history/core/browser",
@@ -157,7 +152,6 @@ source_set("cocoa") {
     "//components/remote_cocoa/app_shim",
     "//components/remote_cocoa/browser",
     "//components/remote_cocoa/common:mojo",
-    "//components/saved_tab_groups/public",
     "//components/sessions",
     "//components/startup_metric_utils",
     "//components/tab_groups",
@@ -183,10 +177,5 @@ source_set("cocoa") {
       "//chrome/browser/updater",
       "//components/infobars/content",
     ]
-  }
-
-  if (is_mac) {
-    # tab_group_menu_bridge.mm includes chrome/browser/ui/chrome_pages.h.
-    deps += [ "//chrome/browser/ui:chrome_pages" ]
   }
 }

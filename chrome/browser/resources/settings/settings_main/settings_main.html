@@ -55,16 +55,6 @@
 
 <cr-view-manager id="switcher"
     show-all$="[[shouldShowAll_(inSearchMode_, lastRoute_)]]">
-  <template is="dom-if" if="[[showPage_(pageVisibility_.people)]]">
-    <div slot="view" id="people">
-      <template is="dom-if" if="[[renderPlugin_(
-          routes_.PEOPLE, lastRoute_, inSearchMode_)]]">
-        <settings-people-page-index in-search-mode="[[inSearchMode_]]">
-        </settings-people-page-index>
-      </template>
-    </div>
-  </template>
-
   <template is="dom-if" if="[[showPage_(pageVisibility_.privacy)]]">
     <div slot="view" id="privacy">
       <template is="dom-if" if="[[renderPlugin_(

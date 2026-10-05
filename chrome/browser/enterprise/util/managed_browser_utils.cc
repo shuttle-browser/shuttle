@@ -50,11 +50,6 @@
 #include "ui/gfx/text_elider.h"
 #include "url/gurl.h"
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/enterprise/signin/profile_management_disclaimer_service.h"
-#include "chrome/browser/enterprise/signin/profile_management_disclaimer_service_factory.h"
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
 #if BUILDFLAG(IS_ANDROID)
 #include <jni.h>
 
@@ -602,27 +597,6 @@ std::u16string GetEnterpriseLabel(Profile* profile, bool truncated) {
   }
 }
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-base::ScopedClosureRunner DisableAutomaticManagementDisclaimerUntilReset(
-    Profile* profile) {
-  auto* disclaimer_service =
-      ProfileManagementDisclaimerServiceFactory::GetForProfile(profile);
-  if (!disclaimer_service) {
-    return base::ScopedClosureRunner(base::DoNothing());
-  }
-  return disclaimer_service->DisableManagementDisclaimerUntilReset();
-}
-
-base::ScopedClosureRunner
-EnabledAutomaticManagementDisclaimerAcceptanceUntilReset(Profile* profile) {
-  auto* disclaimer_service =
-      ProfileManagementDisclaimerServiceFactory::GetForProfile(profile);
-  if (!disclaimer_service) {
-    return base::ScopedClosureRunner();
-  }
-  return disclaimer_service->AutoAcceptManagementDisclaimerUntilReset();
-}
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 }  // namespace enterprise_util
 

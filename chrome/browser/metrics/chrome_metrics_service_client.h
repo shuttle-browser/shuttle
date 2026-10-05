@@ -21,7 +21,6 @@
 #include "base/sequence_checker.h"
 #include "build/build_config.h"
 #include "chrome/browser/metrics/cached_metrics_profile.h"
-#include "chrome/browser/metrics/incognito_observer.h"
 #include "chrome/browser/metrics/metrics_memory_details.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
 #include "chrome/browser/profiles/profile_observer.h"
@@ -306,8 +305,6 @@ class ChromeMetricsServiceClient
   // The PumaService that |this| is a client of.
   std::unique_ptr<metrics::private_metrics::PumaService> puma_service_;
 
-  // Listener for changes in incognito activity.
-  std::unique_ptr<IncognitoObserver> incognito_observer_;
 
   // Whether we successfully registered all observers of various types.
   bool observers_active_ = false;

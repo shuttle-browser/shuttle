@@ -111,11 +111,6 @@ generate_grd("build_grd") {
     public_deps += [ ":build_cros_styles_grdp" ]
     grdp_files += [ "$target_gen_dir/cros_styles_resources.grdp" ]
   }
-
-  if (enable_dice_support) {
-    public_deps += [ "cr_components/signin:build_grdp" ]
-    grdp_files += [ "$target_gen_dir/cr_components/signin/resources.grdp" ]
-  }
 }
 
 if (is_chromeos) {

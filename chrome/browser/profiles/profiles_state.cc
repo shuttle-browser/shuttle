@@ -18,7 +18,6 @@
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_selections.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
@@ -49,8 +48,6 @@
 #include <optional>
 #include <string_view>
 
-#include "chrome/browser/profiles/gaia_info_update_service.h"
-#include "chrome/browser/profiles/gaia_info_update_service_factory.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #endif
 
@@ -83,12 +80,6 @@ void RegisterPrefs(PrefRegistrySimple* registry) {
   registry->RegisterBooleanPref(prefs::kBrowserGuestModeEnforced, false);
   registry->RegisterBooleanPref(prefs::kBrowserAddPersonEnabled, true);
   registry->RegisterBooleanPref(prefs::kForceBrowserSignin, false);
-  registry->RegisterBooleanPref(prefs::kBrowserShowProfilePickerOnStartup,
-                                true);
-  registry->RegisterIntegerPref(
-      prefs::kBrowserProfilePickerAvailabilityOnStartup,
-      static_cast<int>(ProfilePicker::AvailabilityOnStartup::kEnabled));
-  registry->RegisterBooleanPref(prefs::kBrowserProfilePickerShown, false);
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
   registry->RegisterBooleanPref(
       prefs::kEnterpriseProfileCreationKeepBrowsingData, false);
@@ -270,19 +261,6 @@ bool IsProfileLocked(const base::FilePath& profile_path) {
 
   return entry->IsSigninRequired();
 }
-
-#if !BUILDFLAG(IS_CHROMEOS)
-void UpdateGaiaProfileInfoIfNeeded(Profile* profile) {
-  DCHECK(profile);
-
-  GAIAInfoUpdateService* service =
-      GAIAInfoUpdateServiceFactory::GetInstance()->GetForProfile(profile);
-  // The service may be null, for example during unit tests.
-  if (service)
-    service->UpdatePrimaryAccount();
-}
-
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 void RemoveBrowsingDataForProfile(const base::FilePath& profile_path) {
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)

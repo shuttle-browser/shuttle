@@ -126,9 +126,6 @@
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #include "chrome/browser/browser_switcher/browser_switcher_navigation_throttle.h"
-#include "chrome/browser/enterprise/profile_management/oidc_auth_response_capture_navigation_throttle.h"
-#include "chrome/browser/enterprise/profile_management/profile_management_navigation_throttle.h"
-#include "chrome/browser/enterprise/signin/managed_profile_required_navigation_throttle.h"
 #include "chrome/browser/enterprise/webstore/chrome_web_store_navigation_throttle.h"
 #include "chrome/browser/enterprise/webstore/features.h"
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
@@ -158,7 +155,6 @@
 #include "chrome/browser/enterprise/connectors/device_trust/navigation_throttle.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-#include "chrome/browser/enterprise/incognito/incognito_navigation_throttle.h"
 #include "chrome/browser/extensions/chrome_content_browser_client_extensions_part.h"
 #include "chrome/browser/extensions/user_script_listener.h"
 #include "extensions/browser/extension_navigation_throttle.h"
@@ -413,13 +409,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   }
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  profile_management::ProfileManagementNavigationThrottle::MaybeCreateAndAdd(
-      registry);
-  profile_management::OidcAuthResponseCaptureNavigationThrottle::
-      MaybeCreateAndAdd(registry);
-
-  ManagedProfileRequiredNavigationThrottle::MaybeCreateAndAdd(registry);
-
   if (base::FeatureList::IsEnabled(
           enterprise::webstore::kChromeWebStoreNavigationThrottle)) {
     registry.AddThrottle(
@@ -519,21 +508,8 @@ void CreateAndAddChromeThrottlesForNavigation(
 
 #if BUILDFLAG(IS_CHROMEOS)
   // TODO(b:296844164) Handle captive portal signin properly.
-  if (profile && profile->IsIncognitoProfile() && profile->IsOffTheRecord() &&
-      !profile->GetOTRProfileID().IsCaptivePortal()) {
-    enterprise_incognito::IncognitoNavigationThrottle::MaybeCreateAndAdd(
-        registry);
-  }
-
   apps::AppInstallNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (profile && profile->IsIncognitoProfile() && profile->IsOffTheRecord()) {
-    enterprise_incognito::IncognitoNavigationThrottle::MaybeCreateAndAdd(
-        registry);
-  }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 
   MaybeCreateAndAddVisitedLinkNavigationThrottle(registry);

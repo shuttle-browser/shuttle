@@ -31,7 +31,7 @@ using policy::IncognitoModeAvailability;
 
 // static
 const IncognitoModeAvailability IncognitoModePrefs::kDefaultAvailability =
-    policy::IncognitoModeAvailability::kEnabled;
+    policy::IncognitoModeAvailability::kDisabled;
 
 // static
 bool IncognitoModePrefs::IntToAvailability(
@@ -129,20 +129,8 @@ bool IncognitoModePrefs::ArePlatformParentalControlsEnabled() {
 IncognitoModeAvailability IncognitoModePrefs::GetAvailabilityInternal(
     const PrefService* pref_service,
     GetAvailabilityMode mode) {
-  DCHECK(pref_service);
-  int pref_value = pref_service->GetInteger(
-      policy::policy_prefs::kIncognitoModeAvailability);
-  IncognitoModeAvailability result = kDefaultAvailability;
-  bool valid = IntToAvailability(pref_value, &result);
-  DCHECK(valid);
-  if (result != IncognitoModeAvailability::kDisabled &&
-      mode == CHECK_PARENTAL_CONTROLS && ArePlatformParentalControlsEnabled()) {
-    if (result == IncognitoModeAvailability::kForced) {
-      LOG(ERROR) << "Ignoring FORCED incognito. Parental control logging on";
-    }
-    return IncognitoModeAvailability::kDisabled;
-  }
-  return result;
+  // Agent Chrome: incognito windows do not exist; always report disabled.
+  return IncognitoModeAvailability::kDisabled;
 }
 
 // static
@@ -150,22 +138,6 @@ bool IncognitoModePrefs::ShouldLaunchIncognitoInternal(
     const base::CommandLine& command_line,
     const PrefService* prefs,
     const bool for_subsequent_browsers) {
-  // Note: This code only checks parental controls if the user requested
-  // to launch in incognito mode or if it was forced via prefs. This way,
-  // the parental controls check (which can be quite slow) can be avoided
-  // most of the time.
-  bool forced_by_switch = command_line.HasSwitch(switches::kIncognito);
-  if (for_subsequent_browsers) {
-    forced_by_switch =
-        forced_by_switch &&
-        browser_defaults::
-            kAlwaysOpenIncognitoBrowserIfStartedWithIncognitoSwitch;
-  }
-  bool should_use_incognito =
-      forced_by_switch ||
-      GetAvailabilityInternal(prefs, DONT_CHECK_PARENTAL_CONTROLS) ==
-          IncognitoModeAvailability::kForced;
-  return should_use_incognito &&
-         GetAvailabilityInternal(prefs, CHECK_PARENTAL_CONTROLS) !=
-             IncognitoModeAvailability::kDisabled;
+  // Agent Chrome: incognito windows do not exist.
+  return false;
 }

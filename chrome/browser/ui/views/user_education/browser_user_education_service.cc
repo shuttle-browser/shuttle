@@ -35,8 +35,6 @@
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/most_recent_shared_tab_update_store.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_menu_model.h"
 #include "chrome/browser/ui/tabs/split_view_iph_controller.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
@@ -82,7 +80,6 @@
 #include "components/feature_engagement/public/event_constants.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/safe_browsing/core/common/safebrowsing_referral_methods.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/strings/grit/privacy_sandbox_strings.h"
@@ -1054,39 +1051,7 @@ void MaybeRegisterChromeFeaturePromos(
                 }))));
   }
 
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHTabGroupsSaveV2CloseGroupFeature,
-          kToolbarAppMenuButtonElementId,
-          IDS_SAVED_TAB_GROUPS_V2_INTRO_IPH_APP_MENU_NOT_SYNCED_BODY,
-          IDS_SAVED_TAB_GROUPS_V2_INTRO_DEFAULT_BODY_A11Y,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kTopRight)
-          .SetAnchorElementFilter(
-              base::BindRepeating(&tab_groups::SavedTabGroupUtils::
-                                      GetAnchorElementForTabGroupsV2IPH))
-          .SetBubbleArrowCallback(base::BindRepeating(
-              &tab_groups::SavedTabGroupUtils::GetArrowForTabGroupsV2IPH))
-          .SetMetadata(127, "dpenning@chromium.org",
-                       "triggered on startup when the saved tab groups are "
-                       "defaulted to saved for the first time.")));
-
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForCustomAction(
-          feature_engagement::kIPHTabGroupsSaveV2IntroFeature,
-          kToolbarAppMenuButtonElementId,
-          IDS_WILDCARD,  // Replaced by caller with the correct IDS string.
-          IDS_LEARN_MORE,
-          CreateNavigationAction(GURL(chrome::kTabGroupsLearnMoreURL)))
-          .SetBubbleArrow(HelpBubbleArrow::kTopRight)
-          .SetAnchorElementFilter(
-              base::BindRepeating(&tab_groups::SavedTabGroupUtils::
-                                      GetAnchorElementForTabGroupsV2IPH))
-          .SetBubbleArrowCallback(base::BindRepeating(
-              &tab_groups::SavedTabGroupUtils::GetArrowForTabGroupsV2IPH))
-          .SetMetadata(127, "dpenning@chromium.org",
-                       "triggered on startup when the saved tab groups are "
-                       "defaulted to saved for the first time.")));
+  // Agent Chrome: saved tab group IPHs removed.
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   // kIPHSupervisedUserProfileSigninFeature:

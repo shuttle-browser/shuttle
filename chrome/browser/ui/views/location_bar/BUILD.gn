@@ -121,7 +121,6 @@ source_set("impl") {
       "//chrome/browser/ui/passwords",
       "//chrome/browser/ui/search",
       "//chrome/browser/ui/tabs:tabs_public",
-      "//chrome/browser/ui/tabs/saved_tab_groups",
       "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views:bubble_anchor_util_views",
       "//chrome/browser/ui/views:content_setting_bubble_contents",

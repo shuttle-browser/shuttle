@@ -66,11 +66,6 @@ class AutofillBubbleHandlerImpl : public AutofillBubbleHandler {
       content::WebContents* web_contents,
       std::unique_ptr<SaveAddressBubbleController> controller,
       bool is_user_gesture) override;
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  AutofillBubbleBase* ShowAddressSignInPromo(
-      content::WebContents* web_contents,
-      const AutofillProfile& autofill_profile) override;
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
   AutofillBubbleBase* ShowUpdateAddressProfileBubble(
       content::WebContents* web_contents,
       std::unique_ptr<UpdateAddressBubbleController> controller,

@@ -47,7 +47,6 @@ const std::string_view* GetWebUIMetricsHostname(const GURL& webui_url) {
       base::MakeFixedFlatMap<std::string_view, std::string_view>({
           {chrome::kChromeUIBookmarksHost, "Bookmarks"},
           {chrome::kChromeUIBookmarksSidePanelHost, "BookmarksSidePanel"},
-          {chrome::kChromeUICommentsSidePanelHost, "CommentsSidePanel"},
           {chrome::kChromeUIDownloadsHost, "Downloads"},
           {chrome::kChromeUIHistoryHost, "History"},
           {chrome::kChromeUIHistoryClustersSidePanelHost,
@@ -58,8 +57,6 @@ const std::string_view* GetWebUIMetricsHostname(const GURL& webui_url) {
           {content::kChromeUIResourcesHost, "Resources"},
           {chrome::kChromeUISettingsHost, "Settings"},
           {chrome::kChromeUITabSearchHost, "TabSearch"},
-          {chrome::kChromeUITabsFromOtherDevicesSidePanelHost,
-           "TabsFromOtherDevices"},
           {chrome::kChromeUIThemeHost, "Theme"},
           {chrome::kChromeUITopChromeDomain, "TopChrome"},
       });
@@ -227,20 +224,6 @@ base::flat_map<GURL, int> GetWebUIResourceUrlToCodeCacheMap() {
     AppendWebUIResourceURLToCodeCachePairs(
         content::kChromeUIScheme, chrome::kChromeUIReadLaterHost,
         kSidePanelReadingListCodeCacheResources, url_to_code_cache_pairs);
-
-    // chrome://tabs-from-other-devices.top-chrome
-    if (base::FeatureList::IsEnabled(
-            features::kTabsFromOtherDevicesSidePanel)) {
-      AppendWebUIResourceURLToCodeCachePairs(
-          content::kChromeUIScheme,
-          chrome::kChromeUITabsFromOtherDevicesSidePanelHost,
-          kSidePanelSharedCodeCacheResources, url_to_code_cache_pairs);
-      AppendWebUIResourceURLToCodeCachePairs(
-          content::kChromeUIScheme,
-          chrome::kChromeUITabsFromOtherDevicesSidePanelHost,
-          kSidePanelTabsFromOtherDevicesCodeCacheResources,
-          url_to_code_cache_pairs);
-    }
 
     // chrome://webui_toolbar.top-chrome
     if (features::IsWebUIToolbarEnabled() ||

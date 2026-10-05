@@ -10,49 +10,33 @@
 
 #include "base/no_destructor.h"
 #include "chrome/browser/profiles/profile_keyed_service_factory.h"
-#include "components/sync/engine/net/http_post_provider_factory.h"
 
 class Profile;
 
 namespace syncer {
-class SyncServiceImpl;
 class SyncService;
 }  // namespace syncer
 
+// Agent Chrome: sync is removed. This factory is a stub that never creates a
+// SyncService; it only remains so that callers keep compiling.
 class SyncServiceFactory : public ProfileKeyedServiceFactory {
  public:
-  // Returns the SyncService for the given profile.
+  // Always returns nullptr.
   static syncer::SyncService* GetForProfile(Profile* profile);
-
-  // Returns the SyncServiceImpl for the given profile. DO NOT USE unless
-  // absolutely necessary! Prefer GetForProfile instead.
-  static syncer::SyncServiceImpl* GetAsSyncServiceImplForProfileForTesting(
-      Profile* profile);
 
   SyncServiceFactory(const SyncServiceFactory&) = delete;
   SyncServiceFactory& operator=(const SyncServiceFactory&) = delete;
 
-  // Returns whether a SyncService has already been created for the profile.
-  // Note that GetForProfile will create the service if it doesn't exist yet.
+  // Always returns false.
   static bool HasSyncService(Profile* profile);
 
-  // Checks whether sync is configurable by the user. Returns false if sync is
-  // disallowed by the command line or controlled by configuration management.
-  // `profile` must not be nullptr.
+  // Always returns false.
   static bool IsSyncAllowed(Profile* profile);
 
   static SyncServiceFactory* GetInstance();
 
-  // Iterates over all profiles that have been loaded so far and extract their
-  // SyncService if present. Returned pointers are guaranteed to be not null.
+  // Always returns an empty vector.
   static std::vector<const syncer::SyncService*> GetAllSyncServices();
-
-  // Returns the default factory, most useful in tests where it's null by
-  // default. `create_http_post_provider_factory_for_test` allow tests to
-  // override network connections.
-  static TestingFactory GetDefaultFactory(
-      std::optional<syncer::CreateHttpPostProviderFactory>
-          create_http_post_provider_factory_for_test = std::nullopt);
 
  private:
   friend base::NoDestructor<SyncServiceFactory>;
@@ -63,7 +47,6 @@ class SyncServiceFactory : public ProfileKeyedServiceFactory {
   // BrowserContextKeyedServiceFactory:
   std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
       content::BrowserContext* context) const override;
-  bool ServiceIsNULLWhileTesting() const override;
 };
 
 #endif  // CHROME_BROWSER_SYNC_SYNC_SERVICE_FACTORY_H_

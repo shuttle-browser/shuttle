@@ -57,7 +57,6 @@
 #include "chrome/browser/safe_browsing/metrics/bundled_settings_metrics_provider.h"
 #include "chrome/browser/safe_browsing/metrics/safe_browsing_metrics_provider.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_metrics_provider.h"
-#include "chrome/browser/sync/device_info_sync_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/tracing/chrome_background_tracing_metrics_provider.h"
 #include "chrome/common/buildflags.h"
@@ -116,7 +115,6 @@
 #include "components/safe_browsing/core/common/features.h"
 #include "components/sync/service/passphrase_type_metrics_provider.h"
 #include "components/sync/service/sync_service.h"
-#include "components/sync_device_info/device_count_metrics_provider.h"
 #include "components/ukm/field_trials_provider_helper.h"
 #include "components/ukm/observers/ukm_consent_state_observer.h"
 #include "components/ukm/ukm_service.h"
@@ -528,9 +526,6 @@ ChromeMetricsServiceClient::ChromeMetricsServiceClient(
     : metrics_state_manager_(state_manager),
       synthetic_trial_registry_(synthetic_trial_registry) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  incognito_observer_ = IncognitoObserver::Create(
-      base::BindRepeating(&ChromeMetricsServiceClient::UpdateRunningServices,
-                          weak_ptr_factory_.GetWeakPtr()));
 }
 
 ChromeMetricsServiceClient::~ChromeMetricsServiceClient() {
@@ -1017,10 +1012,6 @@ void ChromeMetricsServiceClient::RegisterMetricsServiceProviders() {
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<FamilyLinkUserMetricsProvider>());
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-  metrics_service_->RegisterMetricsProvider(
-      std::make_unique<syncer::DeviceCountMetricsProvider>(base::BindRepeating(
-          &DeviceInfoSyncServiceFactory::GetAllDeviceInfoTrackers)));
 
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<syncer::PassphraseTypeMetricsProvider>(

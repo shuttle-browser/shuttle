@@ -27,7 +27,6 @@
 
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
 #include "chrome/renderer/extensions/api/app_hooks_delegate.h"
-#include "chrome/renderer/extensions/api/sync_file_system_custom_bindings.h"
 #endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -74,12 +73,6 @@ void ChromeExtensionsRendererAPIProvider::RegisterNativeHandlers(
   module_system->RegisterNativeHandler(
       "lazy_background_page",
       std::make_unique<LazyBackgroundPageNativeHandler>(context));
-
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  module_system->RegisterNativeHandler(
-      "sync_file_system",
-      std::make_unique<SyncFileSystemCustomBindings>(context));
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #if BUILDFLAG(IS_CHROMEOS)
@@ -160,8 +153,6 @@ void ChromeExtensionsRendererAPIProvider::PopulateSourceMap(
        IDR_RENDERER_RESOURCES_EXTENSIONS_PAGE_ACTION_CUSTOM_BINDINGS_JS},
       {"pageCapture",
        IDR_RENDERER_RESOURCES_EXTENSIONS_PAGE_CAPTURE_CUSTOM_BINDINGS_JS},
-      {"syncFileSystem",
-       IDR_RENDERER_RESOURCES_EXTENSIONS_SYNC_FILE_SYSTEM_CUSTOM_BINDINGS_JS},
       {"tabCapture",
        IDR_RENDERER_RESOURCES_EXTENSIONS_TAB_CAPTURE_CUSTOM_BINDINGS_JS},
       {"tts", IDR_RENDERER_RESOURCES_EXTENSIONS_TTS_CUSTOM_BINDINGS_JS},

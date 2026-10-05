@@ -28,7 +28,6 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
@@ -95,8 +94,6 @@ class HistoryClustersSidePanelContextMenu
                         IDS_HISTORY_CLUSTERS_OPEN_IN_NEW_TAB);
     AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW,
                         IDS_HISTORY_CLUSTERS_OPEN_IN_NEW_WINDOW);
-    AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
-                        IDS_HISTORY_CLUSTERS_OPEN_INCOGNITO);
     AddSeparator(ui::NORMAL_SEPARATOR);
 
     AddItemWithStringId(IDC_CONTENT_CONTEXT_COPYLINKLOCATION,
@@ -112,14 +109,6 @@ class HistoryClustersSidePanelContextMenu
     AddItemWithStringId(IDC_PASTE, IDS_HISTORY_CLUSTERS_PASTE);
   }
   ~HistoryClustersSidePanelContextMenu() override = default;
-
-  bool IsCommandIdEnabled(int command_id) const override {
-    if (command_id == IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD) {
-      return IsOpenLinkOTREnabled(
-          GetBrowserWindowInterface(interface_)->GetProfile(), url_);
-    }
-    return true;
-  }
 
   void ExecuteCommand(int command_id, int event_flags) override {
     switch (command_id) {
@@ -149,18 +138,6 @@ class HistoryClustersSidePanelContextMenu
         break;
       }
 
-      case IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD: {
-        if (!CanAddURLToHistory(url_)) {
-          return;
-        }
-        content::OpenURLParams params(url_, content::Referrer(),
-                                      WindowOpenDisposition::OFF_THE_RECORD,
-                                      ui::PAGE_TRANSITION_AUTO_BOOKMARK, false);
-        GetBrowserWindowInterface(interface_)
-            ->OpenURL(params,
-                      /*navigation_handle_callback=*/{});
-        break;
-      }
       case IDC_CONTENT_CONTEXT_COPYLINKLOCATION: {
         ui::ScopedClipboardWriter scw(ui::ClipboardBuffer::kCopyPaste);
         scw.WriteText(base::UTF8ToUTF16(url_.spec()));

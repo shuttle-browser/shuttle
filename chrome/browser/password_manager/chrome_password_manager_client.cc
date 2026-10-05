@@ -50,7 +50,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/passwords/password_cross_domain_confirmation_popup_controller_impl.h"
 #include "chrome/browser/ui/passwords/password_generation_popup_controller_impl.h"
@@ -195,10 +194,6 @@
 #include "components/enterprise/connectors/core/reporting_event_router.h"
 #endif  // BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/signin/dice_tab_helper.h"
-#include "chrome/browser/signin/dice_web_signin_interceptor_factory.h"
-#endif
 
 #if BUILDFLAG(IS_ANDROID)
 using password_manager::CredentialCache;
@@ -1394,12 +1389,7 @@ bool ChromePasswordManagerClient::IsNewTabPage() const {
 }
 
 bool ChromePasswordManagerClient::IsChromeSigninPage() const {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  DiceTabHelper* tab_helper = DiceTabHelper::FromWebContents(web_contents());
-  return tab_helper && tab_helper->IsChromeSigninPage();
-#else
   return false;
-#endif
 }
 
 password_manager::WebAuthnCredentialsDelegate*
@@ -1518,10 +1508,7 @@ ChromePasswordManagerClient::ShowCrossDomainConfirmationPopup(
 
 void ChromePasswordManagerClient::TriggerSignIn(
     signin_metrics::AccessPoint access_point) const {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  signin_ui_util::ShowReauthForPrimaryAccountWithAuthError(GetProfile(),
-                                                           access_point);
-#endif
+  // Sign-in is not available.
 }
 
 void ChromePasswordManagerClient::AutomaticGenerationAvailable(
@@ -1858,13 +1845,7 @@ ChromePasswordManagerClient::ChromePasswordManagerClient(
       content_credential_manager_(
           std::make_unique<password_manager::CredentialManagerImpl>(this)),
       password_generation_driver_receivers_(web_contents, this),
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-      credentials_filter_(
-          this,
-          DiceWebSigninInterceptorFactory::GetForProfile(GetProfile())),
-#else
       credentials_filter_(this),
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
       log_router_(password_manager::PasswordManagerLogRouterFactory::
                       GetForBrowserContext(GetProfile())),
       helper_(this) {

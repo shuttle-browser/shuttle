@@ -14,7 +14,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
@@ -56,9 +55,6 @@ void AttemptExitInternal(bool try_to_quit_application) {
 void AttemptUserExit() {
   // Reset the restart bit that might have been set in cancelled restart
   // request.
-#if !BUILDFLAG(IS_ANDROID)
-  ProfilePicker::Hide();
-#endif  // !BUILDFLAG(IS_ANDROID)
   PrefService* pref_service = g_browser_process->local_state();
   pref_service->SetBoolean(prefs::kRestartLastSessionOnShutdown, false);
   AttemptExitInternal(false);

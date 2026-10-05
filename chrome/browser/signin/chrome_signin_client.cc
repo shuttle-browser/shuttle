@@ -30,9 +30,7 @@
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_metrics.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/signin/chrome_device_id_helper.h"
-#include "chrome/browser/signin/force_signin_verifier.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/common/buildflags.h"
@@ -82,20 +80,11 @@
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #endif
 
 #if !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/signin/wait_for_network_callback_helper_chrome.h"
 #endif
-
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service.h"
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_factory.h"
-#include "chrome/browser/signin/bound_session_credentials/bound_session_oauth_multilogin_delegate_impl.h"
-#include "chrome/browser/signin/bound_session_credentials/bound_session_request_throttled_handler_browser_impl.h"
-#include "chrome/browser/signin/bound_session_credentials/throttled_gaia_auth_fetcher.h"
-#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "extensions/common/extension_features.h"
@@ -355,17 +344,6 @@ void ChromeSigninClient::DelayNetworkCall(base::OnceClosure callback) {
 std::unique_ptr<GaiaAuthFetcher> ChromeSigninClient::CreateGaiaAuthFetcher(
     GaiaAuthConsumer* consumer,
     gaia::GaiaSource source) {
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  if (BoundSessionCookieRefreshService* bound_session_cookie_refresh_service =
-          BoundSessionCookieRefreshServiceFactory::GetForProfile(profile_);
-      bound_session_cookie_refresh_service) {
-    return std::make_unique<ThrottledGaiaAuthFetcher>(
-        consumer, source, GetURLLoaderFactory(),
-        bound_session_cookie_refresh_service->GetBoundSessionThrottlerParams(),
-        std::make_unique<BoundSessionRequestThrottledHandlerBrowserImpl>(
-            *bound_session_cookie_refresh_service));
-  }
-#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
   return std::make_unique<GaiaAuthFetcher>(consumer, source,
                                            GetURLLoaderFactory());
 }
@@ -399,15 +377,6 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
 
 std::unique_ptr<signin::BoundSessionOAuthMultiLoginDelegate>
 ChromeSigninClient::CreateBoundSessionOAuthMultiloginDelegate() const {
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  BoundSessionCookieRefreshService* bound_session_cookie_refresh_service =
-      BoundSessionCookieRefreshServiceFactory::GetForProfile(profile_);
-  if (bound_session_cookie_refresh_service) {
-    return std::make_unique<BoundSessionOAuthMultiLoginDelegateImpl>(
-        bound_session_cookie_refresh_service->GetWeakPtr(),
-        IdentityManagerFactory::GetForProfile(profile_));
-  }
-#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
   return nullptr;
 }
 
@@ -454,39 +423,8 @@ SigninClient::SignoutDecision ChromeSigninClient::GetSignoutDecision(
 }
 
 void ChromeSigninClient::VerifySyncToken() {
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  // We only verify the token once when Profile is just created.
-  if (signin_util::IsForceSigninEnabled() && !force_signin_verifier_) {
-    force_signin_verifier_ = std::make_unique<ForceSigninVerifier>(
-        profile_, IdentityManagerFactory::GetForProfile(profile_),
-        base::BindOnce(&ChromeSigninClient::OnTokenFetchComplete,
-                       base::Unretained(this)));
-  }
-#endif
+  // Agent Chrome: force-signin verification was removed.
 }
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-void ChromeSigninClient::OnTokenFetchComplete(bool token_is_valid) {
-  // If the token is valid we do need to do anything special and let the user
-  // proceed.
-  if (token_is_valid) {
-    return;
-  }
-
-  // Token is not valid, we close all the browsers and open the Profile
-  // Picker.
-  should_display_user_manager_ = true;
-  chrome::CloseAllBrowsersWithProfile(
-      profile_,
-      /*skip_beforeunload=*/true,
-      base::BindRepeating(
-          &ChromeSigninClient::OnCloseBrowsersSuccess, base::Unretained(this),
-          signin_metrics::ProfileSignout::kAuthenticationFailedWithForceSignin,
-          // Do not sign the user out to allow them to reauthenticate from the
-          // profile picker.
-          /*should_sign_out=*/false));
-}
-#endif
 
 #if !BUILDFLAG(IS_CHROMEOS)
 void ChromeSigninClient::RecordOpenTabCount(
@@ -539,12 +477,6 @@ void ChromeSigninClient::OnCloseBrowsersSuccess(
     const signin_metrics::ProfileSignout signout_source_metric,
     bool should_sign_out,
     const base::FilePath& profile_path) {
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  if (signin_util::IsForceSigninEnabled() && force_signin_verifier_.get()) {
-    force_signin_verifier_->Cancel();
-  }
-#endif
-
   if (should_sign_out) {
     std::move(on_signout_decision_reached_)
         .Run(GetSignoutDecision(signout_source_metric));
@@ -581,8 +513,5 @@ void ChromeSigninClient::LockForceSigninProfile(
 }
 
 void ChromeSigninClient::ShowUserManager(const base::FilePath& profile_path) {
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-      ProfilePicker::EntryPoint::kProfileLocked));
-#endif
+  // Agent Chrome: no profile picker.
 }

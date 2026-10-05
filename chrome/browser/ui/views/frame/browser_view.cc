@@ -62,7 +62,6 @@
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/signin/chrome_signin_helper.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -165,7 +164,6 @@
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/web_contents_close_handler.h"
 #include "chrome/browser/ui/views/fullscreen_control/fullscreen_control_host.h"
-#include "chrome/browser/ui/views/incognito_clear_browsing_data_dialog_coordinator.h"
 #include "chrome/browser/ui/views/infobars/infobar_container_view.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views_impl.h"
@@ -175,8 +173,6 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
 #include "chrome/browser/ui/views/page_action/page_action_view.h"
 #include "chrome/browser/ui/views/permissions/chip/permission_dashboard_view.h"
-#include "chrome/browser/ui/views/profiles/avatar_toolbar_button.h"
-#include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/side_panel.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_animation_content_view.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
@@ -192,7 +188,6 @@
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_top_container.h"
 #include "chrome/browser/ui/views/theme_copying_widget.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
-#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/browser_app_menu_button.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container.h"
@@ -231,7 +226,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/reading_list/core/reading_list_pref_names.h"
 #include "components/safe_browsing/core/browser/password_protection/metrics_util.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/search/ntp_features.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_id.h"
@@ -343,7 +337,6 @@
 #include "chromeos/ui/wm/desks/desks_helper.h"
 #include "ui/compositor/compositor_metrics_tracker.h"
 #else
-#include "chrome/browser/ui/signin/signin_view_controller.h"
 #include "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -4390,8 +4383,6 @@ void BrowserView::AddedToWidget() {
   frame_view->UpdateMinimumSize();
   using_native_frame_ = browser_widget_->ShouldUseNativeFrame();
 
-  MaybeShowSignInBenefitsIPH();
-
   // Want to show this promo, but not right at startup.
   base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
@@ -4579,15 +4570,6 @@ void BrowserView::CreateJumpList() {
   JumpListFactory::GetForProfile(browser_->GetProfile());
 }
 #endif
-
-bool BrowserView::ShouldShowAvatarToolbarIPH() {
-  if (GetGuestSession() || GetIncognito()) {
-    return false;
-  }
-  AvatarToolbarButtonInterface* avatar_button =
-      ToolbarButtonProvider::From(browser_)->GetAvatarToolbarButtonInterface();
-  return avatar_button != nullptr;
-}
 
 BrowserFrameView* BrowserView::GetFrameView() {
   return browser_widget_ ? browser_widget_->GetFrameView() : nullptr;
@@ -4969,10 +4951,6 @@ void BrowserView::UpdateAcceleratorMetrics(const ui::Accelerator& accelerator,
     }
   }
 
-  if (command_id == IDC_NEW_INCOGNITO_WINDOW) {
-    base::RecordAction(base::UserMetricsAction("Accel_NewIncognitoWindow"));
-  }
-
   if (command_id == IDC_FULLSCREEN) {
     if (browser_->GetWindow()->IsFullscreen()) {
       base::RecordAction(base::UserMetricsAction("ExitFullscreen_Accelerator"));
@@ -5027,71 +5005,6 @@ void BrowserView::UpdateAcceleratorMetrics(const ui::Accelerator& accelerator,
       break;
   }
 #endif
-}
-
-void BrowserView::ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) {
-  // TODO(b/323362927): rename the function and equivalent shortcut ID name to
-  // be more precise -- about being the same as button being pressed instead of
-  // just showing the avatar bubble since the action can be modified within the
-  // button itself, like dismissing some other bubbles.
-  if (AvatarToolbarButtonInterface* avatar_button =
-          ToolbarButtonProvider::From(browser_)
-              ->GetAvatarToolbarButtonInterface()) {
-    avatar_button->ButtonPressed(is_source_accelerator);
-    return;
-  }
-
-  // Default behavior -- show the profile menu.
-  ProfileMenuCoordinator::From(browser())->Show(is_source_accelerator);
-}
-
-void BrowserView::MaybeShowProfileSwitchIPH() {
-  if (!ShouldShowAvatarToolbarIPH()) {
-    return;
-  }
-  ToolbarButtonProvider::From(browser_)
-      ->GetAvatarToolbarButtonInterface()
-      ->MaybeShowProfileSwitchIPH();
-}
-
-void BrowserView::MaybeShowSupervisedUserProfileSignInIPH() {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  if (!ShouldShowAvatarToolbarIPH()) {
-    return;
-  }
-  ToolbarButtonProvider::From(browser_)
-      ->GetAvatarToolbarButtonInterface()
-      ->MaybeShowSupervisedUserSignInIPH();
-#endif
-}
-
-void BrowserView::MaybeShowSignInBenefitsIPH() {
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  if (!ShouldShowAvatarToolbarIPH()) {
-    return;
-  }
-  ToolbarButtonProvider::From(browser_)
-      ->GetAvatarToolbarButtonInterface()
-      ->MaybeShowSignInBenefitsIPH();
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-}
-
-void BrowserView::ShowIncognitoClearBrowsingDataDialog() {
-  CHECK(ToolbarButtonProvider::From(browser_));
-  IncognitoClearBrowsingDataDialogCoordinator::From(browser())->Show(
-      IncognitoClearBrowsingDataDialogInterface::Type::kDefaultBubble,
-      ToolbarButtonProvider::From(browser_)
-          ->GetAvatarToolbarButtonInterface()
-          ->GetBubbleAnchor(*browser()));
-}
-
-void BrowserView::ShowIncognitoHistoryDisclaimerDialog() {
-  CHECK(ToolbarButtonProvider::From(browser_));
-  IncognitoClearBrowsingDataDialogCoordinator::From(browser())->Show(
-      IncognitoClearBrowsingDataDialogInterface::Type::kHistoryDisclaimerBubble,
-      ToolbarButtonProvider::From(browser_)
-          ->GetAvatarToolbarButtonInterface()
-          ->GetBubbleAnchor(*browser()));
 }
 
 ExclusiveAccessContext* BrowserView::GetExclusiveAccessContext() {

@@ -30,8 +30,6 @@
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/password_manager/password_change_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/signin_promo_util.h"
-#include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/autofill/bubble_manager.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -991,9 +989,7 @@ void ManagePasswordsUIController::SavePassword(
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
           web_contents());
-  // Do not trigger the IPH if the sign in promo will be shown.
-  if (browser &&
-      !signin::ShouldShowPasswordSignInPromo(*browser->GetProfile())) {
+  if (browser) {
     // Only one of these promos will be able to show. Try the more specific one
     // first.
     BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
@@ -1529,12 +1525,7 @@ bool ManagePasswordsUIController::IsMouseHovered() const {
 }
 
 void ManagePasswordsUIController::StartTrustedVaultErrorResolutionFlow() {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-          web_contents());
-  OpenTabForSyncKeyRetrieval(
-      browser,
-      trusted_vault::TrustedVaultUserActionTriggerForUMA::kPasswordSavePrompt);
+  // Trusted vault key retrieval is not available.
 }
 
 void ManagePasswordsUIController::

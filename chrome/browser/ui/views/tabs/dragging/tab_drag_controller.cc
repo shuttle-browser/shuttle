@@ -25,7 +25,6 @@
 #include "base/scoped_observation.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_init_state.h"
@@ -1502,9 +1501,6 @@ void TabDragController::AttachToNewContext(
     }
   }
 
-  // If we're dragging a saved group, resume tracking now that the group is
-  // re-attached.
-  MaybeResumeTrackingSavedTabGroup();
 
   attached_context_->OwnDragController(std::move(controller));
 
@@ -1560,9 +1556,6 @@ TabDragController::Detach(ReleaseCapture release_capture) {
 
   TabStripModel* attached_model = attached_context_->GetTabStripModel();
 
-  // If we're dragging a saved tab group, suspend tracking between Detach and
-  // Attach. Otherwise, the group will get emptied out as we close all the tabs.
-  MaybePauseTrackingSavedTabGroup();
 
   for (TabDragData& tab_drag_datum : drag_data_.tab_drag_data_) {
     // Marking the view as detached tells the TabStrip to not animate its
@@ -2030,9 +2023,6 @@ void TabDragController::RevertDrag() {
 
   dragging_tabs_session_ = nullptr;
 
-  // If we're dragging a saved tab group, suspend tracking during the revert.
-  // Otherwise, the group will get emptied out as we revert all the tabs.
-  MaybePauseTrackingSavedTabGroup();
 
   base::AutoReset<bool> is_mutating_setter(&is_mutating_, true);
   base::AutoReset<bool> is_removing_last_tab_setter(&is_moving_last_tab_, true);
@@ -2081,7 +2071,6 @@ void TabDragController::RevertDrag() {
       }
     }
   }
-  MaybeResumeTrackingSavedTabGroup();
 
   if (did_restore_window_) {
     MaximizeAttachedWindow();
@@ -2947,50 +2936,6 @@ void TabDragController::NotifyEventIfTabAddedToGroup() {
       break;
     }
   }
-}
-
-void TabDragController::MaybePauseTrackingSavedTabGroup() {
-  if (!drag_data_.group_header_drag_data_.has_value()) {
-    return;
-  }
-
-  BrowserWindowInterface* const browser =
-      BrowserView::GetBrowserViewForNativeWindow(
-          GetAttachedBrowserWidget()->GetNativeWindow())
-          ->browser();
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser->GetProfile());
-
-  if (!tab_group_service ||
-      !tab_group_service->GetGroup(
-          drag_data_.group_header_drag_data_.value().group)) {
-    return;
-  }
-
-  observation_pauser_ = tab_group_service->CreateScopedLocalObserverPauser();
-}
-
-void TabDragController::MaybeResumeTrackingSavedTabGroup() {
-  if (!drag_data_.group_header_drag_data_.has_value() || !observation_pauser_) {
-    return;
-  }
-
-  BrowserWindowInterface* const browser =
-      BrowserView::GetBrowserViewForNativeWindow(
-          GetAttachedBrowserWidget()->GetNativeWindow())
-          ->browser();
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          browser->GetProfile());
-
-  if (!tab_group_service) {
-    return;
-  }
-
-  observation_pauser_.reset();
 }
 
 void TabDragController::StartDraggingTabsSession(

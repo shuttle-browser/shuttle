@@ -42,7 +42,6 @@
 #include "components/safe_browsing/core/common/safe_browsing_policy_handler.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/safe_browsing/core/common/safebrowsing_referral_methods.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/user_education/common/tutorial/tutorial_identifier.h"
@@ -310,27 +309,8 @@ bool BrowserCommandHandler::DefaultSearchProviderIsGoogle() {
   return search::DefaultSearchProviderIsGoogle(profile_);
 }
 
-bool BrowserCommandHandler::BrowserSupportsSavedTabGroups() {
-  BrowserWindowInterface* browser =
-      ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
-
-  // Duplicated from chrome/browser/ui/views/bookmarks/bookmark_bar_view.cc
-  // Which cannot be included here
-  return browser->GetProfile()->IsRegularProfile();
-}
-
 void BrowserCommandHandler::StartPasswordManagerTutorial() {
   auto* tutorial_id = kPasswordManagerTutorialId;
-
-  StartTutorialInPage::Params params;
-  params.tutorial_id = tutorial_id;
-  params.callback = base::BindOnce(&BrowserCommandHandler::OnTutorialStarted,
-                                   base::Unretained(this), tutorial_id);
-  StartTutorial(std::move(params));
-}
-
-void BrowserCommandHandler::StartSavedTabGroupTutorial() {
-  auto* tutorial_id = kSavedTabGroupTutorialId;
 
   StartTutorialInPage::Params params;
   params.tutorial_id = tutorial_id;

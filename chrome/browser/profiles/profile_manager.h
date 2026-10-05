@@ -27,7 +27,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_metrics.h"
-#include "chrome/browser/profiles/profile_shortcut_manager.h"
 #include "chrome/common/buildflags.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 
@@ -315,10 +314,6 @@ class ProfileManager : public Profile::Delegate {
   // Returns a ProfileAttributesStorage object which can be used to get
   // information about profiles without having to load them from disk.
   ProfileAttributesStorage& GetProfileAttributesStorage();
-
-  // Returns a ProfileShortcut Manager that enables the caller to create
-  // profile specfic desktop shortcuts.
-  ProfileShortcutManager* profile_shortcut_manager();
 
 #if !BUILDFLAG(IS_ANDROID)
   // Searches for the latest active profile that respects |predicate|, already
@@ -656,9 +651,6 @@ class ProfileManager : public Profile::Delegate {
   using ProfilesInfoMap =
       std::map<base::FilePath, std::unique_ptr<ProfileInfo>>;
   ProfilesInfoMap profiles_info_;
-
-  // Manages the process of creating, deleteing and updating Desktop shortcuts.
-  std::unique_ptr<ProfileShortcutManager> profile_shortcut_manager_;
 
   // For keeping track of the last active profiles.
   std::map<Profile*, int> browser_counts_;

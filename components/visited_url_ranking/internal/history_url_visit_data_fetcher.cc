@@ -18,8 +18,6 @@
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/history/core/browser/url_row.h"
-#include "components/sync_device_info/device_info_sync_service.h"
-#include "components/sync_device_info/local_device_info_util.h"
 #include "components/url_deduplication/url_deduplication_helper.h"
 #include "components/visited_url_ranking/public/features.h"
 #include "components/visited_url_ranking/public/fetch_result.h"
@@ -82,24 +80,13 @@ bool ShouldDiscardShortVisit(
 }
 
 visited_url_ranking::URLVisit::Source GetVisitSource(
-    const std::map<std::string,
-                   std::pair<std::string, syncer::DeviceInfo::FormFactor>>&
-        sync_device_info,
-    const history::AnnotatedVisit& annotated_visit,
-    const syncer::DeviceInfo* local_device_info) {
-  // The `originator_cache_guid` field is only set for foreign session visits
-  // but some foreign visits are actually local as they can come from different
-  // browsers/channels on the same device.
-  auto it =
-      sync_device_info.find(annotated_visit.visit_row.originator_cache_guid);
-  if (annotated_visit.visit_row.originator_cache_guid.empty() ||
-      (it != sync_device_info.end() &&
-       (local_device_info &&
-        it->second.first == local_device_info->client_name()))) {
+    const history::AnnotatedVisit& annotated_visit) {
+  // The `originator_cache_guid` field is only set for foreign session visits.
+  // Sync was removed in this fork, so every such visit counts as foreign.
+  if (annotated_visit.visit_row.originator_cache_guid.empty()) {
     return visited_url_ranking::URLVisit::Source::kLocal;
-  } else {
-    return visited_url_ranking::URLVisit::Source::kForeign;
   }
+  return visited_url_ranking::URLVisit::Source::kForeign;
 }
 
 }  // namespace
@@ -110,10 +97,8 @@ using Source = URLVisit::Source;
 using URLVisitVariant = URLVisitAggregate::URLVisitVariant;
 
 HistoryURLVisitDataFetcher::HistoryURLVisitDataFetcher(
-    history::HistoryService* history_service,
-    syncer::DeviceInfoSyncService* device_info_sync_service)
-    : history_service_(history_service),
-      device_info_sync_service_(device_info_sync_service) {}
+    history::HistoryService* history_service)
+    : history_service_(history_service) {}
 
 HistoryURLVisitDataFetcher::~HistoryURLVisitDataFetcher() = default;
 
@@ -180,34 +165,15 @@ void HistoryURLVisitDataFetcher::OnGotAnnotatedVisits(
     }
   }
 
-  std::map<std::string, std::pair<std::string, syncer::DeviceInfo::FormFactor>>
-      sync_device_info;
-  syncer::DeviceInfoTracker* device_info_tracker =
-      device_info_sync_service_->GetDeviceInfoTracker();
-  if (device_info_tracker) {
-    for (const syncer::DeviceInfo* device_info :
-         device_info_tracker->GetAllDeviceInfo()) {
-      sync_device_info[device_info->guid()] = {device_info->client_name(),
-                                               device_info->form_factor()};
-    }
-  }
-
   base::Time::Exploded time_exploded;
   config.clock->Now().LocalExplode(&time_exploded);
   DayGroup current_day_group = GetDayGroupForExplodedTime(time_exploded);
   TimeGroup current_time_group = GetTimeGroupForExplodedTime(time_exploded);
-  syncer::DeviceInfo::FormFactor local_device_form_factor =
-      syncer::GetLocalDeviceFormFactor();
+  // This fork is macOS-only.
+  const DeviceFormFactor local_device_form_factor = DeviceFormFactor::kDesktop;
   std::map<std::string, URLVisitAggregate::HistoryData> url_annotations;
-  const syncer::DeviceInfo* local_device_info =
-      device_info_sync_service_ &&
-              device_info_sync_service_->GetLocalDeviceInfoProvider()
-          ? device_info_sync_service_->GetLocalDeviceInfoProvider()
-                ->GetLocalDeviceInfo()
-          : nullptr;
   for (auto& annotated_visit : annotated_visits) {
-    Source current_visit_source =
-        GetVisitSource(sync_device_info, annotated_visit, local_device_info);
+    Source current_visit_source = GetVisitSource(annotated_visit);
     if (!std::ranges::contains(requested_fetch_sources, current_visit_source)) {
       continue;
     }
@@ -217,17 +183,9 @@ void HistoryURLVisitDataFetcher::OnGotAnnotatedVisits(
                                       config.deduplication_helper);
     if (url_annotations.find(url_key) == url_annotations.end()) {
       std::optional<std::string> client_name = std::nullopt;
-      syncer::DeviceInfo::FormFactor device_type =
-          syncer::DeviceInfo::FormFactor::kUnknown;
+      DeviceFormFactor device_type = DeviceFormFactor::kUnknown;
       if (current_visit_source == Source::kLocal) {
         device_type = local_device_form_factor;
-      } else {
-        auto it = sync_device_info.find(
-            annotated_visit.visit_row.originator_cache_guid);
-        if (it != sync_device_info.end()) {
-          client_name = it->second.first;
-          device_type = it->second.second;
-        }
       }
 
       // `GetAnnotatedVisits` returns a reverse-chronological sorted list of

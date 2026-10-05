@@ -41,7 +41,6 @@ source_set("impl") {
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/tabs",
-    "//chrome/browser/ui/tabs/saved_tab_groups",
     "//chrome/browser/ui/toolbar/pinned_toolbar",
     "//chrome/browser/ui/user_education",
     "//chrome/browser/ui/views/frame",

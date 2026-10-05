@@ -76,10 +76,8 @@ source_set("configs") {
     "//chrome/browser/ui/webui/policy",
     "//chrome/browser/ui/webui/predictors",
     "//chrome/browser/ui/webui/regional_capabilities_internals",
-    "//chrome/browser/ui/webui/saved_tab_groups_unsupported",
     "//chrome/browser/ui/webui/segmentation_internals",
     "//chrome/browser/ui/webui/suggest_internals",
-    "//chrome/browser/ui/webui/sync_internals",
     "//chrome/browser/ui/webui/usb_internals",
     "//chrome/browser/ui/webui/version",
     "//components/lens:buildflags",
@@ -90,7 +88,6 @@ source_set("configs") {
   ]
 
   if (is_win || is_chromeos) {
-    deps += [ "//chrome/browser/ui/webui/signin:inline_login" ]
   }
 
   if (!is_android) {
@@ -103,7 +100,6 @@ source_set("configs") {
       "//chrome/browser/ui/webui/inspect",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/page_action_internals",
-      "//chrome/browser/ui/webui/profile_internals",
       "//chrome/browser/ui/webui/webui_js_error",
       "//chrome/browser/ui/webui/webui_toolbar",
       "//chrome/browser/ui/webui_browser",
@@ -134,7 +130,6 @@ source_set("configs") {
   if (is_win || is_mac || is_linux || is_chromeos) {
     deps += [
       "//chrome/browser/ui/webui/settings",
-      "//chrome/browser/ui/webui/signin",
     ]
 
     if (!is_chromeos) {
@@ -156,8 +151,6 @@ source_set("configs") {
 
   if (enable_dice_support) {
     deps += [
-      "//chrome/browser/ui/webui/feature_showcase",
-      "//chrome/browser/ui/webui/signin/signout_confirmation",
     ]
   }
 
@@ -194,7 +187,6 @@ source_set("configs") {
   if (enable_extensions_core) {
     deps += [
       "//chrome/browser/ui/webui/extensions",
-      "//chrome/browser/ui/webui/page_not_available_for_guest",
     ]
   }
 
@@ -226,7 +218,6 @@ source_set("configs") {
   }
 
   if (enable_dice_support || is_chromeos) {
-    deps += [ "//chrome/browser/ui/webui/signin:batch_upload" ]
   }
 
   if (!is_chromeos && !is_android) {
@@ -617,7 +608,6 @@ if (is_win || is_mac || is_linux) {
       "//chrome/browser/signin",
       "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/startup",
-      "//chrome/browser/ui/webui/signin:signin_utils",
       "//content/public/browser",
     ]
   }
@@ -780,8 +770,8 @@ source_set("gcm_internals_ui") {
 }
 
 source_set("signin_internals_ui") {
-  sources = [ "signin_internals_ui.cc" ]
-  public = [ "signin_internals_ui.h" ]
+  sources = []
+  public = []
 
   public_deps = [
     "//base",

@@ -436,10 +436,6 @@ void WebUIPinnedToolbarActions::HandleContextMenu(
   actions::ActionId action_id;
   switch (menu_type) {
     case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionNewIncognitoWindow:
-      action_id = kActionNewIncognitoWindow;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
         kPinnedActionShowPasswordsBubbleOrPage:
       action_id = kActionShowPasswordsBubbleOrPage;
       break;

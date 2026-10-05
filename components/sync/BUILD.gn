@@ -162,7 +162,6 @@ static_library("test_support") {
     "//components/prefs:test_support",
     "//components/signin/public/base",
     "//components/signin/public/identity_manager:test_support",
-    "//components/sync_device_info",
     "//components/version_info",
     "//components/version_info:generate_version_info",
     "//google_apis",
@@ -287,7 +286,6 @@ source_set("unit_tests") {
   configs += [ "//build/config:precompiled_headers" ]
 
   data = [
-    "//chrome/test/data/sync/",
     "//net/tools/testserver/",
   ]
 
@@ -302,7 +300,6 @@ source_set("unit_tests") {
     "//components/network_time",
     "//components/os_crypt/browser:test_support",
     "//components/prefs:test_support",
-    "//components/saved_tab_groups/public:prefs",
     "//components/signin/public/base:test_support",
     "//components/signin/public/identity_manager:test_support",
     "//components/sync/model/crypto",

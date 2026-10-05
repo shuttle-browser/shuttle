@@ -394,7 +394,6 @@ if (is_win) {
     ]
 
     data = [
-      "//chrome/test/data/extensions/",
       "//chrome/test/data/installer/",
     ]
   }

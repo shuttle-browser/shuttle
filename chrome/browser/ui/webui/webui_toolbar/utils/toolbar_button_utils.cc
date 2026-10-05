@@ -100,8 +100,6 @@ ui::ElementIdentifier ActionIdToElementIdentifier(actions::ActionId action) {
     return id;
   }
   switch (action) {
-    case kActionNewIncognitoWindow:
-      return kToolbarNewIncognitoWindowElementId;
     case kActionShowPasswordsBubbleOrPage:
       return kToolbarShowPasswordsBubbleOrPageElementId;
     case kActionShowPaymentsBubbleOrPage:
@@ -166,11 +164,6 @@ ActionItemToPinnedToolbarAction(actions::ActionItem* item) {
     }
   }
   switch (*id) {
-    case kActionNewIncognitoWindow:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? kIncognitoIcon
-                           : kIncognitoRefreshMenuOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::kNewIncognitoWindow;
     case kActionShowPasswordsBubbleOrPage:
       CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
                            ? vector_icons::kPasswordManagerIcon
@@ -349,7 +342,7 @@ std::optional<actions::ActionId> PinnedToolbarActionToActionId(
     case toolbar_ui_api::mojom::PinnedToolbarAction::kUnspecified:
       return std::nullopt;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kNewIncognitoWindow:
-      return kActionNewIncognitoWindow;
+      return std::nullopt;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kShowPasswordsBubbleOrPage:
       return kActionShowPasswordsBubbleOrPage;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kShowPaymentsBubbleOrPage:

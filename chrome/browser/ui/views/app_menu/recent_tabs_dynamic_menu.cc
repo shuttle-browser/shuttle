@@ -14,7 +14,6 @@
 #include "chrome/browser/favicon/history_ui_favicon_request_handler_factory.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -27,8 +26,6 @@
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/sessions/core/live_tab_context.h"
 #include "components/sessions/core/tab_restore_service.h"
-#include "components/sync_sessions/open_tabs_ui_delegate.h"
-#include "components/sync_sessions/session_sync_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "ui/actions/actions.h"
 #include "ui/color/color_id.h"
@@ -56,25 +53,9 @@ void RecentTabsDynamicMenu::ExecuteRecentTab(
     WindowOpenDisposition disposition,
     actions::ActionItem* item,
     actions::ActionInvocationContext context) {
+  // Foreign-session (synced) tabs no longer exist; only local entries.
   if (recent_item.is_local()) {
     ExecuteRestoreEntry(recent_item.session_id(), disposition);
-  } else {
-    sync_sessions::SessionSyncService* session_sync_service =
-        SessionSyncServiceFactory::GetInstance()->GetForProfile(
-            browser_window_interface_->GetProfile());
-    sync_sessions::OpenTabsUIDelegate* open_tabs =
-        session_sync_service ? session_sync_service->GetOpenTabsUIDelegate()
-                             : nullptr;
-    if (open_tabs) {
-      const sessions::SessionTab* session_tab = nullptr;
-      if (open_tabs->GetForeignTab(recent_item.session_tag(),
-                                   recent_item.session_id(), &session_tab) &&
-          session_tab && !session_tab->navigations.empty()) {
-        SessionRestore::RestoreForeignSessionTab(
-            browser_window_interface_->GetActiveTabInterface()->GetContents(),
-            *session_tab, disposition);
-      }
-    }
   }
 }
 

@@ -20,7 +20,6 @@
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_source.h"
 #include "chrome/browser/search/search.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
@@ -30,10 +29,8 @@
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_util.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
-#include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/tabs/tab_menu_model.h"
@@ -59,8 +56,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
-#include "components/saved_tab_groups/public/saved_tab_group.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -278,25 +273,6 @@ void BrowserTabStripController::RecordMetricsOnTabSelectionChange(
   }
 
   base::RecordAction(base::UserMetricsAction("TabGroups_SwitchGroupedTab"));
-
-  if (!tab_groups::SavedTabGroupUtils::SupportsSharedTabGroups()) {
-    return;
-  }
-
-  tab_groups::TabGroupSyncService* tab_group_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(
-          GetBrowserWindowInterface()->GetProfile());
-
-  if (!tab_group_service) {
-    return;
-  }
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_service->GetGroup(group.value());
-  if (saved_group && saved_group->collaboration_id()) {
-    base::RecordAction(
-        base::UserMetricsAction("TabGroups.Shared.SwitchGroupedTab"));
-  }
 }
 
 void BrowserTabStripController::ExtendSelectionTo(int model_index) {

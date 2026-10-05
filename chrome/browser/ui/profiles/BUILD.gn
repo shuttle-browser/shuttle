@@ -12,7 +12,6 @@ source_set("profiles") {
     sources += [
       "avatar_badge_types.h",
       "profile_colors_util.h",
-      "profile_view_utils.h",
     ]
 
     if (is_chrome_branded) {
@@ -32,9 +31,6 @@ source_set("profiles") {
 
   if (is_win || is_mac || is_linux) {
     sources += [
-      "profile_customization_synced_theme_waiter.h",
-      "profile_customization_util.h",
-      "profile_picker.h",
     ]
 
     public_deps += [
@@ -46,8 +42,6 @@ source_set("profiles") {
   }
 
   if (enable_dice_support || is_chromeos) {
-    sources += [ "batch_upload_ui_delegate.h" ]
-    public_deps += [ "//chrome/browser/profiles/batch_upload" ]
   }
 }
 
@@ -63,7 +57,6 @@ source_set("impl") {
   if (!is_android) {
     sources += [
       "profile_colors_util.cc",
-      "profile_view_utils.cc",
     ]
 
     deps += [
@@ -90,9 +83,6 @@ source_set("impl") {
 
   if (is_win || is_mac || is_linux) {
     sources += [
-      "profile_customization_synced_theme_waiter.cc",
-      "profile_customization_util.cc",
-      "profile_picker.cc",
     ]
     deps += [
       "//chrome/browser/ui:ui_features",
@@ -101,27 +91,19 @@ source_set("impl") {
 
     if (enable_dice_support) {
       sources += [
-        "signin_intercept_first_run_experience_dialog.cc",
-        "signin_intercept_first_run_experience_dialog.h",
       ]
 
       deps += [
         "//chrome/browser/ui:chrome_pages",
-        "//chrome/browser/ui/views/profiles:profile_management_types",
-        "//chrome/browser/ui/webui/signin",
-        "//chrome/browser/ui/webui/signin:login_ui_service",
 
         # TODO(crbug.com/430804948): This dependency is here because of
         # signin_intercept_first_run_experience_dialog.h listed above - see
         # comment in :profiles above.
-        "//chrome/browser/ui/signin",
-        "//chrome/browser/ui/webui/signin:profile",
       ]
     }
   }
 
   if (enable_dice_support || is_chromeos) {
-    sources += [ "batch_upload_ui_delegate.cc" ]
   }
 
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
@@ -138,7 +120,6 @@ source_set("test_support") {
       "//url",
     ]
     if (!is_chromeos) {
-      public_deps += [ "//chrome/browser/ui/webui/signin:profile" ]
     }
   }
 }
@@ -149,7 +130,6 @@ source_set("unit_tests") {
   deps = []
 
   if (!is_android) {
-    sources += [ "profile_view_utils_unittest.cc" ]
     deps = [
       ":profiles",
       "//chrome/browser/prefs",
@@ -163,7 +143,6 @@ source_set("unit_tests") {
     if (!is_chromeos) {
       sources += [
         "profile_colors_util_unittest.cc",
-        "profile_customization_synced_theme_waiter_unittest.cc",
       ]
       deps += [
         "//chrome/browser/new_tab_page/chrome_colors:generate_chrome_colors_info",
@@ -174,8 +153,6 @@ source_set("unit_tests") {
 
   if (is_win || is_mac || is_linux) {
     sources += [
-      "profile_customization_util_unittest.cc",
-      "profile_picker_unittest.cc",
     ]
     deps += [
       "//chrome/browser/ui:ui_features",
@@ -205,8 +182,6 @@ source_set("browser_tests") {
     ]
 
     if (enable_dice_support) {
-      sources +=
-          [ "signin_intercept_first_run_experience_dialog_browsertest.cc" ]
       deps += [
         # TODO(crbug.com/430804948): Not depend on it when
         # `signin_intercept_first_run_experience_dialog.h` gets built off of
@@ -215,11 +190,6 @@ source_set("browser_tests") {
         "//chrome/browser/policy:test_support",
         "//chrome/browser/sync",
         "//chrome/browser/ui/browser_window",
-        "//chrome/browser/ui/signin",
-        "//chrome/browser/ui/views/profiles:avatar_toolbar_button",
-        "//chrome/browser/ui/webui/signin",
-        "//chrome/browser/ui/webui/signin:login_ui_service",
-        "//chrome/browser/ui/webui/signin:test_support_ui",
       ]
     }
   }

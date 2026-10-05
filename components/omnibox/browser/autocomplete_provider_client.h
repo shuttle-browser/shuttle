@@ -61,14 +61,6 @@ namespace signin {
 class IdentityManager;
 }
 
-namespace sync_sessions {
-class SessionSyncService;
-}  // namespace sync_sessions
-
-namespace tab_groups {
-class TabGroupSyncService;
-}
-
 class TemplateURLService;
 
 class AutocompleteProviderClient : public OmniboxAction::Client {
@@ -108,8 +100,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
       const = 0;
   virtual OnDeviceTailModelService* GetOnDeviceTailModelService() const = 0;
   virtual ProviderStateService* GetProviderStateService() const = 0;
-  virtual tab_groups::TabGroupSyncService* GetTabGroupSyncService() const = 0;
-  virtual sync_sessions::SessionSyncService* GetSessionSyncService() const = 0;
 
   // The value to use for Accept-Languages HTTP header when making an HTTP
   // request.

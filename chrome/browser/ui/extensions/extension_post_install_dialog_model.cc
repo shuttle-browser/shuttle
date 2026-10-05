@@ -9,7 +9,6 @@
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/sync/extension_sync_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/signin_promo_util.h"
 #include "chrome/common/extensions/api/omnibox/omnibox_handler.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"

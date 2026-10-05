@@ -186,15 +186,6 @@ struct RemovalItem {
   array<double> timestamps;
 };
 
-// TODO(https://crbug.com/447584269): Add user's history sign in state in mojo;
-// remove the HistorySignInStateWatcher.
-struct AccountInfo {
-  url.mojom.Url account_image_src;
-
-  string name;
-  string email;
-};
-
 // Browser-side handler for requests from WebUI page.
 interface PageHandler {
   // The BrowserProxy singleton calls this when it's first initialized.
@@ -228,25 +219,6 @@ interface PageHandler {
 
   // Notify the backend that the side panel UI is ready to be shown.
   ShowSidePanelUI();
-
-  // Requests the signed in user's account info and notifies the browser process
-  // that the UI is ready to receive account info updates.
-  RequestAccountInfo() => (AccountInfo account_info);
-
-  // The user turns on the history sync by clicking the "Sync history" button.
-  TurnOnHistorySync();
-
-  // Checks if the history sync promo should be shown on the history page.
-  [EnableIfNot=is_chromeos]
-  ShouldShowHistoryPageHistorySyncPromo() => (bool should_show);
-
-  // Records the time when the history sync promo was dismissed.
-  [EnableIfNot=is_chromeos]
-  RecordHistoryPageHistorySyncPromoDismissed();
-
-  // Increments the history page history sync promo shown count.
-  [EnableIfNot=is_chromeos]
-  IncrementHistoryPageHistorySyncPromoShownCount();
 };
 
 // WebUI-side handler for requests from browser.
@@ -256,7 +228,4 @@ interface Page {
 
   // Alerts the page the other forms of history may or may not be available.
   OnHasOtherFormsChanged(bool has_other_forms);
-
-  // Sends account info updates to the UI.
-  SendAccountInfo(AccountInfo account_info);
 };

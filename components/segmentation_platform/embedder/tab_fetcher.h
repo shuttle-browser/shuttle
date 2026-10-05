@@ -11,7 +11,6 @@
 #include "base/memory/raw_ptr.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/session_types.h"
-#include "components/sync_sessions/session_sync_service.h"
 #include "url/gurl.h"
 
 namespace content {
@@ -63,16 +62,8 @@ class TabFetcher {
     base::TimeDelta time_since_modified;
   };
 
-  explicit TabFetcher(sync_sessions::SessionSyncService* session_sync_service);
+  TabFetcher() = default;
   virtual ~TabFetcher() = default;
-
-  // Appends a list of all remote tabs to `tabs`.
-  bool FillAllRemoteTabs(std::vector<TabEntry>& tabs);
-
-  // Appends a list of all remote tabs to `tabs` loaded after the given
-  // timestamp.
-  bool FillAllRemoteTabsAfterTime(std::vector<TabEntry>& tabs,
-                                  base::Time tabs_loaded_after_timestamp);
 
   // Appends a list of all local tabs to `tabs`.
   bool FillAllLocalTabs(std::vector<TabEntry>& tabs);
@@ -80,26 +71,13 @@ class TabFetcher {
   // Finds the tab corresponding to the `entry`.
   Tab FindTab(const TabEntry& entry);
 
-  // Returns the count of remote tabs loaded after the given timestamp till now.
-  size_t GetRemoteTabsCountAfterTime(base::Time tabs_loaded_after_timestamp);
-
-  // Returns the modified time for the latest remote sync session if sync is
-  // enabled.
-  std::optional<base::Time> GetLatestRemoteSessionModifiedTime();
-
  protected:
   // Fills all the local tabs from the tab models in `tabs`.
   virtual bool FillAllLocalTabsFromTabModel(std::vector<TabEntry>& tabs);
 
-  // Fills all the local tabs from the sync sessions database.
-  bool FillAllLocalTabsFromSyncSessions(std::vector<TabEntry>& tabs);
-
   // Returns the local tab corresponding to `entry`. If the tab was closed, then
   // returns an empty Tab.
   virtual Tab FindLocalTab(const TabEntry& entry);
-
- private:
-  const raw_ptr<sync_sessions::SessionSyncService> session_sync_service_;
 };
 
 }  // namespace segmentation_platform

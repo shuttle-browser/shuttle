@@ -11,14 +11,11 @@
 
 #include "base/check_op.h"
 #include "base/functional/callback_forward.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/tab_group_features.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "components/saved_tab_groups/public/saved_tab_group.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
@@ -186,23 +183,8 @@ bool TabGroupDataObserver::RefreshTabData() {
 }
 
 bool TabGroupDataObserver::IsTabGroupShared() {
-  tabs::TabInterface* const first_tab_in_group = tab_group_->GetFirstTab();
-  if (!first_tab_in_group) {
-    return false;
-  }
-
-  Profile* const profile =
-      first_tab_in_group->GetBrowserWindowInterface()->GetProfile();
-  tab_groups::TabGroupSyncService* const tab_group_sync_service =
-      tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile);
-
-  if (!tab_group_sync_service) {
-    return false;
-  }
-
-  std::optional<tab_groups::SavedTabGroup> saved_group =
-      tab_group_sync_service->GetGroup(tab_group_->id());
-  return saved_group.has_value() && saved_group.value().is_shared_tab_group();
+  // Shared tab groups do not exist in this fork.
+  return false;
 }
 
 }  // namespace tabs

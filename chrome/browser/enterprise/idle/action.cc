@@ -35,7 +35,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"  // nogncheck crbug.com/40147906
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/idle_bubble.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -149,25 +148,6 @@ class CloseBrowsersAction : public Action {
   base::CallbackListSubscription subscription_;
 };
 
-// Action that shows the Profile Picker.
-class ShowProfilePickerAction : public Action {
- public:
-  ShowProfilePickerAction()
-      : Action(static_cast<int>(ActionType::kShowProfilePicker)) {}
-
-  // Action:
-  void Run(Profile* profile, Continuation continuation) override {
-    ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-        ProfilePicker::EntryPoint::kProfileIdle));
-    metrics::RecordActionsSuccess(
-        metrics::IdleTimeoutActionType::kShowProfilePicker, true);
-    std::move(continuation).Run(true);
-  }
-
-  bool ShouldNotifyUserOfPendingDestructiveAction(Profile* profile) override {
-    return false;
-  }
-};
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 // Action that clears one or more types of data via BrowsingDataRemover.
@@ -405,7 +385,7 @@ ActionFactory::ActionQueue ActionFactory::Build(
         actions.push_back(std::make_unique<CloseBrowsersAction>());
         break;
       case ActionType::kShowProfilePicker:
-        actions.push_back(std::make_unique<ShowProfilePickerAction>());
+        // No profile picker in this browser.
         break;
 #endif  // !BUILDFLAG(IS_ANDROID)
 

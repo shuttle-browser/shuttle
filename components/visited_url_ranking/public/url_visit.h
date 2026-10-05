@@ -13,16 +13,28 @@
 #include <variant>
 #include <vector>
 
+#include "base/containers/enum_set.h"
 #include "base/time/time.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/history/core/browser/url_row.h"
 #include "components/segmentation_platform/public/trigger.h"
-#include "components/sync_device_info/device_info.h"
 #include "components/visited_url_ranking/public/decoration.h"
 #include "components/visited_url_ranking/public/tab_metadata.h"
 #include "url/gurl.h"
 
 namespace visited_url_ranking {
+
+// Device form factor of a visit. Mirrors the values of the removed
+// DeviceFormFactor.
+enum class DeviceFormFactor {
+  kUnknown = 0,
+  kDesktop = 1,
+  kPhone = 2,
+  kTablet = 3,
+  kAutomotive = 4,
+  kWearable = 5,
+  kTv = 6,
+};
 
 // The currently supported URL visit data fetchers that may participate in a
 // fetch request.
@@ -41,7 +53,7 @@ struct URLVisit {
   URLVisit(const GURL& url_arg,
            const std::u16string& title_arg,
            const base::Time& last_modified_arg,
-           syncer::DeviceInfo::FormFactor device_type_arg,
+           DeviceFormFactor device_type_arg,
            Source source_arg,
            const std::optional<std::string>& client_name = std::nullopt);
   URLVisit(const URLVisit&);
@@ -55,8 +67,8 @@ struct URLVisit {
   // or there is a favicon change).
   base::Time last_modified;
   // The device form factor in which the visit took place.
-  syncer::DeviceInfo::FormFactor device_type =
-      syncer::DeviceInfo::FormFactor::kUnknown;
+  DeviceFormFactor device_type =
+      DeviceFormFactor::kUnknown;
   // The source from which the visit originated (i.e. local or remote).
   Source source = Source::kNotApplicable;
   // The visit's user visible client name, if applicable. Only set for remote
@@ -145,8 +157,8 @@ struct URLVisitAggregate {
   struct HistoryData {
     explicit HistoryData(history::AnnotatedVisit annotated_visit,
                          std::optional<std::string> client_name = std::nullopt,
-                         syncer::DeviceInfo::FormFactor device_type_arg =
-                             syncer::DeviceInfo::FormFactor::kUnknown);
+                         DeviceFormFactor device_type_arg =
+                             DeviceFormFactor::kUnknown);
     HistoryData(const HistoryData&) = delete;
     HistoryData(HistoryData&& other);
     HistoryData& operator=(HistoryData&& other);

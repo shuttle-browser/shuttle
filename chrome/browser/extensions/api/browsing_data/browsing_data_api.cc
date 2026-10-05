@@ -19,7 +19,6 @@
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_ui_util.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
 #include "components/browsing_data/core/features.h"
 #include "components/browsing_data/core/pref_names.h"

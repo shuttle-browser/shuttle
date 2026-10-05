@@ -24,7 +24,6 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/permissions/chip/permission_chip_view.h"
-#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_handler.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
@@ -237,10 +236,8 @@ WebUIToolbarUI::WebUIToolbarUI(content::WebUI* web_ui)
                      features::IsWebUIPinnedToolbarActionsEnabled());
   source->AddBoolean("enableAppMenuButton",
                      features::IsWebUIAppMenuButtonEnabled());
-  source->AddBoolean(
-      "enableAvatarButton",
-      features::IsWebUIAvatarButtonEnabled() &&
-          AvatarToolbarButtonInterface::CanShowForProfile(profile));
+  // Agent Chrome: no avatar button (profile menu removed).
+  source->AddBoolean("enableAvatarButton", false);
   source->AddBoolean("enableExtensionsContainer",
                      features::IsWebUIExtensionsContainerEnabled());
   source->AddBoolean("enablePerformanceInterventionButton",

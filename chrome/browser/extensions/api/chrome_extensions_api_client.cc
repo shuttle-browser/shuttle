@@ -40,7 +40,6 @@
 #include "chrome/common/buildflags.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/signin/core/browser/signin_header_helper.h"
 #include "components/value_store/value_store_factory.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -143,7 +142,7 @@ bool ChromeExtensionsAPIClient::ShouldHideResponseHeader(
   // which could allow an extension to generate a refresh token for the account.
   return url.host() == GaiaUrls::GetInstance()->gaia_url().host() &&
          base::CompareCaseInsensitiveASCII(header_name,
-                                           signin::kDiceResponseHeader) == 0;
+                                           "X-Chrome-ID-Consistency-Response") == 0;
 }
 
 bool ChromeExtensionsAPIClient::ShouldHideBrowserNetworkRequest(

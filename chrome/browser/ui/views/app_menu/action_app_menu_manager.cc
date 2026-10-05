@@ -306,7 +306,7 @@ void ActionAppMenuManager::CreateMenuHierarchy() {
 
 void ActionAppMenuManager::AddBlockHeaderActions(actions::ActionItem* root) {
   AppMenuBuilder(root).AddSection(
-      DisplayType::kBlock, [this](AppMenuBuilder& section) {
+      DisplayType::kBlock, [](AppMenuBuilder& section) {
         section
             .AddAction(
                 kActionNewTab, DisplayType::kBlock,
@@ -317,12 +317,6 @@ void ActionAppMenuManager::AddBlockHeaderActions(actions::ActionItem* root) {
                                                       : kNewTabRefreshOldIcon,
                     ui::kColorIcon, ui::SimpleMenuModel::kDefaultIconSize))
             .AddAction(kActionNewWindow, DisplayType::kBlock);
-
-        if (!browser_window_interface_->GetProfile()->IsGuestSession()) {
-          section.AddAction(
-              kActionNewIncognitoWindow, DisplayType::kBlock,
-              /*text_override=*/l10n_util::GetStringUTF16(IDS_INCOGNITO));
-        }
       });
 }
 

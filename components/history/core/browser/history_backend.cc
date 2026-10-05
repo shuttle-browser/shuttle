@@ -106,8 +106,8 @@ namespace history {
 
 namespace {
 
-using OsType = syncer::DeviceInfo::OsType;
-using FormFactor = syncer::DeviceInfo::FormFactor;
+using OsType = SyncDeviceOsType;
+using FormFactor = SyncDeviceFormFactor;
 
 #if DCHECK_IS_ON()
 // Use to keep track of paths used to host HistoryBackends. This class

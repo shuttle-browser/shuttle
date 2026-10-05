@@ -57,7 +57,6 @@
 #include "chrome/browser/sessions/session_service_log.h"
 #include "chrome/browser/sessions/session_service_lookup.h"
 #include "chrome/browser/sessions/session_service_utils.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_tabrestore.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
@@ -73,7 +72,6 @@
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/startup/startup_tab.h"
 #include "chrome/browser/ui/startup/startup_types.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
@@ -89,10 +87,6 @@
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/prefs/pref_service.h"
-#include "components/saved_tab_groups/public/features.h"
-#include "components/saved_tab_groups/public/saved_tab_group.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
-#include "components/saved_tab_groups/public/types.h"
 #include "components/sessions/core/session_types.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_collection.h"
@@ -1172,32 +1166,6 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       CHECK(model_tab_group);
       browser->GetTabStripModel()->ChangeTabGroupVisuals(
           new_tab_group_id, session_tab_group->visual_data);
-
-      ProcessSavedGroup(browser->GetProfile(), new_tab_group_id,
-                        session_tab_group->saved_guid);
-    }
-  }
-
-  void ProcessSavedGroup(Profile* profile,
-                         const tab_groups::LocalTabGroupID& local_id,
-                         std::optional<std::string> sync_id) {
-    tab_groups::TabGroupSyncService* service =
-        tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile);
-    if (!service) {
-      return;
-    }
-
-    if (sync_id) {
-      const base::Uuid& sync_guid = base::Uuid::ParseLowercase(sync_id.value());
-      service->ConnectLocalTabGroup(
-          sync_guid, local_id,
-          tab_groups::OpeningSource::kConnectOnSessionRestore);
-    } else {
-      // Default save any groups that are not saved yet. This happens when
-      // a user goes from V1 of SavedTabGroups to V2 through an update.
-      service->SaveGroup(
-          tab_groups::SavedTabGroupUtils::CreateSavedTabGroupFromLocalId(
-              local_id));
     }
   }
 

@@ -13,7 +13,6 @@
 #include "base/functional/callback_forward.h"
 #include "build/build_config.h"
 #include "chrome/browser/lifetime/browser_close_manager.h"
-#include "chrome/browser/signin/chrome_signin_helper.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window_deleter.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_bubble_type.h"
@@ -61,10 +60,6 @@ struct NativeWebKeyboardEvent;
 
 namespace gfx {
 class Size;
-}
-
-namespace signin_metrics {
-enum class AccessPoint;
 }
 
 namespace ui {
@@ -375,22 +370,6 @@ class BrowserWindow : public ui::BaseWindow {
                       bool user_gesture,
                       bool in_tab_dragging);
 
-  virtual void ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) = 0;
-
-  // Attempts showing the In-Product-Help for profile Switching. This is called
-  // after creating a new profile or opening an existing profile. If the profile
-  // customization bubble is shown, the IPH should be shown after.
-  virtual void MaybeShowProfileSwitchIPH() = 0;
-
-  // Attempts showing the In-Product-Help for supervised user profiles.
-  // This should be invoked for new signed-in supervised profiles created
-  // by FRE, the profile picker, profile menu or chrome menu.
-  // If the profile customization bubble is shown, the IPH should be shown
-  // after.
-  // TODO(351333491): To specify if this will be invoked on signing-in/turning
-  // on sync for an existing profile.
-  virtual void MaybeShowSupervisedUserProfileSignInIPH() = 0;
-
 
   // Returns object implementing ExclusiveAccessContext interface.
   virtual ExclusiveAccessContext* GetExclusiveAccessContext() = 0;
@@ -411,12 +390,6 @@ class BrowserWindow : public ui::BaseWindow {
   // Shows a confirmation dialog about enabling caret browsing.
   virtual void ShowCaretBrowsingDialog() = 0;
 
-
-  // Shows an Incognito clear browsing data dialog.
-  virtual void ShowIncognitoClearBrowsingDataDialog() = 0;
-
-  // Shows an Incognito history disclaimer dialog.
-  virtual void ShowIncognitoHistoryDisclaimerDialog() = 0;
 
   // Returns true when the window should be in unframed display mode. Only
   // supported in IWAs.

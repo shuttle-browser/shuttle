@@ -39,13 +39,11 @@ export interface SettingsMenuElement {
   $: {
     autofill: HTMLLinkElement,
     menu: CrMenuSelectorElement,
-    people: HTMLLinkElement,
     yourSavedInfo: HTMLLinkElement,
   };
 }
 
 const pathToActionMap: Map<string, string> = new Map([
-  ['/people', 'SettingsMenu_PeopleClicked'],
   ['/autofill', 'SettingsMenu_AutofillClicked'],
   ['/privacy', 'SettingsMenu_PrivacyClicked'],
   ['/performance', 'SettingsMenu_PerformanceClicked'],

@@ -124,9 +124,6 @@ class WebUIBrowserWindow : public BrowserWindow,
       override;
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHostFor(
       content::WebContents* web_contents) override;
-  void ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) override;
-  void MaybeShowProfileSwitchIPH() override;
-  void MaybeShowSupervisedUserProfileSignInIPH() override;
   ExclusiveAccessContext* GetExclusiveAccessContext() override;
   std::string GetWorkspace() const override;
   bool IsVisibleOnAllWorkspaces() const override;
@@ -135,8 +132,6 @@ class WebUIBrowserWindow : public BrowserWindow,
       content::RenderFrameHost* frame,
       content::EyeDropperListener* listener) override;
   void ShowCaretBrowsingDialog() override;
-  void ShowIncognitoClearBrowsingDataDialog() override;
-  void ShowIncognitoHistoryDisclaimerDialog() override;
   bool IsUnframedModeEnabled() const override;
   bool GetCanResize() override;
   ui::mojom::WindowShowState GetWindowShowState() const override;

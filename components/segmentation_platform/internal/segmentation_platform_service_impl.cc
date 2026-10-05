@@ -22,7 +22,6 @@
 #include "components/segmentation_platform/internal/constants.h"
 #include "components/segmentation_platform/internal/database/storage_service.h"
 #include "components/segmentation_platform/internal/database_client_impl.h"
-#include "components/segmentation_platform/internal/execution/processing/sync_device_info_observer.h"
 #include "components/segmentation_platform/internal/platform_options.h"
 #include "components/segmentation_platform/internal/proto/model_prediction.pb.h"
 #include "components/segmentation_platform/internal/scheduler/model_execution_scheduler_impl.h"
@@ -137,12 +136,6 @@ SegmentationPlatformServiceImpl::SegmentationPlatformServiceImpl(
   storage_service_->Initialize(
       base::BindOnce(&SegmentationPlatformServiceImpl::OnDatabaseInitialized,
                      weak_ptr_factory_.GetWeakPtr()));
-
-  // Create sync device info observer.
-  input_delegate_holder_->SetDelegate(
-      proto::CustomInput::FILL_SYNC_DEVICE_INFO,
-      std::make_unique<processing::SyncDeviceInfoObserver>(
-          init_params->device_info_tracker));
 
   result_refresh_manager_ = std::make_unique<ResultRefreshManager>(
       config_holder, std::move(storage_service_->cached_result_writer()),

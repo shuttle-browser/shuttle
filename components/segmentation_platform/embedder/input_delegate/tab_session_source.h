@@ -8,9 +8,6 @@
 #include "base/memory/raw_ptr.h"
 #include "components/segmentation_platform/embedder/tab_fetcher.h"
 #include "components/segmentation_platform/public/input_delegate.h"
-#include "components/sync_sessions/open_tabs_ui_delegate.h"
-#include "components/sync_sessions/session_sync_service.h"
-#include "components/sync_sessions/synced_session.h"
 
 namespace segmentation_platform::processing {
 
@@ -38,8 +35,7 @@ class TabSessionSource : public InputDelegate {
   static constexpr int kInputLocalTabTimeSinceModified = 7;
   static constexpr int kNumInputs = 8;
 
-  TabSessionSource(sync_sessions::SessionSyncService* session_sync_service,
-                   TabFetcher* tab_fetcher);
+  explicit TabSessionSource(TabFetcher* tab_fetcher);
   ~TabSessionSource() override;
 
   TabSessionSource(const TabSessionSource&) = delete;
@@ -66,12 +62,6 @@ class TabSessionSource : public InputDelegate {
                                Tensor& inputs);
 
  private:
-  void AddTabInfo(const sessions::SessionTab* session_tab, Tensor& inputs);
-  void AddTabRanks(const std::string& session_tag,
-                   const sessions::SessionTab* session_tab,
-                   Tensor& inputs);
-
-  const raw_ptr<sync_sessions::SessionSyncService> session_sync_service_;
   const raw_ptr<TabFetcher, DanglingUntriaged> tab_fetcher_;
 };
 

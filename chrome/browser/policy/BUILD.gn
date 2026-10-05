@@ -32,6 +32,7 @@ source_set("path_parser") {
 
   if (is_mac) {
     deps += [ "//build:branding_buildflags" ]
+    frameworks = [ "SystemConfiguration.framework" ]
   } else if (is_win) {
     deps += [ "//chrome/install_static:install_static_util" ]
   }
@@ -524,7 +525,6 @@ source_set("browser_tests") {
 
   if (enable_dice_support) {
     sources += [ "cloud/user_policy_signin_service_browsertest.cc" ]
-    deps += [ "//chrome/browser/ui/webui/signin" ]
   }
 
   if (enable_extensions_core) {
@@ -1118,8 +1118,6 @@ source_set("policy") {
 
   if (is_linux || is_win || is_mac) {
     public += [
-      "cloud/profile_token_policy_web_signin_service.h",
-      "cloud/profile_token_policy_web_signin_service_factory.h",
       "local_sync_policy_handler.h",
     ]
   }
@@ -1473,8 +1471,6 @@ source_set("impl") {
 
   if (is_linux || is_win || is_mac) {
     sources += [
-      "cloud/profile_token_policy_web_signin_service.cc",
-      "cloud/profile_token_policy_web_signin_service_factory.cc",
       "local_sync_policy_handler.cc",
     ]
     deps += [

@@ -23,9 +23,6 @@
 #include "chrome/browser/ash/login/signin/oauth2_login_manager.h"
 #endif
 
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-class BoundSessionCookieRefreshService;
-#endif
 
 class Profile;
 
@@ -92,10 +89,6 @@ class RendererUpdater : public KeyedService
   bool merge_session_running_;
   std::vector<mojo::Remote<chrome::mojom::ChromeOSListener>>
       chromeos_listeners_;
-#endif
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  const raw_ptr<BoundSessionCookieRefreshService>
-      bound_session_cookie_refresh_service_ = nullptr;
 #endif
 
   PrefChangeRegistrar pref_change_registrar_;

@@ -33,11 +33,9 @@ export interface SettingsRoutes {
   FONTS: Route;
   IDENTITY_DOCS: Route;
   LANGUAGES: Route;
-  MANAGE_PROFILE: Route;
   ON_STARTUP: Route;
   PASSKEYS: Route;
   PAYMENTS: Route;
-  PEOPLE: Route;
   PERFORMANCE: Route;
   PRELOADING: Route;
   PRIVACY: Route;
@@ -101,17 +99,11 @@ export interface SettingsRoutes {
   SITE_SETTINGS_ZOOM_LEVELS: Route;
   SITE_SETTINGS_WEB_PRINTING: Route;
   SPELL_CHECK: Route;
-  SYNC: Route;
-  SYNC_ADVANCED: Route;
   SYSTEM: Route;
   TRAVEL: Route;
   TRIGGERED_RESET_DIALOG: Route;
-  ACCOUNT: Route;
-  GOOGLE_SERVICES: Route;
 
   // <if expr="not is_chromeos">
-  IMPORT_DATA: Route;
-  SIGN_OUT: Route;
   // </if>
 }
 

@@ -4,7 +4,6 @@
 
 import './app.js';
 
-export {browserProxyFactory as foreignSessionBrowserProxyFactory} from 'chrome://resources/cr_components/history/foreign_sessions.mojom-webui.js';
 export {CriticalActionType} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 export type {CriticalAction, HistoryEntry, QueryResult} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 export {browserProxyFactory as historyClustersBrowserProxyFactory, ClusterAction, PageCallbackRouter, PageHandlerRemote, RelatedSearchAction, VisitAction, VisitType} from 'chrome://resources/cr_components/history_clusters/history_clusters.mojom-webui.js';
@@ -22,12 +21,7 @@ export {browserProxyFactory as userEducationProxyFactory} from 'chrome://resourc
 export {HistoryAppElement} from './app.js';
 export type {BrowserProxy, RemoveVisitsRequest} from './browser_proxy.js';
 export {BrowserProxyImpl} from './browser_proxy.js';
-export {HistoryPageViewHistogram, HistorySignInState, SYNCED_TABS_HISTOGRAM_NAME, SyncedTabsHistogram, SyncState, VisitContextMenuAction} from './constants.js';
-export type {ForeignSession, ForeignSessionTab, ForeignSessionWindow, HistoryIdentityState} from './externs.js';
-// <if expr="not is_chromeos">
-export {HistoryCrossDeviceSigninPromoElement} from './history_cross_device_signin_promo.js';
-export {HistoryCrossDeviceSigninPromoBrowserProxy} from './history_cross_device_signin_promo_browser_proxy.js';
-// </if>
+export {HistoryPageViewHistogram, VisitContextMenuAction} from './constants.js';
 export {HistoryFilterChipsElement} from './history_filter_chips.js';
 export {HistoryItemElement} from './history_item.js';
 export type {ActionMenuModel} from './history_list.js';
@@ -36,5 +30,3 @@ export {HistoryToolbarElement} from './history_toolbar.js';
 export type {ChangeQueryEvent} from './query_manager.js';
 export {HistorySearchedLabelElement} from './searched_label.js';
 export {HistorySideBarElement} from './side_bar.js';
-export {HistorySyncedDeviceCardElement} from './synced_device_card.js';
-export {HistorySyncedDeviceManagerElement} from './synced_device_manager.js';

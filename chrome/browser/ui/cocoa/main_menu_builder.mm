@@ -140,12 +140,6 @@ NSMenuItem* BuildFileMenu(NSApplication* nsapp,
                   .remove_if(is_pwa),
               Item(IDS_NEW_WINDOW_MAC)
                   .command_id(IDC_NEW_WINDOW),
-              Item(IDS_NEW_INCOGNITO_WINDOW_MAC)
-                  .command_id(IDC_NEW_INCOGNITO_WINDOW)
-                  .remove_if(is_pwa),
-              Item(IDS_NEW_ISOLATED_WINDOW_MAC)
-                  .command_id(IDC_NEW_ISOLATED_WINDOW)
-                  .remove_if(is_pwa),
               Item(IDS_REOPEN_CLOSED_TABS_MAC)
                   .command_id(IDC_RESTORE_TAB)
                   .remove_if(is_pwa),
@@ -413,21 +407,6 @@ NSMenuItem* BuildHistoryMenu(NSApplication* nsapp,
 }
 
 
-NSMenuItem* BuildPeopleMenu(NSApplication* nsapp,
-                            id app_delegate,
-                            const std::u16string& product_name,
-                            bool is_pwa,
-                            bool is_rtl) {
-  // clang-format off
-  NSMenuItem* item =
-      Item(IDS_PROFILES_MENU_NAME)
-          .tag(IDC_PROFILE_MAIN_MENU)
-          .submenu({})
-          .Build();
-  // clang-format on
-  return item;
-}
-
 NSMenuItem* BuildWindowMenu(NSApplication* nsapp,
                             id app_delegate,
                             const std::u16string& product_name,
@@ -584,7 +563,6 @@ NSMenu* BuildMainMenu(NSApplication* nsapp,
            &BuildEditMenu,
            &BuildViewMenu,
            &BuildHistoryMenu,
-           &BuildPeopleMenu,
            &BuildTabMenu,
            &BuildWindowMenu,
            &BuildHelpMenu,

@@ -164,9 +164,6 @@
 #include "chrome/browser/serial/chrome_serial_delegate.h"
 #include "chrome/browser/service_worker/service_worker_prewarm.h"
 #include "chrome/browser/service_worker/service_worker_synthetic_response.h"
-#include "chrome/browser/signin/chrome_signin_proxying_url_loader_factory.h"
-#include "chrome/browser/signin/chrome_signin_url_loader_throttle.h"
-#include "chrome/browser/signin/header_modification_delegate_impl.h"
 #include "chrome/browser/site_protection/site_familiarity_process_selection_deferring_condition.h"
 #include "chrome/browser/site_protection/site_familiarity_process_selection_user_data.h"
 #include "chrome/browser/site_protection/site_familiarity_utils.h"
@@ -179,7 +176,6 @@
 #include "chrome/browser/ssl/sct_reporting_service.h"
 #include "chrome/browser/ssl/ssl_client_certificate_selector.h"
 #include "chrome/browser/subresource_filter/subresource_filter_navigation_download_policy.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_utils.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
 #include "chrome/browser/tracing/chrome_tracing_delegate.h"
 #include "chrome/browser/ui/blocked_content/blocked_window_params.h"
@@ -717,9 +713,6 @@
 #endif
 
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service.h"
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_factory.h"
-#include "chrome/browser/signin/bound_session_credentials/bound_session_request_throttled_handler_browser_impl.h"
 #include "chrome/common/bound_session_request_throttled_handler.h"
 #endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
 
@@ -5297,20 +5290,11 @@ std::unique_ptr<blink::URLLoaderThrottle> CreateGoogleURLLoaderThrottle(
 #endif
     Profile* profile) {
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-  BoundSessionCookieRefreshService* bound_session_cookie_refresh_service =
-      BoundSessionCookieRefreshServiceFactory::GetForProfile(profile);
+  // Bound session credentials are not supported in this fork.
   std::unique_ptr<BoundSessionRequestThrottledHandler>
       bound_session_request_throttled_handler;
   std::vector<chrome::mojom::BoundSessionThrottlerParamsPtr>
       bound_session_throttler_params;
-
-  if (bound_session_cookie_refresh_service) {
-    bound_session_request_throttled_handler =
-        std::make_unique<BoundSessionRequestThrottledHandlerBrowserImpl>(
-            *bound_session_cookie_refresh_service);
-    bound_session_throttler_params =
-        bound_session_cookie_refresh_service->GetBoundSessionThrottlerParams();
-  }
 #endif
 
   chrome::mojom::DynamicParamsPtr dynamic_params =
@@ -5411,20 +5395,6 @@ ChromeContentBrowserClient::CreateURLLoaderThrottles(
   result.push_back(std::make_unique<PluginResponseInterceptorURLLoaderThrottle>(
       request.destination, frame_tree_node_id));
 #endif
-
-#if BUILDFLAG(IS_ANDROID)
-  auto delegate = std::make_unique<signin::HeaderModificationDelegateImpl>(
-      profile, /*incognito_enabled=*/!is_custom_tab);
-#else
-  auto delegate =
-      std::make_unique<signin::HeaderModificationDelegateImpl>(profile);
-#endif
-
-  auto signin_throttle =
-      signin::URLLoaderThrottle::MaybeCreate(std::move(delegate), wc_getter);
-  if (signin_throttle) {
-    result.push_back(std::move(signin_throttle));
-  }
 
   if (base::FeatureList::IsEnabled(
           net::features::kEnablePrivateVerificationTokens) &&
@@ -5916,10 +5886,6 @@ void ChromeContentBrowserClient::WillCreateURLLoaderFactory(
       MaybeProxyRequest(browser_context, factory_builder);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
-
-  signin::ProxyingURLLoaderFactory::MaybeProxyRequest(
-      frame, type == URLLoaderFactoryType::kNavigation, request_initiator,
-      isolation_info, factory_builder);
 
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
   if (disable_secure_dns) {

@@ -184,12 +184,6 @@ export function getHtml(this: SettingsAppearancePageElement) {
       </div>
     ` : ''}
 
-    <settings-toggle-button class="hr" id="autoPinNewTabGroups"
-        pref-key="auto_pin_new_tab_groups"
-        label="$i18n{autoPinNewTabGroups}"
-        ?hidden="${this.showOrganizerPanelEnabled_}">
-    </settings-toggle-button>
-
     ${this.showCtrlTabMru_ ? html`
       <settings-toggle-button class="hr" id="ctrlTabMru"
           pref-key="browser.ctrl_tab_mru"

@@ -20,16 +20,13 @@
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/signin/account_reconcilor_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "components/google/core/common/google_util.h"
 #include "components/policy/core/browser/signin/profile_separation_policies.h"
 #include "components/prefs/pref_service.h"
-#include "components/signin/core/browser/account_reconcilor.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_managed_status_finder.h"
@@ -221,11 +218,6 @@ PrimaryAccountError SetPrimaryAccountWithInvalidToken(
 
   DVLOG(1) << "Adding user with gaia id <" << gaia_id << "> and email <"
            << user_email << "> with invalid refresh token.";
-
-  // Lock AccountReconcilor temporarily to prevent AddOrUpdateAccount failure
-  // since we have an invalid refresh token.
-  AccountReconcilor::Lock account_reconcilor_lock(
-      AccountReconcilorFactory::GetForProfile(profile));
 
   CoreAccountId account_id =
       identity_manager->GetAccountsMutator()->AddOrUpdateAccount(
@@ -535,9 +527,6 @@ bool ShouldShowAvatarSyncPromo(Profile* profile) {
   PrefService* pref_service = profile->GetPrefs();
   GaiaId previously_syncing_gaia_id =
       GaiaId(pref_service->GetString(prefs::kGoogleServicesLastSyncingGaiaId));
-  if (IsCrossAccountError(profile, account_info.GetGaiaId())) {
-    return false;
-  }
 
   // Do not show the promo for users that have been signed for a short period of
   // time.

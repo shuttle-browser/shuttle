@@ -18,7 +18,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
@@ -28,9 +27,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/tab_helpers.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
-#include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_menu_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -41,10 +38,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/reading_list/core/reading_list_model.h"
-#include "components/saved_tab_groups/internal/saved_tab_group_model.h"
-#include "components/saved_tab_groups/public/features.h"
-#include "components/saved_tab_groups/public/tab_group_sync_service.h"
-#include "components/saved_tab_groups/public/types.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
 #include "components/sessions/content/content_live_tab.h"
 #include "components/sessions/core/session_id.h"
@@ -59,24 +52,6 @@
 #include "ui/base/mojom/window_show_state.mojom.h"
 
 namespace {
-
-void TabGroupsDialogTimingToSource(
-    base::OnceCallback<void(CloseTabSource)> callback,
-    CloseTabSource source,
-    tab_groups::DeletionDialogController::DeletionDialogTiming timing) {
-  switch (timing) {
-    case tab_groups::DeletionDialogController::DeletionDialogTiming::
-        Synchronous: {
-      std::move(callback).Run(source);
-      return;
-    }
-    case tab_groups::DeletionDialogController::DeletionDialogTiming::
-        Asynchronous: {
-      std::move(callback).Run(CloseTabSource::kFromNonUIEvent);
-      return;
-    }
-  }
-}
 
 }  // namespace
 
@@ -378,30 +353,14 @@ void BrowserTabStripModelDelegate::OnGroupsDestruction(
     const std::vector<tab_groups::TabGroupId>& group_ids,
     base::OnceCallback<void()> close_callback,
     bool delete_groups) {
-  if (!delete_groups) {
-    // Close the groups rather than delete them to retain the saved group.
-    for (auto group_id : group_ids) {
-      tab_groups::SavedTabGroupUtils::RemoveGroupFromTabstrip(browser_,
-                                                              group_id);
-    }
-    std::move(close_callback).Run();
-  } else {
-    tab_groups::SavedTabGroupUtils::MaybeShowSavedTabGroupDeletionDialog(
-        browser_, tab_groups::GroupDeletionReason::ClosedLastTab, group_ids,
-        base::IgnoreArgs<
-            tab_groups::DeletionDialogController::DeletionDialogTiming>(
-            std::move(close_callback)));
-  }
+  // No saved tab groups: groups are always deleted immediately.
+  std::move(close_callback).Run();
 }
 
 void BrowserTabStripModelDelegate::OnRemovingAllTabsFromGroups(
     const std::vector<tab_groups::TabGroupId>& group_ids,
     base::OnceCallback<void()> callback) {
-  tab_groups::SavedTabGroupUtils::MaybeShowSavedTabGroupDeletionDialog(
-      browser_, tab_groups::GroupDeletionReason::UngroupedLastTab, group_ids,
-      base::IgnoreArgs<
-          tab_groups::DeletionDialogController::DeletionDialogTiming>(
-          std::move(callback)));
+  std::move(callback).Run();
 }
 
 void BrowserTabStripModelDelegate::CloseTab(
@@ -513,15 +472,7 @@ void BrowserTabStripModelDelegate::CloseTab(
     return;
   }
 
-  auto timing_mapped_callback = base::BindOnce(&TabGroupsDialogTimingToSource,
-                                               std::move(do_close), source);
-
-  // If the user is destroying the last tab in a saved or shared group via the
-  // tabstrip, a dialog is shown that will decide whether to destroy the tab or
-  // not. It will first ungroup the tab, then close the tab.
-  tab_groups::SavedTabGroupUtils::MaybeShowSavedTabGroupDeletionDialog(
-      browser_, tab_groups::GroupDeletionReason::ClosedLastTab,
-      groups_to_delete, std::move(timing_mapped_callback));
+  std::move(do_close).Run(source);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

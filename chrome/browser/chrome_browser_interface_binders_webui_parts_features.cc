@@ -22,18 +22,6 @@
 #include "chrome/browser/ui/webui/certificate_manager/certificate_manager_ui.h"
 #endif  // BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/webui/signin/batch_upload/batch_upload.mojom.h"
-#include "chrome/browser/ui/webui/signin/batch_upload_ui.h"
-#endif
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/ui/webui/signin/cross_device_signin_qr_bubble/cross_device_signin_qr_bubble.mojom.h"
-#include "chrome/browser/ui/webui/signin/cross_device_signin_qr_bubble_ui.h"
-#include "chrome/browser/ui/webui/signin/signout_confirmation/signout_confirmation.mojom.h"
-#include "chrome/browser/ui/webui/signin/signout_confirmation/signout_confirmation_ui.h"
-#endif
-
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/ui/webui/extensions_zero_state_promo/zero_state_promo_ui.h"
 #endif
@@ -63,20 +51,6 @@ void PopulateChromeWebUIFrameBindersPartsFeatures(
       certificate_manager::mojom::CertificateManagerPageHandlerFactory,
       CertificateManagerUI>(map);
 #endif  // BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-  RegisterWebUIControllerInterfaceBinder<
-      batch_upload::mojom::PageHandlerFactory, BatchUploadUI>(map);
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  RegisterWebUIControllerInterfaceBinder<
-      cross_device_signin::mojom::PageHandlerFactory,
-      CrossDeviceSigninQrBubbleUI>(map);
-  RegisterWebUIControllerInterfaceBinder<
-      signout_confirmation::mojom::PageHandlerFactory, SignoutConfirmationUI>(
-      map);
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   RegisterWebUIControllerInterfaceBinder<

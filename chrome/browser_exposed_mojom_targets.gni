@@ -28,7 +28,6 @@ browser_exposed_mojom_targets = [
   "//chrome/browser/ui/webui/discards:mojo_bindings",
   "//chrome/browser/ui/webui/downloads:mojo_bindings",
   "//chrome/browser/ui/webui/extensions_zero_state_promo:mojo_bindings",
-  "//chrome/browser/ui/webui/feature_showcase:mojo_bindings",
   "//chrome/browser/ui/webui/infobar_internals:mojo_bindings",
   "//chrome/browser/ui/webui/user_education_internals:mojo_bindings",
   "//chrome/browser/ui/webui/location_internals:mojo_bindings",
@@ -39,12 +38,7 @@ browser_exposed_mojom_targets = [
   "//chrome/browser/ui/webui/password_manager:mojo_bindings",
   "//chrome/browser/ui/webui/reset_password:mojo_bindings",
   "//chrome/browser/ui/webui/segmentation_internals:mojo_bindings",
-  "//chrome/browser/ui/webui/side_panel/comments:mojo_bindings",
   "//chrome/browser/ui/webui/side_panel/reading_list:mojo_bindings",
-  "//chrome/browser/ui/webui/signin/batch_upload:mojo_bindings",
-  "//chrome/browser/ui/webui/signin/history_sync_optin:mojo_bindings",
-  "//chrome/browser/ui/webui/signin/cross_device_signin_qr_bubble:mojo_bindings",
-  "//chrome/browser/ui/webui/signin/signout_confirmation:mojo_bindings",
   "//chrome/browser/ui/webui/subresource_filter:mojo_bindings",
   "//chrome/browser/ui/webui/suggest_internals:mojo_bindings",
   "//chrome/browser/ui/webui/tab_strip_internals:mojo_bindings",
@@ -288,7 +282,6 @@ browser_exposed_mojom_targets = [
   "//ui/webui/resources/cr_components/history:mojo_bindings",
   "//ui/webui/resources/cr_components/history_clusters:mojo_bindings",
   "//ui/webui/resources/cr_components/theme_color_picker:mojom",
-  "//ui/webui/resources/js/batch_upload_promo:mojo_bindings",
   "//ui/webui/resources/js/browser_command:mojo_bindings",
   "//ui/webui/resources/js/metrics_reporter:mojo_bindings",
   "//ui/webui/resources/js/tracked_element:mojo_bindings",
@@ -303,10 +296,6 @@ if (!is_android) {
   ]
 }
 
-if (!is_chromeos) {
-  browser_exposed_mojom_targets +=
-      [ "//ui/webui/resources/cr_components/signin:mojo_bindings" ]
-}
 
 if (enable_webui_ntp) {
   browser_exposed_mojom_targets += [

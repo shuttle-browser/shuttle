@@ -32,7 +32,6 @@
 #include "chrome/browser/profiles/profile_io_data.h"
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
@@ -50,7 +49,6 @@
 #include "chrome/browser/ui/startup/startup_tab.h"
 #include "chrome/browser/ui/startup/startup_tab_provider.h"
 #include "chrome/browser/ui/startup/startup_types.h"
-#include "chrome/browser/ui/tabs/shared_tab_group_version_upgrade_modal.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
 #include "chrome/browser/ui/toasts/toast_controller.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -563,9 +561,6 @@ void StartupBrowserCreatorImpl::DetermineURLsAndLaunch(
 
   BrowserWindowInterface* browser = RestoreOrCreateBrowser(
       tabs, behavior, restore_options, process_startup, is_post_crash_launch);
-
-  tab_groups::MaybeShowSharedTabGroupVersionOutOfDateModal(browser);
-  tab_groups::MaybeShowSharedTabGroupVersionUpToDateToast(browser);
 
   if (base::FeatureList::IsEnabled(features::kNonMilestoneUpdateToast)) {
     std::string current_version_string =

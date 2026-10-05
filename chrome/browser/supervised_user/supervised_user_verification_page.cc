@@ -10,7 +10,6 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
-#include "chrome/browser/signin/signin_promo.h"
 #include "components/grit/components_resources.h"
 #include "components/security_interstitials/content/security_interstitial_controller_client.h"
 #include "components/security_interstitials/core/common_string_util.h"
@@ -61,8 +60,7 @@ SupervisedUserVerificationPage::SupervisedUserVerificationPage(
       email_to_reauth_(email_to_reauth),
       request_url_(request_url),
       sign_in_continue_url_(GaiaUrls::GetInstance()->blank_page_url()),
-      reauth_url_(signin::GetChromeReauthURL(
-          {.email = email_to_reauth_, .continue_url = sign_in_continue_url_})),
+      reauth_url_(),  // Sign-in is not available.
       child_account_service_(child_account_service) {
   if (child_account_service_) {
     // Reloads the interstitial to continue navigation once the supervised user
@@ -166,6 +164,9 @@ void SupervisedUserVerificationPage::CommandReceived(
 
   switch (cmd) {
     case security_interstitials::CMD_OPEN_LOGIN: {
+      if (!reauth_url_.is_valid()) {
+        break;
+      }
       content::OpenURLParams params(reauth_url_, content::Referrer(),
                                     WindowOpenDisposition::NEW_FOREGROUND_TAB,
                                     ui::PAGE_TRANSITION_LINK, false);

@@ -40,7 +40,6 @@
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/sync/user_event_service_factory.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
@@ -90,7 +89,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/sync/protocol/user_event_specifics.pb.h"
 #include "components/sync/service/sync_service.h"
-#include "components/sync_user_events/user_event_service.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/variations/service/variations_service.h"
 #include "content/public/browser/browser_thread.h"
@@ -226,6 +224,11 @@ int64_t GetNavigationIDFromPrefsByOrigin(PrefService* prefs,
              ? navigation_id
              : 0;
 }
+
+// The sync user event service no longer exists; events are dropped.
+struct UserEventSink {
+  void RecordUserEvent(std::unique_ptr<UserEventSpecifics>) {}
+};
 
 // Return a new UserEventSpecifics w/o the navigation_id populated
 std::unique_ptr<UserEventSpecifics> GetNewUserEventSpecifics() {
@@ -775,8 +778,7 @@ void ChromePasswordProtectionService::MaybeLogPasswordReuseDetectedEvent(
     return;
   }
 
-  syncer::UserEventService* user_event_service =
-      browser_sync::UserEventServiceFactory::GetForProfile(profile_);
+  UserEventSink* user_event_service = nullptr;  // User events are gone.
   if (!user_event_service)
     return;
 
@@ -822,8 +824,7 @@ void ChromePasswordProtectionService::MaybeLogPasswordReuseDialogInteraction(
     return;
   }
 
-  syncer::UserEventService* user_event_service =
-      browser_sync::UserEventServiceFactory::GetForProfile(profile_);
+  UserEventSink* user_event_service = nullptr;  // User events are gone.
   if (!user_event_service)
     return;
 
@@ -851,8 +852,7 @@ void ChromePasswordProtectionService::MaybeLogPasswordReuseLookupResult(
     return;
   }
 
-  syncer::UserEventService* user_event_service =
-      browser_sync::UserEventServiceFactory::GetForProfile(profile_);
+  UserEventSink* user_event_service = nullptr;  // User events are gone.
   if (!user_event_service)
     return;
 
@@ -916,8 +916,7 @@ void ChromePasswordProtectionService::
       }
     }
   } else {
-    syncer::UserEventService* user_event_service =
-        browser_sync::UserEventServiceFactory::GetForProfile(profile_);
+    UserEventSink* user_event_service = nullptr;  // User events are gone.
     if (!user_event_service)
       return;
 
@@ -1545,8 +1544,7 @@ void ChromePasswordProtectionService::MaybeLogPasswordCapture(bool did_log_in) {
   if (IsIncognito() || sync_password_hash_.empty())
     return;
 
-  syncer::UserEventService* user_event_service =
-      browser_sync::UserEventServiceFactory::GetForProfile(profile_);
+  UserEventSink* user_event_service = nullptr;  // User events are gone.
   if (!user_event_service)
     return;
 

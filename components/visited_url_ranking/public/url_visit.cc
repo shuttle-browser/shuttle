@@ -17,7 +17,7 @@ namespace visited_url_ranking {
 URLVisit::URLVisit(const GURL& url_arg,
                    const std::u16string& title_arg,
                    const base::Time& last_modified_arg,
-                   syncer::DeviceInfo::FormFactor device_type_arg,
+                   DeviceFormFactor device_type_arg,
                    Source source_arg,
                    const std::optional<std::string>& client_name_arg)
     : url(url_arg),
@@ -172,7 +172,7 @@ URLVisitAggregate::TabData::~TabData() = default;
 URLVisitAggregate::HistoryData::HistoryData(
     history::AnnotatedVisit annotated_visit,
     std::optional<std::string> client_name,
-    syncer::DeviceInfo::FormFactor device_type)
+    DeviceFormFactor device_type)
     : last_visited(std::move(annotated_visit)),
       visit(last_visited.url_row.url(),
             last_visited.url_row.title(),

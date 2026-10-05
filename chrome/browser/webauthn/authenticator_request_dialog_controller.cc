@@ -38,7 +38,6 @@
 #include "chrome/browser/password_manager/chrome_webauthn_credentials_delegate.h"
 #include "chrome/browser/password_manager/chrome_webauthn_credentials_delegate_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -1824,10 +1823,7 @@ void AuthenticatorRequestDialogController::ReauthForSyncRestore() {
   if (!render_frame_host) {
     return;
   }
-  signin_ui_util::ShowReauthForPrimaryAccountWithAuthError(
-      Profile::FromBrowserContext(render_frame_host->GetBrowserContext())
-          ->GetOriginalProfile(),
-      signin_metrics::AccessPoint::kWebauthnModalDialog);
+  // Sign-in is not available.
   CancelAuthenticatorRequest();
 }
 

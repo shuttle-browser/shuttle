@@ -25,7 +25,6 @@ source_set("autocomplete") {
     "//chrome/browser/profiles:profile",
     "//components/omnibox/browser",
     "//components/omnibox/browser:location_bar",
-    "//components/saved_tab_groups/public",
   ]
 
   if (is_android) {
@@ -91,7 +90,6 @@ source_set("impl") {
     "//chrome/browser/signin",
     "//chrome/browser/sync",
     "//chrome/browser/sync:factories",
-    "//chrome/browser/tab_group_sync:factories",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/omnibox",

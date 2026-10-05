@@ -30,20 +30,13 @@
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/account_preview_data_service_factory.h"
-#include "chrome/browser/signin/chrome_signin_pref_names.h"
-#include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_ui_util.h"
 #include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
-#include "chrome/browser/sync/device_info_sync_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
-#include "chrome/browser/ui/webui/signin/signin_utils.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
@@ -61,18 +54,10 @@
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
-#include "components/signin/public/base/signin_pref_names.h"
-#include "components/signin/public/base/signin_prefs.h"
-#include "components/signin/public/identity_manager/account_info.h"
-#include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
 #include "components/supervised_user/core/browser/supervised_user_utils.h"
-#include "components/sync/protocol/sync_enums.pb.h"
 #include "components/sync/service/sync_service.h"
-#include "components/sync_device_info/device_info.h"
-#include "components/sync_device_info/device_info_sync_service.h"
-#include "components/sync_device_info/device_info_tracker.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
@@ -85,66 +70,6 @@ using history::HistoryService;
 using history::WebHistoryService;
 
 namespace {
-
-#if !BUILDFLAG(IS_CHROMEOS)
-constexpr int kHistorySyncPromoShownThreshold = 5;
-constexpr base::TimeDelta kHistorySyncPromoCooldown = base::Days(7);
-
-history::mojom::AccountInfoPtr CreateAccountInfoDataMojo(
-    const AccountInfo& info) {
-  auto account_info_mojo = history::mojom::AccountInfo::New();
-  account_info_mojo->name = std::string(info.GetFullName().value_or(""));
-  account_info_mojo->email = std::string(info.GetEmail());
-  account_info_mojo->account_image_src =
-      GURL(signin::GetAccountPictureUrl(info));
-  return account_info_mojo;
-}
-#endif
-
-// Identifiers for the type of device from which a history entry originated.
-static const char kDeviceTypeLaptop[] = "laptop";
-static const char kDeviceTypePhone[] = "phone";
-static const char kDeviceTypeTablet[] = "tablet";
-
-// Gets the name and type of a device for the given sync client ID.
-// |name| and |type| are out parameters.
-void GetDeviceNameAndType(const syncer::DeviceInfoTracker* tracker,
-                          const std::string& client_id,
-                          std::string* name,
-                          std::string* type) {
-  // DeviceInfoTracker must be syncing in order for remote history entries to
-  // be available.
-  DCHECK(tracker);
-  DCHECK(tracker->IsSyncing());
-
-  const syncer::DeviceInfo* device_info = tracker->GetDeviceInfo(client_id);
-  if (device_info) {
-    *name = device_info->client_name();
-    switch (device_info->form_factor()) {
-      case syncer::DeviceInfo::FormFactor::kPhone:
-        *type = kDeviceTypePhone;
-        break;
-      case syncer::DeviceInfo::FormFactor::kTablet:
-        *type = kDeviceTypeTablet;
-        break;
-      // return the laptop icon as default.
-      case syncer::DeviceInfo::FormFactor::kUnknown:
-        [[fallthrough]];
-      case syncer::DeviceInfo::FormFactor::kAutomotive:
-        [[fallthrough]];
-      case syncer::DeviceInfo::FormFactor::kWearable:
-        [[fallthrough]];
-      case syncer::DeviceInfo::FormFactor::kTv:
-        [[fallthrough]];
-      case syncer::DeviceInfo::FormFactor::kDesktop:
-        *type = kDeviceTypeLaptop;
-    }
-    return;
-  }
-
-  *name = l10n_util::GetStringUTF8(IDS_HISTORY_UNKNOWN_DEVICE);
-  *type = kDeviceTypeLaptop;
-}
 
 // Formats `entry`'s URL and title and adds them to `result`.
 std::pair<std::string, std::string> SetHistoryEntryUrlAndTitle(
@@ -232,7 +157,6 @@ history::mojom::FilteringBehavior FilteringBehaviorToMojom(
 history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     const BrowsingHistoryService::HistoryEntry& entry,
     Profile& profile,
-    const syncer::DeviceInfoTracker* tracker,
     base::Clock* clock) {
   auto result_mojom = history::mojom::HistoryEntry::New();
   base::DictValue dictionary;
@@ -305,14 +229,8 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     date_time_of_day = base::TimeFormatTimeOfDay(entry.time);
   }
 
-  std::string device_name;
-  std::string device_type;
-  if (!entry.client_id.empty()) {
-    GetDeviceNameAndType(tracker, entry.client_id, &device_name, &device_type);
-  }
-
-  result_mojom->device_name = device_name;
-  result_mojom->device_type = device_type;
+  result_mojom->device_name = std::string();
+  result_mojom->device_type = std::string();
 
   supervised_user::FilteringBehavior filtering_behavior;
   if (profile.IsChild()) {
@@ -419,8 +337,6 @@ BrowsingHistoryHandler::BrowsingHistoryHandler(
     : profile_(profile),
       web_contents_(web_contents),
       page_handler_(this, std::move(pending_page_handler)),
-      identity_manager_(
-          CHECK_DEREF(IdentityManagerFactory::GetForProfile(profile))),
       clock_(base::DefaultClock::GetInstance()),
       browsing_history_service_(nullptr) {}
 
@@ -567,161 +483,6 @@ void BrowsingHistoryHandler::OpenClearBrowsingDataDialog() {
   chrome::ShowClearBrowsingDataDialog(browser);
 }
 
-void BrowsingHistoryHandler::TurnOnHistorySync() {
-#if !BUILDFLAG(IS_CHROMEOS)
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents_);
-  if (browser) {
-    signin_ui_util::SignInAndEnableHistorySync(
-        browser, profile_, signin_metrics::AccessPoint::kRecentTabs);
-  }
-#else
-  // This is not expected to be called on ChromeOS as the screen that uses this
-  // function is never shown for ChromeOS (using <if expr="not is_chromeos">).
-  NOTREACHED();
-#endif
-}
-
-#if !BUILDFLAG(IS_CHROMEOS)
-void BrowsingHistoryHandler::ShouldShowHistoryPageHistorySyncPromo(
-    ShouldShowHistoryPageHistorySyncPromoCallback callback) {
-  const int promo_shown_count = GetHistoryPageHistorySyncPromoShownCount();
-
-  // If the promo has been shown more than the threshold, the promo should not
-  // be shown.
-  if (promo_shown_count >= kHistorySyncPromoShownThreshold) {
-    std::move(callback).Run(false);
-    return;
-  }
-
-  const bool shown_after_dismissal =
-      IsHistoryPageHistorySyncPromoShownAfterDismissal();
-  // If the promo was dismissed and shown once after dismissal, the promo should
-  // not be shown anymore.
-  if (shown_after_dismissal) {
-    std::move(callback).Run(false);
-    return;
-  }
-  const base::Time last_dismissed_timestamp =
-      GetHistoryPageHistorySyncPromoLastDismissedTimestamp();
-  const bool was_dismissed = !last_dismissed_timestamp.is_null();
-  // If the promo was dismissed and the cooldown has not passed, the promo
-  // should not be shown.
-  if (was_dismissed &&
-      clock_->Now() < last_dismissed_timestamp + kHistorySyncPromoCooldown) {
-    std::move(callback).Run(false);
-    return;
-  }
-
-  std::move(callback).Run(true);
-}
-
-void BrowsingHistoryHandler::RecordHistoryPageHistorySyncPromoDismissed() {
-  SetHistoryPageHistorySyncPromoLastDismissedTimestamp(clock_->Now());
-}
-
-void BrowsingHistoryHandler::IncrementHistoryPageHistorySyncPromoShownCount() {
-  IncrementHistoryPageHistorySyncPromoShownCountPref();
-
-  const base::Time last_dismissed_timestamp =
-      GetHistoryPageHistorySyncPromoLastDismissedTimestamp();
-  const bool was_dismissed = !last_dismissed_timestamp.is_null();
-  if (was_dismissed) {
-    SetHistoryPageHistorySyncPromoShownAfterDismissal();
-  }
-}
-
-int BrowsingHistoryHandler::GetHistoryPageHistorySyncPromoShownCount() const {
-  const AccountInfo account = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  if (account.GetGaiaId().empty()) {
-    return profile_->GetPrefs()->GetInteger(
-        prefs::kHistoryPageHistorySyncPromoShownCountPerProfile);
-  }
-
-  return SigninPrefs(*profile_->GetPrefs())
-      .GetHistoryPageHistorySyncPromoShownCount(account.GetGaiaId());
-}
-
-base::Time
-BrowsingHistoryHandler::GetHistoryPageHistorySyncPromoLastDismissedTimestamp()
-    const {
-  const AccountInfo account = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  if (account.GetGaiaId().empty()) {
-    return profile_->GetPrefs()->GetTime(
-        prefs::kHistoryPageHistorySyncPromoLastDismissedTimestampPerProfile);
-  }
-
-  return SigninPrefs(*profile_->GetPrefs())
-      .GetHistoryPageHistorySyncPromoLastDismissedTimestamp(account.GetGaiaId())
-      .value_or(base::Time());
-}
-
-bool BrowsingHistoryHandler::IsHistoryPageHistorySyncPromoShownAfterDismissal()
-    const {
-  const AccountInfo account = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  if (account.GetGaiaId().empty()) {
-    return profile_->GetPrefs()->GetBoolean(
-        prefs::kHistoryPageHistorySyncPromoShownAfterDismissalPerProfile);
-  }
-
-  return SigninPrefs(*profile_->GetPrefs())
-      .GetHistoryPageHistorySyncPromoShownAfterDismissal(account.GetGaiaId());
-}
-
-void BrowsingHistoryHandler::
-    SetHistoryPageHistorySyncPromoLastDismissedTimestamp(base::Time time) {
-  const AccountInfo account = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  if (account.GetGaiaId().empty()) {
-    profile_->GetPrefs()->SetTime(
-        prefs::kHistoryPageHistorySyncPromoLastDismissedTimestampPerProfile,
-        time);
-  } else {
-    SigninPrefs(*profile_->GetPrefs())
-        .SetHistoryPageHistorySyncPromoLastDismissedTimestamp(
-            account.GetGaiaId(), time);
-  }
-}
-
-void BrowsingHistoryHandler::
-    IncrementHistoryPageHistorySyncPromoShownCountPref() {
-  const AccountInfo account = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  if (account.GetGaiaId().empty()) {
-    const int promo_shown_count = profile_->GetPrefs()->GetInteger(
-        prefs::kHistoryPageHistorySyncPromoShownCountPerProfile);
-    profile_->GetPrefs()->SetInteger(
-        prefs::kHistoryPageHistorySyncPromoShownCountPerProfile,
-        promo_shown_count + 1);
-  } else {
-    SigninPrefs(*profile_->GetPrefs())
-        .IncrementHistoryPageHistorySyncPromoShownCount(account.GetGaiaId());
-  }
-}
-
-void BrowsingHistoryHandler::
-    SetHistoryPageHistorySyncPromoShownAfterDismissal() {
-  const AccountInfo account = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  if (account.GetGaiaId().empty()) {
-    profile_->GetPrefs()->SetBoolean(
-        prefs::kHistoryPageHistorySyncPromoShownAfterDismissalPerProfile, true);
-  } else {
-    SigninPrefs(*profile_->GetPrefs())
-        .SetHistoryPageHistorySyncPromoShownAfterDismissal(account.GetGaiaId());
-  }
-}
-#endif
-
 void BrowsingHistoryHandler::RemoveBookmark(const std::string& url) {}
 //
 void BrowsingHistoryHandler::SetLastSelectedTab(const int last_tab) {
@@ -798,12 +559,6 @@ void BrowsingHistoryHandler::HandleQueryResults(
     query_timer_.reset();
   }
 
-  const syncer::DeviceInfoTracker* tracker =
-      DeviceInfoSyncServiceFactory::GetForProfile(profile_)
-          ->GetDeviceInfoTracker();
-
-  DCHECK(tracker);
-
   absl::flat_hash_map<history::VisitID,
                       std::vector<history::mojom::CriticalActionPtr>>
       actions_by_visit_id;
@@ -828,7 +583,7 @@ void BrowsingHistoryHandler::HandleQueryResults(
   std::vector<history::mojom::HistoryEntryPtr> results_mojom;
   for (const BrowsingHistoryService::HistoryEntry& entry : results) {
     history::mojom::HistoryEntryPtr entry_mojom =
-        HistoryEntryToMojom(entry, *profile_, tracker, clock_);
+        HistoryEntryToMojom(entry, *profile_, clock_);
 
     if (entry.is_actor_visit &&
         base::FeatureList::IsEnabled(
@@ -898,41 +653,4 @@ void BrowsingHistoryHandler::HasOtherFormsOfBrowsingHistory(
 
 Profile* BrowsingHistoryHandler::GetProfile() {
   return profile_;
-}
-
-void BrowsingHistoryHandler::RequestAccountInfo(
-    RequestAccountInfoCallback callback) {
-#if !BUILDFLAG(IS_CHROMEOS)
-  AccountInfo account_info = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-  std::move(callback).Run(CreateAccountInfoDataMojo(account_info));
-
-  if (!identity_manager_observation_.IsObserving()) {
-    identity_manager_observation_.Observe(&identity_manager_.get());
-  }
-#else
-  // This is not expected to be called on ChromeOS as the screen that uses this
-  // function is never shown for ChromeOS (using <if expr="not is_chromeos">).
-  NOTREACHED();
-#endif
-}
-
-void BrowsingHistoryHandler::OnExtendedAccountInfoUpdated(
-    const AccountInfo& info) {
-#if !BUILDFLAG(IS_CHROMEOS)
-  AccountInfo account_to_display = signin_ui_util::GetSingleAccountForPromos(
-      &identity_manager_.get(),
-      AccountPreviewDataServiceFactory::GetForProfile(profile_));
-
-  if (info.IsEmpty() || !info.IsValid() ||
-      info.GetAccountId() != account_to_display.GetAccountId()) {
-    return;
-  }
-  page_->SendAccountInfo(CreateAccountInfoDataMojo(info));
-#else
-  // This is not expected to be called on ChromeOS as the screen that uses this
-  // function is never shown for ChromeOS (using <if expr="not is_chromeos">).
-  NOTREACHED();
-#endif
 }

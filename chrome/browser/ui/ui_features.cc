@@ -427,10 +427,8 @@ bool IsWebUISplitTabsButtonEnabled() {
 }
 
 bool IsWebUIAvatarButtonEnabled() {
-  return !IsProcessOverheadExperimentActive() &&
-         base::FeatureList::IsEnabled(features::kInitialWebUI) &&
-         (base::FeatureList::IsEnabled(features::kWebUIToolbar) ||
-          base::FeatureList::IsEnabled(features::kWebUIAvatarButton));
+  // Agent Chrome: the avatar button and profile menu were removed.
+  return false;
 }
 
 bool IsWebUIMediaButtonEnabled() {

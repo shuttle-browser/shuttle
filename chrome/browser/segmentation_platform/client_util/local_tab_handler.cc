@@ -9,6 +9,7 @@
 #include "components/segmentation_platform/embedder/tab_fetcher.h"
 #include "components/segmentation_platform/internal/execution/processing/feature_processor_state.h"
 #include "components/segmentation_platform/public/input_delegate.h"
+#include "components/sessions/content/session_tab_helper.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -19,14 +20,12 @@
 #include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/ui/android/tab_model/tab_model.h"
 #include "chrome/browser/ui/android/tab_model/tab_model_list.h"
-#include "components/sync_sessions/synced_tab_delegate.h"
 
 #else  // !BUILDFLAG(IS_ANDROID)
 
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"  // nogncheck crbug.com/40147906
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
-#include "chrome/browser/ui/sync/browser_synced_tab_delegate.h"
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -124,10 +123,8 @@ std::vector<TabFetcher::TabEntry> FetchTabs(const Profile* profile) {
         for (int i = 0; i < tab_strip_model->count(); ++i) {
           content::WebContents* const web_contents =
               tab_strip_model->GetWebContentsAt(i);
-          auto* const tab_delegate =
-              BrowserSyncedTabDelegate::From(tab_strip_model->GetTabAtIndex(i));
-          tabs.emplace_back(tab_delegate->GetSessionId(), web_contents,
-                            nullptr);
+          tabs.emplace_back(sessions::SessionTabHelper::IdForTab(web_contents),
+                            web_contents, nullptr);
         }
         return true;
       });
@@ -138,10 +135,7 @@ std::vector<TabFetcher::TabEntry> FetchTabs(const Profile* profile) {
 
 }  // namespace
 
-LocalTabHandler::LocalTabHandler(
-    sync_sessions::SessionSyncService* session_sync_service,
-    Profile* profile)
-    : TabFetcher(session_sync_service), profile_(profile) {}
+LocalTabHandler::LocalTabHandler(Profile* profile) : profile_(profile) {}
 
 LocalTabHandler::~LocalTabHandler() = default;
 
@@ -173,10 +167,8 @@ TabFetcher::Tab LocalTabHandler::FindLocalTab(const TabEntry& entry) {
 #endif
 }
 
-LocalTabSource::LocalTabSource(
-    sync_sessions::SessionSyncService* session_sync_service,
-    TabFetcher* tab_fetcher)
-    : TabSessionSource(session_sync_service, tab_fetcher) {}
+LocalTabSource::LocalTabSource(TabFetcher* tab_fetcher)
+    : TabSessionSource(tab_fetcher) {}
 
 LocalTabSource::~LocalTabSource() = default;
 

@@ -70,7 +70,6 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/shortcuts/chrome_webloc_file.h"
-#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
 #include "chrome/browser/task_manager/task_manager_metrics_recorder.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -87,12 +86,9 @@
 #import "chrome/browser/ui/cocoa/confirm_quit_panel_controller.h"
 #include "chrome/browser/ui/cocoa/handoff_observer.h"
 #import "chrome/browser/ui/cocoa/history_menu_bridge.h"
-#import "chrome/browser/ui/cocoa/profiles/profile_menu_controller.h"
 #import "chrome/browser/ui/cocoa/share_menu_controller.h"
 #import "chrome/browser/ui/cocoa/tab_menu_bridge.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
-#include "chrome/browser/ui/profiles/profile_picker.h"
-#include "chrome/browser/ui/startup/first_run_service.h"
 #include "chrome/browser/ui/startup/google_chrome_scheme_util.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/startup/startup_browser_creator_impl.h"
@@ -160,9 +156,6 @@ GetPendingWebAuthRequests() {
   return g_pending_requests;
 }
 
-// Returns true if the profile requires signin before being used.
-bool IsProfileSignedOut(const base::FilePath& profile_path);
-
 // Starts a web authentication session request.
 void BeginHandlingWebAuthenticationSessionRequestWithProfile(
     ASWebAuthenticationSessionRequest* request,
@@ -207,11 +200,6 @@ BrowserWindowInterface* ActivateBrowser(Profile* profile) {
 // The profile can be `nullptr` and in that case the last-used profile will be
 // used.
 void LaunchBrowserStartup(Profile* profile) {
-  if (ProfilePicker::GetStartupMode() == StartupProfileMode::kProfilePicker) {
-    ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-        ProfilePicker::EntryPoint::kNewSessionOnExistingProcess));
-    return;
-  }
   CHECK(profile);
 
   base::AutoReset<bool> auto_reset_in_run(&g_is_opening_new_window, true);
@@ -236,12 +224,6 @@ void LaunchBrowserStartup(Profile* profile) {
 // Creates an empty browser window with the given profile and returns a pointer
 // to the new |BrowserWindowInterface|.
 BrowserWindowInterface* CreateBrowser(Profile* profile) {
-  // Closes the first run if we open a new window.
-  if (auto* fre_service =
-          FirstRunServiceFactory::GetForBrowserContextIfExists(profile)) {
-    fre_service->FinishFirstRunWithoutResumeTask();
-  }
-
   {
     base::AutoReset<bool> auto_reset_in_run(&g_is_opening_new_window, true);
     chrome::NewEmptyWindow(profile);
@@ -270,7 +252,6 @@ void AttemptSessionRestore(Profile* profile) {
     return;
   }
   DCHECK(!profile->IsGuestSession());
-  DCHECK(!IsProfileSignedOut(profile->GetPath()));
   SessionService* sessionService =
       SessionServiceFactory::GetForProfileForSessionRestore(profile);
   if (sessionService &&
@@ -281,14 +262,6 @@ void AttemptSessionRestore(Profile* profile) {
   }
   // No session to restore, proceed with normal startup.
   LaunchBrowserStartup(profile);
-}
-
-bool IsProfileSignedOut(const base::FilePath& profile_path) {
-  ProfileAttributesEntry* entry =
-      g_browser_process->profile_manager()
-          ->GetProfileAttributesStorage()
-          .GetProfileAttributesWithPath(profile_path);
-  return entry && entry->IsSigninRequired();
 }
 
 void ConfigureNSAppForKioskMode() {
@@ -463,14 +436,14 @@ void OpenStartupTabsInBrowser(StartupTabs tabs) {
                   profile_path,
                   base::BindOnce(&OpenStartupTabsInBrowserWithProfile,
                                  tabs_for_profile),
-                  app_controller_mac::kShowProfilePickerOnFailure);
+                  app_controller_mac::kIgnoreOnFailure);
             } else {
               // If the target profile doesn't exist, fall back to the
               // last profile.
               app_controller_mac::RunInLastProfileSafely(
                   base::BindOnce(&OpenStartupTabsInBrowserWithProfile,
                                  tabs_for_profile),
-                  app_controller_mac::kShowProfilePickerOnFailure);
+                  app_controller_mac::kIgnoreOnFailure);
             }
           }
         }));
@@ -479,7 +452,7 @@ void OpenStartupTabsInBrowser(StartupTabs tabs) {
   if (!regular_tabs.empty()) {
     app_controller_mac::RunInLastProfileSafely(
         base::BindOnce(&OpenStartupTabsInBrowserWithProfile, regular_tabs),
-        app_controller_mac::kShowProfilePickerOnFailure);
+        app_controller_mac::kIgnoreOnFailure);
   }
 }
 
@@ -502,7 +475,6 @@ Profile* GetLastProfileMac() {
 
 @interface AppController () <HandoffObserverDelegate>
 - (void)initMenuState;
-- (void)initProfileMenu;
 - (void)updateConfirmToQuitPrefMenuItem:(NSMenuItem*)item;
 - (void)cancelConfirmQuitPanel;
 - (void)registerServicesMenuTypesTo:(NSApplication*)app;
@@ -654,11 +626,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       _profileAttributesStorageObserver;
 
   std::unique_ptr<HistoryMenuBridge> _historyMenuBridge;
-
-
-  // The profile menu, which appears right before the Help menu. It is only
-  // available when multiple profiles is enabled.
-  ProfileMenuController* __strong _profileMenuController;
 
   // Controller for the macOS system share menu.
   ShareMenuController* __strong _shareMenuController;
@@ -867,9 +834,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   // Set up the command updater for when there are no windows open
   [self initMenuState];
-
-  // Initialize the Profile menu.
-  [self initProfileMenu];
 }
 
 - (void)unregisterEventHandlers {
@@ -898,15 +862,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   // Reset this now that we've received the call to terminate.
   _isPoweringOff = NO;
-
-  // Stop the browser from re-opening when we close Chrome while
-  // in the first run experience.
-  if (auto* profile = self.lastProfileIfLoaded) {
-    if (auto* freService =
-            FirstRunServiceFactory::GetForBrowserContextIfExists(profile)) {
-      freService->FinishFirstRunWithoutResumeTask();
-    }
-  }
 
   // Check for in-process downloads, and prompt the user if they really want
   // to quit (and thus cancel downloads).
@@ -1542,10 +1497,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
         case IDC_EXIT:
           enable = YES;
           break;
-        case IDC_NEW_INCOGNITO_WINDOW:
-        case IDC_NEW_ISOLATED_WINDOW:
-          enable = _menuState->IsCommandEnabled(tag) ? canOpenNewBrowser : NO;
-          break;
         default:
           enable = _menuState->IsCommandEnabled(tag) ?
                    ![self keyWindowIsModal] : NO;
@@ -1624,9 +1575,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   }
 
   if (unsafeLastProfile && !lastProfile) {
-    // The profile is disallowed by policy (locked or guest mode disabled).
-    ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-        ProfilePicker::EntryPoint::kProfileLocked));
+    // The profile is disallowed by policy (locked).
     return;
   }
 
@@ -1635,13 +1584,12 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       base::BindOnce(^(Profile* profile) {
         [self executeCommand:sender withProfile:profile];
       }),
-      app_controller_mac::kShowProfilePickerOnFailure);
+      app_controller_mac::kIgnoreOnFailure);
 }
 
 - (void)executeCommand:(id)sender withProfile:(Profile*)profile {
   if (!profile) {
-    // Couldn't load the Profile. RunInSafeProfileHelper will show the
-    // ProfilePicker instead.
+    // Couldn't load the Profile.
     return;
   }
 
@@ -1666,10 +1614,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
     case IDC_FOCUS_SEARCH:
       chrome::ExecuteCommand(ActivateOrCreateBrowser(profile),
                              IDC_FOCUS_SEARCH);
-      break;
-    case IDC_NEW_INCOGNITO_WINDOW:
-    case IDC_NEW_ISOLATED_WINDOW:
-      CreateBrowser(profile->GetPrimaryOTRProfile(/*create_if_needed=*/true));
       break;
     case IDC_RESTORE_TAB:
       app_controller_mac::TabRestorer::RestoreMostRecent(profile);
@@ -1766,14 +1710,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       // We've performed the unminimize, so AppKit shouldn't do anything.
       return NO;
     }
-
-    if (ProfilePicker::IsOpen()) {
-      ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-          // The entry point should be irrelevant here because the picker is
-          // already open.
-          ProfilePicker::EntryPoint::kNewSessionOnExistingProcess));
-      return NO;
-    }
   }
 
   base::FilePath lastProfilePath = GetStartupProfilePathMac();
@@ -1788,38 +1724,25 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       !doneOnce && base::mac::WasLaunchedAsHiddenLoginItem();
   doneOnce = YES;
 
-  // If the profile is locked or was off-the-record, open the profile picker.
-  if (lastProfilePath == ProfileManager::GetGuestProfilePath() ||
-      IsProfileSignedOut(lastProfilePath)) {
-    ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-        ProfilePicker::EntryPoint::kProfileLocked));
-    return NO;
-  }
-
   if (attemptRestore) {
     // Load the profile and attempt session restore.
     app_controller_mac::RunInLastProfileSafely(
         base::BindOnce(&AttemptSessionRestore),
-        app_controller_mac::kShowProfilePickerOnFailure);
+        app_controller_mac::kIgnoreOnFailure);
     return NO;
   }
 
-  // Open the profile picker (for multi-profile users) or a new window.
-  if (ProfilePicker::GetStartupMode() == StartupProfileMode::kProfilePicker) {
-    ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-        ProfilePicker::EntryPoint::kNewSessionOnExistingProcess));
-  } else {
-    // Asynchronously load profile first if needed.
-    // TODO(crbug.com/40261514): Replace CreateBrowser by LaunchBrowserStartup
-    app_controller_mac::RunInLastProfileSafely(
-        base::BindOnce([](Profile* profile) {
-          if (!profile) {
-            return;
-          }
-          CreateBrowser(profile);
-        }),
-        app_controller_mac::kShowProfilePickerOnFailure);
-  }
+  // Open a new window.
+  // Asynchronously load profile first if needed.
+  // TODO(crbug.com/40261514): Replace CreateBrowser by LaunchBrowserStartup
+  app_controller_mac::RunInLastProfileSafely(
+      base::BindOnce([](Profile* profile) {
+        if (!profile) {
+          return;
+        }
+        CreateBrowser(profile);
+      }),
+      app_controller_mac::kIgnoreOnFailure);
 
   // We've handled the reopen event, so return NO to tell AppKit not
   // to do anything.
@@ -1830,8 +1753,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   _menuState = std::make_unique<CommandUpdaterImpl>(nullptr);
   _menuState->UpdateCommandEnabled(IDC_NEW_TAB, true);
   _menuState->UpdateCommandEnabled(IDC_NEW_WINDOW, true);
-  _menuState->UpdateCommandEnabled(IDC_NEW_INCOGNITO_WINDOW, true);
-  _menuState->UpdateCommandEnabled(IDC_NEW_ISOLATED_WINDOW, true);
   _menuState->UpdateCommandEnabled(IDC_OPEN_FILE, true);
   _menuState->UpdateCommandEnabled(IDC_CLEAR_BROWSING_DATA, true);
   _menuState->UpdateCommandEnabled(IDC_RESTORE_TAB, false);
@@ -1847,23 +1768,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 #endif
   _menuState->UpdateCommandEnabled(IDC_TASK_MANAGER_MAIN_MENU, true);
   _menuState->UpdateCommandEnabled(IDC_EXIT, true);
-}
-
-// Conditionally adds the Profile menu to the main menu bar.
-- (void)initProfileMenu {
-  NSMenu* mainMenu = [NSApp mainMenu];
-  NSMenuItem* profileMenu = [mainMenu itemWithTag:IDC_PROFILE_MAIN_MENU];
-
-  if (!profiles::IsMultipleProfilesEnabled()) {
-    [mainMenu removeItem:profileMenu];
-    return;
-  }
-
-  // The controller will unhide the menu if necessary.
-  [profileMenu setHidden:YES];
-
-  _profileMenuController =
-      [[ProfileMenuController alloc] initWithMainMenuItem:profileMenu];
 }
 
 - (void)initShareMenu {
@@ -1944,9 +1848,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   if (profile->IsGuestSession() && !profiles::IsGuestModeEnabled())
     return nullptr;
 
-  if (IsProfileSignedOut(profile->GetPath()))
-    return nullptr;  // Profile is locked.
-
   return ProfileManager::MaybeForceOffTheRecordMode(profile);
 }
 
@@ -1984,7 +1885,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       base::BindOnce(^(Profile* profile) {
         [self showPreferencesForProfile:profile];
       }),
-      app_controller_mac::kShowProfilePickerOnFailure);
+      app_controller_mac::kIgnoreOnFailure);
 }
 
 - (IBAction)showPreferencesForProfile:(Profile*)profile {
@@ -2006,7 +1907,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       base::BindOnce(^(Profile* profile) {
         [self orderFrontStandardAboutPanelForProfile:profile];
       }),
-      app_controller_mac::kShowProfilePickerOnFailure);
+      app_controller_mac::kIgnoreOnFailure);
 }
 
 - (IBAction)orderFrontStandardAboutPanelForProfile:(Profile*)profile {
@@ -2037,13 +1938,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 - (NSMenu*)applicationDockMenu:(NSApplication*)sender {
   NSMenu* dockMenu = [[NSMenu alloc] initWithTitle:@""];
 
-  BOOL profilesAdded = [_profileMenuController insertItemsIntoMenu:dockMenu
-                                                          atOffset:0
-                                                          fromDock:YES];
-  if (profilesAdded) {
-    [dockMenu addItem:[NSMenuItem separatorItem]];
-  }
-
   NSString* titleStr = l10n_util::GetNSStringWithFixup(IDS_NEW_WINDOW_MAC);
   NSMenuItem* item =
       [[NSMenuItem alloc] initWithTitle:titleStr
@@ -2053,41 +1947,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   item.tag = IDC_NEW_WINDOW;
   item.enabled = [self validateUserInterfaceItem:item];
   [dockMenu addItem:item];
-
-  Profile* profile = [self lastProfileIfLoaded];
-
-  // Buttons below require the profile to be loaded. In particular, if the
-  // profile picker is shown at startup, these buttons won't be added until the
-  // user picks a profile.
-  if (!profile) {
-    return dockMenu;
-  }
-
-  bool isolated_mode_enabled =
-      enterprise_isolated_mode::IsolatedModeReplacesIncognito(profile);
-
-  if (IncognitoModePrefs::GetAvailability(profile->GetPrefs()) !=
-      policy::IncognitoModeAvailability::kDisabled) {
-    titleStr = l10n_util::GetNSStringWithFixup(IDS_NEW_INCOGNITO_WINDOW_MAC);
-    item = [[NSMenuItem alloc] initWithTitle:titleStr
-                                      action:@selector(commandFromDock:)
-                               keyEquivalent:@""];
-    item.target = self;
-    item.tag = IDC_NEW_INCOGNITO_WINDOW;
-    item.enabled = [self validateUserInterfaceItem:item];
-    [dockMenu addItem:item];
-  }
-
-  if (isolated_mode_enabled) {
-    titleStr = l10n_util::GetNSStringWithFixup(IDS_NEW_ISOLATED_WINDOW_MAC);
-    item = [[NSMenuItem alloc] initWithTitle:titleStr
-                                      action:@selector(commandFromDock:)
-                               keyEquivalent:@""];
-    item.target = self;
-    item.tag = IDC_NEW_ISOLATED_WINDOW;
-    item.enabled = [self validateUserInterfaceItem:item];
-    [dockMenu addItem:item];
-  }
 
   return dockMenu;
 }
@@ -2122,45 +1981,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
 
   _profilePrefRegistrar.reset();
-
-  // Update Incognito and Isolated Mode menu items based on enterprise policy.
-  // Isolated Mode replaces standard Incognito for enterprise users, but they
-  // offer different privacy guarantees. To highlight this distinction, we
-  // keep the Incognito item visible, but disabled, rather than hiding it,
-  // making it clear that Isolated Mode is active instead.
-  NSMenuItem* fileMenuItem = [NSApp.mainMenu itemWithTag:IDC_FILE_MENU];
-  if (fileMenuItem && fileMenuItem.hasSubmenu) {
-    NSMenu* fileMenu = fileMenuItem.submenu;
-    NSMenuItem* incognitoItem = [fileMenu itemWithTag:IDC_NEW_INCOGNITO_WINDOW];
-    NSMenuItem* isolatedItem = [fileMenu itemWithTag:IDC_NEW_ISOLATED_WINDOW];
-
-    if (incognitoItem && isolatedItem) {
-      bool isolated_mode_enabled =
-          enterprise_isolated_mode::IsolatedModeReplacesIncognito(profile);
-
-      // Toggle visibility of Isolated Mode item based on policy.
-      isolatedItem.hidden = !isolated_mode_enabled;
-
-      // Both modes logically share the same keyboard shortcut (Cmd+Shift+N) and
-      // the same underlying function to open the window (which opens a browser
-      // with the primary OTR profile, behaving differently based on policy).
-      // To avoid confusion, assign the shortcut to the active/enabled item
-      // and clear it from the other.
-      NSMenuItem* targetItem =
-          isolated_mode_enabled ? isolatedItem : incognitoItem;
-      NSMenuItem* sourceItem =
-          isolated_mode_enabled ? incognitoItem : isolatedItem;
-
-      if (sourceItem.keyEquivalent.length > 0) {
-        targetItem.keyEquivalent = sourceItem.keyEquivalent;
-        targetItem.keyEquivalentModifierMask =
-            sourceItem.keyEquivalentModifierMask;
-
-        sourceItem.keyEquivalent = @"";
-        sourceItem.keyEquivalentModifierMask = 0;
-      }
-    }
-  }
 
   _lastProfile = profile;
 
@@ -2415,7 +2235,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
     app_controller_mac::RunInLastProfileSafely(
         base::BindOnce(&BeginHandlingWebAuthenticationSessionRequestWithProfile,
                        request),
-        app_controller_mac::kShowProfilePickerOnFailure);
+        app_controller_mac::kIgnoreOnFailure);
   });
 }
 
@@ -2474,13 +2294,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 //---------------------------------------------------------------------------
 
 namespace {
-
-void UpdateProfileInUse(Profile* profile) {
-  if (!profile) {
-    return;
-  }
-  [AppController.sharedController setLastProfile:profile];
-}
 
 void OpenStartupTabsInBrowserWithProfile(const StartupTabs& tabs,
                                          Profile* profile) {
@@ -2542,15 +2355,6 @@ void OnProfileLoaded(base::OnceCallback<void(Profile*)> callback,
                      Profile* loaded_profile) {
   Profile* safe_profile = GetSafeProfile(loaded_profile);
   if (!safe_profile) {
-    switch (on_failure) {
-      case app_controller_mac::kShowProfilePickerOnFailure:
-        ProfilePicker::Show(ProfilePicker::Params::FromEntryPoint(
-            ProfilePicker::EntryPoint::kUnableToCreateBrowser));
-        break;
-
-      case app_controller_mac::kIgnoreOnFailure:
-        break;
-    }
     std::move(callback).Run(nullptr);
     return;
   }
@@ -2571,12 +2375,6 @@ namespace app_controller_mac {
 
 bool IsOpeningNewWindow() {
   return g_is_opening_new_window;
-}
-
-void CreateGuestProfileIfNeeded() {
-  g_browser_process->profile_manager()->CreateProfileAsync(
-      ProfileManager::GetGuestProfilePath(),
-      base::BindOnce(&UpdateProfileInUse));
 }
 
 void EnterpriseStartupDialogClosed() {

@@ -77,7 +77,6 @@ source_set("startup") {
 
   if (is_win || is_mac || is_linux) {
     sources += [
-      "first_run_service.h",
     ]
 
     public_deps += [
@@ -321,10 +320,8 @@ source_set("impl") {
 
   if (is_win || is_mac || is_linux) {
     sources += [
-      "first_run_service.cc",
     ]
     deps += [
-      "//chrome/browser/ui/views/profiles:profile_picker_utils",
     ]
   }
 
@@ -371,8 +368,6 @@ if (!is_android) {
 
     if (enable_dice_support) {
       sources += [
-        "first_run_test_util.cc",
-        "first_run_test_util.h",
       ]
       public_deps = [ "//chrome/browser/ui/profiles" ]
       deps += [
@@ -438,7 +433,6 @@ source_set("unit_tests") {
     }
   }
   if (enable_dice_support) {
-    sources += [ "first_run_service_unittest.cc" ]
     deps += [ ":test_support_ui" ]
   }
 }
@@ -529,11 +523,9 @@ if (!is_android) {
       ]
     }
     if (enable_dice_support) {
-      sources += [ "first_run_service_browsertest.cc" ]
       deps += [ ":test_support_ui" ]
     }
     if (!is_chromeos) {
-      deps += [ "//chrome/browser/ui/webui/signin:profile" ]
     }
     if (is_mac) {
       deps += [

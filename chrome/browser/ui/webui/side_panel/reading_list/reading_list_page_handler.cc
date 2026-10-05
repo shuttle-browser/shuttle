@@ -27,7 +27,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/side_panel/reading_list/reading_list_ui.h"
@@ -77,8 +76,6 @@ class ReadLaterItemContextMenu : public ui::SimpleMenuModel,
                         IDS_BOOKMARK_BAR_OPEN_IN_NEW_TAB);
     AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW,
                         IDS_BOOKMARK_BAR_OPEN_IN_NEW_WINDOW);
-    AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD,
-                        IDS_BOOKMARK_BAR_OPEN_INCOGNITO);
     AddSeparator(ui::NORMAL_SEPARATOR);
 
     if (reading_list_model->GetEntryByURL(url)->IsRead()) {
@@ -110,13 +107,6 @@ class ReadLaterItemContextMenu : public ui::SimpleMenuModel,
         break;
       }
 
-      case IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD: {
-        content::OpenURLParams params(url_, content::Referrer(),
-                                      WindowOpenDisposition::OFF_THE_RECORD,
-                                      ui::PAGE_TRANSITION_AUTO_BOOKMARK, false);
-        browser_->OpenURL(params, /*navigation_handle_callback=*/{});
-        break;
-      }
 
       case kMarkAsRead:
         reading_list_model_->SetReadStatusIfExists(url_, true);
@@ -130,13 +120,6 @@ class ReadLaterItemContextMenu : public ui::SimpleMenuModel,
       default:
         NOTREACHED();
     }
-  }
-
-  bool IsCommandIdEnabled(int command_id) const override {
-    if (command_id == IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD) {
-      return IsOpenLinkOTREnabled(browser_->GetProfile(), url_);
-    }
-    return true;
   }
 
  private:

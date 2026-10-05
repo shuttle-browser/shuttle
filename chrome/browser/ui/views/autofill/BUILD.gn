@@ -150,23 +150,3 @@ source_set("update_address_profile_view") {
   ]
 }
 
-if (enable_dice_support) {
-  source_set("address_sign_in_promo_view") {
-    public = [ "address_sign_in_promo_view.h" ]
-    sources = [ "address_sign_in_promo_view.cc" ]
-    public_deps = [
-      ":address_bubble_base_view",
-      "//chrome/browser/ui/autofill",
-      "//ui/base/metadata",
-    ]
-    deps = [
-      "//chrome/browser:resources",
-      "//chrome/browser/signin",
-      "//chrome/browser/ui/signin",
-      "//components/signin/public/base",
-      "//components/strings:components_strings",
-      "//ui/base",
-      "//ui/views",
-    ]
-  }
-}

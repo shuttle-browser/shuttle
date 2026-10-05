@@ -11,8 +11,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/extensions/api/identity/identity_api.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
-#include "chrome/browser/signin/google_accounts_private_api_host.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "content/public/browser/storage_partition.h"
 #include "google_apis/gaia/gaia_auth_util.h"
@@ -156,10 +154,8 @@ void GaiaRemoteConsentFlow::DetachWebAuthFlow() {
 
 void GaiaRemoteConsentFlow::OnNavigationFinished(
     content::NavigationHandle* navigation_handle) {
-  GoogleAccountsPrivateApiHost::CreateReceiver(
-      base::BindRepeating(&GaiaRemoteConsentFlow::ReactToConsentResult,
-                          weak_factory.GetWeakPtr()),
-      navigation_handle);
+  // GoogleAccountsPrivateApiHost was removed in this fork: the consent result
+  // is never delivered.
 }
 
 }  // namespace extensions

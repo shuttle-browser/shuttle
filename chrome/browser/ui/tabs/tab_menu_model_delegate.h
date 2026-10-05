@@ -9,10 +9,6 @@
 
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 
-namespace tab_groups {
-class TabGroupSyncService;
-}  // namespace tab_groups
-
 class BrowserWindowInterface;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -44,8 +40,6 @@ class TabMenuModelDelegate {
   // current browser this was called on.
   virtual std::vector<BrowserWindowInterface*> GetOtherBrowserWindows(
       bool is_app) = 0;
-
-  virtual tab_groups::TabGroupSyncService* GetTabGroupSyncService() = 0;
 
  private:
   ui::ScopedUnownedUserData<TabMenuModelDelegate> scoped_unowned_user_data_;

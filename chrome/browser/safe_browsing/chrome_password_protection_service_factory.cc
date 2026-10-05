@@ -16,7 +16,6 @@
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
-#include "chrome/browser/sync/user_event_service_factory.h"
 #include "content/public/browser/browser_context.h"
 
 namespace safe_browsing {
@@ -54,7 +53,6 @@ ChromePasswordProtectionServiceFactory::ChromePasswordProtectionServiceFactory()
   DependsOn(ProfilePasswordStoreFactory::GetInstance());
   DependsOn(AccountPasswordStoreFactory::GetInstance());
   DependsOn(PasswordReuseManagerFactory::GetInstance());
-  DependsOn(browser_sync::UserEventServiceFactory::GetInstance());
   DependsOn(SafeBrowsingNavigationObserverManagerFactory::GetInstance());
 }
 

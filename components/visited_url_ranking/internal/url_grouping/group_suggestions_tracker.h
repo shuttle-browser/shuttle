@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "base/containers/flat_set.h"
+#include "base/values.h"
 #include "components/segmentation_platform/public/input_context.h"
 #include "components/visited_url_ranking/public/url_grouping/group_suggestions.h"
 #include "components/visited_url_ranking/public/url_grouping/group_suggestions_delegate.h"

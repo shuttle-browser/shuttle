@@ -119,7 +119,6 @@ static_library("service") {
     "//components/policy:generated",
     "//components/policy/core/browser",
     "//components/prefs",
-    "//components/saved_tab_groups/public:prefs",
     "//components/signin/public/base",
     "//components/signin/public/identity_manager",
     "//components/strings:components_strings_grit",

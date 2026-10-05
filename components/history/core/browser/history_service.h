@@ -42,9 +42,6 @@
 #include "components/history/core/browser/url_row.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/sync/service/sync_service.h"
-#include "components/sync_device_info/device_info.h"
-#include "components/sync_device_info/device_info_tracker.h"
-#include "components/sync_device_info/local_device_info_provider.h"
 #include "sql/init_status.h"
 #include "ui/base/page_transition_types.h"
 
@@ -89,20 +86,15 @@ class WebHistoryService;
 
 // The history service records page titles, visit times, and favicons, as well
 // as information about downloads.
-class HistoryService : public KeyedService,
-                       public syncer::DeviceInfoTracker::Observer {
+class HistoryService : public KeyedService {
  public:
   // Must call Init after construction. The empty constructor provided only for
   // unit tests. When using the full constructor, `history_client` may only be
   // null during testing, while `visit_delegate` may be null if the embedder use
-  // another way to track visited links. `device_info_tracker` and
-  // `local_device_info_provider` may be null, but if non-null must outlive this
-  // class.
+  // another way to track visited links..
   HistoryService();
   HistoryService(std::unique_ptr<HistoryClient> history_client,
-                 std::unique_ptr<VisitDelegate> visit_delegate,
-                 syncer::DeviceInfoTracker* device_info_tracker,
-                 syncer::LocalDeviceInfoProvider* local_device_info_provider);
+                 std::unique_ptr<VisitDelegate> visit_delegate);
 
   HistoryService(const HistoryService&) = delete;
   HistoryService& operator=(const HistoryService&) = delete;
@@ -725,9 +717,6 @@ class HistoryService : public KeyedService,
   // added to segments data.
   void SetCanAddForeignVisitsToSegmentsOnBackend(bool add_foreign_visits);
 
-  // syncer::DeviceInfoTracker::Observer overrides.
-  void OnDeviceInfoChange() override;
-
   // Schedules a HistoryDBTask for running on the history backend. See
   // HistoryDBTask for details on what this does. Takes ownership of `task`.
   virtual base::CancelableTaskTracker::TaskId ScheduleDBTask(
@@ -866,9 +855,6 @@ class HistoryService : public KeyedService,
   void OnDBLoaded();
 
   // Generic Stuff -------------------------------------------------------------
-
-  // Sets the history backend's local device Originator Cache GUID.
-  void SendLocalDeviceOriginatorCacheGuidToBackend();
 
   // Observers ----------------------------------------------------------------
 
@@ -1167,19 +1153,6 @@ class HistoryService : public KeyedService,
   FaviconsChangedCallbackList favicons_changed_callback_list_;
 
   std::unique_ptr<DeleteDirectiveHandler> delete_directive_handler_;
-
-  raw_ptr<syncer::DeviceInfoTracker> device_info_tracker_ = nullptr;
-
-  base::ScopedObservation<syncer::DeviceInfoTracker,
-                          syncer::DeviceInfoTracker::Observer>
-      device_info_tracker_observation_{this};
-
-  // Subscription for change notifications to local device information; notifies
-  // when local device information becomes available.
-  base::CallbackListSubscription local_device_info_available_subscription_;
-
-  raw_ptr<syncer::LocalDeviceInfoProvider> local_device_info_provider_ =
-      nullptr;
 
   // All vended weak pointers are invalidated in Cleanup().
   base::WeakPtrFactory<HistoryService> weak_ptr_factory_{this};

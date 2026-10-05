@@ -56,7 +56,6 @@
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals.mojom.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals_ui.h"
 #if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/webui/signin/profile_picker_ui.h"
 #endif
 #endif
 
@@ -121,9 +120,6 @@ void BindTrackedElementHandlerRestricted(
       controller->GetAs<ReadingListUI>() ||
       controller->GetAs<PasswordManagerUI>() ||
       controller->GetAs<HistoryUI>() ||
-#if !BUILDFLAG(IS_CHROMEOS)
-      controller->GetAs<ProfilePickerUI>() ||
-#endif  // !BUILDFLAG(IS_CHROMEOS)
 #endif  // !BUILDFLAG(IS_ANDROID)
       false;
 

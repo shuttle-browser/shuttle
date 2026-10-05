@@ -29,10 +29,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/profiles/profile_shortcut_manager.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
-#include "chrome/browser/signin/account_consistency_mode_manager.h"
-#include "chrome/browser/signin/account_consistency_mode_manager_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
@@ -40,7 +37,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -87,7 +83,6 @@
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
-#include "components/saved_tab_groups/public/features.h"
 #include "components/search/ntp_features.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/strings/grit/components_branded_strings.h"
@@ -651,9 +646,8 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
                           tabs::IsVerticalTabsExpandOnHoverFeatureEnabled());
   html_source->AddBoolean("showOrganizerPanelEnabled",
                           organizer_panel::IsOrganizerPanelFeatureEnabled());
-  html_source->AddBoolean(
-      "showEverythingMenuEnabled",
-      tab_groups::SavedTabGroupUtils::IsEnabledForProfile(profile));
+  // Agent Chrome: saved tab groups are removed.
+  html_source->AddBoolean("showEverythingMenuEnabled", false);
 
   html_source->AddBoolean("showCtrlTabMru",
                           base::FeatureList::IsEnabled(features::kCtrlTabMru));
@@ -2125,20 +2119,8 @@ void AddPeopleStrings(content::WebUIDataSource* html_source, Profile* profile) {
       net::AppendQueryParameter(GURL(chrome::kGoogleAccountURL), "utm_source",
                                 "chrome-settings")
           .spec());
-  html_source->AddBoolean("profileShortcutsEnabled",
-                          ProfileShortcutManager::IsFeatureEnabled());
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  auto* profile_entry =
-      g_browser_process->profile_manager()
-          ? g_browser_process->profile_manager()
-                ->GetProfileAttributesStorage()
-                .GetProfileAttributesWithPath(profile->GetPath())
-          : nullptr;
-  html_source->AddBoolean(
-      "signinAvailable",
-      AccountConsistencyModeManager::IsDiceSignInAllowed(profile_entry));
-#endif
+  html_source->AddBoolean("profileShortcutsEnabled", false);
+  html_source->AddBoolean("signinAvailable", false);
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Toggles the Chrome OS Account Manager submenu in the People section.

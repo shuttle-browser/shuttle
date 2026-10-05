@@ -62,7 +62,6 @@ source_set("impl") {
     "//chrome/browser/ui/tabs:favicon_theming",
     "//chrome/browser/ui/tabs:tab_menu",
     "//chrome/browser/ui/tabs/alert:tab_alert",
-    "//chrome/browser/ui/tabs/saved_tab_groups",
     "//chrome/browser/ui/user_education",
     "//chrome/browser/ui/views:dotted_icon",
     "//chrome/browser/ui/views/frame",
