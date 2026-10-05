@@ -8,7 +8,6 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/metrics/desktop_session_duration/desktop_session_duration_tracker.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "components/password_manager/core/browser/password_session_durations_metrics_recorder.h"
 #include "components/sync/service/sync_session_durations_metrics_recorder.h"
 #include "components/unified_consent/msbb_session_durations_metrics_recorder.h"
 
@@ -63,8 +62,6 @@ class DesktopProfileSessionDurationsService
       sync_metrics_recorder_;
   std::unique_ptr<unified_consent::MsbbSessionDurationsMetricsRecorder>
       msbb_metrics_recorder_;
-  std::unique_ptr<password_manager::PasswordSessionDurationsMetricsRecorder>
-      password_metrics_recorder_;
 
   base::ScopedObservation<DesktopSessionDurationTracker,
                           DesktopSessionDurationTracker::Observer>

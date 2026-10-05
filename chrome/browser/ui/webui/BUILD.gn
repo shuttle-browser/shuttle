@@ -53,7 +53,6 @@ source_set("configs") {
     "//chrome/browser/ui/webui/about",
     "//chrome/browser/ui/webui/accessibility",
     "//chrome/browser/ui/webui/actor_internals",
-    "//chrome/browser/ui/webui/autofill_and_password_manager_internals",
     "//chrome/browser/ui/webui/bluetooth_internals",
     "//chrome/browser/ui/webui/chrome_urls",
     "//chrome/browser/ui/webui/components",
@@ -93,7 +92,6 @@ source_set("configs") {
   if (!is_android) {
     deps += [
       "//chrome/browser/actor/ui:actor_overlay_web_view",
-      "//chrome/browser/ui/webui/autofill_ml_internals",
       "//chrome/browser/ui/webui/color_pipeline_internals",
       "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/infobar_internals",
@@ -120,7 +118,6 @@ source_set("configs") {
   }
 
   if (safe_browsing_mode == 1) {
-    deps += [ "//chrome/browser/ui/webui/reset_password" ]
   }
 
   if (safe_browsing_mode != 0) {
@@ -504,7 +501,6 @@ source_set("chrome_web_ui_controller_factory") {
     "//chrome/common:constants",
     "//components/favicon/core",
     "//components/history/core/browser",
-    "//components/password_manager/content/common",
     "//components/prefs",
     "//components/privacy_sandbox:features",
     "//content/public/common",
@@ -523,7 +519,6 @@ source_set("chrome_web_ui_controller_factory") {
     deps += [
       "//chrome/browser/ui/webui/downloads",
       "//chrome/browser/ui/webui/history",
-      "//chrome/browser/ui/webui/password_manager:password_manager_ui",
       "//chrome/browser/ui/webui/settings",
       "//ui/web_dialogs",
     ]
@@ -875,7 +870,6 @@ if (!is_android) {
         "//components/history_clusters/core",
         "//components/omnibox/common",
         "//components/optimization_guide/core:features",
-        "//components/password_manager/core/common:features",
         "//components/privacy_sandbox:features",
         "//components/regional_capabilities",
         "//components/search",

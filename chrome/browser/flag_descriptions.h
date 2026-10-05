@@ -82,11 +82,6 @@ inline constexpr char kCentralizedInfoBarFrameworkName[] =
 inline constexpr char kCentralizedInfoBarFrameworkDescription[] =
     "Enables the centralized desktop infobars framework.";
 
-inline constexpr char kCredentialManagementUnifiedUiName[] =
-    "Credential Management Unified UI";
-inline constexpr char kCredentialManagementUnifiedUiDescription[] =
-    "Enables the Unified UI for the credential management password APIs.";
-
 inline constexpr char kCrossDeviceSigninFromDesktopName[] =
     "Cross-Device Sign-in From Desktop";
 inline constexpr char kCrossDeviceSigninFromDesktopDescription[] =
@@ -497,12 +492,6 @@ inline constexpr char
         "payments, so that merchants that are not on the allowlist can also be "
         "tested for the supported features.";
 
-inline constexpr char kFieldClassificationModelCachingName[] =
-    "Enable caching field classification predictions";
-inline constexpr char kFieldClassificationModelCachingDescription[] =
-    "When enabled, the field classification model uses runtime caching to not "
-    "run models on the same inputs multiple times.";
-
 inline constexpr char kHdrAgtmName[] = "Adaptive global tone mapping";
 inline constexpr char kHdrAgtmDescription[] =
     "Enables parsing and rendering of adaptive global tone mapping (AGTM) aka "
@@ -780,41 +769,16 @@ inline constexpr char kAutoDocPiPPermissionPromptAndroidDescription[] =
     "Enables the Auto Document Picture-in-Picture permission prompt on "
     "Android.";
 
-inline constexpr char kAutofillAddChromeUserContextFieldsName[] =
-    "Add client type and version to request context in Payments calls";
-inline constexpr char kAutofillAddChromeUserContextFieldsDescription[] =
-    "When enabled, calls to Google Payments include the Chrome client type and "
-    "major version, instead of parsing the user agent.";
-
-inline constexpr char kAutofillAndroidDesktopSuppressAccessoryOnEmptyName[] =
-    "Enable suppressing keyboard accessory on android desktop";
 inline constexpr char
     kAutofillAndroidDesktopSuppressAccessoryOnEmptyDescription[] =
         "When enabled, Autofill will suppress keyboard accessory when the form "
         "field does not have any autofill suggestions.";
 
-inline constexpr char kAutofillEnableAutofillSettingsEnterprisePolicyName[] =
-    "Enable Autofill settings enterprise policy";
 inline constexpr char
     kAutofillEnableAutofillSettingsEnterprisePolicyDescription[] =
         "When enabled, the Autofill settings enterprise policy takes effect, "
         "and forms ai settings are decoupled from Autofill profile settings. ";
 
-inline constexpr char kAutofillAmbientAutofillName[] =
-    "Autofill Ambient Autofill";
-inline constexpr char kAutofillAmbientAutofillDescription[] =
-    "Enables Ambient Autofill.";
-
-inline constexpr char kAutofillDisableBnplCountryCheckForTestingName[] =
-    "Disable the country check for BNPL testing";
-inline constexpr char kAutofillDisableBnplCountryCheckForTestingDescription[] =
-    "Enables testing BNPL in countries where it would otherwise be disabled.";
-
-inline constexpr char kAutofillEnableAiBasedAmountExtractionName[] =
-    "Enable AI-based checkout amount extraction on Chrome";
-inline constexpr char kAutofillEnableAiBasedAmountExtractionDescription[] =
-    "When enabled, Chrome will extract the checkout amount from the checkout "
-    "page using server-side AI.";
 inline constexpr char
     kAutofillAiBasedAmountExtractionIgnoreSeenTermsForTestingName[] =
         "Enable ignore AI-based Amount Extraction Terms Acknowledgement";
@@ -825,141 +789,21 @@ inline constexpr char
         "for testing purposes, regardless of the actual stored user "
         "preference.";
 
-inline constexpr char kAutofillAiAlwaysTriggerServerModelName[] =
-    "Autofill AI always trigger server model";
-inline constexpr char kAutofillAiAlwaysTriggerServerModelDescription[] =
-    "Queries the server model for every form encountered, ignoring server-side "
-    "instructions. Intended for testing only.";
-
-inline constexpr char kAutofillAiAlwaysShowPrivateAiNoticeName[] =
-    "Autofill AI always show Private AI notice";
-inline constexpr char kAutofillAiAlwaysShowPrivateAiNoticeDescription[] =
-    "Forces the Autofill AI Private AI notice suggestion to be shown for "
-    "testing, skipping cool-off timers and impression count checks.";
-
-inline constexpr char kAutofillAiAvailableByDefaultName[] =
-    "Autofill AI available by default";
-inline constexpr char kAutofillAiAvailableByDefaultDescription[] =
-    "Makes Autofill AI available by default, with the enable toggle "
-    "controlling online model runs and logging.";
-
-inline constexpr char kAutofillAiDedupeEntitiesName[] =
-    "Autofill AI dedupe entities";
-inline constexpr char kAutofillAiDedupeEntitiesDescription[] =
-    "Enables periodic deduplication of Autofill AI entities.";
-
-inline constexpr char kAutofillAiNoFillingIconsExperimentName[] =
-    "Autofill AI no filling icons experiment";
-inline constexpr char kAutofillAiNoFillingIconsExperimentDescription[] =
-    "If enabled, Autofill AI filling suggestions do not have an icon.";
-
-inline constexpr char kAutofillAiReauthRequiredName[] =
-    "Autofill AI re-authentication required";
-inline constexpr char kAutofillAiReauthRequiredDescription[] =
-    "Requires re-authentication when filling or viewing sensitive fields with "
-    "Autofill AI.";
-
-inline constexpr char kAutofillAiServerModelName[] = "Autofill AI server model";
-inline constexpr char kAutofillAiServerModelDescription[] =
-    "Allows the client to trigger the server model for Autofill AI type "
-    "predictions.";
-
-inline constexpr char kAutofillAiValuablesIPHName[] =
-    "IPH Autofill AI Valuables";
-inline constexpr char kAutofillAiValuablesIPHDescription[] =
-    "Enables the In-Product Help for Autofill AI valuables.";
-
-inline constexpr char kAutofillAiWalletFlightReservationName[] =
-    "Autofill AI Google Wallet flight reservations";
-inline constexpr char kAutofillAiWalletFlightReservationDescription[] =
-    "Enables Autofill AI support for flight reservation entities from Google "
-    "Wallet.";
-
-inline constexpr char kAutofillAiWalletPassBranding2026Name[] =
-    "Autofill AI Google Wallet Pass Branding Updates";
-inline constexpr char kAutofillAiWalletPassBranding2026Description[] =
-    "When enabled, brings Autofill AI strings and images referencing passes "
-    "in Google Wallet into consistency with 2026 branding requirements.";
-
-inline constexpr char kAutofillAiWalletPrivatePassesName[] =
-    "Autofill AI Google Wallet private passes";
-inline constexpr char kAutofillAiWalletPrivatePassesDescription[] =
-    "Enables Autofill AI support for private passes from Google Wallet.";
-
-inline constexpr char kAutofillAiWalletPrivatePassesDeepLinkName[] =
-    "Autofill AI Google Wallet private passes deep link";
-inline constexpr char kAutofillAiWalletPrivatePassesDeepLinkDescription[] =
-    "Enables Autofill AI support for deep linking to private passes from "
-    "Google Wallet.";
-
-inline constexpr char kAutofillAiWalletVehicleRegistrationName[] =
-    "Autofill AI Google Wallet vehicle registration";
-inline constexpr char kAutofillAiWalletVehicleRegistrationDescription[] =
-    "Enables Autofill AI support for vehicle registration entities from Google "
-    "Wallet.";
-
-inline constexpr char kAutofillAiWithDataSchemaName[] =
-    "Autofill AI with data schema";
-inline constexpr char kAutofillAiWithDataSchemaDescription[] =
-    "Enables the second iteration of Autofill AI, which uses a more advanced "
-    "data schema.";
-
-inline constexpr char kAutofillEnableAiCardRecommendationName[] =
-    "Enable AI-based card recommendations on Autofill";
-inline constexpr char kAutofillEnableAiCardRecommendationDescription[] =
-    "When enabled, AI-based card recommendations will be offered on Autofill "
-    "when at least two credit card suggestions are shown.";
-
-inline constexpr char kAutofillEnableAmountExtractionName[] =
-    "Enable checkout amount extraction.";
-inline constexpr char kAutofillEnableAmountExtractionDescription[] =
-    "When enabled, Chrome will extract the checkout amount from the checkout "
-    "page of the allowlisted merchant websites.";
-inline constexpr char kAutofillEnableAmountExtractionTestingName[] =
-    "Enable amount extraction testing";
-inline constexpr char kAutofillEnableAmountExtractionTestingDescription[] =
-    "Enables testing of the result of checkout amount extraction. This flag "
-    "will allow amount extraction to run on any website when a CC form is "
-    "clicked.";
-
-inline constexpr char kAutofillEnableBnplAffirmInternationalizationName[] =
-    "Enable BNPL Affirm Internationalization";
 inline constexpr char
     kAutofillEnableBnplAffirmInternationalizationDescription[] =
         "When enabled, users will have the option to pay with BNPL Affirm "
         "in international markets.";
 
-inline constexpr char kAutofillEnableBnplKlarnaInternationalizationName[] =
-    "Enable BNPL Klarna Internationalization";
 inline constexpr char
     kAutofillEnableBnplKlarnaInternationalizationDescription[] =
         "When enabled, users will have the option to pay with BNPL Klarna "
         "in international markets.";
 
-inline constexpr char kAutofillEnableBuyNowPayLaterName[] =
-    "Enable buy now pay later on Autofill";
-inline constexpr char kAutofillEnableBuyNowPayLaterDescription[] =
-    "When enabled, users will have the option to pay with buy now pay later on "
-    "specific merchant webpages.";
-
-inline constexpr char kAutofillEnableBuyNowPayLaterForExternallyLinkedName[] =
-    "Enable buy now pay later for externally linked BNPL issuer";
 inline constexpr char
     kAutofillEnableBuyNowPayLaterForExternallyLinkedDescription[] =
         "When enabled, users will have the option to pay with buy now pay "
         "later "
         "with externally linked issuer on specific merchant webpages.";
-
-inline constexpr char kAutofillEnableBuyNowPayLaterForKlarnaName[] =
-    "Enable buy now pay later on Autofill for Klarna";
-inline constexpr char kAutofillEnableBuyNowPayLaterForKlarnaDescription[] =
-    "When enabled, users will have the option to pay with buy now pay later "
-    "with Klarna on specific merchant webpages.";
-
-inline constexpr char kAutofillEnableBuyNowPayLaterSyncingName[] =
-    "Enable syncing buy now pay later user data.";
-inline constexpr char kAutofillEnableBuyNowPayLaterSyncingDescription[] =
-    "When enabled, Chrome will sync user data related to buy now pay later.";
 
 inline constexpr char
     kAutofillEnableBuyNowPayLaterUpdatedSuggestionSecondLineStringName[] =
@@ -969,8 +813,6 @@ inline constexpr char
         [] = "When enabled, the second line of a BNPL suggestion is updated to "
              "include the issuer names for better brand recognition.";
 
-inline constexpr char kAutofillEnableCardOnDeviceVerificationEnforcementName[] =
-    "Enable Card-on-Device Verification Enforcement for Payments Autofill";
 inline constexpr char
     kAutofillEnableCardOnDeviceVerificationEnforcementDescription[] =
         "When enabled, server card retrieval will ensure a card is verified "
@@ -988,12 +830,6 @@ inline constexpr char
         "enhancement will enable CVV storage suggestions for standalone CVC "
         "fields.";
 
-inline constexpr char kAutofillEnableFpanRiskBasedAuthenticationName[] =
-    "Enable risk-based authentication for FPAN retrieval";
-inline constexpr char kAutofillEnableFpanRiskBasedAuthenticationDescription[] =
-    "When enabled, server card retrieval will begin with a risk-based check "
-    "instead of jumping straight to CVC or biometric auth.";
-
 inline constexpr char kIPHAutofillCreditCardBenefitFeatureName[] =
     "Enable Card Benefits in-product help bubble";
 inline constexpr char kIPHAutofillCreditCardBenefitFeatureDescription[] =
@@ -1006,104 +842,26 @@ inline constexpr char kIPHDesktopRealboxContextualSearchFeatureDescription[] =
     "Enables In-Product Help for Desktop Realbox Contextual Search.";
 
 
-inline constexpr char kAutofillEnableDownstreamCardAwarenessIphName[] =
-    "Enable showing in-product help UI for downstream card awareness";
-inline constexpr char kAutofillEnableDownstreamCardAwarenessIphDescription[] =
-    "When enabled, in-product help UI will be shown the first time a card "
-    "added outside of Chrome appears in Autofill card suggestions.";
-
 inline constexpr char kAutofillEnableEwalletNewAccountLinkingName[] =
     "Enable eWallet New Account Linking";
 inline constexpr char kAutofillEnableEwalletNewAccountLinkingDescription[] =
     "When enabled, Chrome will sync eWallet creation options for unlinked "
     "ewallets.";
 
-inline constexpr char kAutofillEnableExpandIbanRegexPatternName[] =
-    "Enable Expand IBAN Regex Pattern";
-inline constexpr char kAutofillEnableExpandIbanRegexPatternDescription[] =
-    "When enabled, IBAN regex pattern matching is expanded to support more "
-    "formats.";
-
-inline constexpr char kAutofillEnableGradientGoogleLogosName[] =
-    "Enable gradient-style GPay and Wallet logos";
-inline constexpr char kAutofillEnableGradientGoogleLogosDescription[] =
-    "When enabled, gradient-style GPay and Wallet branding logos will be used.";
-
-inline constexpr char kAutofillGmailOtpName[] = "Enable Gmail OTP Autofill";
-inline constexpr char kAutofillGmailOtpDescription[] =
-    "Enables retrieval and filling of one-time passwords (OTPs) received in "
-    "Gmail.";
-
-inline constexpr char kAutofillEnableNewAmexNetworkArtName[] =
-    "Enable new American Express network art";
-inline constexpr char kAutofillEnableNewAmexNetworkArtDescription[] =
-    "When enabled, updates the American Express network art in Autofill.";
-
-inline constexpr char kAutofillEnableNewFopDisplayAndroidName[] =
-    "Enable Autofill new FOP display on Android";
-inline constexpr char kAutofillEnableNewFopDisplayAndroidDescription[] =
-    "When enabled, updates payment method Autofill suggestions and settings "
-    "UI.";
-
-inline constexpr char kAutofillEnableOffersInClankKeyboardAccessoryName[] =
-    "Enable Autofill offers in keyboard accessory";
 inline constexpr char
     kAutofillEnableOffersInClankKeyboardAccessoryDescription[] =
         "When enabled, offers will be displayed in the keyboard accessory when "
         "available.";
 
-inline constexpr char kAutofillEnableOmniboxAutofillName[] =
-    "Enable Omnibox Autofill chip for payments";
-inline constexpr char kAutofillEnableOmniboxAutofillDescription[] =
-    "When enabled, an Autofill payments omnibox chip will appear for relevant "
-    "payment checkout forms.";
-
-inline constexpr char kAutofillEnablePayNowPayLaterTabsName[] =
-    "Enable Pay Now Pay Later tabs UI for payments autofill on Chrome";
-inline constexpr char kAutofillEnablePayNowPayLaterTabsDescription[] =
-    "When enabled, Chrome will use the Pay Now Pay Later tabs UI for payments "
-    "autofill when buy now pay later options are available for the merchant "
-    "webpage.";
-
-inline constexpr char kAutofillEnablePrefetchingRiskDataForRetrievalName[] =
-    "Enable prefetching of risk data during payments autofill retrieval";
 inline constexpr char
     kAutofillEnablePrefetchingRiskDataForRetrievalDescription[] =
         "When enabled, risk data is prefetched during payments autofill flows "
         "to reduce user-perceived latency.";
 
-inline constexpr char kAutofillEnableResurrectingPaymentsUsersName[] =
-    "Enable resurrecting churned payments users";
-inline constexpr char kAutofillEnableResurrectingPaymentsUsersDescription[] =
-    "When enabled, users that have previously turned off payments autofill "
-    "will be prompted to turn it back on in instances where they can benefit "
-    "from it.";
-
-inline constexpr char kAutofillEnableSaveAndFillName[] = "Enable Save and Fill";
-inline constexpr char kAutofillEnableSaveAndFillDescription[] =
-    "When enabled, show an option to offer saving and filling a credit card "
-    "with a single click when users don't have any cards saved in Autofill.";
-
-inline constexpr char kAutofillEnableScanCardOptionWhenNoCardsSavedName[] =
-    "Enable 'Scan card' option when no cards saved";
 inline constexpr char
     kAutofillEnableScanCardOptionWhenNoCardsSavedDescription[] =
         "When enabled, the 'Scan new card' option will be offered even if the "
         "user does not have any credit cards saved in Autofill.";
-
-inline constexpr char kAutofillEnableSeparatePixPreferenceItemName[] =
-    "Enable Pix settings to be shown as a separate preference menu item.";
-inline constexpr char kAutofillEnableSeparatePixPreferenceItemDescription[] =
-    "When enabled, show Pix settings as a separate preference menu item "
-    "instead of bundling them together with the non-card payment preference "
-    "menu "
-    "item.";
-
-inline constexpr char kAutofillEnableTouchToFillReshowForBnplName[] =
-    "Enable the Touch To Fill bottom sheet to be reshown on Android for BNPL.";
-inline constexpr char kAutofillEnableTouchToFillReshowForBnplDescription[] =
-    "When enabled, the Touch To Fill bottom sheet on Android can be reshown "
-    "after a BNPL flow is dismissed by a user.";
 
 inline constexpr char
     kAutofillEnableTravelCategoryAndMerchantBenefitsFromCurinosName[] =
@@ -1113,27 +871,6 @@ inline constexpr char
         "When enabled, travel category and merchant benefits sourced from "
         "Curinos will be shown in Autofill.";
 
-inline constexpr char kAutofillEnableVcn3dsAuthenticationName[] =
-    "Enable 3DS authentication for virtual cards";
-inline constexpr char kAutofillEnableVcn3dsAuthenticationDescription[] =
-    "When enabled, Chrome will trigger 3DS authentication during a virtual "
-    "card retrieval if a challenge is required, 3DS authentication is "
-    "available for the card, and FIDO is not.";
-
-inline constexpr char kAutofillEnableWalletDirectOffersName[] =
-    "Enable Autofill for Wallet Direct Offers";
-inline constexpr char kAutofillEnableWalletDirectOffersDescription[] =
-    "When enabled, direct offers synced via Google Wallet will be available "
-    "for autofill into merchant promo code fields during checkout.";
-
-inline constexpr char kAutofillEnableWalletReminderNoticeName[] =
-    "Enable Wallet Reminder Notice for cards";
-inline constexpr char kAutofillEnableWalletReminderNoticeDescription[] =
-    "When enabled, shows the Wallet Reminder Notice prompt or bottom sheet "
-    "for cards after payment form submission.";
-
-inline constexpr char kAutofillEnableWalletReminderNoticePublicPassName[] =
-    "Enable Wallet Reminder Notice for public passes";
 inline constexpr char
     kAutofillEnableWalletReminderNoticePublicPassDescription[] =
         "When enabled, shows the Wallet Reminder Notice prompt or bottom sheet "
@@ -1147,54 +884,6 @@ inline constexpr char
         "When enabled, ignores the strike database checks for the payments "
         "churned users resurrecting bubble feature. For testing purposes.";
 
-inline constexpr char kAutofillManualTestingDataName[] =
-    "Autofill manual testing data";
-inline constexpr char kAutofillManualTestingDataDescription[] =
-    "When set, imports the addresses and cards specified on startup. WARNING: "
-    "If at least one address/card is specified, all other existing "
-    "addresses/cards are overwritten.";
-
-inline constexpr char kAutofillPaymentsFieldSwappingName[] =
-    "Swap credit card suggestions";
-inline constexpr char kAutofillPaymentsFieldSwappingDescription[] =
-    "When enabled, swapping autofilled payment suggestions would result"
-    "in overriding all of the payments fields with the swapped profile data";
-
-inline constexpr char kAutofillPreferBuyNowPayLaterBlocklistsName[] =
-    "Prefer blocklists instead of allowlists for Payments Autofill Buy Now Pay "
-    "Later (BNPL)";
-inline constexpr char kAutofillPreferBuyNowPayLaterBlocklistsDescription[] =
-    "When enabled, Payments Autofill Buy Now Pay Later (BNPL) will use each "
-    "corresponding issuer's blocklist instead of allowlist to check for "
-    "website eligibility.";
-
-inline constexpr char kAutofillTouchToFillShowManualFillForVcnFixName[] =
-    "Ensures showing of the BNPL VCN on manual fallback sheet in the Touch To "
-    "Fill flow";
-inline constexpr char kAutofillTouchToFillShowManualFillForVcnFixDescription[] =
-    "When enabled, it successfully shows the VCN when the BNPL flow is "
-    "successful and the user clicks on the 'show card' button to fill the card "
-    "manually.";
-
-inline constexpr char kAutofillUpstreamEnforceStrikeDelayName[] =
-    "Require a week between offers to save credit cards";
-inline constexpr char kAutofillUpstreamEnforceStrikeDelayDescription[] =
-    "When enabled, users should not see offers to save the same credit card "
-    "twice in a week, as the strike database enforces a 7-day delay between "
-    "strikes.";
-
-inline constexpr char kAutofillEnableWalletBrandingName[] =
-    "Update Google Pay branding to Wallet where applicable";
-inline constexpr char kAutofillEnableWalletBrandingDescription[] =
-    "When enabled, certain strings and logos referencing Google Account, "
-    "Google Payments, and Google Pay will instead reference Google Wallet.";
-
-inline constexpr char kAutofillEnableWalletBrandingV2Name[] =
-    "Further update Google Pay and Google Wallet branding where applicable";
-inline constexpr char kAutofillEnableWalletBrandingV2Description[] =
-    "When enabled, further brings certain strings and images referencing "
-    "Google Pay and Google Wallet into consistency with branding requirements.";
-
 inline constexpr char kAutoPictureInPictureAndroidName[] =
     "Auto picture in picture on Android";
 inline constexpr char kAutoPictureInPictureAndroidDescription[] =
@@ -1205,12 +894,6 @@ inline constexpr char kAutoPictureInPictureOnWindowOccludedName[] =
 inline constexpr char kAutoPictureInPictureOnWindowOccludedDescription[] =
     "Allows auto picture-in-picture to trigger when the window is occluded "
     "by another window.";
-
-inline constexpr char kBiometricReauthForPasswordFillingName[] =
-    "Biometric reauth for password filling";
-inline constexpr char kBiometricReauthForPasswordFillingDescription[] =
-    "Enables biometric"
-    "re-authentication before password filling";
 
 inline constexpr char kBindCookiesToPortName[] =
     "Bind cookies to their setting origin's port";
@@ -1632,20 +1315,6 @@ inline constexpr char kGlicOptInDialogA11yFixDescription[] =
     "Fixes Glic opt-in dialog accessibility issues by adding an accessible "
     "title and redirecting initial focus.";
 
-inline constexpr char kGlicActorAutofillName[] = "Glic actor autofill";
-inline constexpr char kGlicActorAutofillDescription[] =
-    "Enables autofill actions for the Glic actor. Specific fillable types may "
-    "also need to be enabled.";
-inline constexpr char kGlicActorAutofillPreClickName[] =
-    "Glic actor autofill pre-click";
-inline constexpr char kGlicActorAutofillPreClickDescription[] =
-    "Enables an additional click before retrieving suggestions. Only effective "
-    "if Glic actor autofill is also enabled.";
-inline constexpr char kGlicActorAutofillSectionLabelName[] =
-    "Glic actor autofill section label";
-inline constexpr char kGlicActorAutofillSectionLabelDescription[] =
-    "Enables the section label in Glic actor autofill. Only effective if Glic "
-    "actor autofill is also enabled.";
 inline constexpr char kGlicActorCursorName[] = "Glic actor cursor";
 inline constexpr char kGlicActorCursorDescription[] =
     "Enables the Glic actor cursor";
@@ -2148,8 +1817,6 @@ inline constexpr char kAccessibilityCaptionsOnBrailleDisplayName[] =
 inline constexpr char kAccessibilityCaptionsOnBrailleDisplayDescription[] =
     "This option allows access to captions for media via a braille display.";
 
-inline constexpr char kApplyClientsideModelPredictionsForPasswordTypesName[] =
-    "Apply clientside model predictions for password forms.";
 inline constexpr char
     kApplyClientsideModelPredictionsForPasswordTypesDescription[] =
         "Enable using clientside model predictions to fill password forms.";
@@ -2651,12 +2318,6 @@ inline constexpr char kWebIdentityDigitalCredentialsCreationName[] =
     "DigitalCredentialsCreation";
 inline constexpr char kWebIdentityDigitalCredentialsCreationDescription[] =
     "Enables the Digital Credentials Creation API.";
-
-inline constexpr char kFillOnAccountSelectName[] =
-    "Fill passwords on account selection";
-inline constexpr char kFillOnAccountSelectDescription[] =
-    "Filling of passwords when an account is explicitly selected by the user "
-    "rather than autofilling credentials on page load.";
 
 inline constexpr char kFirstRunDesktopChoiceScreenRefreshName[] =
     "First Run Desktop Choice Screen Refresh";
@@ -3975,49 +3636,6 @@ inline constexpr char kPartitionVisitedLinkDatabaseWithSelfLinksDescription[] =
     "any top-level site and frame origin, if they are displayed in a top-level "
     "frame or same-origin subframe.";
 
-inline constexpr char kPasskeyUnlockErrorUiName[] = "Passkey Unlock Error UI";
-inline constexpr char kPasskeyUnlockErrorUiDescription[] =
-    "Enables showing the passkey unlock error UI to passkey users in case when "
-    "their access to passkeys is “locked” and when they have an available user "
-    "verification mechanism (either a system UV or a GPM PIN). This flag "
-    "requires the flag `PasskeyUnlockManager` to be active.";
-
-inline constexpr char kPasswordChangeWithGlicName[] =
-    "Password change with Glic";
-inline constexpr char kPasswordChangeWithGlicDescription[] =
-    "Triggers password change flow through Glic";
-
-inline constexpr char kPasswordCompromiseWarningInDetailsCardName[] =
-    "Password compromise warning in details card";
-inline constexpr char kPasswordCompromiseWarningInDetailsCardDescription[] =
-    "Displays a warning banner in the password details card when a "
-    "saved credential is compromised.";
-
-inline constexpr char kPasswordFormGroupedAffiliationsName[] =
-    "Grouped affiliation password suggestions";
-inline constexpr char kPasswordFormGroupedAffiliationsDescription[] =
-    "Enables offering credentials coming from grouped domains for "
-    "filling";
-
-inline constexpr char kPasswordManagerShowSuggestionsOnAutofocusName[] =
-    "Showing password suggestions on autofocused password forms";
-inline constexpr char kPasswordManagerShowSuggestionsOnAutofocusDescription[] =
-    "Enables showing password suggestions without requiring the user to "
-    "click on the already focused field if the field was autofocused on "
-    "the page load.";
-
-inline constexpr char kPasswordSaveInContextErrorResolutionName[] =
-    "In-flow resolution of errors during password saving";
-inline constexpr char kPasswordSaveInContextErrorResolutionDescription[] =
-    "Starts the password manager error resolution flow after offering to "
-    "save a password.";
-
-inline constexpr char kPasswordSaveUpdateDropdownMenuExperimentName[] =
-    "Password Save/Update Dropdown Menu Experiment";
-inline constexpr char kPasswordSaveUpdateDropdownMenuExperimentDescription[] =
-    "Enables an experimental dropdown menu for password save and update "
-    "prompts.";
-
 inline constexpr char kPaymentRequestRejectTooSmallWindowsName[] =
     "Reject Payment Request in small windows";
 inline constexpr char kPaymentRequestRejectTooSmallWindowsDescription[] =
@@ -4260,26 +3878,6 @@ inline constexpr char kSendTabToSelfGestureDescription[] =
     "Enables detecting physical double-tap gestures to trigger Send Tab To "
     "Self on Android.";
 
-inline constexpr char kSensitiveContentName[] =
-    "Redact sensitive content during screen sharing, screen recording, "
-    "and similar actions";
-
-inline constexpr char kSensitiveContentDescription[] =
-    "When enabled, if sensitive form fields (such as credit cards, passwords) "
-    "are present on the page, the entire content area is redacted during "
-    "screen sharing, screen recording, and similar actions. This feature "
-    "works only on Android V or above.";
-
-inline constexpr char kSensitiveContentWhileSwitchingTabsName[] =
-    "Redact sensitive content while switching tabs during screen sharing, "
-    "screen recording, and similar actions";
-
-inline constexpr char kSensitiveContentWhileSwitchingTabsDescription[] =
-    "When enabled, if a tab switching surface provides a preview of a tab that "
-    "contains sensitive content, the screen is redacted during screen sharing, "
-    "screen recording, and similar actions. This feature works only on Android "
-    "V or above, and if #sensitive-content is also enabled.";
-
 inline constexpr char kRecordWebAppDebugInfoName[] =
     "Record web app debug info";
 inline constexpr char kRecordWebAppDebugInfoDescription[] =
@@ -4474,18 +4072,6 @@ inline constexpr char kSharingDesktopScreenshotsName[] = "Desktop Screenshots";
 inline constexpr char kSharingDesktopScreenshotsDescription[] =
     "Enables taking"
     " screenshots from the desktop sharing hub.";
-
-inline constexpr char kShowAutofillSignaturesName[] =
-    "Show autofill signatures.";
-inline constexpr char kShowAutofillSignaturesDescription[] =
-    "Annotates web forms with Autofill signatures as HTML attributes. Also "
-    "marks password fields suitable for password generation.";
-
-inline constexpr char kShowAutofillTypePredictionsName[] =
-    "Show Autofill predictions";
-inline constexpr char kShowAutofillTypePredictionsDescription[] =
-    "Annotates web forms with Autofill field type predictions as placeholder "
-    "text.";
 
 inline constexpr char kShowOverdrawFeedbackName[] = "Show overdraw feedback";
 inline constexpr char kShowOverdrawFeedbackDescription[] =
@@ -4884,11 +4470,6 @@ inline constexpr char kWalletApiPrivatePassesEnabledName[] =
     "Wallet API Private Passes";
 inline constexpr char kWalletApiPrivatePassesEnabledDescription[] =
     "Enables the Wallet API for private passes.";
-
-inline constexpr char kWalletServiceUseSandboxName[] =
-    "Use Google Payments sandbox servers";
-inline constexpr char kWalletServiceUseSandboxDescription[] =
-    "For developers: use the sandbox service for Google Payments API calls.";
 
 inline constexpr char kWallpaperFastRefreshName[] =
     "Enable shortened wallpaper daily refresh interval for manual testing";
@@ -5767,15 +5348,11 @@ inline constexpr char
         "Dynamically position keyboard accessory above or below the field on "
         "devices with large form factors.";
 
-inline constexpr char kAutofillAndroidKeyboardAccessoryHoverPreviewName[] =
-    "Autofill Keyboard Accessory Hover Preview on Android";
 inline constexpr char
     kAutofillAndroidKeyboardAccessoryHoverPreviewDescription[] =
         "When enabled, hovering over suggestions in the Android keyboard "
         "accessory previews the suggestion.";
 
-inline constexpr char kAutofillAndroidDesktopKeyboardAccessoryRevampName[] =
-    "Move keyboard accessory to top on devices with large form factors";
 inline constexpr char
     kAutofillAndroidDesktopKeyboardAccessoryRevampDescription[] =
         "When enabled, a new keyboard accessory design will be applied. It "
@@ -6812,14 +6389,6 @@ inline constexpr char kWebuiBrowserVirtualFocusNavigationName[] =
 inline constexpr char kWebuiBrowserVirtualFocusNavigationDescription[] =
     "Enables virtual focus keyboard navigation within the WebUI Browser "
     "searchbox.";
-
-inline constexpr char kMarkAllCredentialsAsLeakedName[] =
-    "Mark all credential as leaked";
-inline constexpr char kMarkAllCredentialsAsLeakedDescription[] =
-    "Will pop up the leaked check dialog on every password form submission. "
-    "This should be used "
-    "in combination with #improved-password-change-service to better test the "
-    "improved password change service";
 
 inline constexpr char kMultistepFilterName[] = "Multistep Filter";
 inline constexpr char kMultistepFilterDescription[] =
@@ -8478,12 +8047,6 @@ inline constexpr char kWebXrPlaneDetectionDescription[] =
 inline constexpr char kWebXrMeshDetectionName[] = "WebXR Mesh Detection";
 inline constexpr char kWebXrMeshDetectionDescription[] =
     "Enables access to the WebXR mesh-detection feature.";
-
-inline constexpr char kAutofillCreditCardUploadName[] =
-    "Enable offering upload of Autofilled credit cards";
-inline constexpr char kAutofillCreditCardUploadDescription[] =
-    "Enables a new option to upload credit cards to Google Payments for sync "
-    "to all Chrome devices.";
 
 inline constexpr char kElasticOverscrollName[] = "Elastic Overscroll";
 inline constexpr char kElasticOverscrollDescription[] =

@@ -40,7 +40,6 @@ group("resources") {
       ":app_icon_resources",
       ":dev_ui_paks",
       "actor_overlay:resources",
-      "autofill_ml_internals:resources",
       "certificate_manager:resources",
       "content_settings:resources",
       "downloads:resources",
@@ -48,7 +47,6 @@ group("resources") {
       "inspect:resources",
       "key_value_pair_viewer_shared:resources",
       "omnibox_popup:resources",
-      "password_manager:resources",
       "settings:resources",
       "settings_shared:resources",
       "side_panel/history:resources",
@@ -160,7 +158,6 @@ group("resources") {
   }
 
   if (safe_browsing_mode == 1) {
-    public_deps += [ "reset_password:resources" ]
   }
 }
 
@@ -331,7 +328,6 @@ group("dev_ui_resources") {
     "suggest_internals:resources",
     "usb_internals:resources",
     "//components/actor/core/internals/resources",
-    "//components/autofill/core/browser/autofill_and_password_manager_internals:resources",
     "//components/download/resources/download_internals:resources",
     "//components/enterprise/connectors/resources",
     "//components/gcm_driver/resources",
@@ -409,7 +405,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/suggest_internals_resources.pak",
     "$root_gen_dir/chrome/usb_internals_resources.pak",
     "$root_gen_dir/components/actor_internals_resources.pak",
-    "$root_gen_dir/components/autofill_and_password_manager_internals_resources.pak",
     "$root_gen_dir/components/connectors_internals_resources.pak",
     "$root_gen_dir/components/dev_ui_components_resources.pak",
     "$root_gen_dir/components/download_internals_resources.pak",

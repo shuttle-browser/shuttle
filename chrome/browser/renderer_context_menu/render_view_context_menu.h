@@ -16,7 +16,6 @@
 #include "base/scoped_observation.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/ui/autofill/autofill_context_menu_manager.h"
 #include "chrome/common/chrome_render_frame.mojom.h"
 #include "components/compose/buildflags.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
@@ -567,9 +566,6 @@ class RenderViewContextMenu
   // Used in testing to determine whether the lens region search controller has
   // started due to interaction with the region search entrypoint in the menu.
   bool lens_region_search_controller_started_for_testing_ = false;
-
-  // Responsible for handling autofill related context menu items.
-  autofill::AutofillContextMenuManager autofill_context_menu_manager_;
 
   // Whether the "Paste" menu item should be enabled.
   const bool is_paste_enabled_;

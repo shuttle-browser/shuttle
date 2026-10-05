@@ -29,7 +29,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/chrome_pages.h"
-#include "chrome/browser/ui/feature_first_run/autofill_ai_first_run_dialog.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
@@ -46,7 +45,6 @@
 #include "chrome/browser/ui/toolbar/reading_list_sub_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/show_promo_in_page.h"
-#include "chrome/browser/ui/views/autofill/popup/popup_view_views.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
@@ -56,14 +54,12 @@
 #include "chrome/browser/ui/views/tabs/tab.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_icon.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button.h"
-#include "chrome/browser/ui/views/user_education/autofill_help_bubble_factory.h"
 #include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
 #include "chrome/browser/ui/views/user_education/custom_webui_help_bubble.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_controller.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_preconditions.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_user_education_context.h"
 #include "chrome/browser/ui/webui/history/history_ui.h"
-#include "chrome/browser/ui/webui/password_manager/password_manager_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
 #include "chrome/browser/user_education/ntp_promo_identifiers.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
@@ -75,7 +71,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/autofill/core/common/autofill_features.h"
 #include "components/compose/buildflags.h"
 #include "components/feature_engagement/public/event_constants.h"
 #include "components/feature_engagement/public/feature_constants.h"
@@ -271,8 +266,6 @@ void RegisterChromeHelpBubbleFactories(
   // `ash::HelpBubbleContext::kAsh`.
   registry.MaybeRegister<ash::HelpBubbleFactoryViewsAsh>(delegate);
 #endif  // BUILDFLAG(IS_CHROMEOS)
-  // Autofill bubbles require special handling.
-  registry.MaybeRegister<AutofillHelpBubbleFactory>(delegate);
   registry.MaybeRegister<user_education::HelpBubbleFactoryViews>(delegate);
   // Try to create a floating bubble first, if it's allowed.
   registry.MaybeRegister<FloatingWebUIHelpBubbleFactoryBrowser>(delegate);
@@ -308,19 +301,6 @@ void MaybeRegisterChromeFeaturePromos(
     return;
   }
 
-  // kIPHAutofillCreditCardBenefitFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillCreditCardBenefitFeature,
-          autofill::PopupViewViews::kAutofillCreditCardBenefitElementId,
-          IDS_AUTOFILL_CREDIT_CARD_BENEFIT_IPH_BUBBLE_LABEL,
-          IDS_AUTOFILL_CREDIT_CARD_BENEFIT_IPH_BUBBLE_LABEL_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(125, "alexandertekle@google.com",
-                       "Triggered after a credit card benefit is displayed for "
-                       "the first time.")));
-
   // kIPHMultistepFilterPromoFeature:
   registry.RegisterFeature(std::move(
       FeaturePromoSpecification::CreateForToastPromo(
@@ -350,241 +330,6 @@ void MaybeRegisterChromeFeaturePromos(
           .SetMetadata(151, "jihadghanna@google.com",
                        "Triggered on first time feature usage to educate users "
                        "about Multistep Filter.")));
-
-  // TODO(crbug.com/40264177): Use toast or snooze instead of legacy promo.
-  // kIPHAutofillExternalAccountProfileSuggestionFeature:
-  registry.RegisterFeature(
-      std::move(FeaturePromoSpecification::CreateForLegacyPromo(
-                    &feature_engagement::
-                        kIPHAutofillExternalAccountProfileSuggestionFeature,
-                    autofill::PopupViewViews::kAutofillSuggestionElementId,
-                    IDS_AUTOFILL_IPH_EXTERNAL_ACCOUNT_PROFILE_SUGGESTION)
-                    .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-                    .SetMetadata(115, "vykochko@chromium.org",
-                                 "Triggered after autofill popup appears.")));
-
-  // TODO(crbug.com/397940269): Check if
-  // `IDS_AUTOFILL_IPH_HOME_AND_WORK_ACCOUNT_PROFILE_SUGGESTION_SCREENREADER`
-  // should be same as
-  // `IDS_AUTOFILL_IPH_HOME_AND_WORK_ACCOUNT_PROFILE_SUGGESTION` once the
-  // strings are finalized. kIPHAutofillHomeWorkProfileSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillHomeWorkProfileSuggestionFeature,
-          autofill::PopupViewViews::kAutofillHomeWorkSuggestionElementId,
-          IDS_AUTOFILL_IPH_HOME_AND_WORK_ACCOUNT_PROFILE_SUGGESTION,
-          IDS_AUTOFILL_IPH_HOME_AND_WORK_ACCOUNT_PROFILE_SUGGESTION_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetBubbleTitleText(
-              IDS_AUTOFILL_IPH_HOME_AND_WORK_ACCOUNT_PROFILE_SUGGESTION_TITLE)
-          .SetMetadata(136, "vidhanj@google.com",
-                       "Triggered after a home/work suggestion is available to "
-                       "user for filling")));
-
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillAccountNameEmailSuggestionFeature,
-          autofill::PopupViewViews::
-              kAutofillAccountNameEmailSuggestionElementId,
-          IDS_AUTOFILL_IPH_ACCOUNT_NAME_EMAIL_SUGGESTION,
-          IDS_AUTOFILL_IPH_ACCOUNT_NAME_EMAIL_SUGGESTION_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetBubbleTitleText(
-              IDS_AUTOFILL_IPH_ACCOUNT_NAME_EMAIL_SUGGESTION_TITLE)
-          .SetMetadata(
-              143, "sygiet@google.com",
-              "Triggered after a name and email suggestion is available to "
-              "user for filling")));
-
-  // kIPHAutofillAiOptInFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForCustomAction(
-          feature_engagement::kIPHAutofillAiOptInFeature,
-          autofill::PopupViewViews::kAutofillAiOptInIphElementId,
-          IDS_AUTOFILL_AI_OPT_IN_IPH_BODY, IDS_AUTOFILL_AI_OPT_IN_IPH_TURN_ON,
-          base::BindRepeating(
-              [](ContextPtr ctx,
-                 user_education::FeaturePromoHandle promo_handle) {
-                BrowserWindowInterface* const browser = GetBrowser(ctx);
-                TabStripModel* const tab_strip_model =
-                    browser->GetTabStripModel();
-                if (!tab_strip_model) {
-                  return;
-                }
-                content::WebContents* const web_contents =
-                    tab_strip_model->GetActiveWebContents();
-                feature_first_run::ShowAutofillAiFirstRunDialog(web_contents);
-              }))
-          .SetCustomActionIsDefault(true)
-          .SetCustomActionDismissText(IDS_AUTOFILL_AI_OPT_IN_IPH_MAYBE_LATER)
-          .SetBubbleTitleText(IDS_AUTOFILL_AI_OPT_IN_IPH_TITLE)
-          .SetBubbleArrow(HelpBubbleArrow::kTopRight)
-          .AddPreconditionExemption(kUserNotActivePrecondition)
-          .SetMetadata(136, "brunobraga@google.com",
-                       "Displayed on input fields that are eligible for "
-                       "AutofillAI. These can be input fields on any website "
-                       "as long as the field has AutofillAI predictions. "
-                       "The IPH is displayed when the user clicks on such an "
-                       "input field and is anchored against it.")));
-
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillAiValuablesFeature,
-          autofill::PopupViewViews::kAutofillAiValuablesElementId,
-          IDS_AUTOFILL_AI_VALUABLES_IPH_BODY,
-          IDS_AUTOFILL_IPH_LOYALTY_CARD_SUGGESTION_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleTitleText(IDS_AUTOFILL_AI_VALUABLES_IPH_TITLE)
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(
-              143, "vizcay@google.com",
-              "Triggered after Wallet autofill suggestions are shown.")));
-
-  // kIPHAutofillVirtualCardCVCSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillVirtualCardCVCSuggestionFeature,
-          autofill::PopupViewViews::kAutofillStandaloneCvcSuggestionElementId,
-          IDS_AUTOFILL_VIRTUAL_CARD_STANDALONE_CVC_SUGGESTION_IPH_BUBBLE_LABEL,
-          IDS_AUTOFILL_VIRTUAL_CARD_STANDALONE_CVC_SUGGESTION_IPH_BUBBLE_LABEL_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(118, "alexandertekle@google.com",
-                       "Triggered after autofill popup appears.")));
-
-  // kIPHAutofillVirtualCardSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForLegacyPromo(
-          &feature_engagement::kIPHAutofillVirtualCardSuggestionFeature,
-          autofill::PopupViewViews::kAutofillCreditCardSuggestionEntryElementId,
-          IDS_AUTOFILL_VIRTUAL_CARD_SUGGESTION_IPH_BUBBLE_LABEL)
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(100, "siyua@chromium.org",
-                       "Triggered after autofill popup appears.")));
-
-  bool bnpl_second_line_string_experiment_enabled =
-      base::FeatureList::IsEnabled(
-          autofill::features::
-              kAutofillEnableBuyNowPayLaterUpdatedSuggestionSecondLineString);
-
-  // kIPHAutofillBnplAffirmOrZipSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillBnplAffirmOrZipSuggestionFeature,
-          autofill::PopupViewViews::kAutofillBnplAffirmOrZipSuggestionElementId,
-          bnpl_second_line_string_experiment_enabled
-              ? IDS_AUTOFILL_CARD_BNPL_SUGGESTION_WITH_GOOGLE_PAY_IPH_BUBBLE_LABEL_DESKTOP
-              : IDS_AUTOFILL_CARD_BNPL_AFFIRM_OR_ZIP_SUGGESTION_IPH_BUBBLE_LABEL_DESKTOP,
-          bnpl_second_line_string_experiment_enabled
-              ? IDS_AUTOFILL_CARD_BNPL_SUGGESTION_WITH_GOOGLE_PAY_IPH_BUBBLE_LABEL_DESKTOP_SCREENREADER
-              : IDS_AUTOFILL_CARD_BNPL_AFFIRM_OR_ZIP_SUGGESTION_IPH_BUBBLE_LABEL_DESKTOP_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(137, "yiwenqian@google.com",
-                       "Triggered when users see the BNPL chip. Used when the "
-                       "possible available BNPL issuers are Affirm and Zip.")));
-
-  // kIPHAutofillBnplAffirmZipOrKlarnaSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::
-              kIPHAutofillBnplAffirmZipOrKlarnaSuggestionFeature,
-          autofill::PopupViewViews::
-              kAutofillBnplAffirmZipOrKlarnaSuggestionElementId,
-          bnpl_second_line_string_experiment_enabled
-              ? IDS_AUTOFILL_CARD_BNPL_SUGGESTION_WITH_GOOGLE_PAY_IPH_BUBBLE_LABEL_DESKTOP
-              : IDS_AUTOFILL_CARD_BNPL_AFFIRM_ZIP_OR_KLARNA_SUGGESTION_IPH_BUBBLE_LABEL_DESKTOP,
-          bnpl_second_line_string_experiment_enabled
-              ? IDS_AUTOFILL_CARD_BNPL_SUGGESTION_WITH_GOOGLE_PAY_IPH_BUBBLE_LABEL_DESKTOP_SCREENREADER
-              : IDS_AUTOFILL_CARD_BNPL_AFFIRM_ZIP_OR_KLARNA_SUGGESTION_IPH_BUBBLE_LABEL_DESKTOP_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(
-              139, "wilsonlow@google.com",
-              "Triggered when users see the BNPL chip. Used when the possible "
-              "available BNPL issuers are Affirm, Zip, and Klarna.")));
-
-  // kIPHAutofillCardInfoRetrievalSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillCardInfoRetrievalSuggestionFeature,
-          autofill::PopupViewViews::kAutofillCreditCardSuggestionEntryElementId,
-          IDS_AUTOFILL_CARD_INFO_RETRIEVAL_SUGGESTION_IPH_BUBBLE_LABEL,
-          IDS_AUTOFILL_CARD_INFO_RETRIEVAL_SUGGESTION_IPH_BUBBLE_LABEL_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(135, "jialihuang@google.com",
-                       "Triggered after autofill popup appears for a card "
-                       "enrolled in card info retrieval.")));
-
-  // kIPHAutofillWalletDirectOffersFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillWalletDirectOffersFeature,
-          autofill::PopupViewViews::kAutofillWalletDirectOffersIphElementId,
-          IDS_AUTOFILL_WALLET_DIRECT_OFFERS_IPH_BUBBLE_LABEL,
-          IDS_AUTOFILL_WALLET_DIRECT_OFFERS_IPH_BUBBLE_LABEL_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kTopLeft)
-          .SetMetadata(156, "wilsonlow@google.com",
-                       "Triggered when a merchant promo code field is visible "
-                       "and direct offers from Google Wallet are available.")));
-
-  // kIPHAutofillDisabledVirtualCardSuggestionFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillDisabledVirtualCardSuggestionFeature,
-          autofill::PopupViewViews::kAutofillCreditCardSuggestionEntryElementId,
-          IDS_AUTOFILL_DISABLED_VIRTUAL_CARD_SUGGESTION_IPH_BUBBLE_LABEL_DESKTOP,
-          IDS_AUTOFILL_DISABLED_VIRTUAL_CARD_SUGGESTION_IPH_BUBBLE_LABEL_DESKTOP_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(130, "hvs@google.com",
-                       "Triggered after autofill popup appears for disabled "
-                       "virtual card.")));
-
-  // kIPHAutofillDownstreamCardAwarenessFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillDownstreamCardAwarenessFeature,
-          autofill::PopupViewViews::kAutofillCreditCardSuggestionEntryElementId,
-          IDS_AUTOFILL_DOWNSTREAM_CARD_AWARENESS_IPH_BUBBLE_LABEL,
-          IDS_AUTOFILL_DOWNSTREAM_CARD_AWARENESS_IPH_BUBBLE_LABEL_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(149, "ferny@google.com",
-                       "Triggered after autofill popup appears featuring an "
-                       "externally-saved card.")));
-
-  // TODO(crbug.com/404437008): Update with final IPH strings.
-  // kIPHAutofillEnableLoyaltyCardsFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillEnableLoyaltyCardsFeature,
-          autofill::PopupViewViews::kAutofillEnableLoyaltyCardsElementId,
-          IDS_AUTOFILL_IPH_LOYALTY_CARD_SUGGESTION_BODY,
-          IDS_AUTOFILL_IPH_LOYALTY_CARD_SUGGESTION_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleTitleText(IDS_AUTOFILL_IPH_LOYALTY_CARD_SUGGESTION_TITLE)
-          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
-          .SetMetadata(
-              137, "vizcay@google.com",
-              "Triggered after loyalty card autofill suggestions are shown.")));
-
-  // kIPHAutofillOmniboxPaymentChipFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHAutofillOmniboxPaymentChipFeature,
-          kAutofillPaymentIconElementId,
-          IDS_AUTOFILL_IPH_OMNIBOX_PAYMENT_CHIP_LABEL,
-          IDS_AUTOFILL_IPH_OMNIBOX_PAYMENT_CHIP_LABEL_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetBubbleArrow(HelpBubbleArrow::kTopRight)
-          .SetMetadata(150, "ferny@google.com",
-                       "Triggered when the Autofill payment omnibox chip "
-                       "is shown.")));
 
   // kIPHDesktopPwaInstallFeature:
   registry.RegisterFeature(
@@ -745,55 +490,6 @@ void MaybeRegisterChromeFeaturePromos(
               "Triggered on chrome://history when agent critical actions "
               "were logged for the first time.")));
 
-  // kIPHPasswordsSavePrimingPromo:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHPasswordsSavePrimingPromoFeature,
-#if BUILDFLAG(IS_CHROMEOS)
-          // No avatar button on ChromeOS, so anchor to app menu instead.
-          kToolbarAppMenuButtonElementId,
-#else
-          kToolbarAvatarButtonElementId,
-#endif
-          IDS_PASSWORDS_SAVE_PRIMING_PROMO_BODY_TEMPLATE,
-          IDS_PASSWORDS_SAVE_PRIMING_PROMO_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetMetadata(
-              137, "dfried@chromium.org",
-              "Triggered when the user navigates a page with an eligible login "
-              "form, and they have no saved passwords.")));
-
-  // kIPHPasswordsSavePrimingPromo:
-  registry.RegisterFeature(
-      std::move(FeaturePromoSpecification::CreateForToastPromo(
-                    feature_engagement::kIPHPasswordsSaveRecoveryPromoFeature,
-                    kPasswordsOmniboxKeyIconElementId,
-                    IDS_PASSWORDS_SAVE_RECOVERY_PROMO_BODY,
-                    IDS_PASSWORDS_SAVE_RECOVERY_PROMO_SCREENREADER,
-                    FeaturePromoSpecification::AcceleratorInfo())
-                    .SetMetadata(137, "dfried@chromium.org",
-                                 "Triggered when the user logs into a page "
-                                 "they have blocklisted")));
-
-  // kIPHPasswordsManagementBubbleAfterSaveFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForToastPromo(
-          feature_engagement::kIPHPasswordsManagementBubbleAfterSaveFeature,
-          kPasswordsOmniboxKeyIconElementId,
-          IDS_PASSWORD_MANAGER_IPH_MANAGEMENT_BUBBLE_AFTER_SAVE,
-          IDS_PASSWORD_MANAGER_IPH_MANAGEMENT_BUBBLE_AFTER_SAVE_SCREENREADER,
-          FeaturePromoSpecification::AcceleratorInfo())
-          .SetMetadata(113, "mamir@chromium.org",
-                       "Triggered once when user has saved a password.")));
-
-  // kIPHPasswordsManagementBubbleDuringSigninFeature:
-  registry.RegisterFeature(FeaturePromoSpecification::CreateForToastPromo(
-      feature_engagement::kIPHPasswordsManagementBubbleDuringSigninFeature,
-      kPasswordsOmniboxKeyIconElementId,
-      IDS_PASSWORD_MANAGER_IPH_MANAGEMENT_BUBBLE_DURING_SIGNIN,
-      IDS_PASSWORD_MANAGER_IPH_MANAGEMENT_BUBBLE_DURING_SIGNIN_SCREENREADER,
-      FeaturePromoSpecification::AcceleratorInfo()));
-
 #if BUILDFLAG(ENABLE_PDF_INK2)
   // kIPHPdfInkSignaturesFeature:
   registry.RegisterFeature(std::move(
@@ -817,18 +513,6 @@ void MaybeRegisterChromeFeaturePromos(
                        "Triggered when the PDF Viewer opens.")));
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
-  // kIPHPasswordSharingFeature:
-  registry.RegisterFeature(
-      std::move(FeaturePromoSpecification::CreateForToastPromo(
-                    feature_engagement::kIPHPasswordSharingFeature,
-                    PasswordManagerUI::kSharePasswordElementId,
-                    IDS_PASSWORD_MANAGER_IPH_SHARE_PASSWORD_BUTTON,
-                    IDS_PASSWORD_MANAGER_IPH_SHARE_PASSWORD_BUTTON_SCREENREADER,
-                    FeaturePromoSpecification::AcceleratorInfo())
-                    .SetInAnyContext(true)
-                    .SetBubbleIcon(kLightbulbOutlineIcon)
-                    .SetBubbleArrow(HelpBubbleArrow::kTopRight)));
-
 #if !BUILDFLAG(IS_CHROMEOS)
   // kIPHSwitchProfileFeature:
   registry.RegisterFeature(FeaturePromoSpecification::CreateForToastPromo(
@@ -836,14 +520,6 @@ void MaybeRegisterChromeFeaturePromos(
       kToolbarAvatarButtonElementId, IDS_PROFILE_SWITCH_PROMO,
       IDS_PROFILE_SWITCH_PROMO_SCREENREADER,
       FeaturePromoSpecification::AcceleratorInfo(IDC_SHOW_AVATAR_MENU)));
-
-  // kIPHPasswordsWebAppProfileSwitchFeature:
-  registry.RegisterFeature(FeaturePromoSpecification::CreateForToastPromo(
-      feature_engagement::kIPHPasswordsWebAppProfileSwitchFeature,
-      kToolbarAvatarButtonElementId,
-      IDS_PASSWORD_MANAGER_IPH_BODY_WEB_APP_PROFILE_SWITCH,
-      IDS_PROFILE_SWITCH_PROMO_SCREENREADER,
-      FeaturePromoSpecification::AcceleratorInfo()));
 
   // kIPHExplicitBrowserSigninPreferenceRememberedFeature:
   registry.RegisterFeature(std::move(
@@ -1140,8 +816,7 @@ void MaybeRegisterChromeFeaturePromos(
       FeaturePromoSpecification::CreateForSnoozePromo(
           feature_engagement::kIPHWebUiHelpBubbleTestFeature,
           kWebUIIPHDemoElementIdentifier,
-          IDS_PASSWORD_MANAGER_IPH_BODY_SAVE_TO_ACCOUNT)
-          .SetBubbleTitleText(IDS_PASSWORD_MANAGER_IPH_TITLE_SAVE_TO_ACCOUNT)
+          IDS_SHARED_HIGHLIGHTING_PROMO)
           .SetInAnyContext(true)
           .SetBubbleArrow(HelpBubbleArrow::kBottomRight)
           .SetBubbleIcon(&(features::IsRoundedIconsEnabled()

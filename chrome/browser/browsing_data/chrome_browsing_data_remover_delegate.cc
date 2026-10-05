@@ -32,8 +32,6 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/browser/autocomplete/zero_suggest_cache_service_factory.h"
-#include "chrome/browser/autofill/autofill_entity_data_manager_factory.h"
-#include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/browsing_data/navigation_entry_remover.h"
@@ -58,8 +56,6 @@
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
-#include "chrome/browser/password_manager/factories/account_password_store_factory.h"
-#include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/permissions/permission_actions_history_factory.h"
 #include "chrome/browser/permissions/permission_decision_auto_blocker_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
@@ -83,14 +79,6 @@
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/url_constants.h"
-#include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
-#include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
-#include "components/autofill/core/browser/data_manager/personal_data_manager.h"
-#include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
-#include "components/autofill/core/common/autofill_prefs.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
 #include "components/browsing_data/core/features.h"
 #include "components/content_settings/core/browser/content_settings_registry.h"
@@ -111,11 +99,6 @@
 #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/open_from_clipboard/clipboard_recent_content.h"
-#include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/browser/features/password_manager_features_util.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
-#include "components/password_manager/core/browser/password_store/password_store_interface.h"
-#include "components/password_manager/core/browser/password_store/smart_bubble_stats_store.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/features.h"
 #include "components/permissions/permission_actions_history.h"
@@ -872,17 +855,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
   if (remove_mask & constants::DATA_TYPE_PASSWORDS) {
     CHECK(nullable_filter.is_null());
     base::RecordAction(UserMetricsAction("ClearBrowsingData_Passwords"));
-    auto password_store = ProfilePasswordStoreFactory::GetForProfile(
-        profile_, ServiceAccessType::EXPLICIT_ACCESS);
-
-    if (password_store) {
-      password_store->RemoveLoginsCreatedBetween(
-          FROM_HERE, delete_begin_, delete_end_,
-          CreateTaskCompletionCallback(
-              TracingDataType::kPasswords,
-              /* data_type_mask= */ constants::DATA_TYPE_PASSWORDS));
-    }
-
     profile_->GetDefaultStoragePartition()
         ->GetNetworkContext()
         ->ClearHttpAuthCache(
@@ -915,102 +887,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     browsing_data::RemoveFederatedSiteSettingsData(delete_begin_, delete_end_,
                                                    website_settings_filter,
                                                    host_content_settings_map_);
-
-    // Record that a password removal action happened for the profile store.
-    AddPasswordRemovalReason(
-        profile_->GetPrefs(), password_manager::IsAccountStore(false),
-        password_manager::metrics_util::PasswordManagerCredentialRemovalReason::
-            kClearBrowsingData);
-  }
-
-  if (remove_mask & constants::DATA_TYPE_ACCOUNT_PASSWORDS) {
-    CHECK(nullable_filter.is_null());
-    auto account_store = AccountPasswordStoreFactory::GetForProfile(
-        profile_, ServiceAccessType::EXPLICIT_ACCESS);
-
-    if (account_store) {
-      account_store->RemoveLoginsCreatedBetween(
-          FROM_HERE, delete_begin_, delete_end_,
-          CreateTaskCompletionCallback(TracingDataType::kAccountPasswords,
-                                       constants::DATA_TYPE_ACCOUNT_PASSWORDS));
-    }
-
-    // Record that a password removal action happened for the account store.
-    AddPasswordRemovalReason(
-        profile_->GetPrefs(), password_manager::IsAccountStore(true),
-        password_manager::metrics_util::PasswordManagerCredentialRemovalReason::
-            kClearBrowsingData);
-  }
-
-  CHECK(deferred_disable_passwords_auto_signin_cb_.is_null());
-  if ((remove_mask & content::BrowsingDataRemover::DATA_TYPE_COOKIES) &&
-      !filter_builder->PartitionedCookiesOnly()) {
-    // Unretained() is safe, this is only executed in OnTasksComplete() if the
-    // object is still alive. Also, see the field docs for motivation.
-    deferred_disable_passwords_auto_signin_cb_ = base::BindOnce(
-        &ChromeBrowsingDataRemoverDelegate::DisablePasswordsAutoSignin,
-        base::Unretained(this), filter);
-  }
-
-  if (remove_mask & constants::DATA_TYPE_HISTORY) {
-    password_manager::PasswordStoreInterface* password_store =
-        ProfilePasswordStoreFactory::GetForProfile(
-            profile_, ServiceAccessType::EXPLICIT_ACCESS)
-            .get();
-
-    if (password_store) {
-      password_manager::SmartBubbleStatsStore* stats_store =
-          password_store->GetSmartBubbleStatsStore();
-      if (stats_store) {
-        stats_store->RemoveStatisticsByOriginAndTime(
-            nullable_filter, delete_begin_, delete_end_,
-            CreateTaskCompletionClosure(TracingDataType::kPasswordsStatistics));
-      }
-    }
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  // DATA_TYPE_FORM_DATA
-  // TODO(dmurph): Support all backends with filter (crbug.com/40152186).
-  if (remove_mask & constants::DATA_TYPE_FORM_DATA) {
-    base::RecordAction(UserMetricsAction("ClearBrowsingData_Autofill"));
-    scoped_refptr<autofill::AutofillWebDataService> web_data_service =
-        WebDataServiceFactory::GetAutofillWebDataForProfile(
-            profile_, ServiceAccessType::EXPLICIT_ACCESS);
-
-    if (web_data_service.get()) {
-      web_data_service->RemoveFormElementsAddedBetween(delete_begin_,
-                                                       delete_end_);
-      if (autofill::EntityDataManager* entity_data_manager =
-              autofill::AutofillEntityDataManagerFactory::GetForProfile(
-                  profile_)) {
-        entity_data_manager->RemoveEntityInstancesModifiedBetween(delete_begin_,
-                                                                  delete_end_);
-      }
-      // Clear out the Autofill StrikeDatabase in its entirety.
-      // TODO(crbug.com/40594007): Respect |delete_begin_| and |delete_end_| and
-      // only clear out entries whose last strikes were created in that
-      // timeframe.
-      if (strike_database::StrikeDatabase* strike_database =
-              StrikeDatabaseFactory::GetForProfile(profile_)) {
-        strike_database->ClearAllStrikes();
-      }
-
-      autofill::prefs::ClearEmailVerificationState(prefs, delete_begin_,
-                                                   delete_end_);
-
-      autofill::PersonalDataManager* data_manager =
-          autofill::PersonalDataManagerFactory::GetForBrowserContext(profile_);
-      data_manager->address_data_manager().RemoveLocalProfilesModifiedBetween(
-          delete_begin_, delete_end_);
-      data_manager->payments_data_manager().RemoveLocalDataModifiedBetween(
-          delete_begin_, delete_end_);
-
-      // Ask for a call back when the above calls are finished.
-      web_data_service->GetDBTaskRunner()->PostTaskAndReply(
-          FROM_HERE, base::DoNothing(),
-          CreateTaskCompletionClosure(TracingDataType::kAutofillData));
-    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -1424,15 +1300,6 @@ void ChromeBrowsingDataRemoverDelegate::OnTaskComplete(
   if (!pending_sub_tasks_.empty())
     return;
 
-  if (deferred_disable_passwords_auto_signin_cb_) {
-    std::move(deferred_disable_passwords_auto_signin_cb_).Run();
-
-    // Might have added new tasks.
-    if (!pending_sub_tasks_.empty()) {
-      return;
-    }
-  }
-
   slow_pending_tasks_closure_.Cancel();
 
   DCHECK(!callback_.is_null());
@@ -1592,36 +1459,6 @@ ChromeBrowsingDataRemoverDelegate::MakeCredentialStore() {
 #else
       nullptr;
 #endif
-}
-
-void ChromeBrowsingDataRemoverDelegate::DisablePasswordsAutoSignin(
-    const base::RepeatingCallback<bool(const GURL&)>& url_filter) {
-  scoped_refptr<password_manager::PasswordStoreInterface> profile_store =
-      ProfilePasswordStoreFactory::GetForProfile(
-          profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  scoped_refptr<password_manager::PasswordStoreInterface> account_store =
-      AccountPasswordStoreFactory::GetForProfile(
-          profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  syncer::SyncService* sync_service =
-      SyncServiceFactory::GetForProfile(profile_);
-  if (profile_store) {
-    profile_store->DisableAutoSignInForOrigins(
-        url_filter,
-        CreateTaskCompletionClosure(
-            TracingDataType::kDisableAutoSigninForProfilePasswords));
-  }
-  if (account_store &&
-      // TODO(crbug.com/470332074): This should check for
-      // "enabled" instead of "active" because this code is just trying to
-      // delete data from all relevant places. The if() statement is just making
-      // sure the storage exists before we make a deletion call on it. This
-      // seems to match the semantics of "enabled".
-      password_manager::features_util::IsAccountStorageActive(sync_service)) {
-    account_store->DisableAutoSignInForOrigins(
-        url_filter,
-        CreateTaskCompletionClosure(
-            TracingDataType::kDisableAutoSigninForAccountPasswords));
-  }
 }
 
 #if BUILDFLAG(IS_ANDROID)

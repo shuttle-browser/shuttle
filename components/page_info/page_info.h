@@ -360,9 +360,6 @@ class PageInfo : private content_settings::CookieControlsObserver,
 
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
-  // Records a password reuse event. If FULL_SAFE_BROWSING is defined, this
-  // function WILL record an event. Callers should check conditions beforehand.
-  void RecordPasswordReuseEvent();
 #endif
 
   // Helper function to get the |HostContentSettingsMap| associated with

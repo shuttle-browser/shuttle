@@ -11,7 +11,6 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 
-class EnclaveManager;
 
 namespace content {
 class RenderFrameHost;
@@ -68,17 +67,14 @@ class TrustedVaultEncryptionKeysTabHelper
       TrustedVaultEncryptionKeysTabHelper>;
 
   // Null `trusted_vault_service_` is interpreted as incognito (when it comes to
-  // metrics). Null `enclave_manager_` means that no passkeys enclave service is
-  // active.
+  // metrics).
   TrustedVaultEncryptionKeysTabHelper(
       content::WebContents* web_contents,
-      trusted_vault::TrustedVaultService* trusted_vault_service,
-      EnclaveManager* enclave_manager);
+      trusted_vault::TrustedVaultService* trusted_vault_service);
 
   // Null `trusted_vault_service_` is interpreted as incognito (when it comes to
   // metrics).
   const raw_ptr<trusted_vault::TrustedVaultService> trusted_vault_service_;
-  const raw_ptr<EnclaveManager> enclave_manager_;
 
   std::optional<trusted_vault::TrustedVaultUserActionTriggerForUMA>
       user_action_trigger_;

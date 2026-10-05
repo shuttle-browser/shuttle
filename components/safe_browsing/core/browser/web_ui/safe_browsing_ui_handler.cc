@@ -7,7 +7,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "components/os_crypt/async/browser/os_crypt_async.h"
 #include "components/os_crypt/async/common/encryptor.h"
-#include "components/password_manager/core/browser/hash_password_manager.h"
 #include "components/safe_browsing/core/browser/referrer_chain_provider.h"
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton.h"
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton_event_observer.h"
@@ -109,28 +108,8 @@ void SafeBrowsingUIHandler::OnGetCookie(
 
 void SafeBrowsingUIHandler::GetSavedPasswords(const base::ListValue& args) {
   DCHECK(!args.empty());
-  const std::string& callback_id = args[0].GetString();
-
-  os_crypt_async_->GetInstance(
-      base::BindOnce(&SafeBrowsingUIHandler::GetSavedPasswordsImpl,
-                     weak_factory_.GetWeakPtr(), callback_id));
-}
-
-void SafeBrowsingUIHandler::GetSavedPasswordsImpl(
-    const std::string& callback_id,
-    scoped_refptr<os_crypt_async::Encryptor> encryptor) {
-  password_manager::HashPasswordManager hash_manager(std::move(encryptor));
-  hash_manager.set_prefs(user_prefs());
-  hash_manager.set_local_prefs(delegate_->GetLocalState());
-
-  base::ListValue saved_passwords;
-  for (const password_manager::PasswordHashData& hash_data :
-       hash_manager.RetrieveAllPasswordHashes()) {
-    saved_passwords.Append(hash_data.username);
-    saved_passwords.Append(hash_data.is_gaia_password);
-  }
-
-  ResolveCallback(callback_id, saved_passwords);
+  // Agent Chrome: no password manager, so no saved password hashes.
+  ResolveCallback(args[0].GetString(), base::ListValue());
 }
 
 void SafeBrowsingUIHandler::GetDatabaseManagerInfo(

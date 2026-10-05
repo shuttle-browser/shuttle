@@ -1941,11 +1941,7 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
   // and preferences have been registered since some of the import code depends
   // on preferences.
   if (first_run::IsChromeFirstRun()) {
-    // `profile` may be nullptr even on first run, for example when the
-    // "BrowserSignin" policy is set to "Force". If so, skip the auto import.
     if (profile) {
-      first_run::AutoImport(profile, master_prefs_->import_bookmarks_path);
-
 #if BUILDFLAG(ENABLE_EXTENSIONS)
       if (base::FeatureList::IsEnabled(features::kInitialExternalExtensions)) {
         profile->GetPrefs()->SetString(

@@ -66,10 +66,6 @@ AuthenticatorCategory CategoryFromMechanism(const Mechanism& mechanism) {
       case AuthenticatorType::kOther:
         return AuthenticatorCategory::kOther;
     }
-  } else if (std::holds_alternative<Mechanism::Password>(mechanism.type)) {
-    return AuthenticatorCategory::kPassword;
-  } else if (std::holds_alternative<Mechanism::Enclave>(mechanism.type)) {
-    return AuthenticatorCategory::kGpm;
   } else if (std::holds_alternative<Mechanism::WindowsAPI>(mechanism.type)) {
     return AuthenticatorCategory::kWindows;
   } else if (std::holds_alternative<Mechanism::ICloudKeychain>(

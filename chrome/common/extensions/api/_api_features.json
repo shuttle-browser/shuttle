@@ -114,18 +114,6 @@
     "dependencies": ["permission:appview"],
     "contexts": ["privileged_extension"]
   },
-  "autofillPrivate": [{
-    "dependencies": ["permission:autofillPrivate"],
-    "contexts": ["privileged_extension"]
-  }, {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "matches": [
-      "chrome://settings/*"
-    ],
-    // "desktop_android" is not supported.
-    "platforms": ["chromeos", "linux", "mac", "win"]
-  }],
   "autotestPrivate": {
     "dependencies": ["permission:autotestPrivate"],
     "contexts": ["privileged_extension"]
@@ -723,17 +711,6 @@
     "dependencies": ["permission:pageCapture"],
     "contexts": ["privileged_extension"]
   },
-  "passwordsPrivate": [{
-    "dependencies": ["permission:passwordsPrivate"],
-    "contexts": ["privileged_extension"]
-  }, {
-    "channel": "stable",
-    "contexts": ["webui"],
-    "matches": [
-      "chrome://settings/*",
-      "chrome://password-manager/*"
-    ]
-  }],
   "permissions": {
     "channel": "stable",
     "extension_types": [
@@ -834,8 +811,7 @@
     "contexts": ["webui"],
     "matches": [
       "chrome://os-settings/*",
-      "chrome://settings/*",
-      "chrome://password-manager/*"
+      "chrome://settings/*"
     ]
   }],
   "sidePanel": {

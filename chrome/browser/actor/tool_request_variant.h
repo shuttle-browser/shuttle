@@ -18,9 +18,6 @@ using ToolRequestVariant = std::variant<
     ActivateTabToolRequest,
     ActivateWindowToolRequest,
 #endif
-    AttemptLoginToolRequest,
-    AttemptFormFillingToolRequest,
-    AttemptOtpFillingToolRequest,
     ClickToolRequest,
 #if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     CloseTabToolRequest,
@@ -60,9 +57,6 @@ class ConvertToVariantFn : public ToolRequestVisitorFunctor {
   void Apply(const ActivateTabToolRequest&) override;
   void Apply(const ActivateWindowToolRequest&) override;
 #endif
-  void Apply(const AttemptLoginToolRequest&) override;
-  void Apply(const AttemptFormFillingToolRequest&) override;
-  void Apply(const AttemptOtpFillingToolRequest&) override;
   void Apply(const ClickToolRequest&) override;
 #if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
   void Apply(const CloseTabToolRequest&) override;

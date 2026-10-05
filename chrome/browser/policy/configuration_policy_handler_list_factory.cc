@@ -54,8 +54,6 @@
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
-#include "components/autofill/core/browser/permissions/autofill_policy_handler.h"
-#include "components/autofill/core/common/autofill_prefs.h"
 #include "components/blocked_content/pref_names.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/certificate_transparency/pref_names.h"
@@ -92,7 +90,6 @@
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/policy/core/browser/boolean_disabling_policy_handler.h"
 #include "components/policy/core/browser/configuration_policy_handler.h"
@@ -338,12 +335,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kNotificationsBlockedForUrls,
     prefs::kManagedNotificationsBlockedForUrls,
     base::Value::Type::LIST },
-  { key::kPasswordManagerEnabled,
-    password_manager::prefs::kCredentialsEnableService,
-    base::Value::Type::BOOLEAN },
-  { key::kPasswordSharingEnabled,
-    password_manager::prefs::kPasswordSharingEnabled,
-    base::Value::Type::BOOLEAN},
   { key::kPopupsAllowedForUrls,
     prefs::kManagedPopupsAllowedForUrls,
     base::Value::Type::LIST },
@@ -513,9 +504,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kTosDialogBehavior,
     first_run::kTosDialogBehavior,
     base::Value::Type::INTEGER },
-  { key::kThirdPartyPasswordManagersAllowed,
-    autofill::prefs::kAutofillThirdPartyPasswordManagersAllowed,
-    base::Value::Type::BOOLEAN },
   { key::kWebXRImmersiveArEnabled,
     prefs::kWebXRImmersiveArEnabled,
     base::Value::Type::BOOLEAN },
@@ -623,9 +611,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::INTEGER },
 #endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  { key::kDeletingUndecryptablePasswordsEnabled,
-    password_manager::prefs::kDeletingUndecryptablePasswordsEnabled,
-    base::Value::Type::BOOLEAN },
 #endif
   { key::kDirectSocketsAllowedForUrls,
     prefs::kManagedDirectSocketsAllowedForUrls,
@@ -724,18 +709,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kOriginAgentClusterDefaultEnabled,
     prefs::kOriginAgentClusterDefaultEnabled,
     base::Value::Type::BOOLEAN},
-  { key::kPasswordDismissCompromisedAlertEnabled,
-    password_manager::prefs::kPasswordDismissCompromisedAlertEnabled,
-    base::Value::Type::BOOLEAN },
-  { key::kPasswordProtectionChangePasswordURL,
-    prefs::kPasswordProtectionChangePasswordURL,
-    base::Value::Type::STRING },
-  { key::kPasswordProtectionLoginURLs,
-    prefs::kPasswordProtectionLoginURLs,
-    base::Value::Type::LIST },
-  { key::kPasswordProtectionWarningTrigger,
-    prefs::kPasswordProtectionWarningTrigger,
-    base::Value::Type::INTEGER },
 #if BUILDFLAG(ENABLE_PDF)
   { key::kPdfLocalFileAccessAllowedForDomains,
     prefs::kPdfLocalFileAccessAllowedForDomains,
@@ -868,9 +841,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kWebRtcDiagnosticLogCollectionAllowedForOrigins,
     prefs::kWebRTCDiagnosticLogCollectionAllowedForOrigins,
     base::Value::Type::LIST },
-  { key::kPasswordManagerPasskeysEnabled,
-    password_manager::prefs::kCredentialsEnablePasskeys,
-    base::Value::Type::BOOLEAN },
 #endif // !BUILDFLAG(IS_ANDROID)
   { key::kRendererAccessibilityEnabled,
     prefs::kRendererAccessibilityEnabled,
@@ -974,9 +944,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kSafeBrowsingSurveysEnabled,
     prefs::kSafeBrowsingSurveysEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kPasswordManagerBlocklist,
-    password_manager::prefs::kPasswordManagerBlocklist,
-    base::Value::Type::LIST },
 #endif  // #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
         // || BUILDFLAG(IS_WIN)  || BUILDFLAG(IS_MAC)
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
@@ -1073,9 +1040,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::LIST },
   { key::kEnterpriseHardwarePlatformAPIEnabled,
     prefs::kEnterpriseHardwarePlatformAPIEnabled,
-    base::Value::Type::BOOLEAN },
-  { key::kPasswordLeakDetectionEnabled,
-    password_manager::prefs::kPasswordLeakDetectionEnabled,
     base::Value::Type::BOOLEAN },
   { key::kSafeSitesFilterBehavior,
     policy_prefs::kSafeSitesFilterBehavior,
@@ -1953,9 +1917,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) \
     || BUILDFLAG(IS_CHROMEOS)
-  { key::kAutomatedPasswordChangeSettings,
-    optimization_guide::prefs::kAutomatedPasswordChangeEnterprisePolicyAllowed,
-    base::Value::Type::INTEGER },
   { key::kLiveCaptionEnabled,
     prefs::kLiveCaptionEnabled,
     base::Value::Type::BOOLEAN },
@@ -1965,43 +1926,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
         // || BUILDFLAG(IS_CHROMEOS)
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  // First run import.
-  { key::kImportBookmarks,
-    prefs::kImportBookmarks,
-    base::Value::Type::BOOLEAN },
-  { key::kImportHistory,
-    prefs::kImportHistory,
-    base::Value::Type::BOOLEAN },
-  { key::kImportHomepage,
-    prefs::kImportHomepage,
-    base::Value::Type::BOOLEAN },
-  { key::kImportSearchEngine,
-    prefs::kImportSearchEngine,
-    base::Value::Type::BOOLEAN },
-  { key::kImportSavedPasswords,
-    prefs::kImportSavedPasswords,
-    base::Value::Type::BOOLEAN },
-  { key::kImportAutofillFormData,
-    prefs::kImportAutofillFormData,
-    base::Value::Type::BOOLEAN },
-
-  // Import data dialog: controlled by same policies as first run import, but
-  // uses different prefs.
-  { key::kImportBookmarks,
-    prefs::kImportDialogBookmarks,
-    base::Value::Type::BOOLEAN },
-  { key::kImportHistory,
-    prefs::kImportDialogHistory,
-    base::Value::Type::BOOLEAN },
-  { key::kImportSearchEngine,
-    prefs::kImportDialogSearchEngine,
-    base::Value::Type::BOOLEAN },
-  { key::kImportSavedPasswords,
-    prefs::kImportDialogSavedPasswords,
-    base::Value::Type::BOOLEAN },
-  { key::kImportAutofillFormData,
-    prefs::kImportDialogAutofillFormData,
-    base::Value::Type::BOOLEAN },
 
   { key::kRestrictSigninToPattern,
     prefs::kGoogleServicesUsernamePattern,
@@ -2341,9 +2265,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kTabCompareSettings,
     optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed,
     base::Value::Type::INTEGER},
-  { key::kAutofillPredictionSettings,
-    optimization_guide::prefs::kAutofillPredictionImprovementsEnterprisePolicyAllowed,
-    base::Value::Type::INTEGER},
 #if BUILDFLAG(IS_ANDROID)
   { key::kFindsSettings,
     optimization_guide::prefs::kFindsEnterprisePolicyAllowed,
@@ -2557,10 +2478,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<
           LocalNetworkAccessIpAddressSpaceOverridesPolicyHandler>());
   handlers->AddHandler(std::make_unique<DefaultSensorsSettingPolicyHandler>());
-  handlers->AddHandler(
-      std::make_unique<autofill::AutofillSettingsPolicyHandler>(chrome_schema));
-
-  handlers->AddHandler(std::make_unique<autofill::AutofillPolicyHandler>());
   handlers->AddHandler(std::make_unique<ChromeIncognitoModePolicyHandler>());
   handlers->AddHandler(
       std::make_unique<enterprise_reporting::CloudReportingPolicyHandler>());
@@ -3465,16 +3382,8 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   gen_ai_default_policies.emplace_back(
       key::kTabCompareSettings,
       optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed);
-  gen_ai_default_policies.emplace_back(
-      key::kAutomatedPasswordChangeSettings,
-      optimization_guide::prefs::
-          kAutomatedPasswordChangeEnterprisePolicyAllowed);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
-  gen_ai_default_policies.emplace_back(
-      key::kAutofillPredictionSettings,
-      optimization_guide::prefs::
-          kAutofillPredictionImprovementsEnterprisePolicyAllowed);
 #if BUILDFLAG(IS_CHROMEOS)
   gen_ai_default_policies.emplace_back(key::kGenAIWallpaperSettings,
                                        ash::prefs::kGenAIWallpaperSettings);

@@ -326,17 +326,6 @@ void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
 
   Profile* profile = browser_window_interface_->GetProfile();
 
-  if (!profile->IsGuestSession()) {
-    builder.AddSubmenu(kActionPasswordsAndAutofillSubmenu,
-                       [](AppMenuBuilder& sub) {
-                         sub.AddAction(kActionShowPasswordManager)
-                             .AddAction(kActionShowPaymentMethods)
-                             .AddAction(kActionShowContactInfo)
-                             .AddAction(kActionShowIdentityDocs)
-                             .AddAction(kActionShowTravel);
-                       });
-  }
-
   if (!profile->IsOffTheRecord()) {
     builder.AddDynamicSubmenu(
         kActionRecentTabsSubmenu,

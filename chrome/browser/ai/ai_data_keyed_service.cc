@@ -32,12 +32,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/common/chrome_switches.h"
-#include "components/autofill/content/browser/content_autofill_driver.h"
-#include "components/autofill/core/browser/form_processing/optimization_guide_proto_util.h"
-#include "components/autofill/core/browser/form_structure.h"
-#include "components/autofill/core/browser/foundations/autofill_manager.h"
-#include "components/autofill/core/common/form_data.h"
-#include "components/autofill/core/common/unique_ids.h"
 #include "components/compose/buildflags.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/core/optimization_guide_proto_util.h"
@@ -339,39 +333,7 @@ void GetFormDataByFieldGlobalIdForModelPrototyping(
     AiDataKeyedService::AiDataCallback continue_callback) {
   AiDataKeyedService::AiData data = AiDataKeyedService::BrowserData();
 
-  // Construct an `autofill::FieldGlobalId` from `global_id_proto`.
-  std::optional<base::UnguessableToken> frame_token =
-      base::UnguessableToken::DeserializeFromString(
-          global_id_proto.frame_token());
-  if (!frame_token) {
-    std::move(continue_callback).Run(std::move(data));
-    return;
-  }
-  autofill::FieldGlobalId global_id = {
-      autofill::LocalFrameToken(*frame_token),
-      autofill::FieldRendererId(global_id_proto.renderer_id())};
-
-  // Look up the `global_id` in the main frame's manager. In the vast majority
-  // of cases, this suffices because the AutofillDriverRouter routes the forms
-  // to the main frame's manager. Since this is only used by internal
-  // extensions, the edge case in which the main frame's form may not yet be
-  // fully parsed is neglected.
-  autofill::ContentAutofillDriver* autofill_driver =
-      autofill::ContentAutofillDriver::GetForRenderFrameHost(
-          web_contents->GetPrimaryMainFrame());
-  if (!autofill_driver) {
-    std::move(continue_callback).Run(std::move(data));
-    return;
-  }
-  const autofill::FormStructure* form_structure =
-      autofill_driver->GetAutofillManager().FindCachedFormById(global_id);
-  if (!form_structure) {
-    std::move(continue_callback).Run(std::move(data));
-    return;
-  }
-  *data->mutable_form_data() = autofill::ToFormDataProto(
-      form_structure->ToFormData(),
-      autofill::FormDataProtoConversionReason::kExtensionAPI);
+  // Autofill was removed from this fork: no form data is available.
   std::move(continue_callback).Run(std::move(data));
 }
 #endif

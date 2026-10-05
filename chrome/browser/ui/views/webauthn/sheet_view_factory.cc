@@ -11,12 +11,8 @@
 #include "base/check.h"
 #include "base/notreached.h"
 #include "build/build_config.h"
-#include "chrome/browser/ui/autofill/payments/webauthn_dialog_model.h"
 #include "chrome/browser/ui/views/webauthn/authenticator_bio_enrollment_sheet_view.h"
 #include "chrome/browser/ui/views/webauthn/authenticator_client_pin_entry_sheet_view.h"
-#include "chrome/browser/ui/views/webauthn/authenticator_create_user_sheet_view.h"
-#include "chrome/browser/ui/views/webauthn/authenticator_gpm_arbitrary_pin_sheet_view.h"
-#include "chrome/browser/ui/views/webauthn/authenticator_gpm_pin_sheet_view.h"
 #include "chrome/browser/ui/views/webauthn/authenticator_hybrid_and_security_key_sheet_view.h"
 #include "chrome/browser/ui/views/webauthn/authenticator_multi_source_picker_sheet_view.h"
 #include "chrome/browser/ui/views/webauthn/authenticator_priority_mechanism_sheet_view.h"
@@ -35,14 +31,7 @@
 #include "ui/views/layout/box_layout_view.h"
 #include "ui/views/style/typography.h"
 
-#if BUILDFLAG(IS_MAC)
-#include "chrome/browser/ui/views/webauthn/authenticator_touch_id_view.h"
-#endif  // BUILDFLAG(IS_MAC)
-
 namespace {
-
-// Number of digits for the GPM Pin.
-constexpr int kPinDigitCount = 6;
 
 // A placeholder sheet to show in place of unimplemented sheets.
 class PlaceholderSheetModel : public AuthenticatorSheetModelBase {
@@ -160,10 +149,6 @@ std::unique_ptr<AuthenticatorRequestSheetView> CreateSheetViewForCurrentStepOf(
     case Step::kErrorNoPasskeys:
       sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
           std::make_unique<AuthenticatorNoPasskeysErrorModel>(dialog_model));
-      break;
-    case Step::kErrorGpmDisabled:
-      sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
-          std::make_unique<AuthenticatorGpmDisabledErrorModel>(dialog_model));
       break;
     case Step::kTimedOut:
       sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
@@ -317,75 +302,8 @@ std::unique_ptr<AuthenticatorRequestSheetView> CreateSheetViewForCurrentStepOf(
           std::make_unique<AuthenticatorChromeProfileCreatePasskeySheetModel>(
               dialog_model));
       break;
-    case Step::kGPMError:
-      sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
-          std::make_unique<AuthenticatorGPMErrorSheetModel>(dialog_model));
-      break;
-    case Step::kGPMConnecting:
-      sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
-          std::make_unique<AuthenticatorGPMConnectingSheetModel>(dialog_model));
-      break;
-    case Step::kGPMChangePin:
-    case Step::kGPMCreatePin:
-      sheet_view = std::make_unique<AuthenticatorGpmPinSheetView>(
-          std::make_unique<AuthenticatorGpmPinSheetModel>(
-              dialog_model, kPinDigitCount,
-              AuthenticatorGpmPinSheetModelBase::Mode::kPinCreate));
-      break;
-    case Step::kGPMEnterPin:
-      sheet_view = std::make_unique<AuthenticatorGpmPinSheetView>(
-          std::make_unique<AuthenticatorGpmPinSheetModel>(
-              dialog_model, kPinDigitCount,
-              AuthenticatorGpmPinSheetModelBase::Mode::kPinEntry));
-      break;
-    case Step::kGPMChangeArbitraryPin:
-    case Step::kGPMCreateArbitraryPin:
-      sheet_view = std::make_unique<AuthenticatorGPMArbitraryPinSheetView>(
-          std::make_unique<AuthenticatorGpmArbitraryPinSheetModel>(
-              dialog_model,
-              AuthenticatorGpmPinSheetModelBase::Mode::kPinCreate));
-      break;
-    case Step::kGPMEnterArbitraryPin:
-      sheet_view = std::make_unique<AuthenticatorGPMArbitraryPinSheetView>(
-          std::make_unique<AuthenticatorGpmArbitraryPinSheetModel>(
-              dialog_model,
-              AuthenticatorGpmPinSheetModelBase::Mode::kPinEntry));
-      break;
-    case Step::kGPMTrustThisComputerAssertion:
-      sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
-          std::make_unique<AuthenticatorTrustThisComputerAssertionSheetModel>(
-              dialog_model));
-      break;
-    case Step::kGPMTrustThisComputerCreation:
-      sheet_view = std::make_unique<AuthenticatorCreateUserSheetView>(
-          std::make_unique<AuthenticatorTrustThisComputerCreationSheetModel>(
-              dialog_model));
-      break;
-    case Step::kGPMCreatePasskey:
-      sheet_view = std::make_unique<AuthenticatorCreateUserSheetView>(
-          std::make_unique<AuthenticatorCreateGpmPasskeySheetModel>(
-              dialog_model));
-      break;
-    case Step::kGPMTouchID:
-#if BUILDFLAG(IS_MAC)
-      sheet_view = std::make_unique<AuthenticatorTouchIdView>(
-          std::make_unique<AuthenticatorTouchIdSheetModel>(dialog_model));
-#else
-      sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
-          std::make_unique<PlaceholderSheetModel>(dialog_model));
-#endif
-      break;
-    case Step::kGPMLockedPin:
-      sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
-          std::make_unique<AuthenticatorGPMLockedPinSheetModel>(dialog_model));
-      break;
     case Step::kNotStarted:
-    case Step::kPasskeyAutofill:
-    case Step::kPasskeyUpgrade:
     case Step::kClosed:
-    case Step::kGPMRecoverSecurityDomain:
-    case Step::kGPMReauthForPinReset:
-    case Step::kPasswordOsAuth:
     case Step::kPlatformAuthenticator:
       sheet_view = std::make_unique<AuthenticatorRequestSheetView>(
           std::make_unique<PlaceholderSheetModel>(dialog_model));
@@ -394,10 +312,4 @@ std::unique_ptr<AuthenticatorRequestSheetView> CreateSheetViewForCurrentStepOf(
 
   CHECK(sheet_view);
   return sheet_view;
-}
-
-std::unique_ptr<AuthenticatorRequestSheetView>
-CreateSheetViewForAutofillWebAuthn(
-    std::unique_ptr<autofill::WebauthnDialogModel> model) {
-  return std::make_unique<AuthenticatorRequestSheetView>(std::move(model));
 }

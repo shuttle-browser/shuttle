@@ -352,7 +352,6 @@ class AppMenuModel : public ui::SimpleMenuModel,
 
   PrefChangeRegistrar local_state_pref_change_registrar_;
 
-  const AlertMenuItem alert_item_;
 };
 
 #endif  // CHROME_BROWSER_UI_TOOLBAR_APP_MENU_MODEL_H_

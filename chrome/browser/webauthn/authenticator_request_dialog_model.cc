@@ -16,15 +16,11 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/webauthn/authenticator_request_dialog_view_controller.h"
-#include "chrome/browser/ui/webauthn/authenticator_request_window.h"
 #include "chrome/browser/webauthn/authenticator_transport.h"
 #include "chrome/browser/webauthn/webauthn_pref_names.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/device_event_log/device_event_log.h"
-#include "components/signin/public/identity_manager/account_info.h"
-#include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
@@ -41,23 +37,14 @@ enum class StepUIType {
   NONE,
   // A Chromium captive dialog.
   DIALOG,
-  // A top-level window.
-  WINDOW,
 };
 
 StepUIType step_ui_type(AuthenticatorRequestDialogModel::Step step) {
   switch (step) {
     case AuthenticatorRequestDialogModel::Step::kClosed:
     case AuthenticatorRequestDialogModel::Step::kNotStarted:
-    case AuthenticatorRequestDialogModel::Step::kPasskeyAutofill:
-    case AuthenticatorRequestDialogModel::Step::kPasskeyUpgrade:
-    case AuthenticatorRequestDialogModel::Step::kPasswordOsAuth:
     case AuthenticatorRequestDialogModel::Step::kPlatformAuthenticator:
       return StepUIType::NONE;
-
-    case AuthenticatorRequestDialogModel::Step::kGPMRecoverSecurityDomain:
-    case AuthenticatorRequestDialogModel::Step::kGPMReauthForPinReset:
-      return StepUIType::WINDOW;
 
     default:
       return StepUIType::DIALOG;
@@ -95,41 +82,29 @@ AUTHENTICATOR_EVENTS
 std::u16string AuthenticatorRequestDialogModel::GetMechanismDescription(
     const device::DiscoverableCredentialMetadata& cred,
     UIPresentation ui_presentation) {
-  bool immediate_mode = UIPresentation::kModalImmediate == ui_presentation;
   if (cred.provider_name) {
-    return immediate_mode ? l10n_util::GetStringFUTF16(
-                                IDS_PASSWORD_MANAGER_PASSKEY_FROM_PROVIDER,
-                                base::UTF8ToUTF16(*cred.provider_name))
-                          : base::UTF8ToUTF16(*cred.provider_name);
+    return base::UTF8ToUTF16(*cred.provider_name);
   }
   int message;
   switch (cred.source) {
     case device::AuthenticatorType::kWinNative:
-      message = immediate_mode ? IDS_PASSWORD_MANAGER_PASSKEY_FROM_WINDOWS_HELLO
-                               : IDS_WEBAUTHN_SOURCE_WINDOWS_HELLO;
+      message = IDS_WEBAUTHN_SOURCE_WINDOWS_HELLO;
       break;
     case device::AuthenticatorType::kTouchID:
-      message = immediate_mode
-                    ? IDS_PASSWORD_MANAGER_PASSKEY_FROM_CHROME_PROFILE
-                    : IDS_WEBAUTHN_SOURCE_CHROME_PROFILE;
+      message = IDS_WEBAUTHN_SOURCE_CHROME_PROFILE;
       break;
     case device::AuthenticatorType::kICloudKeychain:
-      message = immediate_mode
-                    ? IDS_PASSWORD_MANAGER_PASSKEY_FROM_ICLOUD_KEYCHAIN
-                    : IDS_WEBAUTHN_SOURCE_ICLOUD_KEYCHAIN;
+      message = IDS_WEBAUTHN_SOURCE_ICLOUD_KEYCHAIN;
       break;
     case device::AuthenticatorType::kEnclave:
-      message = immediate_mode
-                    ? IDS_PASSWORD_MANAGER_PASSKEY_FROM_GOOGLE_PASSWORD_MANAGER
-                    : IDS_WEBAUTHN_SOURCE_GOOGLE_PASSWORD_MANAGER;
+      message = IDS_WEBAUTHN_SOURCE_GOOGLE_PASSWORD_MANAGER;
       break;
     case device::AuthenticatorType::kOther:
       // "Other" is USB security keys and the virtual authenticator.
-      CHECK(!immediate_mode);
       message = IDS_WEBAUTHN_SOURCE_USB_SECURITY_KEY;
       break;
     default:
-      message = IDS_PASSWORD_MANAGER_USE_GENERIC_DEVICE;
+      message = IDS_WEBAUTHN_SOURCE_USB_SECURITY_KEY;
   }
   return l10n_util::GetStringUTF16(message);
 }
@@ -165,10 +140,6 @@ void AuthenticatorRequestDialogModel::SetStep(Step step) {
   auto* web_contents = GetWebContentsFromFrameHostId(frame_host_id);
   if (ui_type != StepUIType::DIALOG) {
     view_controller_.reset();
-    if (ui_type == StepUIType::WINDOW &&
-        previous_ui_type != StepUIType::WINDOW && web_contents) {
-      ShowAuthenticatorRequestWindow(web_contents, this);
-    }
   } else if (previous_ui_type != StepUIType::DIALOG && web_contents) {
     view_controller_ =
         AuthenticatorRequestDialogViewController::Create(web_contents, this);
@@ -179,55 +150,8 @@ void AuthenticatorRequestDialogModel::SetStep(Step step) {
   }
 }
 
-void AuthenticatorRequestDialogModel::DisableUiOrShowLoadingDialog() {
-  // If the current step is showing a dialog, disable it. Else, show the GPM
-  // Connecting dialog. The native Touch ID control cannot be effectively
-  // disabled so that sheet is an exception.
-  if (step() != Step::kPasskeyAutofill &&
-      (should_dialog_be_closed() || step() == Step::kGPMTouchID)) {
-    SetStep(Step::kGPMConnecting);
-  } else {
-    ui_disabled_ = true;
-    OnSheetModelChanged();
-  }
-}
-
 bool AuthenticatorRequestDialogModel::should_dialog_be_closed() const {
   return step_ui_type(step_) != StepUIType::DIALOG;
-}
-
-std::optional<AccountInfo>
-AuthenticatorRequestDialogModel::GetGpmAccountInfo() {
-  Profile* profile = GetProfile();
-  if (!profile) {
-    return std::nullopt;
-  }
-  signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(profile->GetOriginalProfile());
-  if (!identity_manager) {
-    return std::nullopt;
-  }
-  CoreAccountInfo core_account_info =
-      identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin);
-  CHECK(!core_account_info.IsEmpty());
-  return identity_manager->FindExtendedAccountInfo(core_account_info);
-}
-
-std::string AuthenticatorRequestDialogModel::GetGpmAccountEmail() {
-  std::optional<AccountInfo> account_info = GetGpmAccountInfo();
-  if (!account_info) {
-    return "";
-  }
-  return account_info->email;
-}
-
-Profile* AuthenticatorRequestDialogModel::GetProfile() {
-  content::RenderFrameHost* rfh =
-      content::RenderFrameHost::FromID(*frame_host_id);
-  if (!rfh) {
-    return nullptr;
-  }
-  return Profile::FromBrowserContext(rfh->GetBrowserContext());
 }
 
 #define AUTHENTICATOR_REQUEST_EVENT_0(name)        \
@@ -259,12 +183,9 @@ std::ostream& operator<<(std::ostream& os,
   using Step = AuthenticatorRequestDialogModel::Step;
   constexpr auto kStepNames = base::MakeFixedFlatMap<Step, std::string_view>({
       {Step::kNotStarted, "kNotStarted"},
-      {Step::kPasskeyAutofill, "kPasskeyAutofill"},
-      {Step::kPasskeyUpgrade, "kPasskeyUpgrade"},
       {Step::kMechanismSelection, "kMechanismSelection"},
       {Step::kErrorNoAvailableTransports, "kErrorNoAvailableTransports"},
       {Step::kErrorNoPasskeys, "kErrorNoPasskeys"},
-      {Step::kErrorGpmDisabled, "kErrorGpmDisabled"},
       {Step::kErrorInternalUnrecognized, "kErrorInternalUnrecognized"},
       {Step::kErrorWindowsHelloNotEnabled, "kErrorWindowsHelloNotEnabled"},
       {Step::kTimedOut, "kTimedOut"},
@@ -297,23 +218,7 @@ std::ostream& operator<<(std::ostream& os,
       {Step::kSelectAccount, "kSelectAccount"},
       {Step::kPreSelectAccount, "kPreSelectAccount"},
       {Step::kSelectPriorityMechanism, "kSelectPriorityMechanism"},
-      {Step::kGPMChangePin, "kGPMChangePin"},
-      {Step::kGPMCreatePin, "kGPMCreatePin"},
-      {Step::kGPMEnterPin, "kGPMEnterPin"},
-      {Step::kGPMChangeArbitraryPin, "kGPMChangeArbitraryPin"},
-      {Step::kGPMCreateArbitraryPin, "kGPMCreateArbitraryPin"},
-      {Step::kGPMEnterArbitraryPin, "kGPMEnterArbitraryPin"},
-      {Step::kGPMTouchID, "kGPMTouchID"},
-      {Step::kGPMCreatePasskey, "kGPMCreatePasskey"},
       {Step::kChromeProfileCreatePasskey, "kChromeProfileCreatePasskey"},
-      {Step::kGPMError, "kGPMError"},
-      {Step::kGPMConnecting, "kGPMConnecting"},
-      {Step::kGPMRecoverSecurityDomain, "kGPMRecoverSecurityDomain"},
-      {Step::kGPMTrustThisComputerAssertion, "kGPMTrustThisComputerAssertion"},
-      {Step::kGPMTrustThisComputerCreation, "kGPMTrustThisComputerCreation"},
-      {Step::kGPMReauthForPinReset, "kGPMReauthForPinReset"},
-      {Step::kGPMLockedPin, "kGPMLockedPin"},
-      {Step::kPasswordOsAuth, "kPasswordAuth"},
       {Step::kPlatformAuthenticator, "kPlatformAuthenticator"},
   });
   static_assert(Step::kMaxValue == Step::kPlatformAuthenticator &&
@@ -349,15 +254,3 @@ AuthenticatorRequestDialogModel::Mechanism::CredentialInfo::~CredentialInfo() =
     default;
 bool AuthenticatorRequestDialogModel::Mechanism::CredentialInfo::operator==(
     const CredentialInfo&) const = default;
-
-AuthenticatorRequestDialogModel::Mechanism::PasswordInfo::PasswordInfo(
-    std::optional<base::Time> last_used_time_in,
-    std::optional<std::u16string> origin_in)
-    : last_used_time(std::move(last_used_time_in)),
-      origin(std::move(origin_in)) {}
-AuthenticatorRequestDialogModel::Mechanism::PasswordInfo::PasswordInfo(
-    const PasswordInfo&) = default;
-AuthenticatorRequestDialogModel::Mechanism::PasswordInfo::~PasswordInfo() =
-    default;
-bool AuthenticatorRequestDialogModel::Mechanism::PasswordInfo::operator==(
-    const PasswordInfo&) const = default;

@@ -24,10 +24,7 @@
 #include "ui/views/layout/table_layout_view.h"
 
 LoginView::LoginView(const std::u16string& authority,
-                     const std::u16string& explanation,
-                     LoginHandler::LoginModelData* login_model_data)
-    : http_auth_manager_(login_model_data ? login_model_data->model.get()
-                                          : nullptr) {
+                     const std::u16string& explanation) {
   ChromeLayoutProvider* provider = ChromeLayoutProvider::Get();
   SetLayoutManager(std::make_unique<views::BoxLayout>(
       views::BoxLayout::Orientation::kVertical,
@@ -88,18 +85,9 @@ LoginView::LoginView(const std::u16string& authority,
       fields_container->AddChildView(std::make_unique<views::Textfield>());
   password_field_->GetViewAccessibility().SetName(*password_label);
   password_field_->SetTextInputType(ui::TEXT_INPUT_TYPE_PASSWORD);
-
-  if (http_auth_manager_) {
-    http_auth_manager_->SetObserverAndDeliverCredentials(
-        this, *login_model_data->form);
-  }
 }
 
-LoginView::~LoginView() {
-  if (http_auth_manager_) {
-    http_auth_manager_->DetachObserver(this);
-  }
-}
+LoginView::~LoginView() = default;
 
 std::u16string_view LoginView::GetUsername() const {
   return username_field_->GetText();
@@ -111,19 +99,6 @@ std::u16string_view LoginView::GetPassword() const {
 
 views::View* LoginView::GetInitiallyFocusedView() {
   return username_field_;
-}
-
-void LoginView::OnAutofillDataAvailable(std::u16string_view username,
-                                        std::u16string_view password) {
-  if (username_field_->GetText().empty()) {
-    username_field_->SetText(username);
-    password_field_->SetText(password);
-    username_field_->SelectAll(true);
-  }
-}
-
-void LoginView::OnLoginModelDestroying() {
-  http_auth_manager_ = nullptr;
 }
 
 BEGIN_METADATA(LoginView)

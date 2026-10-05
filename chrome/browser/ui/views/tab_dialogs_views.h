@@ -27,8 +27,6 @@ class TabDialogsViews : public TabDialogs {
   void HideHungRendererDialog(
       content::RenderWidgetHost* render_widget_host) override;
   bool IsShowingHungRendererDialog() override;
-  void ShowManagePasswordsBubble(bool user_action) override;
-  void HideManagePasswordsBubble() override;
   void ShowDeprecatedAppsDialog(
       const extensions::ExtensionId& optional_launched_extension_id,
       const std::set<extensions::ExtensionId>& deprecated_app_ids,

@@ -28,37 +28,9 @@
         <structure type="lottie" name="IDR_WEBAUTHN_GPM_PIN_LOCKED_LIGHT" file="resources/webauthn/gpm_pin_locked_light.json" compress="brotli" />
         <structure type="lottie" name="IDR_WEBAUTHN_GPM_PIN_LOCKED_DARK" file="resources/webauthn/gpm_pin_locked_dark.json" compress="brotli" />
 
-        <!-- Autofill Lottie resources -->
-        <structure type="lottie" name="IDR_AUTOFILL_AT_MEMORY_PROMO_HEADER" file="resources/autofill/autofill_at_memory_promo_header.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_PASSWORD_LOTTIE" file="resources/autofill/autofill_save_password.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_ADDRESS_LOTTIE" file="resources/autofill/autofill_save_address.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_VIRTUAL_CARD_ENROLL_SUCCESS_LOTTIE" file="resources/autofill/autofill_virtual_card_enroll_confirmation.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_VIRTUAL_CARD_ENROLL_DIALOG_LOTTIE" file="resources/autofill/autofill_virtual_card_enroll_dialog.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_AI_FFR_BANNER_LOTTIE" file="resources/autofill/autofill_ai_ffr_banner.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_DRIVERS_LICENSE_LOTTIE" file="resources/autofill/autofill_save_drivers_license.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_DRIVERS_LICENSE_WALLET_LOTTIE" file="resources/autofill/autofill_save_drivers_license_wallet.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_PASSPORT_AND_NATIONAL_ID_CARD_LOTTIE" file="resources/autofill/autofill_save_passport_and_national_id_card.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_PASSPORT_AND_NATIONAL_ID_CARD_WALLET_LOTTIE" file="resources/autofill/autofill_save_passport_and_national_id_card_wallet.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_VEHICLE_LOTTIE" file="resources/autofill/autofill_save_vehicle.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_VEHICLE_WALLET_LOTTIE" file="resources/autofill/autofill_save_vehicle_wallet.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_KNOWN_TRAVELER_NUMBER_AND_REDRESS_NUMBER_LOTTIE" file="resources/autofill/autofill_save_known_traveler_number_and_redress_number.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_KNOWN_TRAVELER_NUMBER_AND_REDRESS_NUMBER_WALLET_LOTTIE" file="resources/autofill/autofill_save_known_traveler_number_and_redress_number_wallet.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_IBAN_LOTTIE" file="resources/autofill/autofill_save_iban.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_IBAN_TO_WALLET_LOTTIE" file="resources/autofill/autofill_save_iban_to_wallet.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_CARD_SECURE_LOTTIE" file="resources/autofill/autofill_save_card_secure.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_CARD_LOCAL_LOTTIE" file="resources/autofill/autofill_save_card_local.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_CARD_TO_WALLET_LOTTIE" file="resources/autofill/autofill_save_card_to_wallet.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_SAVE_SECURITY_CODE_LOTTIE" file="resources/autofill/autofill_save_security_code.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_TURN_ON_PAYMENTS_AUTOFILL_CONVENIENTLY_LOTTIE" file="resources/autofill/autofill_turn_on_payments_autofill_conveniently.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_AUTOFILL_WALLET_REMINDER_NOTICE_LOTTIE" file="resources/autofill/autofill_wallet_reminder_notice.json" compress="brotli"/>
 
         <!-- Shopping resources -->
 
-        <!-- Automated Password Change resources -->
-        <structure type="lottie" name="IDR_PASSWORD_CHANGE_SUCCESS_LOTTIE" file="resources/automated_password_change/password_change_success.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_PASSWORD_CHANGE_NEUTRAL_LOTTIE" file="resources/automated_password_change/password_change_neutral.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_PASSWORD_CHANGE_WARNING_LOTTIE" file="resources/automated_password_change/password_change_warning.json" compress="brotli"/>
-        <structure type="lottie" name="IDR_PASSWORD_CHANGE_PRIVATE_INFERENCE_LOTTIE" file="resources/automated_password_change/password_change_private_inference.json" compress="brotli"/>
 
         <!-- Wallet Pass Save Bubble resources -->
 

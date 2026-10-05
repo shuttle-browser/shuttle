@@ -4,16 +4,6 @@
 
 // Subpages
 import './appearance_page/appearance_fonts_page.js';
-import './autofill_page/contact_info/contact_info_page.js';
-import './autofill_page/identity_docs/identity_docs_page.js';
-// <if expr="is_win or is_macosx">
-import './autofill_page/passwords/passkeys_page.js';
-// </if>
-import './autofill_page/payments/payments_page.js';
-import './autofill_page/travel/travel_page.js';
-import './autofill_page/walletable_pass_detection_toggle.js';
-// <if expr="not is_chromeos">
-// </if>
 import './clear_browsing_data_dialog/clear_browsing_data_dialog.js';
 import './clear_browsing_data_dialog/clear_browsing_data_time_picker.js';
 import './privacy_page/cookies_page.js';
@@ -133,41 +123,7 @@ export {SettingsLiveTranslateElement} from './a11y_page/live_translate.js';
 // </if>
 
 export {AiEnterpriseFeaturePrefName} from './ai_page/constants.js';
-// <if expr="_google_chrome">
-// </if>
 export {SettingsAppearanceFontsPageElement} from './appearance_page/appearance_fonts_page.js';
-export {SettingsAutofillAiAddOrEditDialogElement} from './autofill_page/autofill_ai_add_or_edit_dialog.js';
-export {SettingsAutofillAiEntriesListElement} from './autofill_page/autofill_ai_entries_list.js';
-export {AutofillManagerImpl} from './autofill_page/autofill_manager_proxy.js';
-export type {AutofillManagerProxy, PersonalDataChangedListener} from './autofill_page/autofill_manager_proxy.js';
-export {SettingsAddressEditDialogElement} from './autofill_page/contact_info/address_edit_dialog.js';
-export {SettingsAddressRemoveConfirmationDialogElement} from './autofill_page/contact_info/address_remove_confirmation_dialog.js';
-export {AutofillAddressOptInChange, SettingsContactInfoPageElement} from './autofill_page/contact_info/contact_info_page.js';
-export {SettingsGmailOtpDisclaimerDialogElement} from './autofill_page/contact_info/gmail_otp_disclaimer_dialog.js';
-export {CountryDetailManagerProxyImpl} from './autofill_page/country_detail_manager_proxy.js';
-export type {CountryDetailManagerProxy} from './autofill_page/country_detail_manager_proxy.js';
-export {EntityDataManagerProxyImpl} from './autofill_page/entity_data_manager_proxy.js';
-export type {EntityDataManagerProxy, EntityInstancesChangedListener} from './autofill_page/entity_data_manager_proxy.js';
-export {SettingsIdentityDocsPageElement} from './autofill_page/identity_docs/identity_docs_page.js';
-// <if expr="is_win or is_macosx">
-export {PasskeysBrowserProxyImpl} from './autofill_page/passwords/passkeys_browser_proxy.js';
-export type {Passkey, PasskeysBrowserProxy} from './autofill_page/passwords/passkeys_browser_proxy.js';
-export {SettingsPasskeysPageElement} from './autofill_page/passwords/passkeys_page.js';
-// </if>
-export {SettingsCreditCardEditDialogElement} from './autofill_page/payments/credit_card_edit_dialog.js';
-export {SettingsCreditCardListEntryElement} from './autofill_page/payments/credit_card_list_entry.js';
-export {SettingsIbanEditDialogElement} from './autofill_page/payments/iban_edit_dialog.js';
-export {SettingsIbanListEntryElement} from './autofill_page/payments/iban_list_entry.js';
-export {SettingsPayOverTimeIssuerListEntryElement} from './autofill_page/payments/pay_over_time_issuer_list_entry.js';
-export {SettingsPaymentsListElement} from './autofill_page/payments/payments_list.js';
-export {PaymentsManagerImpl} from './autofill_page/payments/payments_manager_proxy.js';
-export type {PaymentsManagerProxy} from './autofill_page/payments/payments_manager_proxy.js';
-export {SettingsPaymentsPageElement} from './autofill_page/payments/payments_page.js';
-export {SettingsVirtualCardUnenrollDialogElement} from './autofill_page/payments/virtual_card_unenroll_dialog.js';
-export {SettingsTravelPageElement} from './autofill_page/travel/travel_page.js';
-export {SettingsWalletablePassDetectionToggleElement} from './autofill_page/walletable_pass_detection_toggle.js';
-// <if expr="not is_chromeos">
-// </if>
 export {BrowsingDataType, ClearBrowsingDataBrowserProxyImpl, TimePeriod} from './clear_browsing_data_dialog/clear_browsing_data_browser_proxy.js';
 export type {ClearBrowsingDataBrowserProxy, ClearBrowsingDataResult, UpdateSyncStateEvent} from './clear_browsing_data_dialog/clear_browsing_data_browser_proxy.js';
 export {getDataTypePrefName, SettingsClearBrowsingDataDialogElement} from './clear_browsing_data_dialog/clear_browsing_data_dialog.js';
@@ -198,8 +154,6 @@ export type {LanguageHelper, LanguagesModel} from './languages_page/languages_ty
 export {SettingsSpellCheckPageElement} from './languages_page/spell_check_page.js';
 // </if>
 
-// <if expr="not is_chromeos">
-// </if>
 export {NetworkPredictionOptions} from './performance_page/constants.js';
 export {SettingsCookiesPageElement} from './privacy_page/cookies_page.js';
 export {SettingsDoNotTrackToggleElement} from './privacy_page/do_not_track_toggle.js';

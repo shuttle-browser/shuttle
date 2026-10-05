@@ -43,8 +43,6 @@ DEFINE_USER_DATA(DownloadToolbarUIController);
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/autofill/core/browser/suggestions/suggestion_hiding_reason.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/safe_browsing/core/common/safe_browsing_policy_handler.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
@@ -1050,7 +1048,6 @@ void DownloadToolbarUIController::OnBubbleAnchorAssembled(
     button_click_time_ = base::TimeTicks();
   }
 
-  CloseAutofillPopup();
   if (ShouldShowBubbleAsInactive()) {
     CHECK(anchor.has_value());
     bubble_widget->ShowInactive();
@@ -1185,21 +1182,6 @@ bool DownloadToolbarUIController::ShouldShowBubbleAsInactive() const {
   // The partial view shows up without user interaction, so it should not
   // steal focus from the web contents.
   return primary_view_mode_ == DownloadBubbleMode::kPartial;
-}
-
-void DownloadToolbarUIController::CloseAutofillPopup() {
-  tabs::TabInterface* const tab =
-      browser_view_->browser()->GetActiveTabInterface();
-  content::WebContents* web_contents = tab ? tab->GetContents() : nullptr;
-  if (!web_contents) {
-    return;
-  }
-  if (auto* autofill_client =
-          autofill::ContentAutofillClient::FromWebContents(web_contents)) {
-    autofill_client->HideSuggestions(
-        autofill::SuggestionHidingReason::kOverlappingWithAnotherPrompt,
-        /*product=*/std::nullopt);
-  }
 }
 
 bool DownloadToolbarUIController::ShouldShowScanningAnimation() const {

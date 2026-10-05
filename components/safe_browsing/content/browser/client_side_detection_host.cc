@@ -30,10 +30,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/uuid.h"
-#include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/autofill/core/browser/field_types.h"
-#include "components/autofill/core/browser/foundations/autofill_client.h"
-#include "components/autofill/core/browser/foundations/scoped_autofill_managers_observation.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/permissions/permission_request_manager.h"
@@ -723,7 +719,6 @@ ClientSideDetectionHost::ClientSideDetectionHost(
 
   RegisterPermissionRequestManager();
   RegisterAsyncCheckTracker();
-  RegisterAutofillManager();
 }
 
 ClientSideDetectionHost::~ClientSideDetectionHost() {
@@ -781,16 +776,6 @@ void ClientSideDetectionHost::RegisterAsyncCheckTracker() {
     CHECK(tracker);
     async_check_observation_.Observe(tracker);
   }
-}
-
-void ClientSideDetectionHost::RegisterAutofillManager() {
-  if (!IsEnhancedProtectionEnabled()) {
-    return;
-  }
-  autofill_managers_observation_.Observe(
-      autofill::ContentAutofillClient::FromWebContents(web_contents()),
-      autofill::ScopedAutofillManagersObservation::InitializationPolicy::
-          kObservePreexistingManagers);
 }
 
 void ClientSideDetectionHost::MaybeRunUserReportCallback() {

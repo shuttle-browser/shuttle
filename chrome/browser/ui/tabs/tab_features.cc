@@ -36,13 +36,6 @@
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
-#include "chrome/browser/ui/autofill/bubble_manager.h"
-#include "chrome/browser/ui/autofill/payments/omnibox_autofill_bubble_controller.h"
-#include "chrome/browser/ui/autofill/payments/omnibox_autofill_page_action_controller.h"
-#include "chrome/browser/ui/autofill/payments/payments_churned_users_bubble_controller.h"
-#include "chrome/browser/ui/autofill/payments/payments_churned_users_page_action_controller.h"
-#include "chrome/browser/ui/autofill/payments/wallet_reminder_notice_bubble_controller.h"
-#include "chrome/browser/ui/autofill/payments/wallet_reminder_notice_page_action_controller.h"
 #include "chrome/browser/ui/blocked_content/framebust_block_tab_helper.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -72,11 +65,9 @@
 #include "chrome/browser/ui/views/file_system_access/file_system_access_page_action_controller.h"
 #include "chrome/browser/ui/views/js_optimization/js_optimizations_page_action_controller.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_page_action_controller.h"
-#include "chrome/browser/ui/views/passwords/manage_passwords_page_action_controller.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/browser/ui/webui_browser/webui_browser.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/enterprise/browser/reporting/reporting_features.h"
 #include "components/multistep_filter/core/features.h"
 #if BUILDFLAG(IS_WIN)
@@ -87,7 +78,6 @@
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_attachment_tracker.h"
 #include "chrome/common/chrome_features.h"
-#include "components/autofill/core/common/autofill_features.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/permissions/permission_indicators_tab_data.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
@@ -145,12 +135,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         tab, *page_action_controller_);
   }
 
-  if (page_action_controller_->ActionExists(kActionShowPasswordsBubbleOrPage)) {
-    manage_passwords_page_action_controller_ =
-        std::make_unique<ManagePasswordsPageActionController>(
-            *page_action_controller_);
-  }
-
   if (page_action_controller_->ActionExists(kActionShowCookieControls)) {
     cookie_controls_page_action_controller_ =
         GetUserDataFactory().CreateInstance<CookieControlsPageActionController>(
@@ -191,42 +175,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   if (base::FeatureList::IsEnabled(features::kGlicActor)) {
     actor_tab_data_ =
         GetUserDataFactory().CreateInstance<actor::ActorTabData>(tab, &tab);
-  }
-
-  autofill_bubble_manager_ = autofill::BubbleManager::Create(&tab);
-
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableOmniboxAutofill) &&
-      page_action_controller_->ActionExists(kActionAutofillPayment)) {
-    omnibox_autofill_page_action_controller_ =
-        std::make_unique<autofill::OmniboxAutofillPageActionController>(
-            tab, *page_action_controller_);
-    omnibox_autofill_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::OmniboxAutofillBubbleController>(
-                tab, tab, tab.GetContents());
-  }
-
-  if (page_action_controller_->ActionExists(
-          kActionShowPaymentsChurnedUsersBubble)) {
-    payments_churned_users_page_action_controller_ =
-        std::make_unique<autofill::PaymentsChurnedUsersPageActionController>(
-            tab, *page_action_controller_);
-    payments_churned_users_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::PaymentsChurnedUsersBubbleController>(
-                tab, tab, tab.GetContents());
-  }
-
-  if (page_action_controller_->ActionExists(kActionWalletReminderNotice)) {
-    wallet_reminder_notice_page_action_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::WalletReminderNoticePageActionController>(
-                tab, tab, *page_action_controller_);
-    wallet_reminder_notice_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::WalletReminderNoticeBubbleController>(
-                tab, tab, tab.GetContents());
   }
 
   extension_side_panel_manager_ =
@@ -370,12 +318,6 @@ TabUIHelper* TabFeatures::SetTabUIHelperForTesting(
   return tab_ui_helper_.get();
 }
 
-autofill::BubbleManager* TabFeatures::SetBubbleManagerForTesting(
-    std::unique_ptr<autofill::BubbleManager> bubble_manager) {
-  autofill_bubble_manager_ = std::move(bubble_manager);
-  return autofill_bubble_manager_.get();
-}
-
 void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
                                       content::WebContents* old_contents,
                                       content::WebContents* new_contents) {
@@ -445,31 +387,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
         std::make_unique<permissions::PermissionIndicatorsTabData>(
             new_contents);
   }
-
-  if (omnibox_autofill_bubble_controller_) {
-    omnibox_autofill_bubble_controller_.reset();
-    omnibox_autofill_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::OmniboxAutofillBubbleController>(
-                *tab, *tab, new_contents);
-  }
-
-  if (payments_churned_users_bubble_controller_) {
-    payments_churned_users_bubble_controller_.reset();
-    payments_churned_users_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::PaymentsChurnedUsersBubbleController>(
-                *tab, *tab, new_contents);
-  }
-
-  if (wallet_reminder_notice_bubble_controller_) {
-    wallet_reminder_notice_bubble_controller_.reset();
-    wallet_reminder_notice_bubble_controller_ =
-        GetUserDataFactory()
-            .CreateInstance<autofill::WalletReminderNoticeBubbleController>(
-                *tab, *tab, new_contents);
-  }
-
 }
 
 TabAlertController* TabFeatures::SetTabAlertControllerForTesting(

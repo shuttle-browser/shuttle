@@ -12,7 +12,6 @@
 #include "build/build_config.h"
 #include "components/history_clusters/history_clusters_internals/webui/url_constants.h"
 #include "components/optimization_guide/optimization_guide_internals/webui/url_constants.h"
-#include "components/password_manager/content/common/web_ui_constants.h"
 #include "components/safe_browsing/core/common/web_ui_constants.h"
 #include "device/vr/buildflags/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -55,8 +54,6 @@ static_assert(std::string_view(kAccountSubPage) ==
               ash::chrome_urls::kAccountSubPage);
 static_assert(std::string_view(kAppearanceSubPage) ==
               ash::chrome_urls::kAppearanceSubPage);
-static_assert(std::string_view(kAutofillSubPage) ==
-              ash::chrome_urls::kAutofillSubPage);
 static_assert(std::string_view(kClearBrowserDataSubPage) ==
               ash::chrome_urls::kClearBrowserDataSubPage);
 static_assert(std::string_view(kDownloadsSubPage) ==
@@ -65,8 +62,6 @@ static_assert(std::string_view(kLanguagesSubPage) ==
               ash::chrome_urls::kLanguagesSubPage);
 static_assert(std::string_view(kOnStartupSubPage) ==
               ash::chrome_urls::kOnStartupSubPage);
-static_assert(std::string_view(kPasswordManagerSubPage) ==
-              ash::chrome_urls::kPasswordManagerSubPage);
 static_assert(std::string_view(kPrivacySubPage) ==
               ash::chrome_urls::kPrivacySubPage);
 static_assert(std::string_view(kResetSubPage) ==
@@ -125,7 +120,6 @@ base::span<const base::cstring_view> ChromeURLHosts() {
 #if !BUILDFLAG(IS_ANDROID)
       kChromeUIAppServiceInternalsHost,
 #endif
-      kChromeUIAutofillInternalsHost,
       kChromeUIBluetoothInternalsHost,
       kChromeUIChromeFindsInternalsHost,
       kChromeUIChromeURLsHost,
@@ -162,8 +156,6 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       kChromeUIOnDeviceInternalsHost,
 #endif
       optimization_guide_internals::kChromeUIOptimizationGuideInternalsHost,
-      kChromeUIPasswordManagerInternalsHost,
-      password_manager::kChromeUIPasswordManagerHost,
       kChromeUIPolicyHost,
       kChromeUIPredictorsHost,
       kChromeUIPrefsInternalsHost,

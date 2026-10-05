@@ -17,7 +17,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "base/unguessable_token.h"
-#include "components/autofill/core/browser/foundations/scoped_autofill_managers_observation.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/safe_browsing/content/browser/async_check_tracker.h"
 #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
@@ -192,7 +191,6 @@ class ClientSideDetectionHost
 
 
 
-  void RegisterAutofillManager();
 
   // User requests to report a site as unsafe. The screenshot values come from
   // the report dialog view.
@@ -492,11 +490,6 @@ class ClientSideDetectionHost
 
   base::ScopedObservation<AsyncCheckTracker, AsyncCheckTracker::Observer>
       async_check_observation_{this};
-
-  // Manages lifetime registration of this instance as an
-  // AutofillManager::Observer.
-  autofill::ScopedAutofillManagersObservation autofill_managers_observation_{
-      this};
 
   // Callback settable by tests for verifying whether
   // MaybeStartPreClassification resulted in starting preclassification.

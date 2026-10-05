@@ -242,15 +242,7 @@ void MoveTabsToReadLater(BrowserWindowInterface* browser,
                          std::vector<content::WebContents*> web_contentses);
 bool MarkCurrentTabAsReadInReadLater(BrowserWindowInterface* browser);
 bool IsCurrentTabUnreadInReadLater(BrowserWindowInterface* browser);
-void ShowOffersAndRewardsForPage(BrowserWindowInterface* browser);
-void SaveCreditCard(BrowserWindowInterface* browser);
-void SaveIban(BrowserWindowInterface* browser);
-void ShowMandatoryReauthOptInPrompt(BrowserWindowInterface* browser);
-void SaveAutofillAddress(BrowserWindowInterface* browser);
-void ShowFilledCardInformationBubble(BrowserWindowInterface* browser);
-void ShowVirtualCardEnrollBubble(BrowserWindowInterface* browser);
 void StartTabOrganizationRequest(BrowserWindowInterface* browser);
-void ManagePasswordsForPage(BrowserWindowInterface* browser);
 void SavePage(BrowserWindowInterface* browser);
 bool CanSavePage(const BrowserWindowInterface* browser);
 void Print(BrowserWindowInterface* browser);

@@ -174,7 +174,6 @@
 #include "ash/constants/ash_pref_names.h"
 #include "chrome/browser/ash/extensions/chromeos_extensions_browser_api_provider.h"
 #include "chrome/browser/media_galleries/media_file_system_registry.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/soda/soda_installer_impl_chromeos.h"
 #else
 #include "ui/message_center/message_center.h"
@@ -261,7 +260,6 @@ void OnLocalStatePrefsLoaded();
 #include "chrome/browser/browser_features.h"
 #include "components/os_crypt/async/browser/freedesktop_secret_key_provider.h"
 #include "components/os_crypt/async/browser/secret_portal_key_provider.h"
-#include "components/password_manager/core/browser/password_manager_switches.h"
 #endif
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
@@ -1307,8 +1305,6 @@ void BrowserProcessImpl::RegisterPrefs(PrefRegistrySimple* registry) {
   registry->RegisterStringPref(ash::prefs::kOwnerLocale, std::string());
   registry->RegisterStringPref(ash::prefs::kHardwareKeyboardLayout,
                                std::string());
-  registry->RegisterBooleanPref(
-      password_manager::prefs::kPinAuthenticationAvailableOnChromeOS, false);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   registry->RegisterBooleanPref(metrics::prefs::kMetricsReportingEnabled,
@@ -1575,27 +1571,6 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
       std::make_unique<os_crypt_async::AppBoundEncryptionProviderWin>(
           local_state(), /*force_protection_level=*/std::nullopt)));
 #endif  // BUILDFLAG(IS_WIN)
-
-#if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS)
-  base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
-  const auto password_store =
-      cmd_line->GetSwitchValueASCII(password_manager::kPasswordStore);
-  if (password_store != "basic") {
-    if (base::FeatureList::IsEnabled(features::kDbusSecretPortal)) {
-      // Use a higher priority than the FreedesktopSecretKeyProvider.
-      providers.emplace_back(
-          /*precedence=*/15u,
-          std::make_unique<os_crypt_async::SecretPortalKeyProvider>(
-              local_state(),
-              base::FeatureList::IsEnabled(
-                  features::kSecretPortalKeyProviderUseForEncryption)));
-    }
-  }
-  providers.emplace_back(
-      /*precedence=*/10u,
-      std::make_unique<os_crypt_async::FreedesktopSecretKeyProvider>(
-          password_store, l10n_util::GetStringUTF8(IDS_PRODUCT_NAME), nullptr));
-#endif  // BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
   // On other POSIX systems, this is the only key provider. On Linux, it is used

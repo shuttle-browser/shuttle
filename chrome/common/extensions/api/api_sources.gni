@@ -70,7 +70,6 @@ if (enable_extensions) {
     "proxy_override_rules_private.json",
   ]
   schema_sources_ += [
-    "autofill_private.idl",
     "autotest_private.webidl",
     "braille_display_private.webidl",
     "command_line_private.json",
@@ -80,7 +79,6 @@ if (enable_extensions) {
     "experimental_ai_data.webidl",
     "image_writer_private.webidl",
     "language_settings_private.webidl",
-    "passwords_private.idl",
     "resources_private.idl",
     "safe_browsing_private.idl",
     "settings_private.idl",

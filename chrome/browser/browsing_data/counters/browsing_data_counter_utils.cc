@@ -13,7 +13,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/browser/browsing_data/counters/cache_counter.h"
-#include "chrome/browser/browsing_data/counters/signin_data_counter.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -55,7 +54,6 @@
 namespace browsing_data_counter_utils {
 
 using BrowsingDataCounter = browsing_data::BrowsingDataCounter;
-using SigninDataCounter = browsing_data::SigninDataCounter;
 using ResultInt = browsing_data::BrowsingDataCounter::ResultInt;
 
 namespace {
@@ -181,41 +179,6 @@ std::u16string GetChromeCounterTextFromResult(
         replacements, nullptr);
   }
 #endif
-
-  if (pref_name == browsing_data::prefs::kDeletePasswords) {
-    auto* signin_result =
-        static_cast<const SigninDataCounter::SigninDataResult*>(result);
-
-    ResultInt profile_passwords = signin_result->Value();
-    ResultInt account_passwords = signin_result->account_passwords();
-    ResultInt signin_data_count = signin_result->WebAuthnCredentialsValue();
-
-    std::vector<std::u16string> counts;
-    // TODO(crbug.com/40132590): If there are profile passwords, account
-    // passwords and other sign-in data, these are combined as
-    // "<1>; <2>; <3>" by recursively applying a "<1>; <2>" message.
-    // Maybe we should do something more pretty?
-    if (profile_passwords || account_passwords) {
-      counts.emplace_back(browsing_data::GetCounterTextFromResult(result));
-    }
-    if (signin_data_count) {
-      counts.emplace_back(l10n_util::GetPluralStringFUTF16(
-          IDS_DEL_SIGNIN_DATA_COUNTER, signin_data_count));
-    }
-    switch (counts.size()) {
-      case 0:
-        return l10n_util::GetStringUTF16(
-            IDS_DEL_PASSWORDS_AND_SIGNIN_DATA_COUNTER_NONE);
-      case 1:
-        return counts[0];
-      case 2:
-        return l10n_util::GetStringFUTF16(
-            IDS_DEL_PASSWORDS_AND_SIGNIN_DATA_COUNTER_COMBINATION, counts[0],
-            counts[1]);
-      default:
-        NOTREACHED();
-    }
-  }
 
 #if BUILDFLAG(IS_ANDROID)
   if (pref_name == browsing_data::prefs::kCloseTabs) {

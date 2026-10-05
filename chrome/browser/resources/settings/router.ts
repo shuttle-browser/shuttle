@@ -16,26 +16,20 @@ import {loadTimeData} from './i18n_setup.js';
 export interface SettingsRoutes {
   ABOUT: Route;
   ACCESSIBILITY: Route;
-  ADDRESSES: Route;
   ADVANCED: Route;
   AI: Route;
   APPEARANCE: Route;
-  AUTOFILL: Route;
   BASIC: Route;
   CAPTIONS: Route;
   CLEAR_BROWSER_DATA: Route;
   COMPARE: Route;
-  CONTACT_INFO: Route;
   COOKIES: Route;
   DEFAULT_BROWSER: Route;
   DOWNLOADS: Route;
   EDIT_DICTIONARY: Route;
   FONTS: Route;
-  IDENTITY_DOCS: Route;
   LANGUAGES: Route;
   ON_STARTUP: Route;
-  PASSKEYS: Route;
-  PAYMENTS: Route;
   PERFORMANCE: Route;
   PRELOADING: Route;
   PRIVACY: Route;
@@ -100,7 +94,6 @@ export interface SettingsRoutes {
   SITE_SETTINGS_WEB_PRINTING: Route;
   SPELL_CHECK: Route;
   SYSTEM: Route;
-  TRAVEL: Route;
   TRIGGERED_RESET_DIALOG: Route;
 
   // <if expr="not is_chromeos">

@@ -20,19 +20,7 @@ std::u16string AuthenticatorRequestSheetModel::GetHint() const {
   return std::u16string();
 }
 
-bool AuthenticatorRequestSheetModel::IsGpmSettingsButtonVisible() const {
-  return false;
-}
-
 bool AuthenticatorRequestSheetModel::IsOtherMechanismButtonVisible() const {
-  return false;
-}
-
-bool AuthenticatorRequestSheetModel::IsForgotGPMPinButtonVisible() const {
-  return false;
-}
-
-bool AuthenticatorRequestSheetModel::IsGPMPinOptionsButtonVisible() const {
   return false;
 }
 
@@ -40,10 +28,3 @@ std::u16string AuthenticatorRequestSheetModel::GetOtherMechanismButtonLabel()
     const {
   return std::u16string();
 }
-
-void AuthenticatorRequestSheetModel::OnOpenGpmSettingsButtonPressed() {}
-
-void AuthenticatorRequestSheetModel::OnForgotGPMPin() const {}
-
-void AuthenticatorRequestSheetModel::OnGPMPinOptionChosen(
-    bool is_arbitrary) const {}

@@ -86,21 +86,6 @@ void SetTabIdIfMissing(optimization_guide::proto::Action& action,
         action.mutable_activate_tab()->set_tab_id(tab_id);
       }
       break;
-    case optimization_guide::proto::Action::kAttemptLogin:
-      if (!action.attempt_login().has_tab_id()) {
-        action.mutable_attempt_login()->set_tab_id(tab_id);
-      }
-      break;
-    case optimization_guide::proto::Action::kAttemptFormFilling:
-      if (!action.attempt_form_filling().has_tab_id()) {
-        action.mutable_attempt_form_filling()->set_tab_id(tab_id);
-      }
-      break;
-    case optimization_guide::proto::Action::kAttemptOtpFilling:
-      if (!action.attempt_otp_filling().has_tab_id()) {
-        action.mutable_attempt_otp_filling()->set_tab_id(tab_id);
-      }
-      break;
     case optimization_guide::proto::Action::kScriptTool:
       if (!action.script_tool().has_tab_id()) {
         action.mutable_script_tool()->set_tab_id(tab_id);

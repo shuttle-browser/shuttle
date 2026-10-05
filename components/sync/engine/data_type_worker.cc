@@ -28,7 +28,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/memory_usage_estimator.h"
 #include "base/uuid.h"
-#include "components/autofill/core/browser/webdata/payments/payments_sync_util.h"
 #include "components/sync/base/client_tag_hash.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync/base/data_type_histogram.h"
@@ -128,27 +127,6 @@ void MaybeAdaptClientTagIfMissing(DataType data_type,
     return;
   }
   switch (data_type) {
-    case AUTOFILL_WALLET_DATA:
-      CHECK(data.specifics.has_autofill_wallet());
-      data.client_tag_hash = ClientTagHash::FromUnhashed(
-          AUTOFILL_WALLET_DATA,
-          autofill::GetUnhashedClientTagFromAutofillWalletSpecifics(
-              data.specifics.autofill_wallet()));
-      break;
-    case AUTOFILL_WALLET_OFFER:
-      CHECK(data.specifics.has_autofill_offer());
-      data.client_tag_hash = ClientTagHash::FromUnhashed(
-          AUTOFILL_WALLET_OFFER,
-          autofill::GetUnhashedClientTagFromAutofillOfferSpecifics(
-              data.specifics.autofill_offer()));
-      break;
-    case AUTOFILL_VALUABLE:
-      CHECK(data.specifics.has_autofill_valuable());
-      data.client_tag_hash = ClientTagHash::FromUnhashed(
-          AUTOFILL_VALUABLE,
-          autofill::GetUnhashedClientTagFromAutofillValuableSpecifics(
-              data.specifics.autofill_valuable()));
-      break;
     default:
       // Other datatypes populate the client tag hash in the protocol and there
       // is no need to infer it client-side.

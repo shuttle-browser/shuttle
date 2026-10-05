@@ -51,13 +51,6 @@
 #include "chrome/browser/sessions/session_service_lookup.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/ui/accelerator_utils.h"
-#include "chrome/browser/ui/autofill/address_bubbles_controller.h"
-#include "chrome/browser/ui/autofill/payments/filled_card_information_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/iban_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/mandatory_reauth_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/offer_notification_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/save_card_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/virtual_card_enroll_bubble_controller_impl.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_init_state.h"
@@ -79,7 +72,6 @@
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
-#include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
@@ -130,6 +122,7 @@
 #include "components/sessions/core/live_tab_context.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_visual_data.h"
+#include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/split_tab_data.h"
@@ -1969,90 +1962,6 @@ bool IsCurrentTabUnreadInReadLater(BrowserWindowInterface* browser) {
   }
   scoped_refptr<const ReadingListEntry> entry = model->GetEntryByURL(url);
   return entry && !entry->IsRead();
-}
-
-void ShowOffersAndRewardsForPage(BrowserWindowInterface* browser) {
-  WebContents* const web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  autofill::OfferNotificationBubbleControllerImpl* controller =
-      autofill::OfferNotificationBubbleControllerImpl::FromWebContents(
-          web_contents);
-  DCHECK(controller);
-  controller->ReshowBubble();
-}
-
-void SaveCreditCard(BrowserWindowInterface* browser) {
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  autofill::SaveCardBubbleControllerImpl* controller =
-      autofill::SaveCardBubbleControllerImpl::FromWebContents(web_contents);
-  controller->ReshowBubble(/*is_user_gesture=*/true);
-}
-
-void SaveIban(BrowserWindowInterface* browser) {
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  autofill::IbanBubbleControllerImpl* controller =
-      autofill::IbanBubbleControllerImpl::FromWebContents(web_contents);
-  controller->ReshowBubble();
-}
-
-void ShowMandatoryReauthOptInPrompt(BrowserWindowInterface* browser) {
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  autofill::MandatoryReauthBubbleControllerImpl* controller =
-      autofill::MandatoryReauthBubbleControllerImpl::FromWebContents(
-          web_contents);
-  controller->ReshowBubble();
-}
-
-void SaveAutofillAddress(BrowserWindowInterface* browser) {
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  autofill::AddressBubblesController* controller =
-      autofill::AddressBubblesController::FromWebContents(web_contents);
-  controller->OnIconClicked();
-}
-
-void ShowFilledCardInformationBubble(BrowserWindowInterface* browser) {
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  auto* controller =
-      autofill::FilledCardInformationBubbleControllerImpl::FromWebContents(
-          web_contents);
-  if (controller) {
-    controller->ReshowBubble();
-  }
-}
-
-void ShowVirtualCardEnrollBubble(BrowserWindowInterface* browser) {
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  autofill::VirtualCardEnrollBubbleControllerImpl* controller =
-      autofill::VirtualCardEnrollBubbleControllerImpl::FromWebContents(
-          web_contents);
-  if (controller) {
-    controller->ReshowBubble();
-  }
-}
-
-void ManagePasswordsForPage(BrowserWindowInterface* browser) {
-  auto* const user_education = BrowserUserEducationInterface::From(browser);
-  user_education->NotifyFeaturePromoFeatureUsed(
-      feature_engagement::kIPHPasswordsManagementBubbleAfterSaveFeature,
-      FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  user_education->NotifyFeaturePromoFeatureUsed(
-      feature_engagement::kIPHPasswordsManagementBubbleDuringSigninFeature,
-      FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  user_education->NotifyFeaturePromoFeatureUsed(
-      feature_engagement::kIPHPasswordManagerShortcutFeature,
-      FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  WebContents* const web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  ManagePasswordsUIController* controller =
-      ManagePasswordsUIController::FromWebContents(web_contents);
-  controller->QueueOrShowBubble(
-      /*user_action=*/!controller->IsAutomaticallyOpeningBubble());
 }
 
 void SavePage(BrowserWindowInterface* browser) {

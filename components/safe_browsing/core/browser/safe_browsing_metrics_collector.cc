@@ -12,7 +12,6 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
@@ -188,10 +187,6 @@ void SafeBrowsingMetricsCollector::LogDailyOptInMetrics() {
                             IsExtendedReportingEnabled(*pref_service_));
   base::UmaHistogramBoolean("SafeBrowsing.Pref.Daily.SafeBrowsingModeManaged",
                             IsSafeBrowsingPolicyManaged(*pref_service_));
-  base::UmaHistogramBoolean(
-      "SafeBrowsing.Pref.Daily.PasswordLeakToggle",
-      pref_service_->GetBoolean(
-          password_manager::prefs::kPasswordLeakDetectionEnabled));
 }
 
 void SafeBrowsingMetricsCollector::LogDailyEventMetrics() {

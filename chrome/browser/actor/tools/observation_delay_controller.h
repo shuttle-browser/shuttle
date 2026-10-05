@@ -37,7 +37,7 @@ class PageSettledMonitorDelegate;
 //
 // This class uses PageSettledMonitor to wait for general page stability,
 // loading, and visual updates, while injecting Actor-specific waits, e.g.
-// federated login and autofill predictions, at the appropriate milestones.
+// federated login, at the appropriate milestones.
 class ObservationDelayController : public content::WebContentsObserver {
  public:
   enum class Result {
@@ -96,7 +96,6 @@ class ObservationDelayController : public content::WebContentsObserver {
     kWaitForVisualStateUpdate,
     kMaybeDelayForLcp,
     kDelayForLcp,
-    kWaitForAutofillPredictions,
     kDidTimeout,
     kPageNavigated,
     kDone
@@ -120,7 +119,6 @@ class ObservationDelayController : public content::WebContentsObserver {
   friend class PageSettledMonitorDelegate;
 
   void OnFederatedLoginRequestComplete(base::OnceClosure resume_callback);
-  void OnAutofillPredictionsFinished(base::OnceClosure resume_callback);
   void DCheckStateTransition(State old_state, State new_state);
   void MoveToState(State state);
   base::OnceClosure MoveToStateClosure(State new_state);

@@ -27,7 +27,7 @@ import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bu
 
 import {loadTimeData} from '../i18n_setup.js';
 import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
-import {AutofillSettingsReferrer, MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
+import {MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
 import {pageVisibility} from '../page_visibility.js';
 import type {PageVisibility} from '../page_visibility.js';
 import type {Route} from '../router.js';
@@ -37,14 +37,11 @@ import {getTemplate} from './settings_menu.html.js';
 
 export interface SettingsMenuElement {
   $: {
-    autofill: HTMLLinkElement,
     menu: CrMenuSelectorElement,
-    yourSavedInfo: HTMLLinkElement,
   };
 }
 
 const pathToActionMap: Map<string, string> = new Map([
-  ['/autofill', 'SettingsMenu_AutofillClicked'],
   ['/privacy', 'SettingsMenu_PrivacyClicked'],
   ['/performance', 'SettingsMenu_PerformanceClicked'],
   ['/ai', 'SettingsMenu_AiPageEntryPointClicked'],
@@ -159,12 +156,6 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
   private onExtensionsLinkClick_() {
     chrome.metricsPrivate.recordUserAction(
         'SettingsMenu_ExtensionsLinkClicked');
-  }
-
-  private onAutofillClick_() {
-    this.metricsBrowserProxy_.recordAutofillSettingsReferrer(
-        'Autofill.YourSavedInfoSettingsPage.VisitReferrer',
-        AutofillSettingsReferrer.SETTINGS_MENU);
   }
 
   private hideBottomMenuSeparator_(): boolean {

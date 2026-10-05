@@ -107,52 +107,6 @@ class OmniboxPedalClearBrowsingData : public OmniboxPedal {
 
 // =============================================================================
 
-class OmniboxPedalManagePasswords : public OmniboxPedal {
- public:
-  OmniboxPedalManagePasswords()
-      : OmniboxPedal(
-            OmniboxPedalId::MANAGE_PASSWORDS,
-            LabelStrings(IDS_OMNIBOX_PEDAL_MANAGE_PASSWORDS_HINT,
-                         IDS_OMNIBOX_PEDAL_MANAGE_PASSWORDS_SUGGESTION_CONTENTS,
-                         IDS_ACC_OMNIBOX_PEDAL_MANAGE_PASSWORDS_SUFFIX,
-                         IDS_ACC_OMNIBOX_PEDAL_MANAGE_PASSWORDS),
-            GURL(chrome::kChromeUIPasswordManagerURL)) {}
-
-  std::vector<SynonymGroupSpec> SpecifySynonymGroups(
-      bool locale_is_english) const override {
-    if (locale_is_english) {
-      return {
-          {
-              false,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_PASSWORDS_ONE_OPTIONAL_GOOGLE_CHROME,
-          },
-          {
-              false,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_PASSWORDS_ONE_OPTIONAL_MANAGER,
-          },
-          {
-              true,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_PASSWORDS_ONE_REQUIRED_PASSWORDS,
-          },
-      };
-    } else {
-      return {
-          {
-              true,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_PASSWORDS_ONE_REQUIRED_MANAGE_CHROME_PASSWORDS,
-          },
-      };
-    }
-  }
-
- protected:
-  ~OmniboxPedalManagePasswords() override = default;
-};
-
 // =============================================================================
 
 class OmniboxPedalUpdateCreditCard : public OmniboxPedal {
@@ -2038,7 +1992,6 @@ GetPedalImplementations(bool incognito, bool guest, bool testing) {
   if (!incognito && !guest) {
     add(new OmniboxPedalClearBrowsingData(/*incognito=*/false));
   }
-  add(new OmniboxPedalManagePasswords());
   add(new OmniboxPedalUpdateCreditCard());
   add(new OmniboxPedalLaunchIncognito());
   if (!base::android::device_info::is_automotive()) {
@@ -2055,7 +2008,6 @@ GetPedalImplementations(bool incognito, bool guest, bool testing) {
   if (!guest) {
     add(new OmniboxPedalClearBrowsingData(incognito));
   }
-  add(new OmniboxPedalManagePasswords());
   add(new OmniboxPedalUpdateCreditCard());
   add(new OmniboxPedalLaunchIncognito());
   add(new OmniboxPedalTranslate());

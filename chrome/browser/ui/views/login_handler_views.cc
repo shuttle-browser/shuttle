@@ -11,7 +11,6 @@
 #include "chrome/browser/ui/login/login_handler.h"
 #include "chrome/browser/ui/views/login_view.h"
 #include "components/constrained_window/constrained_window_views.h"
-#include "components/password_manager/core/browser/password_manager.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/browser_thread.h"
@@ -43,8 +42,7 @@ class LoginHandlerViews : public LoginHandler {
  protected:
   // LoginHandler:
   bool BuildViewImpl(const std::u16string& authority,
-                     const std::u16string& explanation,
-                     LoginModelData* login_model_data) override;
+                     const std::u16string& explanation) override;
   void CloseDialog() override;
 
  private:
@@ -68,8 +66,7 @@ class LoginHandlerViewsDialog : public views::DialogDelegate {
   LoginHandlerViewsDialog(LoginHandlerViews* handler,
                           content::WebContents* web_contents,
                           const std::u16string& authority,
-                          const std::u16string& explanation,
-                          LoginHandler::LoginModelData* login_model_data);
+                          const std::u16string& explanation);
   LoginHandlerViewsDialog(const LoginHandlerViewsDialog&) = delete;
   LoginHandlerViewsDialog& operator=(const LoginHandlerViewsDialog&) = delete;
 
@@ -113,8 +110,7 @@ void LoginHandlerViews::OnDialogDestroyed() {
 }
 
 bool LoginHandlerViews::BuildViewImpl(const std::u16string& authority,
-                                      const std::u16string& explanation,
-                                      LoginModelData* login_model_data) {
+                                      const std::u16string& explanation) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   DCHECK(!dialog_);
 
@@ -128,7 +124,7 @@ bool LoginHandlerViews::BuildViewImpl(const std::u16string& authority,
     return false;
   }
   dialog_ = new LoginHandlerViewsDialog(this, web_contents(), authority,
-                                        explanation, login_model_data);
+                                        explanation);
   return true;
 }
 
@@ -147,8 +143,7 @@ LoginHandlerViewsDialog::LoginHandlerViewsDialog(
     LoginHandlerViews* handler,
     content::WebContents* web_contents,
     const std::u16string& authority,
-    const std::u16string& explanation,
-    LoginHandler::LoginModelData* login_model_data)
+    const std::u16string& explanation)
     : handler_(handler) {
   SetButtonLabel(ui::mojom::DialogButton::kOk,
                  l10n_util::GetStringUTF16(IDS_LOGIN_DIALOG_OK_BUTTON_LABEL));
@@ -172,11 +167,7 @@ LoginHandlerViewsDialog::LoginHandlerViewsDialog(
   SetModalType(ui::mojom::ModalType::kChild);
   SetOwnedByWidget(OwnedByWidgetPassKey());
 
-  // Create a new LoginView and set the model for it.  The model (password
-  // manager) is owned by the WebContents, but the view is parented to the
-  // browser window, so the view may be destroyed after the password manager.
-  // The view listens for model destruction and unobserves accordingly.
-  login_view_ = new LoginView(authority, explanation, login_model_data);
+  login_view_ = new LoginView(authority, explanation);
   widget_ = constrained_window::ShowWebModalDialogViews(this, web_contents);
 }
 

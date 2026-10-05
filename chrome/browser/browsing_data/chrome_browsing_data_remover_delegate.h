@@ -201,10 +201,6 @@ class ChromeBrowsingDataRemoverDelegate
 
   std::unique_ptr<device::fido::PlatformCredentialStore> MakeCredentialStore();
 
-  // See `deferred_disable_passwords_auto_signin_cb_`.
-  void DisablePasswordsAutoSignin(
-      const base::RepeatingCallback<bool(const GURL&)>& url_filter);
-
   // The profile for which the data will be deleted.
   raw_ptr<Profile> profile_;
 
@@ -241,16 +237,6 @@ class ChromeBrowsingDataRemoverDelegate
   // not initialised, so the registry must be mocked out.
   std::unique_ptr<WebappRegistry> webapp_registry_;
 #endif
-
-  // PasswordStore::DisableAutoSignInForOrigins() is required when wiping
-  // DATA_TYPE_COOKIES, but that must be deferred until any password deletions
-  // have completed, to avoid resurrecting passwords (c.f. crbug.com/325323180).
-  // This field serves that: it'll be executed in OnTasksComplete() when all
-  // other tasks are done. Executing it adds to `pending_sub_tasks_` again.
-  // OnBrowsingDataRemoverDone() is only called after the (async) auto-signin
-  // disabling has completed.
-  // Note disabling auto sign-in is asynchronous.
-  base::OnceClosure deferred_disable_passwords_auto_signin_cb_;
 
   std::unique_ptr<device::fido::PlatformCredentialStore> credential_store_;
 

@@ -22,10 +22,8 @@ source_set("login_detection") {
   ]
   deps = [
     "//base",
-    "//chrome/browser/password_manager",
     "//chrome/browser/profiles:profile",
     "//components/keyed_service/core",
-    "//components/password_manager/core/browser",
     "//components/prefs",
     "//components/site_isolation",
     "//content/public/browser",
@@ -49,7 +47,6 @@ source_set("unit_tests") {
     "//base/test:test_support",
     "//chrome/browser/profiles:profile",
     "//chrome/test:test_support",
-    "//components/password_manager/core/browser",
     "//components/prefs:test_support",
     "//components/ukm:test_support",
     "//content/public/browser",

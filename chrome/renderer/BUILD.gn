@@ -134,8 +134,6 @@ static_library("renderer") {
     "//chrome/renderer/actor",
     "//chrome/services/speech/buildflags",
     "//components/actor/core:task_id",
-    "//components/autofill/content/renderer",
-    "//components/autofill/core/common:features",
     "//components/base32",
     "//components/cdm/renderer",
     "//components/content_capture/common",
@@ -162,7 +160,6 @@ static_library("renderer") {
     "//components/page_content_annotations/core:features",
     "//components/page_load_metrics/renderer",
     "//components/paint_preview/buildflags",
-    "//components/password_manager/core/common",
     "//components/pdf/common:constants",
     "//components/pdf/common:util",
     "//components/permissions:permissions_common",
@@ -355,8 +352,6 @@ static_library("renderer") {
       "accessibility/read_anything/read_anything_node_utils.h",
       "media/chrome_speech_recognition_client.cc",
       "media/chrome_speech_recognition_client.h",
-      "password_manager/remote_actor_credential_sharing_extension.cc",
-      "password_manager/remote_actor_credential_sharing_extension.h",
     ]
 
     deps += [

@@ -45,14 +45,6 @@
       <cr-menu-selector id="menu" selectable="a:not(#extensionsLink)"
           attr-for-selected="href" on-iron-activate="onSelectorActivate_"
           on-click="onLinkClick_" selected-attribute="selected">
-        <a role="menuitem" id="autofill" href="/autofill"
-            on-click="onAutofillClick_"
-            class="cr-nav-menu-item"
-            hidden="[[!pageVisibility_.yourSavedInfo]]">
-          <cr-icon icon="settings:password-manager"></cr-icon>
-          $i18n{autofillPageTitle}
-          <cr-ripple></cr-ripple>
-        </a>
         <a role="menuitem" id="privacy" href="/privacy"
             hidden="[[!pageVisibility_.privacy]]"
             class="cr-nav-menu-item">

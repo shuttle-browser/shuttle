@@ -1714,8 +1714,6 @@ group("extra_resources") {
   # Deps should be same as those in chrome_extra_paks() within chrome_paks.gni.
   public_deps = [
     "//chrome/browser/resources",
-    "//components/autofill/core/browser:autofill_address_rewriter_resources",
-    "//components/autofill/core/browser:autofill_alternative_state_name_map_resources",
   ]
 }
 

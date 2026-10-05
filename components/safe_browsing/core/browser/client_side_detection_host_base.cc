@@ -24,9 +24,6 @@
 #include "base/time/default_tick_clock.h"
 #include "base/trace_event/trace_event.h"
 #include "base/uuid.h"
-#include "components/autofill/core/browser/autofill_field.h"
-#include "components/autofill/core/browser/field_types.h"
-#include "components/autofill/core/browser/form_structure.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/safe_browsing/core/browser/client_side_detection_feature_cache_base.h"
 #include "components/safe_browsing/core/browser/client_side_detection_service_base.h"
@@ -763,108 +760,6 @@ ClipboardExtractedData ClientSideDetectionHostBase::ExtractClipboardData(
       "SBClientPhishing.ClipboardCopyApi.PayloadExtraction.ProcessingDuration",
       base::TimeTicks::Now() - start_time);
   return clipboard_data;
-}
-
-void ClientSideDetectionHostBase::OnFieldTypesDetermined(
-    autofill::AutofillManager& manager,
-    autofill::FormGlobalId form,
-    FieldTypeSource source,
-    bool small_forms_were_parsed) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  MaybeTriggerCreditCardFormPing(
-      manager, form, std::nullopt, "OnFieldTypesDetermined",
-      kCsdCreditCardFormEnableDetectionTrigger.Get());
-}
-
-// OnAfterFocusOnFormField is an Autofill observer callback that triggers a CSD
-// ping when the user interacts with a credit card form field.
-void ClientSideDetectionHostBase::OnAfterFocusOnFormField(
-    autofill::AutofillManager& manager,
-    autofill::FormGlobalId form_id,
-    autofill::FieldGlobalId field_id) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  MaybeTriggerCreditCardFormPing(
-      manager, form_id, field_id, "OnAfterFocusOnFormField",
-      kCsdCreditCardFormEnableInteractionTrigger.Get());
-}
-
-void ClientSideDetectionHostBase::MaybeTriggerCreditCardFormPing(
-    autofill::AutofillManager& manager,
-    autofill::FormGlobalId form_id,
-    std::optional<autofill::FieldGlobalId> field_id,
-    std::string event_name,
-    bool should_trigger) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // Early exit if ESB is not enabled.
-  if (!IsEnhancedProtectionEnabled()) {
-    return;
-  }
-
-  // Determine whether the form was detected as a credit card form.
-  const autofill::FormStructure* form = manager.FindCachedFormById(form_id);
-  if (!form) {
-    return;
-  }
-
-  credit_card_form::FieldDetectionHeuristic field_heuristic =
-      credit_card_form::kNoDetectionHeuristic;
-
-  if (field_id.has_value()) {
-    const autofill::AutofillField* field = form->GetFieldById(*field_id);
-    if (!field) {
-      return;
-    }
-    if (autofill::GroupTypeOfFieldType(field->server_type()) ==
-        autofill::FieldTypeGroup::kCreditCard) {
-      field_heuristic = credit_card_form::kAutofillServer;
-    } else if (autofill::GroupTypeOfFieldType(field->heuristic_type()) ==
-               autofill::FieldTypeGroup::kCreditCard) {
-      field_heuristic = credit_card_form::kAutofillLocal;
-    }
-  } else {
-    // Look for fields with credit card heuristic types. Server heuristic
-    // takes precedence over local heuristic.
-    for (const auto& field : form->fields()) {
-      if (autofill::GroupTypeOfFieldType(field->server_type()) ==
-          autofill::FieldTypeGroup::kCreditCard) {
-        field_heuristic = credit_card_form::kAutofillServer;
-        break;
-      } else if (autofill::GroupTypeOfFieldType(field->heuristic_type()) ==
-                 autofill::FieldTypeGroup::kCreditCard) {
-        field_heuristic = credit_card_form::kAutofillLocal;
-      }
-    }
-  }
-
-  if (field_heuristic == credit_card_form::kNoDetectionHeuristic) {
-    return;
-  }
-
-  // Site visit count is needed as part of determining whether to send
-  // a CSD ping, so look that up via HistoryService and delegate
-  // handling the result to OnCreditCardFormVisitCount.
-  GURL url = GetCurrentUrl();
-  std::optional<history::DailyVisitsResult> cached_history_result;
-  if (url == last_history_url_) {
-    cached_history_result = last_history_result_;
-  }
-  if (history_service_ && !cached_history_result) {
-    last_history_url_ = url;
-    history_service_->GetDailyVisitsToOrigin(
-        url::Origin::Create(url), base::Time(),
-        base::Time::Now() -
-            base::Minutes(kCsdCreditCardFormUserVisitLookback.Get()),
-        history::VisitQuery404sPolicy::kExclude404s,
-        base::BindOnce(&ClientSideDetectionHostBase::OnCreditCardFormVisitCount,
-                       base_weak_factory_.GetWeakPtr(), base::TimeTicks::Now(),
-                       field_heuristic, event_name, should_trigger),
-        &task_tracker_);
-  } else {
-    history::DailyVisitsResult history_result = cached_history_result.value_or(
-        history::DailyVisitsResult{/*success=*/false});
-    OnCreditCardFormVisitCount(std::nullopt, field_heuristic, event_name,
-                               should_trigger, history_result);
-  }
 }
 
 void ClientSideDetectionHostBase::OnCreditCardFormVisitCount(

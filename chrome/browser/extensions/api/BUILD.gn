@@ -63,13 +63,11 @@ group("api_implementations") {
   if (enable_extensions) {
     # APIs supported on Win/Mac/Linux but NOT desktop Android go here.
     public_deps += [
-      "//chrome/browser/extensions/api/autofill_private",
       "//chrome/browser/extensions/api/braille_display_private",
       "//chrome/browser/extensions/api/command_line_private",
       "//chrome/browser/extensions/api/experimental_actor",
       "//chrome/browser/extensions/api/experimental_ai_data",
       "//chrome/browser/extensions/api/networking_private",
-      "//chrome/browser/extensions/api/passwords_private",
       "//chrome/browser/extensions/api/resources_private",
       "//chrome/browser/extensions/api/safe_browsing_private",
       "//chrome/browser/extensions/api/settings_overrides",
@@ -208,7 +206,6 @@ function_registration("api_registration") {
     "//chrome/browser/ai",
     "//chrome/common",
     "//chrome/common:mojo_bindings",
-    "//components/autofill/core/common/mojom:mojo_types",
     "//components/omnibox/browser",
     "//components/zoom",
     "//content/public/browser",

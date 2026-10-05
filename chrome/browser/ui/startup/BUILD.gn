@@ -151,7 +151,6 @@ source_set("impl") {
     "//chrome/common:chrome_features",
     "//chrome/common:constants",
     "//chrome/common:non_code_constants",
-    "//components/autofill/core/common",
     "//components/history_clusters/core",
     "//components/infobars/content",
     "//components/infobars/core",

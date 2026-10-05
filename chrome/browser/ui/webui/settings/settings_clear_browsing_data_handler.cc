@@ -408,7 +408,10 @@ void ClearBrowsingDataHandler::UpdateHistoryDeletionDialog(bool show) {
 
 void ClearBrowsingDataHandler::AddCounter(
     std::unique_ptr<browsing_data::BrowsingDataCounter> counter) {
-  DCHECK(counter);
+  // Agent Chrome: no counters for removed data types (passwords, form data).
+  if (!counter) {
+    return;
+  }
   counter->InitWithoutPeriodPref(
       profile_->GetPrefs(), base::Time(),
       base::BindRepeating(&ClearBrowsingDataHandler::UpdateCounterText,

@@ -75,10 +75,6 @@
 #include "chrome/renderer/webui_browser/webui_browser_renderer_extension.h"
 #include "chrome/renderer/worker_content_settings_client.h"
 #include "chrome/services/speech/buildflags/buildflags.h"
-#include "components/autofill/content/renderer/autofill_agent.h"
-#include "components/autofill/content/renderer/password_autofill_agent.h"
-#include "components/autofill/content/renderer/password_generation_agent.h"
-#include "components/autofill/core/common/autofill_features.h"
 #include "components/content_capture/common/content_capture_features.h"
 #include "components/content_capture/renderer/content_capture_sender.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
@@ -106,7 +102,6 @@
 #include "components/page_content_annotations/core/page_content_annotations_features.h"
 #include "components/page_load_metrics/renderer/metrics_render_frame_observer.h"
 #include "components/paint_preview/buildflags/buildflags.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "components/pdf/common/constants.h"
 #include "components/pdf/common/pdf_util.h"
 #include "components/permissions/features.h"
@@ -191,7 +186,6 @@
 #include "chrome/renderer/sandbox_status_extension_android.h"
 #include "chrome/renderer/wallet/boarding_pass_extractor.h"
 #else
-#include "chrome/renderer/password_manager/remote_actor_credential_sharing_extension.h"
 #include "components/search/ntp_features.h"  // nogncheck
 #endif
 
@@ -261,9 +255,6 @@
 #include "chrome/renderer/media/chrome_key_systems.h"
 #endif
 
-using autofill::AutofillAgent;
-using autofill::PasswordAutofillAgent;
-using autofill::PasswordGenerationAgent;
 using base::ASCIIToUTF16;
 using base::UserMetricsAction;
 using blink::WebCache;
@@ -285,14 +276,6 @@ using content::RenderFrame;
 using content::RenderThread;
 using content::WebPluginInfo;
 using content::WebPluginMimeType;
-using ExtractAllDatalists = autofill::AutofillAgent::ExtractAllDatalists;
-using FocusRequiresScroll = autofill::AutofillAgent::FocusRequiresScroll;
-using QueryPasswordSuggestions =
-    autofill::AutofillAgent::QueryPasswordSuggestions;
-using SecureContextRequired = autofill::AutofillAgent::SecureContextRequired;
-using UserGestureRequired = autofill::AutofillAgent::UserGestureRequired;
-using UsesKeyboardAccessoryForSuggestions =
-    autofill::AutofillAgent::UsesKeyboardAccessoryForSuggestions;
 
 namespace {
 
@@ -598,12 +581,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
 #endif
 
   TrustedVaultEncryptionKeysExtension::Create(render_frame);
-#if !BUILDFLAG(IS_ANDROID)
-  if (features::RemoteActorCredentialSharingEnabled() &&
-      render_frame->IsMainFrame()) {
-    RemoteActorCredentialSharingExtension::Create(render_frame);
-  }
-#endif
   GoogleAccountsPrivateApiExtension::Create(render_frame);
 
   const bool search_result_extractor_enabled =
@@ -645,17 +622,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
 
   blink::AssociatedInterfaceRegistry* associated_interfaces =
       render_frame_observer->associated_interfaces();
-
-  if (!render_frame->IsInFencedFrameTree() ||
-      base::FeatureList::IsEnabled(blink::features::kFencedFramesAPIChanges)) {
-    auto password_autofill_agent = std::make_unique<PasswordAutofillAgent>(
-        render_frame, associated_interfaces);
-    auto password_generation_agent = std::make_unique<PasswordGenerationAgent>(
-        render_frame, password_autofill_agent.get(), associated_interfaces);
-    new AutofillAgent(render_frame, std::move(password_autofill_agent),
-                      std::move(password_generation_agent),
-                      associated_interfaces);
-  }
 
   if (content_capture::features::IsContentCaptureEnabled()) {
     new content_capture::ContentCaptureSender(render_frame,
@@ -1339,15 +1305,6 @@ void ChromeContentRendererClient::
     BUILDFLAG(IS_MAC)
   blink::WebRuntimeFeatures::EnableWebShare(true);
 #endif
-
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillPolicyControlledFeatureAutofill)) {
-    blink::WebRuntimeFeatures::EnableAutofill(true);
-  }
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillPolicyControlledFeatureManualText)) {
-    blink::WebRuntimeFeatures::EnableManualText(true);
-  }
 
   if (base::FeatureList::IsEnabled(subresource_filter::kAdTagging))
     blink::WebRuntimeFeatures::EnableAdTagging(true);

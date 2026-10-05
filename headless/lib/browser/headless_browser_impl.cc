@@ -40,7 +40,6 @@
 #if BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS)
 #include "base/command_line.h"
 #include "components/os_crypt/async/browser/freedesktop_secret_key_provider.h"
-#include "components/password_manager/core/browser/password_manager_switches.h"  // nogncheck
 #endif
 
 #if BUILDFLAG(IS_POSIX)
@@ -363,14 +362,6 @@ void HeadlessBrowserImpl::CreateOSCryptAsync() {
   providers.emplace_back(std::make_pair(
       /*precedence=*/10u,
       std::make_unique<os_crypt_async::KeychainKeyProvider>()));
-#elif BUILDFLAG(IS_LINUX) && BUILDFLAG(USE_DBUS)
-  base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
-  const auto password_store =
-      cmd_line->GetSwitchValueASCII(password_manager::kPasswordStore);
-  providers.emplace_back(
-      /*precedence=*/10u,
-      std::make_unique<os_crypt_async::FreedesktopSecretKeyProvider>(
-          password_store, kHeadlessProductName, nullptr));
 #endif
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)

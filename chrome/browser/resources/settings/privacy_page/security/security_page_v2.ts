@@ -79,7 +79,6 @@ export interface SettingsSecurityPageV2Element {
     httpsFirstModeToggle: SettingsToggleButtonElement,
     javascriptGuardrailsRow: SecurityPageFeatureRowElement,
     manageSiteExceptionsButton: CrButtonElement,
-    passwordsLeakToggle: SettingsToggleButtonElement,
     resetEnhancedBundleToDefaultsButton: CrButtonElement,
     resetStandardBundleToDefaultsButton: CrButtonElement,
     securitySettingsBundleEnhanced: ControlledRadioButtonElement,

@@ -283,8 +283,6 @@
     <!-- IMPORTANT: .grdp files must be in the same directory as this file -->
     <messages fallback_to_english="true">
       <part file="arc_strings.grdp" />
-      <part file="autofill_payments_strings.grdp" />
-      <part file="autofill_strings.grdp" />
       <part file="blocked_content_strings.grdp" />
       <part file="bookmark_bar_strings.grdp" />
       <part file="bookmark_component_strings.grdp" />
@@ -313,7 +311,6 @@
       <part file="omnibox_strings.grdp" />
       <part file="page_info_strings.grdp" />
       <part file="paint_preview_strings.grdp" />
-      <part file="password_manager_strings.grdp" />
       <part file="payments_strings.grdp" />
       <part file="pdf_strings.grdp" />
       <part file="permissions_strings.grdp" />

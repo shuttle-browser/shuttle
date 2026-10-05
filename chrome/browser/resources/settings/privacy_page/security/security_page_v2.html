@@ -492,11 +492,6 @@
     </security-page-feature-row>
   </settings-section>
   <settings-section page-title="$i18n{securityAccountAndNetworkSectionTitle}">
-    <settings-toggle-button id="passwordsLeakToggle"
-        pref="{{prefs.generated.password_leak_detection}}"
-        label="$i18n{securityPasswordsLeakDetectionTitle}"
-        sub-label="$i18n{securityPasswordsLeakDetectionDesc}">
-    </settings-toggle-button>
     <template is="dom-if" if="[[!enableBundledSecuritySettingsSecureDnsV2_]]">
       <settings-secure-dns id="secureDnsRow" prefs="{{prefs}}" class="no-hr">
       </settings-secure-dns>

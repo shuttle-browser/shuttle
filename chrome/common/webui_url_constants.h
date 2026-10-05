@@ -53,9 +53,6 @@ inline constexpr char kChromeUIAppsWithDeprecationDialogURL[] =
     "chrome://apps?showDeletionDialog=";
 inline constexpr char kChromeUIAppsWithForceInstalledDeprecationDialogURL[] =
     "chrome://apps?showForceInstallDialog=";
-inline constexpr char kChromeUIAutofillAiPath[] = "/enhancedAutofill";
-inline constexpr char kChromeUIAutofillPath[] = "/autofill";
-inline constexpr char kChromeUIAutofillInternalsHost[] = "autofill-internals";
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS)
 inline constexpr char kChromeUIBatchUploadHost[] = "batch-upload";
 inline constexpr char kChromeUIBatchUploadURL[] = "chrome://batch-upload/";
@@ -231,16 +228,6 @@ inline constexpr char kChromeUIPageActionInternalsHost[] =
     "page-action-internals";
 inline constexpr char kChromeUIPageActionInternalsURL[] =
     "chrome://page-action-internals/";
-inline constexpr char kChromeUIPasswordManagerCheckupURL[] =
-    "chrome://password-manager/checkup?start=true";
-inline constexpr char kChromeUIPasswordManagerInternalsHost[] =
-    "password-manager-internals";
-inline constexpr char kChromeUIPasswordManagerSettingsURL[] =
-    "chrome://password-manager/settings";
-inline constexpr char kChromeUIPasswordManagerURL[] =
-    "chrome://password-manager";
-inline constexpr char kChromeUiPasswordChangeUrl[] =
-    "chrome://password-manager/settings/password-change";
 inline constexpr char kChromeUIPolicyHost[] = "policy";
 inline constexpr char kChromeUIPolicyLogsURL[] = "chrome://policy/logs";
 inline constexpr char kChromeUIPolicyTestURL[] = "chrome://policy/test";
@@ -257,8 +244,6 @@ inline constexpr char16_t kChromeUIPrivacySandboxTopicsURL[] =
 inline constexpr char kChromeUIProfileInternalsHost[] = "profile-internals";
 inline constexpr char kChromeUIQuitHost[] = "quit";
 inline constexpr char kChromeUIQuitURL[] = "chrome://quit/";
-inline constexpr char kChromeUIResetPasswordHost[] = "reset-password";
-inline constexpr char kChromeUIResetPasswordURL[] = "chrome://reset-password/";
 inline constexpr char kChromeUIRestartHost[] = "restart";
 inline constexpr char kChromeUIRestartURL[] = "chrome://restart/";
 inline constexpr char kChromeUISavedTabGroupsUnsupportedHost[] =
@@ -356,8 +341,6 @@ inline constexpr char kChromeUIWebApksHost[] = "webapks";
 #else
 inline constexpr char kChromeUIAppServiceInternalsHost[] =
     "app-service-internals";
-inline constexpr char kChromeUIAutofillMlInternalsHost[] =
-    "autofill-ml-internals";
 inline constexpr char kChromeUIBookmarksSidePanelHost[] =
     "bookmarks-side-panel.top-chrome";
 inline constexpr char kChromeUIBookmarksSidePanelURL[] =
@@ -515,12 +498,9 @@ inline constexpr char kAddressesSubPage[] = "addresses";
 inline constexpr char kAdPrivacySubPage[] = "adPrivacy";
 inline constexpr char kAllSitesSettingsSubpage[] = "content/all";
 inline constexpr char kAppearanceSubPage[] = "appearance";
-inline constexpr char kAutofillSubPage[] = "autofill";
-inline constexpr char kAutofillAiSubPage[] = "enhancedAutofill";
 inline constexpr char kAutoPictureInPictureSubPage[] =
     "content/autoPictureInPicture";
 inline constexpr char kClearBrowserDataSubPage[] = "clearBrowserData";
-inline constexpr char kContactInfoSubPage[] = "contactInfo";
 inline constexpr char kContentSettingsSubPage[] = "content";
 inline constexpr char kCookieSettingsSubPage[] = "cookies";
 inline constexpr char kDefaultBrowserSubPage[] = "defaultBrowser";
@@ -533,18 +513,12 @@ inline constexpr char kGlicLoginSettingsSubpage[] = "ai/gemini/login";
 inline constexpr char kGoogleServicesSubpage[] = "googleServices";
 inline constexpr char kHandlerSettingsSubPage[] = "handlers";
 inline constexpr char kHistorySearchSubpage[] = "ai/historySearch";
-inline constexpr char kImportDataSubPage[] = "importData";
 inline constexpr char kLanguageOptionsSubPage[] = "languages";
 inline constexpr char kLanguagesSubPage[] = "languages/details";
 inline constexpr char kManageProfileSubPage[] = "manageProfile";
 inline constexpr char kAiHelpMeWriteSubpage[] = "ai/helpMeWrite";
 inline constexpr char kOnDeviceSiteDataSubpage[] = "content/siteData";
 inline constexpr char kOnStartupSubPage[] = "onStartup";
-inline constexpr char kPasskeysSubPage[] = "passkeys";
-inline constexpr char kPasswordManagerSubPage[] = "passwords";
-inline constexpr char kPaymentsSubPage[] = "payments";
-inline constexpr char kIdentityDocsSubPage[] = "identityDocs";
-inline constexpr char kTravelSubPage[] = "travel";
 inline constexpr char kShoppingSubPage[] = "shopping";
 inline constexpr char kPeopleSubPage[] = "people";
 inline constexpr char kPerformanceSubPage[] = "performance";

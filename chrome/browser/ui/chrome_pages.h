@@ -115,27 +115,16 @@ void ShowContentSettings(BrowserWindowInterface* browser,
 void ShowSettingsSubPageInTabbedBrowser(BrowserWindowInterface* browser,
                                         std::string_view sub_page);
 void ShowClearBrowsingDataDialog(BrowserWindowInterface* browser);
-void ShowPasswordManager(BrowserWindowInterface* bwi);
-void ShowPasswordManagerSettings(BrowserWindowInterface* bwi);
-void ShowPasswordDetailsPage(BrowserWindowInterface* browser,
-                             const std::string& password_domain_name);
-void ShowPasswordCheck(BrowserWindowInterface* browser);
 void ShowSafeBrowsingEnhancedProtection(BrowserWindowInterface* browser);
 void ShowSafeBrowsingEnhancedProtectionWithIph(
     BrowserWindowInterface* browser,
     safe_browsing::SafeBrowsingSettingReferralMethod referral_method);
-void ShowImportDialog(BrowserWindowInterface* browser);
 void ShowAboutChrome(BrowserWindowInterface* browser);
 void ShowSearchEngineSettings(BrowserWindowInterface* browser);
 void ShowWebStore(BrowserWindowInterface* browser,
                   std::string_view utm_source_value);
 void ShowPrivacySandboxSettings(BrowserWindowInterface* browser);
 void ShowPrivacySandboxAdMeasurementSettings(BrowserWindowInterface* browser);
-void ShowAddresses(BrowserWindowInterface* bwi);
-void ShowPaymentMethods(BrowserWindowInterface* bwi);
-void ShowContactInfo(BrowserWindowInterface* bwi);
-void ShowIdentityDocs(BrowserWindowInterface* bwi);
-void ShowTravel(BrowserWindowInterface* bwi);
 void ShowAllSitesSettingsFilteredByRwsOwner(
     BrowserWindowInterface* browser,
     const std::string& rws_owner_host_name);

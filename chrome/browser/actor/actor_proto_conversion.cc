@@ -25,9 +25,6 @@
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_metrics.h"
 #include "chrome/browser/actor/actor_task.h"
-#include "chrome/browser/actor/tools/attempt_form_filling_tool_request.h"
-#include "chrome/browser/actor/tools/attempt_login_tool_request.h"
-#include "chrome/browser/actor/tools/attempt_otp_filling_tool_request.h"
 #include "chrome/browser/actor/tools/click_tool_request.h"
 #include "chrome/browser/actor/tools/drag_and_release_tool_request.h"
 #include "chrome/browser/actor/tools/history_tool_request.h"
@@ -57,12 +54,10 @@
 #include "components/actor/core/journal_details_builder.h"
 #include "components/actor/core/shared_types.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
-#include "components/autofill/core/common/autofill_features.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/proto/features/actions_data.pb.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/origin_gating/core/actor_container_config.h"
-#include "components/password_manager/core/browser/features/password_features.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_features.h"
@@ -91,9 +86,6 @@ using apc::Action;
 using apc::ActionTarget;
 using apc::ActivateTabAction;
 using apc::ActivateWindowAction;
-using apc::AttemptFormFillingAction;
-using apc::AttemptLoginAction;
-using apc::AttemptOtpFillingAction;
 using apc::ClickAction;
 using apc::CloseTabAction;
 using apc::CloseWindowAction;
@@ -151,22 +143,6 @@ std::optional<PageTarget> ToPageTarget(
         DomNode{.node_id = target.content_node_id(),
                 .document_identifier =
                     target.document_identifier().serialized_token()});
-  }
-}
-
-AttemptOtpFillingToolRequest::OtpType ToActorOtpType(
-    optimization_guide::proto::AttemptOtpFillingAction::OtpType proto_enum) {
-  using OtpType = AttemptOtpFillingToolRequest::OtpType;
-  switch (proto_enum) {
-    case optimization_guide::proto::AttemptOtpFillingAction::OTP_TYPE_SMS:
-      return OtpType::kSms;
-    case optimization_guide::proto::AttemptOtpFillingAction::OTP_TYPE_EMAIL:
-      return OtpType::kEmail;
-    case optimization_guide::proto::AttemptOtpFillingAction::
-        OTP_TYPE_AUTHENTICATOR_APP:
-      return OtpType::kAuthenticatorApp;
-    default:
-      return OtpType::kUnknown;
   }
 }
 
@@ -529,155 +505,6 @@ std::unique_ptr<ToolRequest> CreateWaitRequest(const WaitAction& action) {
   return std::make_unique<WaitToolRequest>(wait_time, observe_tab_handle);
 }
 
-std::unique_ptr<ToolRequest> CreateAttemptLoginRequest(
-    const AttemptLoginAction& action) {
-  const tabs::TabHandle tab_handle = GetTabHandle(action);
-  if (tab_handle == TabHandle::Null()) {
-    return nullptr;
-  }
-
-  std::optional<PageTarget> password_button;
-  std::optional<PageTarget> sign_in_with_google_button;
-  if (base::FeatureList::IsEnabled(features::kFedCmEmbedderInitiatedLogin)) {
-    for (const auto& login_target : action.login_targets()) {
-      if (!login_target.has_login_type() || !login_target.has_target()) {
-        return nullptr;
-      }
-
-      std::optional<PageTarget> target = ToPageTarget(login_target.target());
-      if (!target) {
-        return nullptr;
-      }
-
-      switch (login_target.login_type()) {
-        case optimization_guide::proto::
-            AttemptLoginAction_LoginTarget_LoginType_PASSWORD_FORM_SUBMIT:
-          password_button = target;
-          break;
-        case optimization_guide::proto::
-            AttemptLoginAction_LoginTarget_LoginType_FEDERATED_GOOGLE_SIGNIN:
-          sign_in_with_google_button = target;
-          break;
-        default:
-          // We ignore unknown types and proceed to attempt login with the
-          // options we do understand. For example, maybe a future version of
-          // chrome supports another federated signin provider.
-          break;
-      }
-    }
-  }
-
-  return std::make_unique<AttemptLoginToolRequest>(tab_handle, password_button,
-                                                   sign_in_with_google_button);
-}
-
-std::unique_ptr<ToolRequest> CreateAttemptFormFillingRequest(
-    const AttemptFormFillingAction& action) {
-  if (!base::FeatureList::IsEnabled(autofill::features::kGlicActorAutofill)) {
-    return nullptr;
-  }
-
-  const tabs::TabHandle tab_handle = GetTabHandle(action);
-  if (tab_handle == TabHandle::Null()) {
-    return nullptr;
-  }
-
-  if (action.form_filling_requests_size() == 0) {
-    return nullptr;
-  }
-
-  auto requested_data_enum_converter = [](optimization_guide::proto::
-                                              FormFillingRequest_RequestedData
-                                                  proto_enum) {
-    using RequestedData = AttemptFormFillingToolRequest::RequestedData;
-    switch (proto_enum) {
-      case optimization_guide::proto::FormFillingRequest_RequestedData_ADDRESS:
-        return RequestedData::kAddress;
-      case optimization_guide::proto::
-          FormFillingRequest_RequestedData_BILLING_ADDRESS:
-        return RequestedData::kBillingAddress;
-      case optimization_guide::proto::
-          FormFillingRequest_RequestedData_SHIPPING_ADDRESS:
-        return RequestedData::kShippingAddress;
-      case optimization_guide::proto::
-          FormFillingRequest_RequestedData_WORK_ADDRESS:
-        return RequestedData::kWorkAddress;
-      case optimization_guide::proto::
-          FormFillingRequest_RequestedData_HOME_ADDRESS:
-        return RequestedData::kHomeAddress;
-      case optimization_guide::proto::
-          FormFillingRequest_RequestedData_CREDIT_CARD:
-        return RequestedData::kCreditCard;
-      case optimization_guide::proto::
-          FormFillingRequest_RequestedData_CONTACT_INFORMATION:
-        return RequestedData::kContactInformation;
-      default:
-        // A default is needed:
-        // 1. To ease importing the actions_data.proto from an external
-        //    repository. Otherwise, the actions_data.proto import would be
-        //    blocked by the implementation here.
-        // 2. Since an old build may receive a yet unimported enum value in a
-        //    new proto message.
-        NOTIMPLEMENTED();
-        return RequestedData::kUnknown;
-    }
-  };
-
-  std::vector<AttemptFormFillingToolRequest::FormFillingRequest> requests;
-  for (const auto& request_proto : action.form_filling_requests()) {
-    AttemptFormFillingToolRequest::FormFillingRequest request;
-    request.requested_data =
-        requested_data_enum_converter(request_proto.requested_data());
-    if (base::FeatureList::IsEnabled(
-            features::kGlicActorAutofillSectionLabel)) {
-      request.section_label = request_proto.section_label();
-    }
-    for (const auto& trigger_field : request_proto.trigger_fields()) {
-      std::optional<PageTarget> page_target = ToPageTarget(trigger_field);
-      if (!page_target) {
-        // One of the targets is invalid.
-        return nullptr;
-      }
-      request.trigger_fields.push_back(*page_target);
-    }
-    requests.push_back(request);
-  }
-
-  return std::make_unique<AttemptFormFillingToolRequest>(tab_handle,
-                                                         std::move(requests));
-}
-
-std::unique_ptr<ToolRequest> CreateAttemptOtpFillingRequest(
-    const AttemptOtpFillingAction& action) {
-  if (!base::FeatureList::IsEnabled(
-          features::kGlicActorAutofillOneTimePassword)) {
-    return nullptr;
-  }
-
-  const tabs::TabHandle tab_handle = GetTabHandle(action);
-  if (tab_handle == TabHandle::Null()) {
-    return nullptr;
-  }
-
-  if (action.target_fields_size() == 0) {
-    return nullptr;
-  }
-
-  std::vector<PageTarget> trigger_fields;
-  for (const auto& target_field : action.target_fields()) {
-    std::optional<PageTarget> page_target = ToPageTarget(target_field);
-    if (!page_target) {
-      // One of the targets is invalid.
-      return nullptr;
-    }
-    trigger_fields.push_back(*page_target);
-  }
-
-  return std::make_unique<AttemptOtpFillingToolRequest>(
-      tab_handle, std::move(trigger_fields), action.for_signin(),
-      ToActorOtpType(action.predicted_otp_type()));
-}
-
 std::unique_ptr<ToolRequest> CreateScriptToolRequest(
     const ScriptToolAction& action) {
   if (!base::FeatureList::IsEnabled(actor::kGlicActorEnableScriptTools)) {
@@ -846,20 +673,6 @@ CreateToolRequest(const optimization_guide::proto::Action& action) {
       return CreateActivateTabRequest(activate_tab_action);
     }
 #endif  // !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
-    case optimization_guide::proto::Action::kAttemptLogin: {
-      const AttemptLoginAction& attempt_login_action = action.attempt_login();
-      return CreateAttemptLoginRequest(attempt_login_action);
-    }
-    case optimization_guide::proto::Action::kAttemptFormFilling: {
-      const AttemptFormFillingAction& attempt_form_fill_action =
-          action.attempt_form_filling();
-      return CreateAttemptFormFillingRequest(attempt_form_fill_action);
-    }
-    case optimization_guide::proto::Action::kAttemptOtpFilling: {
-      const AttemptOtpFillingAction& attempt_otp_fill_action =
-          action.attempt_otp_filling();
-      return CreateAttemptOtpFillingRequest(attempt_otp_fill_action);
-    }
     case optimization_guide::proto::Action::kScriptTool: {
       const ScriptToolAction& script_tool_action = action.script_tool();
       return CreateScriptToolRequest(script_tool_action);

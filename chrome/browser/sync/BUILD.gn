@@ -50,7 +50,6 @@ source_set("sync") {
     "//chrome/browser/gcm",
     "//chrome/browser/history",
     "//chrome/browser/metrics",
-    "//chrome/browser/password_manager/factories",
     "//chrome/browser/signin",
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/supervised_user",
@@ -62,7 +61,6 @@ source_set("sync") {
 
     # TODO(crbug.com/374910357): Investigate for a better dependency injection.
     "//chrome/browser/account_settings",
-    "//chrome/browser/autofill",
     "//chrome/browser/favicon",
     "//chrome/browser/prefs:util",
     "//chrome/browser/profiles",
@@ -74,7 +72,6 @@ source_set("sync") {
     "//chrome/common:buildflags",
     "//chrome/common:channel_info",
     "//chrome/common:constants",
-    "//components/autofill/core/browser",
     "//components/dom_distiller/core",
     "//components/favicon/content",
     "//components/history/core/browser",
@@ -83,10 +80,6 @@ source_set("sync") {
     "//components/live_caption:constants",
     "//components/metrics/demographics",
     "//components/network_time",
-    "//components/password_manager/core/browser/features:password_features",
-    "//components/password_manager/core/browser/features:utils",
-    "//components/password_manager/core/browser/password_store:password_store_interface",
-    "//components/password_manager/core/browser/sharing",
     "//components/performance_manager",
     "//components/privacy_sandbox:privacy_sandbox_prefs",
     "//components/spellcheck:buildflags",
@@ -95,7 +88,6 @@ source_set("sync") {
     "//components/sync_preferences:features",
     "//components/user_manager",
     "//components/variations/service",
-    "//components/webauthn/core/browser:passkey_model",
 
   ]
 }

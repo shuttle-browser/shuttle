@@ -41,14 +41,10 @@
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/enterprise_policy_checker.h"
 #include "chrome/browser/actor/site_policy.h"
-#include "chrome/browser/actor/tools/attempt_login_tool.h"
 #include "chrome/browser/actor/tools/navigate_tool_request.h"
 #include "chrome/browser/actor/tools/tool_controller.h"
 #include "chrome/browser/actor/tools/tool_request.h"
 #include "chrome/browser/actor/ui/event_dispatcher.h"
-#include "chrome/browser/affiliations/affiliation_service_factory.h"
-#include "chrome/browser/autofill/actor/one_time_tokens/actor_one_time_token_filling_service.h"
-#include "chrome/browser/autofill/actor/one_time_tokens/actor_one_time_token_filling_service_impl.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/lookalikes/lookalike_url_service.h"
 #include "chrome/browser/lookalikes/lookalike_url_service_factory.h"
@@ -65,18 +61,12 @@
 #include "components/actor/core/safety_list_manager.h"
 #include "components/actor/core/task_id.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
-#include "components/affiliations/core/browser/affiliation_service.h"
-#include "components/autofill/core/browser/actor/actor_form_filling_service_impl.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/lookalikes/core/lookalike_url_util.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/proto/features/actions_data.pb.h"
 #include "components/origin_gating/core/origin_gating_cache.h"
 #include "components/origin_gating/core/types.h"
-#include "components/password_manager/core/browser/actor_login/actor_login_service.h"
-#include "components/password_manager/core/browser/actor_login/actor_login_service_impl.h"
-#include "components/password_manager/core/browser/actor_login/actor_login_types.h"
-#include "components/password_manager/core/browser/features/password_features.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_handle.h"
@@ -628,23 +618,6 @@ void OnNavigationConfirmationDecisionInBackground(
 
 }  // namespace
 
-ToolDelegate::CredentialWithPermission::CredentialWithPermission() = default;
-ToolDelegate::CredentialWithPermission::CredentialWithPermission(
-    const actor_login::Credential& credential,
-    webui::mojom::UserGrantedPermissionDuration permission_duration)
-    : credential(credential), permission_duration(permission_duration) {}
-ToolDelegate::CredentialWithPermission::CredentialWithPermission(
-    const CredentialWithPermission&) = default;
-ToolDelegate::CredentialWithPermission::CredentialWithPermission(
-    CredentialWithPermission&&) = default;
-ToolDelegate::CredentialWithPermission&
-ToolDelegate::CredentialWithPermission::operator=(
-    const CredentialWithPermission&) = default;
-ToolDelegate::CredentialWithPermission&
-ToolDelegate::CredentialWithPermission::operator=(CredentialWithPermission&&) =
-    default;
-ToolDelegate::CredentialWithPermission::~CredentialWithPermission() = default;
-
 // static
 ExecutionEngine::FactoryFunction&
 ExecutionEngine::GetFactoryFunctionForTesting() {
@@ -671,16 +644,6 @@ ExecutionEngine::ExecutionEngine(
     : task_(owner_task),
       journal_(task_->actor_keyed_service().GetJournal().GetSafeRef()),
       tool_controller_(std::make_unique<ToolController>(*task_, *this)),
-      actor_login_service_(
-          std::make_unique<actor_login::ActorLoginServiceImpl>()),
-      actor_form_filling_service_(
-          std::make_unique<autofill::ActorFormFillingServiceImpl>(journal_,
-                                                                  task_->id())),
-      actor_one_time_token_filling_service_(
-          std::make_unique<autofill::ActorOneTimeTokenFillingServiceImpl>(
-              task_->GetProfile(),
-              journal_,
-              task_->id())),
       ui_event_dispatcher_(std::move(ui_event_dispatcher)),
       origin_gating_checker_(
           *this,
@@ -1642,8 +1605,6 @@ void ExecutionEngine::CompleteActions(mojom::ActionResultPtr result,
 
   SetState(State::kComplete);
 
-  action_sequence_ended_callbacks_.Notify(IsOk(*result));
-
   if (!IsOk(*result)) {
     GURL url;
     if (action_index) {
@@ -1705,157 +1666,6 @@ AggregatedJournal& ExecutionEngine::GetJournal() {
   return *journal_;
 }
 
-actor_login::ActorLoginService& ExecutionEngine::GetActorLoginService() {
-  return *actor_login_service_;
-}
-
-autofill::ActorFormFillingService&
-ExecutionEngine::GetActorFormFillingService() {
-  return *actor_form_filling_service_;
-}
-
-autofill::ActorOneTimeTokenFillingService&
-ExecutionEngine::GetActorOneTimeTokenFillingService() {
-  return *actor_one_time_token_filling_service_;
-}
-
-void ExecutionEngine::PromptToSelectCredential(
-    const std::vector<actor_login::Credential>& credentials,
-    const base::flat_map<std::string, gfx::Image>& icons,
-    ToolDelegate::CredentialSelectedCallback callback) {
-  TRACE_EVENT0("actor", "ExecutionEngine::PromptToSelectCredential");
-  CHECK(!credentials.empty());
-
-  if (!task_->delegate()) {
-    // TODO(crbug.com/427817882): Explicit error reason (kNewLonginAttempt).
-    std::move(callback).Run(/*selected_credential=*/webui::mojom::
-                                SelectCredentialDialogResponse::New());
-    return;
-  }
-  task_->delegate()->RequestToShowCredentialSelectionDialog(
-      task_->id(), icons, credentials, std::move(callback));
-}
-
-void ExecutionEngine::SetUserSelectedCredential(
-    const ToolDelegate::CredentialWithPermission& credential_with_permission,
-    base::OnceClosure affiliations_fetched) {
-  url::Origin origin = credential_with_permission.credential.request_origin;
-  user_selected_credentials_[origin] = credential_with_permission;
-
-  affiliations::AffiliationService* affiliation_service =
-      AffiliationServiceFactory::GetForProfile(task_->GetProfile());
-  // Fetch strongly affiliated domains, in order to be able to reuse the
-  // permission for sites that do not have the exact same origin but are
-  // strongly affiliated.
-  if (affiliation_service) {
-    affiliation_service->GetAffiliationsAndBranding(
-        affiliations::FacetURI::FromPotentiallyInvalidSpec(
-            origin.GetURL().GetWithEmptyPath().spec()),
-        base::BindOnce(&ExecutionEngine::OnAffiliationsReceived,
-                       GetActionSequenceWeakPtr(), origin,
-                       std::move(affiliations_fetched)));
-  } else {
-    std::move(affiliations_fetched).Run();
-  }
-}
-
-void ExecutionEngine::OnAffiliationsReceived(
-    const url::Origin& source_origin,
-    base::OnceClosure affiliations_fetched,
-    const std::vector<affiliations::Facet>& results,
-    bool success) {
-  if (success) {
-    for (const auto& facet : results) {
-      // Iterate through results to find Web facets (format:
-      // https://<host>[:<port>]) required for actor login. Android facets are
-      // ignored.
-      if (!facet.uri.IsValidWebFacetURI()) {
-        continue;
-      }
-
-      GURL url(facet.uri.canonical_spec());
-      url::Origin affiliated_origin = url::Origin::Create(url);
-      if (!affiliated_origin.IsSameOriginWith(source_origin)) {
-        affiliated_origin_map_[affiliated_origin] = source_origin;
-      }
-    }
-  }
-  std::move(affiliations_fetched).Run();
-}
-
-const std::optional<ToolDelegate::CredentialWithPermission>
-ExecutionEngine::GetUserSelectedCredential(
-    const url::Origin& request_origin) const {
-  // Try exact match first.
-  auto it = user_selected_credentials_.find(request_origin);
-  if (it != user_selected_credentials_.end()) {
-    return it->second;
-  }
-
-  // Check if the current origin is affiliated with a previously encountered
-  // one within the current task.
-  auto aff_it = affiliated_origin_map_.find(request_origin);
-  if (aff_it != affiliated_origin_map_.end()) {
-    auto original_cred_it = user_selected_credentials_.find(aff_it->second);
-    if (original_cred_it != user_selected_credentials_.end()) {
-      return original_cred_it->second;
-    }
-  }
-
-  return std::nullopt;
-}
-
-void ExecutionEngine::RequestToShowAutofillSuggestions(
-    std::vector<autofill::ActorFormFillingRequest> requests,
-    base::WeakPtr<AutofillSelectionDialogEventHandler> event_handler,
-    ExecutionEngine::AutofillSuggestionSelectedCallback callback) {
-  TRACE_EVENT0("actor", "ExecutionEngine::RequestToShowAutofillSuggestions");
-  CHECK(!requests.empty());
-
-  if (!task_->delegate()) {
-    std::move(callback).Run(
-        webui::mojom::SelectAutofillSuggestionsDialogResponse::New(
-            task_->id().value(),
-            webui::mojom::SelectAutofillSuggestionsDialogResult::NewErrorReason(
-                webui::mojom::SelectAutofillSuggestionsDialogErrorReason::
-                    kNoActorTaskDelegate)));
-    return;
-  }
-  task_->delegate()->RequestToShowAutofillSuggestionsDialog(
-      task_->id(), std::move(requests), std::move(event_handler),
-      std::move(callback));
-  task_->action_tracker_for_metrics().OnAutofillAttentionDialogPresented();
-}
-
-void ExecutionEngine::RequestToShowGmailOtpOptInDialog(
-    ToolDelegate::GmailOtpOptInCallback callback) {
-  TRACE_EVENT0("actor", "ExecutionEngine::RequestToShowGmailOtpOptInDialog");
-  if (!task_->delegate()) {
-    auto result = webui::mojom::GmailOtpOptInResult::NewErrorReason(
-        webui::mojom::GmailOtpErrorReason::kRequestPromiseNoSubscriber);
-    std::move(callback).Run(std::move(result));
-    return;
-  }
-  task_->delegate()->RequestToShowGmailOtpOptInDialog(task_->id(),
-                                                      std::move(callback));
-}
-
-void ExecutionEngine::RequestToShowGmailOtpConfirmationDialog(
-    const std::string& verification_code,
-    GmailOtpConfirmationCallback callback) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  TRACE_EVENT0("actor",
-               "ExecutionEngine::RequestToShowGmailOtpConfirmationDialog");
-  if (!task_->delegate()) {
-    auto result = webui::mojom::GmailOtpConfirmationResult::NewErrorReason(
-        webui::mojom::GmailOtpErrorReason::kRequestPromiseNoSubscriber);
-    std::move(callback).Run(std::move(result));
-    return;
-  }
-  task_->delegate()->RequestToShowGmailOtpConfirmationDialog(
-      task_->id(), verification_code, std::move(callback));
-}
-
 void ExecutionEngine::InterruptFromTool() {
   InterruptFromTool(/*retain_user_control=*/false);
 }
@@ -1890,36 +1700,12 @@ void ExecutionEngine::RemoveTab(tabs::TabHandle tab_handle) {
   task_->RemoveTab(tab_handle);
 }
 
-base::WeakPtr<actor_login::ActionSequenceDelegate>
-ExecutionEngine::GetActionSequenceDelegate() {
-  return GetActionSequenceWeakPtr();
-}
-
-base::CallbackListSubscription ExecutionEngine::RegisterActionSequenceEnded(
-    base::OnceCallback<void(bool)> callback) {
-  return action_sequence_ended_callbacks_.Add(std::move(callback));
-}
-
-void ExecutionEngine::OnFederatedLoginOutcome(
-    actor_login::LoginStatusResult result) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  mojom::ActionResultCode code = actor_login::LoginResultToActorResult(result);
-  if (!IsOk(code)) {
-    FailCurrentTool(code);
-  }
-}
-
 void ExecutionEngine::AddWritableMainframeOrigins(
     const absl::flat_hash_set<url::Origin>& added_writable_mainframe_origins) {
   if (!IsNavigationGatingEnabled()) {
     return;
   }
   origin_gating_checker_.AllowNavigationTo(added_writable_mainframe_origins);
-}
-
-void ExecutionEngine::SetActorLoginService(
-    std::unique_ptr<actor_login::ActorLoginService> actor_login_service) {
-  actor_login_service_ = std::move(actor_login_service);
 }
 
 const ToolRequest& ExecutionEngine::GetNextAction() const {

@@ -9,7 +9,6 @@
 
 #include "build/build_config.h"
 #include "chrome/browser/ui/views/hung_renderer_view.h"
-#include "chrome/browser/ui/views/passwords/password_bubble_view_base.h"
 #include "chrome/browser/ui/views/site_data/page_specific_site_data_dialog_controller.h"
 #include "content/public/browser/web_contents.h"
 
@@ -55,28 +54,6 @@ void TabDialogsViews::HideHungRendererDialog(
 
 bool TabDialogsViews::IsShowingHungRendererDialog() {
   return HungRendererDialogView::IsShowingForWebContents(web_contents_);
-}
-
-void TabDialogsViews::ShowManagePasswordsBubble(bool user_action) {
-  if (PasswordBubbleViewBase::manage_password_bubble()) {
-    // The bubble is currently shown for some other tab. We should close it now
-    // and open for |web_contents_|.
-    PasswordBubbleViewBase::CloseCurrentBubble();
-  }
-  PasswordBubbleViewBase::ShowBubble(
-      web_contents_, user_action ? LocationBarBubbleDelegateView::USER_GESTURE
-                                 : LocationBarBubbleDelegateView::AUTOMATIC);
-}
-
-void TabDialogsViews::HideManagePasswordsBubble() {
-  PasswordBubbleViewBase* bubble =
-      PasswordBubbleViewBase::manage_password_bubble();
-  if (!bubble) {
-    return;
-  }
-  if (bubble->GetWebContents() == web_contents_) {
-    PasswordBubbleViewBase::CloseCurrentBubble();
-  }
 }
 
 void TabDialogsViews::ShowDeprecatedAppsDialog(

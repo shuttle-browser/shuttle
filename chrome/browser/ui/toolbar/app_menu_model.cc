@@ -78,7 +78,6 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
-#include "components/autofill/core/common/autofill_features.h"
 #include "components/dom_distiller/content/browser/distillable_page_utils.h"
 #include "components/dom_distiller/content/browser/uma_helper.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
@@ -86,9 +85,6 @@
 #include "components/feature_engagement/public/event_constants.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/omnibox/browser/vector_icons.h"
-#include "components/password_manager/content/common/web_ui_constants.h"
-#include "components/password_manager/core/common/password_manager_features.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
 #include "components/profile_metrics/browser_profile_type.h"
@@ -218,56 +214,6 @@ std::u16string GetUpgradeDialogTitleText() {
 #else
   return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE);
 #endif
-}
-
-class PasswordsAndAutofillSubMenuModel : public ui::SimpleMenuModel {
- public:
-  explicit PasswordsAndAutofillSubMenuModel(
-      ui::SimpleMenuModel::Delegate* delegate);
-  PasswordsAndAutofillSubMenuModel(const PasswordsAndAutofillSubMenuModel&) =
-      delete;
-  PasswordsAndAutofillSubMenuModel& operator=(
-      const PasswordsAndAutofillSubMenuModel&) = delete;
-  ~PasswordsAndAutofillSubMenuModel() override = default;
-};
-
-PasswordsAndAutofillSubMenuModel::PasswordsAndAutofillSubMenuModel(
-    ui::SimpleMenuModel::Delegate* delegate)
-    : SimpleMenuModel(delegate) {
-  AddItemWithStringIdAndVectorIcon(this, IDC_SHOW_PASSWORD_MANAGER,
-                                   IDS_VIEW_PASSWORDS,
-                                   features::IsRoundedIconsEnabled()
-                                       ? vector_icons::kPasswordManagerIcon
-                                       : vector_icons::kPasswordManagerOldIcon);
-  SetElementIdentifierAt(GetIndexOfCommandId(IDC_SHOW_PASSWORD_MANAGER).value(),
-                         AppMenuModel::kPasswordManagerMenuItem);
-
-  AddItemWithStringIdAndVectorIcon(this, IDC_SHOW_PAYMENT_METHODS,
-                                   IDS_YOUR_SAVED_INFO_PAYMENTS_SUBMENU_OPTION,
-                                   features::IsRoundedIconsEnabled()
-                                       ? kCreditCardIcon
-                                       : kCreditCardChromeRefreshOldIcon);
-
-  AddItemWithStringIdAndVectorIcon(
-      this, IDC_SHOW_CONTACT_INFO,
-      IDS_YOUR_SAVED_INFO_CONTACT_INFO_SUBMENU_OPTION,
-      features::IsRoundedIconsEnabled()
-          ? vector_icons::kLocationOnIcon
-          : vector_icons::kLocationOnChromeRefreshOldIcon);
-  SetElementIdentifierAt(GetIndexOfCommandId(IDC_SHOW_CONTACT_INFO).value(),
-                         AppMenuModel::kContactInfoMenuItem);
-  AddItemWithStringIdAndVectorIcon(
-      this, IDC_SHOW_IDENTITY_DOCS, IDS_IDENTITY_DOCS_SUBMENU_OPTION,
-      features::IsRoundedIconsEnabled() ? vector_icons::kIdCardIcon
-                                        : vector_icons::kIdCardOldIcon);
-  SetElementIdentifierAt(GetIndexOfCommandId(IDC_SHOW_IDENTITY_DOCS).value(),
-                         AppMenuModel::kIdentityDocsMenuItem);
-  AddItemWithStringIdAndVectorIcon(
-      this, IDC_SHOW_TRAVEL, IDS_TRAVEL_SUBMENU_OPTION,
-      features::IsRoundedIconsEnabled() ? vector_icons::kTripIcon
-                                        : vector_icons::kTripOldIcon);
-  SetElementIdentifierAt(GetIndexOfCommandId(IDC_SHOW_TRAVEL).value(),
-                         AppMenuModel::kTravelMenuItem);
 }
 
 class FindAndEditSubMenuModel : public ui::SimpleMenuModel {
@@ -533,12 +479,7 @@ AlertMenuItem AppMenuModel::GetAlertItemForRunningTutorial(
   if (!browser || !browser->GetWindow()) {
     return AlertMenuItem::kNone;
   }
-  auto* const service =
-      UserEducationServiceFactory::GetForBrowserContext(browser->GetProfile());
-  return service && service->tutorial_service().IsRunningTutorial(
-                        kPasswordManagerTutorialId)
-             ? AlertMenuItem::kPasswordManager
-             : AlertMenuItem::kNone;
+  return AlertMenuItem::kNone;
 }
 
 AppMenuModel::AppMenuModel(ui::AcceleratorProvider* provider,
@@ -549,8 +490,7 @@ AppMenuModel::AppMenuModel(ui::AcceleratorProvider* provider,
       uma_action_recorded_(false),
       provider_(provider),
       browser_(browser),
-      app_menu_icon_controller_(app_menu_icon_controller),
-      alert_item_(alert_item) {
+      app_menu_icon_controller_(app_menu_icon_controller) {
   DCHECK(browser_);
 }
 
@@ -583,11 +523,6 @@ void AppMenuModel::ExecuteCommand(int command_id, int event_flags) {
   if (error) {
     error->ExecuteMenuItem(browser_);
     return;
-  }
-
-  if (command_id == IDC_VIEW_PASSWORDS) {
-    browser()->GetProfile()->GetPrefs()->SetBoolean(
-        password_manager::prefs::kPasswordsPrefWithNewLabelUsed, true);
   }
 
   LogMenuMetrics(command_id);
@@ -662,13 +597,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
                                       delta);
       }
       LogMenuAction(MENU_ACTION_SHOW_BOOKMARK_MANAGER);
-      break;
-    case IDC_IMPORT_SETTINGS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.ImportSettings",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_IMPORT_SETTINGS);
       break;
     case IDC_BOOKMARK_THIS_TAB:
       if (!uma_action_recorded_) {
@@ -1043,13 +971,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       }
       LogMenuAction(MENU_ACTION_APP_INFO);
       break;
-    case IDC_VIEW_PASSWORDS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.PasswordManager",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_PASSWORD_MANAGER);
-      break;
 
     // Reading list submenu.
     case IDC_READING_LIST_MENU_ADD_TAB:
@@ -1067,49 +988,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       LogMenuAction(MENU_ACTION_READING_LIST_SHOW_UI);
       break;
 
-    // Password autofill submenu.
-    case IDC_SHOW_PASSWORD_MANAGER:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowPasswordManager", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_PASSWORD_MANAGER);
-      break;
-    case IDC_SHOW_PAYMENT_METHODS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowPaymentMethods", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_PAYMENT_METHODS);
-      break;
-    case IDC_SHOW_ADDRESSES:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.ShowAddresses",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_ADDRESSES);
-      break;
-    case IDC_SHOW_CONTACT_INFO:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.ShowContactInfo",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_CONTACT_INFO);
-      break;
-    case IDC_SHOW_IDENTITY_DOCS:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowIdentityDocs", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_IDENTITY_DOCS);
-      break;
-    case IDC_SHOW_TRAVEL:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.ShowTravel",
-                                      delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_TRAVEL);
-      break;
     case IDC_PERFORMANCE:
       if (!uma_action_recorded_) {
         base::UmaHistogramMediumTimes(
@@ -1123,14 +1001,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
             "WrenchMenu.TimeToAction.SetBrowserAsDefault", delta);
       }
       LogMenuAction(MENU_ACTION_SET_BROWSER_AS_DEFAULT);
-      break;
-    case IDC_SAFETY_HUB_SHOW_PASSWORD_CHECKUP:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.SafetyHubNotificationPasswordCheck",
-            delta);
-      }
-      LogMenuAction(MENU_ACTION_SAFETY_HUB_SHOW_PASSWORD_CHECKUP);
       break;
     case IDC_OPEN_SAFETY_HUB:
       if (!uma_action_recorded_) {
@@ -1189,11 +1059,6 @@ bool AppMenuModel::IsCommandIdEnabled(int command_id) const {
 }
 
 bool AppMenuModel::IsCommandIdAlerted(int command_id) const {
-  if (command_id == IDC_VIEW_PASSWORDS ||
-      command_id == IDC_SHOW_PASSWORD_MANAGER) {
-    return alert_item_ == AlertMenuItem::kPasswordManager;
-  }
-
   return false;
 }
 
@@ -1264,20 +1129,6 @@ void AppMenuModel::Build() {
       features::IsRoundedIconsEnabled() ? kNewWindowIcon : kNewWindowOldIcon);
 
   AddSeparator(ui::NORMAL_SEPARATOR);
-
-  if (!browser_->GetProfile()->IsGuestSession()) {
-    sub_menus_.push_back(
-        std::make_unique<PasswordsAndAutofillSubMenuModel>(this));
-    AddSubMenuWithStringIdAndVectorIcon(
-        this, kPasswordsAndAutofillMenuPlaceholder,
-        IDS_PASSWORDS_AND_AUTOFILL_MENU, sub_menus_.back().get(),
-        features::IsRoundedIconsEnabled()
-            ? vector_icons::kPasswordManagerIcon
-            : vector_icons::kPasswordManagerOldIcon);
-    SetElementIdentifierAt(
-        GetIndexOfCommandId(kPasswordsAndAutofillMenuPlaceholder).value(),
-        kPasswordAndAutofillMenuItem);
-  }
 
   if (!browser_->GetProfile()->IsOffTheRecord()) {
     auto recent_tabs_sub_menu =

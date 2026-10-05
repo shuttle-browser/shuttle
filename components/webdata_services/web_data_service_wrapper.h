@@ -18,10 +18,6 @@ class KeywordWebDataService;
 class TokenWebData;
 class WebDatabaseService;
 
-namespace autofill {
-class AutofillWebDataService;
-}  // namespace autofill
-
 namespace base {
 class FilePath;
 class SequencedTaskRunner;
@@ -74,8 +70,6 @@ class WebDataServiceWrapper : public KeyedService {
   void Shutdown() override;
 
   // Access the various types of service instances.
-  scoped_refptr<autofill::AutofillWebDataService> GetProfileAutofillWebData();
-  scoped_refptr<autofill::AutofillWebDataService> GetAccountAutofillWebData();
   scoped_refptr<KeywordWebDataService> GetKeywordWebData();
   scoped_refptr<TokenWebData> GetTokenWebData();
 
@@ -85,10 +79,7 @@ class WebDataServiceWrapper : public KeyedService {
 
  private:
   scoped_refptr<WebDatabaseService> profile_database_;
-  scoped_refptr<WebDatabaseService> account_database_;
 
-  scoped_refptr<autofill::AutofillWebDataService> profile_autofill_web_data_;
-  scoped_refptr<autofill::AutofillWebDataService> account_autofill_web_data_;
   scoped_refptr<KeywordWebDataService> keyword_web_data_;
   scoped_refptr<TokenWebData> token_web_data_;
 };

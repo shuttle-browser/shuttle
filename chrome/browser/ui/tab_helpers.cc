@@ -50,7 +50,6 @@
 #include "chrome/browser/page_info/about_this_site_tab_helper.h"
 #include "chrome/browser/page_info/page_info_features.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
-#include "chrome/browser/password_manager/chrome_password_manager_client.h"
 #include "chrome/browser/permissions/one_time_permissions_tracker_helper.h"
 #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
@@ -74,11 +73,8 @@
 #include "chrome/browser/tab_contents/navigation_metrics_recorder.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"
-#include "chrome/browser/ui/autofill/autofill_client_provider.h"
-#include "chrome/browser/ui/autofill/autofill_client_provider_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
-#include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
 #include "chrome/browser/ui/search_engines/search_engine_tab_helper.h"
@@ -113,7 +109,6 @@
 #include "components/page_content_annotations/content/page_content_annotations_web_contents_observer.h"
 #include "components/page_content_annotations/core/page_content_extraction_types.h"
 #include "components/page_info/core/features.h"
-#include "components/password_manager/core/browser/password_manager.h"
 #include "components/performance_manager/embedder/performance_manager_registry.h"
 #include "components/performance_manager/public/features.h"
 #include "components/permissions/features.h"
@@ -153,17 +148,13 @@
 #include "chrome/browser/android/tab_web_contents_delegate_android.h"
 #include "chrome/browser/banners/android/chrome_app_banner_manager_android.h"
 #include "chrome/browser/content_settings/request_desktop_site_web_contents_observer_android.h"
-#include "chrome/browser/facilitated_payments/ui/chrome_facilitated_payments_client.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_tab_helper.h"
 #include "chrome/browser/plugins/plugin_observer_android.h"
 #include "chrome/browser/ui/android/context_menu_helper.h"
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_android.h"
 #include "components/content_capture/common/content_capture_features.h"
-#include "components/facilitated_payments/core/features/features.h"
 #include "components/page_load_metrics/browser/features.h"
-#include "components/sensitive_content/android/android_sensitive_content_client.h"
-#include "components/sensitive_content/features.h"
 #include "content/public/common/content_features.h"
 #else
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_desktop.h"
@@ -236,7 +227,6 @@
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client.h"
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/tailored_security/tailored_security_service_factory.h"
@@ -315,14 +305,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
                                                    optimization_guide_decider);
     }
   }
-  // AutofillClientProvider initializes ContentAutofillClient for web_contents,
-  // which is gated by enable_browser_autofill.
-  if (enable_browser_autofill) {
-    autofill::AutofillClientProvider& autofill_client_provider =
-        autofill::AutofillClientProviderFactory::GetForProfile(profile);
-    autofill_client_provider.CreateClientForWebContents(web_contents);
-  }
-
 #if BUILDFLAG(IS_ANDROID)
   if (base::FeatureList::IsEnabled(media::kAutoPictureInPictureAndroid)) {
     AutoPictureInPictureTabHelper::CreateForWebContents(web_contents);
@@ -331,35 +313,8 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   AutoPictureInPictureTabHelper::CreateForWebContents(web_contents);
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-  // The sensitive content client has to be instantiated after the autofill
-  // client, because the sensitive content client starts a flow which uses
-  // `ScopedAutofillManagersObservation` and expects `ContentAutofillClient`
-  // to exist, which is gated by enable_browser_autofill.
-  if (enable_browser_autofill &&
-      base::android::android_info::sdk_int() >=
-          base::android::android_info::SdkVersion::SDK_VERSION_V &&
-      base::FeatureList::IsEnabled(
-          sensitive_content::features::kSensitiveContent)) {
-    sensitive_content::AndroidSensitiveContentClient::CreateForWebContents(
-        web_contents, "SensitiveContent.Chrome.");
-  }
-#endif  // BUILDFLAG(IS_ANDROID)
   ChainedBackNavigationTracker::CreateForWebContents(web_contents);
   chrome_browser_net::NetErrorTabHelper::CreateForWebContents(web_contents);
-  // Password manager and password reuse detection rely on ChromeAutofillClient
-  // initialized by browser autofill, which is gated by enable_browser_autofill.
-  if (enable_browser_autofill) {
-    autofill::AutofillClientProvider& autofill_client_provider =
-        autofill::AutofillClientProviderFactory::GetForProfile(profile);
-    if (!autofill_client_provider.uses_platform_autofill()) {
-      ChromePasswordManagerClient::CreateForWebContents(web_contents);
-    }
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-    ChromePasswordReuseDetectionManagerClient::CreateForWebContents(
-        web_contents);
-#endif
-  }
   CreateSubresourceFilterWebContentsHelper(web_contents);
 #if BUILDFLAG(ENABLE_RLZ)
   ChromeRLZTrackerWebContentsObserver::CreateForWebContentsIfNeeded(
@@ -503,9 +458,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   // events from PermissionRequestManager and AsyncCheckTracker in its
   // constructor. Therefore, PermissionRequestManager and AsyncCheckTracker need
   // to be created before SafeBrowsingTabObserver is created.
-  // ClientSideDetectionHost uses ScopedAutofillManagersObservation which
-  // expects ContentAutofillClient (gated by enable_browser_autofill) to be
-  // created.
   if (enable_browser_autofill) {
     safe_browsing::SafeBrowsingTabObserver::CreateForWebContents(
         web_contents,
@@ -592,35 +544,11 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   PluginObserverAndroid::CreateForWebContents(web_contents);
   task_manager::WebContentsTags::CreateForTabContents(web_contents);
 
-  // ChromeFacilitatedPaymentsClient requires ContentAutofillClient / payments
-  // autofill capabilities (gated by enable_browser_autofill).
-  if (enable_browser_autofill) {
-    if (auto* optimization_guide_decider =
-            OptimizationGuideKeyedServiceFactory::GetForProfile(profile)) {
-      ChromeFacilitatedPaymentsClient::CreateForWebContents(
-          web_contents, optimization_guide_decider,
-          base::BindRepeating([](content::WebContents* web_contents) {
-            auto* tab_android = TabAndroid::FromWebContents(web_contents);
-            auto* delegate =
-                tab_android
-                    ? static_cast<android::TabWebContentsDelegateAndroid*>(
-                          web_contents->GetDelegate())
-                    : nullptr;
-            return delegate && delegate->IsCustomTab();
-          }));
-    }
-  }
 #else   // BUILDFLAG(IS_ANDROID)
   javascript_dialogs::TabModalDialogManager::CreateForWebContents(
       web_contents,
       std::make_unique<JavaScriptTabModalDialogManagerDelegateDesktop>(
           web_contents));
-
-  // ManagePasswordsUIController expects ChromePasswordManagerClient to be
-  // created, which is gated by enable_browser_autofill.
-  if (enable_browser_autofill) {
-    ManagePasswordsUIController::CreateForWebContents(web_contents);
-  }
 
   // Formerly created by SearchTabHelper; ToastController and the omnibox
   // observe it on every tab.

@@ -78,7 +78,6 @@
 #include "base/android/jni_array.h"
 #include "base/android/jni_string.h"
 #include "base/memory/scoped_refptr.h"
-#include "components/password_manager/core/browser/split_stores_and_local_upm.h"
 #include "components/sync/android/jni_headers/ExplicitPassphrasePlatformClient_jni.h"
 #include "components/sync/android/sync_service_android_bridge.h"
 #include "components/sync/model/crypto/nigori.h"
@@ -947,13 +946,6 @@ SyncService::UserActionableError SyncServiceImpl::GetUserActionableError()
                : UserActionableError::
                      kTrustedVaultRecoverabilityDegradedForPasswords;
   }
-
-#if BUILDFLAG(IS_ANDROID)
-  if (user_settings_->GetSelectedTypes().Has(UserSelectableType::kPasswords) &&
-      password_manager::IsGmsCoreUpdateRequired()) {
-    return UserActionableError::kNeedsUPMBackendUpgrade;
-  }
-#endif  // BUILDFLAG(IS_ANDROID)
 
   // This error should ideally be the last one to be checked. Any new identity
   // errors should be handled before this.

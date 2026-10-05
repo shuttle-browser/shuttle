@@ -20,7 +20,6 @@
 #include "base/types/strong_alias.h"
 #include "build/build_config.h"
 #include "chrome/browser/webauthn/authenticator_transport.h"
-#include "chrome/browser/webauthn/gpm_enclave_transaction.h"
 #include "chrome/browser/webauthn/local_authentication_token.h"
 #include "chrome/browser/webauthn/shared_types.h"
 #include "content/public/browser/authenticator_request_client_delegate.h"
@@ -40,15 +39,8 @@ namespace gfx {
 struct VectorIcon;
 }
 
-struct AccountInfo;
 class AuthenticatorRequestDialogViewController;
 class Profile;
-
-enum class EnclaveEnabledStatus {
-  kDisabled,
-  kEnabled,
-  kEnabledAndReauthNeeded,
-};
 
 using UIPresentation =
     content::AuthenticatorRequestClientDelegate::UIPresentation;
@@ -83,15 +75,10 @@ using UIPresentation =
   /* Cancels the flow as a result of the user clicking `Cancel` on the */     \
   /* UI. Valid action at all steps. */                                        \
   AUTHENTICATOR_REQUEST_EVENT_0(CancelAuthenticatorRequest)                   \
-  /* Continues with the BLE/caBLE flow now that the Bluetooth adapter is */   \
-  /* powered. Valid action when at step: kBlePowerOnManual, */                \
+  /* Continues with the BLE/caBLE flow now that the Bluetooth adapter */      \
+  /* is powered. Valid action when at step: kBlePowerOnManual, */             \
   /* kBlePowerOnAutomatic. */                                                 \
   AUTHENTICATOR_REQUEST_EVENT_0(ContinueWithFlowAfterBleAdapterPowered)       \
-  /* Called when the enclave authenticator is available for a request or */   \
-  /* the enclave authenticator needs a reauth before it is available for a */ \
-  /* request. */                                                              \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMEnclaveEnabledStatusChanged,             \
-                                EnclaveEnabledStatus)                         \
   AUTHENTICATOR_REQUEST_EVENT_0(OnBioEnrollmentDone)                          \
   /* Called when the power state of the Bluetooth adapter has changed. */     \
   AUTHENTICATOR_REQUEST_EVENT_0(OnBluetoothPoweredStateChanged)               \
@@ -100,86 +87,45 @@ using UIPresentation =
   /* Called when the user cancelled WebAuthn request by clicking the */       \
   /* "cancel" button or the back arrow in the UI dialog. */                   \
   AUTHENTICATOR_REQUEST_EVENT_0(OnCancelRequest)                              \
-  /* Called when the user picks Google Password Manager from the */           \
-  /* mechanism selection sheet. */                                            \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMCreationSelected)                        \
   /* Called when the user accepts the create passkey sheet. */                \
-  /* (But not the GPM one.) */                                                \
   AUTHENTICATOR_REQUEST_EVENT_0(OnChromeProfileCreatePasskeyAccepted)         \
-  /* Called when the user accepts passkey creation dialog. */                 \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMCreationConfirmed)                       \
-  /* Called when the user clicks "Forgot PIN" during UV. */                   \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMForgotPinPressed)                        \
   /* OnOffTheRecordInterstitialAccepted is called when the user accepts */    \
   /* the interstitial that warns that platform/caBLE authenticators may */    \
   /* record information even in incognito mode. */                            \
   AUTHENTICATOR_REQUEST_EVENT_0(OnOffTheRecordInterstitialAccepted)           \
-  /* Sent by GPMEnclaveController when it's ready for the UI to be */         \
-  /* displayed. */                                                            \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMReadyForUI)                              \
-  /* Called when a user closes the MagicArch window. */                       \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMRecoverSecurityDomainClosed)             \
   /* To be called when the Web Authentication request is complete. */         \
   AUTHENTICATOR_REQUEST_EVENT_0(OnRequestComplete)                            \
-  /* OnResidentCredentialConfirmed is called when a user accepts a dialog */  \
-  /* confirming that they're happy to create a resident credential. */        \
+  /* OnResidentCredentialConfirmed is called when a user accepts a */         \
+  /* dialog confirming that they are happy to create a resident */            \
+  /* credential. */                                                           \
   AUTHENTICATOR_REQUEST_EVENT_0(OnResidentCredentialConfirmed)                \
   /* Called when the model corresponding to the current sheet of the UX */    \
   /* flow was updated, so UI should update. */                                \
   AUTHENTICATOR_REQUEST_EVENT_0(OnSheetModelChanged)                          \
   AUTHENTICATOR_REQUEST_EVENT_0(OnStartOver)                                  \
-  /* Called when the UX flow has navigated to a different step, so the UI */  \
-  /* should update. */                                                        \
+  /* Called when the UX flow has navigated to a different step, so the */     \
+  /* UI should update. */                                                     \
   AUTHENTICATOR_REQUEST_EVENT_0(OnStepTransition)                             \
-  /* Called when the user accepts enrolling a device to use passkeys. */      \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMTrustThisComputer)                       \
   AUTHENTICATOR_REQUEST_EVENT_0(OnUserConfirmedPriorityMechanism)             \
   /* Open the system dialog to grant BLE permission to Chrome. Valid */       \
   /* action when at step: kBlePermissionMac. */                               \
   AUTHENTICATOR_REQUEST_EVENT_0(OpenBlePreferences)                           \
-  /* Open the Google Password Manager settings page. */                       \
-  AUTHENTICATOR_REQUEST_EVENT_0(OpenGpmSettings)                              \
   /* Turns on the BLE adapter automatically. Valid action when at step: */    \
   /* kBlePowerOnAutomatic. */                                                 \
   AUTHENTICATOR_REQUEST_EVENT_0(PowerOnBleAdapter)                            \
-  /* Called when loading the enclave times out. */                            \
-  AUTHENTICATOR_REQUEST_EVENT_0(OnGPMLoadingEnclaveTimeout)                   \
   /* Restarts the UX flow. */                                                 \
   AUTHENTICATOR_REQUEST_EVENT_0(StartOver)                                    \
-  /* Like `OnAccountPreselected()`, but this takes an index into `creds()` */ \
-  /* instead of a credential ID. */                                           \
+  /* Like `OnAccountPreselected()`, but this takes an index into */           \
+  /* `creds()` instead of a credential ID. */                                 \
   AUTHENTICATOR_REQUEST_EVENT_1(OnAccountPreselectedIndex, size_t)            \
-  /* OnAccountSelected is called when one of the accounts from  */            \
-  /* |SelectAccount| has been picked. The argument is the index of the */     \
-  /* selected account in |creds()|. */                                        \
+  /* OnAccountSelected is called when one of the accounts from */             \
+  /* SelectAccount has been picked. The argument is the index of the */       \
+  /* selected account in creds(). */                                          \
   AUTHENTICATOR_REQUEST_EVENT_1(OnAccountSelected, size_t)                    \
-  /* Called when the user selects a GPM passkey. */                           \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMPasskeySelected, std::vector<uint8_t>)   \
-  /* Called when the user enters the GPM pin in the UI (during initial */     \
-  /* setup or authentication). */                                             \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMPinEntered, const std::u16string&)       \
-  /* Called when the user chooses an option of creating a GPM pin. The */     \
-  /* argument is true if the user chooses an arbitrary PIN, and false if */   \
-  /* the user chose to use a 6-digit PIN. */                                  \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMPinOptionChanged, bool)                  \
   /* OnHavePIN is called when the user enters a PIN in the UI. */             \
   AUTHENTICATOR_REQUEST_EVENT_1(OnHavePIN, std::u16string)                    \
-  /* Called when a local Touch ID prompt finishes. The first parameter is */  \
-  /* true for success, false for failure. */                                  \
-  /* On success, the emitter must set the model's `local_auth_token` to an */ \
-  /* authenticated one. In MacOS this is a ScopedLAContext. */                \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMTouchIDComplete, bool)                   \
-  /* Called when GAIA reauth has completed. The argument is the reauth */     \
-  /* proof token. */                                                          \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMReauthComplete, std::string)             \
   /* Called just before the model is destructed. */                           \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnModelDestroyed,                             \
-                                AuthenticatorRequestDialogModel*)             \
-  /* Called when the GPM passkeys are reset successfully or not. */           \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnGPMPasskeysReset, bool)                     \
-  /* Called when a password mechanism is selected */                          \
-  AUTHENTICATOR_REQUEST_EVENT_1(OnPasswordCredentialSelected,                 \
-                                PasswordCredentialPair)
+  AUTHENTICATOR_REQUEST_EVENT_1(OnModelDestroyed, AuthenticatorRequestDialogModel*)
 
 // AuthenticatorRequestDialogModel holds the UI state for a WebAuthn request.
 // This class is refcounted so that its ownership can be shared between the
@@ -194,20 +140,11 @@ struct AuthenticatorRequestDialogModel
   enum class Step {
     // The UX flow has not started yet, the dialog should still be hidden.
     kNotStarted,
-    // Passkey autofill (i.e. WebAuthn get() with conditional mediation). No
-    // dialog is shown, instead credentials are offered to the user on the
-    // password autofill prompt.
-    kPasskeyAutofill,
-    // During passkey upgrade (i.e. WebAuthn create() with conditional
-    // mediation), the WebAuthn tab-modal dialog is not used. A separate dialog
-    // controller implements its own UI.
-    kPasskeyUpgrade,
     kMechanismSelection,
     // The request errored out before completing. Error will only be sent
     // after user interaction.
     kErrorNoAvailableTransports,
     kErrorNoPasskeys,
-    kErrorGpmDisabled,
     kErrorInternalUnrecognized,
     kErrorWindowsHelloNotEnabled,
     // The request is already complete, but the error dialog should wait
@@ -260,30 +197,7 @@ struct AuthenticatorRequestDialogModel
     // kSelectPriorityMechanism lets the user confirm a single "priority"
     // mechanism.
     kSelectPriorityMechanism,
-    // GPM Pin (6-digit).
-    kGPMChangePin,
-    kGPMCreatePin,
-    kGPMEnterPin,
-    // GPM Pin (alphanumeric).
-    kGPMChangeArbitraryPin,
-    kGPMCreateArbitraryPin,
-    kGPMEnterArbitraryPin,
-    // User verification prompt for GPM.
-    kGPMTouchID,
-    // GPM passkey creation.
-    kGPMCreatePasskey,
     kChromeProfileCreatePasskey,
-    kGPMError,
-    kGPMConnecting,
-    // Device bootstrap to use GPM passkeys.
-    kGPMRecoverSecurityDomain,
-    kGPMTrustThisComputerAssertion,
-    kGPMTrustThisComputerCreation,
-    // Changing GPM PIN.
-    kGPMReauthForPinReset,
-    kGPMLockedPin,
-    // OS authentication after selecting a password.
-    kPasswordOsAuth,
     // The request is being dispatched to a platform authenticator.
     kPlatformAuthenticator,
     kMaxValue = kPlatformAuthenticator,
@@ -329,35 +243,17 @@ struct AuthenticatorRequestDialogModel
     };
     using Credential = base::StrongAlias<class CredentialTag, CredentialInfo>;
 
-    struct PasswordInfo {
-      explicit PasswordInfo(
-          std::optional<base::Time> last_used_time_in,
-          std::optional<std::u16string> origin_in = std::nullopt);
-
-      PasswordInfo(const PasswordInfo&);
-      ~PasswordInfo();
-      bool operator==(const PasswordInfo& other) const;
-
-      const std::optional<base::Time> last_used_time;
-      const std::optional<std::u16string> origin;
-    };
-    using Password = base::StrongAlias<class PasswordTag, PasswordInfo>;
     using Transport =
         base::StrongAlias<class TransportTag, AuthenticatorTransport>;
     using WindowsAPI = base::StrongAlias<class WindowsAPITag, std::monostate>;
     using ICloudKeychain =
         base::StrongAlias<class iCloudKeychainTag, std::monostate>;
     using Hybrid = base::StrongAlias<class HybridTag, std::monostate>;
-    using Enclave = base::StrongAlias<class EnclaveTag, std::monostate>;
-    using SignInAgain = base::StrongAlias<class SignInAgainTag, std::monostate>;
     using Type = std::variant<Credential,
-                              Password,
                               Transport,
                               WindowsAPI,
                               Hybrid,
-                              ICloudKeychain,
-                              Enclave,
-                              SignInAgain>;
+                              ICloudKeychain>;
 
     Mechanism(Type type,
               std::u16string name,
@@ -417,8 +313,6 @@ struct AuthenticatorRequestDialogModel
   Step step() const { return step_; }
   void SetStep(Step step);
 
-  void DisableUiOrShowLoadingDialog();
-
   void set_ui_presentation(UIPresentation presentation) {
     ui_presentation = presentation;
   }
@@ -458,11 +352,6 @@ struct AuthenticatorRequestDialogModel
   // Whether the platform can check biometrics and has biometrics configured.
   std::optional<bool> platform_has_biometrics;
   UIPresentation ui_presentation = UIPresentation::kModal;
-  // Stores the pre-calculated GPM UV method for `getAssertion`.
-  // This is set by `ChromeAuthenticatorRequestDelegate` before `StartFlow` is
-  // called on the controller. This is used for immediate mode requests.
-  std::optional<EnclaveUserVerificationMethod> gpm_uv_method;
-
   // offer_try_again_in_ui indicates whether a button to retry the request
   // should be included on the dialog sheet shown when encountering certain
   // errors.
@@ -473,12 +362,6 @@ struct AuthenticatorRequestDialogModel
   bool show_security_key_on_qr_sheet = false;
   bool is_off_the_record = false;
 
-  // Tracks whether the model is in the GPM onboarding state.
-  // This value is set/reset only in GPMEnclaveController::OnGPMCreationSelected
-  // and read only to record metrics (WebAuthentication.OnboardingEvents) during
-  // the onboarding flow.
-  bool in_onboarding_flow = false;
-
   std::optional<int> max_bio_samples;
   std::optional<int> bio_samples_remaining;
   uint32_t min_pin_length = device::kMinPinLength;
@@ -487,14 +370,6 @@ struct AuthenticatorRequestDialogModel
   device::pin::PINEntryError pin_error = device::pin::PINEntryError::kNoError;
 
   std::optional<std::string> cable_qr_string;
-
-  // Number of remaining GPM pin entry attempts before getting locked out or
-  // `std::nullopt` if there was no failed attempts during that request.
-  std::optional<int> gpm_pin_remaining_attempts_;
-
-  // True if GPM passkey creation is available has been disabled by enterprise
-  // policy or Chrome settings.
-  bool gpm_create_available_but_disabled_by_policy = false;
 
   // Whether the UI is currently in a disabled state, which is required for some
   // transitions (e.g. when waiting for the response from the enclave). When
@@ -508,22 +383,9 @@ struct AuthenticatorRequestDialogModel
   // successful Touch ID prompt.
   std::optional<webauthn::LocalAuthenticationToken> local_auth_token;
 
-  // Returns the AccountInfo for the profile associated with the request.
-  std::optional<AccountInfo> GetGpmAccountInfo();
-
-  // Returns the account email for the profile associated with the request,
-  // which may be empty.
-  std::string GetGpmAccountEmail();
-
  private:
   friend class base::RefCounted<AuthenticatorRequestDialogModel>;
   ~AuthenticatorRequestDialogModel();
-
-  // The Profile for the request, which may be an off-the-record profile.
-  //
-  // Returns nullptr if the RenderFrameHost for the request doesn't exist
-  // anymore.
-  Profile* GetProfile();
 
   Step step_ = Step::kNotStarted;
   const std::optional<content::GlobalRenderFrameHostId> frame_host_id;

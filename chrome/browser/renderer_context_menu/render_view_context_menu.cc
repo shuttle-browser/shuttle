@@ -55,7 +55,6 @@
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service_factory.h"
 #include "chrome/browser/page_load_metrics/chrome_initiator_location.h"
-#include "chrome/browser/password_manager/chrome_password_manager_client.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/predictors/loading_predictor.h"
@@ -90,7 +89,6 @@
 #include "chrome/browser/ui/exclusive_access/keyboard_lock_controller.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
-#include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
@@ -105,7 +103,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/webauthn/context_menu_helper.h"
 #include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/channel_info.h"
@@ -119,12 +116,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/autofill/content/browser/content_autofill_driver.h"
-#include "components/autofill/core/browser/suggestions/suggestion_hiding_reason.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/autofill/core/common/password_generation_util.h"
-#include "components/autofill/core/common/unique_ids.h"
 #include "components/compose/buildflags.h"
 #include "components/custom_handlers/protocol_handler.h"
 #include "components/download/public/common/download_url_parameters.h"
@@ -136,9 +127,6 @@
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
-#include "components/password_manager/content/browser/content_password_manager_driver.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
-#include "components/password_manager/core/browser/password_manager_util.h"
 #include "components/pdf/common/pdf_util.h"
 #include "components/policy/core/browser/url_list/policy_blocklist_service.h"
 #include "components/policy/core/common/policy_pref_names.h"
@@ -927,7 +915,6 @@ RenderViewContextMenu::RenderViewContextMenu(
       video_frame_submenu_model_(this),
       accessibility_labels_submenu_model_(this),
       embedder_web_contents_(GetWebContentsToUse(&render_frame_host)),
-      autofill_context_menu_manager_(this, &menu_model_),
       is_paste_enabled_(is_paste_enabled),
       is_paste_and_match_style_enabled_(is_paste_and_match_style_enabled) {
   if (!g_custom_id_ranges_initialized) {
@@ -944,8 +931,6 @@ RenderViewContextMenu::RenderViewContextMenu(
                    : nullptr;
   system_app_ = app_controller ? app_controller->system_app() : nullptr;
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-  observers_.AddObserver(&autofill_context_menu_manager_);
 }
 
 RenderViewContextMenu::~RenderViewContextMenu() = default;
@@ -1179,17 +1164,6 @@ void RenderViewContextMenu::InitMenu() {
     AppendSpellingAndSearchSuggestionItems();
   }
 
-  if (content_type_->SupportsGroup(
-          ContextMenuContentType::ITEM_GROUP_AUTOFILL)) {
-    // Add a separator if the previous item is not already a separator.
-    size_t count = menu_model_.GetItemCount();
-    if (features::IsMenuSimplificationEnabled() && count > 0 &&
-        menu_model_.GetTypeAt(count - 1) != ui::MenuModel::TYPE_SEPARATOR) {
-      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
-    }
-    autofill_context_menu_manager_.AppendItems();
-  }
-
   if (editable) {
     AppendOtherEditableItems();
   }
@@ -1229,10 +1203,7 @@ void RenderViewContextMenu::InitMenu() {
       !(features::IsMenuSimplificationEnabled() && editable) &&
       content_type_->SupportsGroup(
           ContextMenuContentType::ITEM_GROUP_SEARCH_PROVIDER) &&
-      params_.misspelled_word.empty() &&
-      (params_.page_url != GetGooglePasswordManagerSubPageURLStr() &&
-       params_.page_url != chrome::kChromeUIPasswordManagerCheckupURL &&
-       params_.page_url != chrome::kChromeUIPasswordManagerSettingsURL)) {
+      params_.misspelled_word.empty()) {
     AppendSearchProvider();
   }
 
@@ -1387,17 +1358,6 @@ void RenderViewContextMenu::InitMenu() {
   // menu, meaning that each menu item added/removed in this function will cause
   // it to visibly jump on the screen (see b/173569669).
   AppendReadWriteCardItems();
-
-  // If the autofill popup is shown the context menu could
-  // overlap with the autofill popup, therefore we hide the autofill popup.
-  content::WebContents* web_contents = GetWebContents();
-  autofill::AutofillClient* autofill_client =
-      autofill::ContentAutofillClient::FromWebContents(web_contents);
-  if (autofill_client) {
-    autofill_client->HideSuggestions(
-        autofill::SuggestionHidingReason::kContextMenuOpened,
-        /*product=*/std::nullopt);
-  }
 
   if (features::IsReadAnythingMenuShuffleExperimentEnabled() &&
       features::GetReadAnythingMenuShuffleExperimentGroup() ==
@@ -2958,9 +2918,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     case IDC_SPELLCHECK_MENU:
     case IDC_CONTENT_CONTEXT_OPENLINKWITH:
     case IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_SETTINGS:
-    case IDC_CONTENT_CONTEXT_GENERATEPASSWORD:
-    case IDC_CONTENT_CONTEXT_SHOWALLSAVEDPASSWORDS:
-    case IDC_CONTENT_CONTEXT_USE_PASSKEY_FROM_ANOTHER_DEVICE:
       return true;
 
     case IDC_ROUTE_MEDIA:
@@ -3475,23 +3432,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 
     case IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_SETTINGS:
       ExecProtocolHandlerSettings(event_flags);
-      break;
-
-    case IDC_CONTENT_CONTEXT_GENERATEPASSWORD:
-      password_manager_util::UserTriggeredManualGenerationFromContextMenu(
-          ChromePasswordManagerClient::FromWebContents(source_web_contents_),
-          autofill::ContentAutofillClient::FromWebContents(
-              source_web_contents_));
-      break;
-
-    case IDC_CONTENT_CONTEXT_SHOWALLSAVEDPASSWORDS:
-      NavigateToManagePasswordsPage(
-          GetBrowser(),
-          password_manager::ManagePasswordsReferrer::kPasswordContextMenu);
-      break;
-    case IDC_CONTENT_CONTEXT_USE_PASSKEY_FROM_ANOTHER_DEVICE:
-      webauthn::OnPasskeyFromAnotherDeviceContextMenuItemSelected(
-          GetRenderFrameHost());
       break;
 
     case IDC_CONTENT_CONTEXT_PICTUREINPICTURE:

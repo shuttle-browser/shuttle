@@ -26,11 +26,7 @@ DesktopProfileSessionDurationsService::DesktopProfileSessionDurationsService(
       msbb_metrics_recorder_(
           std::make_unique<
               unified_consent::MsbbSessionDurationsMetricsRecorder>(
-              pref_service)),
-      password_metrics_recorder_(
-          std::make_unique<
-              password_manager::PasswordSessionDurationsMetricsRecorder>(
-              sync_service)) {
+              pref_service)) {
   session_duration_observation_.Observe(tracker);
   if (tracker->in_session()) {
     // The session was started before this service was created. Let's start
@@ -51,7 +47,6 @@ void DesktopProfileSessionDurationsService::Shutdown() {
   // based on their internal state.
   OnSessionEnded(base::TimeDelta(), base::TimeTicks::Now());
 
-  password_metrics_recorder_.reset();
   msbb_metrics_recorder_.reset();
   sync_metrics_recorder_.reset();
 }
@@ -77,7 +72,6 @@ void DesktopProfileSessionDurationsService::OnSessionStarted(
     base::TimeTicks session_start) {
   sync_metrics_recorder_->OnSessionStarted(session_start);
   msbb_metrics_recorder_->OnSessionStarted(session_start);
-  password_metrics_recorder_->OnSessionStarted(session_start);
 }
 
 void DesktopProfileSessionDurationsService::OnSessionEnded(
@@ -85,7 +79,6 @@ void DesktopProfileSessionDurationsService::OnSessionEnded(
     base::TimeTicks session_end) {
   sync_metrics_recorder_->OnSessionEnded(session_length);
   msbb_metrics_recorder_->OnSessionEnded(session_length);
-  password_metrics_recorder_->OnSessionEnded(session_length);
 }
 
 }  // namespace metrics

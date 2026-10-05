@@ -979,7 +979,6 @@ source_set("core") {
     "//chrome/browser/omnibox",
     "//chrome/browser/optimization_guide",
     "//chrome/browser/page_info",
-    "//chrome/browser/password_manager",
     "//chrome/browser/performance_manager",
     "//chrome/browser/performance_monitor",
     "//chrome/browser/permissions",
@@ -1041,7 +1040,6 @@ source_set("core") {
     "//chrome/browser/ui/login",
     "//chrome/browser/ui/navigator",
     "//chrome/browser/ui/omnibox",
-    "//chrome/browser/ui/passwords",
     "//chrome/browser/ui/prefs",
     "//chrome/browser/ui/profiles",
     "//chrome/browser/ui/search_engines",
@@ -1095,7 +1093,6 @@ source_set("core") {
     "//components/content_settings/browser",
     "//components/content_settings/browser/ui",
     "//components/crash/core/app",
-    "//components/credential_management:browser",
     "//components/custom_handlers",
     "//components/device_event_log",
     "//components/dom_distiller/content/browser",
@@ -1141,11 +1138,6 @@ source_set("core") {
     "//components/page_content_annotations/core:features",
     "//components/page_load_metrics/browser",
     "//components/paint_preview/features",
-    "//components/password_manager/content/browser",
-    "//components/password_manager/content/common",
-    "//components/password_manager/core/browser:metrics_util",
-    "//components/password_manager/core/browser:password_switches",
-    "//components/password_manager/core/browser/features:password_features",
     "//components/pdf/common:constants",
     "//components/pdf/common:util",
     "//components/performance_manager",
@@ -1156,7 +1148,6 @@ source_set("core") {
     "//components/push_messaging",
     "//components/safe_browsing/content/browser",
     "//components/safe_browsing/content/browser:safe_browsing_service",
-    "//components/safe_browsing/content/browser/password_protection",
     "//components/safe_browsing/core/browser",
     "//components/safe_browsing/core/browser:referring_app_info",
     "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
@@ -1565,7 +1556,6 @@ source_set("core") {
       "//chrome/browser/android",
       "//chrome/browser/autocomplete",
       "//chrome/browser/dev_ui",
-      "//chrome/browser/facilitated_payments",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/incognito:jni_headers",
       "//chrome/browser/notifications/chime/android",
@@ -1583,13 +1573,11 @@ source_set("core") {
       "//components/browser_ui/contacts_picker/android",
       "//components/browser_ui/modaldialog/android",
       "//components/crash/content/browser",
-      "//components/credential_management/android:features",
       "//components/external_intents/android",
       "//components/messages/android:feature_flags",
       "//components/navigation_interception",
       "//components/os_crypt/browser:posix_key_provider",
       "//components/page_info/android",
-      "//components/sensitive_content:features",
       "//components/supervised_user/core/browser/android",
       "//components/thin_webview",
       "//components/user_prefs",
@@ -1851,7 +1839,6 @@ source_set("core") {
   }
 
   if (safe_browsing_mode == 1) {
-    deps += [ "//chrome/browser/ui/webui/reset_password" ]
   }
 }
 
@@ -1919,12 +1906,10 @@ source_set("browser") {
     "//chrome/browser/account_settings",
     "//chrome/browser/actor/ui/task_list_bubble:controller",
     "//chrome/browser/actor/ui/task_list_bubble:controller_impl",
-    "//chrome/browser/affiliations",
     "//chrome/browser/ai",
     "//chrome/browser/ai:impl",
     "//chrome/browser/autocomplete",
     "//chrome/browser/autocomplete:impl",
-    "//chrome/browser/autofill",
     "//chrome/browser/background",
     "//chrome/browser/background:impl",
     "//chrome/browser/background_fetch",
@@ -2013,8 +1998,6 @@ source_set("browser") {
     "//chrome/browser/page_image_service",
     "//chrome/browser/page_info",
     "//chrome/browser/page_info:impl",
-    "//chrome/browser/password_manager",
-    "//chrome/browser/password_manager:impl",
     "//chrome/browser/performance_manager",
     "//chrome/browser/performance_manager:impl",
     "//chrome/browser/picture_in_picture",
@@ -2091,16 +2074,11 @@ source_set("browser") {
     "//chrome/browser/task_manager/common",
     "//chrome/browser/task_manager/common:impl",
     "//chrome/browser/thumbnail",
-    "//chrome/browser/touch_to_fill/password_manager",
     "//chrome/browser/tracing",
     "//chrome/browser/tracing:impl",
     "//chrome/browser/trusted_vault",
     "//chrome/browser/trusted_vault:impl",
     "//chrome/browser/ui",
-    "//chrome/browser/ui/autofill",
-    "//chrome/browser/ui/autofill:impl",
-    "//chrome/browser/ui/autofill/payments",
-    "//chrome/browser/ui/autofill/payments:impl",
     "//chrome/browser/ui/blocked_content",
     "//chrome/browser/ui/blocked_content:impl",
     "//chrome/browser/ui/bluetooth",
@@ -2114,8 +2092,6 @@ source_set("browser") {
     "//chrome/browser/ui/omnibox:impl",
     "//chrome/browser/ui/page_info",
     "//chrome/browser/ui/page_info:impl",
-    "//chrome/browser/ui/passwords",
-    "//chrome/browser/ui/passwords:impl",
     "//chrome/browser/ui/prefs",
     "//chrome/browser/ui/prefs:impl",
     "//chrome/browser/ui/profiles",
@@ -2294,7 +2270,6 @@ source_set("browser") {
 
       # Targets containing Android-specific implementations that have to be
       # linked into the browser.
-      "//chrome/browser/facilitated_payments",
       "//chrome/browser/history:impl",
       "//chrome/browser/keyboard_accessory/android:impl",
       "//chrome/browser/partnerbookmarks:android_impl",
@@ -2325,8 +2300,6 @@ source_set("browser") {
       "//chrome/browser/device_notifications",
       "//chrome/browser/device_notifications:impl",
       "//chrome/browser/direct_sockets:impl",
-      "//chrome/browser/importer",
-      "//chrome/browser/importer:impl",
       "//chrome/browser/metrics/critical_user_journeys",
       "//chrome/browser/metrics/critical_user_journeys:impl",
       "//chrome/browser/profile_resetter",
@@ -2337,7 +2310,6 @@ source_set("browser") {
       "//chrome/browser/ui/browser_window/internal",
       "//chrome/browser/ui/content_settings:impl",
       "//chrome/browser/ui/omnibox",
-      "//chrome/browser/ui/passwords/bubble_controllers:impl",
       "//chrome/browser/ui/search",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/tabs:impl",
@@ -2360,7 +2332,6 @@ source_set("browser") {
       "//chrome/browser/ui/views/zoom:impl",
       "//chrome/browser/ui/waap",
       "//chrome/browser/ui/waap:window_metrics_manager",
-      "//chrome/browser/ui/webui/autofill_ml_internals",
       "//chrome/browser/ui/webui/color_pipeline_internals",
       "//chrome/browser/ui/webui/cr_components/searchbox:searchbox_impl",
       "//chrome/browser/ui/webui/cr_components/theme_color_picker:impl",
@@ -3072,8 +3043,6 @@ group("browser_public_dependencies") {
     "//chrome/common:constants",
     "//chrome/services/file_util/public/mojom",
     "//components/account_id",
-    "//components/autofill/content/browser",
-    "//components/autofill/core/browser",
     "//components/cross_device/logging",
     "//components/enterprise/buildflags",
     "//components/enterprise/common:files_scan_data",
@@ -3193,13 +3162,11 @@ group("browser_generated_files") {
     "//chrome/browser/ui/webui/content_settings:mojo_bindings",
     "//chrome/browser/ui/webui/location_internals:mojo_bindings",
     "//chrome/browser/ui/webui/omnibox:mojo_bindings",
-    "//chrome/browser/ui/webui/reset_password:mojo_bindings",
     "//chrome/browser/ui/webui/segmentation_internals:mojo_bindings",
     "//chrome/browser/ui/webui/suggest_internals:mojo_bindings",
     "//chrome/browser/ui/webui/usb_internals:mojo_bindings",
     "//chrome/browser/ui/webui/user_education_internals:mojo_bindings",
     "//chrome/common/request_header_integrity:buildflags",
-    "//components/autofill/core/browser/ml_model/logging:mojo_bindings",
     "//components/enterprise/connectors:mojom",
     "//components/webui/chrome_urls/mojom:mojo_bindings",
   ]
@@ -3222,8 +3189,6 @@ group("browser_generated_files") {
       "//chrome/browser/ui/webui/user_education_internals:mojo_bindings",
       "//chrome/browser/ui/webui/webnn_internals:mojo_bindings",
       "//chrome/browser/ui/webui_browser:browser_mojo_bindings",
-      "//chrome/browser/webauthn/proto",
-      "//components/autofill/core/browser/ml_model/logging:mojo_bindings",
       "//components/browser_apis/tab_drag:mojom",
       "//components/browser_apis/tab_strip:mojom",
     ]
@@ -3286,7 +3251,6 @@ group("browser_generated_files") {
   if (is_win || is_mac || is_linux || is_chromeos || is_desktop_android) {
   }
   if (safe_browsing_mode == 1) {
-    public_deps += [ "//chrome/browser/ui/webui/reset_password:mojo_bindings" ]
   }
   if (enable_bound_session_credentials) {
     public_deps += [
@@ -3447,7 +3411,6 @@ static_library("test_support") {
     "//chrome/browser/ash/printing:unit_tests",
     "//chrome/browser/ash/settings:test_support",
     "//chrome/browser/ash/settings:unit_tests",
-    "//chrome/browser/autofill:test_support_ui",
     "//chrome/browser/browsing_data:browser_tests",
     "//chrome/browser/chromeos/enterprise/cloud_storage:browser_tests",
     "//chrome/browser/extensions:test_support",
@@ -3472,7 +3435,6 @@ static_library("test_support") {
 
   public_deps = [
     ":browser",
-    "//chrome/browser/autofill:test_support",
     "//chrome/browser/history:test_support",
     "//chrome/browser/interstitials:test_support",
     "//chrome/browser/media/webrtc",
@@ -3505,7 +3467,6 @@ static_library("test_support") {
     "//components/lookalikes/core:proto",
     "//components/lookalikes/core:safety_tips",
     "//components/optimization_guide/core:test_support",
-    "//components/password_manager/core/browser:test_support",
     "//components/policy/core/browser:test_support",
     "//components/prefs:test_support",
     "//components/reporting/client:test_support",

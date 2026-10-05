@@ -41,7 +41,6 @@ source_set("impl") {
     "//chrome/browser/ui/webui:chrome_web_ui_controller_factory",
     "//components/favicon/core:history_implementation",
     "//components/image_fetcher/core",
-    "//components/password_manager/content/common",
     "//ui/native_theme",
     "//ui/resources",
   ]

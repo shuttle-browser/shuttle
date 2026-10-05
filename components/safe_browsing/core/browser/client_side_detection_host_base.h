@@ -19,7 +19,6 @@
 #include "base/task/cancelable_task_tracker.h"
 #include "base/time/tick_clock.h"
 #include "base/time/time.h"
-#include "components/autofill/core/browser/foundations/autofill_manager.h"
 #include "components/history/core/browser/history_service_observer.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/safe_browsing/core/browser/credit_card_form_event.h"
@@ -59,8 +58,7 @@ class ClientSideDetectionFeatureCacheBase;
 class ClientSideDetectionServiceBase;
 class VerdictCacheManager;
 
-class ClientSideDetectionHostBase : public autofill::AutofillManager::Observer,
-                                    public history::HistoryServiceObserver {
+class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
  public:
   // These values are persisted to logs. Entries should not be renumbered and
   // numeric values should never be reused.
@@ -169,15 +167,6 @@ class ClientSideDetectionHostBase : public autofill::AutofillManager::Observer,
   // history::HistoryServiceObserver method:
   void HistoryServiceBeingDeleted(
       history::HistoryService* history_service) override;
-
-  // autofill::AutofillManager::Observer methods:
-  void OnAfterFocusOnFormField(autofill::AutofillManager& manager,
-                               autofill::FormGlobalId form_id,
-                               autofill::FieldGlobalId field_id) override;
-  void OnFieldTypesDetermined(autofill::AutofillManager& manager,
-                              autofill::FormGlobalId form,
-                              FieldTypeSource source,
-                              bool small_forms_were_parsed) override;
 
   void SetAndObserveHistoryServiceForTesting(history::HistoryService* service);
 
@@ -489,17 +478,6 @@ class ClientSideDetectionHostBase : public autofill::AutofillManager::Observer,
 
   int GetTriggerModelVersion() const;
   bool IsModelAvailable() const;
-
-  // MaybeTriggerCreditCardFormPing is a helper that determines whether
-  // a credit card form event should trigger a CSD ping. It takes
-  // an optional field_id to specify whether it is an interaction
-  // or a detection trigger.
-  void MaybeTriggerCreditCardFormPing(
-      autofill::AutofillManager& manager,
-      autofill::FormGlobalId form_id,
-      std::optional<autofill::FieldGlobalId> field_id,
-      std::string event_name,
-      bool should_trigger);
 
   // This pointer may be nullptr if client-side phishing detection is
   // disabled.

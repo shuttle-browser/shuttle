@@ -60,13 +60,6 @@
       "5107DE9024C329EEA9C9A72D94C16723790C6422"   // Apps Developer Tool Dev.
     ]
   },
-  "autofillPrivate": {
-    "channel": "trunk",
-    "extension_types": ["extension", "platform_app"],
-    "location": "component",
-    // "desktop_android" is not supported.
-    "platforms": ["chromeos", "linux", "mac", "win"]
-  },
   "autotestPrivate": {
     "channel": "stable",
     "extension_types": ["extension"],
@@ -739,13 +732,6 @@
   "pageCapture": {
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app"]
-  },
-  "passwordsPrivate": {
-    "channel": "trunk",
-    "extension_types": ["extension", "platform_app"],
-    "location": "component",
-    // "desktop_android" is not supported.
-    "platforms": ["chromeos", "linux", "mac", "win"]
   },
   "pdfViewerPrivate": {
     "channel": "stable",

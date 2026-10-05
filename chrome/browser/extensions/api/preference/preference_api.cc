@@ -22,7 +22,6 @@
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/pref_mapping.h"
 #include "chrome/browser/extensions/preference/preference_helpers.h"
-#include "components/autofill/core/common/autofill_prefs.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
@@ -439,19 +438,6 @@ ExtensionFunction::ResponseAction SetPreferenceFunction::Run() {
   EXTENSION_FUNCTION_VALIDATE(extension_pref_value);
 
   auto* prefs_helper = ExtensionPrefsHelper::Get(browser_context());
-
-  // Set the new Autofill prefs if the extension sets the deprecated pref in
-  // order to maintain backward compatibility in the extensions preference API.
-  // TODO(crbug.com/40587768): Remove this once the deprecated pref is retired.
-  if (autofill::prefs::kAutofillEnabledDeprecated == browser_pref) {
-    // |SetExtensionControlledPref| takes ownership of the base::Value pointer.
-    prefs_helper->SetExtensionControlledPref(
-        extension_id(), autofill::prefs::kAutofillCreditCardEnabled, scope,
-        base::Value(browser_pref_value->GetBool()));
-    prefs_helper->SetExtensionControlledPref(
-        extension_id(), autofill::prefs::kAutofillProfileEnabled, scope,
-        base::Value(browser_pref_value->GetBool()));
-  }
 
   // Whenever an extension takes control of the |kSafeBrowsingEnabled|
   // preference, it must also set |kSafeBrowsingEnhanced| to false.

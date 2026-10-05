@@ -47,7 +47,6 @@ source_set("webid") {
     "//chrome/browser/net",
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui:ui_features",
-    "//chrome/browser/ui/passwords",
     "//chrome/browser/ui/tabs",
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/views/extensions:security_dialog_tracker",

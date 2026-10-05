@@ -141,7 +141,6 @@ static_library("browser") {
   ]
 
   public_deps = [
-    "//components/autofill/core/common",
     "//components/history/core/common",
     "//components/keyed_service/core",
     "//components/policy/core/common:common_constants",

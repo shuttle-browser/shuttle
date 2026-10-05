@@ -14,6 +14,7 @@
 #include "base/check_op.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
 #include "base/notreached.h"
@@ -28,7 +29,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/accelerator_table.h"
-#include "chrome/browser/ui/autofill/payments/payments_churned_users_bubble_controller.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/views/app_menu/action_app_menu_manager.h"
 #include "chrome/common/webui_url_constants.h"
@@ -57,15 +57,6 @@
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/actions/chrome_actions.h"
-#include "chrome/browser/ui/autofill/address_bubbles_icon_controller.h"
-#include "chrome/browser/ui/autofill/autofill_bubble_base.h"
-#include "chrome/browser/ui/autofill/payments/filled_card_information_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/mandatory_reauth_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/omnibox_autofill_bubble_controller.h"
-#include "chrome/browser/ui/autofill/payments/omnibox_autofill_page_action_controller.h"
-#include "chrome/browser/ui/autofill/payments/save_payment_icon_controller.h"
-#include "chrome/browser/ui/autofill/payments/virtual_card_enroll_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/wallet_reminder_notice_bubble_controller.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_action_prefs_listener.h"
 #include "chrome/browser/ui/browser_command_controller.h"
@@ -82,9 +73,6 @@
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_triggers.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
-#include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
-#include "chrome/browser/ui/passwords/passwords_model_delegate.h"
-#include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/search/omnibox_utils.h"
 #include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
@@ -116,7 +104,6 @@
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button_menu_model.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
-#include "chrome/browser/ui/webauthn/ambient/ambient_signin_controller.h"
 #include "chrome/browser/ui/webid/account_selection_view.h"
 #include "chrome/browser/ui/webui/inspect/inspect_ui.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
@@ -125,14 +112,11 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/content_settings/core/common/features.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/vector_icons.h"
-#include "components/password_manager/core/browser/manage_passwords_referrer.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
@@ -421,26 +405,6 @@ void BrowserActions::InitializeSidePanelActions() {
 void BrowserActions::InitializePageActionIconActions() {
   BrowserWindowInterface* const bwi = base::to_address(bwi_);
 
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowOffersAndRewardsForPage(bwi);
-              },
-              bwi))
-          .SetActionId(kActionOffersAndRewardsForPage)
-          .SetText(l10n_util::GetStringUTF16(
-              IDS_AUTOFILL_OFFERS_REMINDER_ICON_TOOLTIP_TEXT))
-          .SetTooltipText(l10n_util::GetStringUTF16(
-              IDS_AUTOFILL_OFFERS_REMINDER_ICON_TOOLTIP_TEXT))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? vector_icons::kShoppingmodeIcon
-                  : kLocalOfferFlippedRefreshOldIcon,
-              ui::kColorIcon, ui::SimpleMenuModel::kDefaultIconSize))
-          .Build());
-
   // TODO(crbug.com/435220196): Ideally this action would have
   // MemorySaverBubbleController passed in as a dependency directly.
 
@@ -460,25 +424,6 @@ void BrowserActions::InitializePageActionIconActions() {
               },
               bwi))
           .SetActionId(kActionFederation)
-          .SetEnabled(true)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                auto* web_contents =
-                    bwi->GetActiveTabInterface()->GetContents();
-                auto* controller = ambient_signin::AmbientSigninController::
-                    GetForCurrentDocument(web_contents->GetPrimaryMainFrame());
-                if (!controller) {
-                  return;
-                }
-                controller->TriggerPageActionSignIn();
-              },
-              bwi))
-          .SetActionId(kActionWebAuthnAmbientSignin)
           .SetEnabled(true)
           .Build());
 
@@ -549,98 +494,10 @@ void BrowserActions::InitializePageActionIconActions() {
                   : omnibox::kFindInPageChromeRefreshOldIcon))
           .SetAccelerator(GetAcceleratorForCommandId(IDC_FIND))
           .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                tabs::TabInterface* tab_interface =
-                    bwi->GetActiveTabInterface();
-                CHECK(tab_interface);
-
-                content::WebContents* web_contents =
-                    tab_interface->GetContents();
-                CHECK(web_contents);
-
-                autofill::VirtualCardEnrollBubbleControllerImpl* controller =
-                    autofill::VirtualCardEnrollBubbleControllerImpl::
-                        FromWebContents(web_contents);
-                if (!controller) {
-                  return;
-                }
-                controller->ReshowBubble();
-              },
-              bwi))
-          .SetActionId(kActionVirtualCardEnroll)
-          .SetText(l10n_util::GetStringUTF16(
-              IDS_AUTOFILL_VIRTUAL_CARD_ENROLLMENT_FALLBACK_ICON_TOOLTIP))
-          .SetTooltipText(l10n_util::GetStringUTF16(
-              IDS_AUTOFILL_VIRTUAL_CARD_ENROLLMENT_FALLBACK_ICON_TOOLTIP))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? kCreditCardIcon
-                  : kCreditCardChromeRefreshOldIcon))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                tabs::TabInterface* tab_interface =
-                    bwi->GetActiveTabInterface();
-                CHECK(tab_interface);
-
-                content::WebContents* web_contents =
-                    tab_interface->GetContents();
-                CHECK(web_contents);
-
-                autofill::FilledCardInformationBubbleControllerImpl*
-                    controller =
-                        autofill::FilledCardInformationBubbleControllerImpl::
-                            FromWebContents(web_contents);
-                if (!controller) {
-                  return;
-                }
-                controller->ReshowBubble();
-              },
-              bwi))
-          .SetActionId(kActionFilledCardInformation)
-          .SetTooltipText(l10n_util::GetStringUTF16(
-              IDS_AUTOFILL_FILLED_CARD_INFORMATION_ICON_TOOLTIP_VIRTUAL_CARD))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? kCreditCardIcon
-                  : kCreditCardChromeRefreshOldIcon))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                auto* tab_interface = bwi->GetActiveTabInterface();
-                CHECK(tab_interface);
-
-                autofill::MandatoryReauthBubbleControllerImpl::FromWebContents(
-                    tab_interface->GetContents())
-                    ->QueueOrShowBubble(/*force_show=*/true);
-              },
-              bwi))
-          .SetActionId(kActionAutofillMandatoryReauth)
-          .SetTooltipText(l10n_util::GetStringUTF16(
-              IDS_AUTOFILL_MANDATORY_REAUTH_ICON_TOOLTIP))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? kCreditCardIcon
-                  : kCreditCardChromeRefreshOldIcon))
-          .Build());
 }
 
 void BrowserActions::InitializeChromeMenuActions() {
   Profile* const profile = base::to_address(profile_);
-  TabStripModel* const tab_strip_model = bwi_->GetTabStripModel();
   BrowserWindowInterface* const bwi = base::to_address(bwi_);
   const bool is_guest_session = profile->IsGuestSession();
 
@@ -908,80 +765,6 @@ void BrowserActions::InitializeChromeMenuActions() {
           .SetActionId(kActionShowCookieControls)
           .Build());
 
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, TabStripModel* tab_strip_model,
-                 actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                auto page_action_trigger =
-                    context.GetProperty(page_actions::kPageActionTriggerKey);
-                // If triggered by omnibox page action, do nothing.
-                if (page_action_trigger !=
-                    page_actions::kInvalidPageActionTrigger) {
-                  return;
-                }
-
-                auto* controller = autofill::AddressBubblesIconController::Get(
-                    tab_strip_model->GetActiveWebContents());
-                if (controller && controller->GetBubbleView()) {
-                  controller->GetBubbleView()->Hide();
-                } else {
-                  chrome::ShowAddresses(bwi);
-                }
-              },
-              bwi, tab_strip_model),
-          kActionShowAddressesBubbleOrPage,
-          IDS_ADDRESSES_AND_MORE_SUBMENU_OPTION,
-          IDS_ADDRESSES_AND_MORE_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kLocationOnIcon
-              : vector_icons::kLocationOnChromeRefreshOldIcon)
-          .SetEnabled(!is_guest_session)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, TabStripModel* tab_strip_model,
-                 actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                auto page_action_trigger =
-                    context.GetProperty(page_actions::kPageActionTriggerKey);
-                // When page action is migrated, clicking on the omnibox page
-                // should not close the bubble or navigate to `Payment Methods`
-                // settings page.
-                // Page action trigger is a valid value only when this action
-                // is triggered from the migrated page action icon.
-                if (page_action_trigger !=
-                    page_actions::kInvalidPageActionTrigger) {
-                  return;
-                }
-
-                auto hide_bubble = [tab_strip_model](int command_id) -> bool {
-                  auto* controller = autofill::SavePaymentIconController::Get(
-                      tab_strip_model->GetActiveWebContents(), command_id);
-                  if (controller && controller->GetPaymentBubbleView()) {
-                    controller->GetPaymentBubbleView()->Hide();
-                    return true;
-                  }
-                  return false;
-                };
-                const bool bubble_hidden =
-                    hide_bubble(IDC_SAVE_CREDIT_CARD_FOR_PAGE) ||
-                    hide_bubble(IDC_SAVE_IBAN_FOR_PAGE);
-                if (!bubble_hidden) {
-                  chrome::ShowPaymentMethods(bwi);
-                }
-              },
-              bwi, tab_strip_model),
-          kActionShowPaymentsBubbleOrPage, IDS_PAYMENT_METHOD_SUBMENU_OPTION,
-          IDS_PAYMENT_METHOD_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled() ? kCreditCardIcon
-                                            : kCreditCardChromeRefreshOldIcon)
-          .SetEnabled(!is_guest_session)
-          .Build());
-
   // TODO(crbug.com/435220196): Ideally this action would have
   // ChromeLabsCoordinator passed in as a dependency directly.
   if (IsChromeLabsEnabled()) {
@@ -999,38 +782,6 @@ void BrowserActions::InitializeChromeMenuActions() {
             .SetVisible(ShouldShowChromeLabsUI(profile))
             .Build());
   }
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, TabStripModel* tab_strip_model,
-                 actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                content::WebContents* const web_contents =
-                    tab_strip_model->GetActiveWebContents();
-                if (PasswordsModelDelegateFromWebContents(web_contents)
-                        ->GetState() == password_manager::ui::INACTIVE_STATE) {
-                  chrome::ShowPasswordManager(bwi);
-                } else {
-                  auto* const controller =
-                      ManagePasswordsUIController::FromWebContents(
-                          web_contents);
-                  if (controller->IsShowingBubble()) {
-                    controller->HideBubble(
-                        /*initiated_by_bubble_manager=*/false);
-                  } else {
-                    chrome::ManagePasswordsForPage(bwi);
-                  }
-                }
-              },
-              bwi, tab_strip_model),
-          kActionShowPasswordsBubbleOrPage, IDS_VIEW_PASSWORDS,
-          IDS_VIEW_PASSWORDS,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kPasswordManagerIcon
-              : vector_icons::kPasswordManagerOldIcon)
-          .SetEnabled(!is_guest_session)
-          .Build());
 
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
@@ -1127,7 +878,6 @@ void BrowserActions::InitializeChromeMenuActions() {
 }
 
 void BrowserActions::InitializeToolbarAndMiscActions() {
-  Profile* const profile = base::to_address(profile_);
   BrowserWindowInterface* const bwi = base::to_address(bwi_);
   TabStripModel* const tab_strip_model = bwi_->GetTabStripModel();
 
@@ -1385,51 +1135,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
             .Build());
   }
 
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableOmniboxAutofill)) {
-    root_action_item_->AddChild(
-        actions::ActionItem::Builder(
-            base::BindRepeating(
-                [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                   actions::ActionInvocationContext context) {
-                  if (!bwi) {
-                    return;
-                  }
-
-                  // Close the IPH if the user clicks the "Autofill payment"
-                  // chip displayed on the omnibox.
-                  if (auto* user_education =
-                          BrowserUserEducationInterface::From(bwi)) {
-                    user_education->NotifyFeaturePromoFeatureUsed(
-                        feature_engagement::
-                            kIPHAutofillOmniboxPaymentChipFeature,
-                        FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-                  }
-
-                  auto* tab = bwi->GetActiveTabInterface();
-                  if (!tab) {
-                    return;
-                  }
-
-                  // Show the payment method suggestion list after the user
-                  // clicks the "Autofill payment" chip displayed on the
-                  // omnibox.
-                  if (auto* controller =
-                          autofill::OmniboxAutofillBubbleController::From(
-                              *tab)) {
-                    controller->QueueOrShowBubble(/*force_show=*/true);
-                  }
-                },
-                bwi))
-            .SetActionId(kActionAutofillPayment)
-            .SetImage(ui::ImageModel::FromVectorIcon(
-                features::IsRoundedIconsEnabled()
-                    ? kCreditCardIcon
-                    : kCreditCardChromeRefreshOldIcon))
-            .SetText(l10n_util::GetStringUTF16(IDS_AUTOFILL_PAYMENT_TEXT))
-            .Build());
-  }
-
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
           base::BindRepeating(
@@ -1443,85 +1148,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               },
               bwi))
           .SetActionId(kActionSplitTab)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ManagePasswordsForPage(bwi);
-              },
-              bwi))
-          .SetActionId(kActionManagePasswordsForPage)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::SaveCreditCard(bwi);
-              },
-              bwi))
-          .SetActionId(kActionSaveCreditCardForPage)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::SaveIban(bwi);
-              },
-              bwi))
-          .SetActionId(kActionSaveIbanForPage)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowPasswordManager(bwi);
-              },
-              bwi),
-          kActionShowPasswordManager, IDS_VIEW_PASSWORDS, IDS_VIEW_PASSWORDS,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kPasswordManagerIcon
-              : vector_icons::kPasswordManagerOldIcon)
-          .SetEnabled(!profile->IsGuestSession())
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowPaymentMethods(bwi);
-              },
-              bwi),
-          kActionShowPaymentMethods, IDS_PAYMENT_METHOD_SUBMENU_OPTION,
-          IDS_PAYMENT_METHOD_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled() ? kCreditCardIcon
-                                            : kCreditCardChromeRefreshOldIcon)
-          .SetEnabled(!profile->IsGuestSession())
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowAddresses(bwi);
-              },
-              bwi),
-          kActionShowAddresses, IDS_ADDRESSES_AND_MORE_SUBMENU_OPTION,
-          IDS_ADDRESSES_AND_MORE_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kLocationOnIcon
-              : vector_icons::kLocationOnChromeRefreshOldIcon)
-          .SetEnabled(!profile->IsGuestSession())
           .Build());
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -2646,64 +2272,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                chrome::ShowPasswordCheck(bwi);
-              },
-              bwi))
-          .SetActionId(kActionSafetyHubShowPasswordCheckup)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowContactInfo(bwi);
-              },
-              bwi),
-          kActionShowContactInfo,
-          IDS_YOUR_SAVED_INFO_CONTACT_INFO_SUBMENU_OPTION,
-          IDS_YOUR_SAVED_INFO_CONTACT_INFO_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kLocationOnIcon
-              : vector_icons::kLocationOnChromeRefreshOldIcon,
-          /*is_pinnable=*/false)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowIdentityDocs(bwi);
-              },
-              bwi),
-          kActionShowIdentityDocs, IDS_IDENTITY_DOCS_SUBMENU_OPTION,
-          IDS_IDENTITY_DOCS_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled() ? vector_icons::kIdCardIcon
-                                            : vector_icons::kIdCardOldIcon,
-          /*is_pinnable=*/false)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::ShowTravel(bwi);
-              },
-              bwi),
-          kActionShowTravel, IDS_TRAVEL_SUBMENU_OPTION,
-          IDS_TRAVEL_SUBMENU_OPTION,
-          features::IsRoundedIconsEnabled() ? vector_icons::kTripIcon
-                                            : vector_icons::kTripOldIcon,
-          /*is_pinnable=*/false)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
                 chrome::ToggleCaretBrowsing(bwi);
               },
               bwi))
@@ -2735,34 +2303,10 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                chrome::ShowImportDialog(bwi);
-              },
-              bwi))
-          .SetActionId(kActionImportSettings)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
                 chrome::ShowSearchEngineSettings(bwi);
               },
               bwi))
           .SetActionId(kActionEditSearchEngines)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                NavigateToManagePasswordsPage(
-                    bwi,
-                    password_manager::ManagePasswordsReferrer::kChromeMenuItem);
-              },
-              bwi))
-          .SetActionId(kActionViewPasswords)
           .Build());
 
   root_action_item_->AddChild(
@@ -2833,17 +2377,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               features::IsRoundedIconsEnabled()
                   ? vector_icons::kInfoIcon
                   : vector_icons::kInfoRefreshOldIcon))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::SaveAutofillAddress(bwi);
-              },
-              bwi))
-          .SetActionId(kActionSaveAutofillAddress)
           .Build());
 
 
@@ -3176,65 +2709,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           .SetActionId(kActionSpellcheckMultiLingual)
           .Build());
 #endif
-#if !BUILDFLAG(IS_ANDROID)
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                if (!base::FeatureList::IsEnabled(
-                        autofill::features::
-                            kAutofillEnableResurrectingPaymentsUsers)) {
-                  return;
-                }
-
-                if (!bwi) {
-                  return;
-                }
-
-                auto* tab = bwi->GetActiveTabInterface();
-                if (!tab) {
-                  return;
-                }
-
-                if (auto* controller =
-                        autofill::PaymentsChurnedUsersBubbleController::From(
-                            *tab)) {
-                  controller->ReshowBubble();
-                }
-              },
-              bwi))
-          .SetActionId(kActionShowPaymentsChurnedUsersBubble)
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? kCreditCardIcon
-                  : kCreditCardChromeRefreshOldIcon))
-          .Build());
-
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableWalletReminderNotice) ||
-      base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableWalletReminderNoticePublicPass)) {
-    root_action_item_->AddChild(
-        actions::ActionItem::Builder(
-            base::BindRepeating(
-                [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                   actions::ActionInvocationContext context) {
-                  tabs::TabInterface* tab = bwi->GetActiveTabInterface();
-                  CHECK(tab);
-
-                  if (auto* controller =
-                          autofill::WalletReminderNoticeBubbleController::From(
-                              *tab)) {
-                    controller->ReshowBubble();
-                  }
-                },
-                bwi))
-            .SetActionId(kActionWalletReminderNotice)
-            .SetImage(ui::ImageModel::FromVectorIcon(kWalletIcon))
-            .Build());
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 void BrowserActions::InitializeNavigationActions() {
@@ -3358,20 +2832,6 @@ void BrowserActions::InitializeSubmenuActions() {
           IDS_BOOKMARKS_AND_LISTS_MENU,
           features::IsRoundedIconsEnabled() ? kStarIcon
                                             : kBookmarksListsMenuOldIcon,
-          /*is_pinnable=*/false)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {},
-              bwi),
-          kActionPasswordsAndAutofillSubmenu, IDS_PASSWORDS_AND_AUTOFILL_MENU,
-          IDS_PASSWORDS_AND_AUTOFILL_MENU,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kPasswordManagerIcon
-              : vector_icons::kPasswordManagerOldIcon,
           /*is_pinnable=*/false)
           .Build());
 

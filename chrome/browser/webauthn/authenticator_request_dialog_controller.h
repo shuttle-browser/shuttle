@@ -17,20 +17,15 @@
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/timer/timer.h"
-#include "chrome/browser/ui/webauthn/passkey_upgrade_request_controller.h"
 #include "chrome/browser/webauthn/authenticator_reference.h"
 #include "chrome/browser/webauthn/authenticator_request_dialog_model.h"
 #include "chrome/browser/webauthn/authenticator_transport.h"
-#include "chrome/browser/webauthn/password_credential_fetcher.h"
-#include "components/webauthn/core/browser/passkey_model.h"
-#include "components/webauthn/core/browser/passkey_model_change.h"
 #include "content/public/browser/authenticator_request_client_delegate.h"
 #include "content/public/browser/global_routing_id.h"
 #include "device/fido/cable/v2_constants.h"
 #include "third_party/blink/public/mojom/credentialmanagement/credential_type_flags.mojom.h"
 #include "url/gurl.h"
 
-class PasskeyUpgradeRequestController;
 class Profile;
 
 namespace content {
@@ -41,9 +36,7 @@ class RenderFrameHost;
 // flow. This is essentially a state machine going through the states defined in
 // the `Step` enumeration.
 class AuthenticatorRequestDialogController
-    : public AuthenticatorRequestDialogModel::Observer,
-      public webauthn::PasskeyModel::Observer,
-      public PasskeyUpgradeRequestController::Delegate {
+    : public AuthenticatorRequestDialogModel::Observer {
  public:
   using RequestCallback = device::FidoRequestHandlerBase::RequestCallback;
   using BlePermissionCallback = base::RepeatingCallback<void(
@@ -65,50 +58,30 @@ class AuthenticatorRequestDialogController
   // AuthenticatorRequestDialogModel::Observer:
   void StartOver() override;
   void OnChromeProfileCreatePasskeyAccepted() override;
-  void OnGPMRecoverSecurityDomainClosed() override;
   void ContinueWithFlowAfterBleAdapterPowered() override;
   void PowerOnBleAdapter() override;
   void OpenBlePreferences() override;
-  void OpenGpmSettings() override;
   void OnOffTheRecordInterstitialAccepted() override;
   void CancelAuthenticatorRequest() override;
   void OnRequestComplete() override;
   void OnResidentCredentialConfirmed() override;
   void OnHavePIN(std::u16string pin) override;
-  void OnGPMEnclaveEnabledStatusChanged(EnclaveEnabledStatus status) override;
   void OnAccountSelected(size_t index) override;
   void OnAccountPreselectedIndex(size_t index) override;
   void OnBioEnrollmentDone() override;
   void OnUserConfirmedPriorityMechanism() override;
-
-  // webauthn::PasskeyModel::Observer:
-  void OnPasskeysChanged(
-      const std::vector<webauthn::PasskeyModelChange>& changes) override;
-  void OnPasskeyModelShuttingDown() override;
-  void OnPasskeyModelIsReady(bool is_ready) override;
-
-  // PasskeyUpgradeRequestController::Delegate:
-  void PasskeyUpgradeSucceeded() override;
-  void PasskeyUpgradeFailed() override;
 
   // Returns whether the UI is in a state at which the |request_| member of
   // AuthenticatorImpl has completed processing. Note that the request callback
   // is only resolved after the UI is dismissed.
   bool is_request_complete() const;
 
-  // Starts the UX flow, by either showing the transport or password selection
-  // screen or the guided flow for the most likely transport.
+  // Starts the UX flow, by either showing the transport selection screen or
+  // the guided flow for the most likely transport.
   //
   // Valid action when at step: kNotStarted.
   void StartFlow(device::FidoRequestHandlerBase::TransportAvailabilityInfo
-                     transport_availability,
-                 PasswordCredentialFetcher::PasswordCredentials passwords);
-
-  // Starts a modal WebAuthn flow (i.e. what you normally get if you call
-  // WebAuthn with no mediation parameter) from a conditional request.
-  //
-  // Valid action when at step: kPasskeyAutofill.
-  void TransitionToModalWebAuthnRequest();
+                     transport_availability);
 
   // Starts the UX flow. Tries to figure out the most likely transport to be
   // used, and starts the guided flow for that transport; or shows the manual
@@ -333,10 +306,6 @@ class AuthenticatorRequestDialogController
   void SetUIPresentation(
       content::AuthenticatorRequestClientDelegate::UIPresentation modality);
 
-  void ConfigureEnclaveForUpgrade(
-      device::FidoDiscoveryFactory* discovery_factory,
-      bool cmtg_key_requested);
-
   base::WeakPtr<AuthenticatorRequestDialogController> GetWeakPtr();
 
  private:
@@ -394,13 +363,6 @@ class AuthenticatorRequestDialogController
   void StartWinNativeApi();
 
   void StartICloudKeychain();
-  void StartEnclave();
-
-  // Triggers gaia account reauth to restore sync to working order.
-  void ReauthForSyncRestore();
-
-  void StartAutofillRequest();
-  void StartPasskeyUpgradeRequest();
 
   void DispatchRequestAsync(AuthenticatorReference* authenticator);
 
@@ -420,18 +382,11 @@ class AuthenticatorRequestDialogController
   std::optional<size_t> IndexOfPriorityMechanism();
 
   std::optional<size_t> IndexOfGetAssertionPriorityMechanism();
-  std::optional<size_t> IndexOfImmediateGetPriorityMechanism();
   std::optional<size_t> IndexOfMakeCredentialPriorityMechanism();
-
-  // Returns true if this request could pick the enclave authenticator by
-  // default. This only makes sense for a create() call.
-  bool CanDefaultToEnclave(Profile* profile);
 
   // Returns the render frame host associated with this request. May return
   // nullptr if the initiating frame or tab has been destroyed or detached.
   content::RenderFrameHost* MaybeGetRenderFrameHost() const;
-
-  void PopulatePasswords();
 
   scoped_refptr<AuthenticatorRequestDialogModel> model_;
 
@@ -463,8 +418,6 @@ class AuthenticatorRequestDialogController
   // This field is only filled out once the UX flow is started.
   device::FidoRequestHandlerBase::TransportAvailabilityInfo
       transport_availability_;
-
-  PasswordCredentialFetcher::PasswordCredentials passwords_;
 
   content::AuthenticatorRequestClientDelegate::AccountPreselectedCallback
       account_preselected_callback_;
@@ -502,19 +455,9 @@ class AuthenticatorRequestDialogController
   // profile authenticator.
   bool should_create_in_icloud_keychain_ = false;
 
-  // enclave_enabled_status_ determines whether Google Password Manager entries
-  // should be offered both for `makeCredential` or `getAssertion`. If reauth
-  // needed, instead of offering the actual passkeys or creating a passkey,
-  // re-authentication to Google is offered.
-  EnclaveEnabledStatus enclave_enabled_status_ =
-      EnclaveEnabledStatus::kDisabled;
-
   // The RP's hints. See
   // https://w3c.github.io/webauthn/#enumdef-publickeycredentialhints
   content::AuthenticatorRequestClientDelegate::Hints hints_;
-
-  // True when the priority mechanism was determined to be the enclave.
-  bool enclave_was_priority_mechanism_ = false;
 
 #if BUILDFLAG(IS_MAC)
   // did_record_macos_start_histogram_ is set to true if a histogram record of
@@ -533,13 +476,6 @@ class AuthenticatorRequestDialogController
       static_cast<int>(blink::mojom::CredentialTypeFlags::kNone);
 
   const content::GlobalRenderFrameHostId frame_host_id_;
-
-  base::ScopedObservation<webauthn::PasskeyModel,
-                          webauthn::PasskeyModel::Observer>
-      passkey_model_observation_{this};
-
-  std::unique_ptr<PasskeyUpgradeRequestController>
-      passkey_upgrade_request_controller_;
 
   base::WeakPtrFactory<AuthenticatorRequestDialogController> weak_factory_{
       this};

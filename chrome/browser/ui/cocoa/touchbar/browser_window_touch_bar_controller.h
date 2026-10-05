@@ -9,7 +9,6 @@
 
 class BrowserWindowInterface;
 @class BrowserWindowDefaultTouchBar;
-@class WebTextfieldTouchBarController;
 
 namespace content {
 class WebContents;
@@ -34,8 +33,6 @@ class WebContents;
 @interface BrowserWindowTouchBarController (ExposedForTesting)
 
 - (BrowserWindowDefaultTouchBar*)defaultTouchBar;
-
-- (WebTextfieldTouchBarController*)webTextfieldTouchBar;
 
 @end
 

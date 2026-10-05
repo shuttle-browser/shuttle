@@ -53,10 +53,6 @@
                 "include": ["getFeatureState"]
             },
             {
-                "domain": "Autofill",
-                "async": [ "setAddresses", "trigger" ]
-            },
-            {
               "domain": "WebMCP",
               "include": [ "enable" ],
               "include_events": []

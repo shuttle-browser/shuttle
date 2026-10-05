@@ -9,8 +9,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings_types.h"
-#include "components/password_manager/core/browser/password_manager_setting.h"
-#include "components/password_manager/core/browser/password_manager_settings_service.h"
 #include "components/permissions/permission_decision_auto_blocker.h"
 #include "content/public/browser/web_contents.h"
 #include "url/origin.h"
@@ -25,22 +23,12 @@ FederatedIdentityAutoReauthnPermissionContext::
 FederatedIdentityAutoReauthnPermissionContext::
     ~FederatedIdentityAutoReauthnPermissionContext() = default;
 
-void FederatedIdentityAutoReauthnPermissionContext::
-    OnPasswordManagerSettingsServiceInitialized(
-        password_manager::PasswordManagerSettingsService* settings_service) {
-  password_manager_settings_service_ = settings_service;
-}
-
-void FederatedIdentityAutoReauthnPermissionContext::Shutdown() {
-  password_manager_settings_service_ = nullptr;
-}
+void FederatedIdentityAutoReauthnPermissionContext::Shutdown() {}
 
 bool FederatedIdentityAutoReauthnPermissionContext::
     IsAutoReauthnSettingEnabled() {
-  return password_manager_settings_service_ &&
-         password_manager_settings_service_->IsSettingEnabled(
-             password_manager::PasswordManagerSetting::kAutoSignIn) &&
-         host_content_settings_map_->GetDefaultContentSetting(
+  // The password manager auto sign-in setting was removed from this fork.
+  return host_content_settings_map_->GetDefaultContentSetting(
              ContentSettingsType::FEDERATED_IDENTITY_AUTO_REAUTHN_PERMISSION,
              /*provider_id=*/nullptr) != ContentSetting::CONTENT_SETTING_BLOCK;
 }

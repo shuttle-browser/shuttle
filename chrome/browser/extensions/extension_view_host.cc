@@ -6,10 +6,10 @@
 
 #include "chrome/browser/extensions/extension_view.h"
 #include "chrome/browser/file_select_helper.h"
-#include "chrome/browser/ui/autofill/chrome_autofill_client.h"
 #include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
+#include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/process_util.h"
 #include "extensions/buildflags/buildflags.h"
@@ -36,11 +36,6 @@ ExtensionViewHost::ExtensionViewHost(
   // Not used for panels, see PanelHost.
   DCHECK(host_type == mojom::ViewType::kExtensionPopup ||
          host_type == mojom::ViewType::kExtensionSidePanel);
-
-  // Attach WebContents helpers. Extension tabs automatically get them attached
-  // in TabHelpers::AttachTabHelpers, but popups don't.
-  // TODO(kalman): How much of TabHelpers::AttachTabHelpers should be here?
-  autofill::ChromeAutofillClient::CreateForWebContents(host_contents());
 
   host_contents()->SetIgnoreZoomGestures(true);
 }

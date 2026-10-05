@@ -39,8 +39,6 @@ source_set("cocoa") {
     "tab_menu_bridge.h",
     "touchbar/browser_window_default_touch_bar.h",
     "touchbar/browser_window_touch_bar_controller.h",
-    "touchbar/credit_card_autofill_touch_bar_controller.h",
-    "touchbar/web_textfield_touch_bar_controller.h",
     "window_size_autosaver.h",
   ]
 
@@ -92,8 +90,6 @@ source_set("cocoa") {
     "tab_menu_bridge.mm",
     "touchbar/browser_window_default_touch_bar.mm",
     "touchbar/browser_window_touch_bar_controller.mm",
-    "touchbar/credit_card_autofill_touch_bar_controller.mm",
-    "touchbar/web_textfield_touch_bar_controller.mm",
     "window_size_autosaver.mm",
   ]
 
@@ -137,7 +133,6 @@ source_set("cocoa") {
     "//chrome/browser/ui:simple_message_box_internal",
     "//chrome/browser/ui:tab_ui_helper",
     "//chrome/browser/ui:ui_features",
-    "//chrome/browser/ui/autofill",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/browser_window:create_browser_window",
     "//chrome/browser/ui/javascript_dialogs",

@@ -2,8 +2,6 @@
 #   tools/grit/grit_info.py --all-inputs components/components_strings.grd > components/components_strings.grd.gritdeps
 components/android_system_error_page_strings.grdp
 components/arc_strings.grdp
-components/autofill_payments_strings.grdp
-components/autofill_strings.grdp
 components/blocked_content_strings.grdp
 components/bookmark_bar_strings.grdp
 components/bookmark_component_strings.grdp
@@ -38,7 +36,6 @@ components/omnibox_pedal_ui_strings.grdp
 components/omnibox_strings.grdp
 components/page_info_strings.grdp
 components/paint_preview_strings.grdp
-components/password_manager_strings.grdp
 components/payments_strings.grdp
 components/pdf_strings.grdp
 components/permissions_strings.grdp

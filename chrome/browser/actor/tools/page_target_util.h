@@ -9,7 +9,6 @@
 #include <string_view>
 
 #include "components/actor/core/shared_types.h"
-#include "components/autofill/core/common/unique_ids.h"
 #include "components/optimization_guide/content/browser/page_content_proto_util.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/tabs/public/tab_interface.h"
@@ -38,15 +37,6 @@ FindLastObservedNodeForActionTarget(
     const optimization_guide::proto::AnnotatedPageContent* apc,
     const PageTarget& target,
     tabs::TabInterface* tab);
-
-// Returns the `autofill::FieldGlobalId` for a `PageTarget` given the last
-// observed APC and the tab.
-//
-// IMPORTANT: `target` must be provided in view-relative DIPs.
-autofill::FieldGlobalId GetFieldIdFromPageTarget(
-    const optimization_guide::proto::AnnotatedPageContent* last_observation,
-    tabs::TabInterface* tab,
-    const PageTarget& target);
 
 }  // namespace actor
 

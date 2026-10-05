@@ -513,7 +513,6 @@ source_set("headless_browser") {
   if (is_linux && use_dbus) {
     deps += [
       "//components/os_crypt/browser:freedesktop_secret_key_provider",
-      "//components/password_manager/core/browser:password_switches",
     ]
   }
 
@@ -714,7 +713,6 @@ test("headless_browsertests") {
     "//components/infobars/core",
     "//components/optimization_guide/content/browser",
     "//components/os_crypt/common:switches",
-    "//components/password_manager/core/browser:password_switches",
     "//components/policy/core/browser",
     "//components/security_state/content",
     "//components/version_info",

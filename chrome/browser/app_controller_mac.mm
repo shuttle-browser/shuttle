@@ -1482,7 +1482,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
         case IDC_SHOW_HISTORY:
         case IDC_CLEAR_BROWSING_DATA:
         case IDC_SHOW_DOWNLOADS:
-        case IDC_IMPORT_SETTINGS:
         case IDC_MANAGE_EXTENSIONS:
         case IDC_HELP_PAGE_VIA_MENU:
         case IDC_OPTIONS:
@@ -1630,14 +1629,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
       }
       break;
     }
-    case IDC_IMPORT_SETTINGS: {
-      if (BrowserWindowInterface* browser = ActivateBrowser(profile)) {
-        chrome::ShowImportDialog(browser);
-      } else {
-        chrome::OpenImportSettingsDialogWindow(profile);
-      }
-      break;
-    }
     case IDC_SHOW_HISTORY:
       if (BrowserWindowInterface* browser = ActivateBrowser(profile)) {
         chrome::ShowHistory(browser);
@@ -1762,7 +1753,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   _menuState->UpdateCommandEnabled(IDC_SHOW_DOWNLOADS, true);
   _menuState->UpdateCommandEnabled(IDC_MANAGE_EXTENSIONS, true);
   _menuState->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_MENU, true);
-  _menuState->UpdateCommandEnabled(IDC_IMPORT_SETTINGS, true);
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   _menuState->UpdateCommandEnabled(IDC_FEEDBACK, true);
 #endif

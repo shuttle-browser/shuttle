@@ -687,11 +687,6 @@
     "expiry_milestone": 170
   },
   {
-    "name": "apply-clientside-model-predictions-for-password-types",
-    "owners": [ "kazinova@google.com", "vasilii@chromium.org", "chrome-password-manager-team@google.com"],
-    "expiry_milestone": 156
-  },
-  {
     "name": "apply-managed-proxy-bypass-list-verbatim",
     "owners": [ "acostinas@google.com", "chromeos-commercial-networking@google.com" ],
     "expiry_milestone": 165
@@ -884,408 +879,10 @@
     "owners": ["skrakowi@google.com","minap@google.com","chrome-counter-abuse-alerts@google.com"],
     "expiry_milestone": 147
   },
-  {
-    "name": "autofill-add-chrome-user-context-fields",
-    "owners": [ "osaul@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-always-show-private-ai-notice",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-always-trigger-server-model",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-available-by-default",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-based-amount-extraction-ignore-seen-terms-for-testing",
-    "owners": [ "jamessun@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-ai-dedupe-entities",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-no-filling-icons-experiment",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-reauth-required",
-    "owners": [ "leozhao@google.com", "tmartino@google.com", "bling-transactions@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-server-model",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-valuables-iph",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-wallet-flight-reservation",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-wallet-pass-branding-2026",
-    "owners": [ "hhtran@google.com", "wallet-1p-integrations-eng@google.com" ],
-    "expiry_milestone": 180
-  },
-  {
-    "name": "autofill-ai-wallet-private-passes",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-    },
-    {
-    "name": "autofill-ai-wallet-private-passes-deep-link",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-    },
-    {
-    "name": "autofill-ai-wallet-vehicle-registration",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ai-with-data-schema",
-    "owners": [ "leozhao@google.com", "tmartino@google.com", "bling-transactions@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ambient-autofill",
-    "owners": [ "leozhao@google.com", "tmartino@google.com", "vizcay@google.com", "bling-transactions@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-android-desktop-keyboard-accessory-revamp",
-    "owners": [ "piotrkotynia@google.com", "luchenpeng@google.com" ],
-    "expiry_milestone": 156
-  },
-  {
-    "name": "autofill-android-desktop-suppress-accessory-on-empty",
-    "owners": [ "luchenpeng@google.com", "piotrkotynia@google.com" ],
-    "expiry_milestone": 156
-  },
-  {
-    "name": "autofill-android-keyboard-accessory-dynamic-positioning",
-    "owners": [ "piotrkotynia@google.com" ],
-    "expiry_milestone": 156
-  },
-  {
-    "name": "autofill-android-keyboard-accessory-hover-preview",
-    "owners": [ "lkuba@google.com", "piotrkotynia@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-bottom-sheet-new-blur",
-    "owners": [ "vincb@google.com", "bling-transactions@google.com" ],
-    "expiry_milestone": 146
-  },
-  {
-    "name": "autofill-credit-card-scanner-ios",
-    "owners": [ "smcgruer@chromium.org", "chrome-payments-eng@google.com" ],
-    "expiry_milestone": 155
-  },
-  { "name": "autofill-disable-bnpl-country-check-for-testing",
-    "owners": [ "vinnypersky@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-ai-based-amount-extraction",
-    "owners": [ "jamessun@google.com", "viplavkadam@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-ai-card-recommendation",
-    "owners": [
-      "haochenf@google.com",
-      "ferny@google.com",
-      "payments-autofill-team@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-amount-extraction",
-    "owners": [ "jamessun@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-amount-extraction-testing",
-    "owners": [ "jamessun@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-autofill-settings-enterprise-policy",
-    "owners": [ "luchenpeng@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-bnpl-affirm-internationalization",
-    "owners": [ "yishuil@google.com", "vinnypersky@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-bnpl-klarna-internationalization",
-    "owners": [ "yishuil@google.com", "vinnypersky@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-bottom-sheet-scan-card-and-fill",
-    "owners": [ "qihuizhao@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-buy-now-pay-later",
-    "owners": ["vinnypersky@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
  {
     "name": "autofill-enable-buy-now-pay-later-for-externally-linked",
     "owners": ["wilsonlow@google.com", "payments-autofill-team@google.com"],
     "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-buy-now-pay-later-for-klarna",
-    "owners": ["wilsonlow@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-buy-now-pay-later-syncing",
-    "owners": ["vinnypersky@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-buy-now-pay-later-updated-suggestion-second-line-string",
-    "owners": ["vinnypersky@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-card-on-device-verification-enforcement",
-    "owners": [ "junhuihe@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 170
-  },
-  {
-    "name": "autofill-enable-cvc-storage-and-filling-standalone-form-enhancement",
-    "owners": ["jialihuang@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-downstream-card-awareness-iph",
-    "owners": [ "averina@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-ewallet-new-account-linking",
-    "owners": [ "nicluo@google.com", "hfizt@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-expand-iban-regex-pattern",
-    "owners": [ "qihuizhao@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-fpan-risk-based-authentication",
-    "owners": [ "junhuihe@google.com" ],
-    "expiry_milestone": 152
-  },
-  {
-    "name": "autofill-enable-gradient-google-logos",
-    "owners": [ "ferny@google.com", "qihuizhao@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-new-amex-network-art",
-    "owners": [ "ferny@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-new-fop-display-android",
-    "owners": [ "kschen@google.com", "qihuizhao@google.com", "osaul@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-offers-in-clank-keyboard-accessory",
-    "owners": [ "siyua@chromium.org", "siashah@google.com" ],
-    "expiry_milestone": 116
-  },
-  {
-    "name": "autofill-enable-omnibox-autofill",
-    "owners": [ "osaul@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-pay-now-pay-later-tabs",
-    "owners": [ "wilsonlow@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-prefetching-risk-data-for-retrieval",
-    "owners": ["hvs@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 145
-  },
-  {
-    "name": "autofill-enable-resurrecting-payments-users",
-    "owners": [ "vinnypersky@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-save-and-fill",
-    "owners": ["siyua@chromium.org", "averina@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-scan-card-option-when-no-cards-saved",
-    "owners": [ "benphillips@google.com", "siashah@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-separate-pix-preference-item",
-    "owners": [
-      "tushartushar@google.com",
-      "nicluo@google.com",
-      "siashah@google.com",
-      "payments-autofill-team@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  { "name": "autofill-enable-touch-to-fill-reshow-for-bnpl",
-    "owners": [ "ferny@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-travel-category-and-merchant-benefits-from-curinos",
-    "owners": [ "ferny@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-vcn-3ds-authentication",
-    "owners": ["vinnypersky@google.com", "hdhandapani@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 149
-  },
-  {
-    "name": "autofill-enable-wallet-branding",
-    "owners": ["osaul@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-enable-wallet-branding-v2",
-    "owners": ["osaul@google.com", "ferny@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-enable-wallet-direct-offers",
-    "owners": [
-      "wilsonlow@google.com",
-      "vinnypersky@google.com",
-      "payments-autofill-team@google.com"
-    ],
-    "expiry_milestone": 165
-  },
-  {
-    "name": "autofill-enable-wallet-reminder-notice",
-    "owners": [
-      "jamessun@google.com",
-      "ferny@google.com",
-      "payments-autofill-team@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-enable-wallet-reminder-notice-public-pass",
-    "owners": [
-      "brunobraga@google.com",
-      "yungyichen@google.com"
-    ],
-    "expiry_milestone": 161
-  },
-  {
-    "name": "autofill-gmail-otp",
-    "owners": [
-      "kazinova@google.com",
-      "passwordmanager-mobile-eng@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-ignore-payments-churned-users-strikes-for-testing",
-    "owners": [ "vinnypersky@google.com", "payments-autofill-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-manual-testing-data",
-    "owners": ["fleimgruber@google.com", "chrome-autofill@google.com"],
-    "expiry_milestone": 146
-  },
-  {
-    "name": "autofill-payments-field-swapping",
-    "owners": ["vidhanj@google.com"],
-    "expiry_milestone": 143
-  },
-  {
-    "name": "autofill-payments-sheet-v2",
-    "owners": [ "vincb@google.com", "bling-transactions@google.com" ],
-    "expiry_milestone": 135
-  },
-  {
-    "name": "autofill-prefer-buy-now-pay-later-blocklists",
-    "owners": [ "vinnypersky@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "autofill-reject-form-submissions-without-user-gesture",
-    "owners": [
-      "sugoi@chromium.org",
-      "vincb@google.com",
-      "bling-transactions@google.com"
-    ],
-    "expiry_milestone": 170
-  },
-  {
-    "name": "autofill-save-card-bottom-sheet-strike-limit-ios",
-    "owners": [
-      "jamessun@google.com",
-      "payments-autofill-team@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-support-date-input",
-    "owners": [ "tmartino@chromium.org", "bling-transactions@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "autofill-throttle-doc-form-scans",
-    "owners": ["vincb@google.com", "tmartino@google.com", "bling-transactions@google.com"],
-    "expiry_milestone": 165
-  },
-  {
-    "name": "autofill-throttle-filtered-doc-form-scan",
-    "owners": ["vincb@google.com", "tmartino@google.com", "bling-transactions@google.com"],
-    "expiry_milestone": 165
-  },
-  {
-    "name": "autofill-touch-to-fill-show-manual-fill-for-vcn-fix",
-    "owners": ["viplavkadam@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "autofill-upstream-enforce-strike-delay",
-    "owners": ["osaul@google.com", "payments-autofill-team@google.com"],
-    "expiry_milestone": 160
   },
   {
     "name": "automatic-usb-detach",
@@ -1348,11 +945,6 @@
     "name": "bind-cookies-to-scheme",
     "owners": [ "amarjotgill@chromium.org"],
     "expiry_milestone": 152
-  },
-  {
-    "name": "biometric-reauth-password-filling",
-    "owners": [ "ioanap@chromium.org", "izuzic@google.com"],
-    "expiry_milestone": 125
   },
   {
     "name": "block-cross-partition-blob-url-fetching",
@@ -2334,21 +1926,6 @@
     "name": "cras-processor-wav-dump",
     "owners": ["aaronyu@google.com", "chromeos-audio@google.com" ],
     "expiry_milestone": 150
-  },
-  {
-    "name": "credential-management-third-party-web-api-request-forwarding",
-    "owners": [
-      "izuzic@google.com",
-      "friedrichh@chromium.org" ],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "credential-management-unified-ui",
-    "owners": [
-      "derinel@google.com",
-      "anki-team@google.com"
-    ],
-    "expiry_milestone": 155
   },
   {
     "name": "critical-action-history",
@@ -3466,13 +3043,6 @@
     "expiry_milestone": 160
   },
   {
-    "name": "enable-autofill-credit-card-upload",
-    "owners": [ "osaul@google.com" ],
-    // This flag is heavily used by the testing team that can't easily use the
-    // commandline, especially in India.
-    "expiry_milestone": -1
-  },
-  {
     "name": "enable-ax-tree-fixing",
     "owners": [ "mschillaci@chromium.org", "//ui/accessibility/OWNERS" ],
     "expiry_milestone": 150
@@ -4488,12 +4058,6 @@
     "expiry_milestone": 135
   },
   {
-    "name": "enable-show-autofill-signatures",
-    "owners": [ "kazinova@google.com" ],
-    // Used for debugging and QA by the autofill team for the indefinite future.
-    "expiry_milestone": -1
-  },
-  {
     "name": "enable-site-isolation-for-password-sites",
     "owners": [ "site-isolation-dev@chromium.org", "alexmos@chromium.org", "lukasza@chromium.org" ],
     // This flag is needed without an expiration to allow users of low-memory
@@ -5206,11 +4770,6 @@
     "expiry_milestone": 160
   },
   {
-    "name": "field-classification-model-caching",
-    "owners": [ "kazinova@google.com", "lamort@google.com", "chrome-password-manager-team@google.com" ],
-    "expiry_milestone": 146
-  },
-  {
     "name": "file-system-provider-cloud-file-system",
     "owners": [ "benreich@google.com", "cassycc@google.com", "simmonsjosh@google.com" ],
     "expiry_milestone": 140
@@ -5247,11 +4806,6 @@
     "name": "files-trash-drive",
     "owners": [ "benreich@chromium.org", "joelhockey@chromium.org", "simmonsjosh@google.com" ],
     "expiry_milestone": 149
-  },
-  {
-    "name": "fill-on-account-select",
-    "owners": [ "kazinova@google.com", "vasilii@chromium.org" ],
-    "expiry_milestone": 156
   },
   {
     "name": "first-run-desktop-choice-screen-refresh",
@@ -5706,31 +5260,6 @@
       "//chrome/browser/actor/OWNERS"
     ],
     "expiry_milestone": 172
-  },
-  {
-    "name": "glic-actor-autofill",
-    "owners": [
-      "battre@chromium.org",
-      "slobodan@chromium.org",
-      "//components/autofill/OWNERS"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "glic-actor-autofill-pre-click",
-    "owners": [
-      "slobodan@chromium.org",
-      "//components/autofill/OWNERS"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "glic-actor-autofill-section-label",
-    "owners": [
-      "slobodan@chromium.org",
-      "//components/autofill/OWNERS"
-    ],
-    "expiry_milestone": 160
   },
   {
     "name": "glic-actor-cursor",
@@ -7071,14 +6600,6 @@
     "expiry_milestone": 141
   },
   {
-    "name": "mark-all-credentials-as-leaked",
-    "owners": [
-      "atsvirchkova@google.com",
-      "vsemeniuk@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
     "name": "mbi-mode",
     "owners": [ "dom@chromium.org", "blink-isolation-dev@chromium.org" ],
     "expiry_milestone": 120
@@ -8250,44 +7771,6 @@
     "expiry_milestone": 150
   },
   {
-    "name": "passkey-unlock-error-ui",
-    "owners": ["ylahodiuk@google.com", "izuzic@google.com", "anki-team@google.com"],
-    "expiry_milestone": 165
-  },
-  {
-    "name": "password-auto-submission-ios",
-    "owners": ["vincb@google.com", "bling-transactions@google.com"],
-    "expiry_milestone": 152
-  },
-  {
-    "name": "password-change-with-glic",
-    "owners": [
-      "vsemeniuk@google.com",
-      "chrome-password-manager-team@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "password-compromise-warning-in-details-card",
-    "owners": ["desaic@google.com", "vsemeniuk@google.com", "chrome-password-manager-team@google.com"],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "password-form-grouped-affiliations",
-    "owners": ["atsvirchkova@google.com", "vsemeniuk@google.com", "chrome-password-manager-team@google.com"],
-    "expiry_milestone": 150
-  },
-  {
-    "name": "password-save-in-context-error-resolution",
-    "owners": [ "izuzic@google.com", "rgod@google.com", "ylahodiuk@google.com", "anki-team@google.com" ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "password-save-update-dropdown-menu-experiment",
-    "owners": [ "talitahalboth@google.com", "chrome-password-manager-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
     "name": "payment-handler-camera-access",
     "owners": [ "smcgruer@chromium.org", "chrome-payments-eng@google.com" ],
     "expiry_milestone": 160
@@ -8677,11 +8160,6 @@
     "name": "pwa-update-dialog-for-icon",
     "owners": [ "finnur@chromium.org", "beverloo@chromium.org" ],
     "expiry_milestone": 140
-  },
-  {
-    "name": "pwm-show-suggestions-on-autofocus",
-    "owners": [ "kenrb@chromium.org", "derinel@google.com" ],
-    "expiry_milestone": 155
   },
   {
     "name": "queued-compositor-web-contents-updates",
@@ -9174,16 +8652,6 @@
     "expiry_milestone": 160
   },
   {
-    "name": "sensitive-content",
-    "owners": ["jkeitel@google.com"],
-    "expiry_milestone": 163
-  },
-  {
-    "name": "sensitive-content-while-switching-tabs",
-    "owners": ["jkeitel@google.com"],
-    "expiry_milestone": 163
-  },
-  {
     "name": "separate-web-app-shortcut-badge-icon",
     "owners": ["tbarzic@chromium.org", "owenzhang@google.com"],
     "expiry_milestone": 130
@@ -9272,12 +8740,6 @@
     "name": "shopping-list",
     "owners": [ "mdjones@chromium.org", "chrome-shopping-eng@google.com" ],
     "expiry_milestone": 122
-  },
-  {
-    "name": "show-autofill-type-predictions",
-    "owners": [ "ftirelo@chromium.org", "mathp@chromium.org" ],
-    // This is used by autofill devs to debug on Android.
-    "expiry_milestone": -1
   },
   {
     "name": "show-bluetooth-debug-log-toggle",
@@ -10426,13 +9888,6 @@
     "name": "wallet-api-private-passes-enabled",
     "owners": [ "brunobraga@google.com", "chudakov@google.com" ],
     "expiry_milestone": 160
-  },
-  {
-    "name": "wallet-service-use-sandbox",
-    "owners": [ "osaul@google.com", "payments-autofill-team@google.com" ],
-    // This flag is used by testing teams to run Google Payments calls against
-    // the development server environment.
-    "expiry_milestone": -1
   },
   {
     "name": "wallpaper-fast-refresh",

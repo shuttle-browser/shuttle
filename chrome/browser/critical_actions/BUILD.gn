@@ -15,7 +15,6 @@ source_set("critical_actions") {
   deps = [
     "//base",
     "//chrome/browser/history",
-    "//chrome/browser/ui/passwords",
     "//chrome/common",
     "//components/critical_actions/core/browser",
     "//components/keyed_service/core",
@@ -36,7 +35,6 @@ source_set("unit_tests") {
     ":critical_actions",
     "//base",
     "//base/test:test_support",
-    "//chrome/browser/ui/passwords",
     "//chrome/common",
     "//chrome/test:test_support",
     "//components/critical_actions/core/browser",

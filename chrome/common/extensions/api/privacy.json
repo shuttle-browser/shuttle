@@ -12,34 +12,6 @@
         "type": "string",
         "enum": ["default", "default_public_and_private_interfaces", "default_public_interface_only", "disable_non_proxied_udp"],
         "description": "The IP handling policy of WebRTC."
-      },
-      {
-        "id": "AutofillBlockedType",
-        "type": "string",
-        "enum": ["contact_info", "payments", "identity_docs", "travel", "all"],
-        "description": "Categories of Autofill data."
-      },
-      {
-        "id": "AutofillSettings",
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "urlPattern": {
-              "type": "string",
-              "description": "A URL pattern specifying the sites for which the block rule applies."
-            },
-            "blockedTypes": {
-              "type": "array",
-              "items": {
-                "$ref": "AutofillBlockedType"
-              },
-              "description": "The categories of Autofill data to block on matching sites."
-            }
-          }
-        },
-        "description": "Site-specific block rules for Autofill features.",
-        "nodoc": true
       }
     ],
     "properties": {
@@ -69,33 +41,6 @@
             "$ref": "types.ChromeSetting",
             "value": ["alternateErrorPagesEnabled", {"type":"boolean"}],
             "description": "If enabled, Chrome uses a web service to help resolve navigation errors. This preference's value is a boolean, defaulting to <code>true</code>."
-          },
-          "autofillEnabled": {
-            "$ref": "types.ChromeSetting",
-            "value": ["autofillEnabled", {"type":"boolean"}],
-            "deprecated": "Please use privacy.services.autofillAddressEnabled and privacy.services.autofillCreditCardEnabled. This remains for backward compatibility in this release and will be removed in the future.",
-            "description": "If enabled, Chrome offers to automatically fill in forms. This preference's value is a boolean, defaulting to <code>true</code>."
-          },
-          "autofillAddressEnabled": {
-            "$ref": "types.ChromeSetting",
-            "value": ["autofillAddressEnabled", {"type":"boolean"}],
-            "description": "If enabled, Chrome offers to automatically fill in addresses and other form data. This preference's value is a boolean, defaulting to <code>true</code>."
-          },
-          "autofillCreditCardEnabled": {
-            "$ref": "types.ChromeSetting",
-            "value": ["autofillCreditCardEnabled", {"type":"boolean"}],
-            "description": "If enabled, Chrome offers to automatically fill in credit card forms. This preference's value is a boolean, defaulting to <code>true</code>."
-          },
-          "autofillSettings": {
-            "$ref": "types.ChromeSetting",
-            "value": ["autofillSettings", {"$ref":"AutofillSettings"}],
-            "description": "If set, allows site-specific control over Autofill features by blocking specific data categories on matching URL patterns.",
-            "nodoc": true
-          },
-          "passwordSavingEnabled": {
-            "$ref": "types.ChromeSetting",
-            "value": ["passwordSavingEnabled", {"type":"boolean"}],
-            "description": "If enabled, the password manager will ask if you want to save passwords. This preference's value is a boolean, defaulting to <code>true</code>."
           },
           "safeBrowsingEnabled": {
             "$ref": "types.ChromeSetting",

@@ -41,9 +41,6 @@ class GURL;
 class LocationBar;
 class StatusBubble;
 
-namespace autofill {
-class AutofillBubbleHandler;
-}  // namespace autofill
 
 namespace content {
 class EyeDropper;
@@ -237,9 +234,6 @@ class BrowserWindow : public ui::BaseWindow {
   // `WebContents`.
   virtual void SetContentsSize(const gfx::Size& size) = 0;
 
-  // Returns the AutofillBubbleHandler responsible for handling all
-  // Autofill-related bubbles.
-  virtual autofill::AutofillBubbleHandler* GetAutofillBubbleHandler() = 0;
 
   // Returns the location bar.
   virtual LocationBar* GetLocationBar() const = 0;

@@ -157,44 +157,4 @@ RenderFrameHost* FindTargetLocalRootFrame(tabs::TabHandle tab_handle,
   return GetLocalRoot(target_frame);
 }
 
-autofill::FieldGlobalId GetFieldIdFromPageTarget(
-    const AnnotatedPageContent* last_observation,
-    tabs::TabInterface* tab,
-    const PageTarget& target) {
-  if (!tab) {
-    return {};
-  }
-  if (std::optional<TargetNodeInfo> node_info =
-          FindLastObservedNodeForActionTarget(last_observation, target, tab)) {
-    if (content::WebContents* web_contents = tab->GetContents()) {
-      if (RenderFrameHost* rfh =
-              optimization_guide::GetRenderFrameForDocumentIdentifier(
-                  *web_contents,
-                  node_info->document_identifier.serialized_token())) {
-        // Validation check: ensure that the target frame's underlying widget
-        // matches the widget returned by hit testing at the targeted
-        // coordinate. This prevents a compromised renderer from redirecting
-        // a coordinate-targeted action to its own frame via a spoofed
-        // popup_window.
-        if (std::holds_alternative<gfx::Point>(target)) {
-          // FindWidgetAtPoint expects view-relative DIPs. PageTarget points are
-          // already in DIPs.
-          const gfx::Point& point = std::get<gfx::Point>(target);
-          content::RenderWidgetHost* actual_rwh =
-              web_contents->FindWidgetAtPoint(gfx::PointF(point));
-          if (!actual_rwh || actual_rwh != rfh->GetRenderWidgetHost()) {
-            return {};
-          }
-        }
-
-        return autofill::FieldGlobalId(
-            autofill::LocalFrameToken(rfh->GetFrameToken().value()),
-            autofill::FieldRendererId(node_info->node->content_attributes()
-                                          .common_ancestor_dom_node_id()));
-      }
-    }
-  }
-  return {};
-}
-
 }  // namespace actor

@@ -52,13 +52,6 @@ void OpenClearBrowsingDataDialogWindow(Profile* profile) {
   browser->GetWindow()->Show();
 }
 
-void OpenImportSettingsDialogWindow(Profile* profile) {
-  BrowserWindowInterface* browser =
-      CreateBrowserWindow(BrowserWindowCreateParams(profile, true));
-  ShowImportDialog(browser);
-  browser->GetWindow()->Show();
-}
-
 
 void OpenExtensionsWindow(Profile* profile) {
   BrowserWindowInterface* browser =

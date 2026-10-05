@@ -9,10 +9,6 @@
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/webid/federated_identity_auto_reauthn_permission_context_delegate.h"
 
-namespace password_manager {
-class PasswordManagerSettingsService;
-}
-
 namespace permissions {
 class PermissionDecisionAutoBlocker;
 }
@@ -45,11 +41,6 @@ class FederatedIdentityAutoReauthnPermissionContext
 
   ~FederatedIdentityAutoReauthnPermissionContext() override;
 
-  // Initializes cyclic dependency. `settings_service` must be non-null and
-  // can be used until Shutdown().
-  void OnPasswordManagerSettingsServiceInitialized(
-      password_manager::PasswordManagerSettingsService* settings_service);
-
   // KeyedService:
   void Shutdown() override;
 
@@ -71,9 +62,6 @@ class FederatedIdentityAutoReauthnPermissionContext
   const raw_ptr<HostContentSettingsMap> host_content_settings_map_;
   const raw_ptr<permissions::PermissionDecisionAutoBlocker>
       permission_autoblocker_;
-
-  raw_ptr<password_manager::PasswordManagerSettingsService>
-      password_manager_settings_service_ = nullptr;
 };
 
 #endif  // CHROME_BROWSER_WEBID_FEDERATED_IDENTITY_AUTO_REAUTHN_PERMISSION_CONTEXT_H_

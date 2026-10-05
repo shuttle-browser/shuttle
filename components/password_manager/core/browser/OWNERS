@@ -1,2 +1,0 @@
-# For trivial changes, e.g. to the autofill::SuggestionType enum.
-per-file password_autofill_manager.cc=file://components/autofill/OWNERS

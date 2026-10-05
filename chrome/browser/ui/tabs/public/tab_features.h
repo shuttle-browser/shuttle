@@ -46,7 +46,6 @@ class FormInteractionTabHelper;
 class FromGWSNavigationAndKeepAliveRequestObserver;
 class HttpAuthCacheStatus;
 class JsOptimizationsPageActionController;
-class ManagePasswordsPageActionController;
 class Profile;
 class QwacWebContentsObserver;
 class ReadAnythingController;
@@ -63,15 +62,6 @@ namespace back_to_opener {
 class BackToOpenerController;
 }  // namespace back_to_opener
 
-namespace autofill {
-class BubbleManager;
-class OmniboxAutofillBubbleController;
-class OmniboxAutofillPageActionController;
-class PaymentsChurnedUsersBubbleController;
-class PaymentsChurnedUsersPageActionController;
-class WalletReminderNoticeBubbleController;
-class WalletReminderNoticePageActionController;
-}  // namespace autofill
 
 namespace actor {
 class ActorTabData;
@@ -168,11 +158,6 @@ class TabFeatures {
     return file_system_access_page_action_controller_.get();
   }
 
-  ManagePasswordsPageActionController*
-  manage_passwords_page_action_controller() {
-    return manage_passwords_page_action_controller_.get();
-  }
-
   zoom::ZoomViewController* zoom_view_controller() {
     return zoom_view_controller_.get();
   }
@@ -190,18 +175,6 @@ class TabFeatures {
   TabCreationMetricsController* tab_creation_metrics_controller() {
     return tab_creation_metrics_controller_.get();
   }
-
-  autofill::PaymentsChurnedUsersPageActionController*
-  payments_churned_users_page_action_controller() {
-    return payments_churned_users_page_action_controller_.get();
-  }
-
-  autofill::BubbleManager* autofill_bubble_manager() {
-    return autofill_bubble_manager_.get();
-  }
-
-  autofill::BubbleManager* SetBubbleManagerForTesting(
-      std::unique_ptr<autofill::BubbleManager> bubble_manager);
 
   AskBeforeHttpDialogController* ask_before_http_dialog_controller() {
     return ask_before_http_dialog_controller_.get();
@@ -265,10 +238,6 @@ class TabFeatures {
   // interact with this to have their feature's page action shown.
   std::unique_ptr<page_actions::PageActionController> page_action_controller_;
 
-  // Responsible for managing the "Manage Passwords" page action.
-  std::unique_ptr<ManagePasswordsPageActionController>
-      manage_passwords_page_action_controller_;
-
   // Responsible for managing the "Zoom" page action and bubble.
   std::unique_ptr<zoom::ZoomViewController> zoom_view_controller_;
 
@@ -317,35 +286,6 @@ class TabFeatures {
 
   std::unique_ptr<TabCreationMetricsController>
       tab_creation_metrics_controller_;
-
-  std::unique_ptr<autofill::BubbleManager> autofill_bubble_manager_;
-
-  // Responsible for managing the "Payments Churned Users" page action.
-  std::unique_ptr<autofill::PaymentsChurnedUsersPageActionController>
-      payments_churned_users_page_action_controller_;
-
-  // Responsible for managing the "Autofill payment" page action.
-  std::unique_ptr<autofill::OmniboxAutofillPageActionController>
-      omnibox_autofill_page_action_controller_;
-
-  // Responsible for managing the bubble that displays after the
-  // "Autofill payment" chip is clicked.
-  std::unique_ptr<autofill::OmniboxAutofillBubbleController>
-      omnibox_autofill_bubble_controller_;
-
-  // Responsible for managing the bubble that prompts a user to turn on payments
-  // autofill if they have turned it off.
-  std::unique_ptr<autofill::PaymentsChurnedUsersBubbleController>
-      payments_churned_users_bubble_controller_;
-
-  // Responsible for managing the bubble that displays the Wallet reminder
-  // notice.
-  std::unique_ptr<autofill::WalletReminderNoticeBubbleController>
-      wallet_reminder_notice_bubble_controller_;
-
-  // Responsible for managing the "Wallet Reminder Notice" page action.
-  std::unique_ptr<autofill::WalletReminderNoticePageActionController>
-      wallet_reminder_notice_page_action_controller_;
 
   std::unique_ptr<AskBeforeHttpDialogController>
       ask_before_http_dialog_controller_;

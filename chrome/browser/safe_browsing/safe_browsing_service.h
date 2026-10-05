@@ -74,7 +74,6 @@ namespace safe_browsing {
 class DownloadProtectionService;
 #endif
 class HashRealTimeService;
-class PasswordProtectionService;
 class SafeBrowsingDatabaseManager;
 class SafeBrowsingPrefChangeHandler;
 class SafeBrowsingServiceFactory;
@@ -174,10 +173,6 @@ class SafeBrowsingServiceImpl : public SafeBrowsingServiceInterface,
 #endif
 
   TriggerManager* trigger_manager() const;
-
-  // Gets PasswordProtectionService by profile.
-  PasswordProtectionService* GetPasswordProtectionService(
-      Profile* profile) const;
 
   // Returns a preference validation delegate that adds incidents to the
   // incident reporting service for validation failures. Returns NULL if the

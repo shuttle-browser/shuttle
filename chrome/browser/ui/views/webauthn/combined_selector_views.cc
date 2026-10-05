@@ -68,13 +68,6 @@ std::vector<std::u16string_view> GetTextsForMechanism(
     texts.push_back(mechanism.display_name);
     texts.push_back(mechanism.name);
   }
-  if (const auto* password =
-          std::get_if<AuthenticatorRequestDialogModel::Mechanism::Password>(
-              &mechanism.type)) {
-    if (password->value().origin) {
-      texts.push_back(*password->value().origin);
-    }
-  }
   texts.push_back(mechanism.description);
   return texts;
 }

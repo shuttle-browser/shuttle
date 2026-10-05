@@ -220,7 +220,6 @@ static_library("common_lib") {
     "//components/offline_pages/core:switches",
     "//components/omnibox/common",
     "//components/page_load_metrics/common:page_load_metrics_mojom",
-    "//components/password_manager/core/common",
     "//components/policy:generated",
     "//components/policy/core/common",
     "//components/prefs",
@@ -357,10 +356,7 @@ static_library("common_lib") {
     ]
   } else {
     # Non-Android.
-    public_deps += [ "//chrome/common/importer" ]
     sources += [
-      "password_manager/remote_actor_credential_sharing_policy.cc",
-      "password_manager/remote_actor_credential_sharing_policy.h",
       "read_anything/read_anything_util.cc",
       "read_anything/read_anything_util.h",
     ]
@@ -535,7 +531,6 @@ static_library("url_constants") {
     "//components/history_clusters/history_clusters_internals/webui:constants",
     "//components/lens:buildflags",
     "//components/optimization_guide/optimization_guide_internals/webui:url_constants",
-    "//components/password_manager/content/common",
     "//components/safe_browsing/core/common",
     "//device/vr/buildflags",
   ]
@@ -711,7 +706,6 @@ mojom("mojo_bindings") {
   }
 
   if (!is_android) {
-    sources += [ "password_manager/remote_actor_credential_sharing.mojom" ]
   }
 
   if (safe_browsing_mode == 1) {

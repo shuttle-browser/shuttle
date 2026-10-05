@@ -195,12 +195,9 @@ if (!is_android) {
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/actions",
       "//chrome/browser/ui/actions:actions_util",
-      "//chrome/browser/ui/autofill",
-      "//chrome/browser/ui/autofill/payments",
       "//chrome/browser/ui/fuzzy_search",
       "//chrome/browser/ui/interaction",
       "//chrome/browser/ui/page_info",
-      "//chrome/browser/ui/passwords",
       "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/read_anything",
       "//chrome/browser/ui/search",
@@ -264,7 +261,6 @@ source_set("incognito_allowed_url") {
   deps = [
     "//chrome/browser/signin:signin_promo",
     "//chrome/common",
-    "//components/password_manager/content/common",
     "//components/signin/public/base",
     "//url",
   ]
@@ -607,8 +603,6 @@ static_library("ui") {
     "//chrome/browser/content_settings:content_settings_factory_impl",
     "//chrome/browser/content_settings:content_settings_util",
     "//chrome/browser/content_settings:content_settings_util_impl",
-    "//chrome/browser/device_reauth",
-    "//chrome/browser/device_reauth:impl",
     "//chrome/browser/devtools",
     "//chrome/browser/enterprise",
     "//chrome/browser/enterprise:impl",
@@ -638,8 +632,6 @@ static_library("ui") {
     "//chrome/browser/page_info",
     "//chrome/browser/page_load_metrics",
     "//chrome/browser/page_load_metrics:impl",
-    "//chrome/browser/password_manager",
-    "//chrome/browser/password_manager:impl",
     "//chrome/browser/performance_manager",
     "//chrome/browser/performance_manager:impl",
     "//chrome/browser/permissions",
@@ -677,10 +669,6 @@ static_library("ui") {
     "//chrome/browser/task_manager/common:impl",
     "//chrome/browser/trusted_vault",
     "//chrome/browser/trusted_vault:impl",
-    "//chrome/browser/ui/autofill",
-    "//chrome/browser/ui/autofill:impl",
-    "//chrome/browser/ui/autofill/payments",
-    "//chrome/browser/ui/autofill/payments:impl",
     "//chrome/browser/ui/blocked_content",
     "//chrome/browser/ui/blocked_content:impl",
     "//chrome/browser/ui/bluetooth",
@@ -697,8 +685,6 @@ static_library("ui") {
     "//chrome/browser/ui/omnibox:impl",
     "//chrome/browser/ui/page_info",
     "//chrome/browser/ui/page_info:impl",
-    "//chrome/browser/ui/passwords",
-    "//chrome/browser/ui/passwords:impl",
     "//chrome/browser/ui/prefs",
     "//chrome/browser/ui/prefs:impl",
     "//chrome/browser/ui/profiles",
@@ -731,7 +717,6 @@ static_library("ui") {
     "//chrome/browser/vr:impl",
     "//chrome/browser/webauthn",
     "//chrome/browser/webauthn:impl",
-    "//components/autofill/core/common:credit_card_number_validation",
     "//components/captive_portal/content",
     "//components/client_hints/browser",
     "//components/content_capture/common",
@@ -752,15 +737,11 @@ static_library("ui") {
     "//components/metrics/private_metrics",
     "//components/omnibox/browser:vector_icons",
     "//components/optimization_guide/content/browser",
-    "//components/password_manager/content/browser",
-    "//components/password_manager/content/common",
-    "//components/password_manager/core/browser",
     "//components/performance_manager",
     "//components/permissions",
     "//components/policy/core/browser",
     "//components/resources",
     "//components/safe_browsing/content/browser",
-    "//components/safe_browsing/core/browser/password_protection:password_protection_metrics_util",
     "//components/search_engines",
     "//components/security_interstitials/content:security_interstitial_page",
     "//components/signin/public/identity_manager",
@@ -937,12 +918,10 @@ static_library("ui") {
     # TODO(crbug.com/353332589): Remove this circular dependency when the
     # following headers get componentized:
     # c/b/ui/browser.h, browser_window.h
-    "//chrome/browser/ui/autofill/payments:impl",
 
     # TODO(crbug.com/502936350): Remove this circular dependency.
     # device_reauth's :impl includes headers from //chrome/browser/ui
     # that can't be split out yet.
-    "//chrome/browser/device_reauth:impl",
 
     # TODO(crbug.com/40161499): Remove this circular dependency.
     "//chrome/browser/devtools",
@@ -975,7 +954,6 @@ static_library("ui") {
     # TODO(crbug.com/353332589): Remove this circular dependency when the
     # following headers get componentized:
     # c/b/ui/browser.h, browser_window.h
-    "//chrome/browser/password_manager:impl",
 
     # TODO(crbug.com/353332589): Remove this circular dependency when the
     # following header gets componentized:
@@ -1014,7 +992,6 @@ static_library("ui") {
     # c/b/ui/browser.h, browser_window.h, singleton_tabs.h
     # c/b/ui/views/autofill/popup/email_verifier/email_verification_popup_view.h
     # c/b/ui/views/frame/browser_view.h
-    "//chrome/browser/ui/autofill:impl",
 
     # TODO(crbug.com/353332589): Remove this circular dependency when the
     # following headers get componentized:
@@ -1099,7 +1076,6 @@ static_library("ui") {
     # TODO(crbug.com/437811373): Remove this circular dependency when the
     # following headers get componentized:
     # - c/b/ui/browser.h
-    "//chrome/browser/ui/passwords:impl",
 
     # ssl:impl includes headers from //chrome/browser/ui that can't be
     # split out yet (e.g. browser.h).
@@ -1148,8 +1124,6 @@ static_library("ui") {
       ":screen_capture_notification_ui_stub",
       "//chrome/android:jni_headers",
       "//chrome/browser/android/webapk:webapk_sources",
-      "//chrome/browser/autofill/android:jni_headers",
-      "//chrome/browser/facilitated_payments",
       "//chrome/browser/keyboard_accessory/android",
       "//chrome/browser/keyboard_accessory/android:impl",
       "//chrome/browser/ui/android/hats",
@@ -1160,7 +1134,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/notifications_internals",
       "//chrome/browser/ui/webui/notifications_internals:impl",
       "//components/android_autofill/browser:android",
-      "//components/autofill/android:payments_jni_headers",
       "//components/browser_ui/accessibility/android",
       "//components/browser_ui/client_certificate/android",
       "//components/embedder_support/android:context_menu",
@@ -1169,10 +1142,8 @@ static_library("ui") {
       "//components/messages/android:feature_flags",
       "//components/navigation_interception",
       "//components/page_info/android",
-      "//components/password_manager/core/browser",
       "//components/resources:android_resources",
       "//components/security_state/content/android",
-      "//components/sensitive_content",
       "//components/webauthn/android",
       "//content/public/browser",
       "//third_party/jni_zero",
@@ -1260,7 +1231,6 @@ static_library("ui") {
       "//chrome/browser/device_api",
       "//chrome/browser/first_party_sets",
       "//chrome/browser/lifetime:termination_notification",
-      "//chrome/browser/password_manager/actor_login:factories",
       "//chrome/browser/speech",
       "//chrome/browser/ui/browser_ui_controller",
       "//chrome/browser/ui/browser_ui_controller:impl",
@@ -1270,10 +1240,6 @@ static_library("ui") {
       "//chrome/browser/ui/focus:impl",
       "//chrome/browser/ui/fullscreen",
       "//chrome/browser/ui/fullscreen:impl",
-      "//chrome/browser/ui/passwords/bubble_controllers",
-      "//chrome/browser/ui/passwords/bubble_controllers:impl",
-      "//chrome/browser/ui/passwords/settings",
-      "//chrome/browser/ui/passwords/settings:impl",
       "//chrome/browser/ui/shared_highlighting",
       "//chrome/browser/ui/tab_sharing",
       "//chrome/browser/ui/tab_sharing:impl",
@@ -1360,8 +1326,6 @@ static_library("ui") {
       "//components/app_constants",
       "//components/multistep_filter/core:features",
       "//components/paint_preview/public",
-      "//components/password_manager/content/common",
-      "//components/password_manager/core/browser/leak_detection",
       "//components/services/app_service",
       "//components/ui_metrics",
       "//components/url_formatter",
@@ -1382,13 +1346,10 @@ static_library("ui") {
 
     # Non-android public_deps for "ui" target.
     public_deps += [
-      "//chrome/browser/importer",
-      "//chrome/browser/importer:impl",
       "//chrome/browser/ui/read_anything:impl",
       "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/waap:manager",
       "//chrome/browser/ui/webui/multistep_filter_internals",
-      "//chrome/browser/ui/webui/password_manager:password_manager_ui",
       "//chrome/browser/ui/webui/side_panel/history",
       "//chrome/browser/ui/webui/side_panel/history_clusters",
       "//chrome/browser/ui/webui/side_panel/read_anything",
@@ -1870,7 +1831,6 @@ static_library("ui") {
     ]
     deps += [
       "//chrome/browser/lifetime:termination_notification",
-      "//chrome/browser/ui/autofill/payments",
       "//chrome/browser/ui/frame",
       "//chrome/browser/ui/frame:impl",
     ]
@@ -2088,27 +2048,6 @@ static_library("ui") {
 
   if (toolkit_views) {
     sources += [
-      "views/autofill/autofill_bubble_handler_impl.cc",
-      "views/autofill/autofill_bubble_handler_impl.h",
-      "views/autofill/autofill_field_promo_view_impl.cc",
-      "views/autofill/autofill_field_promo_view_impl.h",
-      "views/autofill/payments/bnpl_issuer_linked_pill.cc",
-      "views/autofill/payments/bnpl_issuer_linked_pill.h",
-      "views/autofill/payments/bnpl_issuer_view.cc",
-      "views/autofill/payments/bnpl_issuer_view.h",
-      "views/autofill/payments/omnibox_autofill_bubble_view.cc",
-      "views/autofill/payments/omnibox_autofill_bubble_view.h",
-      "views/autofill/payments/select_bnpl_issuer_dialog.cc",
-      "views/autofill/payments/select_bnpl_issuer_dialog.h",
-      "views/autofill/popup/popup_base_view.cc",
-      "views/autofill/popup/popup_loading_view.cc",
-      "views/autofill/popup/popup_loading_view.h",
-      "views/autofill/popup/popup_row_factory_utils.cc",
-      "views/autofill/popup/popup_row_factory_utils.h",
-      "views/autofill/popup/popup_row_view.cc",
-      "views/autofill/popup/popup_view_utils.cc",
-      "views/autofill/popup/popup_view_views.cc",
-      "views/autofill/popup/popup_view_views.h",
       "views/browser_commands_views.cc",
       "views/browser_dialogs_views.cc",
       "views/bubble_anchor_util_views.cc",
@@ -2224,7 +2163,6 @@ static_library("ui") {
       "//chrome/browser/ui:sad_tab",
       "//chrome/browser/ui:sad_tab_impl",
       "//chrome/browser/ui/actions",
-      "//chrome/browser/ui/autofill/payments",
       "//chrome/browser/ui/dialogs",
       "//chrome/browser/ui/tabs/organizer:impl",
       "//chrome/browser/ui/tabs/tab_drag_api",
@@ -2271,48 +2209,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/animations",
       "//chrome/browser/ui/views/apps",
       "//chrome/browser/ui/views/apps:impl",
-      "//chrome/browser/ui/views/autofill:address_editor_view",
-      "//chrome/browser/ui/views/autofill:autofill_bubble_utils",
-      "//chrome/browser/ui/views/autofill:delete_address_profile_dialog_view",
-      "//chrome/browser/ui/views/autofill:edit_address_profile_view",
-      "//chrome/browser/ui/views/autofill:save_address_profile_view",
-      "//chrome/browser/ui/views/autofill:update_address_profile_view",
-      "//chrome/browser/ui/views/autofill/payments:autofill_error_dialog_view_native_views",
-      "//chrome/browser/ui/views/autofill/payments:autofill_progress_dialog_views",
-      "//chrome/browser/ui/views/autofill/payments:bnpl_dialog_footnote",
-      "//chrome/browser/ui/views/autofill/payments:bnpl_tos_dialog",
-      "//chrome/browser/ui/views/autofill/payments:bnpl_tos_view_desktop",
-      "//chrome/browser/ui/views/autofill/payments:card_unmask_authentication_selection_dialog_view",
-      "//chrome/browser/ui/views/autofill/payments:card_unmask_otp_input_dialog_views",
-      "//chrome/browser/ui/views/autofill/payments:card_unmask_prompt_views",
-      "//chrome/browser/ui/views/autofill/payments:filled_card_information_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:mandatory_reauth_confirmation_bubble_view",
-      "//chrome/browser/ui/views/autofill/payments:mandatory_reauth_opt_in_bubble_view",
-      "//chrome/browser/ui/views/autofill/payments:offer_notification_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:omnibox_autofill_suggestion_view",
-      "//chrome/browser/ui/views/autofill/payments:payments_churned_users_bubble_view",
-      "//chrome/browser/ui/views/autofill/payments:payments_window_user_consent_dialog_view",
-      "//chrome/browser/ui/views/autofill/payments:promo_code_label_button",
-      "//chrome/browser/ui/views/autofill/payments:save_and_fill_view_desktop",
-      "//chrome/browser/ui/views/autofill/payments:save_card_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:save_card_manage_cards_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:save_card_offer_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:save_payment_method_and_virtual_card_enroll_confirmation_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:virtual_card_enroll_bubble_views",
-      "//chrome/browser/ui/views/autofill/payments:wallet_reminder_notice_bubble_view",
-      "//chrome/browser/ui/views/autofill/payments:webauthn_dialog_view",
-      "//chrome/browser/ui/views/autofill/popup:lazy_loading_image_view",
-      "//chrome/browser/ui/views/autofill/popup:password_favicon_loader",
-      "//chrome/browser/ui/views/autofill/popup:popup_at_memory_ai_disclosure_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_bnpl_footnote_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_cell_utils",
-      "//chrome/browser/ui/views/autofill/popup:popup_centered_text_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_notice_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_row_with_button_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_search_bar_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_separator_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_title_view",
-      "//chrome/browser/ui/views/autofill/popup:popup_warning_view",
       "//chrome/browser/ui/views/bubble",
       "//chrome/browser/ui/views/desktop_capture",
       "//chrome/browser/ui/views/desktop_capture:impl",
@@ -2353,7 +2249,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/frame:windows_icon_painter",
       "//chrome/browser/ui/views/fullscreen_control",
       "//chrome/browser/ui/views/fullscreen_control:impl",
-      "//chrome/browser/ui/views/importer",
       "//chrome/browser/ui/views/interaction:impl",
       "//chrome/browser/ui/views/location_bar:impl",
       "//chrome/browser/ui/views/location_bar/cookie_controls",
@@ -2366,8 +2261,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/page_action:impl",
       "//chrome/browser/ui/views/page_info",
       "//chrome/browser/ui/views/page_info:impl",
-      "//chrome/browser/ui/views/passwords",
-      "//chrome/browser/ui/views/passwords:impl",
       "//chrome/browser/ui/views/permissions",
       "//chrome/browser/ui/views/permissions:impl",
       "//chrome/browser/ui/views/permissions/chip",
@@ -2416,7 +2309,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/webid",
       "//chrome/browser/ui/views/zoom",
       "//chrome/browser/ui/webauthn:impl",
-      "//chrome/browser/ui/webui/autofill_ml_internals",
       "//chrome/browser/ui/window_metadata",
       "//chrome/browser/ui/window_name_prompt",
       "//components/input",
@@ -2830,15 +2722,8 @@ static_library("ui") {
     # Merged and added for autofill_ai
     deps += [
       "//chrome/browser/ui/views:tab_dialogs_impl",
-      "//chrome/browser/ui/views/autofill/autofill_ai",
-      "//chrome/browser/ui/views/autofill/autofill_ai:impl",
-      "//chrome/browser/ui/views/autofill/payments:manage_saved_iban_bubble_view",
-      "//chrome/browser/ui/views/autofill/payments:save_iban_bubble_view",
-      "//chrome/browser/ui/views/autofill/popup/email_verifier",
       "//chrome/browser/ui/views/frame:top_controls_slide_controller",
     ]
-    allow_circular_includes_from +=
-        [ "//chrome/browser/ui/views/autofill/autofill_ai:impl" ]
   }
 
   # TODO(https://crbug.com/330808104): Delete this code.
@@ -3279,11 +3164,9 @@ static_library("test_support") {
     "//chrome/browser",
     "//chrome/browser/devtools",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/ui/autofill/payments:test_support",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/toolbar:test_support",
     "//components/omnibox/browser",
-    "//components/password_manager/core/browser",
     "//components/permissions",
     "//components/sessions",
     "//components/url_formatter",
@@ -3354,7 +3237,6 @@ static_library("test_support") {
     ]
     deps += [
       "//chrome/browser/ui/content_settings:test_support",
-      "//chrome/browser/ui/passwords:test_support_ui",
       "//chrome/browser/ui/views/toolbar",
       "//components/embedder_support",
       "//components/input",

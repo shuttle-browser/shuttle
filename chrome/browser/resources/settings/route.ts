@@ -158,22 +158,6 @@ function createRoutes(): SettingsRoutes {
     r.FONTS = r.APPEARANCE.createChild('/fonts');
   }
 
-  if (visibility.yourSavedInfo !== false) {
-    r.AUTOFILL = r.BASIC.createSection(
-        '/autofill', 'yourSavedInfo',
-        loadTimeData.getString('autofillPageTitle'));
-
-    r.PAYMENTS = r.AUTOFILL.createChild('/payments');
-    r.CONTACT_INFO =
-        r.AUTOFILL.createChild('/contactInfo');
-    r.IDENTITY_DOCS =
-        r.AUTOFILL.createChild('/identityDocs');
-    r.TRAVEL = r.AUTOFILL.createChild('/travel');
-    // <if expr="is_win or is_macosx">
-    r.PASSKEYS = r.AUTOFILL.createChild('/passkeys');
-    // </if>
-  }
-
   if (visibility.privacy !== false) {
     r.PRIVACY = r.BASIC.createSection(
         '/privacy', 'privacy', loadTimeData.getString('privacyPageTitle'));

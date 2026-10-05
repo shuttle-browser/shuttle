@@ -54,7 +54,6 @@ source_set("common_syncable_prefs_database") {
   deps = [
     ":sync_preferences",
     "//base",
-    "//components/autofill/core/common",
     "//components/browsing_data/core",
     "//components/content_settings/core/common",
     "//components/dom_distiller/core",
@@ -64,7 +63,6 @@ source_set("common_syncable_prefs_database") {
     "//components/ntp_tiles",
     "//components/ntp_tiles:pref_names",
     "//components/omnibox/browser",
-    "//components/password_manager/core/common",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
     "//components/subscription_eligibility",
     "//components/variations/service",

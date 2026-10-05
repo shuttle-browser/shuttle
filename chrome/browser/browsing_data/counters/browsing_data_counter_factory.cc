@@ -7,30 +7,22 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "build/build_config.h"
-#include "chrome/browser/autofill/autofill_entity_data_manager_factory.h"
-#include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/browsing_data/counters/browsing_data_counter_utils.h"
 #include "chrome/browser/browsing_data/counters/cache_counter.h"
 #include "chrome/browser/browsing_data/counters/downloads_counter.h"
-#include "chrome/browser/browsing_data/counters/signin_data_counter.h"
 #include "chrome/browser/browsing_data/counters/site_data_counter.h"
 #include "chrome/browser/browsing_data/counters/site_settings_counter.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/web_history_service_factory.h"
-#include "chrome/browser/password_manager/factories/account_password_store_factory.h"
-#include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
-#include "components/browsing_data/core/counters/autofill_counter.h"
 #include "components/browsing_data/core/counters/browsing_data_counter.h"
 #include "components/browsing_data/core/counters/history_counter.h"
-#include "components/browsing_data/core/counters/passwords_counter.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/history/core/browser/web_history_service.h"
-#include "components/password_manager/core/browser/password_store/password_store_interface.h"
 #include "components/sync/service/sync_service.h"
 #include "extensions/buildflags/buildflags.h"
 
@@ -75,32 +67,6 @@ BrowsingDataCounterFactory::GetForProfileAndPref(Profile* profile,
 
   if (pref_name == browsing_data::prefs::kDeleteCookies) {
     return std::make_unique<SiteDataCounter>(profile);
-  }
-
-  if (pref_name == browsing_data::prefs::kDeletePasswords) {
-    std::unique_ptr<::device::fido::PlatformCredentialStore> credential_store =
-#if BUILDFLAG(IS_CHROMEOS)
-        std::make_unique<
-            ::device::fido::cros::PlatformAuthenticatorCredentialStore>();
-#else
-        nullptr;
-#endif
-    return std::make_unique<browsing_data::SigninDataCounter>(
-        ProfilePasswordStoreFactory::GetForProfile(
-            profile, ServiceAccessType::EXPLICIT_ACCESS),
-        AccountPasswordStoreFactory::GetForProfile(
-            profile, ServiceAccessType::EXPLICIT_ACCESS),
-        profile->GetPrefs(), SyncServiceFactory::GetForProfile(profile),
-        std::move(credential_store));
-  }
-
-  if (pref_name == browsing_data::prefs::kDeleteFormData) {
-    return std::make_unique<browsing_data::AutofillCounter>(
-        autofill::PersonalDataManagerFactory::GetForBrowserContext(profile),
-        WebDataServiceFactory::GetAutofillWebDataForProfile(
-            profile, ServiceAccessType::EXPLICIT_ACCESS),
-        autofill::AutofillEntityDataManagerFactory::GetForProfile(profile),
-        SyncServiceFactory::GetForProfile(profile));
   }
 
   if (pref_name == browsing_data::prefs::kDeleteDownloadHistory) {

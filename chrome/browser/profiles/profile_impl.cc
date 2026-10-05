@@ -63,8 +63,6 @@
 #include "chrome/browser/notifications/platform_notification_service_factory.h"
 #include "chrome/browser/notifications/platform_notification_service_impl.h"
 #include "chrome/browser/origin_trials/origin_trials_factory.h"
-#include "chrome/browser/password_manager/factories/account_password_store_factory.h"
-#include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
@@ -214,8 +212,6 @@
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/android/profile_key_startup_accessor.h"
-#include "chrome/browser/password_manager/factories/password_manager_settings_service_factory.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #else
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/ui/startup/features.h"
@@ -901,13 +897,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
   // The Privacy Sandbox service must be created with the profile to ensure that
   // preference reconciliation occurs.
   PrivacySandboxServiceFactory::GetForProfile(this);
-
-#if BUILDFLAG(IS_ANDROID)
-  // The password settings service needs to start listening to settings
-  // changes from Google Mobile Services, as early as possible.
-  PasswordManagerSettingsServiceFactory::GetForProfile(this);
-#else
-#endif  // BUILDFLAG(IS_ANDROID)
 
   // The announcement notification  service might not be available for some
   // irregular profiles, like the System Profile.

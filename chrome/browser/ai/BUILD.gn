@@ -71,8 +71,6 @@ source_set("impl") {
     "//chrome/browser/component_updater",
     "//chrome/browser/optimization_guide",
     "//chrome/browser/ui/tabs:tabs_public",
-    "//components/autofill/content/browser",
-    "//components/autofill/core/browser",
     "//components/language/core/common",
     "//components/optimization_guide/content/browser",
     "//components/optimization_guide/proto:optimization_guide_proto",

@@ -31,7 +31,6 @@ include_rules = [
   "+chrome/browser/browsing_data/counters/cache_counter.h",
   "+chrome/browser/browsing_data/counters/downloads_counter.h",
   "+chrome/browser/browsing_data/counters/hosted_apps_counter.h",
-  "+chrome/browser/browsing_data/counters/signin_data_counter.h",
   "+chrome/browser/browsing_data/counters/site_data_counter.h",
   "+chrome/browser/browsing_data/counters/site_data_counting_helper.h",
   "+chrome/browser/browsing_data/counters/site_settings_counter.h",

@@ -16,8 +16,6 @@ static_library("installer_policies_no_content_deps") {
   sources = [
     "actor_safety_lists_component_installer.cc",
     "actor_safety_lists_component_installer.h",
-    "amount_extraction_heuristic_regexes_component_installer.cc",
-    "amount_extraction_heuristic_regexes_component_installer.h",
     "first_party_sets_component_installer_policy.cc",
     "first_party_sets_component_installer_policy.h",
     "origin_trials_component_installer.cc",
@@ -33,7 +31,6 @@ static_library("installer_policies_no_content_deps") {
   deps = [
     "//base",
     "//components/actor/core",
-    "//components/autofill/core/browser",
     "//components/component_updater",
     "//components/lookalikes/core:proto",
     "//components/lookalikes/core:safety_tips",
@@ -73,7 +70,6 @@ source_set("unit_tests") {
   testonly = true
   sources = [
     "actor_safety_lists_component_installer_policy_unittest.cc",
-    "amount_extraction_heuristic_regexes_component_installer_unittest.cc",
     "first_party_sets_component_installer_policy_unittest.cc",
     "optimization_hints_component_installer_unittest.cc",
     "prediction_model_component_installer_unittest.cc",
@@ -85,8 +81,6 @@ source_set("unit_tests") {
     ":installer_policies",
     "//base",
     "//base/test:test_support",
-    "//components/autofill/core/browser:amount_extraction_heuristic_regexes_proto",
-    "//components/autofill/core/browser:test_support",
     "//components/component_updater:test_support",
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",

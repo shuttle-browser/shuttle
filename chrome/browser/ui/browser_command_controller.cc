@@ -57,7 +57,6 @@
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
-#include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
@@ -84,7 +83,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/input/native_web_keyboard_event.h"
-#include "components/password_manager/core/browser/manage_passwords_referrer.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/sessions/content/session_tab_helper.h"
@@ -777,51 +775,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
       BasicPrint(browser_);
       break;
 #endif  // ENABLE_PRINTING
-    case IDC_OFFERS_AND_REWARDS_FOR_PAGE:
-      ShowOffersAndRewardsForPage(browser_);
-      break;
-    case IDC_SAVE_CREDIT_CARD_FOR_PAGE:
-      SaveCreditCard(browser_);
-      break;
-    case IDC_SAVE_IBAN_FOR_PAGE:
-      SaveIban(browser_);
-      break;
-    case IDC_AUTOFILL_MANDATORY_REAUTH:
-      ShowMandatoryReauthOptInPrompt(browser_);
-      break;
-    case IDC_SAVE_AUTOFILL_ADDRESS:
-      SaveAutofillAddress(browser_);
-      break;
-    case IDC_SHOW_PASSWORD_MANAGER:
-      ShowPasswordManager(browser_);
-      break;
-    case IDC_SAFETY_HUB_SHOW_PASSWORD_CHECKUP:
-      ShowPasswordCheck(browser_);
-      break;
-    case IDC_SHOW_PAYMENT_METHODS:
-      ShowPaymentMethods(browser_);
-      break;
-    case IDC_SHOW_ADDRESSES:
-      ShowAddresses(browser_);
-      break;
-    case IDC_SHOW_CONTACT_INFO:
-      ShowContactInfo(browser_);
-      break;
-    case IDC_SHOW_IDENTITY_DOCS:
-      ShowIdentityDocs(browser_);
-      break;
-    case IDC_SHOW_TRAVEL:
-      ShowTravel(browser_);
-      break;
-    case IDC_FILLED_CARD_INFORMATION:
-      ShowFilledCardInformationBubble(browser_);
-      break;
-    case IDC_VIRTUAL_CARD_ENROLL:
-      ShowVirtualCardEnrollBubble(browser_);
-      break;
-    case IDC_MANAGE_PASSWORDS_FOR_PAGE:
-      ManagePasswordsForPage(browser_);
-      break;
 
     // Clipboard commands
     case IDC_CUT:
@@ -995,11 +948,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     case IDC_EDIT_SEARCH_ENGINES:
       ShowSearchEngineSettings(webui::GetBrowserForOpeningWebUi(browser_));
       break;
-    case IDC_VIEW_PASSWORDS:
-      NavigateToManagePasswordsPage(
-          webui::GetBrowserForOpeningWebUi(browser_),
-          password_manager::ManagePasswordsReferrer::kChromeMenuItem);
-      break;
     case IDC_CLEAR_BROWSING_DATA: {
       ShowClearBrowsingDataDialog(webui::GetBrowserForOpeningWebUi(browser_));
 #if !BUILDFLAG(IS_ANDROID)
@@ -1016,9 +964,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
 #endif  // !BUILDFLAG(IS_ANDROID)
       break;
     }
-    case IDC_IMPORT_SETTINGS:
-      ShowImportDialog(browser_);
-      break;
     case IDC_TOGGLE_REQUEST_TABLET_SITE:
       ToggleRequestTabletSite(browser_);
       break;
@@ -1391,9 +1336,6 @@ void BrowserCommandController::InitCommandState() {
 #endif  // BUILDFLAG(IS_WIN)
 
 
-  // Page-related commands
-  command_updater_->UpdateCommandEnabled(IDC_MANAGE_PASSWORDS_FOR_PAGE, true);
-
   // Zoom
   command_updater_->UpdateCommandEnabled(IDC_ZOOM_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_ZOOM_PLUS, true);
@@ -1449,19 +1391,6 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_SIDE_PANEL,
                                          true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_KEYBOARD, true);
-  command_updater_->UpdateCommandEnabled(IDC_PASSWORDS_AND_AUTOFILL_MENU,
-                                         !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_PASSWORD_MANAGER,
-                                         !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SAFETY_HUB_SHOW_PASSWORD_CHECKUP,
-                                         !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_PAYMENT_METHODS,
-                                         !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_ADDRESSES, !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_CONTACT_INFO, !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_IDENTITY_DOCS,
-                                         !guest_session);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_TRAVEL, !guest_session);
   command_updater_->UpdateCommandEnabled(IDC_HELP_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_KEYBOARD, true);
   command_updater_->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_MENU, true);
@@ -1595,8 +1524,6 @@ void BrowserCommandController::UpdateSharedCommandsForIncognitoAvailability(
       IDC_SAFETY_HUB_MANAGE_EXTENSIONS,
       enable_extensions && !forced_incognito && !is_guest);
 
-  command_updater->UpdateCommandEnabled(IDC_IMPORT_SETTINGS,
-                                        !forced_incognito && !is_guest);
   command_updater->UpdateCommandEnabled(IDC_OPTIONS,
                                         !forced_incognito || is_guest);
   command_updater->UpdateCommandEnabled(IDC_PERFORMANCE,
@@ -1614,7 +1541,6 @@ void BrowserCommandController::UpdateCommandsForIncognitoAvailability() {
                                                profile());
 
   if (!IsShowingMainUI()) {
-    command_updater_->UpdateCommandEnabled(IDC_IMPORT_SETTINGS, false);
     command_updater_->UpdateCommandEnabled(IDC_OPTIONS, false);
   }
 }
@@ -1836,7 +1762,6 @@ void BrowserCommandController::UpdateCommandsForFullscreenMode() {
   command_updater_->UpdateCommandEnabled(IDC_DEVELOPER_MENU, show_main_ui);
 
   command_updater_->UpdateCommandEnabled(IDC_EDIT_SEARCH_ENGINES, show_main_ui);
-  command_updater_->UpdateCommandEnabled(IDC_VIEW_PASSWORDS, show_main_ui);
   command_updater_->UpdateCommandEnabled(IDC_ABOUT, show_main_ui);
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   command_updater_->UpdateCommandEnabled(IDC_CHROME_TIPS, show_main_ui);

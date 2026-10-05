@@ -77,7 +77,6 @@ source_set("impl") {
       "first_run.cc",
       "first_run_features.cc",
     ]
-    deps += [ "//chrome/browser/importer" ]
 
     if (is_chromeos) {
       sources += [ "first_run_internal_chromeos.cc" ]

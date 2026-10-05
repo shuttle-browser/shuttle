@@ -475,7 +475,6 @@ class BrowserView : public BrowserWindow,
   bool GetCanResize() override;
   ui::mojom::WindowShowState GetWindowShowState() const override;
   bool IsFullscreen() const override;
-  autofill::AutofillBubbleHandler* GetAutofillBubbleHandler() override;
   LocationBar* GetLocationBar() const override;
   void SetFocusToLocationBar(bool is_user_initiated) override;
   void UpdateReloadStopState(bool is_loading, bool force) override;
@@ -1059,8 +1058,6 @@ class BrowserView : public BrowserWindow,
   // should exist if and only if the side_panel_coordinator is created.
   raw_ptr<SidePanel> side_panel_ = nullptr;
 
-  // The handler responsible for showing autofill bubbles.
-  std::unique_ptr<autofill::AutofillBubbleHandler> autofill_bubble_handler_;
 
   // The scrim view that covers the browser window when a window-modal dialog is
   // showing.

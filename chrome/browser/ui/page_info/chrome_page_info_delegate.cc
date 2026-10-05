@@ -23,7 +23,6 @@
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/serial/serial_chooser_context.h"
 #include "chrome/browser/serial/serial_chooser_context_factory.h"
@@ -170,46 +169,6 @@ ChromePageInfoDelegate::GetChooserContext(ContentSettingsType type) {
       NOTREACHED();
   }
 }
-
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-safe_browsing::ChromePasswordProtectionService*
-ChromePageInfoDelegate::GetChromePasswordProtectionService() const {
-  return safe_browsing::ChromePasswordProtectionService::
-      GetPasswordProtectionService(GetProfile());
-}
-
-safe_browsing::PasswordProtectionService*
-ChromePageInfoDelegate::GetPasswordProtectionService() const {
-  return GetChromePasswordProtectionService();
-}
-
-void ChromePageInfoDelegate::OnUserActionOnPasswordUi(
-    safe_browsing::WarningAction action) {
-  auto* chrome_password_protection_service =
-      GetChromePasswordProtectionService();
-  DCHECK(chrome_password_protection_service);
-
-  chrome_password_protection_service->OnUserAction(
-      web_contents_->GetWeakPtr(),
-      chrome_password_protection_service
-          ->reused_password_account_type_for_last_shown_warning(),
-      safe_browsing::RequestOutcome::UNKNOWN,
-      safe_browsing::LoginReputationClientResponse::VERDICT_TYPE_UNSPECIFIED,
-      /*verdict_token=*/"", safe_browsing::WarningUIType::PAGE_INFO, action);
-}
-
-std::u16string ChromePageInfoDelegate::GetWarningDetailText() {
-  auto* chrome_password_protection_service =
-      GetChromePasswordProtectionService();
-
-  // |password_protection_service| may be null in test.
-  return chrome_password_protection_service
-             ? chrome_password_protection_service->GetWarningDetailText(
-                   chrome_password_protection_service
-                       ->reused_password_account_type_for_last_shown_warning())
-             : std::u16string();
-}
-#endif
 
 content::PermissionResult ChromePageInfoDelegate::GetPermissionResult(
     blink::PermissionType permission,

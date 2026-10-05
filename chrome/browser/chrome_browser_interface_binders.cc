@@ -18,7 +18,6 @@
 #include "chrome/browser/navigation_predictor/navigation_predictor.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
-#include "chrome/browser/password_manager/chrome_password_manager_client.h"
 #include "chrome/browser/predictors/lcp_critical_path_predictor/lcp_critical_path_predictor_host.h"
 #include "chrome/browser/predictors/network_hints_handler_impl.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/chrome_no_state_prefetch_contents_delegate.h"
@@ -33,8 +32,6 @@
 #include "chrome/common/buildflags.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/services/speech/buildflags/buildflags.h"
-#include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/credential_management/content_credential_manager.h"
 #include "components/dom_distiller/content/browser/distillability_driver.h"
 #include "components/dom_distiller/content/browser/distiller_javascript_service_impl.h"
 #include "components/dom_distiller/content/common/mojom/distillability_service.mojom.h"
@@ -65,8 +62,8 @@
 #include "services/image_annotation/public/mojom/image_annotation.mojom.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/features_generated.h"
+#include "components/password_manager/core/common/credential_manager_types.h"
 #include "third_party/blink/public/mojom/credentialmanagement/credential_manager.mojom.h"
-#include "third_party/blink/public/mojom/facilitated_payments/payment_link_handler.mojom.h"
 #include "third_party/blink/public/mojom/lcp_critical_path_predictor/lcp_critical_path_predictor.mojom.h"
 #include "third_party/blink/public/mojom/loader/navigation_predictor.mojom.h"
 #include "third_party/blink/public/mojom/payments/payment_request.mojom.h"
@@ -88,7 +85,6 @@
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/android/dom_distiller/distiller_ui_handle_android.h"
-#include "chrome/browser/facilitated_payments/payment_link_handler_binder.h"
 #include "chrome/browser/offline_pages/android/offline_page_auto_fetcher.h"
 #include "chrome/common/offline_page_auto_fetcher.mojom.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
@@ -392,30 +388,34 @@ void BindModelBroker(
   }
 }
 
+// The password manager was removed from this fork. This minimal
+// implementation lets navigator.credentials.get({password: true}) and store()
+// settle instead of hanging. Public-key (WebAuthn) and FedCM requests use
+// separate interfaces.
+class NoOpCredentialManager : public blink::mojom::CredentialManager {
+ public:
+  void Store(const password_manager::CredentialInfo& credential,
+             StoreCallback callback) override {
+    std::move(callback).Run();
+  }
+  void PreventSilentAccess(PreventSilentAccessCallback callback) override {
+    std::move(callback).Run();
+  }
+  void Get(password_manager::CredentialMediationRequirement mediation,
+           bool include_passwords,
+           const std::vector<GURL>& federations,
+           GetCallback callback) override {
+    // An EMPTY-type credential resolves the promise with null in blink.
+    std::move(callback).Run(password_manager::CredentialManagerError::SUCCESS,
+                            password_manager::CredentialInfo());
+  }
+};
+
 void BindCredentialManager(
     content::RenderFrameHost* frame_host,
     mojo::PendingReceiver<blink::mojom::CredentialManager> receiver) {
-  content::WebContents* web_contents =
-      content::WebContents::FromRenderFrameHost(frame_host);
-  autofill::ContentAutofillClient* autofill_client =
-      autofill::ContentAutofillClient::FromWebContents(web_contents);
-  // Not every `WebContents` has a `ContentAutofillClient`.
-  if (!autofill_client) {
-    return;
-  }
-  credential_management::ContentCredentialManager* content_credential_manager =
-      autofill_client->GetContentCredentialManager();
-
-  // Try to bind to the credential manager, but if it's not available for this
-  // render frame host, the request will be just dropped. This will cause the
-  // message pipe to be closed, which will raise a connection error on the peer
-  // side.
-  if (!content_credential_manager) {
-    // TODO(crbug.com/406224744): Retry to bind the credential manager.
-    return;
-  }
-
-  content_credential_manager->BindRequest(frame_host, std::move(receiver));
+  mojo::MakeSelfOwnedReceiver(std::make_unique<NoOpCredentialManager>(),
+                              std::move(receiver));
 }
 
 }  // namespace
@@ -537,13 +537,6 @@ void PopulateChromeFrameBinders(
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   map->Add<blink::mojom::WebPrintingService>(
       &printing::CreateWebPrintingServiceForFrame);
-#endif
-
-#if BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(blink::features::kPaymentLinkDetection)) {
-    map->Add<payments::facilitated::mojom::PaymentLinkHandler>(
-        &BindPaymentLinkHandler);
-  }
 #endif
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)

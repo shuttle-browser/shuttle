@@ -198,9 +198,6 @@ class SafeBrowsingUIHandler {
   void OnGetCookie(const std::string& callback_id,
                    const std::vector<net::CanonicalCookie>& cookies);
 
-  void GetSavedPasswordsImpl(
-      const std::string& callback_id,
-      scoped_refptr<os_crypt_async::Encryptor> encryptor);
 
   mojo::Remote<network::mojom::CookieManager> cookie_manager_remote_;
 

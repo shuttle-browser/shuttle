@@ -23,8 +23,6 @@
 #include "chrome/browser/metrics/variations/google_groups_manager_factory.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
-#include "chrome/browser/password_manager/chrome_password_change_service.h"
-#include "chrome/browser/password_manager/password_change_service_factory.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_performance_tuning_manager.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_tuning_utils.h"
 #include "chrome/browser/preloading/preloading_features.h"
@@ -40,7 +38,6 @@
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/managed_ui.h"
-#include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/cr_components/customize_color_scheme_mode/customize_color_scheme_mode_handler.h"
@@ -58,11 +55,9 @@
 #include "chrome/browser/ui/webui/settings/font_handler.h"
 #include "chrome/browser/ui/webui/settings/metrics_reporting_handler.h"
 #include "chrome/browser/ui/webui/settings/on_startup_handler.h"
-#include "chrome/browser/ui/webui/settings/password_manager_handler.h"
 #include "chrome/browser/ui/webui/settings/performance_handler.h"
 #include "chrome/browser/ui/webui/settings/protocol_handlers_handler.h"
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
-#include "chrome/browser/ui/webui/settings/saved_info_handler.h"
 #include "chrome/browser/ui/webui/settings/search_engines_handler.h"
 #include "chrome/browser/ui/webui/settings/security_settings_provider.h"
 #include "chrome/browser/ui/webui/settings/settings_clear_browsing_data_handler.h"
@@ -83,20 +78,12 @@
 #include "chrome/grit/settings_resources.h"
 #include "chrome/grit/settings_resources_map.h"
 #include "components/account_manager_core/account_manager_facade.h"
-#include "components/autofill/content/browser/content_autofill_client.h"
-#include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
-#include "components/autofill/core/browser/payments/bnpl_manager.h"
-#include "components/autofill/core/browser/payments/payments_autofill_client.h"
-#include "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_util.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/browsing_data/core/features.h"
 #include "components/content_settings/core/common/features.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
 #include "components/metrics/metrics_reporting_choice_service.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "components/performance_manager/public/features.h"
 #include "components/permissions/features.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -191,11 +178,6 @@ using optimization_guide::UserVisibleFeatureKey;
 // static
 void SettingsUI::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {
-  registry->RegisterBooleanPref(prefs::kImportDialogAutofillFormData, true);
-  registry->RegisterBooleanPref(prefs::kImportDialogBookmarks, true);
-  registry->RegisterBooleanPref(prefs::kImportDialogHistory, true);
-  registry->RegisterBooleanPref(prefs::kImportDialogSavedPasswords, true);
-  registry->RegisterBooleanPref(prefs::kImportDialogSearchEngine, true);
 }
 
 SettingsUI::SettingsUI(content::WebUI* web_ui)
@@ -249,11 +231,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   AddSettingsPageUIHandler(std::make_unique<SecurityKeysCredentialHandler>());
   AddSettingsPageUIHandler(
       std::make_unique<SecurityKeysBioEnrollmentHandler>());
-  AddSettingsPageUIHandler(std::make_unique<PasswordManagerHandler>());
-  AddSettingsPageUIHandler(std::make_unique<SavedInfoHandler>(profile));
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-  AddSettingsPageUIHandler(std::make_unique<PasskeysHandler>());
-#endif
 
 #if BUILDFLAG(IS_CHROMEOS)
   InitBrowserSettingsWebUIHandlers();
@@ -340,20 +317,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddBoolean("downloadBubblePartialViewControlledByPref",
                           download_bubble_controlled_by_pref);
 
-  html_source->AddBoolean(
-      "shouldShowPayOverTimeSettings",
-      autofill::ContentAutofillClient::FromWebContents(web_ui->GetWebContents())
-          ->GetPaymentsAutofillClient()
-          ->GetPaymentsDataManager()
-          .ShouldShowBnplSettings());
-
-  html_source->AddBoolean(
-      "shoppingIntegrationEnabled",
-      base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAmbientAutofill) ||
-          base::FeatureList::IsEnabled(
-              autofill::features::kAutofillAiWalletShopping));
-
   AddSettingsPageUIHandler(std::make_unique<AboutHandler>(profile));
   AddSettingsPageUIHandler(std::make_unique<ResetSettingsHandler>(profile));
 
@@ -437,41 +400,13 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
           network::features::kLocalNetworkAccessChecks) &&
           !network::features::kLocalNetworkAccessChecksWarn.Get());
 
-  html_source->AddBoolean(
-      "autofillEnableWalletBranding",
-      base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableWalletBranding));
-
-  html_source->AddBoolean(
-      "autofillEnableGradientGoogleLogos",
-      base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableGradientGoogleLogos));
-
-  html_source->AddBoolean(
-      "enableAutofillAiWalletPrivatePasses",
-      base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAiWalletPrivatePasses));
-
   html_source->AddBoolean("enableInlineCueMenuContentSetting", false);
 
   // AI. Glic (Gemini in Chrome) is not part of this build.
 
-  const auto& autofill_client =
-      *autofill::ContentAutofillClient::FromWebContents(
-          web_ui->GetWebContents());
-  html_source->AddBoolean(
-      "showAutofillAiControl",
-      autofill::MayPerformAutofillAiAction(
-          autofill_client,
-          autofill::AutofillAiAction::kListEntityInstancesInSettings));
-
   std::pair<const std::string_view, bool> optimization_guide_features[] = {
       {"showComposeControl", false},
       {"showHistorySearchControl", false},
-      {"showPasswordChangeControl",
-       PasswordChangeServiceFactory::GetForProfile(profile) &&
-           PasswordChangeServiceFactory::GetForProfile(profile)
-               ->UserIsActivePasswordChangeUser()},
       {"showAiSuggestionsControl", false},
       {"showInlineCueMenuControl", false},
       {"showSkillsSettingPage", false},

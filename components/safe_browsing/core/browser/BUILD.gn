@@ -43,7 +43,6 @@ source_set("browser") {
   deps = [
     ":verdict_cache_manager",
     "//base",
-    "//components/autofill/core/browser",
     "//components/content_settings/core/browser",
     "//components/history/core/browser",
     "//components/keyed_service/core",
@@ -216,7 +215,6 @@ source_set("verdict_cache_manager") {
     "//components/content_settings/core/browser",
     "//components/history/core/browser",
     "//components/keyed_service/core",
-    "//components/password_manager/core/browser",
     "//components/prefs",
     "//components/safe_browsing/core/browser:sync_observer",
     "//components/safe_browsing/core/browser/db:v4_protocol_manager_util",

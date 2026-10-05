@@ -22,7 +22,6 @@
 #include "chrome/browser/extensions/api/settings_private/generated_prefs_factory.h"
 #include "chrome/browser/extensions/settings_api_helpers.h"
 #include "chrome/browser/metrics/profile_pref_names.h"
-#include "chrome/browser/password_manager/generated_password_leak_detection_pref.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/generated_safe_browsing_pref.h"
@@ -33,7 +32,6 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/api/settings_private.h"
 #include "chrome/common/pref_names.h"
-#include "components/autofill/core/common/autofill_prefs.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/component_updater/pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
@@ -45,7 +43,6 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -148,16 +145,6 @@ bool IsSettingReadOnly(const std::string& pref_name) {
     return true;
   }
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || \
-    BUILDFLAG(IS_CHROMEOS)
-  // Changing this pref value is protected by reauthentication.
-  if (pref_name ==
-      autofill::prefs::kAutofillAiReauthBeforeViewingSensitiveData) {
-    return true;
-  }
-#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) ||
-        // BUILDFLAG(IS_CHROMEOS)
-
 #if BUILDFLAG(IS_CHROMEOS)
   // System timezone is never directly changeable by the user.
   if (pref_name == ash::kSystemTimezone) {
@@ -175,13 +162,6 @@ bool IsSettingReadOnly(const std::string& pref_name) {
     return true;
   }
 
-#endif
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
-  // Can be changed only from C++ after successful re-auth.
-  if (pref_name ==
-      password_manager::prefs::kBiometricAuthenticationBeforeFilling) {
-    return true;
-  }
 #endif
   return false;
 }
@@ -206,49 +186,14 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   // Miscellaneous
   (*s_allowlist)[::embedder_support::kAlternateErrorPagesEnabled] =
       settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillProfileEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillTypesBlocked] =
-      settings_api::PrefType::kList;
-  (*s_allowlist)[autofill::prefs::kAutofillCreditCardEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillEmailVerificationEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillEmailVerificationState] =
-      settings_api::PrefType::kDictionary;
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)[autofill::prefs::kAutofillPaymentMethodsMandatoryReauth] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillAiReauthBeforeViewingSensitiveData] =
-      settings_api::PrefType::kBoolean;
 #endif
-  (*s_allowlist)[autofill::prefs::kAutofillPaymentCvcStorage] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillPaymentCardBenefits] =
-      settings_api::PrefType::kBoolean;
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)[autofill::prefs::kAutofillBnplEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillAtMemoryTriggerInfo] =
-      settings_api::PrefType::kDictionary;
-  (*s_allowlist)[autofill::prefs::kAutofillAiIdentityEntitiesEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillAiShoppingEntitiesEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillAiOptInStatus] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[autofill::prefs::kAutofillAiTravelEntitiesEnabled] =
-      settings_api::PrefType::kBoolean;
   (*s_allowlist)[optimization_guide::prefs::kFindAndFillWithGeminiSettings] =
       settings_api::PrefType::kNumber;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(
-          features::kGlicActorAutofillOneTimePassword)) {
-    (*s_allowlist)[autofill::prefs::kAutofillGmailOtpFillingEnabled] =
-        settings_api::PrefType::kBoolean;
-  }
   (*s_allowlist)[::prefs::kSidePanelHorizontalAlignment] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kSidePanelAlignmentOverrides] =
@@ -351,37 +296,7 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[::prefs::kDownloadBubblePartialViewEnabled] =
       settings_api::PrefType::kBoolean;
 
-  // Password Manager settings.
-  (*s_allowlist)[password_manager::prefs::kCredentialsEnableService] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[password_manager::prefs::kCredentialsEnableAutosignin] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[password_manager::prefs::kAutomaticPasskeyUpgrades] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[password_manager::prefs::kAutomatedPasswordChangeEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[password_manager::prefs::kPasswordSharingEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[password_manager::prefs::kPasswordLeakDetectionEnabled] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)
-      [password_manager::prefs::kPasswordDismissCompromisedAlertEnabled] =
-          settings_api::PrefType::kBoolean;
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)
-      [password_manager::prefs::kBiometricAuthenticationBeforeFilling] =
-          settings_api::PrefType::kBoolean;
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)
-      [password_manager::prefs::kBiometricAuthBeforeFillingPromoShownCounter] =
-          settings_api::PrefType::kNumber;
-  (*s_allowlist)
-      [password_manager::prefs::kHasUserInteractedWithBiometricAuthPromo] =
-          settings_api::PrefType::kNumber;
-  (*s_allowlist)[password_manager::prefs::kHadBiometricsAvailable] =
-      settings_api::PrefType::kBoolean;
 #endif
 
 #if BUILDFLAG(IS_MAC)
@@ -425,8 +340,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
 
   // Security page
-  (*s_allowlist)[::kGeneratedPasswordLeakDetectionPref] =
-      settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kSafeBrowsingEnabled] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kSafeBrowsingEnhanced] =
@@ -1162,16 +1075,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
 #endif  // BUILDFLAG(IS_WIN)
 
   // Import data
-  (*s_allowlist)[::prefs::kImportDialogAutofillFormData] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kImportDialogBookmarks] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kImportDialogHistory] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kImportDialogSavedPasswords] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kImportDialogSearchEngine] =
-      settings_api::PrefType::kBoolean;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Supervised Users.  This setting is queried in our Tast tests (b/241943380).

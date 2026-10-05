@@ -61,7 +61,6 @@ export enum HttpsFirstModeSetting {
 
 export interface SettingsSecurityPageElement {
   $: {
-    passwordsLeakToggle: SettingsToggleButtonElement,
     safeBrowsingDisabled: SettingsCollapseRadioButtonElement,
     safeBrowsingEnhanced: SettingsCollapseRadioButtonElement,
     safeBrowsingRadioGroup: SettingsRadioGroupElement,
@@ -297,24 +296,6 @@ export class SettingsSecurityPageElement extends
         this.enableHashPrefixRealTimeLookups_ ?
             'safeBrowsingStandardDescProxy' :
             'safeBrowsingStandardDesc');
-  }
-
-  private getPasswordsLeakToggleSubLabel_(): string {
-    let subLabel = this.i18n('passwordsLeakDetectionGeneralDescription');
-    // If the backing password leak detection preference is enabled, but the
-    // generated preference is off and user control is disabled, then additional
-    // text explaining that the feature will be enabled if the user signs in is
-    // added.
-    if (this.prefs !== undefined) {
-      const generatedPref = this.getPref('generated.password_leak_detection');
-      if (this.getPref('profile.password_manager_leak_detection').value &&
-          !generatedPref.value && generatedPref.userControlDisabled) {
-        subLabel +=
-            ' ' +  // Whitespace is a valid sentence separator w.r.t. i18n.
-            this.i18n('passwordsLeakDetectionSignedOutEnabledDescription');
-      }
-    }
-    return subLabel;
   }
 
   // Conversion helper for binding Integer pref values as String values.

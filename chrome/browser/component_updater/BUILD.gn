@@ -56,7 +56,6 @@ source_set("component_updater") {
     public += [
       "soda_component_installer.h",
       "soda_language_pack_component_installer.h",
-      "zxcvbn_data_component_installer.h",
     ]
     public_deps += [
       "//components/soda",
@@ -181,7 +180,6 @@ source_set("impl") {
     sources += [
       "soda_component_installer.cc",
       "soda_language_pack_component_installer.cc",
-      "zxcvbn_data_component_installer.cc",
     ]
     deps += [
       "//chrome/browser/actor:impl",
@@ -189,7 +187,6 @@ source_set("impl") {
       "//components/live_caption:constants",
       "//components/live_caption:utils",
       "//components/soda:constants",
-      "//third_party/zxcvbn-cpp",
     ]
   }
 
@@ -315,11 +312,9 @@ source_set("unit_tests") {
       "captcha_provider_component_installer_unittest.cc",
       "soda_component_installer_unittest.cc",
       "soda_language_pack_component_installer_unittest.cc",
-      "zxcvbn_data_component_installer_unittest.cc",
     ]
     deps += [
       "//components/live_caption:constants",
-      "//third_party/zxcvbn-cpp",
     ]
   }
 

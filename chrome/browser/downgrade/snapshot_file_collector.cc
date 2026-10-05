@@ -10,9 +10,7 @@
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/common/chrome_constants.h"
-#include "components/affiliations/core/browser/affiliation_constants.h"
 #include "components/history/core/browser/history_constants.h"
-#include "components/password_manager/core/browser/password_manager_constants.h"
 #include "components/sessions/core/session_constants.h"
 #include "components/strike_database/strike_database.h"
 #include "components/webdata/common/webdata_constants.h"
@@ -81,21 +79,6 @@ std::vector<SnapshotItemDetails> CollectProfileItems() {
       SnapshotItemDetails(base::FilePath(profiles::kGAIAPictureFileName),
                           SnapshotItemDetails::ItemType::kFile, 0),
       // Password / Autofill
-      SnapshotItemDetails(
-          base::FilePath(affiliations::kAffiliationDatabaseFileName),
-          SnapshotItemDetails::ItemType::kFile,
-          chrome_browsing_data_remover::DATA_TYPE_PASSWORDS |
-              chrome_browsing_data_remover::DATA_TYPE_FORM_DATA),
-      SnapshotItemDetails(
-          base::FilePath(password_manager::kLoginDataForProfileFileName),
-          SnapshotItemDetails::ItemType::kFile,
-          chrome_browsing_data_remover::DATA_TYPE_PASSWORDS |
-              chrome_browsing_data_remover::DATA_TYPE_FORM_DATA),
-      SnapshotItemDetails(
-          base::FilePath(password_manager::kLoginDataForAccountFileName),
-          SnapshotItemDetails::ItemType::kFile,
-          chrome_browsing_data_remover::DATA_TYPE_PASSWORDS |
-              chrome_browsing_data_remover::DATA_TYPE_FORM_DATA),
       SnapshotItemDetails(
           base::FilePath(kWebDataFilename),
           SnapshotItemDetails::ItemType::kFile,

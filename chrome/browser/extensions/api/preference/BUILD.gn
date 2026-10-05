@@ -20,7 +20,6 @@ source_set("preference") {
     "//base",
     "//chrome/browser/extensions",
     "//chrome/browser/profiles",
-    "//components/autofill/core/common",
     "//components/prefs",
     "//components/privacy_sandbox:features",
     "//extensions/browser",

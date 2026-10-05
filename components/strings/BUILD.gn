@@ -31,8 +31,6 @@ grit_strings("components_strings") {
   inputs = [
     "../android_system_error_page_strings.grdp",
     "../arc_strings.grdp",
-    "../autofill_payments_strings.grdp",
-    "../autofill_strings.grdp",
     "../blocked_content_strings.grdp",
     "../bookmark_bar_strings.grdp",
     "../bookmark_component_strings.grdp",
@@ -67,7 +65,6 @@ grit_strings("components_strings") {
     "../omnibox_strings.grdp",
     "../page_info_strings.grdp",
     "../paint_preview_strings.grdp",
-    "../password_manager_strings.grdp",
     "../payments_strings.grdp",
     "../pdf_strings.grdp",
     "../permissions_strings.grdp",

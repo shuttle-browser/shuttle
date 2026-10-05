@@ -61,7 +61,6 @@
 #include "ui/views/widget/widget.h"
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
 #endif
 
 namespace {

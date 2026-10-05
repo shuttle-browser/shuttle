@@ -15,7 +15,6 @@
 #include "chrome/browser/accessibility/page_colors_controller_factory.h"
 #include "chrome/browser/account_settings/account_setting_service_factory.h"
 #include "chrome/browser/actor/actor_keyed_service_factory.h"
-#include "chrome/browser/affiliations/affiliation_service_factory.h"
 #include "chrome/browser/ai/ai_data_keyed_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
@@ -24,21 +23,6 @@
 #include "chrome/browser/autocomplete/on_device_tail_model_service_factory.h"
 #include "chrome/browser/autocomplete/provider_state_service_factory.h"
 #include "chrome/browser/autocomplete/shortcuts_backend_factory.h"
-#include "chrome/browser/autofill/autocomplete_history_manager_factory.h"
-#include "chrome/browser/autofill/autofill_ai_model_cache_factory.h"
-#include "chrome/browser/autofill/autofill_ai_model_executor_factory.h"
-#include "chrome/browser/autofill/autofill_entity_data_manager_factory.h"
-#include "chrome/browser/autofill/autofill_field_classification_model_service_factory.h"
-#include "chrome/browser/autofill/autofill_image_fetcher_factory.h"
-#include "chrome/browser/autofill/autofill_offer_manager_factory.h"
-#include "chrome/browser/autofill/autofill_optimization_guide_decider_factory.h"
-#include "chrome/browser/autofill/autofill_policy_service_factory.h"
-#include "chrome/browser/autofill/cross_tab_copy_paste_tracker_factory.h"
-#include "chrome/browser/autofill/entity_suppression_manager_factory.h"
-#include "chrome/browser/autofill/ml_log_router_factory.h"
-#include "chrome/browser/autofill/one_time_token_service_factory.h"
-#include "chrome/browser/autofill/personal_data_manager_factory.h"
-#include "chrome/browser/autofill/valuables_data_manager_factory.h"
 #include "chrome/browser/background/background_contents_service_factory.h"
 #include "chrome/browser/background_fetch/background_fetch_delegate_factory.h"
 #include "chrome/browser/background_sync/background_sync_controller_factory.h"
@@ -57,7 +41,6 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/critical_actions/critical_action_factory.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
-#include "chrome/browser/device_reauth/chrome_device_authenticator_factory.h"
 #include "chrome/browser/digital_credentials/digital_credentials_keyed_service.h"
 #include "chrome/browser/dom_distiller/dom_distiller_service_factory.h"
 #include "chrome/browser/domain_reliability/service_factory.h"
@@ -129,17 +112,6 @@
 #include "chrome/browser/page_image_service/image_service_factory.h"
 #include "chrome/browser/page_info/about_this_site_service_factory.h"
 #include "chrome/browser/page_load_metrics/observers/https_engagement_metrics/https_engagement_service_factory.h"
-#include "chrome/browser/password_manager/actor_login/actor_login_permission_cleaning_service_factory.h"
-#include "chrome/browser/password_manager/actor_login/actor_login_permission_service_factory.h"
-#include "chrome/browser/password_manager/factories/account_password_store_factory.h"
-#include "chrome/browser/password_manager/factories/field_info_manager_factory.h"
-#include "chrome/browser/password_manager/factories/password_manager_settings_service_factory.h"
-#include "chrome/browser/password_manager/factories/password_receiver_service_factory.h"
-#include "chrome/browser/password_manager/factories/password_reuse_manager_factory.h"
-#include "chrome/browser/password_manager/factories/password_sender_service_factory.h"
-#include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
-#include "chrome/browser/password_manager/password_change_service_factory.h"
-#include "chrome/browser/password_manager/password_field_classification_model_handler_factory.h"
 #include "chrome/browser/performance_manager/persistence/site_data/site_data_cache_facade_factory.h"
 #include "chrome/browser/permissions/notifications_engagement_service_factory.h"
 #include "chrome/browser/permissions/one_time_permissions_tracker_factory.h"
@@ -206,7 +178,6 @@
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/trusted_vault/trusted_vault_service_factory.h"
-#include "chrome/browser/ui/autofill/autofill_client_provider_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state_factory.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/tabs/pinned_tab_service_factory.h"
@@ -220,25 +191,17 @@
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
 #include "chrome/browser/visited_url_ranking/group_suggestions_service_factory.h"
 #include "chrome/browser/visited_url_ranking/visited_url_ranking_service_factory.h"
-#include "chrome/browser/webauthn/cmtg_device_key_provider_factory.h"
-#include "chrome/browser/webauthn/enclave_manager_factory.h"
 #include "chrome/browser/webauthn/immediate_request_rate_limiter_factory.h"
-#include "chrome/browser/webauthn/passkey_model_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
 #include "chrome/browser/webid/federated_identity_api_permission_context_factory.h"
 #include "chrome/browser/webid/federated_identity_auto_reauthn_permission_context_factory.h"
 #include "chrome/browser/webid/federated_identity_permission_context_factory.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
-#include "components/autofill/content/browser/autofill_log_router_factory.h"
 #include "components/captive_portal/core/buildflags.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/enterprise/content/clipboard_restriction_service.h"
 #include "components/offline_pages/buildflags/buildflags.h"
-#include "components/password_manager/content/browser/password_manager_log_router_factory.h"
-#include "components/password_manager/content/browser/password_requirements_service_factory.h"
-#include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/browser/password_manager_blocklist_policy.h"
 #include "components/permissions/features.h"
 #include "components/policy/content/safe_search_service.h"
 #include "components/policy/core/browser/url_list/policy_blocklist_service.h"
@@ -309,10 +272,6 @@
 #include "chrome/browser/hid/hid_connection_tracker_factory.h"
 #include "chrome/browser/metrics/critical_user_journeys/critical_user_journey_service_factory.h"
 #include "chrome/browser/metrics/desktop_session_duration/desktop_profile_session_durations_service_factory.h"
-#include "chrome/browser/password_manager/factories/bulk_leak_check_service_factory.h"
-#include "chrome/browser/password_manager/factories/password_counter_factory.h"
-#include "chrome/browser/password_manager/ode/on_device_encryption_metrics_reporter_factory.h"
-#include "chrome/browser/password_manager/remote_actor/remote_actor_credential_sharing_service_factory.h"
 #include "chrome/browser/prefs/persistent_renderer_prefs_manager_factory.h"
 #include "chrome/browser/profile_resetter/reset_report_uploader_factory.h"
 #include "chrome/browser/speech/speech_recognition_client_browser_interface_factory.h"
@@ -397,8 +356,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/multistep_filter/core/multistep_filter_log_router_factory.h"
 #include "chrome/browser/multistep_filter/core/multistep_filter_service_factory.h"
-#include "chrome/browser/password_manager/factories/startup_passwords_import_service_factory.h"  // nogncheck (Desktop only)
-#include "chrome/browser/webauthn/passkey_unlock_manager_factory.h"
 #include "device/fido/public/features.h"
 #endif
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
@@ -466,6 +423,7 @@
 #endif
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
+#include "chrome/browser/sessions/app_session_service_factory.h"
 #include "chrome/browser/sessions/exit_type_service_factory.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #endif
@@ -507,7 +465,6 @@
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h"
-#include "chrome/browser/safe_browsing/chrome_password_protection_service_factory.h"
 #include "chrome/browser/safe_browsing/chrome_ping_manager_factory.h"
 #include "chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_factory.h"
 #include "chrome/browser/safe_browsing/client_side_detection_service_factory.h"
@@ -592,7 +549,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   AboutThisSiteServiceFactory::GetInstance();
   AcceptLanguagesServiceFactory::GetInstance();
   AccessibilityLabelsServiceFactory::GetInstance();
-  AccountPasswordStoreFactory::GetInstance();
   AccountSettingServiceFactory::GetInstance();
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   search_integrity::SearchIntegrityFactory::GetInstance();
@@ -601,9 +557,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if BUILDFLAG(IS_ANDROID)
   AndroidSessionDurationsServiceFactory::GetInstance();
 #endif
-  AffiliationServiceFactory::GetInstance();
-  actor_login::ActorLoginPermissionCleaningServiceFactory::GetInstance();
-  actor_login::ActorLoginPermissionServiceFactory::GetInstance();
   AiDataKeyedServiceFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   AndroidProfileBrowserCollectionServiceFactory::GetInstance();
@@ -628,26 +581,9 @@ void ChromeBrowserMainExtraPartsProfiles::
   AutocompleteControllerEmitterFactory::GetInstance();
   AutocompleteDictionaryPreloadServiceFactory::GetInstance();
   AutocompleteScoringModelServiceFactory::GetInstance();
-  autofill::AutocompleteHistoryManagerFactory::GetInstance();
-  autofill::AutofillAiModelCacheFactory::GetInstance();
-  autofill::AutofillAiModelExecutorFactory::GetInstance();
-  autofill::AutofillClientProviderFactory::GetInstance();
-  autofill::AutofillEntityDataManagerFactory::GetInstance();
-  autofill::AutofillImageFetcherFactory::GetInstance();
-  autofill::AutofillLogRouterFactory::GetInstance();
-  autofill::AutofillPolicyServiceFactory::GetInstance();
-  autofill::AutofillFieldClassificationModelServiceFactory::GetInstance();
-  autofill::AutofillOfferManagerFactory::GetInstance();
-  autofill::AutofillOptimizationGuideDeciderFactory::GetInstance();
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-  autofill::CrossTabCopyPasteTrackerFactory::GetInstance();
 #endif
-  autofill::EntitySuppressionManagerFactory::GetInstance();
-  autofill::MlLogRouterFactory::GetInstance();
-  autofill::OneTimeTokenServiceFactory::GetInstance();
-  autofill::PersonalDataManagerFactory::GetInstance();
-  autofill::ValuablesDataManagerFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   AutocompleteControllerAndroid::EnsureFactoryBuilt();
   AuxiliarySearchDonationServiceFactory::GetInstance();
@@ -676,7 +612,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
   BrowsingDataHistoryObserverService::Factory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
-  BulkLeakCheckServiceFactory::GetInstance();
 #endif  // !BUILDFLAG(IS_ANDROID)
 #if !BUILDFLAG(IS_ANDROID)
   captions::LiveCaptionControllerFactory::GetInstance();
@@ -690,7 +625,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   ChromeBrowsingDataRemoverDelegateFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN)
-  ChromeDeviceAuthenticatorFactory::GetInstance();
 #endif
 #if BUILDFLAG(IS_CHROMEOS)
   chromeos::CertificateProviderServiceFactory::GetInstance();
@@ -712,7 +646,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   ClientHintsFactory::GetInstance();
   ClipboardRestrictionServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
-  CmtgDeviceKeyProviderFactory::GetInstance();
 #endif
 #if BUILDFLAG(IS_CHROMEOS)
   multi_capture::MultiCaptureDataServiceFactory::GetInstance();
@@ -753,7 +686,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
   DownloadCoreServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
-  EnclaveManagerFactory::GetInstance();
 #endif
   enterprise::ProfileIdServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -841,7 +773,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   FederatedIdentityApiPermissionContextFactory::GetInstance();
   FederatedIdentityAutoReauthnPermissionContextFactory::GetInstance();
   FederatedIdentityPermissionContextFactory::GetInstance();
-  FieldInfoManagerFactory::GetInstance();
   FileSystemAccessPermissionContextFactory::GetInstance();
   FindBarStateFactory::GetInstance();
   finds::FindsServiceFactory::GetInstance();
@@ -997,35 +928,17 @@ void ChromeBrowserMainExtraPartsProfiles::
   PageColorsControllerFactory::GetInstance();
 #endif
 #if !BUILDFLAG(IS_ANDROID)
-  webauthn::PasskeyUnlockManagerFactory::GetInstance();
 #endif
 #if BUILDFLAG(IS_ANDROID)
-  DelayedPasswordFieldClassificationModelHandlerFactory::GetInstance();
 #endif
 #if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(
-          password_manager::features::
-              kPasswordManagerOnDeviceEncryptionMetricsReporter)) {
-    password_manager::OnDeviceEncryptionMetricsReporterFactory::GetInstance();
-  }
 #endif
-  password_manager::PasswordManagerLogRouterFactory::GetInstance();
-  password_manager::PasswordRequirementsServiceFactory::GetInstance();
-  PasswordFieldClassificationModelHandlerFactory::GetInstance();
-  PasswordChangeServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
-  PasswordCounterFactory::GetInstance();
 #endif  // !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-  PasswordManagerBlocklistPolicyFactory::GetInstance();
 #endif
-  PasswordManagerSettingsServiceFactory::GetInstance();
-  PasswordReuseManagerFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(features::kRemoteActorCredentialSharing)) {
-    password_manager::RemoteActorCredentialSharingServiceFactory::GetInstance();
-  }
 #endif
   if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_DESKTOP) {
     performance_manager::SiteDataCacheFacadeFactory::GetInstance();
@@ -1082,7 +995,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   PrivacySandboxSettingsFactory::GetInstance();
   PrivateVerificationTokensServiceFactory::GetInstance();
   ProfileNetworkContextServiceFactory::GetInstance();
-  ProfilePasswordStoreFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 #endif
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
@@ -1111,7 +1023,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   safe_browsing::ChromeEnterpriseRealTimeUrlLookupServiceFactory::GetInstance();
-  safe_browsing::ChromePasswordProtectionServiceFactory::GetInstance();
   safe_browsing::ChromePingManagerFactory::GetInstance();
   safe_browsing::ClientSideDetectionIntelligentScanDelegateFactory::
       GetInstance();
@@ -1168,6 +1079,8 @@ void ChromeBrowserMainExtraPartsProfiles::
       merchant_signal_db::MerchantSignalContentProto>::GetInstance();
 #endif
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
+  // Formerly registered only via a removed factory's DependsOn().
+  AppSessionServiceFactory::GetInstance();
   SessionServiceFactory::GetInstance();
 #endif
   ShortcutsBackendFactory::GetInstance();
@@ -1195,7 +1108,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   SpellcheckServiceFactory::GetInstance();
 #endif
 #if !BUILDFLAG(IS_ANDROID)
-  StartupPasswordsImportServiceFactory::GetInstance();
 #endif
   StatefulSSLHostStateDelegateFactory::GetInstance();
   StorageAccessAPIServiceFactory::GetInstance();
@@ -1271,9 +1183,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   // Agent Chrome: these factories used to be registered transitively through
   // SyncServiceFactory's DependsOn() list, which is gone with the sync stub.
   IdentityManagerFactory::GetInstance();
-  PasskeyModelFactory::GetInstance();
-  PasswordReceiverServiceFactory::GetInstance();
-  PasswordSenderServiceFactory::GetInstance();
   SecurityEventRecorderFactory::GetInstance();
   TrustedVaultServiceFactory::GetInstance();
   gcm::GCMProfileServiceFactory::GetInstance();

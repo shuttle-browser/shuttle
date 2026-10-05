@@ -62,8 +62,6 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
 
  private:
   FRIEND_TEST_ALL_PREFIXES(BrowserCommandHandlerTest,
-                           StartPasswordManagerTutorialCommand);
-  FRIEND_TEST_ALL_PREFIXES(BrowserCommandHandlerTest,
                            StartSavedTabGroupTutorialCommand);
 
   virtual void NavigateToURL(const GURL& url,
@@ -74,12 +72,10 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   virtual void StartTutorial(StartTutorialInPage::Params params);
   virtual bool TutorialServiceExists();
   virtual void NavigateToEnhancedProtectionSetting();
-  virtual void OpenPasswordManager();
   virtual void OpenAISettings();
   virtual void OpenSplitView();
   virtual void EnableVerticalTabs();
   void StartTabGroupTutorial();
-  void StartPasswordManagerTutorial();
 
   raw_ptr<Profile, DanglingUntriaged> profile_;
   std::vector<browser_command::mojom::Command> supported_commands_;

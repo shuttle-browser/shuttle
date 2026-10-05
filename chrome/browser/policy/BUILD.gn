@@ -352,7 +352,6 @@ source_set("policy_specific_browser_tests") {
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/preloading:prefs",
-    "//chrome/browser/ui/autofill",
     "//chrome/common",
     "//chrome/test:test_support",
     "//components/content_settings/core/browser",
@@ -419,15 +418,12 @@ source_set("policy_specific_browser_tests") {
     ]
 
     deps += [
-      "//chrome/browser/autofill",
       "//chrome/browser/devtools",
       "//chrome/browser/devtools:test_support",
       "//chrome/browser/profiles",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/task_manager",
       "//chrome/browser/ui/browser_window",
-      "//components/autofill/content/browser:test_support",
-      "//components/autofill/core/browser",
       "//components/enterprise",
       "//components/enterprise:test_support",
       "//components/policy:chrome_settings_proto_generated_compile",

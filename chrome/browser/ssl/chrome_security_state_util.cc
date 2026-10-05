@@ -14,7 +14,6 @@
 #include "chrome/browser/net/qwac_web_contents_observer.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/content/browser/ui_manager.h"
@@ -27,7 +26,6 @@
 #include "url/gurl.h"
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -36,7 +34,6 @@
 
 namespace chrome_security_state {
 
-using password_manager::metrics_util::PasswordType;
 using safe_browsing::SafeBrowsingUIManager;
 
 namespace {
@@ -136,40 +133,10 @@ security_state::MaliciousContentStatus GetMaliciousContentStatus(
       case SB_THREAT_TYPE_URL_UNWANTED:
         return security_state::MALICIOUS_CONTENT_STATUS_UNWANTED_SOFTWARE;
       case SB_THREAT_TYPE_SAVED_PASSWORD_REUSE:
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-        return security_state::MALICIOUS_CONTENT_STATUS_SAVED_PASSWORD_REUSE;
-#endif
       case SB_THREAT_TYPE_SIGNED_IN_SYNC_PASSWORD_REUSE:
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-        if (safe_browsing::ChromePasswordProtectionService::
-                ShouldShowPasswordReusePageInfoBubble(
-                    web_contents, PasswordType::PRIMARY_ACCOUNT_PASSWORD)) {
-          return security_state::
-              MALICIOUS_CONTENT_STATUS_SIGNED_IN_SYNC_PASSWORD_REUSE;
-        }
-#endif
-        [[fallthrough]];
       case SB_THREAT_TYPE_SIGNED_IN_NON_SYNC_PASSWORD_REUSE:
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-        if (safe_browsing::ChromePasswordProtectionService::
-                ShouldShowPasswordReusePageInfoBubble(
-                    web_contents, PasswordType::OTHER_GAIA_PASSWORD)) {
-          return security_state::
-              MALICIOUS_CONTENT_STATUS_SIGNED_IN_NON_SYNC_PASSWORD_REUSE;
-        }
-#endif
-        [[fallthrough]];
       case SB_THREAT_TYPE_ENTERPRISE_PASSWORD_REUSE:
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-        if (safe_browsing::ChromePasswordProtectionService::
-                ShouldShowPasswordReusePageInfoBubble(
-                    web_contents, PasswordType::ENTERPRISE_PASSWORD)) {
-          return security_state::
-              MALICIOUS_CONTENT_STATUS_ENTERPRISE_PASSWORD_REUSE;
-        }
-#endif
-        // If user has already changed password or FULL_SAFE_BROWSING isn't
-        // enabled, returns the regular social engineering content status.
+        // Password reuse protection was removed from this fork.
         return security_state::MALICIOUS_CONTENT_STATUS_SOCIAL_ENGINEERING;
       case SB_THREAT_TYPE_BILLING:
         return security_state::MALICIOUS_CONTENT_STATUS_BILLING;

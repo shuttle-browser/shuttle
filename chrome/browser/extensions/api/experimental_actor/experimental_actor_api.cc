@@ -227,26 +227,18 @@ ExperimentalActorPerformActionsFunction::Run() {
       case optimization_guide::proto::Action::kActivateTab:
         ConvertActionTabId(action.mutable_activate_tab(), browser_context());
         break;
-      case optimization_guide::proto::Action::kAttemptLogin:
-        ConvertActionTabId(action.mutable_attempt_login(), browser_context());
-        break;
       case optimization_guide::proto::Action::kScriptTool:
         ConvertActionTabId(action.mutable_script_tool(), browser_context());
         break;
       case optimization_guide::proto::Action::kScrollTo:
         ConvertActionTabId(action.mutable_scroll_to(), browser_context());
         break;
-      case optimization_guide::proto::Action::kAttemptFormFilling:
-        ConvertActionTabId(action.mutable_attempt_form_filling(),
-                           browser_context());
-        break;
-      case optimization_guide::proto::Action::kAttemptOtpFilling:
-        ConvertActionTabId(action.mutable_attempt_otp_filling(),
-                           browser_context());
-        break;
       case optimization_guide::proto::Action::kTranslatePage:
         ConvertActionTabId(action.mutable_translate_page(), browser_context());
         break;
+      case optimization_guide::proto::Action::kAttemptLogin:
+      case optimization_guide::proto::Action::kAttemptFormFilling:
+      case optimization_guide::proto::Action::kAttemptOtpFilling:
       case optimization_guide::proto::Action::kWait:
       case optimization_guide::proto::Action::kCreateTab:
       case optimization_guide::proto::Action::kCreateWindow:

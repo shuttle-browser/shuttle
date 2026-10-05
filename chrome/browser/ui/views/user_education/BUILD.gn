@@ -10,7 +10,6 @@ assert(toolkit_views)
 
 source_set("user_education") {
   public = [
-    "autofill_help_bubble_factory.h",
     "browser_help_bubble.h",
     "browser_help_bubble_event_relay.h",
     "browser_user_education_service.h",
@@ -55,7 +54,6 @@ source_set("user_education") {
 # target.
 source_set("impl") {
   sources = [
-    "autofill_help_bubble_factory.cc",
     "browser_help_bubble.cc",
     "browser_help_bubble_event_relay.cc",
     "browser_user_education_service.cc",
@@ -101,7 +99,6 @@ source_set("impl") {
     "//chrome/browser/ui/views:bubble_anchor_util_views",
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/browser/ui/views/accessibility",
-    "//chrome/browser/ui/views/autofill/popup",
     "//chrome/browser/ui/views/frame:contents_web_view",
     "//chrome/browser/ui/views/frame:toolbar_button_provider",
     "//chrome/browser/ui/views/page_action",
@@ -112,7 +109,6 @@ source_set("impl") {
     "//chrome/browser/ui/views/toolbar",
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/ui/webui/history",
-    "//chrome/browser/ui/webui/password_manager:password_manager_ui",
     "//chrome/browser/ui/webui/settings",
     "//chrome/browser/user_education",
     "//components/feature_engagement/public",

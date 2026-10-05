@@ -16,13 +16,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
 #include "build/build_config.h"
-#include "chrome/browser/password_manager/chrome_password_manager_client.h"
 #include "chrome/browser/tab_contents/tab_util.h"
-#include "components/autofill/core/browser/logging/log_manager.h"
-#include "components/autofill/core/browser/logging/log_router.h"
-#include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
-#include "components/password_manager/core/browser/http_auth_manager.h"
-#include "components/password_manager/core/browser/password_string.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -48,8 +42,6 @@
 using content::BrowserThread;
 using content::NavigationController;
 using content::WebContents;
-using password_manager::PasswordForm;
-using password_manager::PasswordString;
 
 namespace {
 
@@ -65,13 +57,6 @@ LoginHandlerVector& GetAllLoginHandlers() {
 // ----------------------------------------------------------------------------
 // LoginHandler
 
-LoginHandler::LoginModelData::LoginModelData(
-    password_manager::HttpAuthManager* login_model,
-    const password_manager::PasswordForm& observed_form)
-    : model(login_model), form(observed_form) {
-  DCHECK(model);
-}
-
 LoginHandler::~LoginHandler() {
   auto& login_handlers = GetAllLoginHandlers();
   for (auto it = login_handlers.begin(); it != login_handlers.end(); ++it) {
@@ -79,12 +64,6 @@ LoginHandler::~LoginHandler() {
       login_handlers.erase(it);
       break;
     }
-  }
-
-  password_manager::HttpAuthManager* http_auth_manager =
-      GetHttpAuthManagerForLogin();
-  if (http_auth_manager) {
-    http_auth_manager->OnPasswordFormDismissed();
   }
 
   if (!WasAuthHandled()) {
@@ -107,48 +86,12 @@ void LoginHandler::SetAuth(std::u16string_view username,
                            std::u16string_view password) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  std::unique_ptr<password_manager::BrowserSavePasswordProgressLogger> logger;
-  password_manager::PasswordManagerClient* client =
-      GetPasswordManagerClientFromWebContent();
-  autofill::LogManager* log_manager =
-      client ? client->GetCurrentLogManager() : nullptr;
-  if (log_manager && log_manager->IsLoggingActive()) {
-    logger =
-        std::make_unique<password_manager::BrowserSavePasswordProgressLogger>(
-            log_manager);
-    logger->LogMessage(
-        autofill::SavePasswordProgressLogger::STRING_SET_AUTH_METHOD);
-  }
-
-  bool already_handled = WasAuthHandled();
-  if (logger) {
-    logger->LogBoolean(
-        autofill::SavePasswordProgressLogger::STRING_AUTHENTICATION_HANDLED,
-        already_handled);
-  }
-  if (already_handled) {
+  if (WasAuthHandled()) {
     return;
   }
 
-  // Tell the http-auth manager the credentials were submitted / accepted.
   net::AuthCredentials credentials{std::u16string(username),
                                    std::u16string(password)};
-  if (password_manager::HttpAuthManager* httpauth_manager =
-          GetHttpAuthManagerForLogin()) {
-    password_form_.username_value = credentials.username();
-    // TODO(crbug.com/513276101): Explicit construction of std::u16string
-    // R-Value to be removed once AuthCredentials converted to use
-    // PasswordString
-    password_form_.password_value =
-        PasswordString(std::u16string(credentials.password()));
-    httpauth_manager->OnPasswordFormSubmitted(password_form_);
-    if (logger) {
-      logger->LogPasswordForm(
-          autofill::SavePasswordProgressLogger::STRING_LOGINHANDLER_FORM,
-          password_form_);
-    }
-  }
-
   content::LoginDelegate::LoginAuthRequiredCallback callback =
       std::move(auth_required_callback_);
 
@@ -273,22 +216,6 @@ void LoginHandler::OtherHandlerFinished(bool supplied,
   }
 }
 
-password_manager::PasswordManagerClient*
-LoginHandler::GetPasswordManagerClientFromWebContent() {
-  if (!web_contents_) {
-    return nullptr;
-  }
-  password_manager::PasswordManagerClient* client =
-      ChromePasswordManagerClient::FromWebContents(web_contents_.get());
-  return client;
-}
-
-password_manager::HttpAuthManager* LoginHandler::GetHttpAuthManagerForLogin() {
-  password_manager::PasswordManagerClient* client =
-      GetPasswordManagerClientFromWebContent();
-  return client ? client->GetHttpAuthManager() : nullptr;
-}
-
 // Returns whether authentication had been handled (SetAuth or CancelAuth).
 bool LoginHandler::WasAuthHandled() const {
   return auth_required_callback_.is_null();
@@ -297,48 +224,6 @@ bool LoginHandler::WasAuthHandled() const {
 // Closes the view_contents from the UI loop.
 void LoginHandler::CloseContents() {
   CloseDialog();
-}
-
-// static
-std::string LoginHandler::GetSignonRealm(
-    const GURL& url,
-    const net::AuthChallengeInfo& auth_info) {
-  std::string signon_realm;
-  if (auth_info.is_proxy) {
-    // Historically we've been storing the signon realm for proxies using
-    // net::HostPortPair::ToString().
-    net::HostPortPair host_port_pair =
-        net::HostPortPair::FromURL(auth_info.challenger.GetURL());
-    signon_realm = host_port_pair.ToString();
-    signon_realm.append("/");
-  } else {
-    // Take scheme, host, and port from the url.
-    signon_realm = url.DeprecatedGetOriginAsURL().spec();
-    // This ends with a "/".
-  }
-  signon_realm.append(auth_info.realm);
-  return signon_realm;
-}
-
-// static
-PasswordForm LoginHandler::MakeInputForPasswordManager(
-    const GURL& request_url,
-    const net::AuthChallengeInfo& auth_info) {
-  PasswordForm dialog_form;
-  if (base::EqualsCaseInsensitiveASCII(auth_info.scheme,
-                                       net::kBasicAuthScheme)) {
-    dialog_form.scheme = PasswordForm::Scheme::kBasic;
-  } else if (base::EqualsCaseInsensitiveASCII(auth_info.scheme,
-                                              net::kDigestAuthScheme)) {
-    dialog_form.scheme = PasswordForm::Scheme::kDigest;
-  } else {
-    dialog_form.scheme = PasswordForm::Scheme::kOther;
-  }
-  dialog_form.url = auth_info.challenger.GetURL();
-  CHECK(auth_info.is_proxy ||
-        auth_info.challenger == url::SchemeHostPort(request_url));
-  dialog_form.signon_realm = GetSignonRealm(dialog_form.url, auth_info);
-  return dialog_form;
 }
 
 // static
@@ -381,40 +266,12 @@ void LoginHandler::ShowLoginPrompt(const GURL& request_url) {
   std::u16string explanation;
   GetDialogStrings(request_url, auth_info(), &authority, &explanation);
 
-  password_manager::HttpAuthManager* httpauth_manager =
-      GetHttpAuthManagerForLogin();
-
-  if (!httpauth_manager) {
-    // If there is no password manager, then show a view with no password
-    // manager hooked up.
-    BuildViewAndNotify(authority, explanation, nullptr);
-    return;
-  }
-
-  password_manager::PasswordManagerClient* client =
-      GetPasswordManagerClientFromWebContent();
-  autofill::LogManager* log_manager =
-      client ? client->GetCurrentLogManager() : nullptr;
-  if (log_manager && log_manager->IsLoggingActive()) {
-    password_manager::BrowserSavePasswordProgressLogger logger(log_manager);
-    logger.LogMessage(
-        autofill::SavePasswordProgressLogger::STRING_SHOW_LOGIN_PROMPT_METHOD);
-  }
-
-  PasswordForm observed_form(
-      MakeInputForPasswordManager(request_url, auth_info()));
-  LoginModelData model_data(httpauth_manager, observed_form);
-  BuildViewAndNotify(authority, explanation, &model_data);
+  BuildViewAndNotify(authority, explanation);
 }
 
-void LoginHandler::BuildViewAndNotify(
-    const std::u16string& authority,
-    const std::u16string& explanation,
-    LoginHandler::LoginModelData* login_model_data) {
-  if (login_model_data) {
-    password_form_ = *login_model_data->form;
-  }
-  bool success = BuildViewImpl(authority, explanation, login_model_data);
+void LoginHandler::BuildViewAndNotify(const std::u16string& authority,
+                                      const std::u16string& explanation) {
+  bool success = BuildViewImpl(authority, explanation);
   if (success) {
     NotifyAuthNeeded();
   } else {

@@ -10,9 +10,7 @@
 #include "chrome/browser/login_detection/login_detection_prefs.h"
 #include "chrome/browser/login_detection/login_detection_type.h"
 #include "chrome/browser/login_detection/login_detection_util.h"
-#include "chrome/browser/password_manager/chrome_password_manager_client.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/prefs/pref_service.h"
 #include "components/site_isolation/site_isolation_policy.h"
 #include "content/public/browser/browser_context.h"
@@ -53,8 +51,6 @@ void RecordLoginDetectionMetrics(LoginDetectionType type,
   if (type == LoginDetectionType::kNoLogin) {
     return;
   }
-  password_manager::metrics_util::RecordBrowserAssistedLogin(
-      password_manager::metrics_util::BrowserAssistedLoginType::kNonFedCmOAuth);
   ukm::builders::LoginDetectionV2 builder(ukm_source_id);
   builder.SetPage_LoginType(static_cast<int64_t>(type))
       .Record(ukm::UkmRecorder::Get());
@@ -178,12 +174,6 @@ void LoginDetectionTabHelper::ProcessNewSignedInSite(
   prefs::SaveSiteToOAuthSignedInList(GetPrefs(web_contents()), signedin_site);
   site_isolation::SiteIsolationPolicy::IsolateNewOAuthURL(
       web_contents()->GetBrowserContext(), signedin_site);
-
-  ChromePasswordManagerClient* password_manager_client =
-      ChromePasswordManagerClient::FromWebContents(web_contents());
-  if (password_manager_client) {
-    password_manager_client->OnNonFedCmFederatedLogin();
-  }
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(LoginDetectionTabHelper);

@@ -13,10 +13,8 @@
 #include "chrome/browser/prefetch/pref_names.h"
 #include "chrome/browser/preloading/preloading_prefs.h"
 #include "chrome/common/pref_names.h"
-#include "components/autofill/core/common/autofill_prefs.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/embedder_support/pref_names.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/privacy_sandbox/privacy_sandbox_prefs.h"
 #include "components/proxy_config/proxy_config_pref_names.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
@@ -42,22 +40,10 @@ const PrefMappingEntry kMappings[] = {
     {"alternateErrorPagesEnabled",
      embedder_support::kAlternateErrorPagesEnabled, APIPermissionID::kPrivacy,
      APIPermissionID::kPrivacy},
-    {"autofillEnabled", autofill::prefs::kAutofillEnabledDeprecated,
-     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
-    {"autofillAddressEnabled", autofill::prefs::kAutofillProfileEnabled,
-     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
-    {"autofillCreditCardEnabled", autofill::prefs::kAutofillCreditCardEnabled,
-     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
-    {"autofillSettings", autofill::prefs::kAutofillTypesBlocked,
-     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"hyperlinkAuditingEnabled", prefs::kEnableHyperlinkAuditing,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"networkPredictionEnabled", prefetch::prefs::kNetworkPredictionOptions,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
-    {"passwordSavingEnabled",
-     password_manager::prefs::kCredentialsEnableService,
-     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
-
     {"protectedContentEnabled", prefs::kProtectedContentDefault,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
 

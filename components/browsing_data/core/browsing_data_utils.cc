@@ -15,9 +15,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
-#include "components/browsing_data/core/counters/autofill_counter.h"
 #include "components/browsing_data/core/counters/history_counter.h"
-#include "components/browsing_data/core/counters/passwords_counter.h"
 #include "components/browsing_data/core/features.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -26,34 +24,6 @@
 #include "ui/base/l10n/l10n_util.h"
 
 namespace {
-// Creates a string like "for a.com, b.com, and 4 more" for the password
-// counter.
-std::u16string CreatePasswordDomainExamples(
-    int password_count,
-    const std::vector<std::string> domain_examples) {
-  DCHECK_GE(password_count,
-            base::checked_cast<browsing_data::BrowsingDataCounter::ResultInt>(
-                domain_examples.size()));
-  DCHECK_EQ(domain_examples.empty(), password_count == 0);
-  std::vector<std::u16string> replacements;
-
-  replacements.emplace_back(base::UTF8ToUTF16(domain_examples[0]));
-  if (domain_examples.size() > 1) {
-    replacements.emplace_back(base::UTF8ToUTF16(domain_examples[1]));
-  }
-  if (password_count > 2 && domain_examples.size() > 1) {
-    replacements.emplace_back(l10n_util::GetPluralStringFUTF16(
-        IDS_DEL_PASSWORDS_COUNTER_AND_X_MORE, password_count - 2));
-  }
-  std::u16string domains_list = base::ReplaceStringPlaceholders(
-      l10n_util::GetPluralStringFUTF16(IDS_DEL_PASSWORDS_DOMAINS_DISPLAY,
-                                       (domain_examples.size() > 1)
-                                           ? password_count
-                                           : domain_examples.size()),
-      replacements, nullptr);
-  return domains_list;
-}
-
 // Constructs the text to be displayed by the history counter from the given
 // `history_result`. The string is based on the unique domains within the
 // deletion range and if there are synced entries within the deletion range.
@@ -221,51 +191,6 @@ std::u16string GetCounterTextFromResult(
     return l10n_util::GetStringUTF16(IDS_CLEAR_BROWSING_DATA_CALCULATING);
   }
 
-  if (pref_name == prefs::kDeletePasswords) {
-    const PasswordsCounter::PasswordsResult* password_result =
-        static_cast<const PasswordsCounter::PasswordsResult*>(result);
-
-    std::vector<std::u16string> parts;
-    BrowsingDataCounter::ResultInt profile_passwords = password_result->Value();
-
-    if (profile_passwords) {
-      parts.emplace_back(base::ReplaceStringPlaceholders(
-          l10n_util::GetPluralStringFUTF16(
-              password_result->is_sync_enabled()
-                  ? IDS_DEL_PASSWORDS_COUNTER_SYNCED
-                  : IDS_DEL_PASSWORDS_COUNTER,
-              profile_passwords),
-          CreatePasswordDomainExamples(profile_passwords,
-                                       password_result->domain_examples()),
-          nullptr));
-    }
-
-    if (password_result->account_passwords()) {
-      parts.emplace_back(base::ReplaceStringPlaceholders(
-          l10n_util::GetPluralStringFUTF16(
-              IDS_DEL_ACCOUNT_PASSWORDS_COUNTER,
-              password_result->account_passwords()),
-          CreatePasswordDomainExamples(
-              password_result->account_passwords(),
-              password_result->account_domain_examples()),
-          nullptr));
-    }
-
-    switch (parts.size()) {
-      case 0:
-        return l10n_util::GetStringUTF16(
-            IDS_DEL_PASSWORDS_AND_SIGNIN_DATA_COUNTER_NONE);
-      case 1:
-        return parts[0];
-      case 2:
-        return l10n_util::GetStringFUTF16(
-            IDS_DEL_PASSWORDS_AND_SIGNIN_DATA_COUNTER_COMBINATION, parts[0],
-            parts[1]);
-      default:
-        NOTREACHED();
-    }
-  }
-
   if (pref_name == prefs::kDeleteDownloadHistory) {
     BrowsingDataCounter::ResultInt count =
         static_cast<const BrowsingDataCounter::FinishedResult*>(result)
@@ -285,95 +210,6 @@ std::u16string GetCounterTextFromResult(
     // History counter.
     return CreateHistoryCounterString(
           static_cast<const HistoryCounter::HistoryResult*>(result));
-  }
-
-  if (pref_name == prefs::kDeleteFormData) {
-    // Autofill counter.
-    const AutofillCounter::AutofillResult* autofill_result =
-        static_cast<const AutofillCounter::AutofillResult*>(result);
-    AutofillCounter::ResultInt num_suggestions = autofill_result->Value();
-    AutofillCounter::ResultInt num_payment_methods =
-        autofill_result->num_credit_cards();
-    AutofillCounter::ResultInt num_addresses = autofill_result->num_addresses();
-    AutofillCounter::ResultInt num_entities = autofill_result->num_entities();
-
-    std::vector<std::u16string> displayed_strings;
-
-    if (num_payment_methods) {
-      displayed_strings.push_back(l10n_util::GetPluralStringFUTF16(
-          IDS_DEL_AUTOFILL_COUNTER_PAYMENT_METHODS, num_payment_methods));
-    }
-    if (num_addresses) {
-      displayed_strings.push_back(l10n_util::GetPluralStringFUTF16(
-          IDS_DEL_AUTOFILL_COUNTER_ADDRESSES, num_addresses));
-    }
-
-    auto num_suggestions_and_entities = num_suggestions + num_entities;
-    if (num_suggestions_and_entities > 0) {
-      // We use a different wording for autocomplete suggestions based on the
-      // length of the entire string.
-      switch (displayed_strings.size()) {
-        case 0:
-          displayed_strings.push_back(l10n_util::GetPluralStringFUTF16(
-              IDS_DEL_AUTOFILL_COUNTER_SUGGESTIONS,
-              num_suggestions_and_entities));
-          break;
-        case 1:
-          displayed_strings.push_back(l10n_util::GetPluralStringFUTF16(
-              IDS_DEL_AUTOFILL_COUNTER_SUGGESTIONS_LONG,
-              num_suggestions_and_entities));
-          break;
-        case 2:
-          displayed_strings.push_back(l10n_util::GetPluralStringFUTF16(
-              IDS_DEL_AUTOFILL_COUNTER_SUGGESTIONS_SHORT,
-              num_suggestions_and_entities));
-          break;
-        default:
-          NOTREACHED();
-      }
-    }
-
-    // TODO(crbug.com/40066949): Clean this up once Sync-the-feature is gone on
-    // all platforms.
-    bool synced = !syncer::IsReplaceSyncPromosWithSignInPromosEnabled() &&
-                  autofill_result->is_sync_enabled();
-
-    // TODO(crbug.com/371539581): Exclude payment methods from this part,
-    // because it can be attributed as "synced", while payment methods are
-    // always local.
-    std::u16string payment_methods_addresses_autocomplete_entries_part;
-    switch (displayed_strings.size()) {
-      case 0:
-        payment_methods_addresses_autocomplete_entries_part =
-            l10n_util::GetStringUTF16(IDS_DEL_AUTOFILL_COUNTER_EMPTY);
-        break;
-      case 1:
-        payment_methods_addresses_autocomplete_entries_part =
-            synced ? l10n_util::GetStringFUTF16(
-                         IDS_DEL_AUTOFILL_COUNTER_ONE_TYPE_SYNCED,
-                         displayed_strings[0])
-                   : displayed_strings[0];
-        break;
-      case 2:
-        payment_methods_addresses_autocomplete_entries_part =
-            l10n_util::GetStringFUTF16(
-                synced ? IDS_DEL_AUTOFILL_COUNTER_TWO_TYPES_SYNCED
-                       : IDS_DEL_AUTOFILL_COUNTER_TWO_TYPES,
-                displayed_strings[0], displayed_strings[1]);
-        break;
-      case 3:
-        payment_methods_addresses_autocomplete_entries_part =
-            l10n_util::GetStringFUTF16(
-                synced ? IDS_DEL_AUTOFILL_COUNTER_THREE_TYPES_SYNCED
-                       : IDS_DEL_AUTOFILL_COUNTER_THREE_TYPES,
-                displayed_strings[0], displayed_strings[1],
-                displayed_strings[2]);
-        break;
-      default:
-        NOTREACHED();
-    }
-
-    return payment_methods_addresses_autocomplete_entries_part;
   }
 
   NOTREACHED();

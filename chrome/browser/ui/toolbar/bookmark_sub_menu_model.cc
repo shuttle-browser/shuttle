@@ -37,12 +37,6 @@ BookmarkSubMenuModel::BookmarkSubMenuModel(
 BookmarkSubMenuModel::~BookmarkSubMenuModel() = default;
 
 void BookmarkSubMenuModel::Build(BrowserWindowInterface* browser) {
-#if !BUILDFLAG(IS_CHROMEOS)
-  AddItemWithStringId(IDC_IMPORT_SETTINGS, IDS_IMPORT_SETTINGS_MENU_LABEL);
-#endif
-
-  AddSeparator(ui::NORMAL_SEPARATOR);
-
   reading_list_sub_menu_model_ =
       std::make_unique<ReadingListSubMenuModel>(delegate());
   AddSubMenuWithStringIdAndIcon(
@@ -54,16 +48,4 @@ void BookmarkSubMenuModel::Build(BrowserWindowInterface* browser) {
   SetElementIdentifierAt(
       GetIndexOfCommandId(AppMenuModel::kReadingListMenuPlaceholder).value(),
       kReadingListMenuItem);
-
-  auto set_icon = [this](int command_id, const gfx::VectorIcon& vector_icon) {
-    auto index = GetIndexOfCommandId(command_id);
-    if (index) {
-      SetIcon(index.value(), ui::ImageModel::FromVectorIcon(
-                                 vector_icon, ui::kColorMenuIcon, 16));
-    }
-  };
-
-  set_icon(IDC_IMPORT_SETTINGS, features::IsRoundedIconsEnabled()
-                                    ? kMenuBookIcon
-                                    : kMenuBookChromeRefreshOldIcon);
 }

@@ -17,8 +17,6 @@ export function ensureLazyLoaded(): Promise<void> {
     lazyLoadPromise = Promise
                           .all([
                             'settings-appearance-page',
-                            'settings-contact-info-page',
-                            'settings-payments-page',
                             'settings-clear-browsing-data-dialog',
                             'settings-search-engines-page',
                             'settings-a11y-page',

@@ -31,17 +31,10 @@ struct MechanismTraits {
       // kPhone are considered Platform Passkeys for the logic.
       return SortableCredentialType::kPlatformPasskey;
     }
-    if (std::holds_alternative<Mechanism::Password>(mechanism.type)) {
-      return SortableCredentialType::kPassword;
-    }
     return SortableCredentialType::kOther;
   }
 
   static base::Time GetLastUsedTime(const Mechanism& mechanism) {
-    if (const auto* password_info =
-            std::get_if<Mechanism::Password>(&mechanism.type)) {
-      return password_info->value().last_used_time.value_or(base::Time::Min());
-    }
     if (const auto* cred_variant =
             std::get_if<Mechanism::Credential>(&mechanism.type)) {
       return cred_variant->value().last_used_time.value_or(base::Time::Min());

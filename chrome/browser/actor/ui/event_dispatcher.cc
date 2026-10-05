@@ -101,9 +101,6 @@ constexpr absl::Overload PreToolEventsFn{
           MouseMove(tr.GetTabHandle(), pt, source)};
     },
     NoUiEvents<WaitToolRequest>,
-    NoUiEvents<AttemptLoginToolRequest>,
-    NoUiEvents<AttemptFormFillingToolRequest>,
-    NoUiEvents<AttemptOtpFillingToolRequest>,
     NoUiEvents<ScriptToolRequest>,
     NoUiEvents<ScrollToToolRequest>};
 
@@ -133,9 +130,6 @@ constexpr absl::Overload PostToolEventsFn{
     NoUiEvents<SelectToolRequest>,
     NoUiEvents<TypeToolRequest>,
     NoUiEvents<WaitToolRequest>,
-    NoUiEvents<AttemptLoginToolRequest>,
-    NoUiEvents<AttemptFormFillingToolRequest>,
-    NoUiEvents<AttemptOtpFillingToolRequest>,
     NoUiEvents<ScriptToolRequest>,
     NoUiEvents<ScrollToToolRequest>};
 

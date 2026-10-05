@@ -84,9 +84,6 @@ NSMenuItem* BuildAppMenu(NSApplication* nsapp,
               Item(IDS_CLEAR_BROWSING_DATA_MAC)
                   .command_id(IDC_CLEAR_BROWSING_DATA)
                   .remove_if(is_pwa),
-              Item(IDS_IMPORT_SETTINGS_MENU_MAC)
-                  .command_id(IDC_IMPORT_SETTINGS)
-                  .remove_if(is_pwa),
               Item().is_separator(),
               Item(IDS_SERVICES_MAC)
                   .tag(-1)

@@ -39,13 +39,6 @@ class PrefRegistrySyncable;
 // install work for this user. After that the sentinel file is created.
 namespace first_run {
 
-enum AutoImportState {
-  AUTO_IMPORT_NONE = 0,
-  AUTO_IMPORT_CALLED = 1 << 0,
-  AUTO_IMPORT_PROFILE_IMPORTED = 1 << 1,
-  AUTO_IMPORT_BOOKMARKS_FILE_IMPORTED = 1 << 2,
-};
-
 enum ProcessInitialPreferencesResult {
   FIRST_RUN_PROCEED = 0,  // Proceed with first run.
   EULA_EXIT_NOW,          // Should immediately exit due to EULA flow.
@@ -103,21 +96,11 @@ base::Time GetFirstRunSentinelCreationTime();
 // This is needed for unit tests which are runned in the same process.
 void ResetCachedSentinelDataForTesting();
 
-// Automatically imports items requested by |profile|'s configuration (sum of
-// policies and initial prefs). Also imports bookmarks from file if
-// |import_bookmarks_path| is not empty.
-void AutoImport(Profile* profile,
-                const std::string& import_bookmarks_path);
-
 // Does remaining first run tasks. This can pop the first run consent dialog on
 // linux. |make_chrome_default_for_user| is the value of
 // kMakeChromeDefaultForUser in master_preferences which contributes to the
 // decision of making chrome default browser in post import tasks.
 void DoPostImportTasks(bool make_chrome_default_for_user);
-
-// Returns the current state of AutoImport as recorded in a bitfield formed from
-// values in AutoImportState.
-uint16_t auto_import_state();
 
 // Set a initial preferences file path that overrides platform defaults.
 void SetInitialPrefsPathForTesting(const base::FilePath& master_prefs);

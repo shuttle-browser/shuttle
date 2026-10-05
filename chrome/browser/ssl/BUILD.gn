@@ -143,7 +143,6 @@ source_set("impl") {
     "//chrome/browser/ui/tabs:tabs_public",
     "//components/captive_portal/content",
     "//components/guest_view/browser",
-    "//components/password_manager/core/browser:metrics_util",
     "//components/pref_registry",
     "//components/safe_browsing/core/browser:safe_browsing_metrics_collector",
   ]
@@ -333,9 +332,6 @@ if (!is_android) {
       "//components/captive_portal/content",
       "//components/embedder_support",
       "//components/error_page/content/browser",
-      "//components/safe_browsing/content/browser/password_protection",
-      "//components/safe_browsing/content/browser/password_protection:test_support",
-      "//components/safe_browsing/core/browser/password_protection:password_protection_metrics_util",
       "//components/security_interstitials/content:proto_gen",
       "//content/test:browsertest_support",
       "//content/test:test_support",

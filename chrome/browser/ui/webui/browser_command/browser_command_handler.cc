@@ -35,7 +35,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "components/performance_manager/public/features.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/content/browser/web_ui/safe_browsing_ui.h"
@@ -117,7 +116,8 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = TutorialServiceExists() && BrowserSupportsTabGroups();
       break;
     case Command::kOpenPasswordManager:
-      can_execute = true;
+      // Agent Chrome: the password manager was removed.
+      can_execute = false;
       break;
     case Command::kNoOpCommand:
       can_execute = true;
@@ -130,7 +130,8 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = false;
       break;
     case Command::kStartPasswordManagerTutorial:
-      can_execute = TutorialServiceExists();
+      // Agent Chrome: the password manager was removed.
+      can_execute = false;
       break;
     case Command::kOpenAISettings:
       can_execute = true;
@@ -139,7 +140,7 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = true;
       break;
     case Command::kOpenPaymentsSettings:
-      can_execute = true;
+      can_execute = false;
       break;
     case Command::kOpenGlic:
     case Command::kOpenGlicSettings:
@@ -208,7 +209,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
       StartTabGroupTutorial();
       break;
     case Command::kOpenPasswordManager:
-      OpenPasswordManager();
+      // Not executable; see CanExecuteCommand().
       break;
     case Command::kNoOpCommand:
       // Nothing to do.
@@ -221,7 +222,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
       // Not executable; see CanExecuteCommand().
       break;
     case Command::kStartPasswordManagerTutorial:
-      StartPasswordManagerTutorial();
+      // Not executable; see CanExecuteCommand().
       break;
     case Command::kOpenAISettings:
       OpenAISettings();
@@ -231,8 +232,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
                     disposition);
       break;
     case Command::kOpenPaymentsSettings:
-      NavigateToURL(GURL(chrome::GetSettingsUrl(chrome::kPaymentsSubPage)),
-                    disposition);
+      // Not executable; see CanExecuteCommand().
       break;
     case Command::kOpenGlic:
     case Command::kOpenGlicSettings:
@@ -294,11 +294,6 @@ void BrowserCommandHandler::NavigateToEnhancedProtectionSetting() {
       safe_browsing::SafeBrowsingSettingReferralMethod::kPromoSlingerReferral);
 }
 
-void BrowserCommandHandler::OpenPasswordManager() {
-  chrome::ShowPasswordManager(ProfileBrowserCollection::GetForProfile(profile_)
-                                  ->GetLastActiveBrowser());
-}
-
 void BrowserCommandHandler::OpenAISettings() {
   chrome::ShowSettingsSubPage(
       ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser(),
@@ -307,16 +302,6 @@ void BrowserCommandHandler::OpenAISettings() {
 
 bool BrowserCommandHandler::DefaultSearchProviderIsGoogle() {
   return search::DefaultSearchProviderIsGoogle(profile_);
-}
-
-void BrowserCommandHandler::StartPasswordManagerTutorial() {
-  auto* tutorial_id = kPasswordManagerTutorialId;
-
-  StartTutorialInPage::Params params;
-  params.tutorial_id = tutorial_id;
-  params.callback = base::BindOnce(&BrowserCommandHandler::OnTutorialStarted,
-                                   base::Unretained(this), tutorial_id);
-  StartTutorial(std::move(params));
 }
 
 void BrowserCommandHandler::OpenSplitView() {

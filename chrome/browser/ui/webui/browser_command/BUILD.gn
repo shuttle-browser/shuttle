@@ -30,7 +30,6 @@ source_set("browser_command") {
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/user_education",
     "//chrome/common",
-    "//components/password_manager/core/common",
     "//components/performance_manager",
     "//components/prefs",
     "//components/safe_browsing/content/browser/web_ui",

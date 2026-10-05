@@ -44,7 +44,6 @@
 #include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_persister.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service_factory.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_uploader.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/potential_password_theft_signal_processor.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/remote_host_contacted_signal_processor.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/script_injection_signal_processor.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/search_hijacking_detector.h"
@@ -1530,9 +1529,6 @@ void ExtensionTelemetryService::SetUpSignalProcessorsAndSubscribersForESB() {
       ExtensionSignalType::kDeclarativeNetRequest,
       std::make_unique<DeclarativeNetRequestSignalProcessor>());
   signal_processors_.emplace(
-      ExtensionSignalType::kPotentialPasswordTheft,
-      std::make_unique<PotentialPasswordTheftSignalProcessor>());
-  signal_processors_.emplace(
       ExtensionSignalType::kRemoteHostContacted,
       std::make_unique<RemoteHostContactedSignalProcessor>());
   signal_processors_.emplace(ExtensionSignalType::kTabsApi,
@@ -1558,14 +1554,8 @@ void ExtensionTelemetryService::SetUpSignalProcessorsAndSubscribersForESB() {
           signal_processors_[ExtensionSignalType::kDeclarativeNetRequest]
               .get()};
   std::vector<raw_ptr<ExtensionSignalProcessor, VectorExperimental>>
-      subscribers_for_password_reuse = {
-          signal_processors_[ExtensionSignalType::kPotentialPasswordTheft]
-              .get()};
-  std::vector<raw_ptr<ExtensionSignalProcessor, VectorExperimental>>
       subscribers_for_remote_host_contacted = {
-          signal_processors_[ExtensionSignalType::kRemoteHostContacted].get(),
-          signal_processors_[ExtensionSignalType::kPotentialPasswordTheft]
-              .get()};
+          signal_processors_[ExtensionSignalType::kRemoteHostContacted].get()};
 
   std::vector<raw_ptr<ExtensionSignalProcessor, VectorExperimental>>
       subscribers_for_tabs_api = {
@@ -1584,8 +1574,6 @@ void ExtensionTelemetryService::SetUpSignalProcessorsAndSubscribersForESB() {
   signal_subscribers_.emplace(
       ExtensionSignalType::kDeclarativeNetRequest,
       std::move(subscribers_for_declarative_net_request));
-  signal_subscribers_.emplace(ExtensionSignalType::kPasswordReuse,
-                              std::move(subscribers_for_password_reuse));
   signal_subscribers_.emplace(ExtensionSignalType::kRemoteHostContacted,
                               std::move(subscribers_for_remote_host_contacted));
   signal_subscribers_.emplace(ExtensionSignalType::kTabsApi,

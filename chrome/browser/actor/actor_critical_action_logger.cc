@@ -20,9 +20,6 @@
 #include "base/uuid.h"
 #include "base/values.h"
 #include "chrome/browser/actor/actor_task.h"
-#include "chrome/browser/actor/tools/attempt_form_filling_tool_request.h"
-#include "chrome/browser/actor/tools/attempt_login_tool_request.h"
-#include "chrome/browser/actor/tools/attempt_otp_filling_tool_request.h"
 #include "chrome/browser/actor/tools/tool_request.h"
 #include "chrome/browser/actor/tools/type_tool_request.h"
 #include "chrome/browser/critical_actions/critical_action_factory.h"
@@ -30,83 +27,12 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_features.h"
 #include "components/actor/core/task_id.h"
-#include "components/autofill/core/browser/integrators/actor/actor_form_filling_types.h"
 #include "components/critical_actions/core/browser/critical_action_service.h"
 #include "components/critical_actions/core/browser/features.h"
 #include "components/feature_engagement/public/tracker.h"
 
 namespace actor {
 
-namespace {
-
-std::string GetActionMetadata(const ToolRequest& action,
-                              critical_actions::ActionType action_type) {
-  if (action_type != critical_actions::ActionType::kFormFill) {
-    return "";
-  }
-
-  CHECK_EQ(action.Name(), AttemptFormFillingToolRequest::kName);
-  const auto& form_req =
-      *static_cast<const AttemptFormFillingToolRequest*>(&action);
-  base::ListValue data_list;
-  for (const auto& req : form_req.requests()) {
-    data_list.Append(autofill::ActorFormFillingRequestedDataToStringView(
-        req.requested_data));
-  }
-  base::DictValue dict;
-  dict.Set("requested_data", std::move(data_list));
-
-  std::string json_metadata;
-  if (base::JSONWriter::Write(dict, &json_metadata)) {
-    return json_metadata;
-  }
-  return "";
-}
-
-critical_actions::ActionType EvaluateLoginRequest(
-    const mojom::ActionResult& result) {
-  if (!result.attempt_login_status.has_value()) {
-    return critical_actions::ActionType::kUnknown;
-  }
-
-  switch (*result.attempt_login_status) {
-    case mojom::AttemptLoginStatus::kFederated:
-      return critical_actions::ActionType::kFederatedLogin;
-    case mojom::AttemptLoginStatus::kPasswordManager:
-      return critical_actions::ActionType::kGooglePasswordManager;
-  }
-  return critical_actions::ActionType::kUnknown;
-}
-
-critical_actions::ActionType EvaluateToolRequest(
-    const ToolRequest& action,
-    const mojom::ActionResult& result) {
-  const std::string_view name = action.Name();
-
-  if (name == AttemptLoginToolRequest::kName) {
-    return EvaluateLoginRequest(result);
-  }
-  if (name == AttemptOtpFillingToolRequest::kName) {
-    return critical_actions::ActionType::kCredentialsOtp;
-  }
-  if (name == AttemptFormFillingToolRequest::kName) {
-    const auto& request =
-        static_cast<const AttemptFormFillingToolRequest&>(action);
-    if (base::FeatureList::IsEnabled(features::kGlicActorAutofillPreClick) &&
-        !request.enqueued_click()) {
-      // TimeOfUseValidation (always run by the framework before Invoke())
-      // rejects empty trigger fields. Thus, under PreClick, we always enqueue
-      // a click and re-run with enqueued_click = true. We only log this final
-      // run.
-      return critical_actions::ActionType::kUnknown;
-    }
-    return critical_actions::ActionType::kFormFill;
-  }
-
-  return critical_actions::ActionType::kUnknown;
-}
-
-}  // namespace
 
 void ActorCriticalActionLogger::MaybeLogAction(
     ActorTask& task,
@@ -119,16 +45,9 @@ void ActorCriticalActionLogger::MaybeLogAction(
     return;
   }
 
-  critical_actions::ActionType action_type =
-      EvaluateToolRequest(action, result);
-  if (action_type == critical_actions::ActionType::kUnknown) {
-    return;
-  }
-
-  LogAgentSelfReportedAction(profile, task.source_info().id.value_or(""),
-                             action_type, action.GetURLForJournal(),
-                             navigation_id, task.id(),
-                             GetActionMetadata(action, action_type));
+  // The only actions that were logged here were login, OTP filling and form
+  // filling, all of which have been removed. Nothing is logged for the
+  // remaining tools.
 }
 
 void ActorCriticalActionLogger::LogAgentSelfReportedAction(

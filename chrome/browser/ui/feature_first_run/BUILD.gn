@@ -4,7 +4,6 @@
 
 source_set("feature_first_run") {
   sources = [
-    "autofill_ai_first_run_dialog.h",
     "feature_first_run_helper.h",
   ]
 
@@ -13,7 +12,6 @@ source_set("feature_first_run") {
 
 source_set("impl") {
   sources = [
-    "autofill_ai_first_run_dialog.cc",
     "feature_first_run_helper.cc",
   ]
 
@@ -26,7 +24,6 @@ source_set("impl") {
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/browser/ui/views/controls",
-    "//components/autofill/core/browser",
     "//components/constrained_window",
     "//components/strings:components_strings_grit",
     "//ui/strings:ui_strings_grit",

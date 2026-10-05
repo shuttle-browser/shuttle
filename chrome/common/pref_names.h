@@ -906,10 +906,6 @@ inline constexpr char kEnableDoNotTrack[] = "enable_do_not_track";
 inline constexpr char kEnableEncryptedMedia[] =
     "webkit.webprefs.encrypted_media_enabled";
 
-// Boolean that specifies whether to import the form data for autofill from the
-// default browser on first run.
-inline constexpr char kImportAutofillFormData[] = "import_autofill_form_data";
-
 // Boolean that specifies whether to import bookmarks from the default browser
 // on first run.
 inline constexpr char kImportBookmarks[] = "import_bookmarks";
@@ -922,24 +918,9 @@ inline constexpr char kImportHistory[] = "import_history";
 // browser on first run.
 inline constexpr char kImportHomepage[] = "import_home_page";
 
-// Boolean that specifies whether to import the saved passwords from the default
-// browser on first run.
-inline constexpr char kImportSavedPasswords[] = "import_saved_passwords";
-
 // Boolean that specifies whether to import the search engine from the default
 // browser on first run.
 inline constexpr char kImportSearchEngine[] = "import_search_engine";
-
-// Prefs used to remember selections in the "Import data" dialog on the settings
-// page (chrome://settings/importData).
-inline constexpr char kImportDialogAutofillFormData[] =
-    "import_dialog_autofill_form_data";
-inline constexpr char kImportDialogBookmarks[] = "import_dialog_bookmarks";
-inline constexpr char kImportDialogHistory[] = "import_dialog_history";
-inline constexpr char kImportDialogSavedPasswords[] =
-    "import_dialog_saved_passwords";
-inline constexpr char kImportDialogSearchEngine[] =
-    "import_dialog_search_engine";
 
 // Profile avatar and name
 inline constexpr char kProfileAvatarIndex[] = "profile.avatar_index";

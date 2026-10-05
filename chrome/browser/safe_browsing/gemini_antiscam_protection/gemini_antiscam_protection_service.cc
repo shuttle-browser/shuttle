@@ -6,8 +6,6 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "components/autofill/content/browser/content_autofill_driver.h"
-#include "components/autofill/core/browser/foundations/autofill_manager.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/optimization_guide/core/model_execution/feature_keys.h"
 #include "components/optimization_guide/proto/features/gemini_antiscam_protection.pb.h"
@@ -16,34 +14,6 @@
 #include "content/public/browser/web_contents.h"
 
 namespace {
-
-bool ContainsFieldType(content::WebContents* web_contents,
-                       autofill::FieldTypeGroup field_type_group) {
-  autofill::AutofillDriverFactory* adf =
-      autofill::ContentAutofillDriverFactory::FromWebContents(web_contents);
-  if (!adf) {
-    return false;
-  }
-  return std::ranges::any_of(
-      adf->GetExistingDrivers(), [&](autofill::AutofillDriver* d) {
-        if (!d->IsActive()) {
-          return false;
-        }
-        bool found = false;
-        d->GetAutofillManager().ForEachCachedForm(
-            [&found, field_type_group](const autofill::FormStructure& form) {
-              found = found ||
-                      std::ranges::any_of(
-                          form.fields(),
-                          [&](const std::unique_ptr<autofill::AutofillField>&
-                                  field) {
-                            return field->Type().GetGroups().contains(
-                                field_type_group);
-                          });
-            });
-        return found;
-      });
-}
 
 optimization_guide::proto::GeminiAntiscamProtectionRequest
 BuildGeminiAntiscamProtectionRequest(GURL url, std::string page_inner_text) {
@@ -169,14 +139,8 @@ optimization_guide::proto::GeminiAntiscamProtectionMetadata
 GeminiAntiscamProtectionService::BuildGeminiAntiscamProtectionMetadata(
     content::WebContents* web_contents) {
   optimization_guide::proto::GeminiAntiscamProtectionMetadata metadata;
-  metadata.set_page_contains_financial_fields(
-      ContainsFieldType(web_contents, autofill::FieldTypeGroup::kCreditCard) ||
-      ContainsFieldType(web_contents,
-                        autofill::FieldTypeGroup::kStandaloneCvcField));
-  metadata.set_page_contains_password_field(ContainsFieldType(
-      web_contents, autofill::FieldTypeGroup::kPasswordField));
-  metadata.set_page_contains_identity_fields(
-      ContainsFieldType(web_contents, autofill::FieldTypeGroup::kAutofillAi));
+  // Agent Chrome: form-field classification came from autofill (removed), so
+  // the metadata fields stay unset.
   return metadata;
 }
 

@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/actor/core",
-  "+components/critical_actions/core/browser",
-]

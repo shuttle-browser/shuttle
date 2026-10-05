@@ -92,9 +92,6 @@ class AuthenticatorRequestDialogView
   friend class test::AuthenticatorRequestDialogViewTestApi;
 
   void OtherMechanismsButtonPressed();
-  void OpenGpmSettingsButtonPressed();
-  void ForgotGPMPinPressed();
-  void GPMPinOptionChosen(bool is_arbitrary);
 
   raw_ptr<AuthenticatorRequestDialogModel> model_;
 

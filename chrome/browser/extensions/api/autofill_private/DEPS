@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/one_time_tokens/core/browser",
-  "+third_party/libaddressinput/src/cpp/include/libaddressinput",
-]

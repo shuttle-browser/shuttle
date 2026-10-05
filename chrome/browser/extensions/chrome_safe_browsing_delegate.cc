@@ -5,7 +5,6 @@
 #include "chrome/browser/extensions/chrome_safe_browsing_delegate.h"
 
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/declarative_net_request_action_signal.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/declarative_net_request_signal.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
@@ -84,11 +83,6 @@ void ChromeSafeBrowsingDelegate::
       CreateDeclarativeNetRequestRedirectActionSignal(extension_id, request_url,
                                                       redirect_url);
   telemetry_service->AddSignal(std::move(signal));
-}
-
-void ChromeSafeBrowsingDelegate::CreatePasswordReuseDetectionManager(
-    content::WebContents* web_contents) const {
-  ChromePasswordReuseDetectionManagerClient::CreateForWebContents(web_contents);
 }
 
 }  // namespace extensions

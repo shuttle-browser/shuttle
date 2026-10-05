@@ -10,16 +10,11 @@
 #include "build/build_config.h"
 #include "chrome/services/speech/buildflags/buildflags.h"
 #include "components/paint_preview/buildflags/buildflags.h"
-#include "components/password_manager/core/common/password_manager_features.h"
-#include "components/password_manager/services/csv_password/csv_password_parser_impl.h"
-#include "components/password_manager/services/csv_password/public/mojom/csv_password_parser.mojom.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/services/patch/file_patcher_impl.h"
 #include "components/services/patch/public/mojom/file_patcher.mojom.h"
 #include "components/services/unzip/public/mojom/unzipper.mojom.h"
 #include "components/services/unzip/unzipper_impl.h"
-#include "components/user_data_importer/content/content_bookmark_parser_in_utility_process.h"
-#include "components/user_data_importer/mojom/bookmark_html_parser.mojom.h"
 #include "content/public/utility/utility_thread.h"
 #include "extensions/buildflags/buildflags.h"
 #include "media/media_buildflags.h"
@@ -59,9 +54,7 @@
 #endif  // BUILDFLAG(IS_LINUX)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/common/importer/profile_import.mojom.h"
 #include "chrome/services/reading_mode_metrics/reading_mode_metrics_service.h"
-#include "chrome/utility/importer/profile_import_impl.h"
 #include "components/mirroring/service/mirroring_service.h"
 #include "services/proxy_resolver/proxy_resolver_factory_impl.h"  // nogncheck
 #include "services/proxy_resolver/public/mojom/proxy_resolver.mojom.h"
@@ -150,23 +143,6 @@ auto RunUnzipper(mojo::PendingReceiver<unzip::mojom::Unzipper> receiver) {
   return std::make_unique<unzip::UnzipperImpl>(std::move(receiver));
 }
 
-auto RunCSVPasswordParser(
-    mojo::PendingReceiver<password_manager::mojom::CSVPasswordParser>
-        receiver) {
-  return std::make_unique<password_manager::CSVPasswordParserImpl>(
-      std::move(receiver));
-}
-
-auto ContentBookmarkParser(
-    mojo::PendingReceiver<user_data_importer::mojom::BookmarkHtmlParser>
-        receiver) {
-  // The bookmarks parser requires Blink for handling favicon images.
-  content::UtilityThread::Get()->EnsureBlinkInitialized();
-  return std::make_unique<
-      user_data_importer::ContentBookmarkParserInUtilityProcess>(
-      std::move(receiver));
-}
-
 #if BUILDFLAG(IS_WIN)
 auto RunProcessorMetrics(
     mojo::PendingReceiver<chrome::mojom::ProcessorMetrics> receiver) {
@@ -234,11 +210,6 @@ auto RunProxyResolver(
         receiver) {
   return std::make_unique<proxy_resolver::ProxyResolverFactoryImpl>(
       std::move(receiver));
-}
-
-auto RunProfileImporter(
-    mojo::PendingReceiver<chrome::mojom::ProfileImport> receiver) {
-  return std::make_unique<ProfileImportImpl>(std::move(receiver));
 }
 
 auto RunMirroringService(
@@ -448,15 +419,12 @@ void RegisterElevatedMainThreadServices(mojo::ServiceFactory& services) {
 void RegisterMainThreadServices(mojo::ServiceFactory& services) {
   services.Add(RunFilePatcher);
   services.Add(RunUnzipper);
-  services.Add(RunCSVPasswordParser);
-  services.Add(ContentBookmarkParser);
 
 #if BUILDFLAG(IS_ANDROID)
   services.Add(RunReadAloudPlaybackControllerFactory);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-  services.Add(RunProfileImporter);
   services.Add(RunMirroringService);
   services.Add(RunReadingModeMetricsService);
 #endif  // !BUILDFLAG(IS_ANDROID)

@@ -18,8 +18,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
-#include "components/password_manager/core/browser/http_auth_manager.h"
-#include "components/password_manager/core/browser/password_form.h"
 #include "content/public/browser/global_request_id.h"
 #include "content/public/browser/login_delegate.h"
 #include "content/public/browser/web_contents.h"
@@ -31,21 +29,6 @@ class GURL;
 // authentication information.
 class LoginHandler : public content::LoginDelegate {
  public:
-  // The purpose of this struct is to enforce that BuildViewImpl receives either
-  // both the login model and the observed form, or none. That is a bit spoiled
-  // by the fact that the model is a pointer to LoginModel, as opposed to a
-  // reference. Having it as a reference would go against the style guide, which
-  // forbids non-const references in arguments, presumably also inside passed
-  // structs, because the guide's rationale still applies. Therefore at least
-  // the constructor DCHECKs that |login_model| is not null.
-  struct LoginModelData {
-    LoginModelData(password_manager::HttpAuthManager* login_model,
-                   const password_manager::PasswordForm& observed_form);
-
-    const raw_ptr<password_manager::HttpAuthManager> model;
-    const raw_ref<const password_manager::PasswordForm> form;
-  };
-
   ~LoginHandler() override;
 
   // Builds the platform specific LoginHandler. The resulting handler calls
@@ -84,13 +67,10 @@ class LoginHandler : public content::LoginDelegate {
       content::WebContents* web_contents,
       content::LoginDelegate::LoginAuthRequiredCallback auth_required_callback);
 
-  // Implement this to initialize the underlying platform specific view. If
-  // |login_model_data| is not null, the contained LoginModel and PasswordForm
-  // should be used to register the view with the password manager. Returns
-  // `false` if the view cannot be built.
+  // Implement this to initialize the underlying platform specific view.
+  // Returns `false` if the view cannot be built.
   virtual bool BuildViewImpl(const std::u16string& authority,
-                             const std::u16string& explanation,
-                             LoginModelData* login_model_data) = 0;
+                             const std::u16string& explanation) = 0;
 
   // Closes the native dialog.
   virtual void CloseDialog() = 0;
@@ -107,7 +87,6 @@ class LoginHandler : public content::LoginDelegate {
 
  private:
   FRIEND_TEST_ALL_PREFIXES(LoginHandlerTest, DialogStringsAndRealm);
-  FRIEND_TEST_ALL_PREFIXES(LoginHandlerTest, MakeInputForPasswordManager);
 
   // When any handler finishes, called on every other handler. |username| and
   // |password| are only valid if |supplied| is true. If |supplied| is false
@@ -118,36 +97,11 @@ class LoginHandler : public content::LoginDelegate {
                             std::u16string_view username,
                             std::u16string_view password);
 
-  // Returns the PasswordManagerClient from the web content.
-  password_manager::PasswordManagerClient*
-  GetPasswordManagerClientFromWebContent();
-
-  // Returns the HttpAuthManager.
-  password_manager::HttpAuthManager* GetHttpAuthManagerForLogin();
-
   // Returns whether authentication had been handled (SetAuth or CancelAuth).
   bool WasAuthHandled() const;
 
   // Closes the view_contents from the UI loop.
   void CloseContents();
-
-  // Get the signon_realm under which this auth info should be stored.
-  //
-  // The format of the signon_realm for proxy auth is:
-  //     proxy-host:proxy-port/auth-realm
-  // The format of the signon_realm for server auth is:
-  //     url-scheme://url-host[:url-port]/auth-realm
-  //
-  // Be careful when changing this function, since you could make existing
-  // saved logins un-retrievable.
-  static std::string GetSignonRealm(const GURL& url,
-                                    const net::AuthChallengeInfo& auth_info);
-
-  // Helper to create a PasswordForm for PasswordManager to start looking for
-  // saved credentials.
-  static password_manager::PasswordForm MakeInputForPasswordManager(
-      const GURL& url,
-      const net::AuthChallengeInfo& auth_info);
 
   static void GetDialogStrings(const GURL& request_url,
                                const net::AuthChallengeInfo& auth_info,
@@ -155,18 +109,12 @@ class LoginHandler : public content::LoginDelegate {
                                std::u16string* explanation);
 
   void BuildViewAndNotify(const std::u16string& authority,
-                          const std::u16string& explanation,
-                          LoginModelData* login_model_data);
+                          const std::u16string& explanation);
 
   base::WeakPtr<content::WebContents> web_contents_;
 
   // Who/where/what asked for the authentication.
   net::AuthChallengeInfo auth_info_;
-
-  // The PasswordForm sent to the PasswordManager. This is so we can refer to it
-  // when later notifying the password manager if the credentials were accepted
-  // or rejected.  This should only be accessed on the UI loop.
-  password_manager::PasswordForm password_form_;
 
   content::LoginDelegate::LoginAuthRequiredCallback auth_required_callback_;
 

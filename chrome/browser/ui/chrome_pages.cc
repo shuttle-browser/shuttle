@@ -33,7 +33,6 @@
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
-#include "chrome/browser/ui/passwords/ui_utils.h"
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -46,8 +45,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/safe_browsing/core/common/safe_browsing_settings_metrics.h"
 #include "components/safe_browsing/core/common/safebrowsing_referral_methods.h"
@@ -503,45 +500,6 @@ void ShowClearBrowsingDataDialog(BrowserWindowInterface* browser) {
   ShowSettingsSubPage(browser, kClearBrowserDataSubPage);
 }
 
-void ShowPasswordManager(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowPasswordManager"));
-  // This code is necessary to fix a bug (crbug.com/40269361) during Password
-  // Manager Shortcut tutorial flow.
-  auto* service =
-      UserEducationServiceFactory::GetForBrowserContext(bwi->GetProfile());
-  if (service) {
-    auto* tutorial_service = &service->tutorial_service();
-    if (tutorial_service &&
-        tutorial_service->IsRunningTutorial(kPasswordManagerTutorialId)) {
-      ShowSingletonTab(bwi, GURL(kChromeUIPasswordManagerSettingsURL));
-      return;
-    }
-  }
-  ShowSingletonTabIgnorePathOverwriteNTP(bwi,
-                                         GURL(kChromeUIPasswordManagerURL));
-}
-
-void ShowPasswordManagerSettings(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowPasswordManagerSettings"));
-  ShowSingletonTabIgnorePathOverwriteNTP(
-      bwi, GURL(kChromeUIPasswordManagerSettingsURL));
-}
-
-void ShowPasswordDetailsPage(BrowserWindowInterface* browser,
-                             const std::string& password_domain_name) {
-  base::RecordAction(
-      UserMetricsAction("Options_ShowPasswordDetailsInPasswordManager"));
-  std::string url = base::StrCat(
-      {GetGooglePasswordManagerSubPageURLStr(), "/", password_domain_name});
-  ShowSingletonTabIgnorePathOverwriteNTP(browser, GURL(url));
-}
-
-void ShowPasswordCheck(BrowserWindowInterface* browser) {
-  base::RecordAction(UserMetricsAction("Options_ShowPasswordCheck"));
-  ShowSingletonTabIgnorePathOverwriteNTP(
-      browser, GURL(kChromeUIPasswordManagerCheckupURL));
-}
-
 void ShowSafeBrowsingEnhancedProtection(BrowserWindowInterface* browser) {
   safe_browsing::LogShowEnhancedProtectionAction();
   ShowSettingsSubPage(browser, kSafeBrowsingEnhancedProtectionSubPage);
@@ -565,11 +523,6 @@ void ShowSafeBrowsingEnhancedProtectionWithIph(
   safe_browsing::LogShowEnhancedProtectionAction();
   ShowPromoInPage::Start(browser, std::move(params));
 #endif
-}
-
-void ShowImportDialog(BrowserWindowInterface* browser) {
-  base::RecordAction(UserMetricsAction("Import_ShowDlg"));
-  ShowSettingsSubPage(browser, kImportDataSubPage);
 }
 
 void ShowAboutChrome(BrowserWindowInterface* browser) {
@@ -600,31 +553,6 @@ void ShowPrivacySandboxSettings(BrowserWindowInterface* browser) {
 void ShowPrivacySandboxAdMeasurementSettings(BrowserWindowInterface* browser) {
   base::RecordAction(UserMetricsAction("Options_ShowPrivacySandbox"));
   ShowSettingsSubPage(browser, kPrivacySandboxMeasurementSubpage);
-}
-
-void ShowAddresses(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowAddresses"));
-  ShowSettingsSubPage(bwi, kAddressesSubPage);
-}
-
-void ShowContactInfo(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowContactInfo"));
-  ShowSettingsSubPage(bwi, kContactInfoSubPage);
-}
-
-void ShowPaymentMethods(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowPaymentMethods"));
-  ShowSettingsSubPage(bwi, kPaymentsSubPage);
-}
-
-void ShowIdentityDocs(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowIdentityDocs"));
-  ShowSettingsSubPage(bwi, kIdentityDocsSubPage);
-}
-
-void ShowTravel(BrowserWindowInterface* bwi) {
-  base::RecordAction(UserMetricsAction("Options_ShowTravel"));
-  ShowSettingsSubPage(bwi, kTravelSubPage);
 }
 
 void ShowAllSitesSettingsFilteredByRwsOwner(

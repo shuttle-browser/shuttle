@@ -37,7 +37,6 @@
 #include "components/favicon_base/select_favicon_frames.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/history/core/browser/history_types.h"
-#include "components/password_manager/content/common/web_ui_constants.h"
 #include "components/prefs/pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "content/public/browser/browser_thread.h"
@@ -67,9 +66,7 @@
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
 #include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/management/management_ui.h"
-#include "chrome/browser/ui/webui/password_manager/password_manager_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_utils.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "media/base/media_switches.h"
 #include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/image/image_skia_rep.h"
@@ -326,10 +323,6 @@ ChromeWebUIControllerFactory::GetFaviconResourceBytes(
   if (page_url.host() == chrome::kChromeUINewTabHost) {
     return ui::ResourceBundle::GetSharedInstance()
         .LoadDataResourceBytesForScale(IDR_NTP_FAVICON, scale_factor);
-  }
-
-  if (page_url.host() == password_manager::kChromeUIPasswordManagerHost) {
-    return PasswordManagerUI::GetFaviconResourceBytes(scale_factor);
   }
 
   if (page_url.host() == chrome::kChromeUIManagementHost) {

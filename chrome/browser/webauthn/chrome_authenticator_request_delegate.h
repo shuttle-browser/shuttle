@@ -21,10 +21,6 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/webauthn/authenticator_request_dialog_model.h"
-#include "chrome/browser/webauthn/password_credential_fetcher.h"
-#include "chrome/browser/webauthn/password_credential_ui_controller.h"
-#include "chrome/browser/webauthn/ui_readiness_barrier.h"
-#include "components/trusted_vault/trusted_vault_connection.h"
 #include "content/public/browser/authenticator_request_client_delegate.h"
 #include "content/public/browser/global_routing_id.h"
 #include "device/fido/authenticator_get_assertion_response.h"
@@ -36,7 +32,6 @@
 #include "third_party/blink/public/mojom/credentialmanagement/credential_type_flags.mojom.h"
 
 class AuthenticatorRequestDialogController;
-class GPMEnclaveController;
 class PrefService;
 
 namespace base {
@@ -63,8 +58,7 @@ class PrefRegistrySyncable;
 
 class ChromeAuthenticatorRequestDelegate
     : public content::AuthenticatorRequestClientDelegate,
-      public AuthenticatorRequestDialogModel::Observer,
-      public UiReadinessBarrier::Delegate {
+      public AuthenticatorRequestDialogModel::Observer {
  public:
   // TestObserver is an interface that observes certain events related to this
   // class for testing purposes. Only a single instance of this interface can
@@ -125,8 +119,6 @@ class ChromeAuthenticatorRequestDelegate
   AuthenticatorRequestDialogController* dialog_controller() const {
     return dialog_controller_.get();
   }
-
-  GPMEnclaveController* enclave_controller_for_testing() const;
 
   // content::AuthenticatorRequestClientDelegate:
   void SetRelyingPartyId(const std::string& rp_id) override;
@@ -195,31 +187,11 @@ class ChromeAuthenticatorRequestDelegate
   void OnModelDestroyed(AuthenticatorRequestDialogModel* model) override;
   void OnCancelRequest() override;
 
-  // UiReadinessBarrier::Delegate:
-  void ShowUI(
-      device::FidoRequestHandlerBase::TransportAvailabilityInfo tai,
-      PasswordCredentialFetcher::PasswordCredentials passwords) override;
-  bool PasswordsUsable() override;
-  bool IsEnclaveActive() override;
-  bool IsEnclaveReady() override;
-  void GetGpmPasskeys(
-      device::FidoRequestHandlerBase::TransportAvailabilityInfo tai,
-      base::OnceCallback<void(
-          device::FidoRequestHandlerBase::TransportAvailabilityInfo)> callback)
-      override;
-
-  void SetPasswordUIControllerForTesting(
-      std::unique_ptr<PasswordCredentialUIController> controller);
-  void SetPasswordFetcherForTesting(
-      std::unique_ptr<PasswordCredentialFetcher> fetcher);
-
   // GetRenderFrameHost returns a pointer to the RenderFrameHost that was given
   // to the constructor.
   content::RenderFrameHost* GetRenderFrameHost() const;
 
  private:
-  void MaybeStartPasswordFetch(const url::Origin& origin, bool synthesize_tai);
-
   FRIEND_TEST_ALL_PREFIXES(ChromeAuthenticatorRequestDelegatePrivateTest,
                            DaysSinceDate);
   FRIEND_TEST_ALL_PREFIXES(ChromeAuthenticatorRequestDelegatePrivateTest,
@@ -236,8 +208,7 @@ class ChromeAuthenticatorRequestDelegate
   // no immediately available credentials found. This will trigger the
   // `immediate_not_found_callback_` to notify the renderer.
   bool MaybeHandleImmediateMediation(
-      const device::FidoRequestHandlerBase::TransportAvailabilityInfo& data,
-      const PasswordCredentialFetcher::PasswordCredentials& passwords);
+      const device::FidoRequestHandlerBase::TransportAvailabilityInfo& data);
 
   std::optional<device::FidoTransportProtocol> GetLastTransportUsed() const;
 
@@ -247,11 +218,6 @@ class ChromeAuthenticatorRequestDelegate
   bool ShouldPermitCableExtension(const url::Origin& origin);
 
   void OnCableEvent(device::cablev2::Event event);
-
-  void DoGetGpmPasskeys(
-      device::FidoRequestHandlerBase::TransportAvailabilityInfo tai,
-      base::OnceCallback<void(
-          device::FidoRequestHandlerBase::TransportAvailabilityInfo)> callback);
 
   // Update `tai` to remove credentials that aren't applicable to this request.
   void FilterRecognizedCredentials(
@@ -296,10 +262,8 @@ class ChromeAuthenticatorRequestDelegate
                                const std::string& rp_id);
 #endif
 
-  void OnPasswordSelected(password_manager::CredentialInfo info);
-
-  void OnPasswordCredentialsReceived(
-      PasswordCredentialFetcher::PasswordCredentials credentials);
+  // Starts the dialog flow once transport availability is known.
+  void ShowUI(device::FidoRequestHandlerBase::TransportAvailabilityInfo tai);
 
   void UpdateModelForTransportAvailability(
       const device::FidoRequestHandlerBase::TransportAvailabilityInfo& tai);
@@ -311,7 +275,6 @@ class ChromeAuthenticatorRequestDelegate
   base::OnceClosure immediate_not_found_callback_;
   base::RepeatingClosure start_over_callback_;
   AccountPreselectedCallback account_preselected_callback_;
-  PasswordSelectedCallback password_selected_callback_;
   device::FidoRequestHandlerBase::RequestCallback request_callback_;
   base::OnceClosure cancel_ui_timeout_callback_;
 
@@ -332,13 +295,6 @@ class ChromeAuthenticatorRequestDelegate
   // point we assume that any errors were communicated on the caBLE device and
   // don't show errors on the desktop too.
   bool cable_device_ready_ = false;
-
-  std::unique_ptr<GPMEnclaveController> enclave_controller_;
-
-  std::unique_ptr<PasswordCredentialUIController> password_ui_controller_;
-  std::unique_ptr<PasswordCredentialFetcher> password_fetcher_;
-
-  std::unique_ptr<UiReadinessBarrier> barrier_;
 
   base::WeakPtrFactory<ChromeAuthenticatorRequestDelegate> weak_ptr_factory_{
       this};

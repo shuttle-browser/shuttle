@@ -13,7 +13,6 @@ import 'chrome://resources/cr_elements/icons.html.js';
 import '../about_page/about_page.js';
 import '../ai_page/ai_page_index.js';
 import '../appearance_page/appearance_page_index.js';
-import '../autofill_page/autofill_page_index.js';
 import '../on_startup_page/on_startup_page.js';
 import '../performance_page/performance_page_index.js';
 import '../privacy_page/privacy_page_index.js';

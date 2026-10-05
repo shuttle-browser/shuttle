@@ -210,7 +210,6 @@ if (!is_mac) {
     ]
     deps = [
       "//chrome/app:generated_resources",
-      "//chrome/browser/password_manager",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/views:layout_provider",
       "//chrome/common:constants",
@@ -333,7 +332,6 @@ source_set("tab_dialogs_impl") {
   ]
   deps = [
     ":hung_renderer_view",
-    "//chrome/browser/ui/views/passwords:password_bubble_view_base",
     "//chrome/browser/ui/views/site_data",
     "//ui/views",
   ]
@@ -420,7 +418,6 @@ if (use_aura) {
     sources = [ "theme_profile_key.cc" ]
     deps = [
       "//base",
-      "//chrome/browser/password_manager",
       "//chrome/browser/profiles:profile",
       "//ui/aura",
       "//ui/base",
@@ -469,7 +466,6 @@ source_set("login_view") {
   public_deps = [
     "//base",
     "//chrome/browser/ui/login",
-    "//components/password_manager/core/browser",
     "//ui/views",
   ]
   deps = [
@@ -669,7 +665,6 @@ source_set("external_protocol_dialog") {
     ":layout_provider",
     "//chrome/app:generated_resources",
     "//chrome/browser/external_protocol",
-    "//chrome/browser/password_manager",
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/tab_contents",
@@ -778,17 +773,14 @@ source_set("simple_web_view_dialog") {
     "//chrome/app:command_ids",
     "//chrome/app:generated_resources",
     "//chrome/app/theme:theme_resources",
-    "//chrome/browser/password_manager",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/themes",
     "//chrome/browser/ui:chrome_web_modal_dialog_manager_delegate",
     "//chrome/browser/ui:view_ids",
-    "//chrome/browser/ui/autofill",
     "//chrome/browser/ui/content_settings",
     "//chrome/browser/ui/views/toolbar",
     "//components/omnibox/browser",
-    "//components/password_manager/core/browser",
     "//components/safe_browsing:buildflags",
     "//components/strings:components_strings",
     "//content/public/common",
@@ -884,7 +876,6 @@ source_set("login_handler_views") {
     "//chrome/browser/ui/dialogs",
     "//chrome/browser/ui/login",
     "//components/constrained_window",
-    "//components/password_manager/core/browser",
     "//components/strings:components_strings",
     "//components/web_modal",
     "//content/public/browser",

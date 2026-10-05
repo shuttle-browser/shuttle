@@ -12,9 +12,7 @@
 #include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
-#include "chrome/browser/ui/views/webauthn/authenticator_gpm_account_info_view.h"
 #include "chrome/browser/ui/views/webauthn/authenticator_request_sheet_view.h"
-#include "chrome/browser/ui/views/webauthn/pin_options_button.h"
 #include "chrome/browser/ui/webauthn/authenticator_request_sheet_model.h"
 #include "chrome/browser/ui/webauthn/sheet_models.h"
 #include "chrome/browser/webauthn/authenticator_request_dialog_model.h"
@@ -132,18 +130,6 @@ void AuthenticatorRequestDialogView::UpdateUIForCurrentSheet() {
                  sheet_->model()->GetAcceptButtonLabel());
   SetButtonLabel(ui::mojom::DialogButton::kCancel,
                  sheet_->model()->GetCancelButtonLabel());
-  if (model_->step() == Step::kGPMTrustThisComputerAssertion ||
-      model_->step() == Step::kGPMTrustThisComputerCreation ||
-      model_->step() == Step::kGPMCreatePasskey ||
-      model_->step() == Step::kGPMEnterPin ||
-      model_->step() == Step::kGPMEnterArbitraryPin ||
-      model_->step() == Step::kGPMCreatePin ||
-      model_->step() == Step::kGPMCreateArbitraryPin ||
-      model_->step() == Step::kGPMChangePin ||
-      model_->step() == Step::kGPMChangeArbitraryPin) {
-    SetButtonStyle(ui::mojom::DialogButton::kCancel, ui::ButtonStyle::kTonal);
-  }
-
   if (ShouldOtherMechanismsButtonBeVisible()) {
     auto* other_mechanisms = SetExtraView(std::make_unique<views::MdTextButton>(
         base::BindRepeating(
@@ -151,34 +137,6 @@ void AuthenticatorRequestDialogView::UpdateUIForCurrentSheet() {
             base::Unretained(this)),
         sheet_->model()->GetOtherMechanismButtonLabel()));
     other_mechanisms->SetEnabled(!model_->ui_disabled_);
-  } else if (sheet_->model()->IsGpmSettingsButtonVisible()) {
-    auto* gpm_settings = SetExtraView(std::make_unique<views::MdTextButton>(
-        base::BindRepeating(
-            &AuthenticatorRequestDialogView::OpenGpmSettingsButtonPressed,
-            base::Unretained(this)),
-        l10n_util::GetStringUTF16(IDS_WEBAUTHN_GPM_SETTINGS)));
-    gpm_settings->SetEnabled(!model_->ui_disabled_);
-  } else if (sheet_->model()->IsForgotGPMPinButtonVisible()) {
-    auto forgot_pin_button = std::make_unique<views::MdTextButton>(
-        base::BindRepeating(
-            &AuthenticatorRequestDialogView::ForgotGPMPinPressed,
-            base::Unretained(this)),
-        l10n_util::GetStringUTF16(IDS_WEBAUTHN_FORGOT_GPM_PIN_BUTTON));
-    forgot_pin_button->SetEnabled(!model_->ui_disabled_);
-    SetExtraView(std::move(forgot_pin_button));
-  } else if (sheet_->model()->IsGPMPinOptionsButtonVisible()) {
-    PinOptionsButton::CommandId checked_command_id =
-        (model_->step() == Step::kGPMCreateArbitraryPin ||
-         model_->step() == Step::kGPMChangeArbitraryPin)
-            ? PinOptionsButton::CommandId::CHOOSE_ARBITRARY_PIN
-            : PinOptionsButton::CommandId::CHOOSE_SIX_DIGIT_PIN;
-    auto pin_options_button = std::make_unique<PinOptionsButton>(
-        l10n_util::GetStringUTF16(IDS_WEBAUTHN_GPM_PIN_OPTIONS_BUTTON),
-        checked_command_id,
-        base::BindRepeating(&AuthenticatorRequestDialogView::GPMPinOptionChosen,
-                            base::Unretained(this)));
-    pin_options_button->SetEnabled(!model_->ui_disabled_);
-    SetExtraView(std::move(pin_options_button));
   } else {
     SetExtraView(std::make_unique<views::View>());
   }
@@ -236,19 +194,7 @@ void AuthenticatorRequestDialogView::UpdateUIForCurrentSheet() {
   }
 
   if (auto* frame_view = GetBubbleFrameView(); frame_view) {
-    if (model_->step() == Step::kGPMCreatePin ||
-        model_->step() == Step::kGPMCreateArbitraryPin ||
-        model_->step() == Step::kGPMChangePin ||
-        model_->step() == Step::kGPMChangeArbitraryPin ||
-        model_->step() == Step::kGPMEnterPin ||
-        model_->step() == Step::kGPMEnterArbitraryPin) {
-      frame_view->SetFootnoteView(
-          std::make_unique<AuthenticatorGpmAccountInfoView>(
-              static_cast<AuthenticatorGpmPinSheetModelBase*>(
-                  sheet_->model())));
-    } else {
-      frame_view->SetFootnoteView(nullptr);
-    }
+    frame_view->SetFootnoteView(nullptr);
   }
 
   // Force re-layout of the entire dialog client view, which includes the sheet
@@ -379,18 +325,6 @@ void AuthenticatorRequestDialogView::OnVisibilityChanged(
 
 void AuthenticatorRequestDialogView::OtherMechanismsButtonPressed() {
   sheet_->model()->OnBack();
-}
-
-void AuthenticatorRequestDialogView::OpenGpmSettingsButtonPressed() {
-  sheet_->model()->OnOpenGpmSettingsButtonPressed();
-}
-
-void AuthenticatorRequestDialogView::ForgotGPMPinPressed() {
-  sheet_->model()->OnForgotGPMPin();
-}
-
-void AuthenticatorRequestDialogView::GPMPinOptionChosen(bool is_arbitrary) {
-  sheet_->model()->OnGPMPinOptionChosen(is_arbitrary);
 }
 
 BEGIN_METADATA(AuthenticatorRequestDialogView)

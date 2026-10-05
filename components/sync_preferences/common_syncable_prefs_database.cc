@@ -10,7 +10,6 @@
 #include "base/containers/fixed_flat_set.h"
 #include "base/feature_list.h"
 #include "build/build_config.h"
-#include "components/autofill/core/common/autofill_prefs.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
@@ -18,7 +17,6 @@
 #include "components/metrics/metrics_pref_names.h"
 #include "components/ntp_tiles/pref_names.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/sync/base/data_type.h"
@@ -39,13 +37,13 @@ namespace syncable_prefs_ids {
 // LINT.IfChange(CommonSyncablePref)
 enum {
   kSyncablePrefForTesting = 0,  // For tests.
-  kAutofillCreditCardEnabled = 1,
+  // kAutofillCreditCardEnabled = 1, (removed in Agent Chrome)
   // kAutofillEnabledDeprecated = 2, (deprecated)
-  kAutofillHasSeenIban = 3,
+  // kAutofillHasSeenIban = 3, (removed in Agent Chrome)
   // kAutofillIbanEnabled = 4,  (obsolete).
-  kAutofillLastVersionDeduped = 5,
+  // kAutofillLastVersionDeduped = 5, (removed in Agent Chrome)
   // kAutofillLastVersionDisusedAddressesDeleted = 6, (deprecated)
-  kAutofillProfileEnabled = 7,
+  // kAutofillProfileEnabled = 7, (removed in Agent Chrome)
   kShowAppsShortcutInBookmarkBar = 8,
   kShowBookmarkBar = 9,
   kShowManagedBookmarksInBookmarkBar = 10,
@@ -77,12 +75,12 @@ enum {
   kCustomLinksInitialized = 36,
   kCustomLinksList = 37,
   kKeywordSpaceTriggeringEnabled = 38,
-  kCredentialsEnableAutosignin = 39,
-  kCredentialsEnableService = 40,
-  kPasswordDismissCompromisedAlertEnabled = 41,
-  kPasswordLeakDetectionEnabled = 42,
+  // kCredentialsEnableAutosignin = 39, (removed in Agent Chrome)
+  // kCredentialsEnableService = 40, (removed in Agent Chrome)
+  // kPasswordDismissCompromisedAlertEnabled = 41, (removed in Agent Chrome)
+  // kPasswordLeakDetectionEnabled = 42, (removed in Agent Chrome)
   // kSyncedLastTimePasswordCheckCompleted = 43, (deprecated)
-  kWasAutoSignInFirstRunExperienceShown = 44,
+  // kWasAutoSignInFirstRunExperienceShown = 44, (removed in Agent Chrome)
   kCanMakePaymentEnabled = 45,
   kAccountTailoredSecurityUpdateTimestamp = 46,
   kCookieControlsMode = 47,
@@ -102,15 +100,15 @@ enum {
   kPrefTranslateRecentTarget = 61,
   kDogfoodGroupsSyncPrefName = 62,
   kSyncableMergeableDictPrefForTesting = 63,  // For tests.
-  kAutofillPaymentCvcStorage = 64,
+  // kAutofillPaymentCvcStorage = 64, (removed in Agent Chrome)
   // kDeleteTimePeriodV2 = 65, (no longer synced)
   // kDeleteTimePeriodV2Basic = 66, (no longer synced)
   kSyncableMergeableListPrefForTesting = 67,         // For tests.
   kSyncableHistorySensitiveListPrefForTesting = 68,  // For tests.
-  kAutofillPaymentCardBenefits = 69,
+  // kAutofillPaymentCardBenefits = 69, (removed in Agent Chrome)
   // kCloseTabs = 70, (no longer synced)
   kShowTabGroupsInBookmarkBar = 71,
-  kFacilitatedPaymentsPix = 72,
+  // kFacilitatedPaymentsPix = 72, (removed in Agent Chrome)
   kSyncableTabGroups = 73,
   kAutoPinNewTabGroups = 74,
   kShowGoogleLensShortcut = 75,
@@ -118,30 +116,30 @@ enum {
   // kFirstPlusAddressCreationTime = 77, (deprecated)
   // kLastPlusAddressFillingTime = 78, (deprecated)
   kSafeBrowsingEnhanced = 79,
-  kFacilitatedPaymentsEwallet = 80,
-  kAutofillBnplEnabled = 81,
-  kAutofillHasSeenBnpl = 82,
-  kAutomaticPasskeyUpgrades = 83,
+  // kFacilitatedPaymentsEwallet = 80, (removed in Agent Chrome)
+  // kAutofillBnplEnabled = 81, (removed in Agent Chrome)
+  // kAutofillHasSeenBnpl = 82, (removed in Agent Chrome)
+  // kAutomaticPasskeyUpgrades = 83, (removed in Agent Chrome)
   kSyncablePriorityPrefForTesting = 84,               // For tests.
   kSyncableAlwaysSyncingPriorityPrefForTesting = 85,  // For tests.
-  kFacilitatedPaymentsPixAccountLinking = 86,
+  // kFacilitatedPaymentsPixAccountLinking = 86, (removed in Agent Chrome)
   kShowSearchTools = 87,
-  kAutofillHomeMetadata = 88,
-  kAutofillWorkMetadata = 89,
-  kFacilitatedPaymentsA2AEnabled = 90,
-  kFacilitatedPaymentsA2ATriggeredOnce = 91,
+  // kAutofillHomeMetadata = 88, (removed in Agent Chrome)
+  // kAutofillWorkMetadata = 89, (removed in Agent Chrome)
+  // kFacilitatedPaymentsA2AEnabled = 90, (removed in Agent Chrome)
+  // kFacilitatedPaymentsA2ATriggeredOnce = 91, (removed in Agent Chrome)
   // kFingerprintingProtectionEnabled = 92, (deprecated)
-  kAutofillNameAndEmailProfileSignature = 93,
-  kAutofillNameAndEmailProfileNotSelectedCounter = 94,
-  kAutofillAiLastVersionDeduped = 96,
+  // kAutofillNameAndEmailProfileSignature = 93, (removed in Agent Chrome)
+  // kAutofillNameAndEmailProfileNotSelectedCounter = 94, (removed in Agent Chrome)
+  // kAutofillAiLastVersionDeduped = 96, (removed in Agent Chrome)
   kCrossDeviceOmniboxIsInBottomPosition = 97,
-  kAutofillWasNameAndEmailProfileUsed = 98,
+  // kAutofillWasNameAndEmailProfileUsed = 98, (removed in Agent Chrome)
   kCrossDeviceCrossPlatformPromosIOS16thActiveDay = 99,
   kCrossDeviceSafetyCheckHomeModuleEnabled = 100,
-  kAutofillAiIdentityEntitiesEnabled = 101,
-  kAutofillAiTravelEntitiesEnabled = 102,
+  // kAutofillAiIdentityEntitiesEnabled = 101, (removed in Agent Chrome)
+  // kAutofillAiTravelEntitiesEnabled = 102, (removed in Agent Chrome)
   kCrossDeviceTabResumptionHomeModuleEnabled = 103,
-  kAutofillAmountExtractionAiTermsSeen = 104,
+  // kAutofillAmountExtractionAiTermsSeen = 104, (removed in Agent Chrome)
   kCrossDevicePriceTrackingHomeModuleEnabled = 105,
   kCrossDeviceMostVisitedHomeModuleEnabled = 106,
   kCrossDeviceTipsHomeModuleEnabled = 107,
@@ -149,18 +147,18 @@ enum {
   kShowAiModeOmniboxButton = 109,
   // kAutofillAiSyncedOptInStatus = 110, (deprecated)
   kIOSPromoReminder = 111,
-  kAutofillAiReauthBeforeViewingSensitiveData = 112,
+  // kAutofillAiReauthBeforeViewingSensitiveData = 112, (removed in Agent Chrome)
   // kDriveDisclaimerAccepted = 113,  // (deprecated)
-  kAutofillAiShoppingEntitiesEnabled = 114,
+  // kAutofillAiShoppingEntitiesEnabled = 114, (removed in Agent Chrome)
   kPrefTranslateRecentTargets = 115,
   kBookmarkBarVisibilityState = 116,
   kSyncableAccountScopedPrefForTesting = 117,  // For tests.
-  kAutofillAtMemoryTriggerInfo = 118,
-  kAutofillGmailOtpFillingEnabled = 119,
-  kAutofillGmailOtpFillingActivationDismissalTimestamp = 120,
+  // kAutofillAtMemoryTriggerInfo = 118, (removed in Agent Chrome)
+  // kAutofillGmailOtpFillingEnabled = 119, (removed in Agent Chrome)
+  // kAutofillGmailOtpFillingActivationDismissalTimestamp = 120, (removed in Agent Chrome)
   kDriveConsentState = 121,
-  kAutofillAiPrivateInferenceOptInStatus = 122,
-  kAutofillWalletReminderNoticeShown = 123,
+  // kAutofillAiPrivateInferenceOptInStatus = 122, (removed in Agent Chrome)
+  // kAutofillWalletReminderNoticeShown = 123, (removed in Agent Chrome)
   // New entries should be added above this line.
   kSubscriptionEligibilityAiSubscriptionTier =
       100338,  // (different ID as it's a move from //chrome)
@@ -177,51 +175,9 @@ enum {
 // List of syncable preferences common across platforms.
 constexpr auto kCommonSyncablePrefsAllowlist =
     base::MakeFixedFlatMap<std::string_view, SyncablePrefMetadata>({
-        {autofill::prefs::kAutofillCreditCardEnabled,
-         {syncable_prefs_ids::kAutofillCreditCardEnabled, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillHasSeenIban,
-         {syncable_prefs_ids::kAutofillHasSeenIban, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillLastVersionDeduped,
-         {syncable_prefs_ids::kAutofillLastVersionDeduped, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAiIdentityEntitiesEnabled,
-         {syncable_prefs_ids::kAutofillAiIdentityEntitiesEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAiShoppingEntitiesEnabled,
-         {syncable_prefs_ids::kAutofillAiShoppingEntitiesEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAiLastVersionDeduped,
-         {syncable_prefs_ids::kAutofillAiLastVersionDeduped,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAiTravelEntitiesEnabled,
-         {syncable_prefs_ids::kAutofillAiTravelEntitiesEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_IOS)
-        {autofill::prefs::kAutofillAiReauthBeforeViewingSensitiveData,
-         {syncable_prefs_ids::kAutofillAiReauthBeforeViewingSensitiveData,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
 #endif
-        {autofill::prefs::kAutofillProfileEnabled,
-         {syncable_prefs_ids::kAutofillProfileEnabled, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillNameAndEmailProfileSignature,
-         {syncable_prefs_ids::kAutofillNameAndEmailProfileSignature,
-          syncer::PRIORITY_PREFERENCES,
-          PrefSensitivity::kExemptFromUserControlWhileSignedIn,
-          MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillNameAndEmailProfileNotSelectedCounter,
-         {syncable_prefs_ids::kAutofillNameAndEmailProfileNotSelectedCounter,
-          syncer::PRIORITY_PREFERENCES,
-          PrefSensitivity::kExemptFromUserControlWhileSignedIn,
-          MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillWasNameAndEmailProfileUsed,
-         {syncable_prefs_ids::kAutofillWasNameAndEmailProfileUsed,
-          syncer::PRIORITY_PREFERENCES,
-          PrefSensitivity::kExemptFromUserControlWhileSignedIn,
-          MergeBehavior::kNone}},
         {browsing_data::prefs::kLastClearBrowsingDataTime,
          {syncable_prefs_ids::kLastClearBrowsingDataTime, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
@@ -248,28 +204,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
         {omnibox::kShowGoogleLensShortcut,
          {syncable_prefs_ids::kShowGoogleLensShortcut, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {password_manager::prefs::kCredentialsEnableAutosignin,
-         {syncable_prefs_ids::kCredentialsEnableAutosignin,
-          syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kNone}},
-        {password_manager::prefs::kCredentialsEnableService,
-         {syncable_prefs_ids::kCredentialsEnableService,
-          syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kNone}},
-        {password_manager::prefs::kAutomaticPasskeyUpgrades,
-         {syncable_prefs_ids::kAutomaticPasskeyUpgrades,
-          syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kNone}},
-        {password_manager::prefs::kPasswordDismissCompromisedAlertEnabled,
-         {syncable_prefs_ids::kPasswordDismissCompromisedAlertEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {password_manager::prefs::kPasswordLeakDetectionEnabled,
-         {syncable_prefs_ids::kPasswordLeakDetectionEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {password_manager::prefs::kWasAutoSignInFirstRunExperienceShown,
-         {syncable_prefs_ids::kWasAutoSignInFirstRunExperienceShown,
-          syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kNone}},
         {prefs::kAccountTailoredSecurityUpdateTimestamp,
          {syncable_prefs_ids::kAccountTailoredSecurityUpdateTimestamp,
           syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
@@ -300,9 +234,6 @@ constexpr auto kCommonSyncablePrefsAllowlist =
          {syncable_prefs_ids::kSyncableMergeableDictPrefForTesting,
           syncer::PREFERENCES, PrefSensitivity::kNone,
           MergeBehavior::kMergeableDict}},
-        {autofill::prefs::kAutofillPaymentCvcStorage,
-         {syncable_prefs_ids::kAutofillPaymentCvcStorage, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
         {kSyncableMergeableListPrefForTesting,
          {syncable_prefs_ids::kSyncableMergeableListPrefForTesting,
           syncer::PREFERENCES, PrefSensitivity::kNone,
@@ -311,35 +242,11 @@ constexpr auto kCommonSyncablePrefsAllowlist =
          {syncable_prefs_ids::kSyncableHistorySensitiveListPrefForTesting,
           syncer::PREFERENCES, PrefSensitivity::kSensitiveRequiresHistory,
           MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillPaymentCardBenefits,
-         {syncable_prefs_ids::kAutofillPaymentCardBenefits, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
         {prefs::kSafeBrowsingEnhanced,
          {syncable_prefs_ids::kSafeBrowsingEnhanced, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
 #if BUILDFLAG(IS_ANDROID)
-        {autofill::prefs::kFacilitatedPaymentsPix,
-         {syncable_prefs_ids::kFacilitatedPaymentsPix, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kFacilitatedPaymentsEwallet,
-         {syncable_prefs_ids::kFacilitatedPaymentsEwallet, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kFacilitatedPaymentsPixAccountLinking,
-         {syncable_prefs_ids::kFacilitatedPaymentsPixAccountLinking,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kFacilitatedPaymentsA2AEnabled,
-         {syncable_prefs_ids::kFacilitatedPaymentsA2AEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kFacilitatedPaymentsA2ATriggeredOnce,
-         {syncable_prefs_ids::kFacilitatedPaymentsA2ATriggeredOnce,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
 #endif  // BUILDFLAG(IS_ANDROID)
-        {autofill::prefs::kAutofillBnplEnabled,
-         {syncable_prefs_ids::kAutofillBnplEnabled, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillHasSeenBnpl,
-         {syncable_prefs_ids::kAutofillHasSeenBnpl, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
         {kSyncablePriorityPrefForTesting,
          {syncable_prefs_ids::kSyncablePriorityPrefForTesting,
           syncer::PRIORITY_PREFERENCES, PrefSensitivity::kNone,
@@ -352,42 +259,12 @@ constexpr auto kCommonSyncablePrefsAllowlist =
         {omnibox::kShowSearchTools,
          {syncable_prefs_ids::kShowSearchTools, syncer::PREFERENCES,
           PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillHomeMetadata,
-         {syncable_prefs_ids::kAutofillHomeMetadata,
-          syncer::PRIORITY_PREFERENCES,
-          PrefSensitivity::kExemptFromUserControlWhileSignedIn,
-          MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillWorkMetadata,
-         {syncable_prefs_ids::kAutofillWorkMetadata,
-          syncer::PRIORITY_PREFERENCES,
-          PrefSensitivity::kExemptFromUserControlWhileSignedIn,
-          MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAmountExtractionAiTermsSeen,
-         {syncable_prefs_ids::kAutofillAmountExtractionAiTermsSeen,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
         {subscription_eligibility::prefs::kAiSubscriptionTier,
          {syncable_prefs_ids::kSubscriptionEligibilityAiSubscriptionTier,
           syncer::PRIORITY_PREFERENCES,
           sync_preferences::PrefSensitivity::
               kExemptFromUserControlWhileSignedIn,
           sync_preferences::MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAtMemoryTriggerInfo,
-         {syncable_prefs_ids::kAutofillAtMemoryTriggerInfo, syncer::PREFERENCES,
-          PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillGmailOtpFillingEnabled,
-         {syncable_prefs_ids::kAutofillGmailOtpFillingEnabled,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillGmailOtpFillingActivationDismissalTimestamp,
-         {syncable_prefs_ids::
-              kAutofillGmailOtpFillingActivationDismissalTimestamp,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillAiPrivateInferenceOptInStatus,
-         {syncable_prefs_ids::kAutofillAiPrivateInferenceOptInStatus,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone}},
-        {autofill::prefs::kAutofillWalletReminderNoticeShown,
-         {syncable_prefs_ids::kAutofillWalletReminderNoticeShown,
-          syncer::PREFERENCES, PrefSensitivity::kNone, MergeBehavior::kNone,
-          WriteBehavior::kWriteToAccountOnly}},
     });
 
 }  // namespace

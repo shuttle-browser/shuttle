@@ -11,7 +11,6 @@ export interface PageVisibility {
   a11y?: boolean;
   ai?: boolean;
   appearance?: boolean|AppearancePageVisibility;
-  autofill?: boolean;
   defaultBrowser?: boolean;
   downloads?: boolean;
   extensions?: boolean;
@@ -21,7 +20,6 @@ export interface PageVisibility {
   privacy?: boolean|PrivacyPageVisibility;
   reset?: boolean;
   system?: boolean;
-  yourSavedInfo?: boolean;
 }
 
 export interface AppearancePageVisibility {
@@ -47,7 +45,6 @@ function createPageVisibility(): PageVisibility|undefined {
     a11y: false,
     ai: false,
     appearance: false,
-    autofill: false,
     defaultBrowser: false,
     downloads: false,
     extensions: false,
@@ -57,13 +54,11 @@ function createPageVisibility(): PageVisibility|undefined {
     privacy: false,
     reset: false,
     system: false,
-    yourSavedInfo: false,
   };
   // </if>
   // <if expr="is_chromeos">
   const pageVisibility = {
     ai: false,
-    autofill: false,
     onStartup: false,
     reset: false,
     appearance: {
@@ -82,7 +77,6 @@ function createPageVisibility(): PageVisibility|undefined {
     extensions: false,
     languages: true,
     performance: false,
-    yourSavedInfo: false,
   };
   // </if>
 

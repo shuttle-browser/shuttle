@@ -481,7 +481,6 @@ static_library("core") {
     ":model_execution",
     ":ondevice",
     ":prediction",
-    "//components/autofill/core/common",
     "//components/leveldb_proto",
     "//components/optimization_guide:machine_learning_tflite_buildflags",
     "//components/optimization_guide/core:interfaces",

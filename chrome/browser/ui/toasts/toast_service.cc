@@ -29,7 +29,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/autofill/core/common/autofill_features.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/omnibox/browser/vector_icons.h"
 #include "components/prefs/pref_service.h"
@@ -259,46 +258,6 @@ void ToastService::RegisterToasts(
           .AddGlobalScoped()
           .Build());
 
-  toast_registry_->RegisterToast(
-      ToastId::kAutoSignIn,
-      ToastSpecification::Builder(features::IsRoundedIconsEnabled()
-                                      ? vector_icons::kPasswordManagerIcon
-                                      : vector_icons::kPasswordManagerOldIcon,
-                                  IDS_MANAGE_PASSWORDS_AUTO_SIGNIN_TOAST_BODY)
-          .AddMenu()
-          .Build());
-
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAiWalletPrivatePasses) ||
-      base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAmbientAutofill)) {
-    toast_registry_->RegisterToast(
-        ToastId::kAutofillAiFetchEntityErrorMessage,
-        ToastSpecification::Builder(
-            features::IsRoundedIconsEnabled()
-                ? vector_icons::kPersonTextIcon
-                : vector_icons::kPersonTextOldIcon,
-            IDS_AUTOFILL_AI_FETCH_ENTITY_FAILURE_NOTIFICATION)
-            .AddGlobalScoped()
-            .Build());
-  }
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAiWalletPrivatePasses)) {
-    toast_registry_->RegisterToast(
-        ToastId::kAutofillAiSaveToWalletErrorMessage,
-        ToastSpecification::Builder(
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-            vector_icons::kGoogleWalletMonochromeIcon,
-#else
-            features::IsRoundedIconsEnabled()
-                ? vector_icons::kPersonTextIcon
-                : vector_icons::kPersonTextOldIcon,
-#endif
-            IDS_AUTOFILL_AI_WALLET_UPDATE_OR_MIGRATE_FAILURE_NOTIFICATION)
-            .AddGlobalScoped()
-            .Build());
-  }
-
   // Report a scam confirmation toast.
   toast_registry_->RegisterToast(
       ToastId::kReportUnsafeSiteConfirmation,
@@ -342,17 +301,6 @@ void ToastService::RegisterToasts(
           .AddGlobalScoped()
           .Build());
 
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAmbientAutofill)) {
-    toast_registry_->RegisterToast(
-        ToastId::kAutofillAiPreFetchErrorMessage,
-        ToastSpecification::Builder(features::IsRoundedIconsEnabled()
-                                        ? kTextAnalysisIcon
-                                        : kTextAnalysisOldIcon,
-                                    IDS_AUTOFILL_AI_PRE_FETCH_ERROR_MESSAGE)
-            .AddGlobalScoped()
-            .Build());
-  }
 
 #if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
   toast_registry_->RegisterToast(

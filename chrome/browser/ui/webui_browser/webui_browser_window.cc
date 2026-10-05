@@ -787,12 +787,6 @@ void WebUIBrowserWindow::OnContentsElementShown(ui::TrackedElement* element) {
   }
 }
 
-autofill::AutofillBubbleHandler*
-WebUIBrowserWindow::GetAutofillBubbleHandler() {
-  NOTIMPLEMENTED_LOG_ONCE();
-  return nullptr;
-}
-
 LocationBar* WebUIBrowserWindow::GetLocationBar() const {
   return location_bar_.get();
 }

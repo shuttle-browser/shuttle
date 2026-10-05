@@ -28,8 +28,6 @@
 #include "components/actor/core/aggregated_journal.h"
 #include "components/actor/core/journal_details_builder.h"
 #include "components/actor/core/task_id.h"
-#include "components/autofill/content/browser/content_autofill_driver.h"
-#include "components/autofill/core/browser/form_predictions_tracker.h"
 #include "components/page_content_annotations/content/browser/page_settled_monitor.h"
 #include "components/page_content_annotations/content/mojom/page_stability.mojom.h"
 #include "components/page_load_metrics/browser/metrics_web_contents_observer.h"
@@ -57,13 +55,6 @@ using ::content::WebContentsObserver;
 
 using PageSettledMonitorState =
     ::page_content_annotations::PageSettledMonitor::State;
-
-// The timeout to wait for Autofill to parse and classify form fields.
-// It's autofill's `FormPredictionsTracker`'s responsibility to respect this
-// timeout.
-base::TimeDelta GetAutofillPredictionsTimeout() {
-  return features::kActorObservationDelayAutofillPredictionsTimeout.Get();
-}
 
 // This should be similar to the number of redirects.
 constexpr size_t kMaxNavigations = 20;
@@ -223,19 +214,6 @@ void ObservationDelayController::OnFederatedLoginRequestComplete(
   std::move(resume_callback).Run();
 }
 
-void ObservationDelayController::OnAutofillPredictionsFinished(
-    base::OnceClosure resume_callback) {
-  if (state_ != State::kWaitForAutofillPredictions) {
-    return;
-  }
-
-  CHECK(metrics_);
-  metrics_->OnAutofillPredictionsFinished();
-
-  CHECK(resume_callback);
-  std::move(resume_callback).Run();
-}
-
 void ObservationDelayController::MoveToState(State new_state) {
   if (state_ == State::kDone) {
     return;
@@ -314,32 +292,6 @@ void ObservationDelayController::MoveToState(State new_state) {
       break;
     }
     case State::kDelayForLcp: {
-      break;
-    }
-    case State::kWaitForAutofillPredictions: {
-      CHECK(resume_callback_);
-
-      inner_journal_entry_ = journal_->CreatePendingAsyncEntry(
-          GURL::EmptyGURL(), task_id_, MakeBrowserTrackUUID(task_id_),
-          "WaitForAutofillPredictions", {});
-
-      autofill::ContentAutofillClient* autofill_client =
-          autofill::ContentAutofillClient::FromWebContents(web_contents());
-      if (!autofill_client) {
-        std::move(resume_callback_).Run();
-        break;
-      }
-      autofill::FormPredictionsTracker* tracker =
-          autofill_client->GetFormPredictionsTracker();
-      if (!tracker) {
-        std::move(resume_callback_).Run();
-        break;
-      }
-      tracker->Wait(
-          base::BindOnce(
-              &ObservationDelayController::OnAutofillPredictionsFinished,
-              weak_ptr_factory_.GetWeakPtr(), std::move(resume_callback_)),
-          GetAutofillPredictionsTimeout());
       break;
     }
     case State::kPageNavigated: {
@@ -457,10 +409,8 @@ void ObservationDelayController::OnMilestoneReached(
       std::move(resume_callback_).Run();
       break;
     case page_content_annotations::PageSettledMonitor::Milestone::kLcpSettled:
-      // After LCP has settled, we wait for Autofill to finish its field
-      // classification, as tool-use often depends on having accurate form
-      // metadata.
-      PostMoveToStateClosure(State::kWaitForAutofillPredictions).Run();
+      // Just resume the monitor.
+      std::move(resume_callback_).Run();
       break;
   }
 }
@@ -558,15 +508,10 @@ void ObservationDelayController::DCheckStateTransition(State old_state,
               {State::kDidTimeout,
                State::kDone,
                State::kPageNavigated,
-               State::kDelayForLcp,
-               State::kWaitForAutofillPredictions}},
+               State::kDelayForLcp}},
           {State::kDelayForLcp,
               {State::kDidTimeout,
                State::kDone,
-               State::kPageNavigated,
-               State::kWaitForAutofillPredictions}},
-          {State::kWaitForAutofillPredictions,
-              {State::kDidTimeout,
                State::kPageNavigated,
                State::kDone}},
           {State::kDidTimeout,
@@ -620,8 +565,6 @@ std::string_view ObservationDelayController::StateToString(State state) {
       return "MaybeDelayForLcp";
     case State::kDelayForLcp:
       return "DelayForLcp";
-    case State::kWaitForAutofillPredictions:
-      return "WaitForAutofillPredictions";
     case State::kDidTimeout:
       return "DidTimeout";
     case State::kPageNavigated:

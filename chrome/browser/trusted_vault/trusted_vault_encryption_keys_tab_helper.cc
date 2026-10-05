@@ -16,8 +16,6 @@
 #include "build/buildflag.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/trusted_vault/trusted_vault_service_factory.h"
-#include "chrome/browser/webauthn/enclave_manager.h"
-#include "chrome/browser/webauthn/enclave_manager_factory.h"
 #include "chrome/common/trusted_vault_encryption_keys_extension.mojom.h"
 #include "components/trusted_vault/trusted_vault_client.h"
 #include "components/trusted_vault/trusted_vault_histograms.h"
@@ -39,22 +37,6 @@ namespace {
 const url::Origin& GetAllowedGoogleAccountsOrigin() {
   return GaiaUrls::GetInstance()->gaia_origin();
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-// Convert a vector from TrustedVaultKey mojo structs to
-// TrustedVaultKeyAndVersion.
-std::vector<trusted_vault::TrustedVaultKeyAndVersion> ConvertFromMojomVaultKeys(
-    const std::vector<chrome::mojom::TrustedVaultKeyPtr>& keys) {
-  std::vector<trusted_vault::TrustedVaultKeyAndVersion> converted_keys;
-  converted_keys.reserve(keys.size());
-  std::ranges::transform(keys, std::back_inserter(converted_keys),
-                         [](const auto& key) {
-                           return trusted_vault::TrustedVaultKeyAndVersion(
-                               key->bytes, key->version);
-                         });
-  return converted_keys;
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 // EncryptionKeyApi represents the actual exposure of the Mojo API (i.e.
 // chrome::mojom::TrustedVaultEncryptionKeysExtension) to the renderer.
@@ -143,7 +125,6 @@ class EncryptionKeyApi
   // metrics).
   EncryptionKeyApi(
       content::RenderFrameHost* rfh,
-      EnclaveManager* enclave_manager,
       trusted_vault::TrustedVaultService* trusted_vault_service,
       std::optional<trusted_vault::TrustedVaultUserActionTriggerForUMA>
           user_action_trigger)
@@ -153,7 +134,6 @@ class EncryptionKeyApi
                 ->GetBrowserContext()
                 ->IsOffTheRecord()),
         trusted_vault_service_(trusted_vault_service),
-        enclave_manager_(enclave_manager),
         user_action_trigger_(user_action_trigger),
         receivers_(content::WebContents::FromRenderFrameHost(rfh), this) {}
 
@@ -168,11 +148,8 @@ class EncryptionKeyApi
         "Sync.TrustedVaultJavascriptSetEncryptionKeysIsIncognito",
         trusted_vault_service_ == nullptr);
 
+    // The passkeys (GPM enclave) security domain was removed from this fork.
     if (security_domain == trusted_vault::SecurityDomainId::kPasskeys) {
-      if (enclave_manager_) {
-        enclave_manager_->StoreKeys(gaia_id, ConvertFromMojomVaultKeys(keys),
-                                    user_action_trigger_);
-      }
       return;
     }
 
@@ -205,7 +182,6 @@ class EncryptionKeyApi
   const bool is_off_the_record_for_uma_;
 
   const raw_ptr<trusted_vault::TrustedVaultService> trusted_vault_service_;
-  const raw_ptr<EnclaveManager> enclave_manager_;
   const std::optional<trusted_vault::TrustedVaultUserActionTriggerForUMA>
       user_action_trigger_;
 
@@ -240,16 +216,10 @@ void TrustedVaultEncryptionKeysTabHelper::CreateForWebContents(
     }
   }
 
-  EnclaveManager* enclave_manager = nullptr;
-#if !BUILDFLAG(IS_ANDROID)
-  enclave_manager =
-      EnclaveManagerFactory::GetAsEnclaveManagerForProfile(profile);
-#endif
-
   web_contents->SetUserData(
       UserDataKey(),
       base::WrapUnique(new TrustedVaultEncryptionKeysTabHelper(
-          web_contents, trusted_vault_service, enclave_manager)));
+          web_contents, trusted_vault_service)));
 }
 
 // static
@@ -268,13 +238,11 @@ void TrustedVaultEncryptionKeysTabHelper::
 
 TrustedVaultEncryptionKeysTabHelper::TrustedVaultEncryptionKeysTabHelper(
     content::WebContents* web_contents,
-    trusted_vault::TrustedVaultService* trusted_vault_service,
-    EnclaveManager* enclave_manager)
+    trusted_vault::TrustedVaultService* trusted_vault_service)
     : content::WebContentsUserData<TrustedVaultEncryptionKeysTabHelper>(
           *web_contents),
       content::WebContentsObserver(web_contents),
       trusted_vault_service_(trusted_vault_service),
-      enclave_manager_(enclave_manager),
       user_action_trigger_(std::nullopt) {}
 
 TrustedVaultEncryptionKeysTabHelper::~TrustedVaultEncryptionKeysTabHelper() =

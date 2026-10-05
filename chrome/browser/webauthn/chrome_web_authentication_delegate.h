@@ -89,7 +89,6 @@ class ChromeWebAuthenticationDelegate final
  private:
   // Caches the result from looking up whether a TPM is available for Enclave
   // requests.
-  std::optional<bool> tpm_available_;
   base::WeakPtrFactory<ChromeWebAuthenticationDelegate> weak_ptr_factory_{this};
 };
 

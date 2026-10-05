@@ -1588,7 +1588,6 @@ source_set("unit_tests") {
     ":fuzztest_utils",
     ":unit_test_support",
     "//cc",
-    "//components/autofill/core/common:features",
     "//components/page_load_metrics/browser",
     "//components/paint_preview/common",
     "//components/shared_highlighting/core/common",

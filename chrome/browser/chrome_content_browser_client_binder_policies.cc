@@ -5,7 +5,6 @@
 #include "chrome/browser/chrome_content_browser_client_binder_policies.h"
 
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals.mojom.h"
-#include "components/autofill/content/common/mojom/autofill_driver.mojom.h"
 #include "components/page_load_metrics/common/page_load_metrics.mojom.h"
 #include "components/subresource_filter/content/mojom/subresource_filter.mojom.h"
 #include "extensions/buildflags/buildflags.h"

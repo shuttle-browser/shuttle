@@ -54,11 +54,6 @@ class SafeBrowsingDelegate {
       const ExtensionId& extension_id,
       const GURL& request_url,
       const GURL& redirect_url) const {}
-
-  // Creates password reuse detection manager when new extension web contents
-  // are created.
-  virtual void CreatePasswordReuseDetectionManager(
-      content::WebContents* web_contents) const {}
 };
 
 }  // namespace extensions

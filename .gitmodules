@@ -16,14 +16,6 @@
 [submodule "third_party/llvm-libc/src"]
 	path = third_party/llvm-libc/src
 	url = https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc
-[submodule "chrome/test/data/autofill/captured_sites/artifacts"]
-	path = chrome/test/data/autofill/captured_sites/artifacts
-	url = https://chrome-internal.googlesource.com/chrome/test/captured_sites/autofill
-	gclient-condition = checkout_chromium_autofill_test_dependencies
-[submodule "chrome/test/data/password/captured_sites/artifacts"]
-	path = chrome/test/data/password/captured_sites/artifacts
-	url = https://chrome-internal.googlesource.com/chrome/test/captured_sites/password
-	gclient-condition = checkout_chromium_password_manager_test_dependencies
 [submodule "chrome/test/data/perf/canvas_bench"]
 	path = chrome/test/data/perf/canvas_bench
 	url = https://chromium.googlesource.com/chromium/canvas_bench
@@ -657,14 +649,6 @@
 	path = chrome/tools/memory
 	url = https://chrome-internal.googlesource.com/chrome/tools/memory
 	gclient-condition = checkout_win and checkout_src_internal
-[submodule "components/test/data/autofill/heuristics-json/internal"]
-	path = components/test/data/autofill/heuristics-json/internal
-	url = https://chrome-internal.googlesource.com/chrome/test/autofill/structured_forms
-	gclient-condition = checkout_chromium_autofill_test_dependencies
-[submodule "components/test/data/autofill/label-doms/internal"]
-	path = components/test/data/autofill/label-doms/internal
-	url = https://chrome-internal.googlesource.com/chrome/test/autofill/field_labels
-	gclient-condition = checkout_chromium_autofill_test_dependencies
 [submodule "content/test/data/plugin"]
 	path = content/test/data/plugin
 	url = https://chrome-internal.googlesource.com/chrome/data/chrome_plugin_tests

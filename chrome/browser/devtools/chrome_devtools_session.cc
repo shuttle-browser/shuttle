@@ -13,7 +13,6 @@
 #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
 #include "chrome/browser/devtools/features.h"
 #include "chrome/browser/devtools/protocol/ads_handler.h"
-#include "chrome/browser/devtools/protocol/autofill_handler.h"
 #include "chrome/browser/devtools/protocol/browser_handler.h"
 #include "chrome/browser/devtools/protocol/emulation_handler.h"
 #include "chrome/browser/devtools/protocol/extensions_handler.h"
@@ -78,11 +77,6 @@ ChromeDevToolsSession::ChromeDevToolsSession(
   if (agent_host->GetWebContents() &&
       (agent_host->GetType() == content::DevToolsAgentHost::kTypePage ||
        agent_host->GetType() == content::DevToolsAgentHost::kTypeFrame)) {
-    if (IsDomainAvailableToUntrustedClient<AutofillHandler>() ||
-        channel->GetClient()->IsTrusted()) {
-      autofill_handler_ =
-          std::make_unique<AutofillHandler>(dispatcher(), agent_host->GetId());
-    }
     if (base::FeatureList::IsEnabled(blink::features::kDevToolsWebMCPSupport) &&
         (IsDomainAvailableToUntrustedClient<WebMCPHandler>() ||
          channel->GetClient()->IsTrusted())) {

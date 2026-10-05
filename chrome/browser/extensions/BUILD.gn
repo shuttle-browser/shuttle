@@ -130,8 +130,6 @@ source_set("extensions") {
     "api/management/chrome_management_api_delegate.h",
     "api/metrics_private/chrome_metrics_private_delegate.cc",
     "api/metrics_private/chrome_metrics_private_delegate.h",
-    "api/preference/autofill_settings_transformer.cc",
-    "api/preference/autofill_settings_transformer.h",
     "api/preference/cookie_controls_mode_transformer.cc",
     "api/preference/cookie_controls_mode_transformer.h",
     "api/preference/network_prediction_transformer.cc",
@@ -453,7 +451,6 @@ source_set("extensions") {
 
     # password_manager:impl includes
     # extensions/api/settings_private/generated_pref.h
-    "//chrome/browser/password_manager:impl",
 
     # ssl includes extensions/api/settings_private/generated_pref.h via
     # generated_https_first_mode_pref.h.
@@ -488,7 +485,6 @@ source_set("extensions") {
     "//chrome/browser/bitmap_fetcher",
     "//chrome/browser/component_updater",
     "//chrome/browser/content_settings:content_settings_factory",
-    "//chrome/browser/device_reauth",
     "//chrome/browser/devtools",
     "//chrome/browser/download",
     "//chrome/browser/enterprise",
@@ -503,9 +499,6 @@ source_set("extensions") {
     "//chrome/browser/infobars",
     "//chrome/browser/lifetime:termination_notification",
     "//chrome/browser/net",
-    "//chrome/browser/password_manager",
-    "//chrome/browser/password_manager:impl",
-    "//chrome/browser/password_manager/factories",
     "//chrome/browser/prefetch",
     "//chrome/browser/prefs",
     "//chrome/browser/prefs:util",
@@ -533,7 +526,6 @@ source_set("extensions") {
     "//chrome/browser/ui:recently_audible_helper",
     "//chrome/browser/ui:simple_message_box_headers",
     "//chrome/browser/ui:ui_features",
-    "//chrome/browser/ui/autofill",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/browser_window:create_browser_window",
     "//chrome/browser/ui/dialogs",
@@ -878,10 +870,8 @@ source_set("extensions") {
       "//chrome/browser:font_pref",
       "//chrome/browser:primitives",
       "//chrome/browser/accessibility/tree_fixing:prefs",
-      "//chrome/browser/affiliations",
       "//chrome/browser/chooser_controller",
       "//chrome/browser/device_identity",
-      "//chrome/browser/importer",
       "//chrome/browser/language",
       "//chrome/browser/lifetime:termination_notification",
       "//chrome/browser/new_tab_page/prefs",
@@ -909,7 +899,6 @@ source_set("extensions") {
       "//chrome/browser/ui/window_sizer",
       "//chrome/browser/ui/zoom",
       "//chrome/browser/webauthn",
-      "//components/password_manager/core/browser/form_parsing",
       "//components/services/app_service",
 
       # Only for allow_circular_includes_from
@@ -921,7 +910,6 @@ source_set("extensions") {
       "//chrome/browser/resource_coordinator:mojo_bindings",
       "//chrome/browser/ui/tabs:tab_enums",
       "//components/cbor",
-      "//components/device_reauth",
       "//components/optimization_guide/core:features",
       "//components/security_interstitials/content:security_interstitial_page",
       "//components/security_state/content",
@@ -933,10 +921,7 @@ source_set("extensions") {
       "//chrome/common/extensions/api:extensions_features",
       "//chrome/services/file_util/public/mojom",
       "//chrome/services/removable_storage_writer/public/mojom",
-      "//components/affiliations/core/browser:affiliations",
       "//components/app_constants",
-      "//components/autofill/content/browser",
-      "//components/autofill/core/common:credit_card_number_validation",
       "//components/back_forward_cache",
       "//components/browsing_data/content",
       "//components/browsing_data/core",
@@ -962,15 +947,7 @@ source_set("extensions") {
       "//components/navigation_interception",
       "//components/net_log",
       "//components/onc",
-      "//components/one_time_tokens/core/browser",
       "//components/page_load_metrics/browser",
-      "//components/password_manager/content/browser",
-      "//components/password_manager/core/browser",
-      "//components/password_manager/core/browser/export",
-      "//components/password_manager/core/browser/features:password_features",
-      "//components/password_manager/core/browser/import:importer",
-      "//components/password_manager/core/browser/leak_detection",
-      "//components/password_manager/core/browser/sharing",
       "//components/performance_manager",
       "//components/permissions",
       "//components/policy:generated",
@@ -1875,7 +1852,6 @@ source_set("unit_tests") {
     "api/omnibox/suggestion_parser_unittest.cc",
     "api/page_capture/page_capture_api_unittest.cc",
     "api/permissions/permissions_api_helpers_unittest.cc",
-    "api/preference/autofill_settings_transformer_unittest.cc",
     "api/preference/preference_api_prefs_unittest.cc",
     "api/runtime/chrome_runtime_api_delegate_unittest.cc",
     "api/storage/managed_value_store_cache_unittest.cc",
@@ -2057,10 +2033,6 @@ source_set("unit_tests") {
       "api/image_writer_private/xz_extractor_unittest.cc",
       "api/language_settings_private/language_settings_private_api_unittest.cc",
       "api/language_settings_private/language_settings_private_delegate_unittest.cc",
-      "api/passwords_private/password_access_auth_timeout_handler_unittest.cc",
-      "api/passwords_private/password_check_delegate_unittest.cc",
-      "api/passwords_private/passwords_private_delegate_impl_unittest.cc",
-      "api/passwords_private/passwords_private_utils_unittest.cc",
       "api/protocol_handlers/protocol_handlers_manager_unittest.cc",
       "api/safe_browsing_private/safe_browsing_util_unittest.cc",
       "api/settings_private/prefs_util_unittest.cc",
@@ -2084,21 +2056,11 @@ source_set("unit_tests") {
     ]
 
     deps += [
-      "//chrome/browser/affiliations",
       "//chrome/browser/custom_handlers",
-      "//chrome/browser/password_manager",
-      "//chrome/browser/password_manager:test_support",
       "//chrome/browser/spellchecker",
       "//chrome/browser/ui/global_error:test_support",
-      "//chrome/browser/ui/passwords/settings:test_support",
       "//chrome/browser/webauthn:test_support",
-      "//components/affiliations/core/browser:test_support",
-      "//components/device_reauth:test_support",
       "//components/enterprise:test_support",
-      "//components/password_manager/content/browser",
-      "//components/password_manager/core/browser/leak_detection:test_support",
-      "//components/password_manager/core/browser/sharing",
-      "//components/password_manager/core/browser/sharing:test_support",
       "//components/webauthn/core/browser:test_support",
       "//ui/base/clipboard:clipboard_test_support",
     ]
@@ -2575,9 +2537,6 @@ source_set("browser_tests") {
     sources += [
       "ai_language_model_browsertest.cc",
       "api/activity_log_private/activity_log_private_apitest.cc",
-      "api/autofill_private/autofill_private_api_browsertest.cc",
-      "api/autofill_private/autofill_private_apitest.cc",
-      "api/autofill_private/autofill_util_browsertest.cc",
       "api/automation/automation_apitest.cc",
       "api/braille_display_private/braille_display_private_apitest.cc",
       "api/command_line_private/command_line_private_apitest.cc",
@@ -2593,8 +2552,6 @@ source_set("browser_tests") {
       "api/image_writer_private/image_writer_private_apitest.cc",
       "api/image_writer_private/test_utils.cc",
       "api/image_writer_private/test_utils.h",
-      "api/passwords_private/passwords_private_apitest.cc",
-      "api/passwords_private/passwords_private_delegate_impl_browsertest.cc",
       "api/permissions/permissions_api_browsertest.cc",
       "api/printer_provider/printer_provider_apitest.cc",
       "api/protocol_handlers/protocol_handlers_manager_browsertest.cc",
@@ -2696,7 +2653,6 @@ source_set("browser_tests") {
 
     # TODO(crbug.com/353332589): Remove this dependency when
     # custom_cursor_suppressor_browsertest.cc gets built from its own BUILD.gn.
-    deps += [ "//chrome/browser/ui/views/autofill/popup" ]
 
     if (use_brlapi) {
       deps += [ "//third_party/libbrlapi" ]
@@ -2912,8 +2868,6 @@ source_set("browser_tests") {
 
     deps += [
       "//chrome/browser:browser_process_platform_part",
-      "//chrome/browser/affiliations",
-      "//chrome/browser/autofill",
       "//chrome/browser/background",
       "//chrome/browser/background:test_support",
       "//chrome/browser/bluetooth:test_support",
@@ -2927,11 +2881,8 @@ source_set("browser_tests") {
       "//chrome/browser/extensions/api/messaging:browser_tests",
       "//chrome/browser/extensions/api/messaging:test_support",
       "//chrome/browser/extensions/api/mime_handlers:browser_tests",
-      "//chrome/browser/extensions/api/passwords_private:test_support",
       "//chrome/browser/extensions/api/pdf_viewer_private:browser_tests",
       "//chrome/browser/hid",
-      "//chrome/browser/password_manager",
-      "//chrome/browser/password_manager:test_support",
       "//chrome/browser/pdf:pdf_extension_test_utils",
       "//chrome/browser/prefetch",
       "//chrome/browser/service_worker:browser_tests",
@@ -2939,7 +2890,6 @@ source_set("browser_tests") {
       "//chrome/browser/ui/global_error:test_support",
       "//chrome/browser/ui/hid",
       "//chrome/browser/ui/javascript_dialogs",
-      "//chrome/browser/ui/passwords/settings:test_support",
       "//chrome/browser/ui/search:test_support_ui",
       "//chrome/browser/ui/side_panel:side_panel_views_dependent",
       "//chrome/browser/ui/startup",
@@ -2956,8 +2906,6 @@ source_set("browser_tests") {
       "//chrome/common/extensions/api",
       "//chrome/renderer/controlled_frame",
       "//chrome/services/media_gallery_util/public/cpp:browser_tests",
-      "//components/affiliations/core/browser:test_support",
-      "//components/autofill/core/common:features",
       "//components/client_hints/browser",
       "//components/content_settings/core/test:test_support",
       "//components/drive:test_support",
@@ -2971,9 +2919,6 @@ source_set("browser_tests") {
       "//components/optimization_guide/core:test_support",
       "//components/optimization_guide/optimization_guide_internals/webui",
       "//components/page_load_metrics/browser:test_support",
-      "//components/password_manager/content/browser",
-      "//components/password_manager/core/browser/sharing",
-      "//components/password_manager/core/browser/sharing:test_support",
       "//components/safe_browsing/content/browser/web_ui",
       "//components/web_package",
       "//components/webauthn/core/browser:test_support",

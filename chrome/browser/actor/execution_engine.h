@@ -31,12 +31,9 @@
 #include "chrome/common/buildflags.h"
 #include "components/actor/core/aggregated_journal.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
-#include "components/autofill/core/browser/integrators/actor/actor_form_filling_types.h"
 #include "components/origin_gating/core/actor_container_config_slot.h"
 #include "components/origin_gating/core/origin_gating_cache.h"
 #include "components/origin_gating/core/origin_gating_checker.h"
-#include "components/password_manager/core/browser/actor_login/actor_login_service.h"
-#include "components/password_manager/core/browser/actor_login/actor_login_types.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -44,14 +41,6 @@
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 
 class Profile;
-
-namespace affiliations {
-struct Facet;
-}  // namespace affiliations
-
-namespace autofill {
-class ActorOneTimeTokenFillingService;
-}  // namespace autofill
 
 namespace base {
 class ScopedUmaHistogramTimer;
@@ -69,7 +58,6 @@ namespace actor {
 
 struct ActionResultWithLatencyInfo;
 class ActorTask;
-class AutofillSelectionDialogEventHandler;
 class ToolRequest;
 namespace ui {
 class UiEventDispatcher;
@@ -77,7 +65,6 @@ class UiEventDispatcher;
 
 // Coordinates the execution of a multi-step task.
 class ExecutionEngine : public ToolDelegate,
-                        public actor_login::ActionSequenceDelegate,
                         public origin_gating::OriginGatingChecker::Delegate {
  public:
   // State machine (success case)
@@ -208,28 +195,6 @@ class ExecutionEngine : public ToolDelegate,
   void IsAcceptableNavigationDestination(
       const GURL& url,
       DecisionCallbackWithReason callback) override;
-  autofill::ActorFormFillingService& GetActorFormFillingService() override;
-  autofill::ActorOneTimeTokenFillingService&
-  GetActorOneTimeTokenFillingService() override;
-  actor_login::ActorLoginService& GetActorLoginService() override;
-  void PromptToSelectCredential(
-      const std::vector<actor_login::Credential>& credentials,
-      const base::flat_map<std::string, gfx::Image>& icons,
-      ToolDelegate::CredentialSelectedCallback callback) override;
-  void SetUserSelectedCredential(
-      const CredentialWithPermission& credential,
-      base::OnceClosure affiliations_fetched) override;
-  const std::optional<CredentialWithPermission> GetUserSelectedCredential(
-      const url::Origin& request_origin) const override;
-  void RequestToShowAutofillSuggestions(
-      std::vector<autofill::ActorFormFillingRequest> requests,
-      base::WeakPtr<AutofillSelectionDialogEventHandler> event_handler,
-      AutofillSuggestionSelectedCallback callback) override;
-  void RequestToShowGmailOtpOptInDialog(
-      GmailOtpOptInCallback callback) override;
-  void RequestToShowGmailOtpConfirmationDialog(
-      const std::string& verification_code,
-      GmailOtpConfirmationCallback callback) override;
   void InterruptFromTool() override;
   void InterruptFromTool(bool retain_user_control) override;
   void UninterruptFromTool() override;
@@ -240,19 +205,8 @@ class ExecutionEngine : public ToolDelegate,
       base::OnceCallback<void(mojom::ActionResultPtr)> callback) override;
   bool HasTab(tabs::TabHandle tab_handle) override;
   void RemoveTab(tabs::TabHandle tab_handle) override;
-  base::WeakPtr<actor_login::ActionSequenceDelegate> GetActionSequenceDelegate()
-      override;
-
-  // actor_login::ActionSequenceDelegate:
-  base::CallbackListSubscription RegisterActionSequenceEnded(
-      base::OnceCallback<void(bool /*success*/)> callback) override;
-  void OnFederatedLoginOutcome(actor_login::LoginStatusResult result) override;
-
   void AddWritableMainframeOrigins(
       const absl::flat_hash_set<url::Origin>& added_writable_mainframe_origins);
-
-  void SetActorLoginService(
-      std::unique_ptr<actor_login::ActorLoginService> actor_login_service);
 
   // Callback invoked when ConfirmCrossOriginNavigation, which spawns an IPC to
   // the web client, receives its response.
@@ -284,11 +238,6 @@ class ExecutionEngine : public ToolDelegate,
 
   std::optional<mojom::ActionResultCode> user_take_over_result() const {
     return user_takeover_result_;
-  }
-
-  const base::flat_map<url::Origin, url::Origin>&
-  GetAffiliatedOriginMapForTesting() const {
-    return affiliated_origin_map_;
   }
 
   void AddObserver(StateObserver* observer);
@@ -387,13 +336,6 @@ class ExecutionEngine : public ToolDelegate,
   // counting how many original (non-follow-up) actions preceded it.
   size_t GetResultIndexForAction(size_t action_index) const;
 
-  // Processes the affiliation service results for the given `source_origin`.
-  // and saves it into `affiliated_origin_map_`.
-  void OnAffiliationsReceived(const url::Origin& source_origin,
-                              base::OnceClosure affiliations_fetched,
-                              const std::vector<affiliations::Facet>& results,
-                              bool success);
-
   // Returns the index / action that was last executed and is still in progress.
   // It is an error to call this when an action is not in progress.
   size_t InProgressActionIndex() const;
@@ -463,14 +405,7 @@ class ExecutionEngine : public ToolDelegate,
   // Created when task_ is set. Handles execution details for an individual tool
   // request.
   std::unique_ptr<ToolController> tool_controller_;
-  std::unique_ptr<actor_login::ActorLoginService> actor_login_service_;
-  std::unique_ptr<autofill::ActorFormFillingService>
-      actor_form_filling_service_;
-  std::unique_ptr<autofill::ActorOneTimeTokenFillingService>
-      actor_one_time_token_filling_service_;
   std::unique_ptr<ui::UiEventDispatcher> ui_event_dispatcher_;
-
-  base::flat_map<url::Origin, url::Origin> affiliated_origin_map_;
 
   std::vector<std::unique_ptr<ToolRequest>> action_sequence_;
   ActCallback act_callback_;
@@ -499,19 +434,10 @@ class ExecutionEngine : public ToolDelegate,
 
   TabObservationStrategy observation_strategy_;
 
-  // For multi-step login, this is the credential that the user has chosen to
-  // allow the actor to use. The key is the
-  // `Credential::request_origin`.
-  base::flat_map<url::Origin, CredentialWithPermission>
-      user_selected_credentials_;
-
   base::OnceCallback<void(bool /*should_cancel*/)> user_takeover_callback_;
   std::optional<mojom::ActionResultCode> user_takeover_result_;
 
   base::ObserverList<StateObserver> observers_;
-
-  base::OnceCallbackList<void(bool /*success*/)>
-      action_sequence_ended_callbacks_;
 
   // If a tool finishes while the task is in a waiting state, the finish
   // callback and processing is deferred until the task is resumed.

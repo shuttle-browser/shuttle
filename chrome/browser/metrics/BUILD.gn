@@ -63,7 +63,6 @@ source_set("metrics") {
     "//components/metrics:ui",
     "//components/metrics_services_manager",
     "//components/omnibox/browser",
-    "//components/password_manager/core/browser",
     "//components/performance_manager",
     "//components/pref_registry",
     "//components/prefs",

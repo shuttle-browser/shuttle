@@ -251,45 +251,6 @@ class SecurityKeysBioEnrollmentHandler : public SecurityKeysHandlerBase {
   base::WeakPtrFactory<SecurityKeysBioEnrollmentHandler> weak_factory_{this};
 };
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-class PasskeysHandler : public SettingsPageUIHandler {
- public:
-  PasskeysHandler();
-  explicit PasskeysHandler(
-      std::unique_ptr<LocalCredentialManagement> local_cred_man);
-  ~PasskeysHandler() override;
-
- protected:
-  void RegisterMessages() override;
-  void OnJavascriptAllowed() override;
-  void OnJavascriptDisallowed() override;
-
-  void HandleEdit(const base::ListValue& args);
-  void OnEditComplete(std::string callback_id, bool edit_ok);
-
-  void HandleDelete(const base::ListValue& args);
-  void OnDeleteComplete(std::string callback_id, bool delete_ok);
-
- private:
-  void HandleHasPasskeys(const base::ListValue& args);
-  void OnHasPasskeysComplete(std::string callback_id, bool has_passkeys);
-
-  void HandleManagePasskeys(const base::ListValue& args);
-
-  void HandleEnumerate(const base::ListValue& args);
-  void DoEnumerate(std::string callback_id);
-  void OnEnumerateComplete(
-      std::string callback_id,
-      std::optional<std::vector<device::DiscoverableCredentialMetadata>>
-          credentials);
-
-  std::unique_ptr<LocalCredentialManagement> local_cred_man_{nullptr};
-
-  base::WeakPtrFactory<PasskeysHandler> weak_factory_{this};
-};
-
-#endif
-
 }  // namespace settings
 
 #endif  // CHROME_BROWSER_UI_WEBUI_SETTINGS_SETTINGS_SECURITY_KEY_HANDLER_H_

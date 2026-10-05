@@ -70,8 +70,6 @@
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
-#include "chrome/browser/ui/autofill/autofill_bubble_base.h"
-#include "chrome/browser/ui/autofill/payments/save_card_ui.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
@@ -128,7 +126,6 @@
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/accessibility/accessibility_focus_highlight.h"
 #include "chrome/browser/ui/views/accessibility/caret_browsing_dialog_delegate.h"
-#include "chrome/browser/ui/views/autofill/autofill_bubble_handler_impl.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
 #include "chrome/browser/ui/views/download/download_in_progress_dialog_view.h"
@@ -211,7 +208,6 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/content_settings/core/common/features.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/feature_engagement/public/event_constants.h"
@@ -225,7 +221,6 @@
 #include "components/permissions/permission_request_manager.h"
 #include "components/prefs/pref_service.h"
 #include "components/reading_list/core/reading_list_pref_names.h"
-#include "components/safe_browsing/core/browser/password_protection/metrics_util.h"
 #include "components/search/ntp_features.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_id.h"
@@ -1049,11 +1044,6 @@ BrowserView::~BrowserView() {
   // Stop the animation timer explicitly here to avoid running it in a nested
   // message loop, which may run by Browser destructor.
   loading_animation_timer_.Stop();
-
-  // Reset autofill bubble handler to make sure it does not out-live toolbar,
-  // since it is responsible for showing autofill related bubbles from toolbar's
-  // child views and it is an observer for avatar toolbar button if any.
-  autofill_bubble_handler_.reset();
 
   // These are raw pointers to child views, so they need to be set to null
   // before `RemoveAllChildViews()` is called to avoid dangling.
@@ -2154,10 +2144,6 @@ void BrowserView::FullscreenStateChanged() {
 
 ToolbarButtonProvider* BrowserView::toolbar_button_provider() {
   return ToolbarButtonProvider::From(browser_);
-}
-
-autofill::AutofillBubbleHandler* BrowserView::GetAutofillBubbleHandler() {
-  return autofill_bubble_handler_.get();
 }
 
 LocationBar* BrowserView::GetLocationBar() const {
@@ -4371,12 +4357,6 @@ void BrowserView::AddedToWidget() {
   // once per browser instance.
   auto* toolbar_button_provider = ToolbarButtonProvider::From(browser_);
   CHECK(toolbar_button_provider);
-
-  // `AutofillBubbleHandlerImpl` depends on the ToolbarButtonProvider so it must
-  // be constructed following the check above.
-  autofill_bubble_handler_ =
-      std::make_unique<autofill::AutofillBubbleHandlerImpl>(
-          browser_.get(), toolbar_button_provider);
 
   auto* const frame_view = GetFrameView();
   frame_view->OnBrowserViewInitViewsComplete();

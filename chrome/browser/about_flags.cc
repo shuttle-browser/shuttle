@@ -76,13 +76,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "components/actor/core/actor_features.h"
 #include "components/actor/core/actor_switches.h"
-#include "components/autofill/core/browser/manual_testing_import.h"
-#include "components/autofill/core/browser/studies/autofill_experiments.h"
-#include "components/autofill/core/common/autofill_debug_features.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/autofill/core/common/autofill_payments_features.h"
-#include "components/autofill/core/common/autofill_switches.h"
-#include "components/autofill/core/common/autofill_util.h"
 #include "components/browser_actuator/public/features.h"
 #include "components/browsing_data/core/features.h"
 #include "components/component_updater/component_updater_command_line_config_policy.h"
@@ -130,8 +123,6 @@
 #include "components/page_info/core/features.h"
 #include "components/paint_preview/buildflags/buildflags.h"
 #include "components/paint_preview/features/features.h"
-#include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "components/performance_manager/public/features.h"
 #include "components/permissions/features.h"
 #include "components/policy/core/common/features.h"
@@ -148,7 +139,6 @@
 #include "components/security_state/core/security_state.h"
 #include "components/segmentation_platform/embedder/home_modules/constants.h"
 #include "components/segmentation_platform/public/features.h"
-#include "components/sensitive_content/features.h"
 #include "components/services/storage/dom_storage/features.h"
 #include "components/sessions/core/command_storage_features.h"
 #include "components/shared_highlighting/core/common/shared_highlighting_features.h"
@@ -266,7 +256,6 @@
 #include "ui/android/ui_android_features.h"
 #include "ui/base/device_form_factor.h"
 #else  // BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/password_manager/password_change/features.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "components/user_education/common/user_education_features.h"  // nogncheck
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -2961,13 +2950,6 @@ const FeatureEntry::FeatureVariation kSkiaGraphiteVariations[] = {
 };
 
 #if BUILDFLAG(IS_ANDROID)
-const FeatureEntry::FeatureParam kSensitiveContentUsePwmHeuristics[] = {
-    {"sensitive_content_use_pwm_heuristics", "true"}};
-
-const FeatureEntry::FeatureVariation kSensitiveContentVariations[] = {
-    {"with password manager heuristics", kSensitiveContentUsePwmHeuristics,
-     nullptr},
-};
 #endif  // BUILDFLAG(IS_ANDROID)
 
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
@@ -3151,12 +3133,6 @@ const FeatureEntry::Choice kGlicSelectionPromptChoices[] = {
      "GlicSelectionPrompt:cta/tell_me_about_this/updates_only/false"},
     {"Enabled (Inline Fulfillment)", switches::kEnableFeatures,
      "GlicSelectionPrompt:inline_fulfillment/true/updates_only/false"}};
-
-const FeatureEntry::FeatureParam kAutofillShowTypePredictionsAsTitle[] = {
-    {"as-title", "true"}};
-const FeatureEntry::FeatureVariation kAutofillShowTypePredictionsVariations[] =
-    {{"- show predictions as title", kAutofillShowTypePredictionsAsTitle,
-      nullptr}};
 
 const FeatureEntry::FeatureParam
     kInvalidateChoiceOnRestoreIsRetroactiveOption[] = {
@@ -3982,43 +3958,6 @@ const FeatureEntry::FeatureVariation kToolbarGlowUpVariations[] = {
     {"no reload, back, or forward animations",
      kToolbarGlowUpNoReloadBackForward, nullptr}};
 
-const FeatureEntry::FeatureParam
-    kAutofillEnableResurrectingPaymentsUsersSecurity[] = {
-        {"autofill_enable_resurrecting_payments_churned_users_treatment", "1"}};
-const FeatureEntry::FeatureParam
-    kAutofillEnableResurrectingPaymentsUsersConvenience[] = {
-        {"autofill_enable_resurrecting_payments_churned_users_treatment", "2"}};
-const FeatureEntry::FeatureVariation
-    kAutofillEnableResurrectingPaymentsUsersVariations[] = {
-        {"Security", kAutofillEnableResurrectingPaymentsUsersSecurity, nullptr},
-        {"Convenience", kAutofillEnableResurrectingPaymentsUsersConvenience,
-         nullptr}};
-
-const FeatureEntry::FeatureParam kAutofillAiWalletPassBranding2026Variant1[] = {
-    {"string_variant", "1"}};
-const FeatureEntry::FeatureParam kAutofillAiWalletPassBranding2026Variant2[] = {
-    {"string_variant", "2"}};
-
-const FeatureEntry::FeatureVariation
-    kAutofillAiWalletPassBranding2026Variations[] = {
-        {"Variant 1 (Securely + Wallet)",
-         kAutofillAiWalletPassBranding2026Variant1, nullptr},
-        {"Variant 2 (Securely only)", kAutofillAiWalletPassBranding2026Variant2,
-         nullptr},
-};
-
-const FeatureEntry::FeatureParam kAutofillUpstreamEnforceStrikeDelay1Day[] = {
-    {"autofill_upstream_enforce_strike_delay_days", "1"}};
-const FeatureEntry::FeatureParam kAutofillUpstreamEnforceStrikeDelay3Days[] = {
-    {"autofill_upstream_enforce_strike_delay_days", "3"}};
-const FeatureEntry::FeatureParam kAutofillUpstreamEnforceStrikeDelay7Days[] = {
-    {"autofill_upstream_enforce_strike_delay_days", "7"}};
-const FeatureEntry::FeatureVariation
-    kAutofillUpstreamEnforceStrikeDelayVariations[] = {
-        {"1 day", kAutofillUpstreamEnforceStrikeDelay1Day, nullptr},
-        {"3 days", kAutofillUpstreamEnforceStrikeDelay3Days, nullptr},
-        {"7 days", kAutofillUpstreamEnforceStrikeDelay7Days, nullptr}};
-
 #if BUILDFLAG(ENTERPRISE_PROXY)
 const FeatureEntry::FeatureParam kEnterpriseProxyErrorForced403[] = {
     {enterprise_net::kForcedDisguisedErrorCodeParamName, "403"}};
@@ -4225,21 +4164,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(enterprise_connectors::kContentAnalysisClipboardCopy)},
 
-    {"show-autofill-type-predictions",
-     flag_descriptions::kShowAutofillTypePredictionsName,
-     flag_descriptions::kShowAutofillTypePredictionsDescription, kOsAll,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         autofill::features::debug::kAutofillShowTypePredictions,
-         kAutofillShowTypePredictionsVariations,
-         "AutofillShowTypePredictions")},
-    {"autofill-ambient-autofill",
-     flag_descriptions::kAutofillAmbientAutofillName,
-     flag_descriptions::kAutofillAmbientAutofillDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAmbientAutofill)},
-    {"autofill-payments-field-swapping",
-     flag_descriptions::kAutofillPaymentsFieldSwappingName,
-     flag_descriptions::kAutofillPaymentsFieldSwappingDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillPaymentsFieldSwapping)},
     {"smooth-scrolling", flag_descriptions::kSmoothScrollingName,
      flag_descriptions::kSmoothScrollingDescription,
      // Mac has a separate implementation with its own setting to disable.
@@ -4623,20 +4547,7 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kZeroCopyVideoCaptureDescription, kOsAndroid,
      FEATURE_VALUE_TYPE(media::kAndroidZeroCopyVideoCapture)},
 #endif  // BUILDFLAG(IS_ANDROID)
-    {"enable-show-autofill-signatures",
-     flag_descriptions::kShowAutofillSignaturesName,
-     flag_descriptions::kShowAutofillSignaturesDescription, kOsAll,
-     SINGLE_VALUE_TYPE(autofill::switches::kShowAutofillSignatures)},
 
-    {"wallet-service-use-sandbox",
-     flag_descriptions::kWalletServiceUseSandboxName,
-     flag_descriptions::kWalletServiceUseSandboxDescription,
-     kOsAndroid | kOsDesktop,
-     ENABLE_DISABLE_VALUE_TYPE_AND_VALUE(
-         autofill::switches::kWalletServiceUseSandbox,
-         "1",
-         autofill::switches::kWalletServiceUseSandbox,
-         "0")},
     {"enable-web-bluetooth", flag_descriptions::kWebBluetoothName,
      flag_descriptions::kWebBluetoothDescription, kOsLinux,
      FEATURE_VALUE_TYPE(features::kWebBluetooth)},
@@ -5211,10 +5122,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kWebRtcWgcRequireBorder)},
 #endif  // BUILDFLAG(IS_WIN)
 #if defined(TOOLKIT_VIEWS) || BUILDFLAG(IS_ANDROID)
-    {"enable-autofill-credit-card-upload",
-     flag_descriptions::kAutofillCreditCardUploadName,
-     flag_descriptions::kAutofillCreditCardUploadDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillUpstream)},
 #endif  // defined(TOOLKIT_VIEWS) || BUILDFLAG(IS_ANDROID)
     {"force-ui-direction", flag_descriptions::kForceUiDirectionName,
      flag_descriptions::kForceUiDirectionDescription, kOsAll,
@@ -5432,9 +5339,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kTouchTextEditingRedesignName,
      flag_descriptions::kTouchTextEditingRedesignDescription, kOsAll,
      FEATURE_VALUE_TYPE(features::kTouchTextEditingRedesign)},
-    {"fill-on-account-select", flag_descriptions::kFillOnAccountSelectName,
-     flag_descriptions::kFillOnAccountSelectDescription, kOsAll,
-     FEATURE_VALUE_TYPE(password_manager::features::kFillOnAccountSelect)},
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
     {"first-run-desktop-choice-screen-refresh",
@@ -7512,22 +7416,8 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kEnableOmniboxClientSearchPrefetchName,
      flag_descriptions::kEnableOmniboxClientSearchPrefetchDescription, kOsAll,
      FEATURE_VALUE_TYPE(kSearchNavigationPrefetch)},
-    {"autofill-enable-autofill-settings-enterprise-policy",
-     flag_descriptions::kAutofillEnableAutofillSettingsEnterprisePolicyName,
-     flag_descriptions::
-         kAutofillEnableAutofillSettingsEnterprisePolicyDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableAutofillSettingsEnterprisePolicy)},
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-offers-in-clank-keyboard-accessory",
-     flag_descriptions::kAutofillEnableOffersInClankKeyboardAccessoryName,
-     flag_descriptions::
-         kAutofillEnableOffersInClankKeyboardAccessoryDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableOffersInClankKeyboardAccessory)},
 #endif
 
 #if BUILDFLAG(ENABLE_PDF)
@@ -7657,11 +7547,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-    {"biometric-reauth-password-filling",
-     flag_descriptions::kBiometricReauthForPasswordFillingName,
-     flag_descriptions::kBiometricReauthForPasswordFillingDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(password_manager::features::kBiometricTouchToFill)},
 #endif
 
     {"bind-cookies-to-port", flag_descriptions::kBindCookiesToPortName,
@@ -8606,13 +8491,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(ash::features::kTilingWindowResize)},
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-    {"autofill-enable-prefetching-risk-data-for-retrieval",
-     flag_descriptions::kAutofillEnablePrefetchingRiskDataForRetrievalName,
-     flag_descriptions::
-         kAutofillEnablePrefetchingRiskDataForRetrievalDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnablePrefetchingRiskDataForRetrieval)},
 
         // BUILDFLAG(IS_CHROMEOS)
 
@@ -8620,12 +8498,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kDeprecateUnloadDescription, kOsAll | kDeprecated,
      FEATURE_VALUE_TYPE(network::features::kDeprecateUnload)},
 
-    {"autofill-enable-fpan-risk-based-authentication",
-     flag_descriptions::kAutofillEnableFpanRiskBasedAuthenticationName,
-     flag_descriptions::kAutofillEnableFpanRiskBasedAuthenticationDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableFpanRiskBasedAuthentication)},
 
 #if BUILDFLAG(IS_MAC)
     {"enable-mac-pwas-notification-attribution",
@@ -8757,26 +8629,8 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kEnableUnrestrictedUsbDescription, kOsAll,
      FEATURE_VALUE_TYPE(blink::features::kUnrestrictedUsb)},
 
-    {"autofill-enable-vcn-3ds-authentication",
-     flag_descriptions::kAutofillEnableVcn3dsAuthenticationName,
-     flag_descriptions::kAutofillEnableVcn3dsAuthenticationDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableVcn3dsAuthentication)},
 
-    {"autofill-enable-wallet-reminder-notice",
-     flag_descriptions::kAutofillEnableWalletReminderNoticeName,
-     flag_descriptions::kAutofillEnableWalletReminderNoticeDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableWalletReminderNotice)},
 
-    {"autofill-enable-wallet-reminder-notice-public-pass",
-     flag_descriptions::kAutofillEnableWalletReminderNoticePublicPassName,
-     flag_descriptions::
-         kAutofillEnableWalletReminderNoticePublicPassDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableWalletReminderNoticePublicPass)},
 
 #if BUILDFLAG(IS_CHROMEOS)
     {"cros-locked-mode", flag_descriptions::kLockedModeName,
@@ -8996,28 +8850,10 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(syncer::kUnoPhase2FollowUp)},
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
-    {"pwm-show-suggestions-on-autofocus",
-     flag_descriptions::kPasswordManagerShowSuggestionsOnAutofocusName,
-     flag_descriptions::kPasswordManagerShowSuggestionsOnAutofocusDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         password_manager::features::kShowSuggestionsOnAutofocus)},
 
 #if !BUILDFLAG(IS_ANDROID)
-    {"password-compromise-warning-in-details-card",
-     flag_descriptions::kPasswordCompromiseWarningInDetailsCardName,
-     flag_descriptions::kPasswordCompromiseWarningInDetailsCardDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         password_manager::features::kPasswordCompromiseWarningInDetailsCard)},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-    {"password-save-in-context-error-resolution",
-     flag_descriptions::kPasswordSaveInContextErrorResolutionName,
-     flag_descriptions::kPasswordSaveInContextErrorResolutionDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         password_manager::features::kPasswordSaveInContextErrorResolution)},
 
     {"optimization-guide-enable-dogfood-logging",
      flag_descriptions::kOptimizationGuideEnableDogfoodLoggingName,
@@ -9167,19 +9003,7 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-    {"sensitive-content", flag_descriptions::kSensitiveContentName,
-     flag_descriptions::kSensitiveContentDescription, kOsAndroid,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         sensitive_content::features::kSensitiveContent,
-         kSensitiveContentVariations,
-         "SensitiveContent")},
 
-    {"sensitive-content-while-switching-tabs",
-     flag_descriptions::kSensitiveContentWhileSwitchingTabsName,
-     flag_descriptions::kSensitiveContentWhileSwitchingTabsDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         sensitive_content::features::kSensitiveContentWhileSwitchingTabs)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
     {"data-controls-search-with",
@@ -9241,30 +9065,10 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-buy-now-pay-later",
-     flag_descriptions::kAutofillEnableBuyNowPayLaterName,
-     flag_descriptions::kAutofillEnableBuyNowPayLaterDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableBuyNowPayLater)},
 
-    {"autofill-enable-buy-now-pay-later-syncing",
-     flag_descriptions::kAutofillEnableBuyNowPayLaterSyncingName,
-     flag_descriptions::kAutofillEnableBuyNowPayLaterSyncingDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableBuyNowPayLaterSyncing)},
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
-    {"autofill-enable-cvc-storage-and-filling-standalone-form-enhancement",
-     flag_descriptions::
-         kAutofillEnableCvcStorageAndFillingStandaloneFormEnhancementName,
-     flag_descriptions::
-         kAutofillEnableCvcStorageAndFillingStandaloneFormEnhancementDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillEnableCvcStorageAndFillingStandaloneFormEnhancement)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"clank-default-browser-promo-role-manager",
@@ -9284,11 +9088,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kDesktopUAOnConnectedDisplay)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-    {"password-form-grouped-affiliations",
-     flag_descriptions::kPasswordFormGroupedAffiliationsName,
-     flag_descriptions::kPasswordFormGroupedAffiliationsDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         password_manager::features::kPasswordFormGroupedAffiliations)},
 
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
     {"partition-alloc-scheduler-loop-quarantine",
@@ -9420,17 +9219,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(
          features::kGlicExperimentalTriggeringSuppressDoneNotification)},
-    {"glic-actor-autofill", flag_descriptions::kGlicActorAutofillName,
-     flag_descriptions::kGlicActorAutofillDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(autofill::features::kGlicActorAutofill)},
-    {"glic-actor-autofill-section-label",
-     flag_descriptions::kGlicActorAutofillSectionLabelName,
-     flag_descriptions::kGlicActorAutofillSectionLabelDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kGlicActorAutofillSectionLabel)},
-    {"glic-actor-autofill-pre-click",
-     flag_descriptions::kGlicActorAutofillPreClickName,
-     flag_descriptions::kGlicActorAutofillPreClickDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kGlicActorAutofillPreClick)},
     {"glic-actor-cursor", flag_descriptions::kGlicActorCursorName,
      flag_descriptions::kGlicActorCursorDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kGlicActorUiMagicCursor)},
@@ -9571,10 +9359,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(pwc::mojom::features::kPrivilegedWebContents)},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-    {"autofill-enable-save-and-fill",
-     flag_descriptions::kAutofillEnableSaveAndFillName,
-     flag_descriptions::kAutofillEnableSaveAndFillDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableSaveAndFill)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"default-browser-promo-entry-point",
@@ -9666,11 +9450,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kThreeButtonPasswordSaveDialogDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kThreeButtonPasswordSaveDialog)},
 
-    {"password-save-update-dropdown-menu-experiment",
-     flag_descriptions::kPasswordSaveUpdateDropdownMenuExperimentName,
-     flag_descriptions::kPasswordSaveUpdateDropdownMenuExperimentDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kPasswordSaveUpdateDropdownMenuExperiment)},
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -9745,20 +9524,10 @@ const FeatureEntry kFeatureEntries[] = {
 #endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
 
 #if !BUILDFLAG(IS_ANDROID)
-    {"mark-all-credentials-as-leaked",
-     flag_descriptions::kMarkAllCredentialsAsLeakedName,
-     flag_descriptions::kMarkAllCredentialsAsLeakedDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         password_manager::features::kMarkAllCredentialsAsLeaked)},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-amount-extraction",
-     flag_descriptions::kAutofillEnableAmountExtractionName,
-     flag_descriptions::kAutofillEnableAmountExtractionDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableAmountExtraction)},
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
@@ -9795,15 +9564,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kAndroidDocumentPictureInPictureDescription, kOsAndroid,
      FEATURE_VALUE_TYPE(blink::features::kDocumentPictureInPictureAPI)},
 
-    {"credential-management-third-party-web-api-request-forwarding",
-     flag_descriptions::
-         kCredentialManagementThirdPartyWebApiRequestForwardingName,
-     flag_descriptions::
-         kCredentialManagementThirdPartyWebApiRequestForwardingDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         credential_management::features::
-             kCredentialManagementThirdPartyWebApiRequestForwarding)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
@@ -9839,12 +9599,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-amount-extraction-testing",
-     flag_descriptions::kAutofillEnableAmountExtractionTestingName,
-     flag_descriptions::kAutofillEnableAmountExtractionTestingDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableAmountExtractionTesting)},
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
@@ -10054,10 +9808,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kLaunchOnStartupInfoBar)},
 #endif  // BUILDFLAG(IS_WIN)
 
-    {"field-classification-model-caching",
-     flag_descriptions::kFieldClassificationModelCachingName,
-     flag_descriptions::kFieldClassificationModelCachingDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kFieldClassificationModelCaching)},
 
     {"disable-autofill-strike-system",
      flag_descriptions::kDisableAutofillStrikeSystemName,
@@ -10100,21 +9850,9 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-buy-now-pay-later-for-klarna",
-     flag_descriptions::kAutofillEnableBuyNowPayLaterForKlarnaName,
-     flag_descriptions::kAutofillEnableBuyNowPayLaterForKlarnaDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableBuyNowPayLaterForKlarna)},
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
-    {"autofill-enable-downstream-card-awareness-iph",
-     flag_descriptions::kAutofillEnableDownstreamCardAwarenessIphName,
-     flag_descriptions::kAutofillEnableDownstreamCardAwarenessIphDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableDownstreamCardAwarenessIph)},
 
 #if !BUILDFLAG(IS_ANDROID)
     {"enable-ntp-browser-promos",
@@ -10137,23 +9875,10 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-buy-now-pay-later-for-externally-linked",
-     flag_descriptions::kAutofillEnableBuyNowPayLaterForExternallyLinkedName,
-     flag_descriptions::
-         kAutofillEnableBuyNowPayLaterForExternallyLinkedDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableBuyNowPayLaterForExternallyLinked)},
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-separate-pix-preference-item",
-     flag_descriptions::kAutofillEnableSeparatePixPreferenceItemName,
-     flag_descriptions::kAutofillEnableSeparatePixPreferenceItemDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableSeparatePixPreferenceItem)},
 
     {"android-desktop-bookmark-dialog",
      flag_descriptions::kAndroidDesktopBookmarkDialogName,
@@ -10258,13 +9983,6 @@ const FeatureEntry kFeatureEntries[] = {
              kSafetyHubUnusedPermissionRevocationForAllSurfaces)},
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-android-desktop-suppress-accessory-on-empty",
-     flag_descriptions::kAutofillAndroidDesktopSuppressAccessoryOnEmptyName,
-     flag_descriptions::
-         kAutofillAndroidDesktopSuppressAccessoryOnEmptyDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAndroidDesktopSuppressAccessoryOnEmpty)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -10291,13 +10009,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kPrewarm)},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-    {"apply-clientside-model-predictions-for-password-types",
-     flag_descriptions::kApplyClientsideModelPredictionsForPasswordTypesName,
-     flag_descriptions::
-         kApplyClientsideModelPredictionsForPasswordTypesDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(password_manager::features::
-                            kApplyClientsideModelPredictionsForPasswordTypes)},
 
     {"canvas-draw-element", flag_descriptions::kCanvasDrawElementName,
      flag_descriptions::kCanvasDrawElementDescription, kOsAll,
@@ -10353,10 +10064,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(history::kBrowsingHistorySimilarVisitsGrouping)},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-    {"autofill-manual-testing-data",
-     flag_descriptions::kAutofillManualTestingDataName,
-     flag_descriptions::kAutofillManualTestingDataDescription, kOsAll,
-     STRING_VALUE_TYPE(autofill::kManualContentImportForTestingFlag, "")},
 
 #if BUILDFLAG(IS_ANDROID)
     {"incognito-theme-overlay-testing",
@@ -10372,34 +10079,12 @@ const FeatureEntry kFeatureEntries[] = {
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-android-desktop-keyboard-accessory-revamp",
-     flag_descriptions::kAutofillAndroidDesktopKeyboardAccessoryRevampName,
-     flag_descriptions::
-         kAutofillAndroidDesktopKeyboardAccessoryRevampDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAndroidDesktopKeyboardAccessoryRevamp)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-android-keyboard-accessory-dynamic-positioning",
-     flag_descriptions::kAutofillAndroidKeyboardAccessoryDynamicPositioningName,
-     flag_descriptions::
-         kAutofillAndroidKeyboardAccessoryDynamicPositioningDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillAndroidKeyboardAccessoryDynamicPositioning)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-android-keyboard-accessory-hover-preview",
-     flag_descriptions::kAutofillAndroidKeyboardAccessoryHoverPreviewName,
-     flag_descriptions::
-         kAutofillAndroidKeyboardAccessoryHoverPreviewDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAndroidKeyboardAccessoryHoverPreview)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -10477,19 +10162,7 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kVerifyQWACsDescription, kOsAll,
      FEATURE_VALUE_TYPE(net::features::kVerifyQWACs)},
 
-    {"autofill-prefer-buy-now-pay-later-blocklists",
-     flag_descriptions::kAutofillPreferBuyNowPayLaterBlocklistsName,
-     flag_descriptions::kAutofillPreferBuyNowPayLaterBlocklistsDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillPreferBuyNowPayLaterBlocklists)},
 
-    {"autofill-enable-ai-based-amount-extraction",
-     flag_descriptions::kAutofillEnableAiBasedAmountExtractionName,
-     flag_descriptions::kAutofillEnableAiBasedAmountExtractionDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableAiBasedAmountExtraction)},
 
     {"omnibox-debug-logs", omnibox::flag_descriptions::kOmniboxDebugLogsName,
      omnibox::flag_descriptions::kOmniboxDebugLogsDescription, kOsDesktop,
@@ -10508,15 +10181,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(ash::features::kUnicornChromeActivityReporting)},
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-    {"autofill-enable-buy-now-pay-later-updated-suggestion-second-line-string",
-     flag_descriptions::
-         kAutofillEnableBuyNowPayLaterUpdatedSuggestionSecondLineStringName,
-     flag_descriptions::
-         kAutofillEnableBuyNowPayLaterUpdatedSuggestionSecondLineStringDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillEnableBuyNowPayLaterUpdatedSuggestionSecondLineString)},
 
     {"cryptography-compliance-cnsa",
      flag_descriptions::kCryptographyComplianceCnsaName,
@@ -10543,9 +10207,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-    {"passkey-unlock-error-ui", flag_descriptions::kPasskeyUnlockErrorUiName,
-     flag_descriptions::kPasskeyUnlockErrorUiDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(device::kPasskeyUnlockErrorUi)},
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -10671,21 +10332,9 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(unexportable_keys::kUnexportableKeyDeletion)},
 #endif
 
-    {"autofill-disable-bnpl-country-check-for-testing",
-     flag_descriptions::kAutofillDisableBnplCountryCheckForTestingName,
-     flag_descriptions::kAutofillDisableBnplCountryCheckForTestingDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillDisableBnplCountryCheckForTesting)},
 
 #if BUILDFLAG(IS_ANDROID)
 
-    {"autofill-enable-new-fop-display-android",
-     flag_descriptions::kAutofillEnableNewFopDisplayAndroidName,
-     flag_descriptions::kAutofillEnableNewFopDisplayAndroidDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableNewFopDisplayAndroid)},
 #endif
 
     {"dom-storage-sqlite", flag_descriptions::kDomStorageSqliteName,
@@ -10705,12 +10354,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kOverscrollEffectOnNonRootScrollers)},
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-enable-touch-to-fill-reshow-for-bnpl",
-     flag_descriptions::kAutofillEnableTouchToFillReshowForBnplName,
-     flag_descriptions::kAutofillEnableTouchToFillReshowForBnplDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableTouchToFillReshowForBnpl)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_MAC)
@@ -10761,10 +10404,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(enterprise_auth::kOktaSSO)},
 #endif
 
-    {"autofill-enable-wallet-branding",
-     flag_descriptions::kAutofillEnableWalletBrandingName,
-     flag_descriptions::kAutofillEnableWalletBrandingDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableWalletBranding)},
 
 #if BUILDFLAG(IS_WIN)
     {"enable-arabic-indic-digit-input",
@@ -10780,88 +10419,21 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kEnableSwipeToSwitchPane)},
 #endif
 
-    {"autofill-ai-based-amount-extraction-ignore-seen-terms-for-testing",
-     flag_descriptions::
-         kAutofillAiBasedAmountExtractionIgnoreSeenTermsForTestingName,
-     flag_descriptions::
-         kAutofillAiBasedAmountExtractionIgnoreSeenTermsForTestingDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillAiBasedAmountExtractionIgnoreSeenTermsForTesting)},
 
-    {"autofill-ai-always-trigger-server-model",
-     flag_descriptions::kAutofillAiAlwaysTriggerServerModelName,
-     flag_descriptions::kAutofillAiAlwaysTriggerServerModelDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAiAlwaysTriggerServerModel)},
 
-    {"autofill-ai-always-show-private-ai-notice",
-     flag_descriptions::kAutofillAiAlwaysShowPrivateAiNoticeName,
-     flag_descriptions::kAutofillAiAlwaysShowPrivateAiNoticeDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::debug::kAutofillAiAlwaysShowPrivateAiNotice)},
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-ai-available-by-default",
-     flag_descriptions::kAutofillAiAvailableByDefaultName,
-     flag_descriptions::kAutofillAiAvailableByDefaultDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAiAvailableByDefault)},
 #endif
 
-    {"autofill-ai-dedupe-entities",
-     flag_descriptions::kAutofillAiDedupeEntitiesName,
-     flag_descriptions::kAutofillAiDedupeEntitiesDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAiDedupeEntities)},
 
-    {"autofill-ai-no-filling-icons-experiment",
-     flag_descriptions::kAutofillAiNoFillingIconsExperimentName,
-     flag_descriptions::kAutofillAiNoFillingIconsExperimentDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAiNoFillingIconsExperiment)},
 
-    {"autofill-ai-reauth-required",
-     flag_descriptions::kAutofillAiReauthRequiredName,
-     flag_descriptions::kAutofillAiReauthRequiredDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAiReauthRequired)},
 
-    {"autofill-ai-server-model", flag_descriptions::kAutofillAiServerModelName,
-     flag_descriptions::kAutofillAiServerModelDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAiServerModel)},
 
-    {"autofill-ai-valuables-iph",
-     flag_descriptions::kAutofillAiValuablesIPHName,
-     flag_descriptions::kAutofillAiValuablesIPHDescription, kOsAll,
-     FEATURE_VALUE_TYPE(feature_engagement::kIPHAutofillAiValuablesFeature)},
 
-    {"autofill-ai-wallet-flight-reservation",
-     flag_descriptions::kAutofillAiWalletFlightReservationName,
-     flag_descriptions::kAutofillAiWalletFlightReservationDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAiWalletFlightReservation)},
 
-    {"autofill-ai-wallet-private-passes",
-     flag_descriptions::kAutofillAiWalletPrivatePassesName,
-     flag_descriptions::kAutofillAiWalletPrivatePassesDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAiWalletPrivatePasses)},
 
-    {"autofill-ai-wallet-private-passes-deep-link",
-     flag_descriptions::kAutofillAiWalletPrivatePassesDeepLinkName,
-     flag_descriptions::kAutofillAiWalletPrivatePassesDeepLinkDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAiWalletPrivatePassesDeepLink)},
 
-    {"autofill-ai-wallet-vehicle-registration",
-     flag_descriptions::kAutofillAiWalletVehicleRegistrationName,
-     flag_descriptions::kAutofillAiWalletVehicleRegistrationDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAiWalletVehicleRegistration)},
 
-    {"autofill-ai-with-data-schema",
-     flag_descriptions::kAutofillAiWithDataSchemaName,
-     flag_descriptions::kAutofillAiWithDataSchemaDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillAiWithDataSchema)},
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -10941,10 +10513,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kSaasUsageReportingDescription, kOsAll,
      FEATURE_VALUE_TYPE(enterprise_reporting::kSaasUsageReporting)},
 
-    {"autofill-enable-pay-now-pay-later-tabs",
-     flag_descriptions::kAutofillEnablePayNowPayLaterTabsName,
-     flag_descriptions::kAutofillEnablePayNowPayLaterTabsDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnablePayNowPayLaterTabs)},
 
     {"web-authentication-ambient-signin",
      flag_descriptions::kWebAuthnAmbientSigninName,
@@ -10974,11 +10542,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(safe_browsing::kBundledSecuritySettingsSecureDnsV2)},
 
 #if !BUILDFLAG(IS_ANDROID)
-    {"credential-management-unified-ui",
-     flag_descriptions::kCredentialManagementUnifiedUiName,
-     flag_descriptions::kCredentialManagementUnifiedUiDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         password_manager::features::kCredentialManagementUnifiedUi)},
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
@@ -11034,10 +10597,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kDebugToolbarPositioning)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-    {"autofill-enable-new-amex-network-art",
-     flag_descriptions::kAutofillEnableNewAmexNetworkArtName,
-     flag_descriptions::kAutofillEnableNewAmexNetworkArtDescription, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableNewAmexNetworkArt)},
 
     {"chrome-finds-internals", flag_descriptions::kChromeFindsInternalsName,
      flag_descriptions::kChromeFindsInternalsDescription, kOsAll,
@@ -11091,12 +10650,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-    {"autofill-touch-to-fill-show-manual-fill-for-vcn-fix",
-     flag_descriptions::kAutofillTouchToFillShowManualFillForVcnFixName,
-     flag_descriptions::kAutofillTouchToFillShowManualFillForVcnFixDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillTouchToFillShowManualFillForVcnFix)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_ANDROID)
@@ -11114,10 +10667,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     kSigninPromoOnAvatarPillVariation,
                                     "SigninPromoOnAvatarPillVariation")},
 #endif
-    {"autofill-enable-omnibox-autofill",
-     flag_descriptions::kAutofillEnableOmniboxAutofillName,
-     flag_descriptions::kAutofillEnableOmniboxAutofillDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableOmniboxAutofill)},
     {"enable-global-privacy-control",
      flag_descriptions::kGlobalPrivacyControlName,
      flag_descriptions::kGlobalPrivacyControlDescription, kOsAll,
@@ -11167,10 +10716,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kApb144Patch4)},
 #endif
 
-    {"autofill-enable-wallet-branding-v2",
-     flag_descriptions::kAutofillEnableWalletBrandingV2Name,
-     flag_descriptions::kAutofillEnableWalletBrandingV2Description, kOsAll,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableWalletBrandingV2)},
     {"webcrypto-pqc", flag_descriptions::kWebCryptoPQCName,
      flag_descriptions::kWebCryptoPQCDescription, kOsAll,
      FEATURE_VALUE_TYPE(blink::features::kWebCryptoPQC)},
@@ -11267,13 +10812,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_WITH_PARAMS_VALUE_TYPE(sessions::kEncryptSessionStorage,
                                     kSessionEncryptionVariations,
                                     "SessionEncryption")},
-    {"autofill-upstream-enforce-strike-delay",
-     flag_descriptions::kAutofillUpstreamEnforceStrikeDelayName,
-     flag_descriptions::kAutofillUpstreamEnforceStrikeDelayDescription, kOsAll,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         autofill::features::kAutofillUpstreamEnforceStrikeDelay,
-         kAutofillUpstreamEnforceStrikeDelayVariations,
-         "AutofillUpstreamEnforceStrikeDelay")},
 
 #if BUILDFLAG(IS_ANDROID)
     {"exact-match-favicons", flag_descriptions::kExactMatchFaviconsName,
@@ -11348,15 +10886,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(safe_browsing::kBundledSecuritySettingsAskBeforeHttp)},
 
-    {"autofill-enable-travel-category-and-merchant-benefits-from-curinos",
-     flag_descriptions::
-         kAutofillEnableTravelCategoryAndMerchantBenefitsFromCurinosName,
-     flag_descriptions::
-         kAutofillEnableTravelCategoryAndMerchantBenefitsFromCurinosDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillEnableTravelCategoryAndMerchantBenefitsFromCurinos)},
 
 #if BUILDFLAG(ENTERPRISE_PROXY)
     {"enable-dynamic-route-fetching",
@@ -11432,11 +10961,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kIncognitoAsWindowFullScreen)},
 #endif
 
-    {"autofill-enable-gradient-google-logos",
-     flag_descriptions::kAutofillEnableGradientGoogleLogosName,
-     flag_descriptions::kAutofillEnableGradientGoogleLogosDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableGradientGoogleLogos)},
 
     {"canvas-accessibility", flag_descriptions::kCanvasAccessibilityName,
      flag_descriptions::kCanvasAccessibilityDescription,
@@ -11466,13 +10990,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kCentralizedInfoBarFrameworkDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(infobars::kCentralizedInfoBarFramework)},
 
-    {"autofill-ai-wallet-pass-branding-2026",
-     flag_descriptions::kAutofillAiWalletPassBranding2026Name,
-     flag_descriptions::kAutofillAiWalletPassBranding2026Description, kOsAll,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         autofill::features::kAutofillAiWalletPassBranding2026,
-         kAutofillAiWalletPassBranding2026Variations,
-         "AutofillAiWalletPassBranding2026")},
 #if BUILDFLAG(IS_CHROMEOS)
     {"enable-dlp-file-system-api",
      flag_descriptions::kEnableDlpFileSystemApiName,
@@ -11502,32 +11019,12 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kAndroidTabstripStartupCaptureBugFix)},
 #endif
 
-    {"autofill-enable-ai-card-recommendation",
-     flag_descriptions::kAutofillEnableAiCardRecommendationName,
-     flag_descriptions::kAutofillEnableAiCardRecommendationDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableAiCardRecommendation)},
 
     {"infobar-inline-links", flag_descriptions::kInfoBarInlineLinksName,
      flag_descriptions::kInfoBarInlineLinksDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kInfoBarInlineLinks)},
 
-    {"autofill-enable-bnpl-affirm-internationalization",
-     flag_descriptions::kAutofillEnableBnplAffirmInternationalizationName,
-     flag_descriptions::
-         kAutofillEnableBnplAffirmInternationalizationDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableBnplAffirmInternationalization)},
 
-    {"autofill-enable-bnpl-klarna-internationalization",
-     flag_descriptions::kAutofillEnableBnplKlarnaInternationalizationName,
-     flag_descriptions::
-         kAutofillEnableBnplKlarnaInternationalizationDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableBnplKlarnaInternationalization)},
 
     {"devtools-plus-button", flag_descriptions::kDevToolsPlusButtonName,
      flag_descriptions::kDevToolsPlusButtonDescription, kOsAll,
@@ -11576,14 +11073,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kAllowMultipleMediaNotifications)},
 #endif
 
-    {"autofill-enable-resurrecting-payments-users",
-     flag_descriptions::kAutofillEnableResurrectingPaymentsUsersName,
-     flag_descriptions::kAutofillEnableResurrectingPaymentsUsersDescription,
-     kOsAll,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         autofill::features::kAutofillEnableResurrectingPaymentsUsers,
-         kAutofillEnableResurrectingPaymentsUsersVariations,
-         "AutofillEnableResurrectingPaymentsUsers")},
 
 #if BUILDFLAG(IS_WIN)
     {"antivirus-telemetry-for-downloads",
@@ -11772,22 +11261,7 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kOmniboxDuiPrerenderingDescription, kOsAll,
      FEATURE_VALUE_TYPE(features::kOmniboxDuiPrerendering)},
 
-    {"autofill-enable-expand-iban-regex-pattern",
-     flag_descriptions::kAutofillEnableExpandIbanRegexPatternName,
-     flag_descriptions::kAutofillEnableExpandIbanRegexPatternDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableExpandIbanRegexPattern)},
 
-    {"autofill-ignore-payments-churned-users-strikes-for-testing",
-     flag_descriptions::
-         kAutofillIgnorePaymentsChurnedUsersStrikesForTestingName,
-     flag_descriptions::
-         kAutofillIgnorePaymentsChurnedUsersStrikesForTestingDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillIgnorePaymentsChurnedUsersStrikesForTesting)},
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -11804,10 +11278,6 @@ const FeatureEntry kFeatureEntries[] = {
          features::kReadAnythingReadAloudExperimentalPlaybackUi)},
 #endif
 #if !BUILDFLAG(IS_ANDROID)
-    {"password-change-with-glic",
-     flag_descriptions::kPasswordChangeWithGlicName,
-     flag_descriptions::kPasswordChangeWithGlicDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(password_change::features::kPasswordChangeWithGlic)},
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -11840,11 +11310,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kCriticalActionHistoryDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(critical_actions::features::kCriticalActionHistory)},
 
-    {"autofill-enable-wallet-direct-offers",
-     flag_descriptions::kAutofillEnableWalletDirectOffersName,
-     flag_descriptions::kAutofillEnableWalletDirectOffersDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableWalletDirectOffers)},
 
     {"universal-opt-out-settings",
      flag_descriptions::kUniversalOptOutSettingsName,
@@ -11858,13 +11323,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kDisableGridTabSwitcher)},
 #endif
 
-    {"autofill-enable-scan-card-option-when-no-cards-saved",
-     flag_descriptions::kAutofillEnableScanCardOptionWhenNoCardsSavedName,
-     flag_descriptions::
-         kAutofillEnableScanCardOptionWhenNoCardsSavedDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillEnableScanCardOptionWhenNoCardsSaved)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"one-step-aim-access", flag_descriptions::kOneStepAimAccessName,
@@ -11888,9 +11346,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kRemoteActorCredentialSharingDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kRemoteActorCredentialSharing)},
 
-    {"autofill-gmail-otp", flag_descriptions::kAutofillGmailOtpName,
-     flag_descriptions::kAutofillGmailOtpDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillGmailOtp)},
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -11907,20 +11362,7 @@ const FeatureEntry kFeatureEntries[] = {
 
 #endif
 
-    {"autofill-add-chrome-user-context-fields",
-     flag_descriptions::kAutofillAddChromeUserContextFieldsName,
-     flag_descriptions::kAutofillAddChromeUserContextFieldsDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::kAutofillAddChromeUserContextFields)},
 
-    {"autofill-enable-card-on-device-verification-enforcement",
-     flag_descriptions::kAutofillEnableCardOnDeviceVerificationEnforcementName,
-     flag_descriptions::
-         kAutofillEnableCardOnDeviceVerificationEnforcementDescription,
-     kOsAll,
-     FEATURE_VALUE_TYPE(
-         autofill::features::
-             kAutofillEnableCardOnDeviceVerificationEnforcement)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"auto-resize-minimum-page-scale-factor",

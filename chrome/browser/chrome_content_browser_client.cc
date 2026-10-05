@@ -222,8 +222,6 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/common/webui_url_utils.h"
 #include "chrome/installer/util/google_update_settings.h"
-#include "components/autofill/core/common/autofill_features.h"
-#include "components/autofill/core/common/autofill_switches.h"
 #include "components/blocked_content/popup_blocker.h"
 #include "components/captive_portal/core/buildflags.h"
 #include "components/content_settings/browser/page_specific_content_settings.h"
@@ -276,8 +274,6 @@
 #include "components/no_state_prefetch/common/no_state_prefetch_final_status.h"
 #include "components/no_state_prefetch/common/no_state_prefetch_url_loader_throttle.h"
 #include "components/page_load_metrics/browser/metrics_web_contents_observer.h"
-#include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/pdf/common/pdf_util.h"
 #include "components/performance_manager/public/graph/frame_node.h"
 #include "components/performance_manager/public/performance_manager.h"
@@ -295,7 +291,6 @@
 #include "components/privacy_sandbox/privacy_sandbox_settings.h"
 #include "components/safe_browsing/content/browser/async_check_tracker.h"
 #include "components/safe_browsing/content/browser/browser_url_loader_throttle.h"
-#include "components/safe_browsing/content/browser/password_protection/password_protection_commit_deferring_condition.h"
 #include "components/safe_browsing/content/browser/ui_manager.h"
 #include "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_service.h"
 #include "components/safe_browsing/core/browser/realtime/policy_engine.h"
@@ -559,8 +554,6 @@
 #include "chrome/grit/chrome_unscaled_resources.h"  // nogncheck crbug.com/40147906
 #include "components/actor/core/actor_features.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
-#include "components/password_manager/content/common/web_ui_constants.h"
-#include "components/password_manager/core/common/password_manager_features.h"
 #include "components/soda/soda_util.h"
 #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom.h"
 #include "third_party/blink/public/mojom/installedapp/related_application.mojom.h"
@@ -681,7 +674,6 @@
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/enterprise/connectors/connectors_service.h"
 #include "chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h"
-#include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
 #include "chrome/browser/safe_browsing/chrome_ping_manager_factory.h"
 #include "chrome/browser/safe_browsing/cloud_content_scanning/deep_scanning_utils.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
@@ -2733,8 +2725,6 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
 
     // Please keep this in alphabetical order.
     static const char* const kSwitchNames[] = {
-        autofill::switches::kIgnoreAutocompleteOffForAutofill,
-        autofill::switches::kShowAutofillSignatures,
 #if BUILDFLAG(IS_CHROMEOS)
         ash::switches::kShortMergeSessionTimeoutForTest,  // For tests only.
 #endif
@@ -4934,12 +4924,6 @@ ChromeContentBrowserClient::CreateCommitDeferringConditionsForNavigation(
     content::NavigationHandle* navigation_handle,
     content::CommitDeferringCondition::NavigationType navigation_type) {
   std::vector<std::unique_ptr<content::CommitDeferringCondition>> conditions;
-
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  MaybeAddCondition(
-      safe_browsing::MaybeCreateCommitDeferringCondition(*navigation_handle),
-      &conditions);
-#endif
 
   MaybeAddCondition(actor::ActorCommitDeferringCondition::MaybeCreate(
                         *navigation_handle, navigation_type),
@@ -8408,10 +8392,7 @@ bool ChromeContentBrowserClient::UsePrefetchPrerenderIntegration() {
 #if !BUILDFLAG(IS_ANDROID)
 bool ChromeContentBrowserClient::ShouldDisallowCredentialRequest(
     content::WebContents* web_contents) {
-  if (!base::FeatureList::IsEnabled(password_manager::features::kActorLogin)) {
-    return false;
-  }
-  return IsActorActingOnWebContents(web_contents);
+  return false;
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -8461,37 +8442,7 @@ std::optional<int> ChromeContentBrowserClient::GetCpuPerformanceTierOverride(
 
 void ChromeContentBrowserClient::RecordAssistedLogin(
     content::ContentBrowserClient::AssistedLoginType login_type) {
-  using AssistedLoginType = content::ContentBrowserClient::AssistedLoginType;
-  using BrowserAssistedLoginType =
-      password_manager::metrics_util::BrowserAssistedLoginType;
-  BrowserAssistedLoginType pwm_login_type = BrowserAssistedLoginType::kUnknown;
-  switch (login_type) {
-    case AssistedLoginType::kFedCmPassive:
-      pwm_login_type = BrowserAssistedLoginType::kFedCmPassive;
-      break;
-    case AssistedLoginType::kFedCmActive:
-      pwm_login_type = BrowserAssistedLoginType::kFedCmActive;
-      break;
-    case AssistedLoginType::kPasskeyStoredInGPM:
-      pwm_login_type = BrowserAssistedLoginType::kPasskeyStoredInGPM;
-      break;
-    case AssistedLoginType::kPasskeyStoredInWindowsHello:
-      pwm_login_type = BrowserAssistedLoginType::kPasskeyStoredInWindowsHello;
-      break;
-    case AssistedLoginType::kPasskeyStoredInICloudKeychain:
-      pwm_login_type = BrowserAssistedLoginType::kPasskeyStoredInICloudKeychain;
-      break;
-    case AssistedLoginType::kPasskeyStoredInChromeProfile:
-      pwm_login_type = BrowserAssistedLoginType::kPasskeyStoredInChromeProfile;
-      break;
-    case AssistedLoginType::kPasskeyHybrid:
-      pwm_login_type = BrowserAssistedLoginType::kPasskeyHybrid;
-      break;
-    case AssistedLoginType::kPasskeySecurityKey:
-      pwm_login_type = BrowserAssistedLoginType::kPasskeySecurityKey;
-      break;
-  }
-  password_manager::metrics_util::RecordBrowserAssistedLogin(pwm_login_type);
+  // Password manager metrics were removed from the fork.
 }
 
 std::optional<bool>
