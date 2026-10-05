@@ -88,7 +88,6 @@
 #include "chrome/browser/devtools/devtools_navigation_throttle.h"
 #include "chrome/browser/page_info/web_view_side_panel_throttle.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_navigation_throttle.h"
-#include "chrome/browser/ui/search/chrome_search_navigation_throttle.h"
 #include "chrome/browser/ui/webui/image/image_navigation_throttle.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -442,13 +441,6 @@ void CreateAndAddChromeThrottlesForNavigation(
 #endif  // BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer)) {
-    ChromeSearchNavigationThrottle::MaybeCreateAndAdd(registry);
-  }
-
-
-
-
   ImageNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 

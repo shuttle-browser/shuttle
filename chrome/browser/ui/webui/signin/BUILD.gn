@@ -429,7 +429,6 @@ if (!is_chromeos) {
       "//chrome/browser/profiles/keep_alive",
       "//chrome/browser/resources/signin:resources",
       "//chrome/browser/resources/signin/profile_picker:resources",
-      "//chrome/browser/search/background",
       "//chrome/browser/themes",
       "//chrome/browser/ui:browser_element_identifiers",
       "//chrome/browser/ui:managed_ui",

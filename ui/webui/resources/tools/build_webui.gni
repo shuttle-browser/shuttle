@@ -580,7 +580,6 @@ template("build_webui") {
         # Note: DO NOT add new entries to the list below. All new WebUIs should
         # use Mojo instead, see https://chromium.googlesource.com/chromium/src/+/main/docs/webui/webui_explainer.md#Pre_Mojo-alternative_chrome_send_WebUIMessageHandler
         "//ios/chrome/app/resources/profile_internals",
-        "//chrome/browser/resources/about_sys",
         "//chrome/browser/resources/access_code_cast",
         "//chrome/browser/resources/accessibility",
         "//chrome/browser/resources/browser_switch",
@@ -606,7 +605,6 @@ template("build_webui") {
         "//chrome/browser/resources/settings_shared",
         "//chrome/browser/resources/signin",
         "//chrome/browser/resources/signin/profile_picker",
-        "//chrome/browser/resources/support_tool",
         "//chrome/browser/resources/webapks",
         "//chrome/browser/resources/webui_toolbar",
         "//components/autofill/core/browser/autofill_and_password_manager_internals",
@@ -614,7 +612,6 @@ template("build_webui") {
         "//components/download/resources/download_internals",
         "//components/gcm_driver/resources",
         "//components/metrics/debug",
-        "//components/ntp_tiles/webui/resources",
         "//components/policy/resources/webui",
         "//components/signin/core/browser/resources",
         "//components/sync/service/resources",

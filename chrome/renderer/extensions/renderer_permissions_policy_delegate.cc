@@ -35,12 +35,6 @@ bool RendererPermissionsPolicyDelegate::IsRestrictedUrl(
     return true;
   }
 
-  if (process_state::IsInstantProcess()) {
-    if (error) {
-      *error = errors::kCannotScriptNtp;
-    }
-    return true;
-  }
   return false;
 }
 

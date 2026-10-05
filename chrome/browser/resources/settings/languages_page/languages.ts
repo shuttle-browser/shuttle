@@ -77,20 +77,11 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
       spellcheckBlockedDictionariesPref_: Object,
       spellcheckDictionariesPref_: Object,
       spellcheckForcedDictionariesPref_: Object,
-      translateAllowlistsPref_: Object,
-      translateBlockedLanguagesPref_: Object,
-      translateRecentTargetPref_: Object,
-      translateSiteBlocklistPref_: Object,
     };
   }
 
   static get observers() {
     return [
-      'alwaysTranslateLanguagesPrefChanged_(' +
-          'translateAllowlistsPref_, languages)',
-      'neverTranslateLanguagesPrefChanged_(' +
-          'translateBlockedLanguagesPref_, languages)',
-      'neverTranslateSitesPrefChanged_(translateSiteBlocklistPref_, languages)',
       // <if expr="is_win">
       'prospectiveUiLanguageChanged_(intlAppLocalePref_, languages)',
       // </if>
@@ -100,12 +91,7 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
           'spellcheckDictionariesPref_, ' +
           'spellcheckForcedDictionariesPref_, ' +
           'spellcheckBlockedDictionariesPref_, languages)',
-      'translateLanguagesPrefChanged_(' +
-          'translateBlockedLanguagesPref_, languages)',
-      'translateTargetPrefChanged_(translateRecentTargetPref_, languages)',
-      'updateRemovableLanguages_(' +
-          'intlAppLocalePref_, translateBlockedLanguagesPref_, ' +
-          'languages.enabled)',
+      'updateRemovableLanguages_(intlAppLocalePref_, languages.enabled)',
     ];
   }
 
@@ -123,14 +109,6 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
   declare private spellcheckForcedDictionariesPref_:
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
-  declare private translateAllowlistsPref_:
-      chrome.settingsPrivate.PrefObject<Record<string, string>>|undefined;
-  declare private translateBlockedLanguagesPref_:
-      chrome.settingsPrivate.PrefObject<string[]>|undefined;
-  declare private translateRecentTargetPref_:
-      chrome.settingsPrivate.PrefObject<string>|undefined;
-  declare private translateSiteBlocklistPref_:
-      chrome.settingsPrivate.PrefObject<Record<string, string>>|undefined;
 
   private resolver_: PromiseResolver<void> = new PromiseResolver();
   private supportedLanguageMap_:
@@ -172,10 +150,6 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
       'spellcheck.blocked_dictionaries': 'spellcheckBlockedDictionariesPref_',
       'spellcheck.dictionaries': 'spellcheckDictionariesPref_',
       'spellcheck.forced_dictionaries': 'spellcheckForcedDictionariesPref_',
-      'translate_allowlists': 'translateAllowlistsPref_',
-      'translate_blocked_languages': 'translateBlockedLanguagesPref_',
-      'translate_recent_target': 'translateRecentTargetPref_',
-      'translate_site_blocklist_with_time': 'translateSiteBlocklistPref_',
     });
 
     const promises: Array<Promise<void>> = [];
@@ -447,77 +421,6 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
   }
 
   /**
-   * Updates the list of always translate languages from translate prefs.
-   */
-  private alwaysTranslateLanguagesPrefChanged_() {
-    if (this.translateAllowlistsPref_ === undefined ||
-        this.languages === undefined) {
-      return;
-    }
-    const alwaysTranslateCodes =
-        Object.keys(this.translateAllowlistsPref_.value);
-    const alwaysTranslateLanguages =
-        alwaysTranslateCodes.map((code: string) => this.getLanguage(code));
-    this.set('languages.alwaysTranslate', alwaysTranslateLanguages);
-  }
-
-  /**
-   * Updates the list of never translate languages from translate prefs.
-   */
-  private neverTranslateLanguagesPrefChanged_() {
-    if (this.translateBlockedLanguagesPref_ === undefined ||
-        this.languages === undefined) {
-      return;
-    }
-    const neverTranslateCodes = this.translateBlockedLanguagesPref_.value;
-    const neverTranslateLanguages =
-        neverTranslateCodes.map(code => this.getLanguage(code));
-    this.set('languages.neverTranslate', neverTranslateLanguages);
-  }
-
-  /**
-   * Updates the list of never translate sites from translate prefs.
-   */
-  private neverTranslateSitesPrefChanged_() {
-    if (this.translateSiteBlocklistPref_ === undefined ||
-        this.languages === undefined) {
-      return;
-    }
-    const neverTranslateSites =
-        Object.keys(this.translateSiteBlocklistPref_.value);
-    this.set('languages.neverTranslateSites', neverTranslateSites);
-  }
-
-  private translateLanguagesPrefChanged_() {
-    if (this.translateBlockedLanguagesPref_ === undefined ||
-        this.languages === undefined) {
-      return;
-    }
-
-    const translateBlockedPrefValue = this.translateBlockedLanguagesPref_.value;
-    const translateBlockedSet =
-        this.makeSetFromArray_(translateBlockedPrefValue);
-
-    for (let i = 0; i < this.languages.enabled.length; i++) {
-      const language = this.languages.enabled[i].language;
-      const translateEnabled = this.isTranslateEnabled_(
-          language.code, !!language.supportsTranslate, translateBlockedSet,
-          this.languages.translateTarget, this.languages.prospectiveUILanguage);
-      this.set(
-          'languages.enabled.' + i + '.translateEnabled', translateEnabled);
-    }
-  }
-
-  private translateTargetPrefChanged_() {
-    if (this.translateRecentTargetPref_ === undefined ||
-        this.languages === undefined) {
-      return;
-    }
-    this.set(
-        'languages.translateTarget', this.translateRecentTargetPref_.value);
-  }
-
-  /**
    * Constructs the languages model.
    * @param args used to populate the model above.
    */
@@ -597,10 +500,8 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     const spellCheckBlockedSet = this.makeSetFromArray_(
         this.spellcheckBlockedDictionariesPref_?.value || []);
 
-    const translateBlockedPrefValue =
-        this.translateBlockedLanguagesPref_?.value || [];
-    const translateBlockedSet =
-        this.makeSetFromArray_(translateBlockedPrefValue);
+    // The translate feature is not part of this build: no blocked languages.
+    const translateBlockedSet = new Set<string>();
 
     const enabledLanguageStates: LanguageState[] = [];
 
@@ -698,7 +599,6 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
    */
   private updateRemovableLanguages_() {
     if (this.intlAppLocalePref_ === undefined ||
-        this.translateBlockedLanguagesPref_ === undefined ||
         this.languages === undefined) {
       return;
     }

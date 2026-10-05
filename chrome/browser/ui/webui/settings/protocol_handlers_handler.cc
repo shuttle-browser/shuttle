@@ -86,13 +86,6 @@ void ProtocolHandlersHandler::RegisterMessages() {
       "setDefault",
       base::BindRepeating(&ProtocolHandlersHandler::HandleSetDefault,
                           base::Unretained(this)));
-
-  // Web App Protocol Handlers register message callbacks:
-  web_ui()->RegisterMessageCallback(
-      "observeAppProtocolHandlers",
-      base::BindRepeating(
-          &ProtocolHandlersHandler::HandleObserveAppProtocolHandlers,
-          base::Unretained(this)));
 }
 
 void ProtocolHandlersHandler::OnProtocolHandlerRegistryChanged() {
@@ -200,15 +193,6 @@ custom_handlers::ProtocolHandler ProtocolHandlersHandler::ParseHandlerFromArgs(
 custom_handlers::ProtocolHandlerRegistry*
 ProtocolHandlersHandler::GetProtocolHandlerRegistry() {
   return ProtocolHandlerRegistryFactory::GetForBrowserContext(profile_);
-}
-
-// App Protocol Handler specific functions
-
-void ProtocolHandlersHandler::HandleObserveAppProtocolHandlers(
-    const base::ListValue& args) {
-  AllowJavascript();
-  FireWebUIListener("setAppAllowedProtocolHandlers", base::ListValue());
-  FireWebUIListener("setAppDisallowedProtocolHandlers", base::ListValue());
 }
 
 }  // namespace settings

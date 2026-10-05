@@ -25,6 +25,7 @@
 #include "ui/color/color_provider.h"
 #include "ui/color/color_provider_key.h"
 #include "ui/color/dynamic_color/palette_factory.h"
+#include "ui/gfx/color_utils.h"
 #include "ui/native_theme/native_theme.h"
 
 namespace {
@@ -67,21 +68,15 @@ ThemeColorPickerHandler::ThemeColorPickerHandler(
         pending_handler,
     mojo::PendingRemote<theme_color_picker::mojom::ThemeColorPickerClient>
         pending_client,
-    NtpCustomBackgroundService* ntp_custom_background_service,
     content::WebContents* web_contents)
-    : ntp_custom_background_service_(ntp_custom_background_service),
-      profile_(Profile::FromBrowserContext(web_contents->GetBrowserContext())),
+    : profile_(Profile::FromBrowserContext(web_contents->GetBrowserContext())),
       web_contents_(web_contents),
       theme_service_(ThemeServiceFactory::GetForProfile(profile_)),
       client_(std::move(pending_client)),
       receiver_(this, std::move(pending_handler)) {
-  CHECK(ntp_custom_background_service_);
   CHECK(theme_service_);
   native_theme_observation_.Observe(ui::NativeTheme::GetInstanceForNativeUi());
   theme_service_observation_.Observe(theme_service_);
-
-  ntp_custom_background_service_observation_.Observe(
-      ntp_custom_background_service_.get());
 }
 
 ThemeColorPickerHandler::~ThemeColorPickerHandler() = default;
@@ -127,26 +122,12 @@ void ThemeColorPickerHandler::GetChromeColors(
 }
 
 void ThemeColorPickerHandler::RemoveBackgroundImage() {
-  if (ntp_custom_background_service_) {
-    ntp_custom_background_service_->ResetCustomBackgroundInfo();
-  }
+  // NTP custom backgrounds no longer exist.
 }
 
 void ThemeColorPickerHandler::UpdateTheme() {
-  if (ntp_custom_background_service_) {
-    ntp_custom_background_service_->RefreshBackgroundIfNeeded();
-  }
   auto theme = theme_color_picker::mojom::Theme::New();
-  auto custom_background =
-      ntp_custom_background_service_
-          ? ntp_custom_background_service_->GetCustomBackground()
-          : std::nullopt;
-  theme->has_background_image = custom_background.has_value();
-  if (custom_background.has_value() &&
-      custom_background->custom_background_main_color.has_value()) {
-    theme->background_image_main_color =
-        *custom_background->custom_background_main_color;
-  }
+  theme->has_background_image = false;
 
   theme->follow_device_theme = theme_service_->UsingDeviceTheme();
 
@@ -218,8 +199,4 @@ void ThemeColorPickerHandler::OnNativeThemeUpdated(
 
 void ThemeColorPickerHandler::OnThemeChanged() {
   UpdateTheme();
-}
-
-void ThemeColorPickerHandler::OnCustomBackgroundImageUpdated() {
-  OnThemeChanged();
 }

@@ -320,7 +320,6 @@ static_library("test_support") {
     "//chrome/browser/ui/zoom",
     "//chrome/browser/usb",
     "//chrome/browser/webdata_services",
-    "//chrome/common/search:mojo_bindings",
     "//components/application_locale_storage",
     "//components/autofill/content/renderer:test_support",
     "//components/blocked_content",
@@ -2735,7 +2734,6 @@ if (!is_android) {
       "../browser/ui/browser_command_controller_browsertest.cc",
       "../browser/ui/browser_commands_browsertest.cc",
       "../browser/ui/browser_finder_browsertest.cc",
-      "../browser/ui/browser_instant_controller_browsertest.cc",
       "../browser/ui/browser_tab_strip_model_delegate_browsertest.cc",
       "../browser/ui/browser_tabrestore_browsertest.cc",
       "../browser/ui/collected_cookies_browsertest.cc",
@@ -4259,7 +4257,6 @@ if (!is_android) {
     if (!is_android) {
       deps += [
         "//chrome/browser/signin:signin_browser_test_base",
-        "//chrome/browser/ui:browser_instant_controller",
         "//chrome/browser/ui:chrome_pages",
       ]
     }
@@ -4640,7 +4637,6 @@ test("unit_tests") {
     "../renderer/accessibility/read_anything/read_anything_test_utils.h",
     "../renderer/chrome_content_renderer_client_unittest.cc",
     "../renderer/chrome_render_frame_observer_unittest.cc",
-    "../renderer/instant_restricted_id_cache_unittest.cc",
     "../renderer/media/flash_embed_rewrite_unittest.cc",
     "../renderer/net/net_error_helper_core_unittest.cc",
     "../renderer/v8_unwinder_unittest.cc",
@@ -5831,7 +5827,6 @@ test("unit_tests") {
       "../renderer/accessibility/read_anything/read_aloud_traversal_utils_unittest.cc",
       "../renderer/accessibility/read_anything/read_anything_node_utils_unittest.cc",
       "../renderer/media/webrtc_logging_agent_impl_unittest.cc",
-      "../renderer/searchbox/searchbox_unittest.cc",
     ]
 
     deps += [
@@ -6043,8 +6038,6 @@ test("unit_tests") {
       "//chrome/browser/profile_resetter",
       "//chrome/browser/profile_resetter:fake_profile_resetter",
       "//chrome/browser/profile_resetter:unit_tests",
-      "//chrome/browser/resources/new_tab_page_instant:resources_grit",
-      "//chrome/browser/search/background",
       "//chrome/browser/sensor:unit_tests",
       "//chrome/browser/task_manager",
       "//chrome/browser/task_manager:unit_tests",

@@ -57,9 +57,6 @@ extern const base::FeatureParam<bool>
 extern const base::FeatureParam<bool>
     kContextualPageActionTabGroupParamShowWhenNotClickedInLastDay;
 
-// Feature flag for enabling shopping user segment feature.
-BASE_DECLARE_FEATURE(kShoppingUserSegmentFeature);
-
 // Feature flag for enabling default reporting segments.
 BASE_DECLARE_FEATURE(kSegmentationDefaultReportingSegments);
 

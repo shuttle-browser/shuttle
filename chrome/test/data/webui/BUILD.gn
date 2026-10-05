@@ -249,7 +249,6 @@ source_set("browser_tests") {
       "//chrome/browser/history",
       "//chrome/browser/optimization_guide",
       "//chrome/browser/optimization_guide:test_support",
-      "//chrome/browser/search/background",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tabs:tabs_public",

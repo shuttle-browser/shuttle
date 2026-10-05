@@ -11,6 +11,7 @@
 #include "base/functional/bind.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/no_destructor.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_view_util.h"
 #include "base/strings/to_string.h"
@@ -194,9 +195,10 @@ base::RefCountedMemory* NTPResourceCache::GetNewTabHTML(
       if (!new_tab_normal_html_) {
         // Agent Chrome: regular profiles get a blank New Tab page.
         new_tab_normal_html_ = base::MakeRefCounted<base::RefCountedString>(
-            std::string("<!doctype html><html><head><meta charset=\"utf-8\">"
-                        "<style>:root{color-scheme:light dark}</style>"
-                        "</head><body></body></html>"));
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>" +
+            base::EscapeForHTML(l10n_util::GetStringUTF8(IDS_NEW_TAB_TITLE)) +
+            "</title><style>:root{color-scheme:light dark}</style>"
+            "</head><body></body></html>");
       }
       return new_tab_normal_html_.get();
   }

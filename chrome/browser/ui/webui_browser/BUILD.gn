@@ -154,7 +154,6 @@ source_set("impl") {
 
 mojom("browser_mojo_bindings") {
   sources = [
-    "bookmark_bar.mojom",
     "browser.mojom",
   ]
   public_deps = [

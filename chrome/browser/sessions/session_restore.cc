@@ -137,8 +137,7 @@ bool HasSingleNewTabPage(BrowserWindowInterface* browser) {
   }
   content::WebContents* active_tab =
       browser->GetTabStripModel()->GetWebContentsAt(0);
-  return active_tab->GetURL() == chrome::ChromeUINewTabURLAsGURL() ||
-         search::IsInstantNTP(active_tab);
+  return active_tab->GetURL() == chrome::ChromeUINewTabURLAsGURL();
 }
 
 // Records the difference in the number of tabs and windows for a given type.

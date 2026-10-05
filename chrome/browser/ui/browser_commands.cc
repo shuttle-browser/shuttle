@@ -260,9 +260,7 @@ bool GetTabURLAndTitleToSave(content::WebContents* web_contents,
     return false;
   }
   GURL visible_url = web_contents->GetVisibleURL();
-  if (search::IsInstantNTP(web_contents)) {
-    *url = GURL(chrome::kChromeUINewTabURL);
-  } else if (dom_distiller::url_utils::IsDistilledPage(visible_url)) {
+  if (dom_distiller::url_utils::IsDistilledPage(visible_url)) {
     // Reader Mode pages are saved as the original page with its title.
     *url = dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(visible_url);
   } else {

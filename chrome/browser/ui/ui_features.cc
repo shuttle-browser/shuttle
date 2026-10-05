@@ -191,8 +191,6 @@ BASE_FEATURE(kOmniboxPopupVirtualFocusNavigation,
              base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kLensOverlayVirtualFocusNavigation,
              base::FEATURE_DISABLED_BY_DEFAULT);
-BASE_FEATURE(kOmniboxEverywhereVirtualFocusNavigation,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kWebuiBrowserVirtualFocusNavigation,
              base::FEATURE_DISABLED_BY_DEFAULT);
 

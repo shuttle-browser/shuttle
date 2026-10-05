@@ -90,13 +90,11 @@ generate_grd("build_grd") {
     public_deps += [
       "cr_components/help_bubble:build_grdp",
       "cr_components/localized_link:build_grdp",
-      "cr_components/search:build_grdp",
       "cr_components/searchbox/icons:build_grdp",
     ]
     grdp_files += [
       "$target_gen_dir/cr_components/help_bubble/resources.grdp",
       "$target_gen_dir/cr_components/localized_link/resources.grdp",
-      "$target_gen_dir/cr_components/search/resources.grdp",
       "$target_gen_dir/cr_components/searchbox/icons/resources.grdp",
     ]
     if (is_chrome_branded) {

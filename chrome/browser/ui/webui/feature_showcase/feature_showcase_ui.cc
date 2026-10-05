@@ -14,7 +14,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
-#include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/webui/cr_components/customize_color_scheme_mode/customize_color_scheme_mode_handler.h"
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
@@ -236,8 +235,6 @@ void FeatureShowcaseUI::CreateThemeColorPickerHandler(
         handler) {
   theme_color_picker_handler_ = std::make_unique<ThemeColorPickerHandler>(
       std::move(handler), std::move(client),
-      NtpCustomBackgroundServiceFactory::GetForProfile(
-          Profile::FromWebUI(web_ui())),
       web_ui()->GetWebContents());
 }
 

@@ -316,36 +316,6 @@ void AddMaterialChromeColorMixer(ui::ColorProvider* provider,
       kColorWebAuthnProgressRingForeground, gfx::kGoogleGreyAlpha400);
   mixer[kColorWebAuthnProgressRingForeground] = {ui::kColorSysPrimary};
 
-#if BUILDFLAG(ENABLE_COMPOSE)
-  // Compose colors.
-  mixer[kColorComposeDialogBackground] = {ui::kColorSysSurface};
-  mixer[kColorComposeDialogDivider] = {ui::kColorSysDivider};
-  mixer[kColorComposeDialogError] = {ui::kColorSysError};
-  mixer[kColorComposeDialogForegroundSubtle] = {ui::kColorSysOnSurfaceSubtle};
-  mixer[kColorComposeDialogLink] = {ui::kColorSysPrimary};
-  mixer[kColorComposeDialogLogo] = {ui::kColorSysOnTonalContainer};
-  mixer[kColorComposeDialogScrollbarThumb] = {ui::kColorSysPrimary};
-  mixer[kColorComposeDialogResultBackground] = {ui::kColorSysSurface5};
-  mixer[kColorComposeDialogResultForeground] = {ui::kColorSysOnSurface};
-  mixer[kColorComposeDialogResultForegroundWhileLoading] = {
-      ui::kColorSysPrimary};
-  mixer[kColorComposeDialogResultIcon] = {ui::kColorSysOnSurfaceSubtle};
-  mixer[kColorComposeDialogResultContainerScrollbarThumb] = {
-      ui::kColorSysTonalOutline};
-  mixer[kColorComposeDialogTitle] = {ui::kColorSysOnSurface};
-  mixer[kColorComposeDialogTextarea] = {ui::kColorSysOnSurface};
-  mixer[kColorComposeDialogTextareaOutline] = {ui::kColorSysNeutralOutline};
-  mixer[kColorComposeDialogTextareaPlaceholder] = {
-      ui::kColorSysOnSurfaceSubtle};
-  mixer[kColorComposeDialogTextareaReadonlyBackground] = {
-      ui::kColorSysNeutralContainer};
-  mixer[kColorComposeDialogTextareaReadonlyForeground] = {
-      ui::kColorSysOnSurface};
-  mixer[kColorComposeDialogTextareaIcon] = {ui::kColorSysOnSurfaceSubtle};
-  mixer[kColorComposeDialogSelectOptionDisabled] = {
-      ui::kColorLabelForegroundDisabled};
-#endif  // BUILDFLAG(ENABLE_COMPOSE)
-
   // History colors.
   mixer[kColorHistoryPageBookmarkStar] = {ui::kColorSysPrimary};
   mixer[kColorHistoryPageSeparator] = {ui::kColorSysSurfaceVariant};

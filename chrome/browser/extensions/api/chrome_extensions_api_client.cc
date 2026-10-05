@@ -87,8 +87,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/extensions/api/file_system/chrome_file_system_delegate.h"
-#include "chrome/browser/search/instant_service.h"
-#include "chrome/browser/search/instant_service_factory.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -176,26 +174,6 @@ bool ChromeExtensionsAPIClient::ShouldHideBrowserNetworkRequest(
       is_browser_request &&
       request.initiator ==
           url::Origin::Create(chrome::ChromeUINewTabURLAsGURL());
-
-  // Hide requests made by the browser on behalf of the 1P WebUI NTP.
-  is_sensitive_request |=
-      is_browser_request &&
-      request.initiator ==
-          url::Origin::Create(chrome::ChromeUINewTabPageURLAsGURL());
-
-  // Android does not support instant.
-#if !BUILDFLAG(IS_ANDROID)
-  // Hide requests made by the NTP Instant renderer.
-  auto* instant_service =
-      context
-          ? InstantServiceFactory::GetForProfile(static_cast<Profile*>(context))
-          : nullptr;
-  if (instant_service) {
-    // TODO(crbug.com/379869738): Remove GetUnsafeValue.
-    is_sensitive_request |= instant_service->IsInstantProcess(
-        request.global_id.child_id.GetUnsafeValue());
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   return is_sensitive_request;
 }
@@ -521,9 +499,6 @@ void ChromeExtensionsAPIClient::SaveImageDataToClipboard(
 std::vector<KeyedServiceBaseFactory*>
 ChromeExtensionsAPIClient::GetFactoryDependencies() {
   std::vector<KeyedServiceBaseFactory*> dependencies;
-#if !BUILDFLAG(IS_ANDROID)
-  dependencies.push_back(InstantServiceFactory::GetInstance());
-#endif
   dependencies.push_back(supervised_user::SupervisedUserServiceFactory::GetInstance());
   return dependencies;
 }

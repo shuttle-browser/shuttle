@@ -7,7 +7,6 @@
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ref.h"
-#include "chrome/browser/search/background/ntp_custom_background_service.h"
 #include "chrome/browser/ui/profiles/profile_customization_synced_theme_waiter.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
@@ -60,9 +59,7 @@ class ProfileCustomizationBubbleSyncController {
       SkColor suggested_profile_color,
       ShowBubbleCallback show_bubble_callback_testing_override,
       syncer::SyncService* sync_service_testing_override,
-      ThemeService* theme_service_testing_override,
-      NtpCustomBackgroundService*
-          ntp_custom_background_service_testing_override);
+      ThemeService* theme_service_testing_override);
 
   bool IsWaitingForTheme() const;
 
@@ -79,12 +76,10 @@ class ProfileCustomizationBubbleSyncController {
       SkColor suggested_profile_color,
       ShowBubbleCallback show_bubble_callback,
       syncer::SyncService* sync_service,
-      ThemeService* theme_service,
-      NtpCustomBackgroundService* ntp_custom_background_service);
+      ThemeService* theme_service);
   void OnSyncedThemeReady(
       SkColor suggested_profile_color,
       ThemeService* theme_service,
-      NtpCustomBackgroundService* ntp_custom_background_service,
       ProfileCustomizationSyncedThemeWaiter::Outcome outcome);
 
   // Functions that finalize the control logic by either showing or skipping the

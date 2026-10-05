@@ -73,7 +73,6 @@
 #include "chrome/browser/push_messaging/push_messaging_service_impl.h"
 #include "chrome/browser/push_messaging/push_messaging_unsubscribed_entry.h"
 #include "chrome/browser/rlz/chrome_rlz_tracker_delegate.h"
-#include "chrome/browser/search/background/ntp_custom_background_service.h"
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/serial/serial_policy_allowed_ports.h"
 #include "chrome/browser/signin/chrome_signin_client.h"
@@ -1841,7 +1840,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
       registry);
   omnibox::RegisterProfilePrefs(registry);
   ZeroSuggestProvider::RegisterProfilePrefs(registry);
-  NtpCustomBackgroundService::RegisterProfilePrefs(registry);
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
   RegisterSessionServiceLogProfilePrefs(registry);
@@ -1895,9 +1893,8 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 #endif
 
   UnifiedAutoplayConfig::RegisterProfilePrefs(registry);
-  // Agent Chrome: the WebUI NTP is gone, but these prefs are still read.
+  // Agent Chrome: the WebUI NTP is gone, but this pref is still read.
   registry->RegisterBooleanPref(prefs::kNtpFooterVisible, true);
-  registry->RegisterBooleanPref(ntp_prefs::kNtpShortcutsVisible, true);
 
 #if BUILDFLAG(IS_ANDROID)
   AuxiliarySearchDonationService::RegisterProfilePrefs(registry);

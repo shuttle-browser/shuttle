@@ -778,10 +778,6 @@ void ChromeExtensionsBrowserClient::SignalContentScriptsLoaded(
 
 bool ChromeExtensionsBrowserClient::ShouldSchemeBypassNavigationChecks(
     const std::string& scheme) const {
-  if (scheme == chrome::kChromeSearchScheme) {
-    return true;
-  }
-
   return ExtensionsBrowserClient::ShouldSchemeBypassNavigationChecks(scheme);
 }
 

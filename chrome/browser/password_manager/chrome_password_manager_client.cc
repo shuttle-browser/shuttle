@@ -1390,8 +1390,7 @@ bool ChromePasswordManagerClient::IsIsolationForPasswordSitesEnabled() const {
 bool ChromePasswordManagerClient::IsNewTabPage() const {
   auto origin = GetLastCommittedURL().DeprecatedGetOriginAsURL();
   return origin ==
-             chrome::ChromeUINewTabPageURLAsGURL().DeprecatedGetOriginAsURL() ||
-         origin == chrome::ChromeUINewTabURLAsGURL().DeprecatedGetOriginAsURL();
+         chrome::ChromeUINewTabURLAsGURL().DeprecatedGetOriginAsURL();
 }
 
 bool ChromePasswordManagerClient::IsChromeSigninPage() const {

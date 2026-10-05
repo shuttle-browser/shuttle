@@ -263,7 +263,6 @@ ChromeMainDelegate::GetNonWildcardDomainNonPortSchemes() {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
       extensions::kExtensionScheme,
 #endif
-      chrome::kChromeSearchScheme,
       content::kChromeDevToolsScheme,    content::kChromeUIScheme,
       content::kChromeUIUntrustedScheme,
   };

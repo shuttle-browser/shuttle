@@ -199,8 +199,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   bool AllowGpuLaunchRetryOnIOThread() override;
   std::optional<GURL> GetEffectiveURL(content::BrowserContext* browser_context,
                                       const GURL& url) override;
-  void OnRendererProcessLockedStateUpdated(content::RenderProcessHost* host,
-                                           const GURL& site_url) override;
   bool ShouldCompareEffectiveURLsForSiteInstanceSelection(
       content::BrowserContext* browser_context,
       content::SiteInstance* candidate_site_instance,
@@ -226,7 +224,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::BrowserContext* browser_context,
       const GURL& precursor,
       const GURL& url) override;
-  bool DoesWebUIUrlRequireProcessLock(const GURL& url) override;
   bool ShouldTreatAsFirstPartyWhenTopLevel(
       const url::Origin& top_frame_origin,
       bool is_embedded_origin_secure) override;
@@ -260,16 +257,8 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   bool HasWebRequestAPIProxy(content::BrowserContext* browser_context) override;
   bool CanCommitURL(content::RenderProcessHost* process_host,
                     const GURL& url) override;
-  void OverrideNavigationParams(
-      std::optional<GURL> source_process_site_url,
-      ui::PageTransition* transition,
-      bool* is_renderer_initiated,
-      content::Referrer* referrer,
-      std::optional<url::Origin>* initiator_origin) override;
   void CrossProcessSubframeRenderProcessGone(
       content::RenderFrameHost* render_frame_host) override;
-  bool ShouldStayInParentProcessForNTP(const GURL& url,
-                                       const GURL& parent_site_url) override;
   bool IsSuitableHost(
       content::RenderProcessHost* process_host,
       const content::SecurityPrincipal& security_principal) override;

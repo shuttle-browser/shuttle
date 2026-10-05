@@ -502,7 +502,6 @@ test("components_unittests") {
       "//components/session_proto_db:unit_tests",
       "//components/subresource_filter/content/browser:unit_tests",
       "//components/subresource_filter/content/renderer:unit_tests",
-      "//components/touch_to_search/core/browser:unit_tests",
       "//components/tracing:unit_tests",
       "//components/ukm/content:unit_tests",
       "//components/url_rewrite:unit_tests",

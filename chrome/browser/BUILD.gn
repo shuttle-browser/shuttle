@@ -1189,7 +1189,6 @@ source_set("core") {
     "//components/surface_embed/common",
     "//components/sync_preferences:features",
     "//components/themes/cross_device:features",
-    "//components/touch_to_search/core/browser",
     "//components/tracing:background_tracing_utils",
     "//components/ui_devtools",
     "//components/ukm",

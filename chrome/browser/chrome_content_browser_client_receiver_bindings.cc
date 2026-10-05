@@ -98,7 +98,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/password_manager/remote_actor/remote_actor_credential_sharing_impl.h"
-#include "chrome/browser/ui/search/search_tab_helper.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
 #include "chrome/common/password_manager/remote_actor_credential_sharing_policy.h"
 #endif
@@ -565,17 +564,6 @@ void ChromeContentBrowserClient::
         &render_frame_host));
   }
 #endif  // BUILDFLAG(ENABLE_PDF)
-#if !BUILDFLAG(IS_ANDROID)
-  associated_registry.AddInterface<search::mojom::EmbeddedSearchConnector>(
-      base::BindRepeating(
-          [](content::RenderFrameHost* render_frame_host,
-             mojo::PendingAssociatedReceiver<
-                 search::mojom::EmbeddedSearchConnector> receiver) {
-            SearchTabHelper::BindEmbeddedSearchConnecter(std::move(receiver),
-                                                         render_frame_host);
-          },
-          &render_frame_host));
-#endif  //  !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(ENABLE_PRINTING)
   associated_registry.AddInterface<printing::mojom::PrintManagerHost>(
       base::BindRepeating(

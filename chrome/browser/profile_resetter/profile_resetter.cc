@@ -27,8 +27,8 @@
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/profile_resetter/brandcode_config_fetcher.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search/background/ntp_custom_background_service.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
+#include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -441,7 +441,7 @@ void ProfileResetter::ResetShortcuts() {
 }
 
 void ProfileResetter::ResetNtpCustomizations() {
-  NtpCustomBackgroundService::ResetProfilePrefs(profile_);
+  ThemeService::ResetNtpBackgroundPrefs(profile_->GetPrefs());
   MarkAsDone(NTP_CUSTOMIZATIONS);
 }
 

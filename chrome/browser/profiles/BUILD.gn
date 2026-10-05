@@ -843,7 +843,6 @@ source_set("profiles_extra_parts_impl") {
 
   public_deps = [
     "//chrome/browser:browser_public_dependencies",
-    "//chrome/browser/search/background",
   ]
 
   if (is_android) {

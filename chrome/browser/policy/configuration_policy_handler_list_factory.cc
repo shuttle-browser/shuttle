@@ -45,7 +45,6 @@
 #include "chrome/browser/profiles/force_safe_search_policy_handler.h"
 #include "chrome/browser/profiles/force_youtube_safety_mode_policy_handler.h"
 #include "chrome/browser/profiles/guest_mode_policy_handler.h"
-#include "chrome/browser/search/ntp_custom_background_enabled_policy_handler.h"
 #include "chrome/browser/sessions/restore_on_startup_policy_handler.h"
 #include "chrome/browser/spellchecker/spellcheck_language_blocklist_policy_handler.h"
 #include "chrome/browser/spellchecker/spellcheck_language_policy_handler.h"
@@ -2647,8 +2646,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
               GenAILocalFoundationalModelEnterprisePolicySettings::kMaxValue),
       false));
 
-  handlers->AddHandler(
-      std::make_unique<NtpCustomBackgroundEnabledPolicyHandler>());
   // Policies for all platforms - End
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \

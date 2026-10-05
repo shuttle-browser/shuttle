@@ -219,8 +219,6 @@ base::span<const base::cstring_view> ChromeURLHosts() {
       kChromeUIDownloadsHost,
       kChromeUIHelpHost,
       kChromeUIInspectHost,
-      kChromeUINewTabPageHost,
-      kChromeUINewTabPageThirdPartyHost,
 #if BUILDFLAG(IS_ANDROID)
       kChromeUINotificationsInternalsHost,
 #endif
@@ -337,11 +335,6 @@ base::span<const base::cstring_view> ChromeDebugURLs() {
        kChromeUIRestartURL});
 
   return base::span(kChromeDebugURLs);
-}
-
-const GURL& ChromeUINewTabPageURLAsGURL() {
-  static base::NoDestructor<GURL> instance(kChromeUINewTabPageURL);
-  return *instance;
 }
 
 const GURL& ChromeUINewTabURLAsGURL() {

@@ -134,7 +134,6 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHTabSwitcherXR,
     &kIPHTabTearingXR,
     &kIPHThreeDotMenuBackButton,
-    &kIPHTouchToSearchCalloutFeature,
     &kIPHTranslateMenuButtonFeature,
     &kIPHVideoTutorialNTPChromeIntroFeature,
     &kIPHVideoTutorialNTPDownloadFeature,

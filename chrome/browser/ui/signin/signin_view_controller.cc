@@ -216,7 +216,7 @@ void ShowTabOverwritingNTP(BrowserWindowInterface* browser,
   if (contents) {
     const GURL& contents_url = contents->GetVisibleURL();
     if (contents_url == chrome::ChromeUINewTabURLAsGURL() ||
-        search::IsInstantNTP(contents) || contents_url == url::kAboutBlankURL) {
+        contents_url == url::kAboutBlankURL) {
       params.disposition = WindowOpenDisposition::CURRENT_TAB;
     }
   }
@@ -406,7 +406,7 @@ bool SigninViewController::IsNTPTab(content::WebContents* contents) {
   }
   const GURL& contents_url = contents->GetVisibleURL();
   return contents_url == chrome::ChromeUINewTabURLAsGURL() ||
-         search::IsInstantNTP(contents) || contents_url == url::kAboutBlankURL;
+         contents_url == url::kAboutBlankURL;
 }
 
 void SigninViewController::ShowSignin(signin_metrics::AccessPoint access_point,

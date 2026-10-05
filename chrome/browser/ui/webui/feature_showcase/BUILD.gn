@@ -46,7 +46,6 @@ source_set("feature_showcase") {
     "//chrome/browser/profiles:profile",
     "//chrome/browser/regional_capabilities",
     "//chrome/browser/resources/feature_showcase:resources",
-    "//chrome/browser/search/background",
     "//chrome/browser/themes",
     "//chrome/browser/ui/actions:actions_headers",
     "//chrome/browser/ui/toolbar/pinned_toolbar",

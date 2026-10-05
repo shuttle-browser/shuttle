@@ -46,9 +46,6 @@ class ThemeSource : public content::URLDataSource {
       content::URLDataSource::GotDataCallback callback) override;
   std::string GetMimeType(const GURL& url) override;
   bool AllowCaching() override;
-  bool ShouldServiceRequest(const GURL& url,
-                            content::BrowserContext* browser_context,
-                            int render_process_id) override;
   std::string GetAccessControlAllowOriginForOrigin(
       const std::string& origin) override;
   std::string GetContentSecurityPolicy(

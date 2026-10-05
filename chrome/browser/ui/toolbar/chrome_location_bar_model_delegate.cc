@@ -129,8 +129,7 @@ bool ChromeLocationBarModelDelegate::ShouldDisplayURL() const {
     return false;
   }
 
-  Profile* profile = GetProfile();
-  return !profile || !search::IsInstantNTPURL(url, profile);
+  return true;
 }
 
 security_state::SecurityLevel ChromeLocationBarModelDelegate::GetSecurityLevel()

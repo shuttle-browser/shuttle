@@ -89,10 +89,6 @@ class ProtocolHandlersHandler
                           custom_handlers::ProtocolHandlerRegistry::Observer>
       registry_observation_{this};
 
-  // Called to fetch the state of the app protocol handlers. Web apps are not
-  // supported in this build, so the lists are always empty.
-  void HandleObserveAppProtocolHandlers(const base::ListValue& args);
-
   const raw_ptr<Profile> profile_;
 };
 

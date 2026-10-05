@@ -9,7 +9,6 @@
 
 #include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter.h"
-#include "chrome/browser/ui/webui_browser/bookmark_bar.mojom.h"
 #include "chrome/browser/ui/webui_browser/browser.mojom.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_window.h"
 #include "components/browser_apis/tab_drag/tab_drag_api.mojom.h"
@@ -52,7 +51,6 @@ class WebUIBrowserUIConfig
 // The WebUI for chrome://webui-browser
 class WebUIBrowserUI : public ui::MojoWebUIController,
                        public webui_browser::mojom::PageHandlerFactory,
-                       public bookmark_bar::mojom::PageHandlerFactory,
                        public extensions_bar::mojom::PageHandlerFactory,
                        public searchbox::mojom::PageHandlerFactory {
  public:
@@ -61,8 +59,6 @@ class WebUIBrowserUI : public ui::MojoWebUIController,
 
   void BindInterface(
       mojo::PendingReceiver<webui_browser::mojom::PageHandlerFactory> receiver);
-  void BindInterface(
-      mojo::PendingReceiver<bookmark_bar::mojom::PageHandlerFactory> receiver);
   void BindInterface(
       mojo::PendingReceiver<extensions_bar::mojom::PageHandlerFactory>
           receiver);
@@ -108,11 +104,6 @@ class WebUIBrowserUI : public ui::MojoWebUIController,
       mojo::PendingRemote<webui_browser::mojom::Page> page,
       mojo::PendingReceiver<webui_browser::mojom::PageHandler> receiver)
       override;
-
-  // bookmark_bar::mojom::PageHandlerFactory:
-  void CreatePageHandler(mojo::PendingRemote<bookmark_bar::mojom::Page> page,
-                         mojo::PendingReceiver<bookmark_bar::mojom::PageHandler>
-                             receiver) override;
 
   // extensions_bar::mojom::PageHandlerFactory:
   void CreatePageHandler(

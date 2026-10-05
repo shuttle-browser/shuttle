@@ -38,146 +38,9 @@
 #include "base/android/device_info.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/common/webui_url_constants.h"
-#else
-#include "chrome/browser/search/instant_service.h"
-#include "chrome/browser/search/instant_service_factory.h"
 #endif
 
 namespace search {
-
-namespace {
-
-const char kServiceWorkerFileName[] = "newtab-serviceworker.js";
-
-bool MatchesOrigin(const GURL& my_url, const GURL& other_url) {
-  return my_url.scheme() == other_url.scheme() &&
-         my_url.host() == other_url.host() && my_url.port() == other_url.port();
-}
-
-}  // namespace
-
-// Returns true if |my_url| matches |other_url| in terms of origin (i.e. host,
-// port, and scheme) and path.
-// Defined outside of the anonymous namespace so that it's accessible to unit
-// tests.
-bool MatchesOriginAndPath(const GURL& my_url, const GURL& other_url) {
-  return MatchesOrigin(my_url, other_url) && my_url.path() == other_url.path();
-}
-
-namespace {
-
-// Status of the New Tab URL for the default Search provider. NOTE: Used in a
-// UMA histogram so values should only be added at the end and not reordered.
-enum NewTabURLState {
-  // Valid URL that should be used.
-  NEW_TAB_URL_VALID = 0,
-
-  // Corrupt state (e.g. no profile or template url).
-  NEW_TAB_URL_BAD = 1,
-
-  // URL should not be used because in incognito window.
-  NEW_TAB_URL_INCOGNITO = 2,
-
-  // No New Tab URL set for provider.
-  NEW_TAB_URL_NOT_SET = 3,
-
-  // URL is not secure.
-  NEW_TAB_URL_INSECURE = 4,
-
-  // URL should not be used because Suggest is disabled.
-  // Not used anymore, see crbug.com/40350179.
-  // NEW_TAB_URL_SUGGEST_OFF = 5,
-
-  // URL should not be used because it is blocked for a supervised user.
-  NEW_TAB_URL_BLOCKED = 6,
-
-  NEW_TAB_URL_MAX
-};
-
-
-bool IsMatchingServiceWorker(const GURL& my_url, const GURL& document_url) {
-  // The origin should match.
-  if (!MatchesOrigin(my_url, document_url)) {
-    return false;
-  }
-
-  // The url filename should be the new tab page ServiceWorker.
-  std::string my_filename = my_url.ExtractFileName();
-  if (my_filename != kServiceWorkerFileName) {
-    return false;
-  }
-
-  // The paths up to the filenames should be the same.
-  std::string my_path_without_filename = my_url.GetPath();
-  my_path_without_filename.erase(my_path_without_filename.length() -
-                                 my_filename.length());
-  std::string document_filename = document_url.ExtractFileName();
-  std::string document_path_without_filename = document_url.GetPath();
-  document_path_without_filename.erase(document_path_without_filename.length() -
-                                       document_filename.length());
-
-  return my_path_without_filename == document_path_without_filename;
-}
-
-// Returns true if |url| matches the NTP URL or the URL of the NTP's associated
-// service worker.
-bool IsNTPOrRelatedURLHelper(const GURL& url, Profile* profile) {
-  if (!url.is_valid()) {
-    return false;
-  }
-
-  const GURL new_tab_url(GetNewTabPageURL(profile));
-  return new_tab_url.is_valid() && (MatchesOriginAndPath(url, new_tab_url) ||
-                                    IsMatchingServiceWorker(url, new_tab_url));
-}
-
-// Used to look up the URL to use for the New Tab page. Also tracks how we
-// arrived at that URL so it can be logged with UMA.
-struct NewTabURLDetails {
-  NewTabURLDetails(const GURL& url, NewTabURLState state)
-      : url(url), state(state) {}
-
-  static NewTabURLDetails ForProfile(Profile* profile) {
-    // Incognito and Guest profiles have their own New Tab.
-    // This function may also be called by other off-the-record profiles that
-    // can exceptionally open a browser window.
-    // See OTRProfileID::AllowsBrowserWindows() for more context.
-    if (profile->IsOffTheRecord()) {
-      return NewTabURLDetails(GURL(), NEW_TAB_URL_INCOGNITO);
-    }
-
-    // Agent Chrome: there is no WebUI or third-party (search provider) New
-    // Tab Page. chrome://newtab is never rewritten and NewTabUI serves a
-    // blank page for regular profiles.
-    return NewTabURLDetails(GURL(), NEW_TAB_URL_NOT_SET);
-  }
-
-  const GURL url;
-  const NewTabURLState state;
-};
-
-bool IsRenderedInInstantProcess(content::WebContents* contents,
-                                Profile* profile) {
-#if BUILDFLAG(IS_ANDROID)
-  return false;
-#else
-  content::RenderProcessHost* process_host =
-      contents->GetPrimaryMainFrame()->GetProcess();
-  if (!process_host) {
-    return false;
-  }
-
-  const InstantService* instant_service =
-      InstantServiceFactory::GetForProfile(profile);
-  if (!instant_service) {
-    return false;
-  }
-
-  return instant_service->IsInstantProcess(process_host->GetDeprecatedID());
-#endif
-}
-
-}  // namespace
 
 bool DefaultSearchProviderIsGoogle(Profile* profile) {
   return DefaultSearchProviderIsGoogle(
@@ -185,22 +48,11 @@ bool DefaultSearchProviderIsGoogle(Profile* profile) {
 }
 
 bool IsNTPOrRelatedURL(const GURL& url, Profile* profile) {
-  if (!url.is_valid()) {
-    return false;
-  }
-
-  if (!IsInstantExtendedAPIEnabled()) {
-    return url == chrome::ChromeUINewTabURLAsGURL();
-  }
-
-  return profile && IsNTPOrRelatedURLHelper(url, profile);
+  // Agent Chrome: the only New Tab Page is the blank chrome://newtab.
+  return url.is_valid() && url == chrome::ChromeUINewTabURLAsGURL();
 }
 
 bool IsNTPURL(const GURL& url) {
-  if (url.SchemeIs(chrome::kChromeSearchScheme) &&
-      url.host() == chrome::kChromeSearchRemoteNtpHost) {
-    return true;
-  }
 #if BUILDFLAG(IS_ANDROID)
   return (url.SchemeIs(chrome::kChromeNativeScheme) &&
           url.host() == chrome::kChromeUINewTabHost);
@@ -208,46 +60,6 @@ bool IsNTPURL(const GURL& url) {
   return url.SchemeIs(content::kChromeUIScheme) &&
          url.host() == chrome::kChromeUINewTabHost;
 #endif
-}
-
-bool IsInstantNTP(content::WebContents* contents) {
-  if (!contents) {
-    return false;
-  }
-
-  content::NavigationEntry* entry =
-      contents->GetController().GetLastCommittedEntry();
-  if (!entry) {
-    entry = contents->GetController().GetVisibleEntry();
-  }
-  return NavEntryIsInstantNTP(contents, entry);
-}
-
-bool NavEntryIsInstantNTP(content::WebContents* contents,
-                          content::NavigationEntry* entry) {
-  if (!contents || !entry || !IsInstantExtendedAPIEnabled()) {
-    return false;
-  }
-
-  Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
-  if (!IsRenderedInInstantProcess(contents, profile)) {
-    return false;
-  }
-
-  return IsInstantNTPURL(entry->GetURL(), profile);
-}
-
-bool IsInstantNTPURL(const GURL& url, Profile* profile) {
-  if (MatchesOrigin(url, chrome::ChromeUINewTabPageURLAsGURL())) {
-    return true;
-  }
-
-  if (!IsInstantExtendedAPIEnabled()) {
-    return false;
-  }
-
-  GURL new_tab_url(GetNewTabPageURL(profile));
-  return new_tab_url.is_valid() && MatchesOriginAndPath(url, new_tab_url);
 }
 
 bool IsWebUiNtpEnabledForDesktopAndroid() {
@@ -262,115 +74,6 @@ bool IsWebUiNtpEnabledForDesktopAndroid() {
 bool IsSplitViewNewTabPage(const GURL& url) {
   return url.spec() == chrome::kChromeUISplitViewNewTabPageURL;
 }
-
-GURL GetNewTabPageURL(Profile* profile) {
-  return NewTabURLDetails::ForProfile(profile).url;
-}
-
-#if !BUILDFLAG(IS_ANDROID)
-
-bool ShouldAssignURLToInstantRenderer(const GURL& url, Profile* profile) {
-  if (!url.is_valid() || !profile || !IsInstantExtendedAPIEnabled() ||
-      url.SchemeIs(content::kChromeUIScheme)) {
-    return false;
-  }
-
-  return IsNTPOrRelatedURLHelper(url, profile) ||
-         url.SchemeIs(chrome::kChromeSearchScheme);
-}
-
-bool ShouldAssignSecurityPrincipalToInstantRenderer(
-    const content::SecurityPrincipal& security_principal,
-    Profile* profile) {
-  if (!profile || !IsInstantExtendedAPIEnabled()) {
-    return false;
-  }
-  // No need to check IsNTPOrRelatedURLHelper here: security_principal
-  // contains the effective URL produced by GetEffectiveURLForInstant(),
-  // which always uses the chrome-search: scheme.
-  return security_principal.SchemeIs(chrome::kChromeSearchScheme);
-}
-
-bool ShouldUseProcessPerSiteForSecurityPrincipal(
-    const content::SecurityPrincipal& security_principal,
-    Profile* profile) {
-  return ShouldAssignSecurityPrincipalToInstantRenderer(security_principal,
-                                                        profile) &&
-         security_principal.GetHost() == chrome::kChromeSearchRemoteNtpHost;
-}
-
-std::optional<GURL> GetEffectiveURLForInstant(const GURL& url,
-                                              Profile* profile) {
-  CHECK(ShouldAssignURLToInstantRenderer(url, profile))
-      << "Error granting Instant access.";
-
-  if (url.SchemeIs(chrome::kChromeSearchScheme)) {
-    return std::nullopt;
-  }
-
-  // Replace the scheme with "chrome-search:", and clear the port, since
-  // chrome-search is a scheme without port.
-  GURL::Replacements replacements;
-  replacements.SetSchemeStr(chrome::kChromeSearchScheme);
-  replacements.ClearPort();
-
-  // If this is the URL for a server-provided NTP, replace the host with
-  // "remote-ntp".
-  std::string_view remote_ntp_host = chrome::kChromeSearchRemoteNtpHost;
-  NewTabURLDetails details = NewTabURLDetails::ForProfile(profile);
-  if (details.state == NEW_TAB_URL_VALID &&
-      (MatchesOriginAndPath(url, details.url) ||
-       IsMatchingServiceWorker(url, details.url))) {
-    replacements.SetHostStr(remote_ntp_host);
-  }
-
-  return url.ReplaceComponents(replacements);
-}
-
-bool HandleNewTabURLRewrite(GURL* url,
-                            content::BrowserContext* browser_context) {
-  if (!IsInstantExtendedAPIEnabled()) {
-    return false;
-  }
-
-  if (!(url->SchemeIs(content::kChromeUIScheme) &&
-        url->host() == chrome::kChromeUINewTabHost)) {
-    return false;
-  }
-
-  Profile* profile = Profile::FromBrowserContext(browser_context);
-  NewTabURLDetails details(NewTabURLDetails::ForProfile(profile));
-  UMA_HISTOGRAM_ENUMERATION("NewTabPage.URLState", details.state,
-                            NEW_TAB_URL_MAX);
-  if (details.url.is_valid()) {
-    *url = details.url;
-    return true;
-  }
-  return false;
-}
-
-bool HandleNewTabURLReverseRewrite(GURL* url,
-                                   content::BrowserContext* browser_context) {
-  if (!IsInstantExtendedAPIEnabled()) {
-    return false;
-  }
-
-  // Do nothing in incognito.
-  Profile* profile = Profile::FromBrowserContext(browser_context);
-  DCHECK(profile);
-  if (profile->IsOffTheRecord()) {
-    return false;
-  }
-
-  if (IsInstantNTPURL(*url, profile)) {
-    *url = chrome::ChromeUINewTabURLAsGURL();
-    return true;
-  }
-
-  return false;
-}
-
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 const void* const kIsNTPProcessKey = &kIsNTPProcessKey;
 

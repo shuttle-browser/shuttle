@@ -4,7 +4,6 @@
 
 // Multiply-included file, hence no include guard.
 
-#include "chrome/common/search/instant_mojom_traits.h"
 #include "components/safe_browsing/buildflags.h"
 #include "content/public/common/common_param_traits.h"
 #include "content/public/common/common_param_traits_macros.h"

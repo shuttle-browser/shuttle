@@ -41,7 +41,6 @@ class BrowserAnimationController;
 class BrowserContentSettingBubbleModelDelegate;
 class BrowserElements;
 class BrowserFocusController;
-class BrowserInstantController;
 class BrowserLiveTabContext;
 namespace sessions {
 class LiveTabContext;
@@ -411,7 +410,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<InitialWebUIManager> initial_web_ui_manager_;
   std::unique_ptr<InitialWebUIWindowMetricsManager>
       initial_webui_window_metrics_manager_;
-  std::unique_ptr<BrowserInstantController> instant_controller_;
 
   // Helper which implements the LiveTabContext interface.
   std::unique_ptr<BrowserLiveTabContext> live_tab_context_;

@@ -15,7 +15,7 @@ ChromeResourceRequestPolicyDelegate::~ChromeResourceRequestPolicyDelegate() =
 
 bool ChromeResourceRequestPolicyDelegate::
     ShouldAlwaysAllowRequestForFrameOrigin(const url::Origin& frame_origin) {
-  return frame_origin.scheme() == chrome::kChromeSearchScheme;
+  return false;
 }
 
 bool ChromeResourceRequestPolicyDelegate::AllowLoadForDevToolsPage(

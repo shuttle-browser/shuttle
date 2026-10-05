@@ -49,7 +49,6 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/search/instant_service.h"
 #include "chrome/browser/themes/browser_theme_pack.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -179,19 +178,6 @@ std::string ThemeSource::GetMimeType(const GURL& url) {
 
 bool ThemeSource::AllowCaching() {
   return false;
-}
-
-bool ThemeSource::ShouldServiceRequest(const GURL& url,
-                                       content::BrowserContext* browser_context,
-                                       int render_process_id) {
-#if !BUILDFLAG(IS_ANDROID)
-  if (url.SchemeIs(chrome::kChromeSearchScheme)) {
-    return InstantService::ShouldServiceRequest(url, browser_context,
-                                                render_process_id);
-  }
-#endif
-  return URLDataSource::ShouldServiceRequest(url, browser_context,
-                                             render_process_id);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

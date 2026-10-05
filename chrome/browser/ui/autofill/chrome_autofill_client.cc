@@ -215,9 +215,6 @@
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(ENABLE_COMPOSE)
-#endif
-
 namespace autofill {
 
 namespace {

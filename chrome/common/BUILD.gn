@@ -164,10 +164,6 @@ static_library("common_lib") {
     "pref_names_util.h",
     "readaloud/read_aloud_constants.h",
     "ref_counted_util.h",
-    "search/instant_mojom_traits.h",
-    "search/instant_types.cc",
-    "search/instant_types.h",
-    "search/ntp_logging_events.h",
     "secure_origin_allowlist.cc",
     "secure_origin_allowlist.h",
     "webui_url_utils.cc",
@@ -201,7 +197,6 @@ static_library("common_lib") {
     "//chrome/common/net",
     "//chrome/common/platform_runtime",
     "//chrome/common/profiler",
-    "//chrome/common/search:mojo_bindings",
     "//chrome/installer/util:with_no_strings",
     "//components/actor/core:task_id",
     "//components/client_hints/common",
@@ -634,14 +629,11 @@ static_library("test_support") {
   visibility = [ "//chrome/test:*" ]
 
   sources = [
-    "search/mock_embedded_search_client.cc",
-    "search/mock_embedded_search_client.h",
   ]
 
   deps = [
     ":common",
     "//base",
-    "//chrome/common/search:mojo_bindings",
     "//testing/gmock",
     "//testing/gtest",
   ]

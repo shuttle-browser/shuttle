@@ -79,7 +79,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/renderer/accessibility/read_anything/read_anything_app_controller.h"
-#include "chrome/renderer/searchbox/searchbox_extension.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -320,10 +319,6 @@ void ChromeRenderFrameObserver::DidCommitProvisionalLoad(
 
 void ChromeRenderFrameObserver::DidClearWindowObject() {
 #if !BUILDFLAG(IS_ANDROID)
-  if (process_state::IsInstantProcess()) {
-    SearchBoxExtension::Install(render_frame()->GetWebFrame());
-  }
-
   // Install ReadAnythingAppController on render frames with the Read Anything
   // url, which is chrome-untrusted. ReadAnythingAppController installs v8
   // bindings in the chrome.readingMode namespace which are consumed by

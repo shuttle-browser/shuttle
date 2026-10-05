@@ -212,13 +212,6 @@ inline constexpr char kChromeUINetExportHost[] = "net-export";
 inline constexpr char kChromeUINetInternalsHost[] = "net-internals";
 inline constexpr char kChromeUINetInternalsURL[] = "chrome://net-internals/";
 inline constexpr char kChromeUINewTabHost[] = "newtab";
-inline constexpr char kChromeUINewTabPageHost[] = "new-tab-page";
-inline constexpr char kChromeUINewTabPageThirdPartyHost[] =
-    "new-tab-page-third-party";
-inline constexpr char kChromeUINewTabPageThirdPartyURL[] =
-    "chrome://new-tab-page-third-party/";
-inline constexpr char kChromeUINewTabPageURL[] = "chrome://new-tab-page/";
-const GURL& ChromeUINewTabPageURLAsGURL();
 inline constexpr char kChromeUINewTabURL[] = "chrome://newtab/";
 const GURL& ChromeUINewTabURLAsGURL();
 inline constexpr char kChromeUIOmniboxHost[] = "omnibox";

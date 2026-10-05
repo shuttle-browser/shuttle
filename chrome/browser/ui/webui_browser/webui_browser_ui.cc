@@ -168,11 +168,6 @@ void WebUIBrowserUI::BindInterface(
 }
 
 void WebUIBrowserUI::BindInterface(
-    mojo::PendingReceiver<bookmark_bar::mojom::PageHandlerFactory> receiver) {
-  // Bookmarks were removed; the bookmark bar page handler is never created.
-}
-
-void WebUIBrowserUI::BindInterface(
     mojo::PendingReceiver<extensions_bar::mojom::PageHandlerFactory> receiver) {
   extensions_bar_page_factory_receiver_.reset();
   extensions_bar_page_factory_receiver_.Bind(std::move(receiver));
@@ -246,12 +241,6 @@ void WebUIBrowserUI::CreatePageHandler(
                                                     std::move(receiver), this);
   page_->OnPaintAsActiveChanged(
       browser_window()->widget()->ShouldPaintAsActive());
-}
-
-void WebUIBrowserUI::CreatePageHandler(
-    mojo::PendingRemote<bookmark_bar::mojom::Page> page,
-    mojo::PendingReceiver<bookmark_bar::mojom::PageHandler> receiver) {
-  // Bookmarks were removed; drop the pipes.
 }
 
 void WebUIBrowserUI::CreatePageHandler(

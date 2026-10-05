@@ -223,8 +223,6 @@ bool ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(
       web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
   if (committed_origin.IsSameOriginWith(chrome::ChromeUINewTabURLAsGURL()) ||
       committed_origin.IsSameOriginWith(
-          chrome::ChromeUINewTabPageURLAsGURL()) ||
-      committed_origin.IsSameOriginWith(
           GURL(chrome::kChromeUIOmniboxPopupURL)) ||
       committed_origin.IsSameOriginWith(
           GURL(chrome::kChromeUIContextualTasksURL))) {

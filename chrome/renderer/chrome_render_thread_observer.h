@@ -137,10 +137,6 @@ class ChromeRenderThreadObserver : public content::RenderThreadObserver,
       mojo::PendingRemote<chrome::mojom::BoundSessionRequestThrottledHandler>
           bound_session_request_throttled_handler) override;
   void SetConfiguration(chrome::mojom::DynamicParamsPtr params) override;
-#if !BUILDFLAG(IS_ANDROID)
-  void SetConfigurationOnProcessLockUpdate(
-      chrome::mojom::StaticParamsPtr params) override;
-#endif  // !BUILDFLAG(IS_ANDROID)
   void OnRendererConfigurationAssociatedRequest(
       mojo::PendingAssociatedReceiver<chrome::mojom::RendererConfiguration>
           receiver);
@@ -156,10 +152,6 @@ class ChromeRenderThreadObserver : public content::RenderThreadObserver,
   chrome::mojom::DynamicParamsPtr dynamic_params_
       GUARDED_BY(dynamic_params_lock_);
   mutable base::Lock dynamic_params_lock_;
-
-#if !BUILDFLAG(IS_ANDROID)
-  bool static_renderer_params_set_ = false;
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Only set if the ChromeOS merge session was running when the renderer

@@ -24,7 +24,6 @@ ts_library("build_ts") {
     # dependency to CrOS-only UIs (to reduce coupling between Desktop and CrOS
     # and reduce the maintenance burden for the Desktop WebUI team).
 
-    "//chrome/browser/resources/about_sys:build_ts",
     "//chrome/browser/resources/access_code_cast:build_ts",
     "//chrome/browser/resources/actor_overlay:build_ts",
     "//chrome/browser/resources/autofill_ml_internals:build_ts",
@@ -73,7 +72,6 @@ ts_library("build_ts") {
     "//chrome/browser/resources/signin/signout_confirmation:build_ts",
     "//chrome/browser/resources/subresource_filter:build_ts",
     "//chrome/browser/resources/suggest_internals:build_ts",
-    "//chrome/browser/resources/support_tool:build_ts",
     "//chrome/browser/resources/tab_group_home:build_ts",
     "//chrome/browser/resources/unexportable_keys_internals:build_ts",
     "//chrome/browser/resources/updater:build_ts",
@@ -104,7 +102,6 @@ ts_library("build_ts") {
     "//chrome/test/data/webui/webui_toolbar:build_ts",
     "//components/download/resources/download_internals:build_ts",
     "//components/neterror/resources:build_ts",
-    "//components/ntp_tiles/webui/resources:build_ts",
     "//components/policy/resources/webui:build_ts",
     "//components/signin/core/browser/resources:build_ts",
     "//components/sync/service/resources:build_ts",
@@ -121,7 +118,6 @@ ts_library("build_ts") {
     "//ui/webui/resources/cr_components/localized_link:build_ts",
     "//ui/webui/resources/cr_components/managed_dialog:build_ts",
     "//ui/webui/resources/cr_components/managed_footnote:build_ts",
-    "//ui/webui/resources/cr_components/search:build_ts",
     "//ui/webui/resources/cr_components/searchbox:build_ts",
     "//ui/webui/resources/cr_components/theme_color_picker:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",

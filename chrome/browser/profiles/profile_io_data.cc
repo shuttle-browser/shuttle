@@ -54,7 +54,6 @@ bool ProfileIOData::IsHandledProtocol(std::string_view scheme) {
       url::kAboutScheme,
       url::kBlobScheme,
       url::kFileSystemScheme,
-      chrome::kChromeSearchScheme,
   });
 
   return kProtocolList.contains(scheme);

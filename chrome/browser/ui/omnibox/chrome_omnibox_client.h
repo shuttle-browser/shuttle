@@ -13,7 +13,6 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_service.h"
-#include "chrome/common/search/instant_types.h"
 #include "components/omnibox/browser/favicon_cache.h"
 #include "components/omnibox/browser/omnibox.mojom-shared.h"
 #include "components/omnibox/browser/omnibox_client.h"

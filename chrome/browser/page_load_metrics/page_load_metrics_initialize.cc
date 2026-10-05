@@ -378,12 +378,7 @@ PageLoadMetricsEmbedder::GetNavigationScenario(
 }
 
 bool PageLoadMetricsEmbedder::IsNewTabPageUrl(const GURL& url) {
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents()->GetBrowserContext());
-  if (!profile) {
-    return false;
-  }
-  return search::IsInstantNTPURL(url, profile);
+  return false;
 }
 
 bool PageLoadMetricsEmbedder::IsNoStatePrefetch(

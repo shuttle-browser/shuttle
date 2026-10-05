@@ -808,8 +808,6 @@ bool MultiContentsView::IsDragAndDropEnabled() const {
   return !web_contents ||
          web_contents->GetLastCommittedURL() ==
              chrome::ChromeUINewTabURLAsGURL() ||
-         web_contents->GetLastCommittedURL() ==
-             chrome::ChromeUINewTabPageURLAsGURL() ||
          !web_contents->GetLastCommittedURL().SchemeIs(
              content::kChromeUIScheme);
 }

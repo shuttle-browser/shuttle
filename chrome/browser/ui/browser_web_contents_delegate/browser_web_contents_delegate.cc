@@ -891,7 +891,7 @@ bool BrowserWebContentsDelegate::ShouldFocusLocationBarByDefault(
     }
   }
 
-  return search::NavEntryIsInstantNTP(source, entry);
+  return false;
 }
 
 bool BrowserWebContentsDelegate::ShouldFocusPageAfterCrash(

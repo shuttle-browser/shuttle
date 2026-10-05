@@ -319,7 +319,6 @@ constexpr char kSyncDeviceStatisticsMetricsName[] =
     "sync_device_statistics_metrics";
 constexpr char kPrivateAiServiceName[] = "private_ai_service";
 constexpr char kWalletPassesName[] = "wallet_passes";
-constexpr char kAimEligibilityServiceName[] = "aim_eligibility_service";
 constexpr char kActorLoginPermissionServiceName[] =
     "actor_login_permission_service";
 constexpr char kGapisServiceName[] = "gapis_service";
@@ -728,9 +727,8 @@ OAuthConsumer OAuthConsumerRegistry::GetOAuthConsumerFromId(
           /*scopes=*/{kWalletPassesOAuth2Scope});
     }
     case OAuthConsumerId::kAimEligibilityService:
-      return OAuthConsumer(
-          /*name=*/kAimEligibilityServiceName,
-          /*scopes=*/{GaiaConstants::kSearchResultsOAuth2Scope});
+      // The AIM eligibility service was removed from this fork.
+      NOTREACHED();
     case OAuthConsumerId::kDevtoolsAiCode:
       return OAuthConsumer(
           /*name=*/kDevtoolsAiCodeName,

@@ -546,8 +546,6 @@
 #include "chrome/browser/loader/fetch_keepalive_process_manager.h"
 #include "chrome/browser/metrics/usage_scenario/chrome_responsiveness_calculator_delegate.h"
 #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
-#include "chrome/browser/search/instant_service.h"
-#include "chrome/browser/search/instant_service_factory.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser.h"
@@ -1057,17 +1055,6 @@ GetNoStatePrefetchCanceler(
           canceler.InitWithNewPipeAndPassReceiver());
   return canceler;
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-mojo::AssociatedRemote<chrome::mojom::RendererConfiguration>
-GetRendererConfiguration(content::RenderProcessHost* render_process_host) {
-  IPC::ChannelProxy* channel = render_process_host->GetChannel();
-  mojo::AssociatedRemote<chrome::mojom::RendererConfiguration>
-      renderer_configuration;
-  channel->GetRemoteAssociatedInterface(&renderer_configuration);
-  return renderer_configuration;
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 bool ShouldHonorPolicies() {
   bool management_check_required = false;
@@ -1739,16 +1726,6 @@ std::optional<GURL> ChromeContentBrowserClient::GetEffectiveURL(
     return std::nullopt;
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  // If the input |url| should be assigned to the Instant renderer, make its
-  // effective URL distinct from other URLs on the search provider's domain.
-  // This needs to happen even if |url| corresponds to an isolated origin; see
-  // https://crbug.com/41339429.
-  if (search::ShouldAssignURLToInstantRenderer(url, profile)) {
-    return search::GetEffectiveURLForInstant(url, profile);
-  }
-#endif
-
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   if (ChromeContentBrowserClientExtensionsPart::AreExtensionsDisabledForProfile(
           profile)) {
@@ -1760,34 +1737,6 @@ std::optional<GURL> ChromeContentBrowserClient::GetEffectiveURL(
 #else
   return std::nullopt;
 #endif
-}
-
-void ChromeContentBrowserClient::OnRendererProcessLockedStateUpdated(
-    content::RenderProcessHost* host,
-    const GURL& site_url) {
-#if !BUILDFLAG(IS_ANDROID)
-  // If the feature `kInstantUsesSpareRenderer` is not enabled, we continue
-  // relying on the `kInstantProcess` command line switch to handle instant
-  // process related logic.
-  if (!base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer)) {
-    return;
-  }
-  Profile* profile = Profile::FromBrowserContext(host->GetBrowserContext());
-  const bool is_instant_process =
-      search::ShouldAssignURLToInstantRenderer(site_url, profile);
-  if (is_instant_process) {
-    // Grant commit scheme access to chrome-search for instant processes.
-    // Browser-side enforcement ensures non-instant processes cannot access
-    // chrome-search URLs.
-    content::ChildProcessSecurityPolicy::GetInstance()->GrantCommitScheme(
-        host->GetDeprecatedID(), chrome::kChromeSearchScheme);
-  }
-  chrome::mojom::StaticParamsPtr params = chrome::mojom::StaticParams::New();
-  params->is_instant_process = is_instant_process;
-  auto renderer_configuration = GetRendererConfiguration(host);
-  renderer_configuration->SetConfigurationOnProcessLockUpdate(
-      std::move(params));
-#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 bool ChromeContentBrowserClient::
@@ -1826,18 +1775,10 @@ bool ChromeContentBrowserClient::ShouldUseProcessPerSite(
   // reduce process count associated with NTP tabs.
   if (security_principal.SchemeIs(content::kChromeUIScheme)) {
     const std::string_view host = security_principal.GetHost();
-    if (host == chrome::kChromeUINewTabHost ||
-        host == chrome::kChromeUINewTabPageHost) {
+    if (host == chrome::kChromeUINewTabHost) {
       return true;
     }
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  if (search::ShouldUseProcessPerSiteForSecurityPrincipal(security_principal,
-                                                          profile)) {
-    return true;
-  }
-#endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   if (ChromeContentBrowserClientExtensionsPart::ShouldUseProcessPerSite(
@@ -1903,25 +1844,6 @@ bool ChromeContentBrowserClient::ShouldUseSpareRenderProcessHost(
     return false;
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  // Instant renderers passed by command line should not use a spare process,
-  // because they require passing switches::kInstantProcess to the renderer
-  // process when it launches. A spare process is launched earlier, before
-  // it is known which navigation will use it, so it lacks this flag. But
-  // with the feature kInstantUsesSpareRenderer enabled, the instant process
-  // is passed later in ProcessLock status changed, we can pass the flag
-  // to spare process.
-  if (search::ShouldAssignURLToInstantRenderer(site_url, profile) &&
-      !base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer)) {
-    // The NTP page chrome://new-tab-page and chrome://new-tab-page-third-party
-    // are using WebUI and will not use instant renderer.
-    // The only usecase is chrome-search:// URLs.
-    refused_reason =
-        SpareProcessRefusedByEmbedderReason::InstantRendererForNewTabPage;
-    return false;
-  }
-#endif
-
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   if (!ChromeContentBrowserClientExtensionsPart::
           ShouldUseSpareRenderProcessHost(profile, site_url)) {
@@ -1958,24 +1880,6 @@ bool ChromeContentBrowserClient::
     return false;
   }
 #endif
-  return true;
-}
-
-bool ChromeContentBrowserClient::DoesWebUIUrlRequireProcessLock(
-    const GURL& url) {
-  // Note: This method can be called from multiple threads. It is not safe to
-  // assume it runs only on the UI thread.
-
-  // We only allow the most visited tiles on third-party NTPs to not require a
-  // process lock. Everything else, including the actual third-party NTP which
-  // embeds those tiles, should be locked.  This allows most visited tiles to
-  // stay in their parent (i.e., third-party NTP's) process.
-  if (url.SchemeIs(chrome::kChromeSearchScheme) &&
-      url.host() == chrome::kChromeSearchMostVisitedHost) {
-    return false;
-  }
-
-  // All other WebUIs must be locked to origin.
   return true;
 }
 
@@ -2053,7 +1957,6 @@ void ChromeContentBrowserClient::OverrideURLLoaderFactoryParams(
 // view-source is allowed for these schemes.
 void ChromeContentBrowserClient::GetAdditionalWebUISchemes(
     std::vector<std::string>* additional_schemes) {
-  additional_schemes->emplace_back(chrome::kChromeSearchScheme);
   additional_schemes->emplace_back(dom_distiller::kDomDistillerScheme);
   additional_schemes->emplace_back(content::kChromeDevToolsScheme);
 }
@@ -2076,9 +1979,6 @@ void ChromeContentBrowserClient::GetAdditionalViewSourceSchemes(
 
 network::mojom::IPAddressSpace
 ChromeContentBrowserClient::DetermineAddressSpaceFromURL(const GURL& url) {
-  if (url.SchemeIs(chrome::kChromeSearchScheme)) {
-    return network::mojom::IPAddressSpace::kLoopback;
-  }
   if (url.SchemeIs(dom_distiller::kDomDistillerScheme)) {
     return network::mojom::IPAddressSpace::kPublic;
   }
@@ -2189,60 +2089,12 @@ bool ChromeContentBrowserClient::CanCommitURL(
 #endif
 }
 
-void ChromeContentBrowserClient::OverrideNavigationParams(
-    std::optional<GURL> source_process_site_url,
-    ui::PageTransition* transition,
-    bool* is_renderer_initiated,
-    content::Referrer* referrer,
-    std::optional<url::Origin>* initiator_origin) {
-  DCHECK(transition);
-  DCHECK(is_renderer_initiated);
-  DCHECK(referrer);
-  // IsNTPURL only looks at the origin of the parameter, so it is safe to use
-  // the effective site URL for the source process.
-  if (source_process_site_url &&
-      search::IsNTPURL(source_process_site_url.value()) &&
-      ui::PageTransitionCoreTypeIs(*transition, ui::PAGE_TRANSITION_LINK)) {
-    // Use AUTO_BOOKMARK for clicks on tiles of the new tab page,
-    // consistent with native implementations like Android's.
-    *transition = ui::PAGE_TRANSITION_AUTO_BOOKMARK;
-    if (!base::FeatureList::IsEnabled(
-            ntp_features::kNtpDisableBrowserInitiatedLinks)) {
-      // Reset the renderer-initiated flag, referrer, and initiator origin so
-      // that security features (like Sec-Fetch-Site and SameSite-cookies)
-      // treat the navigation as browser-initiated.
-      *is_renderer_initiated = false;
-      *referrer = content::Referrer();
-      *initiator_origin = std::nullopt;
-    }
-  }
-}
-
 void ChromeContentBrowserClient::CrossProcessSubframeRenderProcessGone(
     content::RenderFrameHost* render_frame_host) {
   if (auto frame_node = performance_manager::PerformanceManager::
           GetFrameNodeForRenderFrameHost(render_frame_host)) {
     frame_node->CrossProcessSubframeRenderProcessGone();
   }
-}
-
-bool ChromeContentBrowserClient::ShouldStayInParentProcessForNTP(
-    const GURL& url,
-    const GURL& parent_site_url) {
-  // Allow most visited iframes to stay in the parent process but only if that
-  // process is for NTP.
-  //
-  // TODO(alexmos): Consider further tightening this exception to just the
-  // third-party remote NTP in the parent, rather than any NTP.
-  //
-  // TODO(crbug.com/40447789): place those iframes into OOPIFs and remove this
-  // exception. Relaxing site isolation like this is a bad idea and should be
-  // avoided.
-  //
-  // TODO(crbug.com/41261582): clean up the logic for detecting NTP.
-  return url.SchemeIs(chrome::kChromeSearchScheme) &&
-         url.host() == chrome::kChromeSearchMostVisitedHost &&
-         search::IsNTPURL(parent_site_url);
 }
 
 bool ChromeContentBrowserClient::IsSuitableHost(
@@ -2255,33 +2107,6 @@ bool ChromeContentBrowserClient::IsSuitableHost(
   if (!profile) {
     return true;
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Instant URLs should only be in the instant process and instant process
-  // should only have Instant URLs.
-  InstantService* instant_service =
-      InstantServiceFactory::GetForProfile(profile);
-  if (instant_service) {
-    bool is_instant_process =
-        instant_service->IsInstantProcess(process_host->GetDeprecatedID());
-    bool should_be_in_instant_process =
-        search::ShouldAssignSecurityPrincipalToInstantRenderer(
-            security_principal, profile);
-    if (is_instant_process) {
-      return should_be_in_instant_process;
-    }
-    if (should_be_in_instant_process) {
-      // If the host is a spare process that was used for instant URLs,
-      // `IsInstantProcess` is false as `InstantService::AddInstantProcess`
-      // hasn't been called yet. In this case, it's safe to allow the site
-      // to be in the spare process.
-      bool is_spare_taken =
-          (base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer) &&
-           process_host->HostHasNotBeenUsed());
-      return is_instant_process || is_spare_taken;
-    }
-  }
-#endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   return ChromeContentBrowserClientExtensionsPart::IsSuitableHost(
@@ -2364,19 +2189,6 @@ void ChromeContentBrowserClient::SiteInstanceGotProcessAndSite(
     site_instance->GetProcess()->SetUserData(search::kIsNTPProcessKey,
                                              std::make_unique<NTPUserData>());
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Remember the ID of the Instant process to signal the renderer process
-  // on startup in |AppendExtraCommandLineSwitches| below.
-  if (search::ShouldAssignSecurityPrincipalToInstantRenderer(
-          site_instance->GetSecurityPrincipal(), profile)) {
-    InstantService* instant_service =
-        InstantServiceFactory::GetForProfile(profile);
-    if (instant_service) {
-      instant_service->AddInstantProcess(site_instance->GetProcess());
-    }
-  }
-#endif
 
   for (auto& part : extra_parts_) {
     part->SiteInstanceGotProcessAndSite(site_instance);
@@ -2845,14 +2657,6 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
       }
 
 #if !BUILDFLAG(IS_ANDROID)
-      InstantService* instant_service =
-          InstantServiceFactory::GetForProfile(profile);
-      if (instant_service &&
-          instant_service->IsInstantProcess(process->GetDeprecatedID()) &&
-          !base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer)) {
-        command_line->AppendSwitch(switches::kInstantProcess);
-      }
-
       // Enable SharedArrayBuffer on desktop if allowed by Enterprise Policy.
       // TODO(crbug.com/40155376) Remove when migration to COOP+COEP is
       // complete.
@@ -4674,10 +4478,6 @@ void ChromeContentBrowserClient::BrowserURLHandlerCreated(
   // Handler to rewrite chrome://newtab on Android.
   handler->AddHandlerPair(&chrome::android::HandleAndroidNativePageURL,
                           BrowserURLHandler::null_handler());
-#else   // BUILDFLAG(IS_ANDROID)
-  // Handler to rewrite chrome://newtab for InstantExtended.
-  handler->AddHandlerPair(&search::HandleNewTabURLRewrite,
-                          &search::HandleNewTabURLReverseRewrite);
 #endif  // BUILDFLAG(IS_ANDROID)
 
   // chrome: & friends.
@@ -5953,27 +5753,6 @@ void AddChromeSchemeFactories(
     content::WebContents* web_contents,
     const extensions::Extension* extension,
     ChromeContentBrowserClient::NonNetworkURLLoaderFactoryMap* factories) {
-  // Android does not support instant.
-#if !BUILDFLAG(IS_ANDROID)
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  InstantService* instant_service =
-      InstantServiceFactory::GetForProfile(profile);
-  // The test below matches when a remote 3P NTP is loaded. The effective
-  // URL is chrome-search://remote-ntp. This is to allow the use of the NTP
-  // public api and to embed most-visited tiles
-  // (chrome-search://most-visited/title.html).
-  //
-  // InstantService might be null for some irregular profiles, e.g. the System
-  // Profile.
-  if (instant_service && instant_service->IsInstantProcess(render_process_id)) {
-    factories->emplace(chrome::kChromeSearchScheme,
-                       content::CreateWebUIURLLoaderFactory(
-                           frame_host, chrome::kChromeSearchScheme,
-                           /*allowed_hosts=*/base::flat_set<std::string>()));
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
-
   extensions::ExtensionWebContentsObserver* web_observer =
       extensions::ExtensionWebContentsObserver::GetForWebContents(web_contents);
 
@@ -8476,8 +8255,7 @@ bool ChromeContentBrowserClient::ShouldSuppressAXLoadComplete(
   WebContents* web_contents = WebContents::FromRenderFrameHost(rfh);
 
   const GURL& url = web_contents->GetVisibleURL();
-  return url == chrome::ChromeUINewTabURLAsGURL() ||
-         url == chrome::ChromeUINewTabPageURLAsGURL();
+  return url == chrome::ChromeUINewTabURLAsGURL();
 }
 
 void ChromeContentBrowserClient::ShowCaptionSettings(

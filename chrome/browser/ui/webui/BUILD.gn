@@ -315,11 +315,6 @@ if (enable_extensions_core || enable_webui_ntp ||
     if (is_win || is_mac || is_linux || is_chromeos) {
       deps += [ "//chrome/browser/ui/webui/util" ]
     }
-
-    # InstantService (//chrome/browser/search) constructs FaviconSource, so it
-    # includes favicon_source.h while FaviconSource calls
-    # InstantService::ShouldServiceRequest() — a genuine bidirectional pair.
-    allow_circular_includes_from = [ "//chrome/browser/search" ]
   }
 }
 
@@ -405,12 +400,6 @@ if (!is_android || enable_extensions_core) {
         "//ui/chromeos/styles:cros_tokens_color_mappings",
       ]
     }
-
-    # ThemeSource uses InstantService::ShouldServiceRequest() and InstantService
-    # (//chrome/browser/search) constructs ThemeSource — a genuine
-    # bidirectional pair. //chrome/browser/search owns the real dep edge and the
-    # corresponding allow_circular_includes_from, since search transitively
-    # reaches theme_source via the NTP targets.
   }
 }
 

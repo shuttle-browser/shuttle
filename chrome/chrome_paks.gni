@@ -151,7 +151,6 @@ template("chrome_extra_paks") {
 
     if (enable_webui_ntp) {
       sources += [
-        "$root_gen_dir/chrome/new_tab_page_instant_resources.pak",
       ]
     }
 
@@ -194,7 +193,6 @@ template("chrome_extra_paks") {
     if (!is_android) {
       # New paks should be added here by default.
       sources += [
-        "$root_gen_dir/chrome/about_sys_resources.pak",
         "$root_gen_dir/chrome/actor_overlay_resources.pak",
         "$root_gen_dir/chrome/autofill_ml_internals_resources.pak",
         "$root_gen_dir/chrome/browser/actor/resources/actor_browser_resources.pak",
@@ -218,7 +216,6 @@ template("chrome_extra_paks") {
         "$root_gen_dir/chrome/side_panel_shared_resources.pak",
         "$root_gen_dir/chrome/side_panel_tabs_from_other_devices_resources.pak",
         "$root_gen_dir/chrome/signin_resources.pak",
-        "$root_gen_dir/chrome/support_tool_resources.pak",
         "$root_gen_dir/chrome/tab_group_home_resources.pak",
         "$root_gen_dir/chrome/tab_strip_api_resources.pak",
         "$root_gen_dir/chrome/webnn_internals_resources.pak",

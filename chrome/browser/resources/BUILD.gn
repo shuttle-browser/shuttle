@@ -27,7 +27,6 @@ group("resources") {
 
   if (enable_webui_ntp) {
     public_deps += [
-      "new_tab_page_instant:resources",
     ]
   }
 
@@ -41,7 +40,6 @@ group("resources") {
     public_deps += [
       ":app_icon_resources",
       ":dev_ui_paks",
-      "about_sys:resources",
       "actor_overlay:resources",
       "autofill_ml_internals:resources",
       "certificate_manager:resources",
@@ -64,7 +62,6 @@ group("resources") {
       "side_panel/shared:resources",
       "side_panel/tabs_from_other_devices:resources",
       "signin:resources",
-      "support_tool:resources",
       "tab_group_home:resources",
       "webnn_internals:resources",
       "webui_browser:resources",
@@ -354,7 +351,6 @@ group("dev_ui_resources") {
     "//components/history_clusters/history_clusters_internals/resources",
     "//components/metrics/debug:resources",
     "//components/net_log/resources",
-    "//components/ntp_tiles/webui/resources",
     "//components/optimization_guide/optimization_guide_internals/resources",
     "//components/policy/resources/webui:resources",
     "//components/resources:dev_ui_components_resources",

@@ -58,9 +58,6 @@ class FaviconSource : public content::URLDataSource {
   std::string GetMimeType(const GURL&) override;
   bool AllowCaching() override;
   bool ShouldReplaceExistingSource() override;
-  bool ShouldServiceRequest(const GURL& url,
-                            content::BrowserContext* browser_context,
-                            int render_process_id) override;
 
  protected:
   // Exposed for testing.

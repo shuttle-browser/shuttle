@@ -99,8 +99,7 @@ bool Is1pNtpUrl(const GURL& url) {
     return false;
   }
   if (url.SchemeIs(content::kChromeUIScheme) &&
-      (url.host() == chrome::kChromeUINewTabPageHost ||
-       url.host() == chrome::kChromeUINewTabHost)) {
+      url.host() == chrome::kChromeUINewTabHost) {
     return true;
   }
   if (url.SchemeIs(chrome::kChromeNativeScheme) &&

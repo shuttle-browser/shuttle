@@ -49,9 +49,6 @@
 
 class AccessibilityLabelsMenuObserver;
 class BrowserWindowInterface;
-#if BUILDFLAG(ENABLE_COMPOSE)
-class ChromeComposeClient;
-#endif
 class LinkToTextMenuObserver;
 class PrintPreviewContextMenuObserver;
 class Profile;
@@ -109,7 +106,6 @@ class RenderViewContextMenu
       public custom_handlers::ProtocolHandlerRegistry::Observer {
  public:
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kExitFullscreenMenuItem);
-  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kComposeMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kGlicReloadMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kGlicArchiveConversationMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kGlicShareImageMenuItem);
@@ -218,10 +214,6 @@ class RenderViewContextMenu
 
 #if BUILDFLAG(IS_CHROMEOS)
   virtual const policy::DlpRulesManager* GetDlpRulesManager() const;
-#endif
-
-#if BUILDFLAG(ENABLE_COMPOSE)
-  virtual ChromeComposeClient* GetChromeComposeClient() const;
 #endif
 
   // RenderViewContextMenuBase:
@@ -426,9 +418,6 @@ class RenderViewContextMenu
   void ExecLanguageSettings(int event_flags);
   void ExecProtocolHandlerSettings(int event_flags);
   void ExecPictureInPicture();
-#if BUILDFLAG(ENABLE_COMPOSE)
-  void ExecOpenCompose();
-#endif
   void ExecOpenInReadAnything();
   void ExecListenToThisPage();
   void ExecSaveToMemoryBanks();

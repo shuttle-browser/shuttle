@@ -36,7 +36,6 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/search/instant_service.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -73,8 +72,7 @@ bool IsOriginAllowedServerFallback(const GURL& url) {
   if (url == history_url.Resolve(chrome::kChromeUIHistorySyncedTabs)) {
     return true;
   }
-  if (url == chrome::ChromeUINewTabURLAsGURL() ||
-      url == chrome::ChromeUINewTabPageURLAsGURL()) {
+  if (url == chrome::ChromeUINewTabURLAsGURL()) {
     return true;
   }
   return false;
@@ -226,20 +224,6 @@ bool FaviconSource::ShouldReplaceExistingSource() {
   // Leave the existing DataSource in place, otherwise we'll drop any pending
   // requests on the floor.
   return false;
-}
-
-bool FaviconSource::ShouldServiceRequest(
-    const GURL& url,
-    content::BrowserContext* browser_context,
-    int render_process_id) {
-#if !BUILDFLAG(IS_ANDROID)
-  if (url.SchemeIs(chrome::kChromeSearchScheme)) {
-    return InstantService::ShouldServiceRequest(url, browser_context,
-                                                render_process_id);
-  }
-#endif
-  return URLDataSource::ShouldServiceRequest(url, browser_context,
-                                             render_process_id);
 }
 
 ui::NativeTheme* FaviconSource::GetNativeTheme(

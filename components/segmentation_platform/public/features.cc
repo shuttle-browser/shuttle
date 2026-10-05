@@ -29,8 +29,6 @@ BASE_FEATURE(kSegmentationPlatformAdaptiveToolbarV2Feature,
 BASE_FEATURE(kSegmentationPlatformLowEngagementFeature,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kShoppingUserSegmentFeature, base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kSegmentationPlatformSearchUser, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kSegmentationPlatformDeviceSwitcher,

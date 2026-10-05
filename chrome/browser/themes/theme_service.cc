@@ -41,8 +41,6 @@
 #include "chrome/browser/infobars/infobar_spec.h"
 #include "chrome/browser/new_tab_page/chrome_colors/chrome_colors_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search/background/ntp_custom_background_service.h"
-#include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/themes/browser_theme_pack.h"
 #include "chrome/browser/themes/custom_theme_supplier.h"
 #include "chrome/browser/themes/theme_properties.h"
@@ -62,6 +60,7 @@
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/tabs/public/tab_interface.h"
+#include "components/themes/ntp_custom_background_service_constants.h"
 #include "components/themes/pref_names.h"
 #include "extensions/browser/extension_file_task_runner.h"
 #include "extensions/browser/extension_prefs.h"
@@ -296,6 +295,32 @@ std::unique_ptr<ui::ThemeProvider> ThemeService::CreateBoundThemeProvider(
       delegate);
 }
 
+static base::DictValue NtpCustomBackgroundDefaults() {
+  base::DictValue defaults;
+  defaults.Set(kNtpCustomBackgroundURL, base::Value(base::Value::Type::STRING));
+  defaults.Set(kNtpCustomBackgroundAttributionLine1,
+               base::Value(base::Value::Type::STRING));
+  defaults.Set(kNtpCustomBackgroundAttributionLine2,
+               base::Value(base::Value::Type::STRING));
+  defaults.Set(kNtpCustomBackgroundAttributionActionURL,
+               base::Value(base::Value::Type::STRING));
+  defaults.Set(kNtpCustomBackgroundCollectionId,
+               base::Value(base::Value::Type::STRING));
+  defaults.Set(kNtpCustomBackgroundResumeToken,
+               base::Value(base::Value::Type::STRING));
+  defaults.Set(kNtpCustomBackgroundRefreshTimestamp,
+               base::Value(base::Value::Type::INTEGER));
+  return defaults;
+}
+
+// static
+void ThemeService::ResetNtpBackgroundPrefs(PrefService* prefs) {
+  prefs->ClearPref(prefs::kNtpCustomBackgroundDict);
+  prefs->SetBoolean(prefs::kNtpCustomBackgroundLocalToDevice, false);
+  prefs->ClearPref(prefs::kNtpCustomBackgroundLocalToDeviceId);
+  prefs->SetBoolean(prefs::kNtpCustomBackgroundInspiration, false);
+}
+
 // static
 void ThemeService::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {
@@ -303,6 +328,18 @@ void ThemeService::RegisterProfilePrefs(
   registry->RegisterIntegerPref(prefs::kSystemTheme,
                                 static_cast<int>(ui::GetDefaultSystemTheme()));
 #endif
+#if !BUILDFLAG(IS_ANDROID)
+  registry->RegisterDictionaryPref(
+      prefs::kDeprecatedNtpCustomBackgroundDictDoNotUse,
+      NtpCustomBackgroundDefaults(),
+      user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
+#endif
+  registry->RegisterDictionaryPref(prefs::kNtpCustomBackgroundDict,
+                                   NtpCustomBackgroundDefaults());
+  registry->RegisterBooleanPref(prefs::kNtpCustomBackgroundLocalToDevice,
+                                false);
+  registry->RegisterStringPref(prefs::kNtpCustomBackgroundLocalToDeviceId, "");
+  registry->RegisterBooleanPref(prefs::kNtpCustomBackgroundInspiration, false);
   registry->RegisterFilePathPref(prefs::kCurrentThemePackFilename,
                                  base::FilePath());
   registry->RegisterStringPref(prefs::kCurrentThemeID,
@@ -370,12 +407,6 @@ void ThemeService::Init() {
   theme_syncable_service_ =
       std::make_unique<ThemeSyncableService>(profile_, this);
 
-  ntp_custom_background_service_ =
-      NtpCustomBackgroundServiceFactory::GetForProfile(profile_);
-  if (ntp_custom_background_service_) {
-    ntp_custom_background_service_->SetThemeDelegate(this);
-  }
-
   // TODO(gayane): Temporary entry point for Chrome Colors. Remove once UI is
   // there.
   const base::CommandLine* command_line =
@@ -421,10 +452,6 @@ void ThemeService::Shutdown() {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   theme_observer_.reset();
 #endif
-  if (ntp_custom_background_service_) {
-    ntp_custom_background_service_->RemoveThemeDelegate();
-    ntp_custom_background_service_ = nullptr;
-  }
   theme_syncable_service_.reset();
 }
 
@@ -530,15 +557,6 @@ bool ThemeService::UsingDefaultTheme() const {
 
 bool ThemeService::UsingSystemTheme() const {
   return UsingDefaultTheme();
-}
-
-void ThemeService::OnBackgroundColorExtracted(SkColor color) {
-  SetUserColorAndBrowserColorVariant(
-      color, ui::mojom::BrowserColorVariant::kTonalSpot);
-}
-
-void ThemeService::OnNtpCustomBackgroundServiceShuttingDown() {
-  ntp_custom_background_service_ = nullptr;
 }
 
 bool ThemeService::UsingExtensionTheme() const {
@@ -944,7 +962,7 @@ void ThemeService::ClearThemeData(bool reset_all_settings) {
     // want platforms to set the value if they have a visible toggle.
     profile_->GetPrefs()->ClearPref(prefs::kBrowserFollowsSystemThemeColors);
 #endif
-    NtpCustomBackgroundService::ResetNtpTheme(profile_);
+    ResetNtpBackgroundPrefs(profile_->GetPrefs());
   }
 
   // Disable extension after modifying the prefs so that unloading the extension
@@ -1251,7 +1269,7 @@ void ThemeService::ClearThemePrefs() {
 void ThemeService::SetThemePrefsForExtension(
     const extensions::Extension* extension) {
   ClearThemePrefs();
-  NtpCustomBackgroundService::ResetNtpTheme(profile_);
+  ResetNtpBackgroundPrefs(profile_->GetPrefs());
   // Extensions are incompatible with device themes so turn them off.
   // TODO(crbug.com/40280173): Remove this if we can otherwise separate
   // extension and device themes from attempting to apply at the same time.

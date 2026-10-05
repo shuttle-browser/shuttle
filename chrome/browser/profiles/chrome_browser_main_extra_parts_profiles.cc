@@ -174,8 +174,6 @@
 #include "chrome/browser/reduce_accept_language/reduce_accept_language_factory.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
-#include "chrome/browser/search/background/ntp_background_service_factory.h"
-#include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
 #include "chrome/browser/search_engines/template_url_fetcher_factory.h"
 #include "chrome/browser/search_engines/template_url_prepopulate_data_resolver_factory.h"
@@ -324,7 +322,6 @@
 #include "chrome/browser/password_manager/remote_actor/remote_actor_credential_sharing_service_factory.h"
 #include "chrome/browser/prefs/persistent_renderer_prefs_manager_factory.h"
 #include "chrome/browser/profile_resetter/reset_report_uploader_factory.h"
-#include "chrome/browser/search/instant_service_factory.h"
 #include "chrome/browser/speech/speech_recognition_client_browser_interface_factory.h"
 #include "chrome/browser/speech/speech_recognition_service_factory.h"
 #include "chrome/browser/storage/storage_notification_service_factory.h"
@@ -931,7 +928,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   InMemoryURLIndexFactory::GetInstance();
   visited_url_ranking::VisitedURLRankingServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
-  InstantServiceFactory::GetInstance();
 #endif
 #if BUILDFLAG(IS_WIN)
   JumpListFactory::GetInstance();
@@ -1009,8 +1005,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   NtpAndroidBackgroundServiceFactory::GetInstance();
   NtpAndroidCustomBackgroundServiceFactory::GetInstance();
 #endif
-  NtpBackgroundServiceFactory::GetInstance();
-  NtpCustomBackgroundServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
   NTPResourceCacheFactory::GetInstance();
 #endif

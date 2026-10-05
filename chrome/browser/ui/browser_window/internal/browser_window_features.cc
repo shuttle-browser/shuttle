@@ -31,7 +31,6 @@
 #include "chrome/browser/ui/browser_content_setting_bubble_model_delegate.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_init_state.h"
-#include "chrome/browser/ui/browser_instant_controller.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #include "chrome/browser/ui/browser_location_bar_model_delegate.h"
 #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
@@ -468,11 +467,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
 
     initial_web_ui_manager_ = std::make_unique<InitialWebUIManager>(browser);
-
-    if (search::IsInstantExtendedAPIEnabled()) {
-      instant_controller_ = std::make_unique<BrowserInstantController>(
-          profile, browser->GetTabStripModel());
-    }
 
     if (profile->IsRegularProfile() &&
         browser->GetTabStripModel()->SupportsTabGroups() &&

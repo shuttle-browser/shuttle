@@ -38,7 +38,6 @@
 #include "components/sync/protocol/theme_types.pb.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/sync_preferences/pref_service_syncable_observer.h"
-#include "components/themes/ntp_custom_background_service_base.h"
 #include "components/themes/ntp_custom_background_service_constants.h"
 #include "components/themes/theme_utils.h"
 #include "extensions/browser/disable_reason.h"

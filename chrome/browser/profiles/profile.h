@@ -32,7 +32,6 @@ class ProfileDestroyer;
 class ProfileKey;
 class TestingProfile;
 class ThemeService;
-class InstantService;
 
 namespace base {
 class FilePath;
@@ -497,12 +496,6 @@ class Profile : public content::BrowserContext {
   const std::optional<raw_ptr<ThemeService>>& theme_service() {
     return theme_service_;
   }
-  void set_instant_service(InstantService* instant_service) {
-    instant_service_ = instant_service;
-  }
-  const std::optional<raw_ptr<InstantService>>& instant_service() {
-    return instant_service_;
-  }
 
   // Returns a debug information in std::string.
   std::string ToDebugString() const;
@@ -575,7 +568,6 @@ class Profile : public content::BrowserContext {
   // Experimental objects to gauge the performance of caching frequently used
   // KeyedServices in a Profile pointer.
   std::optional<raw_ptr<ThemeService>> theme_service_;
-  std::optional<raw_ptr<InstantService>> instant_service_;
 
   base::ObserverList<ProfileObserver,
                      /*check_empty=*/true,

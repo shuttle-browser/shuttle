@@ -364,16 +364,6 @@ void BrowserProcessImpl::Init() {
   print_job_manager_ = std::make_unique<printing::PrintJobManager>();
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (!base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer)) {
-    ChildProcessSecurityPolicy::GetInstance()->RegisterWebSafeScheme(
-        chrome::kChromeSearchScheme);
-  } else {
-    ChildProcessSecurityPolicy::GetInstance()->RegisterWebSafeIsolatedScheme(
-        chrome::kChromeSearchScheme);
-  }
-#endif
-
 #if BUILDFLAG(IS_MAC)
   ui::InitIdleMonitor();
 #endif

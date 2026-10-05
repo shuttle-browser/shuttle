@@ -57,7 +57,6 @@ browser_exposed_mojom_targets = [
   "//chrome/common:supervised_user_commands_mojom",
   "//chrome/common/read_anything:mojo_bindings",
   "//chrome/common/importer:interfaces",
-  "//chrome/common/search:mojo_bindings",
   "//chrome/services/file_util/public/mojom:mojom",
   "//components/media_gallery_util/public/mojom:mojom",
   "//chrome/services/printing/public/mojom:mojom",

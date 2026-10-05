@@ -98,7 +98,6 @@ source_set("impl") {
     "//chrome/browser/push_messaging",
     "//chrome/browser/push_messaging:service_impl_public",
     "//chrome/browser/search",
-    "//chrome/browser/search/background",
     "//chrome/browser/serial",
     "//chrome/browser/signin",
     "//chrome/browser/signin:signin_promo",

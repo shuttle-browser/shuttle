@@ -8,8 +8,6 @@ assert(is_win || is_mac || is_linux || is_chromeos || is_android)
 
 source_set("search") {
   sources = [
-    "ntp_custom_background_enabled_policy_handler.cc",
-    "ntp_custom_background_enabled_policy_handler.h",
     "search.cc",
     "search.h",
   ]
@@ -37,20 +35,8 @@ source_set("search") {
     ]
     public_deps += [ "//components/policy/core/browser" ]
     deps += [ "//components/prefs" ]
-    if (enable_webui_ntp) {
-    }
   } else {
     sources += [
-      "instant_service.cc",
-      "instant_service.h",
-      "instant_service_factory.cc",
-      "instant_service_factory.h",
-      "instant_service_observer.cc",
-      "instant_service_observer.h",
-      "most_visited_iframe_source.cc",
-      "most_visited_iframe_source.h",
-      "search_engine_base_url_tracker.cc",
-      "search_engine_base_url_tracker.h",
     ]
     public_deps += [
       "//base",
@@ -71,12 +57,9 @@ source_set("search") {
     deps += [
       "//chrome/app/theme:theme_resources",
       "//chrome/app/theme:theme_resources_grit",
-      "//chrome/browser/resources/new_tab_page_instant:resources",
-      "//chrome/browser/resources/new_tab_page_instant:resources_grit",
       "//chrome/browser/ui/webui:theme_source",
       "//chrome/common:constants",
       "//chrome/common:non_code_constants",
-      "//chrome/common/search:mojo_bindings",
       "//components/favicon_base",
       "//components/page_image_service/mojom:mojo_bindings",
       "//components/policy:generated",
@@ -89,11 +72,6 @@ source_set("search") {
       "//ui/base",
       "//ui/gfx:color_utils",
     ]
-
-    # InstantService constructs ThemeSource while theme_source.cc includes
-    # instant_service.h (InstantService::ShouldServiceRequest) — a genuine
-    # bidirectional pair, with the real dep edge owned here.
-    allow_circular_includes_from = [ "//chrome/browser/ui/webui:theme_source" ]
   }
 }
 
@@ -105,8 +83,6 @@ source_set("unit_tests") {
 
   if (!is_android) {
     sources += [
-      "background/ntp_custom_background_service_unittest.cc",
-      "most_visited_iframe_source_unittest.cc",
       "ntp_features_unittest.cc",
     ]
 
@@ -114,8 +90,6 @@ source_set("unit_tests") {
       ":search",
       "//base",
       "//base/test:test_support",
-      "//chrome/browser/resources/new_tab_page_instant:resources_grit",
-      "//chrome/browser/search/background",
       "//chrome/browser/search_engines",
       "//chrome/test:test_support",
       "//components/application_locale_storage",
@@ -149,8 +123,6 @@ if (!is_android) {
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
     sources = [
-      "instant_browsertest_base.cc",
-      "instant_browsertest_base.h",
     ]
 
     public_deps = [ "//chrome/test:test_support_ui" ]
@@ -174,10 +146,6 @@ if (!is_android) {
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
     sources = [
-      "instant_service_browsertest.cc",
-      "ntp_custom_background_enabled_policy_handler_browsertest.cc",
-      "search_browsertest.cc",
-      "search_engine_base_url_tracker_browsertest.cc",
     ]
 
     deps = [
@@ -185,7 +153,6 @@ if (!is_android) {
       ":test_support",
       "//base",
       "//chrome/browser/optimization_guide:test_support",
-      "//chrome/browser/search/background",
       "//chrome/browser/search_engines",
       "//chrome/browser/ui",
       "//chrome/browser/ui/browser_window",

@@ -27,7 +27,7 @@ bool ChromeGWSPageLoadMetricsObserver::IsFromNewTabPage(
   }
 
   auto& principal = start_instance->GetSecurityPrincipal();
-  const GURL& ntp_url = chrome::ChromeUINewTabPageURLAsGURL();
+  const GURL& ntp_url = chrome::ChromeUINewTabURLAsGURL();
 
   return principal.SchemeIs(ntp_url.scheme()) &&
          principal.GetHost() == ntp_url.host();

@@ -934,7 +934,6 @@ void RenderViewContextMenu::AddSpellCheckServiceItem(ui::SimpleMenuModel* menu,
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
                                       kExitFullscreenMenuItem);
-DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu, kComposeMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
                                       kGlicReloadMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
@@ -1562,16 +1561,6 @@ void RenderViewContextMenu::RecordUsedItem(int id) {
     } else if (doc_url == GURL(chrome::kChromeUIDownloadsURL)) {
       base::RecordAction(base::UserMetricsAction(
           "Downloads_OpenUrlOfDownloadedItemFromContextMenu"));
-    } else if (doc_url.DeprecatedGetOriginAsURL() ==
-               chrome::kChromeSearchMostVisitedUrl) {
-      base::RecordAction(
-          base::UserMetricsAction("MostVisited_ClickedFromContextMenu"));
-    } else if (doc_url.DeprecatedGetOriginAsURL() ==
-                   chrome::ChromeUINewTabPageURLAsGURL() ||
-               doc_url.DeprecatedGetOriginAsURL() ==
-                   GURL(chrome::kChromeUIUntrustedNewTabPageUrl)) {
-      base::RecordAction(base::UserMetricsAction(
-          "NewTabPage.LinkOpenedFromContextMenu.WebUI"));
     }
   }
 
@@ -3187,8 +3176,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
                 ContextMenuData::kMediaCanPictureInPicture);
 
     case IDC_CONTENT_CONTEXT_EMOJI:
-      return params_.is_editable;
-    case IDC_CONTEXT_COMPOSE:
       return params_.is_editable;
 
     case IDC_CONTENT_CONTEXT_START_SMART_SELECTION_ACTION1:

@@ -396,25 +396,6 @@ inline constexpr char kCSSGridLanesLayoutDescription[] =
     "etc.). More details on grid-lanes syntax can be found at "
     "https://www.w3.org/TR/css-grid-3/#masonry-model.";
 
-inline constexpr char kCustomizeChromeSidePanelExtensionsCardName[] =
-    "Customize Chrome Side Panel Extension Card";
-inline constexpr char kCustomizeChromeSidePanelExtensionsCardDescription[] =
-    "If enabled, shows an extension card within the Customize Chrome Side "
-    "Panel for access to the Chrome Web Store extensions.";
-
-inline constexpr char kCustomizeChromeWallpaperSearchName[] =
-    "Customize Chrome Wallpaper Search";
-inline constexpr char kCustomizeChromeWallpaperSearchDescription[] =
-    "Enables wallpaper search in Customize Chrome Side Panel.";
-
-inline constexpr char kCustomizeChromeWallpaperSearchButtonName[] =
-    "Customize Chrome Wallpaper Search Button";
-inline constexpr char kCustomizeChromeWallpaperSearchButtonDescription[] =
-    "Enables entry point on Customize Chrome Side Panel's Appearance page for "
-    "Wallpaper Search.";
-
-inline constexpr char kCustomizeChromeWallpaperSearchInspirationCardName[] =
-    "Customize Chrome Wallpaper Search Inspiration Card";
 inline constexpr char
     kCustomizeChromeWallpaperSearchInspirationCardDescription[] =
         "Shows inspiration card in Customize Chrome Side Panel Wallpaper "
@@ -586,10 +567,6 @@ inline constexpr char kEnableWebSigninLoadingDialogDescription[] =
 inline constexpr char kEnergyEffectName[] = "Energy Effect";
 inline constexpr char kEnergyEffectDescription[] =
     "Enables the Energy Effect for the Realbox.";
-
-inline constexpr char kEnergyEffectAnimationName[] = "Energy Effect Animation";
-inline constexpr char kEnergyEffectAnimationDescription[] =
-    "Enables animations for the Energy Effect for the Realbox.";
 
 inline constexpr char kForceHistoryOptInScreenName[] =
     "Force history opt-in screen";
@@ -4761,10 +4738,6 @@ inline constexpr char kToolbarTabletResizeRefactorDescription[] =
     "Enables the refactored logic in Android for the toolbar tablet class for "
     "new animations and what buttons to show on window resizing.";
 
-inline constexpr char kTouchToSearchCalloutName[] = "Touch To Search Callout";
-inline constexpr char kTouchToSearchCalloutDescription[] =
-    "Enables a callout in the touch to search panel.";
-
 inline constexpr char kTopChromeTouchUiName[] = "Touch UI Layout";
 inline constexpr char kTopChromeTouchUiDescription[] =
     "Enables touch UI layout in the browser's top chrome.";
@@ -6834,11 +6807,6 @@ inline constexpr char kLensOverlayVirtualFocusNavigationDescription[] =
     "Enables virtual focus keyboard navigation within the Lens Overlay "
     "searchbox.";
 
-inline constexpr char kOmniboxEverywhereVirtualFocusNavigationName[] =
-    "Enable Omnibox Everywhere Virtual Focus Navigation";
-inline constexpr char kOmniboxEverywhereVirtualFocusNavigationDescription[] =
-    "Enables virtual focus keyboard navigation within Omnibox Everywhere.";
-
 inline constexpr char kWebuiBrowserVirtualFocusNavigationName[] =
     "Enable WebUI Browser Virtual Focus Navigation";
 inline constexpr char kWebuiBrowserVirtualFocusNavigationDescription[] =
@@ -6869,36 +6837,6 @@ inline constexpr char kNativeViewHostManagesLayersName[] =
 inline constexpr char kNativeViewHostManagesLayersDescription[] =
     "Enables NativeViewHost to control the layers of the native view.";
 
-inline constexpr char kNtpAlphaBackgroundCollectionsName[] =
-    "NTP Alpha Background Collections";
-inline constexpr char kNtpAlphaBackgroundCollectionsDescription[] =
-    "Shows alpha NTP background collections in Customize Chrome.";
-
-inline constexpr char kNtpBackgroundImageErrorDetectionName[] =
-    "NTP Background Image Error Detection";
-inline constexpr char kNtpBackgroundImageErrorDetectionDescription[] =
-    "Checks NTP background image links for HTTP status errors.";
-
-inline constexpr char kNtpCalendarModuleName[] = "NTP Calendar Module";
-inline constexpr char kNtpCalendarModuleDescription[] =
-    "Shows the Google Calendar module on the New Tab Page.";
-
-
-inline constexpr char kNtpCustomizeChromeAutoOpenName[] =
-    "NTP Customize Chrome Auto Promo";
-inline constexpr char kNtpCustomizeChromeAutoOpenDescription[] =
-    "Shows the Customize Chrome on the New Tab Page automatically.";
-
-inline constexpr char kNtpCustomizeWebUiAndroidName[] =
-    "Customize WebUI Android";
-inline constexpr char kNtpCustomizeWebUiAndroidDescription[] =
-    "Enables Customize WebUI on Android.";
-
-
-
-inline constexpr char kNtpDriveModuleName[] = "NTP Drive Module";
-inline constexpr char kNtpDriveModuleDescription[] =
-    "Shows the Google Drive module on the New Tab Page";
 
 inline constexpr char kNtpDriveModuleSegmentationName[] =
     "NTP Drive Module Segmentation";
@@ -6906,129 +6844,20 @@ inline constexpr char kNtpDriveModuleSegmentationDescription[] =
     "Uses segmentation data to decide whether to show the Drive module on the "
     "New Tab Page.";
 
-inline constexpr char kNtpDummyModulesName[] = "NTP Dummy Modules";
-inline constexpr char kNtpDummyModulesDescription[] =
-    "Adds dummy modules to New Tab Page when 'NTP Modules Redesigned' is "
-    "enabled.";
-
-inline constexpr char kNtpFeatureOptimizationDismissModulesRemovalName[] =
-    "NTP Feature Optimization Dismiss Modules Removal";
-inline constexpr char
-    kNtpFeatureOptimizationDismissModulesRemovalDescription[] =
-        "Removes the dismiss module buttons from the NTP modules.";
-
-inline constexpr char kNtpFeatureOptimizationModuleRemovalName[] =
-    "NTP Feature Optimization Module Removal";
-inline constexpr char kNtpFeatureOptimizationModuleRemovalDescription[] =
-    "Enables auto-removal of stale modules from the NTP.";
-
-inline constexpr char kNtpFeatureOptimizationShortcutsRemovalName[] =
-    "NTP Feature Optimization Shortcuts Removal";
-inline constexpr char kNtpFeatureOptimizationShortcutsRemovalDescription[] =
-    "Enables auto-removal of stale shortcuts from the NTP.";
-
-inline constexpr char kNtpAnimatedDoodlesName[] = "NTP Animated Doodles";
-inline constexpr char kNtpAnimatedDoodlesDescription[] =
-    "Enables animated Doodles on the NTP.";
-
-inline constexpr char kNtpDoodleMuralsName[] = "NTP Doodle Murals";
-inline constexpr char kNtpDoodleMuralsDescription[] =
-    "Enables Doodle Murals on the NTP.";
-
-inline constexpr char kNtpThreadsRailName[] = "NTP Threads Rail";
-inline constexpr char kNtpThreadsRailDescription[] =
-    "Enables the Threads Rail on the NTP.";
-
 inline constexpr char kNtpSimplificationBookmarkBarName[] =
     "NTP Simplification Bookmark Bar";
 inline constexpr char kNtpSimplificationBookmarkBarDescription[] =
     "Auto-removes the bookmark bar on the New Tab Page and updates bookmark "
     "bar visbility settings.";
 
-inline constexpr char kNtpFooterName[] = "NTP Footer";
-inline constexpr char kNtpFooterDescription[] =
-    "Adds footer to New Tab Page that encapsulates customize buttons and "
-    "background/theme attributions.";
-
-inline constexpr char kNtpMicrosoftAuthenticationModuleName[] =
-    "NTP Microsoft Authentication Module";
-inline constexpr char kNtpMicrosoftAuthenticationModuleDescription[] =
-    "Shows the Microsoft Authentication Module on the New Tab Page.";
-
-inline constexpr char kNtpMiddleSlotPromoDismissalName[] =
-    "NTP Middle Slot Promo Dismissal";
-inline constexpr char kNtpMiddleSlotPromoDismissalDescription[] =
-    "Allows middle slot promo to be dismissed from New Tab Page until "
-    "new promo message is populated.";
-
-inline constexpr char kNtpModuleSignInRequirementName[] =
-    "NTP Modules Sign-in Requirement";
-inline constexpr char kNtpModuleSignInRequirementDescription[] =
-    "Makes NTP Sign-in Requirement per module, removing the requirement for "
-    "Microsoft Modules";
-
 inline constexpr char kNtpNextFeaturesName[] = "NTP Next Features";
 inline constexpr char kNtpNextFeaturesDescription[] =
     "Enables features (e.g., AI action chips) in NTP Next";
-
-inline constexpr char kNtpNextCanvasChipName[] = "NTP Next Canvas Chip";
-inline constexpr char kNtpNextCanvasChipDescription[] =
-    "Enables the Canvas tool chip for NTP action chips";
-
-inline constexpr char kNtpOneGoogleBarAsyncBarPartsName[] =
-    "NTP OneGoogleBar Async Bar Parts";
-inline constexpr char kNtpOneGoogleBarAsyncBarPartsDescription[] =
-    "Enables the OneGoogleBar async bar parts API on the New Tab Page.";
-
-inline constexpr char kNtpOutlookCalendarModuleName[] =
-    "NTP Outlook Calendar Module";
-inline constexpr char kNtpOutlookCalendarModuleDescription[] =
-    "Shows the Outlook Calendar module on the New Tab Page.";
 
 inline constexpr char kNtpRealboxCr23ThemingName[] =
     "Chrome Refresh Themed Realbox";
 inline constexpr char kNtpRealboxCr23ThemingDescription[] =
     "CR23 theming will be applied in Realbox when enabled.";
-
-inline constexpr char kNtpScaledActionChipsName[] = "NTP Scaled Action Chips";
-inline constexpr char kNtpScaledActionChipsDescription[] =
-    "Enables scaled merchandising action chips (e.g., dynamic tool suggestions "
-    "and resource pickers) on the New Tab Page.";
-
-inline constexpr char kNtpScaledActionChipsSmallName[] =
-    "NTP Scaled Action Chips Small";
-inline constexpr char kNtpScaledActionChipsSmallDescription[] =
-    "Enables small scaled merchandising action chips on the New Tab Page.";
-
-inline constexpr char kNtpSharepointModuleName[] = "NTP Sharepoint Module";
-inline constexpr char kNtpSharepointModuleDescription[] =
-    "Shows the Sharepoint module on the New Tab Page.";
-
-inline constexpr char kNtpStarterChipName[] = "NTP Starter Chip";
-inline constexpr char kNtpStarterChipDescription[] =
-    "Enables the starter chip on the New Tab Page.";
-
-inline constexpr char kNtpTabGroupsModuleName[] = "NTP Tab Groups Module";
-inline constexpr char kNtpTabGroupsModuleDescription[] =
-    "Shows the Tab Groups module on the New Tab Page.";
-
-inline constexpr char kNtpTabGroupsModuleZeroStateName[] =
-    "NTP Tab Groups Zero State Card";
-inline constexpr char kNtpTabGroupsModuleZeroStateDescription[] =
-    "Enables the zero-state card for the Tab Groups Module on the New Tab "
-    "Page.";
-
-inline constexpr char kNtpWallpaperSearchButtonName[] =
-    "NTP Wallpaper Search Button";
-inline constexpr char kNtpWallpaperSearchButtonDescription[] =
-    "Enables entry point on New Tab Page for Customize Chrome Side Panel "
-    "Wallpaper Search.";
-
-inline constexpr char kNtpWallpaperSearchButtonAnimationName[] =
-    "NTP Wallpaper Search Button Animation";
-inline constexpr char kNtpWallpaperSearchButtonAnimationDescription[] =
-    "Enables animation for New Tab Page's Wallpaper Search button. Requires "
-    "#ntp-wallpaper-search-button to be enabled too.";
 
 inline constexpr char kHappinessTrackingSurveysForDesktopDemoName[] =
     "Happiness Tracking Surveys Demo";

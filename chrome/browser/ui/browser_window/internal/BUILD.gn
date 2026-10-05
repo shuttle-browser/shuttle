@@ -175,7 +175,6 @@ source_set("internal") {
 
   if (!is_android) {
     deps += [
-      "//chrome/browser/ui:browser_instant_controller",
       "//chrome/browser/ui:browser_location_bar_model_delegate",
       "//chrome/browser/ui:browser_select_file_dialog_controller",
     ]

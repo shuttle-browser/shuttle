@@ -201,8 +201,6 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
   source->AddLocalizedStrings(kHistorySyncStrings);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  source->AddBoolean("enableHistoryEmbeddings", false);
-  source->AddBoolean("maybeShowEmbeddingsIph", false);
   source->AddBoolean("isBrowsingHistoryActorIntegrationM3Enabled",
                      history::IsBrowsingHistoryActorIntegrationM3Enabled());
   source->AddBoolean("isCriticalActionsEnabled", is_critical_actions_enabled);

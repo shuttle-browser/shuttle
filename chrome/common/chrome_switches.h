@@ -437,9 +437,6 @@ inline constexpr char kInstallIsolatedWebAppFromFile[] =
 inline constexpr char kInstallIsolatedWebAppFromUrl[] =
     "install-isolated-web-app-from-url";
 
-// Marks a renderer as an Instant process.
-inline constexpr char kInstantProcess[] = "instant-process";
-
 // Used for testing - keeps browser alive after last browser window closes.
 inline constexpr char kKeepAliveForTest[] = "keep-alive-for-test";
 

@@ -162,7 +162,6 @@
 #include "components/user_manager/user.h"
 #include "ui/base/ui_base_features.h"
 #else  // !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
 #include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/ui/webui/cr_components/signin/signin_utils_handler.h"
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
@@ -324,11 +323,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddBoolean("isOSSettings", false);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  bool show_privacy_guide =
-      base::FeatureList::IsEnabled(features::kPrivacyGuideForceAvailable) ||
-      (!ShouldDisplayManagedUi(profile) && !profile->IsChild());
-  html_source->AddBoolean("showPrivacyGuide", show_privacy_guide);
-
   html_source->AddBoolean("enableHandTrackingContentSetting",
 #if BUILDFLAG(ENABLE_VR)
                           device::features::IsHandTrackingEnabled());
@@ -474,8 +468,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddBoolean("enableInlineCueMenuContentSetting", false);
 
   // AI. Glic (Gemini in Chrome) is not part of this build.
-  html_source->AddBoolean("showGlicSettings", false);
-  html_source->AddBoolean("glicDisallowedByAdmin", false);
 
   const auto& autofill_client =
       *autofill::ContentAutofillClient::FromWebContents(
@@ -683,8 +675,6 @@ void SettingsUI::CreateThemeColorPickerHandler(
         handler) {
   theme_color_picker_handler_ = std::make_unique<ThemeColorPickerHandler>(
       std::move(handler), std::move(client),
-      NtpCustomBackgroundServiceFactory::GetForProfile(
-          Profile::FromWebUI(web_ui())),
       web_ui()->GetWebContents());
 }
 

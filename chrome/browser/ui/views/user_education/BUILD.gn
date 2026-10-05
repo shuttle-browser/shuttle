@@ -76,7 +76,6 @@ source_set("impl") {
     "//chrome/browser/pdf",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/search/background",
     "//chrome/browser/signin",
     "//chrome/browser/themes",
     "//chrome/browser/ui:browser_actions",

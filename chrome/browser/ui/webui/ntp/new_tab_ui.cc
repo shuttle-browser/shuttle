@@ -36,24 +36,10 @@
 #include "url/gurl.h"
 
 bool NewTabUIConfig::IsWebUIEnabled(content::BrowserContext* browser_context) {
-  Profile* profile = Profile::FromBrowserContext(browser_context);
   // Agent Chrome: chrome://newtab/ is never rewritten, so NewTabUI serves the
-  // New Tab page for every profile type. Regular profiles get a blank page.
-  //
-  // The switch statement below must be consistent with the code in
-  // NTPResourceCache::GetNewTabHTML!
-  switch (NTPResourceCache::GetWindowType(profile)) {
-    case NTPResourceCache::NORMAL:
-      [[fallthrough]];
-    case NTPResourceCache::INCOGNITO:
-      [[fallthrough]];
-    case NTPResourceCache::GUEST:
-      [[fallthrough]];
-    case NTPResourceCache::ISOLATED:
-      [[fallthrough]];
-    case NTPResourceCache::NON_PRIMARY_OTR:
-      return true;
-  }
+  // New Tab page for every profile type (normal, incognito, guest, isolated
+  // and non-primary OTR). Regular profiles get a blank page.
+  return true;
 }
 
 namespace {
@@ -201,10 +187,7 @@ std::string NewTabUI::NewTabHTMLSource::GetContentSecurityPolicy(
     return "style-src 'self' chrome://resources 'unsafe-inline' "
            "chrome://theme;";
   } else if (directive == network::mojom::CSPDirectiveName::ImgSrc) {
-    return "img-src chrome-search://thumb chrome-search://thumb2 "
-           "chrome-search://theme chrome://theme data:;";
-  } else if (directive == network::mojom::CSPDirectiveName::ChildSrc) {
-    return "child-src chrome-search://most-visited;";
+    return "img-src chrome://theme data:;";
   } else if (directive ==
                  network::mojom::CSPDirectiveName::RequireTrustedTypesFor ||
              directive == network::mojom::CSPDirectiveName::TrustedTypes) {

@@ -359,22 +359,6 @@ if (!is_android) {
   }
 
 
-  source_set("browser_instant_controller") {
-    public = [ "browser_instant_controller.h" ]
-    sources = [ "browser_instant_controller.cc" ]
-    deps = [
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/search",
-      "//chrome/browser/search_engines",
-      "//chrome/browser/ui/search",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/common",
-      "//components/infobars/content",
-      "//content/public/browser",
-      "//content/public/common",
-      "//ui/base",
-    ]
-  }
 
   source_set("browser_location_bar_model_delegate") {
     public = [ "browser_location_bar_model_delegate.h" ]

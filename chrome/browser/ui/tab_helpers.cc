@@ -79,6 +79,7 @@
 #include "chrome/browser/ui/autofill/autofill_client_provider.h"
 #include "chrome/browser/ui/autofill/autofill_client_provider_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
+#include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
 #include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
@@ -169,7 +170,6 @@
 #else
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_desktop.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_controller.h"
-#include "chrome/browser/ui/search/search_tab_helper.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/uma_browsing_activity_observer.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
@@ -624,7 +624,9 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
     ManagePasswordsUIController::CreateForWebContents(web_contents);
   }
 
-  SearchTabHelper::CreateForWebContents(web_contents);
+  // Formerly created by SearchTabHelper; ToastController and the omnibox
+  // observe it on every tab.
+  OmniboxTabHelper::CreateForWebContents(web_contents, profile);
   TabDialogs::CreateForWebContents(web_contents);
   UMABrowsingActivityObserver::TabHelper::CreateForWebContents(web_contents);
   web_modal::WebContentsModalDialogManager::CreateForWebContents(web_contents);

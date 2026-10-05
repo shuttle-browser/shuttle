@@ -171,8 +171,6 @@
 #include "components/tab_groups/features.h"
 #include "components/themes/cross_device/features.h"
 #include "components/thin_webview/features.h"
-#include "components/touch_to_search/core/browser/contextual_search_field_trial.h"
-#include "components/touch_to_search/core/browser/public.h"
 #include "components/tracing/common/tracing_switches.h"
 #include "components/trusted_vault/features.h"
 #include "components/ui_devtools/switches.h"
@@ -418,11 +416,6 @@ const FeatureEntry::FeatureVariation kScrollbarModeVariations[] = {
     {"overlay (with fade out)", kScrollbarModeOverlay, nullptr},
     {"device (follow OS setting)", kScrollbarModeDevice, nullptr},
     {"classic (always show)", kScrollbarModeClassic, nullptr}};
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-
-
-#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 
 const FeatureEntry::FeatureParam kLocalNetworkAccessChecksBlock[] = {
     {"LocalNetworkAccessChecksWarn", "false"}};
@@ -1300,45 +1293,17 @@ const FeatureEntry::Choice kContextualSuggestionsUiImprovementsChoices[] = {
      "OpenLensActionUITweaks"},
 };
 
-const FeatureEntry::FeatureParam kNtpFeatureOptimizationModuleRemovalDefault[] =
-    {
-        {"ModuleMinStalenessUpdateTimeInterval", "24h"},
-        {"StaleModulesCountThreshold", "14"},
-};
 
-const FeatureEntry::FeatureParam kNtpFeatureOptimizationModuleRemovalTesting[] =
-    {
-        {"ModuleMinStalenessUpdateTimeInterval", "1s"},
-        {"StaleModulesCountThreshold", "2"},
-};
 
-const FeatureEntry::FeatureVariation
-    kNtpFeatureOptimizationModuleRemovalVariations[] = {
-        {"- Default Auto-Removal Timing",
-         kNtpFeatureOptimizationModuleRemovalDefault, nullptr},
-        {"- Auto-Removal Timing for Testing",
-         kNtpFeatureOptimizationModuleRemovalTesting, nullptr},
-};
 
-const FeatureEntry::FeatureParam
-    kNtpFeatureOptimizationShortcutsRemovalDefault[] = {
-        {"ShortcutsMinStalenessUpdateTimeInterval", "24h"},
-        {"StaleShortcutsCountThreshold", "60"},
-};
 
-const FeatureEntry::FeatureParam
-    kNtpFeatureOptimizationShortcutsRemovalTesting[] = {
-        {"ShortcutsMinStalenessUpdateTimeInterval", "1s"},
-        {"StaleShortcutsCountThreshold", "5"},
-};
 
-const FeatureEntry::FeatureVariation
-    kNtpFeatureOptimizationShortcutsRemovalVariations[] = {
-        {"- Default Auto-Removal Timing",
-         kNtpFeatureOptimizationShortcutsRemovalDefault, nullptr},
-        {"- Auto-Removal Timing for Testing",
-         kNtpFeatureOptimizationShortcutsRemovalTesting, nullptr},
-};
+
+
+
+
+
+
 
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) ||
         // BUILDFLAG(IS_WIN)
@@ -1944,39 +1909,6 @@ const FeatureEntry::FeatureVariation kSidePanelFlyoverAnimationVariations[] = {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-const FeatureEntry::FeatureParam kNtpCalendarModuleFakeData[] = {
-    {ntp_features::kNtpCalendarModuleDataParam, "fake"}};
-const FeatureEntry::FeatureVariation kNtpCalendarModuleVariations[] = {
-    {"- Fake Data", kNtpCalendarModuleFakeData, nullptr},
-};
-
-const FeatureEntry::FeatureParam kNtpDriveModuleFakeData[] = {
-    {ntp_features::kNtpDriveModuleDataParam, "fake"}};
-const FeatureEntry::FeatureParam kNtpDriveModuleManagedUsersOnly[] = {
-    {ntp_features::kNtpDriveModuleManagedUsersOnlyParam, "true"}};
-const FeatureEntry::FeatureVariation kNtpDriveModuleVariations[] = {
-    {"- Fake Data", kNtpDriveModuleFakeData, nullptr},
-    {"- Managed Users Only", kNtpDriveModuleManagedUsersOnly, nullptr},
-};
-
-const FeatureEntry::FeatureParam kNtpOutlookCalendarModuleFakeData[] = {
-    {ntp_features::kNtpOutlookCalendarModuleDataParam, "fake"}};
-const FeatureEntry::FeatureParam
-    kNtpOutlookCalendarModuleFakeAttachmentsData[] = {
-        {ntp_features::kNtpOutlookCalendarModuleDataParam, "fake-attachments"}};
-const FeatureEntry::FeatureVariation kNtpOutlookCalendarModuleVariations[] = {
-    {"- Fake Data", kNtpOutlookCalendarModuleFakeData, nullptr},
-    {"- Fake Attachments Data", kNtpOutlookCalendarModuleFakeAttachmentsData,
-     nullptr},
-};
-
-const FeatureEntry::FeatureParam kNtpMiddleSlotPromoDismissalFakeData[] = {
-    {ntp_features::kNtpMiddleSlotPromoDismissalParam, "fake"}};
-const FeatureEntry::FeatureVariation kNtpMiddleSlotPromoDismissalVariations[] =
-    {
-        {"- Fake Data", kNtpMiddleSlotPromoDismissalFakeData, nullptr},
-};
-
 const FeatureEntry::FeatureParam
     kNtpRealboxCr23NoShadowExpandedStateBgMatchesSteadyState[]{
         {"kNtpRealboxCr23ExpandedStateBgMatchesOmnibox", "false"},
@@ -1999,36 +1931,6 @@ const FeatureEntry::FeatureVariation kNtpRealboxCr23ThemingVariations[] = {
     {" -  Steady state shadow + Dark mode background color matches steady "
      "state",
      kNtpRealboxCr23ShadowExpandedStateBgMatchesSteadyState, nullptr},
-};
-
-const FeatureEntry::FeatureParam kNtpSharepointModuleTrendingInsights[] = {
-    {"NtpSharepointModuleDataParam", "trending-insights"}};
-const FeatureEntry::FeatureParam kNtpSharepointModuleNonInsights[] = {
-    {"NtpSharepointModuleDataParam", "non-insights"}};
-const FeatureEntry::FeatureParam kNtpSharepointModuleTrendingFakeData[] = {
-    {"NtpSharepointModuleDataParam", "fake-trending"}};
-const FeatureEntry::FeatureParam kNtpSharepointModuleNonInsightsFakeData[] = {
-    {"NtpSharepointModuleDataParam", "fake-non-insights"}};
-const FeatureEntry::FeatureParam kNtpSharepointModuleCombinedSuggestions[] = {
-    {"NtpSharepointModuleDataParam", "combined"}};
-
-const FeatureEntry::FeatureVariation kNtpSharepointModuleVariations[] = {
-    {"- Trending", kNtpSharepointModuleTrendingInsights, nullptr},
-    {"- Recently Used and Shared", kNtpSharepointModuleNonInsights, nullptr},
-    {"- Fake Trending Data", kNtpSharepointModuleTrendingFakeData, nullptr},
-    {"- Fake Recently Used and Shared", kNtpSharepointModuleNonInsightsFakeData,
-     nullptr},
-    {"- Combined Suggestions", kNtpSharepointModuleCombinedSuggestions,
-     nullptr}};
-
-const FeatureEntry::FeatureParam kNtpTabGroupsModuleFakeData[] = {
-    {ntp_features::kNtpTabGroupsModuleDataParam, "Fake Data"}};
-const FeatureEntry::FeatureParam kNtpTabGroupsModuleFakeZeroState[] = {
-    {ntp_features::kNtpTabGroupsModuleDataParam, "Fake Zero State"}};
-
-const FeatureEntry::FeatureVariation kNtpTabGroupsModuleVariations[] = {
-    {"- Fake Data", kNtpTabGroupsModuleFakeData, nullptr},
-    {"- Fake Zero State", kNtpTabGroupsModuleFakeZeroState, nullptr},
 };
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -2712,13 +2614,6 @@ constexpr char kVcTrayMicIndicatorInternalName[] = "vc-tray-mic-indicator";
 constexpr char kVcTrayTitleHeaderInternalName[] = "vc-tray-title-header";
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if !BUILDFLAG(IS_ANDROID)
-
-
-
-
-#endif  // !BUILDFLAG(IS_ANDROID)
-
 #if BUILDFLAG(IS_CHROMEOS)
 const FeatureEntry::Choice kAlwaysEnableHdcpChoices[] = {
     {flag_descriptions::kAlwaysEnableHdcpDefault, "", ""},
@@ -3280,24 +3175,6 @@ const FeatureEntry::FeatureVariation kAILangsVariation[] = {
     {"Multilingual", kAILangsParam, nullptr},
 };
 
-#if BUILDFLAG(IS_ANDROID)
-
-const FeatureEntry::FeatureParam kTouchToSearchCalloutIphParams[] = {
-    {"iph", "true"},
-};
-const FeatureEntry::FeatureParam
-    kTouchToSearchCalloutSnippetAsSubtitleParams[] = {
-        {"snippet_as_subtitle", "true"},
-};
-const FeatureEntry::FeatureVariation kTouchToSearchCalloutVariations[] = {
-    {"Default", {}, nullptr},
-    {"IPH", kTouchToSearchCalloutIphParams, nullptr},
-    {"Snippet As Subtitle", kTouchToSearchCalloutSnippetAsSubtitleParams,
-     nullptr},
-};
-
-#endif  // BUILDFLAG(IS_ANDROID)
-
 #if !BUILDFLAG(IS_ANDROID)
 
 const FeatureEntry::FeatureParam kEnableNtpBrowserPromosVariationSimple[] = {
@@ -3558,20 +3435,10 @@ constexpr char kWebUIToolbarDisableFeatures[] =
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_CHROMEOS)
-const FeatureEntry::FeatureParam kNtpCustomizeChromeAutoOpenOnEveryNTP[] = {
-    {"max_customize_chrome_auto_shown_count", "5"},
-    {"max_customize_chrome_auto_shown_session_count", "5"}};
-const FeatureEntry::FeatureParam kNtpCustomizeChromeAutoOpenOnFirstNTPOnly[] = {
-    {"max_customize_chrome_auto_shown_count", "5"},
-    {"max_customize_chrome_auto_shown_session_count", "1"}};
-const FeatureEntry::FeatureParam kNtpCustomizeChromeAutoOpenIPHOnly[] = {
-    {"max_customize_chrome_auto_shown_count", "0"},
-    {"max_customize_chrome_auto_shown_session_count", "0"}};
-const FeatureEntry::FeatureVariation kNtpCustomizeChromeAutoOpenVariations[] = {
-    {"- On every NTP", kNtpCustomizeChromeAutoOpenOnEveryNTP, nullptr},
-    {"- First NTP only", kNtpCustomizeChromeAutoOpenOnFirstNTPOnly, nullptr},
-    {"- IPH only", kNtpCustomizeChromeAutoOpenIPHOnly, nullptr},
-};
+
+
+
+
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
         // BUILDFLAG(IS_CHROMEOS)
 
@@ -4117,9 +3984,6 @@ const FeatureEntry::FeatureVariation kToolbarGlowUpVariations[] = {
     {"no reload animation", kToolbarGlowUpNoReload, nullptr},
     {"no reload, back, or forward animations",
      kToolbarGlowUpNoReloadBackForward, nullptr}};
-
-#if !BUILDFLAG(IS_ANDROID)
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 const FeatureEntry::FeatureParam
     kAutofillEnableResurrectingPaymentsUsersSecurity[] = {
@@ -6345,12 +6209,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(features::kLensOverlayVirtualFocusNavigation)},
 
-    {"enable-omnibox-everywhere-virtual-focus",
-     flag_descriptions::kOmniboxEverywhereVirtualFocusNavigationName,
-     flag_descriptions::kOmniboxEverywhereVirtualFocusNavigationDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kOmniboxEverywhereVirtualFocusNavigation)},
-
     {"enable-webui-browser-virtual-focus",
      flag_descriptions::kWebuiBrowserVirtualFocusNavigationName,
      flag_descriptions::kWebuiBrowserVirtualFocusNavigationDescription,
@@ -6368,22 +6226,8 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kChromeDarkNeutrals26Description, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kChromeDarkNeutrals26)},
 
-    {"ntp-alpha-background-collections",
-     flag_descriptions::kNtpAlphaBackgroundCollectionsName,
-     flag_descriptions::kNtpAlphaBackgroundCollectionsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpAlphaBackgroundCollections)},
 
-    {"ntp-background-image-error-detection",
-     flag_descriptions::kNtpBackgroundImageErrorDetectionName,
-     flag_descriptions::kNtpBackgroundImageErrorDetectionDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpBackgroundImageErrorDetection)},
 
-    {"ntp-calendar-module", flag_descriptions::kNtpCalendarModuleName,
-     flag_descriptions::kNtpCalendarModuleDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpCalendarModule,
-                                    kNtpCalendarModuleVariations,
-                                    "DesktopNtpModules")},
 
     {"iph-desktop-realbox-contextual-search",
      flag_descriptions::kIPHDesktopRealboxContextualSearchFeatureName,
@@ -6394,99 +6238,28 @@ const FeatureEntry kFeatureEntries[] = {
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_CHROMEOS)
-    {"ntp-customize-chrome-auto-open",
-     flag_descriptions::kNtpCustomizeChromeAutoOpenName,
-     flag_descriptions::kNtpCustomizeChromeAutoOpenDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpCustomizeChromeAutoOpen,
-                                    kNtpCustomizeChromeAutoOpenVariations,
-                                    "NtpCustomizeChromeAutoOpen")},
 #endif
 
-    {"ntp-drive-module", flag_descriptions::kNtpDriveModuleName,
-     flag_descriptions::kNtpDriveModuleDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpDriveModule,
-                                    kNtpDriveModuleVariations,
-                                    "DesktopNtpModules")},
 
     {"ntp-drive-module-segmentation",
      flag_descriptions::kNtpDriveModuleSegmentationName,
      flag_descriptions::kNtpDriveModuleSegmentationDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(ntp_features::kNtpDriveModuleSegmentation)},
 
-#if !defined(OFFICIAL_BUILD)
-    {"ntp-dummy-modules", flag_descriptions::kNtpDummyModulesName,
-     flag_descriptions::kNtpDummyModulesDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpDummyModules)},
-#endif
 
-    {"ntp-feature-optimization-module-removal",
-     flag_descriptions::kNtpFeatureOptimizationModuleRemovalName,
-     flag_descriptions::kNtpFeatureOptimizationModuleRemovalDescription,
-     kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         ntp_features::kNtpFeatureOptimizationModuleRemoval,
-         kNtpFeatureOptimizationModuleRemovalVariations,
-         "NtpFeatureOptimizationModuleRemoval")},
-
-    {"ntp-feature-optimization-shortcuts-removal",
-     flag_descriptions::kNtpFeatureOptimizationShortcutsRemovalName,
-     flag_descriptions::kNtpFeatureOptimizationShortcutsRemovalDescription,
-     kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         ntp_features::kNtpFeatureOptimizationShortcutsRemoval,
-         kNtpFeatureOptimizationShortcutsRemovalVariations,
-         "NtpFeatureOptimizationShortcutsRemoval")},
 
     {"ntp-simplification-bookmark-bar",
      flag_descriptions::kNtpSimplificationBookmarkBarName,
      flag_descriptions::kNtpSimplificationBookmarkBarDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(ntp_features::kNtpSimplificationBookmarkBar)},
 
-    {"ntp-feature-optimization-dismiss-modules-removal",
-     flag_descriptions::kNtpFeatureOptimizationDismissModulesRemovalName,
-     flag_descriptions::kNtpFeatureOptimizationDismissModulesRemovalDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         ntp_features::kNtpFeatureOptimizationDismissModulesRemoval)},
 
-    {"ntp-footer", flag_descriptions::kNtpFooterName,
-     flag_descriptions::kNtpFooterDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpFooter)},
 
-    {"ntp-middle-slot-promo-dismissal",
-     flag_descriptions::kNtpMiddleSlotPromoDismissalName,
-     flag_descriptions::kNtpMiddleSlotPromoDismissalDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpMiddleSlotPromoDismissal,
-                                    kNtpMiddleSlotPromoDismissalVariations,
-                                    "DesktopNtpModules")},
-    {"ntp-animated-doodles", flag_descriptions::kNtpAnimatedDoodlesName,
-     flag_descriptions::kNtpAnimatedDoodlesDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpAnimatedDoodles)},
 
-    {"ntp-doodle-murals", flag_descriptions::kNtpDoodleMuralsName,
-     flag_descriptions::kNtpDoodleMuralsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpDoodleMurals)},
 
-    {"ntp-module-sign-in-requirement",
-     flag_descriptions::kNtpModuleSignInRequirementName,
-     flag_descriptions::kNtpModuleSignInRequirementDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpModuleSignInRequirement)},
 
-    {"ntp-next-canvas-chip", flag_descriptions::kNtpNextCanvasChipName,
-     flag_descriptions::kNtpNextCanvasChipDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpNextCanvasChip)},
 
-    {"ntp-ogb-async-bar-parts",
-     flag_descriptions::kNtpOneGoogleBarAsyncBarPartsName,
-     flag_descriptions::kNtpOneGoogleBarAsyncBarPartsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpOneGoogleBarAsyncBarParts)},
 
-    {"ntp-outlook-calendar-module",
-     flag_descriptions::kNtpOutlookCalendarModuleName,
-     flag_descriptions::kNtpOutlookCalendarModuleDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpOutlookCalendarModule,
-                                    kNtpOutlookCalendarModuleVariations,
-                                    "DesktopNtpModules")},
 
     {"ntp-realbox-cr23-theming", flag_descriptions::kNtpRealboxCr23ThemingName,
      flag_descriptions::kNtpRealboxCr23ThemingDescription, kOsDesktop,
@@ -6494,60 +6267,19 @@ const FeatureEntry kFeatureEntries[] = {
                                     kNtpRealboxCr23ThemingVariations,
                                     "NtpRealboxCr23Theming")},
 
-    {"ntp-scaled-action-chips", flag_descriptions::kNtpScaledActionChipsName,
-     flag_descriptions::kNtpScaledActionChipsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpScaledActionChips)},
 
-    {"ntp-scaled-action-chips-small",
-     flag_descriptions::kNtpScaledActionChipsSmallName,
-     flag_descriptions::kNtpScaledActionChipsSmallDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpScaledActionChipsSmall)},
 
-    {"ntp-sharepoint-module", flag_descriptions::kNtpSharepointModuleName,
-     flag_descriptions::kNtpSharepointModuleDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpSharepointModule,
-                                    kNtpSharepointModuleVariations,
-                                    "DesktopNtpModules")},
 
-    {"ntp-starter-chip", flag_descriptions::kNtpStarterChipName,
-     flag_descriptions::kNtpStarterChipDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpStarterChip)},
 
-    {"ntp-tab-groups-module", flag_descriptions::kNtpTabGroupsModuleName,
-     flag_descriptions::kNtpTabGroupsModuleDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(ntp_features::kNtpTabGroupsModule,
-                                    kNtpTabGroupsModuleVariations,
-                                    "DesktopNtpModules")},
 
-    {"ntp-tab-groups-module-zero-state",
-     flag_descriptions::kNtpTabGroupsModuleZeroStateName,
-     flag_descriptions::kNtpTabGroupsModuleZeroStateDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpTabGroupsModuleZeroState)},
 
-    {"ntp-wallpaper-search-button",
-     flag_descriptions::kNtpWallpaperSearchButtonName,
-     flag_descriptions::kNtpWallpaperSearchButtonDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpWallpaperSearchButton)},
 
-    {"ntp-wallpaper-search-button-animation",
-     flag_descriptions::kNtpWallpaperSearchButtonAnimationName,
-     flag_descriptions::kNtpWallpaperSearchButtonAnimationDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpWallpaperSearchButtonAnimation)},
 
-    {"ntp-microsoft-authentication-module",
-     flag_descriptions::kNtpMicrosoftAuthenticationModuleName,
-     flag_descriptions::kNtpMicrosoftAuthenticationModuleDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpMicrosoftAuthenticationModule)},
 
     {"ntp-shortcuts-redesign", flag_descriptions::kNtpShortcutsRedesignName,
      flag_descriptions::kNtpShortcutsRedesignDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(ntp_features::kNtpShortcutsRedesign)},
 
-    {"ntp-threads-rail", flag_descriptions::kNtpThreadsRailName,
-     flag_descriptions::kNtpThreadsRailDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpThreadsRail)},
 
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -8193,36 +7925,11 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kTabAudioMutingDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(media::kEnableTabMuting)},
 
-    {"ntp-customize-webui-android",
-     flag_descriptions::kNtpCustomizeWebUiAndroidName,
-     flag_descriptions::kNtpCustomizeWebUiAndroidDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpCustomizeWebUiAndroid)},
 
 #if !BUILDFLAG(IS_ANDROID)
-    {"customize-chrome-side-panel-extensions-card",
-     flag_descriptions::kCustomizeChromeSidePanelExtensionsCardName,
-     flag_descriptions::kCustomizeChromeSidePanelExtensionsCardDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kCustomizeChromeSidePanelExtensionsCard)},
 
-    {"customize-chrome-wallpaper-search",
-     flag_descriptions::kCustomizeChromeWallpaperSearchName,
-     flag_descriptions::kCustomizeChromeWallpaperSearchDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kCustomizeChromeWallpaperSearch)},
 
-    {"customize-chrome-wallpaper-search-button",
-     flag_descriptions::kCustomizeChromeWallpaperSearchButtonName,
-     flag_descriptions::kCustomizeChromeWallpaperSearchButtonDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kCustomizeChromeWallpaperSearchButton)},
 
-    {"customize-chrome-wallpaper-search-inspiration-card",
-     flag_descriptions::kCustomizeChromeWallpaperSearchInspirationCardName,
-     flag_descriptions::
-         kCustomizeChromeWallpaperSearchInspirationCardDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(
-         ntp_features::kCustomizeChromeWallpaperSearchInspirationCard)},
 
     {"wallpaper-search-settings-visibility",
      flag_descriptions::kWallpaperSearchSettingsVisibilityName,
@@ -8607,9 +8314,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-#if !BUILDFLAG(IS_ANDROID)
-#endif
-
     {"webui-omnibox-full-popup", flag_descriptions::kWebUIOmniboxFullPopupName,
      flag_descriptions::kWebUIOmniboxFullPopupDescription, kOsDesktop,
      FEATURE_WITH_PARAMS_VALUE_TYPE(omnibox::kWebUIOmniboxFullPopup,
@@ -10325,14 +10029,6 @@ const FeatureEntry kFeatureEntries[] = {
         // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_ANDROID)
-    {"touch-to-search-callout", flag_descriptions::kTouchToSearchCalloutName,
-     flag_descriptions::kTouchToSearchCalloutDescription, kOsAndroid,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(chrome::android::kTouchToSearchCallout,
-                                    kTouchToSearchCalloutVariations,
-                                    "TouchToSearchCallout")},
-#endif  // BUILDFLAG(IS_ANDROID)
-
-#if BUILDFLAG(IS_ANDROID)
     {"android-use-correct-display-work-area",
      flag_descriptions::kAndroidUseCorrectDisplayWorkAreaName,
      flag_descriptions::kAndroidUseCorrectDisplayWorkAreaDescription,
@@ -11665,9 +11361,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     kEnergyEffectVariations,
                                     "EnergyEffect")},
 
-    {"energy-effect-animation", flag_descriptions::kEnergyEffectAnimationName,
-     flag_descriptions::kEnergyEffectAnimationDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kEnergyEffectAnimation)},
 
     {"bundled-security-settings-ask-before-http",
      flag_descriptions::kBundledSecuritySettingsAskBeforeHttpName,

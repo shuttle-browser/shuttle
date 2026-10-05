@@ -2523,8 +2523,7 @@ void OpenStartupTabsInBrowserWithProfile(const StartupTabs& tabs,
 
   // This NTP check should be replaced once https://crbug.com/41261582 is fixed.
   if (startupIndex != TabStripModel::kNoTab &&
-      (startupContent->GetVisibleURL() == chrome::kChromeUINewTabURL ||
-       startupContent->GetVisibleURL() == chrome::kChromeUINewTabPageURL)) {
+      startupContent->GetVisibleURL() == chrome::kChromeUINewTabURL) {
     browser->GetTabStripModel()->CloseWebContentsAt(startupIndex,
                                                     TabCloseTypes::CLOSE_NONE);
   }

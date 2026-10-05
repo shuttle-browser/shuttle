@@ -354,9 +354,6 @@ const std::optional<GURL> ReadingListPageHandler::GetActiveTabURL() {
     if (!active_contents) {
       return std::nullopt;
     }
-    if (search::IsInstantNTP(active_contents)) {
-      return GURL(chrome::kChromeUINewTabURL);
-    }
     // Reader Mode pages are treated as the original page.
     if (dom_distiller::url_utils::IsDistilledPage(
             active_contents->GetVisibleURL())) {
