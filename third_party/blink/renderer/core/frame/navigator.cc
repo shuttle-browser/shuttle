@@ -98,12 +98,10 @@ bool Navigator::cookieEnabled() const {
 }
 
 bool Navigator::webdriver() const {
-  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
-    return true;
-
-  bool automation_enabled = false;
-  probe::ApplyAutomationOverride(GetExecutionContext(), automation_enabled);
-  return automation_enabled;
+  // Agent Chrome: never report automation to pages (--enable-automation,
+  // --headless, pipe/ephemeral-port debugging and
+  // Emulation.setAutomationOverride all used to set this).
+  return false;
 }
 
 String Navigator::GetAcceptLanguages() {

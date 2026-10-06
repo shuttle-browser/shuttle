@@ -23,7 +23,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/session_crashed_bubble.h"
-#include "chrome/browser/ui/startup/automation_infobar_delegate.h"
 #include "chrome/browser/ui/startup/bad_flags_prompt.h"
 #include "chrome/browser/ui/startup/google_api_keys_infobar_delegate.h"
 #include "chrome/browser/ui/startup/obsolete_system_infobar_delegate.h"
@@ -174,7 +173,7 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
     return;
   }
 
-  // Show the Automation info bar unless it has been disabled by policy.
+  // Agent Chrome: no "controlled by automated test software" infobar.
   bool show_bad_flags_security_warnings = ShouldShowBadFlagsSecurityWarnings();
 
   if (show_bad_flags_security_warnings) {
@@ -193,17 +192,6 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
       }
     }
 #endif
-
-    if (IsAutomationEnabled()) {
-      if (infobars::IsInfoBarMigrated(
-              infobars::InfoBarDelegate::AUTOMATION_INFOBAR_DELEGATE)) {
-        infobars::BrowserInfoBarManager::From(g_browser_process)
-            ->ShowGlobally(
-                infobars::InfoBarDelegate::AUTOMATION_INFOBAR_DELEGATE);
-      } else {
-        AutomationInfoBarDelegate::Create();
-      }
-    }
   }
 
   // Do not show any other info bars in Kiosk mode, because it's unlikely that

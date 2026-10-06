@@ -18,8 +18,6 @@
 #include "chrome/browser/devtools/device/tcp_device_provider.h"
 #include "chrome/browser/devtools/devtools_availability_checker.h"
 #include "chrome/browser/devtools/devtools_browser_context_manager.h"
-#include "chrome/browser/devtools/devtools_connection_dialog.h"
-#include "chrome/browser/devtools/devtools_remote_server_infobar_delegate.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/protocol/target_handler.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
@@ -74,15 +72,6 @@ const char ChromeDevToolsManagerDelegate::kTypeBackgroundPage[] =
 const char ChromeDevToolsManagerDelegate::kTypePage[] = "page";
 
 namespace {
-
-// LINT.IfChange(DevToolsRemoteDebuggingConnectionPermission)
-// This enum is used for UMA histograms and should not be renumbered.
-enum class DevToolsRemoteDebuggingConnectionPermission {
-  kAllowed = 0,
-  kDenied = 1,
-  kMaxValue = kDenied,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/dev/enums.xml:DevToolsRemoteDebuggingConnectionPermission)
 
 bool GetExtensionInfo(content::WebContents* wc,
                       std::string* name,
@@ -185,9 +174,6 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
 ChromeDevToolsManagerDelegate::~ChromeDevToolsManagerDelegate() {
   DCHECK(g_instance == this);
   g_instance = nullptr;
-  if (infobar_) {
-    infobar_->Close();
-  }
 }
 
 void ChromeDevToolsManagerDelegate::Inspect(
@@ -478,48 +464,6 @@ void ChromeDevToolsManagerDelegate::UpdateDeviceDiscovery() {
                             base::Unretained(this)));
   }
   remote_locations_.swap(remote_locations);
-}
-
-void ChromeDevToolsManagerDelegate::AcceptDebugging(AcceptCallback callback) {
-  auto wrapped_callback = base::BindOnce(
-      [](AcceptCallback inner_callback,
-         content::DevToolsManagerDelegate::AcceptConnectionResult result) {
-        bool allowed =
-            result ==
-            content::DevToolsManagerDelegate::AcceptConnectionResult::kAllow;
-        base::UmaHistogramEnumeration(
-            "DevTools.RemoteDebugging.ConnectionPermission",
-            allowed ? DevToolsRemoteDebuggingConnectionPermission::kAllowed
-                    : DevToolsRemoteDebuggingConnectionPermission::kDenied);
-        std::move(inner_callback).Run(result);
-      },
-      std::move(callback));
-  BrowserWindowInterface* last_active =
-      GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser();
-  DevToolsConnectionDialog::Show(last_active, std::move(wrapped_callback));
-}
-
-void ChromeDevToolsManagerDelegate::SetActiveWebSocketConnections(
-    size_t count) {
-  if (count == 0 && infobar_) {
-    // We need to reset the pointer to the infobar before closing it because
-    // closing the infobar deletes it.
-    auto* infobar = infobar_.get();
-    infobar_ = nullptr;
-    infobar->Close();
-  } else if (count > 0 && !infobar_) {
-    auto delegate = std::make_unique<DevToolsRemoteServerInfobarDelegate>();
-    delegate->AddObserver(this);
-    infobar_ = GlobalConfirmInfoBar::Show(std::move(delegate));
-  }
-}
-
-void ChromeDevToolsManagerDelegate::OnAccept() {
-  infobar_ = nullptr;
-}
-
-void ChromeDevToolsManagerDelegate::OnDismiss() {
-  infobar_ = nullptr;
 }
 
 void ChromeDevToolsManagerDelegate::ResetAndroidDeviceManagerForTesting() {

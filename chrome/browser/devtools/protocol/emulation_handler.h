@@ -9,10 +9,7 @@
 #include <optional>
 
 #include "base/memory/raw_ptr.h"
-#include "base/memory/weak_ptr.h"
 #include "chrome/browser/devtools/protocol/emulation.h"
-#include "components/infobars/content/content_infobar_manager.h"
-#include "components/infobars/core/infobar.h"
 #include "content/public/browser/devtools_agent_host.h"
 
 class EmulationHandler : public protocol::Emulation::Backend {
@@ -62,10 +59,7 @@ class EmulationHandler : public protocol::Emulation::Backend {
       const protocol::String& screen_id) override;
 
  private:
-  infobars::ContentInfoBarManager* GetContentInfoBarManager();
-
   raw_ptr<content::DevToolsAgentHost> agent_host_;
-  base::WeakPtr<infobars::InfoBar> automation_info_bar_;
 };
 
 #endif  // CHROME_BROWSER_DEVTOOLS_PROTOCOL_EMULATION_HANDLER_H_

@@ -47,11 +47,6 @@ namespace {
 
 bool g_tethering_enabled = false;
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-bool g_enable_default_user_data_dir_check_for_chromium_branding_for_testing =
-    false;
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
 const uint16_t kMinTetheringPort = 9333;
 const uint16_t kMaxTetheringPort = 9444;
 const int kBackLog = 10;
@@ -157,142 +152,12 @@ class TCPServerSocketFactoryWithPortFallback : public TCPServerSocketFactory {
   }
 };
 
-// Returns true, or a reason why remote debugging is not allowed.
-base::expected<bool, RemoteDebuggingServer::NotStartedReason>
-IsRemoteDebuggingAllowed(const std::optional<bool>& is_default_user_data_dir,
-                         PrefService* local_state) {
-  if (!local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingAllowed)) {
-    return base::unexpected(
-        RemoteDebuggingServer::NotStartedReason::kDisabledByPolicy);
-  }
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  constexpr bool default_user_data_dir_check_enabled = true;
-#else
-  const bool default_user_data_dir_check_enabled =
-      g_enable_default_user_data_dir_check_for_chromium_branding_for_testing;
-#endif
-
-  if (default_user_data_dir_check_enabled &&
-      is_default_user_data_dir.value_or(true)) {
-    return base::unexpected(
-        RemoteDebuggingServer::NotStartedReason::kDisabledByDefaultUserDataDir);
-  }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  return true;
-}
-
-// Returns true if remote debugging is enabled via chrome://inspect
-// which indicates that we should start the debugging server in the approval
-// mode in which each incoming connection needs to be approved by the user.
-bool isRemoteDebuggingEnabledViaPrefs(PrefService* local_state) {
-  return local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingEnabled);
-}
-
 }  // namespace
-
-int RemoteDebuggingServer::GetPortFromUserDataDir(
-    const base::FilePath& output_dir) {
-  std::string content;
-  if (!base::ReadFileToString(
-          output_dir.Append(content::kDevToolsActivePortFileName), &content)) {
-    return kDefaultDevToolsPort;
-  }
-
-  // The file contains the port number on the first line.
-  std::vector<std::string_view> lines = base::SplitStringPiece(
-      content, "\n", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  if (lines.empty()) {
-    return kDefaultDevToolsPort;
-  }
-
-  if (auto port = ParsePort(lines[0])) {
-    return *port;
-  }
-
-  return kDefaultDevToolsPort;
-}
-
-void RemoteDebuggingServer::StartHttpServerInApprovalModeIfEnabled(
-    PrefService* local_state) {
-  pref_change_registrar_ = std::make_unique<PrefChangeRegistrar>();
-  pref_change_registrar_->Init(local_state);
-  pref_change_registrar_->Add(
-      prefs::kDevToolsRemoteDebuggingEnabled,
-      base::BindRepeating(
-          &RemoteDebuggingServer::MaybeStartOrStopServerForPrefChange,
-          base::Unretained(this)));
-  MaybeStartOrStopServerForPrefChange();
-}
-
-void RemoteDebuggingServer::StartHttpServerInApprovalModeWithPort(
-    const base::FilePath& output_dir,
-    int port) {
-  is_http_server_being_started_ = false;
-
-  // Recheck the policy and pref value in case they changed since the task was
-  // posted.
-  PrefService* local_state = pref_change_registrar_->prefs();
-  if (!local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingAllowed) ||
-      !isRemoteDebuggingEnabledViaPrefs(local_state)) {
-    return;
-  }
-
-  // We do not support hosting DevTools in this mode, therefore,
-  // not passing the value of the kCustomDevtoolsFrontend switch.
-  StartHttpServer(
-      std::make_unique<TCPServerSocketFactoryWithPortFallback>(port),
-      output_dir,
-      /*debug_frontend_dir=*/base::FilePath(),
-      content::DevToolsAgentHost::RemoteDebuggingServerMode::kWithApprovalOnly);
-  is_http_server_running_ = true;
-}
-
-void RemoteDebuggingServer::MaybeStartOrStopServerForPrefChange() {
-  CHECK(base::FeatureList::IsEnabled(
-      ::features::kDevToolsAcceptDebuggingConnections));
-
-  PrefService* local_state = pref_change_registrar_->prefs();
-
-  if (!local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingAllowed) ||
-      !isRemoteDebuggingEnabledViaPrefs(local_state)) {
-    StopHttpServer();
-    return;
-  }
-
-  if (is_http_server_running_ || is_http_server_being_started_) {
-    return;
-  }
-
-  // The selected port is written to a well-known location in the profile
-  // directory to bootstrap the connection process.
-  base::FilePath output_dir;
-  {
-    bool result = base::PathService::Get(chrome::DIR_USER_DATA, &output_dir);
-    DCHECK(result);
-  }
-
-  is_http_server_being_started_ = true;
-  base::ThreadPool::PostTaskAndReplyWithResult(
-      FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
-      base::BindOnce(&RemoteDebuggingServer::GetPortFromUserDataDir,
-                     output_dir),
-      base::BindOnce(
-          &RemoteDebuggingServer::StartHttpServerInApprovalModeWithPort,
-          weak_factory_.GetWeakPtr(), output_dir));
-}
 
 // static
 void RemoteDebuggingServer::EnableTetheringForDebug() {
   g_tethering_enabled = true;
 }
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-// static
-void RemoteDebuggingServer::EnableDefaultUserDataDirCheckForTesting() {
-  g_enable_default_user_data_dir_check_for_chromium_branding_for_testing = true;
-}
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 RemoteDebuggingServer::RemoteDebuggingServer() = default;
 
@@ -319,7 +184,6 @@ void RemoteDebuggingServer::StartHttpServer(
 
 void RemoteDebuggingServer::StopHttpServer() {
   content::DevToolsAgentHost::StopRemoteDebuggingServer();
-  is_http_server_running_ = false;
 }
 
 void RemoteDebuggingServer::StartPipeHandler() {
@@ -332,93 +196,51 @@ void RemoteDebuggingServer::StopPipeHandler() {
 }
 
 // static
-base::expected<std::unique_ptr<RemoteDebuggingServer>,
-               RemoteDebuggingServer::NotStartedReason>
-RemoteDebuggingServer::GetInstance(PrefService* local_state) {
-  if (!local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingAllowed)) {
-    return base::unexpected(NotStartedReason::kDisabledByPolicy);
-  }
-
+std::unique_ptr<RemoteDebuggingServer> RemoteDebuggingServer::Start() {
+  // Agent Chrome: the browser exists to be driven by agents, so the
+  // remote debugging server is always on. There is no approval prompt, no
+  // "controlled by automated test software" infobar, no policy or default
+  // user-data-dir gate. The server listens on localhost only and keeps the
+  // WebSocket origin check (--remote-allow-origins). Authentication comes
+  // with the built-in MCP server.
   const base::CommandLine& command_line =
       *base::CommandLine::ForCurrentProcess();
-
-  // Track whether debugging was started. This determines whether or not to
-  // return an instance of the class.
-  bool debugging_server_started = false;
-  std::optional<bool> is_default_user_data_dir =
-      chrome::IsUsingDefaultDataDirectory();
-
   auto server = base::WrapUnique(new RemoteDebuggingServer());
 
   if (command_line.HasSwitch(switches::kRemoteDebuggingPipe)) {
-    if (const auto maybe_allow_debugging =
-            IsRemoteDebuggingAllowed(is_default_user_data_dir, local_state);
-        !maybe_allow_debugging.has_value()) {
-      return base::unexpected(maybe_allow_debugging.error());
-    }
-    debugging_server_started = true;
     server->StartPipeHandler();
   }
 
-  std::string port_str =
-      command_line.GetSwitchValueASCII(::switches::kRemoteDebuggingPort);
-  if (auto port = ParsePort(port_str)) {
-    base::FilePath output_dir;
-    if (*port == 0) {
-      // The client requested an ephemeral port. Must write the selected
-      // port to a well-known location in the profile directory to
-      // bootstrap the connection process.
-      bool result = base::PathService::Get(chrome::DIR_USER_DATA, &output_dir);
-      DCHECK(result);
-    }
-
-    base::FilePath debug_frontend_dir;
-    if (command_line.HasSwitch(::switches::kCustomDevtoolsFrontend)) {
-      GURL custom_devtools_frontend_url(command_line.GetSwitchValueASCII(
-          ::switches::kCustomDevtoolsFrontend));
-      if (custom_devtools_frontend_url.SchemeIsFile()) {
-        net::FileURLToFilePath(custom_devtools_frontend_url,
-                               &debug_frontend_dir);
-      }
-    }
-    if (const auto maybe_allow_debugging =
-            IsRemoteDebuggingAllowed(is_default_user_data_dir, local_state);
-        !maybe_allow_debugging.has_value()) {
-      return base::unexpected(maybe_allow_debugging.error());
-    }
-
-    debugging_server_started = true;
-    server->StartHttpServer(
-        std::make_unique<TCPServerSocketFactory>(*port), output_dir,
-        debug_frontend_dir,
-        content::DevToolsAgentHost::RemoteDebuggingServerMode::kDefault);
+  // The selected port is always written to DevToolsActivePort in the user
+  // data dir, so clients (e.g. chrome-devtools-mcp --autoConnect) can find it.
+  base::FilePath output_dir;
+  {
+    bool result = base::PathService::Get(chrome::DIR_USER_DATA, &output_dir);
+    DCHECK(result);
   }
 
-  // `--remote-debugging-port` and `--remote-debugging-pipe`
-  // take precedence over the new mode.
-#if !BUILDFLAG(IS_ANDROID)
-  if (!debugging_server_started &&
-      base::FeatureList::IsEnabled(
-          ::features::kDevToolsAcceptDebuggingConnections)) {
-    // In approval mode, each incoming connection needs to be approved by
-    // the user (allow/disallow actions are tracked via the
-    // DevToolsRemoteDebuggingConnectionPermission histogram).
-    if (!local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingAllowed)) {
-      return base::unexpected(
-          RemoteDebuggingServer::NotStartedReason::kDisabledByPolicy);
+  base::FilePath debug_frontend_dir;
+  if (command_line.HasSwitch(::switches::kCustomDevtoolsFrontend)) {
+    GURL custom_devtools_frontend_url(command_line.GetSwitchValueASCII(
+        ::switches::kCustomDevtoolsFrontend));
+    if (custom_devtools_frontend_url.SchemeIsFile()) {
+      net::FileURLToFilePath(custom_devtools_frontend_url, &debug_frontend_dir);
     }
-    // Listening for pref changes in case the server is started later.
-    server->StartHttpServerInApprovalModeIfEnabled(local_state);
-    // We indicate that the server was started to prevent the instance
-    // from being destructed. The actual websocket server is only started
-    // if the preference is also enabled.
-    debugging_server_started = true;
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
-
-  if (debugging_server_started) {
-    return server;
   }
 
-  return base::unexpected(NotStartedReason::kNotRequested);
+  // An explicit --remote-debugging-port binds exactly that port (0 picks a
+  // free one). Without it, use 9222 and fall back to a free port when another
+  // instance already holds it.
+  std::unique_ptr<content::DevToolsSocketFactory> factory;
+  if (auto port = ParsePort(
+          command_line.GetSwitchValueASCII(::switches::kRemoteDebuggingPort))) {
+    factory = std::make_unique<TCPServerSocketFactory>(*port);
+  } else {
+    factory = std::make_unique<TCPServerSocketFactoryWithPortFallback>(
+        kDefaultDevToolsPort);
+  }
+  server->StartHttpServer(
+      std::move(factory), output_dir, debug_frontend_dir,
+      content::DevToolsAgentHost::RemoteDebuggingServerMode::kDefault);
+  return server;
 }
