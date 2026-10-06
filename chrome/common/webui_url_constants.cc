@@ -206,6 +206,7 @@ base::span<const base::cstring_view> ChromeURLHosts() {
 #endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     BUILDFLAG(IS_ANDROID)
+      kChromeUISandboxHost,
 #endif
 #if BUILDFLAG(IS_WIN)
       kChromeUIConflictsHost,

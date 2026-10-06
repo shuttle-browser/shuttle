@@ -1,0 +1,293 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/gfx/linux/client_native_pixmap_dmabuf.h"
+
+#include <fcntl.h>
+#include <stddef.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <xf86drm.h>
+
+#include <utility>
+
+#include "base/command_line.h"
+#include "base/compiler_specific.h"
+#include "base/debug/crash_logging.h"
+#include "base/logging.h"
+#include "base/memory/ptr_util.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/posix/eintr_wrapper.h"
+#include "base/process/memory.h"
+#include "base/process/process_metrics.h"
+#include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
+#include "build/chromecast_buildflags.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
+#include "ui/gfx/linux/dmabuf_uapi.h"
+#include "ui/gfx/switches.h"
+
+namespace gfx {
+
+namespace {
+
+void PrimeSyncStart(int dmabuf_fd) {
+  struct dma_buf_sync sync_start;
+
+  // Do memset() instead of aggregate initialization because the latter can
+  // behave unintuitively with unions in C++, and we probably should not assume
+  // that dma_buf_sync will never contain a union.
+  UNSAFE_TODO(memset(&sync_start, 0, sizeof(sync_start)));
+
+  sync_start.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+  int rv = HANDLE_EINTR(ioctl(dmabuf_fd, DMA_BUF_IOCTL_SYNC, &sync_start));
+  PLOG_IF(ERROR, rv) << "Failed DMA_BUF_SYNC_START";
+}
+
+void PrimeSyncEnd(int dmabuf_fd) {
+  struct dma_buf_sync sync_end = {0};
+
+  // Do memset() instead of aggregate initialization because the latter can
+  // behave unintuitively with unions in C++, and we probably should not assume
+  // that dma_buf_sync will never contain a union.
+  UNSAFE_TODO(memset(&sync_end, 0, sizeof(sync_end)));
+
+  sync_end.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+  int rv = HANDLE_EINTR(ioctl(dmabuf_fd, DMA_BUF_IOCTL_SYNC, &sync_end));
+  PLOG_IF(ERROR, rv) << "Failed DMA_BUF_SYNC_END";
+}
+
+bool AllowCpuMappableBuffers() {
+  static bool result = base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kEnableNativeGpuMemoryBuffers);
+  return result;
+}
+
+}  // namespace
+
+void ClientNativePixmapDmaBuf::PlaneDeleter::operator()(uint8_t* ptr) const {
+  if (ptr && length > 0) {
+    int ret = munmap(ptr, length);
+    DCHECK(!ret);
+  }
+}
+
+// static
+base::HeapArray<uint8_t, ClientNativePixmapDmaBuf::PlaneDeleter>
+ClientNativePixmapDmaBuf::MapPlane(const NativePixmapPlane& plane) {
+  // The |size_to_map| computation has been determined to be valid in
+  // ClientNativePixmapFactoryDmabuf::ImportFromHandle().
+  const size_t size_to_map =
+      base::CheckAdd(plane.size, plane.offset).ValueOrDie<size_t>();
+  void* data = mmap(nullptr, size_to_map, (PROT_READ | PROT_WRITE), MAP_SHARED,
+                    plane.fd.get(), 0);
+  if (data == MAP_FAILED) {
+    logging::SystemErrorCode mmap_error = logging::GetLastSystemErrorCode();
+    if (mmap_error == ENOMEM) {
+      SCOPED_CRASH_KEY_NUMBER("gfx", "mmap_size_plane_size", plane.size);
+      SCOPED_CRASH_KEY_NUMBER("gfx", "mmap_size_plane_offset", plane.offset);
+      base::TerminateBecauseOutOfMemory(size_to_map);
+    }
+    LOG(ERROR) << "Failed to mmap dmabuf: "
+               << logging::SystemErrorCodeToString(mmap_error);
+    // SAFETY: The returned `HeapArray` is empty.
+    return UNSAFE_BUFFERS(
+        base::HeapArray<uint8_t, PlaneDeleter>::FromOwningPointer(
+            nullptr, 0, PlaneDeleter{}));
+  }
+
+  // SAFETY: `data` is a valid pointer returned by `mmap` for a region of
+  // `size_to_map` bytes.
+  // See:https://man7.org/linux/man-pages/man2/mmap.2.html
+  return UNSAFE_BUFFERS(
+      base::HeapArray<uint8_t, PlaneDeleter>::FromOwningPointer(
+          static_cast<uint8_t*>(data), size_to_map, PlaneDeleter{size_to_map}));
+}
+
+// static
+bool ClientNativePixmapDmaBuf::IsConfigurationSupported(
+    viz::SharedImageFormat format,
+    gfx::BufferUsage usage) {
+  switch (usage) {
+    case gfx::BufferUsage::GPU_READ:
+      return format == viz::SinglePlaneFormat::kBGR_565 ||
+             format == viz::SinglePlaneFormat::kRGBA_8888 ||
+             format == viz::SinglePlaneFormat::kRGBX_8888 ||
+             format == viz::SinglePlaneFormat::kBGRA_8888 ||
+             format == viz::SinglePlaneFormat::kBGRX_8888 ||
+             format == viz::MultiPlaneFormat::kYV12;
+    case gfx::BufferUsage::SCANOUT:
+      return format == viz::SinglePlaneFormat::kBGRX_8888 ||
+             format == viz::SinglePlaneFormat::kRGBX_8888 ||
+             format == viz::SinglePlaneFormat::kRGBA_8888 ||
+             format == viz::SinglePlaneFormat::kBGRA_8888 ||
+             format == viz::SinglePlaneFormat::kRGBA_1010102 ||
+             format == viz::SinglePlaneFormat::kBGRA_1010102;
+    case gfx::BufferUsage::SCANOUT_FRONT_RENDERING:
+    case gfx::BufferUsage::SCANOUT_CPU_READ_WRITE:
+      // TODO(crbug.com/954233): RG_88 is enabled only with
+      // --enable-native-gpu-memory-buffers . Otherwise it breaks some telemetry
+      // tests. Fix that issue and enable it again.
+      if (format == viz::SinglePlaneFormat::kRG_88 &&
+          !AllowCpuMappableBuffers()) {
+        return false;
+      }
+
+      if (format == viz::MultiPlaneFormat::kNV12) {
+        return true;
+      }
+
+      return
+#if defined(ARCH_CPU_X86_FAMILY)
+          // The minigbm backends and Mesa drivers commonly used on x86 systems
+          // support the following formats.
+          format == viz::SinglePlaneFormat::kR_8 ||
+          format == viz::SinglePlaneFormat::kRG_88 ||
+          format == viz::MultiPlaneFormat::kNV12 ||
+          format == viz::SinglePlaneFormat::kRGBA_1010102 ||
+          format == viz::SinglePlaneFormat::kBGRA_1010102 ||
+#endif
+
+          format == viz::SinglePlaneFormat::kBGRX_8888 ||
+          format == viz::SinglePlaneFormat::kBGRA_8888 ||
+          format == viz::SinglePlaneFormat::kRGBX_8888 ||
+          format == viz::SinglePlaneFormat::kRGBA_8888;
+    case gfx::BufferUsage::SCANOUT_VDA_WRITE:  // fallthrough
+    case gfx::BufferUsage::PROTECTED_SCANOUT:
+    case gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE:
+      return false;
+
+    case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE:
+      if (!AllowCpuMappableBuffers())
+        return false;
+
+      if (format == viz::MultiPlaneFormat::kNV12) {
+        return true;
+      }
+
+      return
+#if defined(ARCH_CPU_X86_FAMILY)
+          // The minigbm backends and Mesa drivers commonly used on x86 systems
+          // support the following formats.
+          format == viz::SinglePlaneFormat::kR_8 ||
+          format == viz::SinglePlaneFormat::kRG_88 ||
+          format == viz::MultiPlaneFormat::kNV12 ||
+          format == viz::MultiPlaneFormat::kP010 ||
+#endif
+          format == viz::SinglePlaneFormat::kBGRA_8888;
+    case gfx::BufferUsage::SCANOUT_CAMERA_READ_WRITE:
+      // Each platform only supports one camera buffer type. We list the
+      // supported formats on all platforms here. When allocating a camera
+      // buffer the caller is responsible for making sure a buffer is
+      // successfully allocated. For example, allocating NV12 for
+      // SCANOUT_CAMERA_READ_WRITE may only work on Intel boards.
+      return format == viz::MultiPlaneFormat::kNV12;
+    case gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE:
+      // R_8 is used as the underlying pixel format for BLOB buffers.
+      return format == viz::SinglePlaneFormat::kR_8;
+    case gfx::BufferUsage::SCANOUT_VEA_CPU_READ:
+    case gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE:
+      return format == viz::MultiPlaneFormat::kYV12 ||
+             format == viz::MultiPlaneFormat::kNV12;
+  }
+  NOTREACHED();
+}
+
+// static
+std::unique_ptr<gfx::ClientNativePixmap>
+ClientNativePixmapDmaBuf::ImportFromDmabuf(gfx::NativePixmapHandle handle,
+                                           const gfx::Size& size) {
+  if (handle.planes.size() > kMaxPlanes)
+    return nullptr;
+
+  std::array<PlaneInfo, kMaxPlanes> plane_info;
+  for (size_t i = 0; i < handle.planes.size(); ++i) {
+    plane_info[i].offset = base::checked_cast<size_t>(handle.planes[i].offset);
+    plane_info[i].size = base::checked_cast<size_t>(handle.planes[i].size);
+  }
+
+  return base::WrapUnique(new ClientNativePixmapDmaBuf(std::move(handle), size,
+                                                       std::move(plane_info)));
+}
+
+ClientNativePixmapDmaBuf::PlaneInfo::PlaneInfo()
+    // SAFETY: The returned default-initialized `HeapArray` is empty.
+    : data(UNSAFE_BUFFERS(
+          base::HeapArray<uint8_t, PlaneDeleter>::FromOwningPointer(
+              nullptr,
+              0,
+              PlaneDeleter{}))) {}
+ClientNativePixmapDmaBuf::PlaneInfo::~PlaneInfo() = default;
+ClientNativePixmapDmaBuf::PlaneInfo::PlaneInfo(PlaneInfo&& other) = default;
+ClientNativePixmapDmaBuf::PlaneInfo&
+ClientNativePixmapDmaBuf::PlaneInfo::operator=(PlaneInfo&& other) = default;
+
+ClientNativePixmapDmaBuf::ClientNativePixmapDmaBuf(
+    gfx::NativePixmapHandle handle,
+    const gfx::Size& size,
+    std::array<PlaneInfo, kMaxPlanes> plane_info)
+    : pixmap_handle_(std::move(handle)),
+      size_(size),
+      plane_info_(std::move(plane_info)) {
+  TRACE_EVENT0("drm", "ClientNativePixmapDmaBuf");
+}
+
+ClientNativePixmapDmaBuf::~ClientNativePixmapDmaBuf() {
+  TRACE_EVENT0("drm", "~ClientNativePixmapDmaBuf");
+}
+
+bool ClientNativePixmapDmaBuf::Map() {
+  TRACE_EVENT0("drm", "DmaBuf:Map");
+  if (!mapped_) {
+    TRACE_EVENT0("drm", "DmaBuf:InitialMap");
+    for (size_t i = 0; i < pixmap_handle_.planes.size(); ++i) {
+      auto data = MapPlane(pixmap_handle_.planes[i]);
+      if (data.empty()) {
+        return false;
+      }
+      plane_info_[i].data = std::move(data);
+    }
+    mapped_ = true;
+  }
+
+  for (const auto& plane : pixmap_handle_.planes)
+    PrimeSyncStart(plane.fd.get());
+
+  return true;
+}
+
+void ClientNativePixmapDmaBuf::Unmap() {
+  TRACE_EVENT0("drm", "DmaBuf:Unmap");
+  DCHECK(mapped_);
+  for (const auto& plane : pixmap_handle_.planes)
+    PrimeSyncEnd(plane.fd.get());
+}
+
+size_t ClientNativePixmapDmaBuf::GetNumberOfPlanes() const {
+  return pixmap_handle_.planes.size();
+}
+
+void* ClientNativePixmapDmaBuf::GetMemoryAddress(size_t plane) const {
+  DCHECK_LT(plane, pixmap_handle_.planes.size());
+  CHECK(mapped_);
+  // The const_cast is necessary because the `ClientNativePixmap` interface
+  // requires returning a non-const pointer from a const method.
+  return const_cast<uint8_t*>(
+      &plane_info_[plane].data[plane_info_[plane].offset]);
+}
+
+int ClientNativePixmapDmaBuf::GetStride(size_t plane) const {
+  DCHECK_LT(plane, pixmap_handle_.planes.size());
+  return base::checked_cast<int>(pixmap_handle_.planes[plane].stride);
+}
+
+NativePixmapHandle ClientNativePixmapDmaBuf::CloneHandleForIPC() const {
+  return gfx::CloneHandleForIPC(pixmap_handle_);
+}
+
+uint64_t ClientNativePixmapDmaBuf::GetPlaneSize(size_t plane) const {
+  return pixmap_handle_.planes[plane].size;
+}
+
+}  // namespace gfx

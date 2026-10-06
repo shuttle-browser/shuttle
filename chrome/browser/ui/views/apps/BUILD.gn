@@ -89,6 +89,7 @@ source_set("impl") {
       "shaped_app_window_targeter.cc",
     ]
     deps += [
+      "//apps/ui/views",
       "//ui/aura",
       "//ui/wm",
     ]

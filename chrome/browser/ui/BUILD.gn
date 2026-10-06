@@ -2654,8 +2654,6 @@ static_library("ui") {
         "//chrome/browser/ui/webui/unexportable_keys_internals:impl",
         "//services/audio/public/cpp",
       ]
-    } else {
-      deps += [ "//chrome/browser/ui/views:create_application_shortcut_view" ]
     }
 
     if (is_win) {
@@ -2711,8 +2709,6 @@ static_library("ui") {
     deps += [
       "//chrome/browser/ui/aura/accessibility",
       "//chrome/browser/ui/aura/accessibility:impl",
-      "//chrome/browser/ui/aura/tab_contents",
-      "//chrome/browser/ui/aura/tab_contents:impl",
       "//chrome/browser/ui/views:theme_profile_key",
       "//chrome/browser/ui/views/renderer_context_menu",
       "//chrome/browser/ui/views/renderer_context_menu:impl",
@@ -2729,10 +2725,6 @@ static_library("ui") {
     # Any circular includes must depend on the target
     # "//chrome/browser:browser_public_dependencies".
     allow_circular_includes_from += [
-      # TODO(361027501): //c/b/u/v/t/chrome_web_contents_view_delegate_views.cc
-      # includes //c/b/u/a/t/web_drag_bookmark_handler_aura.cc
-      "//chrome/browser/ui/aura/tab_contents:impl",
-
       # TODO(crbug.com/353332589): Remove this circular dependency when the
       # following header gets componentized:
       # c/b/ui/views/frame/browser_view.h

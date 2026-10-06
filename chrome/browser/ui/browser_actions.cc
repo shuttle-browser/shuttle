@@ -1222,7 +1222,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                     prefs::kUseCustomChromeFrame,
                     !prefs->GetBoolean(prefs::kUseCustomChromeFrame));
               },
-              profile))
+              base::to_address(profile_)))
           .SetActionId(kUseSystemTitleBar)
           .Build());
 #endif  // BUILDFLAG(IS_LINUX)

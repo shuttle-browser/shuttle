@@ -251,6 +251,7 @@ inline constexpr char kChromeUILinuxProxyConfigHost[] = "linux-proxy-config";
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     BUILDFLAG(IS_ANDROID)
+inline constexpr char kChromeUISandboxHost[] = "sandbox";
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)

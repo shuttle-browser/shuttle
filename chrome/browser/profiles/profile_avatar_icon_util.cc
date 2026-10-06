@@ -82,6 +82,11 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #endif
 
+#if BUILDFLAG(IS_LINUX)
+#include "chrome/browser/profiles/profile_attributes_entry.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
+#endif
+
 // Helper methods for transforming and drawing avatar icons.
 namespace {
 

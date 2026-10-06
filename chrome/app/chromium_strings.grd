@@ -1453,6 +1453,37 @@ Chromium is unable to recover your settings.
 If this page isn’t working as expected, try allowing optimization.
       </message>
 
+      <!-- Linux strings restored with their upstream conditions -->
+      <if expr="is_linux">
+      <message name="IDS_DESKTOP_SHORTCUT_COMMENT" desc="Description of the desktop shortcut file which will open a Chrome tab at a given url.">
+          Open <ph name="URL">$1<ex>https://www.example-url.com/</ex></ph> in a new tab in Chromium.
+        </message>
+      </if>
+      <if expr="is_linux">
+      <message name="IDS_LINUX_OBSOLETE" desc="A message displayed on an at-launch infobar and about:help warning the user that the OS version they are using is no longer supported.">
+          Chromium may not function correctly because it is no longer supported on this Linux distribution
+        </message>
+      </if>
+      <if expr="is_linux">
+      <message name="IDS_TERMS_DIALOG_ACCEPT" desc="The button label to accept the terms of service">
+          Accept
+        </message>
+      </if>
+      <if expr="is_linux">
+      <message name="IDS_TERMS_DIALOG_ACCESSIBILITY_LABEL" desc="Accessibility label for the Terms of Service in the dialog. The actual terms text is just a placeholder for branded builds.">
+          Chromium Additional Terms of Service
+        </message>
+      </if>
+      <if expr="is_linux">
+      <message name="IDS_TERMS_DIALOG_CANCEL" desc="The button label to decline the terms of service">
+          Cancel
+        </message>
+      </if>
+      <if expr="is_linux">
+      <message name="IDS_TERMS_DIALOG_TITLE" desc="Window title for the Terms of Service dialog">
+          Chromium Additional Terms of Service
+        </message>
+      </if>
     </messages>
   </release>
 </grit>

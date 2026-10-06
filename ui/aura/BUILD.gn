@@ -274,7 +274,6 @@ test("aura_unittests") {
     "//skia",
     "//testing/gtest",
     "//ui/aura_extra",
-    "//ui/aura_extra:tests",
     "//ui/base:test_support",
     "//ui/base/clipboard:clipboard_types",
     "//ui/compositor:test_support",

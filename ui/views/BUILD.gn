@@ -1252,7 +1252,6 @@ source_set("test_support") {
   if (use_ozone && enable_desktop_aura) {
     sources += [
     ]
-    deps += [ "//ui/ozone:ui_test_support" ]
   }
 
   # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and

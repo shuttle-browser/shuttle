@@ -175,6 +175,10 @@
 #include "components/captive_portal/content/captive_portal_tab_helper.h"
 #endif
 
+#if !BUILDFLAG(IS_MAC)
+#include "content/public/browser/render_widget_host_view.h"
+#endif
+
 using base::UserMetricsAction;
 using content::GlobalRenderFrameHostId;
 using content::NavigationController;

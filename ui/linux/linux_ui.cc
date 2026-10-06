@@ -1,0 +1,153 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/linux/linux_ui.h"
+
+#include <cstdio>
+#include <utility>
+
+#include "base/command_line.h"
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "base/no_destructor.h"
+#include "ui/linux/cursor_theme_manager_observer.h"
+#include "ui/linux/linux_ui_getter.h"
+#include "ui/linux/primary_paste_pref_observer.h"
+
+namespace ui {
+
+namespace {
+
+LinuxUi* g_linux_ui = nullptr;
+
+base::RepeatingClosureList& GetAnimationsEnabledCallbackList() {
+  static base::NoDestructor<base::RepeatingClosureList> s_callbacks;
+  return *s_callbacks;
+}
+
+}  // namespace
+
+// static
+LinuxUi* LinuxUi::SetInstance(LinuxUi* instance) {
+  LinuxUi* old_instance = std::exchange(g_linux_ui, instance);
+  if (old_instance != instance) {
+    GetAnimationsEnabledCallbackList().Notify();
+  }
+  return old_instance;
+}
+
+// static
+base::CallbackListSubscription LinuxUi::RegisterAnimationsEnabledCallback(
+    base::RepeatingClosure callback) {
+  return GetAnimationsEnabledCallbackList().Add(std::move(callback));
+}
+
+// static
+LinuxUi* LinuxUi::instance() {
+  return g_linux_ui;
+}
+
+LinuxUi::LinuxUi() = default;
+
+LinuxUi::~LinuxUi() = default;
+
+LinuxUi::CmdLineArgs::CmdLineArgs() = default;
+
+LinuxUi::CmdLineArgs::CmdLineArgs(CmdLineArgs&&) = default;
+
+LinuxUi::CmdLineArgs& LinuxUi::CmdLineArgs::operator=(CmdLineArgs&&) = default;
+
+LinuxUi::CmdLineArgs::~CmdLineArgs() = default;
+
+void LinuxUi::AddDeviceScaleFactorObserver(
+    DeviceScaleFactorObserver* observer) {
+  device_scale_factor_observer_list_.AddObserver(observer);
+}
+
+void LinuxUi::RemoveDeviceScaleFactorObserver(
+    DeviceScaleFactorObserver* observer) {
+  device_scale_factor_observer_list_.RemoveObserver(observer);
+}
+
+void LinuxUi::AddCursorThemeObserver(CursorThemeManagerObserver* observer) {
+  cursor_theme_observer_list_.AddObserver(observer);
+  std::string name = GetCursorThemeName();
+  if (!name.empty()) {
+    observer->OnCursorThemeNameChanged(name);
+  }
+  int size = GetCursorThemeSize();
+  if (size) {
+    observer->OnCursorThemeSizeChanged(size);
+  }
+}
+
+void LinuxUi::RemoveCursorThemeObserver(CursorThemeManagerObserver* observer) {
+  cursor_theme_observer_list_.RemoveObserver(observer);
+}
+
+void LinuxUi::AddPrimaryPastePrefObserver(PrimaryPastePrefObserver* observer) {
+  primary_paste_observer_list_.AddObserver(observer);
+}
+
+void LinuxUi::RemovePrimaryPastePrefObserver(
+    PrimaryPastePrefObserver* observer) {
+  primary_paste_observer_list_.RemoveObserver(observer);
+}
+
+void LinuxUi::NotifyAnimationsEnabledChanged() {
+  GetAnimationsEnabledCallbackList().Notify();
+}
+
+LinuxUi::FontSettings LinuxUi::GetDefaultFontDescription() {
+  if (!default_font_settings_.has_value()) {
+    InitializeFontSettings();
+  }
+  return *default_font_settings_;
+}
+
+// static
+LinuxUi::CmdLineArgs LinuxUi::CopyCmdLine(
+    const base::CommandLine& command_line) {
+  const auto& argv = command_line.argv();
+  size_t args_chars = 0;
+  for (const auto& arg : argv) {
+    args_chars += arg.size() + 1;
+  }
+
+  CmdLineArgs cmd_line;
+  cmd_line.args = std::vector<char>(args_chars);
+  base::span<char> dst = cmd_line.args;
+  for (const auto& arg : argv) {
+    cmd_line.argv.push_back(dst.data());
+    base::span<const char> src_span(arg);
+    dst.copy_prefix_from(src_span);
+    dst[src_span.size()] = '\0';
+    dst.take_first(src_span.size() + 1);
+  }
+  cmd_line.argc = cmd_line.argv.size();
+
+  return cmd_line;
+}
+
+LinuxUiTheme::LinuxUiTheme() = default;
+
+LinuxUiTheme::~LinuxUiTheme() = default;
+
+// static
+LinuxUiTheme* LinuxUiTheme::GetForWindow(aura::Window* window) {
+  if (auto* getter = LinuxUiGetter::instance()) {
+    return getter->GetForWindow(window);
+  }
+  return nullptr;
+}
+
+// static
+LinuxUiTheme* LinuxUiTheme::GetForProfile(Profile* profile) {
+  if (auto* getter = LinuxUiGetter::instance()) {
+    return getter->GetForProfile(profile);
+  }
+  return nullptr;
+}
+
+}  // namespace ui

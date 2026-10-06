@@ -97,7 +97,6 @@ if (is_win || use_dbus) {
     deps = [
       ":status_icons",
       "//chrome/browser/status_icons",
-      "//chrome/test:test_support",
       "//ui/gfx",
       "//ui/views:test_support",
     ]

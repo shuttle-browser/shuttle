@@ -292,10 +292,6 @@ group("gn_all") {
       ]
     }
 
-    if (use_gtk) {
-      deps += [ "//ui/gtk:gtk_unittests" ]
-    }
-
     if (enterprise_watermark && toolkit_views) {
     }
 
@@ -313,13 +309,7 @@ group("gn_all") {
     }
 
     if (use_ozone) {
-      deps += [
-        "//ui/ozone",
-        "//ui/ozone:unittests",
-      ]
-      if (!is_fuchsia) {
-        deps += [ "//ui/ozone/demo" ]
-      }
+      deps += [ "//ui/ozone" ]
     }
 
     if (is_win) {
@@ -558,12 +548,7 @@ group("gn_all") {
         "//components/safe_browsing/content/resources/real_time_url_checks_allowlist:make_real_time_url_allowlist_protobuf_for_gcs",
         "//skia:filter_fuzz_stub",
         "//skia:image_operations_bench",
-        "//ui/snapshot:snapshot_unittests",
       ]
-
-      if (!is_castos) {
-        deps += [ "//chrome/test:chrome_app_unittests" ]
-      }
 
       if (!is_debug && !is_component_build && !is_castos) {
         deps += [ "//chrome/tools/service_discovery_sniffer" ]
@@ -682,22 +667,13 @@ group("gn_all") {
       deps += [ "//third_party/sqlite:sqlite_shell" ]
     }
 
-    if ((is_linux && !is_castos) || is_fuchsia) {
-      # TODO(https://crbug.com/1329673): Figure out if this should be in gn_all
-      # and how cross-platform this is.
-      deps +=
-          [ "//components/services/filesystem:filesystem_service_unittests" ]
-    }
-
     if (is_linux && !is_castos) {
       # TODO(https://crbug.com/1329673): Figure out if any of these should be in
       # gn_all and figure out how cross-platform they are.
       deps += [
         "//chrome/installer/util:strings",
         "//chrome/tools/convert_dict",
-        "//components/constrained_window:unit_tests",
         "//components/metrics:serialization",
-        "//components/sessions:unit_tests",
         "//storage/browser:dump_file_system",
         "//third_party/angle:libANGLE",
       ]
@@ -717,7 +693,6 @@ group("gn_all") {
         "//third_party/opus:test_opus_encode",
         "//third_party/opus:test_opus_padding",
         "//ui/display/types",
-        "//ui/shell_dialogs:shell_dialogs_unittests",
       ]
 
       if (target_cpu == "x86" || target_cpu == "x64") {

@@ -490,6 +490,24 @@ need to be translated for each locale.-->
       <message name="IDS_CONTENT_CONTEXT_WRITING_DIRECTION_RTL" desc="The name of the 'Right to Left' item from the Writing Direction submenu in the content area context menu.  To translate, launch /Applications/TextEdit.app in an appropriately localized version of OS X, right-click on the text entry area and use the translation from there.">
         Right to Left
       </message>
+      <message name="IDS_SELECT_FOLDER_DIALOG_TITLE" desc="The default title for the Select Folder file chooser dialog.">
+        Select Folder
+      </message>
+      <message name="IDS_SAVE_AS_DIALOG_TITLE" desc="The default title for the Save As file chooser dialog.">
+        Save File
+      </message>
+      <message name="IDS_OPEN_FILE_DIALOG_TITLE" desc="The default title for the Open File file chooser dialog (single file).">
+        Open File
+      </message>
+      <message name="IDS_OPEN_FILES_DIALOG_TITLE" desc="The default title for the Open File file chooser dialog (multiple files).">
+        Open Files
+      </message>
+      <message name="IDS_SAVEAS_ALL_FILES" desc="Save As dialog box default text">
+        All Files
+      </message>
+      <message name="IDS_SELECT_UPLOAD_FOLDER_DIALOG_UPLOAD_BUTTON" desc="Button label text for Upload Folder dialog">
+        Upload
+      </message>
 
 
       <message name="IDS_APP_ACCNAME_CLOSE" desc="The accessible name for the Close button.">
@@ -840,6 +858,9 @@ need to be translated for each locale.-->
       <message name="IDS_MESSAGE_NOTIFICATION_ACCESSIBLE_NAME" desc="The spoken feedback text when focusing a notification using ChromeVox.">
         Notification
       </message>
+      <message name="IDS_DISPLAY_NAME_INTERNAL" desc="The name used for internal displays, which is shown in the display settings.">
+        Built-in display
+      </message>
 
 
 
@@ -865,6 +886,13 @@ need to be translated for each locale.-->
       </message>
 
 
+      <!-- Linux strings restored with their upstream conditions -->
+      <message name="IDS_APP_SELECT" desc="The text label of the Select menu item">
+        &amp;Select
+      </message>
+      <message name="IDS_SELECT_UPLOAD_FOLDER_DIALOG_TITLE" desc="The default title for the Select Upload Folder dialog.">
+        Select Folder to Upload
+      </message>
     </messages>
   </release>
 </grit>

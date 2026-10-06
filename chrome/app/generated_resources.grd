@@ -1442,11 +1442,17 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_PROFILING_ENABLED" desc="The toggle to turn profiling on / off">
           &amp;Profiling enabled
         </message>
+        <message name="IDS_FULLSCREEN" desc="Switches into fullscreen mode">
+          &amp;Full screen
+        </message>
         <message name="IDS_SHOW_DOWNLOADS" desc="The show downloads menu in the app menu">
           &amp;Downloads
         </message>
         <message name="IDS_FIND_EXTENSIONS" desc="The explore extensions menu item in the app menu">
           Explore &amp;Extensions
+        </message>
+        <message name="IDS_SHOW_EXTENSIONS" desc="The show extensions menu in the app menu">
+          &amp;Extensions
         </message>
         <message name="IDS_EXTENSIONS_SUBMENU" desc="The extensions menu in the app menu (title case).">
           &amp;Extensions
@@ -8117,6 +8123,30 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_CLIENT_CERT_DIALOG_TEXT" desc="The text in the dialog that prompts for a certificate when doing SSL client authentication.">
         Select a certificate to authenticate yourself to <ph name="HOST_NAME">$1<ex>www.google.com</ex></ph>
       </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_TITLE" desc="The title in the dialog that prompts for security device PIN.">
+       Unlock Security Device
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_TEXT_CERT_ENROLLMENT" desc="The text in the dialog that prompts for security device PIN for cert enrollment.">
+       Please unlock <ph name="TOKEN_NAME">$1<ex>Software Security Device</ex></ph> to import client certificate from <ph name="HOST_NAME">$2<ex>www.google.com</ex></ph>.
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_TEXT_CLIENT_AUTH" desc="The text in the dialog that prompts for security device PIN when doing key generation.">
+       Please unlock <ph name="TOKEN_NAME">$1<ex>Software Security Device</ex></ph> to authenticate to <ph name="HOST_NAME">$2<ex>www.google.com</ex></ph> with your certificate.
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_TEXT_LIST_CERTS" desc="The text in the dialog that prompts for security device PIN when using the certificate manager without taking a specific action (eg, just loading the cert manager).">
+       Please unlock <ph name="TOKEN_NAME">$1<ex>Software Security Device</ex></ph>.
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_TEXT_CERT_IMPORT" desc="The text in the dialog that prompts for security device PIN when using the certificate manager to import a client certificate.">
+       Please unlock <ph name="TOKEN_NAME">$1<ex>Software Security Device</ex></ph> to import the client certificate.
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_TEXT_CERT_EXPORT" desc="The text in the dialog that prompts for security device PIN when using the certificate manager to export a client certificate.">
+       Please unlock <ph name="TOKEN_NAME">$1<ex>Software Security Device</ex></ph> to export the client certificate.
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_PASSWORD_FIELD" desc="Label for PIN entry in the dialog that prompts for security device PIN.">
+       PIN:
+      </message>
+      <message name="IDS_CRYPTO_MODULE_AUTH_DIALOG_OK_BUTTON_LABEL" desc="Label for OK button in the dialog that prompts for security device PIN.">
+       Unlock
+      </message>
 
 
       <!-- Menus -->
@@ -8747,6 +8777,9 @@ This can include information about installed software, files, your browser, the 
       <!-- Web and message center notifications -->
       <message name="IDS_NOTIFICATION_BUTTON_SETTINGS" desc="Short button label to go to the notification settings panel">
         Settings
+      </message>
+      <message name="IDS_NOTIFICATION_BUTTON_CLOSE" desc="Button label to close a notification">
+        Close
       </message>
       <message name="IDS_NOTIFICATION_BUTTON_MORE" desc="Label shown on the second button of a MAC OSX system notification used to expand further options. [CHAR_LIMIT=12]">
         More
@@ -9861,6 +9894,9 @@ This can include information about installed software, files, your browser, the 
       </message>
       <message name="IDS_TAB_AX_MEMORY_SAVINGS" desc="Accessibility label text of how much memory was saved by the inactive tab'">
         <ph name="WINDOW_TITLE">$1<ex>Google Hangouts</ex></ph> - <ph name="MEMORY_VALUE">$2<ex>175MB</ex></ph> freed up
+      </message>
+      <message name="IDS_PROFILE_IN_USE_LINUX_QUIT" desc="Text of button in profile in use dialog to quit without doing anything.">
+        Quit
       </message>
 
       <message name="IDS_PROFILE_IN_USE_LINUX_RELAUNCH" desc="Text of button in dialog to delete the profile lock file.">
@@ -11856,6 +11892,202 @@ This can include information about installed software, files, your browser, the 
     <message name="IDS_OSCRYPTASYNC_AVAILABILITY_INFOBAR_BUTTON" desc="The text of the button to proceed with relaunching the entire browser to resolve keychain permission issues.">
       Relaunch
     </message>
+      <!-- Linux strings restored with their upstream conditions -->
+      <if expr="is_win or is_linux or is_chromeos">
+      <message name="IDS_BLUETOOTH_DEVICE_CREDENTIALS_LABEL" desc="Label of the text prompt for Bluetooth device credentials.">
+          Enter Bluetooth Passkey for device <ph name="DEVICE">$1</ph>
+        </message>
+      </if>
+      <if expr="is_win or is_linux or is_chromeos">
+      <message name="IDS_BLUETOOTH_DEVICE_CREDENTIALS_TITLE" desc="Title of the Bluetooth device credentials prompt dialog.">
+          Device Credentials
+        </message>
+      </if>
+      <if expr="is_win or is_linux or is_chromeos">
+      <message name="IDS_BLUETOOTH_DEVICE_PAIR_CONFIRM_LABEL" desc="Label of the text prompt for Bluetooth device pair confirmation.">
+          Bluetooth device <ph name="DEVICE">$1</ph> would like permission to pair.
+        </message>
+      </if>
+      <if expr="is_win or is_linux or is_chromeos">
+      <message name="IDS_BLUETOOTH_DEVICE_PAIR_CONFIRM_TITLE" desc="Title of the Bluetooth device pair confirmation prompt dialog.">
+          Pair Confirmation
+        </message>
+      </if>
+      <if expr="is_win or is_linux or is_chromeos">
+      <message name="IDS_BLUETOOTH_DEVICE_PASSKEY_CONFIRM_LABEL" desc="Label of the text prompt for Bluetooth device pair passkey confirmation.">
+          Please confirm that <ph name="PASSKEY">$1<ex>123456</ex></ph> is the passkey displayed on Bluetooth device <ph name="DEVICE">$2</ph>.
+        </message>
+      </if>
+      <if expr="is_win or is_linux or is_chromeos">
+      <message name="IDS_BLUETOOTH_DEVICE_PASSKEY_CONFIRM_TITLE" desc="Title of the Bluetooth device pair passkey confirmation prompt dialog.">
+          Confirm passkey
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_CLOSE_TAB_LINUX" desc="The Linux menu item to close a browser tab in the file menu.">
+          &amp;Close Tab
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_CLOSE_WINDOW_LINUX" desc="The Linux menu item to close a window in the file menu.">
+          Close Win&amp;dow
+        </message>
+      </if>
+      <if expr="not is_macosx">
+      <message name="IDS_CONTENT_CONTEXT_SPELLCHECK_MENU" desc="The name of the menu item that shows the submenu for spellcheck options">
+          &amp;Spell check
+        </message>
+      </if>
+      <if expr="not use_titlecase">
+      <message name="IDS_DEV_TOOLS_CONSOLE" desc="The text label of the JavaScript console menu item">
+          &amp;JavaScript console
+        </message>
+      </if>
+      <if expr="use_titlecase">
+      <message name="IDS_DEV_TOOLS_CONSOLE" desc="In Title Case: The text label of the JavaScript console menu item">
+          &amp;JavaScript Console
+        </message>
+      </if>
+      <if expr="not use_titlecase">
+      <message name="IDS_DEV_TOOLS_DEVICES" desc="The text label of the Inspect Devices menu item">
+          &amp;Inspect devices
+        </message>
+      </if>
+      <if expr="use_titlecase">
+      <message name="IDS_DEV_TOOLS_DEVICES" desc="The text label of the Inspect Devices menu item">
+          &amp;Inspect Devices
+        </message>
+      </if>
+      <if expr="not use_titlecase">
+      <message name="IDS_DEV_TOOLS_ELEMENTS" desc="The text label of the Inspect Elements menu item">
+          &amp;Inspect elements
+        </message>
+      </if>
+      <if expr="use_titlecase">
+      <message name="IDS_DEV_TOOLS_ELEMENTS" desc="The text label of the Inspect Elements menu item">
+          &amp;Inspect Elements
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_EDIT_MENU_LINUX" desc="The menu title of the Linux edit menu.">
+          &amp;Edit
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_FILE_MENU_LINUX" desc="The menu title of the Linux file menu.">
+          &amp;File
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HELP_MENU_LINUX" desc="The menu title of the Linux help menu.">
+          &amp;Help
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_BACK_LINUX" desc="The Linux menu item for back in the history menu.">
+          &amp;Back
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_CLOSED_LINUX" desc="The Linux menu item for the header of recently closed items in the history menu.">
+          Recently Closed
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_CLOSED_RESTORE_GROUP_LINUX" desc="The Linux menu item for restoring all the tabs of a recently closed group.">
+          Restore group
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_CLOSED_RESTORE_SPLIT_LINUX" desc="The Linux menu item for restoring a recently closed split.">
+          Restore split view
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_CLOSED_RESTORE_WINDOW_LINUX" desc="The Linux menu item for restoring all the tabs of a recently closed window.">
+          Restore window
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_FORWARD_LINUX" desc="The Linux menu item for forward in the history menu.">
+          &amp;Forward
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_HOME_LINUX" desc="The Linux menu item for home in the history menu." meaning="'home' as in an internet location, a 'home page'">
+          Home
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_MENU_LINUX" desc="The menu title of the Linux history menu.">
+          Hi&amp;story
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_HISTORY_VISITED_LINUX" desc="The Linux menu item for the header of most visited items in the history menu.">
+          Most Visited
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_OPEN_FILE_LINUX" desc="The Linux menu item to open a file in the file menu.">
+          Open &amp;File...
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_OPEN_LOCATION_LINUX" desc="The Linux menu item to open a location in the file menu (puts cursor in the url bar).">
+          Open &amp;Location...
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_RELOAD_MENU_LINUX" desc="The Linux menu item to reload the current page in the view menu.">
+          &amp;Reload This Page
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_REOPEN_CLOSED_TABS_LINUX" desc="The Linux menu item reopen recently closed tabs in the file menu.">
+          Reopen Closed Tab
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_STOP_MENU_LINUX" desc="The Linux menu item stop in the view menu.">
+          &amp;Stop
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_TEXT_BIGGER_LINUX" desc="The Linux menu item to zoom in on the page in the view menu.">
+          Zoom &amp;In
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_TEXT_DEFAULT_LINUX" desc="The Linux menu item to make the page actual size in the view menu.">
+          A&amp;ctual Size
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_TEXT_SMALLER_LINUX" desc="The Linux menu item to zoom out on the in the view menu.">
+          Zoom &amp;Out
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_TOOLS_MENU_LINUX" desc="The menu title of the Linux tools menu.">
+          &amp;Tools
+        </message>
+      </if>
+      <if expr="is_posix and not is_macosx">
+      <message name="IDS_VIEW_MENU_LINUX" desc="The menu title of the Linux view menu.">
+          &amp;View
+        </message>
+      </if>
+      <if expr="not use_titlecase">
+      <message name="IDS_VIEW_SOURCE" desc="The text label of the View Page Source menu item">
+          View s&amp;ource
+        </message>
+      </if>
+      <if expr="use_titlecase">
+      <message name="IDS_VIEW_SOURCE" desc="In Title Case: The text label of the View Page Source menu item">
+          View S&amp;ource
+        </message>
+      </if>
   </messages>
 </release>
 </grit>

@@ -80,22 +80,6 @@ void ShowBubble(ui::ElementContext element_context,
                 ui::ElementIdentifier anchor_element,
                 std::unique_ptr<ui::DialogModel> dialog_model);
 
-// Shows the create chrome app shortcut dialog box.
-// |close_callback| may be null.
-void ShowCreateChromeAppShortcutsDialog(
-    gfx::NativeWindow parent_window,
-    Profile* profile,
-    const extensions::Extension* app,
-    base::OnceCallback<void(bool /* created */)> close_callback);
-
-// Shows the create chrome app shortcut dialog box. Same as above but for a
-// WebApp instead of an Extension. |close_callback| may be null.
-void ShowCreateChromeAppShortcutsDialog(
-    gfx::NativeWindow parent_window,
-    Profile* profile,
-    const std::string& web_app_id,
-    base::OnceCallback<void(bool /* created */)> close_callback);
-
 // Shows a tab modal dialog based on `dialog_model`.
 // Please use tabs::TabDialogManager for showing dialogs on desktop platforms.
 void ShowTabModal(std::unique_ptr<ui::DialogModel> dialog_model,

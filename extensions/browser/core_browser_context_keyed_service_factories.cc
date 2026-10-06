@@ -11,6 +11,7 @@
 #include "extensions/browser/delayed_install_manager_factory.h"
 #include "extensions/browser/event_router_factory.h"
 #include "extensions/browser/extension_action_manager.h"
+#include "extensions/browser/extension_config_map_factory.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_mojo_binder_registry_factory.h"
 #include "extensions/browser/extension_navigation_registry.h"
@@ -57,8 +58,9 @@ void EnsureCoreBrowserContextKeyedServiceFactoriesBuilt() {
   EventRouterFactory::GetInstance();
   ExtensionActionManager::GetFactory();
   ExtensionFunction::EnsureShutdownNotifierFactoryBuilt();
-  // Agent Chrome: upstream only registered this via DependsOn() from the
+  // Agent Chrome: upstream only registered these via DependsOn() from the
   // (removed) contextual tasks / AIM eligibility bridge factories.
+  ExtensionConfigMapFactory::GetInstance();
   ExtensionMojoBinderRegistryFactory::GetInstance();
   ExtensionPrefsFactory::GetInstance();
   ExtensionNavigationRegistry::GetFactoryInstance();

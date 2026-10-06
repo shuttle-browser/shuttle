@@ -166,32 +166,6 @@ source_set("color_provider_browser_helper") {
   ]
 }
 
-if (!is_mac) {
-  source_set("create_application_shortcut_view") {
-    public = [ "create_application_shortcut_view.h" ]
-    sources = [ "create_application_shortcut_view.cc" ]
-    public_deps = [
-      "//base",
-      "//ui/base/metadata",
-      "//ui/base/mojom:ui_base_types",
-      "//ui/views",
-    ]
-    deps = [
-      "//chrome/app:generated_resources",
-      "//chrome/browser/profiles:profile",
-      "//chrome/browser/ui/views:layout_provider",
-      "//chrome/common:constants",
-      "//components/constrained_window",
-      "//components/prefs",
-      "//extensions/common",
-      "//ui/base",
-    ]
-    if (is_win) {
-      deps += [ "//chrome/installer/util:with_no_strings" ]
-    }
-  }
-}
-
 source_set("status_bubble") {
   public = [ "status_bubble_views.h" ]
   sources = [ "status_bubble_views.cc" ]

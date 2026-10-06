@@ -40,7 +40,6 @@ source_set("tab_contents") {
     deps += [
       "//chrome/browser:defaults",
       "//chrome/browser/renderer_context_menu",
-      "//chrome/browser/ui/aura/tab_contents",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tab_contents",
       "//chrome/browser/ui/views/renderer_context_menu",

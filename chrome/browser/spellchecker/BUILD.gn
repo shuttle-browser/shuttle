@@ -20,12 +20,6 @@ source_set("spellchecker") {
     public += [ "spelling_request.h" ]
   }
 
-  if (is_win || is_linux || is_chromeos) {
-    public += [
-      "spellcheck_language_policy_handler.h",
-    ]
-  }
-
   if (has_spellcheck_panel) {
     public += [ "spell_check_panel_host_impl.h" ]
   }
@@ -60,12 +54,6 @@ source_set("impl") {
 
   if (use_browser_spellchecker && enable_spelling_service) {
     sources += [ "spelling_request.cc" ]
-  }
-
-  if (is_win || is_linux || is_chromeos) {
-    sources += [
-      "spellcheck_language_policy_handler.cc",
-    ]
   }
 
   if (has_spellcheck_panel) {
