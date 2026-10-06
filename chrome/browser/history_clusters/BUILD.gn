@@ -61,7 +61,6 @@ source_set("impl") {
     sources += [ "history_clusters_tab_helper_android.cc" ]
     deps += [
       ":jni_headers",
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/ui/android/tab_model",
       "//components/ntp_tiles",
     ]

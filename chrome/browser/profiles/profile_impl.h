@@ -53,10 +53,6 @@ class ProfilePolicyConnector;
 class ProfileCloudPolicyManager;
 }  // namespace policy
 
-namespace sync_preferences {
-class PrefServiceSyncable;
-}
-
 namespace user_prefs {
 class PrefRegistrySyncable;
 }
@@ -123,12 +119,6 @@ class ProfileImpl : public Profile {
   std::string GetProfileUserName() const override;
   base::Time GetCreationTime() const override;
   base::FilePath GetPath() const override;
-  Profile* GetOffTheRecordProfile(const OTRProfileID& otr_profile_id,
-                                  bool create_if_needed) override;
-  std::vector<Profile*> GetAllOffTheRecordProfiles() override;
-  void DestroyOffTheRecordProfile(Profile* otr_profile) override;
-  bool HasOffTheRecordProfile(const OTRProfileID& otr_profile_id) override;
-  bool HasAnyOffTheRecordProfile() override;
   Profile* GetOriginalProfile() override;
   const Profile* GetOriginalProfile() const override;
   bool IsChild() const override;
@@ -136,7 +126,6 @@ class ProfileImpl : public Profile {
   PrefService* GetPrefs() override;
   const PrefService* GetPrefs() const override;
   ChromeZoomLevelPrefs* GetZoomLevelPrefs() override;
-  PrefService* GetReadOnlyOffTheRecordPrefs() override;
   policy::SchemaRegistryService* GetPolicySchemaRegistryService() override;
 #if BUILDFLAG(IS_CHROMEOS)
   policy::UserCloudPolicyManagerAsh* GetUserCloudPolicyManagerAsh() override;
@@ -280,12 +269,11 @@ class ProfileImpl : public Profile {
 
   std::unique_ptr<policy::ProfilePolicyConnector> profile_policy_connector_;
 
-  // Keep `prefs_` on top for destruction order because `dummy_otr_prefs_`,
+  // Keep `prefs_` on top for destruction order because
   // `pref_change_registrar_` and others store pointers to `prefs_` and shall be
   // destructed first.
   scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry_;
-  std::unique_ptr<sync_preferences::PrefServiceSyncable> prefs_;
-  std::unique_ptr<sync_preferences::PrefServiceSyncable> dummy_otr_prefs_;
+  std::unique_ptr<PrefService> prefs_;
   PrefChangeRegistrar pref_change_registrar_;
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   scoped_refptr<ExtensionSpecialStoragePolicy>
@@ -295,8 +283,6 @@ class ProfileImpl : public Profile {
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
   base::OneShotTimer create_session_service_timer_;
 #endif
-
-  std::map<OTRProfileID, std::unique_ptr<Profile>> otr_profiles_;
 
   // See GetStartTime for details.
   base::Time start_time_;

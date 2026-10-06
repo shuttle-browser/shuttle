@@ -37,10 +37,6 @@ namespace cablev2 {
 struct Pairing;
 }
 
-namespace enclave {
-struct CredentialRequest;
-}
-
 // FidoDiscoveryFactory offers methods to construct instances of
 // FidoDiscoveryBase for a given |transport| protocol.
 class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
@@ -53,11 +49,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
   // FidoTransportProtocol::kUsbHumanInterfaceDevice is not valid on Android.
   virtual std::vector<std::unique_ptr<FidoDiscoveryBase>> Create(
       FidoTransportProtocol transport);
-
-  // Return a discovery for enclave authenticators, if enclave mode is enabled
-  // and configured.
-  virtual std::optional<std::unique_ptr<FidoDiscoveryBase>>
-  MaybeCreateEnclaveDiscovery();
 
   // Returns whether the current instance is an override injected by the
   // WebAuthn testing API.
@@ -97,10 +88,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
   get_cable_contact_callback();
 
   void set_hid_ignore_list(base::flat_set<VidPid> hid_ignore_list);
-
-  void set_enclave_ui_request_stream(
-      std::unique_ptr<FidoDiscoveryBase::EventStream<
-          std::unique_ptr<enclave::CredentialRequest>>> stream);
 
 #if BUILDFLAG(IS_MAC)
   // Configures the Touch ID authenticator. Set to std::nullopt to disable it.
@@ -178,9 +165,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
       get_assertion_request_for_legacy_credential_check_;
 #endif  // BUILDFLAG(IS_CHROMEOS)
   base::flat_set<VidPid> hid_ignore_list_;
-  std::unique_ptr<FidoDiscoveryBase::EventStream<
-      std::unique_ptr<enclave::CredentialRequest>>>
-      enclave_ui_request_stream_;
 };
 
 }  // namespace device

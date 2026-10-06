@@ -23,7 +23,6 @@
 #include "components/live_caption/caption_util.h"
 #include "components/soda/constants.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/sync/base/features.h"
 #include "components/user_manager/user_manager.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "content/public/common/content_features.h"

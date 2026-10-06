@@ -308,8 +308,7 @@ void ChromeSigninClient::PreSignOut(
           signin_metrics::ProfileSignout::kServerForcedDisable ||
       signout_source_metric == signin_metrics::ProfileSignout::kPrefChanged ||
       user_declines_sync_after_consenting_to_management;
-  if (signin_util::IsForceSigninEnabled() && !profile_->IsSystemProfile() &&
-      !profile_->IsGuestSession() && !profile_->IsChild() &&
+  if (signin_util::IsForceSigninEnabled() && !profile_->IsChild() &&
       !keep_window_opened) {
     chrome::CloseAllBrowsersWithProfile(
         profile_,
@@ -373,11 +372,6 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
         break;
     }
   }
-}
-
-std::unique_ptr<signin::BoundSessionOAuthMultiLoginDelegate>
-ChromeSigninClient::CreateBoundSessionOAuthMultiloginDelegate() const {
-  return nullptr;
 }
 
 signin::OAuthConsumer ChromeSigninClient::GetOAuthConsumerFromId(

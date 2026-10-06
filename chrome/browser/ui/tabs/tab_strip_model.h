@@ -725,13 +725,6 @@ class TabStripModel {
   // order.
   void RotateFocusedGroup(bool forward);
 
-  // Returns true if one or more of the tabs pointed to by `indices` are
-  // supported by read later.
-  bool IsReadLaterSupportedForAny(const std::vector<int>& indices);
-
-  // Saves tabs with url supported by Read Later.
-  void AddToReadLater(const std::vector<int>& indices);
-
   // Notifies all group observers that the TabGroupEditor is opening. This is
   // used by Views that want to force the editor to open without having to find
   // the group's header view in the Tab Strip.
@@ -1236,7 +1229,6 @@ class TabStripModel {
                                     std::optional<tab_groups::TabGroupId> group,
                                     bool pinned);
 
-  void AddToReadLaterImpl(const std::vector<int>& indices);
 
   // Updates the `contents_data_` and sends out observer notifications for
   // inserting a new tab in  the tabstrip.

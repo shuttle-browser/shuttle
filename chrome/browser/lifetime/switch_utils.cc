@@ -28,8 +28,6 @@ constexpr const char* kSwitchesToRemoveOnAutorestart[] = {
 #if BUILDFLAG(IS_WIN)
     switches::kFromInstaller,
 #endif
-    switches::kGuest,
-    switches::kIncognito,
 #if BUILDFLAG(IS_WIN)
     switches::kIsolated,
 #endif

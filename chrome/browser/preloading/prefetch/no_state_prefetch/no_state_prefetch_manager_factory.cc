@@ -9,7 +9,6 @@
 #include "chrome/browser/predictors/predictor_database_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/chrome_no_state_prefetch_manager_delegate.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
 #include "extensions/buildflags/buildflags.h"
 
@@ -57,7 +56,6 @@ NoStatePrefetchManagerFactory::NoStatePrefetchManagerFactory()
   // PrerenderLocalPredictor observers the history visit DB.
   DependsOn(HistoryServiceFactory::GetInstance());
   DependsOn(predictors::PredictorDatabaseFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
 }
 
 NoStatePrefetchManagerFactory::~NoStatePrefetchManagerFactory() = default;

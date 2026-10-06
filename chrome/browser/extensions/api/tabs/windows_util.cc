@@ -13,7 +13,6 @@
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/window_controller.h"
 #include "chrome/browser/extensions/window_controller_list.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "components/policy/core/common/policy_pref_names.h"
@@ -95,40 +94,20 @@ bool CanOperateOnWindow(const ExtensionFunction* function,
     return false;
   }
 
-  Profile* profile = Profile::FromBrowserContext(function->browser_context());
-  return profile->HasPrimaryOTRProfile() &&
-         profile->GetPrimaryOTRProfile(/*create_if_needed=*/true) ==
-             controller->profile();
+  // There is no off the record profile.
+  return false;
 }
 
 IncognitoResult ShouldOpenIncognitoWindow(Profile* profile,
                                           std::optional<bool> incognito,
                                           std::vector<GURL>* urls,
                                           std::string* error) {
-  const policy::IncognitoModeAvailability incognito_availability =
-      IncognitoModePrefs::GetAvailability(profile->GetPrefs());
-  bool incognito_result = false;
-  if (incognito.has_value()) {
-    incognito_result = incognito.value();
-    if (incognito_result && incognito_availability ==
-                                policy::IncognitoModeAvailability::kDisabled) {
-      *error = extensions::tabs_constants::kIncognitoModeIsDisabled;
-      return IncognitoResult::kError;
-    }
-    if (!incognito_result &&
-        incognito_availability == policy::IncognitoModeAvailability::kForced) {
-      *error = extensions::tabs_constants::kIncognitoModeIsForced;
-      return IncognitoResult::kError;
-    }
-  } else if (incognito_availability ==
-             policy::IncognitoModeAvailability::kForced) {
-    // If incognito argument is not specified explicitly, we default to
-    // incognito when forced so by policy.
-    incognito_result = true;
+  // Incognito is permanently unavailable.
+  if (incognito.value_or(false)) {
+    *error = extensions::tabs_constants::kIncognitoModeIsDisabled;
+    return IncognitoResult::kError;
   }
-
-  return incognito_result ? IncognitoResult::kIncognito
-                          : IncognitoResult::kRegular;
+  return IncognitoResult::kRegular;
 }
 
 }  // namespace windows_util

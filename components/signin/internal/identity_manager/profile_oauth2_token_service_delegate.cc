@@ -252,11 +252,6 @@ void ProfileOAuth2TokenServiceDelegate::FireAccountOnDeviceUpdated(
 }
 #endif
 
-std::string ProfileOAuth2TokenServiceDelegate::GetTokenForMultilogin(
-    const CoreAccountId& account_id) const {
-  return std::string();
-}
-
 scoped_refptr<network::SharedURLLoaderFactory>
 ProfileOAuth2TokenServiceDelegate::GetURLLoaderFactory() const {
   return nullptr;
@@ -324,11 +319,10 @@ void ProfileOAuth2TokenServiceDelegate::RevokeCredentials(
 void ProfileOAuth2TokenServiceDelegate::UpdateCredentials(
     const CoreAccountId& account_id,
     const std::string& refresh_token,
-    SourceForRefreshTokenOperation source,
-    const signin::TokenBindingInfo& token_binding_info) {
+    SourceForRefreshTokenOperation source) {
   base::AutoReset<SourceForRefreshTokenOperation> auto_reset(
       &update_refresh_token_source_, source);
-  UpdateCredentialsInternal(account_id, refresh_token, token_binding_info);
+  UpdateCredentialsInternal(account_id, refresh_token);
 }
 
 bool ProfileOAuth2TokenServiceDelegate::FixAccountErrorIfPossible() {

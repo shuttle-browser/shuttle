@@ -26,16 +26,6 @@ int DownloadCoreService::BlockingShutdownCountAllProfiles() {
             DownloadCoreServiceFactory::GetForBrowserContext(*it)) {
       count += service->BlockingShutdownCount();
     }
-
-    std::vector<Profile*> otr_profiles = (*it)->GetAllOffTheRecordProfiles();
-    for (Profile* otr : otr_profiles) {
-      // The download core service might not be available for some irregular
-      // profiles, like the System Profile.
-      if (DownloadCoreService* otr_service =
-              DownloadCoreServiceFactory::GetForBrowserContext(otr)) {
-        count += otr_service->BlockingShutdownCount();
-      }
-    }
   }
 
   return count;

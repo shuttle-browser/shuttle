@@ -623,7 +623,6 @@ mojom("mojo_bindings") {
     "plugin.mojom",
     "readaloud/read_aloud.mojom",
     "renderer_configuration.mojom",
-    "trusted_vault_encryption_keys_extension.mojom",
   ]
 
   deps = []

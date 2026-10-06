@@ -30,7 +30,6 @@ class BrowserThemePack;
 class PrefService;
 class Profile;
 class ThemeServiceObserver;
-class ThemeSyncableService;
 
 namespace extensions {
 class Extension;
@@ -180,10 +179,6 @@ class ThemeService : public KeyedService,
   // Uninstall theme extensions which are no longer in use.
   void RemoveUnusedThemes();
 
-  // Returns the syncable service for syncing theme. The returned service is
-  // owned by |this| object.
-  virtual ThemeSyncableService* GetThemeSyncableService() const;
-
   // Gets the ThemeProvider for |profile|. This will be different for an
   // incognito or isolated profile and its original profile, even though all
   // profiles use the same ThemeService.
@@ -267,8 +262,6 @@ class ThemeService : public KeyedService,
 
   // Don't create "Cached Theme.pak" in the extension directory, for testing.
   static void DisableThemePackForTesting();
-
-  void ResetThemeSyncableServiceForTest();
 
  protected:
   // Set a custom default theme instead of the normal default theme.
@@ -413,11 +406,7 @@ class ThemeService : public KeyedService,
   // to their desired values.
   bool should_suppress_theme_updates_ = false;
 
-  // Declared before |theme_syncable_service_|, because ThemeSyncableService
-  // removes itself from the |observers_| list on destruction.
   base::ObserverList<ThemeServiceObserver> observers_;
-
-  std::unique_ptr<ThemeSyncableService> theme_syncable_service_;
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   class ThemeObserver;

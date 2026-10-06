@@ -105,11 +105,7 @@ void SessionStartupPref::SetStartupPref(PrefService* prefs,
 SessionStartupPref SessionStartupPref::GetStartupPref(const Profile* profile) {
   DCHECK(profile);
 
-  // Guest sessions should not store any state, therefore they should never
-  // trigger a restore during startup.
-  return profile->IsGuestSession()
-             ? SessionStartupPref(SessionStartupPref::DEFAULT)
-             : GetStartupPref(profile->GetPrefs());
+  return GetStartupPref(profile->GetPrefs());
 }
 
 // static

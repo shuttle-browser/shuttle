@@ -36,9 +36,6 @@
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/sync/base/user_selectable_type.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "components/unified_consent/pref_names.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -217,13 +214,11 @@ FindsService::FindsService(
     OptimizationGuideKeyedService* opt_guide_service,
     history::HistoryService* history_service,
     PrefService* pref_service,
-    notifications::NotificationScheduleService* notification_schedule_service,
-    syncer::SyncService* sync_service)
+    notifications::NotificationScheduleService* notification_schedule_service)
     : opt_guide_service_(opt_guide_service),
       history_service_(history_service),
       pref_service_(pref_service),
-      notification_schedule_service_(notification_schedule_service),
-      sync_service_(sync_service) {
+      notification_schedule_service_(notification_schedule_service) {
   CHECK(pref_service_);
   // Observe changes to the underlying permission signals to proactively clear
   // scheduled notifications if the user revokes history sync or MSBB
@@ -234,10 +229,6 @@ FindsService::FindsService(
       base::BindRepeating(
           &FindsService::MaybeDeleteNotificationsOnPermissionLoss,
           base::Unretained(this)));
-
-  if (sync_service_) {
-    sync_observation_.Observe(sync_service_);
-  }
 
   if (history_service_) {
     history_observation_.Observe(history_service_);
@@ -264,15 +255,6 @@ void FindsService::AddObserver(Observer* observer) {
 
 void FindsService::RemoveObserver(Observer* observer) {
   observers_.RemoveObserver(observer);
-}
-
-void FindsService::OnStateChanged(syncer::SyncService* sync) {
-  MaybeDeleteNotificationsOnPermissionLoss();
-}
-
-void FindsService::OnSyncShutdown(syncer::SyncService* sync) {
-  sync_observation_.Reset();
-  sync_service_ = nullptr;
 }
 
 void FindsService::OnHistoryDeletions(
@@ -303,7 +285,7 @@ void FindsService::ExecuteModelAndScheduleNotification(
     return;
   }
 
-  if (!IsHistorySyncAndMsbbEnabled(sync_service_, pref_service_)) {
+  if (!IsHistorySyncAndMsbbEnabled(pref_service_)) {
     RecordFindsResultAndRunCallback(
         std::move(callback),
         {Result::Status::kDisabledByHistorySyncOrMsbb,
@@ -423,7 +405,7 @@ void FindsService::SRPBackNavigationCountForOptInReached() {
 
 bool FindsService::IsFindsFeatureAllowedForUser() {
   return IsAllowedByEnterprisePolicy(pref_service_) &&
-         IsHistorySyncAndMsbbEnabled(sync_service_, pref_service_);
+         IsHistorySyncAndMsbbEnabled(pref_service_);
 }
 
 void FindsService::MaybeRescheduleNotifications() {

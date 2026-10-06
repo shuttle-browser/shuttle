@@ -75,7 +75,6 @@ class DownloadProtectionService;
 #endif
 class HashRealTimeService;
 class SafeBrowsingDatabaseManager;
-class SafeBrowsingPrefChangeHandler;
 class SafeBrowsingServiceFactory;
 class SafeBrowsingUIManager;
 class SecuritySettingsBundlePrefChangeHandler;
@@ -337,7 +336,6 @@ class SafeBrowsingServiceImpl : public SafeBrowsingServiceInterface,
   void OnProfileAdded(Profile* profile) override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // Creates services for |profile|, which may be normal or off the record.
@@ -441,12 +439,6 @@ class SafeBrowsingServiceImpl : public SafeBrowsingServiceInterface,
 
   scoped_refptr<network::SharedURLLoaderFactory>
       url_loader_factory_for_testing_;
-
-  // Manages the logic for handling preference changes, including displaying
-  // specific UI elements in response to certain preference changes.
-  // TODO(crbug.com/502649234): Remove after bundled settings is launched.
-  std::map<Profile*, std::unique_ptr<SafeBrowsingPrefChangeHandler>>
-      pref_change_handlers_map_;
 
   // Manages the logic for handling bundled settings preference changes.
   std::map<Profile*, std::unique_ptr<SecuritySettingsBundlePrefChangeHandler>>

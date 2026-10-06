@@ -48,7 +48,6 @@
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
 #include "chrome/browser/heavy_ad_intervention/heavy_ad_service_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
-#include "chrome/browser/history/web_history_service_factory.h"
 #include "chrome/browser/language/url_language_histogram_factory.h"
 #include "chrome/browser/login_detection/login_detection_prefs.h"
 #include "chrome/browser/media/media_engagement_service.h"
@@ -66,13 +65,11 @@
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_service.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/find_bar/find_bar_state_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
@@ -103,7 +100,6 @@
 #include "components/permissions/permission_actions_history.h"
 #include "components/permissions/permission_decision_auto_blocker.h"
 #include "components/prefs/pref_service.h"
-#include "components/reading_list/core/reading_list_model.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
 #include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
 #include "components/search_engines/template_url_service.h"
@@ -113,8 +109,6 @@
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/identity_utils.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "components/web_cache/browser/web_cache_manager.h"
 #include "components/webrtc_logging/browser/log_cleanup.h"
 #include "components/webrtc_logging/browser/text_log_list.h"
@@ -381,8 +375,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       // TODO(dmurph): Support all backends with filter (crbug.com/40152186).
       base::RecordAction(UserMetricsAction("ClearBrowsingData_History"));
       history_service->DeleteLocalAndRemoteHistoryBetween(
-          WebHistoryServiceFactory::GetForProfile(profile_), delete_begin_,
-          delete_end_, history::kNoAppIdFilter,
+          delete_begin_, delete_end_, history::kNoAppIdFilter,
           CreateTaskCompletionClosure(TracingDataType::kHistory),
           &history_task_tracker_);
     }
@@ -734,20 +727,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       auto* dict = spellcheck->GetCustomDictionary();
       if (dict)
         dict->Clear();
-    }
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  // DATA_TYPE_READING_LIST
-  if (remove_mask & constants::DATA_TYPE_READING_LIST) {
-    auto* reading_list_model =
-        ReadingListModelFactory::GetForBrowserContext(profile_);
-    if (reading_list_model) {
-      if (delete_begin_.is_null() && delete_end_.is_max()) {
-        reading_list_model->DeleteAllEntries(FROM_HERE);
-      } else {
-        NOTIMPLEMENTED();
-      }
     }
   }
 
@@ -1243,21 +1222,11 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 
   if (remove_mask & constants::DATA_TYPE_SEARCH_ENGINE_CHOICE) {
     // Clear the search engine choice prefs.
-    // TODO(b/312180262): Consider clearing other Guest preferences as well.
-    // TODO(crbug.com/369959287): Delete the Guest OTR profile object instead of
-    // wiping it.
-
     search_engines::WipeSearchEngineChoicePrefs(
-        // For Guest profiles, the OTR is the one that gets wiped, but the
-        // choice prefs get set on the parent profile. For other OTR profiles,
-        // we don't want to automatically forward to the original profile, the
-        // choice made is still relevant there. This method is also called for
-        // regular profiles, when they are deleted. We don't really care about
-        // resetting the pref in that case, because the full directory will be
-        // deleted anyway.
-        CHECK_DEREF((profile_->IsGuestSession() ? profile_->GetOriginalProfile()
-                                                : profile_.get())
-                        ->GetPrefs()),
+        // This method is also called for regular profiles, when they are
+        // deleted. We don't really care about resetting the pref in that case,
+        // because the full directory will be deleted anyway.
+        CHECK_DEREF(profile_->GetPrefs()),
         search_engines::SearchEngineChoiceWipeReason::kProfileWipe);
   }
 }

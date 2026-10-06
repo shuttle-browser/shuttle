@@ -17,7 +17,6 @@
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager.h"
 #include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"
@@ -60,7 +59,6 @@ RealTimeUrlLookupServiceFactory::RealTimeUrlLookupServiceFactory()
               .WithAshInternals(ProfileSelection::kOriginalOnly)
               .Build()) {
   DependsOn(IdentityManagerFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
   DependsOn(VerdictCacheManagerFactory::GetInstance());
   DependsOn(SafeBrowsingNavigationObserverManagerFactory::GetInstance());
 #if BUILDFLAG(FULL_SAFE_BROWSING)
@@ -89,7 +87,6 @@ RealTimeUrlLookupServiceFactory::BuildServiceInstanceForBrowserContext(
           IdentityManagerFactory::GetForProfile(profile)),
       base::BindRepeating(&safe_browsing::SyncUtils::
                               AreSigninAndSyncSetUpForSafeBrowsingTokenFetches,
-                          SyncServiceFactory::GetForProfile(profile),
                           IdentityManagerFactory::GetForProfile(profile)),
       profile->IsOffTheRecord(),
       base::BindRepeating(

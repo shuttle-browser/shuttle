@@ -8,7 +8,6 @@
 #include "components/grit/safe_browsing_resources_map.h"
 #include "components/safe_browsing/content/browser/web_ui/safe_browsing_content_ui_handler.h"
 #include "components/safe_browsing/core/common/web_ui_constants.h"
-#include "components/sync/protocol/user_event_specifics.pb.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"

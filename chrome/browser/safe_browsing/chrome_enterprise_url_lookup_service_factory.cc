@@ -120,7 +120,7 @@ std::unique_ptr<KeyedService> ChromeEnterpriseRealTimeUrlLookupServiceFactory::
       /*webui_delegate=*/WebUIContentInfoSingleton::GetInstance(),
       IdentityManagerFactory::GetForProfile(profile),
       policy::ManagementServiceFactory::GetForProfile(profile),
-      profile->IsOffTheRecord(), profile->IsGuestSession(),
+      profile->IsOffTheRecord(),
       base::BindRepeating(&GetProfileEmail, profile),
       base::BindRepeating(
           &enterprise_connectors::GetNavigationActiveContentAreaUser,

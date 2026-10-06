@@ -12,12 +12,7 @@
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
-#include "components/sync/service/sync_service_observer.h"
 #include "components/variations/service/google_groups_manager_prefs.h"
-
-namespace syncer {
-class SyncService;
-}
 
 namespace user_prefs {
 class PrefRegistrySyncable;
@@ -25,8 +20,7 @@ class PrefRegistrySyncable;
 
 // Service responsible for one-way synchronization of Google group information
 // from per-profile sync data to local-state.
-class GoogleGroupsManager : public KeyedService,
-                                   public syncer::SyncServiceObserver {
+class GoogleGroupsManager : public KeyedService {
  public:
   explicit GoogleGroupsManager(PrefService& target_prefs,
                                       const std::string& key,
@@ -58,18 +52,7 @@ class GoogleGroupsManager : public KeyedService,
   // KeyedService overrides.
   void Shutdown() override;
 
-  void OnSyncServiceInitialized(syncer::SyncService* sync_service);
-
-  // syncer::SyncServiceObserver overrides.
-  void OnStateChanged(syncer::SyncService* sync) override;
-  void OnSyncShutdown(syncer::SyncService* sync) override;
-
  private:
-  // Clears state that should only exist for a signed in user.
-  // This should be called when the user signs out or disables sync, as the
-  // server is the source-of-truth for this state, not the client.
-  void ClearSigninScopedState();
-
   // Update the group memberships in `target_prefs_`.
   // Called when `source_prefs_` have been initialized or modified.
   void UpdateGoogleGroups();
@@ -95,10 +78,6 @@ class GoogleGroupsManager : public KeyedService,
   // is a part of.
   base::flat_set<std::string> google_group_ids_;
 
-  // The SyncService observation. When Sync gets disabled (most likely due to
-  // user signout), the groups-related preferences must be cleared.
-  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
-      sync_service_observation_{this};
 };
 
 #endif  // COMPONENTS_VARIATIONS_SERVICE_GOOGLE_GROUPS_MANAGER_H_

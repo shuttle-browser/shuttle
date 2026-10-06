@@ -20,7 +20,6 @@
 #include "ui/menus/simple_menu_model.h"
 
 class AppMenuIconController;
-class BookmarkSubMenuModel;
 class BrowserWindowInterface;
 
 // Values should correspond to 'WrenchMenuAction' enum in enums.xml.
@@ -194,7 +193,6 @@ class AppMenuModel : public ui::SimpleMenuModel,
                      public ui::ButtonMenuItemModel::Delegate {
  public:
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kProfileMenuItem);
-  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kProfileOpenGuestItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kBookmarksMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kTabGroupsMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kDownloadsMenuItem);
@@ -289,10 +287,6 @@ class AppMenuModel : public ui::SimpleMenuModel,
   // Getters.
   BrowserWindowInterface* browser() const { return browser_; }
 
-  BookmarkSubMenuModel* bookmark_sub_menu_model() const {
-    return bookmark_sub_menu_model_.get();
-  }
-
  protected:
   // Helper function to record the menu action in a UMA histogram.
   virtual void LogMenuAction(AppMenuAction action_id);
@@ -340,7 +334,6 @@ class AppMenuModel : public ui::SimpleMenuModel,
   std::unique_ptr<ui::ButtonMenuItemModel> zoom_menu_item_model_;
 
   // Bookmark submenu.
-  std::unique_ptr<BookmarkSubMenuModel> bookmark_sub_menu_model_;
 
   // Other submenus.
   std::vector<std::unique_ptr<ui::SimpleMenuModel>> sub_menus_;

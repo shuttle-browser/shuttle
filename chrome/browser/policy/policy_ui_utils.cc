@@ -92,7 +92,7 @@ CreatePromotionEligibilityChecker(Profile* profile,
                                   bool dismissed_banner_pref,
                                   bool feature_enabled) {
   if (!feature_enabled || profile->IsIncognitoProfile() ||
-      profile->IsGuestSession() || !profile->GetCloudPolicyManager() ||
+      !profile->GetCloudPolicyManager() ||
       !profile->GetCloudPolicyManager()->core()->client()) {
     return nullptr;
   }

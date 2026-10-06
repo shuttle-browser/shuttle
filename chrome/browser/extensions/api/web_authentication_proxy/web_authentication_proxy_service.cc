@@ -94,16 +94,8 @@ bool WebAuthenticationProxyRegistrar::SetRequestProxy(
   active_regular_proxy_ = extension->id();
   WebAuthenticationProxyServiceFactory::GetForBrowserContext(profile)
       ->SetRequestProxy(PassKey(), extension);
-  // Also attach spanning mode extensions to the incognito profile. If no
-  // incognito profile currently exists, OnOffTheRecordProfileCreated() may
-  // attach later.
   if (util::CanCrossIncognito(extension, profile)) {
     attach_regular_proxy_to_both_contexts_ = true;
-    if (profile->HasPrimaryOTRProfile()) {
-      WebAuthenticationProxyServiceFactory::GetForBrowserContext(
-          profile->GetPrimaryOTRProfile(/*create_if_needed=*/false))
-          ->SetRequestProxy(PassKey(), extension);
-    }
   }
   return true;
 }
@@ -128,14 +120,6 @@ void WebAuthenticationProxyRegistrar::ClearRequestProxy(Profile* profile) {
   active_regular_proxy_.reset();
   WebAuthenticationProxyServiceFactory::GetForBrowserContext(profile)
       ->ClearRequestProxy(PassKey());
-  // Also clear spanning mode extensions from the incognito profile, if
-  // necessary.
-  if (attach_regular_proxy_to_both_contexts_ &&
-      profile->HasPrimaryOTRProfile()) {
-    WebAuthenticationProxyServiceFactory::GetForBrowserContext(
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/false))
-        ->ClearRequestProxy(PassKey());
-  }
   attach_regular_proxy_to_both_contexts_ = false;
 }
 
@@ -162,44 +146,17 @@ void WebAuthenticationProxyRegistrar::OnExtensionUnloaded(
   // mode extensions.
   auto* profile = Profile::FromBrowserContext(browser_context);
   DCHECK_EQ(profile, profile_);
-  auto* maybe_incognito_profile =
-      profile->GetPrimaryOTRProfile(/*create_if_needed=*/false);
 
   if (extension->id() == active_regular_proxy_) {
     active_regular_proxy_.reset();
     WebAuthenticationProxyServiceFactory::GetForBrowserContext(profile)
         ->ClearRequestProxy(PassKey());
-    if (attach_regular_proxy_to_both_contexts_ && maybe_incognito_profile) {
-      WebAuthenticationProxyServiceFactory::GetForBrowserContext(
-          maybe_incognito_profile)
-          ->ClearRequestProxy(PassKey());
-    }
     attach_regular_proxy_to_both_contexts_ = false;
   }
   if (extension->id() == active_otr_split_proxy_) {
     DCHECK(!attach_regular_proxy_to_both_contexts_);
     active_otr_split_proxy_.reset();
-    if (maybe_incognito_profile) {
-      WebAuthenticationProxyServiceFactory::GetForBrowserContext(
-          maybe_incognito_profile)
-          ->ClearRequestProxy(PassKey());
-    }
   }
-}
-
-void WebAuthenticationProxyRegistrar::OnOffTheRecordProfileCreated(
-    Profile* otr_profile) {
-  if (!attach_regular_proxy_to_both_contexts_) {
-    return;
-  }
-  // A spanning mode extension attached to the regular profile before
-  // this OTR profile existed. Attach it to the new OTR profile, too.
-  DCHECK(active_regular_proxy_);
-  const Extension* extension =
-      extension_registry_->enabled_extensions().GetByID(*active_regular_proxy_);
-  DCHECK(extension);
-  WebAuthenticationProxyServiceFactory::GetForBrowserContext(otr_profile)
-      ->SetRequestProxy(PassKey(), extension);
 }
 
 void WebAuthenticationProxyRegistrar::OnProfileWillBeDestroyed(

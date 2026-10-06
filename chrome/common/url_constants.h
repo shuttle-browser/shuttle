@@ -576,17 +576,6 @@ inline constexpr char kWalletPrivatePassHelpCenterURL[] =
 inline constexpr char kSigninInterceptManagedDisclaimerLearnMoreURL[] =
     "https://support.google.com/chrome/a/?p=profile_separation";
 
-#if !BUILDFLAG(IS_ANDROID)
-// The URL for the trusted vault sync passphrase opt in.
-inline constexpr char kSyncTrustedVaultOptInURL[] =
-    "https://passwords.google.com/encryption/enroll?"
-    "utm_source=chrome&utm_medium=desktop&utm_campaign=encryption_enroll";
-#endif
-
-// The URL for the "Learn more" link for the trusted vault sync passphrase.
-inline constexpr char kSyncTrustedVaultLearnMoreURL[] =
-    "https://support.google.com/accounts?p=settings_password_ode";
-
 // The URL for the Help Center page about User Bypass.
 inline constexpr char16_t kUserBypassHelpCenterURL[] =
     u"https://support.google.com/chrome?p=pause_protections";

@@ -22,7 +22,6 @@
 #include "components/optimization_guide/proto/features/finds.pb.h"
 #include "components/optimization_guide/proto/finds_metadata.pb.h"
 #include "components/prefs/pref_change_registrar.h"
-#include "components/sync/service/sync_service_observer.h"
 
 namespace history {
 class HistoryService;
@@ -34,10 +33,6 @@ class NotificationScheduleService;
 struct ClientOverview;
 }  // namespace notifications
 
-namespace syncer {
-class SyncService;
-}  // namespace syncer
-
 class OptimizationGuideKeyedService;
 class PrefRegistrySimple;
 class PrefService;
@@ -48,7 +43,6 @@ namespace finds {
 // inference.
 class FindsService : public KeyedService,
                      public base::SupportsUserData,
-                     public syncer::SyncServiceObserver,
                      public history::HistoryServiceObserver {
  public:
   class Observer : public base::CheckedObserver {
@@ -63,8 +57,7 @@ class FindsService : public KeyedService,
       OptimizationGuideKeyedService* opt_guide_service,
       history::HistoryService* history_service,
       PrefService* pref_service,
-      notifications::NotificationScheduleService* notification_service,
-      syncer::SyncService* sync_service);
+      notifications::NotificationScheduleService* notification_service);
   ~FindsService() override;
 
   FindsService(const FindsService&) = delete;
@@ -131,9 +124,6 @@ class FindsService : public KeyedService,
  private:
   friend class FindsServiceTest;
 
-  // syncer::SyncServiceObserver:
-  void OnStateChanged(syncer::SyncService* sync) override;
-  void OnSyncShutdown(syncer::SyncService* sync) override;
 
   // history::HistoryServiceObserver:
   void OnHistoryDeletions(history::HistoryService* history_service,
@@ -164,7 +154,6 @@ class FindsService : public KeyedService,
   raw_ptr<PrefService> pref_service_;
   raw_ptr<notifications::NotificationScheduleService>
       notification_schedule_service_;
-  raw_ptr<syncer::SyncService> sync_service_;
   base::ObserverList<Observer> observers_;
   base::CancelableTaskTracker history_task_tracker_;
   base::flat_map<optimization_guide::proto::FindsMetadata::ThemeType, int>
@@ -173,8 +162,6 @@ class FindsService : public KeyedService,
   int omnibox_recent_search_suggestion_click_count_ = 0;
 
   PrefChangeRegistrar pref_change_registrar_;
-  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
-      sync_observation_{this};
   base::ScopedObservation<history::HistoryService,
                           history::HistoryServiceObserver>
       history_observation_{this};

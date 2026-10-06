@@ -12,7 +12,6 @@
 #include "base/functional/bind.h"
 #include "base/notreached.h"
 #include "base/values.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -307,8 +306,7 @@ void FamilyLinkUserInternalsMessageHandler::SendBasicInfo() {
 
   base::ListValue* section_browser =
       AddSection(&section_list, "Browser and web");
-  AddSectionEntry(section_browser, "Incognito mode allowed",
-                  IncognitoModePrefs::IsIncognitoAllowed(profile));
+  AddSectionEntry(section_browser, "Incognito mode allowed", false);
 
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(profile);

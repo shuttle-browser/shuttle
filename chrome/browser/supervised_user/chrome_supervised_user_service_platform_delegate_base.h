@@ -14,8 +14,7 @@ class Profile;
 // Base class for the Chrome implementations of
 // supervised_user::SupervisedUserService::PlatformDelegate.
 class ChromeSupervisedUserServicePlatformDelegateBase
-    : public supervised_user::SupervisedUserService::PlatformDelegate,
-      public ProfileObserver {
+    : public supervised_user::SupervisedUserService::PlatformDelegate {
  public:
   explicit ChromeSupervisedUserServicePlatformDelegateBase(Profile& profile);
   ~ChromeSupervisedUserServicePlatformDelegateBase() override;
@@ -23,17 +22,9 @@ class ChromeSupervisedUserServicePlatformDelegateBase
   // supervised_user::SupervisedUserService::PlatformDelegate::
   std::string GetCountryCode() const override;
   version_info::Channel GetChannel() const override;
-  bool ShouldCloseIncognitoTabs() const override;
-
-  // ProfileObserver::
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
 
  protected:
   raw_ref<Profile> profile_;
-
- private:
-  base::ScopedMultiSourceObservation<Profile, ProfileObserver>
-      profile_observations_{this};
 };
 
 #endif  // CHROME_BROWSER_SUPERVISED_USER_CHROME_SUPERVISED_USER_SERVICE_PLATFORM_DELEGATE_BASE_H_

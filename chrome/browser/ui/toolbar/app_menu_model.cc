@@ -29,7 +29,6 @@
 #include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/extensions/extension_ui_util.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
@@ -40,7 +39,6 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -61,7 +59,6 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
-#include "chrome/browser/ui/toolbar/bookmark_sub_menu_model.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -93,8 +90,6 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/sync/base/features.h"
-#include "components/sync/service/sync_service.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/vector_icons/vector_icons.h"
 #include "content/public/browser/navigation_entry.h"
@@ -142,7 +137,6 @@ using base::UserMetricsAction;
 using content::WebContents;
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel, kProfileMenuItem);
-DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel, kProfileOpenGuestItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel, kBookmarksMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel, kTabGroupsMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel, kDownloadsMenuItem);
@@ -530,8 +524,7 @@ void AppMenuModel::ExecuteCommand(int command_id, int event_flags) {
   switch (command_id) {
     case IDC_SHOW_BOOKMARK_SIDE_PANEL:
     case IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL:
-    case IDC_SHOW_READING_MODE_SIDE_PANEL:
-    case IDC_READING_LIST_MENU_SHOW_UI: {
+    case IDC_SHOW_READING_MODE_SIDE_PANEL: {
       actions::ActionInvocationContext context =
           actions::ActionInvocationContext::Builder()
               .SetProperty(
@@ -972,22 +965,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       LogMenuAction(MENU_ACTION_APP_INFO);
       break;
 
-    // Reading list submenu.
-    case IDC_READING_LIST_MENU_ADD_TAB:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ReadingListAddTab", delta);
-      }
-      LogMenuAction(MENU_ACTION_READING_LIST_ADD_TAB);
-      break;
-    case IDC_READING_LIST_MENU_SHOW_UI:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ReadingListShowUi", delta);
-      }
-      LogMenuAction(MENU_ACTION_READING_LIST_SHOW_UI);
-      break;
-
     case IDC_PERFORMANCE:
       if (!uma_action_recorded_) {
         base::UmaHistogramMediumTimes(
@@ -1149,20 +1126,6 @@ void AppMenuModel::Build() {
       features::IsRoundedIconsEnabled() ? kDownloadIcon : kDownloadMenuOldIcon);
   SetElementIdentifierAt(GetIndexOfCommandId(IDC_SHOW_DOWNLOADS).value(),
                          kDownloadsMenuItem);
-  if (!browser_->GetProfile()->IsGuestSession()) {
-    bookmark_sub_menu_model_ =
-        std::make_unique<BookmarkSubMenuModel>(this, browser_);
-
-    AddSubMenuWithStringIdAndVectorIcon(
-        this, kBookmarksMenuPlaceholder, IDS_BOOKMARKS_AND_LISTS_MENU,
-        bookmark_sub_menu_model_.get(),
-        features::IsRoundedIconsEnabled() ? kStarIcon
-                                          : kBookmarksListsMenuOldIcon);
-    SetElementIdentifierAt(
-        GetIndexOfCommandId(kBookmarksMenuPlaceholder).value(),
-        kBookmarksMenuItem);
-  }
-
   // Extensions sub menu.
   if (ArePromotionsEnabled() &&
       base::FeatureList::IsEnabled(features::kExtensionsCollapseMainMenu) &&

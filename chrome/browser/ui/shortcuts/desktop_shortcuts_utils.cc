@@ -34,10 +34,10 @@ bool CanCreateDesktopShortcut(content::WebContents* web_contents) {
   auto* browser_window_interface = tab->GetBrowserWindowInterface();
   Profile* profile = browser_window_interface->GetProfile();
 
-  // Do not allow for Guest or OTR profiles.
+  // Do not allow for OTR profiles.
   // System profiles have not been introduced here because they do not have a
   // browser.
-  if (!profile || profile->IsGuestSession() || profile->IsOffTheRecord()) {
+  if (!profile || profile->IsOffTheRecord()) {
     return false;
   }
 

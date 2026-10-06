@@ -95,7 +95,6 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
 #include "chrome/browser/ui/views/side_panel/history/history_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
-#include "chrome/browser/ui/views/side_panel/reading_list/reading_list_side_panel_coordinator.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
@@ -370,10 +369,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
               session_restore_infobar::SessionRestoreInfobarController>(
               *browser, browser);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-  reading_list_side_panel_coordinator_ =
-      GetUserDataFactory().CreateInstance<ReadingListSidePanelCoordinator>(
-          *browser, browser, profile, browser->GetTabStripModel());
 
   session_service_browser_helper_ =
       GetUserDataFactory().CreateInstance<SessionServiceBrowserHelper>(

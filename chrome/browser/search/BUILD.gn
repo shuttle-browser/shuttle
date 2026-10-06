@@ -64,7 +64,6 @@ source_set("search") {
       "//components/policy:generated",
       "//components/policy:policy_code_generate",
       "//components/policy/core/common",
-      "//components/sync_preferences",
       "//extensions/browser",
       "//extensions/common",
       "//mojo/public/cpp/bindings",

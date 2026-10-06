@@ -452,13 +452,6 @@ inline constexpr char kNetworkPredictionOptions[] =
 inline constexpr char kPreinstalledExtensionsInstallState[] =
     "default_apps_install_state";
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-// A list of extensions ids that have to be allowed to run in Incognito by the
-// user in order to use Incognito mode.
-inline constexpr char kMandatoryExtensionsForIncognitoNavigation[] =
-    "mandatory_extensions_for_incognito_navigation";
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
 // The list of extensions allowed to use the platformKeys API for remote
 // attestation.
@@ -2334,17 +2327,6 @@ inline constexpr char kPartnerBookmarkMappings[] = "partnerbookmarks.mappings";
 // rules, or an implicit fallback to DIRECT connections).
 inline constexpr char kQuickCheckEnabled[] = "proxy.quick_check_enabled";
 
-// Whether Guest Mode is enabled within the browser.
-inline constexpr char kBrowserGuestModeEnabled[] =
-    "profile.browser_guest_enabled";
-
-// Whether Guest Mode is enforced within the browser.
-inline constexpr char kBrowserGuestModeEnforced[] =
-    "profile.browser_guest_enforced";
-
-// Whether Adding a new Person is enabled within the user manager.
-inline constexpr char kBrowserAddPersonEnabled[] = "profile.add_person_enabled";
-
 // Whether profile can be used before sign in.
 inline constexpr char kForceBrowserSignin[] = "profile.force_browser_signin";
 
@@ -2354,10 +2336,6 @@ inline constexpr char kBrowserProfilePickerAvailabilityOnStartup[] =
 
 // Whether the profile picker has been shown at least once.
 inline constexpr char kBrowserProfilePickerShown[] = "profile.picker_shown";
-
-// Whether to show the profile picker on startup or not.
-inline constexpr char kBrowserShowProfilePickerOnStartup[] =
-    "profile.show_picker_on_startup";
 
 #if BUILDFLAG(IS_CHROMEOS)
 // A dictionary pref of the echo offer check flag. It sets offer info when

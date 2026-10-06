@@ -50,16 +50,7 @@ ChromeProcessManagerDelegate::~ChromeProcessManagerDelegate() {
 
 bool ChromeProcessManagerDelegate::AreBackgroundPagesAllowedForContext(
     content::BrowserContext* context) const {
-  Profile* profile = Profile::FromBrowserContext(context);
-
-  bool is_normal_session = !profile->IsGuestSession() &&
-                           !profile->IsSystemProfile();
-
-  // Disallow if the current session is a Guest mode session or login screen but
-  // the current browser context is *not* off-the-record. Such context is
-  // artificial and background page shouldn't be created in it.
-  // http://crbug.com/41080781
-  return is_normal_session || profile->IsOffTheRecord();
+  return true;
 }
 
 bool ChromeProcessManagerDelegate::IsExtensionBackgroundPageAllowed(
@@ -142,11 +133,6 @@ void ChromeProcessManagerDelegate::OnProfileManagerDestroying() {
   profile_manager_observation_.Reset();
 }
 
-void ChromeProcessManagerDelegate::OnOffTheRecordProfileCreated(
-    Profile* off_the_record_profile) {
-  observed_profiles_.AddObservation(off_the_record_profile);
-}
-
 void ChromeProcessManagerDelegate::OnProfileWillBeDestroyed(Profile* profile) {
   observed_profiles_.RemoveObservation(profile);
 
@@ -163,17 +149,6 @@ void ChromeProcessManagerDelegate::OnProfileWillBeDestroyed(Profile* profile) {
   };
 
   close_background_hosts(profile);
-
-  // If this profile owns an incognito profile, but it is destroyed before the
-  // incognito profile is destroyed, then close the incognito background hosts
-  // as well. This happens in a few tests. http://crbug.com/40247368
-  if (!profile->IsOffTheRecord() && profile->HasPrimaryOTRProfile()) {
-    Profile* otr = profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-    close_background_hosts(otr);
-    if (observed_profiles_.IsObservingSource(otr)) {
-      observed_profiles_.RemoveObservation(otr);
-    }
-  }
 }
 
 void ChromeProcessManagerDelegate::StartTearDown() {

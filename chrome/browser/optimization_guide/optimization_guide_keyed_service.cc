@@ -37,7 +37,6 @@
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_paths.h"
 #include "components/component_updater/component_updater_paths.h"
@@ -107,26 +106,10 @@ using ::optimization_guide::OnDeviceModelPerformanceClass;
 std::optional<bool> g_is_official_build_for_testing;
 
 // Returns the profile to use for when setting up the keyed service when the
-// profile is Off-The-Record. For guest profiles, returns a loaded regular
-// profile if one exists, otherwise nullptr.
+// profile is Off-The-Record.
 Profile* GetProfileForOTROptimizationGuide(Profile* profile) {
   DCHECK(profile);
   DCHECK(profile->IsOffTheRecord());
-
-  if (profile->IsGuestSession()) {
-    // Guest sessions need to rely on the stores from real profiles
-    // as guest profiles cannot fetch or store new models. Note: only
-    // loaded profiles should be used as we do not want to force load
-    // another profile as that can lead to start up regressions.
-    std::vector<Profile*> profiles =
-        g_browser_process->profile_manager()->GetLoadedProfiles();
-    for (Profile* loaded_profile : profiles) {
-      if (loaded_profile->IsRegularProfile()) {
-        return loaded_profile;
-      }
-    }
-    return nullptr;
-  }
   return profile->GetOriginalProfile();
 }
 
@@ -322,7 +305,7 @@ void OptimizationGuideKeyedService::InitializeModelExecution(Profile* profile) {
   auto url_loader_factory = profile->GetDefaultStoragePartition()
                                 ->GetURLLoaderFactoryForBrowserProcess();
 
-  if (!profile->IsOffTheRecord() && !profile->IsGuestSession()) {
+  if (!profile->IsOffTheRecord()) {
     auto* variations_service = g_browser_process->variations_service();
     auto dogfood_status =
         variations_service && variations_service->IsLikelyDogfoodClient()

@@ -66,7 +66,6 @@ source_set("metrics") {
     "//components/performance_manager",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/sync",
     "//components/ukm:observers",
     "//components/unified_consent",
     "//components/variations/service",
@@ -283,7 +282,6 @@ source_set("impl") {
     "//chrome/browser/page_load_metrics",
     "//chrome/browser/performance_manager",
     "//chrome/browser/prefs",
-    "//chrome/browser/reading_list",
     "//chrome/browser/resource_coordinator",
     "//chrome/browser/resource_coordinator:mojo_bindings",
     "//chrome/browser/resource_coordinator:utils",
@@ -291,8 +289,6 @@ source_set("impl") {
     "//chrome/browser/site_isolation",
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/supervised_user",
-    "//chrome/browser/sync",
-    "//chrome/browser/sync:factories",
     "//chrome/browser/tracing",
     "//chrome/browser/ui:browser_otr_state",
     "//chrome/browser/ui:recently_audible_helper",
@@ -309,7 +305,6 @@ source_set("impl") {
     "//components/metrics/structured:events",
     "//components/metrics/structured:structured_metrics_features",
     "//components/privacy_sandbox:features",
-    "//components/reading_list/core",
     "//components/safe_browsing/core/common:features",
     "//components/services/paint_preview_compositor/public/mojom",
     "//components/signin/core/browser",
@@ -328,7 +323,6 @@ source_set("impl") {
       "page_load_metrics_provider.cc",
     ]
     deps += [
-      "//chrome/browser/android/metrics:jni_headers",
       "//chrome/browser/notifications:jni_headers",
     ]
     if (current_cpu == "arm") {
@@ -526,10 +520,7 @@ if (is_android) {
       ":metrics",
       ":test_support",
       "//base",
-      "//chrome/browser/android",
-      "//chrome/browser/sync",
       "//chrome/browser/ui/android/tab_model:test_support",
-      "//chrome/browser/unified_consent",
       "//chrome/test:test_support",
       "//components/background_task_scheduler:factory",
       "//components/metrics/demographics",

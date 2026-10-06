@@ -82,7 +82,6 @@ source_set("impl") {
   if (is_android) {
     sources += [ "session_restore_android.cc" ]
     deps += [
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/ui/browser_window:create_browser_window",
     ]
   }

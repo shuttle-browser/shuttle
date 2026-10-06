@@ -16,10 +16,6 @@ bool DeviceParentalControlsNoOpImpl::IsWebFilteringEnabled() const {
   return false;
 }
 
-bool DeviceParentalControlsNoOpImpl::IsIncognitoModeDisabled() const {
-  return false;
-}
-
 bool DeviceParentalControlsNoOpImpl::IsSafeSearchForced() const {
   return false;
 }

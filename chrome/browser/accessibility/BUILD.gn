@@ -139,7 +139,6 @@ source_set("impl") {
     "//components/live_caption:constants",
     "//components/manta",
     "//components/pref_registry",
-    "//components/sync_preferences",
     "//components/update_client",
     "//content/public/browser",
     "//services/image_annotation:service",
@@ -193,7 +192,6 @@ if (is_win) {
       "//components/live_caption:constants",
       "//components/soda",
       "//components/soda:constants",
-      "//components/sync_preferences",
       "//ui/accessibility",
     ]
   }

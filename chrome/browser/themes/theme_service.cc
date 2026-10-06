@@ -46,8 +46,6 @@
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/themes/theme_service_observer.h"
-#include "chrome/browser/themes/theme_service_utils.h"
-#include "chrome/browser/themes/theme_syncable_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
@@ -404,8 +402,6 @@ void ThemeService::Init() {
       FROM_HERE, base::BindOnce(&ThemeService::OnExtensionServiceReady,
                                 weak_ptr_factory_.GetWeakPtr()));
 #endif
-  theme_syncable_service_ =
-      std::make_unique<ThemeSyncableService>(profile_, this);
 
   // TODO(gayane): Temporary entry point for Chrome Colors. Remove once UI is
   // there.
@@ -452,7 +448,6 @@ void ThemeService::Shutdown() {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   theme_observer_.reset();
 #endif
-  theme_syncable_service_.reset();
 }
 
 CustomThemeSupplier* ThemeService::GetThemeSupplier() const {
@@ -592,19 +587,13 @@ void ThemeService::RemoveUnusedThemes() {
   }
 
   std::string current_theme = GetThemeID();
-  std::string saved_local_theme;
-  if (theme_syncable_service_) {
-    saved_local_theme =
-        theme_syncable_service_->GetSavedLocalThemeExtensionID();
-  }
   std::vector<std::string> remove_list;
   const extensions::ExtensionSet extensions =
       extensions::ExtensionRegistry::Get(profile_)
           ->GenerateInstalledExtensionsSet();
   extensions::ExtensionPrefs* prefs = extensions::ExtensionPrefs::Get(profile_);
   for (const auto& extension : extensions) {
-    if (extension->is_theme() && extension->id() != current_theme &&
-        extension->id() != saved_local_theme) {
+    if (extension->is_theme() && extension->id() != current_theme) {
       // Only uninstall themes which are not disabled or are disabled with
       // reason DISABLE_USER_ACTION. We cannot blanket uninstall all disabled
       // themes because externally installed themes are initially disabled.
@@ -623,10 +612,6 @@ void ThemeService::RemoveUnusedThemes() {
     extension_registrar->UninstallExtension(
         i, extensions::UNINSTALL_REASON_ORPHANED_THEME, nullptr);
   }
-}
-
-ThemeSyncableService* ThemeService::GetThemeSyncableService() const {
-  return theme_syncable_service_.get();
 }
 
 const ui::ThemeProvider& ThemeService::GetDefaultThemeProvider() const {
@@ -824,7 +809,9 @@ void ThemeService::SetUserColor(std::optional<SkColor> user_color) {
 }
 
 std::optional<SkColor> ThemeService::GetUserColor() const {
-  return CurrentThemeUserColor(profile_->GetPrefs());
+  const SkColor user_color = profile_->GetPrefs()->GetInteger(prefs::kUserColor);
+  return user_color == SK_ColorTRANSPARENT ? std::nullopt
+                                           : std::make_optional(user_color);
 }
 
 void ThemeService::SetBrowserColorVariant(
@@ -867,7 +854,7 @@ void ThemeService::SetIsGrayscale(bool is_grayscale) {
 }
 
 bool ThemeService::GetIsGrayscale() const {
-  return CurrentThemeIsGrayscale(profile_->GetPrefs());
+  return profile_->GetPrefs()->GetBoolean(prefs::kGrayscaleThemeEnabled);
 }
 
 bool ThemeService::GetIsBaseline() const {
@@ -1305,6 +1292,3 @@ bool ThemeService::DisableExtension(const std::string& extension_id) {
   return false;
 }
 
-void ThemeService::ResetThemeSyncableServiceForTest() {
-  theme_syncable_service_.reset();
-}

@@ -32,7 +32,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
@@ -42,7 +41,6 @@
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
-#include "components/sync/service/sync_service.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 
@@ -76,15 +74,13 @@ bool IsRegisteredAsEphemeral(ProfileAttributesStorage* storage,
   return entry && entry->IsEphemeral();
 }
 
-// Disables sync in order to prevent that browsing data deletions propagate
-// across devices via sync.
-void DisableSyncForProfileDeletion(Profile* profile) {
+// Signs out of the profile before deletion.
+void SignOutForProfileDeletion(Profile* profile) {
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfileIfExists(profile);
   if (!identity_manager ||
       !identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
-    // Nothing to do as the user is signed out (hence sync is guaranteed to be
-    // disabled).
+    // Nothing to do as the user is signed out.
     return;
   }
 
@@ -296,12 +292,9 @@ void DeleteProfileHelper::EnsureActiveProfileExistsBeforeDeletion(
   // In case we delete non-active profile and current profile is valid, proceed.
   const base::FilePath last_used_profile_path =
       profile_manager_->GetLastUsedProfileDir();
-  const base::FilePath guest_profile_path =
-      profile_manager_->GetGuestProfilePath();
   Profile* last_used_profile =
       profile_manager_->GetProfileByPath(last_used_profile_path);
-  if (last_used_profile_path != profile_dir &&
-      last_used_profile_path != guest_profile_path && last_used_profile) {
+  if (last_used_profile_path != profile_dir && last_used_profile) {
     FinishDeletingProfile(profile_dir, last_used_profile_path,
                           std::move(profile_keep_alive));
     return;
@@ -310,11 +303,11 @@ void DeleteProfileHelper::EnsureActiveProfileExistsBeforeDeletion(
   // Search for an active browser and use its profile as active if possible.
   bool found = false;
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-      [this, &profile_dir, &guest_profile_path, &callback, &keep_alive,
+      [this, &profile_dir, &callback, &keep_alive,
        &profile_keep_alive, &found](BrowserWindowInterface* browser) {
         Profile* const profile = browser->GetProfile();
         const base::FilePath cur_path = profile->GetPath();
-        if (cur_path != profile_dir && cur_path != guest_profile_path &&
+        if (cur_path != profile_dir &&
             !IsProfileDirectoryMarkedForDeletion(cur_path)) {
           OnNewActiveProfileInitialized(
               profile_dir, cur_path, std::move(callback), std::move(keep_alive),
@@ -336,7 +329,7 @@ void DeleteProfileHelper::EnsureActiveProfileExistsBeforeDeletion(
   for (ProfileAttributesEntry* entry : entries) {
     base::FilePath cur_path = entry->GetPath();
     // Make sure that this profile is not pending deletion.
-    if (cur_path != profile_dir && cur_path != guest_profile_path &&
+    if (cur_path != profile_dir &&
         !IsProfileDirectoryMarkedForDeletion(cur_path)) {
       fallback_profile_path = cur_path;
       break;
@@ -401,10 +394,8 @@ void DeleteProfileHelper::OnLoadProfileForProfileDeletion(
     // ProfileManager instead of handling shutdown here.
     profile_manager_->NotifyOnProfileMarkedForPermanentDeletion(profile);
 
-    // Sign out from doomed profile to avoid that RemoveBrowsingDataForProfile()
-    // would result in deletions being propagated to the server (and other
-    // devices) via sync.
-    DisableSyncForProfileDeletion(profile);
+    // Sign out from doomed profile.
+    SignOutForProfileDeletion(profile);
 
     // The Profile Data doesn't get wiped until Chrome closes. Since we promised
     // that the user's data would be removed, do so immediately.

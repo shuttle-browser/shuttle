@@ -49,10 +49,7 @@ bool ProfileCanUseNonComponentExtensions(const Profile* profile) {
       return false;
   }
 #else
-  if (!profile) {
-    return false;
-  }
-  return profile->IsRegularProfile();
+  return profile != nullptr;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 }
 

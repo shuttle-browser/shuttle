@@ -31,7 +31,6 @@
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/chrome_pages.h"
@@ -57,7 +56,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
 #include "components/supervised_user/core/browser/supervised_user_utils.h"
-#include "components/sync/service/sync_service.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
@@ -67,7 +65,6 @@
 
 using history::BrowsingHistoryService;
 using history::HistoryService;
-using history::WebHistoryService;
 
 namespace {
 
@@ -363,10 +360,8 @@ void BrowsingHistoryHandler::ShowSidePanelUI() {
 void BrowsingHistoryHandler::StartQueryHistory() {
   HistoryService* local_history = HistoryServiceFactory::GetForProfile(
       profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  syncer::SyncService* sync_service =
-      SyncServiceFactory::GetForProfile(profile_);
-  browsing_history_service_ = std::make_unique<BrowsingHistoryService>(
-      this, local_history, sync_service);
+  browsing_history_service_ =
+      std::make_unique<BrowsingHistoryService>(this, local_history);
 
   // 150 = RESULTS_PER_PAGE from chrome/browser/resources/history/constants.js
   SendHistoryQuery(150, std::string(), std::nullopt, true, true);
@@ -633,18 +628,6 @@ void BrowsingHistoryHandler::HistoryDeleted() {
   } else {
     deferred_callbacks_.push_back(base::BindOnce(
         &BrowsingHistoryHandler::HistoryDeleted, weak_factory_.GetWeakPtr()));
-  }
-}
-
-void BrowsingHistoryHandler::HasOtherFormsOfBrowsingHistory(
-    bool has_other_forms,
-    bool has_synced_results) {
-  if (page_) {
-    page_->OnHasOtherFormsChanged(has_other_forms);
-  } else {
-    deferred_callbacks_.push_back(base::BindOnce(
-        &BrowsingHistoryHandler::HasOtherFormsOfBrowsingHistory,
-        weak_factory_.GetWeakPtr(), has_other_forms, has_synced_results));
   }
 }
 

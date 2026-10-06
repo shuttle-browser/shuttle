@@ -70,6 +70,8 @@ VisitedURLRankingServiceFactory::VisitedURLRankingServiceFactory()
   DependsOn(
       segmentation_platform::SegmentationPlatformServiceFactory::GetInstance());
   DependsOn(HistoryServiceFactory::GetInstance());
+  // SearchEngineURLStripHandler keeps a raw_ptr to the TemplateURLService.
+  DependsOn(TemplateURLServiceFactory::GetInstance());
 }
 
 VisitedURLRankingServiceFactory::~VisitedURLRankingServiceFactory() = default;

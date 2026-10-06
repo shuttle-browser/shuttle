@@ -645,11 +645,8 @@ static_library("ui") {
     "//chrome/browser/storage_access_api",
     "//chrome/browser/subresource_filter",
     "//chrome/browser/supervised_user:impl",
-    "//chrome/browser/sync",
     "//chrome/browser/task_manager/common",
     "//chrome/browser/task_manager/common:impl",
-    "//chrome/browser/trusted_vault",
-    "//chrome/browser/trusted_vault:impl",
     "//chrome/browser/ui/blocked_content",
     "//chrome/browser/ui/blocked_content:impl",
     "//chrome/browser/ui/bluetooth",
@@ -729,8 +726,6 @@ static_library("ui") {
     "//components/site_engagement/content",
     "//components/startup_metric_utils",
     "//components/strings",
-    "//components/sync",
-    "//components/sync_preferences",
     "//components/tab_groups",
     "//components/ui_devtools",
     "//components/ukm/content",
@@ -950,7 +945,6 @@ static_library("ui") {
     "//chrome/browser/ui/omnibox:impl",
 
     # TODO(crbug.com/344921703): Remove circular dependencies.
-    "//chrome/browser/sync",
 
     # TODO(crbug.com/353284909): Remove this circular dependency.
     "//chrome/browser/media/webrtc",
@@ -1104,7 +1098,6 @@ static_library("ui") {
     deps += [
       ":screen_capture_notification_ui_stub",
       "//chrome/android:jni_headers",
-      "//chrome/browser/android/webapk:webapk_sources",
       "//chrome/browser/keyboard_accessory/android",
       "//chrome/browser/keyboard_accessory/android:impl",
       "//chrome/browser/ui/android/hats",
@@ -1244,7 +1237,6 @@ static_library("ui") {
       "//chrome/browser/download:impl",
       "//chrome/browser/hid",
       "//chrome/browser/hid:impl",
-      "//chrome/browser/reading_list",
       "//chrome/browser/safe_browsing",
       "//chrome/browser/smart_card",
       "//chrome/browser/ui/apps",
@@ -1292,7 +1284,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/page_action_internals",
       "//chrome/browser/ui/webui/settings",
       "//chrome/browser/ui/webui/settings:impl",
-      "//chrome/browser/ui/webui/side_panel/reading_list:impl",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/browser/ui/webui/top_chrome:impl",
       "//chrome/browser/ui/webui/util",
@@ -1334,7 +1325,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/side_panel/history",
       "//chrome/browser/ui/webui/side_panel/history_clusters",
       "//chrome/browser/ui/webui/side_panel/read_anything",
-      "//chrome/browser/ui/webui/side_panel/reading_list",
       "//chrome/browser/ui/webui/util",
       "//chrome/browser/ui/webui/webnn_internals",
     ]
@@ -1374,7 +1364,6 @@ static_library("ui") {
       # These side panel UIs include loose headers that remain in
       # //chrome/browser/ui:ui (browser.h, browser_window.h, browser_commands.h,
       # views/frame/browser_view.h).
-      "//chrome/browser/ui/webui/side_panel/reading_list:impl",
 
       # //chrome/browser/ui/webui/util/webui_util_desktop.h is included by
       # :ui and its implementation is in //chrome/browser/ui/webui/util:impl.
@@ -2863,7 +2852,6 @@ group("ui_public_dependencies") {
     "//components/paint_preview/buildflags",
     "//components/safe_browsing:buildflags",
     "//components/segmentation_platform/public",
-    "//components/sync",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
     "//services/webnn/public/cpp",

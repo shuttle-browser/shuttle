@@ -5,10 +5,7 @@
 #include "chrome/browser/metrics/desktop_session_duration/desktop_profile_session_durations_service_factory.h"
 
 #include "chrome/browser/metrics/desktop_session_duration/desktop_profile_session_durations_service.h"
-#include "chrome/browser/metrics/profile_metrics_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "content/public/browser/browser_context.h"
 
 namespace metrics {
@@ -46,9 +43,6 @@ DesktopProfileSessionDurationsServiceFactory::
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kRedirectedToOriginal)
               .Build()) {
-  DependsOn(SyncServiceFactory::GetInstance());
-  DependsOn(IdentityManagerFactory::GetInstance());
-  DependsOn(ProfileMetricsServiceFactory::GetInstance());
 }
 
 DesktopProfileSessionDurationsServiceFactory::
@@ -62,24 +56,9 @@ std::unique_ptr<KeyedService> DesktopProfileSessionDurationsServiceFactory::
 // On ChromeOS, IsGuestSession and IsRegularProfile() are not mutually
 // exclusive, which breaks `ProfileKeyedServiceFactory` logic. Therefore the
 // below check is still needed despite the proper filter already set.
-#if BUILDFLAG(IS_CHROMEOS)
-  if (profile->IsGuestSession())
-    return nullptr;
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
-  DCHECK(!profile->IsSystemProfile());
-  DCHECK(!profile->IsGuestSession());
-
-  syncer::SyncService* sync_service =
-      SyncServiceFactory::GetForProfile(profile);
   DesktopSessionDurationTracker* tracker = DesktopSessionDurationTracker::Get();
-  signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(profile);
-  metrics::ProfileMetricsService* profile_metrics_service =
-      ProfileMetricsServiceFactory::GetForProfile(profile);
   return std::make_unique<DesktopProfileSessionDurationsService>(
-      profile->GetPrefs(), sync_service, identity_manager,
-      profile_metrics_service, tracker);
+      profile->GetPrefs(), tracker);
 }
 
 }  // namespace metrics

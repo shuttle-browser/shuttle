@@ -24,7 +24,6 @@
 #include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -237,10 +236,8 @@ void HistoryClustersHandler::CommonInit() {
 
   history_service_ = HistoryServiceFactory::GetForProfile(
       profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  syncer::SyncService* sync_service =
-      SyncServiceFactory::GetForProfile(profile_);
   browsing_history_service_ = std::make_unique<history::BrowsingHistoryService>(
-      this, history_service_, sync_service);
+      this, history_service_);
 }
 
 HistoryClustersHandler::~HistoryClustersHandler() = default;

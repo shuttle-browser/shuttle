@@ -50,7 +50,6 @@
 #include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
-#include "chrome/browser/ui/webui/side_panel/reading_list/reading_list_ui.h"
 #include "chrome/browser/ui/webui/user_education_internals/user_education_internals_ui.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals.mojom.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals_ui.h"
@@ -116,7 +115,6 @@ void BindTrackedElementHandlerRestricted(
   const bool is_allowed =
 #if !BUILDFLAG(IS_ANDROID)
       controller->GetAs<UserEducationInternalsUI>() ||
-      controller->GetAs<ReadingListUI>() ||
       controller->GetAs<HistoryUI>() ||
 #endif  // !BUILDFLAG(IS_ANDROID)
       false;

@@ -56,7 +56,6 @@
 #include "chrome/browser/mac/auth_session_request.h"
 #include "chrome/browser/mac/key_window_notifier.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
@@ -178,10 +177,7 @@ void BeginHandlingWebAuthenticationSessionRequestWithProfile(
 // there are only minimized windows), it will unminimize it.
 BrowserWindowInterface* ActivateBrowser(Profile* profile) {
   ProfileBrowserCollection* collection =
-      ProfileBrowserCollection::GetForProfile(
-          profile->IsGuestSession()
-              ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-              : profile);
+      ProfileBrowserCollection::GetForProfile(profile);
   BrowserWindowInterface* browser =
       collection ? collection->GetLastActiveBrowser() : nullptr;
 
@@ -251,7 +247,6 @@ void AttemptSessionRestore(Profile* profile) {
   if (!profile) {
     return;
   }
-  DCHECK(!profile->IsGuestSession());
   SessionService* sessionService =
       SessionServiceFactory::GetForProfileForSessionRestore(profile);
   if (sessionService &&
@@ -358,13 +353,9 @@ void FocusWindowSetOnCurrentSpace(NSSet<NSWindow*>* windows) {
 
 // Returns the profile path to be used at startup.
 base::FilePath GetStartupProfilePathMac() {
-  // This profile path is used to open URLs passed in application:openURLs: and
-  // should not default to Guest when the profile picker is shown.
-  // TODO(crbug.com/40159795): Remove the ignore_profile_picker parameter
-  // once the picker supports opening URLs.
+  // This profile path is used to open URLs passed in application:openURLs:.
   StartupProfilePathInfo profile_path_info = GetStartupProfilePath(
-      /*cur_dir=*/base::FilePath(), *base::CommandLine::ForCurrentProcess(),
-      /*ignore_profile_picker=*/true);
+      /*cur_dir=*/base::FilePath(), *base::CommandLine::ForCurrentProcess());
   DCHECK_EQ(profile_path_info.mode, StartupProfileMode::kBrowserWindow);
   return profile_path_info.path;
 }
@@ -541,11 +532,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
     profile_manager_observer_.Observe(profile_manager_.get());
     for (Profile* profile : profile_manager_->GetLoadedProfiles()) {
       profile_observers_.AddObservation(profile);
-      Profile* otr_profile =
-          profile->GetPrimaryOTRProfile(/*create_if_needed=*/false);
-      if (otr_profile) {
-        profile_observers_.AddObservation(otr_profile);
-      }
     }
     storage_observer_.Observe(&profile_manager_->GetProfileAttributesStorage());
   }
@@ -589,10 +575,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
     [app_controller_ profileWasRemoved:profile->GetPath()
                           forIncognito:profile->IsOffTheRecord()];
-  }
-
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override {
-    profile_observers_.AddObservation(off_the_record);
   }
 
   static bool ObserveRegularProfiles() {
@@ -643,7 +625,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   NSMenuItem* __strong _shiftCmdWMenuItemForTesting;
   NSWindow* __strong _mainWindowForTesting;
 
-  std::unique_ptr<PrefChangeRegistrar> _profilePrefRegistrar;
   PrefChangeRegistrar _localPrefRegistrar;
 
   // Responsible for maintaining all state related to the Handoff feature.
@@ -1298,14 +1279,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   std::vector<Profile*> profiles = profileManager->GetLoadedProfiles();
 
-  // Also consider related OTR profiles.
-  std::vector<Profile*> otrProfiles;
-  for (const auto& profile : profiles) {
-    std::ranges::copy(profile->GetAllOffTheRecordProfiles(),
-                      std::back_inserter(otrProfiles));
-  }
-  std::ranges::copy(otrProfiles, std::back_inserter(profiles));
-
   // Remove all profiles for which there are no ongoing downloads.
   int totalBlockingDownloadCount = 0;
   auto removed = std::ranges::remove_if(
@@ -1704,7 +1677,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   }
 
   base::FilePath lastProfilePath = GetStartupProfilePathMac();
-  DCHECK_NE(lastProfilePath, ProfileManager::GetSystemProfilePath());
 
   // If launched as a hidden login item (due to installation of a persistent app
   // or by the user, for example in System Settings->General->Login Items),
@@ -1834,11 +1806,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   if (!profile)
     return nullptr;
 
-  DCHECK(!profile->IsSystemProfile());
-  if (profile->IsGuestSession() && !profiles::IsGuestModeEnabled())
-    return nullptr;
-
-  return ProfileManager::MaybeForceOffTheRecordMode(profile);
+  return profile;
 }
 
 - (void)application:(NSApplication*)sender openURLs:(NSArray<NSURL*>*)urls {
@@ -1969,9 +1937,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
     _historyMenuBridge->OnProfileWillBeDestroyed();
   }
 
-
-  _profilePrefRegistrar.reset();
-
   _lastProfile = profile;
 
   if (_lastProfile == nullptr)
@@ -1979,18 +1944,6 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
   _historyMenuBridge = std::make_unique<HistoryMenuBridge>(_lastProfile);
   _historyMenuBridge->BuildMenu();
-
-
-  chrome::BrowserCommandController::
-      UpdateSharedCommandsForIncognitoAvailability(
-          _menuState.get(), _lastProfile);
-  _profilePrefRegistrar = std::make_unique<PrefChangeRegistrar>();
-  _profilePrefRegistrar->Init(_lastProfile->GetPrefs());
-  _profilePrefRegistrar->Add(
-      policy::policy_prefs::kIncognitoModeAvailability,
-      base::BindRepeating(&chrome::BrowserCommandController::
-                              UpdateSharedCommandsForIncognitoAvailability,
-                          _menuState.get(), _lastProfile));
 }
 
 - (const ui::ColorProvider&)lastActiveColorProvider {
@@ -2190,9 +2143,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   if (!profile)
     return NO;
 
-  // Handoff is not allowed from an incognito profile. To err on the safe side,
-  // also disallow Handoff from a guest profile.
-  return profile->IsRegularProfile();
+  return true;
 }
 
 - (BOOL)isProfileReady {
@@ -2289,11 +2240,6 @@ void OpenStartupTabsInBrowserWithProfile(const StartupTabs& tabs,
                                          Profile* profile) {
   if (!profile)
     return;  // No suitable profile to open the URLs, do nothing.
-  // Prefer a regular (non-incognito) profile
-  if (profile->IsIncognitoProfile()) {
-    profile = ProfileManager::MaybeForceOffTheRecordMode(
-        profile->GetOriginalProfile());
-  }
   // Use FindTabbedBrowser() to ensure URLs open in a normal tabbed browser
   // window, not in PWA/app windows which cannot accept new tabs.
   BrowserWindowInterface* browser =

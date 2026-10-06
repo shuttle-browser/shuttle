@@ -24,7 +24,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
@@ -90,12 +89,9 @@ void FindOrCreateNewWindowForProfile(
                profile->GetPath());
 
   if (!always_create) {
-    const bool match_original_profiles =
-        IncognitoModePrefs::GetAvailability(profile->GetPrefs()) ==
-        policy::IncognitoModeAvailability::kForced;
     BrowserWindowInterface* browser =
         ProfileBrowserCollection::GetForProfile(profile)->FindTabbedBrowser(
-            match_original_profiles);
+            /*match_original_profiles=*/false);
     if (browser) {
       browser->GetWindow()->Activate();
       return;
@@ -160,12 +156,9 @@ void OpenBrowserWindowForProfile(
   // case, as you could manually activate an incorrect browser and trigger
   // a false positive.
   if (!always_create) {
-    const bool match_original_profiles =
-        IncognitoModePrefs::GetAvailability(profile->GetPrefs()) ==
-        policy::IncognitoModeAvailability::kForced;
     BrowserWindowInterface* browser =
         ProfileBrowserCollection::GetForProfile(profile)->FindTabbedBrowser(
-            match_original_profiles);
+            /*match_original_profiles=*/false);
     if (browser) {
       browser->GetWindow()->Activate();
       if (callback) {
@@ -215,15 +208,10 @@ void SwitchToProfile(const base::FilePath& path,
       base::BindOnce(&ProfileLoadedCallback, std::move(open_browser_callback)));
 }
 
-void SwitchToGuestProfile(
-    base::OnceCallback<void(BrowserWindowInterface*)> callback) {
-  SwitchToProfile(ProfileManager::GetGuestProfilePath(),
-                  /*always_create=*/false, std::move(callback));
-}
 #endif
 
 bool HasProfileSwitchTargets(Profile* profile) {
-  size_t min_profiles = profile->IsGuestSession() ? 1 : 2;
+  size_t min_profiles = 2;
   size_t number_of_profiles =
       g_browser_process->profile_manager()->GetNumberOfProfiles();
   return number_of_profiles >= min_profiles;
@@ -259,14 +247,8 @@ void BrowserAddedForProfileObserver::OnBrowserCreated(
   }
 
   // A browser matches if it is associated with the exact profile being
-  // observed, or if incognito mode is forced by policy for the profile and the
-  // browser is an off-the-record window for that original profile.
-  const bool is_matching_browser =
-      (browser->GetProfile() == profile_.get()) ||
-      (IncognitoModePrefs::GetAvailability(profile_->GetPrefs()) ==
-           policy::IncognitoModeAvailability::kForced &&
-       browser->GetProfile()->GetOriginalProfile() ==
-           profile_->GetOriginalProfile());
+  // observed.
+  const bool is_matching_browser = browser->GetProfile() == profile_.get();
 
   if (!is_matching_browser) {
     // This is a different profile.

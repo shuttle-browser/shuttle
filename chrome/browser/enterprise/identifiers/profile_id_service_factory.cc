@@ -14,7 +14,7 @@ namespace enterprise {
 
 // static
 ProfileIdService* ProfileIdServiceFactory::GetForProfile(Profile* profile) {
-  if (profile->IsGuestSession() || profile->IsOffTheRecord()) {
+  if (profile->IsOffTheRecord()) {
     return nullptr;
   }
 

@@ -326,10 +326,6 @@ class BrowserView : public BrowserWindow,
   bool GetIncognito() const;
 
   // Returns true if the profile associated with this Browser window is
-  // a guest session.
-  bool GetGuestSession() const;
-
-  // Returns true if the profile associated with this Browser window is
   // not incognito or a guest session.
   bool GetRegularOrGuestSession() const;
 
@@ -887,7 +883,6 @@ class BrowserView : public BrowserWindow,
   // Attempts to show in-product help for the reading list as moved into the
   // side panel. Should be called when the IPH backend is initialized or
   // whenever the touch mode changes.
-  void MaybeShowReadingListInSidePanelIPH();
 
   // Called each time the browser window is shown.
   void OnWindowDidShow();

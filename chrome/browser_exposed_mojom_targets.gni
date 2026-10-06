@@ -36,7 +36,6 @@ browser_exposed_mojom_targets = [
   "//chrome/browser/ui/webui/omnibox_popup/mojom:mojom",
   "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
   "//chrome/browser/ui/webui/segmentation_internals:mojo_bindings",
-  "//chrome/browser/ui/webui/side_panel/reading_list:mojo_bindings",
   "//chrome/browser/ui/webui/subresource_filter:mojo_bindings",
   "//chrome/browser/ui/webui/suggest_internals:mojo_bindings",
   "//chrome/browser/ui/webui/tab_strip_internals:mojo_bindings",

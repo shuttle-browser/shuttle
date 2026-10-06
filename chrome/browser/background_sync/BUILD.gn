@@ -44,7 +44,6 @@ source_set("impl") {
     "//services/network/public/mojom:mojom_permissions_policy",
   ]
   if (is_android) {
-    deps += [ "//chrome/browser/android:shortcut_helper" ]
   } else {
   }
 

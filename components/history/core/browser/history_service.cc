@@ -51,11 +51,8 @@
 #include "components/history/core/browser/in_memory_database.h"
 #include "components/history/core/browser/in_memory_history_backend.h"
 #include "components/history/core/browser/keyword_search_term.h"
-#include "components/history/core/browser/sync/delete_directive_handler.h"
 #include "components/history/core/browser/visit_database.h"
 #include "components/history/core/browser/visit_delegate.h"
-#include "components/history/core/browser/web_history_service.h"
-#include "components/sync/model/proxy_data_type_controller_delegate.h"
 #include "components/visitedlink/core/visited_link.h"
 #include "net/base/schemeful_site.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -1458,10 +1455,6 @@ bool HistoryService::Init(
                base::BindOnce(&HistoryBackend::Init, history_backend_, no_db,
                               history_database_params));
 
-  delete_directive_handler_ = std::make_unique<DeleteDirectiveHandler>(
-      base::BindRepeating(base::IgnoreResult(&HistoryService::ScheduleDBTask),
-                          base::Unretained(this)));
-
   if (visit_delegate_ && !visit_delegate_->Init(this)) {
     // This is a low-level service that many other services in chromium depend
     // on. If it fails to initialize (which can happen when there's insufficient
@@ -1504,40 +1497,6 @@ base::SafeRef<HistoryService> HistoryService::AsSafeRef() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   return weak_ptr_factory_.GetSafeRef();
-}
-
-base::WeakPtr<syncer::SyncableService>
-HistoryService::GetDeleteDirectivesSyncableService() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(delete_directive_handler_);
-  return delete_directive_handler_->AsWeakPtr();
-}
-
-std::unique_ptr<syncer::DataTypeControllerDelegate>
-HistoryService::GetHistorySyncControllerDelegate() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // Note that a callback is bound for GetHistorySyncControllerDelegate()
-  // because this getter itself must also run in the backend sequence, and the
-  // proxy object below will take care of that.
-  return std::make_unique<syncer::ProxyDataTypeControllerDelegate>(
-      backend_task_runner_,
-      base::BindRepeating(&HistoryBackend::GetHistorySyncControllerDelegate,
-                          base::Unretained(history_backend_.get())));
-}
-
-void HistoryService::SetSyncTransportState(
-    syncer::SyncService::TransportState state) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  ScheduleTask(PRIORITY_NORMAL,
-               base::BindOnce(&HistoryBackend::SetSyncTransportState,
-                              history_backend_, state));
-}
-
-void HistoryService::ProcessLocalDeleteDirective(
-    const sync_pb::HistoryDeleteDirectiveSpecifics& delete_directive) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  delete_directive_handler_->ProcessLocalDeleteDirective(delete_directive);
 }
 
 void HistoryService::SetInMemoryBackend(
@@ -1598,7 +1557,6 @@ void HistoryService::ExpireHistory(
 }
 
 void HistoryService::DeleteLocalAndRemoteHistoryBetween(
-    WebHistoryService* web_history,
     Time begin_time,
     Time end_time,
     std::optional<std::string> app_id,
@@ -1606,89 +1564,20 @@ void HistoryService::DeleteLocalAndRemoteHistoryBetween(
     base::CancelableTaskTracker* tracker) {
   // TODO(crbug.com/41439580): This should be factored out into a separate class
   // that dispatches deletions to the proper places.
-  if (web_history) {
-    delete_directive_handler_->CreateTimeRangeDeleteDirective(begin_time,
-                                                              end_time);
-
-    // Attempt online deletion from the history server, but ignore the result.
-    // Deletion directives ensure that the results will eventually be deleted.
-    //
-    // TODO(davidben): `callback` should not run until this operation completes
-    // too.
-    net::PartialNetworkTrafficAnnotationTag partial_traffic_annotation =
-        net::DefinePartialNetworkTrafficAnnotation(
-            "web_history_expire_between_dates", "web_history_service", R"(
-          semantics {
-            description:
-              "If a user who syncs their browsing history deletes history "
-              "items for a time range, Chrome sends a request to a google.com "
-              "host to execute the corresponding deletion serverside."
-            trigger:
-              "Deleting browsing history for a given time range, e.g. from the "
-              "Clear Browsing Data dialog, by an extension, or the "
-              "Clear-Site-Data header."
-            data:
-              "The begin and end timestamps of the selected time range, a "
-              "version info token to resolve transaction conflicts, and an "
-              "OAuth2 token authenticating the user."
-          }
-          policy {
-            chrome_policy {
-              AllowDeletingBrowserHistory {
-                AllowDeletingBrowserHistory: false
-              }
-            }
-          })");
-    web_history->ExpireHistoryBetween(
-        /*restrict_urls=*/{}, begin_time, end_time, base::DoNothing(),
-        partial_traffic_annotation);
-  }
   ExpireHistoryBetween(/*restrict_urls=*/{}, app_id, begin_time, end_time,
                        /*user_initiated=*/true, std::move(callback), tracker);
 }
 
-void HistoryService::DeleteLocalAndRemoteUrl(WebHistoryService* web_history,
-                                             const GURL& url) {
+void HistoryService::DeleteLocalAndRemoteUrl(const GURL& url) {
   DCHECK(url.is_valid());
   // TODO(crbug.com/41439580): This should be factored out into a separate class
   // that dispatches deletions to the proper places.
-  if (web_history) {
-    delete_directive_handler_->CreateUrlDeleteDirective(url);
-
-    // Attempt online deletion from the history server, but ignore the result.
-    // Deletion directives ensure that the results will eventually be deleted.
-    net::PartialNetworkTrafficAnnotationTag partial_traffic_annotation =
-        net::DefinePartialNetworkTrafficAnnotation("web_history_delete_url",
-                                                   "web_history_service", R"(
-          semantics {
-            description:
-              "If a user who syncs their browsing history deletes urls from  "
-              "history, Chrome sends a request to a google.com "
-              "host to execute the corresponding deletion serverside."
-            trigger:
-              "Deleting urls from browsing history, e.g. by an extension."
-            data:
-              "The selected urls, a version info token to resolve transaction "
-              "conflicts, and an OAuth2 token authenticating the user."
-          }
-          policy {
-            chrome_policy {
-              AllowDeletingBrowserHistory {
-                AllowDeletingBrowserHistory: false
-              }
-            }
-          })");
-    web_history->ExpireHistoryBetween(
-        /*restrict_urls=*/{url}, base::Time(), base::Time::Max(),
-        base::DoNothing(), partial_traffic_annotation);
-  }
   DeleteURLs({url});
 }
 
 void HistoryService::OnDBLoaded() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   backend_loaded_ = true;
-  delete_directive_handler_->OnBackendLoaded();
   NotifyHistoryServiceLoaded();
 }
 

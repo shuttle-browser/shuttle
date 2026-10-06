@@ -187,14 +187,8 @@ ProcessManager* ProcessManager::Get(BrowserContext* context) {
 std::unique_ptr<ProcessManager> ProcessManager::Create(
     BrowserContext* context) {
   ExtensionRegistry* extension_registry = ExtensionRegistry::Get(context);
-  ExtensionsBrowserClient* client = ExtensionsBrowserClient::Get();
-
-  // Create a specialized ProcessManager for incognito contexts. Note that in
-  // the guest session, there is a single off-the-record context.  Unlike a
-  // regular incognito mode, background pages of extensions must be created
-  // regardless of whether extensions use "spanning" or "split" incognito
-  // behavior.
-  if (context->IsOffTheRecord() && !client->IsGuestSession(context)) {
+  // Create a specialized ProcessManager for incognito contexts.
+  if (context->IsOffTheRecord()) {
     return std::make_unique<IncognitoProcessManager>(context,
                                                      extension_registry);
   }

@@ -15,7 +15,6 @@
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "components/safe_browsing/core/common/proto/realtimeapi.pb.h"
 #include "components/safe_browsing/core/common/proto/safebrowsingv5.pb.h"
-#include "components/sync/protocol/user_event_specifics.pb.h"
 #include "url/gurl.h"
 
 namespace safe_browsing {
@@ -79,16 +78,6 @@ class WebUIInfoSingletonEventObserver {
   // sent, while one or more WebUI tabs are opened.
   virtual void NotifyCSBRRJsListener(
       ClientSafeBrowsingReportRequest* csbrr) = 0;
-
-  // Called when any new PhishGuard events are sent while one or more WebUI tabs
-  // are open.
-  virtual void NotifyPGEventJsListener(
-      const sync_pb::UserEventSpecifics& event) = 0;
-
-  // Called when any new Security events are sent while one or more WebUI tabs
-  // are open.
-  virtual void NotifySecurityEventJsListener(
-      const sync_pb::GaiaPasswordReuse& event) = 0;
 
   // Called when any new PhishGuard pings are sent while one or more WebUI tabs
   // are open.

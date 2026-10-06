@@ -19,8 +19,6 @@ static_library("demographics") {
     "//components/metrics",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/sync/base",
-    "//components/sync/service",
   ]
 }
 

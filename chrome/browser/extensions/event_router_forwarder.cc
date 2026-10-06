@@ -55,15 +55,6 @@ void EventRouterForwarder::BroadcastEventToRenderers(
   profiles_to_dispatch_to.insert(on_the_record_profiles.begin(),
                                  on_the_record_profiles.end());
 
-  if (dispatch_to_off_the_record_profiles) {
-    for (Profile* profile_to_dispatch_to : profiles_to_dispatch_to) {
-      if (profile_to_dispatch_to->HasPrimaryOTRProfile())
-        profiles_to_dispatch_to.insert(
-            profile_to_dispatch_to->GetPrimaryOTRProfile(
-                /*create_if_needed=*/true));
-    }
-  }
-
   // There should always be at least one profile when running as Chromium.
   // However, some Chromium embedders are known to run without profiles, in
   // which case there's nothing to dispatch to.

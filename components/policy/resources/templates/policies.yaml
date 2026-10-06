@@ -8,7 +8,7 @@ policies:
   7: ''
   8: ''
   9: JavascriptEnabled
-  10: IncognitoEnabled
+  10: ''
   11: SavingBrowserHistoryDisabled
   12: PrintingEnabled
   13: ''
@@ -18,7 +18,7 @@ policies:
   17: ''
   18: ''
   19: ''
-  20: SyncDisabled
+  20: ''
   21: ProxyMode
   22: ProxyServerMode
   23: ProxyServer
@@ -91,7 +91,7 @@ policies:
   90: ''
   91: ''
   92: MaxConnectionsPerProxy
-  93: IncognitoModeAvailability
+  93: ''
   94: ''
   95: ''
   96: ''
@@ -274,7 +274,7 @@ policies:
   273: NetworkPredictionOptions
   274: ''
   275: ''
-  276: BrowserAddPersonEnabled
+  276: ''
   277: ''
   278: ExtensionSettings
   279: ''
@@ -356,8 +356,8 @@ policies:
   355: ''
   356: ''
   357: ''
-  358: RoamingProfileSupportEnabled
-  359: RoamingProfileLocation
+  358: ''
+  359: ''
   360: NewTabPageLocation
   361: ''
   362: ShowCastIconInToolbar
@@ -572,7 +572,7 @@ policies:
   571: ''
   572: ''
   573: ''
-  574: BrowserGuestModeEnforced
+  574: ''
   575: ''
   576: ''
   577: ''
@@ -647,7 +647,7 @@ policies:
   646: ''
   647: PrinterTypeDenyList
   648: ''
-  649: SyncTypesListDisabled
+  649: ''
   650: AmbientAuthenticationInPrivateModesEnabled
   651: ''
   652: ''
@@ -1083,7 +1083,7 @@ policies:
   1082: HttpAllowlist
   1083: HttpsUpgradesEnabled
   1084: ''
-  1085: MandatoryExtensionsForIncognitoNavigation
+  1085: ''
   1086: ''
   1087: ''
   1088: ''
@@ -1390,8 +1390,8 @@ policies:
   1389: ''
   1390: ExtensionInstallCloudPolicyChecksEnabled
   1391: DevToolsGoogleDeveloperProgramProfileAvailability
-  1392: IncognitoModeUrlBlocklist
-  1393: IncognitoModeUrlAllowlist
+  1392: ''
+  1393: ''
   1394: PreferSlowKexAlgorithms
   1395: ''
   1396: CacheEncryptionEnabled

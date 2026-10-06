@@ -44,7 +44,6 @@
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/resource_coordinator/tab_helper.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -77,7 +76,6 @@
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/feature_engagement/public/feature_constants.h"
-#include "components/reading_list/core/reading_list_model.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -2258,32 +2256,6 @@ std::optional<tab_groups::TabGroupId> TabStripModel::GetFocusedGroup() const {
   return selection_model_.focused_group();
 }
 
-bool TabStripModel::IsReadLaterSupportedForAny(
-    const std::vector<int>& indices) {
-  if (!delegate_->SupportsReadLater()) {
-    return false;
-  }
-
-  ReadingListModel* model =
-      ReadingListModelFactory::GetForBrowserContext(profile_);
-  if (!model || !model->loaded()) {
-    return false;
-  }
-  for (int index : indices) {
-    if (model->IsUrlSupported(
-            GetWebContentsAt(index)->GetURL())) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void TabStripModel::AddToReadLater(const std::vector<int>& indices) {
-  ReentrancyCheck reentrancy_check(&reentrancy_guard_);
-
-  AddToReadLaterImpl(indices);
-}
-
 void TabStripModel::OpenTabGroupEditor(const tab_groups::TabGroupId& group) {
   TabGroupChange change(this, group, TabGroupChange::kEditorOpened);
   for (auto& observer : observers_) {
@@ -2624,7 +2596,7 @@ bool TabStripModel::IsContextMenuCommandEnabled(
       return false;
 
     case CommandAddToReadLater:
-      return true;
+      return false;
 
     case CommandAddToNewGroup:
     case CommandAddToNewGroupFromMenuItem:
@@ -2874,15 +2846,9 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       break;
     }
 
-    case CommandAddToReadLater: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.AddToReadLater.SelectedTabsCount",
-          selection_model_.size());
-      base::RecordAction(
-          UserMetricsAction("DesktopReadingList.AddItem.FromTabContextMenu"));
-      AddToReadLater(GetIndicesForCommand(context_index));
+    case CommandAddToReadLater:
+      // Reading list is removed.
       break;
-    }
 
     case CommandAddToNewGroup: {
       base::UmaHistogramCounts1000(
@@ -4699,11 +4665,6 @@ void TabStripModel::MoveTabsAndSetPropertiesImpl(
       base::BindOnce(&tabs::TabStripCollection::MoveTabsRecursive,
                      base::Unretained(contents_data_.get()), indices,
                      destination_index, group, pinned, kRetainCollectionTypes));
-}
-
-void TabStripModel::AddToReadLaterImpl(const std::vector<int>& indices) {
-  std::vector<WebContents*> web_contentses = GetWebContentsesByIndices(indices);
-  delegate_->AddToReadLater(web_contentses);
 }
 
 void TabStripModel::InsertTabAtIndexImpl(

@@ -125,11 +125,6 @@ SupervisedUserService::SupervisedUserService(
       prefs::kSupervisedUserId,
       base::BindRepeating(&SupervisedUserService::OnSupervisedUserIdChanged,
                           base::Unretained(this)));
-  main_pref_change_registrar_.Add(
-      policy::policy_prefs::kIncognitoModeAvailability,
-      base::BindRepeating(
-          &SupervisedUserService::OnIncognitoModeAvailabilityChanged,
-          base::Unretained(this)));
 
   OnSupervisedUserIdChanged();
 }
@@ -174,14 +169,6 @@ void SupervisedUserService::AddCustodianPrefChangeHandlers() {
 
 void SupervisedUserService::RemoveCustodianPrefChangeHandlers() {
   custodian_pref_change_registrar_.RemoveAll();
-}
-
-void SupervisedUserService::OnIncognitoModeAvailabilityChanged() {
-  bool is_supervised = device_parental_controls_->IsEnabled() ||
-                       IsSubjectToParentalControls(user_prefs_.get());
-  if (is_supervised && platform_delegate_->ShouldCloseIncognitoTabs()) {
-    platform_delegate_->CloseIncognitoTabs();
-  }
 }
 
 void SupervisedUserService::OnCustodianInfoChanged() {

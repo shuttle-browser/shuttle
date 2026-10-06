@@ -16,7 +16,6 @@
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -37,7 +36,6 @@
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/feature_engagement/public/feature_constants.h"
-#include "components/reading_list/core/reading_list_model.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
 #include "components/sessions/content/content_live_tab.h"
 #include "components/sessions/core/session_id.h"
@@ -296,21 +294,6 @@ bool BrowserTabStripModelDelegate::CanReload() const {
   return chrome::CanReload(browser_);
 }
 
-void BrowserTabStripModelDelegate::AddToReadLater(
-    std::vector<content::WebContents*> web_contentses) {
-  ReadingListModel* model =
-      ReadingListModelFactory::GetForBrowserContext(browser_->GetProfile());
-  if (!model || !model->loaded()) {
-    return;
-  }
-
-  chrome::MoveTabsToReadLater(browser_, web_contentses);
-}
-
-bool BrowserTabStripModelDelegate::SupportsReadLater() {
-  return !browser_->GetProfile()->IsGuestSession() && !IsForWebApp();
-}
-
 bool BrowserTabStripModelDelegate::IsForWebApp() {
   return false;
 }
@@ -457,12 +440,6 @@ void BrowserTabStripModelDelegate::CloseTab(
         model->CloseWebContents(web_contents.get(),
                                 TabCloseTypes::CLOSE_USER_GESTURE |
                                     TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB);
-
-        // Try to show reading list IPH if needed.
-        if (model->count() >= 7) {
-          BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
-              feature_engagement::kIPHReadingListEntryPointFeature);
-        }
       },
       weak_factory_.GetWeakPtr(), tab_interface->GetContents()->GetWeakPtr(),
       std::move(cb2));

@@ -8,7 +8,6 @@
 #include "chrome/browser/browsing_data/chrome_browsing_data_lifetime_manager.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_delegate_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/buildflags/buildflags.h"
 // static
@@ -37,7 +36,6 @@ ChromeBrowsingDataLifetimeManagerFactory::
               .WithAshInternals(ProfileSelection::kOwnInstance)
               .Build()) {
   DependsOn(ChromeBrowsingDataRemoverDelegateFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
 }
 
 ChromeBrowsingDataLifetimeManagerFactory::
@@ -46,15 +44,6 @@ ChromeBrowsingDataLifetimeManagerFactory::
 std::unique_ptr<KeyedService>
 ChromeBrowsingDataLifetimeManagerFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
-#if BUILDFLAG(IS_CHROMEOS)
-  Profile* profile = Profile::FromBrowserContext(context);
-  // This condition still needs to be explicitly stated here despite having
-  // ProfileKeyedService logic implemented because `IsGuestSession()` and
-  // `IsRegularProfile()` are not yet mutually exclusive.
-  // TODO(rsult): remove this condition when `IsGuestSession() is fixed.
-  if (profile->IsGuestSession() && !profile->IsOffTheRecord())
-    return nullptr;
-#endif  // BUILDFLAG(IS_CHROMEOS)
   return std::make_unique<ChromeBrowsingDataLifetimeManager>(context);
 }
 

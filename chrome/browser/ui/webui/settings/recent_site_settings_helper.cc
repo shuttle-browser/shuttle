@@ -146,57 +146,8 @@ std::vector<RecentSitePermissions> GetRecentSitePermissions(
     size_t max_sources) {
   std::map<GURL, std::vector<TimestampedSetting>> regular_settings =
       GetAllSettingsForProfile(profile, content_types);
-  std::map<GURL, std::vector<TimestampedSetting>> incognito_settings;
 
-  if (profile->HasPrimaryOTRProfile()) {
-    incognito_settings = GetAllSettingsForProfile(
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/true),
-        content_types);
-
-    // Remove all permission entries in the incognito map which also have
-    // an entry in the regular settings. This may result in an empty setting
-    // vector, in which case we remove the map entry.
-    // TODO(crbug.com/40117710): Make determining actual source of
-    // active permission simpler.
-    for (auto incognito_iter = incognito_settings.begin();
-         incognito_iter != incognito_settings.end();) {
-      auto regular_iter = regular_settings.find(incognito_iter->first);
-      if (regular_iter == regular_settings.end()) {
-        ++incognito_iter;
-        continue;
-      }
-
-      // Define an arbitrary ordering on TimestampedSetting's so we can sort
-      // and make use of set difference
-      auto arbitrary_strict_weak_ordering = [](const TimestampedSetting& x,
-                                               const TimestampedSetting& y) {
-        return std::tie(x.timestamp, x.content_type, x.content_setting,
-                        x.setting_source) <
-               std::tie(y.timestamp, y.content_type, y.content_setting,
-                        y.setting_source);
-      };
-
-      std::vector<TimestampedSetting> incognito_only_settings;
-      std::sort(regular_iter->second.begin(), regular_iter->second.end(),
-                arbitrary_strict_weak_ordering);
-      std::sort(incognito_iter->second.begin(), incognito_iter->second.end(),
-                arbitrary_strict_weak_ordering);
-      std::set_difference(
-          incognito_iter->second.begin(), incognito_iter->second.end(),
-          regular_iter->second.begin(), regular_iter->second.end(),
-          std::back_inserter(incognito_only_settings),
-          arbitrary_strict_weak_ordering);
-
-      if (incognito_only_settings.empty()) {
-        incognito_iter = incognito_settings.erase(incognito_iter);
-      } else {
-        incognito_iter->second = incognito_only_settings;
-        ++incognito_iter;
-      }
-    }
-  }
-
-  // Combine incognito and regular permissions and sort based on the most
+  // Collect permissions and sort based on the most
   // recent setting for each source.
   std::vector<RecentSitePermissions> all_site_permissions;
   for (auto& url_settings_pair : regular_settings) {
@@ -205,13 +156,6 @@ std::vector<RecentSitePermissions> GetRecentSitePermissions(
         site_settings::GetDisplayNameForGURL(profile, url_settings_pair.first,
                                              /*hostname_only=*/true),
         /*incognito=*/false, std::move(url_settings_pair.second));
-  }
-  for (auto& url_settings_pair : incognito_settings) {
-    all_site_permissions.emplace_back(
-        url_settings_pair.first,
-        site_settings::GetDisplayNameForGURL(profile, url_settings_pair.first,
-                                             /*hostname_only=*/true),
-        /*incognito=*/true, std::move(url_settings_pair.second));
   }
   std::sort(all_site_permissions.begin(), all_site_permissions.end(),
             [](const RecentSitePermissions& x, const RecentSitePermissions& y) {

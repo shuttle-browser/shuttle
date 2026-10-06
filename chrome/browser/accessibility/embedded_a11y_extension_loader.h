@@ -91,7 +91,6 @@ class EmbeddedA11yExtensionLoader : public ProfileObserver,
  private:
   // ProfileObserver:
   void OnProfileWillBeDestroyed(Profile* profile) override;
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
 
   // ProfileManagerObserver:
   void OnProfileAdded(Profile* profile) override;

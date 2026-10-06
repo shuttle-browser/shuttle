@@ -21,7 +21,6 @@
 #include "chrome/browser/predictors/loading_predictor_factory.h"
 #include "chrome/browser/safe_browsing/extension_telemetry/extension_web_request_reporter_impl.h"
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
-#include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/request_header_integrity/buildflags.h"
@@ -452,16 +451,6 @@ void ChromeContentBrowserClient::
           },
           &render_frame_host));
 #endif  // BUILDFLAG(ENABLE_PLUGINS) || BUILDFLAG(IS_ANDROID)
-  associated_registry.AddInterface<
-      chrome::mojom::TrustedVaultEncryptionKeysExtension>(base::BindRepeating(
-      [](content::RenderFrameHost* render_frame_host,
-         mojo::PendingAssociatedReceiver<
-             chrome::mojom::TrustedVaultEncryptionKeysExtension> receiver) {
-        TrustedVaultEncryptionKeysTabHelper::
-            BindTrustedVaultEncryptionKeysExtension(std::move(receiver),
-                                                    render_frame_host);
-      },
-      &render_frame_host));
   associated_registry.AddInterface<
       content_capture::mojom::ContentCaptureReceiver>(base::BindRepeating(
       [](content::RenderFrameHost* render_frame_host,

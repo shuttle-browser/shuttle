@@ -9,36 +9,9 @@
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
-#include "components/sync/service/sync_service_utils.h"
 #include "third_party/metrics_proto/ukm/report.pb.h"
 
 namespace metrics {
-
-namespace {
-
-bool IsValidUploadState(syncer::UploadState upload_state) {
-  switch (upload_state) {
-    case syncer::UploadState::NOT_ACTIVE:
-      return false;
-    case syncer::UploadState::INITIALIZING:
-      // Note that INITIALIZING is considered good enough, because sync is known
-      // to be enabled, and transient errors don't really matter here.
-    case syncer::UploadState::ACTIVE:
-      return true;
-  }
-  NOTREACHED();
-}
-
-bool CanUploadDemographicsToGoogle(syncer::SyncService* sync_service) {
-  CHECK(sync_service);
-  // PRIORITY_PREFERENCES is the sync datatype used to propagate demographics
-  // information to the client. In its absence, demographics info is unavailable
-  // thus cannot be uploaded.
-  return IsValidUploadState(syncer::GetUploadToGoogleState(
-             sync_service, syncer::PRIORITY_PREFERENCES));
-}
-
-}  // namespace
 
 // static
 BASE_FEATURE(kDemographicMetricsReporting,
@@ -75,29 +48,10 @@ DemographicMetricsProvider::ProvideSyncedUserNoisedBirthYearAndGender() {
   }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
-  syncer::SyncService* sync_service = profile_client_->GetSyncService();
-  // Skip if no sync service.
-  if (!sync_service) {
-    LogUserDemographicsStatusInHistogram(
-        UserDemographicsStatus::kNoSyncService);
-    return std::nullopt;
-  }
-
-  if (!CanUploadDemographicsToGoogle(sync_service)) {
-    LogUserDemographicsStatusInHistogram(
-        UserDemographicsStatus::kSyncNotEnabled);
-    return std::nullopt;
-  }
-
-  UserDemographicsResult demographics_result =
-      GetUserNoisedBirthYearAndGenderFromPrefs(
-          profile_client_->GetNetworkTime(), profile_client_->GetLocalState(),
-          profile_client_->GetProfilePrefs());
-  LogUserDemographicsStatusInHistogram(demographics_result.status());
-
-  if (demographics_result.IsSuccess())
-    return demographics_result.value();
-
+  // Demographics are only reported for users with an upload-capable sync
+  // account. There is no sync service in this browser, so they are never
+  // reported.
+  LogUserDemographicsStatusInHistogram(UserDemographicsStatus::kNoSyncService);
   return std::nullopt;
 }
 

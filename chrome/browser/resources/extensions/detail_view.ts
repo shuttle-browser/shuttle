@@ -36,7 +36,7 @@ import type {ItemDelegate} from './item.js';
 import {DummyItemDelegate} from './item.js';
 import {ItemMixin} from './item_mixin.js';
 import {canShowOpenReviewPageLink, computeInspectableViewLabel, convertSafetyCheckReason, createDummyExtensionInfo, EnableControl, getEnableControl, getEnableToggleAriaLabel, getItemSource, getItemSourceString, isEnabled, sortViews, userCanChangeEnablement} from './item_util.js';
-import {SAFETY_HUB_EXTENSION_KEPT_HISTOGRAM_NAME, SAFETY_HUB_EXTENSION_REMOVED_HISTOGRAM_NAME, SAFETY_HUB_WARNING_REASON_MAX_SIZE, UPLOAD_EXTENSION_TO_ACCOUNT_DETAILS_VIEW_PAGE_HISTOGRAM_NAME} from './metrics_util.js';
+import {SAFETY_HUB_EXTENSION_KEPT_HISTOGRAM_NAME, SAFETY_HUB_EXTENSION_REMOVED_HISTOGRAM_NAME, SAFETY_HUB_WARNING_REASON_MAX_SIZE} from './metrics_util.js';
 import type {Mv2DeprecationDelegate} from './mv2_deprecation_delegate.js';
 import {navigation, Page} from './navigation_helper.js';
 import type {ExtensionsToggleRowElement} from './toggle_row.js';
@@ -236,9 +236,6 @@ export class ExtensionsDetailViewElement extends
         this.data.runtimeWarnings.length > 0;
   }
 
-  protected showAccountUploadButton_(): boolean {
-    return this.data.canUploadAsAccountExtension;
-  }
 
   protected showDevReloadButton_(): boolean {
     return this.canReloadItem();
@@ -296,12 +293,6 @@ export class ExtensionsDetailViewElement extends
 
   protected onReloadClick_() {
     this.reloadItem().catch((loadError) => this.fire('load-error', loadError));
-  }
-
-  protected async onUploadClick_() {
-    const uploaded = await this.delegate.uploadItemToAccount(this.data.id);
-    chrome.metricsPrivate.recordBoolean(
-        UPLOAD_EXTENSION_TO_ACCOUNT_DETAILS_VIEW_PAGE_HISTOGRAM_NAME, uploaded);
   }
 
   protected onRemoveClick_() {

@@ -91,7 +91,6 @@ source_set("enterprise") {
     "//components/signin/public/base",
     "//components/signin/public/base:signin_buildflags",
     "//components/signin/public/identity_manager",
-    "//components/sync/service",
     "//components/url_matcher",
     "//content/public/browser",
     "//extensions/buildflags",
@@ -507,7 +506,6 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/android:chrome_jni_headers",
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/enterprise/util:jni_headers",
       "//chrome/browser/ui/android/tab_model",
       "//components/enterprise/browser/reporting/android:jni_headers",
@@ -537,7 +535,6 @@ source_set("impl") {
       "//chrome/browser/enterprise/connectors/device_trust/signals",
       "//chrome/browser/enterprise/connectors/device_trust/signals/decorators/common",
       "//chrome/browser/lifetime",
-      "//chrome/browser/sync",
       "//chrome/browser/themes",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/tabs:tabs_public",

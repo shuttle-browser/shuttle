@@ -19,7 +19,6 @@ source_set("dom_distiller") {
 
   if (is_android) {
     sources += [
-      "../android/dom_distiller/distiller_ui_handle_android.h",
       "dom_distiller_service_factory_android.h",
     ]
   }
@@ -44,13 +43,11 @@ source_set("impl") {
 
   if (is_android) {
     sources += [
-      "../android/dom_distiller/distiller_ui_handle_android.cc",
       "dom_distiller_service_factory_android.cc",
       "tab_utils_android.cc",
     ]
     deps += [
       "//chrome/android:chrome_jni_headers",
-      "//chrome/browser/android:tabs_public",
       "//components/navigation_interception",
     ]
   }

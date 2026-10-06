@@ -43,8 +43,6 @@ source_set("misc") {
   sources = [
     "chrome_version_service.cc",
     "incognito_helpers.cc",
-    "off_the_record_profile_impl.cc",
-    "off_the_record_profile_impl.h",
     "profile_impl.cc",
     "profile_impl.h",
     "profile_key.cc",
@@ -99,7 +97,6 @@ source_set("misc") {
     "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/push_messaging",
     "//chrome/browser/push_messaging:service_impl_public",
-    "//chrome/browser/reading_list",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/sessions",
@@ -159,7 +156,6 @@ source_set("misc") {
     ]
     deps += [
       "//chrome/browser:profile_key_startup_accessor",
-      "//chrome/browser/android:profile_token",
       "//chrome/browser/profiles/android:jni_headers",
       "//chrome/common:constants",
       "//content/public/browser",
@@ -203,8 +199,6 @@ source_set("misc") {
 
   if (is_linux || is_mac) {
     deps += [
-      "//chrome/browser/gapis",
-      "//components/gapis",
     ]
   }
 
@@ -249,12 +243,10 @@ if (!is_chromeos) {
 
 source_set("policy_handlers") {
   public = [
-    "chrome_incognito_mode_policy_handler.h",
     "force_safe_search_policy_handler.h",
     "force_youtube_safety_mode_policy_handler.h",
   ]
   sources = [
-    "chrome_incognito_mode_policy_handler.cc",
     "force_safe_search_policy_handler.cc",
     "force_youtube_safety_mode_policy_handler.cc",
   ]
@@ -364,7 +356,6 @@ source_set("profile") {
     "//components/pref_registry",
     "//components/prefs",
     "//components/profile_metrics",
-    "//components/sync/service",
     "//components/variations",
     "//content/public/browser",
     "//extensions/buildflags",
@@ -441,7 +432,6 @@ source_set("profile_manager_impl") {
     "//chrome/browser/signin",
     "//chrome/browser/supervised_user",
     "//chrome/browser/ui:ui_features",
-    "//chrome/browser/unified_consent",
     "//chrome/common:buildflags",
     "//chrome/common:constants",
     "//components/crash/core/common",
@@ -451,7 +441,6 @@ source_set("profile_manager_impl") {
     "//components/signin/public/base:signin_buildflags",
     "//components/supervised_user/core/browser",
     "//components/supervised_user/core/common",
-    "//components/sync/base",
     "//components/user_manager",
     "//content/public/browser",
     "//extensions/buildflags",
@@ -595,7 +584,6 @@ source_set("profile_util_impl") {
     "//components/signin/public/base",
     "//components/signin/public/identity_manager",
     "//components/supervised_user/core/browser",
-    "//components/sync_preferences",
     "//components/variations/service",
     "//components/vector_icons",
     "//content/public/browser",
@@ -647,7 +635,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser:chrome_browser_main",
     "//chrome/browser:font_pref",
     "//chrome/browser/accessibility",
-    "//chrome/browser/account_settings",
     "//chrome/browser/ai",
     "//chrome/browser/autocomplete",
     "//chrome/browser/background",
@@ -708,7 +695,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/private_insights",
     "//chrome/browser/private_verification_tokens",
     "//chrome/browser/push_messaging",
-    "//chrome/browser/reading_list",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/regional_capabilities",
     "//chrome/browser/safe_browsing",
@@ -730,7 +716,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/subresource_filter",
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/supervised_user",
-    "//chrome/browser/sync",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/find_bar",
@@ -739,7 +724,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/ui/startup",
     "//chrome/browser/ui/toolbar",
     "//chrome/browser/ui/toolbar/pinned_toolbar",
-    "//chrome/browser/unified_consent",
     "//chrome/browser/universal_optout",
     "//chrome/browser/updates/announcement_notification",
     "//chrome/browser/usb",
@@ -761,7 +745,6 @@ source_set("profiles_extra_parts_impl") {
     "//components/site_engagement/content",
     "//components/site_token_provider",
     "//components/spellcheck:buildflags",
-    "//components/sync/base:features",
     "//media",
     "//services/network/public/cpp",
     "//ui/webui:buildflags",
@@ -887,8 +870,6 @@ source_set("profiles_extra_parts_impl") {
 
   if (is_linux || is_mac) {
     deps += [
-      "//chrome/browser/gapis",
-      "//components/gapis",
     ]
   }
 

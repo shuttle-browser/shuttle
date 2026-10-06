@@ -95,7 +95,6 @@ void OpenWindowWithRestoredTabs(Profile* profile);
 // Opens the specified URL in a new browser window in an incognito session. If
 // there is already an existing active incognito session for the specified
 // |profile|, that session is re- used.
-void OpenURLOffTheRecord(Profile* profile, const GURL& url);
 
 bool CanGoBack(const BrowserWindowInterface* browser);
 bool CanGoBack(content::WebContents* web_contents);
@@ -236,12 +235,6 @@ void ConvertPopupToTabbedBrowser(BrowserWindowInterface* browser);
 void CloseTabsToRight(BrowserWindowInterface* browser);
 void CloseOtherTabs(BrowserWindowInterface* browser);
 void Exit();
-bool CanMoveActiveTabToReadLater(BrowserWindowInterface* browser);
-void MoveCurrentTabToReadLater(BrowserWindowInterface* browser);
-void MoveTabsToReadLater(BrowserWindowInterface* browser,
-                         std::vector<content::WebContents*> web_contentses);
-bool MarkCurrentTabAsReadInReadLater(BrowserWindowInterface* browser);
-bool IsCurrentTabUnreadInReadLater(BrowserWindowInterface* browser);
 void StartTabOrganizationRequest(BrowserWindowInterface* browser);
 void SavePage(BrowserWindowInterface* browser);
 bool CanSavePage(const BrowserWindowInterface* browser);

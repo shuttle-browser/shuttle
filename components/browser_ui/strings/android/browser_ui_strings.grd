@@ -187,9 +187,6 @@
      <message name="IDS_DONE" desc="Label for a button to save a change or finish editing data. Used in multiple contexts. [CHAR_LIMIT=20]">
         Done
       </message>
-      <message name="IDS_DELETE" desc="Label for a delete button. Used in multiple contexts. [CHAR_LIMIT=20]">
-        Delete
-      </message>
       <message name="IDS_REMOVE" desc="Label for a button to remove an item (e.g. a bookmark) from a list. [CHAR_LIMIT=20]">
         Remove
       </message>

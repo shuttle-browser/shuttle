@@ -35,7 +35,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ssl/https_upgrades_util.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
@@ -97,7 +96,6 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
-#include "components/sync/base/features.h"
 #include "components/universal_optout/features.h"
 #include "components/universal_optout/prefs.h"
 #include "content/public/browser/isolated_web_apps_policy.h"
@@ -427,7 +425,7 @@ void SettingsUI::InitBrowserSettingsWebUIHandlers() {
             ash::AccountAppsAvailabilityFactory::GetForProfile(profile)));
   }
 
-  if (!profile->IsGuestSession()) {
+  {
     ash::phonehub::PhoneHubManager* phone_hub_manager =
         ash::phonehub::PhoneHubManagerFactory::GetForProfile(profile);
     ash::eche_app::EcheAppManager* eche_app_manager =

@@ -47,14 +47,7 @@ using LevelOfControlGetter =
                                         bool incognito)>;
 
 PrefService* GetProfilePrefService(Profile* profile, bool incognito) {
-  if (incognito) {
-    if (profile->HasPrimaryOTRProfile()) {
-      return profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
-          ->GetPrefs();
-    }
-    return profile->GetReadOnlyOffTheRecordPrefs();
-  }
-
+  // There are no incognito profiles: incognito reads see the regular prefs.
   return profile->GetPrefs();
 }
 
@@ -116,17 +109,10 @@ void DispatchEventToExtensionsImpl(Profile* profile,
       Profile* restrict_to_profile = nullptr;
       if (IncognitoInfo::IsSplitMode(extension.get())) {
         if (incognito) {  // Handle case a).
-          // If off the record profile does not exist, there should be no
-          // extensions running in incognito at this time, and consequentially
-          // no need to dispatch an event restricted to an incognito extension.
-          // Furthermore, avoid calling GetPrimaryOTRProfile() if the profile
-          // does not exist. Unnecessarily creating off the record profile is
-          // undesirable, and can lead to a crash if incognito is disallowed for
-          // the current profile (see https://crbug.com/41361877).
-          if (!profile->HasPrimaryOTRProfile())
-            continue;
-          restrict_to_profile =
-              profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+          // There is no off the record profile, so there are no extensions
+          // running in incognito and no need to dispatch an event restricted
+          // to an incognito extension.
+          continue;
         } else {  // Handle case b).
           bool controlled_from_incognito = false;
           bool controlled_by_extension =

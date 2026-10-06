@@ -93,7 +93,6 @@ class WebAuthenticationProxyRegistrar : public KeyedService,
                            UnloadedExtensionReason reason) override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // The extension that is currently acting as the WebAuthn request proxy, if

@@ -6,10 +6,7 @@
 
 #include <utility>
 
-#include "chrome/browser/history/history_utils.h"
-#include "chrome/browser/history/web_history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/browsing_data/core/history_notice_utils.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "extensions/buildflags/buildflags.h"
@@ -36,23 +33,4 @@ void ProfileBasedBrowsingHistoryDriver::OnRemoveVisits(
 bool ProfileBasedBrowsingHistoryDriver::AllowHistoryDeletions() {
   return GetProfile()->GetPrefs()->GetBoolean(
       prefs::kAllowDeletingBrowserHistory);
-}
-
-bool ProfileBasedBrowsingHistoryDriver::ShouldHideWebHistoryUrl(
-    const GURL& url) {
-  return !CanAddURLToHistory(url);
-}
-
-history::WebHistoryService*
-ProfileBasedBrowsingHistoryDriver::GetWebHistoryService() {
-  return WebHistoryServiceFactory::GetForProfile(GetProfile());
-}
-
-void ProfileBasedBrowsingHistoryDriver::
-    ShouldShowNoticeAboutOtherFormsOfBrowsingHistory(
-        const syncer::SyncService* sync_service,
-        history::WebHistoryService* history_service,
-        base::OnceCallback<void(bool)> callback) {
-  return browsing_data::ShouldShowNoticeAboutOtherFormsOfBrowsingHistory(
-      sync_service, history_service, std::move(callback));
 }

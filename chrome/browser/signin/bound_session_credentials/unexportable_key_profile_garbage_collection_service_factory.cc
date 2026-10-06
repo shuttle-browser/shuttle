@@ -37,8 +37,6 @@ constexpr base::TimeDelta kGarbageCollectionDelay = base::Minutes(2);
 
 constexpr std::string_view kObsoleteOTRProfilesHistogramPrefix =
     "Crypto.UnexportableKeys.GarbageCollection.ObsoleteOTRProfiles.";
-constexpr std::string_view kDestroyedOTRProfilesHistogramPrefix =
-    "Crypto.UnexportableKeys.GarbageCollection.DestroyedOTRProfiles.";
 
 class OriginalProfileGarbageCollectionService : public KeyedService {
  public:
@@ -78,10 +76,8 @@ class OriginalProfileGarbageCollectionService : public KeyedService {
         key_count);
 
     // Start by creating a set of application_tag prefixes belonging to all tags
-    // that correspond to still active profiles (original and all current OTR
-    // profiles).
+    // that correspond to still active profiles.
     std::vector<const Profile*> active_profiles = {&*profile_};
-    base::Extend(active_profiles, profile_->GetAllOffTheRecordProfiles());
     const auto active_application_tag_prefixes = base::MakeFlatSet<std::string>(
         active_profiles, std::less<>(), [](const Profile* profile) {
           return GetApplicationTag(GetConfigForProfile(*profile));
@@ -116,38 +112,6 @@ class OriginalProfileGarbageCollectionService : public KeyedService {
           GetConfigForProfilePath(profile_->GetPath()));
   base::WeakPtrFactory<OriginalProfileGarbageCollectionService>
       weak_ptr_factory_{this};
-};
-
-class OffTheRecordGarbageCollectionService : public KeyedService {
- public:
-  explicit OffTheRecordGarbageCollectionService(const Profile& profile)
-      : service_(UnexportableKeyServiceFactory::CreateForGarbageCollection(
-            GetConfigForProfile(profile))) {
-    CHECK(profile.IsOffTheRecord());
-    CHECK(service_);
-  }
-
- private:
-  // KeyedService:
-  void Shutdown() override {
-    // Delete all keys for OTR profiles.
-    service_->DeleteAllKeysSlowlyAsync(
-        base::BindOnce(
-            [](std::unique_ptr<UnexportableKeyService>,
-               ServiceErrorOr<size_t> count_or_error) {
-              if (count_or_error.has_value()) {
-                base::UmaHistogramCounts100(
-                    base::StrCat({kDestroyedOTRProfilesHistogramPrefix,
-                                  "ObsoleteKeyDeletionCount"}),
-                    *count_or_error);
-              }
-            },
-            // Transfer ownership of `service_` to the callback to ensure that
-            // the callback is run, even after `this` is destroyed.
-            std::move(service_)));
-  }
-
-  std::unique_ptr<UnexportableKeyService> service_;
 };
 
 }  // namespace
@@ -197,10 +161,6 @@ UnexportableKeyProfileGarbageCollectionServiceFactory::
   }
 
   Profile* profile = Profile::FromBrowserContext(context);
-  if (CHECK_DEREF(profile).IsOffTheRecord()) {
-    return std::make_unique<OffTheRecordGarbageCollectionService>(*profile);
-  }
-
   return std::make_unique<OriginalProfileGarbageCollectionService>(*profile);
 }
 

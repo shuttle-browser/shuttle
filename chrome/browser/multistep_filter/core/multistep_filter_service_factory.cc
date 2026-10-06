@@ -11,7 +11,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/multistep_filter/core/annotation_index/annotation_index_client.h"
 #include "components/multistep_filter/core/annotation_index/optimization_guide_annotation_index_client.h"
@@ -44,7 +43,6 @@ MultistepFilterServiceFactory::MultistepFilterServiceFactory()
   DependsOn(IdentityManagerFactory::GetInstance());
   DependsOn(MultistepFilterLogRouterFactory::GetInstance());
   DependsOn(OptimizationGuideKeyedServiceFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
 }
 
 MultistepFilterServiceFactory::~MultistepFilterServiceFactory() = default;
@@ -77,7 +75,6 @@ MultistepFilterServiceFactory::BuildServiceInstanceForBrowserContext(
   params.history_service = HistoryServiceFactory::GetForProfile(
       profile, ServiceAccessType::EXPLICIT_ACCESS);
   params.pref_service = profile->GetPrefs();
-  params.sync_service = SyncServiceFactory::GetForProfile(profile);
 
   return std::make_unique<MultistepFilterService>(std::move(params));
 }

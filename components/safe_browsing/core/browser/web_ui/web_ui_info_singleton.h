@@ -13,11 +13,6 @@
 #include "components/safe_browsing/core/browser/web_ui/safe_browsing_ui_util.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 
-namespace sync_pb {
-class GaiaPasswordReuse;
-class UserEventSpecifics;
-}  // namespace sync_pb
-
 namespace safe_browsing {
 class WebUIInfoSingletonEventObserver;
 
@@ -85,20 +80,6 @@ class WebUIInfoSingleton : public RealTimeUrlLookupServiceBase::WebUIDelegate,
   void ClearCSBRRsSent();
 
   void SetOnCSBRRLoggedCallbackForTesting(base::OnceClosure on_done);
-
-  // Add the new message in |pg_event_log_| and send it to all the open
-  // chrome://safe-browsing tabs.
-  void AddToPGEvents(const sync_pb::UserEventSpecifics& event);
-
-  // Clear the list of sent PhishGuard events.
-  void ClearPGEvents();
-
-  // Add the new message in |security_event_log_| and send it to all the open
-  // chrome://safe-browsing tabs.
-  void AddToSecurityEvents(const sync_pb::GaiaPasswordReuse& event);
-
-  // Clear the list of sent Security events.
-  void ClearSecurityEvents();
 
   // Add the new ping (with oauth token) to |pg_pings_| and send it to all the
   // open chrome://safe-browsing tabs. Returns a token that can be used in
@@ -257,18 +238,6 @@ class WebUIInfoSingleton : public RealTimeUrlLookupServiceBase::WebUIDelegate,
     return webui_instances_;
   }
 
-  // Get the list of PhishGuard events since the oldest currently open
-  // chrome://safe-browsing tab was opened.
-  const std::vector<sync_pb::UserEventSpecifics>& pg_event_log() const {
-    return pg_event_log_;
-  }
-
-  // Get the list of Security events since the oldest currently open
-  // chrome://safe-browsing tab was opened.
-  const std::vector<sync_pb::GaiaPasswordReuse>& security_event_log() const {
-    return security_event_log_;
-  }
-
   // Get the list of PhishGuard pings and tokens since the oldest currently open
   // chrome://safe-browsing tab was opened.
   const std::vector<web_ui::LoginReputationClientRequestAndToken>& pg_pings()
@@ -396,14 +365,6 @@ class WebUIInfoSingleton : public RealTimeUrlLookupServiceBase::WebUIDelegate,
 
   // Gets fired at the end of the AddToCSBRRsSent function. Only used for tests.
   base::OnceClosure on_csbrr_logged_for_testing_;
-
-  // List of PhishGuard events sent since the oldest currently open
-  // chrome://safe-browsing tab was opened.
-  std::vector<sync_pb::UserEventSpecifics> pg_event_log_;
-
-  // List of Security events sent since the oldest currently open
-  // chrome://safe-browsing tab was opened.
-  std::vector<sync_pb::GaiaPasswordReuse> security_event_log_;
 
   // List of PhishGuard pings and tokens sent since the oldest currently open
   // chrome://safe-browsing tab was opened.

@@ -13,7 +13,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/accessibility/accessibility_labels_service_factory.h"
 #include "chrome/browser/accessibility/page_colors_controller_factory.h"
-#include "chrome/browser/account_settings/account_setting_service_factory.h"
 #include "chrome/browser/actor/actor_keyed_service_factory.h"
 #include "chrome/browser/ai/ai_data_keyed_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
@@ -143,7 +142,6 @@
 #include "chrome/browser/profile_resetter/triggered_profile_resetter_factory.h"
 #include "chrome/browser/profiles/renderer_updater_factory.h"
 #include "chrome/browser/push_messaging/push_messaging_service_factory.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/reduce_accept_language/reduce_accept_language_factory.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
@@ -152,7 +150,6 @@
 #include "chrome/browser/search_engines/template_url_prepopulate_data_resolver_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/search_provider_logos/logo_service_factory.h"
-#include "chrome/browser/security_events/security_event_recorder_factory.h"
 #include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
 #include "chrome/browser/serial/serial_chooser_context_factory.h"
 #include "chrome/browser/sessions/session_data_service_factory.h"
@@ -174,10 +171,7 @@
 #include "chrome/browser/supervised_user/supervised_user_metrics_service_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_service_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
-#include "chrome/browser/sync/data_type_store_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/themes/theme_service_factory.h"
-#include "chrome/browser/trusted_vault/trusted_vault_service_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state_factory.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/tabs/pinned_tab_service_factory.h"
@@ -185,7 +179,6 @@
 #include "chrome/browser/ui/toolbar/toolbar_actions_model_factory.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/ntp/ntp_resource_cache_factory.h"
-#include "chrome/browser/unified_consent/unified_consent_service_factory.h"
 #include "chrome/browser/universal_optout/universal_optout_service_factory.h"
 #include "chrome/browser/updates/announcement_notification/announcement_notification_service_factory.h"
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
@@ -211,7 +204,6 @@
 #include "components/site_engagement/content/site_engagement_service.h"
 #include "components/site_token_provider/features.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
-#include "components/sync/base/features.h"
 #include "content/public/common/buildflags.h"
 #include "crypto/crypto_buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -242,7 +234,6 @@
 #include "chrome/browser/android/tab_state_storage_service_factory.h"
 #include "chrome/browser/android/thin_webview/chrome_thin_webview_initializer.h"
 #include "chrome/browser/android/webapk/webapk_install_service_factory.h"
-#include "chrome/browser/android/webapk/webapk_sync_service_factory.h"
 #include "chrome/browser/autofill/android/android_sms_otp_backend_factory.h"
 #include "chrome/browser/auxiliary_search/auxiliary_search_donation_service_factory.h"
 #include "chrome/browser/auxiliary_search/auxiliary_search_provider.h"
@@ -425,11 +416,6 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #endif
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-#include "chrome/browser/gapis/gapis_service_factory.h"
-#include "components/gapis/features.h"
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-
 #if BUILDFLAG(ENABLE_SPELLCHECK)
 #include "chrome/browser/spellchecker/spellcheck_factory.h"
 #endif
@@ -471,7 +457,6 @@
 #include "chrome/browser/safe_browsing/notification_telemetry/notification_telemetry_service_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_metrics_collector_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
-#include "chrome/browser/safe_browsing/tailored_security/tailored_security_service_factory.h"
 #include "chrome/browser/safe_browsing/url_lookup_service_factory.h"
 #include "chrome/browser/safe_browsing/v5_get_hash_protocol_manager_factory.h"
 #include "chrome/browser/safe_browsing/v5_search_hashes_cache_factory.h"
@@ -546,7 +531,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   AboutThisSiteServiceFactory::GetInstance();
   AcceptLanguagesServiceFactory::GetInstance();
   AccessibilityLabelsServiceFactory::GetInstance();
-  AccountSettingServiceFactory::GetInstance();
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   search_integrity::SearchIntegrityFactory::GetInstance();
 #endif
@@ -662,7 +646,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   metrics::CriticalUserJourneyServiceFactory::GetInstance();
 #endif  // BUILDFLAG(!IS_ANDROID)
   critical_actions::CriticalActionFactory::GetInstance();
-  DataTypeStoreServiceFactory::GetInstance();
 #if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
   data_controls::ChromeRulesServiceFactory::GetInstance();
 #endif
@@ -788,11 +771,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if BUILDFLAG(IS_CHROMEOS)
   GalleryWatchManager::EnsureFactoryBuilt();
 #endif
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-  if (base::FeatureList::IsEnabled(gapis::kEnableGapis)) {
-    GapisServiceFactory::GetInstance();
-  }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
 #if !BUILDFLAG(IS_ANDROID)
   GlobalErrorServiceFactory::GetInstance();
 #endif
@@ -1005,7 +983,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if !BUILDFLAG(IS_ANDROID)
   ReadAnythingServiceFactory::GetInstance();
 #endif
-  ReadingListModelFactory::GetInstance();
   ReduceAcceptLanguageFactory::GetInstance();
   RendererUpdaterFactory::GetInstance();
   regional_capabilities::RegionalCapabilitiesServiceFactory::GetInstance();
@@ -1038,7 +1015,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   safe_browsing::RealTimeUrlLookupServiceFactory::GetInstance();
   safe_browsing::SafeBrowsingMetricsCollectorFactory::GetInstance();
   safe_browsing::SafeBrowsingNavigationObserverManagerFactory::GetInstance();
-  safe_browsing::TailoredSecurityServiceFactory::GetInstance();
   safe_browsing::V5GetHashProtocolManagerFactory::GetInstance();
   safe_browsing::V5SearchHashesCacheFactory::GetInstance();
 #endif
@@ -1117,7 +1093,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   supervised_user::SupervisedUserUrlFilteringServiceFactory::GetInstance();
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #endif
-  SyncServiceFactory::GetInstance();
   TabRestoreServiceFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   tabs::TabStateStorageServiceFactory::GetInstance();
@@ -1151,7 +1126,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   // pulls this factory in, but device-bound sessions still use it.
   UnexportableKeyServiceFactory::GetInstance();
 #endif
-  UnifiedConsentServiceFactory::GetInstance();
   universal_optout::UniversalOptOutServiceFactory::GetInstance();
   UrlLanguageHistogramFactory::GetInstance();
   UsbChooserContextFactory::GetInstance();
@@ -1166,19 +1140,14 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
 #if BUILDFLAG(IS_ANDROID)
   WebApkInstallServiceFactory::GetInstance();
-  if (base::FeatureList::IsEnabled(syncer::kWebApkBackupAndRestoreBackend)) {
-    webapk::WebApkSyncServiceFactory::GetInstance();
-  }
 #endif
 
   WebDataServiceFactory::GetInstance();
   webrtc_event_logging::WebRtcEventLogManagerKeyedServiceFactory::GetInstance();
 
   // Agent Chrome: these factories used to be registered transitively through
-  // SyncServiceFactory's DependsOn() list, which is gone with the sync stub.
+  // SyncServiceFactory's DependsOn() list, which is gone with the sync stack.
   IdentityManagerFactory::GetInstance();
-  SecurityEventRecorderFactory::GetInstance();
-  TrustedVaultServiceFactory::GetInstance();
   gcm::GCMProfileServiceFactory::GetInstance();
   supervised_user::FamilyLinkSettingsServiceFactory::GetInstance();
 }

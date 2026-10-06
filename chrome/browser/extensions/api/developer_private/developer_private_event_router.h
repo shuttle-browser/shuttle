@@ -15,7 +15,6 @@
 #include "chrome/browser/extensions/commands/command_service.h"
 #include "chrome/browser/extensions/error_console/error_console.h"
 #include "chrome/browser/extensions/extension_management.h"
-#include "chrome/browser/extensions/sync/account_extension_tracker.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
 #include "chrome/common/extensions/api/developer_private.h"
@@ -53,7 +52,6 @@ class DeveloperPrivateEventRouter : public ExtensionRegistryObserver,
                                     public ExtensionManagement::Observer,
                                     public ExtensionAllowlist::Observer,
                                     public CommandService::Observer,
-                                    public AccountExtensionTracker::Observer,
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
                                     public AppWindowRegistry::Observer,
 #endif  // ENABLE_PLATFORM_APPS
@@ -147,10 +145,6 @@ class DeveloperPrivateEventRouter : public ExtensionRegistryObserver,
   void OnExtensionCommandRemoved(const ExtensionId& extension_id,
                                  const std::string& command_name) override;
 
-  // AccountExtensionTracker::Observer:
-  void OnExtensionUploadabilityChanged(const ExtensionId& id) override;
-  void OnExtensionsUploadabilityChanged() override;
-
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
   // AppWindowRegistry::Observer:
   void OnAppWindowAdded(AppWindow* window) override;
@@ -197,9 +191,6 @@ class DeveloperPrivateEventRouter : public ExtensionRegistryObserver,
       extension_allowlist_observer_{this};
   base::ScopedObservation<CommandService, CommandService::Observer>
       command_service_observation_{this};
-  base::ScopedObservation<AccountExtensionTracker,
-                          AccountExtensionTracker::Observer>
-      account_extension_tracker_observation_{this};
   base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
       toolbar_actions_model_observation_{this};
 

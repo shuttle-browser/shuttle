@@ -77,88 +77,6 @@ class Profile : public content::BrowserContext {
     kPendingDestruction,
   };
 
-  // Defines an ID to distinguish different off-the-record profiles of a regular
-  // profile.
-  class OTRProfileID {
-   public:
-    // ID used by the Incognito and Guest profiles.
-    static const OTRProfileID PrimaryID();
-
-    // Creates a unique OTR profile id with the given profile id prefix.
-    //
-    // WARNING:
-    // The use of this class to create non-primary OTR profiles in Desktop
-    // platforms is restricted exclusively for cases where extensions should not
-    // be applicable to run. Please see crbug.com/40137149#comment4 for more
-    // details.
-    static OTRProfileID CreateUnique(const std::string& profile_id_prefix);
-
-    // Creates a unique OTR profile id to be used for DevTools browser contexts.
-    static OTRProfileID CreateUniqueForDevTools();
-
-    // Creates a unique OTR profile id to be used for media router.
-    static OTRProfileID CreateUniqueForMediaRouter();
-
-#if BUILDFLAG(IS_CHROMEOS)
-    // Creates a unique OTR profile id to be used for captive portal signin on
-    // ChromeOS.
-    static OTRProfileID CreateUniqueForCaptivePortal();
-#endif
-    // Creates a unique OTR profile id for tests.
-    static OTRProfileID CreateUniqueForTesting();
-
-    friend constexpr bool operator==(const OTRProfileID&,
-                                     const OTRProfileID&) = default;
-    friend constexpr auto operator<=>(const OTRProfileID&,
-                                      const OTRProfileID&) = default;
-
-    bool AllowsBrowserWindows() const;
-    bool IsDevTools() const;
-
-#if BUILDFLAG(IS_CHROMEOS)
-    // Returns true if the OTR Profile was created for captive portal signin.
-    bool IsCaptivePortal() const;
-#endif
-
-#if BUILDFLAG(IS_ANDROID)
-    // Constructs a Java OTRProfileID from the provided C++ OTRProfileID
-    base::android::ScopedJavaLocalRef<jobject> ConvertToJavaOTRProfileID(
-        JNIEnv* env) const;
-
-    // Constructs a C++ OTRProfileID from the provided Java OTRProfileID
-    static OTRProfileID ConvertFromJavaOTRProfileID(
-        JNIEnv* env,
-        const base::android::JavaRef<jobject>& j_otr_profile_id);
-
-    // Constructs an OTRProfileID based on the string passed in. Should only be
-    // called with values previously returned by Serialize().
-    static OTRProfileID Deserialize(const std::string& value);
-
-    // Constructs a string that represents OTRProfileID from the provided
-    // OTRProfileID.
-    // TODO(crbug.com/40162345): Use one serialize function for both java and
-    // native side instead of having duplicate code.
-    std::string Serialize() const;
-#endif
-
-   private:
-    friend std::ostream& operator<<(std::ostream& out,
-                                    const OTRProfileID& profile_id);
-
-    // Creates an OTR profile ID from |profile_id|.
-    // |profile_id| should follow the following naming scheme:
-    // "<component>::<subcomponent_id>". For example, "HaTS::WebDialog"
-    explicit OTRProfileID(const std::string& profile_id);
-
-    OTRProfileID() = default;
-
-    // Returns this OTRProfileID in a string format that can be used for debug
-    // message.
-    const std::string& ToString() const;
-
-    const std::string profile_id_;
-  };
-
   class Delegate {
    public:
     virtual ~Delegate();
@@ -177,7 +95,7 @@ class Profile : public content::BrowserContext {
   // Key used to bind profile to the widget with which it is associated.
   static const char kProfileKey[];
 
-  explicit Profile(const OTRProfileID* otr_profile_id);
+  Profile();
   Profile(const Profile&) = delete;
   Profile& operator=(const Profile&) = delete;
   ~Profile() override;
@@ -215,11 +133,10 @@ class Profile : public content::BrowserContext {
   // Similar to GetBaseName(), but returns a string for debugging.
   std::string GetDebugName() const;
 
-  // Return whether this context is off the record.
-  // Note that for Chrome this covers BOTH Incognito mode and Guest sessions.
+  // Return whether this context is off the record. Always false: incognito and
+  // guest profiles no longer exist.
   bool IsOffTheRecord() final;
-  bool IsOffTheRecord() const { return otr_profile_id_.has_value(); }
-  const OTRProfileID& GetOTRProfileID() const;
+  bool IsOffTheRecord() const { return false; }
 
   variations::VariationsClient* GetVariationsClient() override;
 
@@ -238,41 +155,6 @@ class Profile : public content::BrowserContext {
   // Returns the username associated with this profile, if any. In non-test
   // implementations, this is usually the Google-services email address.
   virtual std::string GetProfileUserName() const = 0;
-
-  // Return an OffTheRecord version of this profile with the given
-  // |otr_profile_id|. The returned pointer is owned by the receiving profile.
-  // If an OffTheRecord with |otr_profile_id| profile id does not exist, a new
-  // profile is created and returned if |create_if_needed| is true or a nullptr
-  // is returned if it is false.
-  // If the receiving profile is OffTheRecord, the owner would be its original
-  // profile.
-  //
-  // WARNING: Once a profile is no longer used, use
-  // ProfileDestroyer::DestroyProfileWhenAppropriate or
-  // ProfileDestroyer::DestroyOffTheRecordProfileNow to destroy it.
-  virtual Profile* GetOffTheRecordProfile(const OTRProfileID& otr_profile_id,
-                                          bool create_if_needed) = 0;
-
-  // Returns all OffTheRecord profiles.
-  virtual std::vector<Profile*> GetAllOffTheRecordProfiles() = 0;
-
-  // Returns the primary OffTheRecord profile. Creates the profile if it doesn't
-  // exist. If primary OffTheRecord profile does not exist and
-  // |create_if_needed| is true, a new profile is created, otherwise nullptr is
-  // returned.
-  Profile* GetPrimaryOTRProfile(bool create_if_needed);
-
-  // Destroys the OffTheRecord profile.
-  virtual void DestroyOffTheRecordProfile(Profile* otr_profile) = 0;
-
-  // True if an OffTheRecord profile with given id exists.
-  virtual bool HasOffTheRecordProfile(const OTRProfileID& otr_profile_id) = 0;
-
-  // Returns true if the profile has any OffTheRecord profiles.
-  virtual bool HasAnyOffTheRecordProfile() = 0;
-
-  // True if the primary OffTheRecord profile exists.
-  bool HasPrimaryOTRProfile();
 
   // Return the original "recording" profile. This method returns this if the
   // profile is not OffTheRecord.
@@ -306,10 +188,6 @@ class Profile : public content::BrowserContext {
   // level and the per-host zoom levels for this user profile.
   // TODO(wjmaclean): Remove this when HostZoomMap migrates to StoragePartition.
   virtual ChromeZoomLevelPrefs* GetZoomLevelPrefs();
-
-  // Gives a read-only view of prefs that can be used even if there's no OTR
-  // profile at the moment (i.e. HasOffTheRecordProfile is false).
-  virtual PrefService* GetReadOnlyOffTheRecordPrefs();
 
   // Return whether two profiles are the same or one is the OffTheRecord version
   // of the other.
@@ -390,46 +268,12 @@ class Profile : public content::BrowserContext {
   // more recent (or equal to) the one specified.
   virtual bool WasCreatedByVersionOrLater(const std::string& version) = 0;
 
-  // IsRegularProfile(), IsSystemProfile(), IsIncognitoProfile(),
-  // IsGuestSession() and IsEnterpriseIsolatedModeProfile() are mutually
-  // exclusive. Note: IsGuestSession() is not mutually exclusive with the rest
-  // of the methods mentioned above on ChromeOS. TODO(crbug.com/40233408).
-  //
-  // IsSystemProfile() returns true for both regular and off-the-record profile
-  //   of the system profile.
-  // IsOffTheRecord() is true for the off the record profile of Incognito mode,
-  // system profile, Guest sessions, and also non-primary OffTheRecord profiles.
-
-  // Returns whether it's a regular profile.
-  bool IsRegularProfile() const;
-
   // Returns whether it is an Incognito profile. An Incognito profile is an
   // off-the-record profile that is used for incognito mode.
   bool IsIncognitoProfile() const;
 
   // Returns whether this profile is an Enterprise Isolated Mode session.
   bool IsEnterpriseIsolatedModeProfile() const;
-
-  // Returns true if this is a primary OffTheRecord profile with a regular
-  // parent profile (i.e. an Incognito profile or an Enterprise Isolated Mode
-  // profile).
-  bool IsPrimaryOTRProfileWithRegularParent() const;
-
-  // Returns true if this is a primary OffTheRecord profile, which covers the
-  // OffTheRecord profile used for incognito mode, isolated mode and guest
-  // sessions.
-  bool IsPrimaryOTRProfile() const;
-
-  // Returns whether it is a Guest session. This covers both regular and
-  // off-the-record profiles of a Guest session.
-  virtual bool IsGuestSession() const;
-
-  // Returns whether it is a system profile.
-  bool IsSystemProfile() const;
-
-  // Returns true if this OffTheRecord profile was created via the
-  // "createBrowsingContext" Chrome DevTools Protocol command.
-  bool IsDevToolsOTRProfile() const;
 
   bool CanUseDiskWhenOffTheRecord() override;
 
@@ -517,18 +361,12 @@ class Profile : public content::BrowserContext {
   }
 
  protected:
-  // Creates an OffTheRecordProfile which points to this Profile.
-  static std::unique_ptr<Profile> CreateOffTheRecordProfile(
-      Profile* parent,
-      const OTRProfileID& otr_profile_id);
-
   // Returns a newly created ExtensionPrefStore suitable for the supplied
   // Profile.
   static scoped_refptr<PrefStore> CreateExtensionPrefStore(
       Profile*,
       bool incognito_pref_store);
 
-  void NotifyOffTheRecordProfileCreated(Profile* off_the_record);
   void NotifyProfileInitializationComplete();
 
   // Returns whether the user has signed in this profile to an account.
@@ -537,14 +375,6 @@ class Profile : public content::BrowserContext {
   void set_allows_browser_windows_for_testing(bool allows_browser_windows) {
     allows_browser_windows_for_testing_ = allows_browser_windows;
   }
-
-  const std::optional<OTRProfileID> otr_profile_id_;
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // TODO(40233408): Remove this when migration is completed.
-  // True if the guest profile uses BrowserProfileType::kGuest.
-  bool new_guest_profile_impl_;
-#endif
 
  private:
   LifecycleState lifecycle_state_ = LifecycleState::kNotRegistered;
@@ -594,9 +424,6 @@ class Profile : public content::BrowserContext {
 struct ProfileCompare {
   bool operator()(Profile* a, Profile* b) const;
 };
-
-std::ostream& operator<<(std::ostream& out,
-                         const Profile::OTRProfileID& profile_id);
 
 #if BUILDFLAG(IS_ANDROID)
 namespace jni_zero {

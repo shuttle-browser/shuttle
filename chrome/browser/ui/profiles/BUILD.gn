@@ -36,7 +36,6 @@ source_set("profiles") {
     public_deps += [
       "//chrome/browser/themes",
       "//components/signin/public/identity_manager",
-      "//components/sync/service",
       "//url",
     ]
   }
@@ -66,7 +65,6 @@ source_set("impl") {
       "//chrome/browser/profiles:profile_manager",
       "//chrome/browser/signin",
       "//chrome/browser/subscription_eligibility",
-      "//chrome/browser/sync",
       "//chrome/browser/themes",
       "//chrome/browser/ui:layout_constants",
       "//chrome/browser/ui:ui_features",

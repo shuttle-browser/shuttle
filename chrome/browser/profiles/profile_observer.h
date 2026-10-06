@@ -11,14 +11,6 @@ class Profile;
 
 class ProfileObserver : public base::CheckedObserver {
  public:
-  // The observed profile has spawned a new off the record profile (whether
-  // owned or independent). This is called just before ownership of the new
-  // OTR profile is taken by the original profile or the
-  // IndependentOTRProfileManager, so |original_profile->GetOffRecordProfile()|
-  // should not be called, but |off_the_record->GetOriginalProfile()| will
-  // return |original_profile|.
-  virtual void OnOffTheRecordProfileCreated(Profile* off_the_record) {}
-
   // The observed profile will be destroyed soon. All KeyedServices are still
   // valid. The shutdown sequence for a profile is:
   //   1. Profile destruction is scheduled via ProfileDestroyer

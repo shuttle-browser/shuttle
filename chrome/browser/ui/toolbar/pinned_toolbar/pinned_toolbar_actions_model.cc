@@ -60,9 +60,8 @@ bool PinnedToolbarActionsModel::CanUpdate() {
   // TODO(dljames/corising): Update this function as needed with other guards /
   // requirements as they come up.
 
-  // At a minimum, incognito should be read-only. Guest mode should not be
-  // able to modify the prefs either.
-  return profile_->IsRegularProfile();
+  // Agent Chrome: every profile is a regular profile.
+  return true;
 }
 
 bool PinnedToolbarActionsModel::Contains(actions::ActionId action_id) const {

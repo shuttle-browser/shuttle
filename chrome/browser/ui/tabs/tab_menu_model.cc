@@ -301,21 +301,6 @@ void TabMenuModel::Build(int index) {
             ui::kColorMenuIcon, ui::SimpleMenuModel::kDefaultIconSize));
   }
 
-  const bool display_read_later = tab_strip_->delegate()->SupportsReadLater();
-  if (display_read_later) {
-    AddSeparator(ui::NORMAL_SEPARATOR);
-    AddItemWithIcon(
-        TabStripModel::CommandAddToReadLater,
-        l10n_util::GetPluralStringFUTF16(IDS_TAB_CXMENU_READ_LATER, num_tabs),
-        features::IsRoundedIconsEnabled()
-            ? ui::ImageModel::FromVectorIcon(kListAltIcon)
-            : ui::ImageModel::FromVectorIcon(kMenuBookChromeRefreshOldIcon,
-                                             ui::kColorMenuIcon,
-                                             kTabMenuIconSize));
-    SetEnabledAt(GetItemCount() - 1,
-                 tab_strip_->IsReadLaterSupportedForAny(indices));
-  }
-
   if (controller) {
     AddSeparator(ui::NORMAL_SEPARATOR);
     const int switch_to_horizontal_id =

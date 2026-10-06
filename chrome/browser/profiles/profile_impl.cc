@@ -71,7 +71,6 @@
 #include "chrome/browser/policy/schema_registry_service_builder.h"
 #include "chrome/browser/prefs/browser_prefs.h"
 #include "chrome/browser/prefs/chrome_pref_service_factory.h"
-#include "chrome/browser/prefs/pref_service_syncable_util.h"
 #include "chrome/browser/prefs/profile_pref_store_manager.h"
 #include "chrome/browser/privacy/privacy_metrics_service_factory.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
@@ -87,7 +86,6 @@
 #include "chrome/browser/profiles/profile_selections.h"
 #include "chrome/browser/push_messaging/push_messaging_service_factory.h"
 #include "chrome/browser/push_messaging/push_messaging_service_impl.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/reduce_accept_language/reduce_accept_language_factory.h"
 #include "chrome/browser/sessions/exit_type_service.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -96,7 +94,6 @@
 #include "chrome/browser/startup_data.h"
 #include "chrome/browser/storage/storage_notification_service_factory.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/transition_manager/full_browser_transition_manager.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/webui/prefs_internals_source.h"
@@ -152,8 +149,6 @@
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/supervised_user/core/common/pref_names.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
-#include "components/sync/base/features.h"
-#include "components/sync_preferences/pref_service_syncable.h"
 #include "components/url_formatter/url_fixer.h"
 #include "components/user_prefs/user_prefs.h"
 #include "components/version_info/channel.h"
@@ -257,11 +252,6 @@
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-#include "chrome/browser/gapis/gapis_service_factory.h"
-#include "components/gapis/gapis_service.h"
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -460,7 +450,7 @@ ProfileImpl::ProfileImpl(
     CreateMode create_mode,
     base::Time path_creation_time,
     scoped_refptr<base::SequencedTaskRunner> io_task_runner)
-    : Profile(nullptr),
+    : Profile(),
       path_(path),
       path_creation_time_(path_creation_time),
       io_task_runner_(std::move(io_task_runner)),
@@ -470,32 +460,8 @@ ProfileImpl::ProfileImpl(
   DCHECK(!path.empty()) << "Using an empty path will attempt to write "
                         << "profile files to the root directory!";
 
-#if BUILDFLAG(IS_CHROMEOS)
-  // In ChromeOS Guest Mode, there can be only three profiles, main guest
-  // profile, otr guest profile and sign in profile, and only main and otr ,
-  // which are 'user profile', should be the guest
-  bool is_guest_session = path == ProfileManager::GetGuestProfilePath();
-  if (new_guest_profile_impl_) {
-    is_guest_session = base::CommandLine::ForCurrentProcess()->HasSwitch(
-                           ash::switches::kGuestSession) &&
-                       ash::IsUserBrowserContextBaseName(path_.BaseName());
-  }
-#else
-  bool is_guest_session = path == ProfileManager::GetGuestProfilePath();
-#endif
-
-  if (is_guest_session) {
-    profile_metrics::SetBrowserProfileType(
-        this, profile_metrics::BrowserProfileType::kGuest);
-#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
-  } else if (path == ProfileManager::GetSystemProfilePath()) {
-    profile_metrics::SetBrowserProfileType(
-        this, profile_metrics::BrowserProfileType::kSystem);
-#endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
-  } else {
-    profile_metrics::SetBrowserProfileType(
-        this, profile_metrics::BrowserProfileType::kRegular);
-  }
+  profile_metrics::SetBrowserProfileType(
+      this, profile_metrics::BrowserProfileType::kRegular);
 
 #if BUILDFLAG(IS_WIN)
   if (base::FeatureList::IsEnabled(features::kProfileLoadTracker)) {
@@ -561,15 +527,6 @@ ProfileImpl::ProfileImpl(
     // Prefs were loaded synchronously so we can continue directly.
     OnPrefsLoaded(create_mode, true);
   }
-#if !BUILDFLAG(IS_ANDROID)
-  if (IsGuestSession()) {
-    PrefService* local_state = g_browser_process->local_state();
-    DCHECK(local_state);
-    base::UmaHistogramBoolean(
-        "Profile.Guest.ForcedByPolicy",
-        local_state->GetBoolean(prefs::kBrowserGuestModeEnforced));
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -828,20 +785,6 @@ void ProfileImpl::DoFinalInit(CreateMode create_mode) {
   }
 #endif
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  // Bootstrap the sync service (this used to happen once the bookmark model
-  // finished loading). On CrOS sync service will be initialized after sign in.
-  SyncServiceFactory::GetForProfile(this);
-#endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-  // Bootstrap and initialize the Gapis service.
-  if (gapis::GapisService* gapis_service =
-          GapisServiceFactory::GetForProfile(this)) {
-    gapis_service->FetchAppTokenIfNeeded();
-  }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-
   // The ad service might not be available for some irregular profiles, like the
   // System Profile.
   if (heavy_ad_intervention::HeavyAdService* heavy_ad_service =
@@ -938,27 +881,8 @@ ProfileImpl::~ProfileImpl() {
   ChromePluginServiceFilter::GetInstance()->UnregisterProfile(this);
 #endif
 
-  // Destroy all OTR profiles and their profile services first.
-  std::vector<Profile*> raw_otr_profiles;
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  bool primary_otr_available = false;
-#endif
-
-  // Get a list of existing OTR profiles since |off_the_record_profile_| might
-  // be modified after the call to |DestroyProfileNow|.
-  for (auto& otr_profile : otr_profiles_) {
-    raw_otr_profiles.push_back(otr_profile.second.get());
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-    primary_otr_available |= (otr_profile.first == OTRProfileID::PrimaryID());
-#endif
-  }
-
-  for (Profile* otr_profile : raw_otr_profiles)
-    ProfileDestroyer::DestroyOTRProfileImmediately(otr_profile);
-
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  if (!primary_otr_available &&
-      !extensions::ChromeContentBrowserClientExtensionsPart::
+  if (!extensions::ChromeContentBrowserClientExtensionsPart::
           AreExtensionsDisabledForProfile(this)) {
     ExtensionPrefValueMap* pref_value_map =
         ExtensionPrefValueMapFactory::GetForBrowserContext(this);
@@ -1025,63 +949,6 @@ base::Time ProfileImpl::GetCreationTime() const {
 
 scoped_refptr<base::SequencedTaskRunner> ProfileImpl::GetIOTaskRunner() {
   return io_task_runner_;
-}
-
-Profile* ProfileImpl::GetOffTheRecordProfile(const OTRProfileID& otr_profile_id,
-                                             bool create_if_needed) {
-  if (HasOffTheRecordProfile(otr_profile_id))
-    return otr_profiles_[otr_profile_id].get();
-
-  if (!create_if_needed)
-    return nullptr;
-  if (IsGuestSession()) {
-    // Guest Session has only one primary OTR.
-    CHECK_EQ(otr_profile_id, OTRProfileID::PrimaryID());
-  }
-
-  // Create a new OffTheRecordProfile
-  std::unique_ptr<Profile> otr_profile =
-      Profile::CreateOffTheRecordProfile(this, otr_profile_id);
-  Profile* raw_otr_profile = otr_profile.get();
-
-  otr_profiles_[otr_profile_id] = std::move(otr_profile);
-
-  NotifyOffTheRecordProfileCreated(raw_otr_profile);
-
-  return raw_otr_profile;
-}
-
-std::vector<Profile*> ProfileImpl::GetAllOffTheRecordProfiles() {
-  std::vector<Profile*> raw_otr_profiles;
-  for (auto& otr : otr_profiles_)
-    raw_otr_profiles.push_back(otr.second.get());
-  return raw_otr_profiles;
-}
-
-void ProfileImpl::DestroyOffTheRecordProfile(Profile* otr_profile) {
-  CHECK(otr_profile);
-  OTRProfileID profile_id = otr_profile->GetOTRProfileID();
-  DCHECK(HasOffTheRecordProfile(profile_id));
-  otr_profiles_.erase(profile_id);
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  // Extensions are only supported on primary OTR profile.
-  if (profile_id == OTRProfileID::PrimaryID() &&
-      !extensions::ChromeContentBrowserClientExtensionsPart::
-          AreExtensionsDisabledForProfile(this)) {
-    ExtensionPrefValueMap* pref_value_map =
-        ExtensionPrefValueMapFactory::GetForBrowserContext(this);
-    DCHECK(pref_value_map);
-    pref_value_map->ClearAllIncognitoSessionOnlyPreferences();
-  }
-#endif
-}
-
-bool ProfileImpl::HasOffTheRecordProfile(const OTRProfileID& otr_profile_id) {
-  return otr_profiles_.contains(otr_profile_id);
-}
-
-bool ProfileImpl::HasAnyOffTheRecordProfile() {
-  return !otr_profiles_.empty();
 }
 
 Profile* ProfileImpl::GetOriginalProfile() {
@@ -1267,15 +1134,6 @@ const PrefService* ProfileImpl::GetPrefs() const {
 ChromeZoomLevelPrefs* ProfileImpl::GetZoomLevelPrefs() {
   return static_cast<ChromeZoomLevelPrefs*>(
       GetDefaultStoragePartition()->GetZoomLevelDelegate());
-}
-
-// TODO(crbug.com/40526371): Remove this function.
-PrefService* ProfileImpl::GetReadOnlyOffTheRecordPrefs() {
-  if (!dummy_otr_prefs_) {
-    dummy_otr_prefs_ = CreateIncognitoPrefServiceSyncable(
-        prefs_.get(), CreateExtensionPrefStore(this, true));
-  }
-  return dummy_otr_prefs_.get();
 }
 
 policy::SchemaRegistryService* ProfileImpl::GetPolicySchemaRegistryService() {
@@ -1627,12 +1485,8 @@ void ProfileImpl::AckCrashForTracking() {
 bool ProfileImpl::IsSignedIn() {
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(this);
-  // TODO(crbug.com/348368545): Switch to ConsentLevel::kSignin on ChromeOS.
-  signin::ConsentLevel consent_level =
-      syncer::IsReplaceSyncPromosWithSignInPromosEnabled()
-          ? signin::ConsentLevel::kSignin
-          : signin::ConsentLevel::kSync;
-  return identity_manager && identity_manager->HasPrimaryAccount(consent_level);
+  return identity_manager &&
+         identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin);
 }
 
 GURL ProfileImpl::GetHomePage() {

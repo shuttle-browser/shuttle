@@ -275,9 +275,6 @@ AppWindow::AppWindow(BrowserContext* context,
       extension_id_(extension->id()),
       session_id_(SessionID::NewUnique()),
       app_delegate_(std::move(app_delegate)) {
-  ExtensionsBrowserClient* client = ExtensionsBrowserClient::Get();
-  CHECK(!client->IsGuestSession(context) || context->IsOffTheRecord())
-      << "Only off the record window may be opened in the guest mode.";
 }
 
 void AppWindow::Init(const GURL& url,

@@ -13,7 +13,6 @@
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/strings/sys_string_conversions.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -259,25 +258,11 @@ BrowserWindowInterface* AuthSessionRequest::CreateBrowser(
     return nullptr;
   }
 
-  bool ephemeral_sessions_allowed_by_policy =
-      IncognitoModePrefs::GetAvailability(profile->GetPrefs()) !=
-      policy::IncognitoModeAvailability::kDisabled;
-
   // As per the documentation for `shouldUseEphemeralSession`: "Whether the
-  // request is honored depends on the user’s default web browser." If policy
-  // does not allow for the use of an ephemeral session, the options would be
-  // either to use a non-ephemeral session, or to error out. However, erroring
-  // out would leave any app that uses `ASWebAuthenticationSession` unable to do
-  // any sign-in at all via this API. Given that the docs do not actually
-  // provide a guarantee of an ephemeral session if requested, take advantage of
-  // that to not block the user's ability to sign in.
-  if (request.shouldUseEphemeralSession &&
-      ephemeral_sessions_allowed_by_policy) {
-    profile = profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-  }
-  if (!profile) {
-    return nullptr;
-  }
+  // request is honored depends on the user’s default web browser." Ephemeral
+  // (incognito) sessions are not supported, so the request is served with the
+  // regular profile rather than erroring out, which would leave any app that
+  // uses `ASWebAuthenticationSession` unable to do any sign-in at all.
 
   // Check if browser creation is possible before attempting to create it.
   // This prevents crashes when the profile is in an unsuitable state.

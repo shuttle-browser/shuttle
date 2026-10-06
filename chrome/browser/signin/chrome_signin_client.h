@@ -75,8 +75,6 @@ class ChromeSigninClient : public SigninClient {
   void OnPrimaryAccountChanged(
       signin::PrimaryAccountChangeEvent event_details) override;
 
-  std::unique_ptr<signin::BoundSessionOAuthMultiLoginDelegate>
-  CreateBoundSessionOAuthMultiloginDelegate() const override;
   signin::OAuthConsumer GetOAuthConsumerFromId(
       signin::OAuthConsumerId oauth_consumer_id) const override;
 

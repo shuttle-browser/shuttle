@@ -24,9 +24,6 @@ class SearchEngineChoiceServiceClient
   bool IsDeviceRestoreDetectedInCurrentSession() override;
   bool DoesChoicePredateDeviceRestore(
       const ChoiceCompletionMetadata& choice_metadata) override;
-
- private:
-  bool is_profile_eligible_for_dse_guest_propagation_;
 };
 
 }  // namespace search_engines

@@ -22,7 +22,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/search/search.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/sync/base/features.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/ui_base_features.h"
 
@@ -157,71 +156,6 @@ class OmniboxPedalUpdateCreditCard : public OmniboxPedal {
 };
 
 // =============================================================================
-
-class OmniboxPedalLaunchIncognito : public OmniboxPedal {
- public:
-  OmniboxPedalLaunchIncognito()
-      : OmniboxPedal(
-            OmniboxPedalId::LAUNCH_INCOGNITO,
-#if BUILDFLAG(IS_ANDROID)
-            LabelStrings(
-                IDS_ANDROID_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_HINT,
-                IDS_ANDROID_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUGGESTION_CONTENTS,
-                IDS_ANDROID_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUFFIX,
-                IDS_ANDROID_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO),
-#else
-            LabelStrings(IDS_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_HINT,
-                         IDS_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUGGESTION_CONTENTS,
-                         IDS_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUFFIX,
-                         IDS_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO),
-#endif  // BUILDFLAG(IS_ANDROID)
-        // Fake URL to distinguish matches.
-            GURL("chrome://newtab?incognito=true")) {
-  }
-
-  std::vector<SynonymGroupSpec> SpecifySynonymGroups(
-      bool locale_is_english) const override {
-    if (locale_is_english) {
-      return {
-          {
-              false,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_LAUNCH_INCOGNITO_ONE_OPTIONAL_GOOGLE_CHROME,
-          },
-          {
-              false,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_LAUNCH_INCOGNITO_ONE_OPTIONAL_CREATE,
-          },
-          {
-              true,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_LAUNCH_INCOGNITO_ONE_REQUIRED_INCOGNITO_WINDOW,
-          },
-      };
-    } else {
-      return {
-          {
-              true,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_LAUNCH_INCOGNITO_ONE_REQUIRED_ENTER_INCOGNITO_MODE,
-          },
-      };
-    }
-  }
-
-  void Execute(ExecutionContext& context) const override {
-    context.client_->NewIncognitoWindow();
-  }
-  bool IsReadyToTrigger(
-      const AutocompleteInput& input,
-      const AutocompleteProviderClient& client) const override {
-    return client.IsIncognitoModeAvailable();
-  }
-
- protected:
-  ~OmniboxPedalLaunchIncognito() override = default;
-};
 
 // =============================================================================
 
@@ -548,87 +482,6 @@ class OmniboxPedalManageAddresses : public OmniboxPedal {
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 // =============================================================================
-
-#if !BUILDFLAG(IS_ANDROID)
-class OmniboxPedalManageSync : public OmniboxPedal {
- public:
-  OmniboxPedalManageSync()
-      : OmniboxPedal(OmniboxPedalId::MANAGE_SYNC,
-                     GetLabelStrings(),
-                     GURL("chrome://settings/syncSetup/advanced")) {}
-
-  static LabelStrings GetLabelStrings() {
-#if !BUILDFLAG(IS_CHROMEOS)
-    if (base::FeatureList::IsEnabled(syncer::kUnoPhase2FollowUp)) {
-      return LabelStrings(
-          IDS_OMNIBOX_PEDAL_MANAGE_SYNC_HINT_UPDATED,
-          IDS_OMNIBOX_PEDAL_MANAGE_SYNC_SUGGESTION_CONTENTS_UPDATED,
-          IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC_SUFFIX_UPDATED,
-          IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC_UPDATED);
-    }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-    return LabelStrings(IDS_OMNIBOX_PEDAL_MANAGE_SYNC_HINT,
-                        IDS_OMNIBOX_PEDAL_MANAGE_SYNC_SUGGESTION_CONTENTS,
-                        IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC_SUFFIX,
-                        IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC);
-  }
-
-  std::vector<SynonymGroupSpec> SpecifySynonymGroups(
-      bool locale_is_english) const override {
-#if !BUILDFLAG(IS_CHROMEOS)
-    if (base::FeatureList::IsEnabled(syncer::kUnoPhase2FollowUp)) {
-      if (locale_is_english) {
-        return {
-            {
-                true,
-                true,
-                IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_SYNC_ONE_REQUIRED_SYNC_SETTINGS_UPDATED,
-            },
-            {
-                true,
-                false,
-                IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_SYNC_ANY_REQUIRED_GOOGLE_CHROME,
-            },
-        };
-      } else {
-        return {
-            {
-                true,
-                true,
-                IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_SYNC_UPDATED,
-            },
-        };
-      }
-    }
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-    if (locale_is_english) {
-      return {
-          {
-              true,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_SYNC_ONE_REQUIRED_SYNC_SETTINGS,
-          },
-          {
-              true,
-              false,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_SYNC_ANY_REQUIRED_GOOGLE_CHROME,
-          },
-      };
-    } else {
-      return {
-          {
-              true,
-              true,
-              IDS_OMNIBOX_PEDAL_SYNONYMS_MANAGE_SYNC_ONE_REQUIRED_CHANGE_CHROME_BROWSER_SYNC_SETTINGS,
-          },
-      };
-    }
-  }
-
- protected:
-  ~OmniboxPedalManageSync() override = default;
-};
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 // =============================================================================
 
@@ -1993,7 +1846,6 @@ GetPedalImplementations(bool incognito, bool guest, bool testing) {
     add(new OmniboxPedalClearBrowsingData(/*incognito=*/false));
   }
   add(new OmniboxPedalUpdateCreditCard());
-  add(new OmniboxPedalLaunchIncognito());
   if (!base::android::device_info::is_automotive()) {
     add(new OmniboxPedalRunChromeSafetyCheck());
   }
@@ -2009,14 +1861,12 @@ GetPedalImplementations(bool incognito, bool guest, bool testing) {
     add(new OmniboxPedalClearBrowsingData(incognito));
   }
   add(new OmniboxPedalUpdateCreditCard());
-  add(new OmniboxPedalLaunchIncognito());
   add(new OmniboxPedalTranslate());
   add(new OmniboxPedalUpdateChrome());
   add(new OmniboxPedalRunChromeSafetyCheck());
   add(new OmniboxPedalManageSecuritySettings());
   add(new OmniboxPedalManageCookies());
   add(new OmniboxPedalManageAddresses());
-  add(new OmniboxPedalManageSync());
   add(new OmniboxPedalManageSiteSettings());
   add(new OmniboxPedalSeeChromeTips());
 

@@ -7,10 +7,8 @@ import("//extensions/buildflags/buildflags.gni")
 source_set("themes") {
   public = [
     "ntp_custom_background_service_constants.h",
-    "theme_utils.h",
   ]
   sources = [
-    "theme_utils.cc",
   ]
   public_deps = [
     "//base",
@@ -30,7 +28,6 @@ source_set("themes") {
     "//components/optimization_guide/core:features",
     "//components/pref_registry",
     "//components/search",
-    "//components/sync/protocol",
     "//components/version_info",
     "//ui/base:features",
     "//ui/base/mojom",

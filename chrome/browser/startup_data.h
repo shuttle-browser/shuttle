@@ -31,10 +31,6 @@ class SchemaRegistryService;
 class UserCloudPolicyManager;
 }  // namespace policy
 
-namespace sync_preferences {
-class PrefServiceSyncable;
-}
-
 class PrefService;
 class ProfileKey;
 class ChromeFeatureListCreator;
@@ -87,7 +83,7 @@ class StartupData {
   scoped_refptr<user_prefs::PrefRegistrySyncable> TakePrefRegistrySyncable();
 
   // Passes ownership of the |prefs_| to the caller.
-  std::unique_ptr<sync_preferences::PrefServiceSyncable>
+  std::unique_ptr<PrefService>
   TakeProfilePrefService();
 
   // Passes ownership of the |proto_db_provider_| to the caller.
@@ -118,7 +114,7 @@ class StartupData {
 
   scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry_;
 
-  std::unique_ptr<sync_preferences::PrefServiceSyncable> prefs_;
+  std::unique_ptr<PrefService> prefs_;
 
   std::unique_ptr<leveldb_proto::ProtoDatabaseProvider> proto_db_provider_;
 #endif

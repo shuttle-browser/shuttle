@@ -321,11 +321,6 @@ void DownloadBubbleUpdateService::Initialize(
     if (original_download_manager) {
       InitializeOriginalNotifier(original_download_manager);
     }
-  } else {
-    for (Profile* otr_profile : profile_->GetAllOffTheRecordProfiles()) {
-      DownloadBubbleUpdateServiceFactory::GetForProfile(otr_profile)
-          ->InitializeOriginalNotifier(manager);
-    }
   }
   download_item_notifier_ =
       std::make_unique<download::AllDownloadItemNotifier>(manager, this);

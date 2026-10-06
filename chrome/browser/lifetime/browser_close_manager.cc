@@ -178,10 +178,6 @@ void BrowserCloseManager::OnReportDownloadsCancellable(bool proceed) {
       g_browser_process->profile_manager()->GetLoadedProfiles());
   for (Profile* profile : profiles) {
     ShowInProgressDownloads(profile);
-    std::vector<Profile*> otr_profiles = profile->GetAllOffTheRecordProfiles();
-    for (Profile* otr : otr_profiles) {
-      ShowInProgressDownloads(otr);
-    }
   }
 }
 

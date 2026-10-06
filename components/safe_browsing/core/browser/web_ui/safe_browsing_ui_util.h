@@ -15,7 +15,6 @@
 #include "components/safe_browsing/core/common/proto/realtimeapi.pb.h"
 #include "components/safe_browsing/core/common/proto/safebrowsingv5.pb.h"
 #include "components/safe_browsing/core/common/proto/webui.pb.h"
-#include "components/sync/protocol/user_event_specifics.pb.h"
 #include "net/http/http_request_headers.h"
 #include "url/gurl.h"
 
@@ -146,8 +145,6 @@ std::string SerializeCSBRR(const ClientSafeBrowsingReportRequest& report);
 std::string SerializeDownloadUrlChecked(const std::vector<GURL>& urls,
                                         DownloadCheckResult result);
 std::string SerializeJson(base::ValueView value);
-base::DictValue SerializePGEvent(const sync_pb::UserEventSpecifics& event);
-base::DictValue SerializeSecurityEvent(const sync_pb::GaiaPasswordReuse& event);
 #if BUILDFLAG(IS_ANDROID)
 // This serializes the internal::ReferringAppInfo struct (not to be confused
 // with the protobuf message ReferringAppInfo), which contains intermediate

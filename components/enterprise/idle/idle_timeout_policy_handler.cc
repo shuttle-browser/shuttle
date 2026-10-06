@@ -13,7 +13,6 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "components/browsing_data/core/browsing_data_policies_utils.h"
 #include "components/enterprise/idle/action_type.h"
 #include "components/enterprise/idle/idle_pref_names.h"
 #include "components/policy/core/browser/configuration_policy_handler.h"
@@ -141,12 +140,6 @@ void IdleTimeoutActionsPolicyHandler::ApplyPolicySettings(
   prefs->SetValue(prefs::kIdleTimeoutActions,
                   base::Value(std::move(converted_actions)));
 
-  std::string log_message = browsing_data::DisableSyncTypes(
-      forced_disabled_sync_types_, prefs, policy_name());
-  if (!log_message.empty()) {
-    LOG_POLICY(INFO, POLICY_PROCESSING) << log_message;
-  }
-
 #if BUILDFLAG(IS_IOS)
   // Set the `kIdleTimeoutPolicyAppliesToUserOnly`pref if the policy is set as a
   // user policy. This will determine whether data should be cleared for
@@ -182,59 +175,7 @@ bool IdleTimeoutActionsPolicyHandler::CheckPolicySettings(
     return false;
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  const base::Value* sync_disabled =
-      policies.GetValue(policy::key::kSyncDisabled, base::Value::Type::BOOLEAN);
-  if (sync_disabled && sync_disabled->GetBool()) {
-    return true;
-  }
-#endif  //! BUILDFLAG(IS_ANDROID)
-
-// BrowserSignin policy is not available on ChromeOS.
-#if !BUILDFLAG(IS_CHROMEOS)
-  const auto* browser_signin_disabled = policies.GetValue(
-      policy::key::kBrowserSignin, base::Value::Type::INTEGER);
-  if (browser_signin_disabled && browser_signin_disabled->GetInt() == 0) {
-    return true;
-  }
-#endif
-
-  // Automatically disable sync for the required data types.
-  const base::Value* value =
-      policies.GetValue(this->policy_name(), base::Value::Type::LIST);
-  DCHECK(value);
-  base::ListValue clear_data_actions;
-  for (const base::Value& action : value->GetList()) {
-    if (!action.is_string()) {
-      continue;
-    }
-    std::string clear_data_action =
-        GetActionBrowsingDataTypeName(action.GetString());
-    if (!clear_data_action.empty()) {
-      clear_data_actions.Append(clear_data_action);
-    }
-  }
-  forced_disabled_sync_types_ = browsing_data::GetSyncTypesForClearBrowsingData(
-      base::Value(std::move(clear_data_actions)));
-
   return true;
-}
-
-// TODO(esalma): Move this logic to `ApplyPolicySettings()` after fixing
-// crbug.com/1435069.
-void IdleTimeoutActionsPolicyHandler::PrepareForDisplaying(
-    policy::PolicyMap* policies) const {
-  policy::PolicyMap::Entry* entry = policies->GetMutable(policy_name());
-  if (!entry || forced_disabled_sync_types_.empty()) {
-    return;
-  }
-  // `PolicyConversionsClient::GetPolicyValue()` doesn't support
-  // MessageType::kInfo in the PolicyErrorMap, so add the message to the policy
-  // when it is prepared to be displayed on chrome://policy.
-  entry->AddMessage(policy::PolicyMap::MessageType::kInfo,
-                    IDS_POLICY_BROWSING_DATA_DEPENDENCY_APPLIED_INFO,
-                    {base::UTF8ToUTF16(UserSelectableTypeSetToString(
-                        forced_disabled_sync_types_))});
 }
 
 }  // namespace enterprise_idle

@@ -57,7 +57,6 @@
 #include "chrome/browser/permissions/quiet_notification_permission_ui_state.h"
 #include "chrome/browser/platform_experience/prefs.h"
 #include "chrome/browser/prefs/chrome_pref_service_factory.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/preloading/prefetch/prefetch_service/prefetch_origin_decider.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service.h"
@@ -176,13 +175,8 @@
 #include "components/subresource_filter/core/common/constants.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/supervised_user/core/browser/supervised_user_preferences.h"
-#include "components/sync/base/account_pref_utils.h"
-#include "components/sync/base/pref_names.h"
-#include "components/sync/service/device_statistics_scheduler.h"
-#include "components/sync/service/glue/sync_transport_data_prefs.h"
-#include "components/sync/service/sync_prefs.h"
-#include "components/sync_preferences/pref_service_syncable.h"
 #include "components/tracing/common/pref_names.h"
+#include "components/unified_consent/pref_names.h"
 #include "components/universal_optout/prefs.h"
 #include "components/update_client/update_client.h"
 #include "components/variations/service/variations_service.h"
@@ -261,7 +255,6 @@
 #include "chrome/browser/intranet_redirect_detector.h"
 #include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
-#include "chrome/browser/themes/theme_syncable_service.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
 #include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
@@ -1719,7 +1712,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   HostContentSettingsMap::RegisterProfilePrefs(registry);
   image_fetcher::ImageCache::RegisterProfilePrefs(registry);
   site_engagement::ImportantSitesUtil::RegisterProfilePrefs(registry);
-  IncognitoModePrefs::RegisterProfilePrefs(registry);
   invalidation::PerUserTopicSubscriptionManager::RegisterProfilePrefs(registry);
   language::LanguagePrefs::RegisterProfilePrefs(registry);
   login_detection::prefs::RegisterProfilePrefs(registry);
@@ -1793,11 +1785,12 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   site_engagement::SiteEngagementService::RegisterProfilePrefs(registry);
   subscription_eligibility::prefs::RegisterProfilePrefs(registry);
   supervised_user::RegisterProfilePrefs(registry);
-  syncer::DeviceStatisticsScheduler::RegisterProfilePrefs(registry);
-  syncer::SyncPrefs::RegisterProfilePrefs(registry);
-  syncer::SyncTransportDataPrefs::RegisterProfilePrefs(registry);
   TemplateURLPrepopulateData::RegisterProfilePrefs(registry);
   universal_optout::prefs::RegisterProfilePrefs(registry);
+  // Agent Chrome: UnifiedConsentService is gone (B2d); its pref stays registered
+  // (always false) because the pref-based consent helper still reads it.
+  registry->RegisterBooleanPref(
+      unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled, false);
   visited_url_ranking::GroupSuggestionsServiceImpl::RegisterProfilePrefs(
       registry);
   omnibox::RegisterProfilePrefs(registry);
@@ -2128,8 +2121,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 
   // TODO(crbug.com/442891187): Move these to appropriate manager files when
   // the policies logic is implemented.
-  registry->RegisterListPref(policy::policy_prefs::kIncognitoModeUrlBlocklist);
-  registry->RegisterListPref(policy::policy_prefs::kIncognitoModeUrlAllowlist);
 
   registry->RegisterBooleanPref(
       ntp_tiles::prefs::kTabResumptionHomeModuleEnabled, true);
@@ -2342,13 +2333,6 @@ void MigrateObsoleteProfilePrefs(PrefService* profile_prefs,
 
   // BEGIN_MIGRATE_OBSOLETE_PROFILE_PREFS
   // Please don't delete the preceding line. It is used by PRESUBMIT.py.
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Added 08/2024, but DO NOT REMOVE after the usual year.
-  // TODO(crbug.com/356148174): Remove once kMoveThemePrefsToSpecifics has been
-  // enabled for an year.
-  MigrateSyncingThemePrefsToNonSyncingIfNeeded(profile_prefs);
-#endif  // !BUILDFLAG(IS_ANDROID)
 
   // Added 10/2025.
   profile_prefs->ClearPref(kSessionRestoreTurnOffFromRestartInfoBarTimesShown);

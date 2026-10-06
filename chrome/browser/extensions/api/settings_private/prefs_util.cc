@@ -1567,11 +1567,8 @@ bool PrefsUtil::IsPrefPrimaryUserControlled(const std::string& pref_name) {
 #endif
 
 bool PrefsUtil::IsPrefSupervisorControlled(const std::string& pref_name) {
-  if (pref_name != prefs::kBrowserGuestModeEnabled &&
-      pref_name != prefs::kBrowserAddPersonEnabled) {
-    return false;
-  }
-  return profile_->IsChild();
+  // The guest mode and add person prefs are gone.
+  return false;
 }
 
 bool PrefsUtil::IsPrefUserModifiable(const std::string& pref_name) {

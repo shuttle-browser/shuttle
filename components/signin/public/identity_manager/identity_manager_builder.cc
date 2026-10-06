@@ -13,9 +13,7 @@
 #include "components/signin/internal/identity_manager/account_fetcher_factory.h"
 #include "components/signin/internal/identity_manager/account_fetcher_service.h"
 #include "components/signin/internal/identity_manager/account_tracker_service.h"
-#include "components/signin/internal/identity_manager/accounts_cookie_mutator_impl.h"
 #include "components/signin/internal/identity_manager/diagnostics_provider_impl.h"
-#include "components/signin/internal/identity_manager/gaia_cookie_manager_service.h"
 #include "components/signin/internal/identity_manager/primary_account_manager.h"
 #include "components/signin/internal/identity_manager/primary_account_mutator_impl.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service.h"
@@ -119,10 +117,6 @@ IdentityManager::InitParameters BuildIdentityManagerInitParameters(
         params->signin_client);
   }
 
-  auto gaia_cookie_manager_service = std::make_unique<GaiaCookieManagerService>(
-      account_tracker_service.get(), token_service.get(),
-      params->signin_client);
-
   CHECK(params->profile_metrics_service);
   std::unique_ptr<PrimaryAccountManager> primary_account_manager =
       BuildPrimaryAccountManager(
@@ -140,13 +134,8 @@ IdentityManager::InitParameters BuildIdentityManagerInitParameters(
       BuildAccountsMutator(params->pref_service, account_tracker_service.get(),
                            token_service.get(), primary_account_manager.get());
 
-  init_params.accounts_cookie_mutator =
-      std::make_unique<AccountsCookieMutatorImpl>(
-          params->signin_client, token_service.get(),
-          gaia_cookie_manager_service.get(), account_tracker_service.get());
-
   init_params.diagnostics_provider = std::make_unique<DiagnosticsProviderImpl>(
-      token_service.get(), gaia_cookie_manager_service.get());
+      token_service.get());
 
   std::unique_ptr<AccountFetcherFactory> account_fetcher_factory;
 #if BUILDFLAG(IS_ANDROID)
@@ -174,8 +163,6 @@ IdentityManager::InitParameters BuildIdentityManagerInitParameters(
 #endif
 
   init_params.account_tracker_service = std::move(account_tracker_service);
-  init_params.gaia_cookie_manager_service =
-      std::move(gaia_cookie_manager_service);
   init_params.primary_account_manager = std::move(primary_account_manager);
   init_params.token_service = std::move(token_service);
   init_params.signin_client = params->signin_client;

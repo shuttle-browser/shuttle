@@ -40,9 +40,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toasts/toast_view.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
-#include "chrome/browser/ui/toolbar/bookmark_sub_menu_model.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
-#include "chrome/browser/ui/toolbar/reading_list_sub_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/show_promo_in_page.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -79,7 +77,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/strings/grit/privacy_sandbox_strings.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
-#include "components/sync/base/features.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/user_education/common/feature_promo/feature_promo_handle.h"
 #include "components/user_education/common/feature_promo/feature_promo_precondition.h"
@@ -555,28 +552,6 @@ void MaybeRegisterChromeFeaturePromos(
           .SetMetadata(80, "lyf@chromium.org",
                        "Triggered once per-app when is in quiet notification "
                        "mode and a notification is triggered in a PWA.")));
-
-  // kIPHReadingListDiscoveryFeature:
-  registry.RegisterFeature(
-      std::move(FeaturePromoSpecification::CreateForLegacyPromo(
-                    &feature_engagement::kIPHReadingListDiscoveryFeature,
-                    kToolbarAppMenuButtonElementId,
-                    IDS_READING_LIST_DISCOVERY_PROMO_PINNING)
-                    .SetHighlightedMenuItem(
-                        ReadingListSubMenuModel::kReadingListMenuShowUI)));
-
-  // kIPHReadingListEntryPointFeature:
-  registry.RegisterFeature(FeaturePromoSpecification::CreateForSnoozePromo(
-      feature_engagement::kIPHReadingListEntryPointFeature,
-      kBookmarkStarViewElementId, IDS_READING_LIST_ENTRY_POINT_PROMO));
-
-  // kIPHReadingListInSidePanelFeature:
-  registry.RegisterFeature(std::move(
-      FeaturePromoSpecification::CreateForLegacyPromo(
-          &feature_engagement::kIPHReadingListInSidePanelFeature,
-          kToolbarAppMenuButtonElementId,
-          IDS_READING_LIST_IN_SIDE_PANEL_PROMO_PINNING)
-          .SetHighlightedMenuItem(BookmarkSubMenuModel::kReadingListMenuItem)));
 
   // kIPHReadingModeKeyboardShortcutFeature:
   registry.RegisterFeature(std::move(

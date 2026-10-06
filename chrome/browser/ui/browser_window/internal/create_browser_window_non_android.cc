@@ -8,7 +8,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/devtools_window.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/nuke_profile_directory_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
@@ -169,8 +168,7 @@ BrowserWindowInterface::CreationStatus GetBrowserWindowCreationStatusForProfile(
     return BrowserWindowInterface::CreationStatus::kErrorShuttingDown;
   }
 
-  if (!IncognitoModePrefs::CanOpenBrowser(&profile) ||
-      !profile.AllowsBrowserWindows() ||
+  if (!profile.AllowsBrowserWindows() ||
       IsProfileDirectoryMarkedForDeletion(profile.GetPath())) {
     return BrowserWindowInterface::CreationStatus::kErrorProfileUnsuitable;
   }

@@ -116,10 +116,6 @@ OfflineItem OfflineItemUtils::CreateOfflineItem(const std::string& name_space,
   item.mime_type = DownloadUtils::RemapGenericMimeType(
       item.mime_type, download_item->GetOriginalUrl(),
       download_item->GetTargetFilePath().value());
-  if (off_the_record) {
-    Profile* profile = Profile::FromBrowserContext(browser_context);
-    item.otr_profile_id = profile->GetOTRProfileID().Serialize();
-  }
 #endif
 
   item.url = download_item->GetURL();

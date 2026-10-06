@@ -128,35 +128,13 @@ void EnableSafeBrowsingSettingSetLocallyPref(PrefService* prefs) {
 void SetSafeBrowsingState(PrefService* prefs,
                           SafeBrowsingState state,
                           bool is_esb_enabled_by_account_integration) {
-  bool tailored_security_pref_registered =
-      prefs->FindPreference(
-          prefs::kEnhancedProtectionEnabledViaTailoredSecurity);
-
   if (state == SafeBrowsingState::ENHANCED_PROTECTION) {
-    if (tailored_security_pref_registered) {
-      // Store whether enhanced protection is being set by tailored security or
-      // not. It's important to set this before updating the Safe Browsing
-      // protection level to ensure we don't do multiple updates on this client.
-      prefs->SetBoolean(prefs::kEnhancedProtectionEnabledViaTailoredSecurity,
-                        is_esb_enabled_by_account_integration);
-    }
     SetEnhancedProtectionPref(prefs, true);
     SetStandardProtectionPref(prefs, true);
   } else if (state == SafeBrowsingState::STANDARD_PROTECTION) {
-    if (tailored_security_pref_registered) {
-      // Reset values since enhanced protection is disabled.
-      prefs->SetBoolean(prefs::kEnhancedProtectionEnabledViaTailoredSecurity,
-                        false);
-    }
     SetEnhancedProtectionPref(prefs, false);
     SetStandardProtectionPref(prefs, true);
   } else {
-    // This bit is only set when enhanced protection is enabled, so we reset it
-    // when enhanced protection is disabled.
-    if (tailored_security_pref_registered) {
-      prefs->SetBoolean(prefs::kEnhancedProtectionEnabledViaTailoredSecurity,
-                        false);
-    }
     SetEnhancedProtectionPref(prefs, false);
     SetStandardProtectionPref(prefs, false);
   }
@@ -312,30 +290,10 @@ void RegisterProfilePrefs(PrefRegistrySimple* registry) {
   registry->RegisterStringPref(prefs::kSafeBrowsingHashRealTimeOhttpKey, "");
   registry->RegisterStringPref(prefs::kSafeBrowsingHashRealTimeOhttpKeyFetchUrl,
                                "");
-  registry->RegisterTimePref(
-      prefs::kAccountTailoredSecurityUpdateTimestamp, base::Time(),
-      user_prefs::PrefRegistrySyncable::SYNCABLE_PRIORITY_PREF);
-  registry->RegisterBooleanPref(
-      prefs::kAccountTailoredSecurityShownNotification, false);
-  registry->RegisterBooleanPref(
-      prefs::kEnhancedProtectionEnabledViaTailoredSecurity, false);
   registry->RegisterBooleanPref(
       prefs::kSafeBrowsingSyncedEnhancedProtectionSetLocally, false);
   registry->RegisterTimePref(
       prefs::kSafeBrowsingSyncedEnhancedProtectionUpdateTimestamp,
-      base::Time());
-  registry->RegisterTimePref(prefs::kTailoredSecuritySyncFlowLastRunTime,
-                             base::Time());
-  registry->RegisterTimePref(prefs::kTailoredSecurityNextSyncFlowTimestamp,
-                             base::Time());
-  // TODO(crbug.com/40925236): remove sync flow last user interaction pref.
-  registry->RegisterIntegerPref(
-      prefs::kTailoredSecuritySyncFlowLastUserInteractionState,
-      TailoredSecurityRetryState::UNSET);
-  registry->RegisterIntegerPref(prefs::kTailoredSecuritySyncFlowRetryState,
-                                TailoredSecurityRetryState::UNSET);
-  registry->RegisterTimePref(
-      prefs::kTailoredSecuritySyncFlowObservedOutcomeUnsetTimestamp,
       base::Time());
 
   registry->RegisterTimePref(prefs::kExtensionTelemetryLastUploadTime,

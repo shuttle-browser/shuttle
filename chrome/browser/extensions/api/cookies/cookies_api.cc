@@ -133,28 +133,23 @@ network::mojom::CookieManager* ParseStoreCookieManager(
 }  // namespace
 
 CookiesEventRouter::CookieChangeListener::CookieChangeListener(
-    CookiesEventRouter* router,
-    bool otr)
-    : router_(router), otr_(otr) {}
+    CookiesEventRouter* router)
+    : router_(router) {}
 CookiesEventRouter::CookieChangeListener::~CookieChangeListener() = default;
 
 void CookiesEventRouter::CookieChangeListener::OnCookieChange(
     const net::CookieChangeInfo& change) {
-  router_->OnCookieChange(otr_, change);
+  router_->OnCookieChange(change);
 }
 
 CookiesEventRouter::CookiesEventRouter(content::BrowserContext* context)
-    : profile_(Profile::FromBrowserContext(context)),
-      profile_observation_(this),
-      otr_profile_observation_(this) {
+    : profile_(Profile::FromBrowserContext(context)) {
   MaybeStartListening();
-  profile_observation_.Observe(profile_);
 }
 
 CookiesEventRouter::~CookiesEventRouter() = default;
 
-void CookiesEventRouter::OnCookieChange(bool otr,
-                                        const net::CookieChangeInfo& change) {
+void CookiesEventRouter::OnCookieChange(const net::CookieChangeInfo& change) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   // There is no way to represent non-serializable
   // partition keys in JS so return to prevent a crash.
@@ -171,12 +166,7 @@ void CookiesEventRouter::OnCookieChange(bool otr,
                change.cause !=
                    net::CookieChangeCause::INSERTED_NO_VALUE_CHANGE_OVERWRITE);
 
-  Profile* profile =
-      otr ? profile_->GetPrimaryOTRProfile(/*create_if_needed=*/false)
-          : profile_->GetOriginalProfile();
-  // TODO(407373848): OTR profile must exist when the cookie change event
-  // arrived.
-  CHECK(profile);
+  Profile* profile = profile_->GetOriginalProfile();
 
   api::cookies::Cookie cookie = cookies_helpers::CreateCookie(
       change.cookie, cookies_helpers::GetStoreIdFromProfile(profile));
@@ -222,60 +212,14 @@ void CookiesEventRouter::OnCookieChange(bool otr,
                 cookies_helpers::GetURLFromCanonicalCookie(change.cookie));
 }
 
-void CookiesEventRouter::OnOffTheRecordProfileCreated(Profile* off_the_record) {
-  // When an off-the-record spinoff of |profile_| is created, start listening
-  // for cookie changes there. The OTR receiver should never be bound, since
-  // there wasn't previously an OTR profile.
-  // TODO(crbug.com/417228685): Clank allows for multiple OTR profiles, unlike
-  // desktop Chrome. Extensions APIs may have built-in assumptions that there
-  // will only be one OTR profile. We need to determine how this will be handled
-  // in Desktop Android.
-  if (!off_the_record->IsPrimaryOTRProfile()) {
-    return;
-  }
-
-  DCHECK(!otr_receiver_.is_bound());
-  otr_profile_observation_.Observe(off_the_record);
-  BindToCookieManager(&otr_receiver_, off_the_record);
-}
-
-void CookiesEventRouter::OnProfileWillBeDestroyed(Profile* profile) {
-  Profile* original_profile = profile_->GetOriginalProfile();
-  Profile* otr_profile =
-      original_profile->HasPrimaryOTRProfile()
-          ? original_profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-          : nullptr;
-  if (profile == otr_profile) {
-    otr_profile_observation_.Reset();
-    otr_receiver_.reset();
-  }
-}
-
 void CookiesEventRouter::MaybeStartListening() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   DCHECK(profile_);
 
   Profile* original_profile = profile_->GetOriginalProfile();
-  Profile* otr_profile =
-      original_profile->HasPrimaryOTRProfile()
-          ? original_profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-          : nullptr;
 
   if (!receiver_.is_bound()) {
     BindToCookieManager(&receiver_, original_profile);
-  }
-
-  // Start observing the OTR profile iff we are not already doing so. In most
-  // cases, we should already be observing because
-  // `OnOffTheRecordProfileCreated()` starts the observation. However, in the
-  // case where the OTR profile already exists when this CookiesEventRouter is
-  // created, we need to start observing it here.
-  if (otr_profile && !otr_profile_observation_.IsObserving()) {
-    otr_profile_observation_.Observe(otr_profile);
-  }
-
-  if (!otr_receiver_.is_bound() && otr_profile) {
-    BindToCookieManager(&otr_receiver_, otr_profile);
   }
 }
 
@@ -879,23 +823,12 @@ ExtensionFunction::ResponseAction CookiesGetAllCookieStoresFunction::Run() {
   Profile* original_profile = Profile::FromBrowserContext(browser_context());
   DCHECK(original_profile);
   base::ListValue original_tab_ids;
-  Profile* incognito_profile = nullptr;
-  base::ListValue incognito_tab_ids;
-  if (include_incognito_information() &&
-      original_profile->HasPrimaryOTRProfile()) {
-    incognito_profile =
-        original_profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-  }
-  DCHECK(original_profile != incognito_profile);
 
   // Iterate through all browser instances, and for each browser,
-  // add its tab IDs to either the regular or incognito tab ID list depending
-  // whether the browser is regular or incognito.
+  // add its tab IDs to the tab ID list.
   for (WindowController* window : *WindowControllerList::GetInstance()) {
     if (window->profile() == original_profile) {
       cookies_helpers::AppendToTabIdList(window, original_tab_ids);
-    } else if (window->profile() == incognito_profile) {
-      cookies_helpers::AppendToTabIdList(window, incognito_tab_ids);
     }
   }
   // Return a list of all cookie stores with at least one open tab.
@@ -903,10 +836,6 @@ ExtensionFunction::ResponseAction CookiesGetAllCookieStoresFunction::Run() {
   if (!original_tab_ids.empty()) {
     cookie_stores.push_back(cookies_helpers::CreateCookieStore(
         original_profile, std::move(original_tab_ids)));
-  }
-  if (incognito_profile && !incognito_tab_ids.empty()) {
-    cookie_stores.push_back(cookies_helpers::CreateCookieStore(
-        incognito_profile, std::move(incognito_tab_ids)));
   }
   return RespondNow(ArgumentList(
       api::cookies::GetAllCookieStores::Results::Create(cookie_stores)));

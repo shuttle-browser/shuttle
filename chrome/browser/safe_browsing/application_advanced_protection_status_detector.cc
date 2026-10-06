@@ -29,10 +29,8 @@ void RecordApplicationAdvancedProtectionHistogram(
 }
 
 bool IsIgnoredProfile(Profile* profile) {
-  // We only care about regular profiles, not incognito, guest, or system
-  // profiles.
-  return profile->IsOffTheRecord() || profile->IsGuestSession() ||
-         profile->IsSystemProfile();
+  // We only care about regular profiles, not incognito profiles.
+  return profile->IsOffTheRecord();
 }
 
 }  // namespace

@@ -36,10 +36,6 @@ class DeviceParentalControls {
   // Returns true if web filtering (url classification) is enabled for the user.
   virtual bool IsWebFilteringEnabled() const = 0;
 
-  // Returns true if incognito mode is disabled for the user (can be overridden
-  // by policies).
-  virtual bool IsIncognitoModeDisabled() const = 0;
-
   // Returns true if safe search is forced for the user client-side (can be
   // overridden by policies).
   virtual bool IsSafeSearchForced() const = 0;

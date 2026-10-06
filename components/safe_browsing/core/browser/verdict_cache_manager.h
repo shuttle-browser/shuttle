@@ -24,7 +24,6 @@
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/core/browser/safe_browsing_sync_observer.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "components/safe_browsing/core/common/proto/realtimeapi.pb.h"
 #include "url/gurl.h"
@@ -43,8 +42,7 @@ class VerdictCacheManager : public history::HistoryServiceObserver,
  public:
   VerdictCacheManager(history::HistoryService* history_service,
                       scoped_refptr<HostContentSettingsMap> content_settings,
-                      PrefService* pref_service,
-                      std::unique_ptr<SafeBrowsingSyncObserver> sync_observer);
+                      PrefService* pref_service);
   VerdictCacheManager(const VerdictCacheManager&) = delete;
   VerdictCacheManager& operator=(const VerdictCacheManager&) = delete;
   VerdictCacheManager(VerdictCacheManager&&) = delete;
@@ -301,8 +299,6 @@ class VerdictCacheManager : public history::HistoryServiceObserver,
   base::OneShotTimer cleanup_timer_;
 
   PrefChangeRegistrar pref_change_registrar_;
-
-  std::unique_ptr<SafeBrowsingSyncObserver> sync_observer_;
 
   bool is_shut_down_ = false;
 

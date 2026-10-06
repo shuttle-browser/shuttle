@@ -10,10 +10,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "components/prefs/pref_registry_simple.h"
-#include "components/signin/internal/identity_manager/oauth_multilogin_token_request.h"
-#include "components/signin/internal/identity_manager/oauth_multilogin_token_response.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate.h"
-#include "components/signin/public/base/binding_key_registration_token_result.h"
 #include "components/signin/public/base/device_id_helper.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -158,65 +155,6 @@ void ProfileOAuth2TokenService::GetRefreshTokenFromDevice(
 }
 #endif
 
-void ProfileOAuth2TokenService::StartRequestForMultilogin(
-    signin::OAuthMultiloginTokenRequest& request,
-    const std::string& token_binding_challenge,
-    const std::string& ephemeral_public_key) {
-  std::string refresh_token =
-      delegate_->GetTokenForMultilogin(request.account_id());
-  if (refresh_token.empty()) {
-    // If we can't get refresh token from the delegate, start request for access
-    // token.
-    request.StartAccessTokenRequest(*token_manager_,
-                                    {GaiaConstants::kOAuth1LoginScope});
-    return;
-  }
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  bool is_bound = delegate_->IsRefreshTokenBoundToKey(request.account_id());
-
-  // Sign `token_binding_challenge` asynchronously if it's required.
-  if (is_bound && !token_binding_challenge.empty()) {
-    auto create_response_callback = base::BindOnce(
-        [](std::string token, std::string assertion) {
-          if (assertion.empty()) {
-            // Even if the assertion failed, we want to make a server request
-            // because the server doesn't verify assertions during dark launch.
-            // TODO(crbug.com/377942773): fail here immediately after the
-            // feature is fully launched.
-            assertion = GaiaConstants::kTokenBindingAssertionFailedPlaceholder;
-          }
-          return signin::OAuthMultiloginTokenResponse(std::move(token),
-                                                      std::move(assertion));
-        },
-        std::move(refresh_token));
-    auto notify_request_callback =
-        base::BindPostTaskToCurrentDefault(base::BindOnce(
-            &signin::OAuthMultiloginTokenRequest::InvokeCallbackWithResult,
-            request.AsWeakPtr()));
-    delegate_->GenerateRefreshTokenBindingKeyAssertionForMultilogin(
-        request.account_id(), token_binding_challenge, ephemeral_public_key,
-        std::move(create_response_callback)
-            .Then(std::move(notify_request_callback)));
-    return;
-  }
-
-  signin::OAuthMultiloginTokenResponse response(
-      std::move(refresh_token),
-      is_bound ? std::string(GaiaConstants::kTokenBindingAssertionSentinel)
-               : std::string());
-#else
-  signin::OAuthMultiloginTokenResponse response(std::move(refresh_token));
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
-  // Create multilogin token response from the refresh token.
-  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE,
-      base::BindOnce(
-          &signin::OAuthMultiloginTokenRequest::InvokeCallbackWithResult,
-          request.AsWeakPtr(), std::move(response)));
-}
-
 std::unique_ptr<OAuth2AccessTokenManager::Request>
 ProfileOAuth2TokenService::StartRequestForClient(
     const CoreAccountId& account_id,
@@ -248,18 +186,6 @@ void ProfileOAuth2TokenService::InvalidateAccessToken(
   token_manager_->InvalidateAccessToken(account_id, scopes, access_token);
 }
 
-void ProfileOAuth2TokenService::InvalidateTokenForMultilogin(
-    const CoreAccountId& failed_account,
-    const std::string& token) {
-  // Remove from cache. This will have no effect on desktop since token is a
-  // refresh token and is not in cache.
-  InvalidateAccessToken(failed_account, {GaiaConstants::kOAuth1LoginScope},
-                        token);
-  // For desktop refresh tokens can be invalidated directly in delegate. This
-  // will have no effect on mobile.
-  delegate_->InvalidateTokenForMultilogin(failed_account);
-}
-
 void ProfileOAuth2TokenService::SetRefreshTokenAvailableFromSourceCallback(
     RefreshTokenAvailableFromSourceCallback callback) {
   GetDelegate()->SetRefreshTokenAvailableFromSourceCallback(callback);
@@ -278,10 +204,8 @@ void ProfileOAuth2TokenService::LoadCredentials(
 void ProfileOAuth2TokenService::UpdateCredentials(
     const CoreAccountId& account_id,
     const std::string& refresh_token,
-    signin_metrics::SourceForRefreshTokenOperation source,
-    const signin::TokenBindingInfo& token_binding_info) {
-  GetDelegate()->UpdateCredentials(account_id, refresh_token, source,
-                                   token_binding_info);
+    signin_metrics::SourceForRefreshTokenOperation source) {
+  GetDelegate()->UpdateCredentials(account_id, refresh_token, source);
 }
 
 void ProfileOAuth2TokenService::RevokeCredentials(
@@ -350,32 +274,6 @@ void ProfileOAuth2TokenService::UpdateAuthErrorForTesting(
     const GoogleServiceAuthError& error) {
   GetDelegate()->UpdateAuthError(account_id, error);
 }
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-bool ProfileOAuth2TokenService::GenerateBindingKeyRegistrationToken(
-    base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
-        supported_algorithms,
-    std::string_view auth_code,
-    base::OnceCallback<void(
-        std::optional<signin::BindingKeyRegistrationTokenResult>)> callback) {
-  return delegate_->GenerateBindingKeyRegistrationToken(
-      supported_algorithms, auth_code, std::move(callback));
-}
-
-std::vector<uint8_t> ProfileOAuth2TokenService::GetWrappedBindingKey(
-    const CoreAccountId& account_id) const {
-  return delegate_->GetWrappedBindingKey(account_id);
-}
-
-bool ProfileOAuth2TokenService::IsRefreshTokenBoundToMtls(
-    const CoreAccountId& account_id) const {
-  return delegate_->IsRefreshTokenBoundToMtls(account_id);
-}
-
-bool ProfileOAuth2TokenService::AllBoundTokensShareSameBindingKey() const {
-  return delegate_->AllBoundTokensShareSameBindingKey();
-}
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 void ProfileOAuth2TokenService::
     set_max_authorization_token_fetch_retries_for_testing(int max_retries) {

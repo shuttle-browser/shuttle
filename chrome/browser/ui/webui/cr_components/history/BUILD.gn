@@ -14,7 +14,6 @@ source_set("history") {
     "//chrome/browser/profiles:profile",
     "//chrome/browser/resources/history:resources",
     "//chrome/browser/signin",
-    "//chrome/browser/sync",
     "//chrome/browser/ui/webui:favicon_source",
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/ui/webui/cr_components/history_clusters",

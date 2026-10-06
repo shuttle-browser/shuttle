@@ -53,7 +53,6 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_switches.h"
@@ -74,8 +73,7 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync_preferences/pref_service_syncable.h"
+#include "components/pref_registry/pref_registry_syncable.h"
 #include "components/webui/flags/pref_service_flags_storage.h"
 #include "components/zoom/page_zoom.h"
 #include "content/common/features.h"
@@ -1836,48 +1834,7 @@ void DevToolsUIBindings::GetSyncInformation(DispatchCallback callback) {
 base::DictValue DevToolsUIBindings::GetSyncInformationForProfile(
     Profile* profile) {
   base::DictValue result;
-  syncer::SyncService* sync_service =
-      SyncServiceFactory::GetForProfile(profile);
-  if (!sync_service) {
-    result.Set("isSyncActive", false);
-    return result;
-  }
-
-  result.Set("isSyncActive", base::FeatureList::IsEnabled(
-                                 switches::kEnablePreferencesAccountStorage) ||
-                                 sync_service->IsSyncFeatureActive());
-  result.Set("arePreferencesSynced", sync_service->GetActiveDataTypes().Has(
-                                         syncer::DataType::PREFERENCES));
-  result.Set("isSyncPaused", sync_service->GetTransportState() ==
-                                 syncer::SyncService::TransportState::PAUSED);
-
-  CoreAccountInfo account_info = sync_service->GetAccountInfo();
-  if (account_info.IsEmpty()) {
-    return result;
-  }
-
-  result.Set("accountEmail", account_info.email);
-
-  signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(profile);
-  AccountInfo extended_info =
-      identity_manager->FindExtendedAccountInfo(account_info);
-  gfx::Image account_image = extended_info.GetAvatarImage().value_or(
-      ui::ResourceBundle::GetSharedInstance().GetImageNamed(
-          profiles::GetPlaceholderAvatarIconResourceID()));
-  scoped_refptr<base::RefCountedMemory> png_bytes =
-      account_image.As1xPNGBytes();
-  if (png_bytes->size() > 0) {
-    result.Set("accountImage", base::Base64Encode(*png_bytes));
-  }
-
-  if (extended_info.GetFullName().has_value()) {
-    result.Set("accountFullName", *extended_info.GetFullName());
-  }
-  if (extended_info.GetGivenName().has_value()) {
-    result.Set("accountGivenName", *extended_info.GetGivenName());
-  }
-
+  result.Set("isSyncActive", false);
   return result;
 }
 

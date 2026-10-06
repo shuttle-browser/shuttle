@@ -13,9 +13,6 @@ class SupervisedUserServicePlatformDelegate
     : public ChromeSupervisedUserServicePlatformDelegateBase {
  public:
   explicit SupervisedUserServicePlatformDelegate(Profile& profile);
-
-  // SupervisedUserService::PlatformDelegate
-  void CloseIncognitoTabs() override;
 };
 
 #endif  // CHROME_BROWSER_SUPERVISED_USER_DESKTOP_SUPERVISED_USER_SERVICE_PLATFORM_DELEGATE_H_

@@ -280,7 +280,7 @@ void SidePanelHeaderController::UpdatePinButton() {
           side_panel_entry_->key());
   pin_button_->SetToggled(current_pinned_state);
   pin_button_->SetVisible(
-      !profile->IsIncognitoProfile() && !profile->IsGuestSession() &&
+      !profile->IsIncognitoProfile() &&
       action_item->GetProperty(actions::kActionItemPinnableKey) ==
           static_cast<int>(actions::ActionPinnableState::kPinnable));
 

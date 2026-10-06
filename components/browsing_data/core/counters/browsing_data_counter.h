@@ -64,25 +64,6 @@ class BrowsingDataCounter {
     ResultInt value_;
   };
 
-  // A subclass of FinishedResult that besides |Value()| also stores whether
-  // the datatype is synced.
-  class SyncResult : public FinishedResult {
-   public:
-    SyncResult(const BrowsingDataCounter* source,
-               ResultInt value,
-               bool sync_enabled);
-
-    SyncResult(const SyncResult&) = delete;
-    SyncResult& operator=(const SyncResult&) = delete;
-
-    ~SyncResult() override;
-
-    bool is_sync_enabled() const { return sync_enabled_; }
-
-   private:
-    bool sync_enabled_;
-  };
-
   typedef base::RepeatingCallback<void(std::unique_ptr<Result>)> ResultCallback;
 
   // Every calculation progresses through a state machine. At initialization,

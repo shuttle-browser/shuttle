@@ -163,7 +163,7 @@ bool PinnedActionToolbarButtonMenuModel::IsEnabledAt(size_t index) const {
   if (items_[index].action_id == kActionPinActionToToolbar ||
       items_[index].action_id == kActionUnpinActionFromToolbar) {
     const bool is_pinnable = IsPinnable();
-    return browser_->GetProfile()->IsRegularProfile() && is_pinnable;
+    return is_pinnable;
   }
   return GetActionItemFor(items_[index].action_id)->GetEnabled();
 }

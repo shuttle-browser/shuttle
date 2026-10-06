@@ -116,11 +116,6 @@ InspectableViewsFinder::ViewList InspectableViewsFinder::GetViewsForExtension(
   }
   GetViewsForExtensionForProfile(
       extension, profile_, is_enabled, false, &result);
-  if (profile_->HasPrimaryOTRProfile()) {
-    GetViewsForExtensionForProfile(
-        extension, profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true),
-        is_enabled, true, &result);
-  }
 
   return result;
 }

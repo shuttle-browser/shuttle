@@ -10,9 +10,6 @@
 #include "base/observer_list.h"
 
 class PrefService;
-namespace syncer {
-class SyncService;
-}
 
 namespace unified_consent {
 
@@ -43,27 +40,6 @@ class UrlKeyedDataCollectionConsentHelper {
   // Note: |pref_service| must outlive the returned instance.
   static std::unique_ptr<UrlKeyedDataCollectionConsentHelper>
   NewAnonymizedDataCollectionConsentHelper(PrefService* pref_service);
-
-  // Creates a new |UrlKeyedDataCollectionConsentHelper| instance that checks
-  // whether *personalized* data collection is enabled. This should be used when
-  // the client needs to check whether the user has granted consent for
-  // URL-keyed data collection keyed by their Google account.
-  //
-  // Implementation-wise URL-keyed data collection is enabled if history sync
-  // has an active upload state.
-  static std::unique_ptr<UrlKeyedDataCollectionConsentHelper>
-  NewPersonalizedDataCollectionConsentHelper(syncer::SyncService* sync_service);
-
-  // Creates a new |UrlKeyedDataCollectionConsentHelper| instance that checks
-  // whether *bookmarks* data collection is enabled. This should be used when
-  // the client needs to check whether the user has granted consent for
-  // bookmarks data collection keyed by their Google account.
-  // TODO(crbug.com/40067025): Remove the `require_sync_feature_enabled` param
-  // once kReplaceSyncPromosWithSignInPromos is launched.
-  static std::unique_ptr<UrlKeyedDataCollectionConsentHelper>
-  NewPersonalizedBookmarksDataCollectionConsentHelper(
-      syncer::SyncService* sync_service,
-      bool require_sync_feature_enabled);
 
   UrlKeyedDataCollectionConsentHelper(
       const UrlKeyedDataCollectionConsentHelper&) = delete;

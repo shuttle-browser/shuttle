@@ -1281,14 +1281,6 @@
     "expiry_milestone": 126
   },
   {
-    "name": "collaboration-shared-tab-group-account-data",
-    "owners": [
-      "mickeyburks@chromium.org",
-      "shaktisahu@google.com"
-    ],
-    "expiry_milestone": 160
-  },
-  {
     "name": "collapse-tab-group-during-drag",
     "owners": [
       "lugli@chromium.org",
@@ -2417,16 +2409,6 @@
     "expiry_milestone": 160
   },
   {
-    "name": "enable-chrome-refresh-token-binding",
-    "owners": ["alexilin@chromium.org", "chrome-signin-team@google.com"],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "enable-chrome-refresh-token-binding-upgrade",
-    "owners": ["alexilin@chromium.org", "chrome-signin-team@google.com"],
-    "expiry_milestone": 156
-  },
-  {
     "name": "enable-command-line-on-non-rooted-devices",
     "owners": [ "clank-app-team@google.com" ],
     // This flag is used for debugging on Android; it causes Android Chromium
@@ -2519,11 +2501,6 @@
     "name": "enable-cros-touch-text-editing-redesign",
     "owners": [ "michellegc@chromium.org", "essential-inputs-team@google.com" ],
     "expiry_milestone": 140
-  },
-  {
-    "name": "enable-cross-device-pref-tracker",
-    "owners": [ "bwwilliams@google.com", "jhimawan@google.com", "scottyoder@google.com", "treib@google.com" ],
-    "expiry_milestone": 160
   },
   {
     "name": "enable-d3d12-video-encoder",
@@ -2995,16 +2972,6 @@
     "name": "enable-oauth-ipp",
     "owners": [ "pawliczek@chromium.org", "project-bolton@google.com" ],
     "expiry_milestone": 145
-  },
-  {
-    "name": "enable-oauth-multilogin-standard-cookies-binding",
-    "owners": [ "alexilin@chromium.org", "chrome-signin-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "enable-oauth-multilogin-youtube-cookies-binding",
-    "owners": [ "alexilin@chromium.org", "chrome-signin-team@google.com" ],
-    "expiry_milestone": 160
   },
   {
     "name": "enable-omnibox-popup-virtual-focus",
@@ -4904,11 +4871,6 @@
     "expiry_milestone": 160
   },
   {
-    "name": "new-tab-page-customization-theme-sync",
-    "owners": ["hanxi@google.com", "xinyiji@google.com", "clank-start@google.com"],
-    "expiry_milestone": 160
-  },
-  {
     "name": "new-tab-page-customization-v2",
     "owners": ["hanxi@chromium.org", "clank-start@google.com"],
     "expiry_milestone": 160
@@ -5823,11 +5785,6 @@
     "expiry_milestone": 133
   },
   {
-    "name": "pwa-restore-backend",
-    "owners": [ "eirage@chromium.org", "hartmanng@chromium.org" ],
-    "expiry_milestone": 140
-  },
-  {
     "name": "pwa-restore-ui",
     "owners": [ "finnur@chromium.org", "beverloo@chromium.org" ],
     "expiry_milestone": 140
@@ -6597,56 +6554,11 @@
     "expiry_milestone": 177
   },
   {
-    "name": "sync-account-settings",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "sync-ai-threads",
-    "owners": [
-      "chazzy@chromium.org",
-      "davidjm@google.com",
-      "chrome-shopping-eng@google.com",
-      "top-chrome-desktop-ui@google.com"
-    ],
-    "expiry_milestone": 155
-  },
-  {
-    "name": "sync-autofill-valuable-metadata",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "sync-gemini-threads",
-    "owners": [
-      "chazzy@chromium.org",
-      "davidjm@google.com",
-      "chrome-shopping-eng@google.com",
-      "top-chrome-desktop-ui@google.com"
-    ],
-    "expiry_milestone": 155
-  },
-  {
     "name": "sync-restore-on-startup-pref",
     "owners": [
       "aishwaryarj@google.com",
       "clank-large-form-factors@google.com"
     ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "sync-search-engines-android-lff",
-    "owners": ["ender@google.com", "kaiyilin@google.com", "oka@google.com"],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "sync-wallet-flight-reservations",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
-    "name": "sync-wallet-vehicle-registrations",
-    "owners": [ "brunobraga@google.com", "tchudakov@google.com" ],
     "expiry_milestone": 160
   },
   {
@@ -7004,11 +6916,6 @@
     "expiry_milestone": 156
   },
   {
-    "name": "uno-phase-2-follow-up",
-    "owners": [ "droger@chromium.org", "chrome-signin-team@google.com" ],
-    "expiry_milestone": 160
-  },
-  {
     "name": "unsafely-treat-insecure-origin-as-secure",
     "owners": [ "security-dev@chromium.org" ],
     // This flag is supported for bypassing security restrictions on HTTP pages,
@@ -7166,13 +7073,6 @@
       "philyan@chromium.org"
     ],
     "expiry_milestone": 160
-  },
-  {
-    "name": "use-sync-sandbox",
-    "owners": [ "//components/sync/OWNERS" ],
-    // This flag is required for testing with the related
-    // wallet-service-use-sandbox on Android.
-    "expiry_milestone": -1
   },
   {
     "name": "use-unexportable-key-service-in-browser-process",

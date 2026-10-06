@@ -68,7 +68,6 @@ grit_strings("components_strings") {
     "../ssl_errors_strings.grdp",
     "../subresource_filter_strings.grdp",
     "../supervised_user_strings.grdp",
-    "../sync_ui_strings.grdp",
     "../tab_groups_strings.grdp",
     "../tab_resume_strings.grdp",
     "../user_education_strings.grdp",

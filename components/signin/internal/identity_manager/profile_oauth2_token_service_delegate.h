@@ -22,7 +22,6 @@
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/load_credentials_state.h"
-#include "components/signin/public/identity_manager/token_binding_info.h"
 #include "crypto/signature_verifier.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "google_apis/gaia/google_service_auth_error.h"
@@ -32,11 +31,6 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_android.h"
 #endif
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "components/signin/internal/identity_manager/token_binding_helper.h"
-#include "components/signin/public/base/binding_key_registration_token_result.h"
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(IS_IOS)
 #include "components/signin/public/identity_manager/access_token_fetcher.h"
@@ -113,65 +107,6 @@ class ProfileOAuth2TokenServiceDelegate {
                                const GoogleServiceAuthError& error,
                                bool fire_auth_error_changed = true);
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  // Asynchronously generates a registration token for binding a refresh token
-  // to a shared binding key.
-  // `supported_algorithms` is a list of acceptable signature algorithms. This
-  // parameter may be ignored if an existing binding key is reused instead of
-  // generating a new one.
-  // Returns false if the generation cannot be started. In that case, `callback`
-  // will not be invoked.
-  virtual bool GenerateBindingKeyRegistrationToken(
-      base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
-          supported_algorithms,
-      std::string_view auth_code,
-      base::OnceCallback<
-          void(std::optional<signin::BindingKeyRegistrationTokenResult>)>
-          callback) = 0;
-
-  // Returns true iff (a) a refresh token exists for `account_id`, and (b) the
-  // refresh token is bound to a device.
-  virtual bool IsRefreshTokenBoundToKey(
-      const CoreAccountId& account_id) const = 0;
-
-  // Returns the wrapped binding key of a refresh token associated with
-  // `account_id`, if any.
-  // Returns a non-empty vector iff (a) a refresh token exists for `account_id`,
-  // and (b) the refresh token is bound to a device.
-  virtual std::vector<uint8_t> GetWrappedBindingKey(
-      const CoreAccountId& account_id) const = 0;
-
-  // Returns true if a refresh token exists for `account_id` and it is bound to
-  // an mTLS certificate.
-  virtual bool IsRefreshTokenBoundToMtls(
-      const CoreAccountId& account_id) const = 0;
-
-  // Returns whether all bound refresh tokens share the same binding key.
-  //
-  // Unbound tokens are ignored in this check. Returns `true` if there are zero
-  // or one bound tokens, or if all bound tokens use the same key. Returns
-  // `false` only if there are multiple bound tokens with different keys.
-  virtual bool AllBoundTokensShareSameBindingKey() const = 0;
-
-  // Asynchronously generates a binding key assertion for a refresh token
-  // associated with `account_id` to be sent to the Gaia Multilogin endpoint.
-  // The result is returned through `callback`.
-  // Returns an empty string if the refresh token cannot used in Multilogin, the
-  // refresh token is not bound, or the assertion generation fails.
-  virtual void GenerateRefreshTokenBindingKeyAssertionForMultilogin(
-      const CoreAccountId& account_id,
-      std::string_view challenge,
-      std::string_view ephemeral_public_key,
-      TokenBindingHelper::GenerateAssertionCallback callback) = 0;
-
-  // Adds a `wrapped_binding_key` that was copied from another token service.
-  // This ensures that this key is properly tracked in the token service this
-  // delegate belongs to.
-  virtual void AddBindingKeyToService(
-      base::span<const uint8_t> wrapped_binding_key) = 0;
-
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
   // Returns a list of accounts for which a refresh token is maintained by
   // |this| instance, i.e. the accounts available in this profile, in the order
   // the refresh tokens were added.
@@ -194,22 +129,10 @@ class ProfileOAuth2TokenServiceDelegate {
       const OAuth2AccessTokenManager::ScopeSet& scopes,
       const std::string& access_token) {}
 
-  // If refresh token is accessible (on Desktop) sets error for it to
-  // INVALID_GAIA_CREDENTIALS and notifies the observers. Otherwise
-  // does nothing.
-  virtual void InvalidateTokenForMultilogin(
-      const CoreAccountId& failed_account) {}
-
   virtual void Shutdown() {}
 
   virtual scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory()
       const;
-
-  // Returns refresh token if the platform allows it (on Desktop) and if it is
-  // available and doesn't have error. Otherwise returns empty string (for iOS
-  // and Android).
-  virtual std::string GetTokenForMultilogin(
-      const CoreAccountId& account_id) const;
 
   bool ValidateAccountId(const CoreAccountId& account_id) const;
 
@@ -238,8 +161,7 @@ class ProfileOAuth2TokenServiceDelegate {
       const CoreAccountId& account_id,
       const std::string& refresh_token,
       signin_metrics::SourceForRefreshTokenOperation source =
-          signin_metrics::SourceForRefreshTokenOperation::kUnknown,
-      const signin::TokenBindingInfo& token_binding_info = {});
+          signin_metrics::SourceForRefreshTokenOperation::kUnknown);
 
   // Redirects to `RevokeCredentialsInternal()` which can be overridden by
   // subclasses. Sets the source for the refresh token operation.
@@ -382,8 +304,7 @@ class ProfileOAuth2TokenServiceDelegate {
 
   virtual void UpdateCredentialsInternal(
       const CoreAccountId& account_id,
-      const std::string& refresh_token,
-      const signin::TokenBindingInfo& token_binding_info) {}
+      const std::string& refresh_token) {}
 
   virtual void RevokeCredentialsInternal(const CoreAccountId& account_id) {}
 

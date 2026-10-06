@@ -63,7 +63,7 @@ bool IsAppropriateForInfoBar(BrowserWindowInterface* browser) {
     return false;
   }
   const auto* profile = browser->GetProfile();
-  if (profile->IsIncognitoProfile() || profile->IsGuestSession()) {
+  if (profile->IsIncognitoProfile()) {
     return false;
   }
   return true;

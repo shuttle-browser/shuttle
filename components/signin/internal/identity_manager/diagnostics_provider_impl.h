@@ -8,7 +8,6 @@
 #include "base/memory/raw_ptr.h"
 #include "components/signin/public/identity_manager/diagnostics_provider.h"
 
-class GaiaCookieManagerService;
 class ProfileOAuth2TokenService;
 
 namespace signin {
@@ -16,9 +15,8 @@ namespace signin {
 // Concrete implementation of the DiagnosticsProvider interface.
 class DiagnosticsProviderImpl final : public DiagnosticsProvider {
  public:
-  DiagnosticsProviderImpl(
-      ProfileOAuth2TokenService* profile_oauth2_token_service,
-      GaiaCookieManagerService* gaia_cookie_manager_service);
+  explicit DiagnosticsProviderImpl(
+      ProfileOAuth2TokenService* profile_oauth2_token_service);
 
   DiagnosticsProviderImpl(const DiagnosticsProviderImpl&) = delete;
   DiagnosticsProviderImpl& operator=(const DiagnosticsProviderImpl&) = delete;
@@ -38,7 +36,6 @@ class DiagnosticsProviderImpl final : public DiagnosticsProvider {
   base::TimeDelta GetDelayBeforeMakingCookieRequests() const override;
 
  private:
-  raw_ptr<GaiaCookieManagerService> gaia_cookie_manager_service_;
   raw_ptr<ProfileOAuth2TokenService> profile_oauth2_token_service_;
 };
 

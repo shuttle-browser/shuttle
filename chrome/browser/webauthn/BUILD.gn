@@ -92,7 +92,6 @@ source_set("impl") {
       "//chrome/android:chrome_jni_headers",
       "//chrome/browser/gcm",
       "//chrome/browser/net",
-      "//chrome/browser/sync",
       "//chrome/browser/webauthn/android:jni_headers",
       "//components/cbor",
       "//components/webauthn/android",

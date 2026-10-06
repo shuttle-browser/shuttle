@@ -70,8 +70,6 @@ export class HistorySideBarElement extends CrLitElement {
         notify: true,
       },
 
-      guestSession_: {type: Boolean},
-
       /**
        * Used to display notices for profile sign-in status and managed status.
        */
@@ -110,7 +108,6 @@ export class HistorySideBarElement extends CrLitElement {
   accessor historyClustersVisible: boolean = false;
   accessor selectedPage: string = '';
   accessor selectedTab: number = -1;
-  protected accessor guestSession_ = loadTimeData.getBoolean('isGuestSession');
   protected accessor showFooter_: boolean = false;
   protected accessor showGoogleAccountFooter_: boolean = false;
   protected accessor showGMAOnly_: boolean = false;

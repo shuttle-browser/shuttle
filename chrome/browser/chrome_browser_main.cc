@@ -429,9 +429,7 @@ void HandleTestParameters(const base::CommandLine& command_line) {
 
 // Initializes the initial profile, possibly doing some user prompting to pick
 // a fallback profile. Returns either
-// - kBrowserWindow mode with the newly created profile,
-// - kProfilePicker mode indicating that the profile picker should be shown;
-//   the profile is a guest profile in this case, or
+// - kBrowserWindow mode with the newly created profile, or
 // - kError mode with a nullptr profile if startup should not continue.
 StartupProfileInfo CreateInitialProfile(
     const base::FilePath& user_data_dir,
@@ -547,8 +545,7 @@ void ProcessSingletonNotificationCallbackImpl(
 #endif
 
   StartupProfilePathInfo startup_profile_path_info =
-      GetStartupProfilePath(current_directory, command_line,
-                            /*ignore_profile_picker=*/false);
+      GetStartupProfilePath(current_directory, command_line);
   DCHECK_NE(startup_profile_path_info.mode, StartupProfileMode::kError);
 
   StartupBrowserCreator::ProcessCommandLineAlreadyRunning(
@@ -730,13 +727,6 @@ ChromeBrowserMainParts::ProfileInitManager::~ProfileInitManager() = default;
 
 void ChromeBrowserMainParts::ProfileInitManager::OnProfileAdded(
     Profile* profile) {
-  if (profile->IsSystemProfile() || profile->IsGuestSession()) {
-    // Ignore the system profile that is used for displaying the profile picker,
-    // and the "parent" guest profile. `CallPostProfileInit()` should be called
-    // only for profiles that are used for browsing.
-    return;
-  }
-
 #if BUILDFLAG(IS_CHROMEOS)
   // Ignore ChromeOS helper profiles (sign-in, lockscreen, etc).
   if (!ash::ProfileHelper::IsUserProfile(profile)) {

@@ -34,7 +34,6 @@
 #include "chrome/browser/history/top_sites_factory.h"
 #include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/omnibox/geolocation_header_service_factory.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -42,7 +41,6 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/omnibox/omnibox_pedal_implementations.h"
@@ -72,7 +70,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/sync/service/sync_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/unified_consent/url_keyed_data_collection_consent_helper.h"
 #include "components/variations/service/variations_service.h"
@@ -158,10 +155,6 @@ ChromeAutocompleteProviderClient::ChromeAutocompleteProviderClient(
       url_consent_helper_(
           unified_consent::UrlKeyedDataCollectionConsentHelper::
               NewAnonymizedDataCollectionConsentHelper(profile_->GetPrefs())),
-      personalized_url_consent_helper_(
-          unified_consent::UrlKeyedDataCollectionConsentHelper::
-              NewPersonalizedDataCollectionConsentHelper(
-                  SyncServiceFactory::GetForProfile(profile_))),
 #if BUILDFLAG(IS_ANDROID)
       tab_matcher_(GetTemplateURLService(), profile_, web_contents_getter_),
 #else
@@ -173,7 +166,7 @@ ChromeAutocompleteProviderClient::ChromeAutocompleteProviderClient(
   pedal_provider_ = std::make_unique<OmniboxPedalProvider>(
       *this,
       GetPedalImplementations(profile_->IsIncognitoProfile(),
-                              profile_->IsGuestSession(), /*testing=*/false));
+                              /*guest=*/false, /*testing=*/false));
 }
 
 ChromeAutocompleteProviderClient::~ChromeAutocompleteProviderClient() = default;
@@ -403,10 +396,6 @@ bool ChromeAutocompleteProviderClient::IsIncognitoProfile() const {
   return profile_->IsIncognitoProfile();
 }
 
-bool ChromeAutocompleteProviderClient::IsGuestSession() const {
-  return profile_->IsGuestSession();
-}
-
 bool ChromeAutocompleteProviderClient::SearchSuggestEnabled() const {
 #if BUILDFLAG(IS_CHROMEOS)
   return profile_->GetPrefs()->GetBoolean(prefs::kSearchSuggestEnabled) &&
@@ -430,7 +419,8 @@ bool ChromeAutocompleteProviderClient::IsUrlDataCollectionActive() const {
 
 bool ChromeAutocompleteProviderClient::IsPersonalizedUrlDataCollectionActive()
     const {
-  return personalized_url_consent_helper_->IsEnabled();
+  // Personalized (account-keyed) data collection needs history sync.
+  return false;
 }
 
 bool ChromeAutocompleteProviderClient::IsAuthenticated() const {
@@ -508,7 +498,7 @@ const TabMatcher& ChromeAutocompleteProviderClient::GetTabMatcher() const {
 }
 
 bool ChromeAutocompleteProviderClient::IsIncognitoModeAvailable() const {
-  return IncognitoModePrefs::IsIncognitoAllowed(profile_);
+  return false;
 }
 
 bool ChromeAutocompleteProviderClient::IsSharingHubAvailable() const {
@@ -575,11 +565,7 @@ void ChromeAutocompleteProviderClient::OpenIncognitoClearBrowsingDataDialog() {
 }
 
 void ChromeAutocompleteProviderClient::CloseIncognitoWindows() {
-#if !BUILDFLAG(IS_ANDROID)
-  if (profile_->IsIncognitoProfile()) {
-    chrome::CloseAllBrowsersWithIncognitoProfile(profile_);
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
+  // Agent Chrome: no incognito windows.
 }
 
 bool ChromeAutocompleteProviderClient::OpenJourneys(const std::string& query) {

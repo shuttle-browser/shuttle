@@ -8,12 +8,10 @@
 #include <optional>
 
 #include "base/memory/raw_ptr.h"
-#include "base/scoped_multi_source_observation.h"
 #include "base/scoped_observation.h"
 #include "base/supports_user_data.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
-#include "chrome/browser/profiles/profile_observer.h"
 
 class ProfileManager;
 
@@ -25,8 +23,7 @@ class SegmentationPlatformService;
 // the segmentation platform to pause/resume signal collection. The signal
 // collection is disabled whenever there is at least one off the record profile.
 class SegmentationPlatformProfileObserver : public base::SupportsUserData::Data,
-                                            public ProfileManagerObserver,
-                                            public ProfileObserver {
+                                            public ProfileManagerObserver {
  public:
   SegmentationPlatformProfileObserver(
       SegmentationPlatformService* segmentation_platform_service,
@@ -43,10 +40,6 @@ class SegmentationPlatformProfileObserver : public base::SupportsUserData::Data,
   void OnProfileAdded(Profile* profile) override;
   void OnProfileManagerDestroying() override;
 
-  // ProfileObserver overrides.
-  void OnOffTheRecordProfileCreated(Profile* profile) override;
-  void OnProfileWillBeDestroyed(Profile* profile) override;
-
  private:
   void NotifyExistenceOfOTRProfile(bool has_otr_profiles);
 
@@ -55,9 +48,6 @@ class SegmentationPlatformProfileObserver : public base::SupportsUserData::Data,
 
   base::ScopedObservation<ProfileManager, ProfileManagerObserver>
       profile_manager_observation_{this};
-
-  base::ScopedMultiSourceObservation<Profile, ProfileObserver>
-      observed_profiles_{this};
 
   // Whether or not we currently have any off the record profiles.
   std::optional<bool> has_otr_profiles_;

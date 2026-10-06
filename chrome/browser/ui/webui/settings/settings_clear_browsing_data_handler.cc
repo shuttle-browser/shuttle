@@ -19,10 +19,8 @@
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/browsing_data/counters/browsing_data_counter_factory.h"
 #include "chrome/browser/browsing_data/counters/browsing_data_counter_utils.h"
-#include "chrome/browser/history/web_history_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
@@ -35,7 +33,6 @@
 #include "components/browsing_data/core/browsing_data_utils.h"
 #include "components/browsing_data/core/cookie_or_cache_deletion_choice.h"
 #include "components/browsing_data/core/features.h"
-#include "components/browsing_data/core/history_notice_utils.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/prefs/pref_member.h"
@@ -57,8 +54,6 @@ using BrowsingDataType = browsing_data::BrowsingDataType;
 
 namespace {
 
-const int kMaxTimesHistoryNoticeShown = 1;
-
 // TODO(msramek): Get the list of deletion preferences from the JS side.
 const char* kCounterPrefs[] = {
     browsing_data::prefs::kDeleteBrowsingHistory,
@@ -77,9 +72,7 @@ namespace settings {
 
 ClearBrowsingDataHandler::ClearBrowsingDataHandler(content::WebUI* webui,
                                                    Profile* profile)
-    : profile_(profile),
-      sync_service_(SyncServiceFactory::GetForProfile(profile_)),
-      show_history_deletion_dialog_(false) {}
+    : profile_(profile) {}
 
 ClearBrowsingDataHandler::~ClearBrowsingDataHandler() = default;
 
@@ -104,10 +97,6 @@ void ClearBrowsingDataHandler::RegisterMessages() {
 }
 
 void ClearBrowsingDataHandler::OnJavascriptAllowed() {
-  if (sync_service_) {
-    sync_service_observation_.Observe(sync_service_.get());
-  }
-
   dse_service_observation_.Observe(
       TemplateURLServiceFactory::GetForProfile(profile_));
 
@@ -121,7 +110,6 @@ void ClearBrowsingDataHandler::OnJavascriptAllowed() {
 
 void ClearBrowsingDataHandler::OnJavascriptDisallowed() {
   dse_service_observation_.Reset();
-  sync_service_observation_.Reset();
   weak_ptr_factory_.InvalidateWeakPtrs();
   counters_.clear();
 }
@@ -239,29 +227,8 @@ void ClearBrowsingDataHandler::OnClearingTaskFinished(
     const std::string& webui_callback_id,
     const base::flat_set<BrowsingDataType>& data_types,
     uint64_t failed_data_types) {
-  PrefService* prefs = profile_->GetPrefs();
-  int history_notice_shown_times = prefs->GetInteger(
-      browsing_data::prefs::kClearBrowsingDataHistoryNoticeShownTimes);
-
-  // When the deletion is complete, we might show an additional dialog with
-  // a notice about other forms of browsing history. This is the case if
-  const bool show_history_notice =
-      // 1. The dialog is relevant for the user.
-      show_history_deletion_dialog_ &&
-      // 2. The notice has been shown less than |kMaxTimesHistoryNoticeShown|.
-      history_notice_shown_times < kMaxTimesHistoryNoticeShown &&
-      // 3. The selected data types contained browsing history.
-      data_types.find(BrowsingDataType::HISTORY) != data_types.end();
-
-  if (show_history_notice) {
-    // Increment the preference.
-    prefs->SetInteger(
-        browsing_data::prefs::kClearBrowsingDataHistoryNoticeShownTimes,
-        history_notice_shown_times + 1);
-  }
-
   base::DictValue result;
-  result.Set("showHistoryNotice", show_history_notice);
+  result.Set("showHistoryNotice", false);
 
   tabs::TabInterface* const tab =
       tabs::TabInterface::MaybeGetFromContents(web_ui()->GetWebContents());
@@ -301,7 +268,6 @@ void ClearBrowsingDataHandler::HandleInitialize(const base::ListValue& args) {
   weak_ptr_factory_.InvalidateWeakPtrs();
 
   UpdateSyncState();
-  RefreshHistoryNotice();
 
   // Restart the counters each time the dialog is reopened.
   //
@@ -330,16 +296,6 @@ void ClearBrowsingDataHandler::HandleRestartCounters(
   RestartCounters(static_cast<browsing_data::TimePeriod>(args[0].GetInt()));
 }
 
-void ClearBrowsingDataHandler::OnStateChanged(syncer::SyncService* sync) {
-  UpdateSyncState();
-}
-
-void ClearBrowsingDataHandler::OnSyncShutdown(syncer::SyncService* sync) {
-  // Unreachable, since this class is tied to UI which gets destroyed before the
-  // Profile and its KeyedServices.
-  NOTREACHED();
-}
-
 void ClearBrowsingDataHandler::UpdateSyncState() {
   FireWebUIListener("update-sync-state", CreateSyncStateEvent());
 }
@@ -350,10 +306,7 @@ base::DictValue ClearBrowsingDataHandler::CreateSyncStateEvent() {
   base::DictValue event;
   event.Set("signedIn", identity_manager && identity_manager->HasPrimaryAccount(
                                                 signin::ConsentLevel::kSignin));
-  event.Set("syncingHistory", sync_service_ &&
-                                  sync_service_->IsSyncFeatureActive() &&
-                                  sync_service_->GetActiveDataTypes().Has(
-                                      syncer::HISTORY_DELETE_DIRECTIVES));
+  event.Set("syncingHistory", false);
   event.Set("shouldShowCookieException",
             browsing_data_counter_utils::ShouldShowCookieException(profile_));
 
@@ -375,27 +328,6 @@ base::DictValue ClearBrowsingDataHandler::CreateSyncStateEvent() {
                   IDS_SETTINGS_CLEAR_NON_GOOGLE_SEARCH_HISTORY_NON_PREPOPULATED_DSE));
   }
   return event;
-}
-
-void ClearBrowsingDataHandler::RefreshHistoryNotice() {
-  // If the dialog with history notice has been shown less than
-  // |kMaxTimesHistoryNoticeShown| times, we might have to show it when the
-  // user deletes history. Find out if the conditions are met.
-  int notice_shown_times = profile_->GetPrefs()->GetInteger(
-      browsing_data::prefs::kClearBrowsingDataHistoryNoticeShownTimes);
-
-  if (notice_shown_times < kMaxTimesHistoryNoticeShown) {
-    browsing_data::ShouldPopupDialogAboutOtherFormsOfBrowsingHistory(
-        sync_service_, WebHistoryServiceFactory::GetForProfile(profile_),
-        chrome::GetChannel(),
-        base::BindOnce(&ClearBrowsingDataHandler::UpdateHistoryDeletionDialog,
-                       weak_ptr_factory_.GetWeakPtr()));
-  }
-}
-
-void ClearBrowsingDataHandler::UpdateHistoryDeletionDialog(bool show) {
-  // This is used by OnClearingTaskFinished (when the deletion finishes).
-  show_history_deletion_dialog_ = show;
 }
 
 void ClearBrowsingDataHandler::AddCounter(

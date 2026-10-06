@@ -306,15 +306,10 @@ WindowController* ExtensionTabUtil::GetControllerInProfileWithId(
     int window_id,
     bool also_match_incognito_profile,
     std::string* error_message) {
-  const Profile* incognito_profile =
-      also_match_incognito_profile
-          ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
-          : nullptr;
   for (WindowController* window_controller :
        *WindowControllerList::GetInstance()) {
     const Profile* controller_profile = window_controller->profile();
-    if ((controller_profile == profile ||
-         controller_profile == incognito_profile) &&
+    if (controller_profile == profile &&
         window_controller->GetWindowId() == window_id) {
       return window_controller;
     }
@@ -636,17 +631,11 @@ bool ExtensionTabUtil::GetTabById(int tab_id,
   }
 
   Profile* profile = Profile::FromBrowserContext(browser_context);
-  Profile* incognito_profile =
-      include_incognito
-          ? (profile ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
-                     : nullptr)
-          : nullptr;
 
   for (WindowController* window : *WindowControllerList::GetInstance()) {
     bool is_alive = window->GetBrowserWindowInterface() &&
                     !window->GetBrowserWindowInterface()->IsDeleteScheduled();
-    bool profile_matches =
-        window->profile() == profile || window->profile() == incognito_profile;
+    bool profile_matches = window->profile() == profile;
     if (!is_alive || !profile_matches) {
       continue;
     }
@@ -771,13 +760,8 @@ bool ExtensionTabUtil::GetGroupById(
   }
 
   Profile* profile = Profile::FromBrowserContext(browser_context);
-  Profile* incognito_profile =
-      include_incognito && profile->HasPrimaryOTRProfile()
-          ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-          : nullptr;
   for (WindowController* target_window : *WindowControllerList::GetInstance()) {
-    if (target_window->profile() != profile &&
-        target_window->profile() != incognito_profile) {
+    if (target_window->profile() != profile) {
       continue;
     }
     BrowserWindowInterface* target_browser =
@@ -918,16 +902,10 @@ ExtensionTabUtil::GetAllActiveWebContentsForContext(
   std::vector<content::WebContents*> active_contents;
 
   Profile* profile = Profile::FromBrowserContext(browser_context);
-  Profile* incognito_profile =
-      include_incognito
-          ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
-          : nullptr;
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-      [profile, incognito_profile,
-       &active_contents](BrowserWindowInterface* browser) {
+      [profile, &active_contents](BrowserWindowInterface* browser) {
         const Profile* browser_profile = browser->GetProfile();
-        if (browser_profile == profile ||
-            browser_profile == incognito_profile) {
+        if (browser_profile == profile) {
           TabListInterface* tab_list = TabListInterface::From(browser);
           if (tab_list) {
             content::WebContents* tab_contents =

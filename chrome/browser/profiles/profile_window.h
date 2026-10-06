@@ -75,11 +75,6 @@ void SwitchToProfile(
         base::OnceCallback<void(BrowserWindowInterface*)>(),
     bool open_command_line_urls = false);
 
-// Opens a Browser for the guest profile and runs |callback| if it isn't null.
-void SwitchToGuestProfile(
-    base::OnceCallback<void(BrowserWindowInterface*)> callback =
-        base::OnceCallback<void(BrowserWindowInterface*)>());
-
 // Returns true if |profile| has potential profile switch targets, ie there's at
 // least one other profile available to switch to, not counting guest. This is
 // the case when there are more than 1 profiles available or when there's only

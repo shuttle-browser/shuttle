@@ -115,15 +115,13 @@ scoped_refptr<RefcountedKeyedService>
 
   // In OffTheRecord mode, retrieve the host content settings map of the parent
   // profile in order to ensure the preferences have been migrated.
-  // This is not required for guest sessions, since the parent profile of a
-  // guest OTR profile is empty.
-  if (profile->IsOffTheRecord() && !profile->IsGuestSession())
+  if (profile->IsOffTheRecord())
     GetForProfile(original_profile);
 
   bool should_record_metrics = profiles::IsRegularUserProfile(profile);
   scoped_refptr<HostContentSettingsMap> settings_map(new HostContentSettingsMap(
       profile->GetPrefs(),
-      profile->IsOffTheRecord() || profile->IsGuestSession(),
+      profile->IsOffTheRecord(),
       /*store_last_modified=*/true, profile->ShouldRestoreOldSessionCookies(),
       should_record_metrics));
 

@@ -510,11 +510,6 @@ void ChromeBrowserMainExtraPartsPerformanceManager::OnProfileAdded(
   }
 }
 
-void ChromeBrowserMainExtraPartsPerformanceManager::
-    OnOffTheRecordProfileCreated(Profile* off_the_record) {
-  OnProfileAdded(off_the_record);
-}
-
 void ChromeBrowserMainExtraPartsPerformanceManager::OnProfileWillBeDestroyed(
     Profile* profile) {
   profile_observations_.RemoveObservation(profile);

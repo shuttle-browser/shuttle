@@ -10,9 +10,6 @@
 #include <map>
 #include <optional>
 
-#include "base/scoped_multi_source_observation.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_service_observer.h"
 #include "components/ukm/ukm_consent_state.h"
 #include "components/unified_consent/url_keyed_data_collection_consent_helper.h"
 #include "services/metrics/public/cpp/metrics_export.h"
@@ -31,8 +28,7 @@ constexpr NoInitialUkmConsentStateTag NoInitialUkmConsentState;
 // For one profile, UKM is allowed iff URL-keyed anonymized data collection is
 // enabled.
 class UkmConsentStateObserver
-    : public syncer::SyncServiceObserver,
-      public unified_consent::UrlKeyedDataCollectionConsentHelper::Observer {
+    : public unified_consent::UrlKeyedDataCollectionConsentHelper::Observer {
  public:
   UkmConsentStateObserver();
   UkmConsentStateObserver(NoInitialUkmConsentStateTag);
@@ -40,12 +36,15 @@ class UkmConsentStateObserver
   UkmConsentStateObserver(const UkmConsentStateObserver&) = delete;
   UkmConsentStateObserver& operator=(const UkmConsentStateObserver&) = delete;
 
-  ~UkmConsentStateObserver() override;
+  virtual ~UkmConsentStateObserver();
 
   // Starts observing whether UKM is allowed for a profile.
   // |pref_service| is the pref service of a profile.
-  void StartObserving(syncer::SyncService* sync_service,
-                      PrefService* pref_service);
+  void StartObserving(PrefService* pref_service);
+
+  // Stops observing the profile with |pref_service|. Must be called before the
+  // pref service is destroyed.
+  void StopObserving(PrefService* pref_service);
 
   // Returns true iff all UKM is allowed for all profile states. This means that
   // URL-keyed anonymized data collection is enabled for all profiles.
@@ -79,10 +78,6 @@ class UkmConsentStateObserver
 #endif
 
  private:
-  // syncer::SyncServiceObserver:
-  void OnStateChanged(syncer::SyncService* sync) override;
-  void OnSyncShutdown(syncer::SyncService* sync) override;
-
   // unified_consent::UrlKeyedDataCollectionConsentHelper::Observer:
   void OnUrlKeyedDataCollectionConsentStateChanged(
       unified_consent::UrlKeyedDataCollectionConsentHelper* consent_helper)
@@ -97,11 +92,6 @@ class UkmConsentStateObserver
   // UkmConsentType IFF all profiles consent, otherwise the consent
   // will be off.
   UkmConsentState GetPreviousStatesForAllProfiles();
-
-  // Tracks observed sync services, for cleanup.
-  base::ScopedMultiSourceObservation<syncer::SyncService,
-                                     syncer::SyncServiceObserver>
-      sync_observations_{this};
 
   // State data about profiles that we need to remember.
   struct ProfileState {
@@ -119,23 +109,20 @@ class UkmConsentStateObserver
 
   // Updates the UKM enabled state for a profile and then triggers an update of
   // the state for all profiles.
-  // |sync| and |consent_helper| must not be null.
+  // |prefs| and |consent_helper| must not be null.
   void UpdateProfileState(
-      syncer::SyncService* sync,
+      PrefService* prefs,
       unified_consent::UrlKeyedDataCollectionConsentHelper* consent_helper);
 
   // Gets the current state of a profile.
-  // |sync| and |consent_helper| must not be null.
+  // |consent_helper| must not be null.
   ProfileState GetProfileState(
-      syncer::SyncService* sync,
       unified_consent::UrlKeyedDataCollectionConsentHelper* consent_helper);
 
   // The state of the profile being observed.
   //
-  // Note: UKM consent does not rely on sync but there must be exactly one
-  // sync service per profile, so it is safe to key the profile states by the
-  // sync service.
-  std::map<syncer::SyncService*, ProfileState> previous_states_;
+  // Keyed by the profile's pref service (one per profile).
+  std::map<PrefService*, ProfileState> previous_states_;
 
   // The list of URL-keyed anonymized data collection consent helpers.
   //
@@ -144,7 +131,7 @@ class UkmConsentStateObserver
   // per profile, it is safe to key them by sync service instead of introducing
   // an additional map.
   std::map<
-      syncer::SyncService*,
+      PrefService*,
       std::unique_ptr<unified_consent::UrlKeyedDataCollectionConsentHelper>>
       consent_helpers_;
 

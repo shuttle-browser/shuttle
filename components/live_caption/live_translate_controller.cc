@@ -22,7 +22,6 @@
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
-#include "components/sync_preferences/pref_service_syncable.h"
 #include "content/public/browser/browser_context.h"
 #include "google_apis/google_api_keys.h"
 #include "media/mojo/mojom/speech_recognition_result.h"

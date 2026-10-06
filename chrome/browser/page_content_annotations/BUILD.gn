@@ -88,7 +88,6 @@ source_set("extraction_service") {
     deps += [
       ":factory_jni_headers",
       ":service_jni_headers",
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/tabwindow",
       "//chrome/browser/ui/android/tab_model",
     ]
@@ -172,7 +171,6 @@ if (is_android) {
       ":extraction_service",
       "//base",
       "//base/test:test_support",
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/android/tab_model",
       "//chrome/test:test_support",

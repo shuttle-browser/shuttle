@@ -31,18 +31,6 @@
     Manage payment methods button, activate to manage your payments and credit card info in Chrome settings
   </message>
 
-  <message name="IDS_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_HINT" desc="The button text contents to suggest pedal action, LAUNCH_INCOGNITO">
-    Open Incognito window
-  </message>
-  <message name="IDS_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUGGESTION_CONTENTS" desc="The button hover tooltip text to describe pedal action, LAUNCH_INCOGNITO">
-    Open a new Incognito window to browse privately
-  </message>
-  <message name="IDS_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUFFIX" desc="Suffix for spoken suggestion description with pedal action button, to explain keystroke used to LAUNCH_INCOGNITO.">
-    <ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT">$1<ex>The Chromium Projects http://www.chromium.org bookmark</ex></ph>, press Tab then Enter to open a new Incognito window to browse privately
-  </message>
-  <message name="IDS_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO" desc="Announcement when pedal action button is focused, LAUNCH_INCOGNITO">
-    Open Incognito Window button, activate to open a new Incognito window to browse privately
-  </message>
 
   <message name="IDS_OMNIBOX_PEDAL_TRANSLATE_HINT" desc="The button text contents to suggest pedal action, TRANSLATE">
     Translate page
@@ -123,31 +111,7 @@
     Manage addresses button, activate to add and manage addresses in Chrome settings
   </message>
 
-  <message name="IDS_OMNIBOX_PEDAL_MANAGE_SYNC_HINT" desc="The button text contents to suggest pedal action, MANAGE_SYNC">
-    Manage sync
-  </message>
-  <message name="IDS_OMNIBOX_PEDAL_MANAGE_SYNC_SUGGESTION_CONTENTS" desc="The button hover tooltip text to describe pedal action, MANAGE_SYNC">
-    Manage what info you sync in Chrome settings
-  </message>
-  <message name="IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC_SUFFIX" desc="Suffix for spoken suggestion description with pedal action button, to explain keystroke used to MANAGE_SYNC.">
-    <ph name="MANAGE_SYNC_FOCUSED_FRIENDLY_MATCH_TEXT">$1<ex>The Chromium Projects http://www.chromium.org bookmark</ex></ph>, press Tab then Enter to manage what info you sync in Chrome settings
-  </message>
-  <message name="IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC" desc="Announcement when pedal action button is focused, MANAGE_SYNC">
-    Manage sync button, activate to manage what info you sync in Chrome settings
-  </message>
 
-  <message name="IDS_OMNIBOX_PEDAL_MANAGE_SYNC_HINT_UPDATED" desc="The button text contents to suggest pedal action, MANAGE_SYNC">
-    Manage data in your account
-  </message>
-  <message name="IDS_OMNIBOX_PEDAL_MANAGE_SYNC_SUGGESTION_CONTENTS_UPDATED" desc="The button hover tooltip text to describe pedal action, MANAGE_SYNC">
-    Manage what Chrome info you save in your Google Account
-  </message>
-  <message name="IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC_SUFFIX_UPDATED" desc="Suffix for spoken suggestion description with pedal action button, to explain keystroke used to MANAGE_SYNC.">
-    <ph name="MANAGE_SYNC_FOCUSED_FRIENDLY_MATCH_TEXT">$1<ex>The Chromium Projects http://www.chromium.org bookmark</ex></ph>, press Tab then Enter to manage what Chrome info you save in your Google Account
-  </message>
-  <message name="IDS_ACC_OMNIBOX_PEDAL_MANAGE_SYNC_UPDATED" desc="Announcement when pedal action button is focused, MANAGE_SYNC">
-    Manage data in your account button, activate to manage what Chrome info you save in your Google Account
-  </message>
 
   <message name="IDS_OMNIBOX_PEDAL_MANAGE_SITE_SETTINGS_HINT" desc="The button text contents to suggest pedal action, MANAGE_SITE_SETTINGS">
     Manage site settings
@@ -474,28 +438,6 @@
     Set Chrome as default browser button, activate to set Chrome as the system's default browser
   </message>
 
-  <!-- The IDS_ANDROID_OMNIBOX_PEDAL_* strings below are platform-specific
-       variations of the user-facing UI strings above. -->
-  <!-- Same as IDS_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_HINT but
-       with "window" changed to "tab". -->
-  <message name="IDS_ANDROID_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_HINT" desc="The button text contents to suggest pedal action, LAUNCH_INCOGNITO">
-    Open Incognito tab
-  </message>
-  <!-- Same as IDS_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUGGESTION_CONTENTS but
-       with "window" changed to "tab". -->
-  <message name="IDS_ANDROID_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUGGESTION_CONTENTS" desc="The button hover tooltip text to describe pedal action, LAUNCH_INCOGNITO">
-    Open a new Incognito tab to browse privately
-  </message>
-  <!-- Same as IDS_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUFFIX but
-       with "window" changed to "tab". -->
-  <message name="IDS_ANDROID_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO_SUFFIX" desc="Suffix for spoken suggestion description with pedal action button, to explain keystroke used to LAUNCH_INCOGNITO.">
-    <ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT">$1<ex>The Chromium Projects http://www.chromium.org bookmark</ex></ph>, press Tab then Enter to open a new Incognito tab to browse privately
-  </message>
-  <!-- Same as IDS_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO but
-       with "window" changed to "tab". -->
-  <message name="IDS_ANDROID_ACC_OMNIBOX_PEDAL_LAUNCH_INCOGNITO" desc="Announcement when pedal action button is focused, LAUNCH_INCOGNITO">
-    Open Incognito tab button, activate to open a new Incognito tab to browse privately
-  </message>
 
 
 </grit-part>

@@ -29,8 +29,6 @@
 #include "chrome/browser/ui/webui/side_panel/history/history_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/history_clusters/history_clusters_side_panel_ui.h"
 #include "chrome/browser/ui/webui/side_panel/read_anything/read_anything_untrusted_ui.h"
-#include "chrome/browser/ui/webui/side_panel/reading_list/reading_list.mojom.h"
-#include "chrome/browser/ui/webui/side_panel/reading_list/reading_list_ui.h"
 #include "chrome/browser/ui/webui/user_education_internals/user_education_internals_ui.h"
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_ui.h"
@@ -49,7 +47,6 @@
 #include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/signin/public/base/signin_buildflags.h"
-#include "components/sync/base/features.h"
 #include "components/user_education/common/user_education_features.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -209,15 +206,12 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
 
   RegisterWebUIControllerInterfaceBinder<
       help_bubble::mojom::HelpBubbleHandlerFactory, UserEducationInternalsUI,
-      ReadingListUI, HistoryUI>(map);
+      HistoryUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       user_education::mojom::UserEducationMixedTrustHandlerFactory, HistoryUI,
       UserEducationInternalsUI>(map);
 
-
-  RegisterWebUIControllerInterfaceBinder<
-      reading_list::mojom::PageHandlerFactory, ReadingListUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       read_anything::mojom::UntrustedPageHandlerFactory,

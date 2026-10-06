@@ -259,16 +259,6 @@ void FidoRequestHandlerBase::InitDiscoveries(
     discoveries_.emplace_back(std::move(discovery));
   }
 
-  if (consider_enclave) {
-    std::optional<std::unique_ptr<FidoDiscoveryBase>> enclave_discovery =
-        fido_discovery_factory->MaybeCreateEnclaveDiscovery();
-    if (enclave_discovery) {
-      FIDO_LOG(DEBUG) << "Adding discovery for enclave";
-      enclave_discovery.value()->set_observer(this);
-      discoveries_.emplace_back(std::move(*enclave_discovery));
-    }
-  }
-
   for (auto& discovery : discoveries_) {
     if (discovery->transport() == FidoTransportProtocol::kInternal) {
       transport_availability_callback_readiness_

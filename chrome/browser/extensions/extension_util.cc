@@ -14,13 +14,11 @@
 #include "base/strings/strcat.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
 #include "chrome/common/extensions/api/url_handlers/url_handlers_parser.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/manifest_handlers/settings_overrides_handler.h"
-#include "chrome/common/extensions/sync_helper.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/crx_file/id_util.h"
@@ -205,19 +203,7 @@ void SetIsIncognitoEnabled(const std::string& extension_id,
     // TODO(treib,kalman): Should this be Manifest::IsComponentLocation(..)?
     // (which also checks for kExternalComponent).
     if (extension->location() == mojom::ManifestLocation::kComponent) {
-      // This shouldn't be called for component extensions unless it is called
-      // by sync, for syncable component extensions.
-      // See http://crbug.com/40716400 and associated CLs for the sordid
-      // history.
-      bool syncable = sync_helper::IsSyncableComponentExtension(extension);
-#if BUILDFLAG(IS_CHROMEOS)
-      // For some users, the file manager app somehow ended up being synced even
-      // though it's supposed to be unsyncable; see crbug.com/40452071. If the
-      // bad data ever gets cleaned up, this hack should be removed.
-      syncable = syncable || extension->id() == file_manager::kFileManagerAppId;
-#endif
-      DCHECK(syncable);
-
+      // This shouldn't be called for component extensions.
       // If we are here, make sure the we aren't trying to change the value.
       DCHECK_EQ(enabled, IsIncognitoEnabled(extension_id, context));
       return;
@@ -244,14 +230,7 @@ void SetIsIncognitoEnabled(const std::string& extension_id,
 
   extension_prefs->SetIsIncognitoEnabled(extension_id, enabled);
 
-  std::string id = ReloadExtensionIfEnabled(extension_id, context);
-
-  // Reloading the extension invalidates the |extension| pointer.
-  extension = registry->GetExtensionById(id, ExtensionRegistry::EVERYTHING);
-  if (extension) {
-    Profile* profile = Profile::FromBrowserContext(context);
-    ExtensionSyncService::Get(profile)->SyncExtensionChangeIfNeeded(*extension);
-  }
+  ReloadExtensionIfEnabled(extension_id, context);
 }
 
 void SetAllowFileAccess(const std::string& extension_id,
@@ -310,20 +289,6 @@ std::vector<content::BrowserContext*> GetAllRelatedProfiles(
     const Extension& extension) {
   std::vector<content::BrowserContext*> related_contexts;
   related_contexts.push_back(profile->GetOriginalProfile());
-
-  // The returned `related_contexts` should include all the related incognito
-  // profiles if the extension is globally allowed in incognito (this is a
-  // global, rather than per-profile toggle - this is why we it can be checked
-  // globally here, rather than once for every incognito profile looped over
-  // below).
-  if (IsIncognitoEnabled(extension.id(), profile)) {
-    std::vector<Profile*> off_the_record_profiles =
-        profile->GetAllOffTheRecordProfiles();
-    related_contexts.reserve(related_contexts.size() +
-                             off_the_record_profiles.size());
-    for (Profile* off_the_record_profile : off_the_record_profiles)
-      related_contexts.push_back(off_the_record_profile);
-  }
 
   return related_contexts;
 }

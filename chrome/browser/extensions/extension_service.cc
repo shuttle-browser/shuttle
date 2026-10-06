@@ -54,7 +54,6 @@
 #include "chrome/browser/extensions/installed_loader.h"
 #include "chrome/browser/extensions/omaha_attributes_handler.h"
 #include "chrome/browser/extensions/profile_util.h"
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/extensions/updater/chrome_extension_downloader_factory.h"
 #include "chrome/browser/extensions/updater/extension_updater.h"
 #include "chrome/browser/google/google_brand.h"

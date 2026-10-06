@@ -57,7 +57,6 @@
 #include "chrome/browser/safe_browsing/metrics/bundled_settings_metrics_provider.h"
 #include "chrome/browser/safe_browsing/metrics/safe_browsing_metrics_provider.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_metrics_provider.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/tracing/chrome_background_tracing_metrics_provider.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
@@ -113,8 +112,6 @@
 #include "components/regional_capabilities/regional_capabilities_switches.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/common/features.h"
-#include "components/sync/service/passphrase_type_metrics_provider.h"
-#include "components/sync/service/sync_service.h"
 #include "components/ukm/field_trials_provider_helper.h"
 #include "components/ukm/observers/ukm_consent_state_observer.h"
 #include "components/ukm/ukm_service.h"
@@ -418,15 +415,6 @@ class ProfileClientImpl
     }
 
     return profile->GetPrefs();
-  }
-
-  syncer::SyncService* GetSyncService() override {
-    Profile* profile = cached_metrics_profile_.GetMetricsProfile();
-    if (!profile) {
-      return nullptr;
-    }
-
-    return SyncServiceFactory::GetForProfile(profile);
   }
 
   base::Time GetNetworkTime() const override {
@@ -1014,10 +1002,6 @@ void ChromeMetricsServiceClient::RegisterMetricsServiceProviders() {
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
   metrics_service_->RegisterMetricsProvider(
-      std::make_unique<syncer::PassphraseTypeMetricsProvider>(
-          base::BindRepeating(&SyncServiceFactory::GetAllSyncServices)));
-
-  metrics_service_->RegisterMetricsProvider(
       std::make_unique<HttpsEngagementMetricsProvider>());
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -1230,12 +1214,8 @@ bool ChromeMetricsServiceClient::RegisterForProfileEvents(Profile* profile) {
   // If the device is in Demo Mode, observe the sync service to enable UKM to
   // collect app data and return true.
   if (IsDeviceInDemoMode()) {
-    syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile);
-    if (!sync) {
-      return false;
-    }
     profile_observations_.AddObservation(profile);
-    StartObserving(sync, profile->GetPrefs());
+    StartObserving(profile->GetPrefs());
     MonitorAdvancedReportingPref(profile->GetPrefs());
     return true;
   }
@@ -1257,12 +1237,8 @@ bool ChromeMetricsServiceClient::RegisterForProfileEvents(Profile* profile) {
 
   ObserveServiceForDeletions(history_service);
 
-  syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile);
-  if (!sync) {
-    return false;
-  }
   profile_observations_.AddObservation(profile);
-  StartObserving(sync, profile->GetPrefs());
+  StartObserving(profile->GetPrefs());
   MonitorAdvancedReportingPref(profile->GetPrefs());
   return true;
 }
@@ -1279,6 +1255,7 @@ void ChromeMetricsServiceClient::OnProfileAdded(Profile* profile) {
 
 void ChromeMetricsServiceClient::OnProfileWillBeDestroyed(Profile* profile) {
   profile_observations_.RemoveObservation(profile);
+  StopObserving(profile->GetPrefs());
   StopMonitoringAdvancedReportingPref(profile->GetPrefs());
 }
 

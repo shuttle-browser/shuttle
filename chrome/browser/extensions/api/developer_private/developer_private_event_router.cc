@@ -14,12 +14,10 @@
 #include "chrome/browser/extensions/error_console/error_console.h"
 #include "chrome/browser/extensions/extension_allowlist_factory.h"
 #include "chrome/browser/extensions/extension_management.h"
-#include "chrome/browser/extensions/sync/extension_sync_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/developer_private.h"
 #include "chrome/common/pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/sync/base/features.h"
 #include "content/public/browser/render_frame_host.h"
 #include "extensions/browser/disable_reason.h"
 #include "extensions/browser/event_router.h"
@@ -101,14 +99,6 @@ DeveloperPrivateEventRouter::DeveloperPrivateEventRouter(Profile* profile)
       ManifestV2Handler::kMV2UnsupportedAcknowledgedGloballyPref.name,
       base::BindRepeating(&DeveloperPrivateEventRouter::OnProfilePrefChanged,
                           base::Unretained(this)));
-
-#if BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos))
-#endif
-  {
-    account_extension_tracker_observation_.Observe(
-        AccountExtensionTracker::Get(profile));
-  }
 }
 
 DeveloperPrivateEventRouter::~DeveloperPrivateEventRouter() = default;
@@ -282,22 +272,6 @@ void DeveloperPrivateEventRouter::OnExtensionCommandRemoved(
     const std::string& command_name) {
   BroadcastItemStateChanged(developer::EventType::kCommandRemoved,
                             extension_id);
-}
-
-void DeveloperPrivateEventRouter::OnExtensionUploadabilityChanged(
-    const ExtensionId& id) {
-  BroadcastItemStateChanged(developer::EventType::kPrefsChanged, id);
-}
-
-void DeveloperPrivateEventRouter::OnExtensionsUploadabilityChanged() {
-  const ExtensionSet extensions =
-      ExtensionRegistry::Get(profile_)->GenerateInstalledExtensionsSet();
-  for (const auto& extension : extensions) {
-    if (sync_util::ShouldSync(profile_, extension.get())) {
-      BroadcastItemStateChanged(developer::EventType::kPrefsChanged,
-                                extension->id());
-    }
-  }
 }
 
 void DeveloperPrivateEventRouter::OnProfilePrefChanged() {

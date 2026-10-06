@@ -26,10 +26,6 @@
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_service_observer.h"
 #include "components/history/core/browser/url_row.h"
-#include "components/history/core/browser/web_history_service.h"
-#include "components/history/core/browser/web_history_service_observer.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_service_observer.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "url/gurl.h"
 
@@ -41,11 +37,9 @@ class BrowsingHistoryDriver;
 class QueryResults;
 struct QueryOptions;
 
-// Interacts with HistoryService, WebHistoryService, and SyncService to query
+// Interacts with HistoryService to query
 // history and provide results to the associated BrowsingHistoryDriver.
-class BrowsingHistoryService : public HistoryServiceObserver,
-                               public WebHistoryServiceObserver,
-                               public syncer::SyncServiceObserver {
+class BrowsingHistoryService : public HistoryServiceObserver {
  public:
   // Represents a history entry to be shown to the user, representing either
   // a local or remote visit. A single entry can represent multiple visits,
@@ -140,14 +134,10 @@ class BrowsingHistoryService : public HistoryServiceObserver,
     // Whether this query reached the end of all results, or if there are more
     // history entries that can be fetched through paging.
     bool reached_beginning = false;
-
-    // Whether the last call to Web History timed out.
-    bool sync_timed_out = false;
   };
 
   BrowsingHistoryService(BrowsingHistoryDriver* driver,
-                         HistoryService* local_history,
-                         syncer::SyncService* sync_service);
+                         HistoryService* local_history);
 
   BrowsingHistoryService(const BrowsingHistoryService&) = delete;
   BrowsingHistoryService& operator=(const BrowsingHistoryService&) = delete;
@@ -179,16 +169,7 @@ class BrowsingHistoryService : public HistoryServiceObserver,
   // the actual implementation.
   void RemoveVisits(const std::vector<HistoryEntry>& items);
 
-  // SyncServiceObserver implementation.
-  void OnStateChanged(syncer::SyncService* sync) override;
-  void OnSyncShutdown(syncer::SyncService* sync) override;
-
  protected:
-  // Constructor that allows specifying more dependencies for unit tests.
-  BrowsingHistoryService(BrowsingHistoryDriver* driver,
-                         HistoryService* local_history,
-                         syncer::SyncService* sync_service,
-                         std::unique_ptr<base::OneShotTimer> web_history_timer);
   // Should be used only for tests when mocking the service.
   BrowsingHistoryService();
 
@@ -272,74 +253,26 @@ class BrowsingHistoryService : public HistoryServiceObserver,
   static void RecordDuplicateVisitsCount(
       const std::vector<HistoryEntry>& results);
 
-  // Callback from `web_history_timer_` when a response from web history has
-  // not been received in time.
-  void WebHistoryTimeout(scoped_refptr<QueryHistoryState> state);
-
-  // Callback from the WebHistoryService when a query has completed.
-  void WebHistoryQueryComplete(
-      scoped_refptr<QueryHistoryState> state,
-      base::Time start_time,
-      WebHistoryService::Request* request,
-      base::optional_ref<const WebHistoryService::QueryHistoryResult> results);
-
-  // Callback telling us whether other forms of browsing history were found
-  // on the history server.
-  void OtherFormsOfBrowsingHistoryQueryComplete(
-      bool found_other_forms_of_browsing_history);
-
   // Callback from the history system when visits were deleted.
   void RemoveComplete();
-
-  // Callback from history server when visits were deleted.
-  void RemoveWebHistoryComplete(bool success);
 
   // HistoryServiceObserver implementation.
   void OnHistoryDeletions(HistoryService* history_service,
                           const DeletionInfo& deletion_info) override;
 
-  // WebHistoryServiceObserver implementation.
-  void OnWebHistoryDeleted() override;
-
   // Tracker for search requests to the history service.
   base::CancelableTaskTracker query_task_tracker_;
 
-  // The currently-executing request for synced history results.
-  // Deleting the request will cancel it.
-  std::unique_ptr<WebHistoryService::Request> web_history_request_;
-
-  // True if there is a pending delete requests to the web service.
-  bool has_pending_delete_request_ = false;
-
   // Tracker for delete requests to the history service.
   base::CancelableTaskTracker delete_task_tracker_;
-
-  // Timer used to implement a timeout on a Web History response.
-  std::unique_ptr<base::OneShotTimer> web_history_timer_;
 
   // HistoryService (local history) observer.
   base::ScopedObservation<HistoryService, HistoryServiceObserver>
       history_service_observation_{this};
 
-  // WebHistoryService (synced history) observer.
-  base::ScopedObservation<WebHistoryService, WebHistoryServiceObserver>
-      web_history_service_observation_{this};
-
-  // SyncService observer listens to late initialization of history sync.
-  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
-      sync_service_observation_{this};
-
-  // Whether the last call to Web History returned synced results.
-  bool has_synced_results_ = false;
-
-  // Whether there are other forms of browsing history on the history server.
-  bool has_other_forms_of_browsing_history_ = false;
-
   raw_ptr<BrowsingHistoryDriver, DanglingUntriaged> driver_;
 
   raw_ptr<HistoryService, DanglingUntriaged> local_history_;
-
-  raw_ptr<syncer::SyncService, DanglingUntriaged> sync_service_;
 
   // The clock used to vend times.
   std::unique_ptr<base::Clock> clock_;

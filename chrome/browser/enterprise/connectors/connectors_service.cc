@@ -323,24 +323,7 @@ policy::PolicyScope ConnectorsService::GetPolicyScope(
 bool ConnectorsService::ConnectorsEnabled() const {
   Profile* profile = Profile::FromBrowserContext(context_);
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  // On desktop, the guest profile is actually the primary OTR profile of
-  // the "regular" guest profile.  The regular guest profile is never used
-  // directly by users.  Also, user are not able to create child OTR profiles
-  // from guest profiles, the menu item "New incognito window" is not
-  // available.  So, if this is a guest session, allow it only if it is a
-  // child OTR profile as well.
-  if (profile->IsGuestSession()) {
-    return profile->GetOriginalProfile() != profile;
-  }
-
-  // Never allow system profiles.
-  if (profile->IsSystemProfile()) {
-    return false;
-  }
-#endif
-
-  return !profile->IsOffTheRecord() || profile->IsGuestSession();
+  return !profile->IsOffTheRecord();
 }
 
 PrefService* ConnectorsService::GetPrefs() {
@@ -447,13 +430,6 @@ content::BrowserContext* ConnectorsServiceFactory::GetBrowserContextToUse(
   if (!profile) {
     return nullptr;
   }
-
-#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
-  // Do not construct the connectors service for the system profile.
-  if (profile->IsSystemProfile()) {
-    return nullptr;
-  }
-#endif
 
   // On Chrome OS, settings from the primary/main profile apply to all
   // profiles, besides incognito.

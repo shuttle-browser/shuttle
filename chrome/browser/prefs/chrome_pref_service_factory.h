@@ -25,10 +25,6 @@ class PolicyService;
 class BrowserPolicyConnector;
 }
 
-namespace sync_preferences {
-class PrefServiceSyncable;
-}
-
 namespace user_prefs {
 class PrefRegistrySyncable;
 }
@@ -50,10 +46,6 @@ class OSCryptAsync;
 
 namespace chrome_prefs {
 
-// The prefix (without the trailing ".") with which the account preference
-// values are stored in the preference file.
-extern const char kAccountPreferencesPrefix[];
-
 // Factory methods that create and initialize a new instance of a
 // PrefService for Chrome with the applicable PrefStores. The
 // |pref_filename| points to the user preference file. This is the
@@ -74,7 +66,7 @@ std::unique_ptr<PrefService> CreateLocalState(
     scoped_refptr<PrefRegistry> pref_registry,
     policy::BrowserPolicyConnector* policy_connector);
 
-std::unique_ptr<sync_preferences::PrefServiceSyncable> CreateProfilePrefs(
+std::unique_ptr<PrefService> CreateProfilePrefs(
     const base::FilePath& pref_filename,
     mojo::PendingRemote<prefs::mojom::TrackedPreferenceValidationDelegate>
         validation_delegate,

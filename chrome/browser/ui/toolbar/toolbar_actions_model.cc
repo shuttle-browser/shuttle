@@ -23,7 +23,6 @@
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/managed_toolbar_pin_mode.h"
 #include "chrome/browser/extensions/profile_util.h"
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -137,22 +136,18 @@ void ToolbarActionsModel::OnExtensionInstalled(
       policy && (!policy->UserMayModifySettings(extension, nullptr) ||
                  policy->MustRemainInstalled(extension, nullptr));
 
-  auto* sync_service = ExtensionSyncService::Get(profile_);
-  const bool is_installed_from_sync =
-      sync_service && sync_service->IsPendingSyncInstall(extension->id());
-
   bool is_feature_enabled =
       base::FeatureList::IsEnabled(features::kExtensionsPinnedByDefault);
   bool is_toggle_on =
       profile_->GetPrefs()->GetBoolean(prefs::kExtensionsPinnedByDefault);
   // Pin the extension if policy enforces default pinning, OR if no policy is
   // set and default pinning is enabled by feature flag and user preference
-  // (excluding enterprise extensions and extensions installed from sync).
+  // (excluding enterprise extensions).
   const bool is_pinned_by_policy =
       pin_mode == extensions::ManagedToolbarPinMode::kDefaultPinned;
   const bool is_pinned_by_feature =
       pin_mode == extensions::ManagedToolbarPinMode::kNotSet &&
-      !is_enterprise_extension && !is_installed_from_sync &&
+      !is_enterprise_extension &&
       is_feature_enabled && is_toggle_on;
 
   // We can only pin extensions that have a toolbar action.
@@ -173,8 +168,6 @@ void ToolbarActionsModel::OnExtensionInstalled(
       pin_reason = ExtensionPinReason::kOverriddenByPolicy;
     } else if (is_enterprise_extension) {
       pin_reason = ExtensionPinReason::kNotPinnedEnterpriseExtension;
-    } else if (is_installed_from_sync) {
-      pin_reason = ExtensionPinReason::kNotPinnedInstalledFromSync;
     } else if (!is_feature_enabled) {
       pin_reason = ExtensionPinReason::kNotPinnedFeatureDisabled;
     } else if (!is_toggle_on) {

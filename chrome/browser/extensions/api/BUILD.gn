@@ -49,7 +49,6 @@ group("api_implementations") {
     "//chrome/browser/extensions/api/permissions",
     "//chrome/browser/extensions/api/preference",
     "//chrome/browser/extensions/api/processes",
-    "//chrome/browser/extensions/api/reading_list",
     "//chrome/browser/extensions/api/runtime",
     "//chrome/browser/extensions/api/search",
     "//chrome/browser/extensions/api/side_panel",
@@ -214,7 +213,6 @@ function_registration("api_registration") {
     # include generated headers from these targets.
     # TODO(brettw) this should be made unnecessary if possible.
     "//chrome/common/extensions/api",
-    "//components/sync",
     "//skia",
     "//third_party/metrics_proto",
     "//ui/accessibility:ax_enums_mojo",

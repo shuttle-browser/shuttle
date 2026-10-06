@@ -63,7 +63,6 @@ source_set("search_engines") {
       "ui_thread_search_terms_data_android.cc",
     ]
     deps += [
-      "//chrome/browser/android/locale:locale_manager",
       "//chrome/browser/search_engines/android:jni_headers",
     ]
 

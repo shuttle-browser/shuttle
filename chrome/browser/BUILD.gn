@@ -544,7 +544,7 @@ if (is_android) {
   # profile_key_startup_accessor.h without depending on :browser. The .cc
   # file remains in //chrome/browser:browser.
   source_set("profile_key_startup_accessor") {
-    public = [ "android/profile_key_startup_accessor.h" ]
+    public = []
     deps = [ "//base" ]
   }
 }
@@ -773,7 +773,6 @@ if (is_chromeos) {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/profiles:profile_io_data",
       "//chrome/browser/sessions",
-      "//chrome/browser/sync",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/startup",
       "//chrome/browser/ui/tabs:tab_strip",
@@ -793,7 +792,6 @@ if (is_chromeos) {
       "//components/keyed_service/content",
       "//components/prefs",
       "//components/session_manager/core",
-      "//components/sync/base",
       "//components/user_manager",
       "//components/user_manager:multi_user",
       "//services/network/public/cpp",
@@ -1027,7 +1025,6 @@ source_set("core") {
     "//chrome/browser/task_manager",
     "//chrome/browser/task_manager/common",
     "//chrome/browser/tracing",
-    "//chrome/browser/trusted_vault",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions",
@@ -1172,7 +1169,6 @@ source_set("core") {
     "//components/supervised_user/core/browser:device_parental_controls",
     "//components/surface_embed/browser",
     "//components/surface_embed/common",
-    "//components/sync_preferences:features",
     "//components/tracing:background_tracing_utils",
     "//components/ui_devtools",
     "//components/ukm",
@@ -1549,7 +1545,6 @@ source_set("core") {
     deps += [
       ":profile_key_startup_accessor",
       "//chrome/android:jni_headers",
-      "//chrome/browser/android",
       "//chrome/browser/autocomplete",
       "//chrome/browser/dev_ui",
       "//chrome/browser/flags:flags_android",
@@ -1758,7 +1753,6 @@ source_set("core") {
       "//ui/webui/resources/cr_components/color_change_listener:mojom",
     ]
   } else if (is_android) {
-    deps += [ "//chrome/browser/android/guest_view" ]
   }
 
   if (enable_printing) {
@@ -1802,10 +1796,8 @@ source_set("core") {
       # vr/chrome_xr_integration_client.cc unconditionally includes JNI headers
       # from the per-runtime modules.
       if (enable_arcore) {
-        deps += [ "//chrome/browser/android/vr:ar_jni_headers" ]
       }
       if (enable_cardboard) {
-        deps += [ "//chrome/browser/android/vr:vr_jni_headers" ]
       }
     }
   }
@@ -1899,7 +1891,6 @@ source_set("browser") {
     "//cc",
     "//chrome:extra_resources",
     "//chrome/browser/accessibility:impl",
-    "//chrome/browser/account_settings",
     "//chrome/browser/actor/ui/task_list_bubble:controller",
     "//chrome/browser/actor/ui/task_list_bubble:controller_impl",
     "//chrome/browser/ai",
@@ -2028,7 +2019,6 @@ source_set("browser") {
     "//chrome/browser/profiles:renderer_updater",
     "//chrome/browser/push_messaging",
     "//chrome/browser/push_messaging:impl",
-    "//chrome/browser/reading_list",
     "//chrome/browser/reduce_accept_language",
     "//chrome/browser/reduce_accept_language:impl",
     "//chrome/browser/regional_capabilities:metrics_provider_impl",
@@ -2071,8 +2061,6 @@ source_set("browser") {
     "//chrome/browser/thumbnail",
     "//chrome/browser/tracing",
     "//chrome/browser/tracing:impl",
-    "//chrome/browser/trusted_vault",
-    "//chrome/browser/trusted_vault:impl",
     "//chrome/browser/ui",
     "//chrome/browser/ui/blocked_content",
     "//chrome/browser/ui/blocked_content:impl",
@@ -2093,8 +2081,6 @@ source_set("browser") {
     "//chrome/browser/ui/search:impl",
     "//chrome/browser/ui/startup",
     "//chrome/browser/ui/startup:impl",
-    "//chrome/browser/unified_consent",
-    "//chrome/browser/unified_consent:impl",
     "//chrome/browser/update_client",
     "//chrome/browser/update_client:impl",
     "//chrome/browser/usb",
@@ -2259,7 +2245,6 @@ source_set("browser") {
 
   if (is_android) {
     deps += [
-      "//chrome/browser/android",
       "//components/webxr/android",
 
       # Targets containing Android-specific implementations that have to be
@@ -2948,7 +2933,6 @@ source_set("browser") {
   }
 
   if (is_linux || is_mac) {
-    deps += [ "//chrome/browser/gapis" ]
   }
 
   if (enable_spellcheck) {
@@ -3054,7 +3038,6 @@ group("browser_public_dependencies") {
     "//components/services/storage/public/mojom",
     "//components/session_proto_db",
     "//components/supervised_user/core/browser/proto",
-    "//components/sync",
     "//components/system_cpu",
     "//components/url_deduplication",
     "//components/user_education/common",
@@ -3071,7 +3054,6 @@ group("browser_public_dependencies") {
   if (is_android) {
     public_deps += [
       "//chrome/android/features/dev_ui:buildflags",
-      "//chrome/browser/android:resource_mapper",
       "//components/image_fetcher/core",
     ]
   } else {
@@ -3165,7 +3147,6 @@ group("browser_generated_files") {
   ]
   if (is_android) {
     public_deps += [
-      "//chrome/browser/android/webapk/proto",
       "//chrome/browser/ui/webui/feed_internals:mojo_bindings",
       "//chrome/browser/ui/webui/notifications_internals:mojo_bindings",
     ]
@@ -3178,7 +3159,6 @@ group("browser_generated_files") {
       "//chrome/browser/ui/webui/multistep_filter_internals:mojo_bindings",
       "//chrome/browser/ui/webui/omnibox_popup/mojom",
       "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
-      "//chrome/browser/ui/webui/side_panel/reading_list:mojo_bindings",
       "//chrome/browser/ui/webui/user_education_internals:mojo_bindings",
       "//chrome/browser/ui/webui/webnn_internals:mojo_bindings",
       "//chrome/browser/ui/webui_browser:browser_mojo_bindings",
@@ -3403,6 +3383,6 @@ if (is_android) {
     sources = [ "first_run/android/first_run_prefs.h" ]
   }
   java_cpp_enum("screenshot_mode_enum") {
-    sources = [ "android/feedback/screenshot_mode.h" ]
+    sources = []
   }
 }

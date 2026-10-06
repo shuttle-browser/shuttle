@@ -62,7 +62,6 @@
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/themes/theme_properties.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -220,13 +219,11 @@
 #include "components/performance_manager/public/features.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/prefs/pref_service.h"
-#include "components/reading_list/core/reading_list_pref_names.h"
 #include "components/search/ntp_features.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
-#include "components/sync/service/sync_service.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_group.h"
@@ -1351,12 +1348,8 @@ bool BrowserView::GetIncognito() const {
   return browser_->GetProfile()->IsIncognitoProfile();
 }
 
-bool BrowserView::GetGuestSession() const {
-  return browser_->GetProfile()->IsGuestSession();
-}
-
 bool BrowserView::GetRegularOrGuestSession() const {
-  return profiles::IsRegularOrGuestSession(browser_.get());
+  return !browser_->GetProfile()->IsOffTheRecord();
 }
 
 bool BrowserView::GetAccelerator(int cmd_id,
@@ -2528,18 +2521,6 @@ void BrowserView::TouchModeChanged() {
 #endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
-void BrowserView::MaybeShowReadingListInSidePanelIPH() {
-  // TODO(dfried): This promo is potentially superfluous since the pref is never
-  // set; remove.
-  const PrefService* const pref_service = browser()->GetProfile()->GetPrefs();
-  if (pref_service &&
-      pref_service->GetBoolean(
-          reading_list::prefs::kReadingListDesktopFirstUseExperienceShown)) {
-    BrowserUserEducationInterface::From(browser())->MaybeShowFeaturePromo(
-        feature_engagement::kIPHReadingListInSidePanelFeature);
-  }
-}
-
 bool BrowserView::IsTabStripEditable() const {
   return tab_strip_view()->IsTabStripEditable();
 }
@@ -3172,10 +3153,7 @@ std::u16string BrowserView::GetAccessibleWindowTitleForChannelAndProfile(
   // Finally annotate with the user - add Incognito or guest if it's an
   // incognito or guest window, otherwise use the avatar name.
   ProfileManager* profile_manager = g_browser_process->profile_manager();
-  if (profile->IsGuestSession()) {
-    title = l10n_util::GetStringFUTF16(IDS_ACCESSIBLE_GUEST_WINDOW_TITLE_FORMAT,
-                                       title);
-  } else if (profile->IsIncognitoProfile()) {
+  if (profile->IsIncognitoProfile()) {
     title = l10n_util::GetStringFUTF16(
         IDS_ACCESSIBLE_INCOGNITO_WINDOW_TITLE_FORMAT, title);
   } else if (!profile->IsOffTheRecord() &&
@@ -4363,13 +4341,6 @@ void BrowserView::AddedToWidget() {
   frame_view->UpdateMinimumSize();
   using_native_frame_ = browser_widget_->ShouldUseNativeFrame();
 
-  // Want to show this promo, but not right at startup.
-  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-      FROM_HERE,
-      base::BindOnce(&BrowserView::MaybeShowReadingListInSidePanelIPH,
-                     GetAsWeakPtr()),
-      base::Minutes(5));
-
   // Accessible name of the tab is dependent on the visibility state of the chip
   // view, so it needs to be made aware of any changes.
   if (toolbar_ && toolbar_->location_bar() &&
@@ -4802,11 +4773,6 @@ void BrowserView::LoadAccelerators() {
 
   // Let's fill our own accelerator table.
   const bool is_app_mode = IsRunningInForcedAppMode();
-#if BUILDFLAG(IS_CHROMEOS)
-  const bool is_captive_portal_signin_window =
-      browser_->GetProfile()->IsOffTheRecord() &&
-      browser_->GetProfile()->GetOTRProfileID().IsCaptivePortal();
-#endif
   const std::vector<AcceleratorMapping> accelerator_list(GetAcceleratorList());
   for (const auto& entry : accelerator_list) {
     // In app mode, only allow accelerators of allowlisted commands to pass
@@ -4818,22 +4784,6 @@ void BrowserView::LoadAccelerators() {
       continue;
     }
 
-#if BUILDFLAG(IS_CHROMEOS)
-    if (is_captive_portal_signin_window) {
-      int command = entry.command_id;
-      // Captive portal signin uses an OTR profile without history.
-      if (command == IDC_SHOW_HISTORY) {
-        continue;
-      }
-      // The NewTab command expects navigation to occur in the same browser
-      // window. For captive portal signin this is not the case, so hide these
-      // to reduce confusion.
-      if (command == IDC_NEW_TAB || command == IDC_NEW_TAB_TO_RIGHT ||
-          command == IDC_CREATE_NEW_TAB_GROUP) {
-        continue;
-      }
-    }
-#endif
 
     ui::Accelerator accelerator(entry.keycode, entry.modifiers);
     accelerator_table_[accelerator] = entry.command_id;
@@ -5200,7 +5150,6 @@ BEGIN_METADATA(BrowserView)
 ADD_READONLY_PROPERTY_METADATA(gfx::Rect, FindBarBoundingBox)
 ADD_READONLY_PROPERTY_METADATA(bool, TabStripVisible)
 ADD_READONLY_PROPERTY_METADATA(bool, Incognito)
-ADD_READONLY_PROPERTY_METADATA(bool, GuestSession)
 ADD_READONLY_PROPERTY_METADATA(bool, RegularOrGuestSession)
 ADD_READONLY_PROPERTY_METADATA(bool, SupportsTabStrip)
 ADD_READONLY_PROPERTY_METADATA(bool, IsNormalType)

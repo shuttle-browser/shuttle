@@ -92,7 +92,6 @@ class ChromeBrowserMainExtraPartsPerformanceManager
   void OnProfileAdded(Profile* profile) override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // Manages the lifetime of the PerformanceManager graph and registry for the

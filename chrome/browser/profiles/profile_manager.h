@@ -100,88 +100,15 @@ class ProfileManager : public Profile::Delegate {
   // profile is being loaded asynchronously.
   static Profile* GetLastUsedProfileAllowedByPolicy();
 
-  // Helper function that returns the OffTheRecord profile if it is forced for
-  // `profile` (normal mode is not available for browsing).
-  // Returns nullptr if `profile` is nullptr.
-  static Profile* MaybeForceOffTheRecordMode(Profile* profile);
-
   // Get the Profiles which are currently open, i.e. have open browsers or were
   // open the last time Chrome was running. Profiles that fail to initialize are
   // skipped. The Profiles appear in the order they were opened. The last used
   // profile will be on the list if it is initialized successfully, but its
   // index on the list will depend on when it was opened (it is not necessarily
   // the last one).
-  // Note: The list returned might contain on-the-record irregular profiles
-  // like the System profile.
+  // Note: The list returned might contain irregular profiles
+  // (none currently).
   static std::vector<Profile*> GetLastOpenedProfiles();
-
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-  // Get the profile for the user which created the current session.
-  // Note that in case of a guest account this will return a 'suitable' profile.
-  //
-  // DEPRECATED on ChromeOS because of known issues that it may return non User
-  // Profile instance. Please use:
-  //   ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
-  //       session_manager::SessionManager::Get()->GetPrimarySession()
-  //           ->account_id());
-  // or even simpler code if you need only limited parts of Profile.
-  // E.g., if you need only PrefService of the Profile, you can take it from
-  // user_manager::User::GetProfilePrefs(), e.g.:
-  //   user_manager::UserManager::Get()->FindUser(
-  //       session_manager::SessionManager::Get()->GetPrimarySession()
-  //           ->account_id())->GetProfilePrefs();
-  // Note that, due to the current implementation, despite of its name, this
-  // may return non-user profile or null depending on the current session
-  // state. For migration, we must take care of when this is called from the
-  // callers. Specifically, if this may be called before login or during login
-  // process, the extra check is needed. Otherwise, we may want CHECK for
-  // the session state.
-  // For the safer migration, we record the callers of unexpected use via
-  // location. It should be always called FROM_HERE as default value.
-  // TODO(crbug.com/40227502): Remove this.
-  static Profile* GetPrimaryUserProfile(
-#if BUILDFLAG(IS_CHROMEOS)
-      const base::Location& location = FROM_HERE
-#endif
-  );
-
-  // Get the profile for the currently active user.
-  // Note that in case of a guest account this will return a 'suitable' profile.
-  //
-  // DEPRECATED on ChromeOS because of known issues that it may return non User
-  // Profile instance. Please use:
-  //   ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
-  //       session_manager::SessionManager::Get()->GetActiveSession()
-  //           ->account_id());
-  // or simpler code if you need only limited parts of Profile.
-  // E.g., if you need only PrefService of the Profile, you can take it from
-  // user_manager::User::GetProfilePrefs(), e.g.:
-  //   user_manager::UserManager::Get()->FindUser(
-  //       session_manager::SessionManager::Get()->GetActiveSession()
-  //           ->account_id())->GetProfilePrefs();
-  // Note that, due to the current implementation, despite of its name, this
-  // may return non-user profile or null depending on the current session
-  // state. For migration, we must take care of when this is called from the
-  // callers. Specifically, if this may be called before login or during login
-  // process, the extra check is needed. Otherwise, we may want CHECK for
-  // the session state.
-  // For the safer migration, we record the callers of unexpected use via
-  // location. It should be always called FROM_HERE as default value.
-  // TODO(crbug.com/40227502): Remove this.
-  static Profile* GetActiveUserProfile(
-#if BUILDFLAG(IS_CHROMEOS)
-      const base::Location& location = FROM_HERE
-#endif
-  );
-#endif
-
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
-  // Load and return the initial profile for browser. On ChromeOS, this returns
-  // either the sign-in profile or the active user profile depending on whether
-  // browser is started normally or is restarted after crash. On other
-  // platforms, this returns the default profile.
-  static Profile* CreateInitialProfile();
-#endif  // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
   void AddObserver(ProfileManagerObserver* observer);
   void RemoveObserver(ProfileManagerObserver* observer);
@@ -256,8 +183,6 @@ class ProfileManager : public Profile::Delegate {
   // - only returns profiles owned by the ProfileManager. In particular, this
   //   does not return incognito profiles, because they are owned by their
   //   original profiles.
-  // - may also return irregular profiles like on-the-record System or Guest
-  //   profiles.
   std::vector<Profile*> GetLoadedProfiles() const;
 
   // If a profile with the given path is currently managed by this object and
@@ -288,14 +213,6 @@ class ProfileManager : public Profile::Delegate {
       base::OnceCallback<void(Profile*)> initialized_callback,
       base::OnceCallback<void(Profile*)> created_callback = {});
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-  // Returns the full path to be used for guest profiles.
-  static base::FilePath GetGuestProfilePath();
-
-#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
-  // Returns the full path to be used for system profiles.
-  static base::FilePath GetSystemProfilePath();
-#endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
 
   // Get the path of the next profile directory and increment the internal
   // count.
@@ -512,16 +429,9 @@ class ProfileManager : public Profile::Delegate {
   void UnloadProfileIfNoKeepAlive(const ProfileInfo* info);
 
   // Does final initial actions.
-  void DoFinalInit(ProfileInfo* profile_info, bool go_off_the_record);
-  void DoFinalInitForServices(Profile* profile, bool go_off_the_record);
+  void DoFinalInit(ProfileInfo* profile_info);
+  void DoFinalInitForServices(Profile* profile);
   void DoFinalInitLogging(Profile* profile);
-
-  // Returns the profile of the active user and / or the off the record profile
-  // if needed. This adds the profile to the ProfileManager if it doesn't
-  // already exist. The method will return NULL if the profile doesn't exist
-  // and we can't create it.
-  // The profile used can be overridden by using --login-profile on cros.
-  Profile* GetActiveUserOrOffTheRecordProfile();
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
   // Unloads the `Profile` at `profile_dir` from the manager and destroys the
@@ -558,10 +468,6 @@ class ProfileManager : public Profile::Delegate {
   // Adds |profile| to the profile attributes storage if it hasn't been added
   // yet.
   void AddProfileToStorage(Profile* profile);
-
-  // Apply settings for profiles created by the system rather than users: The
-  // (desktop) Guest User profile and (desktop) System Profile.
-  void SetNonPersonalProfilePrefs(Profile* profile);
 
   void SaveActiveProfiles();
 
@@ -672,7 +578,6 @@ class ProfileManager : public Profile::Delegate {
   // point (or are currently loaded). This is used to measure memory savings
   // from DestroyProfileOnBrowserClose.
   //
-  // Doesn't include the System and Guest profile paths.
   std::set<base::FilePath> ever_loaded_profiles_;
 
   // Runs a task every 30 minutes to record the number of zombie & non-zombie

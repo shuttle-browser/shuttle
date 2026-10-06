@@ -29,8 +29,6 @@
 #include "chrome/browser/extensions/install_verifier_factory.h"
 #include "chrome/browser/extensions/menu_manager_factory.h"
 #include "chrome/browser/extensions/shared_module_service_factory.h"
-#include "chrome/browser/extensions/sync/account_extension_tracker.h"
-#include "chrome/browser/extensions/sync/extension_sync_service_factory.h"
 #include "chrome/browser/extensions/updater/extension_updater_factory.h"
 #include "extensions/browser/manifest_v2_handler.h"
 #include "extensions/browser/permissions/permissions_updater.h"
@@ -52,8 +50,6 @@ void EnsureChromeBrowserContextKeyedServiceFactoriesBuilt() {
   TRACE_EVENT("browser",
               "chrome_extensions::"
               "EnsureChromeBrowserContextKeyedServiceFactoriesBuilt");
-  ExtensionSyncServiceFactory::GetInstance();
-  extensions::AccountExtensionTracker::GetFactory();
   extensions::ActivityLog::GetFactoryInstance();
   extensions::BlocklistFactory::GetInstance();
   extensions::ChromeAppIconServiceFactory::GetInstance();

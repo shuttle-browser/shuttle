@@ -60,8 +60,7 @@ bool IsEnterpriseLookupEnabled(Profile* profile) {
       connectors_service &&
       connectors_service->GetDMTokenForRealTimeUrlCheck().has_value();
   return safe_browsing::RealTimePolicyEngine::CanPerformEnterpriseFullURLLookup(
-      profile->GetPrefs(), has_valid_dm_token, profile->IsOffTheRecord(),
-      profile->IsGuestSession());
+      profile->GetPrefs(), has_valid_dm_token, profile->IsOffTheRecord());
 }
 
 // Helper function to create an UnsafeResource from an RTLookupResponse.

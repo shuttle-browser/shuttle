@@ -98,102 +98,10 @@
                desc="Title of the new tab page, not to be confused with the action of opening a new tab.">
         New Tab
       </message>
-      <message name="IDS_NEW_INCOGNITO_TAB_TITLE"
-               desc="Title of the new incognito tab page, not to be confused with the action of opening a new incognito tab.">
-        New Incognito Tab
-      </message>
-      <message name="IDS_INCOGNITO_TAB_LEARN_MORE_ACCESSIBILITY_LABEL"
-          desc="Accessibility label for a link labeled 'Learn more' that links to a help article about Incognito mode."
-          formatter_data="android_java">
-        Learn more about Incognito
-      </message>
-      <if expr="not is_android">
-        <message name="IDS_NEW_TAB_OTR_LEARN_MORE_LINK"
-                 desc="OTR window link text to learn more">
-          Learn more
-        </message>
-      </if>
 
       <!-- Incognito Tab redesign strings -->
       <!-- TODO(msramek): Merge with the above section once this is fully launched. -->
 
-      <message name="IDS_NEW_TAB_OTR_TITLE" desc="Title of the Incognito new tab page. The Incognito mode provides private browsing experience by hiding browsing activity from other people using the same device. However, it does not make the user completely invisible or anonymous; please don't translate it as such." formatter_data="android_java">
-        You’ve gone Incognito
-      </message>
-      <message name="IDS_NEW_TAB_OTR_SUBTITLE_WITH_READING_LIST" desc="Subtitle of the Incognito new tab page, explaining to the user that the Incognito mode hides their browsing activity from other people using the same device. The second sentence clarifies that there are two important exceptions from this rule - downloaded files and added bookmarks will be persisted even after the Incognito session is closed." formatter_data="android_java">
-        Others who use this device won’t see your activity, so you can browse more privately. This won't change how data is collected by websites you visit and the services they use, including Google. Downloads, bookmarks and reading list items will be saved.
-      </message>
-       <if expr="_google_chrome">
-        <message name="IDS_NEW_TAB_OTR_NOT_SAVED" desc="Bullet points listing data that are not saved in the Incognito mode. 'Browsing history' means a history of visited websites. 'Cookies and site data' refers to data saved by websites on the user's device (e.g. sign-in state, preferences, etc.). 'Information entered in forms' refers to names, addresses, passwords etc. that users enter into forms on the web." formatter_data="android_java">
-          Chrome <ph name="BEGIN_EMPHASIS">&lt;em&gt;</ph>won’t save<ph name="END_EMPHASIS">&lt;/em&gt;</ph>:
-          <ph name="BEGIN_LIST">&lt;ul&gt;</ph>
-            <ph name="LIST_ITEM">&lt;li&gt;</ph>Your browsing history
-            <ph name="LIST_ITEM">&lt;li&gt;</ph>Cookies and site data
-            <ph name="LIST_ITEM">&lt;li&gt;</ph>Information entered in forms
-          <ph name="END_LIST">&lt;/ul&gt;</ph>
-        </message>
-      </if>
-      <if expr="not _google_chrome">
-        <message name="IDS_NEW_TAB_OTR_NOT_SAVED" desc="Bullet points listing data that are not saved in the Incognito mode. 'Browsing history' means a history of visited websites. 'Cookies and site data' refers to data saved by websites on the user's device (e.g. sign-in state, preferences, etc.). 'Information entered in forms' refers to names, addresses, passwords etc. that users enter into forms on the web." formatter_data="android_java">
-          Chromium <ph name="BEGIN_EMPHASIS">&lt;em&gt;</ph>won’t save<ph name="END_EMPHASIS">&lt;/em&gt;</ph>:
-          <ph name="BEGIN_LIST">&lt;ul&gt;</ph>
-            <ph name="LIST_ITEM">&lt;li&gt;</ph>Your browsing history
-            <ph name="LIST_ITEM">&lt;li&gt;</ph>Cookies and site data
-            <ph name="LIST_ITEM">&lt;li&gt;</ph>Information entered in forms
-          <ph name="END_LIST">&lt;/ul&gt;</ph>
-        </message>
-      </if>
-      <message name="IDS_NEW_TAB_OTR_VISIBLE" desc="Bullet points listing entities that might be able to see the user's Incognito activity. The bullet points elaborate on the fact that Incognito only provides privacy with respect to other users on the same device. Websites you visit still know that you visited them. Your employer, school, and/or internet service provider can still monitor network traffic, even if it comes from the Incognito mode." formatter_data="android_java">
-        Your activity <ph name="BEGIN_EMPHASIS">&lt;em&gt;</ph>might still be visible<ph name="END_EMPHASIS">&lt;/em&gt;</ph> to:
-        <ph name="BEGIN_LIST">&lt;ul&gt;</ph>
-          <ph name="LIST_ITEM">&lt;li&gt;</ph>Websites you visit
-          <ph name="LIST_ITEM">&lt;li&gt;</ph>Your employer or school
-          <ph name="LIST_ITEM">&lt;li&gt;</ph>Your internet service provider
-        <ph name="END_LIST">&lt;/ul&gt;</ph>
-      </message>
-      <message name="IDS_NEW_TAB_OPENS_HC_ARTICLE_IN_NEW_TAB" desc="ARIA (accessibility) label describing a link which opens a help center article in a new tab.">
-        Opens a Help Center article in a new tab
-      </message>
 
-      <!-- Isolated mode NTP strings -->
-      <message name="IDS_NEW_ISOLATED_TAB_HEADING" desc="Heading displayed on the new tab page in Isolated mode.">
-        You’re now in Isolated mode
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_DESCRIPTION" desc="Text introducing the learn more link in Isolated mode.">
-        Learn more about
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_LEARN_MORE_LINK" desc="Link text to learn more about browsing in Isolated mode.">
-        browsing in Isolated mode
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_LEARN_MORE_ACCESSIBILITY_LABEL" desc="Accessibility label for the learn more link in Isolated mode.">
-        Learn more about browsing in Isolated mode.
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_VISIBILITY_WARNING" desc="Warning text displayed on the Isolated mode NTP explaining who can see browsing activity.">
-        Your activity might be visible to: websites you visit, your employer or school, your internet service provider
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_ACTIVITY_MONITORING_TITLE" desc="Title for the activity monitoring card in Isolated mode.">
-        Activity monitoring
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_ACTIVITY_MONITORING_CONTENT" desc="Description for the activity monitoring card in Isolated mode.">
-        Certain browsing activity may be monitored by your organization to prevent data loss; go to <ph name="BEGIN_LINK">&lt;a href="chrome://management"&gt;</ph>chrome://management<ph name="END_LINK">&lt;/a&gt;</ph> for more details
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_BROWSING_DATA_TITLE" desc="Title for the browsing data card in Isolated mode.">
-        Browsing data
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_BROWSING_DATA_CONTENT" desc="Description for the browsing data card in Isolated mode.">
-        Your browsing history, cookies and site data, cache, and information entered in forms will be deleted once you close all Isolated windows
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_EXTENSIONS_TITLE" desc="Title for the extensions card in Isolated mode.">
-        Extensions
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_EXTENSIONS_CONTENT" desc="Description for the extensions card in Isolated mode.">
-        Extensions required by your organization will remain turned on; go to <ph name="BEGIN_LINK">&lt;a href="chrome://extensions"&gt;</ph>chrome://extensions<ph name="END_LINK">&lt;/a&gt;</ph> for more details
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_THIRD_PARTY_COOKIES_TITLE" desc="Title for the third-party cookies card in Isolated mode.">
-        Third-party cookies
-      </message>
-      <message name="IDS_NEW_ISOLATED_TAB_THIRD_PARTY_COOKIES_CONTENT" desc="Description for the third-party cookies card in Isolated mode.">
-        Sites are blocked from using third-party cookies. If a site relying on these cookies isn't working, you can <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-description="$2"&gt;</ph>try giving that site temporary access to third-party cookies<ph name="END_LINK">&lt;/a&gt;</ph>.
-      </message>
 
 </grit-part>

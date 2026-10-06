@@ -22,7 +22,6 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/identity_manager_builder.h"
 #include "components/signin/public/webdata/token_web_data.h"
-#include "components/sync/base/features.h"
 #include "content/public/browser/network_service_instance.h"
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)

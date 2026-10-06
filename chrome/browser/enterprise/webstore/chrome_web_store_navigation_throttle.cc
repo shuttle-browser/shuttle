@@ -40,13 +40,6 @@ ChromeWebStoreNavigationThrottle::MaybeAppendHeaders() {
     return content::NavigationThrottle::PROCEED;
   }
 
-  content::WebContents* web_contents = navigation_handle()->GetWebContents();
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  if (!profile->IsRegularProfile()) {
-    return content::NavigationThrottle::PROCEED;
-  }
-
   std::optional<policy::DMToken> optional_dm_token = policy::GetDMToken();
   if (!optional_dm_token || !optional_dm_token->is_valid()) {
     return content::NavigationThrottle::PROCEED;

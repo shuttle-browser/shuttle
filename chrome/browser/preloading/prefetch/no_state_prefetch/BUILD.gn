@@ -43,7 +43,6 @@ source_set("impl") {
     "//chrome/browser/predictors",
     "//chrome/browser/preloading:prefs",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/sync:factories",
     "//chrome/browser/task_manager",
     "//chrome/browser/ui",
     "//chrome/common",

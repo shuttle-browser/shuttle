@@ -51,7 +51,6 @@
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/printing/background_printing_manager.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
@@ -312,17 +311,6 @@ Browser::Browser(BrowserWindowCreateParams params)
   // All initialization is complete; after this point, the browser should be on
   // the browser list until it is marked for destruction.
   is_initialized_ = true;
-
-  if (profile_->IsGuestSession()) {
-    base::UmaHistogramCounts100(
-        "Browser.WindowCount.Guest",
-        GlobalBrowserCollection::GetInstance()->GetGuestBrowserCount());
-  } else if (profile_->IsIncognitoProfile()) {
-    base::UmaHistogramCounts100(
-        "Browser.WindowCount.Incognito",
-        ProfileBrowserCollection::GetForProfile(profile_)
-            ->GetOffTheRecordBrowserCount());
-  }
 }
 
 Browser::~Browser() {

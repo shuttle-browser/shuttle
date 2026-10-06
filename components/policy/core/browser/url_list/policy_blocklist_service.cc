@@ -75,17 +75,7 @@ class AlwaysOnVpnPreConnectBlocklistSource : public policy::BlocklistSource {
 PolicyBlocklistService::PolicyBlocklistService(
     std::unique_ptr<policy::URLBlocklistManager> url_blocklist_manager,
     PrefService* user_prefs)
-    : PolicyBlocklistService(std::move(url_blocklist_manager),
-                             nullptr,
-                             user_prefs) {}
-PolicyBlocklistService::PolicyBlocklistService(
-    std::unique_ptr<policy::URLBlocklistManager> url_blocklist_manager,
-    std::unique_ptr<policy::URLBlocklistManager>
-        incognito_url_blocklist_manager,
-    PrefService* user_prefs)
     : url_blocklist_manager_(std::move(url_blocklist_manager)),
-      incognito_url_blocklist_manager_(
-          std::move(incognito_url_blocklist_manager)),
       user_prefs_(user_prefs) {
   CHECK(user_prefs_);
 }
@@ -101,46 +91,6 @@ PolicyBlocklistService::PolicyBlocklistState
 PolicyBlocklistService::GetURLBlocklistStateWithPolicySource(
     const GURL& url) const {
   const auto general_state = url_blocklist_manager_->GetURLBlocklistState(url);
-
-  // If the feature is enabled we will check the Incognito blocklist state
-  // against the general blocklist state. If the URL is allowlisted against the
-  // Incognito blocklist but blocklisted against the general blocklist, we will
-  // block it.
-  if (base::FeatureList::IsEnabled(
-          policy::features::kURLBlocklistOverridesIncognitoAllowlist)) {
-    if (incognito_url_blocklist_manager_) {
-      const auto incognito_state =
-          incognito_url_blocklist_manager_->GetURLBlocklistState(url);
-
-      if (incognito_state != policy::URLBlocklist::URL_IN_BLOCKLIST &&
-          general_state == policy::URLBlocklist::URL_IN_BLOCKLIST) {
-        return {.url_blocklist_state = policy::URLBlocklist::URL_IN_BLOCKLIST,
-                .policy_source =
-                    PolicyBlocklistService::PolicyBlocklistState::URL_POLICY};
-      }
-
-      if (incognito_state != policy::URLBlocklist::URL_NEUTRAL_STATE) {
-        return {
-            .url_blocklist_state = incognito_state,
-            .policy_source =
-                PolicyBlocklistService::PolicyBlocklistState::INCOGNITO_POLICY};
-      }
-    }
-    return {.url_blocklist_state = general_state,
-            .policy_source =
-                PolicyBlocklistService::PolicyBlocklistState::URL_POLICY};
-  }
-
-  if (incognito_url_blocklist_manager_) {
-    const auto incognito_state =
-        incognito_url_blocklist_manager_->GetURLBlocklistState(url);
-    if (incognito_state != policy::URLBlocklist::URL_NEUTRAL_STATE) {
-      return {
-          .url_blocklist_state = incognito_state,
-          .policy_source =
-              PolicyBlocklistService::PolicyBlocklistState::INCOGNITO_POLICY};
-    }
-  }
   return {.url_blocklist_state = general_state,
           .policy_source =
               PolicyBlocklistService::PolicyBlocklistState::URL_POLICY};

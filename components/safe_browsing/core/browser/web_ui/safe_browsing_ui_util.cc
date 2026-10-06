@@ -28,7 +28,6 @@
 #include "components/enterprise/common/proto/connectors.to_value.h"
 #endif
 
-using sync_pb::GaiaPasswordReuse;
 
 namespace safe_browsing::web_ui {
 
@@ -280,84 +279,6 @@ std::string SerializeJson(base::ValueView value) {
   return base::WriteJsonWithOptions(value,
                                     base::JSONWriter::OPTIONS_PRETTY_PRINT)
       .value_or(std::string());
-}
-
-base::DictValue SerializePGEvent(const sync_pb::UserEventSpecifics& event) {
-  base::DictValue result;
-
-  base::Time timestamp = base::Time::FromDeltaSinceWindowsEpoch(
-      base::Microseconds(event.event_time_usec()));
-  result.Set("time", timestamp.InMillisecondsFSinceUnixEpoch());
-
-  base::DictValue event_dict;
-
-  // Nominally only one of the following if() statements would be true.
-  // Note that top-level path is either password_captured, or one of the fields
-  // under GaiaPasswordReuse (ie. we've flattened the namespace for simplicity).
-
-  if (event.has_gaia_password_captured_event()) {
-    event_dict.SetByDottedPath(
-        "password_captured.event_trigger",
-        sync_pb::UserEventSpecifics_GaiaPasswordCaptured_EventTrigger_Name(
-            event.gaia_password_captured_event().event_trigger()));
-  }
-
-  GaiaPasswordReuse reuse = event.gaia_password_reuse_event();
-  if (reuse.has_reuse_detected()) {
-    event_dict.SetByDottedPath("reuse_detected.status.enabled",
-                               reuse.reuse_detected().status().enabled());
-    event_dict.SetByDottedPath(
-        "reuse_detected.status.reporting_population",
-        GaiaPasswordReuse_PasswordReuseDetected_SafeBrowsingStatus_ReportingPopulation_Name(
-            reuse.reuse_detected()
-                .status()
-                .safe_browsing_reporting_population()));
-  }
-
-  if (reuse.has_reuse_lookup()) {
-    event_dict.SetByDottedPath(
-        "reuse_lookup.lookup_result",
-        GaiaPasswordReuse_PasswordReuseLookup_LookupResult_Name(
-            reuse.reuse_lookup().lookup_result()));
-    event_dict.SetByDottedPath(
-        "reuse_lookup.verdict",
-        GaiaPasswordReuse_PasswordReuseLookup_ReputationVerdict_Name(
-            reuse.reuse_lookup().verdict()));
-    event_dict.SetByDottedPath("reuse_lookup.verdict_token",
-                               reuse.reuse_lookup().verdict_token());
-  }
-
-  if (reuse.has_dialog_interaction()) {
-    event_dict.SetByDottedPath(
-        "dialog_interaction.interaction_result",
-        GaiaPasswordReuse_PasswordReuseDialogInteraction_InteractionResult_Name(
-            reuse.dialog_interaction().interaction_result()));
-  }
-
-  result.Set("message", SerializeJson(event_dict));
-  return result;
-}
-
-base::DictValue SerializeSecurityEvent(
-    const sync_pb::GaiaPasswordReuse& event) {
-  base::DictValue result;
-
-  base::DictValue event_dict;
-  if (event.has_reuse_lookup()) {
-    event_dict.SetByDottedPath(
-        "reuse_lookup.lookup_result",
-        GaiaPasswordReuse_PasswordReuseLookup_LookupResult_Name(
-            event.reuse_lookup().lookup_result()));
-    event_dict.SetByDottedPath(
-        "reuse_lookup.verdict",
-        GaiaPasswordReuse_PasswordReuseLookup_ReputationVerdict_Name(
-            event.reuse_lookup().verdict()));
-    event_dict.SetByDottedPath("reuse_lookup.verdict_token",
-                               event.reuse_lookup().verdict_token());
-  }
-
-  result.Set("message", SerializeJson(event_dict));
-  return result;
 }
 
 #if BUILDFLAG(IS_ANDROID)

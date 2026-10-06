@@ -173,8 +173,7 @@ void RegisterInfoBars() {
                           const Profile* profile = browser->GetProfile();
                           return browser->GetType() ==
                                      BrowserWindowInterface::TYPE_NORMAL &&
-                                 !profile->IsIncognitoProfile() &&
-                                 !profile->IsGuestSession();
+                                 !profile->IsIncognitoProfile();
                         }))
                     .AddOkButton(
                         default_browser::PinInfoBarController::GetButtonLabel(),
@@ -277,8 +276,7 @@ void RegisterInfoBars() {
                   const Profile* profile = browser->GetProfile();
                   return browser->GetType() ==
                              BrowserWindowInterface::TYPE_NORMAL &&
-                         !profile->IsIncognitoProfile() &&
-                         !profile->IsGuestSession();
+                         !profile->IsIncognitoProfile();
                 }))
             .AddOkButton(l10n_util::GetStringUTF16(
                              IDS_DEFAULT_BROWSER_INFOBAR_OK_BUTTON_LABEL),

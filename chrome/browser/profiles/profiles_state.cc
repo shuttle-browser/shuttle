@@ -76,9 +76,6 @@ void RegisterPrefs(PrefRegistrySimple* registry) {
   registry->RegisterListPref(prefs::kProfilesDeleted);
 
   // Preferences about the user manager.
-  registry->RegisterBooleanPref(prefs::kBrowserGuestModeEnabled, true);
-  registry->RegisterBooleanPref(prefs::kBrowserGuestModeEnforced, false);
-  registry->RegisterBooleanPref(prefs::kBrowserAddPersonEnabled, true);
   registry->RegisterBooleanPref(prefs::kForceBrowserSignin, false);
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
   registry->RegisterBooleanPref(
@@ -87,11 +84,6 @@ void RegisterPrefs(PrefRegistrySimple* registry) {
 }
 
 void SetLastUsedProfile(const base::FilePath& profile_dir) {
-  // We should never be saving the System Profile as the last one used since it
-  // shouldn't have a browser.
-  if (profile_dir == base::FilePath(chrome::kSystemProfileDir))
-    return;
-
   PrefService* local_state = g_browser_process->local_state();
   DCHECK(local_state);
   local_state->SetFilePath(prefs::kProfileLastUsed, profile_dir);
@@ -111,10 +103,6 @@ bool IsRegularUserProfile(Profile* profile) {
 
 #if !BUILDFLAG(IS_ANDROID)
 std::u16string GetAvatarNameForProfile(const base::FilePath& profile_path) {
-  if (profile_path == ProfileManager::GetGuestProfilePath()) {
-    return l10n_util::GetStringUTF16(IDS_GUEST_PROFILE_NAME);
-  }
-
   ProfileAttributesStorage& storage =
       g_browser_process->profile_manager()->GetProfileAttributesStorage();
 
@@ -177,77 +165,7 @@ void UpdateProfileName(Profile* profile,
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
 bool IsRegularOrGuestSession(const BrowserWindowInterface* browser) {
-  const Profile* profile = browser->GetProfile();
-  return profile->IsRegularProfile() || profile->IsGuestSession();
-}
-
-bool IsGuestModeRequested(const base::CommandLine& command_line,
-                          PrefService* local_state,
-                          bool show_warning) {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) || \
-    BUILDFLAG(IS_MAC)
-  DCHECK(local_state);
-
-  // Check if guest mode enforcement commandline switch or policy are provided.
-  if (command_line.HasSwitch(switches::kGuest) ||
-      local_state->GetBoolean(prefs::kBrowserGuestModeEnforced)) {
-    // Check if guest mode is allowed by policy.
-    if (local_state->GetBoolean(prefs::kBrowserGuestModeEnabled))
-      return true;
-    if (show_warning) {
-      LOG(WARNING) << "Guest mode disabled by policy, launching a normal "
-                   << "browser session.";
-    }
-  }
-#endif
-  return false;
-}
-
-bool IsProfileCreationAllowed() {
-  const PrefService* const pref_service = g_browser_process->local_state();
-  DCHECK(pref_service);
-  return pref_service->GetBoolean(prefs::kBrowserAddPersonEnabled);
-}
-
-// Whether guest mode is globally disabled (for all entry points and users).
-bool IsGuestModeGloballyDisabledInternal() {
-  const PrefService* const pref_service = g_browser_process->local_state();
-  DCHECK(pref_service);
-  return !pref_service->GetBoolean(prefs::kBrowserGuestModeEnabled);
-}
-
-bool IsGuestModeEnabled() {
-  if (IsGuestModeGloballyDisabledInternal()) {
-    return false;
-  }
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  // If there are any supervised profiles, disable guest mode.
-  if (std::ranges::any_of(g_browser_process->profile_manager()
-                              ->GetProfileAttributesStorage()
-                              .GetAllProfilesAttributes(),
-                          [](const ProfileAttributesEntry* entry) {
-                            return entry->IsSupervised() && !entry->IsOmitted();
-                          })) {
-    return false;
-  }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-
   return true;
-}
-
-bool IsGuestModeEnabled(const Profile& profile) {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  ProfileAttributesEntry* profile_attributes =
-      g_browser_process->profile_manager()
-          ->GetProfileAttributesStorage()
-          .GetProfileAttributesWithPath(profile.GetPath());
-  if (profile_attributes && profile_attributes->IsSupervised()) {
-    return false;
-  }
-#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-
-  return !IsGuestModeGloballyDisabledInternal();
 }
 
 bool IsProfileLocked(const base::FilePath& profile_path) {
@@ -275,10 +193,6 @@ void RemoveBrowsingDataForProfile(const base::FilePath& profile_path) {
       g_browser_process->profile_manager()->GetProfileByPath(profile_path);
   if (!profile)
     return;
-
-  // For guest profiles the browsing data is in the OTR profile.
-  if (profile->IsGuestSession())
-    profile = profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
 
   profile->Wipe();
 }

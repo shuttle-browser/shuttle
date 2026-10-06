@@ -31,33 +31,23 @@ class Value;
 
 namespace extensions {
 
-class PreferenceEventRouter : public ProfileObserver {
+class PreferenceEventRouter {
  public:
   explicit PreferenceEventRouter(Profile* profile);
 
   PreferenceEventRouter(const PreferenceEventRouter&) = delete;
   PreferenceEventRouter& operator=(const PreferenceEventRouter&) = delete;
 
-  ~PreferenceEventRouter() override;
+  ~PreferenceEventRouter();
 
  private:
   void OnPrefChanged(PrefService* pref_service,
                      const std::string& pref_key);
 
-  // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
-  void OnProfileWillBeDestroyed(Profile* profile) override;
-
-  void ObserveOffTheRecordPrefs(PrefService* prefs);
-
   PrefChangeRegistrar registrar_;
-  std::unique_ptr<PrefChangeRegistrar> incognito_registrar_;
 
   // Weak, owns us (transitively via ExtensionService).
   raw_ptr<Profile> profile_;
-
-  base::ScopedMultiSourceObservation<Profile, ProfileObserver>
-      observed_profiles_{this};
 };
 
 class PreferenceAPI : public BrowserContextKeyedAPI,

@@ -9,22 +9,6 @@
   <!-- End of Bookmarks Bar strings. -->
 
   <!-- Begin of Bookmarks Bar Context Menu strings. -->
-  <if expr="not use_titlecase">
-    <message name="IDS_BOOKMARK_BAR_OPEN_IN_NEW_TAB" desc="Menu description for loading bookmark in a new tab">
-      &amp;Open in new tab
-    </message>
-    <message name="IDS_BOOKMARK_BAR_OPEN_IN_NEW_WINDOW" desc="Menu description for loading bookmark in a new window">
-      Open in &amp;new window
-    </message>
-  </if>
-  <if expr="use_titlecase">
-    <message name="IDS_BOOKMARK_BAR_OPEN_IN_NEW_TAB" desc="In Title Case: Menu description for loading bookmark in a new tab">
-      &amp;Open in New Tab
-    </message>
-    <message name="IDS_BOOKMARK_BAR_OPEN_IN_NEW_WINDOW" desc="In Title Case: Menu description for loading bookmark in a new window">
-      Open in &amp;New Window
-    </message>
-  </if>
   <!-- End of Bookmarks Bar Context Menu strings. -->
 
   <!-- End of Bookmarks Bubble strings. -->

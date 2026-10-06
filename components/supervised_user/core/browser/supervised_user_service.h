@@ -88,14 +88,6 @@ class SupervisedUserService : public KeyedService {
 
     // Returns the channel for the installation.
     virtual version_info::Channel GetChannel() const = 0;
-
-    // Decides if incognito tabs should be closed. Tested when the supervision
-    // features are enabled.
-    virtual bool ShouldCloseIncognitoTabs() const = 0;
-
-    // Close all incognito tabs for this service. Called when the supervision
-    // features are enabled and require disabling of incognito mode.
-    virtual void CloseIncognitoTabs() = 0;
   };
 
   SupervisedUserService(const SupervisedUserService&) = delete;
@@ -150,10 +142,6 @@ class SupervisedUserService : public KeyedService {
   // is intentionally idempotent.
   void AddCustodianPrefChangeHandlers();
   void RemoveCustodianPrefChangeHandlers();
-
-  // Closes incognito tabs on each availability change, under condition that
-  // any parental controls are enabled and incognito mode is not available.
-  void OnIncognitoModeAvailabilityChanged();
 
   const raw_ref<PrefService> user_prefs_;
 

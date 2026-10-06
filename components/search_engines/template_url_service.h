@@ -36,8 +36,6 @@
 #include "components/search_engines/search_terms_data.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_starter_pack_data.h"
-#include "components/sync/model/sync_change.h"
-#include "components/sync/model/syncable_service.h"
 #include "components/webdata/common/web_data_service_consumer.h"
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/scoped_java_ref.h"
@@ -65,11 +63,6 @@ namespace search_engines {
 class SearchEngineChoiceService;
 class ChoiceScreenData;
 }  // namespace search_engines
-
-namespace syncer {
-class SyncData;
-struct EntityData;
-}  // namespace syncer
 
 namespace TemplateURLPrepopulateData {
 class Resolver;
@@ -107,13 +100,11 @@ class Origin;
 // otherwise TemplateURLService handles deletion.
 
 class TemplateURLService final : public WebDataServiceConsumer,
-                                 public KeyedService,
-                                 public syncer::SyncableService {
+                                 public KeyedService {
  public:
   using TemplateURLVector = TemplateURL::TemplateURLVector;
   using OwnedTemplateURLVector = TemplateURL::OwnedTemplateURLVector;
   using TemplateURLVectorSpan = TemplateURL::TemplateURLVectorSpan;
-  using SyncDataMap = std::map<std::string, syncer::SyncData>;
   using OwnedTemplateURLDataVector =
       EnterpriseSearchManager::OwnedTemplateURLDataVector;
 
@@ -598,44 +589,6 @@ class TemplateURLService final : public WebDataServiceConsumer,
   // KeyedService implementation.
   void Shutdown() override;
 
-  // syncer::SyncableService implementation.
-
-  // Waits until keywords have been loaded.
-  void WaitUntilReadyToSync(base::OnceClosure done) override;
-
-  // Returns all syncable TemplateURLs from this model as SyncData. This should
-  // include every search engine and no Extension keywords.
-  syncer::SyncDataList GetAllSyncData(syncer::DataType type) const;
-  // Process new search engine changes from Sync, merging them into our local
-  // data. This may send notifications if local search engines are added,
-  // updated or removed.
-  std::optional<syncer::ModelError> ProcessSyncChanges(
-      const base::Location& from_here,
-      const syncer::SyncChangeList& change_list) override;
-  // Merge initial search engine data from Sync and push any local changes up
-  // to Sync. This may send notifications if local search engines are added,
-  // updated or removed.
-  std::optional<syncer::ModelError> MergeDataAndStartSyncing(
-      syncer::DataType type,
-      const syncer::SyncDataList& initial_sync_data,
-      std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) override;
-  void StopSyncing(syncer::DataType type) override;
-  void OnBrowserShutdown(syncer::DataType type) override;
-  base::WeakPtr<SyncableService> AsWeakPtr() override;
-  std::string GetClientTag(
-      const syncer::EntityData& entity_data) const override;
-
-  // Processes a TemplateURL change for Sync. `turl` is the TemplateURL
-  // that has been modified, and `type` is the Sync ChangeType that took place.
-  // This may send a new SyncChange to the cloud. If our model has not yet been
-  // associated with Sync, or if this is triggered by a Sync change, then this
-  // does nothing. In case local and account data are kept separate, this copies
-  // the current active value, over to both the local and the account data,
-  // thereby dual-writing the the template url upon change.
-  void ProcessTemplateURLChange(const base::Location& from_here,
-                                TemplateURL* turl,
-                                syncer::SyncChange::SyncChangeType type);
-
   // Returns a SearchTermsData which can be used to call TemplateURL methods.
   const SearchTermsData& search_terms_data() const {
     return *search_terms_data_;
@@ -651,34 +604,6 @@ class TemplateURLService final : public WebDataServiceConsumer,
   // Clears the session token. Should be called when the user clears browsing
   // data.
   void ClearSessionToken();
-
-  // Returns a SyncData with a sync representation of the search engine data
-  // from `data`.
-  static syncer::SyncData CreateSyncDataFromTemplateURLData(
-      const TemplateURLData& data);
-
-  // Creates a new heap-allocated TemplateURL* which is populated by overlaying
-  // |sync_data| atop |existing_turl|.  |existing_turl| may be NULL; if not it
-  // remains unmodified.  The caller owns the returned TemplateURL*.
-  //
-  // If the created TemplateURL is migrated in some way from out-of-date sync
-  // data, an appropriate SyncChange is added to |change_list|.  If the sync
-  // data is bad for some reason, an ACTION_DELETE change is added and the
-  // function returns NULL.
-  // `search_engine_choice_service` is used to obtain the country code (for the
-  // list of prepopulated engines).
-  static std::unique_ptr<TemplateURL>
-  CreateTemplateURLFromTemplateURLAndSyncData(
-      TemplateURLServiceClient* client,
-      const TemplateURLPrepopulateData::Resolver& prepopulate_data_resolver,
-      const SearchTermsData& search_terms_data,
-      const TemplateURL* existing_turl,
-      const syncer::SyncData& sync_data,
-      syncer::SyncChangeList* change_list);
-
-  // Returns a map mapping Sync GUIDs to pointers to syncer::SyncData.
-  static SyncDataMap CreateGUIDToSyncDataMap(
-      const syncer::SyncDataList& sync_data);
 
 #if defined(UNIT_TEST)
   void set_clock(std::unique_ptr<base::Clock> clock) {
@@ -906,26 +831,6 @@ class TemplateURLService final : public WebDataServiceConsumer,
   // to the database. This does not notify observers.
   void ResetTemplateURLGUID(TemplateURL* url, const std::string& guid);
 
-  // Adds |sync_turl| into the local model, possibly removing or updating a
-  // local TemplateURL to make room for it. This expects |sync_turl| to be a new
-  // entry from Sync, not currently known to the local model. |sync_data| should
-  // be a SyncDataMap where the contents are entries initially known to Sync
-  // during MergeDataAndStartSyncing.
-  // Any necessary updates to Sync will be appended to |change_list|. This can
-  // include updates on local TemplateURLs, if they are found in |sync_data|.
-  // |initial_data| should be a SyncDataMap of the entries known to the local
-  // model during MergeDataAndStartSyncing. If |sync_turl| replaces a local
-  // entry, that entry is removed from |initial_data| to prevent it from being
-  // sent up to Sync.
-  // This should only be called from MergeDataAndStartSyncing.
-  void MergeInSyncTemplateURL(TemplateURL* sync_turl,
-                              const SyncDataMap& sync_data,
-                              syncer::SyncChangeList* change_list,
-                              SyncDataMap* local_data);
-
-  // Goes through a vector of TemplateURLs and ensure that both the in-memory
-  // and database copies have valid sync_guids. This is to fix crbug.com/102038,
-  // where old entries were being pushed to Sync without a sync_guid.
   void PatchMissingSyncGUIDs(OwnedTemplateURLVector* template_urls);
 
   // Called when `kSyncedDefaultSearchProviderGUID` or
@@ -1075,29 +980,9 @@ class TemplateURLService final : public WebDataServiceConsumer,
   // Used to retrieve the current time, in base::Time units.
   std::unique_ptr<base::Clock> clock_ = std::make_unique<base::DefaultClock>();
 
-  // Do we have an active association between the TemplateURLs and sync models?
-  // Set in MergeDataAndStartSyncing, reset in StopSyncing. While this is not
-  // set, we ignore any local search engine changes (when we start syncing we
-  // will look up the most recent values anyways).
-  bool models_associated_ = false;
-
-  // Whether we're currently processing changes from the syncer. While this is
-  // true, we ignore any local search engine changes, since we triggered them.
-  bool processing_syncer_changes_ = false;
-
   // We never want reentrancy while applying a default search engine change.
   // This can happen when deleting keyword conflicts. crbug.com/1031506
   bool applying_default_search_engine_change_ = false;
-
-  // Sync's syncer::SyncChange handler. We push all our changes through this.
-  std::unique_ptr<syncer::SyncChangeProcessor> sync_processor_;
-
-  // A set of sync GUIDs denoting TemplateURLs that have been removed from this
-  // model or the underlying KeywordWebDataService prior to
-  // MergeDataAndStartSyncing.
-  // This set is used to determine what entries from the server we want to
-  // ignore locally and return a delete command for.
-  std::set<std::string> pre_sync_deletes_;
 
   // This is used to log the origin of changes to the default search provider.
   // We set this value to increasingly specific values when we know what is the
@@ -1106,9 +991,6 @@ class TemplateURLService final : public WebDataServiceConsumer,
 
   // Stores a list of callbacks to be run after TemplateURLService has loaded.
   base::OnceClosureList on_loaded_callbacks_;
-
-  // Similar to |on_loaded_callbacks_| but used for WaitUntilReadyToSync().
-  base::OnceClosure on_loaded_callback_for_sync_;
 
   // Helper class to manage the default search engine.
   DefaultSearchManager default_search_manager_;

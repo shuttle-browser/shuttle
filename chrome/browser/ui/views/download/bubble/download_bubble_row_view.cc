@@ -290,23 +290,6 @@ void DownloadBubbleRowView::SetIcon() {
     return;
   }
 
-  // For downloads in guest sessions.
-  if (info_->model()->profile() &&
-      info_->model()->profile()->IsGuestSession()) {
-    if (last_overridden_icon_ == &(features::IsRoundedIconsEnabled()
-                                       ? kAccountCircleIcon
-                                       : kUserAccountAvatarOldIcon)) {
-      return;
-    }
-    last_overridden_icon_ =
-        &(features::IsRoundedIconsEnabled() ? kAccountCircleIcon
-                                            : kUserAccountAvatarOldIcon);
-    has_default_icon_ = false;
-    SetIconFromImageModel(profiles::GetGuestAvatar(
-        GetLayoutConstant(LayoutConstant::kDownloadIconSize)));
-    return;
-  }
-
   last_overridden_icon_ = nullptr;
 
   if (file_type_icon_set || has_default_icon_) {

@@ -37,8 +37,7 @@
 
 bool NewTabUIConfig::IsWebUIEnabled(content::BrowserContext* browser_context) {
   // Agent Chrome: chrome://newtab/ is never rewritten, so NewTabUI serves the
-  // New Tab page for every profile type (normal, incognito, guest, isolated
-  // and non-primary OTR). Regular profiles get a blank page.
+  // New Tab page. Regular profiles get a blank page.
   return true;
 }
 
@@ -64,17 +63,9 @@ const char* GetHtmlTextDirection(const std::u16string& text) {
 NewTabUI::NewTabUI(content::WebUI* web_ui) : content::WebUIController(web_ui) {
   Profile* profile = GetProfile();
 
-  // The title should be "New Tab" for regular mode and guest mode, while it
-  // should be "New Incognito Tab" for incognito mode.
-  const int title_resource_id =
-      profile->IsOffTheRecord() && !profile->IsGuestSession()
-          ? IDS_NEW_INCOGNITO_TAB_TITLE
-          : IDS_NEW_TAB_TITLE;
-  web_ui->OverrideTitle(l10n_util::GetStringUTF16(title_resource_id));
+  web_ui->OverrideTitle(l10n_util::GetStringUTF16(IDS_NEW_TAB_TITLE));
 
-  if (!profile->IsGuestSession()) {
-    web_ui->AddMessageHandler(std::make_unique<ThemeHandler>());
-  }
+  web_ui->AddMessageHandler(std::make_unique<ThemeHandler>());
 
   // content::URLDataSource assumes the ownership of the html source.
   content::URLDataSource::Add(profile, std::make_unique<NewTabHTMLSource>(

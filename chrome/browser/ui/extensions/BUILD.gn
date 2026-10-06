@@ -56,7 +56,6 @@ source_set("extensions") {
     "settings_overridden_dialog.h",
     "settings_overridden_dialog_controller.h",
     "settings_overridden_params_providers.h",
-    "upload_extension_to_account_dialog.h",
   ]
 
   public_deps = []
@@ -168,7 +167,6 @@ source_set("impl") {
     "settings_overridden_dialog.cc",
     "settings_overridden_dialog_controller.cc",
     "settings_overridden_params_providers.cc",
-    "upload_extension_to_account_dialog.cc",
   ]
   deps = [
     ":extension_post_install_dialog",

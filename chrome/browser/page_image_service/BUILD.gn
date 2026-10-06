@@ -17,7 +17,6 @@ source_set("page_image_service") {
     "//chrome/browser/autocomplete",
     "//chrome/browser/optimization_guide",
     "//chrome/browser/search_engines",
-    "//chrome/browser/sync",
     "//components/page_image_service",
   ]
 }

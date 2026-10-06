@@ -52,7 +52,6 @@ class ChromeProcessManagerDelegate : public ProcessManagerDelegate,
   void OnProfileManagerDestroying() override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record_profile) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   void StartTearDown();

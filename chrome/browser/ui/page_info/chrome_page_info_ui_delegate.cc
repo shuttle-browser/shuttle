@@ -93,9 +93,7 @@ std::u16string ChromePageInfoUiDelegate::GetAutomaticallyBlockedReason(
     case ContentSettingsType::WEB_APP_INSTALLATION: {
       if (GetProfile()->IsOffTheRecord()) {
         return l10n_util::GetStringUTF16(
-            GetProfile()->IsGuestSession()
-                ? IDS_PAGE_INFO_STATE_TEXT_NOT_ALLOWED_IN_GUEST
-                : IDS_PAGE_INFO_STATE_TEXT_NOT_ALLOWED_IN_INCOGNITO);
+            IDS_PAGE_INFO_STATE_TEXT_NOT_ALLOWED_IN_INCOGNITO);
       }
       break;
     }
@@ -151,10 +149,6 @@ bool ChromePageInfoUiDelegate::ShouldShowAsk(ContentSettingsType type) {
 #if !BUILDFLAG(IS_ANDROID)
 bool ChromePageInfoUiDelegate::ShouldShowSiteSettings(int* link_text_id,
                                                       int* tooltip_text_id) {
-  if (GetProfile()->IsGuestSession()) {
-    return false;
-  }
-
   *link_text_id = IDS_PAGE_INFO_SITE_SETTINGS_LINK;
   *tooltip_text_id = IDS_PAGE_INFO_SITE_SETTINGS_TOOLTIP;
 

@@ -44,19 +44,16 @@ base::FilePath GetDefaultProfileDir(const base::FilePath& user_data_dir);
 // Register multi-profile related preferences in Local State.
 void RegisterPrefs(PrefRegistrySimple* registry);
 
-// Sets the last used profile pref to |profile_dir|, unless |profile_dir| is the
-// System Profile directory, which is an invalid last used profile.
+// Sets the last used profile pref to |profile_dir|.
 void SetLastUsedProfile(const base::FilePath& profile_dir);
 
 // Returns true if the profile is a regular profile and specifically not an Ash
-// internal profile. Callers who do not care about checking for Ash internal
-// profiles should use `Profile::IsRegularProfile()` instead.
+// internal profile.
 bool IsRegularUserProfile(Profile* profile);
 
 #if !BUILDFLAG(IS_ANDROID)
-// Returns the display name of the specified on-the-record profile (or guest),
-// specified by |profile_path|, used in the avatar button or user manager. If
-// |profile_path| is the guest path, it will return IDS_GUEST_PROFILE_NAME. If
+// Returns the display name of the profile specified by |profile_path|, used in
+// the avatar button or user manager. If
 // there is only one local profile present, it will return
 // IDS_SINGLE_PROFILE_DISPLAY_NAME, unless the profile has a user entered
 // custom name.
@@ -72,29 +69,9 @@ void UpdateProfileName(Profile* profile,
 
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
-// Returns whether the |browser|'s profile is not incognito (a regular profile
-// or a guest session).
-// The distinction is needed because guest profiles and incognito profiles are
-// implemented as off-the-record profiles.
+// Returns whether the |browser|'s profile is not incognito. Always true: there
+// are no incognito profiles.
 bool IsRegularOrGuestSession(const BrowserWindowInterface* browser);
-
-// Returns true if starting in guest mode is requested at startup (e.g. through
-// command line argument). If |show_warning| is true, send a warning if guest
-// mode is requested but not allowed by policy.
-bool IsGuestModeRequested(const base::CommandLine& command_line,
-                          PrefService* local_state,
-                          bool show_warning);
-
-// Returns true if profile creation is allowed by prefs.
-bool IsProfileCreationAllowed();
-
-// Returns true if guest mode is allowed by prefs, for an entry point not
-// associated with a specific profile.
-bool IsGuestModeEnabled();
-
-// Returns true if guest mode is allowed by prefs, for an entry point that is
-// associated with |profile|.
-bool IsGuestModeEnabled(const Profile& profile);
 
 // Returns true if sign in is required to browse as this profile.  Call with
 // profile->GetPath() if you have a profile pointer.

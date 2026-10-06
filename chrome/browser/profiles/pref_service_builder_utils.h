@@ -26,9 +26,7 @@ class PolicyService;
 class ChromeBrowserPolicyConnector;
 }  // namespace policy
 
-namespace sync_preferences {
-class PrefServiceSyncable;
-}
+class PrefService;
 
 namespace user_prefs {
 class PrefRegistrySyncable;
@@ -55,7 +53,7 @@ void RegisterProfilePrefs(bool is_signin_profile,
                           user_prefs::PrefRegistrySyncable* pref_registry);
 
 // Creates the PrefService.
-std::unique_ptr<sync_preferences::PrefServiceSyncable> CreateProfilePrefService(
+std::unique_ptr<PrefService> CreateProfilePrefService(
     scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry,
     scoped_refptr<PrefStore> extension_pref_store,
     policy::PolicyService* policy_service,

@@ -8,8 +8,6 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/sync/sync_service_factory.h"
-#include "components/safe_browsing/core/browser/sync/safe_browsing_sync_observer_impl.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
 #include "content/public/browser/browser_context.h"
 
@@ -40,7 +38,6 @@ VerdictCacheManagerFactory::VerdictCacheManagerFactory()
               .Build()) {
   DependsOn(HistoryServiceFactory::GetInstance());
   DependsOn(HostContentSettingsMapFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
 }
 
 std::unique_ptr<KeyedService>
@@ -51,9 +48,7 @@ VerdictCacheManagerFactory::BuildServiceInstanceForBrowserContext(
       HistoryServiceFactory::GetForProfile(profile,
                                            ServiceAccessType::EXPLICIT_ACCESS),
       HostContentSettingsMapFactory::GetForProfile(profile),
-      profile->GetPrefs(),
-      std::make_unique<SafeBrowsingSyncObserverImpl>(
-          SyncServiceFactory::GetForProfile(profile)));
+      profile->GetPrefs());
 }
 
 }  // namespace safe_browsing

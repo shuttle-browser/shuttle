@@ -201,11 +201,6 @@ void DownloadProtectionObserver::OnProfileAdded(Profile* profile) {
           profile->GetProfileKey()));
 }
 
-void DownloadProtectionObserver::OnOffTheRecordProfileCreated(
-    Profile* off_the_record) {
-  OnProfileAdded(off_the_record);
-}
-
 void DownloadProtectionObserver::OnProfileWillBeDestroyed(Profile* profile) {
   observed_profiles_.RemoveObservation(profile);
 }

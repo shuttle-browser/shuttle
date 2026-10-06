@@ -253,7 +253,6 @@ dictionary ExtensionInfo {
   required boolean showAccessRequestsInToolbar;
   boolean pinnedToToolbar;
   required boolean isAffectedByMV2Deprecation;
-  required boolean canUploadAsAccountExtension;
 };
 
 dictionary ProfileInfo {
@@ -793,12 +792,6 @@ interface DeveloperPrivate {
   // Dismisses the menu notification for the extensions module in Safety Hub
   // if one is active.
   static undefined dismissSafetyHubExtensionsMenuNotification();
-
-  // Uploads an extension to the signed in user's account and returns whether
-  // the extension is actually uploaded in `callback`. If the extension is not
-  // eligible for upload or if there is no signed in user, returns an error.
-  // |PromiseValue|: result
-  static Promise<boolean> uploadExtensionToAccount(DOMString extensionId);
 
   // Shows the site settings for the extension.
   [platforms=("desktop_android")]

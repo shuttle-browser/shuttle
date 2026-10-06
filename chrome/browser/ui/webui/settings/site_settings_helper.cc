@@ -1395,19 +1395,6 @@ base::ListValue GetChooserExceptionListFromProfile(
   std::vector<std::unique_ptr<permissions::ObjectPermissionContextBase::Object>>
       objects = chooser_context->GetAllGrantedObjects();
 
-  if (profile->HasPrimaryOTRProfile()) {
-    Profile* incognito_profile =
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-    permissions::ObjectPermissionContextBase* incognito_chooser_context =
-        chooser_type.get_context(incognito_profile);
-    std::vector<
-        std::unique_ptr<permissions::ObjectPermissionContextBase::Object>>
-        incognito_objects = incognito_chooser_context->GetAllGrantedObjects();
-    objects.insert(objects.end(),
-                   std::make_move_iterator(incognito_objects.begin()),
-                   std::make_move_iterator(incognito_objects.end()));
-  }
-
   // Maps from a chooser exception name/object pair to a
   // ChooserExceptionDetails. This will group and sort the exceptions by the UI
   // string and object for display.

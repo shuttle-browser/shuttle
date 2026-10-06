@@ -11,7 +11,6 @@
 
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_metrics.h"
-#include "components/signin/public/identity_manager/token_binding_info.h"
 
 namespace signin_metrics {
 enum class SourceForRefreshTokenOperation;
@@ -45,8 +44,7 @@ class AccountsMutator {
       const std::string& refresh_token,
       bool is_under_advanced_protection,
       std::optional<signin_metrics::AccessPoint> access_point,
-      signin_metrics::SourceForRefreshTokenOperation source,
-      const TokenBindingInfo& info = {}) = 0;
+      signin_metrics::SourceForRefreshTokenOperation source) = 0;
 
   // Updates the information about account identified by |account_id|.
   // If kUnknown is passed, the attribute is not updated.

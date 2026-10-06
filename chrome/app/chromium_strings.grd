@@ -1337,10 +1337,6 @@ Chromium is unable to recover your settings.
         Chromium needs Bluetooth access to explore &#10; Bluetooth devices. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
       </message>
 
-      <!-- Tailored Security -->
-      <message name="IDS_TAILORED_SECURITY_UNCONSENTED_PROMOTION_NOTIFICATION_TITLE" desc="Title of notification prompting the user to enable Enhanced Safe Browsing after they have enabled account-level protections.">
-        Get Chromium's strongest security
-      </message>
 
       <!--Launch On Startup-->
       <if expr="is_win">

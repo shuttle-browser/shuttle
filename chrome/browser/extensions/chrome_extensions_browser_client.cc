@@ -315,13 +315,13 @@ bool ChromeExtensionsBrowserClient::IsSameContext(
 
 bool ChromeExtensionsBrowserClient::HasOffTheRecordContext(
     content::BrowserContext* context) {
-  return static_cast<Profile*>(context)->HasPrimaryOTRProfile();
+  return false;
 }
 
 content::BrowserContext* ChromeExtensionsBrowserClient::GetOffTheRecordContext(
     content::BrowserContext* context) {
-  return static_cast<Profile*>(context)->GetPrimaryOTRProfile(
-      /*create_if_needed=*/true);
+  // There are no off the record contexts.
+  return nullptr;
 }
 
 content::BrowserContext* ChromeExtensionsBrowserClient::GetOriginalContext(
@@ -394,29 +394,22 @@ bool ChromeExtensionsBrowserClient::IsActiveContext(
 }
 #endif
 
-bool ChromeExtensionsBrowserClient::IsGuestSession(
-    content::BrowserContext* context) const {
-  return static_cast<Profile*>(context)->IsGuestSession();
-}
-
 bool ChromeExtensionsBrowserClient::IsExtensionIncognitoEnabled(
     const ExtensionId& extension_id,
     content::BrowserContext* context) const {
-  return IsGuestSession(context) ||
-         util::IsIncognitoEnabled(extension_id, context);
+  return util::IsIncognitoEnabled(extension_id, context);
 }
 
 bool ChromeExtensionsBrowserClient::IsExtensionIncognitoEnabled(
     const Extension* extension,
     content::BrowserContext* context) const {
-  return IsGuestSession(context) ||
-         util::IsIncognitoEnabled(extension, context);
+  return util::IsIncognitoEnabled(extension, context);
 }
 
 bool ChromeExtensionsBrowserClient::CanExtensionCrossIncognito(
     const Extension* extension,
     content::BrowserContext* context) const {
-  return IsGuestSession(context) || util::CanCrossIncognito(extension, context);
+  return util::CanCrossIncognito(extension, context);
 }
 
 base::FilePath ChromeExtensionsBrowserClient::GetBundleResourcePath(

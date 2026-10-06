@@ -52,7 +52,6 @@ group("resources") {
       "side_panel/history:resources",
       "side_panel/history_clusters:resources",
       "side_panel/read_anything:resources",
-      "side_panel/reading_list:resources",
       "side_panel/shared:resources",
       "tab_group_home:resources",
       "webnn_internals:resources",
@@ -164,7 +163,6 @@ group("resources") {
 if (enable_webui_generate_code_cache) {
   group("code_cache_resources") {
     public_deps = [
-      "side_panel/reading_list:code_cache_resources",
       "side_panel/shared:code_cache_resources",
       "webui_toolbar:code_cache_resources",
     ]

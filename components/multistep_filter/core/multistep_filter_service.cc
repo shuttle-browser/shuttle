@@ -31,9 +31,6 @@
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/tribool.h"
-#include "components/sync/base/user_selectable_type.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "components/unified_consent/url_keyed_data_collection_consent_helper.h"
 #include "url/gurl.h"
 
@@ -73,8 +70,7 @@ MultistepFilterService::MultistepFilterService(Params params)
       identity_manager_(CHECK_DEREF(params.identity_manager)),
       consent_helper_(std::move(params.consent_helper)),
       log_router_(params.log_router),
-      pref_service_(CHECK_DEREF(params.pref_service)),
-      sync_service_(params.sync_service) {
+      pref_service_(CHECK_DEREF(params.pref_service)) {
   CHECK(annotation_index_client_);
   CHECK(filter_store_);
 
@@ -122,7 +118,7 @@ AccountState MultistepFilterService::GetAccountState() const {
 ConsentState MultistepFilterService::GetConsentState() const {
   ConsentState state;
   state.is_msbb_enabled = IsUrlKeyedDataCollectionEnabled();
-  state.is_history_sync_enabled = IsHistorySyncEnabled();
+  // History sync does not exist: `is_history_sync_enabled` stays false.
   return state;
 }
 
@@ -170,12 +166,6 @@ bool MultistepFilterService::IsUserSignedIn() const {
 
 bool MultistepFilterService::IsUrlKeyedDataCollectionEnabled() const {
   return consent_helper_ && consent_helper_->IsEnabled();
-}
-
-bool MultistepFilterService::IsHistorySyncEnabled() const {
-  return sync_service_ &&
-         sync_service_->GetUserSettings()->GetSelectedTypes().Has(
-             syncer::UserSelectableType::kHistory);
 }
 
 void MultistepFilterService::OnHistoryDeletions(

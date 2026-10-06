@@ -9,7 +9,6 @@
 #include "chrome/browser/extensions/commands/command_service.h"
 #include "chrome/browser/extensions/error_console/error_console_factory.h"
 #include "chrome/browser/extensions/extension_management.h"
-#include "chrome/browser/extensions/sync/account_extension_tracker.h"
 #include "extensions/browser/event_router_factory.h"
 #include "extensions/browser/extension_prefs_factory.h"
 #include "extensions/browser/extension_registry_factory.h"
@@ -75,7 +74,6 @@ void BrowserContextKeyedAPIFactory<
     DeveloperPrivateAPI>::DeclareFactoryDependencies() {
   // Keep this in sync with observers DeveloperPrivateEventRouterShared
   // implements.
-  DependsOn(AccountExtensionTracker::GetFactory());
   DependsOn(ExtensionRegistryFactory::GetInstance());
   DependsOn(ErrorConsoleFactory::GetInstance());
   DependsOn(ProcessManagerFactory::GetInstance());

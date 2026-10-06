@@ -13,7 +13,6 @@
 #include "chrome/browser/extensions/api/permissions/permissions_event_router_factory.h"
 #include "chrome/browser/extensions/api/preference/preference_api.h"
 #include "chrome/browser/extensions/api/processes/processes_api.h"
-#include "chrome/browser/extensions/api/reading_list/reading_list_event_router_factory.h"
 #include "chrome/browser/extensions/api/sessions/sessions_api.h"
 #include "chrome/browser/extensions/api/tab_capture/tab_capture_registry.h"
 #include "chrome/browser/extensions/api/tab_groups/tab_groups_event_router_factory.h"
@@ -82,7 +81,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::PermissionsEventRouterFactory::GetInstance();
   extensions::PreferenceAPI::GetFactoryInstance();
   extensions::ProcessesAPI::GetFactoryInstance();
-  extensions::ReadingListEventRouterFactory::GetInstance();
   extensions::SessionsAPI::GetFactoryInstance();
   extensions::TabCaptureRegistry::GetFactoryInstance();
   extensions::TabGroupsEventRouterFactory::GetInstance();

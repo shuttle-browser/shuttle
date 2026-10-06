@@ -540,27 +540,4 @@ void CloseAllBrowsersWithProfile(
                                profile->GetPath(), skip_beforeunload);
 }
 
-void CloseAllBrowsersWithIncognitoProfile(Profile* profile,
-                                          bool skip_beforeunload) {
-  CHECK(profile->IsOffTheRecord());
-
-  // If any matching browser is devtools, we can't skip beforeunload.
-  if (skip_beforeunload) {
-    GlobalBrowserCollection::GetInstance()->ForEach(
-        [profile, &skip_beforeunload](BrowserWindowInterface* browser) {
-          if (browser->GetProfile() == profile &&
-              browser->GetType() ==
-                  BrowserWindowInterface::Type::TYPE_DEVTOOLS) {
-            skip_beforeunload = false;
-            return false;
-          }
-          return true;
-        });
-  }
-
-  TryToCloseBrowsersForProfile(profile, /*match_original_profile=*/false,
-                               base::NullCallback(), base::NullCallback(),
-                               profile->GetPath(), skip_beforeunload);
-}
-
 }  // namespace chrome

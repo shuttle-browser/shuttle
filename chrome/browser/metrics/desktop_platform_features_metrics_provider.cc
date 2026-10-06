@@ -12,13 +12,11 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
-#include "components/reading_list/core/reading_list_model.h"
 #include "ui/base/base_window.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
@@ -62,17 +60,6 @@ void DesktopPlatformFeaturesMetricsProvider::ProvideCurrentSessionData(
   base::UmaHistogramBoolean(
       "Browser.OverlayScrollbarsEnabled",
       ui::OsSettingsProvider::Get().PrefersOverlayScrollbars());
-
-  // Record how many items are in the reading list.
-  std::vector<Profile*> profiles =
-      g_browser_process->profile_manager()->GetLoadedProfiles();
-  for (Profile* profile : profiles) {
-    ReadingListModel* model =
-        ReadingListModelFactory::GetForBrowserContext(profile);
-    if (model) {
-      model->RecordCountMetricsOnUMAUpload();
-    }
-  }
 
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
       [](BrowserWindowInterface* browser) {

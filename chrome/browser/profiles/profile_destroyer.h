@@ -32,24 +32,6 @@ class ProfileDestroyer : public content::RenderProcessHostObserver {
   // prevent the timeout from firing prematurely.
   static void SetDestroyProfileTimeoutForTesting(base::TimeDelta timeout);
 
-  // Destroys the given off-the-record profile either instantly, or after a
-  // short delay waiting for dependent renderer process hosts to destroy.
-  // `profile` should not be used after this call.
-  //
-  // OTR profiles are owned by their parent profile - the parent profile is
-  // responsible for actually destroying the object.
-  static void DestroyOTRProfileWhenAppropriate(Profile* profile);
-
-  // Similar to DestroyOTRProfileWhenAppropriate(), but with an explicit
-  // timeout to wait for the renderer host to be destroyed.
-  static void DestroyOTRProfileWhenAppropriateWithTimeout(
-      Profile* profile,
-      base::TimeDelta timeout);
-
-  // Force destroy |profile| immediately without waiting for dependent renderer
-  // process hosts to be destroyed.
-  static void DestroyOTRProfileImmediately(Profile* profile);
-
   // Force destroy all the profiles pending deletion. This is called by the
   // ProfileManager during shutdown.
   static void DestroyPendingProfilesForShutdown();
@@ -68,10 +50,6 @@ class ProfileDestroyer : public content::RenderProcessHostObserver {
 
   // Destroys an Original (non-off-the-record) profile immediately.
   static void DestroyOriginalProfileNow(std::unique_ptr<Profile> profile);
-
-  // Destroys an OffTheRecord profile immediately and removes it from all
-  // pending destroyers.
-  static void DestroyOffTheRecordProfileNow(Profile* profile);
 
   // Fetch the list of render process hosts that still point to |profile_ptr|.
   // |profile_ptr| is a void* because the Profile object may be freed. Only

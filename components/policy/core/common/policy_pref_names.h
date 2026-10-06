@@ -10,22 +10,6 @@
 
 namespace policy {
 
-// Possible values for Incognito mode availability. Please, do not change
-// the order of entries since numeric values are exposed to users.
-enum class IncognitoModeAvailability {
-  // Incognito mode enabled. Users may open pages in both Incognito mode and
-  // normal mode (usually the default behaviour).
-  kEnabled = 0,
-  // Incognito mode disabled. Users may not open pages in Incognito mode.
-  // Only normal mode is available for browsing.
-  kDisabled,
-  // Incognito mode forced. Users may open pages *ONLY* in Incognito mode.
-  // Normal mode is not available for browsing.
-  kForced,
-
-  kNumTypes
-};
-
 // The enum cocorresponding to the type of download restriction.
 enum class DownloadRestriction {
   NONE = 0,
@@ -140,10 +124,6 @@ inline constexpr char kLastPolicyCheckTime[] = "policy.last_policy_check_time";
 #if BUILDFLAG(IS_IOS)
 inline constexpr char kUserPolicyNotificationWasShown[] =
     "policy.user_policy_notification_was_shown";
-
-// A bool for storing whether the user has seen the sync disabled alert since
-// sync was disabled.
-inline constexpr char kSyncDisabledAlertShown[] = "sync.disabled_alert_shown";
 #endif
 
 // Boolean controlling whether SafeSearch is mandatory for Google Web Searches.
@@ -158,13 +138,6 @@ inline constexpr char kForceYouTubeRestrict[] =
 // A boolean pref set to true if the Chrome Web Store icons should be hidden
 // from the New Tab Page and app launcher.
 inline constexpr char kHideWebStoreIcon[] = "hide_web_store_icon";
-
-// Enum that specifies whether Incognito mode is:
-// 0 - Enabled. Default behaviour. Default mode is available on demand.
-// 1 - Disabled. User cannot browse pages in Incognito mode.
-// 2 - Forced. All pages/sessions are forced into Incognito.
-inline constexpr char kIncognitoModeAvailability[] =
-    "incognito.mode_availability";
 
 // Enables the newly-specified behavior of the CSS "zoom" property.
 inline constexpr char kStandardizedBrowserZoomEnabled[] =

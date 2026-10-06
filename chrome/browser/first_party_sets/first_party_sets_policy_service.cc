@@ -45,8 +45,7 @@ network::mojom::FirstPartySetsReadyEventPtr MakeReadyEvent(
 }
 
 ServiceState GetServiceState(Profile* profile, bool pref_enabled) {
-  if (profile->IsSystemProfile() || profile->IsGuestSession() ||
-      profile->IsOffTheRecord()) {
+  if (profile->IsOffTheRecord()) {
     return ServiceState::kPermanentlyDisabled;
   }
   if (base::FeatureList::IsEnabled(
@@ -91,13 +90,6 @@ void FirstPartySetsPolicyService::Init() {
 
   if (service_state_ == ServiceState::kPermanentlyDisabled ||
       service_state_ == ServiceState::kDisabled) {
-    OnReadyToNotifyDelegates(net::FirstPartySetsCacheFilter());
-    return;
-  }
-
-  if (!profile->IsRegularProfile() || profile->IsGuestSession()) {
-    // TODO(crbug.com/40233408): regular profiles and guest sessions
-    // aren't mutually exclusive on ChromeOS.
     OnReadyToNotifyDelegates(net::FirstPartySetsCacheFilter());
     return;
   }
@@ -190,9 +182,6 @@ void FirstPartySetsPolicyService::OnRelatedWebsiteSetsEnabledChanged(
   // Clear all the existing permission decisions that were made by FPS, since
   // the enabled/disabled state of FPS has now changed.
   ClearContentSettings(profile);
-  for (Profile* otr_profile : profile->GetAllOffTheRecordProfiles()) {
-    ClearContentSettings(otr_profile);
-  }
 }
 
 void FirstPartySetsPolicyService::ClearContentSettings(Profile* profile) const {

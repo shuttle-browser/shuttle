@@ -1,8 +1,0 @@
-include_rules = [
-  "+chrome/browser/profiles",
-  "+chrome/browser/sync",
-  "+components/account_settings",
-  "+components/keyed_service/core",
-  "+components/sync/base",
-  "+components/sync/model",
-]

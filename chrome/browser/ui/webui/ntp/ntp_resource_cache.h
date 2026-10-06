@@ -39,19 +39,14 @@ std::string GetNewTabBackgroundTilingCSS(
 
 // This class keeps a cache of NTP resources (HTML and CSS) so we don't have to
 // regenerate them all the time.
-// Note: This is only used for incognito and guest mode NTPs (NewTabUI), as well
-// as for (non-incognito) app launcher pages (AppLauncherPageUI).
+// Note: Only the regular New Tab page (NewTabUI) is served.
 class NTPResourceCache : public ThemeServiceObserver,
                          public KeyedService,
                          public ui::NativeThemeObserver {
  public:
+  // Incognito, guest and isolated windows no longer exist.
   enum WindowType {
     NORMAL,
-    INCOGNITO,
-    GUEST,
-    ISOLATED,
-    // The OTR profile that is not used for Incognito or Guest windows.
-    NON_PRIMARY_OTR,
   };
 
   explicit NTPResourceCache(Profile* profile);
@@ -61,7 +56,6 @@ class NTPResourceCache : public ThemeServiceObserver,
 
   ~NTPResourceCache() override;
 
-  base::RefCountedMemory* GetNewTabGuestHTML();
   base::RefCountedMemory* GetNewTabHTML(
       WindowType win_type,
       const content::WebContents::Getter& wc_getter);
@@ -86,23 +80,9 @@ class NTPResourceCache : public ThemeServiceObserver,
 
   void CreateNewTabCSS(const content::WebContents::Getter& wc_getter);
 
-  void CreateNewTabIncognitoHTML(const content::WebContents::Getter& wc_getter);
-  void CreateNewTabIncognitoCSS(const content::WebContents::Getter& wc_getter);
-
-  void CreateNewTabIsolatedHTML(const content::WebContents::Getter& wc_getter);
-  void CreateNewTabIsolatedCSS(const content::WebContents::Getter& wc_getter);
-
-  void CreateNewTabGuestHTML();
-
   raw_ptr<Profile> profile_;
 
   scoped_refptr<base::RefCountedMemory> new_tab_css_;
-  scoped_refptr<base::RefCountedMemory> new_tab_guest_html_;
-  scoped_refptr<base::RefCountedMemory> new_tab_incognito_html_;
-  scoped_refptr<base::RefCountedMemory> new_tab_incognito_css_;
-  scoped_refptr<base::RefCountedMemory> new_tab_isolated_html_;
-  scoped_refptr<base::RefCountedMemory> new_tab_isolated_css_;
-  scoped_refptr<base::RefCountedMemory> new_tab_non_primary_otr_html_;
   scoped_refptr<base::RefCountedMemory> new_tab_normal_html_;
 
   base::ScopedObservation<ui::NativeTheme, ui::NativeThemeObserver>

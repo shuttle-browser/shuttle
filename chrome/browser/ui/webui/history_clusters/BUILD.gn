@@ -22,7 +22,6 @@ source_set("history_clusters") {
       "//chrome/app:command_ids",
       "//chrome/browser:primitives",
       "//chrome/browser/search_engines",
-      "//chrome/browser/sync",
       "//chrome/browser/ui:browser_actions",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/profiles",

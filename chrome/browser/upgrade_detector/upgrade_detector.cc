@@ -479,13 +479,6 @@ void UpgradeDetector::TriggerCriticalUpdate() {
 
 void UpgradeDetector::CheckIdle() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // Don't proceed while an off-the-record or Guest window is open. The timer
-  // will still keep firing, so this function will get a chance to re-evaluate
-  // this.
-  if (IsOffTheRecordSessionActive() ||
-      GlobalBrowserCollection::GetInstance()->GetGuestBrowserCount()) {
-    return;
-  }
 
   // CalculateIdleState expects an interval in seconds.
   int idle_time_allowed =

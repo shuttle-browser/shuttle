@@ -24,7 +24,6 @@ class DeviceParentalControlsNoOpImpl : public DeviceParentalControls {
 
   // DeviceParentalControls:
   bool IsWebFilteringEnabled() const override;
-  bool IsIncognitoModeDisabled() const override;
   bool IsSafeSearchForced() const override;
   bool IsEnabled() const override;
   void RegisterDeviceLevelSyntheticFieldTrials(

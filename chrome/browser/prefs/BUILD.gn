@@ -16,9 +16,7 @@ source_set("prefs") {
   sources = [
     "browser_prefs.h",
     "chrome_command_line_pref_store.h",
-    "chrome_pref_model_associator_client.h",
     "chrome_pref_service_factory.h",
-    "incognito_mode_prefs.h",
     "pref_metrics_service.h",
     "profile_pref_store_manager.h",
   ]
@@ -26,10 +24,8 @@ source_set("prefs") {
   public_deps = [
     "//base",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/sync",
     "//components/keyed_service/core",
     "//components/prefs",
-    "//components/sync_preferences",
     "//mojo/public/cpp/bindings",
     "//services/preferences/public/mojom",
     "//third_party/blink/public/mojom:mojom_platform_headers",
@@ -50,9 +46,7 @@ source_set("impl") {
   sources = [
     "browser_prefs.cc",
     "chrome_command_line_pref_store.cc",
-    "chrome_pref_model_associator_client.cc",
     "chrome_pref_service_factory.cc",
-    "incognito_mode_prefs.cc",
     "pref_metrics_service.cc",
     "profile_pref_store_manager.cc",
   ]
@@ -102,7 +96,6 @@ source_set("impl") {
     "//chrome/browser/signin",
     "//chrome/browser/ssl",
     "//chrome/browser/subscription_eligibility",
-    "//chrome/browser/sync",
     "//chrome/browser/task_manager",
     "//chrome/browser/tracing",
     "//chrome/browser/ui:browser_ui_prefs",
@@ -152,7 +145,6 @@ source_set("impl") {
     "//components/pref_registry",
     "//components/privacy_sandbox:privacy_sandbox_prefs",
     "//components/proxy_config",
-    "//components/reading_list/core",
     "//components/regional_capabilities",
     "//components/safe_browsing/core/common",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
@@ -165,7 +157,6 @@ source_set("impl") {
     "//components/subresource_filter/core/common",
     "//components/supervised_user/core/browser",
     "//components/supervised_user/core/browser:device_parental_controls",
-    "//components/sync_preferences",
     "//components/ukm",
     "//components/universal_optout",
     "//components/update_client",
@@ -429,8 +420,6 @@ source_set("impl") {
 # the main target, circular dependency happens as :prefs also depends on that.
 source_set("util") {
   sources = [
-    "pref_service_incognito_allowlist.h",
-    "pref_service_syncable_util.h",
     "session_startup_pref.h",
   ]
 
@@ -444,8 +433,6 @@ source_set("util_impl") {
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 
   sources = [
-    "pref_service_incognito_allowlist.cc",
-    "pref_service_syncable_util.cc",
     "session_startup_pref.cc",
   ]
 
@@ -461,8 +448,6 @@ source_set("util_impl") {
     "//components/metrics:metrics_pref_names",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/reading_list/core",
-    "//components/sync_preferences",
     "//components/ukm",
     "//components/url_formatter",
   ]

@@ -22,7 +22,6 @@
 #include "components/prefs/pref_change_registrar.h"
 #include "components/soda/constants.h"
 #include "components/soda/soda_installer.h"
-#include "components/sync_preferences/pref_service_syncable.h"
 #include "media/base/media_switches.h"
 
 namespace captions {

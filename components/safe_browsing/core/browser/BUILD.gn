@@ -51,7 +51,6 @@ source_set("browser") {
     "//components/prefs",
     "//components/safe_browsing/core/browser:intelligent_scan_delegate",
     "//components/safe_browsing/core/browser:referring_app_info",
-    "//components/safe_browsing/core/browser:sync_observer",
     "//components/safe_browsing/core/browser:token_fetcher",
     "//components/safe_browsing/core/browser/db:database_manager",
     "//components/safe_browsing/core/browser/db:util",
@@ -136,7 +135,6 @@ source_set("verdict_cache_manager") {
     "//components/history/core/browser",
     "//components/keyed_service/core",
     "//components/prefs",
-    "//components/safe_browsing/core/browser:sync_observer",
     "//components/safe_browsing/core/browser/db:v4_protocol_manager_util",
     "//components/safe_browsing/core/common",
     "//components/safe_browsing/core/common/proto:csd_proto",
@@ -154,12 +152,6 @@ source_set("referrer_chain_provider") {
     "//components/safe_browsing/core/common/proto:csd_proto",
     "//components/sessions",
   ]
-}
-
-source_set("sync_observer") {
-  sources = [ "safe_browsing_sync_observer.h" ]
-
-  deps = [ "//base" ]
 }
 
 source_set("token_fetcher") {

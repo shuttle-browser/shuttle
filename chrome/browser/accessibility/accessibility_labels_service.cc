@@ -20,7 +20,7 @@
 #include "components/manta/manta_service.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
-#include "components/sync_preferences/pref_service_syncable.h"
+#include "components/pref_registry/pref_registry_syncable.h"
 #include "components/version_info/channel.h"
 #include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/scoped_accessibility_mode.h"

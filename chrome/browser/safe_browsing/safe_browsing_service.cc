@@ -40,7 +40,6 @@
 #include "chrome/browser/safe_browsing/network_context_service_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_metrics_collector_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
-#include "chrome/browser/safe_browsing/safe_browsing_pref_change_handler.h"
 #include "chrome/browser/safe_browsing/security_settings_bundle_pref_change_handler.h"
 #include "chrome/browser/safe_browsing/services_delegate.h"
 #include "chrome/browser/site_protection/site_familiarity_utils.h"
@@ -373,7 +372,6 @@ void SafeBrowsingServiceImpl::ShutDown() {
   prefs_map_.clear();
   user_population_prefs_.clear();
   min_allowed_time_for_referrer_chains_.clear();
-  pref_change_handlers_map_.clear();
   bundled_settings_pref_change_handlers_map_.clear();
 
   Stop(true);
@@ -638,8 +636,6 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
   }
 
   // Create pref change handler for each profile.
-  pref_change_handlers_map_[profile] =
-      std::make_unique<SafeBrowsingPrefChangeHandler>(profile);
   bundled_settings_pref_change_handlers_map_[profile] =
       std::make_unique<SecuritySettingsBundlePrefChangeHandler>(profile);
 
@@ -684,11 +680,6 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
   }
 }
 
-void SafeBrowsingServiceImpl::OnOffTheRecordProfileCreated(
-    Profile* off_the_record) {
-  CreateServicesForProfile(off_the_record);
-}
-
 void SafeBrowsingServiceImpl::OnProfileWillBeDestroyed(Profile* profile) {
   observed_profiles_.RemoveObservation(profile);
   services_delegate_->RemoveTelemetryService(profile);
@@ -697,7 +688,6 @@ void SafeBrowsingServiceImpl::OnProfileWillBeDestroyed(Profile* profile) {
   PrefService* pref_service = profile->GetPrefs();
   DCHECK(pref_service);
   prefs_map_.erase(pref_service);
-  pref_change_handlers_map_.erase(profile);
   bundled_settings_pref_change_handlers_map_.erase(profile);
   user_population_prefs_.erase(pref_service);
   min_allowed_time_for_referrer_chains_.erase(profile);
@@ -717,11 +707,6 @@ base::CallbackListSubscription SafeBrowsingServiceImpl::RegisterStateCallback(
 void SafeBrowsingServiceImpl::EnhancedProtectionPrefChange(Profile* profile) {
   RefreshState();
   UpdateMinAllowedTimeForReferrerChains(profile);
-  // Get the handler for this profile.
-  auto it = pref_change_handlers_map_.find(profile);
-  if (it != pref_change_handlers_map_.end()) {
-    it->second->MaybeShowEnhancedProtectionSettingChangeNotification();
-  }
 }
 
 void SafeBrowsingServiceImpl::SecuritySettingsBundlePrefChange(

@@ -201,9 +201,6 @@ CrashReportingContext::CrashReportingContext() {
 
 void CrashReportingContext::AddProfile(BrowserCrashEventRouter* router,
                                        Profile* profile) {
-  if (!profile->IsRegularProfile()) {
-    return;
-  }
   active_profiles_[router] = profile;
 }
 

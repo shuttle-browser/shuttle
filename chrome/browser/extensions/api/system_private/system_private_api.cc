@@ -27,14 +27,6 @@
 
 namespace {
 
-// Maps policy::policy_prefs::kIncognitoModeAvailability values (0 = enabled,
-// ...) to strings exposed to extensions.
-constexpr auto kIncognitoModeAvailabilityStrings = std::to_array<const char*>({
-    "enabled",
-    "disabled",
-    "forced",
-});
-
 // Property keys.
 const char kDownloadProgressKey[] = "downloadProgress";
 const char kStateKey[] = "state";
@@ -55,14 +47,8 @@ namespace system_private = api::system_private;
 
 ExtensionFunction::ResponseAction
 SystemPrivateGetIncognitoModeAvailabilityFunction::Run() {
-  PrefService* prefs =
-      Profile::FromBrowserContext(browser_context())->GetPrefs();
-  int value =
-      prefs->GetInteger(policy::policy_prefs::kIncognitoModeAvailability);
-  EXTENSION_FUNCTION_VALIDATE(
-      value >= 0 &&
-      value < static_cast<int>(std::size(kIncognitoModeAvailabilityStrings)));
-  return RespondNow(WithArguments(kIncognitoModeAvailabilityStrings[value]));
+  // Incognito mode is permanently unavailable.
+  return RespondNow(WithArguments("disabled"));
 }
 
 ExtensionFunction::ResponseAction SystemPrivateGetUpdateStatusFunction::Run() {

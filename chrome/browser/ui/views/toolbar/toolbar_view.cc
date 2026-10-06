@@ -338,10 +338,7 @@ void ToolbarView::Init() {
   std::unique_ptr<ExtensionsToolbarDesktop> extensions_container;
   std::unique_ptr<ToolbarDivider> toolbar_divider;
 
-  // Do not create the extensions or browser actions container if it is a guest
-  // profile (only regular and incognito profiles host extensions).
-  if (!browser_->GetProfile()->IsGuestSession() &&
-      !features::IsWebUIExtensionsContainerEnabled()) {
+  if (!features::IsWebUIExtensionsContainerEnabled()) {
     extensions_container = std::make_unique<ExtensionsToolbarDesktop>(browser_);
 
     toolbar_divider = std::make_unique<ToolbarDivider>();

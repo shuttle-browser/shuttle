@@ -24,7 +24,6 @@
 #include "chrome/browser/segmentation_platform/segmentation_platform_config.h"
 #include "chrome/browser/segmentation_platform/segmentation_platform_profile_observer.h"
 #include "chrome/browser/segmentation_platform/ukm_database_client.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/common/chrome_constants.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/segmentation_platform/embedder/home_modules/home_modules_card_registry.h"

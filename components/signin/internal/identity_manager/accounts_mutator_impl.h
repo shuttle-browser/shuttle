@@ -44,8 +44,7 @@ class AccountsMutatorImpl : public AccountsMutator {
       const std::string& refresh_token,
       bool is_under_advanced_protection,
       std::optional<signin_metrics::AccessPoint> access_point,
-      signin_metrics::SourceForRefreshTokenOperation source,
-      const signin::TokenBindingInfo& info = {}) override;
+      signin_metrics::SourceForRefreshTokenOperation source) override;
   void UpdateAccountInfo(const CoreAccountId& account_id,
                          Tribool is_child_account,
                          Tribool is_under_advanced_protection) override;

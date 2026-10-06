@@ -1343,9 +1343,7 @@ void TabStrip::AddTabsAt(const std::vector<AddTabData>& tabs_data) {
                                ? GetBrowserWindowInterface()->GetProfile()
                                : nullptr;
   if (profile) {
-    if (profile->IsGuestSession()) {
-      base::UmaHistogramCounts100("Tab.Count.Guest", GetTabCount());
-    } else if (profile->IsIncognitoProfile()) {
+    if (profile->IsIncognitoProfile()) {
       base::UmaHistogramCounts100("Tab.Count.Incognito", GetTabCount());
     }
   }

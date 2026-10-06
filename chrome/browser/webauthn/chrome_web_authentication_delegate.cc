@@ -234,16 +234,6 @@ void ChromeWebAuthenticationDelegate::
                   return;
                 }
 
-                // Chrome disables platform authenticators in Guest sessions.
-                // They may be available (behind an additional interstitial) in
-                // Incognito mode.
-                Profile* profile =
-                    Profile::FromBrowserContext(browser_context.get());
-                if (profile->IsGuestSession()) {
-                  std::move(callback).Run(false);
-                  return;
-                }
-
                 // The enclave won't allow credentials for an account to be
                 // stored in GPM _in_ that account. So we don't want to tell
                 // accounts.google.com that there is a platform authenticator

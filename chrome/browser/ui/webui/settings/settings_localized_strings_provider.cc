@@ -31,7 +31,6 @@
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/side_panel/side_panel_prefs.h"
@@ -71,10 +70,6 @@
 #include "components/subresource_filter/core/browser/subresource_filter_features.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/supervised_user/core/common/features.h"
-#include "components/sync/base/features.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_service_utils.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "components/zoom/page_zoom_constants.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui_data_source.h"
@@ -204,14 +199,8 @@ void AddCommonStrings(content::WebUIDataSource* html_source, Profile* profile) {
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
-  html_source->AddBoolean(
-      "isGuest",
-#if BUILDFLAG(IS_CHROMEOS)
-      user_manager::UserManager::Get()->IsLoggedInAsGuest() ||
-          user_manager::UserManager::Get()->IsLoggedInAsManagedGuestSession());
-#else
-      profile->IsGuestSession());
-#endif
+  // Guest sessions no longer exist.
+  html_source->AddBoolean("isGuest", false);
 
   html_source->AddBoolean("isChildAccount", profile->IsChild());
 }
@@ -795,29 +784,6 @@ void AddOnStartupStrings(content::WebUIDataSource* html_source) {
 #endif
 }
 
-void AddSignOutDialogStrings(content::WebUIDataSource* html_source,
-                             Profile* profile) {
-  std::string sync_dashboard_url =
-      google_util::AppendGoogleLocaleParam(
-          GURL(base::FeatureList::IsEnabled(
-                   syncer::kSyncEnableNewSyncDashboardUrl)
-                   ? chrome::kNewSyncGoogleDashboardURL
-                   : chrome::kLegacySyncGoogleDashboardURL),
-          g_browser_process->GetApplicationLocale())
-          .spec();
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-  if (profile->IsChild()) {
-    return;
-  }
-#endif
-
-  // Use the non-supervised strings.
-  {
-  }
-}
-
 void AddSyncAccountControlStrings(content::WebUIDataSource* html_source) {
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
       {"turnOnSync",
@@ -906,7 +872,6 @@ void AddPeopleStrings(content::WebUIDataSource* html_source, Profile* profile) {
   // Toggles the Chrome OS Account Manager submenu in the People section.
 #endif
 
-  AddSignOutDialogStrings(html_source, profile);
   AddSyncAccountControlStrings(html_source);
 #if BUILDFLAG(IS_CHROMEOS)
   AddPasswordPromptDialogStrings(html_source);

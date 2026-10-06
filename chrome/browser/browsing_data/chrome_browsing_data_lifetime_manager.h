@@ -16,7 +16,6 @@
 #include "base/time/time.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
-#include "components/sync/base/user_selectable_type.h"
 #include "content/public/browser/browsing_data_remover.h"
 
 namespace content {
@@ -96,12 +95,6 @@ class ChromeBrowsingDataLifetimeManager : public KeyedService {
   std::optional<base::Time> end_time_for_testing_;
   base::WeakPtrFactory<ChromeBrowsingDataLifetimeManager> weak_ptr_factory_{
       this};
-
-  // Checks that the conditions needed to clear the browsing data types are
-  // satisfied. 'sync_types' are checked if neither sync nor
-  // browser sign in are disabled.
-  bool IsConditionSatisfiedForBrowsingDataRemoval(
-      const syncer::UserSelectableTypeSet sync_types);
 };
 
 #endif  // CHROME_BROWSER_BROWSING_DATA_CHROME_BROWSING_DATA_LIFETIME_MANAGER_H_

@@ -8,13 +8,10 @@
 
 #include <utility>
 
-#include "base/functional/bind.h"
-#include "base/task/sequenced_task_runner.h"
-#include "chrome/browser/extensions/api/storage/sync_storage_backend.h"
-#include "chrome/browser/sync/glue/sync_start_util.h"
 #include "components/value_store/value_store_factory.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/api/storage/backend_task_runner.h"
+#include "extensions/browser/api/storage/value_store_util.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/api/storage.h"
 #include "extensions/common/extension.h"
@@ -41,78 +38,53 @@ SettingsStorageQuotaEnforcer::Limits GetSyncQuotaLimits() {
 }  // namespace
 
 SyncValueStoreCache::SyncValueStoreCache(
-    scoped_refptr<value_store::ValueStoreFactory> factory,
-    SettingsChangedCallback observer,
-    const base::FilePath& profile_path)
-    : initialized_(false) {
+    scoped_refptr<value_store::ValueStoreFactory> factory)
+    : storage_factory_(std::move(factory)), quota_(GetSyncQuotaLimits()) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-
-  // This post is safe since the destructor can only be invoked from the
-  // same message loop, and any potential post of a deletion task must come
-  // after the constructor returns.
-  GetBackendTaskRunner()->PostTask(
-      FROM_HERE,
-      base::BindOnce(&SyncValueStoreCache::InitOnBackend,
-                     base::Unretained(this), std::move(factory),
-                     GetSequenceBoundSettingsChangedCallback(
-                         base::SequencedTaskRunner::GetCurrentDefault(),
-                         std::move(observer)),
-                     profile_path));
 }
 
 SyncValueStoreCache::~SyncValueStoreCache() {
   DCHECK(IsOnBackendSequence());
 }
 
-base::WeakPtr<SyncValueStoreCache> SyncValueStoreCache::AsWeakPtr() {
-  return weak_ptr_factory_.GetWeakPtr();
-}
-
-syncer::SyncableService* SyncValueStoreCache::GetSyncableService(
-    syncer::DataType type) {
-  DCHECK(IsOnBackendSequence());
-  DCHECK(initialized_);
-
-  switch (type) {
-    case syncer::APP_SETTINGS:
-      return app_backend_.get();
-    case syncer::EXTENSION_SETTINGS:
-      return extension_backend_.get();
-    default:
-      NOTREACHED();
-  }
-}
-
 void SyncValueStoreCache::RunWithValueStoreForExtension(
     StorageCallback callback,
     scoped_refptr<const Extension> extension) {
   DCHECK(IsOnBackendSequence());
-  DCHECK(initialized_);
-  SyncStorageBackend* backend =
-      extension->is_app() ? app_backend_.get() : extension_backend_.get();
-  std::move(callback).Run(backend->GetStorage(extension->id()));
+  std::move(callback).Run(GetStorage(extension.get()));
 }
 
 void SyncValueStoreCache::DeleteStorageSoon(const ExtensionId& extension_id) {
   DCHECK(IsOnBackendSequence());
-  app_backend_->DeleteStorage(extension_id);
-  extension_backend_->DeleteStorage(extension_id);
+  storage_map_.erase(extension_id);
+
+  value_store_util::DeleteValueStore(settings_namespace::SYNC,
+                                     value_store_util::ModelType::APP,
+                                     extension_id, storage_factory_);
+  value_store_util::DeleteValueStore(settings_namespace::SYNC,
+                                     value_store_util::ModelType::EXTENSION,
+                                     extension_id, storage_factory_);
 }
 
-void SyncValueStoreCache::InitOnBackend(
-    scoped_refptr<value_store::ValueStoreFactory> factory,
-    SequenceBoundSettingsChangedCallback observer,
-    const base::FilePath& profile_path) {
-  DCHECK(IsOnBackendSequence());
-  DCHECK(!initialized_);
-  app_backend_ = std::make_unique<SyncStorageBackend>(
-      factory, GetSyncQuotaLimits(), observer, syncer::APP_SETTINGS,
-      sync_start_util::GetFlareForSyncableService(profile_path));
-  extension_backend_ = std::make_unique<SyncStorageBackend>(
-      std::move(factory), GetSyncQuotaLimits(), std::move(observer),
-      syncer::EXTENSION_SETTINGS,
-      sync_start_util::GetFlareForSyncableService(profile_path));
-  initialized_ = true;
+value_store::ValueStore* SyncValueStoreCache::GetStorage(
+    const Extension* extension) {
+  auto iter = storage_map_.find(extension->id());
+  if (iter != storage_map_.end()) {
+    return iter->second.get();
+  }
+
+  value_store_util::ModelType model_type =
+      extension->is_app() ? value_store_util::ModelType::APP
+                          : value_store_util::ModelType::EXTENSION;
+  std::unique_ptr<value_store::ValueStore> store =
+      value_store_util::CreateSettingsStore(settings_namespace::SYNC,
+                                            model_type, extension->id(),
+                                            storage_factory_);
+  auto storage =
+      std::make_unique<SettingsStorageQuotaEnforcer>(quota_, std::move(store));
+  value_store::ValueStore* storage_ptr = storage.get();
+  storage_map_[extension->id()] = std::move(storage);
+  return storage_ptr;
 }
 
 }  // namespace extensions

@@ -250,33 +250,16 @@ void SafeBrowsingUIHandler::GetSentCSBRRs(const base::ListValue& args) {
 }
 
 void SafeBrowsingUIHandler::GetPGEvents(const base::ListValue& args) {
-  const std::vector<sync_pb::UserEventSpecifics>& events =
-      web_ui_info_singleton()->pg_event_log();
-
-  base::ListValue events_sent;
-
-  for (const sync_pb::UserEventSpecifics& event : events) {
-    events_sent.Append(web_ui::SerializePGEvent(event));
-  }
-
+  // Password protection events were logged from sync user events, which do not
+  // exist in this browser. The page still asks for them, so reply with none.
   DCHECK(!args.empty());
-  const std::string& callback_id = args[0].GetString();
-  ResolveCallback(callback_id, events_sent);
+  ResolveCallback(args[0].GetString(), base::ListValue());
 }
 
 void SafeBrowsingUIHandler::GetSecurityEvents(const base::ListValue& args) {
-  const std::vector<sync_pb::GaiaPasswordReuse>& events =
-      web_ui_info_singleton()->security_event_log();
-
-  base::ListValue events_sent;
-
-  for (const sync_pb::GaiaPasswordReuse& event : events) {
-    events_sent.Append(web_ui::SerializeSecurityEvent(event));
-  }
-
+  // Security events were sync-based as well, see GetPGEvents().
   DCHECK(!args.empty());
-  const std::string& callback_id = args[0].GetString();
-  ResolveCallback(callback_id, events_sent);
+  ResolveCallback(args[0].GetString(), base::ListValue());
 }
 
 void SafeBrowsingUIHandler::GetPGPings(const base::ListValue& args) {

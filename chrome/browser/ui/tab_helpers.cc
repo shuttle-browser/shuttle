@@ -72,7 +72,6 @@
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
 #include "chrome/browser/tab_contents/navigation_metrics_recorder.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
-#include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
@@ -229,8 +228,6 @@
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
-#include "chrome/browser/safe_browsing/tailored_security/tailored_security_service_factory.h"
-#include "chrome/browser/safe_browsing/tailored_security/tailored_security_url_observer.h"
 #include "chrome/browser/safe_browsing/trigger_creator.h"
 #include "components/safe_browsing/content/browser/safe_browsing_tab_observer.h"
 #endif
@@ -442,12 +439,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
       web_contents);
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  if (base::FeatureList::IsEnabled(
-          safe_browsing::kTailoredSecurityIntegration)) {
-    safe_browsing::TailoredSecurityUrlObserver::CreateForWebContents(
-        web_contents,
-        safe_browsing::TailoredSecurityServiceFactory::GetForProfile(profile));
-  }
   if (g_browser_process->safe_browsing_service()) {
     safe_browsing::AsyncCheckTracker::CreateForWebContents(
         web_contents, g_browser_process->safe_browsing_service()->ui_manager(),
@@ -493,7 +484,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
 #if !BUILDFLAG(IS_ANDROID)
   TabCaptureContentsBorderHelper::CreateForWebContents(web_contents);
 #endif  // BUILDFLAG(IS_ANDROID)
-  TrustedVaultEncryptionKeysTabHelper::CreateForWebContents(web_contents);
   ukm::InitializeSourceUrlRecorderForWebContents(web_contents);
   v8_compile_hints::V8CompileHintsTabHelper::MaybeCreateForWebContents(
       web_contents);

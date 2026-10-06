@@ -831,14 +831,6 @@ void SiteSettingsHandler::RegisterMessages() {
 
 void SiteSettingsHandler::OnJavascriptAllowed() {
   ObserveSourcesForProfile(profile_);
-  if (profile_->HasPrimaryOTRProfile()) {
-    auto* primary_otr_profile =
-        profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-    // Avoid duplicate observation.
-    if (primary_otr_profile != profile_) {
-      ObserveSourcesForProfile(primary_otr_profile);
-    }
-  }
 
   // Listen for zoom changes in the default StoragePartition.
   auto zoom_changed_callback = base::BindRepeating(
@@ -966,16 +958,7 @@ void SiteSettingsHandler::OnContentSettingChanged(
   }
 }
 
-void SiteSettingsHandler::OnOffTheRecordProfileCreated(
-    Profile* off_the_record) {
-  FireWebUIListener("onIncognitoStatusChanged", base::Value(true));
-  ObserveSourcesForProfile(off_the_record);
-}
-
 void SiteSettingsHandler::OnProfileWillBeDestroyed(Profile* profile) {
-  if (profile->IsOffTheRecord()) {
-    FireWebUIListener("onIncognitoStatusChanged", base::Value(false));
-  }
   StopObservingSourcesForProfile(profile);
 }
 
@@ -1107,16 +1090,8 @@ void SiteSettingsHandler::HandleSetDefaultValueForContentType(
   ContentSettingsType type =
       site_settings::ContentSettingsTypeFromGroupName(content_type);
 
-  Profile* profile = profile_;
-#if BUILDFLAG(IS_CHROMEOS)
-  // ChromeOS special case: in Guest mode, settings are opened in Incognito
-  // mode so we need the original profile to actually modify settings.
-  if (user_manager::UserManager::Get()->IsLoggedInAsGuest()) {
-    profile = profile->GetOriginalProfile();
-  }
-#endif
   HostContentSettingsMap* map =
-      HostContentSettingsMapFactory::GetForProfile(profile);
+      HostContentSettingsMapFactory::GetForProfile(profile_);
   ContentSetting previous_setting =
       map->GetDefaultContentSetting(type, nullptr);
   map->SetDefaultContentSetting(type, default_setting);
@@ -1174,13 +1149,7 @@ void SiteSettingsHandler::HandleGetAllSites(const base::ListValue& args) {
   all_sites_map_.clear();
   origin_permission_set_.clear();
 
-  // Incognito contains incognito content settings plus non-incognito content
-  // settings. Thus if it exists, just get exceptions for the incognito profile.
   Profile* profile = profile_;
-  if (profile_->HasPrimaryOTRProfile() &&
-      profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true) != profile_) {
-    profile = profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-  }
   DCHECK(profile);
   HostContentSettingsMap* map =
       HostContentSettingsMapFactory::GetForProfile(profile);
@@ -1421,18 +1390,6 @@ void SiteSettingsHandler::HandleGetExceptionList(const base::ListValue& args) {
   site_settings::GetExceptionsForContentType(content_type, profile_, web_ui(),
                                              /*incognito=*/false, &exceptions);
 
-  Profile* incognito =
-      profile_->HasPrimaryOTRProfile()
-          ? profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-          : nullptr;
-  // On Chrome OS in Guest mode the incognito profile is the primary profile,
-  // so do not fetch an extra copy of the same exceptions.
-  if (incognito && incognito != profile_) {
-    site_settings::GetExceptionsForContentType(content_type, incognito,
-                                               web_ui(),
-                                               /*incognito=*/true, &exceptions);
-  }
-
   ResolveJavascriptCallback(callback_id, exceptions);
 }
 
@@ -1447,19 +1404,8 @@ void SiteSettingsHandler::HandleGetStorageAccessExceptionList(
   CHECK(content_settings::ContentSettingFromString(args[1].GetString(),
                                                    &setting));
 
-  Profile* incognito_ =
-      profile_->HasPrimaryOTRProfile()
-          ? profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-          : nullptr;
-
-  // On Chrome OS in Guest mode the incognito profile is the primary profile,
-  // so do not fetch an extra copy of the same exceptions.
-  if (incognito_ && incognito_ == profile_) {
-    incognito_ = nullptr;
-  }
-
   base::ListValue exceptions;
-  site_settings::GetStorageAccessExceptions(setting, profile_, incognito_,
+  site_settings::GetStorageAccessExceptions(setting, profile_, /*incognito=*/nullptr,
                                             web_ui(), &exceptions);
 
   ResolveJavascriptCallback(callback_id, exceptions);
@@ -1798,15 +1744,11 @@ void SiteSettingsHandler::HandleResetCategoryPermissionForPattern(
   CHECK(content_type != ContentSettingsType::DEFAULT)
       << type << " is not expected to have a UI representation.";
 
-  Profile* profile = nullptr;
   if (incognito) {
-    if (!profile_->HasPrimaryOTRProfile()) {
-      return;
-    }
-    profile = profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-  } else {
-    profile = profile_;
+    // Incognito profiles no longer exist.
+    return;
   }
+  Profile* profile = profile_;
 
   HostContentSettingsMap* map =
       HostContentSettingsMapFactory::GetForProfile(profile);
@@ -1878,15 +1820,11 @@ void SiteSettingsHandler::HandleSetCategoryPermissionForPattern(
   ContentSetting setting;
   CHECK(content_settings::ContentSettingFromString(value, &setting));
 
-  Profile* target_profile = nullptr;
   if (incognito) {
-    if (!profile_->HasPrimaryOTRProfile()) {
-      return;
-    }
-    target_profile = profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-  } else {
-    target_profile = profile_;
+    // Incognito profiles no longer exist.
+    return;
   }
+  Profile* target_profile = profile_;
 
   HostContentSettingsMap* map =
       HostContentSettingsMapFactory::GetForProfile(target_profile);
@@ -2040,7 +1978,7 @@ void SiteSettingsHandler::HandleUpdateIncognitoStatus(
     const base::ListValue& args) {
   AllowJavascript();
   FireWebUIListener("onIncognitoStatusChanged",
-                    base::Value(profile_->HasPrimaryOTRProfile()));
+                    base::Value(false));
 }
 
 void SiteSettingsHandler::HandleFetchZoomLevels(const base::ListValue& args) {

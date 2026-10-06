@@ -56,7 +56,7 @@ std::unique_ptr<KeyedService>
 BrowserSwitcherServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
-  if (!profile || !profile->IsRegularProfile()) {
+  if (!profile) {
     return nullptr;
   }
   std::unique_ptr<BrowserSwitcherServiceImpl> instance =

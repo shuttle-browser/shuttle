@@ -56,10 +56,6 @@ void TabMetricsProvider::ProvideCurrentSessionData(
 }
 
 void TabMetricsProvider::OnProfileAdded(Profile* profile) {
-  if (!profile->IsRegularProfile()) {
-    return;
-  }
-
   UserEducationService* user_education_service =
       UserEducationServiceFactory::GetForBrowserContext(profile);
   if (!user_education_service) {

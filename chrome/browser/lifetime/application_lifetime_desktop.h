@@ -96,11 +96,6 @@ void CloseAllBrowsersWithProfile(
     const ProfileBrowsersCloseCallback& on_close_aborted =
         base::NullCallback());
 
-// Closes all browsers for the off-the-record `profile` without touching
-// browsers that use the original profile.
-void CloseAllBrowsersWithIncognitoProfile(Profile* profile,
-                                          bool skip_beforeunload = true);
-
 }  // namespace chrome
 
 #endif  // CHROME_BROWSER_LIFETIME_APPLICATION_LIFETIME_DESKTOP_H_

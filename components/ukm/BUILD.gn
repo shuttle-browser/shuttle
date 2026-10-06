@@ -100,8 +100,6 @@ static_library("observers") {
     "//components/history/core/browser",
     "//components/metrics",
     "//components/signin/public/identity_manager",
-    "//components/sync/base",
-    "//components/sync/service",
     "//google_apis",
     "//services/metrics/public/cpp:metrics_cpp",
   ]

@@ -21,7 +21,6 @@
 #include "components/signin/public/base/signin_metrics.h"
 
 namespace signin {
-class BoundSessionOAuthMultiLoginDelegate;
 class PrimaryAccountChangeEvent;
 }
 
@@ -140,9 +139,6 @@ class SigninClient : public KeyedService {
   // happened.
   virtual void OnPrimaryAccountChanged(
       signin::PrimaryAccountChangeEvent event_details) = 0;
-
-  virtual std::unique_ptr<signin::BoundSessionOAuthMultiLoginDelegate>
-  CreateBoundSessionOAuthMultiloginDelegate() const;
 
   // Returns the OAuthConsumer associated with `oauth_consumer_id`.
   virtual signin::OAuthConsumer GetOAuthConsumerFromId(

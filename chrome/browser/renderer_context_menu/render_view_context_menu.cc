@@ -59,7 +59,6 @@
 #include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/predictors/loading_predictor.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/preloading/preloading_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
@@ -68,7 +67,6 @@
 #include "chrome/browser/profiles/profile_io_data.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_window.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/renderer_context_menu/accessibility_labels_menu_observer.h"
 #include "chrome/browser/renderer_context_menu/context_menu_content_type_factory.h"
 #include "chrome/browser/renderer_context_menu/link_to_text_menu_observer.h"
@@ -132,7 +130,6 @@
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
-#include "components/reading_list/core/reading_list_model.h"
 #include "components/search_engines/search_engines_pref_names.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
@@ -753,10 +750,6 @@ std::optional<ash::SystemWebAppType> GetLinkSystemAppType(Profile* profile,
   return ash::GetSystemWebAppTypeForAppId(profile, *link_app_id);
 }
 
-bool IsCaptivePortalProfile(Profile* profile) {
-  return profile->IsOffTheRecord() &&
-         profile->GetOTRProfileID().IsCaptivePortal();
-}
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 bool IsFrameInPdfViewer(content::RenderFrameHost* rfh) {
@@ -1663,12 +1656,6 @@ void RenderViewContextMenu::AppendLinkItems() {
 #if BUILDFLAG(IS_CHROMEOS)
     Profile* profile = GetProfile();
 
-    // Disable opening links in a new tab or window for captive portal signin.
-    if (IsCaptivePortalProfile(profile)) {
-      show_open_in_new_tab = false;
-      show_open_in_new_window = false;
-    }
-
     const bool in_system_web_dialog =
         ash::SystemWebDialogDelegate::HasInstance(current_url_);
 
@@ -1800,14 +1787,6 @@ void RenderViewContextMenu::AppendCopyLinkLocationItem() {
                                   params_.link_url.SchemeIs(url::kMailToScheme)
                                       ? IDS_CONTENT_CONTEXT_COPYEMAILADDRESS
                                       : IDS_CONTENT_CONTEXT_COPYLINKLOCATION);
-  if (features::IsMenuSimplificationEnabled() && !params_.has_image_contents) {
-    menu_model_.AddItemWithStringIdAndIcon(
-        IDC_CONTENT_CONTEXT_ADD_LINK_TO_READING_LIST,
-        IDS_CONTENT_CONTEXT_ADD_LINK_TO_READING_LIST,
-        ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
-                                           ? kListAltIcon
-                                           : kReadingListOldIcon));
-  }
 }
 
 void RenderViewContextMenu::AppendOpenWithLinkItems() {
@@ -2723,16 +2702,7 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     return true;
   }
 
-  // On ChromeOS a dedicated OTR profile is used for captive portal signin to
-  // protect user privacy. Since some policies prevent Incognito browsing,
-  // disable options that trigger navigation in the context menu.
   bool navigation_allowed = true;
-#if BUILDFLAG(IS_CHROMEOS)
-  Profile* profile = GetProfile();
-  if (IsCaptivePortalProfile(profile)) {
-    navigation_allowed = false;
-  }
-#endif
   switch (id) {
     case IDC_BACK:
       return embedder_web_contents_->GetController().CanGoBack();
@@ -2776,9 +2746,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
 
     case IDC_CONTENT_CONTEXT_COPYLINKLOCATION:
       return params_.unfiltered_link_url.is_valid();
-
-    case IDC_CONTENT_CONTEXT_ADD_LINK_TO_READING_LIST:
-      return params_.link_url.is_valid();
 
     case IDC_CONTENT_CONTEXT_COPYLINKTEXT:
       return true;
@@ -3129,23 +3096,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
     case IDC_CONTENT_CONTEXT_COPYLINKLOCATION:
       WriteURLToClipboard(params_.unfiltered_link_url, id);
       break;
-
-    case IDC_CONTENT_CONTEXT_ADD_LINK_TO_READING_LIST: {
-      ReadingListModel* model =
-          ReadingListModelFactory::GetForBrowserContext(browser_context_);
-      if (model) {
-        std::u16string title = params_.link_text;
-        if (title.empty()) {
-          title = base::UTF8ToUTF16(params_.link_url.spec());
-        }
-        model->AddOrReplaceEntry(
-            params_.link_url, base::UTF16ToUTF8(title),
-            reading_list::EntrySource::ADDED_VIA_CURRENT_APP,
-            /*estimated_read_time=*/std::nullopt,
-            /*creation_time=*/std::nullopt);
-      }
-      break;
-    }
 
     case IDC_CONTENT_CONTEXT_COPYLINKTEXT:
       ExecCopyLinkText();

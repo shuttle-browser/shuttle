@@ -52,43 +52,7 @@ DestroyerSet& PendingDestroyers() {
   return *instance;
 }
 
-// Given a `profile`, returns the set of profiles that needs to be deleted
-// first.
-std::vector<Profile*> GetDependentProfiles(Profile* profile) {
-  if (profile->IsOffTheRecord())
-    return {};
-  return profile->GetAllOffTheRecordProfiles();
-}
-
 }  // namespace
-
-class OTRProfileDestroyer : public ProfileDestroyer {
- public:
-  OTRProfileDestroyer(Profile* profile, base::TimeDelta timeout)
-      : ProfileDestroyer(profile, timeout), profile_(profile->GetWeakPtr()) {}
-  ~OTRProfileDestroyer() override = default;
-
- protected:
-  Profile* GetProfile() override { return profile_.get(); }
-
-  void DoDestroyUnderlyingProfile() override {
-    Profile* profile = profile_.get();
-    if (!profile)
-      return;
-    ProfileDestroyer::DestroyOffTheRecordProfileNow(profile);
-  }
-
-  void RetryDestroyUnderlyingProfile() override {
-    Profile* profile = profile_.get();
-    if (!profile)
-      return;
-    ProfileDestroyer::DestroyOTRProfileWhenAppropriateWithTimeout(profile,
-                                                                  timeout());
-  }
-
- private:
-  base::WeakPtr<Profile> profile_;
-};
 
 class OriginalProfileDestroyer : public ProfileDestroyer {
  public:
@@ -159,65 +123,9 @@ void ProfileDestroyer::DestroyOriginalProfileWhenAppropriateWithTimeout(
 
   HostSet profile_hosts;
   GetHostsForProfile(&profile_hosts, profile.get());
-  for (Profile* otr_profile : GetDependentProfiles(profile.get())) {
-    GetHostsForProfile(&profile_hosts, otr_profile);
-  }
 
   OriginalProfileDestroyer* profile_destroyer =
       new OriginalProfileDestroyer(std::move(profile), timeout);
-  profile_destroyer->Start(profile_hosts);
-}
-
-void ProfileDestroyer::DestroyOTRProfileWhenAppropriate(Profile* profile) {
-  DestroyOTRProfileWhenAppropriateWithTimeout(profile,
-                                              GetDestroyProfileTimeout());
-}
-
-void ProfileDestroyer::DestroyOTRProfileImmediately(Profile* profile) {
-  TRACE_EVENT("shutdown", "ProfileDestroyer::DestroyOTRProfileImmediately",
-              [&](perfetto::EventContext ctx) {
-                auto* proto =
-                    ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>()
-                        ->set_chrome_profile_destroyer();
-                proto->set_profile_ptr(reinterpret_cast<uint64_t>(profile));
-                proto->set_is_off_the_record(profile->IsOffTheRecord());
-              });
-
-  ProfileDestroyer* pending_destroyer = GetPendingDestroyerForProfile(profile);
-  if (pending_destroyer) {
-    pending_destroyer->Timeout();
-    return;
-  }
-
-  // Passing zero timeout forces the destruction of the profile synchronously.
-  DestroyOTRProfileWhenAppropriateWithTimeout(profile, base::TimeDelta());
-}
-
-void ProfileDestroyer::DestroyOTRProfileWhenAppropriateWithTimeout(
-    Profile* profile,
-    base::TimeDelta timeout) {
-  DCHECK(profile);
-  DCHECK_NE(profile, profile->GetOriginalProfile());
-
-  if (GetPendingDestroyerForProfile(profile))
-    return;
-
-  TRACE_EVENT("shutdown",
-              "ProfileDestroyer::DestroyOTRProfileWhenAppropriateWithTimeout",
-              [&](perfetto::EventContext ctx) {
-                auto* proto =
-                    ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>()
-                        ->set_chrome_profile_destroyer();
-                proto->set_profile_ptr(reinterpret_cast<uint64_t>(profile));
-                proto->set_is_off_the_record(profile->IsOffTheRecord());
-              });
-
-  profile->MaybeSendDestroyedNotification();
-
-  HostSet profile_hosts;
-  GetHostsForProfile(&profile_hosts, profile);
-  OTRProfileDestroyer* profile_destroyer =
-      new OTRProfileDestroyer(profile, timeout);
   profile_destroyer->Start(profile_hosts);
 }
 
@@ -230,27 +138,6 @@ void ProfileDestroyer::DestroyPendingProfilesForShutdown() {
     // Destroys `destroyer`and removes it from `PendingDestroyers()`:
     destroyer->Timeout();
   }
-}
-
-// static
-void ProfileDestroyer::DestroyOffTheRecordProfileNow(Profile* profile) {
-  DCHECK(profile);
-  DCHECK(profile->IsOffTheRecord());
-  TRACE_EVENT(
-      "shutdown", "ProfileDestroyer::DestroyOffTheRecordProfileNow",
-      [&](perfetto::EventContext ctx) {
-        auto* proto = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>()
-                          ->set_chrome_profile_destroyer();
-        proto->set_profile_ptr(reinterpret_cast<uint64_t>(profile));
-        std::stringstream otr_id;
-        otr_id << profile->GetOTRProfileID();
-        proto->set_otr_profile_id(otr_id.str());
-      });
-
-  DCHECK(profile->GetOriginalProfile());
-  profile->GetOriginalProfile()->DestroyOffTheRecordProfile(profile);
-  UMA_HISTOGRAM_ENUMERATION("Profile.Destroyer.OffTheRecord",
-                            ProfileDestructionType::kImmediately);
 }
 
 // static
@@ -283,7 +170,6 @@ void ProfileDestroyer::DestroyOriginalProfileNow(
   // Save the raw pointers of profile and dependent profile for DCHECKing on
   // later.
   void* profile_ptr = profile.get();
-  std::vector<Profile*> dependent_profile = GetDependentProfiles(profile.get());
 #endif  // DCHECK_IS_ON()
 
   profile.reset();
@@ -292,16 +178,9 @@ void ProfileDestroyer::DestroyOriginalProfileNow(
   // Count the number of hosts that have dangling pointers to the freed Profile
   // and off-the-record Profile.
   HostSet dangling_hosts;
-  HostSet dangling_hosts_for_otr;
   GetHostsForProfile(&dangling_hosts, profile_ptr);
-  for (Profile* otr : dependent_profile) {
-    GetHostsForProfile(&dangling_hosts_for_otr, otr);
-  }
   const size_t profile_hosts_count = dangling_hosts.size();
-  const size_t off_the_record_profile_hosts_count =
-      dangling_hosts_for_otr.size();
   base::debug::Alias(&profile_hosts_count);
-  base::debug::Alias(&off_the_record_profile_hosts_count);
 
   // |profile| is not off-the-record, so if |profile_hosts| is not empty then
   // something has leaked a RenderProcessHost, and needs fixing.
@@ -310,11 +189,6 @@ void ProfileDestroyer::DestroyOriginalProfileNow(
   // RenderProcessHosts in --single-process mode, to avoid race conditions.
   if (!content::RenderProcessHost::run_renderer_in_process()) {
     DCHECK_EQ(profile_hosts_count, 0u);
-#if !BUILDFLAG(IS_CHROMEOS)
-    // ChromeOS' system profile can be outlived by its off-the-record profile
-    // (see https://crbug.com/40569888).
-    DCHECK_EQ(off_the_record_profile_hosts_count, 0u);
-#endif
   }
 #endif  // DCHECK_IS_ON()
 }

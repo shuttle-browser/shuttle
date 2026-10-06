@@ -31,10 +31,6 @@ constexpr int kMaxProfileBucket = 100;
 constexpr base::TimeDelta kLongTimeOfInactivity = base::Minutes(30);
 
 int GetMetricsBucketIndex(const Profile* profile) {
-  if (profile->IsGuestSession()) {
-    return 0;
-  }
-
   if (!g_browser_process->profile_manager()) {
     VLOG(1) << "Failed to read profile bucket index because profile manager "
                "doesn't exist.";

@@ -61,19 +61,6 @@ RegionalCapabilitiesServiceFactory::GetInstance() {
   return instance.get();
 }
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-// static
-bool RegionalCapabilitiesServiceFactory::
-    IsInSearchEngineChoiceScreenRegionForSystemProfile(Profile* profile) {
-  CHECK(profile);
-  CHECK(profile->IsSystemProfile());
-  std::unique_ptr<RegionalCapabilitiesService::Client> client =
-      CreateRegionalCapabilitiesServiceClient();
-  return RegionalCapabilitiesService::IsInAnySearchEngineChoiceScreenRegion(
-      CHECK_DEREF(client));
-}
-#endif  // BUILDFLAG(IS_WINDOWS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
 RegionalCapabilitiesServiceFactory::RegionalCapabilitiesServiceFactory()
     : ProfileKeyedServiceFactory(
           "RegionalCapabilitiesService",

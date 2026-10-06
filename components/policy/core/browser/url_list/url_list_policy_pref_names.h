@@ -7,14 +7,6 @@
 
 namespace policy::policy_prefs {
 
-// Blocks access to the listed host patterns for incognito mode.
-inline constexpr char kIncognitoModeUrlBlocklist[] =
-    "policy.incognito_mode_url_blocklist";
-
-// Allows access to the listed host patterns for incognito mode.
-inline constexpr char kIncognitoModeUrlAllowlist[] =
-    "policy.incognito_mode_url_allowlist";
-
 // Blocks access to the listed host patterns.
 inline constexpr char kUrlBlocklist[] = "policy.url_blocklist";
 

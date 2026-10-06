@@ -89,8 +89,6 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
   void OnRemoveVisitsComplete() override;
   void OnRemoveVisitsFailed() override;
   void HistoryDeleted() override;
-  void HasOtherFormsOfBrowsingHistory(bool has_other_forms,
-                                      bool has_synced_results) override;
 
   // ProfileBasedBrowsingHistoryDriver implementation.
   Profile* GetProfile() override;

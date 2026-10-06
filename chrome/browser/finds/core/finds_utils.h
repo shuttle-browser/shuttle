@@ -11,10 +11,6 @@
 #include "components/optimization_guide/proto/features/finds.pb.h"
 #include "components/prefs/pref_service.h"
 
-namespace syncer {
-class SyncService;
-}  // namespace syncer
-
 namespace finds {
 
 // Converts a FindsSuggestionResponse::SuggestionTheme::ThemeType proto enum to
@@ -42,8 +38,7 @@ base::TimeDelta GetModelExecutionCooldownDurationTimeDelta();
 base::TimeDelta GetHistoryTimeWindowTimeDelta();
 
 // Returns true if History Sync and MSBB are enabled.
-bool IsHistorySyncAndMsbbEnabled(syncer::SyncService* sync_service,
-                                 PrefService* pref_service);
+bool IsHistorySyncAndMsbbEnabled(PrefService* pref_service);
 
 // Returns true if the Chrome finds feature is allowed by enterprise policy.
 bool IsAllowedByEnterprisePolicy(PrefService* pref_service);

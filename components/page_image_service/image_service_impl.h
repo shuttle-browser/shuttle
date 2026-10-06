@@ -16,7 +16,6 @@
 #include "components/optimization_guide/core/hints/optimization_guide_decision.h"
 #include "components/page_image_service/image_service.h"
 #include "components/page_image_service/mojom/page_image_service.mojom.h"
-#include "components/sync/service/sync_service.h"
 
 class AutocompleteSchemeClassifier;
 class RemoteSuggestionsService;
@@ -30,7 +29,6 @@ class OptimizationGuideDecider;
 
 namespace page_image_service {
 
-class ImageServiceConsentHelper;
 enum class PageImageServiceConsentStatus;
 
 // Through my manual testing, 16ms (which is about a frame at 60hz) allowed
@@ -45,7 +43,6 @@ class ImageServiceImpl : public ImageService {
   ImageServiceImpl(TemplateURLService* template_url_service,
                    RemoteSuggestionsService* remote_suggestions_service,
                    optimization_guide::OptimizationGuideDecider* opt_guide,
-                   syncer::SyncService* sync_service,
                    std::unique_ptr<AutocompleteSchemeClassifier>
                        autocomplete_scheme_classifier);
   ImageServiceImpl(const ImageServiceImpl&) = delete;
@@ -125,12 +122,6 @@ class ImageServiceImpl : public ImageService {
   raw_ptr<TemplateURLService> template_url_service_ = nullptr;
   raw_ptr<RemoteSuggestionsService> remote_suggestions_service_ = nullptr;
   raw_ptr<optimization_guide::OptimizationGuideDecider> opt_guide_ = nullptr;
-
-  // The History consent throttle, used for most clients.
-  std::unique_ptr<ImageServiceConsentHelper> history_consent_helper_;
-
-  // The Bookmarks consent throttle.
-  std::unique_ptr<ImageServiceConsentHelper> bookmarks_consent_helper_;
 
   // Used to make proper suggest requests.
   std::unique_ptr<AutocompleteSchemeClassifier> autocomplete_scheme_classifier_;

@@ -73,10 +73,6 @@ class ExternalPrefLoader : public ExternalLoader {
   friend class ExternalTestingLoader;
   friend class TestExternalPrefLoader;
 
-#if BUILDFLAG(IS_CHROMEOS)
-  class PrioritySyncReadyWaiter;
-#endif
-
   // Extracts extension information from a json file serialized by `serializer`.
   // `path` is only used for informational purposes (outputted when an error
   // occurs). An empty dictionary is returned in case of failure (e.g. invalid
@@ -84,12 +80,6 @@ class ExternalPrefLoader : public ExternalLoader {
   static base::DictValue ExtractExtensionPrefs(
       base::ValueDeserializer* deserializer,
       const base::FilePath& path);
-
-  // If priority sync ready posts LoadOnFileThread and return true.
-  bool PostLoadIfPrioritySyncReady();
-
-  // Post LoadOnFileThread and stop observing for sync service states.
-  void PostLoadAndRemoveObservers();
 
   // Actually searches for and loads candidate standalone extension preference
   // files in the path corresponding to `base_path_id`.
@@ -110,10 +100,6 @@ class ExternalPrefLoader : public ExternalLoader {
   // Must be called from the File thread.
   void ReadStandaloneExtensionPrefFiles(base::DictValue& prefs);
 
-#if BUILDFLAG(IS_CHROMEOS)
-  void OnPrioritySyncReady(PrioritySyncReadyWaiter* waiter);
-#endif
-
   // The path (corresponding to `base_path_id_` containing the json files
   // describing which extensions to load.
   base::FilePath base_path_;
@@ -125,9 +111,6 @@ class ExternalPrefLoader : public ExternalLoader {
   // Task runner for tasks that touch file.
   scoped_refptr<base::SequencedTaskRunner> file_task_runner_;
 
-#if BUILDFLAG(IS_CHROMEOS)
-  std::vector<std::unique_ptr<PrioritySyncReadyWaiter>> pending_waiter_list_;
-#endif
 };
 
 }  // namespace extensions

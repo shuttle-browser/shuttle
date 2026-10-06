@@ -32,7 +32,6 @@
 #include "chrome/browser/devtools/features.h"
 #include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
@@ -281,11 +280,6 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
             &BrowserCommandController::UpdateCommandsForDevTools,
             base::Unretained(this)));
   }
-  profile_pref_registrar_.Add(
-      policy::policy_prefs::kIncognitoModeAvailability,
-      base::BindRepeating(
-          &BrowserCommandController::UpdateCommandsForIncognitoAvailability,
-          base::Unretained(this)));
 #if BUILDFLAG(ENABLE_PRINTING)
   profile_pref_registrar_.Add(
       prefs::kPrintingEnabled,
@@ -1100,15 +1094,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
 
 
 
-    case IDC_READING_LIST_MENU_ADD_TAB:
-      chrome::MoveCurrentTabToReadLater(browser_);
-      break;
-
-    case IDC_READING_LIST_MENU_SHOW_UI:
-      browser_->GetFeatures().side_panel_ui()->Show(
-          SidePanelEntryId::kReadingList, SidePanelOpenTrigger::kAppMenu);
-      break;
-
     case IDC_SHOW_READING_MODE_SIDE_PANEL: {
       // Yes. This is a separate feature from the reading list.
       read_anything::ReadAnythingEntryPointController::ShowUI(
@@ -1343,11 +1328,8 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_ZOOM_MINUS, true);
 
   // Show various bits of UI
-  DCHECK(!profile()->IsSystemProfile())
-      << "Ought to never have browser for the system profile.";
   const bool normal_window =
       browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL;
-  const bool guest_session = profile()->IsGuestSession();
 
   command_updater_->UpdateCommandEnabled(IDC_OPEN_FILE, CanOpenFile(browser_));
 
@@ -1380,11 +1362,9 @@ void BrowserCommandController::InitCommandState() {
                                          CanOpenTaskManager());
   command_updater_->UpdateCommandEnabled(IDC_TASK_MANAGER_MAIN_MENU,
                                          CanOpenTaskManager());
-  command_updater_->UpdateCommandEnabled(
-      IDC_SHOW_HISTORY, (!guest_session && !profile()->IsSystemProfile()));
-  command_updater_->UpdateCommandEnabled(
-      IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
-      (!guest_session && !profile()->IsSystemProfile()));
+  command_updater_->UpdateCommandEnabled(IDC_SHOW_HISTORY, true);
+  command_updater_->UpdateCommandEnabled(IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
+                                         true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_DOWNLOADS, true);
   command_updater_->UpdateCommandEnabled(IDC_FIND_AND_EDIT_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_SAVE_AND_SHARE_MENU, true);
@@ -1401,9 +1381,7 @@ void BrowserCommandController::InitCommandState() {
 #if !BUILDFLAG(IS_CHROMEOS)
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  command_updater_->UpdateCommandEnabled(
-      IDC_CLEAR_BROWSING_DATA,
-      (!guest_session && !profile()->IsSystemProfile()));
+  command_updater_->UpdateCommandEnabled(IDC_CLEAR_BROWSING_DATA, true);
 
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_->UpdateCommandEnabled(IDC_TAKE_SCREENSHOT, true);
@@ -1500,34 +1478,20 @@ void BrowserCommandController::InitCommandState() {
 void BrowserCommandController::UpdateSharedCommandsForIncognitoAvailability(
     CommandUpdater* command_updater,
     Profile* profile) {
-  policy::IncognitoModeAvailability incognito_availability =
-      IncognitoModePrefs::GetAvailability(profile->GetPrefs());
-  command_updater->UpdateCommandEnabled(
-      IDC_NEW_WINDOW,
-      incognito_availability != policy::IncognitoModeAvailability::kForced);
-
-  const bool forced_incognito =
-      incognito_availability == policy::IncognitoModeAvailability::kForced;
-  const bool is_guest = profile->IsGuestSession();
+  command_updater->UpdateCommandEnabled(IDC_NEW_WINDOW, true);
 
   extensions::ExtensionRegistrar* extension_registrar =
       extensions::ExtensionRegistrar::Get(profile);
   const bool enable_extensions =
       extension_registrar && extension_registrar->extensions_enabled();
 
-  // Bookmark manager and settings page/subpages are forced to open in normal
-  // mode. For this reason we disable these commands when incognito is forced.
-  command_updater->UpdateCommandEnabled(
-      IDC_MANAGE_EXTENSIONS,
-      enable_extensions && !forced_incognito && !is_guest);
-  command_updater->UpdateCommandEnabled(
-      IDC_SAFETY_HUB_MANAGE_EXTENSIONS,
-      enable_extensions && !forced_incognito && !is_guest);
+  command_updater->UpdateCommandEnabled(IDC_MANAGE_EXTENSIONS,
+                                        enable_extensions);
+  command_updater->UpdateCommandEnabled(IDC_SAFETY_HUB_MANAGE_EXTENSIONS,
+                                        enable_extensions);
 
-  command_updater->UpdateCommandEnabled(IDC_OPTIONS,
-                                        !forced_incognito || is_guest);
-  command_updater->UpdateCommandEnabled(IDC_PERFORMANCE,
-                                        !forced_incognito && !is_guest);
+  command_updater->UpdateCommandEnabled(IDC_OPTIONS, true);
+  command_updater->UpdateCommandEnabled(IDC_PERFORMANCE, true);
 }
 
 void BrowserCommandController::UpdateCommandsForIncognitoAvailability() {
@@ -1628,11 +1592,6 @@ void BrowserCommandController::UpdateCommandsForTabState() {
   command_updater_->UpdateCommandEnabled(
       IDC_CREATE_SHORTCUT,
       shortcuts::CanCreateDesktopShortcut(current_web_contents));
-
-  command_updater_->UpdateCommandEnabled(
-      IDC_READING_LIST_MENU_ADD_TAB,
-      browser_->tab_strip_model()->IsReadLaterSupportedForAny(
-          {browser_->tab_strip_model()->active_index()}));
 
   command_updater_->UpdateCommandEnabled(
       IDC_TOGGLE_REQUEST_TABLET_SITE,

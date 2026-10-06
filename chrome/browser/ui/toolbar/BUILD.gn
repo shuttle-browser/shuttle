@@ -46,8 +46,6 @@ source_set("toolbar") {
       "app_menu_icon_controller.h",
       "app_menu_model.h",
       "back_forward_menu_model.h",
-      "bookmark_sub_menu_model.h",
-      "reading_list_sub_menu_model.h",
       "toolbar_pref_names.cc",
       "toolbar_pref_names.h",
     ]
@@ -106,8 +104,6 @@ source_set("impl") {
       "app_menu_icon_controller.cc",
       "app_menu_model.cc",
       "back_forward_menu_model.cc",
-      "bookmark_sub_menu_model.cc",
-      "reading_list_sub_menu_model.cc",
     ]
 
     deps += [
@@ -131,8 +127,6 @@ source_set("impl") {
       "//chrome/browser/profiles:profile_util",
       "//chrome/browser/search",
       "//chrome/browser/signin",
-      "//chrome/browser/sync",
-      "//chrome/browser/sync:factories",
       "//chrome/browser/themes",
       "//chrome/browser/ui:layout_constants",
       "//chrome/browser/ui:managed_ui",

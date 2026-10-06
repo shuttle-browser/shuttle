@@ -4,18 +4,14 @@
 
 #include "components/signin/internal/identity_manager/diagnostics_provider_impl.h"
 
-#include "components/signin/internal/identity_manager/gaia_cookie_manager_service.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate.h"
 
 namespace signin {
 
 DiagnosticsProviderImpl::DiagnosticsProviderImpl(
-    ProfileOAuth2TokenService* profile_oauth2_token_service,
-    GaiaCookieManagerService* gaia_cookie_manager_service)
-    : gaia_cookie_manager_service_(gaia_cookie_manager_service),
-      profile_oauth2_token_service_(profile_oauth2_token_service) {
-  DCHECK(gaia_cookie_manager_service_);
+    ProfileOAuth2TokenService* profile_oauth2_token_service)
+    : profile_oauth2_token_service_(profile_oauth2_token_service) {
   DCHECK(profile_oauth2_token_service_);
 }
 
@@ -37,8 +33,8 @@ DiagnosticsProviderImpl::GetDelayBeforeMakingAccessTokenRequests() const {
 
 base::TimeDelta DiagnosticsProviderImpl::GetDelayBeforeMakingCookieRequests()
     const {
-  DCHECK(gaia_cookie_manager_service_->GetBackoffEntry());
-  return gaia_cookie_manager_service_->GetBackoffEntry()->GetTimeUntilRelease();
+  // Gaia cookie requests are never made.
+  return base::TimeDelta();
 }
 
 }  // namespace signin

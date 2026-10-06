@@ -47,10 +47,6 @@ inline constexpr base::FilePath::CharType kStatusTrayWindowClass[] =
 
 inline constexpr char kInitialProfile[] = "Default";
 inline constexpr char kMultiProfileDirPrefix[] = "Profile ";
-inline constexpr base::FilePath::CharType kGuestProfileDir[] =
-    FILE_PATH_LITERAL("Guest Profile");
-inline constexpr base::FilePath::CharType kSystemProfileDir[] =
-    FILE_PATH_LITERAL("System Profile");
 
 // filenames
 inline constexpr base::FilePath::CharType kAccountPreferencesFilename[] =

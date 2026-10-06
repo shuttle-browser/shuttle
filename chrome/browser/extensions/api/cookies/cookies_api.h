@@ -34,30 +34,21 @@ namespace extensions {
 
 // Observes CookieManager Mojo messages and routes them as events to the
 // extension system.
-class CookiesEventRouter : public ProfileObserver {
+class CookiesEventRouter {
  public:
   explicit CookiesEventRouter(content::BrowserContext* context);
 
   CookiesEventRouter(const CookiesEventRouter&) = delete;
   CookiesEventRouter& operator=(const CookiesEventRouter&) = delete;
 
-  ~CookiesEventRouter() override;
-
-  // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
-  void OnProfileWillBeDestroyed(Profile* profile) override;
+  ~CookiesEventRouter();
 
  private:
-  FRIEND_TEST_ALL_PREFIXES(ExtensionApiTest, OTRReceiverMojoConnectionError);
-
   // This helper class connects to the CookieMonster over Mojo, and relays Mojo
-  // messages to the owning CookiesEventRouter. This rather clumsy arrangement
-  // is necessary to differentiate which CookieMonster the Mojo message comes
-  // from (that associated with the incognito profile vs the original profile),
-  // since it's not possible to tell the source from inside OnCookieChange().
+  // messages to the owning CookiesEventRouter.
   class CookieChangeListener : public network::mojom::CookieChangeListener {
    public:
-    CookieChangeListener(CookiesEventRouter* router, bool otr);
+    explicit CookieChangeListener(CookiesEventRouter* router);
 
     CookieChangeListener(const CookieChangeListener&) = delete;
     CookieChangeListener& operator=(const CookieChangeListener&) = delete;
@@ -69,7 +60,6 @@ class CookiesEventRouter : public ProfileObserver {
 
    private:
     raw_ptr<CookiesEventRouter> router_;
-    bool otr_;
   };
 
   void MaybeStartListening();
@@ -78,7 +68,7 @@ class CookiesEventRouter : public ProfileObserver {
       Profile* profile);
   void OnConnectionError(
       mojo::Receiver<network::mojom::CookieChangeListener>* receiver);
-  void OnCookieChange(bool otr, const net::CookieChangeInfo& change);
+  void OnCookieChange(const net::CookieChangeInfo& change);
 
   // This method dispatches events to the extension message service.
   void DispatchEvent(content::BrowserContext* context,
@@ -89,19 +79,8 @@ class CookiesEventRouter : public ProfileObserver {
 
   raw_ptr<Profile> profile_;
 
-  base::ScopedObservation<Profile, ProfileObserver> profile_observation_;
-
-  base::ScopedObservation<Profile, ProfileObserver> otr_profile_observation_;
-
-  // To listen to cookie changes in both the original and the off the record
-  // profiles, we need a pair of bindings, as well as a pair of
-  // CookieChangeListener instances.
-  CookieChangeListener listener_{this, false};
+  CookieChangeListener listener_{this};
   mojo::Receiver<network::mojom::CookieChangeListener> receiver_{&listener_};
-
-  CookieChangeListener otr_listener_{this, true};
-  mojo::Receiver<network::mojom::CookieChangeListener> otr_receiver_{
-      &otr_listener_};
 };
 
 // Implements the cookies.get() extension function.

@@ -7,7 +7,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/extensions/commands/command_service.h"
 #include "chrome/browser/extensions/extension_util.h"
-#include "chrome/browser/extensions/sync/extension_sync_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/omnibox/omnibox_handler.h"
 #include "chrome/grit/generated_resources.h"

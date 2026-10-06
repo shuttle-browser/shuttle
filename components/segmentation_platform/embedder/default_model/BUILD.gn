@@ -55,7 +55,6 @@ static_library("default_model") {
     "//components/segmentation_platform/internal",
     "//components/segmentation_platform/internal/proto",
     "//components/segmentation_platform/public",
-    "//components/sync/service",
     "//components/visited_url_ranking/public",
     "//services/metrics/public/cpp:ukm_builders",
     "//ui/base",

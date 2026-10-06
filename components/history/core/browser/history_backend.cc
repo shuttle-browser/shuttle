@@ -59,12 +59,8 @@
 #include "components/history/core/browser/keyword_search_term.h"
 #include "components/history/core/browser/keyword_search_term_util.h"
 #include "components/history/core/browser/page_usage_data.h"
-#include "components/history/core/browser/sync/history_sync_bridge.h"
 #include "components/history/core/browser/url_row.h"
 #include "components/history/core/browser/url_utils.h"
-#include "components/sync/base/features.h"
-#include "components/sync/base/report_unrecoverable_error.h"
-#include "components/sync/model/client_tag_based_data_type_processor.h"
 #include "components/url_formatter/url_formatter.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/base/url_util.h"
@@ -88,7 +84,6 @@ using favicon::FaviconBitmapID;
 using favicon::FaviconBitmapIDSize;
 using favicon::FaviconBitmapType;
 using favicon::IconMapping;
-using syncer::ClientTagBasedDataTypeProcessor;
 
 /* The HistoryBackend consists of two components:
 
@@ -428,13 +423,6 @@ void HistoryBackend::Init(
     InitImpl(history_database_params);
   }
   delegate_->DBLoaded();
-
-  history_sync_bridge_ = std::make_unique<HistorySyncBridge>(
-      this, db_ ? db_->GetHistoryMetadataDB() : nullptr,
-      std::make_unique<ClientTagBasedDataTypeProcessor>(
-          syncer::HISTORY,
-          base::BindRepeating(&syncer::ReportUnrecoverableError,
-                              history_database_params.channel)));
 
   if (db_ && db_->GetDeleteForeignVisitsUntilId() != kInvalidVisitID) {
     // A deletion of foreign visits was still ongoing during the previous
@@ -879,24 +867,6 @@ void HistoryBackend::UpdateVisitDuration(VisitID visit_id, const Time end_ts) {
                                    : base::Microseconds(0);
     db_->UpdateVisitRow(visit_row);
     NotifyVisitUpdated(visit_row, VisitUpdateReason::kUpdateVisitDuration);
-  }
-}
-
-void HistoryBackend::MarkVisitAsKnownToSync(VisitID visit_id) {
-  if (!db_) {
-    return;
-  }
-
-  VisitRow visit_row;
-  if (db_->GetRowForVisit(visit_id, &visit_row)) {
-    visit_row.is_known_to_sync = true;
-
-    if (db_->UpdateVisitRow(visit_row)) {
-      db_->SetKnownToSyncVisitsExist(true);
-    }
-
-    // Purposely don't call `NotifyVisitUpdated()` here, because this change
-    // itself is de minimis and triggered by the sync history backend observer.
   }
 }
 
@@ -1353,7 +1323,6 @@ void HistoryBackend::InitImpl(
 
 void HistoryBackend::CloseAllDatabases() {
   // Reset to avoid dangling pointers to the database.
-  history_sync_bridge_.reset();
   expirer_.SetDatabases(/*main_db=*/nullptr, /*favicon_db=*/nullptr);
   if (db_) {
     CommitSingletonTransactionIfItExists();
@@ -1703,259 +1672,6 @@ bool HistoryBackend::GetIsUrlKnownToSync(URLID id, bool* is_known_to_sync) {
   return false;
 }
 
-bool HistoryBackend::GetForeignVisit(const std::string& originator_cache_guid,
-                                     VisitID originator_visit_id,
-                                     VisitRow* visit_row) {
-  if (!db_) {
-    return false;
-  }
-
-  return db_->GetRowForForeignVisit(originator_cache_guid, originator_visit_id,
-                                    visit_row);
-}
-
-VisitID HistoryBackend::AddSyncedVisit(
-    const GURL& url,
-    const std::u16string& title,
-    bool hidden,
-    const VisitRow& visit,
-    const std::optional<VisitContextAnnotations>& context_annotations,
-    const std::optional<VisitContentAnnotations>& content_annotations) {
-  DCHECK_EQ(visit.visit_id, kInvalidVisitID);
-  DCHECK_EQ(visit.url_id, 0);
-  DCHECK(!visit.visit_time.is_null());
-  DCHECK(!visit.originator_cache_guid.empty());
-  DCHECK(visit.is_known_to_sync);
-
-  if (!db_) {
-    return kInvalidVisitID;
-  }
-
-  if (!CanAddURL(url)) {
-    return kInvalidVisitID;
-  }
-
-  DCHECK(url.is_valid());
-
-  const VisitResponseCodeCategory response_code_category =
-      (context_annotations.has_value() &&
-       context_annotations->on_visit.response_code == 404)
-          ? VisitResponseCodeCategory::k404
-          : VisitResponseCodeCategory::kNot404;
-
-  auto [url_id, visit_id] = AddPageVisit(
-      url, visit.visit_time, visit.referring_visit, visit.external_referrer_url,
-      visit.transition, hidden, VisitSource::SOURCE_SYNCED,
-      response_code_category, IsTypedIncrement(visit.transition),
-      visit.opener_visit, visit.consider_for_ntp_most_visited,
-      VisitContextEphemerality::kNotEphemeral,
-      /*local_navigation_id=*/std::nullopt, title,
-      /*top_level_url=*/std::nullopt, /*frame_url=*/std::nullopt, visit.app_id,
-      visit.visit_duration, visit.originator_cache_guid,
-      visit.originator_visit_id, visit.originator_referring_visit,
-      visit.originator_opener_visit, visit.is_known_to_sync);
-
-  if (visit_id == kInvalidVisitID) {
-    // Adding the page visit failed, do not continue.
-    return kInvalidVisitID;
-  }
-
-  if (context_annotations) {
-    AddContextAnnotationsForVisit(visit_id, *context_annotations);
-  }
-  if (content_annotations) {
-    SetPageLanguageForVisitByVisitID(visit_id,
-                                     content_annotations->page_language);
-    SetPasswordStateForVisitByVisitID(visit_id,
-                                      content_annotations->password_state);
-  }
-
-  db_->SetMayContainForeignVisits(true);
-
-  if (can_add_foreign_visits_to_segments_ &&
-      CanAddForeignVisitToSegments(visit, local_device_originator_cache_guid_,
-                                   sync_device_info_)) {
-    AssignSegmentForNewVisit(url, visit.referring_visit, visit_id,
-                             visit.transition, visit.visit_time);
-  }
-
-  ScheduleCommit();
-  return visit_id;
-}
-
-VisitID HistoryBackend::UpdateSyncedVisit(
-    const GURL& url,
-    const std::u16string& title,
-    bool hidden,
-    const VisitRow& visit,
-    const std::optional<VisitContextAnnotations>& context_annotations,
-    const std::optional<VisitContentAnnotations>& content_annotations) {
-  DCHECK_EQ(visit.visit_id, kInvalidVisitID);
-  DCHECK_EQ(visit.url_id, 0);
-  DCHECK(!visit.visit_time.is_null());
-  DCHECK(!visit.originator_cache_guid.empty());
-  DCHECK(visit.is_known_to_sync);
-
-  if (!db_) {
-    return kInvalidVisitID;
-  }
-
-  VisitRow original_row;
-  if (!db_->GetLastRowForVisitByVisitTime(visit.visit_time, &original_row)) {
-    return kInvalidVisitID;
-  }
-
-  if (original_row.originator_cache_guid != visit.originator_cache_guid) {
-    // The existing visit came from a different device; something is wrong.
-    return kInvalidVisitID;
-  }
-
-  VisitID visit_id = original_row.visit_id;
-
-  // If the existing foreign visit is about to be deleted, don't update it. The
-  // HistorySyncBridge will instead create a new visit. (This can happen if Sync
-  // gets stopped, then started again before all the old foreign visits are
-  // cleaned up.)
-  if (visit_id <= db_->GetDeleteForeignVisitsUntilId()) {
-    return kInvalidVisitID;
-  }
-
-  // If we can't find the corresponding URLRow, or its actual URL doesn't match,
-  // something's wrong.
-  URLRow url_row;
-  if (!db_->GetURLRow(original_row.url_id, &url_row) || url_row.url() != url) {
-    return kInvalidVisitID;
-  }
-
-  // Update the URLRow - its title may have changed.
-  url_row.set_title(title);
-  url_row.set_hidden(hidden);
-  db_->UpdateURLRow(url_row.id(), url_row);
-
-  VisitRow updated_row = visit;
-  // The fields `visit_id` and `url_id` aren't set in visits coming from sync,
-  // so take those from the existing row.
-  updated_row.visit_id = visit_id;
-  updated_row.url_id = original_row.url_id;
-  // Similarly, `referring_visit` and `opener_visit` aren't set in visits from
-  // sync (they have originator_referring_visit and originator_opener_visit
-  // instead.)
-  updated_row.referring_visit = original_row.referring_visit;
-  updated_row.opener_visit = original_row.opener_visit;
-
-  // `segment_id` is computed locally and not synced, so keep any value from the
-  // existing row. It'll be updated below, if necessary.
-  updated_row.segment_id = original_row.segment_id;
-
-  // TODO(crbug.com/40280017): any VisitedLinkID associated with `updated_row`
-  // will be voided to avoid storing stale/incorrect VisitedLinkIDs once
-  // elements of the VisitRow's partition key change (in this case the
-  // referring_visit).
-  if (!db_->UpdateVisitRow(updated_row)) {
-    return kInvalidVisitID;
-  }
-
-  if (can_add_foreign_visits_to_segments_) {
-    UpdateSegmentForExistingForeignVisit(updated_row);
-  }
-
-  // If provided, add or update the ContextAnnotations.
-  if (context_annotations) {
-    VisitContextAnnotations existing_annotations;
-    if (db_->GetContextAnnotationsForVisit(visit_id, &existing_annotations)) {
-      // Update the existing annotations with the fields actually used/populated
-      // by Sync - for now, that's exactly the on-visit fields.
-      existing_annotations.on_visit = context_annotations->on_visit;
-      db_->UpdateContextAnnotationsForVisit(visit_id, existing_annotations);
-    } else {
-      db_->AddContextAnnotationsForVisit(visit_id, *context_annotations);
-    }
-  }
-
-  // If provided, add or update the ContentAnnotations.
-  if (content_annotations) {
-    SetPageLanguageForVisitByVisitID(visit_id,
-                                     content_annotations->page_language);
-    SetPasswordStateForVisitByVisitID(visit_id,
-                                      content_annotations->password_state);
-  }
-
-  NotifyVisitUpdated(updated_row, VisitUpdateReason::kUpdateSyncedVisit);
-  ScheduleCommit();
-  return updated_row.visit_id;
-}
-
-bool HistoryBackend::UpdateVisitReferrerOpenerIDs(VisitID visit_id,
-                                                  VisitID referrer_id,
-                                                  VisitID opener_id) {
-  if (!db_) {
-    return false;
-  }
-
-  VisitRow row;
-  if (!db_->GetRowForVisit(visit_id, &row)) {
-    return false;
-  }
-
-  row.referring_visit = referrer_id;
-  row.opener_visit = opener_id;
-
-  // TODO(crbug.com/40280017): any VisitedLinkID associated with `row`
-  // will be voided to avoid storing stale/incorrect VisitedLinkIDs once
-  // elements of the VisitRow's partition key change (in this case the
-  // referring_visit).
-  bool result = db_->UpdateVisitRow(row);
-
-  if (result && can_add_foreign_visits_to_segments_) {
-    UpdateSegmentForExistingForeignVisit(row);
-  }
-
-  ScheduleCommit();
-
-  return result;
-}
-
-void HistoryBackend::DeleteAllForeignVisitsAndResetIsKnownToSync() {
-  if (!db_) {
-    return;
-  }
-
-  if (db_->KnownToSyncVisitsExist()) {
-    db_->SetKnownToSyncVisitsExist(false);
-    // It might be bad performance that we do a full table scan setting a bit
-    // right before we delete all the foreign visits. In practice, I bet it
-    // doesn't matter, since sync turnoffs are rare, and sequencing this after
-    // completing the foreign visit deletion adds code complexity.
-    db_->SetAllVisitsAsNotKnownToSync();
-  }
-
-  // Skip this if the DB doesn't contain any foreign visits, or all the foreign
-  // visits are already scheduled for deletion - nothing to do.
-  if (db_->MayContainForeignVisits()) {
-    bool already_running =
-        db_->GetDeleteForeignVisitsUntilId() != kInvalidVisitID;
-
-    // Set the max-foreign-visit-to-delete to the current max visit ID in the
-    // DB. This ensures that any visits added in the future (after the
-    // DeleteAllForeignVisits() call) will not be affected. (This matters if
-    // Sync gets enabled again, and starts adding foreign visits again, before
-    // the deletion process has completed.)
-    VisitID max_visit_to_delete = db_->GetMaxVisitIDInUse();
-    db_->SetDeleteForeignVisitsUntilId(max_visit_to_delete);
-    // Already set the "may contain foreign visits" bit to false, since all the
-    // existing foreign visits are about to be deleted. This ensures that the
-    // bit can be safely set to true again if new foreign visits are added, even
-    // before the deletion completes.
-    db_->SetMayContainForeignVisits(false);
-
-    // Only schedule a deletion task if there isn't one already running. If
-    // there is one already running, it'll pick up the new limit automatically.
-    if (!already_running) {
-      StartDeletingForeignVisits();
-    }
-  }
-}
-
 bool HistoryBackend::RemoveVisits(const VisitVector& visits,
                                   DeletionInfo::Reason deletion_reason) {
   if (!db_) {
@@ -2053,21 +1769,6 @@ QueryURLAndVisitsResult HistoryBackend::QueryURLAndVisits(
   }
 
   return result;
-}
-
-base::WeakPtr<syncer::DataTypeControllerDelegate>
-HistoryBackend::GetHistorySyncControllerDelegate() {
-  if (history_sync_bridge_) {
-    return history_sync_bridge_->change_processor()->GetControllerDelegate();
-  }
-  return nullptr;
-}
-
-void HistoryBackend::SetSyncTransportState(
-    syncer::SyncService::TransportState state) {
-  if (history_sync_bridge_) {
-    history_sync_bridge_->SetSyncTransportState(state);
-  }
 }
 
 // Statistics ------------------------------------------------------------------
@@ -2525,31 +2226,6 @@ void HistoryBackend::AddVisitsToCluster(ClusterId cluster_id,
   }
 
   db_->AddVisitsToCluster(cluster_id, visits);
-}
-
-void HistoryBackend::AddVisitToSyncedCluster(
-    const history::ClusterVisit& cluster_visit,
-    const std::string& originator_cache_guid,
-    ClusterId originator_cluster_id) {
-  TRACE_EVENT0("browser", "HistoryBackend::AddVisitToSyncedCluster");
-  if (!db_) {
-    return;
-  }
-
-  ClusterId local_cluster_id = db_->GetClusterIdForSyncedDetails(
-      originator_cache_guid, originator_cluster_id);
-  if (local_cluster_id.value() == 0) {
-    // Reserve a new one since one with the synced details does not already
-    // exist.
-    local_cluster_id =
-        db_->ReserveNextClusterId(originator_cache_guid, originator_cluster_id);
-  }
-  if (local_cluster_id.value() == 0) {
-    // Cluster failed to be added to the DB - unclear if/how this can happen.
-    return;
-  }
-
-  db_->AddVisitsToCluster(local_cluster_id, {cluster_visit});
 }
 
 void HistoryBackend::UpdateClusterTriggerability(
@@ -3684,12 +3360,6 @@ void HistoryBackend::KillHistoryDatabase() {
     return;
   }
 
-  // Notify the sync bridge about storage error. It'll report failures to the
-  // sync engine and stop accepting remote updates.
-  if (history_sync_bridge_) {
-    history_sync_bridge_->OnDatabaseError();
-  }
-
   // Rollback transaction because Raze() cannot be called from within a
   // transaction. Deleting the object causes the rollback in the destructor.
   singleton_transaction_.reset();
@@ -3701,10 +3371,6 @@ void HistoryBackend::KillHistoryDatabase() {
   expirer_.SetDatabases(nullptr, nullptr);
 
   CloseAllDatabases();
-}
-
-void HistoryBackend::SetSyncDeviceInfo(SyncDeviceInfoMap sync_device_info) {
-  sync_device_info_ = std::move(sync_device_info);
 }
 
 void HistoryBackend::SetLocalDeviceOriginatorCacheGuid(

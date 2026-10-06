@@ -16,7 +16,6 @@
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/sync/service/sync_service.h"
 #include "components/variations/pref_names.h"
 #include "components/variations/service/google_groups_manager_prefs.h"
 #include "components/variations/variations_seed_processor.h"
@@ -96,49 +95,7 @@ bool GoogleGroupsManager::IsFeatureEnabledForProfile(
   });
 }
 
-void GoogleGroupsManager::Shutdown() {
-  sync_service_observation_.Reset();
-}
-
-void GoogleGroupsManager::OnSyncServiceInitialized(
-    syncer::SyncService* sync_service) {
-  sync_service_observation_.Observe(sync_service);
-
-  // Honor the initial state, in case OnStateChanged() never gets called.
-  OnStateChanged(sync_service);
-}
-
-void GoogleGroupsManager::OnStateChanged(syncer::SyncService* sync) {
-  switch (sync->GetTransportState()) {
-    case syncer::SyncService::TransportState::DISABLED:
-      ClearSigninScopedState();
-      break;
-    case syncer::SyncService::TransportState::PAUSED:
-    case syncer::SyncService::TransportState::START_DEFERRED:
-    case syncer::SyncService::TransportState::INITIALIZING:
-    case syncer::SyncService::TransportState::PENDING_DESIRED_CONFIGURATION:
-    case syncer::SyncService::TransportState::CONFIGURING:
-    case syncer::SyncService::TransportState::ACTIVE:
-      break;
-  }
-}
-
-void GoogleGroupsManager::OnSyncShutdown(syncer::SyncService* sync) {
-  sync_service_observation_.Reset();
-}
-
-void GoogleGroupsManager::ClearSigninScopedState() {
-  source_prefs_->ClearPref(
-#if BUILDFLAG(IS_CHROMEOS)
-      variations::kOsDogfoodGroupsSyncPrefName
-#else
-      variations::kDogfoodGroupsSyncPrefName
-#endif
-  );
-
-  // UpdateGoogleGroups() will be called via the PrefChangeRegistrar, and will
-  // propagate this change to local state.
-}
+void GoogleGroupsManager::Shutdown() {}
 
 void GoogleGroupsManager::UpdateGoogleGroups() {
   // Get the current value of the local state dict.

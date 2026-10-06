@@ -33,7 +33,6 @@
 #include "google_apis/gaia/oauth2_access_token_manager.h"
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "components/signin/public/base/binding_key_registration_token_result.h"
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -57,7 +56,6 @@ class PrefRegistrySimple;
 
 class AccountFetcherService;
 class AccountTrackerService;
-class GaiaCookieManagerService;
 class NewTabPageUI;
 
 namespace signin {
@@ -314,47 +312,6 @@ class IdentityManager : public KeyedService,
   bool HasAccountWithRefreshTokenInPersistentErrorState(
       const CoreAccountId& account_id) const;
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  // Asynchronously generates a registration token for binding a refresh token
-  // to a shared binding key.
-  // `supported_algorithms` is a space-separated list of acceptable signature
-  // algorithm names (e.g., "ES256 RS256"). This parameter may be ignored if an
-  // existing binding key is reused instead of generating a new one.
-  // Returns false if the generation cannot be started. In that case, `callback`
-  // will not be invoked.
-  bool GenerateBindingKeyRegistrationToken(
-      base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
-          supported_algorithms,
-      std::string_view auth_code,
-      base::OnceCallback<void(
-          std::optional<signin::BindingKeyRegistrationTokenResult>)> callback);
-
-  // Returns `true` if (a) a refresh token exists for `account_id`, and (b) the
-  // refresh token is bound to a device, it returns `false` otherwise.
-  bool HasAccountWithBoundRefreshToken(const CoreAccountId& account_id) const;
-
-  // Returns `true` if (a) a refresh token exists for `account_id`, and (b) the
-  // refresh token is bound to an mTLS certificate. It returns `false`
-  // otherwise.
-  bool HasAccountWithRefreshTokenBoundToMtls(
-      const CoreAccountId& account_id) const;
-
-  // Returns whether all bound refresh tokens share the same binding key.
-  //
-  // Unbound tokens are ignored in this check. Returns `true` if there are zero
-  // or one bound tokens, or if all bound tokens use the same key. Returns
-  // `false` only if there are multiple bound tokens with different keys.
-  bool AllBoundTokensShareSameBindingKey() const;
-
-  // Returns the wrapped binding key to reuse if any existing account is already
-  // bound. It returns an empty vector if no existing account is bound.
-  //
-  // NOTE: The refresh tokens must be loaded to correctly check the binding
-  // status of the accounts. If the refresh tokens are not loaded, calling this
-  // function results in a crash.
-  std::vector<uint8_t> GetWrappedBindingKey() const;
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
   // Returns the error state of the refresh token associated with |account_id|.
   // In particular: Returns GoogleServiceAuthError::AuthErrorNone() if either
   // (a) no refresh token exists for |account_id|, or (b) the refresh token is
@@ -385,18 +342,6 @@ class IdentityManager : public KeyedService,
   // method will not trigger an update even if the accounts are stale.
   AccountsInCookieJarInfo GetAccountsInCookieJar() const;
 
-  // Returns the accounts in the cookie jar without triggering an internal
-  // update even if the accounts in the cookie jar are stale.
-  //
-  // TODO(crbug.com/517864199): Remove once GetAccountsInCookieJar() no longer
-  // triggers an update.
-  AccountsInCookieJarInfo GetCachedAccountsInCookieJar() const;
-
-  // Returns the session index of the primary account in the cookie jar, or
-  // std::nullopt if the primary account is not signed in or not found in the
-  // cookie jar.
-  std::optional<size_t> GetSessionIndexForPrimaryAccount() const;
-
   // Returns pointer to the object used to change the signed-in state of the
   // primary account, if supported on the current platform. Otherwise, returns
   // null.
@@ -406,10 +351,6 @@ class IdentityManager : public KeyedService,
   // accounts' refresh tokens, if supported on the current platform. Otherwise,
   // returns null.
   AccountsMutator* GetAccountsMutator();
-
-  // Returns pointer to the object used to manipulate the cookies stored and the
-  // accounts associated with them. Guaranteed to be non-null.
-  AccountsCookieMutator* GetAccountsCookieMutator();
 
   // Returns pointer to the object used to seed accounts information from the
   // device-level accounts. May be null if the system has no such notion.
@@ -486,8 +427,6 @@ class IdentityManager : public KeyedService,
     std::unique_ptr<ProfileOAuth2TokenService> token_service;
     std::unique_ptr<AccountTrackerService> account_tracker_service;
     std::unique_ptr<AccountFetcherService> account_fetcher_service;
-    std::unique_ptr<GaiaCookieManagerService> gaia_cookie_manager_service;
-    std::unique_ptr<AccountsCookieMutator> accounts_cookie_mutator;
     std::unique_ptr<PrimaryAccountManager> primary_account_manager;
     std::unique_ptr<PrimaryAccountMutator> primary_account_mutator;
     std::unique_ptr<AccountsMutator> accounts_mutator;
@@ -611,8 +550,7 @@ class IdentityManager : public KeyedService,
   friend void SetRefreshTokenForAccount(
       IdentityManager* identity_manager,
       const CoreAccountId& account_id,
-      const std::string& token_value,
-      const TokenBindingInfo& token_binding_info);
+      const std::string& token_value);
   friend void SetInvalidRefreshTokenForAccount(
       IdentityManager* identity_manager,
       const CoreAccountId& account_id,
@@ -634,14 +572,6 @@ class IdentityManager : public KeyedService,
       const GoogleServiceAuthError& auth_error);
 
   friend void DisableAccessTokenFetchRetries(IdentityManager* identity_manager);
-
-  friend void CancelAllOngoingGaiaCookieOperations(
-      IdentityManager* identity_manager);
-
-  friend void SetCookieAccounts(
-      IdentityManager* identity_manager,
-      network::TestURLLoaderFactory* test_url_loader_factory,
-      const std::vector<CookieParamsForTest>& cookie_accounts);
 
   friend void SimulateSuccessfulFetchOfAccountInfo(
       IdentityManager* identity_manager,
@@ -730,7 +660,6 @@ class IdentityManager : public KeyedService,
   ProfileOAuth2TokenService* GetTokenService() const;
   AccountTrackerService* GetAccountTrackerService() const;
   AccountFetcherService* GetAccountFetcherService() const;
-  GaiaCookieManagerService* GetGaiaCookieManagerService() const;
 #if BUILDFLAG(IS_CHROMEOS)
   account_manager::AccountManagerFacade* GetAccountManagerFacade() const;
 #endif
@@ -757,12 +686,6 @@ class IdentityManager : public KeyedService,
   void OnAccountsOnDeviceChanged() override;
   void OnAccountOnDeviceUpdated(const AccountInfo& account_info) override;
 #endif
-
-  // GaiaCookieManagerService callbacks:
-  void OnGaiaAccountsInCookieUpdated(
-      const AccountsInCookieJarInfo& accounts_in_cookie_jar_info,
-      const GoogleServiceAuthError& error);
-  void OnGaiaCookieDeletedByUserAction();
 
   // OAuth2AccessTokenManager::DiagnosticsObserver
   void OnAccessTokenRequested(const CoreAccountId& account_id,
@@ -800,7 +723,6 @@ class IdentityManager : public KeyedService,
   // Backing signin classes.
   std::unique_ptr<AccountTrackerService> account_tracker_service_;
   std::unique_ptr<ProfileOAuth2TokenService> token_service_;
-  std::unique_ptr<GaiaCookieManagerService> gaia_cookie_manager_service_;
   std::unique_ptr<PrimaryAccountManager> primary_account_manager_;
   std::unique_ptr<AccountFetcherService> account_fetcher_service_;
   const raw_ptr<SigninClient> signin_client_;

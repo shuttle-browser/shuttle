@@ -31,7 +31,6 @@ static_library("base") {
     "account_consistency_method.h",
     "avatar_icon_util.cc",
     "avatar_icon_util.h",
-    "bound_session_oauth_multilogin_delegate.h",
     "consent_level.h",
     "device_id_helper.cc",
     "device_id_helper.h",
@@ -39,8 +38,6 @@ static_library("base") {
     "gaia_id_hash.h",
     "hybrid_encryption_key.cc",
     "hybrid_encryption_key.h",
-    "multilogin_parameters.cc",
-    "multilogin_parameters.h",
     "oauth_consumer.cc",
     "oauth_consumer.h",
     "oauth_consumer_id.h",
@@ -93,10 +90,6 @@ static_library("base") {
 
   if (enable_dice_support) {
     sources += [
-      "binding_key_registration_token_helper.cc",
-      "binding_key_registration_token_helper.h",
-      "binding_key_registration_token_result.cc",
-      "binding_key_registration_token_result.h",
     ]
     public_deps += [ "//components/unexportable_keys" ]
   }

@@ -289,7 +289,7 @@ void PinInfoBarController::OnShouldOfferToPinResult(
   const auto* profile = browser_->GetProfile();
   if (!should_offer_to_pin ||
       browser_->GetType() != BrowserWindowInterface::TYPE_NORMAL ||
-      profile->IsIncognitoProfile() || profile->IsGuestSession()) {
+      profile->IsIncognitoProfile()) {
     std::move(done_callback).Run(false);
     return;
   }

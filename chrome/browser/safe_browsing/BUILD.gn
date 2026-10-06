@@ -54,7 +54,6 @@ static_library("safe_browsing") {
     "//chrome/browser/push_messaging",
     "//chrome/browser/signin",
     "//chrome/browser/site_protection:utils",
-    "//chrome/browser/sync",
     "//chrome/browser/ui/browser_window",
     "//chrome/common",
     "//chrome/common:constants",
@@ -151,14 +150,7 @@ static_library("safe_browsing") {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/toasts",
       "//chrome/browser/ui/toasts/api:toasts",
-
-      # Shows the safe_browsing views dialogs (toolkit_views only), which in
-      # turn include this target's chrome_password_protection_service.h.
-      "//chrome/browser/ui/views/safe_browsing",
     ]
-
-    allow_circular_includes_from +=
-        [ "//chrome/browser/ui/views/safe_browsing" ]
   }
 
   if (safe_browsing_mode != 0) {
@@ -208,14 +200,9 @@ static_library("safe_browsing") {
       "notification_telemetry/notification_telemetry_service_factory.h",
       "phishy_interaction_tracker.h",
       "safe_browsing_navigation_observer_manager_factory.h",
-      "safe_browsing_pref_change_handler.h",
       "safe_browsing_service.h",
       "security_settings_bundle_pref_change_handler.h",
       "services_delegate.h",
-      "tailored_security/chrome_tailored_security_service.h",
-      "tailored_security/message_retry_handler.h",
-      "tailored_security/tailored_security_service_factory.h",
-      "tailored_security/tailored_security_url_observer.h",
       "telemetry/telemetry_service.h",
       "test_safe_browsing_blocking_page_quiet.h",
       "trigger_creator.h",
@@ -268,14 +255,9 @@ static_library("safe_browsing") {
       "notification_telemetry/notification_telemetry_service_factory.cc",
       "phishy_interaction_tracker.cc",
       "safe_browsing_navigation_observer_manager_factory.cc",
-      "safe_browsing_pref_change_handler.cc",
       "safe_browsing_service.cc",
       "security_settings_bundle_pref_change_handler.cc",
       "services_delegate.cc",
-      "tailored_security/chrome_tailored_security_service.cc",
-      "tailored_security/message_retry_handler.cc",
-      "tailored_security/tailored_security_service_factory.cc",
-      "tailored_security/tailored_security_url_observer.cc",
       "telemetry/telemetry_service.cc",
       "test_safe_browsing_blocking_page_quiet.cc",
       "trigger_creator.cc",
@@ -348,7 +330,6 @@ static_library("safe_browsing") {
       "//components/safe_browsing/core/browser/realtime:policy_engine",
       "//components/safe_browsing/core/browser/realtime:url_lookup_service",
       "//components/safe_browsing/core/browser/sync",
-      "//components/safe_browsing/core/browser/tailored_security_service",
       "//components/safe_browsing/core/common",
       "//components/safe_browsing/core/common:safe_browsing_prefs",
       "//components/safe_browsing/core/common/proto:crx_info_proto",
@@ -365,7 +346,6 @@ static_library("safe_browsing") {
       "//services/preferences/public/mojom",
     ]
 
-    public_deps += [ "//chrome/browser/security_events" ]
 
     if (safe_browsing_mode == 1) {
       # "Safe Browsing Full" files in addition to the "basic" ones to use for
@@ -429,7 +409,6 @@ static_library("safe_browsing") {
         "ohttp_key_service_factory.h",
         "services_delegate_desktop.h",
         "suspicious_site_warnings/suspicious_site_ui.h",
-        "tailored_security/notification_handler_desktop.h",
       ]
       sources += [
         "download_protection/download_feedback.cc",
@@ -485,7 +464,6 @@ static_library("safe_browsing") {
         "incident_reporting/tracked_preference_incident.cc",
         "ohttp_key_service_factory.cc",
         "services_delegate_desktop.cc",
-        "tailored_security/notification_handler_desktop.cc",
       ]
       if (is_mac) {
         public += [
@@ -544,7 +522,6 @@ static_library("safe_browsing") {
         "//components/safe_browsing/core/common/proto:csd_proto",
         "//components/security_interstitials/content:security_interstitial_page",
         "//components/security_interstitials/core:unsafe_resource",
-        "//components/sync",
         "//content/public/browser",
         "//extensions/browser",
         "//net",
@@ -583,8 +560,6 @@ static_library("safe_browsing") {
         "android/suspicious_site_controller_android.h",
         "download_protection/download_protection_delegate_android.h",
         "download_protection/rate_limiting_key_manager.h",
-        "tailored_security/consented_message_android.h",
-        "tailored_security/unconsented_message_android.h",
         "telemetry/android/android_telemetry_service.h",
       ]
       sources += [
@@ -597,8 +572,6 @@ static_library("safe_browsing") {
         "android/suspicious_site_controller_android.cc",
         "download_protection/download_protection_delegate_android.cc",
         "download_protection/rate_limiting_key_manager.cc",
-        "tailored_security/consented_message_android.cc",
-        "tailored_security/unconsented_message_android.cc",
         "telemetry/android/android_telemetry_service.cc",
       ]
       deps += [
@@ -638,7 +611,6 @@ source_set("verdict_cache_manager_factory") {
     "//chrome/browser/history",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/sync",
     "//chrome/common",
     "//components/content_settings/core/browser",
     "//components/history/core/browser",

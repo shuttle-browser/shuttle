@@ -17,16 +17,9 @@
 #include "base/observer_list.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/spellcheck/browser/spellcheck_dictionary.h"
-#include "components/sync/model/model_error.h"
-#include "components/sync/model/sync_data.h"
-#include "components/sync/model/syncable_service.h"
 
 namespace base {
 class Location;
-}
-
-namespace syncer {
-class SyncChangeProcessor;
 }
 
 // Defines a custom dictionary where users can add their own words. All words
@@ -38,8 +31,7 @@ class SyncChangeProcessor;
 //   foo
 //   checksum_v1 = ec3df4034567e59e119fcf87f2d9bad4
 //
-class SpellcheckCustomDictionary final : public SpellcheckDictionary,
-                                         public syncer::SyncableService {
+class SpellcheckCustomDictionary final : public SpellcheckDictionary {
  public:
   // A change to the dictionary.
   class Change {
@@ -161,25 +153,8 @@ class SpellcheckCustomDictionary final : public SpellcheckDictionary,
   // Returns true if the dictionary has been loaded. Otherwise returns false.
   bool IsLoaded();
 
-  // Returns true if the dictionary is being synced. Otherwise returns false.
-  bool IsSyncing();
-
   // Overridden from SpellcheckDictionary:
   void Load() override;
-
-  // Overridden from syncer::SyncableService:
-  void WaitUntilReadyToSync(base::OnceClosure done) override;
-  std::optional<syncer::ModelError> MergeDataAndStartSyncing(
-      syncer::DataType type,
-      const syncer::SyncDataList& initial_sync_data,
-      std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) override;
-  void StopSyncing(syncer::DataType type) override;
-  std::optional<syncer::ModelError> ProcessSyncChanges(
-      const base::Location& from_here,
-      const syncer::SyncChangeList& change_list) override;
-  base::WeakPtr<SyncableService> AsWeakPtr() override;
-  std::string GetClientTag(
-      const syncer::EntityData& entity_data) const override;
 
   base::WeakPtr<SpellcheckCustomDictionary> GetWeakPtr() {
     return weak_ptr_factory_.GetWeakPtr();
@@ -212,8 +187,6 @@ class SpellcheckCustomDictionary final : public SpellcheckDictionary,
   void ApplyToSet(const Change& dictionary_change,
                   std::set<std::string>* words);
   // Applies the `dictionary_change` to the in-memory copy of the dictionary.
-  // This applies the change to both local and account words if syncing,
-  // otherwise only to local words.
   void Apply(const Change& dictionary_change);
 
   // Schedules a write of the words in |load_file_result| to disk when the
@@ -224,11 +197,6 @@ class SpellcheckCustomDictionary final : public SpellcheckDictionary,
   // |dictionary_change| to pass it to the FILE thread.
   void Save(std::unique_ptr<Change> dictionary_change);
 
-  // Notifies the sync service of the |dictionary_change|. Syncs up to the
-  // maximum syncable words on the server. Disables syncing of this dictionary
-  // if the server contains the maximum number of syncable words.
-  std::optional<syncer::ModelError> Sync(const Change& dictionary_change);
-
   // Notifies observers of the dictionary change if the dictionary has been
   // changed.
   void Notify(const Change& dictionary_change);
@@ -236,14 +204,8 @@ class SpellcheckCustomDictionary final : public SpellcheckDictionary,
   // Task runner where the file operations takes place.
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
 
-  // In-memory cache of the custom words file. When
-  // kSpellcheckSeparateLocalAndAccountDictionaries is disabled, this contains
-  // both local and account words, otherwise only local words.
+  // In-memory cache of the custom words file.
   std::set<std::string> words_;
-
-  // Account words.Used only when
-  // kSpellcheckSeparateLocalAndAccountDictionaries is enabled.
-  std::set<std::string> account_words_;
 
   // The path to the custom dictionary file.
   base::FilePath custom_dictionary_path_;
@@ -251,13 +213,8 @@ class SpellcheckCustomDictionary final : public SpellcheckDictionary,
   // Observers for dictionary load and content changes.
   base::ObserverList<Observer>::Unchecked observers_;
 
-  // Used to send local changes to the sync infrastructure.
-  std::unique_ptr<syncer::SyncChangeProcessor> sync_processor_;
-
   // True if the dictionary has been loaded. Otherwise false.
   bool is_loaded_;
-
-  base::OnceClosure wait_until_ready_to_sync_cb_;
 
   // A post-startup task to fix the invalid custom dictionary file.
   base::CancelableOnceClosure fix_invalid_file_;

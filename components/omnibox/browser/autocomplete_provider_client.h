@@ -135,7 +135,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   // true only for Incognito mode.
   virtual bool IsOffTheRecord() const = 0;
   virtual bool IsIncognitoProfile() const = 0;
-  virtual bool IsGuestSession() const = 0;
 
   virtual bool SearchSuggestEnabled() const = 0;
 

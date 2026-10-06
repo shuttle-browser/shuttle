@@ -20,13 +20,12 @@
 #include "components/browsing_data/core/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/sync/base/features.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace {
 // Constructs the text to be displayed by the history counter from the given
 // `history_result`. The string is based on the unique domains within the
-// deletion range and if there are synced entries within the deletion range.
+// deletion range.
 std::u16string CreateHistoryCounterString(
     const browsing_data::HistoryCounter::HistoryResult* history_result) {
   CHECK(history_result->source()->GetPrefName() ==
@@ -41,9 +40,6 @@ std::u16string CreateHistoryCounterString(
       history_result->Value();
 
   if (unique_domains_count == 0) {
-    if (history_result->has_synced_visits()) {
-      return l10n_util::GetStringUTF16(IDS_DEL_NO_BROWSING_HISTORY_SYNC_TEXT);
-    }
     return l10n_util::GetStringUTF16(IDS_DEL_NO_BROWSING_HISTORY_TEXT);
   }
   std::u16string last_visited_domain =
@@ -52,25 +48,13 @@ std::u16string CreateHistoryCounterString(
 
   unique_domains_count--;
   if (unique_domains_count > 0) {
-    std::u16string domain_count_string;
-    if (history_result->has_synced_visits()) {
-      domain_count_string = l10n_util::GetPluralStringFUTF16(
-          IDS_DEL_BROWSING_HISTORY_DOMAIN_COUNT_SYNC_TEXT,
-          unique_domains_count);
-    } else {
-      domain_count_string = l10n_util::GetPluralStringFUTF16(
-          IDS_DEL_BROWSING_HISTORY_DOMAIN_COUNT_TEXT, unique_domains_count);
-    }
+    std::u16string domain_count_string = l10n_util::GetPluralStringFUTF16(
+        IDS_DEL_BROWSING_HISTORY_DOMAIN_COUNT_TEXT, unique_domains_count);
     return l10n_util::GetStringFUTF16(
         IDS_DEL_BROWSING_HISTORY_COUNTER_MULTIPLE_DOMAINS_TEXT,
         last_visited_domain, domain_count_string);
   }
 
-  if (history_result->has_synced_visits()) {
-    return l10n_util::GetStringFUTF16(
-        IDS_DEL_BROWSING_HISTORY_COUNTER_SINGLE_DOMAIN_SYNC_TEXT,
-        last_visited_domain);
-  }
   return l10n_util::GetStringFUTF16(
       IDS_DEL_BROWSING_HISTORY_COUNTER_SINGLE_DOMAIN_TEXT, last_visited_domain);
 }

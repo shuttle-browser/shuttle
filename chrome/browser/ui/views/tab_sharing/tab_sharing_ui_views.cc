@@ -608,15 +608,6 @@ bool TabSharingUIViews::IsCapturableByCapturer(const Profile* profile) const {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   CHECK(profile);
 
-  // Guest profiles may have an arbitrary non-guest profile as their original,
-  // so direct comparison would not work. Instead, we rely on the assumption
-  // that there is at most one guest profile.
-  const bool capturer_is_guest = profile_ && profile_->IsGuestSession();
-  const bool new_is_guest = profile->IsGuestSession();
-  if (capturer_is_guest || new_is_guest) {
-    return capturer_is_guest && new_is_guest;
-  }
-
   return profile->GetOriginalProfile() == profile_;
 }
 

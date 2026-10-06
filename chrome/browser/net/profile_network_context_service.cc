@@ -215,47 +215,6 @@ std::string ComputeAcceptLanguageFromPref(const std::string& language_pref) {
   return net::HttpUtil::GenerateAcceptLanguageHeader(accept_languages_str);
 }
 
-// Tests allowing ambient authentication with default credentials based on the
-// profile type.
-bool IsAmbientAuthAllowedForProfile(Profile* profile) {
-  // Ambient authentication is always enabled for regular and system profiles.
-  // System profiles (used in profile picker) may require authentication to
-  // let user login.
-  if (profile->IsRegularProfile() || profile->IsSystemProfile()) {
-    return true;
-  }
-
-  // Non-primary OTR profiles are not used to create browser windows and are
-  // only technical means for a task that does not need to leave state after
-  // it's completed.
-  if (profile->IsOffTheRecord() && !profile->IsPrimaryOTRProfile()) {
-    return true;
-  }
-
-  PrefService* local_state = g_browser_process->local_state();
-  DCHECK(local_state);
-  DCHECK(local_state->FindPreference(
-      prefs::kAmbientAuthenticationInPrivateModesEnabled));
-
-  net::AmbientAuthAllowedProfileTypes type =
-      static_cast<net::AmbientAuthAllowedProfileTypes>(local_state->GetInteger(
-          prefs::kAmbientAuthenticationInPrivateModesEnabled));
-  // TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
-  // should be revisited when deciding on the final integration of Isolated
-  // mode.
-  if (profile->IsGuestSession()) {
-    return type == net::AmbientAuthAllowedProfileTypes::kGuestAndRegular ||
-           type == net::AmbientAuthAllowedProfileTypes::kAll;
-  } else if (profile->IsIncognitoProfile() ||
-             profile->IsEnterpriseIsolatedModeProfile()) {
-    return type == net::AmbientAuthAllowedProfileTypes::kIncognitoAndRegular ||
-           type == net::AmbientAuthAllowedProfileTypes::kAll;
-  }
-
-  // Profile type not yet supported.
-  NOTREACHED();
-}
-
 void UpdateAntiAbuseSettings(Profile* profile) {
   ContentSetting content_setting =
       HostContentSettingsMapFactory::GetForProfile(profile)
@@ -1372,15 +1331,10 @@ void ProfileNetworkContextService::ConfigureNetworkContextParamsInternal(
   network_context_params->http_auth_static_network_context_params =
       network::mojom::HttpAuthStaticNetworkContextParams::New();
 
-  if (IsAmbientAuthAllowedForProfile(profile_)) {
-    network_context_params->http_auth_static_network_context_params
-        ->allow_default_credentials =
-        net::HttpAuthPreferences::ALLOW_DEFAULT_CREDENTIALS;
-  } else {
-    network_context_params->http_auth_static_network_context_params
-        ->allow_default_credentials =
-        net::HttpAuthPreferences::DISALLOW_DEFAULT_CREDENTIALS;
-  }
+  // Ambient authentication is always enabled: all profiles are regular.
+  network_context_params->http_auth_static_network_context_params
+      ->allow_default_credentials =
+      net::HttpAuthPreferences::ALLOW_DEFAULT_CREDENTIALS;
 
   network_context_params->cookie_manager_params =
       CreateCookieManagerParams(profile_, *cookie_settings_);

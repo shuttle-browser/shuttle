@@ -154,9 +154,7 @@ bool ShouldShowReviewPrompt(const Extension& extension, Profile& profile) {
     return false;
   }
 
-  if (!profile.IsRegularProfile() ||
-      !profile.GetPrefs()->GetBoolean(
-          prefs::kExtensionReviewPromptsAllowed)) {
+  if (!profile.GetPrefs()->GetBoolean(prefs::kExtensionReviewPromptsAllowed)) {
     return false;
   }
 

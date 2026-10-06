@@ -562,11 +562,6 @@ inline constexpr char kEnableUnexportableKeysSpareKeyPoolDescription[] =
     "Enables in-memory spare key pooling for unexportable keys to reduce "
     "latency.";
 
-inline constexpr char kEnableCrossDevicePrefTrackerName[] =
-    "Enable Cross-Device Pref Tracker";
-inline constexpr char kEnableCrossDevicePrefTrackerDescription[] =
-    "Enables the tracking and sharing of select non-syncing preference values "
-    "across a user's signed-in devices.";
 
 
 inline constexpr char kEnableExtensionInstallPolicyFetchingName[] =
@@ -1119,10 +1114,6 @@ inline constexpr char
         "https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/"
         "IframeMediaPause/iframe_media_pausing.md for more information.";
 
-inline constexpr char kCollaborationSharedTabGroupAccountDataName[] =
-    "Shared Tab Group messaging sync";
-inline constexpr char kCollaborationSharedTabGroupAccountDataDescription[] =
-    "Enable the messaging sync backend for shared tab groups.";
 
 inline constexpr char kCompressionDictionaryTransportName[] =
     "Compression dictionary transport";
@@ -2281,11 +2272,6 @@ inline constexpr char kCrasProcessorWavDumpDescription[] =
     "Make CrasProcessor produce WAVE file dumps for the audio processing "
     "pipeline";
 
-inline constexpr char kPwaRestoreBackendName[] =
-    "Enable the PWA Restore Backend";
-inline constexpr char kPwaRestoreBackendDescription[] =
-    "When enabled, PWA data will be sync to the backend, to support the PWA "
-    "Restore UI.";
 
 inline constexpr char kPwaRestoreUiName[] = "Enable the PWA Restore UI";
 inline constexpr char kPwaRestoreUiDescription[] =
@@ -3365,9 +3351,6 @@ inline constexpr char kReplaceSyncPromosWithSigninPromosNewSigninDescription[] =
     "Similar to #replace-sync-promos-with-sign-in-promos-desktop but only "
     "enables extensions and bookmarks sync on new signin events.";
 
-inline constexpr char kUnoPhase2FollowUpName[] = "Uno phase 2 follow-up";
-inline constexpr char kUnoPhase2FollowUpDescription[] =
-    "UI tweaks for signin surfaces";
 
 inline constexpr char kResetShortcutCustomizationsName[] =
     "Reset all shortcut customizations";
@@ -3618,41 +3601,13 @@ inline constexpr char kStrictOriginIsolationDescription[] =
     "Controls whether site isolation should use origins instead of scheme and "
     "eTLD+1.";
 
-inline constexpr char kSyncAIThreadsName[] = "Sync AI Threads";
-inline constexpr char kSyncAIThreadsDescription[] =
-    "Acquire AI Threads via sync.";
 
-inline constexpr char kSyncAccountSettingsName[] = "Sync account settings";
-inline constexpr char kSyncAccountSettingsDescription[] =
-    "Enables syncing account settings to the server.";
 
-inline constexpr char kSyncAutofillValuableMetadataName[] =
-    "Sync autofill valuable metadata";
-inline constexpr char kSyncAutofillValuableMetadataDescription[] =
-    "Enables syncing valuable metadata for autofill to the server.";
 
-inline constexpr char kSyncWalletFlightReservationsName[] =
-    "Sync wallet flight reservations";
-inline constexpr char kSyncWalletFlightReservationsDescription[] =
-    "Enables syncing flight reservations in the wallet to the server.";
 
-inline constexpr char kSyncWalletVehicleRegistrationsName[] =
-    "Sync wallet vehicle registrations";
-inline constexpr char kSyncWalletVehicleRegistrationsDescription[] =
-    "Enables syncing vehicle registrations in the wallet to the server.";
 
-inline constexpr char kSyncGeminiThreadsName[] = "Sync Gemini Threads";
-inline constexpr char kSyncGeminiThreadsDescription[] =
-    "Acquire Gemini Threads via sync.";
 
-inline constexpr char kSyncSandboxName[] = "Use Chrome Sync sandbox";
-inline constexpr char kSyncSandboxDescription[] =
-    "Connects to the testing server for Chrome Sync.";
 
-inline constexpr char kSyncSearchEnginesAndroidLFFName[] =
-    "Sync search engines on Android LFF devices";
-inline constexpr char kSyncSearchEnginesAndroidLFFDescription[] =
-    "Enables syncing search engines on Android LFF devices.";
 
 inline constexpr char kSystemKeyboardLockName[] =
     "Experimental system keyboard lock";
@@ -5172,11 +5127,6 @@ inline constexpr char kAndroidNavigationBlurTransitionAnimationDescription[] =
     "Display a blur animation during cross-site navigations to provide an "
     "enhanced transition experience where the white loading screen is avoided.";
 
-inline constexpr char kNewTabPageCustomizationThemeSyncName[] =
-    "New Tab Page Customization Theme Sync";
-inline constexpr char kNewTabPageCustomizationThemeSyncDescription[] =
-    "Allows users to sync their New Tab page customizations settings "
-    "(appearance).";
 
 inline constexpr char kNoPauseMediaOnHeadphoneUnplugName[] =
     "Do not pause media on headphone unplug";
@@ -7449,17 +7399,7 @@ inline constexpr char kProfilesReorderingDescription[] =
     "dropping the Profile Tiles. The order is saved when changed and "
     "persisted.";
 
-inline constexpr char kEnableChromeRefreshTokenBindingName[] =
-    "Chrome Refresh Token Binding";
-inline constexpr char kEnableChromeRefreshTokenBindingDescription[] =
-    "Enables binding of Chrome refresh tokens to cryptographic keys.";
 
-inline constexpr char kEnableChromeRefreshTokenBindingUpgradeName[] =
-    "Chrome Refresh Token Binding Upgrade";
-inline constexpr char kEnableChromeRefreshTokenBindingUpgradeDescription[] =
-    "Enables opportunistic binding of existing unbound Chrome refresh tokens "
-    "and session cookies to cryptographic keys. Requires Chrome Refresh Token "
-    "Binding to be enabled.";
 
 inline constexpr char kEnableCookieBindingCookieUpgradeName[] =
     "Cookie Binding Cookie Upgrade";
@@ -7471,19 +7411,7 @@ inline constexpr char kDiceLinkedAccountsName[] = "Linked Accounts";
 inline constexpr char kDiceLinkedAccountsDescription[] =
     "Enables Linked Accounts and DICE version 2 protocol header.";
 
-inline constexpr char kEnableOAuthMultiloginStandardCookiesBindingName[] =
-    "Enable OAuthMultilogin Standard Cookies Binding";
-inline constexpr char
-    kEnableOAuthMultiloginStandardCookiesBindingDescription[] =
-        "Enables binding of cookies returned from OAuthMultilogin to "
-        "cryptographic keys using standard DBSC.";
 
-inline constexpr char kEnableOAuthMultiloginYoutubeCookiesBindingName[] =
-    "Enable Youtube OAuthMultilogin Cookies Binding";
-inline constexpr char kEnableOAuthMultiloginYoutubeCookiesBindingDescription[] =
-    "When enabled, Chrome will send a specific URL parameter to Gaia "
-    "to trigger the server-side experiment for binding the OAuthMultilogin "
-    "cookies for Youtube to cryptographic keys.";
 
 inline constexpr char kEnableBoundSessionCredentialsName[] =
     "Device Bound Session Credentials";

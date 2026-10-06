@@ -64,18 +64,6 @@ void WebUIInfoSingletonEventObserverImpl::NotifyCSBRRJsListener(
                                 base::Value(web_ui::SerializeCSBRR(*csbrr)));
 }
 
-void WebUIInfoSingletonEventObserverImpl::NotifyPGEventJsListener(
-    const sync_pb::UserEventSpecifics& event) {
-  delegate_->SendEventToHandler("sent-pg-event",
-                                web_ui::SerializePGEvent(event));
-}
-
-void WebUIInfoSingletonEventObserverImpl::NotifySecurityEventJsListener(
-    const sync_pb::GaiaPasswordReuse& event) {
-  delegate_->SendEventToHandler("sent-security-event",
-                                web_ui::SerializeSecurityEvent(event));
-}
-
 void WebUIInfoSingletonEventObserverImpl::NotifyPGPingJsListener(
     int token,
     const web_ui::LoginReputationClientRequestAndToken& request) {

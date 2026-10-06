@@ -20,30 +20,19 @@
 // is used in Chrome.
 class POLICY_EXPORT PolicyBlocklistService : public KeyedService {
  public:
-  // Indicates whether a URL is blocked or allowed by URL or Incognito URL
-  // blocklist policies.
+  // Indicates whether a URL is blocked or allowed by URL blocklist policies.
   // url_blocklist_state: The blocklist state of the URL.
   // policy_source: The source of the policy that determined the blocklist
-  //                state. This can be either pair of URLBlocklist, URLAllowlist
-  //                or IncognitoModeURLBlocklist, IncognitoModeURLAllowlist
-  //                policies.
+  //                state: the URLBlocklist, URLAllowlist policies.
   struct PolicyBlocklistState {
     policy::URLBlocklist::URLBlocklistState url_blocklist_state;
     enum PolicySource {
       URL_POLICY,
-      INCOGNITO_POLICY,
     } policy_source;
   };
 
-  // Constructor to be used by embedders that don't support Incognito mode.
   PolicyBlocklistService(
       std::unique_ptr<policy::URLBlocklistManager> url_blocklist_manager,
-      PrefService* user_prefs);
-  // Constructor to be used by embedders that support Incognito mode.
-  PolicyBlocklistService(
-      std::unique_ptr<policy::URLBlocklistManager> url_blocklist_manager,
-      std::unique_ptr<policy::URLBlocklistManager>
-          incognito_url_blocklist_manager,
       PrefService* user_prefs);
 
   PolicyBlocklistService(const PolicyBlocklistService&) = delete;
@@ -71,9 +60,6 @@ class POLICY_EXPORT PolicyBlocklistService : public KeyedService {
  private:
   // `URLBlocklistManager` handling URLBlock(Allow)list policies
   std::unique_ptr<policy::URLBlocklistManager> url_blocklist_manager_;
-  // `URLBlocklistManager` handling IncognitoModeBlock(Allow)list policies
-  // should be set only if profile is in Incognito mode.
-  std::unique_ptr<policy::URLBlocklistManager> incognito_url_blocklist_manager_;
   raw_ptr<PrefService> user_prefs_;
 };
 

@@ -21,7 +21,6 @@
 #include "components/browsing_data/core/counters/browsing_data_counter.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/search_engines/template_url_service_observer.h"
-#include "components/sync/service/sync_service.h"
 
 namespace content {
 class WebUI;
@@ -31,7 +30,6 @@ namespace settings {
 
 // Chrome browser startup settings handler.
 class ClearBrowsingDataHandler : public SettingsPageUIHandler,
-                                 public syncer::SyncServiceObserver,
                                  public TemplateURLServiceObserver {
  public:
   ClearBrowsingDataHandler(content::WebUI* webui, Profile* profile);
@@ -87,24 +85,11 @@ class ClearBrowsingDataHandler : public SettingsPageUIHandler,
   // executed and prefs updated.
   void HandleRestartCounters(const base::ListValue& args);
 
-  // Implementation of SyncServiceObserver.
-  void OnStateChanged(syncer::SyncService* sync) override;
-  void OnSyncShutdown(syncer::SyncService* sync) override;
-
   // Updates the footer of the dialog when the sync state changes.
   virtual void UpdateSyncState();
 
   // Create a SyncStateEvent containing the current sync state.
   base::DictValue CreateSyncStateEvent();
-
-  // Finds out whether we should show notice about other forms of history stored
-  // in user's account.
-  void RefreshHistoryNotice();
-
-  // Called as an asynchronous response to |RefreshHistoryNotice()|. Enables or
-  // disables the dialog about other forms of history stored in user's account
-  // that is shown when the history deletion is finished.
-  void UpdateHistoryDeletionDialog(bool show);
 
   // Adds a browsing data |counter|.
   void AddCounter(std::unique_ptr<browsing_data::BrowsingDataCounter> counter);
@@ -129,17 +114,8 @@ class ClearBrowsingDataHandler : public SettingsPageUIHandler,
   // Counters that calculate the data volume for individual data types.
   std::vector<std::unique_ptr<browsing_data::BrowsingDataCounter>> counters_;
 
-  // SyncService to observe sync state changes.
-  raw_ptr<syncer::SyncService> sync_service_;
-  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
-      sync_service_observation_{this};
-
   base::ScopedObservation<TemplateURLService, TemplateURLServiceObserver>
       dse_service_observation_{this};
-
-  // Whether we should show a dialog informing the user about other forms of
-  // history stored in their account after the history deletion is finished.
-  bool show_history_deletion_dialog_;
 
   // A weak pointer factory for asynchronous calls referencing this class.
   // The weak pointers are invalidated in |OnJavascriptDisallowed()| and

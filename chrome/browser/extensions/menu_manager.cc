@@ -391,9 +391,6 @@ MenuManager::MenuManager(content::BrowserContext* context, StateStore* store)
       ExtensionRegistry::Get(browser_context_));
   Profile* profile = Profile::FromBrowserContext(context);
   observed_profiles_.AddObservation(profile);
-  if (profile->HasPrimaryOTRProfile())
-    observed_profiles_.AddObservation(
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/true));
   if (store_)
     store_->RegisterKey(kContextMenusKey);
   extension_menu_icon_loader_ = std::make_unique<ExtensionMenuIconLoader>();
@@ -984,10 +981,6 @@ void MenuManager::OnExtensionUnloaded(content::BrowserContext* browser_context,
   if (context_items_.contains(extension_key)) {
     RemoveAllContextItems(extension_key);
   }
-}
-
-void MenuManager::OnOffTheRecordProfileCreated(Profile* off_the_record) {
-  observed_profiles_.AddObservation(off_the_record);
 }
 
 void MenuManager::OnProfileWillBeDestroyed(Profile* profile) {

@@ -62,7 +62,6 @@
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #endif
 
@@ -403,14 +402,6 @@ void ChromeExtensionRegistrarDelegate::OnExtensionInstalled(
 
   if (pending_extension_info) {
     if (!pending_extension_info->ShouldAllowInstall(extension, profile_)) {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-      // Note: Theme is unsupported on desktop Android.
-      // Hack for crbug.com/40445445, see comment on DeleteThemeDoNotUse.
-      if (extension->is_theme() && pending_extension_info->is_from_sync()) {
-        ExtensionSyncService::Get(profile_)->DeleteThemeDoNotUse(*extension);
-      }
-#endif
-
       pending_extension_manager->Remove(id);
 
       ExtensionManagement* management =

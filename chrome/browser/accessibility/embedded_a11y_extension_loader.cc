@@ -175,14 +175,6 @@ void EmbeddedA11yExtensionLoader::OnProfileWillBeDestroyed(Profile* profile) {
   observed_profiles_.RemoveObservation(profile);
 }
 
-void EmbeddedA11yExtensionLoader::OnOffTheRecordProfileCreated(
-    Profile* off_the_record) {
-  observed_profiles_.AddObservation(off_the_record);
-  for (const auto& extension : extension_map_) {
-    UpdateProfile(off_the_record, extension.first);
-  }
-}
-
 void EmbeddedA11yExtensionLoader::OnProfileAdded(Profile* profile) {
   observed_profiles_.AddObservation(profile);
   for (const auto& extension : extension_map_) {
@@ -200,12 +192,6 @@ void EmbeddedA11yExtensionLoader::UpdateAllProfiles(
       g_browser_process->profile_manager()->GetLoadedProfiles();
   for (auto* profile : profiles) {
     UpdateProfile(profile, extension_id);
-    if (profile->HasAnyOffTheRecordProfile()) {
-      const auto& otr_profiles = profile->GetAllOffTheRecordProfiles();
-      for (auto* otr_profile : otr_profiles) {
-        UpdateProfile(otr_profile, extension_id);
-      }
-    }
   }
 }
 

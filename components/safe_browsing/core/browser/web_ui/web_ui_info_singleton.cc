@@ -7,7 +7,6 @@
 #include "base/functional/callback_helpers.h"
 #include "base/strings/strcat.h"
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton_event_observer.h"
-#include "components/sync/protocol/user_event_specifics.pb.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 
 namespace safe_browsing {
@@ -142,42 +141,6 @@ void WebUIInfoSingleton::ClearCSBRRsSent() {
 void WebUIInfoSingleton::SetOnCSBRRLoggedCallbackForTesting(
     base::OnceClosure on_done) {
   on_csbrr_logged_for_testing_ = std::move(on_done);
-}
-
-void WebUIInfoSingleton::AddToPGEvents(
-    const sync_pb::UserEventSpecifics& event) {
-  if (!HasListener()) {
-    return;
-  }
-
-  for (safe_browsing::WebUIInfoSingletonEventObserver* webui_listener :
-       webui_instances_) {
-    webui_listener->NotifyPGEventJsListener(event);
-  }
-
-  pg_event_log_.emplace_back(event);
-}
-
-void WebUIInfoSingleton::ClearPGEvents() {
-  std::vector<sync_pb::UserEventSpecifics>().swap(pg_event_log_);
-}
-
-void WebUIInfoSingleton::AddToSecurityEvents(
-    const sync_pb::GaiaPasswordReuse& event) {
-  if (!HasListener()) {
-    return;
-  }
-
-  for (safe_browsing::WebUIInfoSingletonEventObserver* webui_listener :
-       webui_instances_) {
-    webui_listener->NotifySecurityEventJsListener(event);
-  }
-
-  security_event_log_.emplace_back(event);
-}
-
-void WebUIInfoSingleton::ClearSecurityEvents() {
-  std::vector<sync_pb::GaiaPasswordReuse>().swap(security_event_log_);
 }
 
 int WebUIInfoSingleton::AddToPGPings(
@@ -517,7 +480,6 @@ void WebUIInfoSingleton::MaybeClearData() {
     ClearClientDownloadResponsesReceived();
     ClearClientPhishingRequestsSent();
     ClearClientPhishingResponsesReceived();
-    ClearPGEvents();
     ClearPGPings();
     ClearURTLookupPings();
     ClearHPRTLookupPings();

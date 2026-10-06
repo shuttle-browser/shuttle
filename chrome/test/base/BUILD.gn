@@ -91,7 +91,6 @@ if (is_android) {
     ]
     public_deps = [ "//url" ]
     deps = [
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/ui/android/tab_model",
       "//content/public/browser",
       "//content/test:test_support",

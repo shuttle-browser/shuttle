@@ -404,7 +404,6 @@ static_library("browser") {
     "//components/sessions",
     "//components/signin/public/identity_manager",
     "//components/strings",
-    "//components/sync",
     "//components/url_formatter",
     "//components/variations",
     "//components/variations/net",

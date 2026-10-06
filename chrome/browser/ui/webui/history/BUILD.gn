@@ -68,7 +68,6 @@ source_set("history") {
       "//components/sessions",
       "//components/strings:components_strings",
       "//components/supervised_user/core/browser",
-      "//components/sync/service",
       "//components/user_education/webui",
       "//components/user_education/webui:mojo_bindings",
       "//content/public/browser",

@@ -17,7 +17,6 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/extensions/install_tracker_factory.h"
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "components/app_constants/constants.h"
@@ -319,7 +318,6 @@ void ChromeAppSorting::OnExtensionMoved(
     }
   }
 
-  SyncIfNeeded(moved_extension_id);
 
   InstallTrackerFactory::GetForBrowserContext(browser_context_)
       ->OnAppsReordered(moved_extension_id);
@@ -358,7 +356,6 @@ void ChromeAppSorting::SetAppLaunchOrdinal(
   ExtensionPrefs::Get(browser_context_)
       ->UpdateExtensionPref(extension_id, kPrefAppLaunchOrdinal,
                             std::move(new_value));
-  SyncIfNeeded(extension_id);
 }
 
 syncer::StringOrdinal ChromeAppSorting::CreateFirstAppLaunchOrdinal(
@@ -436,7 +433,6 @@ void ChromeAppSorting::SetPageOrdinal(
   ExtensionPrefs::Get(browser_context_)
       ->UpdateExtensionPref(extension_id, kPrefPageOrdinal,
                             std::move(new_value));
-  SyncIfNeeded(extension_id);
 }
 
 void ChromeAppSorting::ClearOrdinals(const ExtensionId& extension_id) {
@@ -572,19 +568,6 @@ void ChromeAppSorting::RemoveOrdinalMapping(
       page_map->second.erase(it);
       break;
     }
-  }
-}
-
-void ChromeAppSorting::SyncIfNeeded(const ExtensionId& extension_id) {
-  // Can be null in tests.
-  if (!browser_context_)
-    return;
-
-  ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context_);
-  const Extension* extension = registry->GetInstalledExtension(extension_id);
-  if (extension) {
-    Profile* profile = Profile::FromBrowserContext(browser_context_);
-    ExtensionSyncService::Get(profile)->SyncExtensionChangeIfNeeded(*extension);
   }
 }
 

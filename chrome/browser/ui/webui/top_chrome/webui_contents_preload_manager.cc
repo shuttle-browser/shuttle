@@ -574,13 +574,6 @@ bool WebUIContentsPreloadManager::ShouldPreloadForBrowserContext(
     return false;
   }
 
-  // Only preloads for regular profiles because WebContents::GetWebUI()
-  // may crash due to dangling RFH if navigation fails. See crbug.com/409389408.
-  // TODO(crbug.com/424551539): remove after fixing dangling RFH.
-  if (!Profile::FromBrowserContext(browser_context)->IsRegularProfile()) {
-    return false;
-  }
-
   // Don't preload if under heavy memory pressure.
   if (memory_limit() <= base::MemoryLimit::ModeratePressureThreshold()) {
     return false;

@@ -26,7 +26,6 @@
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/shared_module_service_factory.h"
-#include "chrome/browser/extensions/sync/account_extension_tracker.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
@@ -34,7 +33,6 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/sync/base/features.h"
 #include "content/public/browser/render_frame_host.h"
 #include "extensions/browser/blocklist_extension_prefs.h"
 #include "extensions/browser/blocklist_state.h"
@@ -882,15 +880,6 @@ void ExtensionInfoGenerator::FillExtensionInfo(const Extension& extension,
         extension_urls::GetNewWebstoreItemRecommendationsUrl(extension.id())
             .spec();
   }
-
-  info.can_upload_as_account_extension =
-      AccountExtensionTracker::Get(profile)->CanUploadAsAccountExtension(
-          extension)
-#if BUILDFLAG(IS_CHROMEOS)
-      &&
-      base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos)
-#endif
-      ;
 
   // The icon. This section must come last as it moves `info`.
   ExtensionResource icon = IconsInfo::GetIconResource(

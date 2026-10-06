@@ -19,8 +19,7 @@ bool IsServiceWorkerSyntheticResponseAllowed(
     content::BrowserContext* browser_context,
     const GURL& url) {
   Profile* profile = Profile::FromBrowserContext(browser_context);
-  if (!profile || profile->IsSystemProfile()) {
-    // Exclude if the profile is a system profile.
+  if (!profile) {
     return false;
   }
 

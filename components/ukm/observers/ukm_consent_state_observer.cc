@@ -13,14 +13,8 @@
 #include "components/metrics/metrics_profile_pref_names.h"
 #include "components/metrics/metrics_switches.h"
 #include "components/prefs/pref_service.h"
-#include "components/signin/public/identity_manager/account_info.h"
-#include "components/sync/base/data_type.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_service_utils.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/unified_consent/url_keyed_data_collection_consent_helper.h"
-#include "google_apis/gaia/google_service_auth_error.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chromeos/components/kiosk/kiosk_utils.h"  // nogncheck
@@ -41,27 +35,6 @@ bool IsMsbbConsentStateAllowed() {
 #endif
 }
 
-bool CanUploadUkmForType(syncer::SyncService* sync_service,
-                         syncer::DataType data_type,
-                         bool msbb_consent) {
-#if BUILDFLAG(IS_CHROMEOS)
-  // Enable uploading of UKM for Kiosk and MGS only if MSBB consent is set.
-  if (chromeos::IsKioskSession() || chromeos::IsManagedGuestSession()) {
-    return msbb_consent;
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
-  switch (GetUploadToGoogleState(sync_service, data_type)) {
-    case syncer::UploadState::NOT_ACTIVE:
-      return false;
-    // INITIALIZING is considered good enough, because sync is enabled and
-    // |data_type| is known to be uploaded to Google, and transient errors
-    // don't matter here.
-    case syncer::UploadState::INITIALIZING:
-    case syncer::UploadState::ACTIVE:
-      return true;
-  }
-}
 }  // namespace
 
 UkmConsentStateObserver::UkmConsentStateObserver()
@@ -90,9 +63,7 @@ void UkmConsentStateObserver::ProfileState::SetConsentType(
 }
 
 UkmConsentStateObserver::ProfileState UkmConsentStateObserver::GetProfileState(
-    syncer::SyncService* sync_service,
     UrlKeyedDataCollectionConsentHelper* consent_helper) {
-  DCHECK(sync_service);
   DCHECK(consent_helper);
   ProfileState state;
 
@@ -103,27 +74,12 @@ UkmConsentStateObserver::ProfileState UkmConsentStateObserver::GetProfileState(
     state.SetConsentType(MSBB);
   }
 
-  if (msbb_consent &&
-      CanUploadUkmForType(sync_service, syncer::DataType::EXTENSIONS,
-                          msbb_consent)) {
-    state.SetConsentType(EXTENSIONS);
-  }
-
+  // Extension and app consent require sync of the corresponding data types,
+  // which does not exist in this browser, so they are never granted.
 #if BUILDFLAG(IS_CHROMEOS)
-  const bool app_sync_consent =
-      CanUploadUkmForType(sync_service, syncer::DataType::APPS, msbb_consent) ||
-      // Demo mode is a special managed guest session that doesn't support
-      // AppKM. To support AppKM an exception needs to be made within UKM.
-      IsDeviceInDemoMode();
-
-  if (app_sync_consent) {
-    state.SetConsentType(APPS);
-  }
-#else
-  // This separation isn't actually needed for non-ChromeOS devices. But for
-  // clarity it is added.
-  if (msbb_consent &&
-      CanUploadUkmForType(sync_service, syncer::DataType::APPS, msbb_consent)) {
+  // Demo mode is a special managed guest session that doesn't support
+  // AppKM. To support AppKM an exception needs to be made within UKM.
+  if (IsDeviceInDemoMode()) {
     state.SetConsentType(APPS);
   }
 #endif
@@ -131,81 +87,11 @@ UkmConsentStateObserver::ProfileState UkmConsentStateObserver::GetProfileState(
   return state;
 }
 
-void UkmConsentStateObserver::StartObserving(syncer::SyncService* sync_service,
-                                             PrefService* prefs) {
+void UkmConsentStateObserver::StartObserving(PrefService* prefs) {
   bool msbb_enabled = prefs->GetBoolean(
       unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled);
+  // Without sync, advanced reporting is just MSBB.
   bool advanced_reporting_enabled = msbb_enabled;
-
-  bool is_signed_in = !sync_service->GetAccountInfo().IsEmpty();
-
-  if (is_signed_in) {
-    // We check the user's configured sync settings directly via the
-    // SyncUserSettings helper rather than using `GetProfileState()` or
-    // `CanUploadUkmForType()`. `GetSelectedTypes()` reads directly from the
-    // local profile preferences (`PrefService`) on disk, which are loaded
-    // immediately on startup and do not require the sync engine to have
-    // started. During early startup when migration runs, the sync engine has
-    // not started yet, which would cause `CanUploadUkmForType()` to return
-    // false. Since this migration runs only once (guarded by
-    // `kAdvancedReportingProfileMigrationDone`), we must fetch the user's local
-    // persistent preference state to avoid migrating them to a disabled state.
-    // Once migrated, advanced reporting consent is completely decoupled from
-    // sync preferences, meaning this is a one-time initialization.
-    bool extensions_supported =
-        sync_service->GetUserSettings()->GetRegisteredSelectableTypes().Has(
-            syncer::UserSelectableType::kExtensions);
-    bool extensions_sync_enabled =
-        !extensions_supported ||
-        sync_service->GetUserSettings()->GetSelectedTypes().Has(
-            syncer::UserSelectableType::kExtensions);
-
-#if BUILDFLAG(IS_CHROMEOS)
-    bool apps_supported =
-        sync_service->GetUserSettings()->GetRegisteredSelectableOsTypes().Has(
-            syncer::UserSelectableOsType::kOsApps);
-    bool apps_sync_enabled =
-        !apps_supported ||
-        sync_service->GetUserSettings()->GetSelectedOsTypes().Has(
-            syncer::UserSelectableOsType::kOsApps);
-#else
-    bool apps_supported =
-        sync_service->GetUserSettings()->GetRegisteredSelectableTypes().Has(
-            syncer::UserSelectableType::kApps);
-    bool apps_sync_enabled =
-        !apps_supported ||
-        sync_service->GetUserSettings()->GetSelectedTypes().Has(
-            syncer::UserSelectableType::kApps);
-#endif
-
-    advanced_reporting_enabled =
-        msbb_enabled && apps_sync_enabled && extensions_sync_enabled;
-  }
-
-  // Log the pre-restructure consent state to quantify the coverage impact.
-  // 0: MSBB disabled
-  // 1: MSBB enabled, without App or Extension sync (will lose coverage)
-  // 2: MSBB enabled, with App and Extension sync (will keep coverage)
-  enum class ConsentStateBeforeRestructure {
-    kMsbbDisabled = 0,
-    kMsbbEnabledWithoutAppOrExtensionSync = 1,
-    kMsbbEnabledWithAppAndExtensionSync = 2,
-    kMaxValue = kMsbbEnabledWithAppAndExtensionSync,
-  };
-  ConsentStateBeforeRestructure pre_restructure_state =
-      ConsentStateBeforeRestructure::kMsbbDisabled;
-  if (msbb_enabled) {
-    if (!advanced_reporting_enabled) {
-      pre_restructure_state =
-          ConsentStateBeforeRestructure::kMsbbEnabledWithoutAppOrExtensionSync;
-    } else {
-      pre_restructure_state =
-          ConsentStateBeforeRestructure::kMsbbEnabledWithAppAndExtensionSync;
-    }
-  }
-  base::UmaHistogramEnumeration(
-      "UKM.ConsentObserver.ConsentStateBeforeRestructure",
-      pre_restructure_state);
 
   if (base::FeatureList::IsEnabled(
           metrics::features::kRestructureMetricsConsentSettings)) {
@@ -222,13 +108,23 @@ void UkmConsentStateObserver::StartObserving(syncer::SyncService* sync_service,
       UrlKeyedDataCollectionConsentHelper::
           NewAnonymizedDataCollectionConsentHelper(prefs);
 
-  ProfileState state = GetProfileState(sync_service, consent_helper.get());
-  previous_states_[sync_service] = state;
+  ProfileState state = GetProfileState(consent_helper.get());
+  previous_states_[prefs] = state;
 
   consent_helper->AddObserver(this);
-  consent_helpers_[sync_service] = std::move(consent_helper);
-  sync_observations_.AddObservation(sync_service);
+  consent_helpers_[prefs] = std::move(consent_helper);
   UpdateUkmAllowedForAllProfiles(/*total_purge*/ false);
+}
+
+void UkmConsentStateObserver::StopObserving(PrefService* prefs) {
+  auto found = consent_helpers_.find(prefs);
+  if (found == consent_helpers_.end()) {
+    return;
+  }
+  found->second->RemoveObserver(this);
+  consent_helpers_.erase(found);
+  previous_states_.erase(prefs);
+  UpdateUkmAllowedForAllProfiles(/*total_purge=*/false);
 }
 
 void UkmConsentStateObserver::UpdateUkmAllowedForAllProfiles(bool total_purge) {
@@ -272,36 +168,27 @@ UkmConsentState UkmConsentStateObserver::GetPreviousStatesForAllProfiles() {
   return state;
 }
 
-void UkmConsentStateObserver::OnStateChanged(syncer::SyncService* sync) {
-  UrlKeyedDataCollectionConsentHelper* consent_helper = nullptr;
-  auto found = consent_helpers_.find(sync);
-  if (found != consent_helpers_.end()) {
-    consent_helper = found->second.get();
-  }
-  UpdateProfileState(sync, consent_helper);
-}
-
 void UkmConsentStateObserver::OnUrlKeyedDataCollectionConsentStateChanged(
     unified_consent::UrlKeyedDataCollectionConsentHelper* consent_helper) {
   DCHECK(consent_helper);
-  syncer::SyncService* sync_service = nullptr;
+  PrefService* prefs = nullptr;
   for (const auto& entry : consent_helpers_) {
     if (consent_helper == entry.second.get()) {
-      sync_service = entry.first;
+      prefs = entry.first;
       break;
     }
   }
-  DCHECK(sync_service);
-  UpdateProfileState(sync_service, consent_helper);
+  DCHECK(prefs);
+  UpdateProfileState(prefs, consent_helper);
 }
 
 void UkmConsentStateObserver::UpdateProfileState(
-    syncer::SyncService* sync,
+    PrefService* prefs,
     UrlKeyedDataCollectionConsentHelper* consent_helper) {
-  DCHECK(previous_states_.contains(sync));
-  const ProfileState& previous_state = previous_states_[sync];
+  DCHECK(previous_states_.contains(prefs));
+  const ProfileState& previous_state = previous_states_[prefs];
   DCHECK(consent_helper);
-  ProfileState state = GetProfileState(sync, consent_helper);
+  ProfileState state = GetProfileState(consent_helper);
 
   // Trigger a total purge of all local UKM data if the current state no longer
   // allows recording of UKMs.
@@ -309,21 +196,8 @@ void UkmConsentStateObserver::UpdateProfileState(
 
   base::UmaHistogramBoolean("UKM.ConsentObserver.Purge", total_purge);
 
-  previous_states_[sync] = state;
+  previous_states_[prefs] = state;
   UpdateUkmAllowedForAllProfiles(total_purge);
-}
-
-void UkmConsentStateObserver::OnSyncShutdown(syncer::SyncService* sync) {
-  DCHECK(previous_states_.contains(sync));
-  auto found = consent_helpers_.find(sync);
-  if (found != consent_helpers_.end()) {
-    found->second->RemoveObserver(this);
-    consent_helpers_.erase(found);
-  }
-  DCHECK(sync_observations_.IsObservingSource(sync));
-  sync_observations_.RemoveObservation(sync);
-  previous_states_.erase(sync);
-  UpdateUkmAllowedForAllProfiles(/*total_purge=*/false);
 }
 
 bool UkmConsentStateObserver::IsUkmAllowedForAllProfiles() {

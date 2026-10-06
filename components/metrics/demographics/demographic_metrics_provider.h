@@ -48,11 +48,6 @@ class DemographicMetricsProvider : public MetricsProvider,
     // for the browser.
     virtual int GetNumberOfProfilesOnDisk() = 0;
 
-    // Gets a pointer to the SyncService of the profile, which is required to
-    // determine whether priority preferences carrying demographics information
-    // is being synced.
-    virtual syncer::SyncService* GetSyncService() = 0;
-
     // Gets a pointer to the PrefService for the Local State of the device.
     virtual PrefService* GetLocalState() = 0;
 

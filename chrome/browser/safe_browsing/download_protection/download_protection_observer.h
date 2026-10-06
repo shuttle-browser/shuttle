@@ -35,7 +35,6 @@ class DownloadProtectionObserver
   void OnProfileAdded(Profile* profile) override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // SimpleDownloadManagerCoordinator::Observer:

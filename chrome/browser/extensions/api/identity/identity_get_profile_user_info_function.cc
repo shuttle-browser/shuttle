@@ -8,14 +8,10 @@
 #include "chrome/browser/extensions/api/identity/identity_constants.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/common/extensions/api/identity.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/sync/base/user_selectable_type.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension.h"
@@ -29,8 +25,7 @@ namespace extensions {
 namespace {
 CoreAccountInfo GetAccountInfoFromProfileDetails(
     const std::optional<api::identity::ProfileDetails>& details,
-    const signin::IdentityManager* identity_manager,
-    const syncer::SyncService* sync_service) {
+    const signin::IdentityManager* identity_manager) {
   const api::identity::AccountStatus account_status =
       details ? details->account_status : api::identity::AccountStatus::kNone;
   const CoreAccountInfo primary_account_info =
@@ -44,11 +39,8 @@ CoreAccountInfo GetAccountInfoFromProfileDetails(
       return primary_account_info;
     case api::identity::AccountStatus::kNone:
     case api::identity::AccountStatus::kSync:
-      return sync_service &&
-                     sync_service->GetUserSettings()->GetSelectedTypes().Has(
-                         syncer::UserSelectableType::kExtensions)
-                 ? primary_account_info
-                 : CoreAccountInfo();
+      // Extensions are never synced.
+      return CoreAccountInfo();
   }
 
   NOTREACHED() << "Unexpected value for account_status: "
@@ -77,8 +69,7 @@ ExtensionFunction::ResponseAction IdentityGetProfileUserInfoFunction::Run() {
           mojom::APIPermissionID::kIdentityEmail)) {
     Profile* profile = Profile::FromBrowserContext(browser_context());
     const CoreAccountInfo account_info = GetAccountInfoFromProfileDetails(
-        params->details, IdentityManagerFactory::GetForProfile(profile),
-        SyncServiceFactory::GetForProfile(profile));
+        params->details, IdentityManagerFactory::GetForProfile(profile));
     profile_user_info.email = account_info.email;
     profile_user_info.id = account_info.gaia.ToString();
   }

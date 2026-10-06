@@ -74,7 +74,6 @@ source_set("impl") {
   if (is_android) {
     sources += [ "safety_tip_message_delegate_android.cc" ]
     deps += [
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/ui/android/tab_model",
       "//components/messages/android",
     ]

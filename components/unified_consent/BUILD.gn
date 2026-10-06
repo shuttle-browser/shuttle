@@ -12,10 +12,6 @@ static_library("unified_consent") {
     "msbb_session_durations_metrics_recorder.h",
     "pref_names.cc",
     "pref_names.h",
-    "unified_consent_metrics.cc",
-    "unified_consent_metrics.h",
-    "unified_consent_service.cc",
-    "unified_consent_service.h",
     "url_keyed_data_collection_consent_helper.cc",
     "url_keyed_data_collection_consent_helper.h",
   ]
@@ -25,8 +21,6 @@ static_library("unified_consent") {
     "//components/pref_registry",
     "//components/prefs",
     "//components/signin/public/identity_manager",
-    "//components/sync",
-    "//components/sync_preferences",
   ]
 }
 

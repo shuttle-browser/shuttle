@@ -22,7 +22,6 @@ source_set("idle") {
     "//components/policy/core/common",
     "//components/prefs",
     "//components/strings",
-    "//components/sync/base",
   ]
 }
 

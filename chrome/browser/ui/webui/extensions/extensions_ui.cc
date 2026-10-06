@@ -260,7 +260,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
        IDS_EXTENSIONS_SAFE_BROWSING_CRX_ALLOWLIST_WARNING_LEARN_MORE},
       {"itemRepair", IDS_EXTENSIONS_REPAIR_CORRUPTED},
       {"itemReload", IDS_EXTENSIONS_RELOAD_TERMINATED},
-      {"itemUpload", IDS_EXTENSIONS_MOVE_TO_ACCOUNT_ICON_TOOLTIP},
       {"itemUnsupportedDeveloperMode",
        IDS_EXTENSIONS_DISABLED_UNSUPPORTED_DEVELOPER_MODE},
       {"itemUnsupportedDeveloperModeDetails",
@@ -458,7 +457,6 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
   source->AddBoolean("cwsReviewPromptingEnabled",
                      base::FeatureList::IsEnabled(
                          extensions_features::kCWSReviewPromptingNativeUI) &&
-                         profile->IsRegularProfile() &&
                          profile->GetPrefs()->GetBoolean(
                              prefs::kExtensionReviewPromptsAllowed));
   source->AddBoolean(kShowActivityLogKey,

@@ -641,11 +641,6 @@ bool WebUIBrowserWindow::FindCommandIdForAccelerator(
 void WebUIBrowserWindow::LoadAccelerators() {
   // Let's fill our own accelerator table.
   const bool is_app_mode = IsRunningInForcedAppMode();
-#if BUILDFLAG(IS_CHROMEOS)
-  const bool is_captive_portal_signin_window =
-      browser_->GetProfile()->IsOffTheRecord() &&
-      browser_->GetProfile()->GetOTRProfileID().IsCaptivePortal();
-#endif
   for (const auto& entry : GetAcceleratorList()) {
     // In app mode, only allow accelerators of allowlisted commands to pass
     // through.
@@ -656,22 +651,6 @@ void WebUIBrowserWindow::LoadAccelerators() {
       continue;
     }
 
-#if BUILDFLAG(IS_CHROMEOS)
-    if (is_captive_portal_signin_window) {
-      int command = entry.command_id;
-      // Captive portal signin uses an OTR profile without history.
-      if (command == IDC_SHOW_HISTORY) {
-        continue;
-      }
-      // The NewTab command expects navigation to occur in the same browser
-      // window. For captive portal signin this is not the case, so hide these
-      // to reduce confusion.
-      if (command == IDC_NEW_TAB || command == IDC_NEW_TAB_TO_RIGHT ||
-          command == IDC_CREATE_NEW_TAB_GROUP) {
-        continue;
-      }
-    }
-#endif
 
     ui::Accelerator accelerator(entry.keycode, entry.modifiers);
     accelerator_table_[accelerator] = entry.command_id;

@@ -19,7 +19,6 @@
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/sync/base/features.h"
 #include "google_apis/gaia/core_account_id.h"
 
 namespace signin {
@@ -76,21 +75,6 @@ PrimaryAccountMutatorImpl::SetPrimaryAccount(
 #endif
       break;
     case ConsentLevel::kSignin:
-#if BUILDFLAG(IS_CHROMEOS)
-      // On Chrome OS the UPA can only be set once and never removed or changed.
-      if (base::FeatureList::IsEnabled(
-              syncer::kReplaceSyncPromosWithSignInPromos)) {
-        if (primary_account_manager_->HasPrimaryAccount(
-                ConsentLevel::kSignin)) {
-          CHECK_EQ(account_info,
-                   primary_account_manager_->GetPrimaryAccountInfo(
-                       ConsentLevel::kSignin));
-        }
-      } else {
-        DCHECK(!primary_account_manager_->HasPrimaryAccount(
-            ConsentLevel::kSignin));
-      }
-#endif
       // TODO(crbug.com/40067058): Delete this when ConsentLevel::kSync is
       //     deleted. See ConsentLevel::kSync documentation for details.
       DCHECK(!primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSync));

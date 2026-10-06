@@ -61,13 +61,6 @@ class HeadlessModeHandleImpl : public HeadlessModeHandle {
     base::CommandLine& command_line =
         CHECK_DEREF(base::CommandLine::ForCurrentProcess());
 
-    // Default to incognito mode unless it is forced or user data directory is
-    // explicitly specified.
-    if (!command_line.HasSwitch(::switches::kIncognito) &&
-        !command_line.HasSwitch(::switches::kUserDataDir)) {
-      command_line.AppendSwitch(::switches::kIncognito);
-    }
-
     // Enable unattended mode.
     if (!command_line.HasSwitch(::switches::kNoErrorDialogs)) {
       command_line.AppendSwitch(::switches::kNoErrorDialogs);

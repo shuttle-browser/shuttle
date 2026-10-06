@@ -92,9 +92,6 @@ class DeveloperPrivateAPIFunction : public ExtensionFunction {
   static constexpr char kCannotRepairNonWebstoreExtension[] =
       "Cannot repair an extension that is not installed from the Chrome Web "
       "Store.";
-  static constexpr char kUserNotSignedIn[] = "User is not signed in.";
-  static constexpr char kCannotUploadExtensionToAccount[] =
-      "Extension with ID '*' cannot be uploaded to the user's account.";
 
   static constexpr char kManifestFile[] = "manifest.json";
 
@@ -778,46 +775,6 @@ class DeveloperPrivateRepairExtensionFunction
   void OnReinstallComplete(bool success,
                            const std::string& error,
                            webstore_install::Result result);
-};
-
-class DeveloperPrivateUploadExtensionToAccountFunction
-    : public DeveloperPrivateAPIFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("developerPrivate.uploadExtensionToAccount",
-                             DEVELOPERPRIVATE_UPLOADEXTENSIONTOACCOUNT)
-  DeveloperPrivateUploadExtensionToAccountFunction();
-
-  DeveloperPrivateUploadExtensionToAccountFunction(
-      const DeveloperPrivateUploadExtensionToAccountFunction&) = delete;
-  DeveloperPrivateUploadExtensionToAccountFunction& operator=(
-      const DeveloperPrivateUploadExtensionToAccountFunction&) = delete;
-
-  void accept_bubble_for_testing(bool accept_bubble) {
-    accept_bubble_for_testing_ = accept_bubble;
-  }
-
- private:
-  ~DeveloperPrivateUploadExtensionToAccountFunction() override;
-
-  ResponseAction Run() override;
-
-  // Verify that the extension to be uploaded exists and that there's a signed
-  // in user. Returns the extension if successful, otherwise returns an error.
-  base::expected<const Extension*, std::string> VerifyExtensionAndSigninState();
-
-  // A callback function to run when the user accepts the action dialog.
-  void OnDialogAccepted();
-
-  // A callback function to run when the user cancels the action dialog.
-  void OnDialogCancelled();
-
-  // The ID of the extension to be uploaded.
-  ExtensionId extension_id_;
-
-  raw_ptr<Profile> profile_;
-
-  // If true, immediately accepts the keep dialog by running the callback.
-  std::optional<bool> accept_bubble_for_testing_;
 };
 
 #if BUILDFLAG(IS_ANDROID)

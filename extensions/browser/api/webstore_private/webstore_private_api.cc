@@ -1245,8 +1245,7 @@ WebstorePrivateCompleteInstallFunction::Run() {
   std::optional<CompleteInstall::Params> params =
       CompleteInstall::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
-  if (ExtensionsBrowserClient::Get()->IsGuestSession(browser_context()) ||
-      browser_context()->IsOffTheRecord()) {
+  if (browser_context()->IsOffTheRecord()) {
     return RespondNow(Error(kIncognitoError));
   }
 

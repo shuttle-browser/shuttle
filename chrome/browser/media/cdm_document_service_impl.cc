@@ -363,7 +363,7 @@ void CdmDocumentServiceImpl::IsVerifiedAccessEnabled(
   // disabled.
   Profile* profile =
       Profile::FromBrowserContext(render_frame_host().GetBrowserContext());
-  if (profile->IsOffTheRecord() || profile->IsGuestSession()) {
+  if (profile->IsOffTheRecord()) {
     std::move(callback).Run(false);
     return;
   }

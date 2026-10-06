@@ -702,9 +702,6 @@ are declared in tools/grit/grit_args.gni.
             Copy link to highlight
           </message>
 
-          <message name="IDS_CONTENT_CONTEXT_ADD_LINK_TO_READING_LIST" desc="In Title Case: The name of the Add link to reading list command in the content area context menu">
-            Add link to reading list
-          </message>
 
 
           <message name="IDS_CONTENT_CONTEXT_REMOVELINKTOTEXT" desc="The name of the Remove Highlights command in the content area context menu">
@@ -950,9 +947,6 @@ are declared in tools/grit/grit_args.gni.
             Copy Link to Highlight
           </message>
 
-          <message name="IDS_CONTENT_CONTEXT_ADD_LINK_TO_READING_LIST" desc="In Title Case: The name of the Add link to reading list command in the content area context menu">
-            Add Link to Reading List
-          </message>
 
 
           <message name="IDS_CONTENT_CONTEXT_REMOVELINKTOTEXT" desc="In TitleCase: The name of the Remove Highlights command in the content area context menu">
@@ -1181,9 +1175,6 @@ are declared in tools/grit/grit_args.gni.
           <message name="IDS_PASTE" desc="The text label of the Paste menu item" meaning="'Paste' menu command in sentence case">
             &amp;Paste
           </message>
-          <message name="IDS_DELETE" desc="The text label of the Delete menu item (which deletes selected text without copying to clipboard)">
-            &amp;Delete
-          </message>
           <message name="IDS_FIND" desc="The text label of the Find... menu item">
             &amp;Find...
           </message>
@@ -1253,9 +1244,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
           <message name="IDS_PASTE" desc="In Title Case: The text label of the Paste menu item" meaning="'Paste' menu command for Mac">
             &amp;Paste
-          </message>
-          <message name="IDS_DELETE" desc="In Title Case: The text label of the Delete menu item (which deletes selected text without copying to clipboard)">
-            &amp;Delete
           </message>
           <message name="IDS_FIND" desc="In Title Case: The text label of the Find... menu item">
             &amp;Find...
@@ -4261,9 +4249,6 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_EXTENSION_PROMPT_WARNING_BLUETOOTH_SERIAL" desc="Permission string for access to Bluetooth and serial connected devices.">
           Access your Bluetooth and Serial devices
         </message>
-        <message name="IDS_EXTENSION_PROMPT_WARNING_READING_LIST" desc="Permission string for the Reading List.">
-          Read and change entries in the reading list
-        </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_CLIPBOARD" desc="Permission string for access to clipboard.">
           Read data you copy and paste
         </message>
@@ -5930,9 +5915,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_NTP_COLORS_VIOLET" desc="A color option in the customization menu on the New Tab Page.">
         Violet
       </message>
-      <message name="IDS_NTP_COLORS_BATCH_UPLOAD_DESCRIPTION" desc="Text for the Themes batch upload dialog entry.">
-        <ph name="COLOR_NAME">$1<ex>Red</ex></ph> color
-      </message>
       <message name="IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_LIGHT_LABEL" desc="A color scheme mode option for browser light mode in customize chrome side panel." meaning="Chrome browser light color scheme mode.">
         Light
       </message>
@@ -5957,80 +5939,12 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <!-- Star View menu -->
 
       <!-- Read Later button and menu -->
-      <if expr="use_titlecase">
-        <message name="IDS_READ_LATER_TITLE" desc="Title of the Read later menu">
-          Reading List
-        </message>
-      </if>
-      <if expr="not use_titlecase">
-        <message name="IDS_READ_LATER_TITLE" desc="Title of the Read later menu">
-          Reading list
-        </message>
-      </if>
-      <message name="IDS_READ_LATER_EXPAND_BUTTON_ARIA_LABEL" desc="Aria label for the Read later list expand button.">
-        Expand <ph name="HEADER">$1<ex>Unread</ex></ph>
-      </message>
-      <message name="IDS_READ_LATER_COLLAPSE_BUTTON_ARIA_LABEL" desc="Aria label for the Read later list collapse button.">
-        Collapse <ph name="HEADER">$1<ex>Unread</ex></ph>
-      </message>
-      <message name="IDS_READ_LATER_MENU_UNREAD_HEADER" desc="Header for section of unread Read later items.">
-        Unread
-      </message>
-      <message name="IDS_READ_LATER_MENU_READ_HEADER" desc="Header for section of read Read later items.">
-        Pages you've read
-      </message>
-      <message name="IDS_READ_LATER_MENU_TOOLTIP_MARK_AS_READ" desc="Tooltip for the button to mark a read later entry as read.">
-        Mark as read
-      </message>
-      <message name="IDS_READ_LATER_MENU_TOOLTIP_MARK_AS_UNREAD" desc="Tooltip for the button to mark a read later entry as unread.">
-        Mark as unread
-      </message>
-      <message name="IDS_READ_LATER_MENU_EMPTY_STATE_ADD_FROM_DIALOG_SUBHEADER" desc="Subheader for the read later menu when there are no unread or read entries.">
-        To add a page to read later, click the button
-      </message>
-      <message name="IDS_READ_LATER_MENU_EMPTY_STATE_HEADER" desc="Header for the read later menu when there are no unread or read entries.">
-        You'll find your reading list here
-      </message>
-      <message name="IDS_READ_LATER_MENU_EMPTY_STATE_SUBHEADER" desc="Subheader for the read later menu when there are no unread or read entries.">
-        To save a page for later, click the Bookmark icon
-      </message>
-      <message name="IDS_READ_LATER_ADD_CURRENT_TAB" desc="Label for button to add the current tab to Read later">
-        Add current tab
-      </message>
-      <message name="IDS_READ_LATER_MARK_CURRENT_TAB_READ" desc="Label for button to mark the current tab as read in Read Later">
-        Mark current tab as read
-      </message>
 
       <!-- Read Later context menu -->
-      <if expr="use_titlecase">
-        <message name="IDS_READ_LATER_CONTEXT_MENU_MARK_AS_UNREAD" desc="Label for context menu item to a read later entry as unread. (In title case.)">
-          Mark as Unread
-        </message>
-        <message name="IDS_READ_LATER_CONTEXT_MENU_MARK_AS_READ" desc="Label for context menu item to a read later entry as read. (In title case.)">
-          Mark as Read
-        </message>
-      </if>
-      <if expr="not use_titlecase">
-        <message name="IDS_READ_LATER_CONTEXT_MENU_MARK_AS_UNREAD" desc="Label for context menu item to a read later entry as unread.">
-          Mark as unread
-        </message>
-        <message name="IDS_READ_LATER_CONTEXT_MENU_MARK_AS_READ" desc="Label for context menu item to a read later entry as read.">
-          Mark as read
-        </message>
-      </if>
-      <message name="IDS_READ_LATER_CONTEXT_MENU_DELETE" desc="Label for context menu item to a delete a read later entry.">
-        Delete
-      </message>
 
       <!-- Reading List submenu in App Menu -->
       <message name="IDS_READING_LIST_MENU" desc="The title of the Reading List submenu in the App Menu">
         &amp;Reading list
-      </message>
-      <message name="IDS_READING_LIST_MENU_ADD_TAB" desc="">
-        Add tab to reading list
-      </message>
-      <message name="IDS_READING_LIST_MENU_SHOW_UI">
-        Show reading list
       </message>
 
       <!-- Side panel strings -->
@@ -6844,9 +6758,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_ACCESSIBLE_INCOGNITO_WINDOW_TITLE_FORMAT" desc="The format for the accessible title of an Incognito window">
         <ph name="WINDOW_TITLE">$1</ph> (Incognito)
       </message>
-      <message name="IDS_ACCESSIBLE_GUEST_WINDOW_TITLE_FORMAT" desc="The format for the accessible title of a guest mode window">
-        <ph name="WINDOW_TITLE">$1</ph> (Guest)
-      </message>
       <message name="IDS_ACCESSIBLE_WINDOW_TITLE_WITH_PROFILE_FORMAT" desc="The format for describing the accessible window title when the window is associated with a particular named profile.">
         <ph name="WINDOW_TITLE">$1<ex>Wikipedia - Google Chrome</ex></ph> - <ph name="PROFILE_NAME">$2<ex>John Smith</ex></ph>
       </message>
@@ -7004,17 +6915,8 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_EXTENSIONS_ZERO_STATE_PROMO_CUSTOM_ACTION_IPH_ACCEPT" desc="Text on the custom action button that opens a new tab to the Chrome Web Store.">
          Discover extensions
       </message>
-      <message name="IDS_READING_LIST_DISCOVERY_PROMO_PINNING" desc="Text shown on promotional UI appearing next to the reading list button when Side Panel Pinning is enabled">
-        When you're ready, find your reading list in Bookmarks and Lists
-      </message>
-      <message name="IDS_READING_LIST_ENTRY_POINT_PROMO" desc="Text shown on promotional UI to encourage users to add a tab to their reading list">
-        To add this page to your reading list, click the Bookmark icon
-      </message>
       <message name="IDS_DESKTOP_PWA_INSTALL_PROMO" desc="Text shown on promotional UI appearing next to the PWA install icon">
         To get back here quickly, install <ph name="APP_NAME">$1<ex>Google Maps</ex></ph> by clicking the install button
-      </message>
-      <message name="IDS_READING_LIST_IN_SIDE_PANEL_PROMO_PINNING" desc="Text shown on promotional UI appearing next to the side panel button when Side Panel Pinning is enabled">
-        Find your reading list and bookmarks in Bookmarks and Lists
       </message>
       <message name="IDS_TAB_GROUPS_UNNAMED_GROUP_TOOLTIP" desc="Static tooltip to display on hover over unnamed tab group.">
         Unnamed group - <ph name="GROUP_CONTENT_STRING">$1<ex>"New Tab" and one other</ex></ph>
@@ -7149,10 +7051,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
 
-      <!-- Tailored Security Prompt for Consented Desktop users -->
-      <message name="IDS_TAILORED_SECURITY_DISPLAY_SOURCE" desc="The name of the source showing the notification">
-        Safe Browsing
-      </message>
 
       <!-- Password Manager -->
       <if expr="is_android">
@@ -7403,11 +7301,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_TAB_CXMENU_SOUND_UNMUTE_SITE" desc="The label of the tab context menu item for unmuting one or more sites. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural, =1 {Unmute site} other {Unmute sites}}
         </message>
-        <message name="IDS_TAB_CXMENU_READ_LATER" desc="The label of the tab context menu item for adding one or more tabs to Read later.">
-          {NUM_TABS, plural,
-          =1 {Add tab to reading list}
-          other {Add tabs to reading list}}
-        </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_GROUP" desc="The label of the tab context menu submenu for adding one or more tabs to either a new group or an existing tab group. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural,
           =1 {Add tab to group}
@@ -7495,11 +7388,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_TAB_CXMENU_SOUND_UNMUTE_SITE" desc="In Title Case: The label of the tab context menu item for unmuting one or more sites. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural, =1 {Unmute Site} other {Unmute Sites}}
-        </message>
-        <message name="IDS_TAB_CXMENU_READ_LATER" desc="In Title Case: The label of the tab context menu item for adding one or more tabs to Read later.">
-          {NUM_TABS, plural,
-          =1 {Add Tab to Reading List}
-          other {Add Tabs to Reading List}}
         </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_GROUP" desc="In Title Case: The label of the tab context menu submenu for adding one or more tabs to either a new group or an existing tab group. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural,
@@ -8247,16 +8135,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Learn more about access requests.
         </message>
 
-        <!-- Upload to account dialog -->
-        <message name="IDS_UPLOAD_MOVE_TO_ACCOUNT_DIALOG_TITLE" desc="Title for the dialog that offers the user to move a piece of data from their device to their signed-in account.">
-          Save in your Google Account?
-        </message>
-        <message name="IDS_EXTENSIONS_MOVE_TO_ACCOUNT_DIALOG_SUBTITLE" desc="Subtitle of the dialog triggers the upload of a local extension to the signed in user's account.">
-          "<ph name="NAME">$1<ex>Google Cast</ex></ph>" is saved only to this device. To use it on your other devices, save it in your account.
-        </message>
-        <message name="IDS_EXTENSIONS_MOVE_TO_ACCOUNT_DIALOG_OK_BUTTON_LABEL" desc="Text of the button that triggers the upload of a local extension to the signed in user's account in the extension upload dialog.">
-          Save in account
-        </message>
 
         <!-- Reset Profile Settings strings -->
         <message name="IDS_TRIGGERED_RESET_PROFILE_SETTINGS_TITLE" desc="Dialog title for reset dialog triggered by a third party tool">
@@ -8488,32 +8366,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
       <!-- Strings used for non-Android builds -->
-      <if expr="not is_android">
-        <message name="IDS_NEW_TAB_GUEST_SESSION_HEADING"
-              desc="Heading used when a person enters Guest Session">
-          You're browsing as a Guest
-        </message>
-        <if expr="is_chromeos">
-          <message name="IDS_NEW_TAB_GUEST_SESSION_DESCRIPTION"
-              desc="Used when a person enters Guest Session">
-            Pages you view in this window won't appear in the browser history and they won't leave other traces, like cookies, on the computer after you sign out. Files you download and bookmarks you create won't be preserved.
-          </message>
-        </if>
-        <if expr="not is_chromeos">
-          <message name="IDS_NEW_TAB_GUEST_SESSION_DESCRIPTION"
-              desc="Used when a person enters Guest Session">
-            Pages you view in this window won't appear in the browser history and they won't leave other traces, like cookies, on the computer after you close all open Guest windows. Any files you download will be preserved, however.
-          </message>
-        </if>
-        <message name="IDS_NEW_TAB_GUEST_SESSION_LEARN_MORE_ACCESSIBILITY_TEXT"
-            desc="Accessibility label for a link labeled 'Learn more' that links to a help article about browsing as a guest.">
-          Learn more about browsing as a guest
-        </message>
-        <message name="IDS_NEW_TAB_ENTERPRISE_GUEST_SESSION_LEARN_MORE_ACCESSIBILITY_TEXT"
-            desc="Accessibility label for a link labeled 'Learn more' that links to a help article about enterprise enrolled devices.">
-          Learn more about enterprise enrolled devices
-        </message>
-      </if>
 
 
 
@@ -11006,40 +10858,8 @@ This can include information about installed software, files, your browser, the 
       Close tip
     </message>
 
-    <!-- Tailored security dialog for consented primary accounts -->
-    <message name="IDS_TAILORED_SECURITY_ENABLED_DIALOG_TITLE" desc="Title shown in the tab dialog when the account tailored security setting changes for a consented primary account">
-      Enhanced Safe Browsing is on
-    </message>
-    <message name="IDS_TAILORED_SECURITY_DISABLED_DIALOG_TITLE" desc="Title shown in the tab dialog when the account tailored security setting changes for a consented primary account">
-      Enhanced Safe Browsing is off
-    </message>
 
-    <message name="IDS_TAILORED_SECURITY_ENABLED_DIALOG_MAIN_TEXT" desc="Title shown in the tab dialog when the account tailored security setting changes for a consented primary account">
-      You have Chrome's strongest security against dangerous websites, downloads and extensions
-    </message>
-    <message name="IDS_TAILORED_SECURITY_DISABLED_DIALOG_MAIN_TEXT" desc="Title shown in the tab dialog when the account tailored security setting changes for a consented primary account">
-      You're getting standard security protection. To get more protection against dangerous websites, downloads, and extensions, turn on Enhanced Safe Browsing in Chrome settings.
-    </message>
-    <message name="IDS_TAILORED_SECURITY_DISABLED_DIALOG_ACCEPT_BUTTON" desc="The text on the accept button in the tab modal dialog when the account tailored security setting is disabled for a consented primary account">
-      Got it
-    </message>
-    <message name="IDS_TAILORED_SECURITY_DIALOG_SETTINGS_BUTTON" desc="The text on the cancel button in the tab dialog when the account tailored security setting changes for a consented primary account">
-      Chrome settings
-    </message>
 
-    <!-- Tailored security dialog for unconsented primary accounts -->
-    <message name="IDS_TAILORED_SECURITY_UNCONSENTED_MODAL_TITLE" desc="Title shown in the tab modal dialog when the account tailored security setting changes for an unconsented primary account">
-      Also turn on Enhanced Safe Browsing for this Chrome profile?
-    </message>
-    <message name="IDS_TAILORED_SECURITY_UNCONSENTED_MODAL_BODY" desc="Body shown in the tab modal dialog when the account tailored security setting changes for an unconsented primary account">
-      Chrome&#x2019;s strongest security does more to protect you against dangerous websites, downloads, and extensions
-    </message>
-    <message name="IDS_TAILORED_SECURITY_UNCONSENTED_ACCEPT_BUTTON" desc="The text on the accept button in the tab modal dialog when the account tailored security setting changes for an unconsented primary account">
-      Turn on
-    </message>
-    <message name="IDS_TAILORED_SECURITY_UNCONSENTED_CANCEL_BUTTON" desc="The text on the cancel button in the tab modal dialog when the account tailored security setting changes for an unconsented primary account">
-      No thanks
-    </message>
 
 
 
@@ -11134,19 +10954,6 @@ This can include information about installed software, files, your browser, the 
     </message>
 
 
-    <message name="IDS_TAILORED_SECURITY_UNCONSENTED_PROMOTION_NOTIFICATION_DESCRIPTION" desc="Description of notification prompting the user to enable Enhanced Safe Browsing after they have enabled account-level protections.">
-      Enhanced Safe Browsing does more to protect you against dangerous websites, downloads, and extensions
-    </message>
-    <if expr="use_titlecase">
-      <message name="IDS_TAILORED_SECURITY_UNCONSENTED_PROMOTION_NOTIFICATION_ACCEPT" desc="Accept button on notification prompting the user to enable Enhanced Safe Browsing after they have enabled account-level protections.">
-        Continue
-      </message>
-    </if>
-    <if expr="not use_titlecase">
-      <message name="IDS_TAILORED_SECURITY_UNCONSENTED_PROMOTION_NOTIFICATION_ACCEPT" desc="Accept button on notification prompting the user to enable Enhanced Safe Browsing after they have enabled account-level protections.">
-        Continue
-      </message>
-    </if>
 
     <!-- FedCM Account Selection strings -->
     <message name="IDS_ACCOUNT_SELECTION_SHEET_TITLE_EXPLICIT_SIGN_IN" desc="Header for sign-in sheet. Sheet is shown to prompt the user to sign-in to a website using an account from an identity provider.">
@@ -11371,12 +11178,6 @@ This can include information about installed software, files, your browser, the 
       </message>
       <message name="IDS_LINK_COPIED_TO_HIGHLIGHT_TOAST_BODY" desc="Text on a toast notification that is shown when a link to highlight is successfully copied.">
         Link copied to highlight
-      </message>
-      <message name="IDS_READING_LIST_TOAST_BODY" desc="Text on a toast notification that is shown when one or more items are added to the reading list [ICU Syntax]">
-        {PAGES, plural, =1 {Page added to reading list} other {Pages added to reading list}}
-      </message>
-      <message name="IDS_READING_LIST_TOAST_BUTTON" desc="Button on a toast notification that allows a user to open a reading list entry.">
-        Open
       </message>
       <message name="IDS_CLOSE_PINNED_TAB_TOAST_BODY" desc="Text on a toast notification that is shown when one or more pinned tabs are being closed. [ICU Syntax]">
         {NUM_TABS, plural,

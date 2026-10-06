@@ -253,7 +253,6 @@ declare global {
         safetyCheckWarningReason: SafetyCheckWarningReason;
         pinnedToToolbar?: boolean;
         isAffectedByMV2Deprecation: boolean;
-        canUploadAsAccountExtension: boolean;
       }
 
       export interface ProfileInfo {
@@ -493,8 +492,6 @@ declare global {
           site: string, updates: ExtensionSiteAccessUpdate[]): Promise<void>;
       export function dismissSafetyHubExtensionsMenuNotification(): void;
       export function dismissMv2DeprecationPanel(): void;
-      export function uploadExtensionToAccount(extensionId: string):
-          Promise<boolean>;
       export function showSiteSettings(extensionId: string): Promise<void>;
 
       export const onItemStateChanged: ChromeEvent<(data: EventData) => void>;

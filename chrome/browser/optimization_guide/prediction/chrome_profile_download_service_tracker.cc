@@ -30,8 +30,7 @@ ChromeProfileDownloadServiceTracker::~ChromeProfileDownloadServiceTracker() {
 }
 
 void ChromeProfileDownloadServiceTracker::OnProfileAdded(Profile* profile) {
-  if (profile->IsOffTheRecord() || profile->IsSystemProfile() ||
-      !profile->AllowsBrowserWindows()) {
+  if (profile->IsOffTheRecord() || !profile->AllowsBrowserWindows()) {
     return;
   }
   observed_profiles_.push_back(profile);

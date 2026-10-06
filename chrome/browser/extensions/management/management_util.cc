@@ -19,12 +19,6 @@ policy::ManagementAuthorityTrustworthiness
 GetHigherManagementAuthorityTrustworthinessHelper(
     Profile* profile,
     policy::ManagementAuthorityTrustworthiness platform_trustworthiness) {
-  if (profile->IsGuestSession() || profile->IsSystemProfile()) {
-    // Guest and System profiles cannot have user-level management policies.
-    // We only return the platform-level trustworthiness and avoid triggering
-    // the creation of the profile-specific management service.
-    return platform_trustworthiness;
-  }
   policy::ManagementAuthorityTrustworthiness browser_trustworthiness =
       policy::ManagementServiceFactory::GetForProfile(profile)
           ->GetManagementAuthorityTrustworthiness();

@@ -21,8 +21,6 @@
 #include "components/signin/internal/identity_manager/account_tracker_service.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate.h"
-#include "components/signin/internal/identity_manager/token_binding_helper.h"
-#include "components/signin/public/base/binding_key_registration_token_result.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/webdata/token_service_table.h"
@@ -109,7 +107,6 @@ class MutableProfileOAuth2TokenServiceDelegate
       network::NetworkConnectionTracker* network_connection_tracker,
       scoped_refptr<TokenWebData> token_web_data,
       RevokeAllTokensOnLoad revoke_all_tokens_on_load,
-      std::unique_ptr<TokenBindingHelper> token_binding_helper,
       FixRequestErrorCallback fix_request_error_callback);
 
   MutableProfileOAuth2TokenServiceDelegate(
@@ -126,33 +123,7 @@ class MutableProfileOAuth2TokenServiceDelegate
       OAuth2AccessTokenConsumer* consumer,
       const std::string& token_binding_challenge) override;
 
-  std::string GetTokenForMultilogin(
-      const CoreAccountId& account_id) const override;
   bool RefreshTokenIsAvailable(const CoreAccountId& account_id) const override;
-  bool GenerateBindingKeyRegistrationToken(
-      base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
-          supported_algorithms,
-      std::string_view auth_code,
-      base::OnceCallback<void(
-          std::optional<signin::BindingKeyRegistrationTokenResult>)> callback)
-      override;
-  bool IsRefreshTokenBoundToKey(const CoreAccountId& account_id) const override;
-  std::vector<uint8_t> GetWrappedBindingKey(
-      const CoreAccountId& account_id) const override;
-  bool IsRefreshTokenBoundToMtls(
-      const CoreAccountId& account_id) const override;
-  bool AllBoundTokensShareSameBindingKey() const override;
-  void GenerateRefreshTokenBindingKeyAssertionForMultilogin(
-      const CoreAccountId& account_id,
-      std::string_view challenge,
-      std::string_view ephemeral_public_key,
-      TokenBindingHelper::GenerateAssertionCallback callback) override;
-  void AddBindingKeyToService(
-      base::span<const uint8_t> wrapped_binding_key) override;
-  TokenBindingHelper::SaveBindingKeyResult UpdateRefreshTokenBindingKey(
-      const CoreAccountId& account_id,
-      std::string_view refresh_token,
-      std::vector<uint8_t> wrapped_binding_key);
   std::vector<CoreAccountId> GetAccounts() const override;
   scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory()
       const override;
@@ -231,8 +202,6 @@ class MutableProfileOAuth2TokenServiceDelegate
   FRIEND_TEST_ALL_PREFIXES(MutableProfileOAuth2TokenServiceDelegateTest,
                            ClearTokensOnStartup);
   FRIEND_TEST_ALL_PREFIXES(MutableProfileOAuth2TokenServiceDelegateTest,
-                           InvalidateTokensForMultilogin);
-  FRIEND_TEST_ALL_PREFIXES(MutableProfileOAuth2TokenServiceDelegateTest,
                            ExtractCredentials);
   FRIEND_TEST_ALL_PREFIXES(MutableProfileOAuth2TokenServiceDelegateTest,
                            TokenReencryption);
@@ -269,8 +238,7 @@ class MutableProfileOAuth2TokenServiceDelegate
       const CoreAccountId& primary_account_id) override;
   void UpdateCredentialsInternal(
       const CoreAccountId& account_id,
-      const std::string& refresh_token,
-      const signin::TokenBindingInfo& token_binding_info) override;
+      const std::string& refresh_token) override;
   void RevokeAllCredentialsInternal(
       signin_metrics::SourceForRefreshTokenOperation source) override;
   void RevokeCredentialsInternal(const CoreAccountId& account_id) override;
@@ -289,19 +257,13 @@ class MutableProfileOAuth2TokenServiceDelegate
   void UpdateCredentialsInMemory(
       const CoreAccountId& account_id,
       const std::string& refresh_token,
-      const signin::TokenBindingInfo& token_binding_info,
       base::optional_ref<const GoogleServiceAuthError> error_for_invalid_token =
           std::nullopt);
-
-  // Sets refresh token in error.
-  void InvalidateTokenForMultilogin(
-      const CoreAccountId& failed_account) override;
 
   // Persists credentials for |account_id|. Enables overriding for
   // testing purposes, or other cases, when accessing the DB is not desired.
   void PersistCredentials(const CoreAccountId& account_id,
-                          const std::string& refresh_token,
-                          const signin::TokenBindingInfo& token_binding_info);
+                          const std::string& refresh_token);
 
   // Clears credentials that have failed to load into memory but are still
   // persisted in the DB.
@@ -313,12 +275,6 @@ class MutableProfileOAuth2TokenServiceDelegate
 
   // Revokes the refresh token on the server.
   void RevokeCredentialsOnServer(const std::string& refresh_token);
-
-  // Starts a fetch for wrapped keys from the web database.
-  void StartWebWrappedKeyFetch();
-
-  // Callback for the fetch for wrapped keys from the web database.
-  void OnWebWrappedKeyFetchDone(std::unique_ptr<WDTypedResult> result);
 
   // Cancels any outstanding fetches from the web database.
   void CancelWebFetches();
@@ -343,10 +299,8 @@ class MutableProfileOAuth2TokenServiceDelegate
   // In memory refresh token store mapping account_id to TokenData.
   struct TokenData {
     crypto::ProcessBoundString refresh_token;
-    bool mtls_token_binding = false;
 
-    TokenData(crypto::ProcessBoundString refresh_token,
-              bool mtls_token_binding);
+    explicit TokenData(crypto::ProcessBoundString refresh_token);
 
     TokenData(const TokenData&);
     TokenData& operator=(const TokenData&);
@@ -359,10 +313,6 @@ class MutableProfileOAuth2TokenServiceDelegate
 
   // Handle to the request reading tokens from database.
   WebDataServiceBase::Handle web_data_service_request_;
-
-  // Handle to the request reading wrapped keys from database for garbage
-  // collection.
-  std::optional<WebDataServiceBase::Handle> web_data_service_request_for_gc_;
 
   // Flag limiting `ClearUnreadableCredentials()` to take action at most once.
   bool has_cleared_unreadable_credentials_ = false;
@@ -386,9 +336,6 @@ class MutableProfileOAuth2TokenServiceDelegate
   // completely removed, and the primary account will be kept in authentication
   // error state.
   RevokeAllTokensOnLoad revoke_all_tokens_on_load_ = RevokeAllTokensOnLoad::kNo;
-
-  // This is null if token binding is disabled.
-  const std::unique_ptr<TokenBindingHelper> token_binding_helper_;
 
   // Callback function that attempts to correct request errors.  Best effort
   // only.  Returns true if the error was fixed and retry should be reattempted.

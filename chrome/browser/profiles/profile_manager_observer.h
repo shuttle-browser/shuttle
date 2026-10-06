@@ -14,12 +14,7 @@ class ProfileManagerObserver : public base::CheckedObserver {
  public:
   // Called when a Profile is added to the manager, the profile is fully created
   // and registered with the ProfileManager. This is called for:
-  //  - Regular profiles,
-  //  - Original profiles of the Guest and system profiles.
-  // This is NOT called for:
-  //  - Incognito profiles (OTR profile associated to a regular profile). For
-  //    these profiles, see `ProfileObserver::OnOffTheRecordProfileCreated()`.
-  //  - Guest and system profiles.
+  //  - Regular profiles.
   // Unlike ProfileAttributesStorage::Observer::OnProfileAdded(), which is only
   // called when a new user is first created, this is called once on every run
   // of Chrome, provided that the Profile is in use.

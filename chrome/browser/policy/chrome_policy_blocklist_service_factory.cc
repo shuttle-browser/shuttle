@@ -64,15 +64,6 @@ ChromePolicyBlocklistServiceFactory::BuildServiceInstanceForBrowserContext(
       pref_service, policy::policy_prefs::kUrlBlocklist,
       policy::policy_prefs::kUrlAllowlist);
 
-  std::unique_ptr<policy::URLBlocklistManager> incognito_url_blocklist_manager;
-  if (profile->IsIncognitoProfile()) {
-    incognito_url_blocklist_manager =
-        std::make_unique<policy::URLBlocklistManager>(
-            pref_service, policy::policy_prefs::kIncognitoModeUrlBlocklist,
-            policy::policy_prefs::kIncognitoModeUrlAllowlist);
-  }
-
   return std::make_unique<PolicyBlocklistService>(
-      std::move(url_blocklist_manager),
-      std::move(incognito_url_blocklist_manager), pref_service);
+      std::move(url_blocklist_manager), pref_service);
 }

@@ -101,12 +101,11 @@ bool RealTimePolicyEngine::HasPrefPermissionsToPerformFullURLLookup(
 bool RealTimePolicyEngine::CanPerformEnterpriseFullURLLookup(
     const PrefService* pref_service,
     bool has_valid_dm_token,
-    bool is_off_the_record,
-    bool is_guest_profile) {
+    bool is_off_the_record) {
   base::UmaHistogramEnumeration("SafeBrowsing.RT.ConsumerVersionReason",
                                 ConsumerVersionReason::TOTAL_CHECKS);
 
-  if (is_off_the_record && !is_guest_profile) {
+  if (is_off_the_record) {
     base::UmaHistogramEnumeration("SafeBrowsing.RT.ConsumerVersionReason",
                                   ConsumerVersionReason::IS_INCOGNITO);
     return false;

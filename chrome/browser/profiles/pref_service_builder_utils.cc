@@ -31,9 +31,9 @@
 #include "components/keyed_service/core/simple_keyed_service_factory.h"
 #include "components/policy/core/common/cloud/cloud_policy_manager.h"
 #include "components/pref_registry/pref_registry_syncable.h"
+#include "components/prefs/pref_service.h"
 #include "components/prefs/pref_value_store.h"
 #include "components/supervised_user/core/browser/family_link_settings_service.h"
-#include "components/sync_preferences/pref_service_syncable.h"
 #include "components/variations/service/variations_service.h"
 #include "content/public/browser/network_service_instance.h"
 #include "services/preferences/public/mojom/tracked_preference_validation_delegate.mojom.h"
@@ -79,7 +79,7 @@ void RegisterProfilePrefs(bool is_signin_profile,
       ->RegisterProfilePrefsForServices(pref_registry);
 }
 
-std::unique_ptr<sync_preferences::PrefServiceSyncable> CreateProfilePrefService(
+std::unique_ptr<PrefService> CreateProfilePrefService(
     scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry,
     scoped_refptr<PrefStore> extension_pref_store,
     policy::PolicyService* policy_service,

@@ -50,7 +50,6 @@ source_set("impl") {
     "//components/live_caption:live_translate",
     "//components/pref_registry",
     "//components/soda",
-    "//components/sync_preferences",
     "//ui/accessibility",
   ]
 

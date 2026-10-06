@@ -336,7 +336,6 @@ source_set("policy") {
 
   if (is_linux || is_win || is_mac) {
     public += [
-      "local_sync_policy_handler.h",
     ]
   }
 
@@ -544,7 +543,6 @@ source_set("impl") {
       "policy_service_factory_android.cc",
     ]
     deps += [
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/policy/android",
       "//chrome/browser/policy/android:jni_headers",
       "//chrome/browser/ui/android",
@@ -684,7 +682,6 @@ source_set("impl") {
 
   if (is_linux || is_win || is_mac) {
     sources += [
-      "local_sync_policy_handler.cc",
     ]
     deps += [
       "//chrome/browser/browser_switcher",

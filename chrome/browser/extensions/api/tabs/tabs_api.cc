@@ -886,10 +886,7 @@ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
     return RespondNow(Error(std::move(error)));
   }
 
-  Profile* window_profile =
-      incognito_result == windows_util::IncognitoResult::kIncognito
-          ? calling_profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-          : calling_profile;
+  Profile* window_profile = calling_profile;
 
   if (!IsValidStateForWindowsCreateFunction(
           base::OptionalToPtr(create_data_))) {
@@ -3952,14 +3949,6 @@ ExtensionFunction::ResponseAction TabsDiscardFunction::Run() {
     Profile* profile = Profile::FromBrowserContext(browser_context());
     absl::flat_hash_set<base::UnguessableToken> allowed_tokens;
     allowed_tokens.insert(profile->UniqueToken());
-
-    if (include_incognito_information()) {
-      Profile* maybe_incognito_profile =
-          profile->GetPrimaryOTRProfile(/*create_if_needed=*/false);
-      if (maybe_incognito_profile) {
-        allowed_tokens.insert(maybe_incognito_profile->UniqueToken());
-      }
-    }
 
     contents = resource_coordinator::DiscardLeastImportantTab(
         ::mojom::LifecycleUnitDiscardReason::EXTERNAL,

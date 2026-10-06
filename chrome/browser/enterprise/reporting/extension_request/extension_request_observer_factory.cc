@@ -54,8 +54,7 @@ void ExtensionRequestObserverFactory::DisableReport() {
 }
 
 void ExtensionRequestObserverFactory::OnProfileAdded(Profile* profile) {
-  if (profile->IsSystemProfile() || profile->IsGuestSession() ||
-      profile->IsOffTheRecord()) {
+  if (profile->IsOffTheRecord()) {
     return;
   }
 

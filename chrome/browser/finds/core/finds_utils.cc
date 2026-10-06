@@ -12,9 +12,6 @@
 #include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/sync/base/user_selectable_type.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_user_settings.h"
 #include "components/unified_consent/pref_names.h"
 
 namespace finds {
@@ -91,18 +88,9 @@ bool IsAllowedByEnterprisePolicy(PrefService* pref_service) {
                               ModelExecutionEnterprisePolicyValue::kDisable);
 }
 
-bool IsHistorySyncAndMsbbEnabled(syncer::SyncService* sync_service,
-                                 PrefService* pref_service) {
-  if (!sync_service || !pref_service) {
-    return false;
-  }
-  const syncer::SyncUserSettings* user_settings =
-      sync_service->GetUserSettings();
-  return user_settings &&
-         user_settings->GetSelectedTypes().Has(
-             syncer::UserSelectableType::kHistory) &&
-         pref_service->GetBoolean(
-             unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled);
+bool IsHistorySyncAndMsbbEnabled(PrefService* pref_service) {
+  // History sync does not exist in this browser.
+  return false;
 }
 
 bool IsFindsOptInPromoAlreadyInteracted(const PrefService* pref_service) {

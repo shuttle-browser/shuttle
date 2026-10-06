@@ -43,12 +43,6 @@ void WorkerTaskProvider::OnProfileManagerDestroying() {
   profile_manager_observation_.Reset();
 }
 
-void WorkerTaskProvider::OnOffTheRecordProfileCreated(Profile* off_the_record) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-
-  OnProfileAdded(off_the_record);
-}
-
 void WorkerTaskProvider::OnProfileWillBeDestroyed(Profile* profile) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
@@ -85,11 +79,6 @@ void WorkerTaskProvider::StartUpdating() {
     auto loaded_profiles = profile_manager->GetLoadedProfiles();
     for (auto* profile : loaded_profiles) {
       OnProfileAdded(profile);
-
-      // If any off-the-record profile exists, we have to check them and create
-      // the tasks if there are any.
-      for (Profile* otr : profile->GetAllOffTheRecordProfiles())
-        OnProfileAdded(otr);
     }
   }
 }

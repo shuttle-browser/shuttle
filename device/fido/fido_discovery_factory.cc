@@ -12,7 +12,6 @@
 #include "device/bluetooth/bluetooth_adapter_factory.h"
 #include "device/fido/cable/pairing.h"
 #include "device/fido/cable/v2_discovery.h"
-#include "device/fido/enclave/enclave_discovery.h"
 #include "device/fido/fido_discovery_base.h"
 #include "device/fido/hid/fido_hid_discovery.h"
 #include "device/fido/public/features.h"
@@ -113,15 +112,6 @@ std::vector<std::unique_ptr<FidoDiscoveryBase>> FidoDiscoveryFactory::Create(
   NOTREACHED() << "Unhandled transport type";
 }
 
-std::optional<std::unique_ptr<FidoDiscoveryBase>>
-FidoDiscoveryFactory::MaybeCreateEnclaveDiscovery() {
-  if (!enclave_ui_request_stream_ || !network_context_factory_) {
-    return std::nullopt;
-  }
-  return std::make_unique<enclave::EnclaveAuthenticatorDiscovery>(
-      std::move(enclave_ui_request_stream_), network_context_factory_);
-}
-
 bool FidoDiscoveryFactory::IsTestOverride() {
   return false;
 }
@@ -162,12 +152,6 @@ FidoDiscoveryFactory::get_cable_contact_callback() {
 void FidoDiscoveryFactory::set_hid_ignore_list(
     base::flat_set<VidPid> hid_ignore_list) {
   hid_ignore_list_ = std::move(hid_ignore_list);
-}
-
-void FidoDiscoveryFactory::set_enclave_ui_request_stream(
-    std::unique_ptr<FidoDiscoveryBase::EventStream<
-        std::unique_ptr<enclave::CredentialRequest>>> stream) {
-  enclave_ui_request_stream_ = std::move(stream);
 }
 
 // static

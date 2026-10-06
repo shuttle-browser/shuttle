@@ -22,13 +22,6 @@ namespace {
 #if DCHECK_IS_ON()
 // Whether the task queue is allowed to be created for OTR profile.
 bool IsOffTheRecordContextAllowed(content::BrowserContext* browser_context) {
-#if BUILDFLAG(IS_CHROMEOS)
-  // In Guest mode on Chrome OS we want to create a task queue for OTR profile.
-  if (ExtensionsBrowserClient::Get()->IsGuestSession(browser_context)) {
-    return true;
-  }
-#endif
-
   // In other cases don't create a task queue for OTR profile.
   return false;
 }

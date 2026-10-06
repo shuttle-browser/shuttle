@@ -39,7 +39,6 @@
 #include "chrome/browser/policy/webusb_allow_devices_for_urls_policy_handler.h"
 #include "chrome/browser/prefetch/pref_names.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_policy_handler.h"
-#include "chrome/browser/profiles/chrome_incognito_mode_policy_handler.h"
 #include "chrome/browser/profiles/force_safe_search_policy_handler.h"
 #include "chrome/browser/profiles/force_youtube_safety_mode_policy_handler.h"
 #include "chrome/browser/sessions/restore_on_startup_policy_handler.h"
@@ -114,8 +113,6 @@
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
-#include "components/sync/base/pref_names.h"
-#include "components/sync/service/sync_policy_handler.h"
 #include "components/themes/theme_color_policy_handler.h"
 #include "components/unified_consent/pref_names.h"
 #include "components/variations/pref_names.h"
@@ -138,7 +135,6 @@
 #include "chrome/browser/download/download_auto_open_policy_handler.h"
 #include "chrome/browser/download/download_dir_policy_handler.h"
 #include "chrome/browser/policy/battery_saver_policy_handler.h"
-#include "chrome/browser/policy/local_sync_policy_handler.h"
 #include "chrome/browser/policy/managed_account_policy_handler.h"
 #include "components/headless/policy/headless_mode_policy_handler.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
@@ -512,9 +508,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kBasicAuthOverHttpEnabled,
     prefs::kBasicAuthOverHttpEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kBrowserAddPersonEnabled,
-    prefs::kBrowserAddPersonEnabled,
-    base::Value::Type::BOOLEAN },
   { key::kBrowserLabsEnabled,
     chrome_labs_prefs::kBrowserLabsEnabledEnterprisePolicy,
     base::Value::Type::BOOLEAN },
@@ -852,11 +845,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kGeolocationBlockedForUrls,
     prefs::kManagedGeolocationBlockedForUrls,
     base::Value::Type::LIST },
-#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  { key::kMandatoryExtensionsForIncognitoNavigation,
-    prefs::kMandatoryExtensionsForIncognitoNavigation,
-    base::Value::Type::LIST },
-#endif // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN) \
      || BUILDFLAG(IS_MAC)
   { key::kRequireOnlineRevocationChecksForLocalAnchors,
@@ -1012,9 +1000,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kDefaultBrowserSettingEnabled,
     prefs::kDefaultBrowserSettingEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kRoamingProfileSupportEnabled,
-    syncer::prefs::kEnableLocalSyncBackend,
-    base::Value::Type::BOOLEAN },
   { key::kDesktopSharingHubEnabled,
     prefs::kDesktopSharingHubEnabled,
     base::Value::Type::BOOLEAN },
@@ -1072,9 +1057,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::INTEGER },
   { key::kCommandLineFlagSecurityWarningsEnabled,
     prefs::kCommandLineFlagSecurityWarningsEnabled,
-    base::Value::Type::BOOLEAN },
-  { key::kBrowserGuestModeEnforced,
-    prefs::kBrowserGuestModeEnforced,
     base::Value::Type::BOOLEAN },
 #endif // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
 
@@ -1414,7 +1396,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<
           LocalNetworkAccessIpAddressSpaceOverridesPolicyHandler>());
   handlers->AddHandler(std::make_unique<DefaultSensorsSettingPolicyHandler>());
-  handlers->AddHandler(std::make_unique<ChromeIncognitoModePolicyHandler>());
   handlers->AddHandler(
       std::make_unique<enterprise_reporting::CloudReportingPolicyHandler>());
   handlers->AddHandler(
@@ -1425,7 +1406,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<DefaultSearchPolicyHandler>());
   handlers->AddHandler(
       std::make_unique<safe_browsing::SafeBrowsingPolicyHandler>());
-  handlers->AddHandler(std::make_unique<syncer::SyncPolicyHandler>());
   handlers->AddHandler(
       std::make_unique<URLAllowlistPolicyHandler>(key::kURLAllowlist));
   handlers->AddHandler(
@@ -1774,7 +1754,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           enterprise_connectors::kUserContextAwareAccessSignalsAllowlistPref,
           chrome_schema));
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
-  handlers->AddHandler(std::make_unique<LocalSyncPolicyHandler>());
   handlers->AddHandler(std::make_unique<ThemeColorPolicyHandler>());
   handlers->AddHandler(
       std::make_unique<SingleDeprecatedPolicyToMultipleNewPolicyHandler>(

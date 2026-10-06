@@ -410,10 +410,6 @@ inline constexpr char kImportPasswords[] = "import-passwords";
 
 #endif
 
-// Causes the initial browser opened to be in incognito mode. Further browsers
-// may or may not be in incognito mode; see `IncognitoModePrefs`.
-inline constexpr char kIncognito[] = "incognito";
-
 // Specifies that the main-thread Isolate should initialize in foreground mode.
 // If not specified, the the Isolate will start in background mode for extension
 // processes and foreground mode otherwise.
@@ -966,13 +962,6 @@ inline constexpr char kWaitForParentHandle[] = "wait-for-parent-handle";
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW) && !defined(OFFICIAL_BUILD)
 // Enables support to debug printing subsystem.
 inline constexpr char kDebugPrint[] = "debug-print";
-
-#endif
-
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
-// Causes the browser to launch directly in guest mode.
-inline constexpr char kGuest[] = "guest";
 
 #endif
 

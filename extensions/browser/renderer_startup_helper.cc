@@ -87,10 +87,7 @@ void ReportActivationTokenError(content::BrowserContext* browser_context,
   std::ostringstream error_stream;
   error_stream << error_message << " "
                << "Extension ID: " << extension.id()
-               << ". Session type: " << GetFeatureSessionTypeAsString()
-               << ". Is guest session: "
-               << ExtensionsBrowserClient::Get()->IsGuestSession(
-                      browser_context);
+               << ". Session type: " << GetFeatureSessionTypeAsString();
   LOG(ERROR) << error_stream.str();
   static auto* const crash_key = base::debug::AllocateCrashKeyString(
       "GetActivationTokenForWorkerBasedExtension",

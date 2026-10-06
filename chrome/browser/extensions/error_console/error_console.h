@@ -165,7 +165,6 @@ class ErrorConsole : public KeyedService,
   void AddManifestErrorsForExtension(const Extension* extension);
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // Returns the applicable bit mask of reporting preferences for the extension.

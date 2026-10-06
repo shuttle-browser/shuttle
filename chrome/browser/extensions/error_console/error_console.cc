@@ -205,9 +205,6 @@ void ErrorConsole::Enable() {
   prefs_ = ExtensionPrefs::Get(profile_);
 
   profile_observations_.AddObservation(profile_.get());
-  if (profile_->HasPrimaryOTRProfile())
-    profile_observations_.AddObservation(
-        profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true));
 
   const ExtensionSet& extensions =
       ExtensionRegistry::Get(profile_)->enabled_extensions();
@@ -270,10 +267,6 @@ void ErrorConsole::AddManifestErrorsForExtension(const Extension* extension) {
         extension->id(), base::UTF8ToUTF16(warning.message), warning.key,
         base::UTF8ToUTF16(warning.specific)));
   }
-}
-
-void ErrorConsole::OnOffTheRecordProfileCreated(Profile* off_the_record) {
-  profile_observations_.AddObservation(off_the_record);
 }
 
 void ErrorConsole::OnProfileWillBeDestroyed(Profile* profile) {

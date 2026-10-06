@@ -34,7 +34,6 @@
 #include "components/signin/public/base/signin_prefs.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
-#include "components/sync/base/features.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "google_apis/gaia/gaia_id.h"
 
@@ -127,7 +126,7 @@ void LogPrimaryAccountPrefsOnInitialize(const std::string& pref_account_id,
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 bool ShouldEnableExtensionsExplicitBrowserSigninPrefForSignedInUser() {
   // Returns true if extensions should be enabled for existing signed-in users
-  // with `syncer::kReplaceSyncPromosWithSignInPromos` enabled.
+  // (the sign-in-only mode, which is always on).
   //
   // Background: Originally (when syncer::kExplicitSigninForExtensions is OFF),
   // all data types were enabled in transport mode for existing sessions during
@@ -136,13 +135,12 @@ bool ShouldEnableExtensionsExplicitBrowserSigninPrefForSignedInUser() {
   // existing sessions (requiring a new sign-in to be enabled). This function
   // identifies users from the original migration group to ensure they maintain
   // their existing behavior.
-  return base::FeatureList::IsEnabled(
-      syncer::kReplaceSyncPromosWithSignInPromos);
+  return true;
 }
 
 bool ShouldEnableBookmarksExplicitBrowserSigninPrefForSignedInUser() {
   // Returns true if bookmarks should be enabled for existing signed-in users
-  // with `syncer::kReplaceSyncPromosWithSignInPromos` enabled.
+  // (the sign-in-only mode, which is always on).
   //
   // Background: Originally (when syncer::kExplicitSigninForBookmarks is OFF),
   // all data types were enabled in transport mode for existing sessions during
@@ -151,22 +149,19 @@ bool ShouldEnableBookmarksExplicitBrowserSigninPrefForSignedInUser() {
   // existing sessions (requiring a new sign-in to be enabled). This function
   // identifies users from the original migration group to ensure they maintain
   // their existing behavior.
-  return base::FeatureList::IsEnabled(
-      syncer::kReplaceSyncPromosWithSignInPromos);
+  return true;
 }
 
 bool ShouldEnableExtensionExplicitBrowserSigninPrefOnSignIn(
     signin_metrics::AccessPoint access_point) {
   // For all user groups, for new sign-in enable extensions.
-  return access_point == signin_metrics::AccessPoint::kExtensionInstallBubble ||
-         syncer::IsReplaceSyncPromosWithSignInPromosEnabled();
+  return true;
 }
 
 bool ShouldEnableBookmarksExplicitBrowserSigninPrefOnSignIn(
     signin_metrics::AccessPoint access_point) {
   // For all user groups, for new sign-in enable bookmarks.
-  return access_point == signin_metrics::AccessPoint::kBookmarkBubble ||
-         syncer::IsReplaceSyncPromosWithSignInPromosEnabled();
+  return true;
 }
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
@@ -785,10 +780,8 @@ void PrimaryAccountManager::SetExplicitBrowserSigninPrefs(
       return;
     case PrimaryAccountChangeEvent::Type::kSet:
       CHECK(event_details.GetSetPrimaryAccountAccessPoint().has_value());
-      if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
-        scoped_pref_commit.SetBoolean(
-            prefs::kPrimaryAccountSetAfterSigninMigration, true);
-      }
+      scoped_pref_commit.SetBoolean(
+          prefs::kPrimaryAccountSetAfterSigninMigration, true);
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
       signin_metrics::AccessPoint access_point =

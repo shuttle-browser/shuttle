@@ -20,7 +20,6 @@
 #include "components/supervised_user/core/browser/supervised_user_utils.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/supervised_user/core/common/supervised_users.h"
-#include "components/sync/model/syncable_service.h"
 
 class PersistentPrefStore;
 
@@ -62,7 +61,6 @@ struct WebFilteringResult;
 // would be encoded as two sync items, one with key "Moose:foo" and value "bar",
 // and one with key "Moose:baz" and value "blurp".
 class FamilyLinkSettingsService : public KeyedService,
-                                  public syncer::SyncableService,
                                   public PrefStore::Observer {
  public:
   // A callback whose first parameter is a dictionary containing all Family Link
@@ -154,13 +152,9 @@ class FamilyLinkSettingsService : public KeyedService,
   static std::string MakeSplitSettingKey(const std::string& prefix,
                                          const std::string& key);
 
-  // Sets an item locally and uploads it to the Sync server.
+  // Sets an item locally.
   //
   // This handles notifying subscribers of the change.
-  //
-  // This may be called regardless of whether the sync server has completed
-  // initialization; in either case the local changes will be handled
-  // immediately.
   void SaveItem(const std::string& key, base::Value value);
 
   // Sets the setting with the given `key` to `value`.
@@ -170,27 +164,8 @@ class FamilyLinkSettingsService : public KeyedService,
   // Removes the setting for `key`.
   void RemoveLocalSetting(std::string_view key);
 
-  // Public for testing.
-  static syncer::SyncData CreateSyncDataForSetting(const std::string& name,
-                                                   const base::Value& value);
-
   // KeyedService implementation:
   void Shutdown() override;
-
-  // SyncableService implementation:
-  void WaitUntilReadyToSync(base::OnceClosure done) override;
-  std::optional<syncer::ModelError> MergeDataAndStartSyncing(
-      syncer::DataType type,
-      const syncer::SyncDataList& initial_sync_data,
-      std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) override;
-  void StopSyncing(syncer::DataType type) override;
-  syncer::SyncDataList GetAllSyncDataForTesting(syncer::DataType type) const;
-  std::optional<syncer::ModelError> ProcessSyncChanges(
-      const base::Location& from_here,
-      const syncer::SyncChangeList& change_list) override;
-  base::WeakPtr<SyncableService> AsWeakPtr() override;
-  std::string GetClientTag(
-      const syncer::EntityData& entity_data) const override;
 
   // Returns a weak pointer to the service.
   base::WeakPtr<const FamilyLinkSettingsService> GetWeakPtr() const;
@@ -260,8 +235,6 @@ class FamilyLinkSettingsService : public KeyedService,
   // last time a notification was sent.
   void InformSubscribers();
 
-  void ClearWaitUntilReadyToSyncTrap();
-
   // Used for persisting the settings. Unlike other PrefStores, this one is not
   // directly hooked up to the PrefService.
   scoped_refptr<PersistentPrefStore> store_;
@@ -271,9 +244,6 @@ class FamilyLinkSettingsService : public KeyedService,
   bool initialization_failed_;
 
   std::optional<base::DictValue> last_notified_settings_;
-
-  // Set when WaitUntilReadyToSync() is invoked before initialization completes.
-  base::OnceClosure wait_until_ready_to_sync_cb_;
 
   // A set of local settings that are fixed and not configured remotely.
   base::DictValue local_settings_;
@@ -286,11 +256,6 @@ class FamilyLinkSettingsService : public KeyedService,
 
   base::RepeatingCallbackList<ShutdownCallback::RunType>
       shutdown_callback_list_;
-
-  std::unique_ptr<syncer::SyncChangeProcessor> sync_processor_;
-
-  // TODO(crbug.com/480137930): remove once issue is resolved.
-  bool wait_until_ready_to_sync_trap_ = false;
 
   base::WeakPtrFactory<FamilyLinkSettingsService> weak_ptr_factory_{this};
 };

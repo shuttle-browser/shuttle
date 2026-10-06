@@ -68,7 +68,6 @@
 #include "components/search_engines/util.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/sync_preferences/pref_service_syncable.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/zoom_controller.h"
@@ -853,9 +852,6 @@ Profile* DevToolsWindow::GetProfileForDevToolsWindow(
     content::WebContents* web_contents) {
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  if (profile->IsPrimaryOTRProfile() || profile->IsDevToolsOTRProfile()) {
-    return profile;
-  }
   return profile->GetOriginalProfile();
 }
 

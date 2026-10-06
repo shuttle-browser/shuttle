@@ -25,7 +25,6 @@
 #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/accelerator_table.h"
@@ -279,13 +278,6 @@ void BrowserActions::InitializeSidePanelActions() {
   BrowserWindowInterface* const bwi = base::to_address(bwi_);
 
   root_action_item_->AddChild(
-      SidePanelAction(SidePanelEntryId::kReadingList, IDS_READ_LATER_TITLE,
-                      IDS_READ_LATER_TITLE,
-                      features::IsRoundedIconsEnabled() ? kListAltIcon
-                                                        : kReadingListOldIcon,
-                      kActionSidePanelShowReadingList, bwi, true)
-          .Build());
-  root_action_item_->AddChild(
       SidePanelAction(SidePanelEntryId::kAboutThisSite,
                       IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE,
                       IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE,
@@ -499,7 +491,6 @@ void BrowserActions::InitializePageActionIconActions() {
 void BrowserActions::InitializeChromeMenuActions() {
   Profile* const profile = base::to_address(profile_);
   BrowserWindowInterface* const bwi = base::to_address(bwi_);
-  const bool is_guest_session = profile->IsGuestSession();
 
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
@@ -662,7 +653,6 @@ void BrowserActions::InitializeChromeMenuActions() {
           IDS_CLEAR_BROWSING_DATA,
           features::IsRoundedIconsEnabled() ? kDeleteIcon
                                             : kTrashCanRefreshOldIcon)
-          .SetEnabled(!is_guest_session && !profile->IsSystemProfile())
           .Build());
 
   if (chrome::CanOpenTaskManager()) {
@@ -782,15 +772,6 @@ void BrowserActions::InitializeChromeMenuActions() {
             .SetVisible(ShouldShowChromeLabsUI(profile))
             .Build());
   }
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating([](actions::ActionItem* item,
-                                 actions::ActionInvocationContext context) {
-            profiles::SwitchToGuestProfile();
-          }))
-          .SetActionId(kActionOpenGuestProfile)
-          .Build());
 
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
@@ -1928,17 +1909,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                chrome::MoveCurrentTabToReadLater(bwi);
-              },
-              bwi))
-          .SetActionId(kActionReadingListMenuAddTab)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
                 chrome::ShowSettingsSubPage(bwi, chrome::kPeopleSubPage);
               },
               bwi))
@@ -2832,19 +2802,6 @@ void BrowserActions::InitializeSubmenuActions() {
           IDS_BOOKMARKS_AND_LISTS_MENU,
           features::IsRoundedIconsEnabled() ? kStarIcon
                                             : kBookmarksListsMenuOldIcon,
-          /*is_pinnable=*/false)
-          .Build());
-
-  root_action_item_->AddChild(
-      ChromeMenuAction(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {},
-              bwi),
-          kActionReadingListSubmenu, IDS_READING_LIST_MENU,
-          IDS_READING_LIST_MENU,
-          features::IsRoundedIconsEnabled() ? kListAltIcon
-                                            : kReadingListOldIcon,
           /*is_pinnable=*/false)
           .Build());
 

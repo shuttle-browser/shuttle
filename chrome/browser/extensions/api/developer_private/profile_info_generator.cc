@@ -6,7 +6,6 @@
 
 #include "build/build_config.h"
 #include "chrome/browser/extensions/extension_management.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/supervised_user/supervised_user_browser_utils.h"
 #include "chrome/common/pref_names.h"
@@ -27,8 +26,7 @@ developer::ProfileInfo CreateProfileInfo(Profile* profile) {
   PrefService* prefs = profile->GetPrefs();
   const PrefService::Preference* pref =
       prefs->FindPreference(prefs::kExtensionsUIDeveloperMode);
-  info.is_incognito_available = IncognitoModePrefs::GetAvailability(prefs) !=
-                                policy::IncognitoModeAvailability::kDisabled;
+  info.is_incognito_available = false;
   info.is_developer_mode_controlled_by_policy = pref->IsManaged();
   info.in_developer_mode = !info.is_child_account &&
                            prefs->GetBoolean(prefs::kExtensionsUIDeveloperMode);

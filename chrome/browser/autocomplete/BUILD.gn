@@ -28,7 +28,6 @@ source_set("autocomplete") {
   ]
 
   if (is_android) {
-    sources += [ "../android/autocomplete/tab_matcher_android.h" ]
     public_deps += [ "//components/search_engines" ]
   } else {
     sources += [ "tab_matcher_desktop.h" ]
@@ -88,8 +87,6 @@ source_set("impl") {
     "//chrome/browser/search",
     "//chrome/browser/search_engines",
     "//chrome/browser/signin",
-    "//chrome/browser/sync",
-    "//chrome/browser/sync:factories",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/omnibox",
@@ -109,9 +106,7 @@ source_set("impl") {
   ]
 
   if (is_android) {
-    sources += [ "../android/autocomplete/tab_matcher_android.cc" ]
     deps += [
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/ui/android/omnibox:jni_headers",
       "//chrome/browser/ui/android/tab_model",

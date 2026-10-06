@@ -254,16 +254,6 @@ if (is_android) {
     }
 
     sources = [
-      "../browser/android/cookies/cookies_fetcher_restore_util_browsertest.cc",
-      "../browser/android/customtabs/custom_tabs_browsertest.cc",
-      "../browser/android/customtabs/tab_interaction_recorder_browsertest.cc",
-      "../browser/android/historical_tab_saver_browsertest.cc",
-      "../browser/android/persisted_tab_data/persisted_tab_data_android_browsertest.cc",
-      "../browser/android/persisted_tab_data/sensitivity_persisted_tab_data_android_browsertest.cc",
-      "../browser/android/webapk/webapk_icons_hasher_browsertest.cc",
-      "../browser/android/webapk/webapk_installer_browsertest.cc",
-      "../browser/android/webapk/webapk_restore_task_browsertest.cc",
-      "../browser/android/webview_renderer_extension_browsertest.cc",
       "../browser/background_fetch/background_fetch_browsertest_android.cc",
       "../browser/safe_browsing/android/suspicious_site_browsertest.cc",
       "../renderer/autofill/fake_mojo_password_manager_driver.cc",
@@ -297,8 +287,6 @@ if (is_android) {
       "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/accessibility/accessibility_prefs:browser_tests",
       "//chrome/browser/actor:browser_tests",
-      "//chrome/browser/android",
-      "//chrome/browser/android/persisted_tab_data/test:test_support",
       "//chrome/browser/background_fetch",
       "//chrome/browser/browsing_data:constants",
       "//chrome/browser/content_settings:content_settings_factory",
@@ -343,9 +331,7 @@ if (is_android) {
       "//chrome/browser/ssl:android_browsertests",
       "//chrome/browser/ssl:cert_verifier_test_support",
       "//chrome/browser/supervised_user:android_browser_tests",
-      "//chrome/browser/sync",
       "//chrome/browser/tab",
-      "//chrome/browser/trusted_vault:android_browsertests",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/android/autofill:browser_tests",
       "//chrome/browser/ui/android/hats:browser_tests",
@@ -356,7 +342,6 @@ if (is_android) {
       "//chrome/browser/ui/side_panel/test/android:browser_test_support_java",
       "//chrome/browser/ui/tabs:tab_enums",
       "//chrome/browser/ui/webui/policy",
-      "//chrome/browser/unified_consent",
       "//chrome/browser/user_agent:browser_tests",
       "//chrome/browser/visited_url_ranking:browser_tests",
       "//chrome/browser/webauthn",
@@ -438,7 +423,6 @@ if (is_android) {
       "//components/spellcheck/renderer",
       "//components/subresource_filter/core/browser:test_support",
       "//components/subresource_filter/core/common:test_support",
-      "//components/sync:test_support",
       "//components/ukm:test_support",
       "//components/ukm:ukm_test_helper",
       "//components/ukm/content",
@@ -528,7 +512,6 @@ if (is_android) {
       # enabled, since we won't be able to distinguish whether the test cases
       # are failing due to absence of AR, or due to an issue with propagating
       # the enterprise policy setting.
-      sources += [ "../browser/android/vr/webxr_policy_browsertest.cc" ]
     }
 
     if (enable_openxr) {
@@ -983,8 +966,6 @@ if (!is_android) {
         "//chrome/renderer",
         "//chrome/test/base:chrome_test_launcher",
         "//components/resources",
-        "//components/sync",
-        "//components/sync:test_support",
         "//content/test:test_support",
         "//crypto:test_support",
         "//extensions/buildflags",

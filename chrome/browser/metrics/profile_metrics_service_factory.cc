@@ -52,12 +52,6 @@ ProfileMetricsServiceFactory::BuildServiceInstanceForBrowserContext(
   base::FilePath profile_path = profile->GetBaseName();
   CHECK(!profile_path.empty());
 
-  if (profile_path == base::FilePath(chrome::kSystemProfileDir)) {
-    // TODO(crbug.com/417921579): Decide how to log these profiles, for now just
-    // don't log anything.
-    return std::make_unique<metrics::ProfileMetricsService>();
-  }
-
   if (profile_path.MaybeAsASCII() == chrome::kInitialProfile) {
     // Map the "Default" profile to "Profile0" in metrics.
     return std::make_unique<metrics::ProfileMetricsService>(0);

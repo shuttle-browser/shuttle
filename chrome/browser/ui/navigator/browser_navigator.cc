@@ -22,7 +22,6 @@
 #include "chrome/browser/browser_about_handler.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/platform_util.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_host/chrome_navigation_ui_data.h"
 #include "chrome/browser/tab_contents/tab_util.h"
@@ -129,40 +128,6 @@ BrowserWindowInterface* GetOrCreateBrowser(Profile* profile,
   }
   return browser;
 }
-
-#if BUILDFLAG(IS_CHROMEOS)
-// Returns true if the navigation request originated from a captive portal
-// sign-in window. In non-Guest sessions, this is identified by checking if the
-// initiating profile has a CaptivePortal OTRProfileID. In Guest sessions, where
-// the primary OTR profile is reused, this checks the CaptivePortalTabHelper on
-// the source WebContents.
-bool ShouldForceCaptivePortalSigninIntoCurrentTab(
-    const NavigateParams& params,
-    BrowserWindowInterface* source_browser) {
-  if (params.initiating_profile->IsOffTheRecord() &&
-      params.initiating_profile->GetOTRProfileID().IsCaptivePortal()) {
-    return true;
-  }
-#if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
-  // In Guest mode the captive portal signin window uses the active profile
-  // rather than a dedicated captive portal OTR profile, so also check the
-  // source WebContents.
-  content::WebContents* source_contents = params.source_contents;
-  if (!source_contents && source_browser) {
-    source_contents =
-        source_browser->GetTabStripModel()->GetActiveWebContents();
-  }
-  if (source_contents) {
-    auto* helper = captive_portal::CaptivePortalTabHelper::FromWebContents(
-        source_contents);
-    if (helper && helper->is_captive_portal_window()) {
-      return true;
-    }
-  }
-#endif  // BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
-  return false;
-}
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
 // Change some of the navigation parameters based on the particular URL.
 // Returns true on success. Otherwise, if changing params leads the browser
@@ -319,11 +284,8 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       return {browser, -1};
     }
     case WindowOpenDisposition::OFF_THE_RECORD:
-      // Make or find an incognito window.
-      return {GetOrCreateBrowser(
-                  profile->GetPrimaryOTRProfile(/*create_if_needed=*/true),
-                  params.user_gesture),
-              -1};
+      // Incognito windows are not supported.
+      return {nullptr, -1};
     // The following types result in no navigation.
     case WindowOpenDisposition::SAVE_TO_DISK:
     case WindowOpenDisposition::IGNORE_ACTION:
@@ -520,35 +482,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
     params->initiating_profile = source_browser->GetProfile();
   }
   DCHECK(params->initiating_profile);
-
-#if BUILDFLAG(IS_CHROMEOS)
-  if (params->disposition != WindowOpenDisposition::NEW_POPUP &&
-      params->disposition != WindowOpenDisposition::CURRENT_TAB &&
-      ShouldForceCaptivePortalSigninIntoCurrentTab(*params, source_browser) &&
-      !IncognitoModeForced(params->initiating_profile)) {
-    // Navigation outside of the current tab or the initial popup window from a
-    // captive portal signin window should be prevented.
-    content::RenderFrameHost* initiator_rfh = nullptr;
-    if (params->initiator_frame_token.has_value()) {
-      initiator_rfh = content::RenderFrameHost::FromFrameToken(
-          content::GlobalRenderFrameHostToken(params->initiator_process_id,
-                                              *params->initiator_frame_token));
-    }
-    // If the navigation is initiated by a subframe that is sandboxed against
-    // top-level navigation (e.g., an iframe with allow-popups but without
-    // allow-top-navigation), rewriting the disposition to CURRENT_TAB would
-    // allow the sandboxed frame to navigate the top-level captive portal
-    // window, bypassing the sandbox restriction. In that case, fall back to
-    // NEW_POPUP so that the sandbox restriction is respected while still
-    // allowing popups.
-    if (initiator_rfh && initiator_rfh->IsSandboxed(
-                             network::mojom::WebSandboxFlags::kTopNavigation)) {
-      params->disposition = WindowOpenDisposition::NEW_POPUP;
-    } else {
-      params->disposition = WindowOpenDisposition::CURRENT_TAB;
-    }
-  }
-#endif
 
   if (params->initiating_profile->ShutdownStarted()) {
     // Don't navigate when the profile is shutting down.

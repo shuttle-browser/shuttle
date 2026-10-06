@@ -13,14 +13,7 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 bool AreKeyedServicesDisabledForProfileByDefault(const Profile* profile) {
-  // By default disable all services for System Profile.
-  // Even though having no services is also the default value for Guest Profile,
-  // this is not really the case in practice because a lot of Service Factories
-  // override the default value for the `ProfileSelection` of the Guest Profile.
-  if (profile && profile->IsSystemProfile()) {
-    return true;
-  }
-
+  // The system profile no longer exists: services are never disabled.
   return false;
 }
 
@@ -144,29 +137,9 @@ ProfileSelection ProfileSelections::GetProfileSelection(
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  // Isolated Mode uses the same ProfileSelection as Incognito,
-  // unless explicitly configured to behave differently.
-  if (profile->IsEnterpriseIsolatedModeProfile()) {
-    return isolated_mode_profile_selection_.value_or(
-        regular_profile_selection_);
-  }
-
-  // Treat other off the record profiles as Incognito (primary otr) Profiles.
-  if (profile->IsRegularProfile() || profile->IsIncognitoProfile() ||
-      profile_metrics::GetBrowserProfileType(profile) ==
-          profile_metrics::BrowserProfileType::kOtherOffTheRecordProfile) {
-    return regular_profile_selection_;
-  }
-
-  if (profile->IsGuestSession()) {
-    return guest_profile_selection_;
-  }
-
-  if (profile->IsSystemProfile()) {
-    return system_profile_selection_;
-  }
-
-  NOTREACHED();
+  // Only regular profiles exist: guest, system, incognito and isolated-mode
+  // profiles are gone, so their selections are inert.
+  return regular_profile_selection_;
 }
 
 void ProfileSelections::SetProfileSelectionForRegular(

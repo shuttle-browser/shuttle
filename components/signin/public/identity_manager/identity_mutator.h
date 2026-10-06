@@ -23,7 +23,6 @@ enum class AccessPoint;
 namespace signin {
 enum class ConsentLevel;
 class AccountsMutator;
-class AccountsCookieMutator;
 class DeviceAccountsSynchronizer;
 
 #if BUILDFLAG(IS_ANDROID)
@@ -99,7 +98,6 @@ class IdentityMutator {
   IdentityMutator(
       std::unique_ptr<PrimaryAccountMutator> primary_account_mutator,
       std::unique_ptr<AccountsMutator> accounts_mutator,
-      std::unique_ptr<AccountsCookieMutator> accounts_cookie_mutator,
       std::unique_ptr<DeviceAccountsSynchronizer> device_accounts_synchronizer);
 
   virtual ~IdentityMutator();
@@ -126,10 +124,6 @@ class IdentityMutator {
   // returns null.
   AccountsMutator* GetAccountsMutator();
 
-  // Returns pointer to the object used to manipulate the cookies stored and the
-  // accounts associated with them. Guaranteed to be non-null.
-  AccountsCookieMutator* GetAccountsCookieMutator();
-
   // Returns pointer to the object used to seed accounts information from the
   // device-level accounts. May be null if the system has no such notion.
   DeviceAccountsSynchronizer* GetDeviceAccountsSynchronizer();
@@ -150,10 +144,6 @@ class IdentityMutator {
   // AccountsMutator instance. May be null if mutation of accounts is not
   // supported on the current platform.
   std::unique_ptr<AccountsMutator> accounts_mutator_;
-
-  // AccountsCookieMutator instance. Guaranteed to be non-null, as this
-  // functionality is supported on all platforms.
-  std::unique_ptr<AccountsCookieMutator> accounts_cookie_mutator_;
 
   // DeviceAccountsSynchronizer instance.
   std::unique_ptr<DeviceAccountsSynchronizer> device_accounts_synchronizer_;

@@ -4,26 +4,14 @@
 
 #include "chrome/browser/metrics/desktop_session_duration/desktop_profile_session_durations_service.h"
 
-#include "chrome/browser/signin/identity_manager_factory.h"
 #include "components/signin/core/browser/signin_status_metrics_provider_helpers.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_session_durations_metrics_recorder.h"
 
 namespace metrics {
 
 DesktopProfileSessionDurationsService::DesktopProfileSessionDurationsService(
     PrefService* pref_service,
-    syncer::SyncService* sync_service,
-    signin::IdentityManager* identity_manager,
-    ProfileMetricsService* profile_metrics_service,
     DesktopSessionDurationTracker* tracker)
-    : sync_metrics_recorder_(
-          std::make_unique<syncer::SyncSessionDurationsMetricsRecorder>(
-              sync_service,
-              identity_manager,
-              profile_metrics_service)),
-
-      msbb_metrics_recorder_(
+    : msbb_metrics_recorder_(
           std::make_unique<
               unified_consent::MsbbSessionDurationsMetricsRecorder>(
               pref_service)) {
@@ -48,36 +36,26 @@ void DesktopProfileSessionDurationsService::Shutdown() {
   OnSessionEnded(base::TimeDelta(), base::TimeTicks::Now());
 
   msbb_metrics_recorder_.reset();
-  sync_metrics_recorder_.reset();
 }
 
 signin_metrics::SingleProfileSigninStatus
 DesktopProfileSessionDurationsService::GetSigninStatus() const {
-  switch (sync_metrics_recorder_->GetSigninStatus()) {
-    case syncer::SyncSessionDurationsMetricsRecorder::SigninStatus::kSignedIn:
-      return signin_metrics::SingleProfileSigninStatus::kSignedIn;
-    case syncer::SyncSessionDurationsMetricsRecorder::SigninStatus::
-        kSignedInWithError:
-      return signin_metrics::SingleProfileSigninStatus::kSignedInWithError;
-    case syncer::SyncSessionDurationsMetricsRecorder::SigninStatus::kSignedOut:
-      return signin_metrics::SingleProfileSigninStatus::kSignedOut;
-  }
+  // There is no sign-in UI in this browser.
+  return signin_metrics::SingleProfileSigninStatus::kSignedOut;
 }
 
 bool DesktopProfileSessionDurationsService::IsSyncing() const {
-  return sync_metrics_recorder_->IsSyncing();
+  return false;
 }
 
 void DesktopProfileSessionDurationsService::OnSessionStarted(
     base::TimeTicks session_start) {
-  sync_metrics_recorder_->OnSessionStarted(session_start);
   msbb_metrics_recorder_->OnSessionStarted(session_start);
 }
 
 void DesktopProfileSessionDurationsService::OnSessionEnded(
     base::TimeDelta session_length,
     base::TimeTicks session_end) {
-  sync_metrics_recorder_->OnSessionEnded(session_length);
   msbb_metrics_recorder_->OnSessionEnded(session_length);
 }
 

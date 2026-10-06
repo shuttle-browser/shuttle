@@ -50,7 +50,7 @@
 #include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
 #include "components/policy/core/common/cloud/user_cloud_policy_store.h"
 #include "components/pref_registry/pref_registry_syncable.h"
-#include "components/sync_preferences/pref_service_syncable.h"
+#include "components/prefs/pref_service.h"
 #include "components/variations/service/variations_service.h"
 #include "content/public/browser/network_service_instance.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -196,7 +196,7 @@ StartupData::TakePrefRegistrySyncable() {
   return std::move(pref_registry_);
 }
 
-std::unique_ptr<sync_preferences::PrefServiceSyncable>
+std::unique_ptr<PrefService>
 StartupData::TakeProfilePrefService() {
   return std::move(prefs_);
 }

@@ -154,9 +154,6 @@ void SidePanelCoordinator::Show(
 
     // Close IPH for side panel if shown.
     ClosePromoAndMaybeNotifyUsed(
-        feature_engagement::kIPHReadingListInSidePanelFeature,
-        SidePanelEntryId::kReadingList, input.key.id());
-    ClosePromoAndMaybeNotifyUsed(
         feature_engagement::kIPHPowerBookmarksSidePanelFeature,
         SidePanelEntryId::kBookmarks, input.key.id());
     ClosePromoAndMaybeNotifyUsed(

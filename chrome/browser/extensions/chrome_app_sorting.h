@@ -138,10 +138,6 @@ class ChromeAppSorting : public AppSorting, public ExtensionRegistryObserver {
                             const syncer::StringOrdinal& page_ordinal,
                             const syncer::StringOrdinal& app_launch_ordinal);
 
-  // Syncs the extension if needed. It is an error to call this if the
-  // extension is not an application.
-  void SyncIfNeeded(const ExtensionId& extension_id);
-
   // Creates the default ordinals.
   void CreateDefaultOrdinals();
 

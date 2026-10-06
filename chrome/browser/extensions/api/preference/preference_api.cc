@@ -83,20 +83,14 @@ PreferenceEventRouter::PreferenceEventRouter(Profile* profile)
                             base::Unretained(this), registrar_.prefs()));
   }
   DCHECK(!profile_->IsOffTheRecord());
-  observed_profiles_.AddObservation(profile_.get());
-  if (profile->HasPrimaryOTRProfile()) {
-    OnOffTheRecordProfileCreated(
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/true));
-  } else {
-    ObserveOffTheRecordPrefs(profile->GetReadOnlyOffTheRecordPrefs());
-  }
 }
 
 PreferenceEventRouter::~PreferenceEventRouter() = default;
 
 void PreferenceEventRouter::OnPrefChanged(PrefService* pref_service,
                                           const std::string& browser_pref) {
-  bool incognito = (pref_service != profile_->GetPrefs());
+  // There are no incognito profiles.
+  const bool incognito = false;
 
   std::string event_name;
   APIPermissionID permission = APIPermissionID::kInvalid;
@@ -120,10 +114,6 @@ void PreferenceEventRouter::OnPrefChanged(PrefService* pref_service,
 
   base::DictValue dict;
   dict.Set(kValue, std::move(*transformed_value));
-  if (incognito) {
-    ExtensionPrefs* ep = ExtensionPrefs::Get(profile_);
-    dict.Set(kIncognitoSpecific, ep->HasIncognitoPrefValue(browser_pref));
-  }
   args.Append(std::move(dict));
 
   // TODO(kalman): Have a histogram value for each pref type.
@@ -140,33 +130,6 @@ void PreferenceEventRouter::OnPrefChanged(PrefService* pref_service,
   extensions::preference_helpers::DispatchEventToExtensions(
       profile_, histogram_value, event_name, std::move(args), permission,
       incognito, browser_pref);
-}
-
-void PreferenceEventRouter::OnOffTheRecordProfileCreated(
-    Profile* off_the_record) {
-  observed_profiles_.AddObservation(off_the_record);
-  ObserveOffTheRecordPrefs(off_the_record->GetPrefs());
-}
-
-void PreferenceEventRouter::OnProfileWillBeDestroyed(Profile* profile) {
-  observed_profiles_.RemoveObservation(profile);
-  if (profile->IsOffTheRecord()) {
-    // The real PrefService is about to be destroyed so we must make sure we
-    // get the "dummy" one.
-    ObserveOffTheRecordPrefs(profile_->GetReadOnlyOffTheRecordPrefs());
-  }
-}
-
-void PreferenceEventRouter::ObserveOffTheRecordPrefs(PrefService* prefs) {
-  incognito_registrar_ = std::make_unique<PrefChangeRegistrar>();
-  incognito_registrar_->Init(prefs);
-  for (const auto& pref : PrefMapping::GetMappings()) {
-    incognito_registrar_->Add(
-        pref.browser_pref,
-        base::BindRepeating(&PreferenceEventRouter::OnPrefChanged,
-                            base::Unretained(this),
-                            incognito_registrar_->prefs()));
-  }
 }
 
 PreferenceAPI::PreferenceAPI(content::BrowserContext* context)
@@ -388,9 +351,8 @@ ExtensionFunction::ResponseAction SetPreferenceFunction::Run() {
         Error("Can't modify regular settings from an incognito context."));
   }
 
-  Profile* profile = Profile::FromBrowserContext(browser_context());
-  if (scope == ChromeSettingScope::kIncognitoSessionOnly &&
-      !profile->HasPrimaryOTRProfile()) {
+  if (scope == ChromeSettingScope::kIncognitoSessionOnly) {
+    // There is never an incognito session.
     return RespondNow(Error(extension_misc::kIncognitoSessionOnlyErrorMessage));
   }
 

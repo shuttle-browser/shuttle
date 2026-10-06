@@ -9,7 +9,6 @@
 #include "base/logging.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "extensions/browser/extension_registry.h"
@@ -25,13 +24,6 @@ void SetLaunchType(content::BrowserContext* context,
                    const std::string& extension_id,
                    LaunchType launch_type) {
   SetLaunchTypePrefValue(context, extension_id, launch_type);
-
-  // Sync the launch type.
-  const Extension* extension =
-      ExtensionRegistry::Get(context)
-          ->GetExtensionById(extension_id, ExtensionRegistry::EVERYTHING);
-  if (extension)
-    ExtensionSyncService::Get(context)->SyncExtensionChangeIfNeeded(*extension);
 }
 
 apps::LaunchContainer GetLaunchContainer(const ExtensionPrefs* prefs,

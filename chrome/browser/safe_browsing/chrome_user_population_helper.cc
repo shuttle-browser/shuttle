@@ -14,12 +14,10 @@
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/safe_browsing/core/browser/sync/sync_utils.h"
 #include "components/safe_browsing/core/browser/user_population.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
-#include "components/sync/service/sync_service.h"
 
 namespace safe_browsing {
 
@@ -65,10 +63,8 @@ ChromeUserPopulation GetUserPopulationForProfile(Profile* profile) {
   if (!profile)
     return ChromeUserPopulation();
 
-  syncer::SyncService* sync = SyncServiceFactory::GetForProfile(profile);
-  bool is_history_sync_active =
-      sync && !sync->IsLocalSyncEnabled() &&
-      sync->GetActiveDataTypes().Has(syncer::HISTORY_DELETE_DIRECTIVES);
+  // There is no history sync.
+  const bool is_history_sync_active = false;
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(profile);
   bool is_signed_in =

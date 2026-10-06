@@ -380,7 +380,6 @@ class MenuManager : public ProfileObserver,
       const MenuItem::ExtensionKey& extension_key);
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // ExtensionRegistryObserver implementation.

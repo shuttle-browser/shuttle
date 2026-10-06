@@ -36,7 +36,6 @@
 #include "services/preferences/public/cpp/scoped_pref_update.h"
 
 class ExtensionPrefValueMap;
-class ExtensionSyncService;
 class PrefService;
 
 namespace base {
@@ -60,8 +59,6 @@ FORWARD_DECLARE_TEST(ExtensionTelemetryServiceTest,
 namespace user_prefs {
 class PrefRegistrySyncable;
 }
-
-FORWARD_DECLARE_TEST(ExtensionSyncServiceTest, ProcessSyncDataEnableDisable);
 
 namespace extensions {
 
@@ -200,7 +197,6 @@ class ExtensionPrefs : public KeyedService {
    private:
     DisableReasonRawManipulationPasskey() = default;
     friend class ChromeExtensionRegistrarDelegate;
-    friend class ::ExtensionSyncService;
     friend class ExtensionPrefs;
     friend class ExtensionRegistrar;
     friend class ExtensionService;
@@ -208,8 +204,6 @@ class ExtensionPrefs : public KeyedService {
     friend class UpdateDataProviderTest;
     FRIEND_TEST_ALL_PREFIXES(ExtensionPrefsSimpleTest,
                              DisableReasonsRawManipulation);
-    FRIEND_TEST_ALL_PREFIXES(::ExtensionSyncServiceTest,
-                             ProcessSyncDataEnableDisable);
     FRIEND_TEST_ALL_PREFIXES(safe_browsing::ExtensionTelemetryServiceTest,
                              TestExtensionInfoProtoConstruction);
   };

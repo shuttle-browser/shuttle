@@ -247,11 +247,8 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/android:jni_headers",
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/browsing_data:constants",
-      "//chrome/browser/reading_list",
       "//chrome/browser/signin/services/android:jni_headers",
-      "//chrome/browser/unified_consent",
       "//components/signin/public/android:jni_headers",
       "//components/signin/public/browser",
     ]

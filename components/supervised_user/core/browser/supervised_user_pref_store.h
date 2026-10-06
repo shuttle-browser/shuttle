@@ -64,7 +64,6 @@ class SupervisedUserPrefStore : public PrefStore {
   // Local representation of last received the device parental controls state.
   struct DeviceParentalControlsState {
     bool is_web_filtering_enabled = false;
-    bool is_incognito_mode_disabled = false;
     bool is_safe_search_forced = false;
     bool is_enabled = false;
   };

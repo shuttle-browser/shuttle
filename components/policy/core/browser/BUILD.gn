@@ -80,8 +80,6 @@ source_set("internal") {
 
   if (!is_fuchsia) {
     sources += [
-      "url_list/incognito_mode_policy_handler.cc",
-      "url_list/incognito_mode_policy_handler.h",
     ]
   }
 

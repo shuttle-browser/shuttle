@@ -2637,9 +2637,6 @@
 
 
 
-    <message name="IDS_SETTINGS_ACCOUNT_SYNC_DISABLED"  desc="Section in the account settings page informing the user when the toggles to save a specific data type to the user's Google Account are disabled as per an Enterprise policy.">
-      Managed by your organization
-    </message>
 
 
 

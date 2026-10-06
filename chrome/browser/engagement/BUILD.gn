@@ -46,7 +46,6 @@ if (is_android) {
     deps = [
       ":engagement",
       "//base",
-      "//chrome/browser/android",
       "//chrome/browser/content_settings:content_settings_factory",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/search_engines",

@@ -28,7 +28,6 @@
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/install_verifier_factory.h"
 #include "chrome/browser/extensions/shared_module_service_factory.h"
-#include "chrome/browser/extensions/sync/extension_sync_service.h"
 #include "chrome/browser/notifications/notifier_state_tracker.h"
 #include "chrome/browser/notifications/notifier_state_tracker_factory.h"
 #include "chrome/browser/policy/cloud/extension_install_policy_service.h"
@@ -228,8 +227,7 @@ void ChromeExtensionSystem::Shared::Init(bool extensions_enabled) {
 
   user_script_manager_ = std::make_unique<UserScriptManager>(profile_);
 
-  bool autoupdate_enabled =
-      !profile_->IsGuestSession() && !profile_->IsSystemProfile();
+  bool autoupdate_enabled = true;
 #if BUILDFLAG(IS_CHROMEOS)
   if (!extensions_enabled) {
     autoupdate_enabled = false;
@@ -310,9 +308,6 @@ void ChromeExtensionSystem::Shared::Init(bool extensions_enabled) {
   InitInstallGates();
 
   extension_service_->Init();
-
-  // Make sure ExtensionSyncService is created.
-  ExtensionSyncService::Get(profile_);
 
   // Make the chrome://extension-icon/ resource available.
   content::URLDataSource::Add(profile_,

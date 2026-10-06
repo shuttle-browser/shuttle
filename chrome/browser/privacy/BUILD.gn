@@ -26,7 +26,6 @@ if (is_android) {
       ":java_resources",
       "//base:base_java",
       "//build/android:build_java",
-      "//chrome/browser/android/lifecycle:java",
       "//chrome/browser/flags:java",
       "//chrome/browser/net:secure_dns_management_mode_generated_enum",
       "//chrome/browser/preferences:java",
@@ -96,7 +95,6 @@ if (is_android) {
       ":*",
       "//chrome/android:jni_headers",
       "//chrome/browser",
-      "//chrome/browser/android",
     ]
     sources = [ "java/src/org/chromium/chrome/browser/privacy/secure_dns/SecureDnsBridge.java" ]
   }

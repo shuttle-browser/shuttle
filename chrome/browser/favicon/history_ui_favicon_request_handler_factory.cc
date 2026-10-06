@@ -8,26 +8,8 @@
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/large_icon_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "components/favicon/core/history_ui_favicon_request_handler_impl.h"
-#include "components/sync/service/sync_service.h"
-#include "components/sync/service/sync_service_utils.h"
 #include "content/public/browser/browser_context.h"
-
-namespace {
-
-bool CanSendHistoryData(syncer::SyncService* sync_service) {
-  // SESSIONS and HISTORY both contain history-like data, so it's sufficient if
-  // either of them is being uploaded.
-  return syncer::GetUploadToGoogleState(sync_service,
-                                        syncer::DataType::SESSIONS) ==
-             syncer::UploadState::ACTIVE ||
-         syncer::GetUploadToGoogleState(sync_service,
-                                        syncer::DataType::HISTORY) ==
-             syncer::UploadState::ACTIVE;
-}
-
-}  // namespace
 
 // static
 favicon::HistoryUiFaviconRequestHandler*
@@ -58,7 +40,6 @@ HistoryUiFaviconRequestHandlerFactory::HistoryUiFaviconRequestHandlerFactory()
               .Build()) {
   DependsOn(FaviconServiceFactory::GetInstance());
   DependsOn(LargeIconServiceFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
 }
 
 HistoryUiFaviconRequestHandlerFactory::
@@ -69,8 +50,8 @@ HistoryUiFaviconRequestHandlerFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
   return std::make_unique<favicon::HistoryUiFaviconRequestHandlerImpl>(
-      base::BindRepeating(&CanSendHistoryData,
-                          SyncServiceFactory::GetForProfile(profile)),
+      // History data is never sent to Google (no history sync).
+      base::BindRepeating([] { return false; }),
       FaviconServiceFactory::GetForProfile(profile,
                                            ServiceAccessType::EXPLICIT_ACCESS),
       LargeIconServiceFactory::GetForBrowserContext(context));

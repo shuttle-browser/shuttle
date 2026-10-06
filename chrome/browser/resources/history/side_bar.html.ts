@@ -26,7 +26,6 @@ export function getHtml(this: HistorySideBarElement) {
       class="cr-nav-menu-item"
       href="chrome://settings/clearBrowserData"
       @click="${this.onClearBrowsingDataClick_}"
-      ?disabled="${this.guestSession_}"
       title="$i18n{clearBrowsingDataLinkTooltip}">
     <cr-icon icon="cr:delete"></cr-icon>
     $i18n{clearBrowsingData}

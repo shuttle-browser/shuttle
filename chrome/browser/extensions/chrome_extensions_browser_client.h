@@ -115,7 +115,6 @@ class ChromeExtensionsBrowserClient : public ExtensionsBrowserClient {
 #if BUILDFLAG(IS_CHROMEOS)
   bool IsActiveContext(content::BrowserContext* browser_context) const override;
 #endif
-  bool IsGuestSession(content::BrowserContext* context) const override;
   bool IsExtensionIncognitoEnabled(
       const ExtensionId& extension_id,
       content::BrowserContext* context) const override;

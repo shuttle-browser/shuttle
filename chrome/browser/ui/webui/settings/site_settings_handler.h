@@ -115,7 +115,6 @@ class SiteSettingsHandler
                                ContentSettingsType content_type) override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // ObjectPermissionContextBase::PermissionObserver implementation:

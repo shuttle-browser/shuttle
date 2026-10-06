@@ -12,7 +12,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "components/page_image_service/image_service.h"
 #include "components/page_image_service/image_service_impl.h"
 
@@ -46,7 +45,6 @@ ImageServiceFactory::ImageServiceFactory()
   DependsOn(TemplateURLServiceFactory::GetInstance());
   DependsOn(RemoteSuggestionsServiceFactory::GetInstance());
   DependsOn(OptimizationGuideKeyedServiceFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
 }
 
 ImageServiceFactory::~ImageServiceFactory() = default;
@@ -60,7 +58,6 @@ ImageServiceFactory::BuildServiceInstanceForBrowserContext(
       RemoteSuggestionsServiceFactory::GetForProfile(
           profile, /*create_if_necessary=*/true),
       OptimizationGuideKeyedServiceFactory::GetForProfile(profile),
-      SyncServiceFactory::GetForProfile(profile),
       std::make_unique<ChromeAutocompleteSchemeClassifier>(profile));
 }
 

@@ -45,12 +45,6 @@ void MultiProfileDownloadNotifier::AddProfile(Profile* profile) {
   profile_observer_.AddObservation(profile);
   download_notifiers_.emplace(
       std::make_unique<download::AllDownloadItemNotifier>(manager, this));
-
-  for (Profile* off_the_record : profile->GetAllOffTheRecordProfiles()) {
-    // An OTR profile lists itself among its own OTR profiles.
-    if (off_the_record != profile)
-      OnOffTheRecordProfileCreated(off_the_record);
-  }
 }
 
 std::vector<raw_ptr<download::DownloadItem, VectorExperimental>>
@@ -78,11 +72,6 @@ download::DownloadItem* MultiProfileDownloadNotifier::GetDownloadByGuid(
   }
 
   return nullptr;
-}
-
-void MultiProfileDownloadNotifier::OnOffTheRecordProfileCreated(
-    Profile* off_the_record) {
-  AddProfile(off_the_record);
 }
 
 void MultiProfileDownloadNotifier::OnProfileWillBeDestroyed(Profile* profile) {

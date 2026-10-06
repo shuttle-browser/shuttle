@@ -23,7 +23,6 @@
 #include "base/values.h"
 #include "chrome/browser/extensions/activity_log/activity_log.h"
 #include "chrome/browser/history/history_service_factory.h"
-#include "chrome/browser/history/web_history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/api/history.h"
@@ -365,9 +364,7 @@ ExtensionFunction::ResponseAction HistoryDeleteUrlFunction::Run() {
 
   history::HistoryService* hs = HistoryServiceFactory::GetForProfile(
       GetProfile(), ServiceAccessType::EXPLICIT_ACCESS);
-  history::WebHistoryService* web_history =
-      WebHistoryServiceFactory::GetForProfile(GetProfile());
-  hs->DeleteLocalAndRemoteUrl(web_history, url);
+  hs->DeleteLocalAndRemoteUrl(url);
 
   // Also clean out from the activity log. If the activity log testing flag is
   // set then don't clean so testers can see what potentially malicious
@@ -397,10 +394,8 @@ ExtensionFunction::ResponseAction HistoryDeleteRangeFunction::Run() {
 
   history::HistoryService* hs = HistoryServiceFactory::GetForProfile(
       GetProfile(), ServiceAccessType::EXPLICIT_ACCESS);
-  history::WebHistoryService* web_history =
-      WebHistoryServiceFactory::GetForProfile(GetProfile());
   hs->DeleteLocalAndRemoteHistoryBetween(
-      web_history, start_time, end_time, history::kNoAppIdFilter,
+      start_time, end_time, history::kNoAppIdFilter,
       base::BindOnce(&HistoryDeleteRangeFunction::DeleteComplete,
                      base::Unretained(this)),
       &task_tracker_);
@@ -431,10 +426,7 @@ ExtensionFunction::ResponseAction HistoryDeleteAllFunction::Run() {
   std::set<GURL> restrict_urls;
   history::HistoryService* hs = HistoryServiceFactory::GetForProfile(
       GetProfile(), ServiceAccessType::EXPLICIT_ACCESS);
-  history::WebHistoryService* web_history =
-      WebHistoryServiceFactory::GetForProfile(GetProfile());
   hs->DeleteLocalAndRemoteHistoryBetween(
-      web_history,
       /*begin_time*/ base::Time(),
       /*end_time*/ base::Time::Max(), history::kNoAppIdFilter,
       base::BindOnce(&HistoryDeleteAllFunction::DeleteComplete,

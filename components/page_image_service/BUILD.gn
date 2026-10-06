@@ -5,8 +5,6 @@
 source_set("page_image_service") {
   sources = [
     "image_service.h",
-    "image_service_consent_helper.cc",
-    "image_service_consent_helper.h",
     "image_service_handler.cc",
     "image_service_handler.h",
     "image_service_impl.cc",
@@ -23,8 +21,6 @@ source_set("page_image_service") {
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/search_engines",
-    "//components/sync/base",
-    "//components/sync/service",
     "//components/unified_consent",
     "//services/network/public/cpp",
     "//services/network/public/mojom",

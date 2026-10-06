@@ -151,13 +151,9 @@
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/supervised_user/core/common/features.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
-#include "components/sync/base/command_line_switches.h"
-#include "components/sync/base/features.h"
-#include "components/sync_preferences/features.h"
 #include "components/tab_groups/features.h"
 #include "components/thin_webview/features.h"
 #include "components/tracing/common/tracing_switches.h"
-#include "components/trusted_vault/features.h"
 #include "components/ui_devtools/switches.h"
 #include "components/unexportable_keys/features.h"
 #include "components/universal_optout/features.h"
@@ -3458,31 +3454,6 @@ const FeatureEntry::FeatureVariation
          kPolicyDisclaimerRegistrationRetryDelay24h, nullptr},
 };
 
-const FeatureEntry::FeatureParam
-    kOAuthMultiloginYoutubeCookieBindingWithoutEnforcement[] = {
-        {"OAuthMultiloginYoutubeCookieBindingEnforced", "false"}};
-const FeatureEntry::FeatureParam
-    kOAuthMultiloginYoutubeCookieBindingWithEnforcement[] = {
-        {"OAuthMultiloginYoutubeCookieBindingEnforced", "true"}};
-
-const FeatureEntry::FeatureVariation
-    kOAuthMultiloginYoutubeCookieBindingEnforcementVariations[] = {
-        {"without enforcement",
-         kOAuthMultiloginYoutubeCookieBindingWithoutEnforcement, nullptr},
-        {"with enforcement",
-         kOAuthMultiloginYoutubeCookieBindingWithEnforcement, nullptr},
-};
-
-const FeatureEntry::FeatureParam kRefreshTokenBindingUpgradeDarkLaunch[] = {
-    {"upgrade-type", "dark-launch"}};
-const FeatureEntry::FeatureParam kRefreshTokenBindingUpgradeLiveLaunch[] = {
-    {"upgrade-type", "live-launch"}};
-
-const FeatureEntry::FeatureVariation kRefreshTokenBindingUpgradeVariations[] = {
-    {"(Dark Launch)", kRefreshTokenBindingUpgradeDarkLaunch, nullptr},
-    {"(Live Launch)", kRefreshTokenBindingUpgradeLiveLaunch, nullptr},
-};
-
 const FeatureEntry::FeatureParam kMagiChromePasskeySignInAutofill[] = {
     {"flow_type", "autofill"}};
 const FeatureEntry::FeatureParam kMagiChromePasskeySignInBanner[] = {
@@ -4822,11 +4793,6 @@ const FeatureEntry kFeatureEntries[] = {
     {"record-web-app-debug-info", flag_descriptions::kRecordWebAppDebugInfoName,
      flag_descriptions::kRecordWebAppDebugInfoDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kRecordWebAppDebugInfo)},
-    {"use-sync-sandbox", flag_descriptions::kSyncSandboxName,
-     flag_descriptions::kSyncSandboxDescription, kOsAll,
-     SINGLE_VALUE_TYPE_AND_VALUE(
-         syncer::kSyncServiceURL,
-         "https://chrome-sync.sandbox.google.com/chrome-sync/alpha")},
 #if !BUILDFLAG(IS_ANDROID)
     {"capture-handle-for-standalone-pwas-and-iwas",
      flag_descriptions::kCaptureHandleForStandalonePwasAndIwasName,
@@ -8063,9 +8029,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_ANDROID)
-    {"pwa-restore-backend", flag_descriptions::kPwaRestoreBackendName,
-     flag_descriptions::kPwaRestoreBackendDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(syncer::kWebApkBackupAndRestoreBackend)},
 
     {"pwa-restore-ui", flag_descriptions::kPwaRestoreUiName,
      flag_descriptions::kPwaRestoreUiDescription, kOsAndroid,
@@ -8291,24 +8254,9 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(ash::features::kGoogleOneOfferFilesBanner)},
 #endif
 
-    {"sync-account-settings", flag_descriptions::kSyncAccountSettingsName,
-     flag_descriptions::kSyncAccountSettingsDescription, kOsAll,
-     FEATURE_VALUE_TYPE(syncer::kSyncAccountSettings)},
 
-    {"sync-autofill-valuable-metadata",
-     flag_descriptions::kSyncAutofillValuableMetadataName,
-     flag_descriptions::kSyncAutofillValuableMetadataDescription, kOsAll,
-     FEATURE_VALUE_TYPE(syncer::kSyncAutofillValuableMetadata)},
 
-    {"sync-wallet-flight-reservations",
-     flag_descriptions::kSyncWalletFlightReservationsName,
-     flag_descriptions::kSyncWalletFlightReservationsDescription, kOsAll,
-     FEATURE_VALUE_TYPE(syncer::kSyncWalletFlightReservations)},
 
-    {"sync-wallet-vehicle-registrations",
-     flag_descriptions::kSyncWalletVehicleRegistrationsName,
-     flag_descriptions::kSyncWalletVehicleRegistrationsDescription, kOsAll,
-     FEATURE_VALUE_TYPE(syncer::kSyncWalletVehicleRegistrations)},
 
 #if BUILDFLAG(IS_CHROMEOS)
     {"cros-labs-window-cycle-shortcut",
@@ -8843,9 +8791,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      MULTI_VALUE_TYPE(kReplaceSyncPromosWithSigninPromosNewSigninChoices)},
 
-    {"uno-phase-2-follow-up", flag_descriptions::kUnoPhase2FollowUpName,
-     flag_descriptions::kUnoPhase2FollowUpDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(syncer::kUnoPhase2FollowUp)},
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 
@@ -9009,10 +8954,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kDataControlsSearchWithDescription, kOsAll,
      FEATURE_VALUE_TYPE(data_controls::kDataControlsSearchWith)},
 
-    {"collaboration-shared-tab-group-account-data",
-     flag_descriptions::kCollaborationSharedTabGroupAccountDataName,
-     flag_descriptions::kCollaborationSharedTabGroupAccountDataDescription,
-     kOsAll, FEATURE_VALUE_TYPE(syncer::kSyncSharedTabGroupAccountData)},
 
     // LINT.IfChange(DataSharingVersioning)
     {"shared-data-types-kill-switch",
@@ -9387,36 +9328,9 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-    {"enable-oauth-multilogin-standard-cookies-binding",
-     flag_descriptions::kEnableOAuthMultiloginStandardCookiesBindingName,
-     flag_descriptions::kEnableOAuthMultiloginStandardCookiesBindingDescription,
-     kOsMac | kOsWin | kOsLinux,
-     FEATURE_VALUE_TYPE(
-         switches::kEnableOAuthMultiloginStandardCookiesBinding)},
 
-    {"enable-oauth-multilogin-youtube-cookies-binding",
-     flag_descriptions::kEnableOAuthMultiloginYoutubeCookiesBindingName,
-     flag_descriptions::kEnableOAuthMultiloginYoutubeCookiesBindingDescription,
-     kOsMac | kOsWin | kOsLinux,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         switches::kEnableOAuthMultiloginYoutubeCookiesBinding,
-         kOAuthMultiloginYoutubeCookieBindingEnforcementVariations,
-         "EnableOAuthMultiloginYoutubeCookiesBinding")},
 
-    {"enable-chrome-refresh-token-binding",
-     flag_descriptions::kEnableChromeRefreshTokenBindingName,
-     flag_descriptions::kEnableChromeRefreshTokenBindingDescription,
-     kOsMac | kOsLinux,
-     FEATURE_VALUE_TYPE(switches::kEnableChromeRefreshTokenBinding)},
 
-    {"enable-chrome-refresh-token-binding-upgrade",
-     flag_descriptions::kEnableChromeRefreshTokenBindingUpgradeName,
-     flag_descriptions::kEnableChromeRefreshTokenBindingUpgradeDescription,
-     kOsMac | kOsWin | kOsLinux,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(
-         switches::kEnableChromeRefreshTokenBindingUpgrade,
-         kRefreshTokenBindingUpgradeVariations,
-         "RefreshTokenBindingUpgrade")},
 
     {"enable-cookie-binding-cookie-upgrade",
      flag_descriptions::kEnableCookieBindingCookieUpgradeName,
@@ -10107,11 +10021,6 @@ const FeatureEntry kFeatureEntries[] = {
          "AndroidAnimatedProgressBarInBrowser")},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-    {"enable-cross-device-pref-tracker",
-     flag_descriptions::kEnableCrossDevicePrefTrackerName,
-     flag_descriptions::kEnableCrossDevicePrefTrackerDescription, kOsAll,
-     FEATURE_VALUE_TYPE(
-         sync_preferences::features::kEnableCrossDevicePrefTracker)},
 
 #if BUILDFLAG(IS_WIN)
     {
@@ -10253,12 +10162,6 @@ const FeatureEntry kFeatureEntries[] = {
     {"organizer-panel", flag_descriptions::kOrganizerPanelName,
      flag_descriptions::kOrganizerPanelDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(organizer_panel::kOrganizerPanel)},
-    {"sync-ai-threads", flag_descriptions::kSyncAIThreadsName,
-     flag_descriptions::kSyncAIThreadsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(syncer::kSyncAIThread)},
-    {"sync-gemini-threads", flag_descriptions::kSyncGeminiThreadsName,
-     flag_descriptions::kSyncGeminiThreadsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(syncer::kSyncGeminiThread)},
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
         // BUILDFLAG(IS_CHROMEOS)
 
@@ -10626,10 +10529,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-    {"new-tab-page-customization-theme-sync",
-     flag_descriptions::kNewTabPageCustomizationThemeSyncName,
-     flag_descriptions::kNewTabPageCustomizationThemeSyncDescription,
-     kOsAndroid, FEATURE_VALUE_TYPE(syncer::kNewTabPageCustomizationThemeSync)},
 #endif
 #if BUILDFLAG(IS_ANDROID)
     {"your-saved-info-settings-page-android",
@@ -10791,10 +10690,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-    {"sync-search-engines-android-lff",
-     flag_descriptions::kSyncSearchEnginesAndroidLFFName,
-     flag_descriptions::kSyncSearchEnginesAndroidLFFDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(syncer::kSyncSearchEnginesAndroidLFF)},
 #endif
 
     {"session-encryption", flag_descriptions::kSessionEncryptionName,

@@ -39,9 +39,7 @@
 #include "chrome/browser/favicon/favicon_utils.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
@@ -116,9 +114,6 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
-#include "components/reading_list/core/reading_list_entry.h"
-#include "components/reading_list/core/reading_list_model.h"
-#include "components/reading_list/core/reading_list_pref_names.h"
 #include "components/sessions/core/live_tab_context.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_visual_data.h"
@@ -240,57 +235,6 @@ void CreateAndShowNewWindowWithContents(
                                                  ui::PAGE_TRANSITION_LINK,
                                                  AddTabTypes::ADD_ACTIVE);
 }
-
-bool GetTabURLAndTitleToSave(content::WebContents* web_contents,
-                             GURL* url,
-                             std::u16string* title) {
-  // |web_contents| can be nullptr if the last tab in the browser was closed
-  // but the browser wasn't closed yet. https://crbug.com/40557069
-  if (!web_contents) {
-    return false;
-  }
-  GURL visible_url = web_contents->GetVisibleURL();
-  if (dom_distiller::url_utils::IsDistilledPage(visible_url)) {
-    // Reader Mode pages are saved as the original page with its title.
-    *url = dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(visible_url);
-  } else {
-    *url = visible_url;
-  }
-  if (!url->is_valid()) {
-    return false;
-  }
-  if (dom_distiller::url_utils::IsDistilledPage(visible_url)) {
-    *title = base::UTF8ToUTF16(
-        dom_distiller::url_utils::GetTitleFromDistillerUrl(visible_url));
-  } else {
-    *title = web_contents->GetTitle();
-  }
-  // Use "New tab" as title if the current page is NTP even in incognito mode.
-  if (*url == chrome::ChromeUINewTabURLAsGURL()) {
-    *title = l10n_util::GetStringUTF16(IDS_NEW_TAB_TITLE);
-  }
-  return true;
-}
-
-ReadingListModel* GetReadingListModel(BrowserWindowInterface* browser) {
-  ReadingListModel* model =
-      ReadingListModelFactory::GetForBrowserContext(browser->GetProfile());
-  if (!model || !model->loaded()) {
-    return nullptr;  // Ignore requests until model has loaded.
-  }
-  return model;
-}
-
-bool CanMoveWebContentsToReadLater(BrowserWindowInterface* browser,
-                                   content::WebContents* web_contents,
-                                   ReadingListModel* model,
-                                   GURL* url,
-                                   std::u16string* title) {
-  return model && GetTabURLAndTitleToSave(web_contents, url, title) &&
-         model->IsUrlSupported(*url) &&
-         !browser->GetProfile()->IsGuestSession();
-}
-
 
 content::WebContents* DuplicateTabAt(BrowserWindowInterface* browser,
                                      int index,
@@ -824,35 +768,7 @@ int GetContentRestrictions(const BrowserWindowInterface* browser) {
 }
 
 void NewEmptyWindow(Profile* profile, bool should_trigger_session_restore) {
-  bool off_the_record = profile->IsOffTheRecord();
-  PrefService* prefs = profile->GetPrefs();
-  if (off_the_record) {
-    if (IncognitoModePrefs::GetAvailability(prefs) ==
-            policy::IncognitoModeAvailability::kDisabled &&
-        !profile->IsEnterpriseIsolatedModeProfile()) {
-      off_the_record = false;
-    }
-  } else if (profile->IsGuestSession() ||
-             IncognitoModePrefs::ShouldOpenSubsequentBrowsersInIncognito(
-                 *base::CommandLine::ForCurrentProcess(), prefs)) {
-    off_the_record = true;
-  }
-
-  if (off_the_record) {
-    Profile* otr_profile =
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
-    // This metric counts the Incognito, Off-The-Record Guest, and Enterprise
-    // Isolated profiles together.
-    base::RecordAction(UserMetricsAction("NewIncognitoWindow"));
-    if (profile->IsGuestSession()) {
-      base::RecordAction(UserMetricsAction("NewGuestWindow"));
-    } else if (otr_profile->IsEnterpriseIsolatedModeProfile()) {
-      base::RecordAction(UserMetricsAction("NewIsolatedWindow"));
-    } else {
-      base::RecordAction(UserMetricsAction("NewIncognitoWindow2"));
-    }
-    OpenEmptyWindow(otr_profile, should_trigger_session_restore);
-  } else if (!should_trigger_session_restore) {
+  if (!should_trigger_session_restore) {
     base::RecordAction(UserMetricsAction("NewWindow"));
     OpenEmptyWindow(profile->GetOriginalProfile(),
                     /*should_trigger_session_restore=*/false);
@@ -908,13 +824,6 @@ void OpenWindowWithRestoredTabs(Profile* profile) {
   if (service) {
     service->RestoreMostRecentEntry(nullptr);
   }
-}
-
-void OpenURLOffTheRecord(Profile* profile, const GURL& url) {
-  ScopedTabbedBrowserDisplayer displayer(
-      profile->GetPrimaryOTRProfile(/*create_if_needed=*/true));
-  AddSelectedTabWithURL(displayer.browser_window_interface(), url,
-                        ui::PAGE_TRANSITION_LINK);
 }
 
 bool CanGoBack(const BrowserWindowInterface* browser) {
@@ -1874,94 +1783,6 @@ void CloseOtherTabs(BrowserWindowInterface* browser) {
 void Exit() {
   base::RecordAction(UserMetricsAction("Exit"));
   chrome::AttemptUserExit();
-}
-
-bool CanMoveActiveTabToReadLater(BrowserWindowInterface* browser) {
-  GURL url;
-  std::u16string title;
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  ReadingListModel* model = GetReadingListModel(browser);
-  return CanMoveWebContentsToReadLater(browser, web_contents, model, &url,
-                                       &title);
-}
-
-void MoveCurrentTabToReadLater(BrowserWindowInterface* browser) {
-  MoveTabsToReadLater(browser,
-                      {browser->GetTabStripModel()->GetActiveWebContents()});
-}
-
-void MoveTabsToReadLater(BrowserWindowInterface* browser,
-                         std::vector<content::WebContents*> web_contentses) {
-  int added_to_read_later = 0;
-  for (WebContents* const web_contents : web_contentses) {
-    GURL url;
-    std::u16string title;
-    ReadingListModel* model = GetReadingListModel(browser);
-    if (!CanMoveWebContentsToReadLater(browser, web_contents, model, &url,
-                                       &title)) {
-      continue;
-    }
-    model->AddOrReplaceEntry(url, base::UTF16ToUTF8(title),
-                             reading_list::EntrySource::ADDED_VIA_CURRENT_APP,
-                             /*estimated_read_time=*/std::nullopt,
-                             /*creation_time=*/std::nullopt);
-    BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
-        feature_engagement::kIPHReadingListDiscoveryFeature);
-    added_to_read_later += 1;
-  }
-
-  if (added_to_read_later == 0) {
-    return;
-  }
-
-#if !BUILDFLAG(IS_ANDROID)
-  if (toast_features::IsEnabled(toast_features::kReadingListToast)) {
-    // Don't show the reading list toast if the side panel is visible.
-    if (browser->GetFeatures().side_panel_ui()->IsSidePanelEntryShowing(
-            SidePanelEntryKey(SidePanelEntryId::kReadingList))) {
-      return;
-    }
-
-    ToastController* const toast_controller =
-        browser->GetFeatures().toast_controller();
-    if (toast_controller) {
-      ToastParams params = ToastParams(ToastId::kAddedToReadingList);
-      params.body_string_cardinality_param = added_to_read_later;
-      toast_controller->MaybeShowToast(std::move(params));
-    }
-  }
-#endif
-}
-
-bool MarkCurrentTabAsReadInReadLater(BrowserWindowInterface* browser) {
-  GURL url;
-  std::u16string title;
-  ReadingListModel* model = GetReadingListModel(browser);
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  if (!model || !GetTabURLAndTitleToSave(web_contents, &url, &title)) {
-    return false;
-  }
-  scoped_refptr<const ReadingListEntry> entry = model->GetEntryByURL(url);
-  // Mark current tab as read.
-  if (entry && !entry->IsRead()) {
-    model->SetReadStatusIfExists(url, true);
-  }
-  return entry != nullptr;
-}
-
-bool IsCurrentTabUnreadInReadLater(BrowserWindowInterface* browser) {
-  GURL url;
-  std::u16string title;
-  ReadingListModel* model = GetReadingListModel(browser);
-  WebContents* web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
-  if (!model || !GetTabURLAndTitleToSave(web_contents, &url, &title)) {
-    return false;
-  }
-  scoped_refptr<const ReadingListEntry> entry = model->GetEntryByURL(url);
-  return entry && !entry->IsRead();
 }
 
 void SavePage(BrowserWindowInterface* browser) {

@@ -31,7 +31,6 @@
 #include "chrome/browser/ssl/ask_before_http_dialog_controller.h"
 #include "chrome/browser/ssl/connection_help_tab_helper.h"
 #include "chrome/browser/ssl/security_state_event_observer.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/tab_contents/form_interaction_tab_helper.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -162,8 +161,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
     // TODO(crbug.com/433973411): Move this logic to a helper function.
     if (base::FeatureList::IsEnabled(features::kGlicActor) &&
-        base::FeatureList::IsEnabled(features::kGlicActorUi) &&
-        profile->IsRegularProfile()) {
+        base::FeatureList::IsEnabled(features::kGlicActorUi)) {
       // The associated tab is passed to CreateInstance twice: for dependency
       // injection callbacks and as a direct constructor argument.
       actor_ui_tab_controller_ =

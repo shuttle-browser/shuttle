@@ -13,8 +13,6 @@ export {LifetimeBrowserProxyImpl} from '/shared/settings/lifetime_browser_proxy.
 export type {LifetimeBrowserProxy} from '/shared/settings/lifetime_browser_proxy.js';
 export {ProfileInfoBrowserProxyImpl} from '/shared/settings/people_page/profile_info_browser_proxy.js';
 export type {ProfileInfo, ProfileInfoBrowserProxy} from '/shared/settings/people_page/profile_info_browser_proxy.js';
-export {ChromeSigninAccessPoint, ChromeSigninUserChoice, PageStatus, SignedInState, StatusAction, SyncBrowserProxyImpl, syncPrefsIndividualDataTypes, TrustedVaultBannerState, UserSelectableType} from '/shared/settings/people_page/sync_browser_proxy.js';
-export type {ChromeSigninUserChoiceInfo, StoredAccount, SyncBrowserProxy, SyncPrefs, SyncStatus} from '/shared/settings/people_page/sync_browser_proxy.js';
 export {prefToString, stringToPrefValue} from '/shared/settings/prefs/pref_util.js';
 export {SettingsPrefsElement} from '/shared/settings/prefs/prefs.js';
 export {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';

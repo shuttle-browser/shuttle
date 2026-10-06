@@ -81,7 +81,6 @@ class LocationBar;
 class LocationBarModel;
 class PinnedToolbarActions;
 class OrganizerPanelStateController;
-class ReadingListSidePanelCoordinator;
 class ScrimViewController;
 class SessionServiceBrowserHelper;
 class SidePanelCoordinator;
@@ -396,8 +395,6 @@ class BrowserWindowFeatures {
 
   std::unique_ptr<OrganizerPanelStateController>
       organizer_panel_state_controller_;
-  std::unique_ptr<ReadingListSidePanelCoordinator>
-      reading_list_side_panel_coordinator_;
   std::unique_ptr<SessionServiceBrowserHelper> session_service_browser_helper_;
   std::unique_ptr<SidePanelRegistry> side_panel_registry_;
   std::unique_ptr<SplitViewIphController> split_view_iph_controller_;

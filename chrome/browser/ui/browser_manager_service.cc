@@ -127,35 +127,7 @@ void BrowserManagerService::DeleteBrowser(
     return;
   }
 
-  // The system incognito profile should not try be destroyed using
-  // ProfileDestroyer::DestroyProfileWhenAppropriate(). This profile can be
-  // used, at least, by the user manager window. This window is not a browser,
-  // therefore, chrome::IsOffTheRecordBrowserActiveForProfile(profile_) returns
-  // false, while the user manager window is still opened. This cannot be fixed
-  // in ProfileDestroyer::DestroyProfileWhenAppropriate(), because the
-  // ProfileManager needs to be able to destroy all profiles when it is
-  // destroyed. See crbug.com/40433858
-  //
-  // Non-primary OffTheRecord profiles should not be destroyed directly by
-  // Browser (e.g. for offscreen tabs, https://crbug.com/41285708).
-  //
-  // TODO(crbug.com/40159237): Use ScopedProfileKeepAlive for Incognito too,
-  // instead of separate logic for Incognito and regular profiles.
   target_browser_and_subscriptions->browser.reset();
-  if (browsers_and_subscriptions_.empty() && profile_->IsIncognitoProfile() &&
-      !profile_->IsSystemProfile()) {
-#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
-    // The Printing Background Manager holds onto preview dialog WebContents
-    // whose corresponding print jobs have not yet fully spooled. Make sure
-    // these get destroyed before tearing down the incognito profile so that
-    // their RenderFrameHosts can exit in time - see crbug.com/41235373
-    g_browser_process->background_printing_manager()
-        ->DeletePreviewContentsForBrowserContext(&profile_.get());
-#endif
-    // An incognito profile is no longer needed, this indirectly frees
-    // its cache and cookies once it gets destroyed at the appropriate time.
-    ProfileDestroyer::DestroyOTRProfileWhenAppropriate(&profile_.get());
-  }
 
   // If we're exiting, send out the APP_TERMINATING notification to allow other
   // modules to shut themselves down.

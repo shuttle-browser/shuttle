@@ -90,11 +90,8 @@ PolicyBlocklistNavigationThrottle::WillStartOrRedirectRequest(
 
   if (blocklist_state.url_blocklist_state ==
       URLBlocklistState::URL_IN_BLOCKLIST) {
-    return ThrottleCheckResult(
-        BLOCK_REQUEST,
-        blocklist_state.policy_source == PolicyBlocklistState::INCOGNITO_POLICY
-            ? net::ERR_BLOCKED_IN_INCOGNITO_BY_ADMINISTRATOR
-            : net::ERR_BLOCKED_BY_ADMINISTRATOR);
+    return ThrottleCheckResult(BLOCK_REQUEST,
+                               net::ERR_BLOCKED_BY_ADMINISTRATOR);
   }
 
   // If the navigation is to view-source, check if the view-source:url should
@@ -104,11 +101,8 @@ PolicyBlocklistNavigationThrottle::WillStartOrRedirectRequest(
         GetViewSourceNavigationBlocklistState();
     if (view_source_blocklist_state.url_blocklist_state ==
         URLBlocklistState::URL_IN_BLOCKLIST) {
-      return ThrottleCheckResult(
-          BLOCK_REQUEST, view_source_blocklist_state.policy_source ==
-                                 PolicyBlocklistState::INCOGNITO_POLICY
-                             ? net::ERR_BLOCKED_IN_INCOGNITO_BY_ADMINISTRATOR
-                             : net::ERR_BLOCKED_BY_ADMINISTRATOR);
+      return ThrottleCheckResult(BLOCK_REQUEST,
+                                 net::ERR_BLOCKED_BY_ADMINISTRATOR);
     }
   }
 

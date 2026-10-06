@@ -24,7 +24,6 @@
 #include "components/multistep_filter/core/data_models/suggestions_consent_state.h"
 #include "components/multistep_filter/core/data_models/url_filter_suggestion.h"
 #include "components/multistep_filter/core/prefs/retention_state_snapshot.h"
-#include "components/sync/service/sync_service.h"
 
 class PrefService;
 
@@ -66,7 +65,6 @@ class MultistepFilterService : public KeyedService,
     raw_ptr<MultistepFilterLogRouter> log_router;
     raw_ptr<history::HistoryService> history_service;
     raw_ptr<PrefService> pref_service;
-    raw_ptr<syncer::SyncService> sync_service;
   };
 
   explicit MultistepFilterService(Params params);
@@ -126,9 +124,6 @@ class MultistepFilterService : public KeyedService,
   // Returns true if the user has enabled URL-keyed data collection.
   bool IsUrlKeyedDataCollectionEnabled() const;
 
-  // Returns true if history sync is enabled.
-  bool IsHistorySyncEnabled() const;
-
   // Returns true if the user's account capabilities allow using model execution
   // features.
   bool CanUseModelExecutionFeatures() const;
@@ -154,9 +149,6 @@ class MultistepFilterService : public KeyedService,
 
   // Pref service to record retention statistics.
   const raw_ref<PrefService> pref_service_;
-
-  // Sync service to check for history sync state.
-  raw_ptr<syncer::SyncService> sync_service_;
 
   // History service observer to listen for history deletions.
   base::ScopedObservation<history::HistoryService,

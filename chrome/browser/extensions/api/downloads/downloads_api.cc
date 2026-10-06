@@ -520,14 +520,7 @@ void GetManagers(content::BrowserContext* context,
                  DownloadManager** incognito_manager) {
   Profile* profile = Profile::FromBrowserContext(context);
   *manager = profile->GetOriginalProfile()->GetDownloadManager();
-  if (profile->HasPrimaryOTRProfile() &&
-      (include_incognito || profile->IsOffTheRecord())) {
-    *incognito_manager =
-        profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-            ->GetDownloadManager();
-  } else {
-    *incognito_manager = nullptr;
-  }
+  *incognito_manager = nullptr;
 }
 
 // Set |service| to the on-record DownloadCoreService, |incognito_service| to
@@ -1294,15 +1287,9 @@ ExtensionFunction::ResponseAction DownloadsSearchFunction::RunInternal() {
 
   base::ListValue json_results;
   for (const auto& result : results) {
-    uint32_t download_id = result->GetId();
-    bool off_record =
-        ((incognito_manager != nullptr) &&
-         (incognito_manager->GetDownload(download_id) != nullptr));
     Profile* profile = Profile::FromBrowserContext(browser_context());
-    base::DictValue json_item = DownloadItemToJSON(
-        result, off_record
-                    ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/true)
-                    : profile->GetOriginalProfile());
+    base::DictValue json_item =
+        DownloadItemToJSON(result, profile->GetOriginalProfile());
     json_results.Append(std::move(json_item));
   }
   RecordApiFunctions(DownloadsFunctionName::kDownloadsFunctionSearch);

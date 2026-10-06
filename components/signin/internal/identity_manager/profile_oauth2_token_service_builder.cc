@@ -20,7 +20,6 @@
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 #include "components/signin/internal/identity_manager/mutable_profile_oauth2_token_service_delegate.h"
-#include "components/signin/internal/identity_manager/token_binding_helper.h"
 #include "components/signin/public/webdata/token_web_data.h"
 #include "components/unexportable_keys/unexportable_key_service.h"
 #endif
@@ -84,17 +83,9 @@ CreateMutableProfileOAuthDelegate(
           ? RevokeAllTokensOnLoad::kDeleteSiteDataOnExit
           : RevokeAllTokensOnLoad::kNo;
 
-  std::unique_ptr<TokenBindingHelper> token_binding_helper;
-  if (unexportable_key_service &&
-      switches::IsChromeRefreshTokenBindingEnabled(signin_client->GetPrefs())) {
-    token_binding_helper =
-        std::make_unique<TokenBindingHelper>(*unexportable_key_service);
-  }
-
   return std::make_unique<MutableProfileOAuth2TokenServiceDelegate>(
       signin_client, account_tracker_service, network_connection_tracker,
       token_web_data, revoke_all_tokens_on_load,
-      std::move(token_binding_helper),
 #if BUILDFLAG(IS_WIN)
       reauth_callback
 #else

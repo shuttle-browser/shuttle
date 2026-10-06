@@ -39,8 +39,6 @@ FORWARD_DECLARE_TEST(WebAppEngagementBrowserTest, CommandLineWindowByAppId);
 enum class StartupProfileMode {
   // Regular startup with a browser window.
   kBrowserWindow = 0,
-  // Profile picker window should be shown on startup.
-  kProfilePicker = 1,
   // Chrome cannot start because no profiles are available.
   kError = 2,
 
@@ -49,11 +47,8 @@ enum class StartupProfileMode {
 
 // Bundles the startup profile path together with a `StartupProfileMode`.
 // Depending on `mode`, `path` is either:
-// - regular profile path for `kBrowserWindow`; if the guest mode is requested,
-//   may contain either the default profile path or the guest profile path
-// - empty profile path for `kProfilePicker` and `kError`
-// TODO(crbug.com/40157821): return a guest profile path for the Guest
-// mode.
+// - regular profile path for `kBrowserWindow`
+// - empty profile path for `kError`
 struct StartupProfilePathInfo {
   base::FilePath path;
   StartupProfileMode mode = StartupProfileMode::kError;
@@ -61,10 +56,8 @@ struct StartupProfilePathInfo {
 
 // Bundles the startup profile together with a StartupProfileMode.
 // Depending on the `mode` value, `profile` is either:
-// - regular profile for `kBrowserWindow`; if the Guest mode is requested,
-//   may contain either the default profile path or the guest profile path
-// - nullptr for `kProfilePicker` and `kError`
-// TODO(crbug.com/40157821): return a guest profile for the Guest mode.
+// - regular profile for `kBrowserWindow`
+// - nullptr for `kError`
 struct StartupProfileInfo {
   raw_ptr<Profile, LeakedDanglingUntriaged> profile;
   StartupProfileMode mode;
@@ -249,7 +242,7 @@ class StartupBrowserCreator {
       const Profiles& last_opened_profiles);
 
   // Callback after a profile has been initialized. `profile` should be nullptr
-  // if `mode` is `StartupProfileMode::kProfilePicker`.
+  // if `mode` is `StartupProfileMode::kError`.
   static void ProcessCommandLineWithProfile(
       const base::CommandLine& command_line,
       const base::FilePath& cur_dir,
@@ -293,22 +286,14 @@ bool HasPendingUncleanExit(Profile* profile);
 // startup. This can do blocking operations to check if the profile exists in
 // the case of using --profile-directory and
 // --ignore-profile-directory-if-not-exists together.
-// When the profile picker is shown on startup, this returns the Guest profile
-// path. On Mac, the startup profile path is also used to open URLs at startup,
-// bypassing the profile picker, because the profile picker does not support it.
-// TODO(crbug.com/40159795): Remove this parameter once the picker
-// supports opening URLs.
 StartupProfilePathInfo GetStartupProfilePath(
     const base::FilePath& cur_dir,
-    const base::CommandLine& command_line,
-    bool ignore_profile_picker);
+    const base::CommandLine& command_line);
 
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
 // Returns the profile that should be loaded on process startup. This is either
-// the profile returned by GetStartupProfilePath, or the guest profile along
-// with StartupProfileMode::kProfilePicker mode if the profile picker should be
-// opened. Returns nullptr with kError if neither the regular profile nor the
-// profile picker can be opened.
+// the profile returned by GetStartupProfilePath. Returns nullptr with kError if
+// the profile cannot be opened.
 StartupProfileInfo GetStartupProfile(const base::FilePath& cur_dir,
                                      const base::CommandLine& command_line);
 

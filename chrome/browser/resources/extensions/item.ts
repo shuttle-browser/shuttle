@@ -27,7 +27,6 @@ import {getCss} from './item.css.js';
 import {getHtml} from './item.html.js';
 import {ItemMixin} from './item_mixin.js';
 import {canShowOpenReviewPageLink, computeInspectableViewLabel, createDummyExtensionInfo, EnableControl, getEnableControl, getEnableToggleAriaLabel, getItemSource, getItemSourceString, isEnabled, sortViews, SourceType, userCanChangeEnablement} from './item_util.js';
-import {UPLOAD_EXTENSION_TO_ACCOUNT_ITEMS_LIST_PAGE_HISTOGRAM_NAME} from './metrics_util.js';
 import {navigation, Page} from './navigation_helper.js';
 
 export interface ItemDelegate {
@@ -57,7 +56,6 @@ export interface ItemDelegate {
       reason: chrome.developerPrivate.SafetyCheckWarningReason): void;
   setShowAccessRequestsInToolbar(id: string, showRequests: boolean): void;
   setItemPinnedToToolbar(id: string, pinnedToToolbar: boolean): void;
-  uploadItemToAccount(id: string): Promise<boolean>;
   setProfileExtensionsPinnedByDefault(extensionsPinnedByDefault: boolean): void;
 
   // TODO(tjudkins): This function is not specific to items, so should be pulled
@@ -115,9 +113,6 @@ export class DummyItemDelegate {
       _id: string, _reason: chrome.developerPrivate.SafetyCheckWarningReason) {}
   setShowAccessRequestsInToolbar(_id: string, _showRequests: boolean) {}
   setItemPinnedToToolbar(_id: string, _pinnedToToolbar: boolean) {}
-  uploadItemToAccount(_id: string) {
-    return Promise.resolve(false);
-  }
   setProfileExtensionsPinnedByDefault(_extensionsPinnedByDefault: boolean) {}
   recordUserAction(_metricName: string) {}
   getItemStateChangedTarget() {
@@ -289,13 +284,6 @@ export class ExtensionsItemElement extends ExtensionsItemElementBase {
     this.reloadItem().catch((loadError) => this.fire('load-error', loadError));
   }
 
-  protected async onUploadClick_() {
-    assert(this.delegate);
-    const uploaded = await this.delegate.uploadItemToAccount(this.data.id);
-    chrome.metricsPrivate.recordBoolean(
-        UPLOAD_EXTENSION_TO_ACCOUNT_ITEMS_LIST_PAGE_HISTOGRAM_NAME, uploaded);
-  }
-
   protected onRepairClick_() {
     assert(this.delegate);
     this.delegate.repairItem(this.data.id);
@@ -398,9 +386,6 @@ export class ExtensionsItemElement extends ExtensionsItemElementBase {
     return this.data.views.length <= 1;
   }
 
-  protected showAccountUploadButton_(): boolean {
-    return this.data.canUploadAsAccountExtension;
-  }
 
   protected showDevReloadButton_(): boolean {
     return this.canReloadItem();

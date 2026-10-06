@@ -621,10 +621,6 @@ export class Service implements ServiceInterface {
         {isMv2DeprecationNoticeDismissed: true});
   }
 
-  uploadItemToAccount(id: string): Promise<boolean> {
-    return chrome.developerPrivate.uploadExtensionToAccount(id);
-  }
-
   showSiteSettings(extensionId: string) {
     chrome.developerPrivate.showSiteSettings(extensionId);
   }

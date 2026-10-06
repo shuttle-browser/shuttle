@@ -16,7 +16,7 @@ bool IsHistoryClustersSidePanelSupportedForProfile(Profile* profile) {
       HistoryClustersServiceFactory::GetForBrowserContext(profile);
   return history_clusters_service &&
          history_clusters_service->IsJourneysEnabledAndVisible() &&
-         !profile->IsIncognitoProfile() && !profile->IsGuestSession();
+         !profile->IsIncognitoProfile();
 }
 
 }  // namespace side_panel::history_clusters

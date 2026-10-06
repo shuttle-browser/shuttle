@@ -24,7 +24,6 @@ source_set("info_singleton") {
 
   deps = [
     ":event_observer",
-    "//components/sync/protocol",
   ]
 }
 
@@ -66,7 +65,6 @@ source_set("event_observer") {
     "//components/safe_browsing/core/common/proto:csd_proto",
     "//components/safe_browsing/core/common/proto:realtimeapi_proto",
     "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
-    "//components/sync/protocol",
     "//url",
   ]
 }
@@ -108,7 +106,6 @@ source_set("util") {
     "//components/safe_browsing/core/common/proto:safebrowsingv5_proto",
     "//components/safe_browsing/core/common/proto:safebrowsingv5_proto_extras",
     "//components/safe_browsing/core/common/proto:webui_proto",
-    "//components/sync/protocol",
     "//net",
     "//url",
   ]

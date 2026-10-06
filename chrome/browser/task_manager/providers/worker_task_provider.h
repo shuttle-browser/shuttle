@@ -49,7 +49,6 @@ class WorkerTaskProvider : public TaskProvider,
   void OnProfileManagerDestroying() override;
 
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // Invoked by the PerProfileWorkerTaskTrackers when a new task is created or

@@ -44,14 +44,6 @@ void NotificationTriggerScheduler::TriggerNotifications() {
   auto profiles = g_browser_process->profile_manager()->GetLoadedProfiles();
   for (Profile* profile : profiles) {
     TriggerNotificationsForProfile(profile);
-    // Notifications are technically not supported in OffTheRecord, but in case
-    // we ever change that lets handle these profiles too.
-    if (profile->HasAnyOffTheRecordProfile()) {
-      std::vector<Profile*> otr_profiles =
-          profile->GetAllOffTheRecordProfiles();
-      for (Profile* otr : otr_profiles)
-        TriggerNotificationsForProfile(otr);
-    }
   }
 }
 

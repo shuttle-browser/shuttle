@@ -20,7 +20,6 @@ source_set("browsing_data") {
     "//chrome/browser/browsing_data:constants",
     "//chrome/browser/profiles",
     "//chrome/browser/signin",
-    "//chrome/browser/sync",
     "//chrome/browser/ui",
     "//components/browsing_data/content",
     "//components/browsing_data/core",

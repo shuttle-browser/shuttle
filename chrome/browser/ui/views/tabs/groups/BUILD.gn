@@ -24,7 +24,6 @@ source_set("groups") {
     "//chrome/browser/ui/views/controls",
     "//chrome/browser/ui/views/location_bar",
     "//components/favicon_base",
-    "//components/sync/base",
     "//components/tab_groups",
     "//ui/base/interaction",
     "//ui/base/metadata",

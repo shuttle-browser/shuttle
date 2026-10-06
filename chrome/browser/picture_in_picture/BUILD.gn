@@ -64,7 +64,6 @@ source_set("picture_in_picture") {
   } else {  # is_android
     sources += [ "auto_picture_in_picture_tab_model_observer_helper.h" ]
     public_deps += [
-      "//chrome/browser/android:tabs_public",
       "//chrome/browser/ui/android/tab_model",
     ]
   }

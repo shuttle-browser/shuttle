@@ -19,17 +19,7 @@
 namespace search_engines {
 
 SearchEngineChoiceServiceClient::SearchEngineChoiceServiceClient(
-    const Profile& profile)
-    : is_profile_eligible_for_dse_guest_propagation_(
-#if BUILDFLAG(IS_CHROMEOS)
-          !chromeos::IsManagedGuestSession() &&
-#endif
-          profile.IsGuestSession()) {
-#if BUILDFLAG(IS_ANDROID)
-  // We don't expect Guest profiles to be supported on Android.
-  CHECK(!is_profile_eligible_for_dse_guest_propagation_);
-#endif
-}
+    const Profile& profile) {}
 
 country_codes::CountryId
 SearchEngineChoiceServiceClient::GetVariationsCountry() {
@@ -38,7 +28,8 @@ SearchEngineChoiceServiceClient::GetVariationsCountry() {
 
 bool SearchEngineChoiceServiceClient::
     IsProfileEligibleForDseGuestPropagation() {
-  return is_profile_eligible_for_dse_guest_propagation_;
+  // There are no guest profiles.
+  return false;
 }
 
 bool SearchEngineChoiceServiceClient::

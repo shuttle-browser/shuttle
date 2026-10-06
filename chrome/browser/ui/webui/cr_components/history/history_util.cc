@@ -6,7 +6,6 @@
 
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/webui/cr_components/history_clusters/history_clusters_util.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/common/url_constants.h"
@@ -95,8 +94,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   bool allow_deleting_history =
       prefs->GetBoolean(prefs::kAllowDeletingBrowserHistory);
   source->AddBoolean("allowDeletingHistory", allow_deleting_history);
-
-  source->AddBoolean("isGuestSession", profile->IsGuestSession());
 
   source->AddInteger(
       "lastSelectedTab",

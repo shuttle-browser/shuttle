@@ -122,8 +122,8 @@ bool UserEducationServiceFactory::ProfileAllowsUserEducation(Profile* profile) {
   // In order to do user education, the browser must have a UI and not be an
   // "off-the-record" or in a demo or guest mode.
 
-  if (profile->IsIncognitoProfile() || profile->IsGuestSession() ||
-      profiles::IsDemoSession() || profiles::IsChromeAppKioskSession()) {
+  if (profile->IsIncognitoProfile() || profiles::IsDemoSession() ||
+      profiles::IsChromeAppKioskSession()) {
     return false;
   }
 

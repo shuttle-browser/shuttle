@@ -32,7 +32,6 @@ schema_sources_ = [
   "page_capture.json",
   "permissions.json",
   "processes.idl",
-  "reading_list.webidl",
   "search.idl",
   "sessions.json",
   "side_panel.idl",

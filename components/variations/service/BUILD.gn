@@ -68,7 +68,6 @@ static_library("service") {
     "//components/network_time/time_tracker",
     "//components/pref_registry",
     "//components/prefs",
-    "//components/sync/service",
     "//components/variations",
     "//components/variations/field_trial_config",
     "//components/variations/proto",

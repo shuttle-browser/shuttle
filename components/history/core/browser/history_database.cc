@@ -89,8 +89,7 @@ HistoryDatabase::HistoryDatabase(
                   kHistoryDatabaseWriteAheadLogging))
 #endif  // !BUILDFLAG(IS_FUCHSIA)
               ,
-          /*tag=*/"History"),
-      history_metadata_db_(&db_, &meta_table_) {
+          /*tag=*/"History") {
 }
 
 HistoryDatabase::~HistoryDatabase() = default;
@@ -161,7 +160,7 @@ sql::InitStatus HistoryDatabase::Init(const base::FilePath& history_name) {
   if (!CreateURLTable(false) || !InitVisitTable() ||
       !InitKeywordSearchTermsTable() || !InitDownloadTable() ||
       !InitSegmentTables() || !InitVisitAnnotationsTables() ||
-      !CreateVisitedLinkTable() || !history_metadata_db_.Init()) {
+      !CreateVisitedLinkTable()) {
     return LogInitFailure(InitStep::CREATE_TABLES);
   }
   CreateMainURLIndex();
@@ -542,10 +541,6 @@ bool HistoryDatabase::KnownToSyncVisitsExist() {
 
 void HistoryDatabase::SetKnownToSyncVisitsExist(bool exist) {
   meta_table_.SetValue(kKnownToSyncVisitsExist, exist ? 1 : 0);
-}
-
-HistorySyncMetadataDatabase* HistoryDatabase::GetHistoryMetadataDB() {
-  return &history_metadata_db_;
 }
 
 sql::Database& HistoryDatabase::GetDBForTesting() {

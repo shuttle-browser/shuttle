@@ -118,9 +118,8 @@ void ChromeExtensionsAPIClient::AddAdditionalValueStoreCaches(
     SettingsChangedCallback observer,
     std::map<settings_namespace::Namespace,
              raw_ptr<ValueStoreCache, CtnExperimental>>* caches) {
-  // Add support for chrome.storage.sync.
-  (*caches)[settings_namespace::SYNC] =
-      new SyncValueStoreCache(factory, observer, context->GetPath());
+  // Add support for chrome.storage.sync (local-only: there is no sync service).
+  (*caches)[settings_namespace::SYNC] = new SyncValueStoreCache(factory);
 
   // Add support for chrome.storage.managed.
   (*caches)[settings_namespace::MANAGED] = new ManagedValueStoreCache(

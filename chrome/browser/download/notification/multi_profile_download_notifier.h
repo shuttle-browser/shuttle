@@ -108,7 +108,6 @@ class MultiProfileDownloadNotifier
 
  private:
   // ProfileObserver:
-  void OnOffTheRecordProfileCreated(Profile* off_the_record) override;
   void OnProfileWillBeDestroyed(Profile* profile) override;
 
   // download::AllDownloadItemNotifier::Observer:

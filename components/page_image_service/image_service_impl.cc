@@ -23,7 +23,6 @@
 #include "components/optimization_guide/proto/common_types.pb.h"
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/optimization_guide/proto/salient_image_metadata.pb.h"
-#include "components/page_image_service/image_service_consent_helper.h"
 #include "components/page_image_service/metrics_util.h"
 #include "components/search_engines/search_engine_type.h"
 #include "components/search_engines/template_url.h"
@@ -176,18 +175,11 @@ ImageServiceImpl::ImageServiceImpl(
     TemplateURLService* template_url_service,
     RemoteSuggestionsService* remote_suggestions_service,
     optimization_guide::OptimizationGuideDecider* opt_guide,
-    syncer::SyncService* sync_service,
     std::unique_ptr<AutocompleteSchemeClassifier>
         autocomplete_scheme_classifier)
     : template_url_service_(template_url_service),
       remote_suggestions_service_(remote_suggestions_service),
       opt_guide_(opt_guide),
-      history_consent_helper_(std::make_unique<ImageServiceConsentHelper>(
-          sync_service,
-          syncer::DataType::HISTORY_DELETE_DIRECTIVES)),
-      bookmarks_consent_helper_(std::make_unique<ImageServiceConsentHelper>(
-          sync_service,
-          syncer::DataType::BOOKMARKS)),
       autocomplete_scheme_classifier_(
           std::move(autocomplete_scheme_classifier)) {}
 
@@ -215,23 +207,9 @@ void ImageServiceImpl::FetchImageFor(mojom::ClientId client_id,
 void ImageServiceImpl::GetConsentToFetchImage(
     mojom::ClientId client_id,
     base::OnceCallback<void(PageImageServiceConsentStatus)> callback) {
-  switch (client_id) {
-    case mojom::ClientId::Journeys:
-    case mojom::ClientId::JourneysSidePanel:
-    case mojom::ClientId::HistoryEmbeddings:
-    case mojom::ClientId::NtpQuests:
-    case mojom::ClientId::NtpTabResumption: {
-      return history_consent_helper_->EnqueueRequest(std::move(callback),
-                                                     client_id);
-    }
-    case mojom::ClientId::NtpRealbox:
-      // TODO(b/244507194): Figure out consent story for NTP realbox case.
-      return std::move(callback).Run(PageImageServiceConsentStatus::kFailure);
-    case mojom::ClientId::Bookmarks: {
-      return bookmarks_consent_helper_->EnqueueRequest(std::move(callback),
-                                                       client_id);
-    }
-  }
+  // Image fetching for history/bookmark entities requires history or
+  // bookmarks sync consent, which does not exist in this browser.
+  std::move(callback).Run(PageImageServiceConsentStatus::kFailure);
 }
 
 void ImageServiceImpl::OnConsentResult(mojom::ClientId client_id,

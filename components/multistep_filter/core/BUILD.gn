@@ -44,8 +44,6 @@ source_set("core") {
     "//components/multistep_filter/core/prefs",
     "//components/optimization_guide/core",
     "//components/signin/public/identity_manager",
-    "//components/sync/base",
-    "//components/sync/service",
     "//components/unified_consent",
     "//net",
     "//url",

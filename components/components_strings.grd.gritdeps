@@ -120,7 +120,6 @@ components/strings/components_strings_zh-TW.xtb
 components/strings/components_strings_zu.xtb
 components/subresource_filter_strings.grdp
 components/supervised_user_strings.grdp
-components/sync_ui_strings.grdp
 components/tab_groups_strings.grdp
 components/tab_resume_strings.grdp
 components/user_education_strings.grdp

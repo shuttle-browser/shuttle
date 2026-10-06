@@ -13,13 +13,11 @@
 #include "build/build_config.h"
 #include "components/signin/internal/identity_manager/account_fetcher_service.h"
 #include "components/signin/internal/identity_manager/account_tracker_service.h"
-#include "components/signin/internal/identity_manager/gaia_cookie_manager_service.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_client.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
-#include "components/signin/public/identity_manager/accounts_cookie_mutator.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/accounts_mutator.h"
 #include "components/signin/public/identity_manager/device_accounts_synchronizer.h"
@@ -53,8 +51,6 @@ IdentityManager::InitParameters::~InitParameters() = default;
 IdentityManager::IdentityManager(IdentityManager::InitParameters&& parameters)
     : account_tracker_service_(std::move(parameters.account_tracker_service)),
       token_service_(std::move(parameters.token_service)),
-      gaia_cookie_manager_service_(
-          std::move(parameters.gaia_cookie_manager_service)),
       primary_account_manager_(std::move(parameters.primary_account_manager)),
       account_fetcher_service_(std::move(parameters.account_fetcher_service)),
       signin_client_(parameters.signin_client),
@@ -64,7 +60,6 @@ IdentityManager::IdentityManager(IdentityManager::InitParameters&& parameters)
       identity_mutator_(std::make_unique<IdentityMutator>(
           std::move(parameters.primary_account_mutator),
           std::move(parameters.accounts_mutator),
-          std::move(parameters.accounts_cookie_mutator),
           std::move(parameters.device_accounts_synchronizer))),
       diagnostics_provider_(std::move(parameters.diagnostics_provider)),
       weak_pointer_factory_(this) {
@@ -82,12 +77,6 @@ IdentityManager::IdentityManager(IdentityManager::InitParameters&& parameters)
       &IdentityManager::OnAccountUpdated, base::Unretained(this)));
   account_tracker_service_->SetOnAccountRemovedCallback(base::BindRepeating(
       &IdentityManager::OnAccountRemoved, base::Unretained(this)));
-  gaia_cookie_manager_service_->SetGaiaAccountsInCookieUpdatedCallback(
-      base::BindRepeating(&IdentityManager::OnGaiaAccountsInCookieUpdated,
-                          base::Unretained(this)));
-  gaia_cookie_manager_service_->SetGaiaCookieDeletedByUserActionCallback(
-      base::BindRepeating(&IdentityManager::OnGaiaCookieDeletedByUserAction,
-                          base::Unretained(this)));
   token_service_->SetRefreshTokenAvailableFromSourceCallback(
       base::BindRepeating(&IdentityManager::OnRefreshTokenAvailableFromSource,
                           base::Unretained(this)));
@@ -125,7 +114,6 @@ void IdentityManager::Shutdown() {
   diagnostics_provider_.reset();
   identity_mutator_.reset();
   account_fetcher_service_.reset();
-  gaia_cookie_manager_service_.reset();
   primary_account_manager_.reset();
   token_service_.reset();
   account_tracker_service_.reset();
@@ -276,55 +264,6 @@ bool IdentityManager::HasAccountWithRefreshTokenInPersistentErrorState(
   return GetErrorStateOfRefreshTokenForAccount(account_id).IsPersistentError();
 }
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-bool IdentityManager::GenerateBindingKeyRegistrationToken(
-    base::span<const crypto::SignatureVerifier::SignatureAlgorithm>
-        supported_algorithms,
-    std::string_view auth_code,
-    base::OnceCallback<void(
-        std::optional<signin::BindingKeyRegistrationTokenResult>)> callback) {
-  return token_service_->GenerateBindingKeyRegistrationToken(
-      supported_algorithms, auth_code, std::move(callback));
-}
-
-bool IdentityManager::HasAccountWithBoundRefreshToken(
-    const CoreAccountId& account_id) const {
-  return !token_service_->GetWrappedBindingKey(account_id).empty();
-}
-
-bool IdentityManager::HasAccountWithRefreshTokenBoundToMtls(
-    const CoreAccountId& account_id) const {
-  return token_service_->IsRefreshTokenBoundToMtls(account_id);
-}
-
-bool IdentityManager::AllBoundTokensShareSameBindingKey() const {
-  return token_service_->AllBoundTokensShareSameBindingKey();
-}
-
-std::vector<uint8_t> IdentityManager::GetWrappedBindingKey() const {
-  CHECK(AreRefreshTokensLoaded());
-  // All bound tokens are supposed to use the same key. Having two different
-  // keys should be considered a bug. To be extra safe, we check the primary
-  // account first.
-  if (HasPrimaryAccount(ConsentLevel::kSignin)) {
-    const std::vector<uint8_t> wrapped_binding_key =
-        token_service_->GetWrappedBindingKey(
-            GetPrimaryAccountId(ConsentLevel::kSignin));
-    if (!wrapped_binding_key.empty()) {
-      return wrapped_binding_key;
-    }
-  }
-  for (const CoreAccountId& account_id : token_service_->GetAccounts()) {
-    const std::vector<uint8_t> wrapped_binding_key =
-        token_service_->GetWrappedBindingKey(account_id);
-    if (!wrapped_binding_key.empty()) {
-      return wrapped_binding_key;
-    }
-  }
-  return {};
-}
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
 GoogleServiceAuthError IdentityManager::GetErrorStateOfRefreshTokenForAccount(
     const CoreAccountId& account_id) const {
   return token_service_->GetAuthError(account_id);
@@ -386,36 +325,8 @@ AccountInfo IdentityManager::FindExtendedAccountInfoByGaiaId(
 }
 
 AccountsInCookieJarInfo IdentityManager::GetAccountsInCookieJar() const {
-  if (base::FeatureList::IsEnabled(
-          switches::kAvoidAutoTriggerListAccountsOnStale)) {
-    return gaia_cookie_manager_service_->GetCachedListAccounts();
-  } else {
-    return gaia_cookie_manager_service_->ListAccounts();
-  }
-}
-
-AccountsInCookieJarInfo IdentityManager::GetCachedAccountsInCookieJar() const {
-  return gaia_cookie_manager_service_->GetCachedListAccounts();
-}
-
-std::optional<size_t> IdentityManager::GetSessionIndexForPrimaryAccount()
-    const {
-  CoreAccountInfo primary_account_info =
-      GetPrimaryAccountInfo(ConsentLevel::kSignin);
-  if (primary_account_info.gaia.empty()) {
-    return std::nullopt;
-  }
-
-  AccountsInCookieJarInfo accounts_in_cookie_jar = GetAccountsInCookieJar();
-  const std::vector<gaia::ListedAccount>& accounts =
-      accounts_in_cookie_jar.GetAllAccounts();
-  for (size_t i = 0; i < accounts.size(); ++i) {
-    if (accounts[i].gaia_id == primary_account_info.gaia) {
-      return i;
-    }
-  }
-
-  return std::nullopt;
+  // The Gaia cookie jar is no longer observed: there are never any accounts.
+  return AccountsInCookieJarInfo(/*accounts_are_fresh=*/true, {});
 }
 
 PrimaryAccountMutator* IdentityManager::GetPrimaryAccountMutator() {
@@ -424,10 +335,6 @@ PrimaryAccountMutator* IdentityManager::GetPrimaryAccountMutator() {
 
 AccountsMutator* IdentityManager::GetAccountsMutator() {
   return identity_mutator_->GetAccountsMutator();
-}
-
-AccountsCookieMutator* IdentityManager::GetAccountsCookieMutator() {
-  return identity_mutator_->GetAccountsCookieMutator();
 }
 
 DeviceAccountsSynchronizer* IdentityManager::GetDeviceAccountsSynchronizer() {
@@ -456,14 +363,7 @@ void IdentityManager::RemoveDiagnosticsObserver(DiagnosticsObserver* observer) {
 }
 
 void IdentityManager::OnNetworkInitialized() {
-  gaia_cookie_manager_service_->InitCookieListener();
   account_fetcher_service_->OnNetworkInitialized();
-  // Trigger ListAccounts once the network is initialized to ensure the accounts
-  // in cookie jar are up to date.
-  if (base::FeatureList::IsEnabled(
-          switches::kAvoidAutoTriggerListAccountsOnStale)) {
-    gaia_cookie_manager_service_->ListAccounts();
-  }
 }
 
 CoreAccountId IdentityManager::PickAccountIdForAccount(
@@ -483,7 +383,6 @@ void IdentityManager::RegisterProfilePrefs(PrefRegistrySimple* registry) {
   PrimaryAccountManager::RegisterProfilePrefs(registry);
   AccountFetcherService::RegisterPrefs(registry);
   AccountTrackerService::RegisterPrefs(registry);
-  GaiaCookieManagerService::RegisterPrefs(registry);
 }
 
 DiagnosticsProvider* IdentityManager::GetDiagnosticsProvider() {
@@ -595,10 +494,6 @@ AccountTrackerService* IdentityManager::GetAccountTrackerService() const {
 
 AccountFetcherService* IdentityManager::GetAccountFetcherService() const {
   return account_fetcher_service_.get();
-}
-
-GaiaCookieManagerService* IdentityManager::GetGaiaCookieManagerService() const {
-  return gaia_cookie_manager_service_.get();
 }
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -734,29 +629,6 @@ void IdentityManager::OnAccountOnDeviceUpdated(
   }
 }
 #endif
-
-void IdentityManager::OnGaiaAccountsInCookieUpdated(
-    const AccountsInCookieJarInfo& accounts_in_cookie_jar_info,
-    const GoogleServiceAuthError& error) {
-  bool succeeded = error == GoogleServiceAuthError::AuthErrorNone();
-  CHECK(accounts_in_cookie_jar_info.AreAccountsFresh() == succeeded);
-
-  for (auto& observer : observer_list_) {
-    observer.OnAccountsInCookieUpdated(accounts_in_cookie_jar_info, error);
-  }
-}
-
-void IdentityManager::OnGaiaCookieDeletedByUserAction() {
-  for (auto& observer : observer_list_) {
-    observer.OnAccountsCookieDeletedByUserAction();
-  }
-#if BUILDFLAG(IS_ANDROID)
-  if (java_identity_manager_) {
-    Java_IdentityManagerImpl_onAccountsCookieDeletedByUserAction(
-        base::android::AttachCurrentThread(), java_identity_manager_);
-  }
-#endif
-}
 
 void IdentityManager::OnAccessTokenRequested(const CoreAccountId& account_id,
                                              const std::string& consumer_id,

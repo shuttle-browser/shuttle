@@ -20,8 +20,6 @@
 #include "components/supervised_user/core/browser/family_link_settings_service.h"
 #include "components/supervised_user/core/common/pref_names.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
-#include "components/sync/base/user_selectable_type.h"
-#include "components/sync/service/sync_prefs.h"
 #include "extensions/buildflags/buildflags.h"
 
 namespace supervised_user {
@@ -72,9 +70,6 @@ FamilyLinkSettingsPrefMappingEntry kFamilyLinkWebFilteringPrefMapping[] = {
 void SetSupervisedUserPrefStoreDefaults(PrefValueMap& pref_values) {
 
   pref_values.SetBoolean(policy::policy_prefs::kHideWebStoreIcon, false);
-  pref_values.SetInteger(
-      policy::policy_prefs::kIncognitoModeAvailability,
-      static_cast<int>(policy::IncognitoModeAvailability::kDisabled));
 }
 }  // namespace supervised_user
 
@@ -140,8 +135,6 @@ void SupervisedUserPrefStore::OnDeviceParentalControlsChanged(
     const supervised_user::DeviceParentalControls& device_parental_controls) {
   device_parental_controls_state_.is_web_filtering_enabled =
       device_parental_controls.IsWebFilteringEnabled();
-  device_parental_controls_state_.is_incognito_mode_disabled =
-      device_parental_controls.IsIncognitoModeDisabled();
   device_parental_controls_state_.is_safe_search_forced =
       device_parental_controls.IsSafeSearchForced();
   device_parental_controls_state_.is_enabled =
@@ -172,11 +165,6 @@ void SupervisedUserPrefStore::RecreatePreferences() {
 
   if (is_family_link_settings_service_active) {
     supervised_user::SetSupervisedUserPrefStoreDefaults(*prefs_.get());
-
-#if BUILDFLAG(IS_ANDROID)
-    syncer::SyncPrefs::SetTypeDisabledByCustodian(
-        prefs_.get(), syncer::UserSelectableType::kPayments);
-#endif
 
     // Copy non-web filtering family link user settings to prefs.
     for (const auto& entry : supervised_user::kFamilyLinkSettingsPrefMapping) {
@@ -212,13 +200,6 @@ void SupervisedUserPrefStore::RecreatePreferences() {
 
   // Merge device parental controls settings with the Family Link settings.
   // The merge policy is to select the most restrictive setting.
-  if (device_parental_controls_state_.is_incognito_mode_disabled) {
-    // IncognitoModeAvailability::kDisabled is the most restrictive setting -
-    // it's safe to apply it regardless of the Family Link settings.
-    prefs_->SetInteger(
-        policy::policy_prefs::kIncognitoModeAvailability,
-        static_cast<int>(policy::IncognitoModeAvailability::kDisabled));
-  }
   if (device_parental_controls_state_.is_safe_search_forced) {
     // kForceGoogleSafeSearch=true is also the most restrictive setting.
     prefs_->SetBoolean(policy::policy_prefs::kForceGoogleSafeSearch, true);

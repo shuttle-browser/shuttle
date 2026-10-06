@@ -266,7 +266,7 @@ bool AnnouncementNotificationService::CanOpenAnnouncement(Profile* profile) {
   if (!profile)
     return false;
 
-  return !profile->IsGuestSession() && !profile->IsSystemProfile();
+  return true;
 }
 
 AnnouncementNotificationService::AnnouncementNotificationService() = default;

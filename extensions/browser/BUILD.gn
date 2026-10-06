@@ -647,7 +647,6 @@ source_set("browser_sources") {
     "//components/strings:components_strings",
     "//components/supervised_user/core/common",
     "//components/supervised_user/core/common:buildflags",
-    "//components/sync",
     "//components/ukm/content",
     "//components/update_client",
     "//components/url_pattern_index",

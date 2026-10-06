@@ -102,23 +102,6 @@ void ToastService::RegisterToasts(
           .Build());
 
   toast_registry_->RegisterToast(
-      ToastId::kAddedToReadingList,
-      ToastSpecification::Builder(features::IsRoundedIconsEnabled()
-                                      ? kListAltIcon
-                                      : kReadingListOldIcon,
-                                  IDS_READING_LIST_TOAST_BODY)
-          .AddActionButton(IDS_READING_LIST_TOAST_BUTTON,
-                           base::BindRepeating(
-                               [](BrowserWindowInterface* window) {
-                                 window->GetFeatures().side_panel_ui()->Show(
-                                     SidePanelEntryId::kReadingList,
-                                     SidePanelOpenTrigger::kReadingListToast);
-                               },
-                               base::Unretained(browser_window_interface)))
-          .AddCloseButton()
-          .Build());
-
-  toast_registry_->RegisterToast(
       ToastId::kClearBrowsingData,
       ToastSpecification::Builder(features::IsRoundedIconsEnabled()
                                       ? kDeleteIcon
