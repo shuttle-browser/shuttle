@@ -135,5 +135,11 @@ void DevToolsManagerDelegate::AcceptDebugging(AcceptCallback callback) {
 
 void DevToolsManagerDelegate::SetActiveWebSocketConnections(size_t count) {}
 
+void DevToolsManagerDelegate::HandleMcpRequest(const std::string& host,
+                                               const std::string& body,
+                                               HttpResponseCallback callback) {
+  std::move(callback).Run(404, "text/plain", "Not found");
+}
+
 DevToolsManagerDelegate::~DevToolsManagerDelegate() = default;
 }  // namespace content

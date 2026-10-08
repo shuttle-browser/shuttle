@@ -115,6 +115,7 @@ static_library("devtools") {
   deps = [
     "//base",
     "//chrome/browser:file_select_helper",
+    "//chrome/browser/agent_chrome",
     "//chrome/browser/infobars",
     "//chrome/browser/lifetime",
     "//chrome/browser/net",

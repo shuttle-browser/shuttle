@@ -10,6 +10,7 @@
 #include <string>
 
 #include "base/containers/span.h"
+#include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "content/common/content_export.h"
@@ -186,6 +187,17 @@ class CONTENT_EXPORT DevToolsManagerDelegate {
   // Called when the number of active WebSocket connections changes
   // The embedder can use this information to update the UI.
   virtual void SetActiveWebSocketConnections(size_t count);
+
+  // Agent Chrome: handles an HTTP request to /mcp on the remote debugging
+  // server (the in-browser MCP server). `host` is the request's Host header
+  // (for building CDP URLs), `body` the POSTed JSON-RPC message. `callback`
+  // receives the HTTP status, the content type and the body; it may run
+  // asynchronously. The default implementation answers 404.
+  using HttpResponseCallback = base::OnceCallback<
+      void(int status, std::string content_type, std::string body)>;
+  virtual void HandleMcpRequest(const std::string& host,
+                                const std::string& body,
+                                HttpResponseCallback callback);
 
   virtual ~DevToolsManagerDelegate();
 };

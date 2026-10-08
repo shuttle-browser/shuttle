@@ -635,6 +635,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser:chrome_browser_main",
     "//chrome/browser:font_pref",
     "//chrome/browser/accessibility",
+    "//chrome/browser/agent_chrome",
     "//chrome/browser/autocomplete",
     "//chrome/browser/background",
     "//chrome/browser/background_fetch",

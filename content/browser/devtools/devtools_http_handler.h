@@ -80,6 +80,12 @@ class DevToolsHttpHandler {
                          DevToolsAgentHost::List agent_hosts,
                          bool for_tab);
   void OnDiscoveryPageRequest(int connection_id);
+  // Agent Chrome: the in-browser MCP server at /mcp.
+  void OnMcpRequest(int connection_id, const net::HttpServerRequestInfo& info);
+  void SendMcpResponse(int connection_id,
+                       int status,
+                       std::string content_type,
+                       std::string body);
   void OnFrontendResourceRequest(int connection_id, std::string_view path);
   void OnWebSocketRequest(int connection_id,
                           const net::HttpServerRequestInfo& info);

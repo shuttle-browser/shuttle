@@ -5686,6 +5686,10 @@ FrameTree* WebContentsImpl::CreateNewWindow(
       // as long as they preserve the guest's StoragePartition.
       site_instance =
           SiteInstance::CreateForGuest(GetBrowserContext(), partition_config);
+    } else if (source_site_instance->IsFixedStoragePartition()) {
+      // Agent Chrome: noopener windows stay in the opener's fixed partition.
+      site_instance = SiteInstance::CreateForFixedStoragePartition(
+          GetBrowserContext(), params.target_url, partition_config);
     } else {
       site_instance = SiteInstance::Create(GetBrowserContext());
     }

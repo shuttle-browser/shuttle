@@ -1,0 +1,63 @@
+# Copyright 2026 The Agent Chrome Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# The in-browser MCP server (agent profiles, sessions, tabs). Design:
+# docs/plans/MCP-V1.md in the agent-chrome-tools repo.
+
+assert(!is_android)
+
+source_set("agent_chrome") {
+  public = [
+    "agent_chrome_service.h",
+    "agent_chrome_service_factory.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//components/keyed_service/core",
+  ]
+}
+
+source_set("impl") {
+  sources = [
+    "agent_chrome_service.cc",
+    "agent_chrome_service_factory.cc",
+    "mcp_tools.cc",
+    "mcp_tools.h",
+    "pref_names.h",
+    "profile_registry.cc",
+    "profile_registry.h",
+    "session_manager.cc",
+    "session_manager.h",
+  ]
+
+  deps = [
+    ":agent_chrome",
+    "//base",
+    "//base:i18n",
+    "//chrome/browser:browser_public_dependencies",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/navigator",
+    "//chrome/browser/ui/tabs:tab_enums",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//components/keyed_service/content",
+    "//components/pref_registry",
+    "//components/prefs",
+    "//components/tab_groups",
+    "//components/version_info",
+    "//components/viz/common",
+    "//content/public/browser",
+    "//net",
+    "//services/network/public/mojom",
+    "//skia",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/gfx/codec",
+    "//ui/gfx/geometry",
+    "//url",
+  ]
+}

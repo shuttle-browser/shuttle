@@ -12,6 +12,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/accessibility/accessibility_labels_service_factory.h"
+#include "chrome/browser/agent_chrome/agent_chrome_service_factory.h"
 #include "chrome/browser/accessibility/page_colors_controller_factory.h"
 #include "chrome/browser/actor/actor_keyed_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
@@ -515,6 +516,7 @@ void ChromeBrowserMainExtraPartsProfiles::
   // Common factory registrations (Please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   AcceptLanguagesServiceFactory::GetInstance();
+  agent_chrome::AgentChromeServiceFactory::GetInstance();
   AccessibilityLabelsServiceFactory::GetInstance();
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   search_integrity::SearchIntegrityFactory::GetInstance();

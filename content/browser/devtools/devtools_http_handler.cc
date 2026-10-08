@@ -466,6 +466,14 @@ void ServerWrapper::OnHttpRequest(int connection_id,
 
   server_->SetSendBufferSize(connection_id, kSendBufferSizeForDevTools);
 
+  // Agent Chrome: the in-browser MCP server.
+  if (PathWithoutParams(info.path) == "/mcp") {
+    GetUIThreadTaskRunner({})->PostTask(
+        FROM_HERE, base::BindOnce(&DevToolsHttpHandler::OnMcpRequest, handler_,
+                                  connection_id, info));
+    return;
+  }
+
   if (base::StartsWith(info.path, "/json", base::CompareCase::SENSITIVE)) {
     GetUIThreadTaskRunner({})->PostTask(
         FROM_HERE, base::BindOnce(&DevToolsHttpHandler::OnJsonRequest, handler_,
@@ -753,6 +761,53 @@ void DevToolsHttpHandler::RespondToJsonList(int connection_id,
     }
   }
   SendJson(connection_id, net::HTTP_OK, list_value, "");
+}
+
+void DevToolsHttpHandler::OnMcpRequest(
+    int connection_id,
+    const net::HttpServerRequestInfo& info) {
+  if (!thread_ || !delegate_) {
+    return;
+  }
+  // Web pages must not reach the MCP server (the Host header is already
+  // checked by RequestIsSafeToServe).
+  auto origin = info.headers.find("origin");
+  if (origin != info.headers.end() &&
+      !remote_allow_origins_.count(origin->second) &&
+      !remote_allow_origins_.count("*")) {
+    Send403(connection_id,
+            "Rejected an MCP request from the " + origin->second + " origin.");
+    return;
+  }
+  if (info.method != "POST") {
+    SendMcpResponse(connection_id, net::HTTP_METHOD_NOT_ALLOWED, "text/plain",
+                    "The MCP endpoint accepts POST only.");
+    return;
+  }
+  auto host = info.headers.find("host");
+  delegate_->HandleMcpRequest(
+      host != info.headers.end() ? host->second : std::string(), info.data,
+      base::BindOnce(&DevToolsHttpHandler::SendMcpResponse,
+                     weak_factory_.GetWeakPtr(), connection_id));
+}
+
+void DevToolsHttpHandler::SendMcpResponse(int connection_id,
+                                          int status,
+                                          std::string content_type,
+                                          std::string body) {
+  if (!thread_) {
+    return;
+  }
+  net::HttpServerResponseInfo response(
+      static_cast<net::HttpStatusCode>(status));
+  if (status == net::HTTP_METHOD_NOT_ALLOWED) {
+    response.AddHeader("Allow", "POST");
+  }
+  response.SetBody(body, content_type);
+  thread_->task_runner()->PostTask(
+      FROM_HERE, base::BindOnce(&ServerWrapper::SendResponse,
+                                base::Unretained(server_wrapper_.get()),
+                                connection_id, response));
 }
 
 void DevToolsHttpHandler::OnDiscoveryPageRequest(int connection_id) {

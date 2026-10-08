@@ -24,6 +24,7 @@
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
+#include "chrome/browser/agent_chrome/agent_chrome_service.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -232,6 +233,25 @@ void ChromeDevToolsManagerDelegate::Activate(
     return;
   }
   devtools_window->ActivateWindow();
+}
+
+void ChromeDevToolsManagerDelegate::HandleMcpRequest(
+    const std::string& host,
+    const std::string& body,
+    HttpResponseCallback callback) {
+  // The MCP server starts once the profile is loaded (GetLastUsedProfile()
+  // would block on it).
+  Profile* profile = ProfileManager::GetLastUsedProfileIfLoaded();
+  agent_chrome::AgentChromeService* service =
+      profile ? agent_chrome::AgentChromeService::Get(
+                    profile->GetOriginalProfile())
+              : nullptr;
+  if (!service) {
+    std::move(callback).Run(503, "text/plain",
+                            "Agent Chrome is still starting up.");
+    return;
+  }
+  service->HandleMcpRequest(host, body, std::move(callback));
 }
 
 void ChromeDevToolsManagerDelegate::HandleCommand(

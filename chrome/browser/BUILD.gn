@@ -1882,6 +1882,8 @@ source_set("browser") {
     "//chrome/browser/accessibility:impl",
     "//chrome/browser/actor/ui/task_list_bubble:controller",
     "//chrome/browser/actor/ui/task_list_bubble:controller_impl",
+    "//chrome/browser/agent_chrome",
+    "//chrome/browser/agent_chrome:impl",
     "//chrome/browser/autocomplete",
     "//chrome/browser/autocomplete:impl",
     "//chrome/browser/background",

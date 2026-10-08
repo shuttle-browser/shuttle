@@ -59,6 +59,8 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/site_isolation_policy.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/browser/storage_partition_config.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/window_open_disposition.h"
@@ -387,6 +389,19 @@ std::unique_ptr<content::WebContents> CreateTargetContents(
       params.opener ? params.opener->GetSiteInstance()
                     : tab_util::GetSiteInstanceForNewTab(
                           params.browser->GetProfile(), url);
+  // Agent Chrome: a tab opened from a tab in a non-default storage partition
+  // stays in that partition.
+  if (!params.opener && params.source_site_instance) {
+    const content::StoragePartitionConfig& source_config =
+        params.browser->GetProfile()
+            ->GetStoragePartition(params.source_site_instance.get())
+            ->GetConfig();
+    if (!source_config.is_default()) {
+      initial_site_instance_for_new_contents =
+          content::SiteInstance::CreateForFixedStoragePartition(
+              params.browser->GetProfile(), url, source_config);
+    }
+  }
 
   WebContents::CreateParams create_params(
       params.browser->GetProfile(), initial_site_instance_for_new_contents);
