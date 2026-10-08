@@ -144,16 +144,24 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
   // manager daemon. The extra keep alive is not needed and makes ChromeOS
   // not able to shutdown chrome properly. See https://crbug.com/40167603.
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  if ((command_line->HasSwitch(switches::kNoStartupWindow) ||
-       command_line->HasSwitch(switches::kHeadless)) &&
-      (command_line->HasSwitch(switches::kRemoteDebuggingPipe) ||
-       command_line->HasSwitch(switches::kRemoteDebuggingPort))) {
+  // Agent Chrome: the remote debugging server is always on, so no
+  // --remote-debugging-* switch is required.
+  if (command_line->HasSwitch(switches::kNoStartupWindow) ||
+      command_line->HasSwitch(switches::kHeadless)) {
     // If running without a startup window with remote debugging,
     // we are controlled entirely by the automation process.
     // Keep the application running until explicit close through DevTools
     // protocol.
-    keep_alive_ = std::make_unique<ScopedKeepAlive>(
-        KeepAliveOrigin::REMOTE_DEBUGGING, KeepAliveRestartOption::DISABLED);
+    bool keep_process_alive = true;
+#if BUILDFLAG(IS_MAC)
+    // On macOS the AppController keeps the app alive without windows and
+    // drops that keep-alive on Quit; an extra one here would block Cmd-Q.
+    keep_process_alive = command_line->HasSwitch(switches::kHeadless);
+#endif
+    if (keep_process_alive) {
+      keep_alive_ = std::make_unique<ScopedKeepAlive>(
+          KeepAliveOrigin::REMOTE_DEBUGGING, KeepAliveRestartOption::DISABLED);
+    }
 
     // Also keep the initial profile alive so that TargetHandler::CreateTarget()
     // can retrieve it without risking disk access even when all pages are

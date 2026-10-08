@@ -984,6 +984,18 @@ void ChromeBrowserMainParts::RecordBrowserStartupTime() {
 
 int ChromeBrowserMainParts::PreEarlyInitialization() {
   TRACE_EVENT0("startup", "ChromeBrowserMainParts::PreEarlyInitialization");
+
+  // Agent Chrome starts without a window: the first tab an agent opens (or
+  // the user, e.g. via the Dock on macOS) creates it. URLs on the command
+  // line still open a window. Applies to this process's own startup only;
+  // command lines forwarded by a second launch open a window as usual.
+  {
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    if (command_line->GetArgs().empty() &&
+        !command_line->HasSwitch(switches::kRestoreLastSession)) {
+      command_line->AppendSwitch(switches::kNoStartupWindow);
+    }
+  }
   for (auto& chrome_extra_part : chrome_extra_parts_) {
     chrome_extra_part->PreEarlyInitialization();
   }
