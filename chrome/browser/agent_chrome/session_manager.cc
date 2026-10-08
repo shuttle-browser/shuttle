@@ -8,12 +8,11 @@
 #include <array>
 #include <utility>
 
+#include "base/auto_reset.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/containers/span.h"
-#include "base/hash/hash.h"
 #include "base/rand_util.h"
-#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
@@ -28,8 +27,11 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_visual_data.h"
+#include "components/tabs/public/tab_group.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/site_instance.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -134,16 +136,6 @@ TabLocation FindInTabStrips(content::WebContents* contents) {
   return {};
 }
 
-tab_groups::TabGroupColorId ColorFor(const std::string& profile_id) {
-  static constexpr std::array kColors = {
-      tab_groups::TabGroupColorId::kBlue,   tab_groups::TabGroupColorId::kRed,
-      tab_groups::TabGroupColorId::kYellow, tab_groups::TabGroupColorId::kGreen,
-      tab_groups::TabGroupColorId::kPink,   tab_groups::TabGroupColorId::kPurple,
-      tab_groups::TabGroupColorId::kCyan,   tab_groups::TabGroupColorId::kOrange,
-  };
-  return kColors[base::PersistentHash(profile_id) % kColors.size()];
-}
-
 std::string NewSessionId() {
   uint64_t value = base::RandUint64();
   return base::HexEncodeLower(base::byte_span_from_ref(value)).substr(0, 10);
@@ -160,16 +152,14 @@ SessionManager::SessionManager(Profile* profile, ProfileRegistry* registry)
 
 SessionManager::~SessionManager() = default;
 
-const Session& SessionManager::Open(const std::string& profile_id,
-                                    const std::string& agent) {
+const Session& SessionManager::Open(const std::string& agent_id) {
   std::string id = NewSessionId();
   while (sessions_.contains(id)) {
     id = NewSessionId();
   }
   Session& session = sessions_[id];
   session.id = id;
-  session.profile = profile_id;
-  session.agent = agent;
+  session.agent = agent_id;
   session.opened = base::Time::Now();
   return session;
 }
@@ -192,19 +182,19 @@ bool SessionManager::Close(const std::string& session_id) {
   if (it == sessions_.end()) {
     return false;
   }
-  std::string profile_id = it->second.profile;
+  std::string agent_id = it->second.agent;
   for (content::WebContents* contents : TabsOf(session_id)) {
     ReleaseTab(contents);
   }
   sessions_.erase(session_id);
-  registry_->FlushCookies(profile_id);
+  registry_->FlushCookies(agent_id);
   return true;
 }
 
-void SessionManager::CloseProfileSessions(const std::string& profile_id) {
+void SessionManager::CloseProfileSessions(const std::string& agent_id) {
   std::vector<std::string> ids;
   for (const auto& [id, session] : sessions_) {
-    if (session.profile == profile_id) {
+    if (session.agent == agent_id) {
       ids.push_back(id);
     }
   }
@@ -227,15 +217,8 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
     return base::unexpected("Invalid URL: " + requested_url.spec());
   }
 
-  content::StoragePartitionConfig config =
-      registry_->PartitionConfig(session->profile);
-  content::WebContents::CreateParams create_params(
-      profile_,
-      content::SiteInstance::CreateForFixedStoragePartition(profile_, url,
-                                                            config));
-  create_params.initially_hidden = true;
   std::unique_ptr<content::WebContents> new_contents =
-      content::WebContents::Create(create_params);
+      CreateAgentContents(session->agent, url, /*hidden=*/true);
   content::WebContents* contents = new_contents.get();
   // Lease before insertion, so the tab is never seen unleased.
   Lease(contents, session_id);
@@ -257,6 +240,17 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
   load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
   contents->GetController().LoadURLWithParams(load_params);
   return contents;
+}
+
+std::unique_ptr<content::WebContents> SessionManager::CreateAgentContents(
+    const std::string& agent_id,
+    const GURL& url,
+    bool hidden) {
+  content::WebContents::CreateParams create_params(
+      profile_, content::SiteInstance::CreateForFixedStoragePartition(
+                    profile_, url, registry_->PartitionConfig(agent_id)));
+  create_params.initially_hidden = hidden;
+  return content::WebContents::Create(create_params);
 }
 
 void SessionManager::ReleaseTab(content::WebContents* contents) {
@@ -349,26 +343,202 @@ void SessionManager::AddToSessionGroup(
   if (!contents || it == sessions_.end()) {
     return;
   }
-  Session& session = it->second;
+  const std::string& agent_id = it->second.agent;
   TabLocation location = FindInTabStrips(contents.get());
   if (!location.tab_strip) {
     return;
   }
   TabStripModel* tab_strip = location.tab_strip;
-  if (session.group && tab_strip->group_model() &&
-      tab_strip->group_model()->ContainsTabGroup(*session.group)) {
-    if (tab_strip->GetTabGroupForTab(location.index) != session.group) {
-      tab_strip->AddToExistingGroup({location.index}, *session.group);
+  Observe(tab_strip);
+  auto group = groups_.find(agent_id);
+  if (group != groups_.end() && FindGroup(group->second) == tab_strip) {
+    if (tab_strip->GetTabGroupForTab(location.index) != group->second) {
+      tab_strip->AddToExistingGroup({location.index}, group->second);
     }
     return;
   }
-  session.group = tab_strip->AddToNewGroup({location.index});
+  // No group yet, or it closed or lives in another window: start one here.
+  std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);
+  if (!agent) {
+    return;
+  }
+  base::AutoReset<bool> applying(&applying_visuals_, true);
+  tab_groups::TabGroupId new_group = tab_strip->AddToNewGroup({location.index});
+  groups_.insert_or_assign(agent_id, new_group);
   tab_strip->ChangeTabGroupVisuals(
-      *session.group,
-      tab_groups::TabGroupVisualData(
-          base::UTF8ToUTF16(
-              base::StrCat({session.profile, " · ", session.agent})),
-          ColorFor(session.profile)));
+      new_group, tab_groups::TabGroupVisualData(base::UTF8ToUTF16(agent->name),
+                                                agent->color));
+}
+
+void SessionManager::RefreshGroups(const std::string& agent_id) {
+  std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);
+  auto group = groups_.find(agent_id);
+  if (!agent || group == groups_.end()) {
+    return;
+  }
+  TabStripModel* tab_strip = FindGroup(group->second);
+  if (!tab_strip) {
+    return;
+  }
+  tab_groups::TabGroupVisualData visuals(base::UTF8ToUTF16(agent->name),
+                                         agent->color);
+  const tab_groups::TabGroupVisualData* current =
+      tab_strip->group_model()->GetTabGroup(group->second)->visual_data();
+  if (current->title() == visuals.title() &&
+      current->color() == visuals.color()) {
+    return;
+  }
+  base::AutoReset<bool> applying(&applying_visuals_, true);
+  tab_strip->ChangeTabGroupVisuals(group->second, visuals);
+}
+
+void SessionManager::OnTabGroupChanged(const TabGroupChange& change) {
+  if (applying_visuals_ || change.type != TabGroupChange::kVisualsChanged) {
+    return;
+  }
+  std::string agent_id = AgentOfGroup(change.group);
+  const TabGroupChange::VisualsChange* visuals = change.GetVisualsChange();
+  if (agent_id.empty() || !visuals || !visuals->new_visuals) {
+    return;
+  }
+  std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);
+  if (!agent) {
+    return;
+  }
+  // The user renamed or recolored the group: that's the agent's new
+  // identity. An empty title isn't a name; the group gets the agent's back.
+  std::string title = base::UTF16ToUTF8(visuals->new_visuals->title());
+  ProfileRegistry::Identity identity;
+  if (ProfileRegistry::CheckName(title).empty() && title != agent->name) {
+    identity.name = title;
+  }
+  if (visuals->new_visuals->color() != agent->color) {
+    identity.color = visuals->new_visuals->color();
+  }
+  if (identity.name || identity.color) {
+    registry_->Update(agent_id, identity);
+  }
+  // Restore an emptied title once the tab strip has finished this change.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&SessionManager::RefreshGroups,
+                                weak_factory_.GetWeakPtr(), agent_id));
+}
+
+void SessionManager::TabGroupedStateChanged(
+    TabStripModel* tab_strip,
+    std::optional<tab_groups::TabGroupId> old_group,
+    std::optional<tab_groups::TabGroupId> new_group,
+    tabs::TabInterface* tab,
+    int index) {
+  if (!new_group || !tab || !tab->GetContents()) {
+    return;
+  }
+  std::string agent_id = AgentOfGroup(*new_group);
+  if (agent_id.empty() || AgentOf(tab->GetContents()) == agent_id) {
+    return;
+  }
+  // Not while the tab strip is mid-change.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&SessionManager::AdoptTab, weak_factory_.GetWeakPtr(),
+                     tab->GetContents()->GetWeakPtr(), agent_id));
+}
+
+void SessionManager::AdoptTab(base::WeakPtr<content::WebContents> contents,
+                              const std::string& agent_id) {
+  auto group = groups_.find(agent_id);
+  if (!contents || AgentOf(contents.get()) == agent_id ||
+      group == groups_.end()) {
+    return;
+  }
+  TabLocation location = FindInTabStrips(contents.get());
+  TabStripModel* tab_strip = location.tab_strip;
+  if (!tab_strip ||
+      tab_strip->GetTabGroupForTab(location.index) != group->second) {
+    return;  // Moved out of the group again.
+  }
+  const Session* session = LatestSession(agent_id);
+  std::string session_id = session ? session->id : Open(agent_id).id;
+
+  // Already in the agent's storage: just (re-)lease it.
+  if (contents->GetPrimaryMainFrame()->GetStoragePartition() ==
+      profile_->GetStoragePartition(registry_->PartitionConfig(agent_id),
+                                    /*can_create=*/false)) {
+    contents->RemoveUserData(AgentTabLease::UserDataKey());
+    Lease(contents.get(), session_id);
+    return;
+  }
+
+  // Reopen the page in the agent's storage. Browser pages (the New Tab page
+  // and other WebUI) don't belong in agent storage: they become about:blank.
+  GURL url = contents->GetLastCommittedURL();
+  if (!url.SchemeIsHTTPOrHTTPS()) {
+    url = GURL(url::kAboutBlankURL);
+  }
+  bool active = tab_strip->active_index() == location.index;
+  std::unique_ptr<content::WebContents> new_contents =
+      CreateAgentContents(agent_id, url, /*hidden=*/!active);
+  content::WebContents* adopted = new_contents.get();
+  Lease(adopted, session_id);
+  tab_strip->InsertWebContentsAt(location.index + 1, std::move(new_contents),
+                                 active ? AddTabTypes::ADD_ACTIVE
+                                        : AddTabTypes::ADD_NONE,
+                                 group->second);
+  int old_index = tab_strip->GetIndexOfWebContents(contents.get());
+  if (old_index != TabStripModel::kNoTab) {
+    tab_strip->CloseWebContentsAt(old_index, TabCloseTypes::CLOSE_NONE);
+  }
+  content::NavigationController::LoadURLParams load_params(url);
+  load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
+  adopted->GetController().LoadURLWithParams(load_params);
+}
+
+std::string SessionManager::AgentOf(content::WebContents* contents) const {
+  const Session* session = Get(SessionOf(contents));
+  return session ? session->agent : std::string();
+}
+
+const Session* SessionManager::LatestSession(
+    const std::string& agent_id) const {
+  const Session* latest = nullptr;
+  for (const auto& [id, session] : sessions_) {
+    if (session.agent == agent_id &&
+        (!latest || session.opened > latest->opened)) {
+      latest = &session;
+    }
+  }
+  return latest;
+}
+
+void SessionManager::OnTabStripModelDestroyed(TabStripModel* tab_strip) {
+  observed_.erase(tab_strip);
+}
+
+void SessionManager::Observe(TabStripModel* tab_strip) {
+  if (observed_.insert(tab_strip).second) {
+    tab_strip->AddObserver(this);
+  }
+}
+
+std::string SessionManager::AgentOfGroup(
+    const tab_groups::TabGroupId& group) const {
+  for (const auto& [agent_id, agent_group] : groups_) {
+    if (agent_group == group) {
+      return agent_id;
+    }
+  }
+  return std::string();
+}
+
+TabStripModel* SessionManager::FindGroup(
+    const tab_groups::TabGroupId& group) const {
+  for (TabStripModel* tab_strip : observed_) {
+    if (tab_strip->group_model() &&
+        tab_strip->group_model()->ContainsTabGroup(group)) {
+      return tab_strip;
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace agent_chrome

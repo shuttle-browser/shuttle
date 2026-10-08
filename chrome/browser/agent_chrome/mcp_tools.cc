@@ -81,7 +81,6 @@ base::DictValue DescribeSession(const ToolContext& context,
   }
   return base::DictValue()
       .Set("sessionId", session.id)
-      .Set("profile", session.profile)
       .Set("agent", session.agent)
       .Set("openedAt", base::TimeFormatAsIso8601(session.opened))
       .Set("tabs", std::move(tabs));
@@ -117,34 +116,75 @@ std::optional<gfx::Size> GetViewport(const base::DictValue& args,
   return gfx::Size(*width, *height);
 }
 
-// Profiles ------------------------------------------------------------------
+// Agents --------------------------------------------------------------------
 
-void ListProfiles(const ToolContext& context,
-                  const base::DictValue& args,
-                  ToolCallback callback) {
+base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry) {
+  base::DictValue dict =
+      base::DictValue()
+          .Set("id", entry.id)
+          .Set("name", entry.name)
+          .Set("color", ProfileRegistry::ColorName(entry.color))
+          .Set("createdAt", base::TimeFormatAsIso8601(entry.created));
+  if (!entry.avatar.empty()) {
+    dict.Set("avatar", entry.avatar);
+  }
+  return dict;
+}
+
+// Reads name/color/avatar from `args`. Returns false with `error` set if one
+// is invalid.
+bool GetIdentity(const base::DictValue& args,
+                 ProfileRegistry::Identity* identity,
+                 std::string* error) {
+  if (const std::string* name = args.FindString("name")) {
+    *error = ProfileRegistry::CheckName(*name);
+    if (!error->empty()) {
+      return false;
+    }
+    identity->name = *name;
+  }
+  if (const std::string* color = args.FindString("color")) {
+    identity->color = ProfileRegistry::ColorFromName(*color);
+    if (!identity->color) {
+      *error = "Unknown color: " + *color +
+               " (grey, blue, red, yellow, green, pink, purple, cyan, orange)";
+      return false;
+    }
+  }
+  if (const std::string* avatar = args.FindString("avatar")) {
+    *error = ProfileRegistry::CheckAvatar(*avatar);
+    if (!error->empty()) {
+      return false;
+    }
+    identity->avatar = *avatar;
+  }
+  return true;
+}
+
+void ListAgents(const ToolContext& context,
+                const base::DictValue& args,
+                ToolCallback callback) {
   std::map<std::string, int> sessions;
   std::map<std::string, int> tabs;
   SessionManager& manager = context.service->sessions();
   for (const Session* session : manager.List()) {
-    sessions[session->profile]++;
-    tabs[session->profile] += manager.TabsOf(session->id).size();
+    sessions[session->agent]++;
+    tabs[session->agent] += manager.TabsOf(session->id).size();
   }
   base::ListValue list;
   for (const ProfileRegistry::Entry& entry :
        context.service->profiles().List()) {
-    list.Append(base::DictValue()
-                    .Set("id", entry.id)
-                    .Set("createdAt", base::TimeFormatAsIso8601(entry.created))
+    list.Append(DescribeAgent(entry)
                     .Set("sessions", sessions[entry.id])
                     .Set("tabs", tabs[entry.id]));
   }
   std::move(callback).Run(ToolResult::Json(
-      base::Value(base::DictValue().Set("profiles", std::move(list)))));
+      base::Value(base::DictValue().Set("agents", std::move(list)))));
 }
 
-void CreateProfile(const ToolContext& context,
-                   const base::DictValue& args,
-                   ToolCallback callback) {
+void CreateAgent(const ToolContext& context,
+                 const base::DictValue& args,
+                 ToolCallback callback) {
   const std::string* id = GetString(args, "id");
   if (!id) {
     std::move(callback).Run(ToolResult::Error(MissingArgument("id")));
@@ -152,28 +192,56 @@ void CreateProfile(const ToolContext& context,
   }
   if (!ProfileRegistry::IsValidId(*id)) {
     std::move(callback).Run(ToolResult::Error(
-        "Invalid profile id (kebab-case, a-z 0-9 and '-', max 64): " + *id));
+        "Invalid agent id (kebab-case, a-z 0-9 and '-', max 64): " + *id));
     return;
   }
-  if (!context.service->profiles().Create(*id)) {
-    std::move(callback).Run(
-        ToolResult::Error("Profile already exists: " + *id));
+  ProfileRegistry::Identity identity;
+  std::string error;
+  if (!GetIdentity(args, &identity, &error)) {
+    std::move(callback).Run(ToolResult::Error(error));
     return;
   }
-  std::move(callback).Run(
-      ToolResult::Json(base::Value(base::DictValue().Set("id", *id))));
+  if (!context.service->profiles().Create(*id, identity)) {
+    std::move(callback).Run(ToolResult::Error("Agent already exists: " + *id));
+    return;
+  }
+  std::move(callback).Run(ToolResult::Json(
+      base::Value(DescribeAgent(*context.service->profiles().Get(*id)))));
 }
 
-void DeleteProfile(const ToolContext& context,
-                   const base::DictValue& args,
-                   ToolCallback callback) {
+void UpdateAgent(const ToolContext& context,
+                 const base::DictValue& args,
+                 ToolCallback callback) {
+  const std::string* id = GetString(args, "id");
+  if (!id) {
+    std::move(callback).Run(ToolResult::Error(MissingArgument("id")));
+    return;
+  }
+  ProfileRegistry::Identity identity;
+  std::string error;
+  if (!GetIdentity(args, &identity, &error)) {
+    std::move(callback).Run(ToolResult::Error(error));
+    return;
+  }
+  if (!context.service->profiles().Update(*id, identity)) {
+    std::move(callback).Run(ToolResult::Error("Unknown agent: " + *id));
+    return;
+  }
+  context.service->sessions().RefreshGroups(*id);
+  std::move(callback).Run(ToolResult::Json(
+      base::Value(DescribeAgent(*context.service->profiles().Get(*id)))));
+}
+
+void DeleteAgent(const ToolContext& context,
+                 const base::DictValue& args,
+                 ToolCallback callback) {
   const std::string* id = GetString(args, "id");
   if (!id) {
     std::move(callback).Run(ToolResult::Error(MissingArgument("id")));
     return;
   }
   if (!context.service->profiles().Exists(*id)) {
-    std::move(callback).Run(ToolResult::Error("Unknown profile: " + *id));
+    std::move(callback).Run(ToolResult::Error("Unknown agent: " + *id));
     return;
   }
   context.service->sessions().CloseProfileSessions(*id);
@@ -191,19 +259,17 @@ void DeleteProfile(const ToolContext& context,
 void OpenSession(const ToolContext& context,
                  const base::DictValue& args,
                  ToolCallback callback) {
-  const std::string* profile = GetString(args, "profile");
   const std::string* agent = GetString(args, "agent");
-  if (!profile || !agent) {
-    std::move(callback).Run(
-        ToolResult::Error(MissingArgument(profile ? "agent" : "profile")));
+  if (!agent) {
+    std::move(callback).Run(ToolResult::Error(MissingArgument("agent")));
     return;
   }
-  if (!context.service->profiles().Exists(*profile)) {
+  if (!context.service->profiles().Exists(*agent)) {
     std::move(callback).Run(ToolResult::Error(
-        "Unknown profile: " + *profile + " (create-profile first)"));
+        "Unknown agent: " + *agent + " (create-agent first)"));
     return;
   }
-  const Session& session = context.service->sessions().Open(*profile, *agent);
+  const Session& session = context.service->sessions().Open(*agent);
   base::DictValue result = DescribeSession(context, session);
   result.Set("cdpEndpoint", "http://" + HostOrDefault(context));
   std::move(callback).Run(ToolResult::Json(base::Value(std::move(result))));
@@ -430,14 +496,27 @@ void CaptureTab(const ToolContext& context,
 
 constexpr char kNoArgs[] = R"({"type":"object","properties":{}})";
 
-constexpr char kProfileIdArgs[] = R"({"type":"object","properties":{
-  "id":{"type":"string","description":"Profile id: kebab-case slug, max 64 chars."}},
+constexpr char kAgentIdArgs[] = R"({"type":"object","properties":{
+  "id":{"type":"string","description":"Agent id: kebab-case slug, max 64 chars."}},
+  "required":["id"]})";
+
+constexpr char kCreateAgentArgs[] = R"({"type":"object","properties":{
+  "id":{"type":"string","description":"Agent id: kebab-case slug, max 64 chars."},
+  "name":{"type":"string","description":"Friendly name, shown on the tab group (max 64 chars; default: the id)."},
+  "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Tab group color (default: picked from the id)."},
+  "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."}},
+  "required":["id"]})";
+
+constexpr char kUpdateAgentArgs[] = R"({"type":"object","properties":{
+  "id":{"type":"string"},
+  "name":{"type":"string","description":"Friendly name, shown on the tab group (max 64 chars; default: the id)."},
+  "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Tab group color (default: picked from the id)."},
+  "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."}},
   "required":["id"]})";
 
 constexpr char kOpenSessionArgs[] = R"({"type":"object","properties":{
-  "profile":{"type":"string","description":"Agent profile id."},
-  "agent":{"type":"string","description":"Your agent name, shown on the tab group."}},
-  "required":["profile","agent"]})";
+  "agent":{"type":"string","description":"Agent id."}},
+  "required":["agent"]})";
 
 constexpr char kSessionIdArgs[] = R"({"type":"object","properties":{
   "sessionId":{"type":"string"}},"required":["sessionId"]})";
@@ -469,25 +548,30 @@ constexpr char kCaptureArgs[] = R"({"type":"object","properties":{
   "required":["targetId"]})";
 
 constexpr Tool kTools[] = {
-    {"list-profiles", "List agent profiles (persistent, isolated storage).",
-     kNoArgs, &ListProfiles},
-    {"create-profile",
-     "Create an agent profile: its own cookies, logins and storage, kept "
-     "across restarts.",
-     kProfileIdArgs, &CreateProfile},
-    {"delete-profile",
-     "Close the profile's sessions and tabs and wipe its storage.",
-     kProfileIdArgs, &DeleteProfile},
+    {"list-agents",
+     "List agents: identity (name, color, avatar), open sessions and tabs.",
+     kNoArgs, &ListAgents},
+    {"create-agent",
+     "Create an agent: an identity shown on its tab groups, and its own "
+     "cookies, logins and storage, kept across restarts.",
+     kCreateAgentArgs, &CreateAgent},
+    {"update-agent",
+     "Change an agent's name, color or avatar; its open tab groups follow.",
+     kUpdateAgentArgs, &UpdateAgent},
+    {"delete-agent",
+     "Close the agent's sessions and tabs and wipe its storage.",
+     kAgentIdArgs, &DeleteAgent},
     {"open-session",
-     "Start working in a profile. Returns a sessionId; tabs you allocate "
-     "form one tab group. cdpEndpoint works with Playwright connectOverCDP.",
+     "Start working as an agent. Returns a sessionId; tabs you allocate form "
+     "one tab group with the agent's name and color. cdpEndpoint works with "
+     "Playwright connectOverCDP.",
      kOpenSessionArgs, &OpenSession},
     {"list-sessions", "List open sessions and their tabs.", kNoArgs,
      &ListSessions},
     {"close-session", "Close the session's tabs and end it.", kSessionIdArgs,
      &CloseSession},
     {"allocate-tab",
-     "Open a tab leased to the session, in its profile's storage. Returns "
+     "Open a tab leased to the session, in its agent's storage. Returns "
      "targetId and cdpUrl (page WebSocket) to drive it over CDP. Tabs it "
      "opens (popups, target=_blank) join the session.",
      kAllocateTabArgs, &AllocateTab},

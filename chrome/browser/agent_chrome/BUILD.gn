@@ -48,6 +48,7 @@ source_set("impl") {
     "//components/pref_registry",
     "//components/prefs",
     "//components/tab_groups",
+    "//components/tabs:public",
     "//components/version_info",
     "//components/viz/common",
     "//content/public/browser",

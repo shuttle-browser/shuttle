@@ -30,11 +30,12 @@ constexpr std::string_view kProtocolVersions[] = {"2025-06-18", "2025-03-26",
                                                   "2024-11-05"};
 
 constexpr char kInstructions[] =
-    "Agent Chrome manages browser profiles and tabs for agents. Flow: "
-    "create-profile (once; storage persists) -> open-session "
-    "(profile + your agent name) -> allocate-tab -> drive the tab over CDP "
-    "with the returned cdpUrl (or Playwright connectOverCDP(cdpEndpoint) and "
-    "pick the page by targetId) -> release-tab / close-session when done.";
+    "Agent Chrome runs agents in tabs. An agent has an identity (name, "
+    "color, avatar: shown on its tab group) and its own storage (logins "
+    "persist). Flow: create-agent (once) -> open-session (agent id) -> "
+    "allocate-tab -> drive the tab over CDP with the returned cdpUrl (or "
+    "Playwright connectOverCDP(cdpEndpoint) and pick the page by targetId) "
+    "-> release-tab / close-session when done.";
 
 // JSON-RPC error codes.
 constexpr int kParseError = -32700;

@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_AGENT_CHROME_PROFILE_REGISTRY_H_
 #define CHROME_BROWSER_AGENT_CHROME_PROFILE_REGISTRY_H_
 
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "components/tab_groups/tab_group_color.h"
 #include "content/public/browser/storage_partition_config.h"
 
 class Profile;
@@ -24,14 +26,37 @@ class PrefRegistrySyncable;
 
 namespace agent_chrome {
 
-// Agent profiles: named, persistent storage (cookies, local storage, ...).
-// Each one is a fixed StoragePartition of the single Chrome profile, in its
-// own partition domain ("ac-<id>") so that it can be wiped on its own.
+// Agents (agent profiles): an identity (name, color, avatar) shown on the
+// tab groups of its sessions, plus named, persistent storage (cookies, local
+// storage, ...). The storage is a fixed StoragePartition of the single Chrome
+// profile, in its own partition domain ("ac-<id>") so that it can be wiped on
+// its own.
 class ProfileRegistry {
  public:
   struct Entry {
+    Entry();
+    Entry(const Entry&);
+    ~Entry();
+
     std::string id;
+    // Friendly name; the id if none was set.
+    std::string name;
+    tab_groups::TabGroupColorId color = tab_groups::TabGroupColorId::kGrey;
+    // https: or data:image/ URL, or "".
+    std::string avatar;
     base::Time created;
+  };
+
+  // Fields to set; unset fields are left as they are.
+  struct Identity {
+    Identity();
+    Identity(const Identity&);
+    ~Identity();
+
+    std::optional<std::string> name;
+    std::optional<tab_groups::TabGroupColorId> color;
+    // "" removes the avatar.
+    std::optional<std::string> avatar;
   };
 
   explicit ProfileRegistry(Profile* profile);
@@ -48,11 +73,24 @@ class ProfileRegistry {
   // is not one.
   static std::string IdForConfig(const content::StoragePartitionConfig& config);
 
+  // Validation of identity fields; return an error message or "".
+  static std::string CheckName(std::string_view name);
+  static std::string CheckAvatar(std::string_view avatar);
+
+  // Color names as used by the MCP tools ("blue", ...).
+  static std::string_view ColorName(tab_groups::TabGroupColorId color);
+  static std::optional<tab_groups::TabGroupColorId> ColorFromName(
+      std::string_view name);
+
   bool Exists(const std::string& id) const;
+  std::optional<Entry> Get(const std::string& id) const;
   std::vector<Entry> List() const;
 
-  // Returns false if the profile already exists.
-  bool Create(const std::string& id);
+  // Returns false if the profile already exists. Fields must be valid.
+  bool Create(const std::string& id, const Identity& identity);
+
+  // Returns false if the profile doesn't exist. Fields must be valid.
+  bool Update(const std::string& id, const Identity& identity);
 
   content::StoragePartitionConfig PartitionConfig(const std::string& id) const;
 

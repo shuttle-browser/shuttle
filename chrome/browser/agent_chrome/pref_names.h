@@ -7,7 +7,8 @@
 
 namespace agent_chrome::prefs {
 
-// Dictionary of agent profiles: id -> {"created": <base::Time as double>}.
+// Dictionary of agent profiles: id -> {"created": <base::Time as value>,
+// optional "name", "color" (TabGroupColorId as int), "avatar" (URL)}.
 inline constexpr char kProfiles[] = "agent_chrome.profiles";
 
 // List of deleted profile ids whose storage still has to be removed from

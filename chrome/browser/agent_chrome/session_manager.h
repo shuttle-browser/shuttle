@@ -6,7 +6,9 @@
 #define CHROME_BROWSER_AGENT_CHROME_SESSION_MANAGER_H_
 
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
@@ -28,35 +31,40 @@ namespace agent_chrome {
 
 class ProfileRegistry;
 
-// A session is one agent working in one agent profile. Its tabs are leased
-// to it exclusively and shown as one tab group.
+// A session is one run of an agent (an agent profile). Its tabs are leased
+// to it exclusively. All tabs of an agent, across its sessions, form one tab
+// group with the agent's name and color.
 struct Session {
   Session();
   Session(const Session&);
   ~Session();
 
   std::string id;
-  std::string profile;
+  // Agent (profile) id.
   std::string agent;
   base::Time opened;
-  // Created with the first tab (a tab group can't be empty).
-  std::optional<tab_groups::TabGroupId> group;
 };
 
-class SessionManager {
+// Also keeps the session tab groups in sync with the agents' identities, both
+// ways: identity changes restyle the groups, and renaming or recoloring a
+// group in the tab strip updates the agent.
+class SessionManager : public TabStripModelObserver {
  public:
   SessionManager(Profile* profile, ProfileRegistry* registry);
   SessionManager(const SessionManager&) = delete;
   SessionManager& operator=(const SessionManager&) = delete;
-  ~SessionManager();
+  ~SessionManager() override;
 
-  const Session& Open(const std::string& profile_id, const std::string& agent);
+  const Session& Open(const std::string& agent_id);
   const Session* Get(const std::string& session_id) const;
   std::vector<const Session*> List() const;
 
   // Closes the session's tabs and forgets it. Returns false if unknown.
   bool Close(const std::string& session_id);
-  void CloseProfileSessions(const std::string& profile_id);
+  void CloseProfileSessions(const std::string& agent_id);
+
+  // Re-applies the agent's name and color to its tab group.
+  void RefreshGroups(const std::string& agent_id);
 
   // Opens a background tab in the session's profile partition, leased to
   // the session, and starts loading `url` (about:blank if empty).
@@ -86,14 +94,49 @@ class SessionManager {
   void OnTabOpened(const std::string& session_id,
                    content::WebContents* new_contents);
 
+  // TabStripModelObserver:
+  void OnTabGroupChanged(const TabGroupChange& change) override;
+  void TabGroupedStateChanged(TabStripModel* tab_strip,
+                              std::optional<tab_groups::TabGroupId> old_group,
+                              std::optional<tab_groups::TabGroupId> new_group,
+                              tabs::TabInterface* tab,
+                              int index) override;
+  void OnTabStripModelDestroyed(TabStripModel* tab_strip) override;
+
  private:
   void Lease(content::WebContents* contents, const std::string& session_id);
   void AddToSessionGroup(base::WeakPtr<content::WebContents> contents,
                          const std::string& session_id);
 
+  // A new tab in `agent_id`'s storage partition, not yet in a tab strip.
+  std::unique_ptr<content::WebContents> CreateAgentContents(
+      const std::string& agent_id,
+      const GURL& url,
+      bool hidden);
+  // Makes a tab the user put into an agent's group the agent's (also one taken
+  // from another agent): leased to the agent's latest session (or a new one),
+  // reopened in the agent's storage if it isn't there (a page can't change
+  // storage partitions).
+  void AdoptTab(base::WeakPtr<content::WebContents> contents,
+                const std::string& agent_id);
+  const Session* LatestSession(const std::string& agent_id) const;
+  // Agent of the session `contents` is leased to, or "".
+  std::string AgentOf(content::WebContents* contents) const;
+  void Observe(TabStripModel* tab_strip);
+  // Returns the agent whose tab group is `group`, or "".
+  std::string AgentOfGroup(const tab_groups::TabGroupId& group) const;
+  // Returns the tab strip holding `group`, or nullptr.
+  TabStripModel* FindGroup(const tab_groups::TabGroupId& group) const;
+
   raw_ptr<Profile> profile_;
   raw_ptr<ProfileRegistry> registry_;
   std::map<std::string, Session> sessions_;
+  // Agent id -> its tab group. Created with the agent's first tab (a tab
+  // group can't be empty); gone once its last tab closes.
+  std::map<std::string, tab_groups::TabGroupId> groups_;
+  std::set<raw_ptr<TabStripModel>> observed_;
+  // Set while this class changes group visuals itself.
+  bool applying_visuals_ = false;
   base::WeakPtrFactory<SessionManager> weak_factory_{this};
 };
 
