@@ -294,15 +294,15 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
         </then>
         <else>
           <message name="IDS_PRODUCT_NAME" desc="The Chrome application name" translateable="false">
-            Chromium
+            Agent Chrome
           </message>
           <message name="IDS_SHORT_PRODUCT_NAME" desc="The Chrome application short name." translateable="false">
-            Chromium
+            Agent Chrome
           </message>
         </else>
       </if>
       <message name="IDS_APP_MENU_YOUR_CHROME_HEADER" desc="Header title for the Your Chromium section in the main App Menu">
-        Your Chromium
+        Your Agent Chrome
       </message>
       <if expr="is_win">
         <message name="IDS_SXS_SHORTCUT_NAME" desc="Unused in Chromium builds" translateable="false">
@@ -314,11 +314,11 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
       </if>
       <if expr="is_macosx or is_linux">
         <message name="IDS_FIRST_RUN_DIALOG_WINDOW_TITLE" desc="Window title of First Run dialog on Mac and Linux, displayed in title bar">
-          Welcome to Chromium
+          Welcome to Agent Chrome
         </message>
       </if>
       <message name="IDS_PRODUCT_LOGO_ENTERPRISE_ALT_TEXT" desc="Alt text for the Chromium Enterprise logo image." formatter_data="android_java">
-        Chromium Enterprise logo
+        Agent Chrome Enterprise logo
       </message>
       <if expr="is_macosx or is_chromeos">
         <message name="IDS_TASK_MANAGER_TITLE" desc="The title of the Task Manager window">
@@ -327,7 +327,7 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
       </if>
       <if expr="not is_macosx and not is_chromeos">
         <message name="IDS_TASK_MANAGER_TITLE" desc="The title of the Task Manager window">
-          Task Manager - Chromium
+          Task Manager - Agent Chrome
         </message>
       </if>
       <message name="IDS_TASK_MANAGER_SEARCH_PLACEHOLDER" desc="The placeholder text for the Search bar in the Task Manager window">
@@ -361,7 +361,7 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
         All tasks
       </message>
       <message name="IDS_SESSION_CRASHED_VIEW_UMA_OPTIN" desc="Text besides the checkbox to let users optin to UMA in the restore from previous crash bubble.">
-        Help make Chromium better by sending crash reports and <ph name="UMA_LINK">$1<ex>usage statistics</ex></ph> to Google
+        Help make Agent Chrome better by sending crash reports and <ph name="UMA_LINK">$1<ex>usage statistics</ex></ph> to Google
       </message>
       <if expr="is_win">
         <message name="IDS_RESET_PROFILE_SETTINGS_EXPLANATION_IN_BULLET_POINTS" desc="A label formatted with bullet points describing the consequences of the 'reset profile settings' feature">
@@ -373,7 +373,7 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
             <ph name="LINE_BREAK">&lt;br&gt;</ph>
             • Delete cookies and other temporary site data
             <ph name="LINE_BREAK">&lt;br&gt;</ph>
-            • Reset Chromium shortcuts
+            • Reset Agent Chrome shortcuts
             <ph name="LINE_BREAKS">&lt;br&gt;&lt;br&gt;</ph>
             Bookmarks, history, and saved passwords won't be affected.
         </message>
@@ -401,7 +401,7 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
           </then>
           <else>
             <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabs and popup windows">
-              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
+              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Agent Chrome
             </message>
           </else>
         </if>
@@ -409,19 +409,19 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
       <if expr="is_chromeos">
         <!-- Browser Window Title Format -->
         <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabbed browser windows">
-          Chromium - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+          Agent Chrome - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
         </message>
       </if>
       <if expr="not is_chromeos and not is_macosx">
         <!-- Captive Portal Browser Window Title Format -->
         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
-          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Chromium
+          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Agent Chrome
         </message>
       </if>
       <if expr="is_chromeos">
         <!-- Captive Portal Browser Window Title Format -->
         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
-          Chromium - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+          Agent Chrome - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
         </message>
       </if>
       <if expr="is_macosx">
@@ -440,18 +440,18 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
         </then>
         <else>
           <message name="IDS_ACCESSIBLE_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window">
-            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
+            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Agent Chrome
           </message>
         </else>
       </if>
       <message name="IDS_ACCESSIBLE_BETA_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the beta channel version of the browser">
-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Beta
+        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Agent Chrome Beta
       </message>
       <message name="IDS_ACCESSIBLE_DEV_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the developer (dev) channel version of the browser">
-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Dev
+        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Agent Chrome Dev
       </message>
       <message name="IDS_ACCESSIBLE_CANARY_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the canary (nightly build) channel version of the browser">
-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Canary
+        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Agent Chrome Canary
       </message>
       <if expr="_is_chrome_for_testing_branded">
         <then>
@@ -464,10 +464,10 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
         </then>
         <else>
           <message name="IDS_ABOUT_VERSION_COMPANY_NAME" desc="Company name on the about pages">
-            The Chromium Authors
+            Silkweave
           </message>
           <message name="IDS_ABOUT_VERSION_COPYRIGHT" desc="Copyright information on the about pages">
-            Copyright <ph name="YEAR">{0,date,y}<ex>2016</ex></ph> The Chromium Authors. All rights reserved.
+            Copyright <ph name="YEAR">{0,date,y}<ex>2016</ex></ph> Silkweave. All rights reserved.
           </message>
         </else>
       </if>
@@ -479,59 +479,59 @@ If you update this file, be sure also to update google_chrome_strings.grd. -->
         </then>
         <else>
           <message name="IDS_ABOUT_TERMS_OF_SERVICE" desc="The terms of service label in the About box." translateable="false">
-            Not used in Chromium. Placeholder to keep resource maps in sync.
+            Not used in Agent Chrome. Placeholder to keep resource maps in sync.
           </message>
         </else>
       </if>
       <if expr="is_macosx">
         <message name="IDS_MACOS_OBSOLETE" desc="A message displayed on an at-launch infobar and About (Help) page warning the user that the OS version they are using will soon be or is already unsupported.">
-          To get future Chromium updates, you'll need macOS 13 or later. This computer is using macOS 12.
+          To get future Agent Chrome updates, you'll need macOS 13 or later. This computer is using macOS 12.
         </message>
       </if>
       <message name="IDS_ACCNAME_APP" desc="The accessible name for the app menu." translateable="false">
-        Chromium
+        Agent Chrome
       </message>
       <!-- Hung Browser Detector -->
       <!-- General app failure messages -->
       <if expr="not is_chromeos and not is_android">
         <message name="IDS_COULDNT_STARTUP_PROFILE_ERROR" desc="Error displayed when Chrome cannot start because profiles were not opened correctly.">
-          Cannot start Chromium because something went wrong when opening your profile. Try to restart Chromium.
+          Cannot start Agent Chrome because something went wrong when opening your profile. Try to restart Agent Chrome.
         </message>
       </if>
       <!-- Uninstall messages -->
       <!-- Default Browser messages -->
       <message name="IDS_FR_CUSTOMIZE_DEFAULT_BROWSER" desc="Default browser checkbox label">
-        Make Chromium the default browser
+        Make Agent Chrome the default browser
       </message>
       <if expr="use_titlecase">
         <message name="IDS_STATUS_TRAY_KEEP_CHROME_RUNNING_IN_BACKGROUND" desc="In Title Case: The checkbox in the status tray context menu that controls whether chrome keeps running in the background after the last window is closed">
-          Let Chromium Run in the Background
+          Let Agent Chrome Run in the Background
         </message>
       </if>
       <if expr="not use_titlecase">
         <message name="IDS_STATUS_TRAY_KEEP_CHROME_RUNNING_IN_BACKGROUND" desc="The checkbox in the status tray context menu that controls whether chrome keeps running in the background after the last window is closed">
-          Let Chromium run in the background
+          Let Agent Chrome run in the background
         </message>
       </if>
       <if expr="use_titlecase">
         <message name="IDS_STATUS_TRAY_KEEP_CHROME_RUNNING_IN_BACKGROUND_SETTING" desc="In Title Case: The checkbox in the status tray context menu that controls whether chrome keeps running in the background after the last window is closed">
-          Disable Chromium Running in Background for Apps
+          Disable Agent Chrome Running in Background for Apps
         </message>
       </if>
       <if expr="not use_titlecase">
         <message name="IDS_STATUS_TRAY_KEEP_CHROME_RUNNING_IN_BACKGROUND_SETTING" desc="The checkbox in the status tray context menu that controls whether chrome keeps running in the background after the last window is closed">
-          Disable Chromium running in background for apps
+          Disable Agent Chrome running in background for apps
         </message>
       </if>
       <message name="IDS_CANT_WRITE_USER_DIRECTORY_SUMMARY" desc="Summary of problem displayed in dialog when we can't create a directory for this user.">
-Chromium cannot read and write to its data directory:
+Agent Chrome cannot read and write to its data directory:
 
 <ph name="USER_DATA_DIRECTORY">$1<ex>C:\Documents and Settings\devint\Local Settings\Application Data\Google\Chrome</ex></ph>
       </message>
       <message name="IDS_PROFILE_TOO_NEW_ERROR" desc="Error displayed on startup when the profile is from a newer version of the product and can not be read">
-Your profile can not be used because it is from a newer version of Chromium.
+Your profile can not be used because it is from a newer version of Agent Chrome.
 
-Some features may be unavailable. Please specify a different profile directory or use a newer version of Chromium.
+Some features may be unavailable. Please specify a different profile directory or use a newer version of Agent Chrome.
       </message>
       <message name="IDS_PREFERENCES_UNREADABLE_ERROR" desc="Error displayed on startup when user preferences file can not be read">
 Your preferences can not be read.
@@ -541,22 +541,22 @@ Some features may be unavailable and changes to preferences won't be saved.
       <message name="IDS_PREFERENCES_CORRUPT_ERROR" desc="Error displayed on startup when user preferences file can not be read">
 Your preferences file is corrupt or invalid.
 
-Chromium is unable to recover your settings.
+Agent Chrome is unable to recover your settings.
       </message>
 
 
       <!-- Options Dialog -->
       <if expr="is_win">
         <message name="IDS_PIN_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not pinned to the taskbar.">
-          Pin Chromium to your taskbar to get to it quickly anytime
+          Pin Agent Chrome to your taskbar to get to it quickly anytime
         </message>
         <message name="IDS_PIN_INFOBAR_BUTTON" desc="Label for the button on an infobar offering to pin Chromium to the taskbar. Pins Chromium when clicked.">
-          Pin Chromium
+          Pin Agent Chrome
         </message>
       </if>
       <if expr="is_macosx">
         <message name="IDS_PIN_INFOBAR_DOCK_TEXT" desc="Text to show in an infobar when Chromium is not in the Dock.">
-          Keep Chromium in your Dock to get to it quickly anytime
+          Keep Agent Chrome in your Dock to get to it quickly anytime
         </message>
         <message name="IDS_PIN_INFOBAR_DOCK_BUTTON" desc="Label for the button on an infobar offering to keep Chromium in the Dock.">
           Keep in Dock
@@ -566,151 +566,151 @@ Chromium is unable to recover your settings.
             <!-- Pin InfoBar Experimental strings -->
       <if expr="is_win">
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_1" translateable="false" desc="Message text for the experimental pin infobar version 1 on Windows">
-          Open Chromium with one click. Pin it for faster access.
+          Open Agent Chrome with one click. Pin it for faster access.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_2" translateable="false" desc="Message text for the experimental pin infobar version 2 on Windows">
-          Launch the web faster. Pin Chromium to your taskbar.
+          Launch the web faster. Pin Agent Chrome to your taskbar.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_3" translateable="false" desc="Message text for the experimental pin infobar version 3 on Windows">
-          Keep Chromium within reach anytime you browse.
+          Keep Agent Chrome within reach anytime you browse.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_BUTTON_3" translateable="false" desc="Button text for the experimental pin infobar version 3 on Windows">
-          Pin Chromium Now
+          Pin Agent Chrome Now
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_4" translateable="false" desc="Message text for the experimental pin infobar version 4 on Windows">
-          Optimize your workflow. Add Chromium to your taskbar.
+          Optimize your workflow. Add Agent Chrome to your taskbar.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_6" translateable="false" desc="Message text for the experimental pin infobar version 6 on Windows">
-          Simplify your startup. Pin Chromium to your taskbar.
+          Simplify your startup. Pin Agent Chrome to your taskbar.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_BUTTON_8" translateable="false" desc="Button text for the experimental pin infobar version 8 on Windows">
-          Pin Chromium
+          Pin Agent Chrome
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_9" translateable="false" desc="Message text for the experimental pin infobar version 9 on Windows">
-          For a better desktop experience, pin Chromium to your taskbar.
+          For a better desktop experience, pin Agent Chrome to your taskbar.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_MESSAGE_10" translateable="false" desc="Message text for the experimental pin infobar version 10 on Windows">
-          Start browsing instantly. Pin Chromium to your taskbar.
+          Start browsing instantly. Pin Agent Chrome to your taskbar.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_BUTTON_10" translateable="false" desc="Button text for the experimental pin infobar version 10 on Windows">
-          Pin Chromium
+          Pin Agent Chrome
         </message>
       </if>
       <if expr="is_macosx">
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_1" translateable="false" desc="Message text for the experimental pin infobar version 1 on Mac">
-          Open Chromium with one click. Keep it in your Dock for faster access.
+          Open Agent Chrome with one click. Keep it in your Dock for faster access.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_2" translateable="false" desc="Message text for the experimental pin infobar version 2 on Mac">
-          Launch the web faster. Keep Chromium in your Dock.
+          Launch the web faster. Keep Agent Chrome in your Dock.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_3" translateable="false" desc="Message text for the experimental pin infobar version 3 on Mac">
-          Keep Chromium within reach anytime you browse.
+          Keep Agent Chrome within reach anytime you browse.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_4" translateable="false" desc="Message text for the experimental pin infobar version 4 on Mac">
-          Optimize your workflow. Add Chromium to your Dock.
+          Optimize your workflow. Add Agent Chrome to your Dock.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_6" translateable="false" desc="Message text for the experimental pin infobar version 6 on Mac">
-          Simplify your startup. Keep Chromium in your Dock.
+          Simplify your startup. Keep Agent Chrome in your Dock.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_9" translateable="false" desc="Message text for the experimental pin infobar version 9 on Mac">
-          For a better desktop experience, keep Chromium in your Dock.
+          For a better desktop experience, keep Agent Chrome in your Dock.
         </message>
         <message name="IDS_PIN_INFOBAR_EXPERIMENTAL_DOCK_MESSAGE_10" translateable="false" desc="Message text for the experimental pin infobar version 10 on Mac">
-          Start browsing instantly. Keep Chromium in your Dock.
+          Start browsing instantly. Keep Agent Chrome in your Dock.
         </message>
       </if>
 
       <message name="IDS_DEFAULT_BROWSER_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not the current default browser.">
-        Chromium isn't your default browser
+        Agent Chrome isn't your default browser
       </message>
       <if expr="is_win or is_macosx">
         <message name="IDS_PDF_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not the default PDF viewer.">
-          Set Chromium as your default PDF viewer
+          Set Agent Chrome as your default PDF viewer
         </message>
       </if>
       <!-- Download Bubble Items -->
       <message name="IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_UNKNOWN_SOURCE"
                desc="Summary of dangerous warning for a file (like an extension) from an unknown source.">
-        Extensions, apps, and themes from unknown sources can harm your device. Chromium recommends only installing them from the <ph name="IDS_EXTENSION_WEB_STORE_TITLE">$1<ex>Chrome Web Store</ex></ph>
+        Extensions, apps, and themes from unknown sources can harm your device. Agent Chrome recommends only installing them from the <ph name="IDS_EXTENSION_WEB_STORE_TITLE">$1<ex>Chrome Web Store</ex></ph>
       </message>
       <message name="IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_WARNING_BLOCKED_LEARN_MORE_LINK"
                desc="Text for the link to the help page about why Chromium blocks some downloaded files.">
-        Learn why Chromium blocks some downloads
+        Learn why Agent Chrome blocks some downloads
       </message>
       <message name="IDS_DOWNLOAD_BUBBLE_SUBPAGE_SUMMARY_DEEP_SCANNING_PROMPT_LOCAL_DECRYPTION"
         desc="Subpage summary of warning for a file where we recommend providing the password for on-device decryption">
-        This file may be dangerous<ph name="LINE_BREAK">$1</ph>Chromium can check this download for you if you provide the password. Info about the file gets sent to Google Safe Browsing, but the file content and password stay on your device.
+        This file may be dangerous<ph name="LINE_BREAK">$1</ph>Agent Chrome can check this download for you if you provide the password. Info about the file gets sent to Google Safe Browsing, but the file content and password stay on your device.
       </message>
 
       <!-- Download Shelf Items -->
       <message name="IDS_DOWNLOAD_STATUS_CRX_INSTALL_RUNNING"
                desc="Message shown when a CRX has been downloaded and is being unpacked.">
-        Adding to Chromium...
+        Adding to Agent Chrome...
       </message>
 
       <message name="IDS_PROMPT_DOWNLOAD_CHANGES_SETTINGS"
                desc="Message shown on the download shelf when the download is known to change settings in the browser in a malicious way.">
-        <ph name="FILE_NAME">$1<ex>bla.exe</ex></ph> may be dangerous, so Chromium has blocked it.
+        <ph name="FILE_NAME">$1<ex>bla.exe</ex></ph> may be dangerous, so Agent Chrome has blocked it.
       </message>
 
       <message name="IDS_PROMPT_MALICIOUS_DOWNLOAD_URL"
          desc="Message shown to the user to validate the download when the download url is classified to lead to malware by the safebrowsing database.">
-        This file is dangerous, so Chromium has blocked it.
+        This file is dangerous, so Agent Chrome has blocked it.
       </message>
       <message name="IDS_PROMPT_MALICIOUS_DOWNLOAD_CONTENT"
          desc="Message shown to the user to validate the download when the download content is classified to lead to malware by safebrowsing.">
-        <ph name="FILE_NAME">$1<ex>malware.exe</ex></ph> is dangerous, so Chromium has blocked it.
+        <ph name="FILE_NAME">$1<ex>malware.exe</ex></ph> is dangerous, so Agent Chrome has blocked it.
       </message>
 
       <!-- chrome://downloads page dangerous file description strings -->
       <message name="IDS_BLOCK_DOWNLOAD_REASON_DANGEROUS_FILETYPE"
                desc="On the chrome://downloads page, the description shown for a blocked file with a dangerous filetype.">
-        Chromium blocked this download because the file type isn't commonly downloaded and it may be dangerous
+        Agent Chrome blocked this download because the file type isn't commonly downloaded and it may be dangerous
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_DANGEROUS"
                desc="On the chrome://downloads page, the description shown for a blocked file that is dangerous.">
-        Chromium blocked this download because the file is dangerous
+        Agent Chrome blocked this download because the file is dangerous
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_DANGEROUS_COOKIE_THEFT"
                desc="On the chrome://downloads page, the description shown for a blocked file that is dangerous because of cookie theft.">
-        Chromium blocked this download because the file can harm your personal and social network accounts
+        Agent Chrome blocked this download because the file can harm your personal and social network accounts
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_UNCOMMON"
                desc="On the chrome://downloads page, the description shown for a blocked file that is uncommon.">
-        Chromium blocked this download because the file isn't commonly downloaded and it may be dangerous
+        Agent Chrome blocked this download because the file isn't commonly downloaded and it may be dangerous
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_UNCOMMON_SUSPICIOUS_ARCHIVE"
                desc="On the chrome://downloads page, the description shown for a blocked file that is suspicious archive.">
-        Chromium blocked this download because the archive file includes other files that may hide malware
+        Agent Chrome blocked this download because the archive file includes other files that may hide malware
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_POTENTIALLY_UNWANTED"
                desc="On the chrome://downloads page, the description shown for a blocked file that is potentially unwanted.">
-        Chromium blocked this download because the file is deceptive and may make unexpected changes to your device
+        Agent Chrome blocked this download because the file is deceptive and may make unexpected changes to your device
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_INSECURE"
                desc="On the chrome://downloads page, the description shown for a blocked file that is insecure.">
-        Chromium blocked this download because the site isn't using a secure connection and the file may have been tampered with
+        Agent Chrome blocked this download because the site isn't using a secure connection and the file may have been tampered with
       </message>
       <message name="IDS_BLOCK_DOWNLOAD_REASON_UNVERIFIED_NO_SAFE_BROWSING"
                desc="On the chrome://downloads page, the description shown for a blocked file that could not be verified because Safe Browsing is off.">
-        Chromium blocked this download because you turned Safe Browsing off and the file can't be verified
+        Agent Chrome blocked this download because you turned Safe Browsing off and the file can't be verified
       </message>
 
       <!-- chrome://downloads page bypass dangerous download warning prompt-->
       <message name="IDS_DOWNLOAD_WARNING_BYPASS_PROMPT_LEARN_MORE_LINK"
                desc="On the downloads page, the label for the link to the help center in the prompt to bypass a dangerous download warning.">
-        Learn why Chromium blocks some files
+        Learn why Agent Chrome blocks some files
       </message>
 
       <!-- Abandon in-progress downloads confirmation dialog -->
       <if expr="not is_macosx">
         <message name="IDS_ABANDON_DOWNLOAD_DIALOG_BROWSER_MESSAGE" desc="Message on a dialog shown when the user closes the browser while one or more downloads are in progress. This string is shown on Windows, ChromeOS, and Linux, which all use 'Exit' to refer to closing a browser.">
-          Exit Chromium anyway?
+          Exit Agent Chrome anyway?
         </message>
       </if>
       <if expr="is_macosx">
         <message name="IDS_ABANDON_DOWNLOAD_DIALOG_BROWSER_MESSAGE" desc="Mac OSX Only: Message on a dialog shown when the user closes the browser while one or more downloads are in progress. This string is shown on Mac OSX only, which uses 'Quit' to refer to closing a browser.">
-          Quit Chromium anyway?
+          Quit Agent Chrome anyway?
         </message>
       </if>
 
@@ -718,88 +718,88 @@ Chromium is unable to recover your settings.
 
       <!-- Google API keys info bar -->
       <message name="IDS_MISSING_GOOGLE_API_KEYS" desc="Message shown when Google API keys are missing. This message is followed by a 'Learn more' link.">
-        Google API keys are missing. Some functionality of Chromium will be disabled.
+        Google API keys are missing. Some functionality of Agent Chrome will be disabled.
       </message>
 
       <if expr="enable_extensions_core">
         <!-- Extension installed bubble -->
         <message name="IDS_EXTENSION_INSTALLED_HEADING" desc="Title of the extension-installed bubble. Instructs that the extension was installed.">
-          <ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph> has been added to Chromium
+          <ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph> has been added to Agent Chrome
         </message>
         <if expr="is_android">
           <message name="IDS_EXTENSION_INSTALLED_MANAGE_INFO_IN_MAIN_MENU" desc="Text displayed in the post install dialog when the extensions menu is unpinned on Android informing them they can manage their extensions in the main menu.">
-            Manage your extensions by clicking Extensions in the Chromium main menu.
+            Manage your extensions by clicking Extensions in the Agent Chrome main menu.
           </message>
         </if>
 
 
         <!-- Extension alerts. -->
         <message name="IDS_EXTENSION_ALERT_ITEM_BLOCKLISTED_MALWARE" desc="A statement that an extension has been newly blocklisted for malware.">
-          Chromium found that "<ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph>" contains malware
+          Agent Chrome found that "<ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph>" contains malware
         </message>
         <message name="IDS_EXTENSIONS_ALERT_ITEM_BLOCKLISTED_MALWARE_TITLE" desc="A statement that multiple extension/apps have been newly blocklisted for malware.">
-          Chromium found that these items contain malware:
+          Agent Chrome found that these items contain malware:
         </message>
         <message name="IDS_EXTENSIONS_MV2_DEPRECATION_MESSAGE_DISABLED_SUBTITLE" desc="Subtitle text displayed in the manifest v2 deprecation message for a specific extension during the disabled stage.">
-          Chromium recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>
+          Agent Chrome recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>
         </message>
         <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_DISABLED_SUBTITLE" desc="Subtitle text displayed in the manifest v2 deprecation panel for the disabled stage.">
           {NUM_EXTENSIONS, plural,
-            =1 {Chromium recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
-            other {Chromium recommends that you remove them. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
+            =1 {Agent Chrome recommends that you remove it. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
+            other {Agent Chrome recommends that you remove them. <ph name="BEGIN_LINK">&lt;a href="$1" aria-description="$2" target="_blank"&gt;</ph>Learn more about supported extensions<ph name="END_LINK">&lt;/a&gt;</ph>}
           }
         </message>
         <message name="IDS_EXTENSIONS_MV2_DEPRECATION_PANEL_REMOVE_BUTTON_ACC_LABEL" desc="The (accessible) label for the button to remove an extension.">
-          Remove <ph name="EXTENSION_NAME">$1<ex>Google Translate</ex></ph> from Chromium
+          Remove <ph name="EXTENSION_NAME">$1<ex>Google Translate</ex></ph> from Agent Chrome
         </message>
       </if>
 
       <!-- Extension Safety Check Detail Page strings -->
       <message name="IDS_SAFETY_CHECK_EXTENSIONS_MALWARE" desc="The text explaining the reason for disabling extension. The extension in question contains malware.">
-        This extension contains malware and is unsafe. Remove it from Chromium so it can no longer see and change your data on sites you visit, including your personal info.
+        This extension contains malware and is unsafe. Remove it from Agent Chrome so it can no longer see and change your data on sites you visit, including your personal info.
       </message>
       <message name="IDS_SAFETY_CHECK_EXTENSIONS_POLICY_VIOLATION" desc="The text explaining the reason for disabling extension. The extension in question violates Chrome Web Store policy.">
-        This extension violates the Chrome Web Store policy, and might be unsafe. Remove it from Chromium so it can no longer see and change your data on sites you visit, including your personal info.
+        This extension violates the Chrome Web Store policy, and might be unsafe. Remove it from Agent Chrome so it can no longer see and change your data on sites you visit, including your personal info.
       </message>
       <message name="IDS_SAFETY_CHECK_EXTENSIONS_UNPUBLISHED" desc="The text explaining the reason for disabling extension. The extension in question was unpublished by the developer.">
-        This extension was unpublished by its developer, and might be unsafe. Remove it from Chromium so it can no longer see and change your data on sites you visit, including your personal info.
+        This extension was unpublished by its developer, and might be unsafe. Remove it from Agent Chrome so it can no longer see and change your data on sites you visit, including your personal info.
       </message>
       <message name="IDS_EXTENSIONS_SAFETY_CHECK_PRIMARY_LABEL" desc="Alerts the user that the extension should be reviewed.">
-        Chromium recommends you review this extension
+        Agent Chrome recommends you review this extension
       </message>
       <message name="IDS_EXTENSIONS_SAFETY_CHECK_OFFSTORE" desc="Alerts the user that the extension is not from the Chrome web store.">
-        Chromium can't verify where this extension comes from, and it might be unsafe. Remove it from Chromium so it can no longer see and change your data on sites you visit, including personal info.
+        Agent Chrome can't verify where this extension comes from, and it might be unsafe. Remove it from Agent Chrome so it can no longer see and change your data on sites you visit, including personal info.
       </message>
       <message name="IDS_EXTENSIONS_SAFETY_CHECK_OFFSTORE_ON" desc="Alerts the user that the extension is not from the Chrome web store.">
-        On • Chromium can't verify where this extension comes from
+        On • Agent Chrome can't verify where this extension comes from
       </message>
       <message name="IDS_EXTENSIONS_SAFETY_CHECK_OFFSTORE_OFF" desc="Alerts the user that the extension is not from the Chrome web store.">
-        Off • Chromium can't verify where this extension comes from
+        Off • Agent Chrome can't verify where this extension comes from
       </message>
       <message name="IDS_EXTENSIONS_SAFETY_CHECK_NO_PRIVACY_PRACTICES" desc="Alerts the user that the extension has not disclosed its privacy practices.">
-        This extension hasn't published privacy practices, such as how it collects and uses data. Chromium recommends that you remove it.
+        This extension hasn't published privacy practices, such as how it collects and uses data. Agent Chrome recommends that you remove it.
       </message>
 
       <!-- chrome://extensions page -->
   <message name="IDS_EXTENSIONS_SC_DESCRIPTION" desc="Detailed message displayed in the Safety Check description section.">
     {NUM_EXTENSIONS, plural,
-     =1 {Chromium recommends that you remove it}
-     other {Chromium recommends that you remove them}}
+     =1 {Agent Chrome recommends that you remove it}
+     other {Agent Chrome recommends that you remove them}}
   </message>
       <message name="IDS_EXTENSIONS_ITEM_SHOW_ACCESS_REQUESTS_IN_TOOLBAR" desc="The label on the toggle to allow the extension to show site access requests in the toolbar.">
-        Allow extension to show access requests in the Chromium toolbar
+        Allow extension to show access requests in the Agent Chrome toolbar
       </message>
       <message name="IDS_EXTENSIONS_INCOGNITO_WARNING" desc="Warns the user that Chromium cannot prevent extensions from recording history in Incognito mode. Displayed in extensions management UI after an extension is selected to be run in Incognito mode.">
-        Warning: Chromium cannot prevent extensions from recording your browsing history. To disable this extension in Incognito mode, unselect this option.
+        Warning: Agent Chrome cannot prevent extensions from recording your browsing history. To disable this extension in Incognito mode, unselect this option.
       </message>
       <message name="IDS_EXTENSIONS_UNINSTALL" desc="The label for a control that triggers an extension uninstall.">
-        Remove from Chromium
+        Remove from Agent Chrome
       </message>
       <message name="IDS_EXTENSIONS_SHORTCUT_SCOPE_IN_CHROME" desc="The label to indicate that a shortcut will be triggerable only from within the Chrome application.">
-        In Chromium
+        In Agent Chrome
       </message>
       <message name="IDS_PENDING_CHANGE_WARNING" desc="The message shown to users when an extension setting change will ba applied after Chrome restarts.">
-        Changes to this setting will be applied once Chromium restarts.
+        Changes to this setting will be applied once Agent Chrome restarts.
       </message>
 
 
@@ -810,15 +810,15 @@ Chromium is unable to recover your settings.
 
       <!-- Main Chrome menu -->
       <message name="IDS_APPMENU_TOOLTIP" desc="The tooltip to show for the browser menu">
-        Customize and control Chromium
+        Customize and control Agent Chrome
       </message>
 
       <message name="IDS_APPMENU_TOOLTIP_UPDATE_AVAILABLE" desc="The tooltip to show for the browser menu when an update is available">
-        Customize and control Chromium. Update is available.
+        Customize and control Agent Chrome. Update is available.
       </message>
 
       <message name="IDS_APPMENU_TOOLTIP_ALERT" desc="The tooltip to show for the browser menu when a non-update alert is displayed">
-        Customize and control Chromium. Something needs your attention - click for details.
+        Customize and control Agent Chrome. Something needs your attention - click for details.
       </message>
 
 
@@ -831,12 +831,12 @@ Chromium is unable to recover your settings.
           </then>
           <else>
             <message name="IDS_ABOUT" desc="In Title Case: The text label of the About Chrome menu item">
-              About &amp;Chromium
+              About &amp;Agent Chrome
             </message>
           </else>
         </if>
         <message name="IDS_RELAUNCH_TO_UPDATE" desc="In Title Case: The text label of the relaunch to update Chrome menu item">
-          Relaunch to Update &amp;Chromium
+          Relaunch to Update &amp;Agent Chrome
         </message>
       </if>
       <if expr="not use_titlecase and not is_chromeos">
@@ -848,17 +848,17 @@ Chromium is unable to recover your settings.
           </then>
           <else>
             <message name="IDS_ABOUT" desc="The text label of the About Chrome menu item">
-              About &amp;Chromium
+              About &amp;Agent Chrome
             </message>
           </else>
         </if>
         <message name="IDS_RELAUNCH_TO_UPDATE" desc="The text label of the relaunch to update Chrome menu item">
-          Relaunch to update &amp;Chromium
+          Relaunch to update &amp;Agent Chrome
         </message>
       </if>
       <if expr="is_chromeos">
         <message name="IDS_ABOUT" desc="The text label of the About Chrome menu item">
-          About &amp;Chromium
+          About &amp;Agent Chrome
         </message>
         <message name="IDS_RELAUNCH_TO_UPDATE" desc="The text label of the relaunch to update ChromeOS menu item">
           Relaunch to update &amp;ChromiumOS
@@ -867,10 +867,10 @@ Chromium is unable to recover your settings.
 
       <if expr="is_macosx">
         <message name="IDS_APP_MENU_PRODUCT_NAME" desc="The application's short name, used for the Mac's application menu, activity monitor, etc. This should be less than 16 characters. Example: Chrome, not Google Chrome." translateable="false">
-          Chromium
+          Agent Chrome
         </message>
         <message name="IDS_HELPER_NAME" desc="The helper application's name.  Should contain the Chrome application name (IDS_PRODUCT_NAME). Example: Google Chrome Helper.">
-          Chromium Helper
+          Agent Chrome Helper
         </message>
       </if>
 
@@ -882,10 +882,10 @@ Chromium is unable to recover your settings.
       <!-- One click sign-in infobar -->
 
       <message name="IDS_SESSION_RESTORE_TURN_OFF_RESTORE_FROM_RESTART" desc="Message that appears in the session restore infobar when the user has restored their tabs multiple times.">
-        Continue where you left off: Chromium restores your tabs every time you restart. To turn this off, go to
+        Continue where you left off: Agent Chrome restores your tabs every time you restart. To turn this off, go to
       </message>
       <message name="IDS_SESSION_RESTORE_TURN_ON" desc="Message that appears in the session restore infobar to get the user to opt-in into session restore.">
-        Continue where you left off: Chromium can restore your tabs every time you restart. To turn this on, go to
+        Continue where you left off: Agent Chrome can restore your tabs every time you restart. To turn this on, go to
       </message>
       <message name="IDS_SESSION_RESTORE_LINK" desc="Text for the link in the session restore infobar to open the Settings page.">
          Settings.
@@ -898,13 +898,13 @@ Chromium is unable to recover your settings.
 
       <!-- Management bubble -->
       <message name="IDS_MANAGEMENT_DIALOG_BROWSER_MANAGED" desc="Disclosure that an unnamed organization is managing the browser.">
-        Your organization manages Chromium
+        Your organization manages Agent Chrome
       </message>
       <message name="IDS_MANAGEMENT_DIALOG_BROWSER_MANAGED_BY" desc="Disclosure that a known organization is managing the browser.">
-        <ph name="MANAGER">$1<ex>The Company</ex></ph> manages Chromium
+        <ph name="MANAGER">$1<ex>The Company</ex></ph> manages Agent Chrome
       </message>
       <message name="IDS_MANAGEMENT_DIALOG_BROWSER_MANAGED_BY_MULTIPLE_ORGANIZATIONS" desc="Disclosure that multiple organization are managing the browser and profile.">
-        Multiple organizations manage Chromium
+        Multiple organizations manage Agent Chrome
       </message>
 
 
@@ -913,10 +913,10 @@ Chromium is unable to recover your settings.
       <!-- about:browser-switch strings -->
       <if expr="toolkit_views and not is_chromeos">
         <message name="IDS_ABOUT_BROWSER_SWITCH_DESCRIPTION_UNKNOWN_BROWSER" desc="Description shown while waiting for an alternative browser to open, when the browser name is not auto-detected">
-          Your system administrator has configured Chromium to open an alternative browser to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
+          Your system administrator has configured Agent Chrome to open an alternative browser to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
         </message>
         <message name="IDS_ABOUT_BROWSER_SWITCH_DESCRIPTION_KNOWN_BROWSER" desc="Description shown while waiting for an alternative browser to open, when the browser name is auto-detected">
-          Your system administrator has configured Chromium to open <ph name="ALTERNATIVE_BROWSER_NAME">$2<ex>Internet Explorer</ex></ph> to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
+          Your system administrator has configured Agent Chrome to open <ph name="ALTERNATIVE_BROWSER_NAME">$2<ex>Internet Explorer</ex></ph> to access <ph name="TARGET_URL_HOSTNAME">$1<ex>example.com</ex></ph>.
         </message>
       </if>
 
@@ -941,7 +941,7 @@ Chromium is unable to recover your settings.
       <!-- Sync/sign-in error messages -->
 
       <message name="IDS_PROFILE_MENU_PLACEHOLDER_PROFILE_NAME" desc="Placeholder profile name, used when the user did not enter a name for their profile.">
-        Your Chromium
+        Your Agent Chrome
       </message>
 
 
@@ -950,45 +950,45 @@ Chromium is unable to recover your settings.
 
       <!-- App shortcuts -->
       <message name="IDS_APP_SHORTCUTS_SUBDIR_NAME" desc="Name for the Chromium Apps Start Menu folder name.">
-        Chromium Apps
+        Agent Chrome Apps
       </message>
       <message name="IDS_APP_SHORTCUTS_SUBDIR_NAME_CANARY" desc="Name for the Chrome Apps Start Menu folder name.">
-        Chromium Apps
+        Agent Chrome Apps
       </message>
 
       <!-- MediaStream capture status tray icon -->
       <message name="IDS_MEDIA_STREAM_STATUS_TRAY_TEXT_AUDIO_AND_VIDEO" desc="Tool tip for the capture status tray icon when microphone and camera are being used">
-        Chromium is using your camera and microphone.
+        Agent Chrome is using your camera and microphone.
       </message>
       <message name="IDS_MEDIA_STREAM_STATUS_TRAY_TEXT_AUDIO_ONLY" desc="Tool tip for the capture status tray icon when microphone is being used">
-        Chromium is using your microphone.
+        Agent Chrome is using your microphone.
       </message>
       <message name="IDS_MEDIA_STREAM_STATUS_TRAY_TEXT_VIDEO_ONLY" desc="Tool tip for the capture status tray icon when camera is being used">
-        Chromium is using your camera.
+        Agent Chrome is using your camera.
       </message>
 
       <if expr="not is_android">
         <!-- WebHID system tray icon -->
         <message name="IDS_WEBHID_SYSTEM_TRAY_ICON_TITLE" desc="Title for the WebHID system tray icon">
             {NUM_DEVICES, plural,
-              =0 {1 HID device was being accessed by one or more Chromium extensions}
-              =1 {1 HID device is being accessed by one or more Chromium extensions}
-            other {# HID devices are being accessed by one or more Chromium extensions}}
+              =0 {1 HID device was being accessed by one or more Agent Chrome extensions}
+              =1 {1 HID device is being accessed by one or more Agent Chrome extensions}
+            other {# HID devices are being accessed by one or more Agent Chrome extensions}}
         </message>
 
         <!-- WebUSB system tray icon -->
          <message name="IDS_WEBUSB_SYSTEM_TRAY_ICON_TITLE" desc="Title for the WebUSB system tray icon">
             {NUM_DEVICES, plural,
-              =0 {1 USB device was being accessed by one or more Chromium extensions}
-              =1 {1 USB device is being accessed by one or more Chromium extensions}
-            other {# USB devices are being accessed by one or more Chromium extensions}}
+              =0 {1 USB device was being accessed by one or more Agent Chrome extensions}
+              =1 {1 USB device is being accessed by one or more Agent Chrome extensions}
+            other {# USB devices are being accessed by one or more Agent Chrome extensions}}
         </message>
       </if>
 
       <!-- ProcessSingleton -->
       <if expr="is_posix">
         <message name="IDS_PROFILE_IN_USE_POSIX" desc="Message shown when the browser cannot start because the profile is in use on a different host.">
-          The profile appears to be in use by another Chromium process (<ph name="PROCESS_ID">$1<ex>12345</ex></ph>) on another computer (<ph name="HOST_NAME">$2<ex>example.com</ex></ph>). Chromium has locked the profile so that it doesn't get corrupted. If you are sure no other processes are using this profile, you can unlock the profile and relaunch Chromium.
+          The profile appears to be in use by another Agent Chrome process (<ph name="PROCESS_ID">$1<ex>12345</ex></ph>) on another computer (<ph name="HOST_NAME">$2<ex>example.com</ex></ph>). Agent Chrome has locked the profile so that it doesn't get corrupted. If you are sure no other processes are using this profile, you can unlock the profile and relaunch Agent Chrome.
         </message>
       </if>
 
@@ -999,45 +999,45 @@ Chromium is unable to recover your settings.
 
       <!-- Settings API bubble -->
       <message name="IDS_EXTENSIONS_SETTINGS_API_SECOND_LINE_START_PAGES" desc="Second line in the Settings API bubble. Only shown if the secondary change by the extension was just the start pages. The triple single quotes are needed to preserve the space before and after the sentence which is needed when the language (Chrome is being translated to) uses space as word separator. Please preserve them, unless the language being translated to does not use space as word separator.">
-        ''' It also controls what page is shown when you start Chromium. '''
+        ''' It also controls what page is shown when you start Agent Chrome. '''
       </message>
       <message name="IDS_EXTENSIONS_SETTINGS_API_SECOND_LINE_START_AND_SEARCH" desc="Second line in the Settings API bubble. Only shown if the secondary change by the extension was both the start page and the search engine. See IDS_EXTENSIONS_SETTINGS_API_SECOND_LINE_START_PAGES for reason for triple quotes.">
-        ''' It also controls what page is shown when you start Chromium or search from the Omnibox. '''
+        ''' It also controls what page is shown when you start Agent Chrome or search from the Omnibox. '''
       </message>
 
       <!-- Search Settings Page -->
       <message name="IDS_SETTINGS_SEARCH_EXTENSION_ENGINES_ACTIVE_SHORTCUTS_EXPLANATION" desc="Subtitle for the active features and extensions subsection, explaining how they can be used.">
-        To search a specific Chromium feature or extension, type its shortcut in the address bar, followed by your selected keyboard key
+        To search a specific Agent Chrome feature or extension, type its shortcut in the address bar, followed by your selected keyboard key
       </message>
       <message name="IDS_SETTINGS_SEARCH_EXTENSION_ENGINES_INACTIVE_SHORTCUTS_EXPLANATION" desc="Subtitle for the inactive features and extensions subsection, explaining how they can be used.">
-        Some Chromium features and extensions come with shortcuts. You can choose to turn them back on.
+        Some Agent Chrome features and extensions come with shortcuts. You can choose to turn them back on.
       </message>
 
       <!-- Webstore strings -->
       <message name="IDS_WEBSTORE_APP_DESCRIPTION" desc="Description for the WebStore app.">
-        Discover great apps, games, extensions and themes for Chromium.
+        Discover great apps, games, extensions and themes for Agent Chrome.
       </message>
 
       <!-- Windows firewall rule strings. -->
 
       <if expr="not is_android">
         <message name="IDS_CONTENT_CONTEXT_ACCESSIBILITY_LABELS_BUBBLE_TEXT" desc="The text of a bubble that confirms users allows integrating the accessibility labels service of Google to Chromium.">
-          If an image doesn’t have a useful description, Chromium will try to provide one for you. To create descriptions, images are sent to Google. You can turn this off in settings at any time.
+          If an image doesn’t have a useful description, Agent Chrome will try to provide one for you. To create descriptions, images are sent to Google. You can turn this off in settings at any time.
         </message>
         <message name="IDS_CONTENT_CONTEXT_ACCESSIBILITY_LABELS_BUBBLE_TEXT_ONCE" desc="The text of a bubble that confirms users allows integrating the accessibility labels service of Google to Chromium just once.">
-          If an image doesn’t have a useful description, Chromium will try to provide one for you. To create descriptions, images are sent to Google.
+          If an image doesn’t have a useful description, Agent Chrome will try to provide one for you. To create descriptions, images are sent to Google.
         </message>
         <message name="IDS_CONTENT_CONTEXT_SPELLING_BUBBLE_TEXT" desc="The text of a bubble that confirms users allows integrating the spelling service of Google to Chrome.">
           This uses the same spell checker that's used in Google search. Text you type in the browser is sent to Google. You can always change this behavior in settings.
         </message>
         <if expr="not use_titlecase">
           <message name="IDS_CONTENT_CONTEXT_OPENLINKNEWTAB_INAPP" desc="The name of the command to open a link in a newly created browser tab when the user is in an app window">
-            Open link in new Chromium &amp;tab
+            Open link in new Agent Chrome &amp;tab
           </message>
         </if>
         <if expr="use_titlecase">
           <message name="IDS_CONTENT_CONTEXT_OPENLINKNEWTAB_INAPP" desc="In Title Case: The name of the command to open a link in a newly created browser tab when the user is in an app window">
-            Open Link in New Chromium &amp;tab
+            Open Link in New Agent Chrome &amp;tab
           </message>
         </if>
 
@@ -1048,13 +1048,13 @@ Chromium is unable to recover your settings.
       <!-- Update Recommended dialog -->
       <if expr="not is_chromeos">
         <message name="IDS_UPDATE_RECOMMENDED_DIALOG_TITLE" desc="The window title for the Update Recommended dialog.">
-          Relaunch Chromium
+          Relaunch Agent Chrome
         </message>
         <message name="IDS_UPDATE_RECOMMENDED" desc="The main text of the Update Recommended dialog with a count of open Incognito windows.">
           {COUNT, plural,
-          =0 {A new update for Chromium is available and will be applied as soon as you relaunch.}
-          =1 {A new update for Chromium is available and will be applied as soon as you relaunch. Your Incognito window won't reopen.}
-          other {A new update for Chromium is available and will be applied as soon as you relaunch. Your # Incognito windows won't reopen.}}
+          =0 {A new update for Agent Chrome is available and will be applied as soon as you relaunch.}
+          =1 {A new update for Agent Chrome is available and will be applied as soon as you relaunch. Your Incognito window won't reopen.}
+          other {A new update for Agent Chrome is available and will be applied as soon as you relaunch. Your # Incognito windows won't reopen.}}
         </message>
         <message name="IDS_RELAUNCH_AND_UPDATE" desc="The button in the Update Recommended dialog which updates and relaunches Chrome.">
           Relaunch
@@ -1074,32 +1074,32 @@ Chromium is unable to recover your settings.
 
       <if expr="is_win or is_macosx or is_linux">
         <message name="IDS_UPDATE_RECOMMENDED_DIALOG_TITLE_ALT" desc="Alternate window title for the Update Recommended dialog." translateable="false">
-          Not used in Chromium. Placeholder to keep resource maps in sync.
+          Not used in Agent Chrome. Placeholder to keep resource maps in sync.
         </message>
         <message name="IDS_UPDATE_RECOMMENDED_ALT" desc="Alternate main text of the Update Recommended dialog with a count of open Incognito windows." translateable="false">
-          Not used in Chromium. Placeholder to keep resource maps in sync.
+          Not used in Agent Chrome. Placeholder to keep resource maps in sync.
         </message>
       </if>
 
       <!-- Update bubble -->
       <message name="IDS_REINSTALL_APP" desc="Text for the button the user clicks to reinstall the app.">
-        Reinstall Chromium
+        Reinstall Agent Chrome
       </message>
       <if expr="use_titlecase">
         <message name="IDS_UPGRADE_BUBBLE_MENU_ITEM" desc="In Title Case: Text for the Chrome menu option replacing Update required.">
-          Chromium is Out of Date
+          Agent Chrome is Out of Date
         </message>
       </if>
       <if expr="not use_titlecase">
         <message name="IDS_UPGRADE_BUBBLE_MENU_ITEM" desc="Text for the Chrome menu option replacing Update required.">
-          Chromium is out of date
+          Agent Chrome is out of date
         </message>
       </if>
       <message name="IDS_UPGRADE_BUBBLE_TITLE" desc="Text for the title of the upgrade bubble view.">
-        Can't update Chromium
+        Can't update Agent Chrome
       </message>
       <message name="IDS_UPGRADE_BUBBLE_TEXT" desc="Text for the upgrade bubble view full description.">
-        Chromium couldn't update to the latest version, so you're missing out on new features and security fixes.
+        Agent Chrome couldn't update to the latest version, so you're missing out on new features and security fixes.
       </message>
 
 
@@ -1108,35 +1108,35 @@ Chromium is unable to recover your settings.
 
       <!-- Desktop Capture -->
       <message name="IDS_SEARCHBOX_PICKER_HEADLINE" desc="Title of the searchbox screen or window picker dialog.">
-        Choose what to share with Chromium
+        Choose what to share with Agent Chrome
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_SOURCE_TYPE_TAB" desc="Text for the button on the window picker dialog, clicking which takes one to tab sharing">
-        Chromium Tab
+        Agent Chrome Tab
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_SCREEN_PERMISSION_TEXT_MAC" desc="Instructive text for how to enable screen recording on Mac when trying to share a screen." >
-        To share your screen, allow screen recording for Chromium in System Settings
+        To share your screen, allow screen recording for Agent Chrome in System Settings
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_SCREEN_PERMISSION_TEXT_PERIOD_MAC" desc="Instructive text for how to enable screen recording on Mac when trying to share a screen, ending with period to allow a supplementary text to follow." >
-        To share your screen, allow screen recording for Chromium in System Settings.
+        To share your screen, allow screen recording for Agent Chrome in System Settings.
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_WINDOW_PERMISSION_TEXT_MAC" desc="Instructive text for how to enable screen recording on Mac when trying to share a window." >
-        To share your window, allow screen recording for Chromium in System Settings
+        To share your window, allow screen recording for Agent Chrome in System Settings
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_WINDOW_PERMISSION_TEXT_PERIOD_MAC" desc="Instructive text for how to enable screen recording on Mac when trying to share a window, ending with period to allow a supplementary text to follow." >
-        To share your window, allow screen recording for Chromium in System Settings.
+        To share your window, allow screen recording for Agent Chrome in System Settings.
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_PERMISSION_RESTART_TEXT_MAC" desc="Supplementary text about the need to restart Chrome, displayed below the message about enabling screen-recording permissions on Mac when those permissions are missing." >
-        You'll then need to restart Chromium.
+        You'll then need to restart Agent Chrome.
       </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_SYSTEM_AUDIO_PERMISSION_TEXT_MAC" desc="Instructive text for how to enable system audio capture on Mac." >
-        To share system audio, open System Settings and allow 'System Audio Recording Only' for Chromium. You'll then need to restart Chromium.
+        To share system audio, open System Settings and allow 'System Audio Recording Only' for Agent Chrome. You'll then need to restart Agent Chrome.
       </message>
 
       <!-- Runtime permission strings -->
 
       <if expr="is_macosx">
         <message name="IDS_RUNTIME_PERMISSION_OS_REASON_TEXT" desc="Text provided to the macOS permission dialog, explaining why Chrome needs to access a protected resource (e.g., camera, microphone).">
-          Once Chromium has access, websites will be able to ask you for access.
+          Once Agent Chrome has access, websites will be able to ask you for access.
         </message>
         <message name="IDS_LOCAL_NETWORK_ACCESS_PERMISSION_DESC" desc="Text shown in the macOS permission dialog, describing why Chrome needs the permission to access local network.">
           This will allow you to select from available devices and display content on them.
@@ -1146,7 +1146,7 @@ Chromium is unable to recover your settings.
 
       <!-- History Strings -->
       <message name="IDS_HISTORY_HISTORY_MENU_ITEM" desc="Label displayed in history sidebar button to display history.">
-        Chromium history
+        Agent Chrome history
       </message>
 
 
@@ -1169,109 +1169,109 @@ Chromium is unable to recover your settings.
         <if expr="not is_chromeos">
           <message name="IDS_RELAUNCH_RECOMMENDED_TITLE" desc="The title of a dialog that tells users that a browser relaunch is recommended for an update available for some number of days.">
             {0, plural,
-              =0 {A Chromium update is available}
-              =1 {A Chromium update is available}
-              other {A Chromium update has been available for # days}}
+              =0 {A Agent Chrome update is available}
+              =1 {A Agent Chrome update is available}
+              other {A Agent Chrome update has been available for # days}}
           </message>
           <message name="IDS_RELAUNCH_RECOMMENDED_BODY" desc="The body text of a dialog that tells users that a browser relaunch is recommended for an update with Incognito counter.">
              {COUNT, plural,
-              =0 {Your administrator asks that you relaunch Chromium to apply this update}
-              =1 {Your administrator asks that you relaunch Chromium to apply this update. Your Incognito window won't reopen.}
-              other {Your administrator asks that you relaunch Chromium to apply this update. Your # Incognito windows won't reopen.}}
+              =0 {Your administrator asks that you relaunch Agent Chrome to apply this update}
+              =1 {Your administrator asks that you relaunch Agent Chrome to apply this update. Your Incognito window won't reopen.}
+              other {Your administrator asks that you relaunch Agent Chrome to apply this update. Your # Incognito windows won't reopen.}}
           </message>
           <message name="IDS_RELAUNCH_REQUIRED_TITLE_DAYS" desc="The title of a dialog that tells users the browser must be relaunched within two or more days.">
             {0, plural,
-              =1 {Relaunch Chromium within a day}
-              other {Relaunch Chromium within # days}}
+              =1 {Relaunch Agent Chrome within a day}
+              other {Relaunch Agent Chrome within # days}}
           </message>
           <message name="IDS_RELAUNCH_REQUIRED_TITLE_HOURS" desc="The title of a dialog that tells users the browser must be relaunched within one or more hours.">
             {0, plural,
-              =1 {Chromium will relaunch in an hour}
-              other {Chromium will relaunch in # hours}}
+              =1 {Agent Chrome will relaunch in an hour}
+              other {Agent Chrome will relaunch in # hours}}
           </message>
           <message name="IDS_RELAUNCH_REQUIRED_TITLE_MINUTES" desc="The title of a dialog that tells users the browser must be relaunched within one or more minutes.">
             {0, plural,
-              =1 {Chromium will relaunch in 1 minute}
-              other {Chromium will relaunch in # minutes}}
+              =1 {Agent Chrome will relaunch in 1 minute}
+              other {Agent Chrome will relaunch in # minutes}}
           </message>
           <message name="IDS_RELAUNCH_REQUIRED_TITLE_SECONDS" desc="The title of a dialog that tells users the browser must be relaunched within some number of seconds.">
             {0, plural,
-              =0 {Chromium will relaunch now}
-              =1 {Chromium will relaunch in 1 second}
-              other {Chromium will relaunch in # seconds}}
+              =0 {Agent Chrome will relaunch now}
+              =1 {Agent Chrome will relaunch in 1 second}
+              other {Agent Chrome will relaunch in # seconds}}
           </message>
           <message name="IDS_RELAUNCH_REQUIRED_BODY" desc="The body text of a dialog that tells users the browser must be relaunched with Incognito counter.">
              {COUNT, plural,
-              =0 {Your administrator requires that you relaunch Chromium to apply an update}
-              =1 {Your administrator requires that you relaunch Chromium to apply an update. Your Incognito window won't reopen.}
-              other {Your administrator requires that you relaunch Chromium to apply an update. Your # Incognito windows won't reopen.}}
+              =0 {Your administrator requires that you relaunch Agent Chrome to apply an update}
+              =1 {Your administrator requires that you relaunch Agent Chrome to apply an update. Your Incognito window won't reopen.}
+              other {Your administrator requires that you relaunch Agent Chrome to apply an update. Your # Incognito windows won't reopen.}}
           </message>
              <message name="IDS_ADVANCED_PROTECTION_RELAUNCH_REQUIRED_BODY" desc="The body text of a dialog that tells Advanced Protection users the browser must be relaunched with Incognito counter">
              {COUNT, plural,
-              =0 {Advanced Protection requires that you relaunch Chromium to apply an update}
-              =1 {Advanced Protection requires that you relaunch Chromium to apply an update. Your Incognito window won't reopen.}
-              other {Advanced Protection requires that you relaunch Chromium to apply an update. Your # Incognito windows won't reopen.}}
+              =0 {Advanced Protection requires that you relaunch Agent Chrome to apply an update}
+              =1 {Advanced Protection requires that you relaunch Agent Chrome to apply an update. Your Incognito window won't reopen.}
+              other {Advanced Protection requires that you relaunch Agent Chrome to apply an update. Your # Incognito windows won't reopen.}}
           </message>
         </if>
       </if>
       <!-- Chromium launch blocking dialog. -->
       <if expr="not is_android and not is_chromeos">
          <message name="IDS_ENTERPRISE_STARTUP_CLOUD_POLICY_ENROLLMENT_TOOLTIP" desc="The information message of Chromium launch blocking dialog for machine level user cloud policy enrollment.">
-          Launching Chromium...
+          Launching Agent Chrome...
         </message>
         <message name="IDS_ENTERPRISE_STARTUP_CLOUD_POLICY_ENROLLMENT_ERROR" desc="The error message of Chromium launch blocking dialog when machine level user cloud policy enrollment failed.">
-          Couldn't launch Chromium. Try again.
+          Couldn't launch Agent Chrome. Try again.
         </message>
         <message name="IDS_ENTERPRISE_STARTUP_RELAUNCH_BUTTON" desc="The text of relaunch button of Chromium launch blocking dialog.">
-          Relaunch Chromium
+          Relaunch Agent Chrome
         </message>
       </if>
       <message name="IDS_DESKTOP_MEDIA_PICKER_TITLE_WEB_CONTENTS_ONLY" desc="Title for the window picker dialog shown when desktop capture of a tab is requested by an app.">
-        Share a Chromium tab
+        Share a Agent Chrome tab
       </message>
       <!-- Idle timeout bubble. -->
       <if expr="toolkit_views">
         <message name="IDS_IDLE_BUBBLE_TITLE_CLOSE" desc="Title of a bubble that informs the user that Chrome closed automatically, because they were away from the computer for X minutes.">
-          Chromium was automatically closed
+          Agent Chrome was automatically closed
         </message>
         <message name="IDS_IDLE_BUBBLE_BODY_CLOSE_AND_CLEAR" desc="Body of a bubble that informs the user that Chromium closed + cleared data automatically, because they were away from the computer for X minutes.">
-          Your organization closes Chromium when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. Browsing data was deleted. This could include history, autofill, and downloads.
+          Your organization closes Agent Chrome when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. Browsing data was deleted. This could include history, autofill, and downloads.
         </message>
         <message name="IDS_IDLE_BUBBLE_BODY_CLEAR" desc="Body of a bubble that informs the user that Chromium cleared data automatically, because they were away from the computer for X minutes.">
-          Your organization deletes Chromium data when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. This could include history, autofill, and downloads.
+          Your organization deletes Agent Chrome data when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>. This could include history, autofill, and downloads.
         </message>
         <message name="IDS_IDLE_BUBBLE_BODY_CLOSE" desc="Body of a bubble that informs the user that Chromium closed automatically, because they were away from the computer for X minutes.">
-          Your organization closes Chromium when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>.
+          Your organization closes Agent Chrome when it isn't used for <ph name="TIMEOUT_DURATION">$1<ex>30 minutes</ex></ph>.
         </message>
       </if>
       <!-- Idle timeout dialog. -->
       <if expr="not is_android and not is_chromeos">
         <message name="IDS_IDLE_TIMEOUT_CLOSE_TITLE" desc="Title of the Idle Timeout dialog, warning the user that their windows are about to close.">
-          Chromium will soon close
+          Agent Chrome will soon close
         </message>
         <message name="IDS_IDLE_TIMEOUT_CLEAR_TITLE" desc="Title of the Idle Timeout dialog, warning the user that their browsing data will be lost soon.">
-          Chromium will soon delete browsing data
+          Agent Chrome will soon delete browsing data
         </message>
         <message name="IDS_IDLE_TIMEOUT_CLOSE_AND_CLEAR_TITLE" desc="Title of the Idle Timeout dialog, warning the user that their windows are about to close and their browsing data will be lost.">
-          Chromium will soon close and delete data
+          Agent Chrome will soon close and delete data
         </message>
         <message name="IDS_IDLE_TIMEOUT_CLOSE_BODY" desc="First sentence in the Idle Timeout dialog, warning the user that Chromium is going to close automatically.">
           {COUNT, plural,
-          =1 {Your organization automatically closes Chromium when it isn't used for 1 minute.}
-          other {Your organization automatically closes Chromium when it isn't used for # minutes.}}
+          =1 {Your organization automatically closes Agent Chrome when it isn't used for 1 minute.}
+          other {Your organization automatically closes Agent Chrome when it isn't used for # minutes.}}
         </message>
         <message name="IDS_IDLE_TIMEOUT_CLEAR_BODY" desc="First sentence in the Idle Timeout dialog, warning the user that Chromium is going to clear data automatically.">
           {COUNT, plural,
-          =1 {Your organization automatically deletes browsing data when Chromium isn't used for 1 minute. This could include history, autofill, and downloads. Your tabs will stay open.}
-          other {Your organization automatically deletes browsing data when Chromium isn't used for # minutes. This could include history, autofill, and downloads. Your tabs will stay open.}}
+          =1 {Your organization automatically deletes browsing data when Agent Chrome isn't used for 1 minute. This could include history, autofill, and downloads. Your tabs will stay open.}
+          other {Your organization automatically deletes browsing data when Agent Chrome isn't used for # minutes. This could include history, autofill, and downloads. Your tabs will stay open.}}
         </message>
         <message name="IDS_IDLE_TIMEOUT_CLOSE_AND_CLEAR_BODY" desc="First sentence in the Idle Timeout dialog, warning the user that Chromium is going to close and clear data automatically.">
           {COUNT, plural,
-          =1 {Your organization automatically closes Chromium when it isn't used for 1 minute. Browsing data is deleted. This could include history, autofill, and downloads.}
-          other {Your organization automatically closes Chromium when it isn't used for # minutes. Browsing data is deleted. This could include history, autofill, and downloads.}}
+          =1 {Your organization automatically closes Agent Chrome when it isn't used for 1 minute. Browsing data is deleted. This could include history, autofill, and downloads.}
+          other {Your organization automatically closes Agent Chrome when it isn't used for # minutes. Browsing data is deleted. This could include history, autofill, and downloads.}}
         </message>
         <message name="IDS_IDLE_DISMISS_BUTTON" desc="Button label in the Idle Timeout dialog, this button dismisses the dialog and prevents browsers from closing automatically.">
-          Continue using Chromium
+          Continue using Agent Chrome
         </message>
       </if>
       <!-- User happiness tracking survey UI -->
@@ -1281,7 +1281,7 @@ Chromium is unable to recover your settings.
       <!-- Chrome parent extension/app install blocking dialog. -->
       <if expr="enable_extensions_core">
         <message name="IDS_EXTENSION_PERMISSIONS_BLOCKED_BY_PARENT_PROMPT_MESSAGE" desc="Text for the dialog indicating that a parent has blocked extensions and apps.">
-         Your parent has turned off "Permissions for sites, apps and extensions" for Chromium
+         Your parent has turned off "Permissions for sites, apps and extensions" for Agent Chrome
         </message>
       </if>
 
@@ -1290,40 +1290,40 @@ Chromium is unable to recover your settings.
 
       <!-- ChromeLabs bubble -->
       <message name="IDS_CHROMELABS_RELAUNCH_FOOTER_MESSAGE" desc="Text that shows in the footer of the Chrome Labs bubble when relaunch is needed for changes to take effect.">
-        Your changes will take effect the next time you relaunch Chromium.
+        Your changes will take effect the next time you relaunch Agent Chrome.
       </message>
 
       <!-- Device Chooser Prompt -->
       <message name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH" desc="Text shown in the Web Serial Chooser when browser does not have Bluetooth permission. The '&#10;' is a newline character to force the desired line wrapping.">
-        Chromium needs Bluetooth access to explore &#10; Bluetooth devices. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
+        Agent Chrome needs Bluetooth access to explore &#10; Bluetooth devices. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK">$1<ex>Open Preferences</ex></ph>
       </message>
 
 
       <!--Launch On Startup-->
       <if expr="is_win">
         <message name="IDS_SETTINGS_FOREGROUND_LAUNCH_ON_STARTUP_LABEL" desc="Label for settings toggle button that enables or disables opening Chromium on system startup">
-          Launch Chromium when Windows starts
+          Launch Agent Chrome when Windows starts
         </message>
         <message name="IDS_SETTINGS_FOREGROUND_LAUNCH_ON_STARTUP_SUB_LABEL" desc="Sub label for settings toggle button that enables or disables opening Chromium on system startup">
-          Launch Chromium automatically to begin browsing instantly.
+          Launch Agent Chrome automatically to begin browsing instantly.
         </message>
       </if>
 
       <!-- Advanced security settings -->
       <message name="IDS_SETTINGS_SECURITY_JAVASCRIPT_OPTIMIZATION_LINK_ROW_ENABLED" desc="Description for the link row of the Javascript-optimization page when javascript-optimization is enabled.">
-        Speeds up sites with Chromium's V8 engine but makes Chromium slightly less resistant to attacks. This setting is on.
+        Speeds up sites with Agent Chrome's V8 engine but makes Agent Chrome slightly less resistant to attacks. This setting is on.
       </message>
       <message name="IDS_SETTINGS_SECURITY_JAVASCRIPT_OPTIMIZATION_LINK_ROW_DISABLED" desc="Description for the link row of the Javascript-optimization page when javascript-optimization is disabled.">
-        Speeds up sites with Chromium's V8 engine but makes Chromium slightly less resistant to attacks. This setting is off.
+        Speeds up sites with Agent Chrome's V8 engine but makes Agent Chrome slightly less resistant to attacks. This setting is off.
       </message>
       <message name="IDS_SETTINGS_SITE_SETTINGS_JAVASCRIPT_OPTIMIZER_DESCRIPTION" desc="Description of the JavaScript optimizer content setting.">
-        Speeds up sites with Chromium's V8 engine but makes Chromium slightly less resistant to attacks
+        Speeds up sites with Agent Chrome's V8 engine but makes Agent Chrome slightly less resistant to attacks
       </message>
       <message name="IDS_SETTINGS_SITE_SETTINGS_JAVASCRIPT_OPTIMIZER_ALLOWED_SUB_LABEL" desc="Sub-label for the enabled option of the JavaScript optimizer content setting.">
-        Chromium runs faster and features that use JavaScript should work as designed
+        Agent Chrome runs faster and features that use JavaScript should work as designed
       </message>
       <message name="IDS_SETTINGS_SITE_SETTINGS_JAVASCRIPT_OPTIMIZER_BLOCKED_SUB_LABEL" desc="Sub-label for the disabled option of the JavaScript optimizer content setting.">
-        Reduces performance but makes Chromium more resistant to attacks
+        Reduces performance but makes Agent Chrome more resistant to attacks
       </message>
       <!-- ChromiumUpdater Strings -->
 
@@ -1337,26 +1337,26 @@ Chromium is unable to recover your settings.
       <!-- New Create Shortcut View Strings -->
       <if expr="not is_android and not is_chromeos">
         <message name="IDS_CREATE_SHORTCUT_NOT_APPS_DIALOG_SUBTITLE" desc="Subtitle of the updated Create Shortcut dialog about how the site opens for Chromium">
-          Shortcuts open in Chromium
+          Shortcuts open in Agent Chrome
         </message>
       </if>
       <if expr="is_macosx">
         <message name="IDS_CHROMIUM_SHORCUT_DESCRIPTION" desc="Text to use as description for the '.crwebloc' file format, which is generated by the 'Save and Share' -> 'Create Shortcut' flow.">
-          Chromium Shortcut
+          Agent Chrome Shortcut
         </message>
       </if>
 
       <!-- Toast Strings-->
       <if expr="not is_android">
         <message name="IDS_CLEAR_BROWSING_DATA_TOAST_BODY" desc="Text on a toast notification that is shown when browsing data is successfully cleared.">
-          Cleared Chromium data
+          Cleared Agent Chrome data
         </message>
       </if>
 
 
 
       <message name ="IDS_GLIC_INELIGIBLE_PROFILE_NOTICE" translateable="false" desc="This is the text of the glic ineligible profile notice.">
-        To use Gemini in Chromium, sign in with a different Google Account
+        To use Gemini in Agent Chrome, sign in with a different Google Account
       </message>
 
 
@@ -1367,7 +1367,7 @@ Chromium is unable to recover your settings.
 
       <!-- Dice Migration strings -->
       <message name="IDS_DICE_MIGRATION_CONFIRMATION_TOAST_MESSAGE" desc="The confirmation message shown in a toast after the user clicks on the accept button on the Dice Migration dialog.">
-        You now have more features available in Chromium
+        You now have more features available in Agent Chrome
       </message>
       <message name="IDS_DICE_MIGRATION_CONFIRMATION_TOAST_BUTTON" desc="The text on the button of the confirmation toast shown after the user clicks the accept button on the Dice Migration dialog, that allows the users to control the sync settings or sign out of Chrome.">
         Manage
@@ -1388,7 +1388,7 @@ Chromium is unable to recover your settings.
       </message>
       <message name="IDS_DEFAULT_SEARCH_ENGINE_RESET_NOTIFICATION_BODY"
          desc="Body text of the notification shown when Chromium resets the default search engine, explaining that a change from outside Chromium was detected.">
-        Your search engine was changed from outside of Chromium. To protect you, Chromium reset it to its original default. <ph name="LEARN_MORE_LINK">$1<ex>Learn more</ex></ph>
+        Your search engine was changed from outside of Agent Chrome. To protect you, Agent Chrome reset it to its original default. <ph name="LEARN_MORE_LINK">$1<ex>Learn more</ex></ph>
       </message>
       <message name="IDS_DEFAULT_SEARCH_ENGINE_RESET_NOTIFICATION_GOT_IT_BUTTON"
          desc="Label for the 'Got it' button in the default search engine reset notification, which dismisses the UI.">
@@ -1406,19 +1406,19 @@ Chromium is unable to recover your settings.
 
       <!-- JS optimizations bubble -->
       <message name="IDS_JS_OPTIMIZATION_BUBBLE_BODY_NON_POLICY_BODY" desc="Body text for the JavaScript optimization bubble when disabled for other reasons.">
-        For security, Chromium turns off JavaScript optimization when you visit a site for the first time.&#xA;
+        For security, Agent Chrome turns off JavaScript optimization when you visit a site for the first time.&#xA;
 If this page isn’t working as expected, try allowing optimization.
       </message>
 
       <!-- Linux strings restored with their upstream conditions -->
       <if expr="is_linux">
       <message name="IDS_DESKTOP_SHORTCUT_COMMENT" desc="Description of the desktop shortcut file which will open a Chrome tab at a given url.">
-          Open <ph name="URL">$1<ex>https://www.example-url.com/</ex></ph> in a new tab in Chromium.
+          Open <ph name="URL">$1<ex>https://www.example-url.com/</ex></ph> in a new tab in Agent Chrome.
         </message>
       </if>
       <if expr="is_linux">
       <message name="IDS_LINUX_OBSOLETE" desc="A message displayed on an at-launch infobar and about:help warning the user that the OS version they are using is no longer supported.">
-          Chromium may not function correctly because it is no longer supported on this Linux distribution
+          Agent Chrome may not function correctly because it is no longer supported on this Linux distribution
         </message>
       </if>
       <if expr="is_linux">
@@ -1428,7 +1428,7 @@ If this page isn’t working as expected, try allowing optimization.
       </if>
       <if expr="is_linux">
       <message name="IDS_TERMS_DIALOG_ACCESSIBILITY_LABEL" desc="Accessibility label for the Terms of Service in the dialog. The actual terms text is just a placeholder for branded builds.">
-          Chromium Additional Terms of Service
+          Agent Chrome Additional Terms of Service
         </message>
       </if>
       <if expr="is_linux">
@@ -1438,7 +1438,7 @@ If this page isn’t working as expected, try allowing optimization.
       </if>
       <if expr="is_linux">
       <message name="IDS_TERMS_DIALOG_TITLE" desc="Window title for the Terms of Service dialog">
-          Chromium Additional Terms of Service
+          Agent Chrome Additional Terms of Service
         </message>
       </if>
     </messages>
