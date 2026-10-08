@@ -6,8 +6,6 @@ import {assert} from '//resources/js/assert.js';
 import {loadTimeData} from '//resources/js/load_time_data.js';
 import type {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import {MenuSourceType} from '//resources/mojo/ui/base/mojom/menu_source_type.mojom-webui.js';
-import type {HelpBubbleMixinInterface} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_interface.js';
-import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 import {isMac} from 'chrome://resources/js/platform.js';
 
 import {EventDispositionFlag} from './browser_proxy.js';
@@ -21,51 +19,6 @@ export const BUTTON_RIGHT = 2;
 export interface GetEventDispositionFlagsOptions {
   ignoreCtrlKey?: boolean;
   ignoreShiftKey?: boolean;
-}
-
-type Constructor<T> = new (...args: any[]) => T;
-
-export interface HelpBubbleAnchor {
-  hasHelpBubble: boolean;
-  adjustTooltipForHelpBubble(original: string): string;
-}
-
-/**
- * A mixin for components that can be targeted by a help bubble (IPH).
- * Centralizes the `hasHelpBubble` property and tooltip suppression logic.
- */
-export const HelpBubbleAnchorMixin =
-    <T extends Constructor<CrLitElement>>(superClass: T): T&
-    Constructor<HelpBubbleMixinInterface>&Constructor<HelpBubbleAnchor> => {
-      class HelpBubbleAnchorMixin extends HelpBubbleMixinLit
-      (superClass) {
-        static get properties() {
-          return {
-            hasHelpBubble: {
-              type: Boolean,
-            },
-          };
-        }
-
-        accessor hasHelpBubble: boolean = false;
-
-        /**
-         * Helper to suppress the tooltip when a help bubble is visible.
-         *
-         * @param original The original tooltip text.
-         * @returns The tooltip text to display.
-         */
-        adjustTooltipForHelpBubble(original: string): string {
-          return this.hasHelpBubble ? '' : original;
-        }
-      }
-
-      return HelpBubbleAnchorMixin as T & Constructor<HelpBubbleMixinInterface>&
-          Constructor<HelpBubbleAnchor>;
-    };
-
-export function setHasHelpBubble(el: Element, value: boolean) {
-  (el as unknown as HelpBubbleAnchor).hasHelpBubble = value;
 }
 
 // Tracks state used for deciding whether to display a context menu instead of

@@ -31,7 +31,6 @@
 #include "chrome/browser/enterprise/reporting/prefs.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
-#include "chrome/browser/finds/core/finds_service.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/gpu/gpu_mode_manager.h"
 #include "chrome/browser/hid/hid_policy_allowed_devices.h"
@@ -114,10 +113,8 @@
 #include "components/enterprise/isolated_mode/prefs.h"
 #include "components/enterprise/net/core/prefs.h"
 #include "components/enterprise/network_header_injection/core/network_header_injection_prefs.h"
-#include "components/feature_engagement/public/pref_names.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/image_fetcher/core/cache/image_cache.h"
-#include "components/invalidation/impl/per_user_topic_subscription_manager.h"
 #include "components/language/content/browser/geo_language_provider.h"
 #include "components/language/content/browser/ulp_language_code_locator/ulp_language_code_locator.h"
 #include "components/language/core/browser/language_prefs.h"
@@ -239,7 +236,6 @@
 #include "chrome/browser/notifications/notification_channels_provider_android.h"
 #include "chrome/browser/ntp_customization/ntp_android_custom_background_service.h"
 #include "chrome/browser/partnerbookmarks/partner_bookmarks_shim.h"
-#include "chrome/browser/readaloud/android/prefs.h"
 #include "chrome/browser/ssl/known_interception_disclosure_infobar_delegate.h"
 #include "components/cdm/browser/media_drm_storage_impl.h"  // nogncheck crbug.com/40147906
 #include "components/feed/core/common/pref_names.h"        // nogncheck
@@ -255,8 +251,6 @@
 #include "chrome/browser/intranet_redirect_detector.h"
 #include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
-#include "chrome/browser/ui/read_anything/read_anything_prefs.h"
-#include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
@@ -264,7 +258,6 @@
 #include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
-#include "chrome/browser/user_education/browser_user_education_storage_service.h"
 #include "chrome/browser/webauthn/chrome_authenticator_request_delegate.h"
 #include "components/headless/policy/headless_mode_prefs.h"  // nogncheck crbug.com/40147906
 #include "components/live_caption/live_caption_controller.h"
@@ -1408,7 +1401,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   flags_ui::PrefServiceFlagsStorage::RegisterPrefs(registry);
   GpuModeManager::RegisterPrefs(registry);
   signin::IdentityManager::RegisterLocalStatePrefs(registry);
-  invalidation::PerUserTopicSubscriptionManager::RegisterPrefs(registry);
   language::GeoLanguageProvider::RegisterLocalStatePrefs(registry);
   language::UlpLanguageCodeLocator::RegisterLocalStatePrefs(registry);
   memory::EnterpriseMemoryLimitPrefObserver::RegisterPrefs(registry);
@@ -1427,7 +1419,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   ProfileAttributesStorage::RegisterPrefs(registry);
   ProfileNetworkContextService::RegisterLocalStatePrefs(registry);
   profiles::RegisterPrefs(registry);
-  feature_engagement::RegisterLocalStatePrefs(registry);
 #if BUILDFLAG(IS_ANDROID)
   PushMessagingServiceImpl::RegisterPrefs(registry);
 #endif
@@ -1464,7 +1455,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 #if BUILDFLAG(IS_ANDROID)
   registry->RegisterBooleanPref(policy::policy_prefs::kBackForwardCacheEnabled,
                                 true);
-  registry->RegisterBooleanPref(policy::policy_prefs::kReadAloudEnabled, true);
 #endif  // BUILDFLAG(IS_ANDROID)
 
   // Below this point is for platform-specific and compile-time conditional
@@ -1706,13 +1696,11 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   enterprise_reporting::RegisterProfilePrefs(registry);
   dom_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
   DownloadPrefs::RegisterProfilePrefs(registry);
-  finds::FindsService::RegisterProfilePrefs(registry);
   permissions::PermissionHatsTriggerHelper::RegisterProfilePrefs(registry);
   history_clusters::prefs::RegisterProfilePrefs(registry);
   HostContentSettingsMap::RegisterProfilePrefs(registry);
   image_fetcher::ImageCache::RegisterProfilePrefs(registry);
   site_engagement::ImportantSitesUtil::RegisterProfilePrefs(registry);
-  invalidation::PerUserTopicSubscriptionManager::RegisterProfilePrefs(registry);
   language::LanguagePrefs::RegisterProfilePrefs(registry);
   login_detection::prefs::RegisterProfilePrefs(registry);
   lookalikes::RegisterProfilePrefs(registry);
@@ -1865,20 +1853,17 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   PartnerBookmarksShim::RegisterProfilePrefs(registry);
   permissions::GeolocationPermissionContextAndroid::RegisterProfilePrefs(
       registry);
-  readaloud::RegisterProfilePrefs(registry);
   RecentTabsPagePrefs::RegisterProfilePrefs(registry);
   usage_stats::UsageStatsBridge::RegisterProfilePrefs(registry);
   variations::VariationsService::RegisterProfilePrefs(registry);
   webapps::InstallPromptPrefs::RegisterProfilePrefs(registry);
 #else   // BUILDFLAG(IS_ANDROID)
-  BrowserUserEducationStorageService::RegisterProfilePrefs(registry);
   captions::LiveCaptionController::RegisterProfilePrefs(registry);
   captions::LiveTranslateController::RegisterProfilePrefs(registry);
   ChromeAuthenticatorRequestDelegate::RegisterProfilePrefs(registry);
   first_run::RegisterProfilePrefs(registry);
   gcm::RegisterProfilePrefs(registry);
   PinnedTabCodec::RegisterProfilePrefs(registry);
-  RegisterReadAnythingProfilePrefs(registry);
   settings::SettingsUI::RegisterProfilePrefs(registry);
   // Sign-in promo prefs that kept code still reads (signin_promo.cc was
   // removed in this fork).
@@ -2066,7 +2051,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   registry->RegisterBooleanPref(
       webauthn::pref_names::kRemoteProxiedRequestsAllowed, false);
 
-  side_panel_prefs::RegisterProfilePrefs(registry);
 
   tabs::RegisterProfilePrefs(registry);
 

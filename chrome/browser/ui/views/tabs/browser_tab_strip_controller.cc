@@ -54,7 +54,6 @@
 #include "chrome/browser/ui/views/tabs/tab/tab_accessibility.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/tab_groups/tab_group_color.h"

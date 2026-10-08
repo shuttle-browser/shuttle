@@ -79,10 +79,6 @@ class ClientSideDetectionHost
       bool is_invalid_ip,
       PhishingDetectorResult result) override;
   void MaybeRunUserReportCallback() override;
-  void MaybeStartGeminiAntiscamProtection(
-      GURL url,
-      ClientSideDetectionType request_type,
-      std::optional<bool> did_match_high_confidence_allowlist) override;
   void MaybeStartPreClassification(
       safe_browsing::ClientSideDetectionType request_type) override;
 
@@ -124,11 +120,6 @@ class ClientSideDetectionHost
     // then used to provide the intelligent scan delegate the information about
     // the page.
     virtual void GetInnerText(HostInnerTextCallback callback) = 0;
-    // Triggers Gemini Antiscam Protection if conditions are met.
-    virtual void MaybeStartGeminiAntiscamProtection(
-        GURL url,
-        ClientSideDetectionType request_type,
-        std::optional<bool> did_match_high_confidence_allowlist) = 0;
 
 #if BUILDFLAG(IS_ANDROID)
     virtual internal::ReferringAppInfo GetReferringAppInfo(
@@ -148,7 +139,6 @@ class ClientSideDetectionHost
   static std::unique_ptr<ClientSideDetectionHost> Create(
       content::WebContents* tab,
       std::unique_ptr<Delegate> delegate,
-      IntelligentScanDelegate* intelligent_scan_delegate,
       PrefService* pref_service,
       VerdictCacheManager* cache_manager,
       history::HistoryService* history_service,
@@ -210,7 +200,6 @@ class ClientSideDetectionHost
   explicit ClientSideDetectionHost(
       content::WebContents* tab,
       std::unique_ptr<Delegate> delegate,
-      IntelligentScanDelegate* intelligent_scan_delegate,
       PrefService* pref_service,
       VerdictCacheManager* cache_manager,
       history::HistoryService* history_service,

@@ -30,14 +30,9 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/webui/mojo_web_ui_controller.h"
-#include "ui/webui/resources/cr_components/help_bubble/help_bubble.mojom.h"
 #include "ui/webui/resources/js/tracked_element/tracked_element.mojom.h"
 
 class CommandUpdater;
-
-namespace user_education {
-class HelpBubbleHandler;
-}  // namespace user_education
 
 class OmniboxController;
 class WebuiOmniboxHandler;
@@ -52,7 +47,6 @@ class WebUIDataSource;
 
 class WebUIToolbarUI : public TopChromeWebUIController,
                        public content::WebContentsObserver,
-                       public help_bubble::mojom::HelpBubbleHandlerFactory,
                        public searchbox::mojom::PageHandlerFactory {
  public:
   // Provides dependencies to this controller during init.
@@ -99,12 +93,6 @@ class WebUIToolbarUI : public TopChromeWebUIController,
   virtual void BindInterface(
       mojo::PendingReceiver<toolbar_ui_api::mojom::ToolbarUIService> receiver);
 
-  // Implements support for help bubbles (IPH, tutorials, etc.) in settings
-  // pages.
-  void BindInterface(
-      mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-          receiver);
-
   void BindInterface(
       mojo::PendingReceiver<searchbox::mojom::PageHandlerFactory> receiver);
 
@@ -136,12 +124,6 @@ class WebUIToolbarUI : public TopChromeWebUIController,
   // content::WebContentsObserver:
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override;
-
-  // help_bubble::mojom::HelpBubbleHandlerFactory:
-  void CreateHelpBubbleHandler(
-      mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,
-      mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler)
-      override;
 
   // searchbox::mojom::PageHandlerFactory:
   void CreatePageHandler(
@@ -204,10 +186,6 @@ class WebUIToolbarUI : public TopChromeWebUIController,
       browser_controls_channel_client_end_;
   mojo::PendingReceiver<browser_controls_api::mojom::BrowserControlsService>
       browser_controls_channel_service_end_;
-
-  std::unique_ptr<user_education::HelpBubbleHandler> help_bubble_handler_;
-  mojo::Receiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-      help_bubble_service_{this};
 
   mojo::Receiver<searchbox::mojom::PageHandlerFactory>
       searchbox_page_factory_receiver_{this};

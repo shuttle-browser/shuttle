@@ -48,7 +48,6 @@ class LiveTabContext;
 class BrowserLocationBarModelDelegate;
 class BrowserSelectFileDialogController;
 class BrowserUiController;
-class BrowserUserEducationInterface;
 class BrowserView;
 class BrowserWebContentsDelegate;
 class BrowserWindowFullscreenController;
@@ -72,8 +71,6 @@ class ExtensionKeybindingRegistryViews;
 class FindBarController;
 class FindBarOwner;
 class FullscreenControlHost;
-class HistoryClustersSidePanelCoordinator;
-class HistorySidePanelCoordinator;
 class ImmersiveModeController;
 class InitialWebUIManager;
 class InitialWebUIWindowMetricsManager;
@@ -83,10 +80,6 @@ class PinnedToolbarActions;
 class OrganizerPanelStateController;
 class ScrimViewController;
 class SessionServiceBrowserHelper;
-class SidePanelCoordinator;
-class SidePanelRegistry;
-class SidePanelUI;
-class SplitViewIphController;
 class TabDragServiceFeature;
 class TabListBridge;
 
@@ -97,9 +90,6 @@ class ToastController;
 class ToastService;
 class UnloadController;
 class UpgradeNotificationController;
-class VerticalTabIphController;
-class WebUIBrowserExclusiveAccessContext;
-class WebUIBrowserSidePanelUI;
 class WindowFeatureController;
 class WindowMetadataController;
 class ZoomBubbleCoordinator;
@@ -155,7 +145,6 @@ class BrowserExtensionWindowController;
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 class ExtensionBrowserWindowHelper;
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
-class ExtensionSidePanelManager;
 }  // namespace extensions
 
 namespace omnibox {
@@ -249,9 +238,6 @@ class BrowserWindowFeatures {
     return extension_keybinding_registry_.get();
   }
 
-  extensions::ExtensionSidePanelManager* extension_side_panel_manager() {
-    return extension_side_panel_manager_.get();
-  }
 
   // Get the FindBarController for this browser window, creating it if it does
   // not yet exist.
@@ -286,13 +272,6 @@ class BrowserWindowFeatures {
   }
 
 
-  // TODO(crbug.com/346158959): For historical reasons, side_panel_ui is an
-  // abstract base class that contains some, but not all of the public interface
-  // of SidePanelCoordinator. One of the accessors side_panel_ui() or
-  // side_panel_coordinator() should be removed. For consistency with the rest
-  // of this class, we use lowercase_with_underscores even though the
-  // implementation is not inlined.
-  SidePanelUI* side_panel_ui();
 
 
 
@@ -377,9 +356,6 @@ class BrowserWindowFeatures {
 
   std::unique_ptr<FindBarOwner> find_bar_owner_;
   std::unique_ptr<BrowserWindowFullscreenController> fullscreen_controller_;
-  std::unique_ptr<HistoryClustersSidePanelCoordinator>
-      history_clusters_side_panel_coordinator_;
-  std::unique_ptr<HistorySidePanelCoordinator> history_side_panel_coordinator_;
   std::unique_ptr<InitialWebUIManager> initial_web_ui_manager_;
   std::unique_ptr<InitialWebUIWindowMetricsManager>
       initial_webui_window_metrics_manager_;
@@ -396,8 +372,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<OrganizerPanelStateController>
       organizer_panel_state_controller_;
   std::unique_ptr<SessionServiceBrowserHelper> session_service_browser_helper_;
-  std::unique_ptr<SidePanelRegistry> side_panel_registry_;
-  std::unique_ptr<SplitViewIphController> split_view_iph_controller_;
   std::unique_ptr<TabDragServiceFeature> tab_drag_service_feature_;
   std::unique_ptr<TabMenuModelDelegate> tab_menu_model_delegate_;
 
@@ -410,8 +384,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<ToastService> toast_service_;
   std::unique_ptr<UpgradeNotificationController>
       upgrade_notification_controller_;
-  std::unique_ptr<BrowserUserEducationInterface> user_education_;
-  std::unique_ptr<VerticalTabIphController> vertical_tab_iph_controller_;
   std::unique_ptr<tabs::VerticalTabStripStateController>
       vertical_tab_strip_state_controller_;
 
@@ -435,20 +407,12 @@ class BrowserWindowFeatures {
 
   // The window-scoped extension side-panel manager. There is a separate
   // tab-scoped extension side-panel manager.
-  std::unique_ptr<extensions::ExtensionSidePanelManager>
-      extension_side_panel_manager_;
 
   std::unique_ptr<FullscreenControlHost> fullscreen_control_host_;
   std::unique_ptr<omnibox::OmniboxPopupCloser> omnibox_popup_closer_;
   std::unique_ptr<ScrimViewController> scrim_view_controller_;
-  std::unique_ptr<SidePanelCoordinator> side_panel_coordinator_;
   std::unique_ptr<split_tabs::SplitTabHighlightController>
       split_tab_highlight_controller_;
-
-  // Members owned only when a WebUIBrowserWindow is used.
-  std::unique_ptr<WebUIBrowserExclusiveAccessContext>
-      webui_browser_exclusive_access_context_;
-  std::unique_ptr<WebUIBrowserSidePanelUI> webui_browser_side_panel_ui_;
 
   // Platform-specific members.
 #if BUILDFLAG(IS_WIN)

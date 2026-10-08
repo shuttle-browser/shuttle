@@ -11,12 +11,9 @@ import './tab_discard/exception_list.js';
 
 import {PrefService} from '/shared/settings/prefs2/pref_service.js';
 import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_observer_mixin_lit.js';
-import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 import {OpenWindowProxyImpl} from 'chrome://resources/js/open_window_proxy.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
-import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
-import type {SettingsToggleButtonElement} from '../controls/settings_toggle_button.js';
 import {loadTimeData} from '../i18n_setup.js';
 import {routes} from '../route.js';
 import {Router} from '../router.js';
@@ -33,11 +30,8 @@ export const DISCARD_RING_PREF =
 export const PERFORMANCE_INTERVENTION_NOTIFICATION_PREF =
     'performance_tuning.intervention_notification.enabled';
 
-// browser_element_identifiers constants
-const INACTIVE_TAB_SETTING_ELEMENT_ID = 'kInactiveTabSettingElementId';
-
 const SettingsPerformancePageElementBase =
-    HelpBubbleMixinLit(PrefServiceObserverMixinLit(CrLitElement));
+    PrefServiceObserverMixinLit(CrLitElement);
 
 export interface SettingsPerformancePageElement {
   $: {
@@ -57,18 +51,6 @@ export class SettingsPerformancePageElement extends
 
   private metricsProxy_: PerformanceMetricsProxy =
       PerformanceMetricsProxyImpl.getInstance();
-
-  override firstUpdated(changedProperties: PropertyValues<this>) {
-    super.firstUpdated(changedProperties);
-    const discardRingTreatmentToggleButton =
-        this.shadowRoot.querySelector<SettingsToggleButtonElement>(
-            '#discardRingTreatmentToggleButton');
-    if (discardRingTreatmentToggleButton) {
-      this.registerHelpBubble(
-          INACTIVE_TAB_SETTING_ELEMENT_ID,
-          discardRingTreatmentToggleButton.getBubbleAnchor());
-    }
-  }
 
   protected onDiscardRingChange_() {
     this.metricsProxy_.recordDiscardRingTreatmentEnabledChanged(

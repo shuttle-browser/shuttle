@@ -72,9 +72,6 @@ interface PageHandler {
   // Shows a context menu for a history result item.
   ShowContextMenuForURL(url.mojom.Url url, gfx.mojom.Point point);
 
-  // Notify the backend that the side panel UI is ready to be shown.
-  ShowSidePanelUI();
-
   // Toggles the visibility of the History Clusters. The returned Promise echos
   // the given value for `visible`. The page uses the returned value to update
   // its state once the request is fulfilled by the browser.

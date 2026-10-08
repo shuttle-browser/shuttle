@@ -34,8 +34,7 @@ ExtensionViewHost::ExtensionViewHost(
                     host_type),
       delegate_(std::move(delegate)) {
   // Not used for panels, see PanelHost.
-  DCHECK(host_type == mojom::ViewType::kExtensionPopup ||
-         host_type == mojom::ViewType::kExtensionSidePanel);
+  DCHECK(host_type == mojom::ViewType::kExtensionPopup);
 
   host_contents()->SetIgnoreZoomGestures(true);
 }
@@ -63,11 +62,9 @@ void ExtensionViewHost::LoadInitialURL() {
   }
 
 #if !BUILDFLAG(IS_ANDROID)
-  // Popups and side panels may spawn modal dialogs (e.g. the directory upload
-  // confirmation for <input webkitdirectory>), which need positioning
-  // information.
-  if (extension_host_type() == mojom::ViewType::kExtensionPopup ||
-      extension_host_type() == mojom::ViewType::kExtensionSidePanel) {
+  // Popups may spawn modal dialogs (e.g. the directory upload confirmation
+  // for <input webkitdirectory>), which need positioning information.
+  if (extension_host_type() == mojom::ViewType::kExtensionPopup) {
     web_modal_handler_ = std::make_unique<ExtensionViewHostWebModalHandler>(
         host_contents(), view_->GetNativeView());
   }

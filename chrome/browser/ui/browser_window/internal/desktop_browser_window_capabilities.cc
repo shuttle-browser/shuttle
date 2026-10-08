@@ -9,7 +9,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
-#include "chrome/browser/ui/webui_browser/webui_browser_window.h"
 #include "components/tabs/public/tab_interface.h"
 
 DEFINE_USER_DATA(DesktopBrowserWindowCapabilities);
@@ -58,11 +57,5 @@ void DesktopBrowserWindowCapabilities::SetWebContentsBlocked(
 
 bool DesktopBrowserWindowCapabilities::AllowKeyboardLockForInnerContents(
     content::WebContents* web_contents) const {
-  if (WebUIBrowserWindow::FromNativeWindow(
-          browser_window_->GetNativeWindow())) {
-    // Allow keyboard lock for tab WebContents in WebUIBrowserWindow.
-    return tabs::TabInterface::MaybeGetFromContents(web_contents) != nullptr;
-  }
-
   return false;
 }

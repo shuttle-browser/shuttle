@@ -58,7 +58,6 @@
 #include "chrome/browser/accessibility/caption_settings_dialog.h"
 #include "chrome/browser/actor/actor_commit_deferring_condition.h"
 #include "chrome/browser/after_startup_task_utils.h"
-#include "chrome/browser/ai/ai_manager.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/back_forward_cache/back_forward_cache_util.h"
 #include "chrome/browser/bad_message.h"
@@ -758,8 +757,6 @@ using plugins::ChromeContentBrowserClientPluginsPart;
 
 namespace {
 
-const char kAIManagerUserDataKey[] = "ai_manager";
-
 // Whether to disable caching of the advanced-protection state in
 // ShouldEnableStrictSiteIsolation().
 bool g_disable_advanced_protection_caching_for_tests = false;
@@ -878,21 +875,6 @@ blink::mojom::AutoplayPolicy DetermineWebContentsAutoplayPolicy(
     return blink::mojom::AutoplayPolicy::kNoUserGestureRequired;
   }
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  // If a user requests Read Aloud audio playbaback through the "Listen to this
-  // page" entry point in the context menu, page distillation and TTS engine
-  // readiness may take longer than the user gesture timeout. Thus, we allow
-  // Autoplay when the host is Reading Mode since the user explicitly requested
-  // audio playback when clicking the context menu entry point.
-  if (web_contents->GetLastCommittedURL().SchemeIs(
-          content::kChromeUIUntrustedScheme) &&
-      web_contents->GetLastCommittedURL().host() ==
-          chrome::kChromeUIUntrustedReadAnythingSidePanelHost) {
-    return blink::mojom::AutoplayPolicy::kNoUserGestureRequired;
-  }
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-        // BUILDFLAG(IS_CHROMEOS)
 
   // If we can show a setting to disable autoplay policy and are currently set
   // to `kDocumentUserActivationRequired`, return the user preference.
@@ -8229,15 +8211,9 @@ void ChromeContentBrowserClient::BindAIManager(
     base::SupportsUserData* context_user_data,
     content::RenderFrameHost* rfh,
     mojo::PendingReceiver<blink::mojom::AIManager> receiver) {
-  if (!context_user_data->GetUserData(kAIManagerUserDataKey)) {
-    context_user_data->SetUserData(
-        kAIManagerUserDataKey,
-        std::make_unique<AIManager>(browser_context, rfh));
-  }
-
-  AIManager* ai_manager = static_cast<AIManager*>(
-      context_user_data->GetUserData(kAIManagerUserDataKey));
-  ai_manager->AddReceiver(std::move(receiver));
+  // The on-device AI APIs are not supported in this browser. Dropping the
+  // receiver (instead of falling back to the content layer's echo
+  // implementation) makes the APIs unavailable to pages.
 }
 
 namespace {

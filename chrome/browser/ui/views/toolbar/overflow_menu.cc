@@ -128,15 +128,6 @@ OverflowMenu::GetDefaultResponsiveElements(BrowserWindowInterface* browser) {
               kToolbarSplitTabsToolbarButtonElementId,
               kToolbarSplitTabsMenuElementId},
           /*is_section_end=*/true),
-      ResponsiveElementInfo(
-          ElementIdInfo{
-              kPinnedToolbarActionShowSidePanelContextualTasksElementId,
-              IDS_OVERFLOW_MENU_ITEM_TEXT_CONTEXTUAL_TASKS,
-              &(features::IsRoundedIconsEnabled()
-                    ? omnibox::kSearchSparkIcon
-                    : omnibox::kSearchSparkOldIcon),
-              kPinnedToolbarActionShowSidePanelContextualTasksElementId},
-          /*is_section_end=*/false),
   };
 
   // Support actions items.

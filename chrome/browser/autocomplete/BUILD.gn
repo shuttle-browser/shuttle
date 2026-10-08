@@ -116,7 +116,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/views/side_panel",
     ]
   }
 

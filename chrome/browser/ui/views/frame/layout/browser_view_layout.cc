@@ -31,8 +31,6 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(BrowserViewLayoutViews,
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(BrowserViewLayoutViews,
                                       kVerticalTabStripBottomCornerElementId);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(BrowserViewLayoutViews,
-                                      kShadowOverlayElementId);
-DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(BrowserViewLayoutViews,
                                       kMainBackgroundRegionElementId);
 
 BrowserViewLayoutViews::BrowserViewLayoutViews() = default;

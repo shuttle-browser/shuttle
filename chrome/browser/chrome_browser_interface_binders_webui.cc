@@ -12,8 +12,6 @@
 #include "chrome/browser/ui/webui/actor_internals/actor_internals_ui.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals.mojom.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
-#include "chrome/browser/ui/webui/chrome_finds_internals/chrome_finds_internals.mojom.h"
-#include "chrome/browser/ui/webui/chrome_finds_internals/chrome_finds_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
 #include "chrome/browser/ui/webui/connectors_internals/connectors_internals_ui.h"
 #include "chrome/browser/ui/webui/content_settings/content_settings_internals.mojom.h"
@@ -50,7 +48,6 @@
 #include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
-#include "chrome/browser/ui/webui/user_education_internals/user_education_internals_ui.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals.mojom.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals_ui.h"
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -114,7 +111,6 @@ void BindTrackedElementHandlerRestricted(
 
   const bool is_allowed =
 #if !BUILDFLAG(IS_ANDROID)
-      controller->GetAs<UserEducationInternalsUI>() ||
       controller->GetAs<HistoryUI>() ||
 #endif  // !BUILDFLAG(IS_ANDROID)
       false;
@@ -131,10 +127,6 @@ void BindTrackedElementHandlerRestricted(
 void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
     mojo::BinderMapWithContext<content::RenderFrameHost*>* map,
     content::RenderFrameHost* render_frame_host) {
-  RegisterWebUIControllerInterfaceBinder<
-      chrome_finds_internals::mojom::PageHandlerFactory,
-      chrome_finds_internals::ChromeFindsInternalsUI>(map);
-
   RegisterWebUIControllerInterfaceBinder<::mojom::BluetoothInternalsHandler,
                                          BluetoothInternalsUI>(map);
 

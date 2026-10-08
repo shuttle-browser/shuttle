@@ -141,8 +141,6 @@ std::string_view LayoutConstantToCssVarName(LayoutConstant layout_constant) {
       return "--toolbar-icon-default-margin";
     case kToolbarCornerRadius:
       return "--toolbar-corner-radius";
-    case kSidePanelInset:
-      return "--toolbar-height-side-panel-inset";
     case kVerticalTabCornerRadius:
       return "--vertical-tab-corner-radius";
     case kVerticalTabHeight:

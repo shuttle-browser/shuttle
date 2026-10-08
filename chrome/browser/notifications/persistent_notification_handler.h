@@ -53,18 +53,6 @@ class PersistentNotificationHandler : public NotificationHandler {
                             const std::optional<std::string>& notification_id,
                             const std::optional<bool>& is_suspicious) override;
   void OpenSettings(Profile* profile, const GURL& origin) override;
-  void ReportNotificationAsSafe(const std::string& notification_id,
-                                const GURL& url,
-                                Profile* profile) override;
-  void ReportWarnedNotificationAsSpam(const std::string& notification_id,
-                                      const GURL& url,
-                                      Profile* profile) override;
-  void ReportUnwarnedNotificationAsSpam(const std::string& notification_id,
-                                        const GURL& url,
-                                        Profile* profile) override;
-  void OnShowOriginalNotification(const GURL& url,
-                                  const std::string& notification_id,
-                                  Profile* profile) override;
 
  private:
   void OnCloseCompleted(Profile* profile,
@@ -74,11 +62,6 @@ class PersistentNotificationHandler : public NotificationHandler {
                         const std::string& notification_id,
                         base::OnceClosure completed_closure,
                         content::PersistentNotificationStatus status);
-  void OnMaybeReport(const std::string& notification_id,
-                     const GURL& url,
-                     Profile* profile,
-                     bool did_show_warning,
-                     bool did_user_unsubscribe);
   void OnAppTerminating();
 
 #if BUILDFLAG(ENABLE_BACKGROUND_MODE)

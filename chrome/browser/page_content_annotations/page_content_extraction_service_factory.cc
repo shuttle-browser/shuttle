@@ -8,7 +8,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -55,7 +54,6 @@ PageContentExtractionServiceFactory::PageContentExtractionServiceFactory()
           ProfileSelections::Builder()
               .WithRegular(ProfileSelection::kOriginalOnly)
               .Build()) {
-  DependsOn(feature_engagement::TrackerFactory::GetInstance());
 }
 
 PageContentExtractionServiceFactory::~PageContentExtractionServiceFactory() =
@@ -70,12 +68,8 @@ PageContentExtractionServiceFactory::BuildServiceInstanceForBrowserContext(
   }
 
   Profile* profile = Profile::FromBrowserContext(context);
-  feature_engagement::Tracker* tracker = nullptr;
-  if (base::FeatureList::IsEnabled(features::kPageContentCache)) {
-    tracker = feature_engagement::TrackerFactory::GetForBrowserContext(profile);
-  }
   auto service = std::make_unique<PageContentExtractionService>(
-      g_browser_process->os_crypt_async(), profile->GetPath(), tracker);
+      g_browser_process->os_crypt_async(), profile->GetPath());
 
 #if BUILDFLAG(IS_ANDROID)
   if (base::FeatureList::IsEnabled(features::kPageContentCache)) {

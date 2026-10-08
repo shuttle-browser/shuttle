@@ -118,11 +118,6 @@ export class WebuiGalleryAppElement extends CrLitElement {
       src: 'md_select/md_select_demo.js',
     },
     {
-      name: 'Side panel',
-      path: 'side-panel',
-      src: 'side_panel/sp_components_demo.js',
-    },
-    {
       name: 'Sliders',
       path: 'sliders',
       src: 'cr_slider/cr_slider_demo.js',

@@ -13,16 +13,8 @@ ui::ElementIdentifier GetElementIdentifierForAction(actions::ActionId id) {
   switch (id) {
     case kActionSendSharedTabGroupFeedback:
       return kSharedTabGroupFeedbackElementId;
-    case kActionSidePanelShowComments:
-      return kSharedTabGroupCommentsActionElementId;
-    case kActionSidePanelShowLensOverlayResults:
-      return kPinnedToolbarActionShowSidePanelLensOverlayResultsElementId;
-    case kActionSidePanelShowBookmarks:
-      return kPinnedToolbarActionShowSidePanelBookmarksElementId;
     case kActionSendTabToSelf:
       return kPinnedToolbarActionSendTabToSelfElementId;
-    case kActionSidePanelShowContextualTasks:
-      return kPinnedToolbarActionShowSidePanelContextualTasksElementId;
     default:
       return ui::ElementIdentifier();
   }

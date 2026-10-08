@@ -57,7 +57,6 @@ source_set("impl") {
     "//chrome/browser/ui/tabs:features",
     "//chrome/browser/ui/tabs:tab_group",
     "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/browser/ui/user_education",
     "//chrome/browser/ui/views:bubble_menu_item_factory",
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/browser/ui/views/tabs:tab_strip",

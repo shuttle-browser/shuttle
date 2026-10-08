@@ -80,7 +80,6 @@ grit("resources") {
     "extensions/desktop_capture_custom_bindings.js",
     "extensions/developer_private_custom_bindings.js",
     "extensions/downloads_custom_bindings.js",
-    "extensions/gcm_custom_bindings.js",
     "extensions/identity_custom_bindings.js",
     "extensions/image_writer_private_custom_bindings.js",
     "extensions/input.ime_custom_bindings.js",

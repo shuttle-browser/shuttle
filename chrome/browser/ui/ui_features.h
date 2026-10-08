@@ -250,16 +250,6 @@ BASE_DECLARE_FEATURE(kThreeButtonPasswordSaveDialog);
 BASE_DECLARE_FEATURE(kPasswordSaveUpdateDropdownMenuExperiment);
 #endif
 
-// Feature which uses a flyover animation for animating side panels (and
-// expansion/contraction of the Vertical Tab Strip).
-//
-// Call `UseSidePanelFlyoverAnimation()` instead of checking this feature
-// directly.
-BASE_DECLARE_FEATURE(kSidePanelFlyoverAnimation);
-bool UseSidePanelFlyoverAnimation();
-
-BASE_DECLARE_FEATURE_PARAM(int, kSidePanelFlyoverDurationMs);
-
 BASE_DECLARE_FEATURE(kUseDefaultDeadlineWhenAnimatingBounds);
 
 // TODO(crbug.com/460764864): Cleanup all the enterprise badging feature flags.
@@ -313,16 +303,6 @@ BASE_DECLARE_FEATURE(kPageActionsPrioritySelectorProductMessagingController);
 // Enables the elevated capsule toolbar for page actions.
 BASE_DECLARE_FEATURE(kPageActionsElevatedToolbar);
 bool IsPageActionsElevatedToolbarEnabled();
-
-// If enabled, the by date history will show in the side panel.
-BASE_DECLARE_FEATURE(kByDateHistoryInSidePanel);
-
-// If enabled, the "Tabs from other devices" side panel will be available.
-BASE_DECLARE_FEATURE(kTabsFromOtherDevicesSidePanel);
-
-// If enabled, the "Tabs from other devices" toolbar button will be pinned by
-// default.
-BASE_DECLARE_FEATURE(kTabsFromOtherDevicesSidePanelPinnedByDefault);
 
 #if !BUILDFLAG(IS_ANDROID)
 

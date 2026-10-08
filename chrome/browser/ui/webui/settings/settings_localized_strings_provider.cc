@@ -33,7 +33,6 @@
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
-#include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
@@ -347,11 +346,6 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
       {"showHoverCardMemoryUsage", IDS_SETTINGS_SHOW_HOVER_CARD_MEMORY_USAGE},
       {"showHoverCardMemoryUsageStandalone",
        IDS_SETTINGS_SHOW_HOVER_CARD_MEMORY_USAGE_STANDALONE},
-      {"sidePanelPosition", IDS_SETTINGS_SIDE_PANEL_POSITION},
-      {"sidePanelAlignmentChromePanels",
-       IDS_SETTINGS_SIDE_PANEL_ALIGNMENT_CHROME_PANELS},
-      {"sidePanelAlignmentA11yLabel",
-       IDS_SETTINGS_SIDE_PANEL_ALIGNMENT_A11Y_LABEL},
       {"homePageNtp", IDS_SETTINGS_HOME_PAGE_NTP},
       {"pageZoom", IDS_SETTINGS_PAGE_ZOOM_LABEL},
       {"fontSize", IDS_SETTINGS_FONT_SIZE_LABEL},
@@ -412,13 +406,6 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
   html_source->AddBoolean(
       "tabStripUnificationEnabled",
       base::FeatureList::IsEnabled(tabs::kTabStripUnification));
-
-  std::string configurable_alignments_json;
-  base::JSONWriter::Write(
-      side_panel_prefs::GetConfigurableSidePanelAlignments(profile),
-      &configurable_alignments_json);
-  html_source->AddString("configurableSidePanelAlignments",
-                         configurable_alignments_json);
 
 #if BUILDFLAG(IS_LINUX)
   bool show_custom_chrome_frame = ui::OzonePlatform::GetInstance()

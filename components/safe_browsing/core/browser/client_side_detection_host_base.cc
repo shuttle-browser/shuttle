@@ -175,14 +175,12 @@ std::string_view GetRequestTypeName(
 ClientSideDetectionHostBase::ClientSideDetectionHostBase(
     base::WeakPtr<ClientSideDetectionServiceBase> csd_service,
     VerdictCacheManager* cache_manager,
-    IntelligentScanDelegate* intelligent_scan_delegate,
     PrefService* pref_service,
     std::unique_ptr<SafeBrowsingTokenFetcher> token_fetcher,
     history::HistoryService* history_service,
     bool is_off_the_record)
     : csd_service_(csd_service),
       cache_manager_(cache_manager),
-      intelligent_scan_delegate_(intelligent_scan_delegate),
       pref_service_(pref_service),
       token_fetcher_(std::move(token_fetcher)),
       history_service_(history_service),
@@ -911,10 +909,6 @@ void ClientSideDetectionHostBase::SendRequest(
   LogClientSideDetectionEvent(
       ClientSideDetectionEvent::kMiscellaneousFieldsAdded,
       verdict->client_side_detection_type());
-
-  MaybeStartGeminiAntiscamProtection(GURL(verdict->url()),
-                                     verdict->client_side_detection_type(),
-                                     did_match_high_confidence_allowlist);
 
   is_csd_running_ = false;
 

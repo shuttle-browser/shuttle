@@ -128,9 +128,6 @@ ChromePageInfoDelegate::ChromePageInfoDelegate(
     : get_browser_callback_(std::move(get_browser_callback)),
       web_contents_(web_contents) {
   CHECK(get_browser_callback_);
-  base::UmaHistogramBoolean("Security.PageInfo.AboutThisSiteLanguageSupported",
-                            page_info::IsAboutThisSiteFeatureEnabled(
-                                g_browser_process->GetApplicationLocale()));
 }
 
 ChromePageInfoDelegate::ChromePageInfoDelegate(

@@ -10,8 +10,6 @@ build_webui("build") {
   grd_prefix = "webui_gallery"
 
   static_files = [
-    "demos/side_panel/empty.svg",
-    "demos/side_panel/empty_dark.svg",
     "webui_gallery.html",
   ]
 
@@ -35,7 +33,6 @@ build_webui("build") {
     "demos/nav_menu/nav_menu_demo.css",
     "demos/progress_indicators/progress_indicator_demo.css",
     "demos/scroll_view/scroll_view_demo.css",
-    "demos/side_panel/sp_components_demo.css",
   ]
 
   # Files holding a Polymer or native custom element definition AND have an
@@ -93,25 +90,16 @@ build_webui("build") {
     "demos/progress_indicators/progress_indicator_demo.ts",
     "demos/scroll_view/scroll_view_demo.html.ts",
     "demos/scroll_view/scroll_view_demo.ts",
-    "demos/side_panel/sp_components_demo.html.ts",
-    "demos/side_panel/sp_components_demo.ts",
   ]
 
   html_to_wrapper_template = "detect"
 
   ts_deps = [
-    "//chrome/browser/resources/side_panel/shared:build_ts",
     "//third_party/lit/v3_0:build_ts",
     "//ui/webui/resources/cr_components/color_change_listener:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
     "//ui/webui/resources/js:build_ts",
   ]
-
-  ts_path_mappings =
-      [ "//webui-gallery/shared/*|" +
-        rebase_path(
-            "$root_gen_dir/chrome/browser/resources/side_panel/shared/tsc/*",
-            target_gen_dir) ]
 
   webui_context_type = "trusted"
 }

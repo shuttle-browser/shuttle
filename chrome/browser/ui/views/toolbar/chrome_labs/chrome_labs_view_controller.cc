@@ -28,7 +28,6 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/common/buildflags.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "components/user_education/common/new_badge/new_badge_controller.h"
 #include "components/webui/flags/feature_entry.h"
 #include "components/webui/flags/flags_state.h"
 #include "components/webui/flags/flags_storage.h"
@@ -90,12 +89,6 @@ void EmitToHistogram(const std::u16string& selected_lab_state,
   }
 }
 
-// Returns the number of days since epoch (1970-01-01) in the local timezone.
-uint32_t GetCurrentDay() {
-  base::TimeDelta delta = base::Time::Now() - base::Time::UnixEpoch();
-  return base::saturated_cast<uint32_t>(delta.InDays());
-}
-
 }  // namespace
 
 ChromeLabsViewController::ChromeLabsViewController(
@@ -140,7 +133,7 @@ void ChromeLabsViewController::ParseModelDataAndAddLabs() {
       DCHECK(valid_entry_type);
       int default_index =
           GetIndexOfEnabledLabState(entry, flags_state_, flags_storage_);
-      ChromeLabsItemView* lab_item = chrome_labs_bubble_view_->AddLabItem(
+      chrome_labs_bubble_view_->AddLabItem(
           lab, default_index, entry, browser_,
           base::BindRepeating(
               [](ChromeLabsBubbleView* bubble_view, std::string internal_name,
@@ -161,8 +154,6 @@ void ChromeLabsViewController::ParseModelDataAndAddLabs() {
               },
               chrome_labs_bubble_view_.get(), lab.internal_name,
               flags_storage_));
-      lab_item->SetShowNewBadge(
-          ShouldLabShowNewBadge(browser_->GetProfile(), lab));
     }
   }
 }
@@ -189,38 +180,6 @@ void ChromeLabsViewController::SetRestartCallback() {
   restart_callback_ = chrome_labs_bubble_view_->RegisterRestartCallback(
       base::BindRepeating(&ChromeLabsViewController::RestartToApplyFlags,
                           base::Unretained(this)));
-}
-
-user_education::DisplayNewBadge ChromeLabsViewController::ShouldLabShowNewBadge(
-    Profile* profile,
-    const LabInfo& lab) {
-#if BUILDFLAG(IS_CHROMEOS)
-  ScopedDictPrefUpdate update(
-      profile->GetPrefs(), chrome_labs_prefs::kChromeLabsNewBadgeDictAshChrome);
-#else
-  ScopedDictPrefUpdate update(g_browser_process->local_state(),
-                              chrome_labs_prefs::kChromeLabsNewBadgeDict);
-#endif
-
-  base::DictValue& new_badge_prefs = update.Get();
-  std::optional<int> start_day = new_badge_prefs.FindInt(lab.internal_name);
-  DCHECK(start_day);
-  uint32_t current_day = GetCurrentDay();
-  if (*start_day == chrome_labs_prefs::kChromeLabsNewExperimentPrefValue) {
-    // Set the dictionary value of this experiment to the number of days since
-    // epoch (1970-01-01). This value is the first day the user sees the new
-    // experiment in Chrome Labs and will be used to determine whether or not to
-    // show the new badge.
-    new_badge_prefs.Set(lab.internal_name, static_cast<int>(current_day));
-    return user_education::DisplayNewBadge(
-        base::PassKey<ChromeLabsViewController>(), true);
-  }
-  int days_elapsed = current_day - *start_day;
-  // Show the new badge for 7 days. If the users sets the clock such that the
-  // current day is now before |start_day| don’t show the new badge.
-  return user_education::DisplayNewBadge(
-      base::PassKey<ChromeLabsViewController>(),
-      days_elapsed >= 0 && days_elapsed < 7);
 }
 
 void ChromeLabsViewController::RestartToApplyFlagsForTesting() {

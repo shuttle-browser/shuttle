@@ -10,7 +10,6 @@
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/side_panel/history/history_side_panel_coordinator.h"
 #include "chrome/browser/ui/webui/color_pipeline_internals/color_pipeline_internals_ui.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom.h"
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
@@ -26,19 +25,12 @@
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals.mojom.h"
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
-#include "chrome/browser/ui/webui/side_panel/history/history_side_panel_ui.h"
-#include "chrome/browser/ui/webui/side_panel/history_clusters/history_clusters_side_panel_ui.h"
-#include "chrome/browser/ui/webui/side_panel/read_anything/read_anything_untrusted_ui.h"
-#include "chrome/browser/ui/webui/user_education_internals/user_education_internals_ui.h"
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_ui.h"
-#include "chrome/browser/ui/webui_browser/webui_browser.h"
-#include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
 #include "chrome/common/chrome_features.h"
 #include "components/browser_apis/browser_controls/browser_controls_api.mojom.h"
 #include "components/browser_apis/tab_drag/tab_drag_api.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api.mojom.h"
-#include "components/guest_contents/common/guest_contents.mojom.h"
 #include "components/history_clusters/core/history_clusters_service.h"
 #include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
@@ -47,7 +39,6 @@
 #include "components/page_image_service/mojom/page_image_service.mojom.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/signin/public/base/signin_buildflags.h"
-#include "components/user_education/common/user_education_features.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
@@ -60,7 +51,6 @@
 #include "ui/webui/resources/cr_components/app_management/app_management.mojom.h"
 #include "ui/webui/resources/cr_components/color_change_listener/color_change_listener.mojom.h"
 #include "ui/webui/resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom.h"
-#include "ui/webui/resources/cr_components/help_bubble/custom_help_bubble.mojom.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
 #include "ui/webui/resources/cr_components/history_clusters/history_clusters.mojom.h"
 #include "ui/webui/resources/cr_components/theme_color_picker/theme_color_picker.mojom.h"
@@ -160,13 +150,8 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
         actor::ui::ActorOverlayUI>(map);
   }
 
-  if (HistorySidePanelCoordinator::IsSupported()) {
-    RegisterWebUIControllerInterfaceBinder<history::mojom::PageHandler,
-                                           HistorySidePanelUI, HistoryUI>(map);
-  } else {
-    RegisterWebUIControllerInterfaceBinder<history::mojom::PageHandler,
-                                           HistoryUI>(map);
-  }
+  RegisterWebUIControllerInterfaceBinder<history::mojom::PageHandler,
+                                         HistoryUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<
       infobar_internals::mojom::PageHandlerFactory, InfoBarInternalsUI>(map);
@@ -180,46 +165,14 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
           render_frame_host->GetProcess()->GetBrowserContext());
   if (history_clusters_service &&
       history_clusters_service->is_journeys_feature_flag_enabled()) {
-    if (HistorySidePanelCoordinator::IsSupported()) {
-      RegisterWebUIControllerInterfaceBinder<
-          history_clusters::mojom::PageHandlerFactory, HistoryUI,
-          HistorySidePanelUI>(map);
-    } else {
-      RegisterWebUIControllerInterfaceBinder<
-          history_clusters::mojom::PageHandlerFactory, HistoryUI,
-          HistoryClustersSidePanelUI>(map);
-    }
-  }
-  if (HistorySidePanelCoordinator::IsSupported()) {
     RegisterWebUIControllerInterfaceBinder<
-        page_image_service::mojom::PageImageServiceHandler, HistoryUI,
-        HistorySidePanelUI>(map);
-  } else {
-    RegisterWebUIControllerInterfaceBinder<
-        page_image_service::mojom::PageImageServiceHandler, HistoryUI,
-        HistoryClustersSidePanelUI>(map);
+        history_clusters::mojom::PageHandlerFactory, HistoryUI>(map);
   }
-
+  RegisterWebUIControllerInterfaceBinder<
+      page_image_service::mojom::PageImageServiceHandler, HistoryUI>(map);
 
   RegisterWebUIControllerInterfaceBinder<searchbox::mojom::PageHandlerFactory,
                                          OmniboxPopupUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      help_bubble::mojom::HelpBubbleHandlerFactory, UserEducationInternalsUI,
-      HistoryUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      user_education::mojom::UserEducationMixedTrustHandlerFactory, HistoryUI,
-      UserEducationInternalsUI>(map);
-
-
-  RegisterWebUIControllerInterfaceBinder<
-      read_anything::mojom::UntrustedPageHandlerFactory,
-      ReadAnythingUntrustedUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      ::mojom::user_education_internals::UserEducationInternalsPageHandler,
-      UserEducationInternalsUI>(map);
 
   // TODO(crbug.com/398926117): Create a generic mechanism for these interfaces.
   map->Add<metrics_reporter::mojom::PageMetricsHost>(
@@ -230,8 +183,6 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
         multistep_filter_internals::mojom::PageHandlerFactory,
         multistep_filter_internals::MultistepFilterInternalsUI>(map);
   }
-  RegisterWebUIControllerInterfaceBinder<
-      guest_contents::mojom::GuestContentsHost, WebUIBrowserUI>(map);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   RegisterWebUIControllerInterfaceBinder<updater_ui::mojom::PageHandlerFactory,
@@ -264,19 +215,7 @@ void PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsDesktop(
       .Add<theme_color_picker::mojom::ThemeColorPickerHandlerFactory>()
 #endif  // !BUILDFLAG(IS_CHROMEOS)
       .Add<customize_color_scheme_mode::mojom::
-               CustomizeColorSchemeModeHandlerFactory>()
-      .Add<help_bubble::mojom::HelpBubbleHandlerFactory>();
-
-  if (webui_browser::IsWebUIBrowserEnabled()) {
-    registry.ForWebUI<WebUIBrowserUI>()
-        .Add<webui_browser::mojom::PageHandlerFactory>()
-        .Add<extensions_bar::mojom::PageHandlerFactory>()
-        .Add<searchbox::mojom::PageHandlerFactory>()
-        .Add<tabs_api::mojom::TabDragService>()
-        .Add<tabs_api::mojom::TabStripService>()
-        .Add<tabs_api::mojom::TabStripExperimentService>()
-        .Add<tabs_api::mojom::TabStripUIController>();
-  }
+               CustomizeColorSchemeModeHandlerFactory>();
 
   if (features::IsWebUIToolbarEnabled() ||
       base::FeatureList::IsEnabled(
@@ -284,7 +223,6 @@ void PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsDesktop(
     registry.ForWebUI<WebUIToolbarUI>()
         .Add<browser_controls_api::mojom::BrowserControlsService>()
         .Add<toolbar_ui_api::mojom::ToolbarUIService>()
-        .Add<help_bubble::mojom::HelpBubbleHandlerFactory>()
         .Add<searchbox::mojom::PageHandlerFactory>();
   }
 
@@ -295,9 +233,6 @@ void PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsDesktop(
 
 void PopulateChromeWebUIFrameInterfaceBrokersUntrustedPartsDesktop(
     content::WebUIBrowserInterfaceBrokerRegistry& registry) {
-  registry.ForWebUI<ReadAnythingUntrustedUI>()
-      .Add<help_bubble::mojom::HelpBubbleHandlerFactory>()
-      .Add<user_education::mojom::UserEducationMixedTrustHandlerFactory>();
 }
 
 }  // namespace chrome::internal

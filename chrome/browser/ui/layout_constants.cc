@@ -137,8 +137,6 @@ int GetLayoutConstant(LayoutConstant constant) {
       return touch_ui ? 0 : 2;
     case LayoutConstant::kLocationBarMargin:
       return touch_ui ? 12 : 9;
-    case LayoutConstant::kSidePanelInset:
-      return 8;
     case LayoutConstant::kPageInfoIconSize:
       return 20;
     case LayoutConstant::kDownloadIconSize:

@@ -284,7 +284,6 @@
     <messages fallback_to_english="true">
       <part file="bookmark_component_strings.grdp" />
       <part file="browsing_data_strings.grdp" />
-      <part file="commerce_strings.grdp" />
       <part file="components_settings_strings.grdp" />
       <part file="crash_strings.grdp" />
       <part file="dialog_strings.grdp" />
@@ -319,7 +318,6 @@
       <part file="supervised_user_strings.grdp" />
       <part file="tab_groups_strings.grdp" />
       <part file="tab_resume_strings.grdp" />
-      <part file="user_education_strings.grdp" />
       <part file="version_ui_strings.grdp" />
       <part file="collaboration_strings.grdp" />
       <part file="contextual_cueing_strings.grdp" />
@@ -411,9 +409,6 @@
       </message>
       <message name="IDS_ACCNAME_OPEN" desc="The accessible name for the Open button.">
         Open
-      </message>
-      <message name="IDS_ACCNAME_OPEN_IN_NEW_TAB" desc="The accessible name for the Open in New Tab button.">
-        Open in new tab
       </message>
       <message name="IDS_ACCNAME_PREVIOUS" desc="The accessible name for the previous button.">
         Previous

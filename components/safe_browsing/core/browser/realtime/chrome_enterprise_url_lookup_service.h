@@ -41,7 +41,6 @@ class PrefService;
 
 namespace safe_browsing {
 
-class IntelligentScanDelegate;
 class ReferrerChainProvider;
 
 // TODO(crbug.com/406211981): Migrate unit tests to components and remove the
@@ -72,7 +71,6 @@ class ChromeEnterpriseRealTimeUrlLookupService
           get_content_area_account_email_callback,
       base::RepeatingCallback<bool()> is_profile_affiliated_callback,
       bool is_command_line_switch_supported,
-      IntelligentScanDelegate* intelligent_scan_delegate,
       base::RepeatingCallback<network::mojom::NetworkContext*()>
           network_context_getter);
 

@@ -22,7 +22,6 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/webui_browser/webui_browser.h"
 #include "chrome/common/buildflags.h"
 #include "components/sessions/content/content_serialized_navigation_builder.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -111,15 +110,11 @@ void LoadRestoredTabIfVisible(BrowserWindowInterface* browser,
   // A layout should already have been performed to determine the contents size.
   // The contents size should not be empty, unless the browser size and restored
   // size are also empty.
-  // WebUI browser's content size is not available until the WebUI page is
-  // loaded.
-  if (!webui_browser::IsWebUIBrowserEnabled()) {
-    DCHECK(!BrowserWindow::FromBrowser(browser)->GetContentsSize().IsEmpty() ||
-           (browser->GetWindow()->GetBounds().IsEmpty() &&
-            browser->GetWindow()->GetRestoredBounds().IsEmpty()));
-    DCHECK_EQ(web_contents->GetSize(),
-              BrowserWindow::FromBrowser(browser)->GetContentsSize());
-  }
+  DCHECK(!BrowserWindow::FromBrowser(browser)->GetContentsSize().IsEmpty() ||
+         (browser->GetWindow()->GetBounds().IsEmpty() &&
+          browser->GetWindow()->GetRestoredBounds().IsEmpty()));
+  DCHECK_EQ(web_contents->GetSize(),
+            BrowserWindow::FromBrowser(browser)->GetContentsSize());
 
   web_contents->GetController().LoadIfNecessary();
 }

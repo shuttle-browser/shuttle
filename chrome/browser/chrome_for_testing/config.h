@@ -26,7 +26,6 @@ bool LoadConfig(PrefService* pref_service);
 
 // Convenience functions to retrieve Chrome for Testing prefs returned by
 // |g_browser_process->local_state()|.
-bool IsEnableUserEducationUI();
 bool IsEnableSearchEngineChoiceDialog();
 bool IsEnableVirtualClipboard();
 const base::ListValue& GetRequiredComponentsList();

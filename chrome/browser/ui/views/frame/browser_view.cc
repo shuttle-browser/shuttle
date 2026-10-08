@@ -50,7 +50,6 @@
 #include "chrome/browser/enterprise/watermark/settings.h"
 #include "chrome/browser/extensions/browser_extension_window_controller.h"
 #include "chrome/browser/extensions/extension_util.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/headless/headless_mode_util.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
@@ -100,10 +99,6 @@
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
 #include "chrome/browser/ui/sad_tab_helper.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
-#include "chrome/browser/ui/side_panel/side_panel_registry.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
@@ -121,7 +116,6 @@
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/accessibility/accessibility_focus_highlight.h"
 #include "chrome/browser/ui/views/accessibility/caret_browsing_dialog_delegate.h"
@@ -151,7 +145,6 @@
 #include "chrome/browser/ui/views/frame/multi_contents_view_drop_target_controller.h"
 #include "chrome/browser/ui/views/frame/multi_contents_view_mini_toolbar.h"
 #include "chrome/browser/ui/views/frame/scrim_view.h"
-#include "chrome/browser/ui/views/frame/shadow_overlay_view.h"
 #include "chrome/browser/ui/views/frame/tab_modal_dialog_host.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/top_container_view.h"
@@ -169,9 +162,6 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
 #include "chrome/browser/ui/views/page_action/page_action_view.h"
 #include "chrome/browser/ui/views/permissions/chip/permission_dashboard_view.h"
-#include "chrome/browser/ui/views/side_panel/side_panel.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_animation_content_view.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
 #include "chrome/browser/ui/views/status_bubble_views.h"
 #include "chrome/browser/ui/views/tab_contents/chrome_web_contents_view_focus_helper.h"
 #include "chrome/browser/ui/views/tabs/browser_tab_strip_controller.h"
@@ -190,7 +180,6 @@
 #include "chrome/browser/ui/views/toolbar/reload_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/views/update_recommended_message_box.h"
-#include "chrome/browser/ui/views/user_education/browser_user_education_service.h"
 #include "chrome/browser/ui/waap/initial_web_ui_manager.h"
 #include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
@@ -198,8 +187,6 @@
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/browser/ui/window_sizer/window_sizer.h"
 #include "chrome/browser/ui/zoom/browser_window_zoom_observer.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
@@ -209,9 +196,6 @@
 #include "chrome/grit/theme_resources.h"
 #include "components/content_settings/core/common/features.h"
 #include "components/enterprise/buildflags/buildflags.h"
-#include "components/feature_engagement/public/event_constants.h"
-#include "components/feature_engagement/public/feature_constants.h"
-#include "components/feature_engagement/public/tracker.h"
 #include "components/infobars/content/content_infobar_manager.h"
 #include "components/javascript_dialogs/app_modal_dialog_controller.h"
 #include "components/javascript_dialogs/app_modal_dialog_queue.h"
@@ -228,12 +212,6 @@
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/user_education/common/feature_promo/feature_promo_handle.h"
-#include "components/user_education/common/feature_promo/feature_promo_result.h"
-#include "components/user_education/common/help_bubble/help_bubble_factory_registry.h"
-#include "components/user_education/common/new_badge/new_badge_controller.h"
-#include "components/user_education/common/user_education_features.h"
-#include "components/user_education/views/help_bubble_view.h"
 #include "components/version_info/channel.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/browser_accessibility_state.h"
@@ -881,17 +859,6 @@ BrowserView::BrowserView(BrowserWindowInterface* browser)
   infobar_container_ =
       AddChildView(std::make_unique<InfoBarContainerView>(this));
 
-  // This frames some/all of the top container plus infobars, contents, and
-  // contents-height side panel when the toolbar-height side panel is visible.
-  // It must render after those elements.
-  main_shadow_overlay_ =
-      AddChildView(std::make_unique<ShadowOverlayView>(*this));
-  main_shadow_overlay_->SetProperty(
-      views::kElementIdentifierKey,
-      BrowserViewLayoutViews::kShadowOverlayElementId);
-
-  side_panel_ = AddChildView(std::make_unique<SidePanel>(this));
-
   // Tabstrip comes basically last because it should be before toolbar in the
   // focus order but also needs to paint on top of everything.
   horizontal_tab_strip_region_view_ =
@@ -956,11 +923,6 @@ BrowserView::BrowserView(BrowserWindowInterface* browser)
 
   window_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
   window_scrim_view_->layer()->SetName("WindowScrimView");
-
-  side_panel_content_transition_scrim_view_ =
-      AddChildView(std::make_unique<ScrimView>(kColorToolbar));
-  side_panel_content_transition_scrim_view_->layer()->SetOpacity(0.0f);
-  side_panel_content_transition_scrim_view_->SetVisible(false);
 
 #if BUILDFLAG(IS_WIN)
   // Create a custom JumpList and add it to an observer of TabRestoreService
@@ -1054,15 +1016,12 @@ BrowserView::~BrowserView() {
   find_bar_host_view_ = nullptr;
   infobar_container_ = nullptr;
   multi_contents_view_ = nullptr;
-  main_shadow_overlay_ = nullptr;
   window_scrim_view_ = nullptr;
-  side_panel_content_transition_scrim_view_ = nullptr;
   vertical_tab_strip_region_view_ = nullptr;
   vertical_tab_strip_background_blur_backdrop_ = nullptr;
   vertical_tab_strip_top_corner_ = nullptr;
   vertical_tab_strip_bottom_corner_ = nullptr;
   organizer_panel_container_ = nullptr;
-  side_panel_ = nullptr;
 
 #if BUILDFLAG(IS_MAC)
   tab_overlay_view_ = nullptr;
@@ -1170,29 +1129,6 @@ ClientFrameElementInfo BrowserView::GetFrameElementInfo() const {
     info.toolbar_preferred_height = toolbar_->GetPreferredSize().height();
   }
   return info;
-}
-
-SidePanelAnimationContentView* BrowserView::SetSidePanelAnimationContent(
-    std::unique_ptr<SidePanelAnimationContentView> content) {
-  CHECK(!content || !GetSidePanelAnimationContent());
-  SidePanelAnimationContentView* content_ptr = content.get();
-  SidePanelAnimationContentView* current = GetSidePanelAnimationContent();
-  GetBrowserViewLayout()->set_side_panel_animation_content(content_ptr);
-  if (content) {
-    // Insert the animation content at the scrim's index so that the scrim
-    // covers the animation content when it is visible.
-    const std::optional<size_t> scrim_index =
-        GetIndexOf(side_panel_content_transition_scrim_view_.get());
-    CHECK(scrim_index.has_value());
-    AddChildViewAt(std::move(content), *scrim_index);
-  } else if (current) {
-    RemoveChildViewT(current);
-  }
-  return content_ptr;
-}
-
-SidePanelAnimationContentView* BrowserView::GetSidePanelAnimationContent() {
-  return GetBrowserViewLayout()->side_panel_animation_content();
 }
 
 ContentsContainerView* BrowserView::GetActiveContentsContainerView() {
@@ -3827,9 +3763,6 @@ void BrowserView::GetAccessiblePanes(std::vector<views::View*>* panes) {
   if (infobar_container_) {
     panes->push_back(infobar_container_);
   }
-  if (side_panel_) {
-    panes->push_back(side_panel_);
-  }
   for (views::View* pane : multi_contents_view_->GetAccessiblePanes()) {
     panes->push_back(pane);
   }
@@ -4171,12 +4104,6 @@ void BrowserView::Layout(PassKey) {
     }
   }
 
-  if (auto* const user_education =
-          UserEducationServiceFactory::GetForBrowserContext(GetProfile())) {
-    user_education->help_bubble_factory_registry().NotifyAnchorBoundsChanged(
-        GetElementContext());
-  }
-
   // Mark the first layout pass as complete. This initial layout allows the
   // window to calculate its starting bounds. Subsequent layouts while the
   // window is invisible can then be safely deferred.
@@ -4304,9 +4231,6 @@ void BrowserView::AddedToWidget() {
   // LINT.IfChange(BrowserViewLayoutViews)
   layout_views.browser_view = this;
   layout_views.window_scrim = window_scrim_view_;
-  layout_views.side_panel_content_transition_scrim =
-      side_panel_content_transition_scrim_view_;
-  layout_views.main_shadow_overlay = main_shadow_overlay_;
   layout_views.main_background_region = main_background_region_;
   layout_views.top_container = top_container_;
   layout_views.horizontal_tab_strip_region_view =
@@ -4321,7 +4245,6 @@ void BrowserView::AddedToWidget() {
   layout_views.toolbar = toolbar_;
   layout_views.infobar_container = infobar_container_;
   layout_views.multi_contents_view = multi_contents_view_;
-  layout_views.side_panel = side_panel_;
   layout_views.top_container_separator = top_container_separator_;
   // LINT.ThenChange(//chrome/browser/ui/views/frame/layout/browser_view_layout.h:BrowserViewLayoutViews)
 
@@ -4464,13 +4387,6 @@ bool BrowserView::AcceleratorPressed(const ui::Accelerator& accelerator) {
   actions::ActionInvocationContext context;
   context.SetProperty(chrome::kActionInvocationSourceKey,
                       chrome::ActionInvocationSource::kKeyboardShortcut);
-
-  if (command_id == IDC_SHOW_READING_MODE_SIDE_PANEL) {
-    context.SetProperty(
-        kSidePanelOpenTriggerKey,
-        static_cast<std::underlying_type_t<SidePanelOpenTrigger>>(
-            SidePanelOpenTrigger::kReadAnythingKeyboardShortcut));
-  }
 
   return chrome::ExecuteCommandWithContext(
       browser_.get(), command_id, std::move(context), accelerator.time_stamp());

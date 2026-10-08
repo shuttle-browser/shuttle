@@ -92,10 +92,6 @@ namespace views {
 class ElementTrackerViews;
 }
 
-namespace pdf {
-class PdfHelpBubbleHandlerFactory;
-}  // namespace pdf
-
 namespace ui {
 class TrackedElementHandler;
 class TrackedElementHandlerDocumentSingleton;
@@ -140,8 +136,7 @@ class COMPONENT_EXPORT(UI_BASE_INTERACTION) ElementContext {
   template <class T, class U>
     requires std::same_as<U, views::ElementTrackerViews> ||
              std::same_as<U, ui::TrackedElementHandler> ||
-             std::same_as<U, ui::TrackedElementHandlerDocumentSingleton> ||
-             std::same_as<U, pdf::PdfHelpBubbleHandlerFactory>
+             std::same_as<U, ui::TrackedElementHandlerDocumentSingleton>
   explicit ElementContext(T* value, base::PassKey<U>)
       : value_(reinterpret_cast<uintptr_t>(value)) {}
 

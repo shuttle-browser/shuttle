@@ -7,7 +7,6 @@
 #include "base/feature_list.h"
 #include "base/notreached.h"
 #include "build/build_config.h"
-#include "chrome/browser/page_info/about_this_site_tab_helper.h"
 #include "chrome/browser/page_info/page_info_features.h"
 #include "chrome/browser/permissions/permission_manager_factory.h"
 #include "chrome/browser/permissions/system/system_permission_settings.h"
@@ -20,7 +19,6 @@
 #include "chrome/common/pref_names.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/page_info/core/about_this_site_service.h"
 #include "components/page_info/core/features.h"
 #include "components/permissions/permission_decision_auto_blocker.h"
 #include "components/permissions/permission_manager.h"
@@ -40,9 +38,7 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/extensions/window_controller_list.h"  // nogncheck
-#include "chrome/browser/page_info/about_this_site_service_factory.h"
 #include "chrome/browser/ui/browser.h"
-#include "chrome/browser/ui/page_info/about_this_site_side_panel.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #endif
 
@@ -113,34 +109,6 @@ std::u16string ChromePageInfoUiDelegate::GetAutomaticallyBlockedReason(
 
   return std::u16string();
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-std::optional<page_info::proto::SiteInfo>
-ChromePageInfoUiDelegate::GetAboutThisSiteInfo() {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents_);
-  if (!browser || browser->GetType() != BrowserWindowInterface::TYPE_NORMAL) {
-    // TODO(crbug.com/40904874): SidePanel is not available. Evaluate if we can
-    //                          show ATP in a different way.
-    return std::nullopt;
-  }
-  if (auto* service =
-          AboutThisSiteServiceFactory::GetForProfile(GetProfile())) {
-    return service->GetAboutThisSiteInfo(
-        site_url_, web_contents_->GetPrimaryMainFrame()->GetPageUkmSourceId(),
-        AboutThisSiteTabHelper::FromWebContents(web_contents_));
-  }
-
-  return std::nullopt;
-}
-
-void ChromePageInfoUiDelegate::OpenMoreAboutThisPageUrl(
-    const GURL& url,
-    const ui::Event& event) {
-  DCHECK(page_info::IsAboutThisSiteFeatureEnabled());
-  ShowAboutThisSiteSidePanel(web_contents_, url);
-}
-#endif
 
 bool ChromePageInfoUiDelegate::ShouldShowAsk(ContentSettingsType type) {
   return permissions::PermissionUtil::IsGuardContentSetting(type);

@@ -211,8 +211,6 @@ void AddUiColorMixer(ColorProvider* provider, const ColorProviderKey& key) {
   mixer[kColorShadowValueKeyShadowElevationTwentyFour] = {
       kColorShadowValueKeyShadowElevationFour};
 
-  mixer[kColorSidePanelComboboxBorder] = {SK_ColorTRANSPARENT};
-  mixer[kColorSidePanelComboboxBackground] = {kColorSubtleEmphasisBackground};
   mixer[kColorSliderThumb] =
       PickGoogleColor(kColorAccent, kColorDialogBackground,
                       color_utils::kMinimumVisibleContrastRatio);

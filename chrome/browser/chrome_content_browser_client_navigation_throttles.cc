@@ -84,8 +84,6 @@
 #else  // BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/background/background_contents_navigation_throttle.h"
 #include "chrome/browser/devtools/devtools_navigation_throttle.h"
-#include "chrome/browser/page_info/web_view_side_panel_throttle.h"
-#include "chrome/browser/ui/read_anything/read_anything_side_panel_navigation_throttle.h"
 #include "chrome/browser/ui/webui/image/image_navigation_throttle.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -472,11 +470,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   }
 
 
-#if !BUILDFLAG(IS_ANDROID)
-  ReadAnythingSidePanelNavigationThrottle::CreateAndAdd(registry);
-
-
-#endif
 
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)
   offline_pages::OfflinePageNavigationThrottle::MaybeCreateAndAdd(registry);
@@ -487,10 +480,6 @@ void CreateAndAddChromeThrottlesForNavigation(
         registry, std::make_unique<ChromeSecurityBlockingPageFactory>(),
         profile);
   }
-
-#if !BUILDFLAG(IS_ANDROID)
-  MaybeCreateAndAddWebViewSidePanelThrottle(registry);
-#endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
   // Don't perform platform authentication in incognito and guest profiles.

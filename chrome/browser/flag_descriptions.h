@@ -241,10 +241,6 @@ inline constexpr char kBackgroundResourceFetchName[] =
 inline constexpr char kBackgroundResourceFetchDescription[] =
     "Process resource requests in a background thread inside Blink.";
 
-inline constexpr char kByDateHistoryInSidePanelName[] =
-    "By Date History in Side Panel";
-inline constexpr char kByDateHistoryInSidePanelDescription[] =
-    "If enabled, shows the 'By Date' History in Side Panel";
 
 inline constexpr char kCADisplayLinkInBrowserName[] =
     "Enable CADisplayLink in the browser process";
@@ -754,16 +750,7 @@ inline constexpr char
         "enhancement will enable CVV storage suggestions for standalone CVC "
         "fields.";
 
-inline constexpr char kIPHAutofillCreditCardBenefitFeatureName[] =
-    "Enable Card Benefits in-product help bubble";
-inline constexpr char kIPHAutofillCreditCardBenefitFeatureDescription[] =
-    "Enables In-Product-Help that appears when at least one autofill credit "
-    "card suggestion includes card benefits.";
 
-inline constexpr char kIPHDesktopRealboxContextualSearchFeatureName[] =
-    "IPH Desktop Realbox Contextual Search";
-inline constexpr char kIPHDesktopRealboxContextualSearchFeatureDescription[] =
-    "Enables In-Product Help for Desktop Realbox Contextual Search.";
 
 inline constexpr char
     kAutofillEnableOffersInClankKeyboardAccessoryDescription[] =
@@ -1266,11 +1253,6 @@ inline constexpr char kGlicDaisyChainNewTabsName[] =
 inline constexpr char kGlicDaisyChainNewTabsDescription[] =
     "Daisy chains new tabs if the active tab when the new tab was create has an"
     " open glic side panel";
-inline constexpr char kGlicUseToolbarHeightSidePanelName[] =
-    "Glic Use Toolbar Height Side Panel";
-inline constexpr char kGlicUseToolbarHeightSidePanelDescription[] =
-    "Enables Glic to use the toolbar height side panel instead of content "
-    "height side panel when enabled to use side panel";
 inline constexpr char kGlicGuestUrlPresetsName[] = "Glic guest URL presets";
 inline constexpr char kGlicGuestUrlPresetsDescription[] =
     "Overrides the Bluebird environment URL used for Glic with user-configured "
@@ -1718,11 +1700,6 @@ inline constexpr char kEnableDevtoolsDeepLinkViaExtensibilityApiDescription[] =
     "Extends console.timestamp to support adding deep-links into the DevTools "
     "Performance Panel, which (when clicked) call into a DevTools extension";
 
-inline constexpr char kEnableNtpBrowserPromosName[] =
-    "Enable new tab page browser feature suggestions";
-inline constexpr char kEnableNtpBrowserPromosDescription[] =
-    "Shows suggestions to explore browser capabilities (eg. signing in) on the "
-    "new tab page.";
 
 inline constexpr char kPopularSitesRefreshUsName[] = "Popular Sites US Refresh";
 inline constexpr char kPopularSitesRefreshUsDescription[] =
@@ -1882,12 +1859,6 @@ inline constexpr char kExportPlatformPoliciesJsonDescription[] =
     "Enables a button on chrome://policy to export platform-source policies in "
     "a custom flat JSON configuration schema.";
 
-inline constexpr char kExtensionAiDataCollectionName[] =
-    "Enables AI Data collection via extension";
-inline constexpr char kExtensionAiDataCollectionDescription[] =
-    "Enables an extension API to allow specific extensions to collect data "
-    "from browser process. This data may contain profile specific information "
-    " and may be otherwise unavailable to an extension.";
 inline constexpr char kExtensionTabContextMenuName[] =
     "Extension Tab Context Menu";
 inline constexpr char kExtensionTabContextMenuDescription[] =
@@ -1912,17 +1883,6 @@ inline constexpr char kExtensionsMenuAccessControlName[] =
 inline constexpr char kExtensionsMenuAccessControlDescription[] =
     "Enables a redesigned extensions menu that allows the user to control "
     "extensions site access.";
-inline constexpr char kIPHExtensionsMenuFeatureName[] = "IPH Extensions Menu";
-inline constexpr char kIPHExtensionsMenuFeatureDescription[] =
-    "Enables In-Product-Help that appears when at least one extension has "
-    "access to the current page. This feature is gated by "
-    "extensions-menu-access-control.";
-inline constexpr char kIPHExtensionsRequestAccessButtonFeatureName[] =
-    "IPH Extensions Request Access Button Feature";
-inline constexpr char kIPHExtensionsRequestAccessButtonFeatureDescription[] =
-    "Enables In-Product-Help that appears when at least one extension is "
-    "requesting access to the current page. This feature is gated by "
-    "extensions-menu-access-control.";
 
 inline constexpr char kCWSInfoFastCheckName[] = "CWS Info Fast Check";
 inline constexpr char kCWSInfoFastCheckDescription[] =
@@ -2219,9 +2179,6 @@ inline constexpr char kChromeDarkNeutrals26Name[] = "Chrome Dark Neutrals 26";
 inline constexpr char kChromeDarkNeutrals26Description[] =
     "When enabled, updates the neutral palette for dark mode default theme";
 
-inline constexpr char kChromeFindsInternalsName[] = "Chrome Finds Internals";
-inline constexpr char kChromeFindsInternalsDescription[] =
-    "Enables the chrome://chrome-finds-internals page.";
 
 inline constexpr char kFallbackToSWIfGLES3NotSupportedName[] =
     "Fallback to software if GLES3 is not supported";
@@ -2387,10 +2344,6 @@ inline constexpr char kInlineScriptCacheDescription[] =
     "Enables caching of inline scripts. This flag only works if "
     "#use-persistent-cache-for-code-cache is enabled.";
 
-inline constexpr char kInProductHelpDemoModeChoiceName[] =
-    "In-Product Help Demo Mode";
-inline constexpr char kInProductHelpDemoModeChoiceDescription[] =
-    "Selects the In-Product Help demo mode.";
 
 inline constexpr char kInputCursorAnchorInfoMigrationName[] =
     "Input Cursor Anchor Info Migration";
@@ -3151,11 +3104,6 @@ inline constexpr char kPermissionsAIv4Description[] =
     "of the user granting the permission is predicted to be low. Requires "
     "`Make Searches and Browsing Better` to be enabled.";
 
-inline constexpr char kReportNotificationContentDetectionDataName[] =
-    "Option to report notifications to Google";
-inline constexpr char kReportNotificationContentDetectionDataDescription[] =
-    "Enables reporting a notification's contents to Google, when the user taps "
-    "the `Report` button on the notification.";
 
 inline constexpr char kReportUnsafeSiteName[] = "Report Unsafe Site";
 inline constexpr char kReportUnsafeSiteDescription[] =
@@ -3205,15 +3153,6 @@ inline constexpr char kBrowserControlsScrollSnapAnimationDialogDescription[] =
     "When enabled, the browser controls will no longer translate precisely "
     "with the user's finger during scroll. They will instead snap to fully "
     "show or hide";
-
-inline constexpr char kGlobalCacheListForGatingNotificationProtectionsName[] =
-    "Global cache list for gating notification protections";
-inline constexpr char
-    kGlobalCacheListForGatingNotificationProtectionsDescription[] =
-        "Enables using the global cache list, rather than using the Safe "
-        "Browsing "
-        "allowlist, to gate notification content warnings and behavior-based "
-        "telemetry.";
 
 inline constexpr char kGlobalPrivacyControlName[] =
     "Force Global Privacy Control signal";
@@ -3458,13 +3397,6 @@ inline constexpr char kVerticalTabsExpandOnHoverName[] =
 inline constexpr char kVerticalTabsExpandOnHoverDescription[] =
     "Vertical tabs (when enabled and collapsed) will expand on mouse hover.";
 
-inline constexpr char kSidePanelFlyoverAnimationName[] =
-    "Side Panel Flyover Animation";
-inline constexpr char kSidePanelFlyoverAnimationDescription[] =
-    "Simplifies contents animations while animating vertical tabstrip and side "
-    "panels, reducing jank on most platforms. When enabled, the animating "
-    "elements will appear to float over the contents, which resize at the "
-    "beginning or end of the animation.";
 
 inline constexpr char kUseDefaultDeadlineWhenAnimatingBoundsName[] =
     "Use Default Deadline Resizing Policy";
@@ -4843,10 +4775,6 @@ inline constexpr char kChimeAndroidSdkDescription[] =
     "Enable Chime SDK to receive push notification.";
 inline constexpr char kChimeAndroidSdkName[] = "Use Chime SDK";
 
-inline constexpr char kChromeFindsName[] = "Chrome Finds";
-inline constexpr char kChromeFindsDescription[] =
-    "When enabled, users will be able to opt-in to receive personalized "
-    "notifications based on their browsing history.";
 
 inline constexpr char kClankDefaultBrowserPromoName[] =
     "Clank default browser promo 2";
@@ -5182,11 +5110,6 @@ inline constexpr char kPCCTMinimumHeightDescription[] =
     "When enabled, this sets the minimum "
     "height to 30% or 220dp, whichever is greater, for ephemeral pCCTs.";
 
-inline constexpr char kReadAloudNativeName[] =
-    "Read Aloud Native C++ Implementation";
-inline constexpr char kReadAloudNativeDescription[] =
-    "Controls the new native C++ implementation for Read Aloud on Android, "
-    "replacing the previous Speakr service integration.";
 
 inline constexpr char kReaderModeBlurTransitionAnimationName[] =
     "Reader Mode blur transition animation";
@@ -5608,59 +5531,12 @@ inline constexpr char kMemoryPurgeOnFreezeLimitDescription[] =
     "backgrounded interval, to minimize overhead when pages are periodically "
     "unfrozen. To be enabled with memory-purge-on-freeze-limit.";
 
-inline constexpr char kReadAnythingOmniboxChipName[] =
-    "Reading Mode Omnibox Chip";
-inline constexpr char kReadAnythingOmniboxChipDescription[] =
-    "Enables the omnibox chip entry point for Reading mode";
 
-inline constexpr char kReadAnythingLineFocusName[] = "Reading Mode Line Focus";
-inline constexpr char kReadAnythingLineFocusDescription[] =
-    "Enables the experimental line focus mode for Reading mode.";
 
-inline constexpr char kReadAnythingReadAloudPhraseHighlightingName[] =
-    "Reading Mode Read Aloud Phrase Highlighting";
-inline constexpr char kReadAnythingReadAloudPhraseHighlightingDescription[] =
-    "Enables the experimental Reading Mode feature that highlights by phrases "
-    "when reading aloud, when the phrase option is selected from the highlight "
-    "menu.";
 
-inline constexpr char kReadAnythingDistillerRefactorName[] =
-    "Reading Mode Distiller Stability Updates";
-inline constexpr char kReadAnythingDistillerRefactorDescription[] =
-    "Optimizes how web page content is prepared and processed for Reading "
-    "Mode.";
 
-inline constexpr char kReadAnythingDocsIntegrationName[] =
-    "Reading Mode Google Docs Integration";
-inline constexpr char kReadAnythingDocsIntegrationDescription[] =
-    "Allows Reading Mode to work on Google Docs.";
 
-inline constexpr char kReadAnythingDocsLoadMoreButtonName[] =
-    "Reading Mode Google Docs Load More Button";
-inline constexpr char kReadAnythingDocsLoadMoreButtonDescription[] =
-    "Adds a button to the end of the Reading Mode UI. When clicked, "
-    "the main page scrolls to show the next page's content.";
 
-inline constexpr char kReadAnythingReadabilitySelectTextName[] =
-    "Reading Mode Select Text with Readability";
-inline constexpr char kReadAnythingReadabilitySelectTextDescription[] =
-    "Enables the select text feature for readability distillation";
-
-inline constexpr char kReadAnythingWithReadabilityName[] =
-    "Reading Mode Experimental Webpage Distilation";
-inline constexpr char kReadAnythingWithReadabilityDescription[] =
-    "Enables the experimental text webpage distillation using readability.js "
-    "method for reading mode.";
-inline constexpr char kReadAnythingImprovedUiName[] =
-    "Reading Mode Improved UI";
-inline constexpr char kReadAnythingImprovedUiDescription[] =
-    "Enables menu grouping for Reading Mode and the listen to this page entry "
-    "point.";
-inline constexpr char kReadAnythingReadAloudExperimentalPlaybackUiName[] =
-    "Reading Mode Read Aloud Experimental Playback UI";
-inline constexpr char
-    kReadAnythingReadAloudExperimentalPlaybackUiDescription[] =
-        "Enables the experimental playback UI for Reading Mode Read Aloud.";
 
 inline constexpr char kRealboxVirtualFocusNavigationName[] =
     "Enable Realbox Virtual Focus Navigation";
@@ -6037,9 +5913,6 @@ inline constexpr char kAshSplitKeyboardRefactorName[] =
 inline constexpr char kAshSplitKeyboardRefactorDescription[] =
     "Enable split keyboard refactor on ChromeOS.";
 
-inline constexpr char kAssistantIphName[] = "Assistant IPH";
-inline constexpr char kAssistantIphDescription[] =
-    "Enables showing Assistant IPH on ChromeOS.";
 
 inline constexpr char kAudioSelectionImprovementName[] =
     "Enable audio selection improvement algorithm";
@@ -7224,11 +7097,6 @@ inline constexpr char kLocalNetworkAccessChecksWebTransportDescription[] =
     "#local-network-access-check flag to also be enabled "
     "See: https://chromestatus.com/feature/5126430912544768";
 
-inline constexpr char kGeminiAntiscamProtectionsMetricsOnlyName[] =
-    "Gemini Antiscam Protection";
-inline constexpr char kGeminiAntiscamProtectionsMetricsOnlyDescription[] =
-    "Enables querying Gemini for antiscam protection signals and collecting "
-    "metrics.";
 
 inline constexpr char kGroupPromoPrototypeName[] = "Group Promo Prototype";
 inline constexpr char kGroupPromoPrototypeDescription[] =

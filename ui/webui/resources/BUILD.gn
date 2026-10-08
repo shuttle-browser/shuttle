@@ -88,12 +88,10 @@ generate_grd("build_grd") {
     # TODO(crbug.com/527601593): Revert by moving these components back into the
     # main desktop block at L53 if we disable composebox on Android phones.
     public_deps += [
-      "cr_components/help_bubble:build_grdp",
       "cr_components/localized_link:build_grdp",
       "cr_components/searchbox/icons:build_grdp",
     ]
     grdp_files += [
-      "$target_gen_dir/cr_components/help_bubble/resources.grdp",
       "$target_gen_dir/cr_components/localized_link/resources.grdp",
       "$target_gen_dir/cr_components/searchbox/icons/resources.grdp",
     ]
@@ -154,7 +152,6 @@ if (enable_webui_generate_code_cache) {
       "$target_gen_dir/cr_elements/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/color_change_listener/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/customize_color_scheme_mode/code_cache_resources.grdp",
-      "$target_gen_dir/cr_components/help_bubble/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/managed_dialog/code_cache_resources.grdp",
       "$target_gen_dir/cr_components/theme_color_picker/code_cache_resources.grdp",
     ]
@@ -162,7 +159,6 @@ if (enable_webui_generate_code_cache) {
     public_deps = [
       "cr_components/color_change_listener:build_code_cache_grdp",
       "cr_components/customize_color_scheme_mode:build_code_cache_grdp",
-      "cr_components/help_bubble:build_code_cache_grdp",
       "cr_components/managed_dialog:build_code_cache_grdp",
       "cr_components/theme_color_picker:build_code_cache_grdp",
       "cr_elements:build_code_cache_grdp",

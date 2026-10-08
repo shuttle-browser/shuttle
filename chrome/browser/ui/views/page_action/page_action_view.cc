@@ -19,13 +19,10 @@
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_model.h"
 #include "chrome/browser/ui/page_action/page_action_triggers.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/location_bar/icon_label_bubble_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_util.h"
 #include "chrome/browser/ui/views/page_action/page_action_view_params.h"
-#include "chrome/browser/ui/views/page_action/page_action_view_util.h"
 #include "chrome/grit/generated_resources.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -376,11 +373,6 @@ void PageActionView::NotifyClick(const ui::Event& event) {
                      .SetProperty(kPageActionTriggerKey, trigger_source)
                      .SetProperty(kPageActionEntryPointKey,
                                   PageActionEntryPoint::kSuggestionChip);
-  if (auto side_panel_trigger =
-          GetSidePanelOpenTriggerForPageAction(action_item_->GetActionId())) {
-    builder = std::move(builder).SetProperty(kSidePanelOpenTriggerKey,
-                                             *side_panel_trigger);
-  }
   action_item_->InvokeAction(std::move(builder).Build());
 }
 
@@ -650,11 +642,6 @@ void PageActionView::AnchoredMessageChipClick() {
           .SetProperty(kPageActionTriggerKey, PageActionTrigger::kMouse)
           .SetProperty(kPageActionEntryPointKey,
                        PageActionEntryPoint::kAnchoredMessage);
-  if (auto side_panel_trigger =
-          GetSidePanelOpenTriggerForPageAction(action_item_->GetActionId())) {
-    builder = std::move(builder).SetProperty(kSidePanelOpenTriggerKey,
-                                             *side_panel_trigger);
-  }
   action_item_->InvokeAction(std::move(builder).Build());
   anchored_message_close_callback_.Run();
 }

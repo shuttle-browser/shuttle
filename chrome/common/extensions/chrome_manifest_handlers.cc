@@ -18,7 +18,6 @@
 #include "extensions/common/manifest_handler_registry.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/common/extensions/api/side_panel/side_panel_info.h"
 #endif
 
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
@@ -42,7 +41,6 @@ void RegisterChromeManifestHandlers(ManifestHandlerRegistry* registry) {
   registry->RegisterHandler(std::make_unique<ThemeHandler>());
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-  registry->RegisterHandler(std::make_unique<SidePanelManifestHandler>());
 #endif
 
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)

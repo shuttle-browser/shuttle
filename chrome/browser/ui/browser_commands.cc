@@ -33,7 +33,6 @@
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_delegate.h"
-#include "chrome/browser/chained_back_navigation_tracker.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/favicon/favicon_utils.h"
@@ -71,9 +70,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/startup/startup_tab.h"
 #include "chrome/browser/ui/status_bubble.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
@@ -90,7 +86,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
@@ -104,7 +99,6 @@
 #include "components/dom_distiller/core/url_utils.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "components/favicon/content/content_favicon_driver.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
 #include "components/google/core/common/google_util.h"
@@ -125,7 +119,6 @@
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_group_tab_collection.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/zoom_controller.h"
@@ -854,50 +847,6 @@ bool ShouldEnableBackButton(const BrowserWindowInterface* browser) {
       web_contents);
 }
 
-enum class BackNavigationMenuIPHTrigger : int {
-  kUserPerformsManyBackNavigation = 0,
-  kUserPerformsChainedBackNavigation,
-  kUserPerformsChainedBackNavigationWithBackButton
-};
-
-const char kBackNavigationMenuIPHExperimentParamName[] = "x_experiment";
-
-void MaybeShowFeatureBackNavigationMenuPromo(BrowserWindowInterface* browser,
-                                             WebContents* web_contents) {
-  if (!base::FeatureList::IsEnabled(
-          feature_engagement::kIPHBackNavigationMenuFeature)) {
-    return;
-  }
-
-  bool should_show_feature_promo;
-  const ChainedBackNavigationTracker* tracker =
-      ChainedBackNavigationTracker::FromWebContents(web_contents);
-  CHECK(tracker);
-  switch (static_cast<BackNavigationMenuIPHTrigger>(
-      base::GetFieldTrialParamByFeatureAsInt(
-          feature_engagement::kIPHBackNavigationMenuFeature,
-          kBackNavigationMenuIPHExperimentParamName, 0))) {
-    case BackNavigationMenuIPHTrigger::kUserPerformsChainedBackNavigation:
-      should_show_feature_promo =
-          tracker->IsChainedBackNavigationRecentlyPerformed();
-      break;
-
-    case BackNavigationMenuIPHTrigger::
-        kUserPerformsChainedBackNavigationWithBackButton:
-      should_show_feature_promo =
-          tracker->IsBackButtonChainedBackNavigationRecentlyPerformed();
-      break;
-    default:
-      should_show_feature_promo = true;
-      break;
-  }
-
-  if (should_show_feature_promo) {
-    BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
-        feature_engagement::kIPHBackNavigationMenuFeature);
-  }
-}
-
 void GoBack(BrowserWindowInterface* browser,
             WindowOpenDisposition disposition) {
   tabs::TabInterface* tab = GetTabAndRevertIfNecessary(browser, disposition);
@@ -915,12 +864,6 @@ void GoBack(content::WebContents* web_contents) {
   // Try regular back navigation first.
   if (web_contents->GetController().CanGoBack()) {
     web_contents->GetController().GoBack();
-    BrowserWindowInterface* browser =
-        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-            web_contents);
-    if (browser) {
-      MaybeShowFeatureBackNavigationMenuPromo(browser, web_contents);
-    }
     return;
   }
 

@@ -22,7 +22,6 @@
 #include "components/enterprise/common/proto/connectors.pb.h"
 #include "components/enterprise/connectors/core/reporting_utils.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/core/browser/intelligent_scan_delegate.h"
 #include "components/safe_browsing/core/browser/referrer_chain_provider.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
 #include "components/safe_browsing/core/common/features.h"
@@ -192,7 +191,6 @@ RealTimeUrlLookupServiceBase::RealTimeUrlLookupServiceBase(
     std::unique_ptr<SafeBrowsingTokenFetcher> token_fetcher,
     PrefService* pref_service,
     WebUIDelegate* delegate,
-    IntelligentScanDelegate* intelligent_scan_delegate,
     base::RepeatingCallback<network::mojom::NetworkContext*()>
         network_context_getter)
     : token_fetcher_(std::move(token_fetcher)),
@@ -208,7 +206,6 @@ RealTimeUrlLookupServiceBase::RealTimeUrlLookupServiceBase(
           /*max_backoff_reset_duration_in_seconds=*/
           kMaxBackOffResetDurationInSeconds)),
       webui_delegate_(delegate),
-      intelligent_scan_delegate_(intelligent_scan_delegate),
       network_context_getter_(network_context_getter) {}
 
 RealTimeUrlLookupServiceBase::~RealTimeUrlLookupServiceBase() = default;
@@ -657,25 +654,8 @@ RealTimeUrlLookupServiceBase::GetResourceRequest() {
 
 RTLookupRequest::LlamaForcedTriggerCapability
 RealTimeUrlLookupServiceBase::MaybeGetLlamaForcedTriggerCapability() const {
-  auto model_type = IntelligentScanModelType::NOT_SUPPORTED;
-  if (pref_service_ && IsEnhancedProtectionEnabled(*pref_service_) &&
-      intelligent_scan_delegate_) {
-    switch (intelligent_scan_delegate_->GetIntelligentScanModelType(
-        /*log_failed_eligibility_reason=*/false)) {
-      case IntelligentScanDelegate::ModelType::kNotSupportedOnDevice:
-      case IntelligentScanDelegate::ModelType::kNotSupportedServerSide:
-        model_type = IntelligentScanModelType::NOT_SUPPORTED;
-        break;
-      case IntelligentScanDelegate::ModelType::kOnDevice:
-        model_type = IntelligentScanModelType::ON_DEVICE_MODEL;
-        break;
-      case IntelligentScanDelegate::ModelType::kServerSide:
-        model_type = IntelligentScanModelType::SERVER_SIDE_MODEL;
-        break;
-    }
-  }
   RTLookupRequest::LlamaForcedTriggerCapability capability;
-  capability.set_supported_model_type(model_type);
+  capability.set_supported_model_type(IntelligentScanModelType::NOT_SUPPORTED);
   return capability;
 }
 
@@ -1014,7 +994,6 @@ void RealTimeUrlLookupServiceBase::Shutdown() {
   // Clear references to other KeyedServices.
   cache_manager_ = nullptr;
   referrer_chain_provider_ = nullptr;
-  intelligent_scan_delegate_ = nullptr;
 
   token_fetcher_.reset();
 }

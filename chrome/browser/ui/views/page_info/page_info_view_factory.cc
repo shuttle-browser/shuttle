@@ -882,16 +882,6 @@ const ui::ImageModel PageInfoViewFactory::GetOpenSubpageIcon() {
 }
 
 // static
-const gfx::VectorIcon& PageInfoViewFactory::GetAboutThisSiteVectorIcon() {
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  return vector_icons::kPageInsightsIcon;
-#else
-  return features::IsRoundedIconsEnabled() ? views::kInfoIcon
-                                           : views::kInfoChromeRefreshOldIcon;
-#endif  // !BUILDFLAG(GOOGLE_CHROME_BRANDING)
-}
-
-// static
 const ui::ImageModel PageInfoViewFactory::GetImageModel(
     const gfx::VectorIcon& icon) {
   return ui::ImageModel::FromVectorIcon(icon, ui::kColorIcon, GetIconSize());

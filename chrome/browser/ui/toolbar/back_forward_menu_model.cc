@@ -24,10 +24,8 @@
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/back_to_opener/back_to_opener_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/common/url_constants.h"
 #include "components/favicon_base/favicon_types.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/favicon_status.h"
@@ -275,16 +273,6 @@ void BackForwardMenuModel::MenuWillShow() {
   // Observe the web contents for navigation changes which could
   // happen while the menu is open.
   content::WebContentsObserver::Observe(GetWebContents());
-
-  // Close the IPH popup if the user opens the menu.
-  if (browser_window_interface_) {
-    if (auto* user_education =
-            BrowserUserEducationInterface::From(browser_window_interface_)) {
-      user_education->NotifyFeaturePromoFeatureUsed(
-          feature_engagement::kIPHBackNavigationMenuFeature,
-          FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-    }
-  }
 }
 
 void BackForwardMenuModel::MenuWillClose() {

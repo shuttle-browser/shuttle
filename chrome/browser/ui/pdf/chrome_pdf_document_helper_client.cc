@@ -11,15 +11,12 @@
 #include "chrome/browser/pdf/pdf_extension_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/common/chrome_content_client.h"
 #include "chrome/common/chrome_render_frame.mojom.h"
 #include "chrome/common/content_restriction.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/pdf/browser/pdf_document_helper.h"
 #include "components/pdf/browser/pdf_frame_util.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest.h"
@@ -40,18 +37,6 @@ content::WebContents* GetWebContentsToUse(
              : content::WebContents::FromRenderFrameHost(&render_frame_host);
 }
 
-bool MaybeShowFeaturePromo(const base::Feature& feature,
-                           content::WebContents* contents) {
-  auto* user_education_interface =
-      BrowserUserEducationInterface::MaybeGetForWebContentsInTab(contents);
-  if (!user_education_interface) {
-    return false;
-  }
-  user_education_interface->MaybeShowFeaturePromo(
-      user_education::FeaturePromoParams(feature));
-  return true;
-}
-
 }  // namespace
 
 ChromePDFDocumentHelperClient::ChromePDFDocumentHelperClient() = default;
@@ -60,11 +45,6 @@ ChromePDFDocumentHelperClient::~ChromePDFDocumentHelperClient() = default;
 
 void ChromePDFDocumentHelperClient::OnDocumentLoadComplete(
     content::RenderFrameHost& render_frame_host) {
-  content::WebContents* web_contents = GetWebContentsToUse(render_frame_host);
-  MaybeShowFeaturePromo(feature_engagement::kIPHPdfInkSignaturesFeature,
-                        web_contents);
-  MaybeShowFeaturePromo(feature_engagement::kIPHPdfTextAnnotationsFeature,
-                        web_contents);
 }
 
 void ChromePDFDocumentHelperClient::UpdateContentRestrictions(

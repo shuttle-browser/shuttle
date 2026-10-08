@@ -310,16 +310,6 @@ extern const base::FeatureParam<int>
 // Enables reporting of external app redirects
 BASE_DECLARE_FEATURE(kExternalAppRedirectTelemetry);
 
-// Enables querying server-side Gemini model for scam detection.
-BASE_DECLARE_FEATURE(kGeminiAntiscamProtectionForMetricsCollection);
-// The minimum scam score required to log page content to MQLS.
-extern const base::FeatureParam<double>
-    kGeminiAntiscamProtectionMinScamScoreLogPageContent;
-
-// Replace the high confidence allowlist check gating notification warnings with
-// a check of the global cache list specific to safe notification sites.
-BASE_DECLARE_FEATURE(kGlobalCacheListForGatingNotificationProtections);
-
 // Whether to provide Google Play Protect status in APK telemetry pings
 BASE_DECLARE_FEATURE(kGooglePlayProtectInApkTelemetry);
 
@@ -415,10 +405,6 @@ BASE_DECLARE_FEATURE(kMovePasswordLeakDetectionToggleIos);
 // Enables the notice queue integration for the ESB notice.
 BASE_DECLARE_FEATURE(kNoticeQueueForEsb);
 
-// Enable the collection of Notification Telemetry to track potentially abusive
-// notifications.
-BASE_DECLARE_FEATURE(kNotificationTelemetry);
-
 // Enables proactive password protection, which triggers a CSD scan when
 // focusing on a password field.
 BASE_DECLARE_FEATURE(kProactivePasswordProtection);
@@ -453,16 +439,6 @@ extern const base::FeatureParam<std::string>
 // If enabled, advanced protection program users are shown relaunch to apply
 // update required.
 BASE_DECLARE_FEATURE(kRelaunchNotificationForAdvancedProtection);
-
-// Enables reporting notification contents and metadata to the server, upon user
-// consent.
-BASE_DECLARE_FEATURE(kReportNotificationContentDetectionData);
-// Determines how often we should log the reported notification to the server.
-// For the default rate of 100, the notification will always be reported where a
-// rate of 0 means there is no reporting. This will help limit data volume, if
-// it becomes excessive.
-extern const base::FeatureParam<int>
-    kReportNotificationContentDetectionDataRate;
 
 // Enables client side phishing daily reports limit to be configured via Finch
 // for ESB and SBER users

@@ -194,10 +194,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kNumber;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)[::prefs::kSidePanelHorizontalAlignment] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kSidePanelAlignmentOverrides] =
-      settings_api::PrefType::kDictionary;
   (*s_allowlist)[::prefs::kVerticalTabsEnabled] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kVerticalTabsExpandOnHoverEnabled] =

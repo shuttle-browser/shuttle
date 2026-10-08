@@ -16,10 +16,10 @@ import {getHtml} from './back_forward_button.html.js';
 import {BrowserProxyImpl, ContextMenuType} from './browser_proxy.js';
 import type {BackForwardButtonState, BrowserProxy} from './browser_proxy.js';
 import {OverflowableButtonMixin} from './overflowable_button.js';
-import {getContextMenuPosition, getEventDispositionFlags, HelpBubbleAnchorMixin, playIconAnimation, PressHandler, roundedIconsEnabled} from './toolbar_button.js';
+import {getContextMenuPosition, getEventDispositionFlags, playIconAnimation, PressHandler, roundedIconsEnabled} from './toolbar_button.js';
 
 const BackForwardButtonElementBase =
-    HelpBubbleAnchorMixin(OverflowableButtonMixin(CrLitElement));
+    OverflowableButtonMixin(CrLitElement);
 
 export interface BackForwardButtonElement {
   $: {
@@ -176,10 +176,9 @@ export class BackForwardButtonElement extends BackForwardButtonElementBase {
   }
 
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(
-        this.direction === 'back' ?
+    return this.direction === 'back' ?
             loadTimeData.getString('backButtonTooltip') :
-            loadTimeData.getString('forwardButtonTooltip'));
+            loadTimeData.getString('forwardButtonTooltip');
   }
 
   // Note on keyboard accessibility: Since `<cr-icon-button>` is natively

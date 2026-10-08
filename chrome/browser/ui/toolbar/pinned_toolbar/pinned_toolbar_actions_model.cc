@@ -246,14 +246,6 @@ void PinnedToolbarActionsModel::MaybeMigrateExistingPinnedStates() {
     UpdatePinnedState(kActionRouteMedia, previously_pinned);
     pref_service_->SetBoolean(prefs::kPinnedCastMigrationComplete, true);
   }
-  if (base::FeatureList::IsEnabled(
-          features::kTabsFromOtherDevicesSidePanelPinnedByDefault) &&
-      !pref_service_->GetBoolean(
-          prefs::kTabsFromOtherDevicesAutoPinnedMigration)) {
-    UpdatePinnedState(kActionSidePanelShowTabsFromOtherDevices, true);
-    pref_service_->SetBoolean(prefs::kTabsFromOtherDevicesAutoPinnedMigration,
-                              true);
-  }
 }
 
 const std::vector<actions::ActionId>&

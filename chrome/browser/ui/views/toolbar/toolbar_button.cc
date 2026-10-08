@@ -26,7 +26,6 @@
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/chrome_typography.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
-#include "components/user_education/common/user_education_class_properties.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkRRect.h"
 #include "ui/accessibility/ax_enums.mojom.h"
@@ -244,9 +243,6 @@ void ToolbarButton::UpdateColorsAndInsets() {
 
 SkColor ToolbarButton::GetForegroundColor(ButtonState state) const {
   const auto* color_provider = GetColorProvider();
-  if (has_in_product_help_promo_) {
-    return color_provider->GetColor(kColorToolbarFeaturePromoHighlight);
-  }
   switch (state) {
     case ButtonState::STATE_HOVERED:
       return color_provider->GetColor(kColorToolbarButtonIconHovered);
@@ -537,36 +533,6 @@ void ToolbarButton::ShowContextMenuForViewImpl(
 
   show_menu_factory_.InvalidateWeakPtrs();
   ShowDropDownMenu(source_type);
-}
-
-std::u16string ToolbarButton::GetAlternativeAccessibleName() const {
-  if (!suppressed_tooltip_text_.empty()) {
-    return suppressed_tooltip_text_;
-  }
-
-  return Button::GetAlternativeAccessibleName();
-}
-
-void ToolbarButton::AfterPropertyChange(const void* key, int64_t old_value) {
-  View::AfterPropertyChange(key, old_value);
-  if (key == user_education::kHasInProductHelpPromoKey) {
-    has_in_product_help_promo_ =
-        GetProperty(user_education::kHasInProductHelpPromoKey);
-
-    // Suppress tooltip when IPH is showing.
-    // TODO(crbug.com/40258442): Investigate if we should suppress tooltip for
-    // all Buttons rather than just ToolbarButtons when IPH is on.
-    if (has_in_product_help_promo_) {
-      suppressed_tooltip_text_ = GetTooltipText();
-      SetTooltipText(std::u16string());
-    } else {
-      if (GetTooltipText().empty()) {
-        SetTooltipText(suppressed_tooltip_text_);
-      }
-      suppressed_tooltip_text_ = std::u16string();
-    }
-    UpdateIcon();
-  }
 }
 
 bool ToolbarButton::ShouldShowMenu() {

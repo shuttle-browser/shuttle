@@ -16,13 +16,11 @@
 #include "base/time/time.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
 #include "chrome/browser/ui/toasts/toast_controller.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/feature_engagement/public/tracker.h"
 #include "components/renderer_context_menu/render_view_context_menu_proxy.h"
 #include "components/shared_highlighting/core/common/disabled_sites.h"
 #include "components/shared_highlighting/core/common/fragment_directives_constants.h"
@@ -300,11 +298,6 @@ void LinkToTextMenuObserver::ExecuteCopyLinkToText() {
     toast_controller_->MaybeShowToast(
         ToastParams(ToastId::kLinkToHighlightCopied));
   }
-
-  // Log usage for Shared Highlighting promo.
-  feature_engagement::TrackerFactory::GetForBrowserContext(
-      proxy_->GetWebContents()->GetBrowserContext())
-      ->NotifyEvent("iph_desktop_shared_highlighting_used");
 }
 
 void LinkToTextMenuObserver::Timeout() {

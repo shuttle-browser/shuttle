@@ -19,7 +19,6 @@ generate_grd("build_grdp") {
     "desktop_capture_custom_bindings.js",
     "developer_private_custom_bindings.js",
     "downloads_custom_bindings.js",
-    "gcm_custom_bindings.js",
     "identity_custom_bindings.js",
     "image_writer_private_custom_bindings.js",
     "input.ime_custom_bindings.js",

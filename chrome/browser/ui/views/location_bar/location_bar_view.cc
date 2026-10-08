@@ -76,7 +76,6 @@
 #include "chrome/browser/ui/views/permissions/chip/permission_dashboard_view.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
-#include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/omnibox_popup_resources.h"
@@ -1559,16 +1558,6 @@ void LocationBarView::OnPopupStateChanged(OmniboxPopupState old_state,
     }
   }
 
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  if (new_state != OmniboxPopupState::kNone) {
-    // Close any overlapping user education bubbles when any popup opens.
-    // It's not great for promos to overlap the omnibox if the user opens the
-    // drop-down after showing the promo. This especially causes issues on Mac
-    // and Linux due to z-order/rendering issues, see crbug.com/40775593 and
-    // crbug.com/332769403 for examples.
-    BrowserHelpBubble::MaybeCloseOverlappingHelpBubbles(this);
-  }
-#endif
 
   // Hide the old popup.
   switch (old_state) {

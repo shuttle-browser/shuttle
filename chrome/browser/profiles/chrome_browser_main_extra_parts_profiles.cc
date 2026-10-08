@@ -14,7 +14,6 @@
 #include "chrome/browser/accessibility/accessibility_labels_service_factory.h"
 #include "chrome/browser/accessibility/page_colors_controller_factory.h"
 #include "chrome/browser/actor/actor_keyed_service_factory.h"
-#include "chrome/browser/ai/ai_data_keyed_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
 #include "chrome/browser/autocomplete/document_suggestions_service_factory.h"
@@ -54,16 +53,13 @@
 #include "chrome/browser/enterprise/net/enterprise_network_auth_service_factory.h"
 #include "chrome/browser/enterprise/net/enterprise_proxy_error_service_factory.h"
 #include "chrome/browser/enterprise/net/enterprise_proxy_service_factory.h"
-#include "chrome/browser/enterprise/remote_commands/user_remote_commands_service_factory.h"
 #include "chrome/browser/enterprise/reporting/cloud_profile_reporting_service_factory.h"
 #include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_service.h"
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_reporting_controller_factory.h"
 #include "chrome/browser/enterprise/signals/user_permission_service_factory.h"
 #include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/history_ui_favicon_request_handler_factory.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
-#include "chrome/browser/finds/finds_service_factory.h"
 #include "chrome/browser/first_party_sets/first_party_sets_policy_service_factory.h"
 #include "chrome/browser/font_pref_change_notifier_factory.h"
 #include "chrome/browser/gcm/gcm_profile_service_factory.h"
@@ -109,7 +105,6 @@
 #include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
 #include "chrome/browser/page_content_annotations/page_content_screenshot_service_factory.h"
 #include "chrome/browser/page_image_service/image_service_factory.h"
-#include "chrome/browser/page_info/about_this_site_service_factory.h"
 #include "chrome/browser/page_load_metrics/observers/https_engagement_metrics/https_engagement_service_factory.h"
 #include "chrome/browser/performance_manager/persistence/site_data/site_data_cache_facade_factory.h"
 #include "chrome/browser/permissions/notifications_engagement_service_factory.h"
@@ -121,8 +116,6 @@
 #include "chrome/browser/permissions/prediction_service/prediction_service_factory.h"
 #include "chrome/browser/plugins/plugin_prefs_factory.h"
 #include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
-#include "chrome/browser/policy/cloud/user_cloud_policy_invalidator_factory.h"
-#include "chrome/browser/policy/cloud/user_fm_registration_token_uploader_factory.h"
 #include "chrome/browser/policy/developer_tools_policy_checker_factory.h"
 #include "chrome/browser/predictors/autocomplete_action_predictor_factory.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
@@ -255,7 +248,6 @@
 #endif
 #else  // !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/accessibility/live_caption/live_caption_controller_factory.h"
-#include "chrome/browser/accessibility/phrase_segmentation/dependency_parser_model_loader_factory.h"
 #include "chrome/browser/accessibility/tree_fixing/ax_tree_fixing_services_router_factory.h"
 #include "chrome/browser/device_api/managed_configuration_api_factory.h"
 #include "chrome/browser/devtools/device/devtools_android_bridge.h"
@@ -270,12 +262,10 @@
 #include "chrome/browser/storage/storage_notification_service_factory.h"
 #include "chrome/browser/ui/browser_manager_service_factory.h"
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
-#include "chrome/browser/ui/read_anything/read_anything_service_factory.h"
 #include "chrome/browser/ui/waap/initial_webui_profile_service_factory.h"
 #include "chrome/browser/ui/waap/waap_ui_metrics_service_factory.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager_factory.h"
 #include "chrome/browser/usb/usb_connection_tracker_factory.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "components/optimization_guide/core/model_execution/model_execution_features.h"
 #include "ui/accessibility/accessibility_features.h"
 
@@ -449,12 +439,8 @@
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h"
 #include "chrome/browser/safe_browsing/chrome_ping_manager_factory.h"
-#include "chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_factory.h"
 #include "chrome/browser/safe_browsing/client_side_detection_service_factory.h"
 #include "chrome/browser/safe_browsing/cloud_content_scanning/cloud_binary_upload_service_factory.h"
-#include "chrome/browser/safe_browsing/gemini_antiscam_protection/gemini_antiscam_protection_service_factory.h"
-#include "chrome/browser/safe_browsing/notification_content_detection/notification_content_detection_service_factory.h"
-#include "chrome/browser/safe_browsing/notification_telemetry/notification_telemetry_service_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_metrics_collector_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/url_lookup_service_factory.h"
@@ -528,7 +514,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   // ---------------------------------------------------------------------------
   // Common factory registrations (Please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
-  AboutThisSiteServiceFactory::GetInstance();
   AcceptLanguagesServiceFactory::GetInstance();
   AccessibilityLabelsServiceFactory::GetInstance();
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
@@ -538,7 +523,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if BUILDFLAG(IS_ANDROID)
   AndroidSessionDurationsServiceFactory::GetInstance();
 #endif
-  AiDataKeyedServiceFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   AndroidProfileBrowserCollectionServiceFactory::GetInstance();
   AndroidSmsOtpBackendFactory::GetInstance();
@@ -650,7 +634,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   data_controls::ChromeRulesServiceFactory::GetInstance();
 #endif
 #if !BUILDFLAG(IS_ANDROID)
-  DependencyParserModelLoaderFactory::GetInstance();
   DevToolsAndroidBridge::Factory::GetInstance();
 #endif
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -669,7 +652,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
   enterprise::ProfileIdServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_CHROMEOS)
-  enterprise_commands::UserRemoteCommandsServiceFactory::GetInstance();
 #endif
 #if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) || BUILDFLAG(IS_ANDROID) || \
     BUILDFLAG(FULL_SAFE_BROWSING)
@@ -749,13 +731,11 @@ void ChromeBrowserMainExtraPartsProfiles::
   FakeSmartCardDeviceServiceFactory::GetInstance();
 #endif
   FaviconServiceFactory::GetInstance();
-  feature_engagement::TrackerFactory::GetInstance();
   FederatedIdentityApiPermissionContextFactory::GetInstance();
   FederatedIdentityAutoReauthnPermissionContextFactory::GetInstance();
   FederatedIdentityPermissionContextFactory::GetInstance();
   FileSystemAccessPermissionContextFactory::GetInstance();
   FindBarStateFactory::GetInstance();
-  finds::FindsServiceFactory::GetInstance();
   first_party_sets::FirstPartySetsPolicyServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
 #endif
@@ -947,8 +927,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #endif
-  policy::UserCloudPolicyInvalidatorFactory::GetInstance();
-  policy::UserFmRegistrationTokenUploaderFactory::GetInstance();
 #if BUILDFLAG(IS_CHROMEOS)
   policy::UserNetworkConfigurationUpdaterFactory::GetInstance();
 #else
@@ -981,7 +959,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   readaloud::ReadAloudServiceFactory::GetInstance();
 #endif
 #if !BUILDFLAG(IS_ANDROID)
-  ReadAnythingServiceFactory::GetInstance();
 #endif
   ReduceAcceptLanguageFactory::GetInstance();
   RendererUpdaterFactory::GetInstance();
@@ -995,8 +972,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   safe_browsing::ChromeEnterpriseRealTimeUrlLookupServiceFactory::GetInstance();
   safe_browsing::ChromePingManagerFactory::GetInstance();
-  safe_browsing::ClientSideDetectionIntelligentScanDelegateFactory::
-      GetInstance();
   safe_browsing::ClientSideDetectionServiceFactory::GetInstance();
   safe_browsing::CloudBinaryUploadServiceFactory::GetInstance();
 #endif
@@ -1004,14 +979,11 @@ void ChromeBrowserMainExtraPartsProfiles::
   safe_browsing::ExtensionTelemetryServiceFactory::GetInstance();
 #endif
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  safe_browsing::GeminiAntiscamProtectionServiceFactory::GetInstance();
 #endif
 #if BUILDFLAG(FULL_SAFE_BROWSING)
   safe_browsing::HashRealTimeServiceFactory::GetInstance();
 #endif
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  safe_browsing::NotificationContentDetectionServiceFactory::GetInstance();
-  safe_browsing::NotificationTelemetryServiceFactory::GetInstance();
   safe_browsing::RealTimeUrlLookupServiceFactory::GetInstance();
   safe_browsing::SafeBrowsingMetricsCollectorFactory::GetInstance();
   safe_browsing::SafeBrowsingNavigationObserverManagerFactory::GetInstance();
@@ -1131,7 +1103,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   UsbChooserContextFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
   UsbConnectionTrackerFactory::GetInstance();
-  UserEducationServiceFactory::GetInstance();
 #endif
   visited_url_ranking::GroupSuggestionsServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)

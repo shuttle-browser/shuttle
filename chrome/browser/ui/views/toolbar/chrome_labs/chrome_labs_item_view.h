@@ -7,7 +7,6 @@
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
-#include "components/user_education/common/new_badge/new_badge_controller.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/view.h"
 
@@ -18,12 +17,9 @@ namespace flags_ui {
 struct FeatureEntry;
 }
 
-namespace user_education {
-class NewBadgeLabel;
-}
-
 namespace views {
 class Combobox;
+class Label;
 class MdTextButton;
 }  // namespace views
 
@@ -45,20 +41,14 @@ class ChromeLabsItemView : public views::View {
 
   std::optional<size_t> GetSelectedIndex() const;
 
-  void SetShowNewBadge(user_education::DisplayNewBadge show_new_badge);
-
   views::Combobox* GetLabStateComboboxForTesting() {
     return lab_state_combobox_;
-  }
-
-  user_education::NewBadgeLabel* GetNewBadgeForTesting() {
-    return experiment_name_;
   }
 
   const flags_ui::FeatureEntry* GetFeatureEntry();
 
  private:
-  raw_ptr<user_education::NewBadgeLabel> experiment_name_;
+  raw_ptr<views::Label> experiment_name_;
 
   // Combobox with selected state of the lab.
   raw_ptr<views::Combobox> lab_state_combobox_;

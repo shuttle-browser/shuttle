@@ -36,13 +36,11 @@
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/extensions/extensions_toolbar_desktop.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_action_view.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/common/pref_names.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/infobars/content/content_infobar_manager.h"
 #include "components/infobars/core/infobar_delegate.h"
 #include "components/prefs/pref_service.h"
@@ -145,31 +143,7 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
             [](BrowserWindowInterface* bwi) {
               return bwi->GetActiveTabInterface()->GetContents();
             },
-            browser_window),
-        base::BindOnce(
-            [](const extensions::ExtensionId& extension_id,
-               base::WeakPtr<content::WebContents> web_contents) {
-              if (!web_contents) {
-                return;
-              }
-              BrowserWindowInterface* browser_interface =
-                  GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-                      web_contents.get());
-              if (!browser_interface) {
-                return;
-              }
-              BrowserView* browser_view =
-                  BrowserView::GetBrowserViewForBrowser(browser_interface);
-              if (!browser_view->toolbar()) {
-                return;
-              }
-              ExtensionsToolbarDesktop* extensions_toolbar =
-                  browser_view->toolbar()->extensions_container();
-              if (extensions_toolbar) {
-                extensions_toolbar->ShowPinnedByDefaultIPH(extension_id);
-              }
-            },
-            extension->id()));
+            browser_window));
     return;
   }
 

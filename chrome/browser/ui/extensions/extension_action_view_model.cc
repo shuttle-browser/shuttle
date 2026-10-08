@@ -54,8 +54,6 @@
 #include "ui/native_theme/native_theme.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
-#include "chrome/browser/ui/extensions/extension_side_panel_utils.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -428,14 +426,6 @@ bool ExtensionActionViewModel::IsEnabled(
     return true;
   }
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  extensions::SidePanelService* side_panel_service =
-      extensions::SidePanelService::Get(profile_);
-  if (side_panel_service &&
-      side_panel_service->HasSidePanelActionForTab(*extension_, tab_id)) {
-    return true;
-  }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)}
   return false;
 }
 
@@ -531,12 +521,6 @@ void ExtensionActionViewModel::ExecuteUserAction(InvocationSource source) {
   if (action == extensions::ExtensionAction::ShowAction::kShowPopup) {
     constexpr bool kByUser = true;
     TriggerPopup(PopupShowAction::kShow, kByUser, ShowPopupCallback());
-  } else if (action ==
-             extensions::ExtensionAction::ShowAction::kToggleSidePanel) {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-    extensions::side_panel_util::ToggleExtensionSidePanel(browser_,
-                                                          extension_->id());
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
   }
 }
 
@@ -813,17 +797,8 @@ ExtensionActionViewModel::GetIconImageSource(content::WebContents* web_contents,
   // is disabled.
   bool action_is_visible = extension_action_->GetIsVisible(tab_id);
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  extensions::SidePanelService* side_panel_service =
-      extensions::SidePanelService::Get(profile_);
-  bool has_side_panel_action =
-      side_panel_service &&
-      side_panel_service->HasSidePanelActionForTab(*extension_, tab_id);
-#else   // BUILDFLAG(ENABLE_EXTENSIONS)
-  bool has_side_panel_action = false;
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
   bool is_grayscale =
-      !action_is_visible && !has_side_panel_action &&
+      !action_is_visible &&
       GetSiteInteraction(web_contents) ==
           extensions::SitePermissionsHelper::SiteInteraction::kNone;
   image_source->set_grayscale(is_grayscale);

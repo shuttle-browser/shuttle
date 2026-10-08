@@ -829,16 +829,6 @@
     {NUM_PERMISSIONS, plural, =1 {Reset permission} other {Reset permissions}}
   </message>
 
-  <!-- About this site strings -->
-  <message name="IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE" desc="The title of the 'About this page' row in the Page Info bubble.">
-    About this page
-  </message>
-  <message name="IDS_PAGE_INFO_ABOUT_THIS_PAGE_DESCRIPTION_PLACEHOLDER" desc="The description of the 'About this page' row in the Page Info bubble if no more detailed description is available. 'It' refers to the page the user is currently visiting.">
-    Learn about its source and topic
-  </message>
-  <message name="IDS_PAGE_INFO_ABOUT_THIS_PAGE_TOOLTIP" desc="The tooltip of the button that opens 'About this page' details in Page Info bubble.">
-    Learn about this page's source &amp; topic
-  </message>
 
   <!-- Cookies subpage -->
   <message name="IDS_PAGE_INFO_COOKIES_HEADER" desc="The header label of cookies subpage in Page Info bubble.">

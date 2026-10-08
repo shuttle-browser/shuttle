@@ -72,13 +72,6 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
 
   static void SetOnVisibleCallbackForTesting(base::OnceClosure callback);
 
-  // In a live environment, the Extensions Zero State Promo IPH will only open
-  // after at least 10 minutes into the browsing session.
-  //
-  // This function sets the Zero State Promo show timer so that the IPH can
-  // show immediately.
-  static void WakeZeroStatePromoForTesting();
-
   ExtensionsMenuCoordinator* GetExtensionsMenuCoordinatorForTesting() {
     return extensions_menu_coordinator_.get();
   }
@@ -162,14 +155,6 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
 
   int GetNumberOfActionsForTesting() { return model_->action_ids().size(); }
 
-  ToolbarButton* GetCloseSidePanelButtonForTesting() {
-    return close_side_panel_button_;
-  }
-
-  // Called when the side panel state has changed for an extensions side panel
-  // to pop out button reflecting the side panel being open.
-  void UpdateSidePanelState(bool is_active);
-
   // ToolbarIconContainerView:
   void UpdateAllIcons() override;
   bool GetDropFormats(int* formats,
@@ -244,8 +229,6 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
   void OnRequestAccessButtonParamsChanged(
       content::WebContents* web_contents) override;
   void OnToolbarControlStateUpdated() override;
-  void ShowPinnedByDefaultIPH(
-      const extensions::ExtensionId& extension_id) override;
 
  private:
   friend class ToolbarActionHoverCardBubbleViewUITest;
@@ -306,9 +289,6 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
   // animation ends.
   void UpdateContainerVisibilityAfterAnimation();
 
-  // Triggers the side panel to close.
-  void CloseSidePanelButtonPressed();
-
   // views::WidgetObserver:
   void OnWidgetDestroying(views::Widget* widget) override;
 
@@ -325,20 +305,11 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
   void DragDropCleanup(
       const ToolbarActionsModel::ActionId& dragged_extension_id);
 
-  // Updates the vector icon used when the PrefChangeRegistrar listens to a
-  // change. When the side panel should open to the right side of the browser
-  // the default vector icon is used. When the side panel should open to the
-  // left side of the browser the flipped vector icon is used.
-  void UpdateCloseSidePanelButtonIcon();
-
   // Updates `extensions_button_` icon given `web_contents`.
   void UpdateExtensionsButton(content::WebContents& web_contents);
 
   // Updates the `request_access_button_` given the current `web_contents`.
   void UpdateRequestAccessButton(content::WebContents& web_contents);
-
-  // Maybe displays the In-Product-Help with a specific priority order.
-  void MaybeShowIPH();
 
   // Tracks the previously active web contents to differentiate tab switches
   // from navigations.
@@ -378,11 +349,6 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
   raw_ptr<ToolbarActionViewModel> popup_owner_ = nullptr;
   // Extension with an open context menu, if any.
   std::optional<extensions::ExtensionId> extension_with_open_context_menu_id_;
-  // View for closing the extension side panel.
-  raw_ptr<ToolbarButton> close_side_panel_button_ = nullptr;
-  // Used to ensure the button remains highlighted while active.
-  std::optional<views::Button::ScopedAnchorHighlight>
-      close_side_panel_button_anchor_highlight_;
 
   // The widgets currently popped out and, for each, the extension it is
   // associated with. See AnchoredWidget.
@@ -391,9 +357,6 @@ class ExtensionsToolbarDesktop : public ToolbarIconContainerView,
   // The DropInfo for the current drag-and-drop operation, or a null pointer if
   // there is none.
   std::unique_ptr<DropInfo> drop_info_;
-
-  // Observes and listens to side panel alignment changes.
-  PrefChangeRegistrar pref_change_registrar_;
 
   // Observes and listens to changes to the view model.
   base::ScopedObservation<ExtensionsToolbarViewModel,

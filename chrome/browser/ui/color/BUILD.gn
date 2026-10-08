@@ -30,8 +30,6 @@ source_set("mixers") {
     "material_new_tab_page_color_mixer.h",
     "material_omnibox_color_mixer.cc",
     "material_omnibox_color_mixer.h",
-    "material_side_panel_color_mixer.cc",
-    "material_side_panel_color_mixer.h",
     "material_tab_strip_color_mixer.cc",
     "material_tab_strip_color_mixer.h",
     "native_chrome_color_mixer.cc",

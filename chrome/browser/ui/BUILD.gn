@@ -199,13 +199,9 @@ if (!is_android) {
       "//chrome/browser/ui/interaction",
       "//chrome/browser/ui/page_info",
       "//chrome/browser/ui/profiles",
-      "//chrome/browser/ui/read_anything",
       "//chrome/browser/ui/search",
-      "//chrome/browser/ui/side_panel",
-      "//chrome/browser/ui/side_panel:side_panel_views_dependent",
       "//chrome/browser/ui/tabs/organizer",
       "//chrome/browser/ui/toolbar/chrome_labs",
-      "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views/download",
       "//chrome/browser/ui/views/file_system_access",
       "//chrome/browser/ui/views/frame:app_menu_button_observer",
@@ -213,7 +209,6 @@ if (!is_android) {
       "//chrome/browser/ui/views/js_optimization",
       "//chrome/browser/ui/views/location_bar/cookie_controls",
       "//chrome/browser/ui/views/page_info",
-      "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/views/tabs/groups",
       "//chrome/browser/ui/views/tabs/organizer",
       "//chrome/browser/ui/views/toolbar",
@@ -550,7 +545,6 @@ static_library("ui") {
     "//chrome/browser/notifications:impl",
     "//chrome/browser/task_manager",
     "//chrome/browser/ui/dialogs",
-    "//chrome/browser/ui/webui/chrome_finds_internals",
     "//chrome/browser/ui/webui/flags",
     "//chrome/browser/ui/webui/subresource_filter",
   ]
@@ -577,7 +571,6 @@ static_library("ui") {
     "//chrome/browser:font_pref",
     "//chrome/browser:renderer_preferences_util",
     "//chrome/browser:resources_util",
-    "//chrome/browser/ai",
     "//chrome/browser/component_updater",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
@@ -589,7 +582,6 @@ static_library("ui") {
     "//chrome/browser/enterprise:impl",
     "//chrome/browser/external_protocol",
     "//chrome/browser/favicon",
-    "//chrome/browser/finds",
     "//chrome/browser/first_run",
     "//chrome/browser/first_run:impl",
     "//chrome/browser/gcm",
@@ -703,7 +695,6 @@ static_library("ui") {
     "//components/download/content/factory",
     "//components/embedder_support:user_agent",
     "//components/facilitated_payments/core/features",
-    "//components/feature_engagement",
     "//components/history/content/browser",
     "//components/history_clusters/core",
     "//components/input",
@@ -1076,7 +1067,6 @@ static_library("ui") {
       ":chrome_pages",
       ":chrome_web_modal_dialog_manager_delegate",
       "//chrome/browser:certificate_viewer",
-      "//chrome/browser/accessibility/phrase_segmentation",
       "//chrome/browser/ui/sessions",
       "//chrome/browser/ui/web_modal:browser_window_modal_dialog_delegate",
       "//chrome/browser/ui/webui/webui_gallery",
@@ -1224,9 +1214,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/omnibox/logging:mojo_bindings",
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
-      "//chrome/browser/ui/webui/side_panel/history:impl",
-      "//chrome/browser/ui/webui/side_panel/history_clusters:impl",
-      "//chrome/browser/ui/webui/user_education_internals",
       "//chrome/browser/ui/webui/util:impl",
       "//chrome/browser/ui/window_feature_controller",
       "//chrome/browser/usb",
@@ -1264,8 +1251,6 @@ static_library("ui") {
       "//chrome/browser/ui/toasts:impl",
       "//chrome/browser/ui/toolbar/pinned_toolbar",
       "//chrome/browser/ui/toolbar/pinned_toolbar:impl",
-      "//chrome/browser/ui/user_education",
-      "//chrome/browser/ui/user_education:impl",
       "//chrome/browser/ui/views/app_menu",
       "//chrome/browser/ui/views/app_menu:impl",
       "//chrome/browser/ui/views/js_optimization",
@@ -1290,8 +1275,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/webui_toolbar",
       "//chrome/browser/ui/webui/webui_toolbar:impl",
       "//chrome/browser/ui/webui/webui_toolbar/adapters:impl",
-      "//chrome/browser/ui/webui_browser",
-      "//chrome/browser/ui/webui_browser:impl",
       "//chrome/browser/ui/window_sizer",
       "//chrome/browser/ui/window_sizer:impl",
       "//chrome/browser/visited_url_ranking:impl",
@@ -1301,7 +1284,6 @@ static_library("ui") {
       "//components/services/app_service",
       "//components/ui_metrics",
       "//components/url_formatter",
-      "//components/user_education/webui",
       "//device/bluetooth",
       "//device/bluetooth/strings:strings_grit",
       "//device/fido",
@@ -1318,13 +1300,8 @@ static_library("ui") {
 
     # Non-android public_deps for "ui" target.
     public_deps += [
-      "//chrome/browser/ui/read_anything:impl",
-      "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/waap:manager",
       "//chrome/browser/ui/webui/multistep_filter_internals",
-      "//chrome/browser/ui/webui/side_panel/history",
-      "//chrome/browser/ui/webui/side_panel/history_clusters",
-      "//chrome/browser/ui/webui/side_panel/read_anything",
       "//chrome/browser/ui/webui/util",
       "//chrome/browser/ui/webui/webnn_internals",
     ]
@@ -1374,8 +1351,6 @@ static_library("ui") {
       # TODO(crbug.com/40251079): Remove circular dependencies.
 
       # TODO(crbug.com/345487716): Remove circular dependencies.
-      "//chrome/browser/ui/read_anything:impl",
-      "//chrome/browser/ui/views/side_panel",
 
       # TODO(crbug/com/387527798): Remove circular dependencies.
       "//chrome/browser/ui/views/download",
@@ -1397,8 +1372,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/toolbar:impl",
       "//chrome/browser/ui/webui/searchbox",
       "//chrome/browser/ui/webui/top_chrome:impl",
-      "//chrome/browser/ui/webui_browser",
-      "//chrome/browser/ui/webui_browser:impl",
 
       # TODO(crbug.com/382237520): Remove this once NTP code is modularized.
 
@@ -1428,7 +1401,6 @@ static_library("ui") {
 
       # TODO(crbug.com/430078439): Remove this circular dependency when .cc
       # files stop including browser.h, browser_window.h.
-      "//chrome/browser/ui/user_education:impl",
 
       # TODO(crbug.com/432421124): Remove when the following headers aren't
       # included or get componentized: c/b/ui/browser_dialogs.h,
@@ -2096,8 +2068,6 @@ static_library("ui") {
       "views/frame/picture_in_picture_browser_frame_view.h",
       "views/frame/scrim_view_controller.cc",
       "views/frame/scrim_view_controller.h",
-      "views/frame/shadow_overlay_view.cc",
-      "views/frame/shadow_overlay_view.h",
       "views/frame/system_menu_model_builder.cc",
       "views/frame/system_menu_model_builder.h",
       "views/frame/system_menu_model_delegate.cc",
@@ -2123,6 +2093,7 @@ static_library("ui") {
       ":browser_init_state",
       ":idle_bubble",
       ":idle_dialog",
+      "//chrome/browser/ui/views:find_bar_owner",
       "//base",
       "//chrome/browser:resources",
       "//chrome/browser/actor/ui/task_list_bubble:controller",
@@ -2270,8 +2241,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/tabs/tab:impl",
       "//chrome/browser/ui/views/tabs/vertical",
       "//chrome/browser/ui/views/tabs/vertical:impl",
-      "//chrome/browser/ui/views/user_education",
-      "//chrome/browser/ui/views/user_education:impl",
       "//chrome/browser/ui/views/webauthn",
       "//chrome/browser/ui/views/webid",
       "//chrome/browser/ui/views/zoom",
@@ -2284,7 +2253,6 @@ static_library("ui") {
       "//components/prefs",
       "//components/services/app_service",
       "//components/ui_devtools/views",
-      "//components/user_education/views",
       "//services/device/public/cpp:device_features",
       "//ui/base:ozone_buildflags",
     ]
@@ -2602,7 +2570,6 @@ static_library("ui") {
       # c/b/ui/views/frame/contents_web_view.h
       # c/b/ui/views/frame/custom_corners_background.h
       # c/b/ui/views/web_apps/web_app_install_dialog_delegate.h
-      "//chrome/browser/ui/views/user_education:impl",
 
       # TODO(crbug.com/353332589): Remove this circular dependency when the
       # following headers get componentized:
@@ -2739,7 +2706,6 @@ static_library("ui") {
   if (enable_extensions) {
     deps += [
       "//chrome/browser/ui/views/extensions:extension_action_delegate_desktop",
-      "//chrome/browser/ui/webui/extensions_zero_state_promo",
       "//extensions/browser",
       "//ui/base/cursor",
     ]
@@ -2750,7 +2716,6 @@ static_library("ui") {
       # TODO(crbug.com/353332589): zero_state_promo_ui.h and page_handler.cc
       # include browser.h and custom_webui_help_bubble_controller.h from
       # //chrome/browser/ui:ui.
-      "//chrome/browser/ui/webui/extensions_zero_state_promo",
     ]
 
     sources += [
@@ -3039,7 +3004,6 @@ if (!is_android) {
       "//base",
       "//build:branding_buildflags",
       "//chrome/browser/signin",
-      "//chrome/browser/ui/user_education",
       "//components/content_settings/core/common",
       "//components/signin/public/base:signin_buildflags",
       "//url",

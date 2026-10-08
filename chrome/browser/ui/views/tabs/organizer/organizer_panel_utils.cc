@@ -7,16 +7,9 @@
 namespace organizer_panel {
 
 BASE_FEATURE(kOrganizerPanel, base::FEATURE_DISABLED_BY_DEFAULT);
-BASE_FEATURE(kShowExtensionsSidePanelUiInOrganizerPanel,
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsOrganizerPanelFeatureEnabled() {
   return base::FeatureList::IsEnabled(kOrganizerPanel);
-}
-
-bool IsShowExtensionsSidePanelUiInOrganizerPanelEnabled() {
-  return base::FeatureList::IsEnabled(
-      kShowExtensionsSidePanelUiInOrganizerPanel);
 }
 
 }  // namespace organizer_panel

@@ -59,12 +59,6 @@ class SplitTabsToolbarButton : public ToolbarButton,
   void UpdateAccessibilityRole(bool has_menu);
   void UpdateAccessibilityLabel(bool is_enabled);
 
-  // If the IPH is showing, notifies that the feature promo was used.
-  void MaybeNotifyIndirectAccessIPHUsed();
-
-  // Aborts the feature promo if we are no longer in a side-by-side split.
-  void MaybeAbortIndirectAccessIPH();
-
   BooleanPrefMember pin_state_;
   raw_ptr<BrowserWindowInterface> browser_;
   raw_ptr<PinnedToolbarButtonStatusIndicator> status_indicator_;

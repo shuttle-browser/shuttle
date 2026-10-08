@@ -85,16 +85,6 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
                                                         : kColorRefSecondary0};
   mixer[kColorFrameInactive] = {kColorSysHeaderInactive};
   mixer[kColorIcon] = {kColorSysOnSurfaceSubtle};
-  mixer[kColorHistoryClustersSidePanelDivider] = {kColorSysDivider};
-  mixer[kColorHistoryClustersSidePanelDialogBackground] = {kColorSysSurface};
-  mixer[kColorHistoryClustersSidePanelDialogDivider] = {
-      kColorSysNeutralOutline};
-  mixer[kColorHistoryClustersSidePanelDialogPrimaryForeground] = {
-      kColorSysOnSurface};
-  mixer[kColorHistoryClustersSidePanelDialogSecondaryForeground] = {
-      kColorSysOnSurfaceSubtle};
-  mixer[kColorHistoryClustersSidePanelCardSecondaryForeground] = {
-      kColorSysOnSurfaceSubtle};
   mixer[kColorLabelSelectionBackground] = {kColorTextSelectionBackground};
   mixer[kColorLinkForeground] = {kColorLinkForegroundDefault};
   mixer[kColorLinkForegroundDefault] = {kColorSysPrimary};
@@ -138,7 +128,6 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorSegmentedButtonRipple] = {kColorSysStateRippleNeutralOnSubtle};
   mixer[kColorSegmentedButtonChecked] = {kColorSysPrimary};
   mixer[kColorSeparator] = {kColorSysDivider};
-  mixer[kColorSidePanelComboboxBackground] = {kColorSysBaseContainer};
   mixer[kColorSliderThumb] = {kColorSysPrimary};
   mixer[kColorSliderThumbMinimal] = {kColorSysSecondary};
   mixer[kColorSliderTrack] = {kColorSysOnPrimary};

@@ -22,8 +22,6 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/toolbar_controller_util.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -196,8 +194,7 @@ ToolbarController::GetDefaultOverflowOrder() {
       // uses the correct relative order, even when only one of the two buttons
       // is being handled by the WebUI toolbar.
       kWebUIToolbarElementIdentifier, kToolbarForwardButtonElementId,
-      kToolbarAvatarButtonElementId, kToolbarSplitTabsToolbarButtonElementId,
-      kPinnedToolbarActionShowSidePanelContextualTasksElementId};
+      kToolbarAvatarButtonElementId, kToolbarSplitTabsToolbarButtonElementId};
   if (base::FeatureList::IsEnabled(features::kToolbarGlicButtonResizing)) {
     const auto it =
         std::find(order.begin(), order.end(), kToolbarAvatarButtonElementId);
@@ -221,12 +218,7 @@ std::string ToolbarController::GetActionNameFromElementIdentifier(
            {kToolbarHomeButtonElementId, "HomeButton"},
            {kActionHome, "HomeButton"},
            {kToolbarMediaButtonElementId, "MediaButton"},
-           {kToolbarSidePanelButtonElementId, "SidePanelButton"},
            {kToolbarSplitTabsToolbarButtonElementId, "SplitTabs"},
-           {kPinnedToolbarActionShowSidePanelContextualTasksElementId,
-            "PinnedContextualTasksSidePanelButton"},
-           {kActionSidePanelShowContextualTasks,
-            "PinnedContextualTasksSidePanelButton"},
            {kActionClearBrowsingData, "PinnedClearBrowsingDataButton"},
            {kActionCopyUrl, "PinnedCopyLinkButton"},
            {kActionDevTools, "PinnedDeveloperToolsButton"},
@@ -247,23 +239,9 @@ std::string ToolbarController::GetActionNameFromElementIdentifier(
            {kActionShowPaymentsBubbleOrPage,
             "PinnedShowPaymentsBubbleOrPageButton"},
            {kActionShowTranslate, "PinnedShowTranslateButton"},
-           {kActionSidePanelShowBookmarks, "PinnedShowBookmarkSidePanelButton"},
-           {kActionSidePanelShowReadAnything,
-            "PinnedShowReadAnythingSidePanelButton"},
-           {kActionSidePanelShowHistoryCluster,
-            "PinnedShowHistorySidePanelButton"},
-           {kActionSidePanelShowReadingList,
-            "PinnedShowReadingListSidePanelButton"},
-           {kActionSidePanelShowSearchCompanion,
-            "PinnedShowSearchCompanionSidePanelButton"},
            {kActionTaskManager, "PinnedTaskManagerButton"},
-           {kActionSidePanelShowLensOverlayResults,
-            "PinnedShowLensOverlayResultsSidePanelButton"},
            {kActionSendSharedTabGroupFeedback, "SharedTabGroupFeedbackButton"},
            {kActionTabSearch, "PinnedTabSearchButton"},
-           {kActionSidePanelShowGlic, "PinnedGlicButton"},
-           {kActionSidePanelShowTabsFromOtherDevices,
-            "PinnedTabsFromOtherDevicesButton"},
            {kGlicButtonElementId, "GlicButtonElementId"}});
 
   const auto it = identifier_to_action_name_map->find(identifier);
@@ -481,10 +459,7 @@ void ToolbarController::ExecuteCommand(const OverflowableElement& element) {
       absl::Overload{
           [&, this](actions::ActionId id) {
             pinned_actions_delegate_->GetActionItemFor(id)->InvokeAction(
-                actions::ActionInvocationContext::Builder()
-                    .SetProperty(kSidePanelOpenTriggerKey,
-                                 SidePanelOpenTrigger::kOverflowMenu)
-                    .Build());
+                actions::ActionInvocationContext::Builder().Build());
             action_key.emplace<actions::ActionId>(id);
           },
           [&, this](const ToolbarController::ElementIdInfo& id_info) {

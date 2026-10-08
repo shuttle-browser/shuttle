@@ -36,11 +36,7 @@
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/user_education/show_promo_in_page.h"
 #include "chrome/browser/ui/webui/settings/site_settings_helper.h"
-#include "chrome/browser/user_education/tutorial_identifiers.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
@@ -449,12 +445,6 @@ void ShowSettingsSubPageInTabbedBrowser(BrowserWindowInterface* browser,
   ShowSingletonTabIgnorePathOverwriteNTP(browser, GetSettingsUrl(sub_page));
 }
 
-void ShowPageWithPromoForProfile(Profile* profile,
-                                 ShowPromoInPage::Params promo_params) {
-  BrowserWindowInterface* browser = GetOrCreateBrowserForProfile(profile);
-  ShowPromoInPage::Start(browser, std::move(promo_params));
-}
-
 void ShowContentSettingsExceptions(BrowserWindowInterface* browser,
                                    ContentSettingsType content_settings_type) {
   ShowSettingsSubPage(
@@ -508,21 +498,9 @@ void ShowSafeBrowsingEnhancedProtection(BrowserWindowInterface* browser) {
 void ShowSafeBrowsingEnhancedProtectionWithIph(
     BrowserWindowInterface* browser,
     safe_browsing::SafeBrowsingSettingReferralMethod referral_method) {
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  ShowPromoInPage::Params params;
-  params.target_url =
-      chrome::GetSettingsUrl(chrome::kSafeBrowsingEnhancedProtectionSubPage);
-  params.bubble_anchor_id = kEnhancedProtectionSettingElementId;
-  params.bubble_arrow = user_education::HelpBubbleArrow::kBottomLeft;
-  params.bubble_text = l10n_util::GetStringUTF16(
-      IDS_SETTINGS_SAFEBROWSING_ENHANCED_IPH_BUBBLE_TEXT);
-  params.close_button_alt_text_id =
-      IDS_SETTINGS_SAFEBROWSING_ENHANCED_IPH_BUBBLE_CLOSE_BUTTON_ARIA_LABEL_TEXT;
   base::UmaHistogramEnumeration("SafeBrowsing.EsbPromotionFlow.IphShown",
                                 referral_method);
-  safe_browsing::LogShowEnhancedProtectionAction();
-  ShowPromoInPage::Start(browser, std::move(params));
-#endif
+  ShowSafeBrowsingEnhancedProtection(browser);
 }
 
 void ShowAboutChrome(BrowserWindowInterface* browser) {

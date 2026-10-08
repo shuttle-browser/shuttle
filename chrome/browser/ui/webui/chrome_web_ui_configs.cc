@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/webui/accessibility/accessibility_ui.h"
 #include "chrome/browser/ui/webui/actor_internals/actor_internals_ui.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
-#include "chrome/browser/ui/webui/chrome_finds_internals/chrome_finds_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
 #include "chrome/browser/ui/webui/components/components_ui.h"
 #include "chrome/browser/ui/webui/connectors_internals/connectors_internals_ui.h"
@@ -23,7 +22,6 @@
 #include "chrome/browser/ui/webui/engagement/site_engagement_ui.h"
 #include "chrome/browser/ui/webui/family_link_user_internals/family_link_user_internals_ui.h"
 #include "chrome/browser/ui/webui/flags/flags_ui.h"
-#include "chrome/browser/ui/webui/gcm_internals_ui.h"
 #include "chrome/browser/ui/webui/history_clusters/history_clusters_internals_ui_config.h"
 #include "chrome/browser/ui/webui/internal_debug_pages_disabled/internal_debug_pages_disabled_ui.h"
 #include "chrome/browser/ui/webui/interstitials/interstitial_ui.h"
@@ -66,7 +64,6 @@
 #include "chrome/browser/actor/ui/actor_overlay_ui.h"
 #include "chrome/browser/ui/tabs/tab_group_home/tab_group_home_ui.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_ui.h"
-#include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
 #if !BUILDFLAG(IS_CHROMEOS)
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -87,9 +84,6 @@
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
-#include "chrome/browser/ui/webui/side_panel/history/history_side_panel_ui.h"
-#include "chrome/browser/ui/webui/side_panel/history_clusters/history_clusters_side_panel_ui.h"
-#include "chrome/browser/ui/webui/user_education_internals/user_education_internals_ui.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals_ui.h"
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
 #include "chrome/browser/ui/webui/webui_js_error/webui_js_error_ui.h"
@@ -104,7 +98,6 @@
 #endif  // !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/ui/webui/extensions_zero_state_promo/zero_state_promo_ui.h"
 #endif  // ENABLE_EXTENSIONS
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
@@ -186,8 +179,6 @@ void RegisterChromeWebUIConfigs() {
   auto& map = content::WebUIConfigMap::GetInstance();
   map.AddWebUIConfig(std::make_unique<AccessibilityUIConfig>());
   map.AddWebUIConfig(std::make_unique<BluetoothInternalsUIConfig>());
-  map.AddWebUIConfig(
-      std::make_unique<chrome_finds_internals::ChromeFindsInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<chrome_urls::ChromeUrlsUIConfig>());
   map.AddWebUIConfig(std::make_unique<chromeos::DeviceLogUIConfig>());
   map.AddWebUIConfig(std::make_unique<ActorInternalsUIConfig>());
@@ -203,7 +194,6 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<DownloadInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<FamilyLinkUserInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<FlagsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<GCMInternalsUIConfig>());
   map.AddWebUIConfig(
       std::make_unique<
           history_clusters_internals::HistoryClustersInternalsUIConfig>());
@@ -253,8 +243,6 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
   map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
-  map.AddWebUIConfig(std::make_unique<HistorySidePanelUIConfig>());
-  map.AddWebUIConfig(std::make_unique<HistoryClustersSidePanelUIConfig>());
   map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<InspectUIConfig>());
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
@@ -272,9 +260,7 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<settings::SettingsUIConfig>());
   map.AddWebUIConfig(std::make_unique<tabs::TabGroupHomeUIConfig>());
   map.AddWebUIConfig(std::make_unique<TermsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<UserEducationInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebNNInternalsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<WebUIBrowserUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebuiGalleryUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebUIJsErrorUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebUIToolbarConfig>());
@@ -288,11 +274,6 @@ void RegisterChromeWebUIConfigs() {
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   map.AddWebUIConfig(std::make_unique<extensions::ExtensionsUIConfig>());
 #endif  // !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  map.AddWebUIConfig(
-      std::make_unique<extensions::ZeroStatePromoControllerConfig>());
-#endif  // !BUILDFLAG(ENABLE_EXTENSIONS)
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   map.AddWebUIConfig(std::make_unique<printing::PrintPreviewUIConfig>());

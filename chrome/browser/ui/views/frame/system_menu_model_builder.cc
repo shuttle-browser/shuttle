@@ -20,12 +20,10 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/user_education/common/new_badge/new_badge_controller.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/models/menu_model.h"
@@ -206,12 +204,6 @@ void SystemMenuModelBuilder::BuildSystemMenuForBrowserWindow(
 
       model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
                                  switch_to_vertical_id);
-      const user_education::DisplayNewBadge show_badge =
-          UserEducationService::MaybeShowNewBadge(browser()->GetProfile(),
-                                                  tabs::kVerticalTabsNewBadge);
-      model->SetIsNewFeatureAt(
-          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),
-          show_badge, ui::NewBadgeType::kNew);
     }
     model->SetElementIdentifierAt(
         model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),

@@ -19,10 +19,6 @@
 #include "ui/base/models/image_model.h"
 #include "ui/base/models/menu_model.h"
 
-namespace user_education {
-class NewBadgeController;
-}
-
 class ChromeLabsViewController;
 
 namespace ui {
@@ -39,9 +35,6 @@ class COMPONENT_EXPORT(UI_MENUS) IsNewFeatureAtValue {
   IsNewFeatureAtValue() = default;
 
   // Allowed factory classes:
-  IsNewFeatureAtValue(base::PassKey<user_education::NewBadgeController>,
-                      bool value)
-      : ui::IsNewFeatureAtValue(value) {}
   IsNewFeatureAtValue(base::PassKey<ChromeLabsViewController>, bool value)
       : ui::IsNewFeatureAtValue(value) {}
 

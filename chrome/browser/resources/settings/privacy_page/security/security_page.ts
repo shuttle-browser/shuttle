@@ -20,7 +20,6 @@ import './secure_dns.js';
 
 import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
 import {CrSettingsPrefs} from '/shared/settings/prefs/prefs_types.js';
-import {HelpBubbleMixin} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin.js';
 import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
 import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
 import {assert} from 'chrome://resources/js/assert.js';
@@ -70,8 +69,8 @@ export interface SettingsSecurityPageElement {
 }
 
 const SettingsSecurityPageElementBase =
-    HelpBubbleMixin(RouteObserverMixin(SettingsViewMixin(
-        WebUiListenerMixin(I18nMixin(PrefsMixin(PolymerElement))))));
+    RouteObserverMixin(SettingsViewMixin(
+        WebUiListenerMixin(I18nMixin(PrefsMixin(PolymerElement)))));
 
 export class SettingsSecurityPageElement extends
     SettingsSecurityPageElementBase {
@@ -214,10 +213,6 @@ export class SettingsSecurityPageElement extends
             HttpsFirstModeSetting.ENABLED_BALANCED);
       }
     });
-
-    this.registerHelpBubble(
-        'kEnhancedProtectionSettingElementId',
-        this.$.safeBrowsingEnhanced.getBubbleAnchor(), {paddingTop: 10});
 
     this.addWebUiListener(
         'contentSettingCategoryChanged', (category: ContentSettingsTypes) => {

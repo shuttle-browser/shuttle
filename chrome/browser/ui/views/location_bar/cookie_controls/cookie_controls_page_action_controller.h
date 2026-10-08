@@ -10,12 +10,10 @@
 #include "base/scoped_observation.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_observer.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_bubble_coordinator.h"
 #include "components/content_settings/browser/ui/cookie_controls_view.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/user_education/common/feature_promo/feature_promo_result.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 
 class Profile;

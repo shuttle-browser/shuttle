@@ -71,7 +71,6 @@
 #include "chrome/renderer/url_loader_throttle_provider_impl.h"
 #include "chrome/renderer/v8_unwinder.h"
 #include "chrome/renderer/websocket_handshake_throttle_provider_impl.h"
-#include "chrome/renderer/webui_browser/webui_browser_renderer_extension.h"
 #include "chrome/renderer/worker_content_settings_client.h"
 #include "chrome/services/speech/buildflags/buildflags.h"
 #include "components/content_capture/common/content_capture_features.h"
@@ -669,12 +668,6 @@ void ChromeContentRendererClient::RenderFrameCreated(
   }
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(features::kWebium)) {
-    WebUIBrowserRendererExtension::Create(render_frame);
-  }
-#endif
-
   // Wire up the PageStabilityMonitorManager to allow components to
   // request stability monitors for this frame.
   new page_content_annotations::PageStabilityMonitorManager(render_frame);
@@ -787,17 +780,6 @@ bool ChromeContentRendererClient::OverrideCreatePlugin(
     WebPlugin** plugin) {
   std::string orig_mime_type = params.mime_type.Utf8();
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(surface_embed::features::kSurfaceEmbed)) {
-    GURL url = render_frame->GetWebFrame()->GetDocument().Url();
-    if (url.SchemeIs(content::kChromeUIScheme) &&
-        url.host() == chrome::kChromeUIWebuiBrowserHost) {
-      if (surface_embed::MaybeCreatePlugin(render_frame, params, plugin)) {
-        return true;
-      }
-    }
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   // Used for plugins.

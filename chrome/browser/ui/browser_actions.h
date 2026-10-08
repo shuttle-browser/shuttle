@@ -51,7 +51,6 @@ class BrowserActions {
 
  private:
   // Helper functions to initialize actions grouped roughly by their type.
-  void InitializeSidePanelActions();
   void InitializePageActionIconActions();
   void InitializeChromeMenuActions();
   void InitializeToolbarAndMiscActions();

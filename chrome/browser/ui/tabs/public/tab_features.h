@@ -48,12 +48,8 @@ class HttpAuthCacheStatus;
 class JsOptimizationsPageActionController;
 class Profile;
 class QwacWebContentsObserver;
-class ReadAnythingController;
-class ReadAnythingSidePanelController;
 class SadTabHelper;
-class SearchPromotionNavigationObserver;
 class SecurityStateEventObserver;
-class SidePanelRegistry;
 class TabUIHelper;
 class ThumbnailTabHelper;
 class ZeroSuggestPrefetchTabHelper;
@@ -84,7 +80,6 @@ class WebContents;
 }  // namespace content
 
 namespace extensions {
-class ExtensionSidePanelManager;
 }  // namespace extensions
 
 namespace zoom {
@@ -138,9 +133,6 @@ class TabFeatures {
     return permission_indicators_tab_data_.get();
   }
 
-  extensions::ExtensionSidePanelManager* extension_side_panel_manager() {
-    return extension_side_panel_manager_.get();
-  }
 
   TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
 
@@ -206,15 +198,11 @@ class TabFeatures {
   std::unique_ptr<permissions::PermissionIndicatorsTabData>
       permission_indicators_tab_data_;
 
-  std::unique_ptr<SidePanelRegistry> side_panel_registry_;
 
   // Responsible for managing the read anything (Reading mode) feature.
-  std::unique_ptr<ReadAnythingController> read_anything_controller_;
 
   // The tab-scoped extension side-panel manager. There is a separate
   // window-scoped extension side-panel manager.
-  std::unique_ptr<extensions::ExtensionSidePanelManager>
-      extension_side_panel_manager_;
 
   // Security-state-driven side effects (known-interception disclosure,
   // form-submission UKM).
@@ -309,8 +297,6 @@ class TabFeatures {
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_WIN)
-  std::unique_ptr<SearchPromotionNavigationObserver>
-      search_promotion_navigation_observer_;
   std::unique_ptr<CommitLimitOOMRecoveryTracker>
       commit_limit_oom_recovery_tracker_;
 #endif

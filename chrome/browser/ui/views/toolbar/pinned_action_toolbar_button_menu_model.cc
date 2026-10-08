@@ -18,8 +18,6 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/common/pref_names.h"
@@ -203,10 +201,6 @@ void PinnedActionToolbarButtonMenuModel::ActivatedAt(size_t index,
         actions::ActionInvocationContext::Builder()
             .SetProperty(chrome::kDispositionKey,
                          ui::DispositionFromEventFlags(event_flags))
-            .SetProperty(
-                kSidePanelOpenTriggerKey,
-                static_cast<std::underlying_type_t<SidePanelOpenTrigger>>(
-                    SidePanelOpenTrigger::kPinnedEntryToolbarButton))
             .Build());
   }
 }

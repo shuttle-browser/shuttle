@@ -7,7 +7,6 @@
 #include "base/i18n/rtl.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/user_education/common/user_education_class_properties.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/views/animation/flood_fill_ink_drop_ripple.h"
 #include "ui/views/animation/ink_drop.h"
@@ -41,12 +40,6 @@ void ConfigureInkDropForRefresh2023(views::View* const view,
       [](views::View* view, ChromeColorIds hover_color_id) {
         const auto* color_provider = view->GetColorProvider();
         SkColor hover_color = color_provider->GetColor(hover_color_id);
-
-        // override the hover color if this is triggered by `user_education`.
-        if (view->GetProperty(user_education::kHasInProductHelpPromoKey)) {
-          hover_color = color_provider->GetColor(
-              ui::kColorButtonFeatureAttentionHighlight);
-        }
 
         const float hover_alpha = SkColorGetA(hover_color);
 

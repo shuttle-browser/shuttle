@@ -92,7 +92,6 @@ function normalizePageVisibility(
       hoverCard: true,
       pageZoom: true,
       setTheme: true,
-      sidePanel: true,
     };
   }
 
@@ -102,7 +101,6 @@ function normalizePageVisibility(
       hoverCard: visibility,
       pageZoom: visibility,
       setTheme: visibility,
-      sidePanel: visibility,
     };
   }
 
@@ -139,8 +137,6 @@ export class SettingsAppearancePageElement extends
       pinSplitTabButtonPref_: {type: Object},
       showForwardButtonPref_: {type: Object},
       showHomeButtonPref_: {type: Object},
-      sidePanelAlignmentOverridesPref_: {type: Object},
-      sidePanelIsRightAlignedPref_: {type: Object},
       themeIdPref_: {type: Object},
       themePolicyColorPref_: {type: Object},
       verticalTabsEnabledPref_: {type: Object},
@@ -172,8 +168,6 @@ export class SettingsAppearancePageElement extends
       showResetPinnedActionsButton_: {type: Boolean},
       showCtrlTabMru_: {type: Boolean},
       tabStripUnificationEnabled_: {type: Boolean},
-      sidePanelAlignmentOptions_: {type: Array},
-      configurableSidePanels_: {type: Array},
     };
   }
 
@@ -200,10 +194,6 @@ export class SettingsAppearancePageElement extends
       undefined;
   protected accessor showHomeButtonPref_: PrefObject<boolean>|undefined =
       undefined;
-  protected accessor sidePanelAlignmentOverridesPref_:
-      PrefObject<Record<string, boolean>>|undefined = undefined;
-  protected accessor sidePanelIsRightAlignedPref_: PrefObject<boolean>|
-      undefined = undefined;
   protected accessor themeIdPref_: PrefObject<string>|undefined = undefined;
   protected accessor themePolicyColorPref_: PrefObject<number>|undefined =
       undefined;
@@ -255,12 +245,6 @@ export class SettingsAppearancePageElement extends
     {value: 'false', name: loadTimeData.getString('uiFeatureAlignTop')},
   ];
 
-
-  protected accessor sidePanelAlignmentOptions_: DropdownMenuOptionList = [
-    {value: 'false', name: loadTimeData.getString('uiFeatureAlignLeft')},
-    {value: 'true', name: loadTimeData.getString('uiFeatureAlignRight')},
-  ];
-
   /**
    * Predefined zoom factors to be used when zooming in/out. These are in
    * ascending order. Values are displayed in the page zoom drop-down menu
@@ -297,10 +281,6 @@ export class SettingsAppearancePageElement extends
   protected accessor tabStripUnificationEnabled_: boolean =
       loadTimeData.getBoolean('tabStripUnificationEnabled');
 
-  protected accessor configurableSidePanels_:
-      Array<{id: string, label: string}> =
-          JSON.parse(loadTimeData.getString('configurableSidePanelAlignments'));
-
   private appearanceBrowserProxy_: AppearanceBrowserProxy =
       AppearanceBrowserProxyImpl.getInstance();
   private colorSchemeModeBrowserProxy_: CustomizeColorSchemeModeBrowserProxy =
@@ -324,8 +304,6 @@ export class SettingsAppearancePageElement extends
       // </if>
       'homepage': 'homepagePref_',
       'homepage_is_newtabpage': 'homepageIsNewTabPagePref_',
-      'side_panel.alignment_overrides': 'sidePanelAlignmentOverridesPref_',
-      'side_panel.is_right_aligned': 'sidePanelIsRightAlignedPref_',
       'toolbar.pinned_actions': 'pinnedActionsPref_',
       'vertical_tabs.enabled': 'verticalTabsEnabledPref_',
       'webkit.webprefs.default_font_size': 'defaultFontSizePref_',
@@ -657,25 +635,6 @@ export class SettingsAppearancePageElement extends
 
   protected onManagedDialogClose_() {
     this.showManagedThemeDialog_ = false;
-  }
-
-  protected getOverrideValue_(id: string): string {
-    const overrides = this.sidePanelAlignmentOverridesPref_?.value;
-    const defaultIsRight = this.sidePanelIsRightAlignedPref_?.value;
-    if (defaultIsRight === undefined) {
-      return '';
-    }
-    const isRight = (overrides && overrides[id] !== undefined) ? overrides[id] :
-                                                                 defaultIsRight;
-    return isRight.toString();
-  }
-
-  protected onOverrideAlignmentSettingsControlChange_(event: Event) {
-    const dropdown = event.target as SettingsDropdownMenuElement;
-    const entryId = dropdown.dataset['entryId']!;
-    const newValue = dropdown.getSelectedValue() === 'true';
-    PrefService.getInstance().setPrefDictEntry<boolean>(
-        'side_panel.alignment_overrides', entryId, newValue);
   }
 
   // SettingsViewMixin

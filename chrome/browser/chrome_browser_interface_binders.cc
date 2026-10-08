@@ -134,8 +134,6 @@
 #endif  // BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
 
 #if BUILDFLAG(ENABLE_PDF)
-#include "chrome/browser/pdf/pdf_help_bubble_handler_factory.h"
-#include "ui/webui/resources/cr_components/help_bubble/help_bubble.mojom.h"
 #endif
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
@@ -527,11 +525,6 @@ void PopulateChromeFrameBinders(
 #if BUILDFLAG(IS_WIN)
   map->Add<media::mojom::MediaFoundationPreferences>(
       &BindMediaFoundationPreferences);
-#endif
-
-#if BUILDFLAG(ENABLE_PDF)
-  map->Add<help_bubble::mojom::PdfHelpBubbleHandlerFactory>(
-      &pdf::PdfHelpBubbleHandlerFactory::Create);
 #endif
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)

@@ -14,8 +14,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_ids.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button_menu_model.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
@@ -421,11 +419,7 @@ void WebUIPinnedToolbarActions::Invoke(
     return;
   }
   if (actions::ActionItem* action = GetActionItemFor(*id)) {
-    action->InvokeAction(
-        actions::ActionInvocationContext::Builder()
-            .SetProperty(kSidePanelOpenTriggerKey,
-                         SidePanelOpenTrigger::kPinnedEntryToolbarButton)
-            .Build());
+    action->InvokeAction(actions::ActionInvocationContext::Builder().Build());
   }
 }
 
@@ -447,18 +441,6 @@ void WebUIPinnedToolbarActions::HandleContextMenu(
         kPinnedActionShowAddressesBubbleOrPage:
       action_id = kActionShowAddressesBubbleOrPage;
       break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowBookmarks:
-      action_id = kActionSidePanelShowBookmarks;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowReadingList:
-      action_id = kActionSidePanelShowReadingList;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowHistoryCluster:
-      action_id = kActionSidePanelShowHistoryCluster;
-      break;
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionShowDownloads:
       action_id = kActionShowDownloads;
       break;
@@ -468,10 +450,6 @@ void WebUIPinnedToolbarActions::HandleContextMenu(
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionPrint:
       action_id = kActionPrint;
       break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowLensOverlayResults:
-      action_id = kActionSidePanelShowLensOverlayResults;
-      break;
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionShowTranslate:
       action_id = kActionShowTranslate;
       break;
@@ -480,10 +458,6 @@ void WebUIPinnedToolbarActions::HandleContextMenu(
       break;
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionRouteMedia:
       action_id = kActionRouteMedia;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowReadAnything:
-      action_id = kActionSidePanelShowReadAnything;
       break;
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionCopyUrl:
       action_id = kActionCopyUrl;
@@ -501,35 +475,8 @@ void WebUIPinnedToolbarActions::HandleContextMenu(
       action_id = kActionTabSearch;
       break;
     case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowContextualTasks:
-      action_id = kActionSidePanelShowContextualTasks;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionSidePanelShowLens:
-      action_id = kActionSidePanelShowLens;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowAboutThisSite:
-      action_id = kActionSidePanelShowAboutThisSite;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowCustomizeChrome:
-      action_id = kActionSidePanelShowCustomizeChrome;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowShoppingInsights:
-      action_id = kActionSidePanelShowShoppingInsights;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowMerchantTrust:
-      action_id = kActionSidePanelShowMerchantTrust;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
         kPinnedActionSendSharedTabGroupFeedback:
       action_id = kActionSendSharedTabGroupFeedback;
-      break;
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowComments:
-      action_id = kActionSidePanelShowComments;
       break;
     default:
       NOTREACHED();

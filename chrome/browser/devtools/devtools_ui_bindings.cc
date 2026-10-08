@@ -127,9 +127,6 @@
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -2412,31 +2409,7 @@ void DevToolsUIBindings::RecordUserMetricsAction(const std::string& name) {
 }
 
 void DevToolsUIBindings::RecordNewBadgeUsage(const std::string& feature_name) {
-#if BUILDFLAG(IS_ANDROID)
-  NOTIMPLEMENTED();
-#else
-
-  auto* user_education_service =
-      UserEducationServiceFactory::GetForBrowserContext(profile_);
-  if (!user_education_service ||
-      !user_education_service->new_badge_registry()) {
-    return;
-  }
-
-  const base::Feature* feature_to_register = nullptr;
-  for (const auto& [feature, spec] :
-       user_education_service->new_badge_registry()->feature_data()) {
-    if (feature_name == feature->name) {
-      feature_to_register = feature;
-      break;
-    }
-  }
-
-  if (feature_to_register) {
-    UserEducationService::MaybeNotifyNewBadgeFeatureUsed(
-        web_contents()->GetBrowserContext(), *feature_to_register);
-  }
-#endif
+  // New badges (user education) have been removed from this browser.
 }
 
 // static

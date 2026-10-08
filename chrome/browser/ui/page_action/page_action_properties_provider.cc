@@ -38,15 +38,6 @@ constexpr auto kPageActionProperties = base::MakeFixedFlatMap<
     },
 
     {
-        kActionSidePanelShowLensOverlayResults,
-        {
-            .histogram_name = "LensOverlay",
-            .type = PageActionIconType::kLensOverlay,
-            .priority =
-                page_actions::PageActionPriorityCategory::kDiscoveryNudge,
-        },
-    },
-    {
         kActionLensOverlayHomework,
         {
             .histogram_name = "LensOverlayHomework",
@@ -106,16 +97,6 @@ constexpr auto kPageActionProperties = base::MakeFixedFlatMap<
             .histogram_name = "Zoom",
             .type = PageActionIconType::kZoom,
             .element_identifier = kActionItemZoomElementId,
-        },
-    },
-    {
-        kActionSidePanelShowReadAnything,
-        {
-            .histogram_name = "ReadingMode",
-            .type = PageActionIconType::kReadingMode,
-            .element_identifier = kReadAnythingPageActionElementId,
-            .priority =
-                page_actions::PageActionPriorityCategory::kCoreSiteUtility,
         },
     },
     {
@@ -250,14 +231,6 @@ constexpr auto kPageActionProperties = base::MakeFixedFlatMap<
             // particular page action.
             .type = PageActionIconType::kSaveCard,
             .element_identifier = kAutofillSavePaymentsPageActionElementId,
-        },
-    },
-    {
-        kActionSidePanelShowContextualTasks,
-        {
-            .histogram_name = "ContextualSidePanel",
-            .type = PageActionIconType::kContextualSidePanel,
-            .element_identifier = kContextualTasksPageActionElementId,
         },
     },
     {

@@ -43,7 +43,6 @@ source_set("searchbox_impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/autocomplete",
-    "//chrome/browser/feature_engagement",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/omnibox",
     "//chrome/browser/predictors",

@@ -262,24 +262,6 @@ BASE_FEATURE(kPasswordSaveUpdateDropdownMenuExperiment,
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
-BASE_FEATURE(kSidePanelFlyoverAnimation,
-#if BUILDFLAG(IS_MAC)
-             base::FEATURE_DISABLED_BY_DEFAULT
-#else
-             base::FEATURE_ENABLED_BY_DEFAULT
-#endif
-);
-
-bool UseSidePanelFlyoverAnimation() {
-  return base::FeatureList::IsEnabled(kSidePanelFlyoverAnimation);
-}
-
-BASE_FEATURE_PARAM(int,
-                   kSidePanelFlyoverDurationMs,
-                   &kSidePanelFlyoverAnimation,
-                   "flyover_animation_duration_ms",
-                   350);
-
 BASE_FEATURE(kUseDefaultDeadlineWhenAnimatingBounds,
 #if BUILDFLAG(IS_MAC) && defined(ARCH_CPU_ARM64)
              base::FEATURE_ENABLED_BY_DEFAULT
@@ -344,13 +326,6 @@ BASE_FEATURE(kPageActionsElevatedToolbar, base::FEATURE_DISABLED_BY_DEFAULT);
 bool IsPageActionsElevatedToolbarEnabled() {
   return base::FeatureList::IsEnabled(kPageActionsElevatedToolbar);
 }
-
-BASE_FEATURE(kByDateHistoryInSidePanel, base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kTabsFromOtherDevicesSidePanel, base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kTabsFromOtherDevicesSidePanelPinnedByDefault,
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kNonMilestoneUpdateToast, base::FEATURE_ENABLED_BY_DEFAULT);
 

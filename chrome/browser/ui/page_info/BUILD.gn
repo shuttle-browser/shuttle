@@ -16,7 +16,6 @@ source_set("page_info") {
     public_deps += [ "//components/page_info/android" ]
   } else {
     sources += [
-      "about_this_site_side_panel.h",
       "page_info_dialog.h",
       "page_info_infobar_delegate.h",
     ]
@@ -26,7 +25,6 @@ source_set("page_info") {
     "//base",
     "//chrome/browser/infobars",
     "//components/page_info",
-    "//components/page_info/core:proto",
     "//components/security_state/core",
     "//content/public/browser",
     "//url",

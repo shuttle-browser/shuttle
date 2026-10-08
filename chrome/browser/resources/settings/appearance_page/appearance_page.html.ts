@@ -191,37 +191,6 @@ export function getHtml(this: SettingsAppearancePageElement) {
       </settings-toggle-button>
     ` : ''}
 
-    <div class="cr-row">$i18n{sidePanelPosition}</div>
-    <div class="list-frame indented-rows">
-      ${this.configurableSidePanels_.map(item => html`
-        <div class="cr-row continuation">
-          <div class="flex cr-padded-text" aria-hidden="true">${item.label}</div>
-          <settings-dropdown-menu
-              label="${this.i18n('sidePanelAlignmentA11yLabel', item.label,
-                  '$i18n{sidePanelPosition}')}"
-              .menuOptions="${this.sidePanelAlignmentOptions_}"
-              data-entry-id="${item.id}"
-              pref-key="side_panel.is_right_aligned"
-              no-set-pref
-              value="${this.getOverrideValue_(item.id)}"
-              @settings-control-change="${this.onOverrideAlignmentSettingsControlChange_}">
-          </settings-dropdown-menu>
-        </div>
-      `)}
-
-      <div class="cr-row continuation">
-        <div class="flex cr-padded-text" aria-hidden="true">
-          $i18n{sidePanelAlignmentChromePanels}
-        </div>
-        <settings-dropdown-menu id="sidePanelPosition"
-            label="${this.i18n('sidePanelAlignmentA11yLabel',
-                '$i18n{sidePanelAlignmentChromePanels}',
-                '$i18n{sidePanelPosition}')}"
-            pref-key="side_panel.is_right_aligned"
-            .menuOptions="${this.sidePanelAlignmentOptions_}">
-        </settings-dropdown-menu>
-      </div>
-    </div>
     ${!this.showHoverCardImagesOption_ ? html`
       <div class="hr" ?hidden="${!this.pageVisibility_.hoverCard}"></div>
       <settings-toggle-button id="hoverCardMemoryUsageToggle"

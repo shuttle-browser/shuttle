@@ -10,7 +10,6 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/command_updater_delegate.h"
-#include "chrome/browser/ui/user_education/start_tutorial_in_page.h"
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -22,9 +21,6 @@
 class CommandUpdater;
 class Profile;
 
-namespace user_education {
-class TutorialService;
-}
 
 // Handles browser commands send from JS.
 class BrowserCommandHandler : public CommandUpdaterDelegate,
@@ -61,21 +57,12 @@ class BrowserCommandHandler : public CommandUpdaterDelegate,
   virtual bool DefaultSearchProviderIsGoogle();
 
  private:
-  FRIEND_TEST_ALL_PREFIXES(BrowserCommandHandlerTest,
-                           StartSavedTabGroupTutorialCommand);
-
   virtual void NavigateToURL(const GURL& url,
                              WindowOpenDisposition disposition);
-  virtual void OnTutorialStarted(
-      user_education::TutorialIdentifier tutorial_id,
-      user_education::TutorialService* tutorial_service);
-  virtual void StartTutorial(StartTutorialInPage::Params params);
-  virtual bool TutorialServiceExists();
   virtual void NavigateToEnhancedProtectionSetting();
   virtual void OpenAISettings();
   virtual void OpenSplitView();
   virtual void EnableVerticalTabs();
-  void StartTabGroupTutorial();
 
   raw_ptr<Profile, DanglingUntriaged> profile_;
   std::vector<browser_command::mojom::Command> supported_commands_;

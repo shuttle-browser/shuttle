@@ -20,12 +20,9 @@
 #include "chrome/browser/ui/page_action/page_action_model.h"
 #include "chrome/browser/ui/page_action/page_action_properties_provider.h"
 #include "chrome/browser/ui/page_action/page_action_triggers.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/views/bubble/webui_bubble_reopen_suppressor.h"
 #include "chrome/browser/ui/views/page_action/anchored_message_view.h"
-#include "chrome/browser/ui/views/page_action/page_action_view_util.h"
 #include "chrome/browser/ui/views/page_action/webui_page_action_view.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
 #include "chrome/browser/ui/webui/webui_toolbar/utils/toolbar_button_utils.h"
@@ -421,11 +418,6 @@ void WebUIPageActionControl::WebUIPageActionDelegate::NotifyClick(
           .SetProperty(page_actions::kPageActionTriggerKey, trigger)
           .SetProperty(page_actions::kPageActionEntryPointKey,
                        page_actions::PageActionEntryPoint::kSuggestionChip);
-  if (auto side_panel_trigger =
-          GetSidePanelOpenTriggerForPageAction(action_item_->GetActionId())) {
-    builder = std::move(builder).SetProperty(kSidePanelOpenTriggerKey,
-                                             *side_panel_trigger);
-  }
   action_item_->InvokeAction(std::move(builder).Build());
 }
 
@@ -446,11 +438,6 @@ void WebUIPageActionControl::WebUIPageActionDelegate::
                        page_actions::PageActionTrigger::kMouse)
           .SetProperty(page_actions::kPageActionEntryPointKey,
                        page_actions::PageActionEntryPoint::kAnchoredMessage);
-  if (auto side_panel_trigger =
-          GetSidePanelOpenTriggerForPageAction(action_item_->GetActionId())) {
-    builder = std::move(builder).SetProperty(kSidePanelOpenTriggerKey,
-                                             *side_panel_trigger);
-  }
   action_item_->InvokeAction(std::move(builder).Build());
   anchored_message_close_callback_.Run();
 }

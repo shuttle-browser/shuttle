@@ -12,8 +12,6 @@ buildflag_header("page_info_buildflags") {
 
 source_set("page_info") {
   sources = [
-    "about_this_site_service_factory.h",
-    "about_this_site_tab_helper.h",
     "page_info_features.h",
   ]
   public_deps = [
@@ -22,12 +20,10 @@ source_set("page_info") {
     "//chrome/browser/profiles:profile",
     "//components/optimization_guide/core",
     "//components/page_info/core",
-    "//components/page_info/core:proto",
     "//content/public/browser",
   ]
 
   if (!is_android) {
-    sources += [ "web_view_side_panel_throttle.h" ]
   }
 }
 
@@ -38,8 +34,6 @@ source_set("page_info") {
 # componentized.
 source_set("impl") {
   sources = [
-    "about_this_site_service_factory.cc",
-    "about_this_site_tab_helper.cc",
     "page_info_features.cc",
   ]
 
@@ -61,7 +55,6 @@ source_set("impl") {
     sources += [ "about_this_site_controller_android.cc" ]
     deps += [ "//chrome/android:jni_headers" ]
   } else {
-    sources += [ "web_view_side_panel_throttle.cc" ]
     deps += [ "//components/navigation_interception" ]
   }
 

@@ -34,8 +34,6 @@
 #include "chrome/browser/download/download_ui_safe_browsing_util.h"
 #include "chrome/browser/download/drag_download_item.h"
 #include "chrome/browser/download/offline_item_utils.h"
-#include "chrome/browser/feature_engagement/non_iph_promo.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
@@ -52,8 +50,6 @@
 #include "chrome/common/url_constants.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_item.h"
-#include "components/feature_engagement/public/feature_constants.h"
-#include "components/feature_engagement/public/tracker.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/features.h"
@@ -656,67 +652,6 @@ void DownloadsDOMHandler::ReviewDangerousRequiringGesture(
 #endif
 }
 
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-// This function will be called when a user clicks on the ESB
-// (Enhanced Safe Browsing) download row promo. It will notify
-// the feature engagement backend to record the event that the
-// promo was clicked.
-void DownloadsDOMHandler::OpenEsbSettings() {
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-          GetWebUIWebContents());
-  if (!browser) {
-    return;
-  }
-  chrome::ShowSafeBrowsingEnhancedProtectionWithIph(
-      browser,
-      safe_browsing::SafeBrowsingSettingReferralMethod::kDownloadPageRowPromo);
-
-  feature_engagement::Tracker* tracker =
-      feature_engagement::TrackerFactory::GetForBrowserContext(
-          browser->GetProfile());
-  tracker->NotifyEvent("esb_download_promo_row_clicked");
-  base::RecordAction(
-      base::UserMetricsAction("SafeBrowsing.EsbDownloadRowPromo.Click"));
-  base::UmaHistogramEnumeration(
-      "SafeBrowsing.EsbDownloadRowPromo.Outcome",
-      SafeBrowsingEsbDownloadRowPromoOutcome::kClicked);
-}
-
-void DownloadsDOMHandler::IsEligibleForEsbPromo(
-    IsEligibleForEsbPromoCallback callback) {
-  content::DownloadManager* manager = GetMainNotifierManager();
-  if (!manager) {
-    std::move(callback).Run(false);
-    return;
-  }
-
-  content::BrowserContext* browser_context = manager->GetBrowserContext();
-
-  if (!safe_browsing::SafeBrowsingService::IsUserEligibleForESBPromo(
-          Profile::FromBrowserContext(browser_context))) {
-    std::move(callback).Run(false);
-    return;
-  }
-  const bool should_show_esb_promo =
-      feature_engagement::NonIphPromo::RequestPermissionToShow(
-          browser_context, feature_engagement::kEsbDownloadRowPromoFeature);
-  std::move(callback).Run(should_show_esb_promo);
-}
-
-void DownloadsDOMHandler::LogEsbPromotionRowViewed() {
-  content::DownloadManager* manager = GetMainNotifierManager();
-  if (!manager) {
-    return;
-  }
-  feature_engagement::Tracker* tracker =
-      feature_engagement::TrackerFactory::GetForBrowserContext(
-          manager->GetBrowserContext());
-  tracker->NotifyEvent("esb_download_promo_row_viewed");
-  base::UmaHistogramEnumeration("SafeBrowsing.EsbDownloadRowPromo.Outcome",
-                                SafeBrowsingEsbDownloadRowPromoOutcome::kShown);
-}
-#else
 // These next three functions are empty implementations for the non-branded
 // chromium build since the ESB download row promo only runs on branded
 // google chrome.
@@ -732,7 +667,6 @@ void DownloadsDOMHandler::IsEligibleForEsbPromo(
 void DownloadsDOMHandler::LogEsbPromotionRowViewed() {
   return;
 }
-#endif
 
 // DownloadsDOMHandler, private: --------------------------------------------
 

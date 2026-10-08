@@ -19,11 +19,9 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/page_action/action_ids.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/favicon/core/favicon_service.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/multistep_filter/content/filter_initiated_navigation_marker.h"
 #include "components/multistep_filter/core/data_models/suggestion_user_decision.h"
 #include "components/multistep_filter/core/features.h"
@@ -191,7 +189,6 @@ void FilterUiController::ClearSuggestion(SuggestionUserDecision decision) {
     if (suggestion_state_->callbacks.on_user_interaction) {
       std::move(suggestion_state_->callbacks.on_user_interaction).Run(decision);
     }
-    ClosePromo(decision);
   }
   dismissal_weak_factory_.InvalidateWeakPtrs();
   favicon_task_tracker_.TryCancelAll();
@@ -417,7 +414,6 @@ void FilterUiController::OnPageActionAnchoredMessageShown(
   }
   switch (suggestion_state_->view_state) {
     case SuggestionViewState::kInactive:
-      MaybeShowPromo();
       if (page_action_controller_) {
         page_action_controller_->OverrideText(
             kActionMultistepFilter,
@@ -476,13 +472,11 @@ void FilterUiController::OnPageActionAnchoredMessageHidden(
     return;
   }
 
-  constexpr SuggestionUserDecision kDecision = SuggestionUserDecision::kIgnored;
   switch (suggestion_state_->view_state) {
     case SuggestionViewState::kShowingInitialCue:
       LogSuggestionUiShown(log_router_, suggestion_state_->suggestion,
                            /*ui_shown=*/false, /*reason=*/"collapsed");
       suggestion_state_->view_state = SuggestionViewState::kCollapsedInOmnibox;
-      ClosePromo(kDecision);
       ShowSuggestionChip();
       break;
     case SuggestionViewState::kReopenedFromOmnibox:
@@ -497,36 +491,6 @@ void FilterUiController::OnPageActionAnchoredMessageHidden(
     case SuggestionViewState::kCollapsedInOmniboxAfterReopen:
     case SuggestionViewState::kTabHidden:
       NOTREACHED();
-  }
-}
-
-void FilterUiController::MaybeShowPromo() {
-  BrowserUserEducationInterface* user_education =
-      BrowserUserEducationInterface::From(tab().GetBrowserWindowInterface());
-  if (user_education) {
-    user_education->MaybeShowFeaturePromo(
-        feature_engagement::kIPHMultistepFilterPromoFeature);
-  }
-}
-
-void FilterUiController::ClosePromo(SuggestionUserDecision decision) {
-  BrowserUserEducationInterface* user_education =
-      BrowserUserEducationInterface::From(tab().GetBrowserWindowInterface());
-  if (!user_education) {
-    return;
-  }
-  switch (decision) {
-    case SuggestionUserDecision::kAccepted:
-    case SuggestionUserDecision::kDismissed:
-    case SuggestionUserDecision::kSettingsOpened:
-      user_education->NotifyFeaturePromoFeatureUsed(
-          feature_engagement::kIPHMultistepFilterPromoFeature,
-          FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-      break;
-    case SuggestionUserDecision::kIgnored:
-      user_education->AbortFeaturePromo(
-          feature_engagement::kIPHMultistepFilterPromoFeature);
-      break;
   }
 }
 

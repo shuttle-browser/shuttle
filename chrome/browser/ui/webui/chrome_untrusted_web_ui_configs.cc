@@ -10,10 +10,6 @@
 #include "content/public/browser/webui_config_map.h"
 #include "printing/buildflags/buildflags.h"
 
-#if defined(TOOLKIT_VIEWS)
-#include "chrome/browser/ui/webui/side_panel/read_anything/read_anything_untrusted_ui.h"
-#endif  // defined(TOOLKIT_VIEWS)
-
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
 #include "chrome/browser/ui/webui/print_preview/print_preview_ui_untrusted.h"
 #endif  // BUILDFLAG(ENABLE_PRINT_PREVIEW)
@@ -36,16 +32,9 @@ void RegisterChromeUntrustedWebUIConfigs() {
   ash::RegisterAshChromeUntrustedWebUIConfigs();
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if defined(TOOLKIT_VIEWS) || BUILDFLAG(ENABLE_PRINT_PREVIEW) || \
-    BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW) || BUILDFLAG(IS_ANDROID)
   auto& map = content::WebUIConfigMap::GetInstance();
-#endif  // defined(TOOLKIT_VIEWS) || BUILDFLAG(ENABLE_PRINT_PREVIEW) ||
-        // BUILDFLAG(IS_ANDROID)
-
-#if defined(TOOLKIT_VIEWS)
-  map.AddUntrustedWebUIConfig(
-      std::make_unique<ReadAnythingUIUntrustedConfig>());
-#endif  // defined(TOOLKIT_VIEWS)
+#endif  // BUILDFLAG(ENABLE_PRINT_PREVIEW) || BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW)
   map.AddUntrustedWebUIConfig(

@@ -69,7 +69,6 @@ source_set("toolbar") {
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/actions:actions_headers",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//components/user_education/common",
     ]
   }
 
@@ -135,13 +134,10 @@ source_set("impl") {
       "//chrome/browser/ui/global_error",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/profiles",
-      "//chrome/browser/ui/side_panel",
-      "//chrome/browser/ui/side_panel:side_panel_views_dependent",
       "//chrome/browser/ui/tabs:tab_model",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/tabs/back_to_opener",
       "//chrome/browser/ui/toolbar/chrome_labs",
-      "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views/tabs/common",
       "//chrome/browser/ui/views/tabs/vertical",
       "//chrome/browser/upgrade_detector",
@@ -153,8 +149,6 @@ source_set("impl") {
       "//components/dom_distiller/content/browser",
       "//components/dom_distiller/core",
       "//components/favicon_base",
-      "//components/feature_engagement/public",
-      "//components/feature_engagement/public:feature_constants",
       "//components/omnibox/browser",
       "//components/omnibox/browser:vector_icons",
       "//components/policy/core/common:common_constants",
@@ -166,7 +160,6 @@ source_set("impl") {
       "//components/signin/public/base",
       "//components/signin/public/identity_manager",
       "//components/strings:components_strings",
-      "//components/user_education/common",
       "//components/vector_icons",
       "//components/version_info:channel",
       "//content/public/browser",

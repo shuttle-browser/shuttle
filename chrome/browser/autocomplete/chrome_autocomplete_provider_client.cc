@@ -110,7 +110,6 @@
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -569,22 +568,7 @@ void ChromeAutocompleteProviderClient::CloseIncognitoWindows() {
 }
 
 bool ChromeAutocompleteProviderClient::OpenJourneys(const std::string& query) {
-#if !BUILDFLAG(IS_ANDROID)
-  BrowserWindowInterface* const bwi =
-      GetLastActiveBrowserWindowInterfaceWithAnyProfile();
-  if (!bwi) {
-    return false;
-  }
-
-  auto* const history_clusters_side_panel_coordinator =
-      HistoryClustersSidePanelCoordinator::From(bwi);
-  if (history_clusters_side_panel_coordinator &&
-      history_clusters_side_panel_coordinator->Show(query)) {
-    return true;
-  }
-
-#endif  // !BUILDFLAG(IS_ANDROID)
-
+  // Agent Chrome: the History Clusters side panel was removed.
   return false;
 }
 

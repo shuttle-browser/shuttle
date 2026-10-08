@@ -1043,7 +1043,6 @@ const base::FeatureParam<int> kGlicWebContinuityMaxTargetUrlLength{
 const base::FeatureParam<int> kGlicWebContinuityMaxTurnIdLength{
     &kGlicWebContinuity, "glic-web-continuity-max-turn-id-length", 32};
 
-BASE_FEATURE(kGlicUseToolbarHeightSidePanel, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicButtonPressedState, base::FEATURE_ENABLED_BY_DEFAULT);
 

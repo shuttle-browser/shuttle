@@ -257,7 +257,7 @@ void AddMaterialChromeColorMixer(ui::ColorProvider* provider,
   mixer[kColorSliderDisabledContainer] = {ui::kColorSysSurfaceVariant};
 
   // Side Panel colors.
-  mixer[kColorSidePanelBackground] = {ui::kColorSysBaseContainer};
+  mixer[kColorMultiContentsResizeAreaHandle] = {ui::kColorSysOutline};
 
   // Contextual Tasks Banner Promo colors.
   mixer[kColorContextualTasksBannerPromoBackground] = {
@@ -267,11 +267,6 @@ void AddMaterialChromeColorMixer(ui::ColorProvider* provider,
       ui::kColorSysTonalContainer};
 
   // Read Anything (in the side panel) colors.
-  mixer[kColorReadAnythingCurrentReadAloudHighlight] = {
-      ui::kColorSysStateHoverOnSubtle};
-  mixer[kColorReadAnythingForeground] = {ui::kColorSysOnSurface};
-  mixer[kColorReadAnythingPreviousReadAloudHighlight] = {
-      ui::kColorSysOnSurfaceSecondary};
 
   // Tab Group Dialog colors.
   mixer[kColorTabGroupDialogIconEnabled] = {ui::kColorSysOnSurfaceSubtle};
@@ -280,17 +275,6 @@ void AddMaterialChromeColorMixer(ui::ColorProvider* provider,
   mixer[kColorCastDialogHelpIcon] = {ui::kColorSysPrimary};
 
   // Help bubble colors.
-  mixer[kColorFeaturePromoBubbleBackground] = {ui::kColorSysPrimary};
-  mixer[kColorFeaturePromoBubbleButtonBorder] = {
-      kColorFeaturePromoBubbleForeground};
-  mixer[kColorFeaturePromoBubbleCloseButtonInkDrop] =
-      AdjustHighlightColorForContrast(kColorFeaturePromoBubbleForeground,
-                                      kColorFeaturePromoBubbleBackground);
-  mixer[kColorFeaturePromoBubbleDefaultButtonBackground] = {
-      kColorFeaturePromoBubbleForeground};
-  mixer[kColorFeaturePromoBubbleDefaultButtonForeground] = {
-      kColorFeaturePromoBubbleBackground};
-  mixer[kColorFeaturePromoBubbleForeground] = {ui::kColorSysOnPrimary};
 
   // Feature Showcase colors.
   mixer[kColorFeatureShowcaseStepperCheck] = {ui::kColorSysPrimary};
@@ -483,7 +467,6 @@ void AddMaterialChromeColorMixer(ui::ColorProvider* provider,
   mixer[kColorToolbarButtonIconPressed] = {kColorToolbarButtonIconHovered};
   mixer[kColorToolbarButtonText] = {ui::kColorSysOnSurfaceSecondary};
   mixer[kColorToolbarContentAreaSeparator] = {ui::kColorSysSurfaceVariant};
-  mixer[kColorToolbarFeaturePromoHighlight] = {ui::kColorSysPrimary};
   mixer[kColorToolbarIconContainerBorder] = {ui::kColorSysNeutralOutline};
   mixer[kColorToolbarInkDropHover] = {ui::kColorSysStateHoverOnSubtle};
   mixer[kColorToolbarInkDropRipple] = {ui::kColorSysStateRippleNeutralOnSubtle};

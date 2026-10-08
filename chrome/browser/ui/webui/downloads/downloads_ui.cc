@@ -34,8 +34,6 @@
 #include "chrome/grit/downloads_resources.h"
 #include "chrome/grit/downloads_resources_map.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/feature_engagement/public/feature_constants.h"
-#include "components/feature_engagement/public/feature_list.h"
 #include "components/google/core/common/google_util.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -205,12 +203,7 @@ content::WebUIDataSource* CreateAndAddDownloadsUIHTMLSource(Profile* profile) {
           ? IDS_BLOCK_REASON_UNCOMMON_DOWNLOAD_IN_ADVANCED_PROTECTION
           : IDS_BLOCK_DOWNLOAD_REASON_UNCOMMON_SUSPICIOUS_ARCHIVE);
 
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  // Download Row ESB Promo:
-  source->AddBoolean("esbDownloadRowPromo",
-                     base::FeatureList::IsEnabled(
-                         feature_engagement::kEsbDownloadRowPromoFeature));
-#endif
+  source->AddBoolean("esbDownloadRowPromo", false);
 
   // Build an Accelerator to describe undo shortcut
   // NOTE: the undo shortcut is also defined in downloads/downloads.html

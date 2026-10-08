@@ -264,8 +264,6 @@ class MultiContentsView
 
   void OnWebContentsFocused(views::WebView*);
   void OnActorOverlayFocused(views::WebView*);
-  void OnReadAnythingOverlayFocused(ContentsContainerView* container,
-                                    views::WebView* web_view);
 
   ViewSizes GetViewSizes(gfx::Rect available_space) const;
 

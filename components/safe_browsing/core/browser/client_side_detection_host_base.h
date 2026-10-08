@@ -89,7 +89,6 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
   ClientSideDetectionHostBase(
       base::WeakPtr<ClientSideDetectionServiceBase> csd_service,
       VerdictCacheManager* cache_manager,
-      IntelligentScanDelegate* intelligent_scan_delegate,
       PrefService* pref_service,
       std::unique_ptr<SafeBrowsingTokenFetcher> token_fetcher,
       history::HistoryService* history_service,
@@ -149,12 +148,6 @@ class ClientSideDetectionHostBase : public history::HistoryServiceObserver {
 
   // Helper method to run the callback.
   virtual void MaybeRunUserReportCallback() = 0;
-
-  // Triggers Gemini Antiscam Protection if conditions are met.
-  virtual void MaybeStartGeminiAntiscamProtection(
-      GURL url,
-      ClientSideDetectionType request_type,
-      std::optional<bool> did_match_high_confidence_allowlist) = 0;
 
   // Helper function to create preclassification check once requirements are
   // met.

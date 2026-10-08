@@ -29,19 +29,11 @@
 #include "chrome/browser/policy/chrome_browser_cloud_management_register_watcher.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/policy/client_data_delegate_desktop.h"
-#include "chrome/browser/policy/cloud/cloud_policy_invalidator.h"
-#include "chrome/browser/policy/cloud/extension_install_policy_invalidator.h"
-#include "chrome/browser/policy/cloud/fm_registration_token_uploader.h"
 #include "chrome/browser/policy/policy_util.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_paths.h"
-#include "components/gcm_driver/gcm_driver.h"
-#include "components/gcm_driver/instance_id/instance_id_driver.h"
-#include "components/invalidation/invalidation_listener.h"
 #include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
 #include "components/policy/core/common/features.h"
-#include "components/policy/core/common/remote_commands/remote_commands_constants.h"
-#include "components/policy/core/common/remote_commands/remote_commands_invalidator.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/network_service_instance.h"
@@ -91,22 +83,10 @@ constexpr base::FilePath::StringViewType kCachedPolicyDirname =
     FILE_PATH_LITERAL("Policies");
 #endif
 
-constexpr char kInvalidationListenerLogPrefix[] =
-    "ChromeBrowserCloudManagementControllerDesktop";
-
-// Returns a set of all project numbers that will be used by user.
-std::set<int64_t> GetAllInvalidationProjectNumbers() {
-  return {
-      policy::kPolicyInvalidationProjectNumber,
-      policy::kRemoteCommandsInvalidationsProjectNumber,
-  };
-}
-
 }  // namespace
 
 ChromeBrowserCloudManagementControllerDesktop::
-    ChromeBrowserCloudManagementControllerDesktop()
-    : invalidations_initializer_(this) {}
+    ChromeBrowserCloudManagementControllerDesktop() = default;
 ChromeBrowserCloudManagementControllerDesktop::
     ~ChromeBrowserCloudManagementControllerDesktop() = default;
 
@@ -207,16 +187,10 @@ bool ChromeBrowserCloudManagementControllerDesktop::
 void ChromeBrowserCloudManagementControllerDesktop::OnServiceAccountSet(
     CloudPolicyClient* client,
     const std::string& account_email) {
-  invalidations_initializer_.OnServiceAccountSet(client, account_email);
+  // Agent Chrome: policy invalidations were removed; nothing to start.
 }
 
 void ChromeBrowserCloudManagementControllerDesktop::ShutDown() {
-  policy_invalidator_.reset();
-  extension_install_invalidator_.reset();
-  commands_invalidator_.reset();
-  fm_registration_token_uploaders_.clear();
-  invalidation_listener_per_project_.clear();
-  device_instance_id_driver_.reset();
 
   // In some tests, `DCHECK_CURRENTLY_ON(content::BrowserThread::UI)` fails.
   // Such tests have not initialized device_oauth2_token_service anyway, so
@@ -336,110 +310,6 @@ ChromeBrowserCloudManagementControllerDesktop::
 #else
   return nullptr;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
-}
-
-void ChromeBrowserCloudManagementControllerDesktop::StartInvalidations() {
-  if (IsInvalidationsServiceStarted()) {
-    NOTREACHED() << "Trying to start an invalidation service when there's "
-                    "already one. Please see crbug.com/40172363.";
-  }
-
-  device_instance_id_driver_ = std::make_unique<instance_id::InstanceIDDriver>(
-      g_browser_process->gcm_driver());
-
-  for (const int64_t project_number : GetAllInvalidationProjectNumbers()) {
-    invalidation_listener_per_project_[project_number] =
-        invalidation::InvalidationListener::Create(
-            g_browser_process->gcm_driver(), device_instance_id_driver_.get(),
-            project_number, kInvalidationListenerLogPrefix);
-  }
-
-  auto* core = g_browser_process->browser_policy_connector()
-                   ->machine_level_user_cloud_policy_manager()
-                   ->core();
-
-  invalidation::InvalidationListener* policy_invalidation_listener =
-      invalidation_listener_per_project_
-          [policy::kPolicyInvalidationProjectNumber]
-              .get();
-  policy_invalidator_ = std::make_unique<CloudPolicyInvalidator>(
-      PolicyInvalidationScope::kCBCM, policy_invalidation_listener, core,
-      base::SingleThreadTaskRunner::GetCurrentDefault(),
-      base::DefaultClock::GetInstance());
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  if (CanStartExtensionInstallPolicyInvalidator()) {
-    StartExtensionInstallPolicyInvalidator();
-  }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
-
-  core->StartRemoteCommandsService(
-      std::make_unique<enterprise_commands::CBCMRemoteCommandsFactory>(),
-      PolicyInvalidationScope::kCBCM);
-
-  invalidation::InvalidationListener* remote_commands_invalidation_listener =
-      invalidation_listener_per_project_
-          [policy::kRemoteCommandsInvalidationsProjectNumber]
-              .get();
-  commands_invalidator_ = std::make_unique<RemoteCommandsInvalidator>(
-      remote_commands_invalidation_listener, core,
-      base::DefaultClock::GetInstance(), PolicyInvalidationScope::kCBCM);
-
-  for (const auto& [project_number, invalidation_listener] :
-       invalidation_listener_per_project_) {
-    fm_registration_token_uploaders_.emplace_back(
-        std::make_unique<FmRegistrationTokenUploader>(
-            PolicyInvalidationScope::kCBCM, invalidation_listener.get(), core));
-  }
-}
-
-bool ChromeBrowserCloudManagementControllerDesktop::
-    CanStartExtensionInstallPolicyInvalidator() const {
-  return base::FeatureList::IsEnabled(
-             policy::features::kEnableExtensionInstallPolicyFetching) &&
-        !extension_install_invalidator_ &&
-         IsInvalidationsServiceStarted() &&
-         g_browser_process->browser_policy_connector()
-             ->machine_level_user_cloud_policy_manager()
-             ->extension_install_core();
-}
-
-void ChromeBrowserCloudManagementControllerDesktop::
-    StartExtensionInstallPolicyInvalidator() {
-  if (!base::FeatureList::IsEnabled(
-          policy::features::kEnableExtensionInstallPolicyFetching)) {
-    return;
-  }
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  // Must be called after normal invalidations have started
-  CHECK(IsInvalidationsServiceStarted());
-  auto* extension_install_core = g_browser_process->browser_policy_connector()
-                                     ->machine_level_user_cloud_policy_manager()
-                                     ->extension_install_core();
-  CHECK(extension_install_core);
-  extension_install_invalidator_ =
-      std::make_unique<ExtensionInstallPolicyInvalidator>(
-          PolicyInvalidationScope::kCBCM,
-          invalidation_listener_per_project_
-              [policy::kPolicyInvalidationProjectNumber]
-                  .get(),
-          extension_install_core,
-          base::SingleThreadTaskRunner::GetCurrentDefault(),
-          base::DefaultClock::GetInstance());
-#else
-  NOTREACHED();
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
-}
-
-scoped_refptr<network::SharedURLLoaderFactory>
-ChromeBrowserCloudManagementControllerDesktop::GetURLLoaderFactory() {
-  return gaia_url_loader_factory_;
-}
-
-bool ChromeBrowserCloudManagementControllerDesktop::
-    IsInvalidationsServiceStarted() const {
-  // This object is created when StartInvalidations is called, and stays alive
-  // thereafter.
-  return !invalidation_listener_per_project_.empty();
 }
 
 }  // namespace policy

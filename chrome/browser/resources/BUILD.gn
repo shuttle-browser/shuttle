@@ -49,13 +49,8 @@ group("resources") {
       "omnibox_popup:resources",
       "settings:resources",
       "settings_shared:resources",
-      "side_panel/history:resources",
-      "side_panel/history_clusters:resources",
-      "side_panel/read_anything:resources",
-      "side_panel/shared:resources",
       "tab_group_home:resources",
       "webnn_internals:resources",
-      "webui_browser:resources",
       "webui_gallery:resources",
       "webui_toolbar:resources",
       "webui_toolbar_shared:resources",
@@ -81,7 +76,6 @@ group("resources") {
   if (enable_extensions) {
     public_deps += [
       "accessibility:reading_mode_gdocs_extension_resources",
-      "extensions_zero_state_promo:resources",
     ]
   }
 
@@ -163,7 +157,6 @@ group("resources") {
 if (enable_webui_generate_code_cache) {
   group("code_cache_resources") {
     public_deps = [
-      "side_panel/shared:code_cache_resources",
       "webui_toolbar:code_cache_resources",
     ]
   }
@@ -310,7 +303,6 @@ group("dev_ui_resources") {
   public_deps = [
     "accessibility:resources",
     "bluetooth_internals:resources",
-    "chrome_finds_internals:resources",
     "components:resources",
     "content_settings:resources",
     "device_log:resources",
@@ -328,7 +320,6 @@ group("dev_ui_resources") {
     "//components/actor/core/internals/resources",
     "//components/download/resources/download_internals:resources",
     "//components/enterprise/connectors/resources",
-    "//components/gcm_driver/resources",
     "//components/history_clusters/history_clusters_internals/resources",
     "//components/metrics/debug:resources",
     "//components/net_log/resources",
@@ -362,7 +353,6 @@ group("dev_ui_resources") {
       "infobar_internals:resources",
       "multistep_filter_internals:resources",
       "page_action_internals:resources",
-      "user_education_internals:resources",
       "webnn_internals:resources",
       "webui_js_error:resources",
     ]
@@ -387,7 +377,6 @@ repack("dev_ui_paks") {
   sources = [
     "$root_gen_dir/chrome/accessibility_resources.pak",
     "$root_gen_dir/chrome/bluetooth_internals_resources.pak",
-    "$root_gen_dir/chrome/chrome_finds_internals_resources.pak",
     "$root_gen_dir/chrome/components_resources.pak",
     "$root_gen_dir/chrome/content_settings_resources.pak",
     "$root_gen_dir/chrome/device_log_resources.pak",
@@ -406,7 +395,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/components/connectors_internals_resources.pak",
     "$root_gen_dir/components/dev_ui_components_resources.pak",
     "$root_gen_dir/components/download_internals_resources.pak",
-    "$root_gen_dir/components/gcm_internals_resources.pak",
     "$root_gen_dir/components/history_clusters_internals_resources.pak",
     "$root_gen_dir/components/metrics_internals_resources.pak",
     "$root_gen_dir/components/net_export_resources.pak",
@@ -440,7 +428,6 @@ repack("dev_ui_paks") {
       "$root_gen_dir/chrome/infobar_internals_resources.pak",
       "$root_gen_dir/chrome/multistep_filter_internals_resources.pak",
       "$root_gen_dir/chrome/page_action_internals_resources.pak",
-      "$root_gen_dir/chrome/user_education_internals_resources.pak",
       "$root_gen_dir/chrome/webui_js_error_resources.pak",
     ]
   }

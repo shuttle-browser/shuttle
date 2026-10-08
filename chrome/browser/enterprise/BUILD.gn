@@ -182,8 +182,6 @@ source_set("enterprise") {
       "remote_commands/clear_browsing_data_job.h",
       "remote_commands/job_profile_picker.h",
       "remote_commands/user_remote_commands_factory.h",
-      "remote_commands/user_remote_commands_service.h",
-      "remote_commands/user_remote_commands_service_factory.h",
       "signals/signals_aggregator_factory.h",
     ]
   }
@@ -442,7 +440,6 @@ source_set("impl") {
     "//chrome/browser/enterprise/platform_auth:features",
     "//chrome/browser/image_fetcher",
     "//chrome/browser/interstitials",
-    "//chrome/browser/invalidation",
     "//chrome/browser/net",
     "//chrome/browser/new_tab_page/chrome_colors:selected_colors_info",
     "//chrome/browser/notifications",
@@ -594,8 +591,6 @@ source_set("impl") {
       "idle/idle_service_factory.cc",
       "remote_commands/clear_browsing_data_job.cc",
       "remote_commands/user_remote_commands_factory.cc",
-      "remote_commands/user_remote_commands_service.cc",
-      "remote_commands/user_remote_commands_service_factory.cc",
       "signals/signals_aggregator_factory.cc",
     ]
     deps += [ "//components/enterprise/idle" ]

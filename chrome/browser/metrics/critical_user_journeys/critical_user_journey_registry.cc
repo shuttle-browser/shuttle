@@ -68,10 +68,7 @@ void CriticalUserJourneyRegistry::AddJourneys() {
                    PinExtensionJourneySteps::kExtensionsMenuButtonClicked)
           .AddAnyOf(
               {Branch(kExtensionsMenuPinExtensionsEventId,
-                      PinExtensionJourneySteps::kPinExtensionsViaMenuItem),
-               Branch(kExtensionsSidePanelPinExtensionsEventId,
-                      PinExtensionJourneySteps::
-                          kPinExtensionsViaSidePanelPinButton)})
+                      PinExtensionJourneySteps::kPinExtensionsViaMenuItem)})
           .Build());
 
   AddJourney(

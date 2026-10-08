@@ -15,10 +15,10 @@ import type {BrowserProxy} from './browser_proxy.js';
 import {getHtml} from './home_button.html.js';
 import {OverflowableButtonMixin} from './overflowable_button.js';
 import {getCss} from './toolbar_button.css.js';
-import {getContextMenuPosition, getEventDispositionFlags, HelpBubbleAnchorMixin, PressHandler, roundedIconsEnabled} from './toolbar_button.js';
+import {getContextMenuPosition, getEventDispositionFlags, PressHandler, roundedIconsEnabled} from './toolbar_button.js';
 
 const HomeButtonElementBase =
-    HelpBubbleAnchorMixin(OverflowableButtonMixin(CrLitElement));
+    OverflowableButtonMixin(CrLitElement);
 
 export class HomeButtonElement extends HomeButtonElementBase {
   static get is() {
@@ -55,8 +55,7 @@ export class HomeButtonElement extends HomeButtonElementBase {
     return loadTimeData.getString('homeButtonAccName');
   }
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(
-        loadTimeData.getString('homeButtonTooltip'));
+    return loadTimeData.getString('homeButtonTooltip');
   }
 
   private browserProxy_: BrowserProxy = BrowserProxyImpl.getInstance();

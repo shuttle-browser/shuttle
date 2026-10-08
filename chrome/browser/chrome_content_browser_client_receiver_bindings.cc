@@ -92,7 +92,6 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
 #endif
 
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
@@ -379,24 +378,6 @@ void ChromeContentBrowserClient::
                                                      associated_registry);
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(surface_embed::features::kSurfaceEmbed)) {
-    associated_registry.AddInterface<surface_embed::mojom::SurfaceEmbedHost>(
-        base::BindRepeating(
-            [](content::RenderFrameHost* render_frame_host,
-               mojo::PendingAssociatedReceiver<
-                   surface_embed::mojom::SurfaceEmbedHost> receiver) {
-              auto* web_ui = render_frame_host->GetWebUI();
-              if (!web_ui ||
-                  !web_ui->GetController()->GetAs<WebUIBrowserUI>()) {
-                return;
-              }
-              surface_embed::SurfaceEmbedHost::Create(render_frame_host,
-                                                      std::move(receiver));
-            },
-            &render_frame_host));
-  }
-#endif
   associated_registry.AddInterface<chrome::mojom::NetworkDiagnostics>(
       base::BindRepeating(
           [](content::RenderFrameHost* render_frame_host,

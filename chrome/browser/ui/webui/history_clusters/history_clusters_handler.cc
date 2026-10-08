@@ -64,10 +64,6 @@ namespace history_clusters {
 
 namespace {
 
-void InvokeAction(actions::ActionId id, actions::ActionItem* scope) {
-  actions::ActionManager::Get().FindAction(id, scope)->InvokeAction();
-}
-
 // Returns the current browser window, regardless of whether this instance is
 // tab-scoped or window-scoped.
 BrowserWindowInterface* GetBrowserWindowInterface(
@@ -79,97 +75,6 @@ BrowserWindowInterface* GetBrowserWindowInterface(
   return std::get<raw_ptr<tabs::TabInterface>>(interface)
       ->GetBrowserWindowInterface();
 }
-
-class HistoryClustersSidePanelContextMenu
-    : public ui::SimpleMenuModel,
-      public ui::SimpleMenuModel::Delegate {
- public:
-  HistoryClustersSidePanelContextMenu(
-      std::variant<raw_ptr<BrowserWindowInterface>, raw_ptr<tabs::TabInterface>>
-          interface,
-      GURL url)
-      : ui::SimpleMenuModel(this), interface_(interface), url_(std::move(url)) {
-    AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKNEWTAB,
-                        IDS_HISTORY_CLUSTERS_OPEN_IN_NEW_TAB);
-    AddItemWithStringId(IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW,
-                        IDS_HISTORY_CLUSTERS_OPEN_IN_NEW_WINDOW);
-    AddSeparator(ui::NORMAL_SEPARATOR);
-
-    AddItemWithStringId(IDC_CONTENT_CONTEXT_COPYLINKLOCATION,
-                        IDS_HISTORY_CLUSTERS_COPY_LINK);
-  }
-  HistoryClustersSidePanelContextMenu(
-      std::variant<raw_ptr<BrowserWindowInterface>, raw_ptr<tabs::TabInterface>>
-          interface,
-      std::string query)
-      : ui::SimpleMenuModel(this), interface_(interface), query_(query) {
-    AddItemWithStringId(IDC_CUT, IDS_HISTORY_CLUSTERS_CUT);
-    AddItemWithStringId(IDC_COPY, IDS_HISTORY_CLUSTERS_COPY);
-    AddItemWithStringId(IDC_PASTE, IDS_HISTORY_CLUSTERS_PASTE);
-  }
-  ~HistoryClustersSidePanelContextMenu() override = default;
-
-  void ExecuteCommand(int command_id, int event_flags) override {
-    switch (command_id) {
-      case IDC_CONTENT_CONTEXT_OPENLINKNEWTAB: {
-        if (!CanAddURLToHistory(url_)) {
-          return;
-        }
-        content::OpenURLParams params(url_, content::Referrer(),
-                                      WindowOpenDisposition::NEW_BACKGROUND_TAB,
-                                      ui::PAGE_TRANSITION_AUTO_BOOKMARK, false);
-        GetBrowserWindowInterface(interface_)
-            ->OpenURL(params,
-                      /*navigation_handle_callback=*/{});
-        break;
-      }
-
-      case IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW: {
-        if (!CanAddURLToHistory(url_)) {
-          return;
-        }
-        content::OpenURLParams params(url_, content::Referrer(),
-                                      WindowOpenDisposition::NEW_WINDOW,
-                                      ui::PAGE_TRANSITION_AUTO_BOOKMARK, false);
-        GetBrowserWindowInterface(interface_)
-            ->OpenURL(params,
-                      /*navigation_handle_callback=*/{});
-        break;
-      }
-
-      case IDC_CONTENT_CONTEXT_COPYLINKLOCATION: {
-        ui::ScopedClipboardWriter scw(ui::ClipboardBuffer::kCopyPaste);
-        scw.WriteText(base::UTF8ToUTF16(url_.spec()));
-        break;
-      }
-      case IDC_CUT:
-        InvokeAction(actions::kActionCut,
-                     BrowserActions::From(GetBrowserWindowInterface(interface_))
-                         ->root_action_item());
-        break;
-      case IDC_COPY:
-        InvokeAction(actions::kActionCopy,
-                     BrowserActions::From(GetBrowserWindowInterface(interface_))
-                         ->root_action_item());
-        break;
-      case IDC_PASTE:
-        InvokeAction(actions::kActionPaste,
-                     BrowserActions::From(GetBrowserWindowInterface(interface_))
-                         ->root_action_item());
-        break;
-      default:
-        NOTREACHED();
-    }
-  }
-
- private:
-  // Exactly one of `browser_window_interface_` and `tab_interface_` will be
-  // non-nullptr.
-  std::variant<raw_ptr<BrowserWindowInterface>, raw_ptr<tabs::TabInterface>>
-      interface_;
-  std::string query_;
-  GURL url_;
-};
 
 }  // namespace
 
@@ -242,11 +147,6 @@ void HistoryClustersHandler::CommonInit() {
 
 HistoryClustersHandler::~HistoryClustersHandler() = default;
 
-void HistoryClustersHandler::SetSidePanelUIEmbedder(
-    base::WeakPtr<TopChromeWebUIController::Embedder> side_panel_embedder) {
-  history_clusters_side_panel_embedder_ = side_panel_embedder;
-}
-
 void HistoryClustersHandler::SetContextInterface(ContextInterface interface) {
   interface_ = interface;
 }
@@ -264,12 +164,9 @@ void HistoryClustersHandler::OpenHistoryUrl(
     return;
   }
 
-  // In the Side Panel, the default is the current tab. From History WebUI, the
-  // default is a new foreground tab.
+  // From History WebUI, the default is a new foreground tab.
   WindowOpenDisposition default_disposition =
-      history_clusters_side_panel_embedder_
-          ? WindowOpenDisposition::CURRENT_TAB
-          : WindowOpenDisposition::NEW_FOREGROUND_TAB;
+      WindowOpenDisposition::NEW_FOREGROUND_TAB;
 
   WindowOpenDisposition open_location = ui::DispositionFromClick(
       click_modifiers->middle_button, click_modifiers->alt_key,
@@ -281,12 +178,6 @@ void HistoryClustersHandler::OpenHistoryUrl(
   GetBrowserWindowInterface(interface_)
       ->OpenURL(params,
                 /*navigation_handle_callback=*/{});
-}
-
-void HistoryClustersHandler::ShowSidePanelUI() {
-  if (history_clusters_side_panel_embedder_) {
-    history_clusters_side_panel_embedder_->ShowUI();
-  }
 }
 
 void HistoryClustersHandler::ToggleVisibility(
@@ -514,14 +405,6 @@ Profile* HistoryClustersHandler::GetProfile() {
   return profile_;
 }
 
-std::unique_ptr<ui::SimpleMenuModel>
-HistoryClustersHandler::CreateHistoryClustersSidePanelContextMenuForTesting(
-    ContextInterface interface,
-    GURL url) {
-  return std::make_unique<HistoryClustersSidePanelContextMenu>(interface,
-                                                               std::move(url));
-}
-
 void HistoryClustersHandler::SendClustersToPage(
     const std::string& query,
     const std::vector<history::Cluster> clusters_batch,
@@ -575,24 +458,9 @@ void HistoryClustersHandler::RecordToggledVisibility(bool visible) {
 
 void HistoryClustersHandler::ShowContextMenuForSearchbox(
     const std::string& query,
-    const gfx::Point& point) {
-  if (history_clusters_side_panel_embedder_) {
-    history_clusters_side_panel_embedder_->ShowContextMenu(
-        point, std::make_unique<HistoryClustersSidePanelContextMenu>(interface_,
-                                                                     query));
-  }
-}
+    const gfx::Point& point) {}
 
 void HistoryClustersHandler::ShowContextMenuForURL(const GURL& url,
-                                                   const gfx::Point& point) {
-  if (!CanAddURLToHistory(url)) {
-    return;
-  }
-  if (history_clusters_side_panel_embedder_) {
-    history_clusters_side_panel_embedder_->ShowContextMenu(
-        point,
-        std::make_unique<HistoryClustersSidePanelContextMenu>(interface_, url));
-  }
-}
+                                                   const gfx::Point& point) {}
 
 }  // namespace history_clusters

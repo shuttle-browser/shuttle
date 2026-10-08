@@ -57,10 +57,6 @@ class RulesetManager;
 }  // namespace declarative_net_request
 }  // namespace extensions
 
-namespace safe_browsing {
-class NotificationContentDetectionUkmUtil;
-}
-
 namespace ukm {
 
 class DelegatingUkmRecorder;
@@ -215,12 +211,6 @@ class METRICS_EXPORT UkmRecorder {
   // for recording nonpersistent notification UKM events.
   static SourceId GetSourceIdForNotificationEvent(
       base::PassKey<NonPersistentNotificationHandler>,
-      const GURL& url);
-
-  // Gets a new SourceId of NOTIFICATION_ID type. This should only be used
-  // for recording suspicious notification interaction UKM events.
-  static SourceId GetSourceIdForNotificationEvent(
-      base::PassKey<safe_browsing::NotificationContentDetectionUkmUtil>,
       const GURL& url);
 
   // Gets a new SourceId of NOTIFICATION_ID type. This should only be used

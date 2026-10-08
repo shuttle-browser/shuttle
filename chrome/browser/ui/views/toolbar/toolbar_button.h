@@ -141,13 +141,6 @@ class ToolbarButton : public views::LabelButton,
   void OnGestureEvent(ui::GestureEvent* event) override;
   std::unique_ptr<views::ActionViewInterface> GetActionViewInterface() override;
 
-  // When IPH is showing we suppress the tooltip text. This means that we must
-  // provide an alternative accessible name, when this is the case. This is
-  // because `Button::AdjustAccessibleName` will use the tooltip text when the
-  // accessible name is empty, and if the tooltip text is also empty then the
-  // button will have no accessible name.
-  std::u16string GetAlternativeAccessibleName() const override;
-
   ChromeColorIds GetDefaultBackgroundColorId() const {
     return default_background_color_id_;
   }
@@ -157,9 +150,6 @@ class ToolbarButton : public views::LabelButton,
       View* source,
       const gfx::Point& point,
       ui::mojom::MenuSourceType source_type) override;
-
-  // ui::PropertyHandler:
-  void AfterPropertyChange(const void* key, int64_t old_value) override;
 
   ui::MenuModel* menu_model() { return model_.get(); }
 
@@ -347,10 +337,6 @@ class ToolbarButton : public views::LabelButton,
   // event.
   const bool trigger_menu_on_long_press_;
 
-  // Determines whether to highlight the button for in-product help.
-  // TODO(crbug.com/40258442): Remove this member after issue is addressed.
-  bool has_in_product_help_promo_ = false;
-
   // Y position of mouse when left mouse button is pressed.
   int y_position_on_lbuttondown_ = 0;
 
@@ -385,9 +371,6 @@ class ToolbarButton : public views::LabelButton,
   // Class responsible for animating highlight color (calling a callback on
   // |this| to refresh UI).
   HighlightColorAnimation highlight_color_animation_;
-
-  // Suppress tooltip when IPH is showing.
-  std::u16string suppressed_tooltip_text_;
 
   base::CallbackListSubscription subscription_ =
       ui::TouchUiController::Get()->RegisterCallback(

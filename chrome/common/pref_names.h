@@ -1157,21 +1157,6 @@ inline constexpr char kOrganizerPanelEntrypointEnabled[] =
 inline constexpr char kProjectsPanelEntrypointEnabled[] =
     "projects_panel.entrypoint_enabled";
 
-// Boolean determining the side the side panel will be appear on (left / right).
-// True when the side panel is aligned to the right.
-inline constexpr char kSidePanelHorizontalAlignment[] =
-    "side_panel.is_right_aligned";
-// Dictionary determining the side panel alignment overrides for specific
-// side panel entries.
-inline constexpr char kSidePanelAlignmentOverrides[] =
-    "side_panel.alignment_overrides";
-// Boolean determining whether the companion side panel should be pinned to have
-// a button in the toolbar.
-inline constexpr char kSidePanelCompanionEntryPinnedToToolbar[] =
-    "side_panel.companion_pinned_to_toolbar";
-// Stores the mapping of side panel IDs to their widths.
-inline constexpr char kSidePanelIdToWidth[] = "side_panel.id_to_width";
-
 // Boolean determining whether the tab search button is pinned to the tab strip.
 inline constexpr char kTabSearchPinnedToTabstrip[] =
     "tab_search.pinned_to_tabstrip";

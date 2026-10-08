@@ -11,8 +11,6 @@
 #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/views/frame/app_menu_button.h"
-#include "components/user_education/common/feature_promo/feature_promo_controller.h"
-#include "components/user_education/common/feature_promo/feature_promo_handle.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/gfx/animation/throb_animation.h"
@@ -89,8 +87,6 @@ class BrowserAppMenuButton : public AppMenuButton {
 
   // Our owning toolbar view.
   const raw_ptr<ToolbarView> toolbar_view_;
-
-  user_education::FeaturePromoHandle promo_handle_;
 
   base::CallbackListSubscription subscription_ =
       ui::TouchUiController::Get()->RegisterCallback(

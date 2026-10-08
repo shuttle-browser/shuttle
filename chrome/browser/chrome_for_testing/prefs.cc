@@ -23,7 +23,6 @@ constexpr base::TimeDelta kDefaultRequiredComponentsUpdateTimeout =
 }  // namespace
 
 void RegisterPrefs(PrefRegistrySimple* registry) {
-  registry->RegisterBooleanPref(prefs::kEnableUserEducationUI, false);
   registry->RegisterBooleanPref(prefs::kEnableSearchEngineChoiceDialog, false);
   registry->RegisterBooleanPref(prefs::kEnableVirtualClipboard, false);
   registry->RegisterListPref(prefs::kRequiredComponents, base::ListValue());

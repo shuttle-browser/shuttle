@@ -3,7 +3,6 @@
 components/bookmark_component_strings.grdp
 components/browsing_data_strings.grdp
 components/collaboration_strings.grdp
-components/commerce_strings.grdp
 components/components_settings_strings.grdp
 components/contextual_cueing_strings.grdp
 components/contextual_tasks_strings.grdp
@@ -122,5 +121,4 @@ components/subresource_filter_strings.grdp
 components/supervised_user_strings.grdp
 components/tab_groups_strings.grdp
 components/tab_resume_strings.grdp
-components/user_education_strings.grdp
 components/version_ui_strings.grdp

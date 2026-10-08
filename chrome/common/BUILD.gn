@@ -61,7 +61,7 @@ buildflag_header("buildflags") {
 }
 
 source_set("readaloud_constants") {
-  sources = [ "readaloud/read_aloud_constants.h" ]
+  sources = []
   public_deps = [
     "//base",
     "//media",
@@ -152,7 +152,6 @@ static_library("common_lib") {
     "pdf_util.h",
     "pref_names_util.cc",
     "pref_names_util.h",
-    "readaloud/read_aloud_constants.h",
     "ref_counted_util.h",
     "secure_origin_allowlist.cc",
     "secure_origin_allowlist.h",
@@ -347,8 +346,6 @@ static_library("common_lib") {
   } else {
     # Non-Android.
     sources += [
-      "read_anything/read_anything_util.cc",
-      "read_anything/read_anything_util.h",
     ]
   }
 
@@ -621,7 +618,6 @@ mojom("mojo_bindings") {
     "network_easter_egg.mojom",
     "open_search_description_document_handler.mojom",
     "plugin.mojom",
-    "readaloud/read_aloud.mojom",
     "renderer_configuration.mojom",
   ]
 

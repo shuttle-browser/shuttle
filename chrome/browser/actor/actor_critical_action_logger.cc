@@ -23,13 +23,11 @@
 #include "chrome/browser/actor/tools/tool_request.h"
 #include "chrome/browser/actor/tools/type_tool_request.h"
 #include "chrome/browser/critical_actions/critical_action_factory.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_features.h"
 #include "components/actor/core/task_id.h"
 #include "components/critical_actions/core/browser/critical_action_service.h"
 #include "components/critical_actions/core/browser/features.h"
-#include "components/feature_engagement/public/tracker.h"
 
 namespace actor {
 
@@ -75,11 +73,6 @@ void ActorCriticalActionLogger::LogAgentSelfReportedAction(
 
   LogEntry(*service, action_type, std::move(conversation_id), actor_task_id,
            url, std::move(metadata), navigation_id);
-
-  if (feature_engagement::Tracker* tracker =
-          feature_engagement::TrackerFactory::GetForBrowserContext(profile)) {
-    tracker->NotifyEvent("actor_action_logged");
-  }
 }
 
 void ActorCriticalActionLogger::LogEntry(

@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
-import {PdfHelpBubbleProxyImpl} from 'chrome://resources/cr_components/help_bubble/pdf_help_bubble_proxy.js';
 import {assert} from 'chrome://resources/js/assert.js';
 import {EventTracker} from 'chrome://resources/js/event_tracker.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
@@ -67,9 +65,7 @@ function getScrollbarWidth(): number {
   return result;
 }
 
-const HelpBubbleCrLitElementBase = HelpBubbleMixinLit(CrLitElement);
-
-export abstract class PdfViewerBaseElement extends HelpBubbleCrLitElementBase {
+export abstract class PdfViewerBaseElement extends CrLitElement {
   static override get properties() {
     return {
       showErrorDialog: {type: Boolean},
@@ -104,10 +100,6 @@ export abstract class PdfViewerBaseElement extends HelpBubbleCrLitElementBase {
   protected abstract afterZoom(viewportZoom: number): void;
 
   protected abstract setPluginSrc(plugin: HTMLEmbedElement): void;
-
-  override createHelpBubbleProxy() {
-    return PdfHelpBubbleProxyImpl.getInstance();
-  }
 
   /** Whether to enable the new UI. */
   protected isNewUiEnabled(): boolean {

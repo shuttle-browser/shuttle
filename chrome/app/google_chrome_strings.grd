@@ -869,15 +869,6 @@ Google Chrome is unable to recover your settings.
       <!-- Signin Email Confirmation tab modal dialog -->
 
       <!-- Dice Web Signin Interception Bubble-->
-      <if expr="not is_chromeos and not is_android">
-        <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_BUBBLE_CHROME_SIGNIN_IPH_TEXT_SIGNIN_REMINDER" desc="This string is the body text of a reminder message, which is intended to help users understand that they have been signed in to Chrome. The user previously signed in to a Google service (like Gmail or Maps), and saw the Chrome Signin Bubble intercept; when asked whether the user wanted to sign in to Chrome as well, the user selected yes. After a period of time, this reminder message appears at the top right of Chrome (pointing at the Profile Menu) to remind the user that they made this choice a while ago. This body text string comes after the 'Welcome back, USER_NAME' string. We are focusing on the benefit that user enjoys, now that they're signed in to Chrome. The tone should be welcoming.">
-          While you're signed in, you can use your passwords and more from your Google Account in Chrome. To change this, go to “Your account in Chrome”.
-        </message>
-        <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_BUBBLE_CHROME_SIGNIN_IPH_TEXT_SIGNIN_REMINDER_SCREENREADER" desc="This string is the accessibility text of a reminder message, which is intended to help users understand that they have been signed in to Chrome.">
-          While you're signed in, you can use your passwords and more from your Google Account in Chrome. <ph name="SHORTCUT">$1<ex>CTRL+SHIFT+M</ex></ph> can change your Google services settings.
-        </message>
-
-      </if>
 
 
 
@@ -940,13 +931,6 @@ Google Chrome is unable to recover your settings.
       <!-- Material Design User Manager -->
 
 
-      <!-- Quiet Notification IPH -->
-      <message name="IDS_QUIET_NOTIFICATION_IPH_TEXT" desc="Text of the blocked notifications indicator promo, that shows under the blocked notifications indicator in the address bar, when a site requests notifications permission. The promo informs the user that as a result of them usually blocking notifications, the request from the site is automatically blocked, and the user can click on the icon to allow notifications.">
-        You usually block notifications. To let this site notify you, click here.
-      </message>
-      <message name="IDS_QUIET_NOTIFICATION_IPH_TEXT_SCREENREADER" desc="Text of the blocked notifications indicator promo, that shows under the blocked notifications indicator in the address bar, when a site requests notifications permission. The promo informs the user that as a result of them usually blocking notifications, the request from the site is automatically blocked, and the user can click on the icon to allow notifications.">
-        You usually block notifications. To let this site notify you, click the notification icon on the right corner of your location bar.
-      </message>
 
       <!-- Settings API bubble -->
       <message name="IDS_EXTENSIONS_SETTINGS_API_SECOND_LINE_START_PAGES" desc="Second line in the Settings API bubble. Only shown if the secondary change by the extension was just the start pages. The triple single quotes are needed to preserve the space before and after the sentence which is needed when the language (Chrome is being translated to) uses space as word separator. Please preserve them, unless the language being translated to does not use space as word separator.">
@@ -1105,10 +1089,6 @@ Google Chrome is unable to recover your settings.
         </message>
       </if>
 
-      <!-- Side panel strings -->
-      <message name="IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE" desc="The name of the Customize Chrome feature in the side panel combo box.">
-        Customize Chrome
-      </message>
 
       <!-- History Strings -->
       <message name="IDS_HISTORY_HISTORY_MENU_ITEM" desc="Label displayed in history sidebar button to display history.">
@@ -1258,25 +1238,6 @@ Google Chrome is unable to recover your settings.
         </message>
       </if>
 
-      <if expr="not is_chromeos and not is_android">
-
-
-
-
-
-        <!-- Profile switch IPH -->
-        <message name="IDS_PROFILE_SWITCH_PROMO" desc="Text of the In-Product-Help bubble for profile switching.">
-          You can switch between Chrome profiles here
-        </message>
-        <message name="IDS_PROFILE_SWITCH_PROMO_SCREENREADER" desc="Text announced by screenreaders to explain how to switch between profiles.">
-          <ph name="SHORTCUT">$1<ex>CTRL+SHIFT+M</ex></ph> can switch between Chrome profiles
-        </message>
-
-
-
-
-
-      </if>
 
       <!-- ChromeLabs bubble -->
       <message name="IDS_CHROMELABS_RELAUNCH_FOOTER_MESSAGE" desc="Text that shows in the footer of the Chrome Labs bubble when relaunch is needed for changes to take effect.">

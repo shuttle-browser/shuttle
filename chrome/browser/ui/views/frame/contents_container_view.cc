@@ -14,7 +14,6 @@
 #include "chrome/browser/enterprise/data_protection/data_protection_overlay_view.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
-#include "chrome/browser/ui/read_anything/read_anything_immersive_overlay_view.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -85,11 +84,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
       AddChildView(std::make_unique<
                    enterprise_data_protection::DataProtectionOverlayView>());
 
-  auto read_anything_immersive_overlay_view =
-      std::make_unique<ReadAnythingImmersiveOverlayView>(contents_view_);
-  read_anything_immersive_overlay_view_ =
-      AddChildView(std::move(read_anything_immersive_overlay_view));
-
   contents_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
   contents_scrim_view_->layer()->SetName("ContentsScrimView");
 
@@ -113,15 +107,7 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   view_bounds_observer_.Observe(contents_view_);
 }
 
-ContentsContainerView::~ContentsContainerView() {
-  // read_anything_immersive_overlay_view_ holds a raw_ptr to
-  // contents_view_. We need to make sure we destroy
-  // read_anything_immersive_overlay_view_ first to avoid a dangling pointer.
-  if (read_anything_immersive_overlay_view_) {
-    auto overlay_view = RemoveChildViewT(read_anything_immersive_overlay_view_);
-    read_anything_immersive_overlay_view_ = nullptr;
-  }
-}
+ContentsContainerView::~ContentsContainerView() = default;
 
 std::vector<views::View*> ContentsContainerView::GetAccessiblePanes() {
   std::vector<views::View*> accessible_panes;
@@ -429,14 +415,6 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
   if (actor_overlay_web_view_) {
     layouts.child_layouts.emplace_back(
         actor_overlay_web_view_.get(), actor_overlay_web_view_->GetVisible(),
-        non_devtools_contents_bounds, size_bounds);
-  }
-
-  // Reading Mode overlay view bounds are the same as the contents view.
-  if (read_anything_immersive_overlay_view_) {
-    layouts.child_layouts.emplace_back(
-        read_anything_immersive_overlay_view_.get(),
-        read_anything_immersive_overlay_view_->GetVisible(),
         non_devtools_contents_bounds, size_bounds);
   }
 

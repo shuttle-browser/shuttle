@@ -22,7 +22,7 @@ import {ReloadButtonInputType} from './metrics_recorder.js';
 import {getCss} from './reload_button.css.js';
 import {getHtml} from './reload_button.html.js';
 import {TimerHelper} from './timer_helper.js';
-import {BUTTON_LEFT, getContextMenuPosition, getEventDispositionFlags, HelpBubbleAnchorMixin, playIconAnimation, PressHandler, roundedIconsEnabled} from './toolbar_button.js';
+import {BUTTON_LEFT, getContextMenuPosition, getEventDispositionFlags, playIconAnimation, PressHandler, roundedIconsEnabled} from './toolbar_button.js';
 
 // go/keep-sorted start
 const RELOAD_BUTTON_ACC_NAME_RELOAD = 'reloadButtonAccNameReload';
@@ -33,7 +33,7 @@ const RELOAD_BUTTON_TOOLTIP_STOP = 'reloadButtonTooltipStop';
 // go/keep-sorted end
 const INPUT_COUNT_HISTOGRAM = 'InitialWebUI.ReloadButton.InputCount';
 
-const ReloadButtonElementBase = HelpBubbleAnchorMixin(CrLitElement);
+const ReloadButtonElementBase = CrLitElement;
 
 export interface ReloadButtonElement {
   $: {
@@ -373,18 +373,14 @@ export class ReloadButtonElement extends ReloadButtonElementBase {
       this.updateState_(/*force=*/ !previousState ||
                         this.state.stateToken !== previousState.stateToken);
     }
-
-    if (changedPrivateProperties.has('hasHelpBubble')) {
-      this.updateTooltip_();
-    }
   }
 
   private updateTooltip_() {
-    this.tooltip = this.adjustTooltipForHelpBubble(loadTimeData.getString(
+    this.tooltip = loadTimeData.getString(
         this.state.isNavigationLoading ?
             RELOAD_BUTTON_TOOLTIP_STOP :
             (this.state.canShowMenu ? RELOAD_BUTTON_TOOLTIP_RELOAD_WITH_MENU :
-                                      RELOAD_BUTTON_TOOLTIP_RELOAD)));
+                                      RELOAD_BUTTON_TOOLTIP_RELOAD));
   }
 
   protected getIronIcon_(): string {

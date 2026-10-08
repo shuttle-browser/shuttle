@@ -98,11 +98,6 @@ if (is_chromeos) {
   ]
 }
 
-if (!is_android && !is_ios) {
-  mojo_ts_files +=
-      [ "components/user_education/webui/user_education.mojom-webui.ts" ]
-}
-
 if (is_mac || is_win || is_linux || is_chromeos || is_android) {
   mojo_ts_files += [ "mojo/public/mojom/base/version.mojom-webui.ts" ]
 }
@@ -156,7 +151,6 @@ preprocess_if_expr("copy_mojo_ts") {
   }
 
   if (!is_android && !is_ios) {
-    deps += [ "//components/user_education/webui:mojo_bindings_ts__generator" ]
   }
 }
 

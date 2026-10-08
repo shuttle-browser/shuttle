@@ -13,7 +13,6 @@
 #include "base/values.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
-#include "chrome/browser/ui/user_education/show_promo_in_page.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "url/gurl.h"
@@ -95,8 +94,6 @@ void ShowSettings(BrowserWindowInterface* browser);
 void ShowSettingsSubPage(BrowserWindowInterface* browser,
                          std::string_view sub_page);
 void ShowSettingsSubPageForProfile(Profile* profile, std::string_view sub_page);
-void ShowPageWithPromoForProfile(Profile* profile,
-                                 ShowPromoInPage::Params promo_params);
 void ShowContentSettingsExceptions(BrowserWindowInterface* browser,
                                    ContentSettingsType content_settings_type);
 void ShowContentSettingsExceptionsForProfile(

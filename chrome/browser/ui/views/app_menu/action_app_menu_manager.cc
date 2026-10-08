@@ -377,8 +377,6 @@ void ActionAppMenuManager::AddToolsAndActionsActions(
         .AddAction(kActionToggleVerticalTabs);
 
     sub.AddDivider()
-        .AddAction(kActionShowReadingModeSidePanel)
-        .AddDivider()
         .AddAction(kActionPerformance)
         .AddAction(kActionTaskManagerAppMenu)
         .AddDivider()

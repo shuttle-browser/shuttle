@@ -78,7 +78,6 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/renderer/accessibility/read_anything/read_anything_app_controller.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -318,16 +317,6 @@ void ChromeRenderFrameObserver::DidCommitProvisionalLoad(
 }
 
 void ChromeRenderFrameObserver::DidClearWindowObject() {
-#if !BUILDFLAG(IS_ANDROID)
-  // Install ReadAnythingAppController on render frames with the Read Anything
-  // url, which is chrome-untrusted. ReadAnythingAppController installs v8
-  // bindings in the chrome.readingMode namespace which are consumed by
-  // read_anything/app.ts, the resource of the Read Anything WebUI.
-  if (render_frame()->GetWebFrame()->GetDocument().Url() ==
-      chrome::kChromeUIUntrustedReadAnythingSidePanelURL) {
-    ReadAnythingAppController::Install(render_frame());
-  }
-#endif  // !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(ENABLE_GUEST_VIEW) && !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   guest_view::SlimWebViewBindings::MaybeInstall(*render_frame());
 #endif  // BUILDFLAG(ENABLE_GUEST_VIEW) && !BUILDFLAG(ENABLE_EXTENSIONS_CORE)

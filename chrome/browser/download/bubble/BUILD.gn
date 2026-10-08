@@ -50,7 +50,6 @@ source_set("impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser/content_index",
     "//chrome/browser/devtools",
-    "//chrome/browser/feature_engagement",
     "//chrome/browser/headless",
     "//chrome/browser/offline_items_collection",
     "//chrome/browser/safe_browsing",

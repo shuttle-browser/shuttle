@@ -26,7 +26,6 @@ import {CrLitElement, nothing} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {IconTable} from '/shared/icon_table.js';
 import {ColorChangeUpdater} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
-import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 
 import {getCss} from './app.css.js';
 import {getHtml} from './app.html.js';
@@ -34,7 +33,6 @@ import {BrowserProxyImpl, EventDispositionFlag, INVALID_NAVIGATION_CONTROLS_STAT
 import type {BrowserProxy, IconUpdate, NavigationControlsState, NavigationControlsStateListenerHandle} from './browser_proxy.js';
 import type {OverflowButtonElement} from './overflow_button.js';
 import type {ResponsiveControl} from './responsive_control.js';
-import {setHasHelpBubble} from './toolbar_button.js';
 
 // clang-format off
 // Helper so tests can find what they needed when optimization is on.
@@ -165,22 +163,7 @@ const MARK_LOAD_TIME_DATA_READ = 'LoadTimeDataRead';
 const MARK_JS_COMPOSITION_COMPLETE = 'JsCompositionComplete';
 // LINT.ThenChange(//chrome/browser/page_load_metrics/observers/initial_webui_page_load_metrics_observer.cc:InitialWebUIRendererMilestones)
 
-const TRACKED_ELEMENTS: Array<{selector: string, id: string}> = [
-  {selector: '#back', id: 'kToolbarBackButtonElementId'},
-  {selector: '#forward', id: 'kToolbarForwardButtonElementId'},
-  {selector: '#reload', id: 'kReloadButtonElementId'},
-  {selector: '#split-tabs', id: 'kToolbarSplitTabsToolbarButtonElementId'},
-  {selector: '#location-bar', id: 'kLocationBarElementId'},
-  {selector: '#home', id: 'kToolbarHomeButtonElementId'},
-  {selector: '#overflow', id: 'kToolbarOverflowButtonElementId'},
-  {selector: '#battery-saver', id: 'kToolbarBatterySaverButtonElementId'},
-  {
-    selector: '#performance-intervention',
-    id: 'kToolbarPerformanceInterventionButtonElementId',
-  },
-];
-
-const AppElementBase = HelpBubbleMixinLit(CrLitElement);
+const AppElementBase = CrLitElement;
 
 /**
  * Keys corresponding to initial toolbar state values provided by the browser.
@@ -635,19 +618,6 @@ export class ToolbarAppElement extends AppElementBase {
     }
     this.isPageInitialized_ = true;
 
-    for (const {selector, id} of TRACKED_ELEMENTS) {
-      const el = this.shadowRoot.querySelector<HTMLElement>(selector);
-      if (el) {
-        this.registerHelpBubble(id, el, {
-          onHighlightChanged: (highlighted: boolean) => {
-            el.classList.toggle('anchor-highlight', highlighted);
-          },
-          onHelpBubbleShown: () => setHasHelpBubble(el, true),
-          onHelpBubbleHidden: () => setHasHelpBubble(el, false),
-        });
-      }
-    }
-
     const waitSelectors = [
       '#back',
       '#forward',
@@ -698,15 +668,7 @@ export class ToolbarAppElement extends AppElementBase {
         hasInitialStateKey(ToolbarStateKey.IS_NAVIGATION_LOADING);
     this.initializeSessionId_++;
 
-    if (this.isPageInitialized_) {
-      for (const {selector, id} of TRACKED_ELEMENTS) {
-        const el = this.shadowRoot.querySelector<HTMLElement>(selector);
-        if (el) {
-          this.unregisterHelpBubble(id);
-        }
-      }
-      this.isPageInitialized_ = false;
-    }
+    this.isPageInitialized_ = false;
   }
 
   // Drill down to find the actual active element

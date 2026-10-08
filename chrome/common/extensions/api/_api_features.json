@@ -536,10 +536,6 @@
     "dependencies": ["permission:fontSettings"],
     "contexts": ["privileged_extension"]
   },
-  "gcm": {
-    "dependencies": ["permission:gcm"],
-    "contexts": ["privileged_extension"]
-  },
   "history": {
     "dependencies": ["permission:history"],
     "contexts": ["privileged_extension"]
@@ -575,10 +571,6 @@
       "chrome://settings/*"
     ]
   }],
-  "instanceID": {
-    "dependencies": ["permission:gcm"],
-    "contexts": ["privileged_extension"]
-  },
   "languageSettingsPrivate": [{
     "dependencies": ["permission:languageSettingsPrivate"],
     "contexts": ["privileged_extension"]
@@ -777,10 +769,6 @@
       "chrome://settings/*"
     ]
   }],
-  "sidePanel": {
-    "dependencies": ["permission:sidePanel"],
-    "contexts": ["privileged_extension"]
-  },
   "smartCardProviderPrivate": {
     "dependencies": ["permission:smartCardProviderPrivate"],
     "contexts": ["privileged_extension"]

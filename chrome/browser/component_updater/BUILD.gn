@@ -32,7 +32,6 @@ source_set("component_updater") {
     "ssl_error_assistant_component_installer.h",
     "subresource_filter_component_installer.h",
     "trust_token_key_commitments_component_installer.h",
-    "wasm_tts_engine_component_installer.h",
   ]
 
   public_deps = [
@@ -117,7 +116,6 @@ source_set("impl") {
     "ssl_error_assistant_component_installer.cc",
     "subresource_filter_component_installer.cc",
     "trust_token_key_commitments_component_installer.cc",
-    "wasm_tts_engine_component_installer.cc",
   ]
 
   public_deps = [ ":component_updater" ]
@@ -127,7 +125,6 @@ source_set("impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser/accessibility",
     "//chrome/browser/actor:impl",
-    "//chrome/browser/ai",
     "//chrome/browser/media",
     "//chrome/browser/net",
     "//chrome/browser/page_load_metrics",
@@ -183,7 +180,6 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser/actor:impl",
-      "//chrome/browser/ui/read_anything",
       "//components/live_caption:constants",
       "//components/live_caption:utils",
       "//components/soda:constants",

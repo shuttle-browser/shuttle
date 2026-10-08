@@ -5,7 +5,6 @@
 #include "chrome/browser/ui/focus/browser_focus_controller_views.h"
 
 #include "base/check_deref.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -15,12 +14,6 @@
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_button.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
-#include "components/feature_engagement/public/event_constants.h"
-#include "components/feature_engagement/public/tracker.h"
-#include "components/user_education/common/help_bubble/help_bubble_factory_registry.h"
-#include "components/user_education/views/help_bubble_view.h"
 #include "ui/views/accessible_pane_view.h"
 #include "ui/views/controls/button/md_text_button.h"
 #include "ui/views/interaction/element_tracker_views.h"
@@ -64,24 +57,13 @@ void BrowserFocusControllerViews::FocusInactivePopupForAccessibility() {
 
 bool BrowserFocusControllerViews::
     ActivateFirstInactiveBubbleForAccessibility() {
-  auto* const user_education =
-      UserEducationServiceFactory::GetForBrowserContext(&*profile_);
-  if (user_education &&
-      user_education->help_bubble_factory_registry()
-          .ToggleFocusForAccessibility(browser_elements_->GetContext())) {
-    feature_engagement::TrackerFactory::GetForBrowserContext(&*profile_)
-        ->NotifyEvent(
-            feature_engagement::events::kFocusHelpBubbleAcceleratorPressed);
-    return true;
-  }
-
   // TODO: this fixes https://crbug.com/40668249 and https://crbug.com/40674460,
   // but a more general solution should be desirable to find any bubbles
   // anchored in the views hierarchy.
   views::DialogDelegate* bubble = nullptr;
   if (auto* control = toolbar_button_provider_->GetAppMenuControl()) {
     auto* dialog = control->GetDialogDelegate();
-    if (dialog && !user_education::HelpBubbleView::IsHelpBubble(dialog)) {
+    if (dialog) {
       bubble = dialog;
     }
   }
@@ -97,7 +79,7 @@ bool BrowserFocusControllerViews::
                  ->GetToastAnchorView()}) {
       if (view) {
         if (auto* dialog = view->GetProperty(views::kAnchoredDialogKey);
-            dialog && !user_education::HelpBubbleView::IsHelpBubble(dialog)) {
+            dialog) {
           bubble = dialog;
           break;
         }
@@ -106,7 +88,6 @@ bool BrowserFocusControllerViews::
   }
 
   if (bubble) {
-    CHECK(!user_education::HelpBubbleView::IsHelpBubble(bubble));
     views::View* focusable = bubble->GetInitiallyFocusedView();
 
     if (!focusable) {

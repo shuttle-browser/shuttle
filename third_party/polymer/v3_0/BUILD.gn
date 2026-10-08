@@ -126,7 +126,6 @@ ts_library("library") {
     "//chrome/test/data/webui/cr_elements:build_ts",
     "//chrome/test/data/webui/print_preview:build_ts",
     "//chrome/test/data/webui/settings:build_ts",
-    "//ui/webui/resources/cr_components/help_bubble:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
   ]
 

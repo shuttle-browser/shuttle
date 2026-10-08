@@ -603,7 +603,6 @@ template("build_webui") {
         "//chrome/browser/resources/webui_toolbar",
         "//components/crash/core/browser/resources",
         "//components/download/resources/download_internals",
-        "//components/gcm_driver/resources",
         "//components/metrics/debug",
         "//components/policy/resources/webui",
         "//components/ukm/debug",

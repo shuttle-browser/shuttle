@@ -43,7 +43,6 @@ DEFINE_USER_DATA(DownloadToolbarUIController);
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/safe_browsing/core/common/safe_browsing_policy_handler.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/tabs/public/tab_interface.h"
@@ -790,13 +789,6 @@ void DownloadToolbarUIController::CloseDialog(
 void DownloadToolbarUIController::OnSecurityDialogButtonPress(
     const DownloadUIModel& model,
     DownloadCommands::Command command) {
-  if (model.GetDangerType() ==
-          download::DOWNLOAD_DANGER_TYPE_UNCOMMON_CONTENT &&
-      command == DownloadCommands::DISCARD) {
-    content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE, base::BindOnce(&DownloadToolbarUIController::ShowIphPromo,
-                                  weak_factory_.GetWeakPtr()));
-  }
 }
 
 void DownloadToolbarUIController::OnDialogInteracted() {
@@ -1085,37 +1077,7 @@ void DownloadToolbarUIController::OnBubbleClosing() {
   action_item_->SetIsShowingBubble(false);
 }
 
-void DownloadToolbarUIController::OnPartialViewClosed() {
-  // We use PostTask to avoid calling the FocusAndActivateWindow
-  // function reentrantly from ui/wm/core/focus_controller.cc.
-  // We make sure each call to the FocusAndActivateWindow method
-  // finishes before the next.
-  content::GetUIThreadTaskRunner({})->PostTask(
-      FROM_HERE, base::BindOnce(&DownloadToolbarUIController::ShowIphPromo,
-                                weak_factory_.GetWeakPtr()));
-}
-
-void DownloadToolbarUIController::ShowIphPromo() {
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  if (auto* button = GetDownloadsButton(browser_view_)) {
-    button->SetProperty(views::kElementIdentifierKey,
-                        kToolbarDownloadButtonElementId);
-  }
-  Profile* profile = browser_view_->GetProfile();
-  // Don't show IPH Promo if safe browsing level is set by policy.
-  if (safe_browsing::SafeBrowsingPolicyHandler::
-          IsSafeBrowsingProtectionLevelSetByPolicy(profile->GetPrefs())) {
-    return;
-  }
-  if (safe_browsing::GetSafeBrowsingState(*profile->GetPrefs()) ==
-          safe_browsing::SafeBrowsingState::STANDARD_PROTECTION &&
-      !profile->IsOffTheRecord()) {
-    BrowserUserEducationInterface::From(browser_view_->browser())
-        ->MaybeShowFeaturePromo(
-            feature_engagement::kIPHDownloadEsbPromoFeature);
-  }
-#endif
-}
+void DownloadToolbarUIController::OnPartialViewClosed() {}
 
 void DownloadToolbarUIController::AutoClosePartialView() {
   // Nothing to do if the bubble is not open.

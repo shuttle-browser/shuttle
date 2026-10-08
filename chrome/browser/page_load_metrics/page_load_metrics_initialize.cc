@@ -92,7 +92,6 @@
 #include "chrome/browser/page_load_metrics/observers/initial_webui_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/non_tab_webui_page_load_metrics_observer.h"
 #include "chrome/browser/page_load_metrics/observers/top_chrome_webui_metrics_observer.h"
-#include "chrome/browser/ui/read_anything/read_anything_soft_navigation_observer.h"
 #include "chrome/browser/ui/waap/waap_utils.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_config.h"
@@ -298,7 +297,6 @@ void PageLoadMetricsEmbedder::RegisterObservers(
   tracker->AddObserver(std::make_unique<ZstdPageLoadMetricsObserver>());
 
 #if !BUILDFLAG(IS_ANDROID)
-  tracker->AddObserver(std::make_unique<ReadAnythingSoftNavigationObserver>());
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)

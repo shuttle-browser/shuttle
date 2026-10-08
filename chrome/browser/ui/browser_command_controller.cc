@@ -56,10 +56,6 @@
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
-#include "chrome/browser/ui/read_anything/read_anything_controller.h"
-#include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
@@ -914,10 +910,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
     case IDC_SHOW_HISTORY:
       ShowHistory(webui::GetBrowserForOpeningWebUi(browser_));
       break;
-    case IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL:
-      browser_->GetFeatures().side_panel_ui()->Show(
-          SidePanelEntryId::kHistoryClusters, SidePanelOpenTrigger::kAppMenu);
-      break;
     case IDC_SHOW_DOWNLOADS:
       ShowDownloads(webui::GetBrowserForOpeningWebUi(browser_));
       break;
@@ -1093,20 +1085,6 @@ void BrowserCommandController::HandleCommandWithDisposition(
       break;
 
 
-
-    case IDC_SHOW_READING_MODE_SIDE_PANEL: {
-      // Yes. This is a separate feature from the reading list.
-      read_anything::ReadAnythingEntryPointController::ShowUI(
-          browser_, read_anything::mojom::ReadAnythingOpenTrigger::kAppMenu);
-      break;
-    }
-
-    case IDC_SHOW_READING_MODE_KEYBOARD: {
-      read_anything::ReadAnythingEntryPointController::ToggleUI(
-          browser_,
-          read_anything::mojom::ReadAnythingOpenTrigger::kKeyboardShortcut);
-      break;
-    }
 
 #if !BUILDFLAG(IS_CHROMEOS)
     case IDC_SET_BROWSER_AS_DEFAULT:
@@ -1363,14 +1341,9 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_TASK_MANAGER_MAIN_MENU,
                                          CanOpenTaskManager());
   command_updater_->UpdateCommandEnabled(IDC_SHOW_HISTORY, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
-                                         true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_DOWNLOADS, true);
   command_updater_->UpdateCommandEnabled(IDC_FIND_AND_EDIT_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_SAVE_AND_SHARE_MENU, true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_SIDE_PANEL,
-                                         true);
-  command_updater_->UpdateCommandEnabled(IDC_SHOW_READING_MODE_KEYBOARD, true);
   command_updater_->UpdateCommandEnabled(IDC_HELP_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_KEYBOARD, true);
   command_updater_->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_MENU, true);

@@ -103,11 +103,6 @@ class DownloadBubbleUIController {
   // observers.
   void HideDownloadUi();
 
-  // Records that a dangerous download was shown to the user. This only
-  // records the fact that an interaction occurred, and should not be
-  // used quantitatively to count the number of such interactions.
-  void RecordDangerousDownloadShownToUser(download::DownloadItem* download);
-
   // Returns the DownloadDisplayController. Should always return a valid
   // controller.
   DownloadDisplayController* GetDownloadDisplayController() {

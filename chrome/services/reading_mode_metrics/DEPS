@@ -1,8 +1,0 @@
-include_rules = [
-  "+base",
-  "+chrome/common/read_anything",
-  "+chrome/services/reading_mode_metrics",
-  "+mojo/public/cpp/bindings",
-  "+testing/gtest",
-  "+ui/accessibility",
-]

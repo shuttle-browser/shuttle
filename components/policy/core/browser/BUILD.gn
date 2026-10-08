@@ -38,8 +38,6 @@ source_set("internal") {
     "policy_data_utils.h",
     "policy_error_map.cc",
     "policy_error_map.h",
-    "remote_commands/user_remote_commands_service_base.cc",
-    "remote_commands/user_remote_commands_service_base.h",
     "signin/profile_separation_policies.cc",
     "signin/profile_separation_policies.h",
     "signin/user_cloud_signin_restriction_policy_fetcher.cc",

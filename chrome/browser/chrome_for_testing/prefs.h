@@ -11,10 +11,6 @@ class PrefService;
 namespace chrome_for_testing {
 namespace prefs {
 
-// Show User Education UI. Default is false.
-inline constexpr char kEnableUserEducationUI[] =
-    "chrome_for_testing.enable_user_education_ui";
-
 // Enable Search Engine Dialog. Default is false.
 inline constexpr char kEnableSearchEngineChoiceDialog[] =
     "chrome_for_testing.enable_search_engine_choice_dialog";

@@ -17,8 +17,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
-#include "chrome/browser/policy/cloud/user_cloud_policy_invalidator.h"
-#include "chrome/browser/policy/cloud/user_cloud_policy_invalidator_factory.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
@@ -480,11 +478,7 @@ void ExtensionInstallPolicyServiceImpl::OnCloudPolicyManagerReady(
   initialization_waiters_.erase(manager);
 
   if (manager == profile_->GetCloudPolicyManager()) {
-    UserCloudPolicyInvalidator* invalidator =
-        UserCloudPolicyInvalidatorFactory::GetForProfile(&profile_.get());
-    if (invalidator) {
-      invalidator->StartExtensionInstallInvalidator();
-    }
+    // Agent Chrome: policy invalidations were removed.
     return;
   }
 

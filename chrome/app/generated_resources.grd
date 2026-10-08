@@ -347,41 +347,11 @@ are declared in tools/grit/grit_args.gni.
 
       <!-- Strings that are only used when VR devices are supported -->
 
-      <message name="IDS_WILDCARD" is_accessibility_with_no_ui="true" translateable="false" desc="A wildcard that allows for programmatically replacing IDS text based on context.">
-        <ph name="BODY">$1<ex>another IDS string</ex></ph>
-      </message>
 
       <!-- TODO add all of your "string table" messages here.  Remember to
       change nontranslateable parts of the messages into placeholders (using the
       <ph> element).  You can also use the 'grit add' tool to help you identify
       nontranslateable parts and create placeholders for them. -->
-      <if expr="is_win">
-        <!-- Search Promotion specific strings -->
-        <message name="IDS_SEARCH_PROMOTION_IPH_TITLE_ARM_A" desc="Title of the search promotion IPH bubble for Arm A.">
-          Bring Google Search to Edge
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_BODY_ARM_A" desc="Body text of the search promotion IPH bubble for Arm A.">
-          Use Google Search right from your browser's address bar and when you open a new tab.
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_CTA_ARM_A" desc="Custom CTA button text of the search promotion IPH bubble for Arm A.">
-          Open Edge
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_DISMISS_ARM_A" desc="Custom Dismiss button text of the search promotion IPH bubble for Arm A.">
-          No Thanks
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_TITLE_ARM_B" desc="Title of the search promotion IPH bubble for Arm B.">
-          Install Google Search for Microsoft Edge extension
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_BODY_ARM_B" desc="Body text of the search promotion IPH bubble for Arm B.">
-          Use Google Search right from your browser's address bar and when you open a new tab.
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_CTA_ARM_B" desc="Custom CTA button text of the search promotion IPH bubble for Arm B.">
-          Install for Edge
-        </message>
-        <message name="IDS_SEARCH_PROMOTION_IPH_DISMISS_ARM_B" desc="Custom Dismiss button text of the search promotion IPH bubble for Arm B.">
-          No Thanks
-        </message>
-      </if>
       <message name="IDS_BACKGROUND_CRASHED_APP_BALLOON_MESSAGE" desc="The contents of the balloon that is displayed when a background app crashes">
         <ph name="APP_NAME">$1<ex>Background App</ex></ph> has crashed. Click this balloon to restart the app.
       </message>
@@ -527,16 +497,6 @@ are declared in tools/grit/grit_args.gni.
             This dialog is not currently focused. Press Alt-Shift A to focus this dialog.
           </message>
         </if>
-        <message name="IDS_FOCUS_HELP_BUBBLE_DESCRIPTION" is_accessibility_with_no_ui="true" desc="Message announced to screen reader users when a general help bubble is shown.">
-          Press <ph name="ACCELERATOR">$1<ex>F6</ex></ph> to focus this bubble.
-        </message>
-        <message name="IDS_FOCUS_HELP_BUBBLE_TOGGLE_DESCRIPTION" is_accessibility_with_no_ui="true" desc="Message announced to screen reader when a help bubble pointing to a specific element is shown.">
-          Press <ph name="ACCELERATOR">$1<ex>F6</ex></ph> to focus this bubble, then again to focus the element it is pointing to.
-        </message>
-        <message name="IDS_FOCUS_HELP_BUBBLE_TUTORIAL_DESCRIPTION" is_accessibility_with_no_ui="true" desc="Message announced to screen reader when a help bubble that can start a tutorial is shown.">
-          A series of tutorial bubbles with instructions will be displayed.
-          Press <ph name="ACCELERATOR">$1<ex>F6</ex></ph> to focus a bubble, then again to focus the element it is pointing to.
-        </message>
       </if>
 
 
@@ -632,12 +592,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
           <message name="IDS_CONTENT_CONTEXT_INSPECTBACKGROUNDPAGE" desc="The name of the Inspect Background Page command in the packaged app content area context menu">
             Inspect &amp;background page
-          </message>
-          <message name="IDS_CONTENT_CONTEXT_READING_MODE" desc="Context menu menuitem to open page in reading mode view">
-           Open in reading mode
-          </message>
-          <message name="IDS_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE" desc="Context menu item to listen to this page">
-           Listen to this page
           </message>
           <message name="IDS_CONTENT_CONTEXT_RELOAD" desc="The name of the Reload command in the content area context menu">
             &amp;Reload
@@ -878,12 +832,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
           <message name="IDS_CONTENT_CONTEXT_INSPECTBACKGROUNDPAGE" desc="In Title Case: The name of the Inspect Background Page command in the packaged app content area context menu">
             Inspect &amp;Background Page
-          </message>
-          <message name="IDS_CONTENT_CONTEXT_READING_MODE" desc="Context menu menuitem to open page in reading mode view">
-           Open in Reading Mode
-          </message>
-          <message name="IDS_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE" desc="In Title Case: Context menu item to listen to this page">
-           Listen to This Page
           </message>
           <message name="IDS_CONTENT_CONTEXT_RELOAD" desc="In Title Case: The name of the Reload command in the content area context menu">
             &amp;Reload
@@ -2416,22 +2364,6 @@ are declared in tools/grit/grit_args.gni.
       <message name="IDS_DOWNLOAD_BUBBLE_FOOTER_TOOLTIP_LABEL"
                desc="Tooltip label for the button to open full download history">
         Show full download history in a new tab
-      </message>
-      <message name="IDS_DOWNLOAD_BUBBLE_ESB_PROMO"
-               desc="Text for the in-product-help bubble shown for the esb promo download bubble.">
-        Chrome just blocked a dangerous file from downloading. Get even stronger security with enhanced protection.
-      </message>
-      <message name="IDS_DOWNLOAD_BUBBLE_ESB_PROMO_CUSTOM_ACTION"
-               desc="Text for the custom action within the in-product-help bubble shown for the esb promo download bubble.">
-        Settings
-      </message>
-      <message name="IDS_DOWNLOAD_BUBBLE_ESB_PROMO_DISMISS"
-               desc="Text for the dismiss action within the in-product-help bubble shown for the esb promo download bubble.">
-        No thanks
-      </message>
-      <message name="IDS_DOWNLOAD_BUBBLE_ESB_PROMO_TITLE"
-               desc="Title for the in-product-help bubble shown for the esb promo download bubble.">
-        Improve download protection
       </message>
       <message name="IDS_DOWNLOAD_BUBBLE_DOWNLOAD_STATUS_MESSAGE_WITH_SEPARATOR"
                desc="The download status and message are separated by a symbol, in this case bullet •, with a white space before it and a white space after it. If the bullet • resembles another symbol in the language, please translate the bullet • as a symbol (A) that is not easily mistaken for a number or letter in the language and (B) that is typically used to separate elements.">
@@ -4871,12 +4803,6 @@ are declared in tools/grit/grit_args.gni.
           <message name="IDS_EXTENSIONS_PINNED_BY_ADMIN_ACCESSIBLE_NAME" desc="The accessible name indicating that an extension has been 'pinned' to the toolbar by the controlling administrator (sentence case).">
             <ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph> is pinned by your administrator
           </message>
-          <message name="IDS_EXTENSIONS_SUBMENU_OPEN_SIDE_PANEL_ITEM" desc="The text for the link in the extensions menu to open the side panel corresponding to the extension (sentence case).">
-            Open side panel
-          </message>
-          <message name="IDS_EXTENSIONS_SUBMENU_CLOSE_SIDE_PANEL_ITEM" desc="The text for the link in the extensions menu to close the side panel corresponding to the extension (sentence case).">
-            Close side panel
-          </message>
         </if>
         <if expr="use_titlecase">
           <message name="IDS_EXTENSIONS_PIN_TO_TOOLBAR_ACCESSIBLE_NAME" desc="The accessible name for the menu item to pin an extension to the toolbar (sentence case).">
@@ -4887,12 +4813,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
           <message name="IDS_EXTENSIONS_PINNED_BY_ADMIN_ACCESSIBLE_NAME" desc="The accessible name indicating that an extension has been 'pinned' to the toolbar by the controlling administrator (sentence case).">
             <ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph> is pinned by your Administrator
-          </message>
-          <message name="IDS_EXTENSIONS_SUBMENU_OPEN_SIDE_PANEL_ITEM" desc="The text for the link in the extensions menu to open the side panel corresponding to the extension (title case).">
-            Open Side Panel
-          </message>
-          <message name="IDS_EXTENSIONS_SUBMENU_CLOSE_SIDE_PANEL_ITEM" desc="The text for the link in the extensions menu to close the side panel corresponding to the extension (title case).">
-            Close Side Panel
           </message>
         </if>
       </if>
@@ -5947,452 +5867,17 @@ Keep your key file in a safe place. You will need it to create new versions of y
         &amp;Reading list
       </message>
 
-      <!-- Side panel strings -->
-      <message name="IDS_ACCNAME_SIDE_PANEL_RESIZE" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the side panel resize handle is focused.">
-        Side Panel Resize Handle (draggable)
-      </message>
-      <message name="IDS_ACCNAME_SIDE_PANEL_CLOSE" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the side panel close button is focused.">
-        Close side panel
-      </message>
-      <message name="IDS_SIDE_PANEL_RESIZE_ACCESSIBLE_ALERT" is_accessibility_with_no_ui="true"
-               desc="Accessible alert text announced after a user has resized the side panel via keyboard. This message is for screen reader users.">
-               <ph name="WINDOW_SIDE">$1<ex>left</ex></ph> window now <ph name="WINDOW_SIZE_PERCENT">$2<ex>60%</ex></ph> wide, <ph name="PANE_SIDE">$3<ex>right</ex></ph> pane now <ph name="PANE_SIZE_PERCENT">$4<ex>40%</ex></ph> wide.
-      </message>
-      <message name="IDS_SIDE_PANEL_RESIZE_LEFT_SIDE_ACCESSIBLE_ALERT" is_accessibility_with_no_ui="true"
-               desc="Accessible alert text used in IDS_SIDE_PANEL_RESIZE_ACCESSIBLE_ALERT for which side the window/pane is seen on.">
-               Left
-      </message>
-      <message name="IDS_SIDE_PANEL_RESIZE_RIGHT_SIDE_ACCESSIBLE_ALERT" is_accessibility_with_no_ui="true"
-               desc="Accessible alert text used in IDS_SIDE_PANEL_RESIZE_ACCESSIBLE_ALERT for which side the window/pane is seen on.">
-               Right
-      </message>
       <message name="IDS_SIDE_PANEL_TOOLBAR_BUTTON_CXMENU_UNPIN" desc="The label of the context menu item for unpinning a side panel toolbar button.">
         Unpin
       </message>
       <message name="IDS_SIDE_PANEL_TOOLBAR_BUTTON_CXMENU_PIN" desc="The label of the context menu item for pinning a side panel toolbar button.">
         Pin
       </message>
-      <message name="IDS_SIDE_PANEL_HEADER_UNPIN_BUTTON_TOOLTIP" desc="The tooltip for unpinning a side panel toolbar button.">
-        Unpin from toolbar
-      </message>
-      <message name="IDS_SIDE_PANEL_HEADER_PIN_BUTTON_TOOLTIP" desc="The tooltip for pinning a side panel toolbar button.">
-        Pin to toolbar
-      </message>
-      <message name="IDS_SIDE_PANEL_UNPINNED" is_accessibility_with_no_ui="true" desc="Used to indicate to a screen reader user that a side panel has been unpinned.">
-        Side panel unpinned
-      </message>
-      <message name="IDS_SIDE_PANEL_PINNED" is_accessibility_with_no_ui="true" desc="Used to indicate to a screen reader user that a side panel has been pinned.">
-        Side panel pinned
-      </message>
       <message name="IDS_PINNED_ACTION_BUTTON_ACCESSIBLE_TITLE" is_accessibility_with_no_ui="true" desc="Used to indicate to a screen reader user that an action is pinned in the toolbar">
         <ph name="ACTION_NAME">$1<ex>Bookmarks</ex></ph> - pinned
       </message>
-      <message name="IDS_SIDE_PANEL_GENERIC_PINNABLE_IPH" desc="The body text of the IPH describing a side panel is pinnable.">
-        You can pin this side panel for easy access
-      </message>
-      <message name="IDS_SIDE_PANEL_GENERIC_PINNABLE_IPH_SCREENREADER" desc="The screen reader text of the IPH describing a side panel is pinnable. The phrase 'top right' should read as 'top left' in rtl languages.">
-        To easily get back to the side panel, click Pin at the top right
-      </message>
-      <message name="IDS_SIDE_PANEL_HEADER_MORE_INFO_BUTTON_TOOLTIP" desc="The tooltip for the side panel more info button.">
-        More info
-      </message>
 
 
-      <!-- Reading mode strings -->
-      <message name="IDS_SHOW_READING_MODE_SIDE_PANEL" desc="Context menu entry point to open the reading mode feature in the side panel.">
-        Reading mode
-      </message>
-      <if expr="use_titlecase">
-        <message name="IDS_READING_MODE_TITLE" desc="Title of the reading mode feature, which gives users an accessible reading experience.">
-          Reading Mode
-        </message>
-      </if>
-      <if expr="not use_titlecase">
-        <message name="IDS_READING_MODE_TITLE" desc="Title of the reading mode feature, which gives users an accessible reading experience.">
-          Reading mode
-        </message>
-      </if>
-      <message name="IDS_IMMERSIVE_READING_MODE_OPENED_ANNOUNCEMENT" desc="Accessibility announcement read by screen readers when reading mode is opened." is_accessibility_with_no_ui="true">
-        Reading mode opened, full page view
-      </message>
-      <if expr="is_macosx">
-        <message name="IDS_READING_MODE_TOOLTIP" desc="Tooltip for the reading mode feature, which gives users an accessible reading experience.">
-          Reading mode (<ph name="READING_MODE_SHORTCUT">$1<ex>⌥⌘R</ex></ph>)
-        </message>
-        <message name="IDS_READING_MODE_LINE_FOCUS_SHORTCUT_LABEL" desc="Keyboard shortcut for turning on and off the line focus feature in Reading mode.">
-          ⌥L
-        </message>
-      </if>
-      <if expr="not is_macosx">
-        <message name="IDS_READING_MODE_TOOLTIP" desc="Tooltip for the reading mode feature, which gives users an accessible reading experience.">
-          Reading mode (<ph name="READING_MODE_SHORTCUT">$1<ex>Alt+Shift+R</ex></ph>)
-        </message>
-        <message name="IDS_READING_MODE_LINE_FOCUS_SHORTCUT_LABEL" desc="Keyboard shortcut for turning on and off the line focus feature in Reading mode.">
-          Alt+L
-        </message>
-      </if>
-      <message name="IDS_READING_MODE_NOT_SELECTABLE_HEADER" desc="Header for reading mode when the current webpage cannot be opened in reading mode, even when selecting text.">
-        Reading mode isn’t available on this page
-      </message>
-      <message name="IDS_READING_MODE_EMPTY_STATE_HEADER" desc="Header for reading mode when the current webpage cannot be opened in reading mode.">
-        Highlight the text you want to open in reading mode
-      </message>
-      <message name="IDS_READING_MODE_EMPTY_STATE_SUBHEADER" desc="Subheader for reading mode when the current webpage cannot be opened in reading mode.">
-        Reading mode can't find the main content on this page
-      </message>
-      <message name="IDS_READING_MODE_READ_ALOUD_TOOLBAR_LABEL" desc="Accessibility label for the Reading Mode toolbar that has options for text formating and reading aloud text. Spoken by screen readers.">
-        Read Aloud and Text formatting
-      </message>
-      <message name="IDS_READING_MODE_FONT_SIZE" desc="Accessibility label for button that opens a dropdown with options for changing the font size for reading mode.">
-        Font size
-      </message>
-      <message name="IDS_READING_MODE_FONT_NAME_COMBOBOX_LABEL" desc="Accessibility label for the font name combobox of the reading mode feature.">
-        Font
-      </message>
-      <message name="IDS_READING_MODE_DECREASE_FONT_SIZE_BUTTON_LABEL" desc="Accessibility label for the decrease font size button of the reading mode feature.">
-        Decrease font size
-      </message>
-      <message name="IDS_READING_MODE_INCREASE_FONT_SIZE_BUTTON_LABEL" desc="Accessibility label for the increase font size button of the reading mode feature.">
-        Increase font size
-      </message>
-      <message name="IDS_READING_MODE_INCREASE_FONT_SIZE_ANNOUNCEMENT" desc="Accessibility aria announcement for increasing font size.">
-        Font size increased
-      </message>
-      <message name="IDS_READING_MODE_DECREASE_FONT_SIZE_ANNOUNCEMENT" desc="Accessibility aria announcement for increasing font size.">
-        Font size decreased
-      </message>
-      <message name="IDS_READING_MODE_DISABLE_LINKS_BUTTON_LABEL" desc="Accessibility label for the button that disables all links in reading mode content.">
-        Disable links
-      </message>
-      <message name="IDS_READING_MODE_ENABLE_LINKS_BUTTON_LABEL" desc="Accessibility label for the button that enables all links in reading mode content.">
-        Enable links
-      </message>
-      <message name="IDS_READING_MODE_IMAGES_LABEL" desc="Accessibility label for the enable images menu item in reading mode.">
-        Images
-      </message>
-      <message name="IDS_READING_MODE_DISABLE_IMAGES_BUTTON_LABEL" desc="Accessibility label for the button that disables showing images in reading mode content.">
-        Disable images
-      </message>
-      <message name="IDS_READING_MODE_ENABLE_IMAGES_BUTTON_LABEL" desc="Accessibility label for the button that enables showing images in reading mode content.">
-        Enable images
-      </message>
-      <message name="IDS_READING_MODE_PIN_LABEL" desc="Accessibility label for the pin reading mode menu item in reading mode.">
-        Pin reading mode
-      </message>
-      <message name="IDS_READING_MODE_DISABLE_PIN_BUTTON_LABEL" desc="Accessibility label for the button that unpins reading mode from the toolbar.">
-        Pin reading mode
-      </message>
-      <message name="IDS_READING_MODE_ENABLE_PIN_BUTTON_LABEL" desc="Accessibility label for the button that pins reading mode to the toolbar.">
-        Unpin reading mode
-      </message>
-      <message name="IDS_READING_MODE_APPEARANCE_LABEL" desc="Accessibility label for the appearance combobox of the reading mode feature.">
-        Appearance
-      </message>
-      <message name="IDS_READING_MODE_AUDIO_LABEL" desc="Accessibility label for the audio combobox of the reading mode feature.">
-        Audio
-      </message>
-      <message name="IDS_READING_MODE_MEDIA_LABEL" desc="Accessibility label for the media combobox of the reading mode feature.">
-        Media
-      </message>
-      <message name="IDS_READING_MODE_VOICE_LABEL" desc="Accessibility label for the voice combobox of the reading mode feature.">
-        Voice
-      </message>
-      <message name="IDS_READING_MODE_COLORS_COMBOBOX_LABEL" desc="Accessibility label for the colors combobox of the reading mode feature.">
-        Color theme
-      </message>
-      <message name="IDS_READING_MODE_LINE_SPACING_COMBOBOX_LABEL" desc="Accessibility label for the line height combobox of the reading mode feature.">
-        Line height
-      </message>
-      <message name="IDS_READING_MODE_LETTER_SPACING_COMBOBOX_LABEL" desc="Accessibility label for the letter spacing combobox of the reading mode feature.">
-        Letter spacing
-      </message>
-      <message name="IDS_READING_MODE_SPACING_COMBOBOX_STANDARD" desc="Combobox option for setting letter and line spacing of text in the reading mode feature. Standard means that leters/lines are spaced in the browser's default manner.">
-        Standard
-      </message>
-      <message name="IDS_READING_MODE_SPACING_COMBOBOX_LOOSE" desc="Combobox option for setting line spacing of text in the reading mode feature. Loose means that lines are spaced far apart.">
-        Loose
-      </message>
-      <message name="IDS_READING_MODE_SPACING_COMBOBOX_VERY_LOOSE" desc="Combobox option for setting line spacing of text in the reading mode feature. Very loose means that lines are spaced very far apart.">
-        Very loose
-      </message>
-      <message name="IDS_READING_MODE_SPACING_COMBOBOX_WIDE" desc="Combobox option for setting letter spacing of text in the reading mode feature. Wide means that letters are spaced far apart.">
-        Wide
-      </message>
-      <message name="IDS_READING_MODE_SPACING_COMBOBOX_VERY_WIDE" desc="Combobox option for setting letter spacing of text in the reading mode feature. Very wide means that letters are spaced very far apart.">
-        Very wide
-      </message>
-      <message name="IDS_READING_MODE_TEXT_STYLE_LABEL" desc="Accessibility label for the text styling settings menu of the reading mode feature.">
-        Text
-      </message>
-      <message name="IDS_READING_MODE_DEFAULT_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature. This option corresponds to either the light or dark theme depending on the user's operating system theme.">
-        Default
-      </message>
-      <message name="IDS_READING_MODE_LIGHT_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Light
-      </message>
-      <message name="IDS_READING_MODE_DARK_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Dark
-      </message>
-      <message name="IDS_READING_MODE_YELLOW_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Yellow
-      </message>
-      <message name="IDS_READING_MODE_HIGH_CONTRAST_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        High contrast
-      </message>
-      <message name="IDS_READING_MODE_LOW_CONTRAST_LIGHT_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Low contrast light
-      </message>
-      <message name="IDS_READING_MODE_LOW_CONTRAST_DARK_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Low contrast dark
-      </message>
-      <message name="IDS_READING_MODE_BLUE_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Blue
-      </message>
-      <message name="IDS_READING_MODE_VOICE_HIGHLIGHT" desc="Accessibility label for button that opens a dropdown with options for changing the highlight granularity for following along with speech in Read Aloud.">
-        Voice highlight
-      </message>
-      <message name="IDS_READING_MODE_AUTO_HIGHLIGHT_LABEL" desc="Dropdown option that makes read aloud highlight words, phrases or sentences, depending on the voice speed.">
-        Adaptive highlighting
-      </message>
-      <message name="IDS_READING_MODE_WORD_HIGHLIGHT_LABEL" desc="Dropdown option for setting the word highlight granularity in Read Aloud.">
-        Word
-      </message>
-      <message name="IDS_READING_MODE_PHRASE_HIGHLIGHT_LABEL" desc="Dropdown option for setting the phrase highlight granularity in Read Aloud.">
-        Phrase
-      </message>
-      <message name="IDS_READING_MODE_SENTENCE_HIGHLIGHT_LABEL" desc="Dropdown option for setting the sentence highlight granularity in Read Aloud.">
-        Sentence
-      </message>
-      <message name="IDS_READING_MODE_OFF_HIGHLIGHT_LABEL" desc="Dropdown option for turning off highlighting in Read Aloud.">
-        Off
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_STYLE_HEADING" desc="Heading in dropdown menu for choosing the line focus visual style.">
-        Style
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_SMALL_FOCUS_LABEL" desc="Dropdown option for the small height window line focus option.">
-        Small focus
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_MEDIUM_FOCUS_LABEL" desc="Dropdown option for the medium height window line focus option.">
-        Medium focus
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_LARGE_FOCUS_LABEL" desc="Dropdown option for the large height window line focus option.">
-        Large focus
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_UNDERLINE_LABEL" desc="Dropdown option for the single-line underline line focus option.">
-        Underline
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_MOVEMENT_HEADING" desc="Heading in dropdown menu for choosing the line focus movement type.">
-        Movement
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_STATIC_LABEL" desc="Dropdown option for the line focus option of staying in the middle of the panel.">
-        Static
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_CURSOR_LINE_LABEL" desc="Dropdown option for the line focus option of a single line following the cursor.">
-        Follow cursor
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_OFF_LABEL" desc="Dropdown option for turning off line focus.">
-        Off
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_ON_LABEL" desc="Dropdown option for turning on line focus.">
-        On
-      </message>
-      <if expr="is_macosx">
-        <message name="IDS_READING_MODE_KEYBOARD_SHORTCUT_IPH_BODY" desc="Text for the help bubble describing the keyboard shortcut used to open and close reading mode.">
-          Open reading mode faster with a shortcut. Press ⌥ + ⌘ + R to toggle reading mode.
-        </message>
-        <message name="IDS_READING_MODE_KEYBOARD_SHORTCUT_IPH_SCREENREADER" is_accessibility_with_no_ui="true" desc="Accessible text for the help bubble describing the keyboard shortcut used to open and close reading mode.">
-          Open reading mode faster with a shortcut. Press ⌥ + ⌘ + R to toggle reading mode.
-        </message>
-      </if>
-      <if expr="not is_macosx">
-        <message name="IDS_READING_MODE_KEYBOARD_SHORTCUT_IPH_BODY" desc="Text for the help bubble describing the keyboard shortcut used to open and close reading mode.">
-          Open reading mode faster with a shortcut. Press Alt + Shift + R to toggle reading mode.
-        </message>
-        <message name="IDS_READING_MODE_KEYBOARD_SHORTCUT_IPH_SCREENREADER" is_accessibility_with_no_ui="true" desc="Accessible text for the help bubble describing the keyboard shortcut used to open and close reading mode.">
-          Open reading mode faster with a shortcut. Press Alt + Shift + R to toggle reading mode.
-        </message>
-      </if>
-      <message name="IDS_READ_ANYTHING_LOADING" desc="Message to show while Read Anything is figuring out what text to display.">
-        Getting ready
-      </message>
-      <message name="IDS_READING_MODE_FONT_RESET" desc="Label for button that resets the font size of the reading mode feature back to the default font setting.">
-        Reset
-      </message>
-      <message name="IDS_READING_MODE_FONT_RESET_TOOLTIP" desc="Tooltip for the 'Reset' font size button in reading mode.">
-        Reset to default zoom level
-      </message>
-      <message name="IDS_READING_MODE_AI_PLAYBACK_TURN_ON" desc="Tooltip label for button that turns on AI Playback in Read Aloud.">
-        Turn on AI Playback
-      </message>
-      <message name="IDS_READING_MODE_AI_PLAYBACK_TURN_OFF" desc="Tooltip label for button that turns off AI Playback in Read Aloud.">
-        Turn off AI Playback
-      </message>
-      <message name="IDS_READING_MODE_PLAY_DESCRIPTION" desc="Accessibility description for button that plays speech in Read Aloud.">
-        Listen to the text with natural voice
-      </message>
-      <message name="IDS_READING_MODE_PLAY_SPEECH" desc="Accessible name for button that plays speech in Read Aloud.">
-        Play / pause, keyboard shortcut k
-      </message>
-      <message name="IDS_READING_MODE_PLAY_TOOLTIP" desc="Tooltip label for button that plays speech in Read Aloud.">
-        Play (k)
-      </message>
-      <message name="IDS_READING_MODE_PREVIEW_TOOLTIP" desc="Tooltip label for button that previews speech in Read Aloud.">
-        Play
-      </message>
-      <message name="IDS_READING_MODE_PAUSE_TOOLTIP" desc="Tooltip label for button that pauses speech in Read Aloud.">
-        Pause (k)
-      </message>
-      <message name="IDS_READING_MODE_STOP_SPEECH" desc="Accessibility label for button that stops speech in Read Aloud.">
-        Stop
-      </message>
-      <message name="IDS_READING_MODE_NAVIGATE_PREVIOUS_SENTENCE" desc="Accessibility label for button that moves speech in Read Aloud to the previous sentence.">
-        Previous sentence
-      </message>
-      <message name="IDS_READING_MODE_NAVIGATE_NEXT_SENTENCE" desc="Accessibility label for button that moves speech in Read Aloud to the next sentence.">
-        Next sentence
-      </message>
-      <message name="IDS_READING_MODE_SETTINGS" desc="Accessibility label for button that contains settings menu for the immersive reading mode feature.">
-        Settings
-      </message>
-      <message name="IDS_READING_MODE_TRANSLATE" desc="Accessibility label for button that opens the translation box for the reading mode feature.">
-        Translate
-      </message>
-      <message name="IDS_READING_MODE_VOICE_SPEED" desc="Accessibility label for button that opens a dropdown with options for changing the speed of the voice for Read Aloud.">
-        Voice speed
-      </message>
-      <message name="IDS_READING_MODE_VOICE_SPEED_WITH_RATE" desc="Accessibility label for button that opens a dropdown with options for changing the speed of the voice for Read Aloud.">
-        Voice speed <ph name="RATE">$1<ex>1</ex></ph>x
-      </message>
-      <message name="IDS_READING_MODE_VOICE_SPEED_OPTION_TITLE" desc="Title for the dropdown menu options that change the speed of the voice for Read Aloud.">
-        <ph name="RATE">$1<ex>1.2</ex></ph>x
-      </message>
-      <message name="IDS_READING_MODE_VOICE_SELECTION" desc="Accessibility label for button that opens a dropdown with options for changing the voice used for Read Aloud.">
-        Voice selection
-      </message>
-      <message name="IDS_READING_MODE_SYSTEM_VOICE" desc="Title for the dropdown menu option that selects the default system TTS voice for use with Read Aloud.">
-        System text-to-speech voice
-      </message>
-      <message name="IDS_READING_MODE_ITEM_SELECTED" desc="Accessibility label for an icon that indicates a menu item in Reading mode is selected.">
-        Selected.
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU" desc="Label for a button that opens a dialog with options for managing language preferences for Read Aloud.">
-        Languages...
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_TITLE" desc="Dialog title label for a dialog with options for managing language preferences for Read Aloud.">
-        Languages
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_CLOSE" desc="Label for a button to close a dialog with options for managing language preferences for Read Aloud.">
-        Close language menu
-      </message>
-      <message name="IDS_READING_MODE_ACCENT_MENU_CLOSE" desc="Label for a button to close a dialog with options for managing accent preferences for Read Aloud.">
-        Close accent menu
-      </message>
-      <if expr="is_macosx">
-        <message name="IDS_READING_MODE_CLOSE" desc="Tooltip and screen reader label for a button to close reading mode.">
-          Close reading mode (<ph name="SHORTCUT">$1<ex>⌥⌘R</ex></ph>)
-        </message>
-      </if>
-      <if expr="not is_macosx">
-        <message name="IDS_READING_MODE_CLOSE" desc="Tooltip and screen reader label for a button to close reading mode.">
-          Close reading mode (<ph name="SHORTCUT">$1<ex>Alt+Shift+R</ex></ph>)
-        </message>
-      </if>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_NO_RESULTS" desc="Text shown in the Read Aloud language menu after a search yields no matching languages.">
-        No results found
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_SEARCH_LABEL" desc="Label for a search field that searches for language preference to be managed for Read Aloud.">
-        Search
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_SEARCH_CLEAR" desc="Accessibility label for a button to clear search field that searches for language preference to be managed for Read Aloud.">
-        Clear search
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_DOWNLOADING" desc="Label for status text when a voice is downloading from the Read Aloud language menu.">
-        Downloading voices...
-      </message>
-      <message name="IDS_READING_MODE_VOICE_MENU_DOWNLOADING" desc="Label for status text when a voice is downloading from the Read Aloud voice menu.">
-        Downloading <ph name="LANGUAGE">$1<ex>English</ex></ph> voices...
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_VOICES_UNAVAILABLE" desc="Label for status text when a voice attempted to be downloaded from the Read Aloud language menu is unavailable.">
-        Some Google voices may not be available right now
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_NO_INTERNET" desc="Label for status text when no internet prevents a voice from downloading from the Read Aloud language menu.">
-        No internet
-      </message>
-      <message name="IDS_READING_MODE_CANT_USE_READ_ALOUD" desc="Label for toast message that shows when there are no voices available on the device and no internet prevents a voice from downloading.">
-        Can't use Read Aloud right now.
-      </message>
-      <message name="IDS_READING_MODE_VOICE_MENU_NO_INTERNET" desc="Label for status text when no internet prevents a voice from downloading any voices from the Read Aloud language menu.">
-        There are no <ph name="LANGUAGE">$1<ex>English</ex></ph> voices on your device. Connect to the internet, and try again.
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_DOWNLOAD_FAILED" desc="Label for generic status text when there was an error when downloading a voice from the Read Aloud language menu and there's no more details on the error.">
-        Download failed
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_NO_SPACE" desc="Label for status text when no space on disk prevents a voice from downloading from the Read Aloud language menu.">
-        To install this language, clear space on your device
-      </message>
-      <message name="IDS_READING_MODE_TOAST_NO_SPACE" desc="Label for tost message when no space on disk prevents a voice from downloading and there are no voices available at all.">
-        To use Read Aloud, clear space on your device
-      </message>
-      <message name="IDS_READING_MODE_VOICE_MENU_NO_SPACE" desc="Label for status text when no no space on disk prevents a voice from downloading any voices from the Read Aloud language menu.">
-        There are no <ph name="LANGUAGE">$1<ex>English</ex></ph> voices on your device. Clear space on your device, and try again.
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_NO_SPACE_BUT_VOICES_EXIST" desc="Label for status text when no space on disk prevents a voice from downloading from the Read Aloud language menu but there are already installed voices for the language.">
-        For higher quality voices, clear space on your device
-      </message>
-      <message name="IDS_READING_MODE_LANGUAGE_MENU_ITEM_LABEL" desc="Accessibility label for a line item in the language menu containing a language name and a preview button.">
-        <ph name="LANGUAGE">$1<ex>English</ex></ph>, use right arrow key to preview voice
-      </message>
-      <message name="IDS_READING_MODE_VOICE_DOWNLOADED_TITLE" desc="Title for a notification to alert the user that a high quality TTS voice data file has been downloaded.">
-        High-quality <ph name="LANGUAGE">$1<ex>English</ex></ph> voice files downloaded
-      </message>
-      <message name="IDS_READING_MODE_VOICE_DOWNLOADED_MESSAGE" desc="Message for a notification to alert the user that a high quality TTS voice data file has been downloaded.">
-        Voice files are shared among users to save disk space
-      </message>
-      <message name="IDS_READING_MODE_ACCENT_MENU_LABEL" desc="Dialog title label for a dialog with options for managing accent preferences for Read Aloud.">
-        Change voice accent
-      </message>
-      <message name="IDS_READING_MODE_SIDE_PANEL_PROMO_PINNING"
-               desc="Text for the in-product-help bubble shown for the reading mode bubble when Side Panel Pinning is enabled.">
-        To see a simplified view of this page, go to More Tools > Reading Mode
-      </message>
-      <message name="IDS_READING_MODE_OMNIBOX_ENTRY_POINT_PROMO"
-               desc="Text for the in-product-help bubble shown for the reading mode omnibox entry point.">
-        Read comfortably with minimal distractions
-      </message>
-      <message name="IDS_READING_MODE_OMNIBOX_ENTRY_POINT_PROMO_SCREEN_READER"
-               desc="Text for the in-product-help bubble shown for the reading mode omnibox entry point for use when surfacing the bubble to a screen reader">
-        Read comfortably with minimal distractions using the Reading mode button on the toolbar
-      </message>
-     <message name="IDS_READING_MODE_VOICE_PREVIEW_STRING" desc="Message to be played when a user previews a voice for Read Aloud.">
-        Hi. This is a preview
-      </message>
-     <message name="IDS_READING_MODE_FONT_LOADING_STRING" desc="Text added to a font name in the Reading Mode font dropdown when the font style hasn't loaded yet.">
-         (loading)
-      </message>
-      <message name="IDS_READING_MODE_LINE_FOCUS_LABEL" desc="Accessibility label for the line focus menu item in reading mode.">
-        Line focus
-      </message>
-      <message name="IDS_READING_MODE_TURN_LINE_FOCUS_OFF_LABEL" desc="Text for the toolbar button in reading mode that turns off line focus. Displays only when line focus is on.">
-        Turn off focus
-      </message>
-      <message name="IDS_READING_MODE_SIDE_PANEL_LABEL" desc="Accessibility label for the Side panel option in view menu for reading mode.">
-        Side panel
-      </message>
-      <message name="IDS_READING_MODE_VIEW_FULL_PAGE_LABEL" desc="Accessibility label for the Full page option in view menu for reading mode.">
-        Full page
-      </message>
-      <message name="IDS_READING_MODE_VIEW_LABEL" desc="Accessibility label for the view menu item in reading mode.">
-        View
-      </message>
-      <message name="IDS_READING_MODE_LINKS_LABEL" desc="Accessibility label for the links menu item in reading mode.">
-        Links
-      </message>
-      <message name="IDS_READING_MODE_PRESENTATION_MODE_IPH_BODY" desc="Text for the help bubble describing how to toggle reading mode from immersive mode to side panel mode.">
-        Switch back to the side-by-side view by opening Settings, then View, and select Side Panel.
-      </message>
-      <message name="IDS_READING_MODE_PRESENTATION_MODE_IPH_SCREENREADER" is_accessibility_with_no_ui="true" desc="Text for the help bubble describing how to toggle reading mode from immersive mode to side panel mode.">
-        Switch back to the side-by-side view by opening Settings, then View, and select Side Panel.
-      </message>
 
 
       <!--Tooltip strings -->
@@ -6478,37 +5963,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Find
       </message>
 
-      <message name="IDS_SPLIT_VIEW_TITLE_IPH" desc="The title text of the IPH describing pinning split view.">
-        Pin it for next time
-      </message>
-      <message name="IDS_SPLIT_VIEW_BODY_IPH" desc="The body text of the IPH describing pinning split view.">
-        Quickly create a split view when you need it
-      </message>
-      <if expr="use_titlecase">
-        <message name="IDS_SPLIT_VIEW_PIN_ACTION_2_IPH" desc="In Title Case: The pin confirmation button of the IPH describing split view.">
-          Pin Split View
-        </message>
-      </if>
-      <if expr="not use_titlecase">
-        <message name="IDS_SPLIT_VIEW_PIN_ACTION_2_IPH" desc="The pin confirmation button of the IPH describing split view.">
-          Pin split view
-        </message>
-      </if>
-      <message name="IDS_SPLIT_VIEW_TAB_SWITCH_ENTRY_IPH_TITLE" desc="The title for intro of quick tab switch split view IPH tutorial.">
-        Split view makes it easier to multitask
-      </message>
-      <message name="IDS_SPLIT_VIEW_TAB_SWITCH_ENTRY_IPH_BODY" desc="The body for intro of quick tab switch split view IPH tutorial.">
-        Put pages side-by-side in the same tab so you can easily compare options and more
-      </message>
-      <message name="IDS_SPLIT_VIEW_TAB_SWITCH_STEP_IPH_BODY" desc="The body for first step of quick tab switch split view IPH tutorial.">
-        Right-click on this tab and select “New split view with current tab”
-      </message>
-      <message name="IDS_SPLIT_VIEW_TAB_SWITCH_COMPLETION_IPH_BODY" desc="The body for completion of quick tab switch split view IPH tutorial.">
-        You can now use split view to compare, multitask, and more
-      </message>
-      <message name="IDS_SPLIT_VIEW_TOOLBAR_BUTTON_STEP_IPH_BODY" desc="The body for second step of quick tab switch split view IPH tutorial.">
-        Click here to separate or arrange the split view
-      </message>
       <message name="IDS_SPLIT_VIEW_DRAG_ENTRYPOINT_LABEL" desc="A label for the drag entrypoint indicating it can create a split view.">
         Create split view
       </message>
@@ -6533,12 +5987,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_SPLIT_VIEW_RESIZE_BOTTOM_SIDE_ACCESSIBLE_ALERT" is_accessibility_with_no_ui="true"
                desc="Accessible alert text used in IDS_SPLIT_VIEW_RESIZE_ACCESSIBLE_ALERT for which side the window/pane is seen on.">
                Bottom
-      </message>
-      <message name="IDS_SPLIT_VIEW_HORIZONTAL_INDIRECT_ACCESS_IPH_TITLE" desc="The title for horizontal split view indirect access snooze IPH.">
-        Try stacked split view
-      </message>
-      <message name="IDS_SPLIT_VIEW_HORIZONTAL_INDIRECT_ACCESS_IPH_BODY" desc="The body for horizontal split view indirect access snooze IPH.">
-        Use the split view menu to switch between side by side and stacked layouts.
       </message>
 
       <!-- Vertical Tab Strings -->
@@ -6565,15 +6013,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_VERTICAL_TABS_SEND_FEEDBACK" desc="In Title Case: The button in context menu that allows users to send feedback about vertical tabs.">
             Send Feedback About the Tab Strip
           </message>
-          <message name="IDS_VERTICAL_TABS_TUTORIAL_STEP_SHOW_VERTICAL" desc="The body for the vertical tabs IPH tutorial step to switch to the vertical tabstrip. The string in quotation marks should match the translation for IDS_SWITCH_TO_VERTICAL_TAB.">
-            Right-click here and select “Show Tabs Vertically”
-          </message>
-          <message name="IDS_VERTICAL_TABS_TUTORIAL_STEP_COLLAPSE" desc="The body for the vertical tabs IPH tutorial step to collapse the vertical tabstrip.">
-            Try collapsing the tab strip to get more space
-          </message>
-          <message name="IDS_VERTICAL_TABS_TUTORIAL_STEP_END" desc="The body for the celebratory end step of the vertical tabs IPH tutorial. The string in quotation marks should match the translation for IDS_SWITCH_TO_HORIZONTAL_TAB.">
-            You can move your tabs back to the top by right-clicking any tab and selecting “Show Tabs Horizontally”
-          </message>
           <message name="IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER" desc="In Title Case: The button in context menu that enables expand on hover behavior.">
             Turn on Auto Expanding Tabs
           </message>
@@ -6594,15 +6033,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_VERTICAL_TABS_SEND_FEEDBACK" desc="The button in context menu that allows users to send feedback about vertical tabs.">
             Send feedback about the tab strip
           </message>
-          <message name="IDS_VERTICAL_TABS_TUTORIAL_STEP_SHOW_VERTICAL" desc="The body for the vertical tabs IPH tutorial step to switch to the vertical tabstrip. The string in quotation marks should match the translation for IDS_SWITCH_TO_VERTICAL_TAB.">
-            Right-click here and select “Show tabs vertically”
-          </message>
-          <message name="IDS_VERTICAL_TABS_TUTORIAL_STEP_COLLAPSE" desc="The body for the vertical tabs IPH tutorial step to collapse the vertical tabstrip.">
-            Try collapsing the tab strip to get more space
-          </message>
-          <message name="IDS_VERTICAL_TABS_TUTORIAL_STEP_END" desc="The body for the celebratory end step of the vertical tabs IPH tutorial. The string in quotation marks should match the translation for IDS_SWITCH_TO_HORIZONTAL_TAB.">
-            You can move your tabs back to the top by right-clicking any tab and selecting “Show tabs horizontally”
-          </message>
           <message name="IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER" desc="The button in context menu that enables expand on hover behavior.">
             Turn on auto expanding tabs
           </message>
@@ -6614,18 +6044,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           </message>
         </else>
       </if>
-      <message name="IDS_VERTICAL_TABS_IPH_TITLE" desc="The title for the vertical tabs IPH tutorial.">
-        Move your tabs to the side
-      </message>
-      <message name="IDS_VERTICAL_TABS_IPH_BODY" desc="The body for the vertical tabs IPH tutorial.">
-        See entire tab titles, easily manage tab groups, and free up vertical space by moving your tabs to the side.
-      </message>
-      <message name="IDS_VERTICAL_TABS_EXPAND_ON_HOVER_DEFAULT_ENABLED_IPH_BODY" desc="The body for the vertical tabs expand on hover IPH, when expand on hover is default enabled.">
-        You can now expand your tabs by hovering over them. To turn this off, right-click here.
-      </message>
-      <message name="IDS_VERTICAL_TABS_EXPAND_ON_HOVER_DEFAULT_DISABLED_IPH_BODY" desc="The body for the vertical tabs expand on hover IPH, when expand on hover is default disabled.">
-        You can now expand your tabs by hovering over them. To turn this on, right-click here.
-      </message>
       <message name="IDS_VERTICAL_RESIZE_AREA" is_accessibility_with_no_ui="true" desc="The accessibility label for the resize area in the vertical tab strip.">
             Vertical Tab Strip Resize Handle (Draggable)
       </message>
@@ -6671,15 +6089,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           </message>
         </else>
       </if>
-      <message name="IDS_TAB_SCROLL_IPH_TITLE" desc="Title of the in-product help promo educating users on tab scrolling.">
-        See all your tabs
-      </message>
-      <message name="IDS_TAB_SCROLL_IPH_BODY" desc="Body text of the in-product help promo educating users on tab scrolling.">
-        You can scroll or use your mouse wheel to see all your tabs
-      </message>
-      <message name="IDS_TAB_SCROLL_IPH_HIDE_BUTTONS" desc="Text of the in-product help promo button to unpin scroll buttons.">
-        Hide scroll buttons
-      </message>
       <!-- /Tab Scroll Strings -->
 
       <!-- Organizer Panel Strings -->
@@ -6872,63 +6281,11 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Continue blocking this site from seeing the clipboard
       </message>
 
-      <!-- Feature Engagement Tracker strings -->
-      <message name="IDS_BACK_NAVIGATION_MENU_PROMO" desc="Text shown on the In-Product Help bubble for the back navigation menu.">
-        To go back more than 1 page, click and hold Back.
-      </message>
-      <message name="IDS_BACK_NAVIGATION_MENU_PROMO_ACCESSIBLE_TEXT" is_accessibility_with_no_ui="true" desc="Accessible text shown on the In-Product Help bubble for the back navigation menu.">
-        To go back more than 1 page, click and hold the Back button.
-      </message>
-      <message name="IDS_CHROME_TIP" desc="Accessible name used by a screen reader for the in-product-help or tutorial bubble icon." is_accessibility_with_no_ui="true">
-        Chrome tip
-      </message>
-      <message name="IDS_EXTENSIONS_MENU_IPH_ENTRY_POINT_TITLE" desc="">
-        See what extensions can read or change a site
-      </message>
-      <message name="IDS_EXTENSIONS_MENU_IPH_ENTRY_POINT_BODY" desc="">
-        From here, you can see and manage extension permissions for the site you're on
-      </message>
-      <if expr="enable_extensions_core">
-        <message name="IDS_EXTENSIONS_PINNED_BY_DEFAULT_IPH_BODY" desc="Body text for the promotional UI anchored to a newly installed extension showing that new extensions are pinned by default." formatter_data="android_java">
-          Newly added extensions are automatically pinned. Change this on the Extensions page.
-        </message>
-        <message name="IDS_EXTENSIONS_PINNED_BY_DEFAULT_IPH_GO_TO_EXTENSIONS" desc="Button text for the promotional UI anchored to a newly installed extension showing that new extensions are pinned by default. Clicking it takes the user to the Extensions settings page.">
-          Go to Extensions
-        </message>
-      </if>
-      <message name="IDS_EXTENSIONS_REQUEST_ACCESS_BUTTON_IPH_ENTRY_POINT_TITLE" desc="Title text shown on promotional UI appearing when the request access button in the toolbar is visible.">
-        {NUM_EXTENSIONS, plural,
-          =1 {Choose if this extension can read or change this site}
-          other {Choose if these extensions can read or change this site}}
-      </message>
-      <message name="IDS_EXTENSIONS_REQUEST_ACCESS_BUTTON_IPH_ENTRY_POINT_BODY" desc="Body text shown on promotional UI appearing when the request access button in the toolbar is visible.">
-        {NUM_EXTENSIONS, plural,
-          =1 {To manage it, open Extensions}
-          other {To manage them, open Extensions}}
-      </message>
-      <message name="IDS_EXTENSIONS_ZERO_STATE_PROMO_IPH_TITLE" desc="Title text shown on the promotional UI appearing when the user has no extensions installed.">
-         Enhance your browser with extensions
-      </message>
-      <message name="IDS_EXTENSIONS_ZERO_STATE_PROMO_CUSTOM_ACTION_IPH_DESCRIPTION" desc="Body text shown on the promotional UI appearing when the user has no extensions installed.">
-         Extensions are add-ons to Chrome that can help you stay organized, simplify tasks, and customize your browsing
-      </message>
-      <message name="IDS_EXTENSIONS_ZERO_STATE_PROMO_CUSTOM_ACTION_IPH_ACCEPT" desc="Text on the custom action button that opens a new tab to the Chrome Web Store.">
-         Discover extensions
-      </message>
-      <message name="IDS_DESKTOP_PWA_INSTALL_PROMO" desc="Text shown on promotional UI appearing next to the PWA install icon">
-        To get back here quickly, install <ph name="APP_NAME">$1<ex>Google Maps</ex></ph> by clicking the install button
-      </message>
       <message name="IDS_TAB_GROUPS_UNNAMED_GROUP_TOOLTIP" desc="Static tooltip to display on hover over unnamed tab group.">
         Unnamed group - <ph name="GROUP_CONTENT_STRING">$1<ex>"New Tab" and one other</ex></ph>
       </message>
       <message name="IDS_TAB_GROUPS_NAMED_GROUP_TOOLTIP" desc="Dynamic tooltip to display on hover over named tab group.">
         <ph name="GROUP_NAME">$1<ex>New Group</ex></ph> - <ph name="GROUP_CONTENT_STRING">$2<ex>"New Tab" and one other</ex></ph>
-      </message>
-      <message name="IDS_SHARED_HIGHLIGHTING_PROMO" desc="The title of in-product-help message encouraging users to interact with the highlight">
-        To create a highlight like this one, select any text and right-click.
-      </message>
-      <message name="IDS_TAB_AUDIO_MUTING_PROMO" desc="Text shown on the promotional UI appearing next to the tab alert indicator.">
-        Click the speaker icon to mute this tab
       </message>
       <if expr="use_titlecase">
         <message name="IDS_TAB_GROUPS_HOVER_CARD_HEADER" desc="In Title Case: Title of the hover card for an open tab group when hovering over the tab group header in the tab strip.">
@@ -6952,57 +6309,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
             + <ph name="NUM">$1<ex>2</ex></ph> more
         </message>
       </if>
-      <message name="IDS_DISCARD_RING_PROMO_TITLE" desc="The title for the discard ring in-product promo bubble.">
-        Inactive tabs get a new look
-      </message>
-      <message name="IDS_DISCARD_RING_PROMO_TEXT" desc="The text shown for the discard ring in-product promo bubble.">
-        See when tabs are inactive at a glance. You can turn off this new look in settings anytime.
-      </message>
-      <message name="IDS_DISCARD_RING_PROMO_ACTION_TEXT" desc="The custom action button text for the discard ring in-product promo bubble.">
-        Settings
-      </message>
-      <message name="IDS_DISCARD_RING_SETTINGS_TOAST" desc="A toast bubble that highlights where the inactive tabs look can be changed in settings.">
-        Manage the look of inactive tabs here
-      </message>
 
-      <!-- User Education Tutorial Strings -->
-      <message name="IDS_TUTORIAL_GENERIC_SUCCESS_TITLE" desc="The title of the generic success step in the user education tutorials">
-        Nicely done!
-      </message>
 
       <!-- Tab Group Tutorial Strings -->
-      <if expr="use_titlecase">
-        <message name="IDS_TUTORIAL_TAB_GROUP_ADD_TAB_TO_GROUP" desc="The description of the add tab step in the tab group tutorial">
-          Right-click on a tab and select "Add Tab To New Group"
-        </message>
-      </if>
-      <if expr="not use_titlecase">
-        <message name="IDS_TUTORIAL_TAB_GROUP_ADD_TAB_TO_GROUP" desc="The description of the add tab step in the tab group tutorial">
-          Right-click on a tab and select "Add tab to new group"
-        </message>
-      </if>
-      <if expr="use_titlecase">
-        <message name="IDS_TUTORIAL_ADD_TAB_TO_GROUP_WITH_EXISTING_GROUP_IN_TAB_STRIP" desc="The description of the add tab step in the tab group tutorial when there's already a group in the tabstrip.">
-          Right-click on a tab and select "Add Tab To Group" and then select "New Group"
-        </message>
-      </if>
-      <if expr="not use_titlecase">
-        <message name="IDS_TUTORIAL_ADD_TAB_TO_GROUP_WITH_EXISTING_GROUP_IN_TAB_STRIP" desc="The description of the add tab step in the tab group tutorial when there's already a group in the tabstrip.">
-          Right-click on a tab and select "Add tab to group" and then select "New group"
-        </message>
-      </if>
-      <message name="IDS_TUTORIAL_TAB_GROUP_EDIT_BUBBLE" desc="The description of the editor bubble step in the tab group tutorial">
-        Name your group, choose a color, then press Esc
-      </message>
-      <message name="IDS_TUTORIAL_TAB_GROUP_DRAG_TAB" desc="The description of the drag step in the tab group tutorial">
-        Try dragging other open tabs to your group
-      </message>
-      <message name="IDS_TUTORIAL_TAB_GROUP_COLLAPSE" desc="The description of the expand collapse step in the tab group tutorial">
-        Click the group name to expand or collapse it
-      </message>
-      <message name="IDS_TUTORIAL_TAB_GROUP_SUCCESS_DESCRIPTION" desc="The description of the success step in the tab group tutorial">
-        Try using tab groups to organize tasks, for online shopping, and more
-      </message>
 
 
       <!-- Password Manager Tutorial Strings -->
@@ -7588,9 +6897,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
 
-        <message name="IDS_RESUMPTION_RAIL_IPH_TITLE" desc="The title text of an IPH that shows up to educate users about the Resumption Rail feature entrypoint.">
-          Tab groups have moved
-        </message>
 
 
 
@@ -8410,9 +7716,6 @@ This can include information about installed software, files, your browser, the 
         </if>
 
 
-        <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_BUBBLE_CHROME_SIGNIN_IPH_TITLE_SIGNIN_REMINDER" desc="This string is the headline of a reminder message, which is intended to help users understand that they have been signed in to Chrome. The user previously signed in to a Google service (like Gmail or Maps), and saw the Chrome Signin Bubble intercept; when asked whether the user wanted to sign in to Chrome as well, the user selected yes. After a period of time, this reminder message appears at the top right of Chrome (pointing at the Profile Menu) to remind the user that they made this choice a while ago. This headline string comes before the 'You’re signed in to Chrome. You’ve got your passwords and more from your Google Account.' string. We are focusing on the benefit that user enjoys, now that they're signed in to Chrome. The tone should be welcoming.">
-          Welcome back, <ph name="PROFILE_NAME">$1<ex>Elisa</ex></ph>
-        </message>
 
 
 
@@ -9346,10 +8649,6 @@ This can include information about installed software, files, your browser, the 
 
       <!-- Shelf strings -->
 
-      <!-- Live caption. -->
-      <message name="IDS_LIVE_CAPTION_PROMO_SCREENREADER" desc="Text announced encouraging users to open live caption">
-        Get captions for your audio and video by enabling Live Caption in settings
-      </message>
 
       <!-- Caret browsing. -->
       <if expr="not is_chromeos">
@@ -10850,13 +10149,6 @@ This can include information about installed software, files, your browser, the 
     </message>
 
 
-    <!-- In product help bubble dialog for users referred from ESB promotions -->
-    <message name="IDS_SETTINGS_SAFEBROWSING_ENHANCED_IPH_BUBBLE_TEXT" desc="The text on an In-Product-Help bubble that is shown when a user navigates to the security settings page from an ESB promotion">
-      Get more protection against dangerous websites and downloads
-    </message>
-    <message name="IDS_SETTINGS_SAFEBROWSING_ENHANCED_IPH_BUBBLE_CLOSE_BUTTON_ARIA_LABEL_TEXT" desc="The accessibility label associated with the In-Product-Help bubble's close button">
-      Close tip
-    </message>
 
 
 
@@ -11161,12 +10453,6 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_MULTISTEP_FILTER_CUE_EXPANDABLE_CONTENT_HEADING" desc="Text for the expandable content heading on the contextual cue for multistep filters." translateable="false">
         From your recent search
       </message>
-      <message name="IDS_MULTISTEP_FILTER_IPH_BODY" desc="Text shown in the IPH bubble for educating users about Multistep Filter." translateable="false">
-        Chrome can now suggest your recent filters and search details, helping you pick up where you left off or compare options across sites
-      </message>
-      <message name="IDS_MULTISTEP_FILTER_IPH_BODY_SCREENREADER" is_accessibility_with_no_ui="true" desc="Screenreader text shown in the IPH bubble for educating users about Multistep Filter." translateable="false">
-        Chrome can now suggest your recent filters and search details, helping you pick up where you left off or compare options across sites
-      </message>
       <message name="IDS_LINK_COPIED_TOAST_BODY" desc="Text on a toast notification that is shown when a link is successfully copied.">
         Link copied
       </message>
@@ -11222,9 +10508,6 @@ This can include information about installed software, files, your browser, the 
     <message name="IDS_OVERFLOW_MENU_ITEM_TEXT_SPLIT_VIEW" desc="Text of overflow menu item of split tabs button">
       Split View
     </message>
-    <message name="IDS_OVERFLOW_MENU_ITEM_TEXT_CONTEXTUAL_TASKS" desc="Text of overflow menu item of contextual tasks button">
-      Contextual Tasks
-    </message>
     <message name="IDS_OVERFLOW_MENU_ITEM_TEXT_ENERGY_SAVER" desc="Text of overflow menu item of energy saver button">
       Energy Saver
     </message>
@@ -11239,13 +10522,6 @@ This can include information about installed software, files, your browser, the 
     <!-- Safety Hub elements. -->
     <!-- TODO(crbug.com/324562205): Make strings translateable once finalized. -->
 
-    <!-- PDF Editing elements. -->
-    <message name="IDS_PDF_INK_SIGNATURES_IPH_BODY" desc="Content of in-product help to introduce the PDF Ink Signatures feature.">
-    Add freehand drawings, signatures, and highlights with the new Draw tool
-    </message>
-    <message name="IDS_PDF_TEXT_ANNOTATIONS_IPH_BODY" desc="Content of in-product help to introduce the PDF Text Annotations feature.">
-    Add text, comments, and notes with the new Text Annotations tool
-    </message>
 
 
     <!-- Select Audio Output dialog. -->
@@ -11660,13 +10936,6 @@ This can include information about installed software, files, your browser, the 
     </message>
 
 
-    <!-- Chrome finds Notifications -->
-    <message name="IDS_CHROME_FINDS_NOTIFICATIONS_HELPFUL_BUTTON_TEXT" desc="Text for the helpful button found on Chrome finds notifications.">
-      Open in Chrome
-    </message>
-    <message name="IDS_CHROME_FINDS_NOTIFICATIONS_UNHELPFUL_BUTTON_TEXT" desc="Text for the unhelpful button found on Chrome finds notifications.">
-      Not interested
-    </message>
 
     <!-- OSCryptAsync Availability InfoBar -->
     <message name="IDS_OSCRYPTASYNC_AVAILABILITY_INFOBAR_MESSAGE" desc="Label displayed in an infobar when a keychain issue prevents some profile data from being read/written and a browser relaunch is required to resolve.">

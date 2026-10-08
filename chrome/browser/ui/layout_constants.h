@@ -215,10 +215,6 @@ enum class LayoutConstant {
   // corner radius on the top of the toolbar introduced in chrome refresh 2023
   kToolbarCornerRadius,
 
-  // The padding between the bottom of the tab strip and top of the toolbar
-  // height side panel.
-  kSidePanelInset,
-
   // The corner radius used for borders, fill, and hover targets with vertical
   // tabs.
   kVerticalTabCornerRadius,

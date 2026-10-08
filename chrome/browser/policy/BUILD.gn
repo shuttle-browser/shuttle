@@ -135,7 +135,6 @@ source_set("policy_util") {
 
   deps = [
     "//components/content_settings/core/common",
-    "//components/invalidation",
     "//components/policy/core/common",
     "//components/policy/core/common:common_constants",
     "//components/prefs",
@@ -166,14 +165,6 @@ source_set("policy") {
     "chrome_browser_policy_connector.h",
     "chrome_policy_blocklist_service_factory.h",
     "chrome_policy_conversions_client.h",
-    "cloud/cloud_policy_invalidator.h",
-    "cloud/extension_install_policy_invalidator.h",
-    "cloud/fm_registration_token_uploader.h",
-    "cloud/policy_invalidator.h",
-    "cloud/user_cloud_policy_invalidator.h",
-    "cloud/user_cloud_policy_invalidator_factory.h",
-    "cloud/user_fm_registration_token_uploader.h",
-    "cloud/user_fm_registration_token_uploader_factory.h",
     "configuration_policy_handler_list_factory.h",
     "default_sensors_setting_policy_handler.h",
     "developer_tools_policy_checker.h",
@@ -290,7 +281,6 @@ source_set("policy") {
 
     if (!is_chromeos) {
       public += [
-        "cbcm_invalidations_initializer.h",
         "chrome_browser_cloud_management_controller_desktop.h",
         "client_data_delegate_desktop.h",
         "cloud/user_policy_signin_service.h",
@@ -367,14 +357,6 @@ source_set("impl") {
     "chrome_browser_policy_connector.cc",
     "chrome_policy_blocklist_service_factory.cc",
     "chrome_policy_conversions_client.cc",
-    "cloud/cloud_policy_invalidator.cc",
-    "cloud/extension_install_policy_invalidator.cc",
-    "cloud/fm_registration_token_uploader.cc",
-    "cloud/policy_invalidator.cc",
-    "cloud/user_cloud_policy_invalidator.cc",
-    "cloud/user_cloud_policy_invalidator_factory.cc",
-    "cloud/user_fm_registration_token_uploader.cc",
-    "cloud/user_fm_registration_token_uploader_factory.cc",
     "configuration_policy_handler_list_factory.cc",
     "default_sensors_setting_policy_handler.cc",
     "developer_tools_policy_checker.cc",
@@ -434,7 +416,6 @@ source_set("impl") {
     "//chrome/browser/first_party_sets",
     "//chrome/browser/first_run",
     "//chrome/browser/infobars",
-    "//chrome/browser/invalidation",
     "//chrome/browser/lifetime",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/net",
@@ -464,7 +445,6 @@ source_set("impl") {
     "//components/history/core/common",
     "//components/history_clusters/core",
     "//components/infobars/content",
-    "//components/invalidation",
     "//components/language/core/browser",
     "//components/live_caption:constants",
     "//components/network_time",
@@ -566,7 +546,6 @@ source_set("impl") {
 
     if (!is_chromeos) {
       sources += [
-        "cbcm_invalidations_initializer.cc",
         "chrome_browser_cloud_management_controller_desktop.cc",
         "chrome_browser_cloud_management_register_watcher.cc",
         "chrome_browser_cloud_management_register_watcher.h",

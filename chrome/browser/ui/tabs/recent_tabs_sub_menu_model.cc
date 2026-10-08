@@ -35,14 +35,10 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/favicon/core/history_ui_favicon_request_handler.h"
 #include "components/favicon_base/favicon_types.h"
@@ -263,15 +259,9 @@ bool RecentTabsSubMenuModel::ExecuteCustomCommand(int command_id,
                                                   int event_flags) {
   // Supported custom commands.
   static constexpr auto custom_commands = base::MakeFixedFlatSet<int>(
-      {IDC_SHOW_HISTORY, IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
-       });
+      {IDC_SHOW_HISTORY});
 
   if (!custom_commands.contains(command_id)) {
-    return false;
-  }
-  if (command_id == IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL &&
-      !HistoryClustersSidePanelCoordinator::IsSupported(
-          browser_->GetProfile())) {
     return false;
   }
   if (log_menu_metrics_callback_) {
@@ -279,21 +269,6 @@ bool RecentTabsSubMenuModel::ExecuteCustomCommand(int command_id,
   }
   if (command_id == IDC_SHOW_HISTORY) {
     LogWrenchMenuAction(MENU_ACTION_SHOW_HISTORY);
-  }
-
-  if (command_id == IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL ||
-      command_id == IDC_SHOW_HISTORY) {
-    actions::ActionInvocationContext context =
-        actions::ActionInvocationContext::Builder()
-            .SetProperty(
-                kSidePanelOpenTriggerKey,
-                static_cast<std::underlying_type_t<SidePanelOpenTrigger>>(
-                    SidePanelOpenTrigger::kAppMenu))
-            .Build();
-    chrome::ExecuteCommandWithDispositionAndContext(
-        browser_, command_id, ui::DispositionFromEventFlags(event_flags),
-        std::move(context));
-    return true;
   }
 
   chrome::ExecuteCommandWithDisposition(
@@ -384,18 +359,6 @@ void RecentTabsSubMenuModel::Build() {
                  features::IsRoundedIconsEnabled()
                      ? vector_icons::kHistoryIcon
                      : vector_icons::kHistoryChromeRefreshOldIcon);
-  if (browser_->GetFeatures().side_panel_ui()) {
-    if (HistoryClustersSidePanelCoordinator::IsSupported(
-            browser_->GetProfile())) {
-      InsertItemWithStringIdAt(next_command_id++,
-                               IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
-                               IDS_HISTORY_CLUSTERS_SHOW_SIDE_PANEL);
-      SetCommandIcon(this, IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL,
-                     features::IsRoundedIconsEnabled()
-                         ? vector_icons::kHistoryIcon
-                         : vector_icons::kHistoryChromeRefreshOldIcon);
-    }
-  }
 
   history_separator_index_ = GetItemCount();
   last_local_model_index_ = history_separator_index_;

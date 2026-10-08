@@ -67,7 +67,6 @@ source_set("notifications") {
       "notification_platform_bridge_android.h",
       "notification_trigger_scheduler_android.h",
       "scheduler/display_agent_android.h",
-      "scheduler/finds_agent_android.h",
       "scheduler/notification_background_task_scheduler_android.h",
       "scheduler/tips_agent_android.h",
     ]
@@ -211,7 +210,6 @@ source_set("impl") {
     "//components/content_settings/browser",
     "//components/content_settings/core/browser",
     "//components/pref_registry",
-    "//components/safe_browsing/content/browser/notification_content_detection",
     "//components/safe_browsing/core/browser:safe_browsing_metrics_collector",
     "//components/safe_browsing/core/common:features",
     "//components/site_engagement/content",
@@ -227,7 +225,6 @@ source_set("impl") {
       "notification_suspender_android.cc",
       "notification_trigger_scheduler_android.cc",
       "scheduler/display_agent_android.cc",
-      "scheduler/finds_agent_android.cc",
       "scheduler/notification_background_task_scheduler_android.cc",
       "scheduler/tips_agent_android.cc",
     ]

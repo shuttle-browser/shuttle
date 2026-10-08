@@ -16,8 +16,6 @@ source_set("pdf") {
     "pdf_extension_util.h",
     "pdf_handler_stream_delegate.cc",
     "pdf_handler_stream_delegate.h",
-    "pdf_help_bubble_handler_factory.cc",
-    "pdf_help_bubble_handler_factory.h",
   ]
   public_deps = [
     "//base",
@@ -28,7 +26,6 @@ source_set("pdf") {
     "//mojo/public/cpp/bindings",
     "//pdf:buildflags",
     "//ui/base/interaction",
-    "//ui/webui/resources/cr_components/help_bubble:mojo_bindings",
   ]
   deps = [
     "//build:chromeos_buildflags",
@@ -43,7 +40,6 @@ source_set("pdf") {
     "//components/pdf/common:util",
     "//components/prefs",
     "//components/tabs:public",
-    "//components/user_education/webui",
     "//components/zoom",
     "//extensions/browser",
     "//extensions/browser/mime_handler:stream_container",

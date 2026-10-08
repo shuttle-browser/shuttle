@@ -26,7 +26,6 @@ export interface AppearancePageVisibility {
   hoverCard: boolean;
   pageZoom: boolean;
   setTheme: boolean;
-  sidePanel: boolean;
 }
 
 export interface PrivacyPageVisibility {
@@ -63,7 +62,6 @@ function createPageVisibility(): PageVisibility|undefined {
       homeButton: false,
       hoverCard: false,
       pageZoom: false,
-      sidePanel: false,
     },
     privacy: {
       searchPrediction: false,

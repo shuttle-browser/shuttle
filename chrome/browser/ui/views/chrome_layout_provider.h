@@ -103,14 +103,6 @@ enum ChromeDistanceMetric {
   // Vertical padding at the top and bottom of the an omnibox match row for two
   // line layout.
   DISTANCE_OMNIBOX_TWO_LINE_CELL_VERTICAL_PADDING,
-  // Width and Height of a vector icon in the side panel header.
-  DISTANCE_SIDE_PANEL_HEADER_VECTOR_ICON_SIZE,
-  // Minimum size of the header vector icon buttons to get the proper ripple.
-  DISTANCE_SIDE_PANEL_HEADER_BUTTON_MINIMUM_SIZE,
-  // Horizontal spacing for separating side panel header border from controls.
-  DISTANCE_SIDE_PANEL_HEADER_INTERIOR_MARGIN_HORIZONTAL,
-  // The corner radius for the side panel content.
-  DISTANCE_SIDE_PANEL_CONTENT_RADIUS,
   // Horizontal padding between separator in the page info view.
   DISTANCE_HORIZONTAL_SEPARATOR_PADDING_PAGE_INFO_VIEW,
   // Horizontal padding applied between the icon and label in the infobar.

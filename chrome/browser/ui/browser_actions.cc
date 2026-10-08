@@ -72,13 +72,7 @@
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_triggers.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
-#include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/search/omnibox_utils.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
@@ -88,15 +82,12 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_bubble_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/js_optimization/js_optimizations_page_action_controller.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_page_action_controller.h"
 #include "chrome/browser/ui/views/page_info/page_info_view_factory.h"
-#include "chrome/browser/ui/views/side_panel/history/history_side_panel_coordinator.h"
-#include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_utils.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button.h"
@@ -112,7 +103,6 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/vector_icons.h"
@@ -190,28 +180,6 @@ actions::ActionItem::ActionItemBuilder ChromeMenuAction(
   return builder;
 }
 
-actions::ActionItem::ActionItemBuilder SidePanelAction(
-    SidePanelEntryId id,
-    int title_id,
-    int tooltip_id,
-    const gfx::VectorIcon& icon,
-    actions::ActionId action_id,
-    BrowserWindowInterface* bwi,
-    bool is_pinnable) {
-  auto pinnable_state =
-      is_pinnable ? std::underlying_type_t<actions::ActionPinnableState>(
-                        actions::ActionPinnableState::kPinnable)
-                  : std::underlying_type_t<actions::ActionPinnableState>(
-                        actions::ActionPinnableState::kNotPinnable);
-  return actions::ActionItem::Builder(
-             CreateToggleSidePanelActionCallback(SidePanelEntryKey(id), bwi))
-      .SetActionId(action_id)
-      .SetText(l10n_util::GetStringUTF16(title_id))
-      .SetTooltipText(l10n_util::GetStringUTF16(tooltip_id))
-      .SetImage(ui::ImageModel::FromVectorIcon(icon, ui::kColorIcon))
-      .SetProperty(actions::kActionItemPinnableKey, pinnable_state);
-}
-
 }  // namespace
 
 DEFINE_USER_DATA(BrowserActions);
@@ -253,8 +221,6 @@ void BrowserActions::InitializeBrowserActions() {
   actions::ActionManager::Get().AddAction(
       actions::ActionItem::Builder().CopyAddressTo(&root_action_item_).Build());
 
-  InitializeSidePanelActions();
-
   InitializePageActionIconActions();
 
   InitializeChromeMenuActions();
@@ -271,127 +237,6 @@ void BrowserActions::InitializeBrowserActions() {
 actions::ActionItem* BrowserActions::RegisterAction(
     std::unique_ptr<actions::ActionItem> action_item) {
   return root_action_item_->AddChild(std::move(action_item));
-}
-
-void BrowserActions::InitializeSidePanelActions() {
-  Profile* const profile = base::to_address(profile_);
-  BrowserWindowInterface* const bwi = base::to_address(bwi_);
-
-  root_action_item_->AddChild(
-      SidePanelAction(SidePanelEntryId::kAboutThisSite,
-                      IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE,
-                      IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE,
-                      PageInfoViewFactory::GetAboutThisSiteVectorIcon(),
-                      kActionSidePanelShowAboutThisSite, bwi, false)
-          .Build());
-
-  if (side_panel::history_clusters::
-          IsHistoryClustersSidePanelSupportedForProfile(profile) &&
-      !HistorySidePanelCoordinator::IsSupported()) {
-    root_action_item_->AddChild(
-        SidePanelAction(SidePanelEntryId::kHistoryClusters, IDS_HISTORY_TITLE,
-                        IDS_HISTORY_CLUSTERS_SHOW_SIDE_PANEL,
-                        features::IsRoundedIconsEnabled()
-                            ? vector_icons::kHistoryIcon
-                            : vector_icons::kHistoryChromeRefreshOldIcon,
-                        kActionSidePanelShowHistoryCluster, bwi, true)
-            .Build());
-  }
-
-  if (HistorySidePanelCoordinator::IsSupported()) {
-    root_action_item_->AddChild(
-        SidePanelAction(SidePanelEntryId::kHistory, IDS_HISTORY_TITLE,
-                        IDS_HISTORY_SHOW_SIDE_PANEL,
-                        features::IsRoundedIconsEnabled()
-                            ? vector_icons::kHistoryIcon
-                            : vector_icons::kHistoryChromeRefreshOldIcon,
-                        kActionSidePanelShowHistory, bwi, true)
-            .Build());
-  }
-
-  ui::Accelerator reading_mode_accelerator;
-  std::u16string reading_mode_shortcut;
-  if (GetAcceleratorForCommandId(IDC_SHOW_READING_MODE_KEYBOARD,
-                                 &reading_mode_accelerator)) {
-    reading_mode_shortcut = reading_mode_accelerator.GetShortcutText();
-  }
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                read_anything::ReadAnythingEntryPointController::
-                    InvokePageAction(bwi, context);
-              },
-              bwi))
-          .SetActionId(kActionSidePanelShowReadAnything)
-          .SetText(l10n_util::GetStringUTF16(IDS_READING_MODE_TITLE))
-          .SetTooltipText(l10n_util::GetStringFUTF16(IDS_READING_MODE_TOOLTIP,
-                                                     reading_mode_shortcut))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled() ? kMenuBookIcon
-                                                : kMenuBookChromeRefreshOldIcon,
-              ui::kColorIcon))
-          .SetProperty(
-              actions::kActionItemPinnableKey,
-              static_cast<std::underlying_type_t<actions::ActionPinnableState>>(
-                  actions::ActionPinnableState::kPinnable))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                read_anything::ReadAnythingEntryPointController::ToggleUI(
-                    bwi, read_anything::mojom::ReadAnythingOpenTrigger::
-                             kKeyboardShortcut);
-              },
-              bwi))
-          .SetActionId(kActionShowReadingModeKeyboard)
-          .SetText(l10n_util::GetStringUTF16(IDS_READING_MODE_TITLE))
-          .SetTooltipText(l10n_util::GetStringFUTF16(IDS_READING_MODE_TOOLTIP,
-                                                     reading_mode_shortcut))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled() ? kMenuBookIcon
-                                                : kMenuBookChromeRefreshOldIcon,
-              ui::kColorIcon))
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                std::underlying_type_t<SidePanelOpenTrigger>
-                    side_panel_trigger =
-                        context.GetProperty(kSidePanelOpenTriggerKey);
-                read_anything::mojom::ReadAnythingOpenTrigger open_trigger =
-                    read_anything::mojom::ReadAnythingOpenTrigger::kAppMenu;
-                if (side_panel_trigger != -1) {
-                  std::optional<read_anything::mojom::ReadAnythingOpenTrigger>
-                      mapped_trigger =
-                          read_anything::SidePanelToReadAnythingOpenTrigger(
-                              static_cast<SidePanelOpenTrigger>(
-                                  side_panel_trigger));
-                  if (mapped_trigger.has_value()) {
-                    open_trigger = mapped_trigger.value();
-                  }
-                }
-                read_anything::ReadAnythingEntryPointController::ShowUI(
-                    bwi, open_trigger);
-              },
-              bwi))
-          .SetActionId(kActionShowReadingModeSidePanel)
-          .SetText(l10n_util::GetStringUTF16(IDS_READING_MODE_TITLE))
-          .SetTooltipText(l10n_util::GetStringFUTF16(IDS_READING_MODE_TOOLTIP,
-                                                     reading_mode_shortcut))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled() ? kMenuBookIcon
-                                                : kMenuBookChromeRefreshOldIcon,
-              ui::kColorIcon))
-          .Build());
 }
 
 void BrowserActions::InitializePageActionIconActions() {
@@ -566,21 +411,6 @@ void BrowserActions::InitializeChromeMenuActions() {
                   if (controller) {
                     controller->SetOrganizerVisible(
                         !controller->IsOrganizerPanelVisible());
-                  }
-
-                  // Dismiss the IPH promo if it is currently showing, or abort
-                  // it if it is queued to show.
-                  if (auto* interface =
-                          BrowserUserEducationInterface::From(bwi)) {
-                    const base::Feature& iph_feature =
-                        feature_engagement::kIPHResumptionRailFeature;
-                    if (interface->IsFeaturePromoActive(iph_feature)) {
-                      interface->NotifyFeaturePromoFeatureUsed(
-                          iph_feature,
-                          FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-                    } else if (interface->IsFeaturePromoQueued(iph_feature)) {
-                      interface->AbortFeaturePromo(iph_feature);
-                    }
                   }
                 },
                 bwi))

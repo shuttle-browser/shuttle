@@ -20,8 +20,6 @@ class BrowserViewLayoutDelegate;
 class InfoBarContainerView;
 class MultiContentsView;
 class OrganizerPanelView;
-class SidePanel;
-class SidePanelAnimationContentView;
 class TabStrip;
 class TabStripRegionView;
 class VerticalTabStripRegionView;
@@ -47,7 +45,6 @@ struct BrowserViewLayoutViews {
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kVerticalTabStripTopCornerElementId);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(
       kVerticalTabStripBottomCornerElementId);
-  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kShadowOverlayElementId);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kMainBackgroundRegionElementId);
 
   // LINT.IfChange(BrowserViewLayoutViews)
@@ -59,9 +56,7 @@ struct BrowserViewLayoutViews {
   // NOTE: If you add a view, try to add it as a views::View, which makes
   // testing much easier.
   raw_ptr<views::View> window_scrim = nullptr;
-  raw_ptr<views::View> side_panel_content_transition_scrim = nullptr;
   raw_ptr<views::View> main_background_region = nullptr;
-  raw_ptr<views::View> main_shadow_overlay = nullptr;
   raw_ptr<views::View> top_container = nullptr;
   raw_ptr<TabStripRegionView> horizontal_tab_strip_region_view = nullptr;
   raw_ptr<VerticalTabStripRegionView> vertical_tab_strip_region_view = nullptr;
@@ -73,8 +68,6 @@ struct BrowserViewLayoutViews {
   raw_ptr<views::View> toolbar = nullptr;
   raw_ptr<InfoBarContainerView> infobar_container = nullptr;
   raw_ptr<MultiContentsView> multi_contents_view = nullptr;
-  raw_ptr<SidePanel> side_panel = nullptr;
-  raw_ptr<SidePanelAnimationContentView> side_panel_animation_content = nullptr;
 
   // The contents separator used for when the top container is overlaid.
   // Note: when `SideBySide` feature is disabled, this separator is also
@@ -116,15 +109,6 @@ class BrowserViewLayout : public views::LayoutManager {
       std::unique_ptr<BrowserViewLayoutDelegate> delegate,
       BrowserWindowInterface* browser,
       BrowserViewLayoutViews views);
-
-  // Sets or updates views that are not available when |this| is initialized.
-  void set_side_panel_animation_content(
-      SidePanelAnimationContentView* contents_to_animate) {
-    views_.side_panel_animation_content = contents_to_animate;
-  }
-  SidePanelAnimationContentView* side_panel_animation_content() {
-    return views_.side_panel_animation_content;
-  }
 
   // views::LayoutManager overrides:
   gfx::Size GetPreferredSize(

@@ -109,28 +109,18 @@ export class PinnedToolbarActionElement extends PinnedToolbarActionElementBase {
         return ContextMenuType.kPinnedActionShowPaymentsBubbleOrPage;
       case PinnedToolbarAction.kShowAddressesBubbleOrPage:
         return ContextMenuType.kPinnedActionShowAddressesBubbleOrPage;
-      case PinnedToolbarAction.kSidePanelShowBookmarks:
-        return ContextMenuType.kPinnedActionSidePanelShowBookmarks;
-      case PinnedToolbarAction.kSidePanelShowReadingList:
-        return ContextMenuType.kPinnedActionSidePanelShowReadingList;
-      case PinnedToolbarAction.kSidePanelShowHistoryCluster:
-        return ContextMenuType.kPinnedActionSidePanelShowHistoryCluster;
       case PinnedToolbarAction.kShowDownloads:
         return ContextMenuType.kPinnedActionShowDownloads;
       case PinnedToolbarAction.kClearBrowsingData:
         return ContextMenuType.kPinnedActionClearBrowsingData;
       case PinnedToolbarAction.kPrint:
         return ContextMenuType.kPinnedActionPrint;
-      case PinnedToolbarAction.kSidePanelShowLensOverlayResults:
-        return ContextMenuType.kPinnedActionSidePanelShowLensOverlayResults;
       case PinnedToolbarAction.kShowTranslate:
         return ContextMenuType.kPinnedActionShowTranslate;
       case PinnedToolbarAction.kQrCodeGenerator:
         return ContextMenuType.kPinnedActionQrCodeGenerator;
       case PinnedToolbarAction.kRouteMedia:
         return ContextMenuType.kPinnedActionRouteMedia;
-      case PinnedToolbarAction.kSidePanelShowReadAnything:
-        return ContextMenuType.kPinnedActionSidePanelShowReadAnything;
       case PinnedToolbarAction.kCopyUrl:
         return ContextMenuType.kPinnedActionCopyUrl;
       case PinnedToolbarAction.kSendTabToSelf:
@@ -141,22 +131,8 @@ export class PinnedToolbarActionElement extends PinnedToolbarActionElementBase {
         return ContextMenuType.kPinnedActionDevTools;
       case PinnedToolbarAction.kTabSearch:
         return ContextMenuType.kPinnedActionTabSearch;
-      case PinnedToolbarAction.kSidePanelShowContextualTasks:
-        return ContextMenuType.kPinnedActionSidePanelShowContextualTasks;
-      case PinnedToolbarAction.kSidePanelShowLens:
-        return ContextMenuType.kPinnedActionSidePanelShowLens;
-      case PinnedToolbarAction.kSidePanelShowAboutThisSite:
-        return ContextMenuType.kPinnedActionSidePanelShowAboutThisSite;
-      case PinnedToolbarAction.kSidePanelShowCustomizeChrome:
-        return ContextMenuType.kPinnedActionSidePanelShowCustomizeChrome;
-      case PinnedToolbarAction.kSidePanelShowShoppingInsights:
-        return ContextMenuType.kPinnedActionSidePanelShowShoppingInsights;
-      case PinnedToolbarAction.kSidePanelShowMerchantTrust:
-        return ContextMenuType.kPinnedActionSidePanelShowMerchantTrust;
       case PinnedToolbarAction.kSendSharedTabGroupFeedback:
         return ContextMenuType.kPinnedActionSendSharedTabGroupFeedback;
-      case PinnedToolbarAction.kSidePanelShowComments:
-        return ContextMenuType.kPinnedActionSidePanelShowComments;
       case PinnedToolbarAction.kUnspecified:
       case PinnedToolbarAction.kDivider:
         return ContextMenuType.kUnspecified;
@@ -166,7 +142,7 @@ export class PinnedToolbarActionElement extends PinnedToolbarActionElementBase {
   }
 
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(this.state.tooltip);
+    return this.state.tooltip;
   }
 
   override getMimeType() {

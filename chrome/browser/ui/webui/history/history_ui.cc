@@ -18,7 +18,6 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/page_image_service/image_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -33,7 +32,6 @@
 #include "chrome/browser/ui/webui/managed_ui_handler.h"
 #include "chrome/browser/ui/webui/metrics_handler.h"
 #include "chrome/browser/ui/webui/theme_source.h"
-#include "chrome/browser/ui/webui/user_education/user_education_handler.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/history_resources.h"
@@ -50,7 +48,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/user_education/webui/user_education.mojom.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -139,19 +136,11 @@ HistoryUI::HistoryUI(content::WebUI* web_ui)
 
   web_ui->AddMessageHandler(std::make_unique<webui::NavigationHandler>());
   web_ui->AddMessageHandler(std::make_unique<MetricsHandler>());
-
-  ui::TrackedElementHandlerDocumentSingleton::Register(
-      this,
-      std::vector<ui::ElementIdentifier>{kHistorySearchInputElementId,
-                                         kHistoryGeminiFilterChipElementId});
 }
 
 HistoryUI::~HistoryUI() = default;
 
 WEB_UI_CONTROLLER_TYPE_IMPL(HistoryUI)
-
-DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(HistoryUI,
-                                      kHistoryGeminiFilterChipElementId);
 
 // static
 scoped_refptr<base::RefCountedMemory> HistoryUI::GetFaviconResourceBytes(
@@ -218,37 +207,4 @@ void HistoryUI::UpdateDataSource() {
 
   content::WebUIDataSource::Update(profile, chrome::kChromeUIHistoryHost,
                                    std::move(update));
-}
-
-void HistoryUI::BindInterface(
-    mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-        pending_receiver) {
-  if (help_bubble_handler_factory_receiver_.is_bound()) {
-    help_bubble_handler_factory_receiver_.reset();
-  }
-  help_bubble_handler_factory_receiver_.Bind(std::move(pending_receiver));
-}
-
-void HistoryUI::CreateHelpBubbleHandler(
-    mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,
-    mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler) {
-  help_bubble_handler_ = std::make_unique<user_education::HelpBubbleHandler>(
-      std::move(handler), std::move(client),
-      ui::TrackedElementHandlerDocumentSingleton::GetOrCreate(
-          web_ui()->GetRenderFrameHost()));
-}
-
-void HistoryUI::BindInterface(
-    mojo::PendingReceiver<
-        user_education::mojom::UserEducationMixedTrustHandlerFactory>
-        pending_receiver) {
-  user_education_handler_factory_receiver_.reset();
-  user_education_handler_factory_receiver_.Bind(std::move(pending_receiver));
-}
-
-void HistoryUI::CreateUserEducationMixedTrustHandler(
-    mojo::PendingReceiver<user_education::mojom::UserEducationMixedTrustHandler>
-        receiver) {
-  user_education_handler_ = std::make_unique<UserEducationMixedTrustHandler>(
-      std::move(receiver), web_ui()->GetWebContents());
 }

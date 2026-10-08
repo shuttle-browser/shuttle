@@ -12,17 +12,9 @@
 
 void InitializeChromeActions(actions::ActionManager* manager) {}
 
-// TODO(crbug.com/40285337): Adding temporarily to unblock the side panel team.
-// Should be removed/replaced when general solution to add action id mappings is
-// implemented.
 void InitializeActionIdStringMapping() {
 #define MAP_ACTION_IDS_TO_STRINGS
 #include "ui/actions/action_id_macros.inc"
-
-  actions::ActionIdMap::AddActionIdToStringMappings(
-      base::flat_map<actions::ActionId, std::string>(
-          std::vector<std::pair<actions::ActionId, std::string>>{
-              SIDE_PANEL_ACTION_IDS}));
 
   actions::ActionIdMap::AddActionIdToStringMappings(
       base::flat_map<actions::ActionId, std::string>(
@@ -34,11 +26,6 @@ void InitializeActionIdStringMapping() {
 
 #define MAP_STRING_TO_ACTION_IDS
 #include "ui/actions/action_id_macros.inc"
-
-  actions::ActionIdMap::AddStringToActionIdMappings(
-      base::flat_map<std::string, actions::ActionId>(
-          std::vector<std::pair<std::string, actions::ActionId>>{
-              SIDE_PANEL_ACTION_IDS}));
 
   actions::ActionIdMap::AddStringToActionIdMappings(
       base::flat_map<std::string, actions::ActionId>(

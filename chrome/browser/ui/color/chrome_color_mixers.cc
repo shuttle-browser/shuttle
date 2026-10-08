@@ -15,7 +15,6 @@
 #include "chrome/browser/ui/color/material_chrome_color_mixer.h"
 #include "chrome/browser/ui/color/material_new_tab_page_color_mixer.h"
 #include "chrome/browser/ui/color/material_omnibox_color_mixer.h"
-#include "chrome/browser/ui/color/material_side_panel_color_mixer.h"
 #include "chrome/browser/ui/color/material_tab_strip_color_mixer.h"
 #include "chrome/browser/ui/color/native_chrome_color_mixer.h"
 #include "chrome/browser/ui/color/new_tab_page_color_mixer.h"
@@ -68,7 +67,6 @@ void AddChromeColorMixers(ui::ColorProvider* provider,
   AddMaterialChromeColorMixer(provider, key);
   AddMaterialNewTabPageColorMixer(provider, key);
   AddMaterialOmniboxColorMixer(provider, key);
-  AddMaterialSidePanelColorMixer(provider, key);
   AddMaterialTabStripColorMixer(provider, key);
 
   // Must be the last one in order to override other mixer colors.

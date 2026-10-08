@@ -35,7 +35,6 @@
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/user_education/user_education_service.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
@@ -322,10 +321,6 @@ void TabMenuModel::Build(int index) {
     } else {
       AddItemWithStringId(TabStripModel::CommandToggleVertical,
                           switch_to_vertical_id);
-      const user_education::DisplayNewBadge show_badge =
-          UserEducationService::MaybeShowNewBadge(tab_strip_->profile(),
-                                                  tabs::kVerticalTabsNewBadge);
-      SetIsNewFeatureAt(GetItemCount() - 1, show_badge);
     }
   }
 

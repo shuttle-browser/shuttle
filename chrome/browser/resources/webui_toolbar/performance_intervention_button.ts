@@ -13,10 +13,9 @@ import {BrowserProxyImpl} from './browser_proxy.js';
 import type {BrowserProxy} from './browser_proxy.js';
 import {getCss} from './performance_intervention_button.css.js';
 import {getHtml} from './performance_intervention_button.html.js';
-import {HelpBubbleAnchorMixin} from './toolbar_button.js';
 
 const PerformanceInterventionButtonElementBase =
-    HelpBubbleAnchorMixin(CrLitElement);
+    CrLitElement;
 
 export class PerformanceInterventionButtonElement extends
     PerformanceInterventionButtonElementBase {
@@ -50,8 +49,7 @@ export class PerformanceInterventionButtonElement extends
     return loadTimeData.getString('performanceInterventionButtonAccName');
   }
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(
-        loadTimeData.getString('performanceInterventionButtonTooltip'));
+    return loadTimeData.getString('performanceInterventionButtonTooltip');
   }
 
   protected onClick_(e: PointerEvent) {

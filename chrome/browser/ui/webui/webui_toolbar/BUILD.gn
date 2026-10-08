@@ -34,7 +34,6 @@ source_set("webui_toolbar") {
     "//chrome/browser:primitives",
     "//chrome/browser/ui/tabs:tab_model",
     "//ui/views",
-    "//ui/webui/resources/cr_components/help_bubble:mojo_bindings",
   ]
 }
 
@@ -78,7 +77,6 @@ source_set("impl") {
     "//chrome/browser/ui/webui/searchbox",
     "//chrome/browser/ui/webui/util",
     "//components/omnibox/browser:vector_icons",
-    "//components/user_education/webui",
     "//ui/base",
   ]
 }

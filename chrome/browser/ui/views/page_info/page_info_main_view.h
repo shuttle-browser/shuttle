@@ -14,7 +14,6 @@
 #include "chrome/browser/ui/views/page_info/permission_toggle_row_view_observer.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/page_info/core/page_info_types.h"
-#include "components/page_info/core/proto/about_this_site_metadata.pb.h"
 #include "components/page_info/page_info_ui.h"
 #include "device/vr/buildflags/buildflags.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -128,10 +127,6 @@ class PageInfoMainView : public views::View,
   // the label depending on the number of visible permissions.
   void UpdateResetButton(const PermissionInfoList& permission_info_list);
 
-  // Creates 'About this site' button that opens a subpage.
-  [[nodiscard]] std::unique_ptr<views::View> CreateAboutThisSiteButton(
-      const page_info::proto::SiteInfo& info);
-
   // Creates the warning banner view for suspicious sites.
   [[nodiscard]] std::unique_ptr<views::View> CreateSuspiciousSiteBannerView(
       const IdentityInfo& identity_info);
@@ -169,7 +164,6 @@ class PageInfoMainView : public views::View,
   raw_ptr<views::View> extended_site_info_section_ = nullptr;
 
   // "About this site" button that opens a subpage.
-  raw_ptr<views::View> about_this_site_section_ = nullptr;
 
   // The view that contains `SecurityInformationView` and a certificate button.
   raw_ptr<PageInfoSecurityContentView, AcrossTasksDanglingUntriaged>

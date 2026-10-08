@@ -9,10 +9,7 @@
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/chrome_user_population_helper.h"
-#include "chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_factory.h"
 #include "chrome/browser/safe_browsing/client_side_detection_service_factory.h"
-#include "chrome/browser/safe_browsing/gemini_antiscam_protection/gemini_antiscam_protection_service.h"
-#include "chrome/browser/safe_browsing/gemini_antiscam_protection/gemini_antiscam_protection_service_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/user_interaction_observer.h"
@@ -48,7 +45,6 @@ ChromeClientSideDetectionHostDelegate::CreateHost(content::WebContents* tab) {
       ClientSideDetectionServiceFactory::GetForProfile(profile);
   return ClientSideDetectionHost::Create(
       tab, std::make_unique<ChromeClientSideDetectionHostDelegate>(tab),
-      ClientSideDetectionIntelligentScanDelegateFactory::GetForProfile(profile),
       profile->GetPrefs(), VerdictCacheManagerFactory::GetForProfile(profile),
       HistoryServiceFactory::GetForProfile(profile,
                                            ServiceAccessType::IMPLICIT_ACCESS),
@@ -145,28 +141,6 @@ void ChromeClientSideDetectionHostDelegate::GetInnerText(
     HostInnerTextCallback callback) {
   // Inner-text extraction (components/content_extraction) has been removed.
   std::move(callback).Run(std::string());
-}
-
-void ChromeClientSideDetectionHostDelegate::MaybeStartGeminiAntiscamProtection(
-    GURL url,
-    ClientSideDetectionType request_type,
-    std::optional<bool> did_match_high_confidence_allowlist) {
-  GeminiAntiscamProtectionService* service =
-      GeminiAntiscamProtectionServiceFactory::GetForProfile(
-          Profile::FromBrowserContext(web_contents_->GetBrowserContext()));
-  if (service) {
-    // GetInnerText is called with a callback that will call
-    // GeminiAntiscamProtectionService::MaybeStartAntiscamProtection.
-    // The `did_match_high_confidence_allowlist` value is true if not set so
-    // that it will not trigger Gemini Antiscam Protection.
-    GetInnerText(base::BindOnce(
-        &GeminiAntiscamProtectionService::MaybeStartAntiscamProtection,
-        service->GetWeakPtr(),
-        GeminiAntiscamProtectionService::BuildGeminiAntiscamProtectionMetadata(
-            web_contents_),
-        url, request_type, did_match_high_confidence_allowlist.value_or(true),
-        web_contents_->GetPrimaryMainFrame()->GetLastCommittedURL()));
-  }
 }
 
 #if BUILDFLAG(IS_ANDROID)

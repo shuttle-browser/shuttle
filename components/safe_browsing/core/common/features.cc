@@ -330,17 +330,6 @@ BASE_FEATURE(kExternalAppRedirectTelemetry,
              "SafeBrowsingExternalAppRedirectTelemetry",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGeminiAntiscamProtectionForMetricsCollection,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-constexpr base::FeatureParam<double>
-    kGeminiAntiscamProtectionMinScamScoreLogPageContent{
-        &kGeminiAntiscamProtectionForMetricsCollection,
-        "GeminiAntiscamProtectionMinScamScoreLogPageContent",
-        /*default_value=*/0.5};
-
-BASE_FEATURE(kGlobalCacheListForGatingNotificationProtections,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kGooglePlayProtectInApkTelemetry,
              "SafeBrowsingGooglePlayProtectInApkTelemetry",
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -432,8 +421,6 @@ BASE_FEATURE(kMovePasswordLeakDetectionToggleIos,
 
 BASE_FEATURE(kNoticeQueueForEsb, base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kNotificationTelemetry, base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kProactivePasswordProtection, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<double> kCsdProactivePasswordProtectionSampleRate{
     &kProactivePasswordProtection, "CsdProactivePasswordProtectionSampleRate",
@@ -464,13 +451,6 @@ constexpr base::FeatureParam<std::string> kRedWarningSurveyAndroidHeedTriggerId{
 
 BASE_FEATURE(kRelaunchNotificationForAdvancedProtection,
              base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kReportNotificationContentDetectionData,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-constexpr base::FeatureParam<int> kReportNotificationContentDetectionDataRate{
-    &kReportNotificationContentDetectionData,
-    "ReportNotificationContentDetectionDataRate",
-    /*default_value=*/100};
 
 BASE_FEATURE(kSafeBrowsingDailyPhishingReportsLimit,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -573,7 +553,6 @@ base::ListValue GetFeatureStatusList() {
       &kLocalListsUseSBv5,
       &kMigrateEnhancedSbUserToEnhancedBundle,
       &kProactivePasswordProtection,
-      &kReportNotificationContentDetectionData,
       &kSafeBrowsingWaitForDnsForRealTimeLookup,
       &kShowManualNotificationRevocationsSafetyHub,
       &kShowWarningsForSuspiciousNotifications,

@@ -8,8 +8,6 @@
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/common/webui_url_constants.h"
-#include "chrome/grit/side_panel_shared_resources.h"
-#include "chrome/grit/side_panel_shared_resources_map.h"
 #include "chrome/grit/webui_gallery_resources.h"
 #include "chrome/grit/webui_gallery_resources_map.h"
 #include "components/favicon_base/favicon_url_parser.h"
@@ -41,10 +39,6 @@ void CreateAndAddWebuiGalleryUIHtmlSource(Profile* profile) {
   // by many WebUIs.
   source->AddString("opensInNewTab", "Opens in new tab");
   source->AddLocalizedString("backButton", IDS_ACCNAME_BACK);
-
-  // Add shared SidePanel resources so that those elements can be demonstrated
-  // as well.
-  source->AddResourcePaths(kSidePanelSharedResources);
 
   content::URLDataSource::Add(
       profile, std::make_unique<FaviconSource>(

@@ -36,7 +36,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/bubble_menu_item_factory.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/controls/hover_button.h"
@@ -176,9 +175,6 @@ std::unique_ptr<views::Widget> TabGroupEditorBubbleView::Show(
     views::View* anchor_view,
     std::optional<gfx::Rect> anchor_rect,
     bool stop_context_menu_propagation) {
-  BrowserUserEducationInterface::From(browser)->NotifyAdditionalConditionEvent(
-      "tab_group_editor_shown");
-
   // If `header_view` is not null, use `header_view` as the `anchor_view`.
   TabGroupEditorBubbleView* tab_group_editor_bubble_view =
       new TabGroupEditorBubbleView(browser, group, anchor_view, anchor_rect,

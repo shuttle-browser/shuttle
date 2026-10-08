@@ -414,7 +414,6 @@ build_webui("build") {
     "//ui/webui/resources/cr_components/color_change_listener:build_ts",
     "//ui/webui/resources/cr_components/cr_shortcut_input:build_ts",
     "//ui/webui/resources/cr_components/customize_color_scheme_mode:build_ts",
-    "//ui/webui/resources/cr_components/help_bubble:build_ts",
     "//ui/webui/resources/cr_components/localized_link:build_ts",
     "//ui/webui/resources/cr_components/managed_dialog:build_ts",
     "//ui/webui/resources/cr_components/managed_footnote:build_ts",

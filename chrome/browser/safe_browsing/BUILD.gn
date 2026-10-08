@@ -71,7 +71,6 @@ static_library("safe_browsing") {
     "//components/resources:components_resources_grit",
     "//components/safe_browsing:buildflags",
     "//components/safe_browsing/content/browser",
-    "//components/safe_browsing/content/browser/notification_content_detection",
     "//components/safe_browsing/content/browser/triggers:suspicious_site_trigger",
     "//components/safe_browsing/content/browser/web_ui",
     "//components/safe_browsing/core/browser",
@@ -92,7 +91,6 @@ static_library("safe_browsing") {
     "//components/signin/public/identity_manager",
     "//components/strings:components_strings",
     "//components/url_formatter",
-    "//components/user_education/product_messaging",
     "//components/vector_icons",
     "//mojo/public/cpp/platform",
     "//mojo/public/cpp/system",
@@ -167,8 +165,6 @@ static_library("safe_browsing") {
       "chrome_ui_manager_delegate.h",
       "chrome_user_population_helper.h",
       "chrome_v4_protocol_config_provider.h",
-      "client_side_detection_intelligent_scan_delegate_factory.h",
-      "client_side_detection_intelligent_scan_delegate_util.h",
       "client_side_detection_service_factory.h",
       "cloud_content_scanning/cloud_binary_upload_service.h",
       "cloud_content_scanning/cloud_binary_upload_service_factory.h",
@@ -190,14 +186,8 @@ static_library("safe_browsing") {
       "download_protection/file_analyzer.h",
       "download_protection/file_system_access_metadata.h",
       "external_app_redirect_checking.h",
-      "gemini_antiscam_protection/gemini_antiscam_protection_service.h",
-      "gemini_antiscam_protection/gemini_antiscam_protection_service_factory.h",
       "network_context_service.h",
       "network_context_service_factory.h",
-      "notification_content_detection/notification_content_detection_service_factory.h",
-      "notification_content_detection/notification_content_detection_util.h",
-      "notification_telemetry/notification_telemetry_service.h",
-      "notification_telemetry/notification_telemetry_service_factory.h",
       "phishy_interaction_tracker.h",
       "safe_browsing_navigation_observer_manager_factory.h",
       "safe_browsing_service.h",
@@ -222,8 +212,6 @@ static_library("safe_browsing") {
       "chrome_ui_manager_delegate.cc",
       "chrome_user_population_helper.cc",
       "chrome_v4_protocol_config_provider.cc",
-      "client_side_detection_intelligent_scan_delegate_factory.cc",
-      "client_side_detection_intelligent_scan_delegate_util.cc",
       "client_side_detection_service_factory.cc",
       "cloud_content_scanning/cloud_binary_upload_service.cc",
       "cloud_content_scanning/cloud_binary_upload_service_factory.cc",
@@ -245,14 +233,8 @@ static_library("safe_browsing") {
       "download_protection/file_analyzer.cc",
       "download_protection/file_system_access_metadata.cc",
       "external_app_redirect_checking.cc",
-      "gemini_antiscam_protection/gemini_antiscam_protection_service.cc",
-      "gemini_antiscam_protection/gemini_antiscam_protection_service_factory.cc",
       "network_context_service.cc",
       "network_context_service_factory.cc",
-      "notification_content_detection/notification_content_detection_service_factory.cc",
-      "notification_content_detection/notification_content_detection_util.cc",
-      "notification_telemetry/notification_telemetry_service.cc",
-      "notification_telemetry/notification_telemetry_service_factory.cc",
       "phishy_interaction_tracker.cc",
       "safe_browsing_navigation_observer_manager_factory.cc",
       "safe_browsing_service.cc",
@@ -277,10 +259,8 @@ static_library("safe_browsing") {
       ]
     } else {
       public += [
-        "client_side_detection_intelligent_scan_delegate_desktop.h",
       ]
       sources += [
-        "client_side_detection_intelligent_scan_delegate_desktop.cc",
       ]
     }
     deps += [
@@ -312,7 +292,6 @@ static_library("safe_browsing") {
       "//components/safe_browsing/content/browser:safe_browsing_blocking_page",
       "//components/safe_browsing/content/browser:safe_browsing_service",
       "//components/safe_browsing/content/browser/download:download_stats",
-      "//components/safe_browsing/content/browser/notification_content_detection:notifications_global_cache_list",
       "//components/safe_browsing/content/browser/triggers",
       "//components/safe_browsing/content/browser/triggers:ad_sampler_trigger",
       "//components/safe_browsing/content/browser/triggers:suspicious_site_trigger",
@@ -543,7 +522,6 @@ static_library("safe_browsing") {
       if (!is_android) {
         deps += [
           "//chrome/browser/ui:chrome_pages",
-          "//chrome/browser/user_education",
         ]
       }
       if (!is_android && !is_chromeos) {

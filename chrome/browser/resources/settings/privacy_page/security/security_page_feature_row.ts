@@ -13,7 +13,6 @@ import 'chrome://resources/cr_elements/cr_expand_button/cr_expand_button.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import '../../controls/settings_toggle_button.js';
 import '../../settings_shared.css.js';
-import 'chrome://resources/cr_components/help_bubble/new_badge.js';
 
 import type {CrExpandButtonElement} from 'chrome://resources/cr_elements/cr_expand_button/cr_expand_button.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';

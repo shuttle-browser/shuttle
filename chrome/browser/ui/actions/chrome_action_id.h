@@ -448,6 +448,7 @@
     IDC_OMNIBOX_EVERYWHERE_STATUS_ICON_MENU_CUSTOMIZE_KEYBOARD_SHORTCUT) \
   E(kActionOmniboxEverywhereStatusIconMenuSettings, \
     IDC_OMNIBOX_EVERYWHERE_STATUS_ICON_MENU_SETTINGS) \
+  E(kActionShowReadingModeKeyboard, IDC_SHOW_READING_MODE_KEYBOARD) \
   E(kActionShowPaymentsChurnedUsersBubble) \
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -478,38 +479,6 @@
 #else
 #define CHROME_GOOGLE_BRANDED_ACTION_IDS
 #endif // BUILDFLAG(GOOGLE_CHROME_BRANDING)
-
-// TODO(crbug.com/40285337): Adding temporarily to unblock the side panel team.
-// Should be reinserted into CHROME_COMMON_ACTION_IDS when general solution to
-// add action id mappings is implemented.
-#define SIDE_PANEL_ACTION_IDS \
-  /* Side Panel items */ \
-  E(kActionSidePanelShowAboutThisSite) \
-  E(kActionSidePanelShowAssistant) \
-  E(kActionSidePanelShowBookmarks, IDC_SHOW_BOOKMARK_SIDE_PANEL) \
-  E(kActionSidePanelShowComments, IDC_SHOW_COMMENTS_SIDE_PANEL) \
-  E(kActionSidePanelShowCustomizeChrome, IDC_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL) \
-  E(kActionSidePanelShowCustomizeChromeFooter) \
-  E(kActionSidePanelShowCustomizeChromeToolbar, \
-    IDC_SHOW_CUSTOMIZE_CHROME_TOOLBAR) \
-  E(kActionSidePanelShowFeed) \
-  E(kActionSidePanelShowGeic) \
-  E(kActionSidePanelShowGlic) \
-  E(kActionSidePanelShowContextualTasks) \
-  E(kActionSidePanelShowHistoryCluster, IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL) \
-  E(kActionSidePanelShowHistory, IDC_SHOW_HISTORY_SIDE_PANEL) \
-  E(kActionSidePanelShowLens) \
-  E(kActionSidePanelShowLensOverlayResults) \
-  E(kActionSidePanelShowReadAnything) \
-  E(kActionShowReadingModeSidePanel, IDC_SHOW_READING_MODE_SIDE_PANEL) \
-  E(kActionShowReadingModeKeyboard, IDC_SHOW_READING_MODE_KEYBOARD) \
-  E(kActionSidePanelShowReadingList, IDC_READING_LIST_MENU_SHOW_UI) \
-  E(kActionSidePanelShowSearchCompanion) \
-  E(kActionSidePanelShowShoppingInsights) \
-  E(kActionSidePanelShowSideSearch) \
-  E(kActionSidePanelShowMerchantTrust) \
-  E(kActionSidePanelShowTabsFromOtherDevices, \
-    IDC_SHOW_TABS_FROM_OTHER_DEVICES_SIDE_PANEL)
 
 #define TOOLBAR_PINNABLE_ACTION_IDS \
   E(kActionHome, IDC_HOME) \
@@ -580,7 +549,6 @@ enum ChromeActionIds : actions::ActionId {
   kChromeActionsStart = actions::kActionsEnd,
 
   CHROME_ACTION_IDS
-  SIDE_PANEL_ACTION_IDS
   TOOLBAR_PINNABLE_ACTION_IDS
   SUBMENU_ACTION_IDS
 

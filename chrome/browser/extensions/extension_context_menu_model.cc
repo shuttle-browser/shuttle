@@ -70,16 +70,10 @@
 #include "ui/color/color_id.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window.h"
-#include "chrome/browser/ui/extensions/extension_side_panel_utils.h"
 #include "chrome/browser/ui/extensions/extensions_container.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"   // nogncheck
-#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"  // nogncheck
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"         // nogncheck
-#include "chrome/common/extensions/api/side_panel.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/interaction/element_tracker.h"
 #endif
@@ -206,8 +200,6 @@ ExtensionContextMenuModel::ContextMenuAction CommandIdToContextMenuAction(
       return ContextMenuAction::kToggleVisibility;
     case ExtensionContextMenuModel::UNINSTALL:
       return ContextMenuAction::kUninstall;
-    case ExtensionContextMenuModel::TOGGLE_SIDE_PANEL_VISIBILITY:
-      return ContextMenuAction::kToggleSidePanelVisibility;
     case ExtensionContextMenuModel::MANAGE_EXTENSIONS:
       return ContextMenuAction::kManageExtensions;
     case ExtensionContextMenuModel::INSPECT_POPUP:
@@ -459,10 +451,6 @@ bool ExtensionContextMenuModel::IsCommandIdEnabled(int command_id) const {
       // Uninstall is always enabled since it will only be visible when the
       // extension can be removed.
       return true;
-    case TOGGLE_SIDE_PANEL_VISIBILITY:
-      // This option is always enabled since it will only be visible when the
-      // extension provides a side panel.
-      return true;
     case RATE_EXTENSION:
       // Rate extension is always enabled since it will only be visible if the
       // eligibility checks for rating are met.
@@ -564,29 +552,6 @@ void ExtensionContextMenuModel::ExecuteCommand(int command_id,
           profile_, browser_->GetWindow()->GetNativeWindow(), extension);
       break;
     }
-    case TOGGLE_SIDE_PANEL_VISIBILITY: {
-#if !BUILDFLAG(IS_ANDROID)
-      // Do nothing if the web contents have navigated to a different origin.
-      auto* web_contents = GetActiveWebContents();
-      if (!web_contents ||
-          !origin_.IsSameOriginWith(web_contents->GetLastCommittedURL())) {
-        return;
-      }
-
-      SidePanelService* const side_panel_service = GetSidePanelService();
-      CHECK(side_panel_service);
-
-      // The state of the tab could have changed since we opened the context
-      // menu. This check ensures that the extension has a valid side panel it
-      // can open for `tab_id`.
-      int tab_id = ExtensionTabUtil::GetTabId(GetActiveWebContents());
-      if (side_panel_service->HasSidePanelContextMenuActionForTab(*extension,
-                                                                  tab_id)) {
-        side_panel_util::ToggleExtensionSidePanel(browser_, extension->id());
-      }
-#endif  // !BUILDFLAG(IS_ANDROID)
-      break;
-    }
     case MANAGE_EXTENSIONS: {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
       chrome::ShowExtensions(browser_, extension->id());
@@ -684,24 +649,11 @@ void ExtensionContextMenuModel::MenuClosed(ui::SimpleMenuModel* menu) {
   // `action_taken_` can be deleted when the extensions toggle menu is closed.
   if (action_taken_) {
     ContextMenuAction action = *action_taken_;
-#if !BUILDFLAG(IS_ANDROID)
-    bool was_side_panel_action_taken =
-        action_taken_ == ContextMenuAction::kToggleSidePanelVisibility;
-#endif
     UMA_HISTOGRAM_ENUMERATION("Extensions.ContextMenuAction", action);
 
     // Clear out the action to avoid any possible UAF if we close the parent
     // menu.
     action_taken_ = std::nullopt;
-
-#if !BUILDFLAG(IS_ANDROID)
-    if (source_ == ContextMenuSource::kMenuItem &&
-        was_side_panel_action_taken) {
-      ExtensionsContainer::From(*browser_)->CloseExtensionsMenuIfOpen();
-      // WARNING: The extensions menu was the parent for this menu, so it's
-      // possible `this` is now deleted.
-    }
-#endif
   }
 }
 
@@ -891,10 +843,6 @@ void ExtensionContextMenuModel::InitMenuWithFeature(
     AddItemWithStringId(UNINSTALL, IDS_EXTENSIONS_UNINSTALL);
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  AddSidePanelEntryIfPresent(*extension);
-#endif
-
   // Settings section.
   if (!is_component_) {
     AddSeparator(ui::NORMAL_SEPARATOR);
@@ -995,10 +943,6 @@ void ExtensionContextMenuModel::InitMenu(const Extension* extension,
     }
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  AddSidePanelEntryIfPresent(*extension);
-#endif
-
   if (!is_component_) {
     AddSeparator(ui::NORMAL_SEPARATOR);
     AddItemWithStringId(MANAGE_EXTENSIONS, IDS_MANAGE_EXTENSION);
@@ -1012,35 +956,6 @@ void ExtensionContextMenuModel::InitMenu(const Extension* extension,
     AddItemWithStringId(INSPECT_POPUP, IDS_EXTENSION_ACTION_INSPECT_POPUP);
   }
 }
-
-#if !BUILDFLAG(IS_ANDROID)
-void ExtensionContextMenuModel::AddSidePanelEntryIfPresent(
-    const Extension& extension) {
-  if (!extension.permissions_data()->HasAPIPermission(
-          mojom::APIPermissionID::kSidePanel)) {
-    return;
-  }
-
-  SidePanelService* const side_panel_service = GetSidePanelService();
-  CHECK(side_panel_service);
-
-  int tab_id = ExtensionTabUtil::GetTabId(GetActiveWebContents());
-  if (!side_panel_service->HasSidePanelContextMenuActionForTab(extension,
-                                                               tab_id)) {
-    return;
-  }
-
-  AddSeparator(ui::NORMAL_SEPARATOR);
-  SidePanelUI* const side_panel_ui = browser_->GetFeatures().side_panel_ui();
-  CHECK(side_panel_ui);
-  bool is_side_panel_open = side_panel_ui->IsSidePanelEntryShowing(
-      SidePanelEntryKey(SidePanelEntryId::kExtension, extension.id()));
-  AddItemWithStringId(TOGGLE_SIDE_PANEL_VISIBILITY,
-                      is_side_panel_open
-                          ? IDS_EXTENSIONS_SUBMENU_CLOSE_SIDE_PANEL_ITEM
-                          : IDS_EXTENSIONS_SUBMENU_OPEN_SIDE_PANEL_ITEM);
-}
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 const Extension* ExtensionContextMenuModel::GetExtension() const {
   return ExtensionRegistry::Get(profile_)->enabled_extensions().GetByID(
@@ -1113,9 +1028,6 @@ content::WebContents* ExtensionContextMenuModel::GetActiveWebContents() const {
 }
 
 #if !BUILDFLAG(IS_ANDROID)
-SidePanelService* ExtensionContextMenuModel::GetSidePanelService() const {
-  return SidePanelService::Get(profile_);
-}
 #endif
 
 }  // namespace extensions

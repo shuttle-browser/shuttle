@@ -88,10 +88,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
-#include "chrome/browser/ui/read_anything/read_anything_controller.h"
-#include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
-#include "chrome/browser/ui/read_anything/read_anything_side_panel_controller.h"
-#include "chrome/browser/ui/read_anything/read_anything_side_panel_controller_utils.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
@@ -100,9 +96,6 @@
 #include "chrome/browser/ui/tabs/split_view_layout_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_features.h"
@@ -1055,21 +1048,6 @@ void RenderViewContextMenu::IssuePreconnectionToUrl(
 
 ui::IsNewFeatureAtValue RenderViewContextMenu::GetIsNewFeatureAtValue(
     const std::string& feature_name) const {
-  Profile* profile = Profile::FromBrowserContext(browser_context_);
-  UserEducationService* user_education_service =
-      UserEducationServiceFactory::GetForBrowserContext(profile);
-  if (!user_education_service ||
-      !user_education_service->new_badge_registry()) {
-    return ui::IsNewFeatureAtValue();
-  }
-  auto& feature_data =
-      user_education_service->new_badge_registry()->feature_data();
-  for (const auto& [feature, spec] : feature_data) {
-    if (feature_name == feature->name) {
-      return UserEducationService::MaybeShowNewBadge(browser_context_,
-                                                     *feature);
-    }
-  }
   return ui::IsNewFeatureAtValue();
 }
 
@@ -1220,15 +1198,6 @@ void RenderViewContextMenu::InitMenu() {
     }
   }
 
-  // ITEM_GROUP_SMART_SELECTION is for selected text that is not a link.
-  if (content_type_->SupportsGroup(
-          ContextMenuContentType::ITEM_GROUP_SMART_SELECTION) &&
-      !content_type_->SupportsGroup(ContextMenuContentType::ITEM_GROUP_PAGE)) {
-    if (!use_simplified_menu_for_text_selection) {
-      AppendReadAnythingItem();
-    }
-  }
-
   // Partial Translate is not supported on ChromeOS.
 #if !BUILDFLAG(IS_CHROMEOS)
   if (content_type_->SupportsGroup(
@@ -1352,14 +1321,6 @@ void RenderViewContextMenu::InitMenu() {
   // it to visibly jump on the screen (see b/173569669).
   AppendReadWriteCardItems();
 
-  if (features::IsReadAnythingMenuShuffleExperimentEnabled() &&
-      features::GetReadAnythingMenuShuffleExperimentGroup() ==
-          features::ReadAnythingMenuShuffleExperimentGroup::kPlaceAtBottom &&
-      content_type_->SupportsGroup(ContextMenuContentType::ITEM_GROUP_PAGE)) {
-    if (!use_simplified_menu_for_text_selection) {
-      AppendReadAnythingItem();
-    }
-  }
 }
 
 Profile* RenderViewContextMenu::GetProfile() const {
@@ -2069,9 +2030,6 @@ void RenderViewContextMenu::AppendPageItems() {
       AppendSaveToMemoryBanksItem();
     }
 
-    // Open in reading mode & Listen to this page
-    AppendReadAnythingItem();
-
     // Cast
     AppendMediaRouterItem();
 
@@ -2089,8 +2047,6 @@ void RenderViewContextMenu::AppendPageItems() {
     return;
   }
 
-  const bool use_simplified_text_selection = ShouldUseSimplifiedTextSelection();
-
   menu_model_.AddItemWithStringId(IDC_BACK, IDS_CONTENT_CONTEXT_BACK);
   menu_model_.AddItemWithStringId(IDC_FORWARD, IDS_CONTENT_CONTEXT_FORWARD);
   menu_model_.AddItemWithStringId(IDC_RELOAD, IDS_CONTENT_CONTEXT_RELOAD);
@@ -2104,42 +2060,12 @@ void RenderViewContextMenu::AppendPageItems() {
   AppendLiveCaptionItem();
   AppendMediaRouterItem();
 
-  if (features::IsReadAnythingMenuShuffleExperimentEnabled()) {
-    // This will be set to false in AppendRegionSearchItem() if it is called.
-    const auto experiment_group =
-        features::GetReadAnythingMenuShuffleExperimentGroup();
-
+  if (!features::IsMenuSimplificationEnabled()) {
     if (IsRegionSearchEnabled()) {
       AppendRegionSearchItem();
     }
     if (glic_below_search) {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
-    }
-
-    if (experiment_group ==
-        features::ReadAnythingMenuShuffleExperimentGroup::kDefault) {
-      if (!use_simplified_text_selection) {
-        AppendReadAnythingItem();
-      }
-    } else if (experiment_group ==
-               features::ReadAnythingMenuShuffleExperimentGroup::
-                   kPlaceWithSeparation) {
-      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
-      if (!use_simplified_text_selection) {
-        AppendReadAnythingItem();
-      }
-    }
-  } else {  // No ReadAnythingMenuShuffleExperiment -- keep default code.
-    if (!features::IsMenuSimplificationEnabled()) {
-      if (IsRegionSearchEnabled()) {
-        AppendRegionSearchItem();
-      }
-      if (glic_below_search) {
-        MaybeAppendOpenGlicItem(/*add_separator=*/false);
-      }
-    }
-    if (!use_simplified_text_selection) {
-      AppendReadAnythingItem();
     }
   }
 
@@ -2264,40 +2190,6 @@ void RenderViewContextMenu::AppendTranslateItem() {
 }
 
 void RenderViewContextMenu::AppendMediaRouterItem() {}
-
-void RenderViewContextMenu::AppendReadAnythingItem() {
-  const bool is_menu_simplification_enabled =
-      features::IsMenuSimplificationEnabled();
-  if (is_menu_simplification_enabled && params_.is_editable) {
-    return;
-  }
-
-  // Show Read Anything option if it's not already open in the side panel.
-  if (IsNormalBrowser() && !IsReadAnythingEntryShowing(GetBrowser())) {
-    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE,
-                                    IDS_CONTENT_CONTEXT_READING_MODE);
-
-    if (is_menu_simplification_enabled) {
-      menu_model_.SetIconForCommandId(
-          IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE,
-          ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
-                                             ? kMenuBookIcon
-                                             : kMenuBookChromeRefreshOldIcon,
-                                         ui::kColorMenuIcon, kTabMenuIconSize));
-    }
-
-    if (features::IsReadAnythingImprovedUiEnabled()) {
-      menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE,
-                                      IDS_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE);
-      if (is_menu_simplification_enabled) {
-        menu_model_.SetIconForCommandId(
-            IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE,
-            ui::ImageModel::FromVectorIcon(kPlayCircleIcon, ui::kColorMenuIcon,
-                                           kTabMenuIconSize));
-      }
-    }
-  }
-}
 
 void RenderViewContextMenu::AppendSaveToMemoryBanksItem() {
   // Memory banks (context hub) have been removed.
@@ -2502,11 +2394,6 @@ void RenderViewContextMenu::AppendOtherEditableItems() {
     } else if (CanTranslate(/*menu_logging=*/false)) {
       AppendTranslateItem();
     }
-  }
-
-  if (!menu_model_.GetIndexOfCommandId(IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE)
-           .has_value()) {
-    AppendReadAnythingItem();
   }
 
   menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
@@ -2890,10 +2777,6 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     case IDC_ROUTE_MEDIA:
       return IsRouteMediaEnabled();
 
-    case IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE:
-    case IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE:
-      return navigation_allowed;
-
     case IDC_CONTENT_CONTEXT_RELOAD_GLIC:
     case IDC_CONTENT_CONTEXT_ARCHIVE_GLIC:
     case IDC_CONTENT_CONTEXT_GLIC:
@@ -3154,14 +3037,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 
     case IDC_CONTENT_CONTEXT_SEARCHLENSFORIMAGE:
       ExecSearchLensForImage(event_flags);
-      break;
-
-    case IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE:
-      ExecOpenInReadAnything();
-      break;
-
-    case IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE:
-      ExecListenToThisPage();
       break;
 
     case IDC_CONTENT_CONTEXT_SAVE_TO_MEMORY_BANKS:
@@ -3800,18 +3675,6 @@ void RenderViewContextMenu::ExecProtocolHandler(int event_flags,
           ui::PAGE_TRANSITION_LINK);
 }
 
-void RenderViewContextMenu::ExecOpenInReadAnything() {
-  read_anything::ReadAnythingEntryPointController::ShowUI(
-      GetBrowser(),
-      read_anything::mojom::ReadAnythingOpenTrigger::kReadAnythingContextMenu);
-}
-
-void RenderViewContextMenu::ExecListenToThisPage() {
-  read_anything::ReadAnythingEntryPointController::ShowUI(
-      GetBrowser(), read_anything::mojom::ReadAnythingOpenTrigger::
-                        kListenToThisPageContextMenu);
-}
-
 void RenderViewContextMenu::ExecSaveToMemoryBanks() {
 }
 
@@ -4270,22 +4133,6 @@ void RenderViewContextMenu::OpenTextQueryInLens() {
 
 content::WebContents* RenderViewContextMenu::GetWebContentsForDataControls()
     const {
-  if (auto* glue =
-          ReadAnythingControllerGlue::FromWebContents(source_web_contents_)) {
-    if (glue->controller() && glue->controller()->tab()) {
-      if (auto* contents = glue->controller()->tab()->GetContents()) {
-        return contents;
-      }
-    }
-  }
-  if (auto* glue = ReadAnythingSidePanelControllerGlue::FromWebContents(
-          source_web_contents_)) {
-    if (glue->controller() && glue->controller()->tab()) {
-      if (auto* contents = glue->controller()->tab()->GetContents()) {
-        return contents;
-      }
-    }
-  }
   return source_web_contents_;
 }
 
@@ -4474,7 +4321,6 @@ void RenderViewContextMenu::AppendRevisedTextSelectionSection() {
     if (glic_below_search) {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
     }
-    AppendReadAnythingItem();
     AppendSaveToMemoryBanksItem();
 
     if (CanPartiallyTranslateTargetLanguage()) {

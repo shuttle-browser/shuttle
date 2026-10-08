@@ -458,15 +458,6 @@ void SettingsUI::BindInterface(
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
-void SettingsUI::BindInterface(
-    mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-        pending_receiver) {
-  if (help_bubble_handler_factory_receiver_.is_bound()) {
-    help_bubble_handler_factory_receiver_.reset();
-  }
-  help_bubble_handler_factory_receiver_.Bind(std::move(pending_receiver));
-}
-
 void SettingsUI::AddSettingsPageUIHandler(
     std::unique_ptr<content::WebUIMessageHandler> handler) {
   DCHECK(handler);
@@ -485,15 +476,6 @@ void SettingsUI::CreateThemeColorPickerHandler(
 }
 
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-void SettingsUI::CreateHelpBubbleHandler(
-    mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,
-    mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler) {
-  help_bubble_handler_ = std::make_unique<user_education::HelpBubbleHandler>(
-      std::move(handler), std::move(client),
-      ui::TrackedElementHandlerDocumentSingleton::GetOrCreate(
-          web_ui()->GetRenderFrameHost()));
-}
 
 void SettingsUI::CreateCustomizeColorSchemeModeHandler(
     mojo::PendingRemote<

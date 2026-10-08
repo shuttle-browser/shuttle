@@ -32,7 +32,6 @@ grit_strings("components_strings") {
     "../bookmark_component_strings.grdp",
     "../browsing_data_strings.grdp",
     "../collaboration_strings.grdp",
-    "../commerce_strings.grdp",
     "../components_settings_strings.grdp",
     "../contextual_cueing_strings.grdp",
     "../contextual_tasks_strings.grdp",
@@ -70,7 +69,6 @@ grit_strings("components_strings") {
     "../supervised_user_strings.grdp",
     "../tab_groups_strings.grdp",
     "../tab_resume_strings.grdp",
-    "../user_education_strings.grdp",
     "../version_ui_strings.grdp",
   ]
   inputs +=

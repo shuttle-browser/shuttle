@@ -286,18 +286,6 @@
     <message name="IDS_SETTINGS_SHOW_HOVER_CARD_MEMORY_USAGE_STANDALONE" desc="Label for the toggle which enables or disables showing tabs' memory usage in tab hovercards. This longer string is shown when then toggle is in it's own row without a title to indicate the setting is to do with tab hovercards.">
       Show memory usage on tab hover preview card
     </message>
-    <message name="IDS_SETTINGS_SIDE_PANEL_POSITION" desc="Title for the side panel section. Allows the user to toggle which side the side panel is displayed on.">
-      Side panel position
-    </message>
-    <message name="IDS_SETTINGS_SIDE_PANEL_ALIGNMENT_CONTEXTUAL_TASKS" desc="Label for configuring Google Search AI Mode side panel alignment.">
-      Google Search AI Mode
-    </message>
-    <message name="IDS_SETTINGS_SIDE_PANEL_ALIGNMENT_CHROME_PANELS" desc="Label for the default Chrome Panels alignment setting.">
-      Chrome Panels
-    </message>
-    <message name="IDS_SETTINGS_SIDE_PANEL_ALIGNMENT_A11Y_LABEL" is_accessibility_with_no_ui="true" desc="Accessible label for side panel alignment dropdown menus, combining the side panel item name and the side panel position category name for screen readers.">
-      <ph name="ITEM_NAME">$1<ex>Google Search AI Mode</ex></ph> <ph name="CATEGORY_NAME">$2<ex>Side panel position</ex></ph>
-    </message>
     <message name="IDS_SETTINGS_UI_FEATURE_ALIGN_LEFT" desc="Label for the button that configures a feature to appear on the left side of the browser. Translate this verbatim, do not localize for RTL languages.">
       Left
     </message>

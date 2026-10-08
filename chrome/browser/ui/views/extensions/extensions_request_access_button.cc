@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/extensions/extensions_toolbar_view_model.h"
 #include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/extensions/extensions_container_views.h"
 #include "chrome/browser/ui/views/extensions/extensions_request_access_hover_card_coordinator.h"
 #include "chrome/browser/ui/views/extensions/extensions_toolbar_button.h"
@@ -27,7 +26,6 @@
 #include "chrome/browser/ui/views/permissions/chip/permission_chip_constants.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_chip_button.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -208,10 +206,6 @@ void ExtensionsRequestAccessButton::OnButtonPressed(const ui::Event& event) {
           event, /*allow_key_events=*/false)) {
     return;
   }
-  // Record IPH usage.
-  BrowserUserEducationInterface::From(browser_)->NotifyFeaturePromoFeatureUsed(
-      feature_engagement::kIPHExtensionsRequestAccessButtonFeature,
-      FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
   content::WebContents* web_contents = GetActiveWebContents();
   extensions::ExtensionActionRunner* action_runner =
       extensions::ExtensionActionRunner::GetForWebContents(web_contents);

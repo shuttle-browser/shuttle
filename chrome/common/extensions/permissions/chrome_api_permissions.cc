@@ -44,8 +44,6 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
     {APIPermissionID::kExperimental, "experimental",
      APIPermissionInfo::kFlagCannotBeOptional},
     {APIPermissionID::kExperimentalActor, "experimentalActor"},
-    {APIPermissionID::kGcm, "gcm",
-     APIPermissionInfo::kFlagDoesNotRequireManagedSessionFullLoginWarning},
     {APIPermissionID::kGeolocation, "geolocation",
      APIPermissionInfo::kFlagCannotBeOptional |
          APIPermissionInfo::kFlagRequiresManagementUIWarning},
@@ -110,7 +108,6 @@ constexpr APIPermissionInfo::InitInfo permissions_to_register[] = {
     {APIPermissionID::kSearch, "search",
      APIPermissionInfo::kFlagDoesNotRequireManagedSessionFullLoginWarning},
     {APIPermissionID::kSessions, "sessions"},
-    {APIPermissionID::kSidePanel, "sidePanel"},
     {APIPermissionID::kTab, "tabs",
      APIPermissionInfo::kFlagRequiresManagementUIWarning},
     {APIPermissionID::kTabGroups, "tabGroups",

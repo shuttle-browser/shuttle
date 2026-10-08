@@ -89,9 +89,6 @@ class HistoryClustersHandler : public mojom::PageHandler,
 
   const std::string& last_query_issued() const { return last_query_issued_; }
 
-  void SetSidePanelUIEmbedder(
-      base::WeakPtr<TopChromeWebUIController::Embedder> side_panel_embedder);
-
   using ContextInterface = std::variant<raw_ptr<BrowserWindowInterface>,
                                         raw_ptr<tabs::TabInterface>>;
   void SetContextInterface(ContextInterface interface);
@@ -103,7 +100,6 @@ class HistoryClustersHandler : public mojom::PageHandler,
   void OpenHistoryUrl(const GURL& url,
                       ui::mojom::ClickModifiersPtr click_modifiers) override;
 
-  void ShowSidePanelUI() override;
   void ToggleVisibility(bool visible,
                         ToggleVisibilityCallback callback) override;
   void StartQueryClusters(const std::string& query,
@@ -142,11 +138,6 @@ class HistoryClustersHandler : public mojom::PageHandler,
   void HistoryDeleted() override;
   Profile* GetProfile() override;
 
-  std::unique_ptr<ui::SimpleMenuModel>
-  CreateHistoryClustersSidePanelContextMenuForTesting(
-      ContextInterface interface,
-      GURL url);
-
  private:
   // Common initialization code shared by constructors.
   void CommonInit();
@@ -158,9 +149,6 @@ class HistoryClustersHandler : public mojom::PageHandler,
                           bool is_continuation);
 
   void OnHideVisitsComplete();
-
-  base::WeakPtr<TopChromeWebUIController::Embedder>
-      history_clusters_side_panel_embedder_;
 
   raw_ptr<Profile> profile_;
   raw_ptr<content::WebContents> web_contents_;

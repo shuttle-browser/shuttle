@@ -635,7 +635,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser:chrome_browser_main",
     "//chrome/browser:font_pref",
     "//chrome/browser/accessibility",
-    "//chrome/browser/ai",
     "//chrome/browser/autocomplete",
     "//chrome/browser/background",
     "//chrome/browser/background_fetch",
@@ -656,9 +655,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/engagement",
     "//chrome/browser/enterprise/connectors/reporting",
     "//chrome/browser/favicon",
-    "//chrome/browser/feature_engagement",
     "//chrome/browser/file_system_access",
-    "//chrome/browser/finds",
     "//chrome/browser/first_party_sets",
     "//chrome/browser/heavy_ad_intervention",
     "//chrome/browser/hid",
@@ -763,7 +760,6 @@ source_set("profiles_extra_parts_impl") {
     }
   } else {
     deps += [
-      "//chrome/browser/accessibility/phrase_segmentation",
       "//chrome/browser/accessibility/tree_fixing:service",
       "//chrome/browser/device_api",
       "//chrome/browser/devtools",
@@ -772,13 +768,10 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/search",
       "//chrome/browser/themes",
       "//chrome/browser/ui/global_error",
-      "//chrome/browser/ui/read_anything",
-      "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/waap",
       "//chrome/browser/ui/webui:theme_colors_source_manager",
       "//chrome/browser/ui/webui:theme_source",
       "//chrome/browser/ui/webui/ntp:ntp_resource_cache",
-      "//chrome/browser/user_education",
     ]
   }
   if (!is_android && !is_chromeos) {

@@ -201,9 +201,6 @@ class DownloadToolbarUIController
   // Callback invoked when the partial view is closed.
   void OnPartialViewClosed();
 
-  // Helper function to show an IPH promo.
-  void ShowIphPromo();
-
   // Called to automatically close the partial view, if such closing has not
   // been deactivated.
   void AutoClosePartialView();

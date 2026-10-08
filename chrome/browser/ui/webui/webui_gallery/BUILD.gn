@@ -16,7 +16,6 @@ source_set("webui_gallery") {
   deps = [
     "//base",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/resources/side_panel/shared:resources",
     "//chrome/browser/resources/webui_gallery:resources",
     "//chrome/browser/ui/webui:favicon_source",
     "//chrome/browser/ui/webui:theme_source",

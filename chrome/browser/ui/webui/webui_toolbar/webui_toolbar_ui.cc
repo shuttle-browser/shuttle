@@ -52,7 +52,6 @@
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/user_education/webui/help_bubble_handler.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host.h"
@@ -321,13 +320,6 @@ void WebUIToolbarUI::BindInterface(
 }
 
 void WebUIToolbarUI::BindInterface(
-    mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-        receiver) {
-  help_bubble_service_.reset();
-  help_bubble_service_.Bind(std::move(receiver));
-}
-
-void WebUIToolbarUI::BindInterface(
     mojo::PendingReceiver<searchbox::mojom::PageHandlerFactory> receiver) {
   searchbox_page_factory_receiver_.reset();
   searchbox_page_factory_receiver_.Bind(std::move(receiver));
@@ -472,15 +464,6 @@ void WebUIToolbarUI::PopulateLocalResourceLoaderConfig(
   WebUIToolbarLayoutCssHelper::PopulateLocalResourceLoaderConfig(config);
 }
 
-void WebUIToolbarUI::CreateHelpBubbleHandler(
-    mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,
-    mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler) {
-  help_bubble_handler_ = std::make_unique<user_education::HelpBubbleHandler>(
-      std::move(handler), std::move(client),
-      ui::TrackedElementHandlerDocumentSingleton::GetOrCreate(
-          web_ui()->GetRenderFrameHost()));
-}
-
 void WebUIToolbarUI::CreatePageHandler(
     mojo::PendingRemote<searchbox::mojom::Page> page,
     mojo::PendingReceiver<searchbox::mojom::PageHandler> receiver) {
@@ -511,9 +494,6 @@ WebUIToolbarUI::GetKnownElementIdentifiers() {
        kSharedTabGroupFeedbackElementId,
        kToolbarAppMenuButtonElementId,
        kSharedTabGroupCommentsActionElementId,
-       kPinnedToolbarActionShowSidePanelLensOverlayResultsElementId,
-       kPinnedToolbarActionShowSidePanelBookmarksElementId,
-       kPinnedToolbarActionShowSidePanelContextualTasksElementId,
        kPinnedToolbarActionSendTabToSelfElementId,
        kToolbarAvatarButtonElementId,
        kToolbarPerformanceInterventionButtonElementId,

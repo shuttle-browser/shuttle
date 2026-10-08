@@ -16,10 +16,10 @@ import {getCss} from './app_menu_button.css.js';
 import {getHtml} from './app_menu_button.html.js';
 import {BrowserProxyImpl, INVALID_FOCUS_REQUEST_HANDLE} from './browser_proxy.js';
 import type {FocusRequestHandle} from './browser_proxy.js';
-import {BUTTON_LEFT, getClickSourceType, getContextMenuPosition, HelpBubbleAnchorMixin, setHasHelpBubble} from './toolbar_button.js';
+import {BUTTON_LEFT, getClickSourceType, getContextMenuPosition} from './toolbar_button.js';
 import type {ToolbarChipButtonElement} from './toolbar_chip_button.js';
 
-const AppMenuButtonElementBase = HelpBubbleAnchorMixin(CrLitElement);
+const AppMenuButtonElementBase = CrLitElement;
 
 export interface AppMenuButtonElement {
   $: {
@@ -65,20 +65,12 @@ export class AppMenuButtonElement extends AppMenuButtonElementBase {
   // Manage the lifecycle of the focus listener.
   override connectedCallback() {
     super.connectedCallback();
-    this.registerHelpBubble('kToolbarAppMenuButtonElementId', this.$.button, {
-      onHighlightChanged: (highlighted: boolean) => {
-        this.classList.toggle('anchor-highlight', highlighted);
-      },
-      onHelpBubbleShown: () => setHasHelpBubble(this, true),
-      onHelpBubbleHidden: () => setHasHelpBubble(this, false),
-    });
     this.focusRequestHandle_ = this.browserProxy_.addFocusRequestListener(
         this.onFocusRequest_.bind(this));
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.unregisterHelpBubble('kToolbarAppMenuButtonElementId');
     this.browserProxy_.removeFocusRequestListener(this.focusRequestHandle_);
   }
 
@@ -138,14 +130,11 @@ export class AppMenuButtonElement extends AppMenuButtonElementBase {
   }
 
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(this.state.tooltip);
+    return this.state.tooltip;
   }
 
   protected getHighlightClass_(): string {
     const classes = [];
-    if (this.hasHelpBubble) {
-      classes.push('help-anchor-highlight');
-    }
     if (this.state.severity !== AppMenuSeverity.kNone) {
       classes.push('has-severity');
     }

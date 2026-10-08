@@ -23,7 +23,6 @@
 #endif  // BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/ui/webui/extensions_zero_state_promo/zero_state_promo_ui.h"
 #endif
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
@@ -49,15 +48,6 @@ void PopulateChromeWebUIFrameBindersPartsFeatures(
       certificate_manager::mojom::CertificateManagerPageHandlerFactory,
       CertificateManagerUI>(map);
 #endif  // BUILDFLAG(CHROME_ROOT_STORE_CERT_MANAGEMENT_UI)
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  RegisterWebUIControllerInterfaceBinder<
-      zero_state_promo::mojom::PageHandlerFactory,
-      extensions::ZeroStatePromoController>(map);
-  RegisterWebUIControllerInterfaceBinder<
-      custom_help_bubble::mojom::CustomHelpBubbleHandlerFactory,
-      extensions::ZeroStatePromoController>(map);
-#endif
 
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
   RegisterWebUIControllerInterfaceBinder<

@@ -69,13 +69,11 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_types.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -1978,15 +1976,6 @@ void TabStripModel::UpdateSplitLayout(
     split_tabs::RecordSplitTabOrientationChanged(source.value());
   }
 
-  if (auto* const user_ed = BrowserUserEducationInterface::From(
-          delegate_->GetBrowserWindowInterface());
-      tabs::IsSplitViewHorizontalIndirectAccessEnabled() && user_ed &&
-      tab_layout == split_tabs::SplitTabLayout::kStacked) {
-    user_ed->NotifyFeaturePromoFeatureUsed(
-        feature_engagement::kIPHSplitViewHorizontalIndirectAccessFeature,
-        FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  }
-
   NotifySplitTabVisualsChanged(
       split_id, old_visual_data, *split_data->visual_data(),
       SplitTabChange::SplitVisualChangeReason::kLayoutUpdated);
@@ -2075,19 +2064,6 @@ split_tabs::SplitTabId TabStripModel::AddToNewSplit(
   AddToSplitImpl(split_id, indices, pivot_index, visual_data,
                  SplitTabChange::SplitTabAddReason::kNewSplitTabAdded);
   split_tabs::LogSplitViewCreatedUKM(this, split_id);
-
-  if (auto* const user_ed = BrowserUserEducationInterface::From(
-          delegate_->GetBrowserWindowInterface());
-      tabs::IsSplitViewHorizontalIndirectAccessEnabled() && user_ed) {
-    if (visual_data.split_layout() == split_tabs::SplitTabLayout::kStacked) {
-      user_ed->NotifyFeaturePromoFeatureUsed(
-          feature_engagement::kIPHSplitViewHorizontalIndirectAccessFeature,
-          FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-    } else {
-      user_ed->MaybeShowFeaturePromo(
-          feature_engagement::kIPHSplitViewHorizontalIndirectAccessFeature);
-    }
-  }
 
   return split_id;
 }
@@ -4063,20 +4039,6 @@ TabStripSelectionChange TabStripModel::SetSelection(
               view && view->HasSavedCompositorFrame(),
               resource_coordinator::ResourceCoordinatorTabHelper::IsFrozen(
                   selection.new_contents));
-        }
-      }
-
-      if (base::FeatureList::IsEnabled(media::kEnableTabMuting)) {
-        // Show the in-product help dialog pointing users to the tab mute button
-        // if the user backgrounds an audible tab.
-        if (selection.old_contents &&
-            selection.old_contents->IsCurrentlyAudible()) {
-          if (auto* const user_ed =
-                  BrowserUserEducationInterface::MaybeGetForWebContentsInTab(
-                      selection.old_contents)) {
-            user_ed->MaybeShowFeaturePromo(
-                feature_engagement::kIPHTabAudioMutingFeature);
-          }
         }
       }
     }

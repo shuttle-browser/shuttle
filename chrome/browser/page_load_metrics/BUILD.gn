@@ -171,7 +171,6 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser/performance_manager/public/user_tuning",
-      "//chrome/browser/ui/read_anything",
       "//chrome/browser/ui/waap",
       "//chrome/browser/ui/waap:waap_utils",
       "//chrome/browser/ui/waap:window_metrics_manager",

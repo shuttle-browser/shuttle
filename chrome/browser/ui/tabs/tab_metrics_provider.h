@@ -45,12 +45,6 @@ class TabMetricsProvider : public metrics::MetricsProvider,
   void OnProfileAdded(Profile* profile) override;
 
  private:
-  // Logs whether the tabstrip is in vertical or horizontal mode whenever a user
-  // education session starts.
-  void OnUserEducationSessionStart(Profile* profile);
-
-  std::vector<base::CallbackListSubscription> session_start_subscriptions_;
-
   const raw_ptr<ProfileManager> profile_manager_;
 };
 

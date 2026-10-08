@@ -25,19 +25,16 @@
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/contents_container_view.h"
 #include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/frame/layout/browser_view_layout_params.h"
-#include "chrome/browser/ui/views/frame/shadow_overlay_view.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
 #include "chrome/common/buildflags.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/infobars/core/infobar_container.h"
-#include "components/user_education/common/feature_promo/feature_promo_handle.h"
 #include "components/viz/common/frame_timing_details.h"
 #include "content/public/browser/desktop_capture_pip_utils.h"
 #include "content/public/browser/page_user_data.h"
@@ -78,8 +75,6 @@ class LocationBarView;
 class MultiContentsView;
 class OrganizerPanelView;
 class ScrimView;
-class SidePanel;
-class SidePanelAnimationContentView;
 class TabDragTarget;
 class TabStrip;
 class TabStripRegionView;
@@ -190,15 +185,6 @@ class BrowserView : public BrowserWindow,
   // frame area.
   ClientFrameElementInfo GetFrameElementInfo() const;
 
-  // Adds provided |content| as a child of BrowserView so that layout can be
-  // handled by BrowserViewLayout. Used when opening the side panel using
-  // SidePanelUI::ShowFrom which animates the side panel content from provided
-  // bounds.
-  SidePanelAnimationContentView* SetSidePanelAnimationContent(
-      std::unique_ptr<SidePanelAnimationContentView> content);
-  // Returns side panel content if it is currently parented to the BrowserView.
-  SidePanelAnimationContentView* GetSidePanelAnimationContent();
-
   // Returns all the ContentsContainerViews that belong to this browser.
   std::vector<raw_ptr<ContentsContainerView, DanglingUntriaged>>
   GetContentsContainerViews();
@@ -243,10 +229,6 @@ class BrowserView : public BrowserWindow,
 
   // Container for multiple contents container views.
   views::View* contents_container();
-
-  views::View* main_shadow_overlay() { return main_shadow_overlay_; }
-
-  SidePanel* side_panel() { return side_panel_; }
 
   MultiContentsView* multi_contents_view() { return multi_contents_view_; }
 
@@ -880,10 +862,6 @@ class BrowserView : public BrowserWindow,
   // Called when ui::TouchUiController changes the current touch mode.
   void TouchModeChanged();
 
-  // Attempts to show in-product help for the reading list as moved into the
-  // side panel. Should be called when the IPH backend is initialized or
-  // whenever the touch mode changes.
-
   // Called each time the browser window is shown.
   void OnWindowDidShow();
 
@@ -954,17 +932,9 @@ class BrowserView : public BrowserWindow,
   // |  | ContentsContainerView (web contents, devtools, overlay, borders) |  |
   // |  -------------------------------------------------------------------|  |
   // |------------------------------------------------------------------------|
-  // |------------------------------------------------------------------------|
-  // | SidePanel (side_panel_)                                                |
-  // |------------------------------------------------------------------------|
 
-  // The view that draws the background the main_container and
-  // side_panel are displayed on.
+  // The view that draws the background the main_container is displayed on.
   raw_ptr<views::View> main_background_region_ = nullptr;
-
-  // The view that contains the primary UI (Toolbar, BookmarksBar, InfoBar,
-  // WebContents, and Side panel).
-  raw_ptr<ShadowOverlayView> main_shadow_overlay_ = nullptr;
 
   // The view that manages the tab strip, toolbar, and sometimes the bookmark
   // bar. Stacked top in the view hiearachy so it can be used to slide out
@@ -1047,19 +1017,12 @@ class BrowserView : public BrowserWindow,
   // The view responsible for housing the contents of the organizer panel.
   raw_ptr<OrganizerPanelView> organizer_panel_container_ = nullptr;
 
-  // Side panel that extends to the height of the page content or toolbar,
-  // aligned to the left or the right side of the browser window depending on
-  // the kSidePanelHorizontalAlignment pref's value. Conceptually this member
-  // should exist if and only if the side_panel_coordinator is created.
-  raw_ptr<SidePanel> side_panel_ = nullptr;
-
 
   // The scrim view that covers the browser window when a window-modal dialog is
   // showing.
   // This is currently not used on macOS where the platform draws a native
   // scrim for window modals (NSWindow sheet).
   raw_ptr<ScrimView> window_scrim_view_ = nullptr;
-  raw_ptr<ScrimView> side_panel_content_transition_scrim_view_ = nullptr;
 
   // Anchor point for help bubbles and other dialogs that want to reliably
   // anchor outside the content area of the window.

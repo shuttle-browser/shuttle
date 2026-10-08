@@ -35,8 +35,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
-#include "chrome/browser/ai/ai_data_keyed_service.h"          // nogncheck
-#include "chrome/browser/ai/ai_data_keyed_service_factory.h"  // nogncheck
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/content_settings/sound_content_setting_observer.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
@@ -87,7 +85,6 @@
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/sad_tab.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/status_bubble.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
@@ -706,21 +703,6 @@ void Browser::OnTabDeactivated(WebContents* contents) {
 void Browser::OnActiveTabChanged(const TabStripModelChange& change,
                                  const TabStripSelectionChange& selection) {
   TRACE_EVENT0("ui", "Browser::OnActiveTabChanged");
-
-  // The side panel state needs to be updated on active tab changed
-  // even if the tab strip is empty.
-  if (change.type() != TabStripModelChange::kReplaced &&
-      !tab_strip_model_->closing_all()) {
-    SidePanelUI* side_panel_ui = GetFeatures().side_panel_ui();
-    if (side_panel_ui) {
-      side_panel_ui->OnActiveTabChanged(
-          selection.old_contents, selection.new_contents,
-          /*tab_removed_for_deletion=*/
-          (change.type() == TabStripModelChange::kRemoved) &&
-              (TabRemoveReasonUtils::WillDeleteTab(
-                  change.GetRemove()->contents[0].remove_reason)));
-    }
-  }
 
   if (tab_strip_model_->empty()) {
     return;

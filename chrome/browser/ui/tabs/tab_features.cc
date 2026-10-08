@@ -39,15 +39,12 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/context_highlight/context_highlight_tab_feature.h"
-#include "chrome/browser/ui/extensions/extension_side_panel_manager.h"
 #include "chrome/browser/ui/focus_tab_after_navigation_helper.h"
 #include "chrome/browser/ui/page_action/action_ids.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/page_action/page_action_properties_provider.h"
-#include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/sad_tab_helper.h"
-#include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/back_to_opener/back_to_opener_controller.h"
@@ -66,13 +63,10 @@
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_page_action_controller.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
-#include "chrome/browser/ui/webui_browser/webui_browser.h"
 #include "components/enterprise/browser/reporting/reporting_features.h"
 #include "components/multistep_filter/core/features.h"
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/metrics/oom/commit_limit_oom_recovery_tracker.h"
-#include "chrome/browser/ui/search_promotion/search_promotion_navigation_observer.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #endif
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_attachment_tracker.h"
@@ -103,11 +97,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
       tab.RegisterWillDiscardContents(base::BindRepeating(
           &TabFeatures::WillDiscardContents, weak_factory_.GetWeakPtr())));
   tab_subscriptions_.push_back(webui::InitEmbeddingContext(&tab));
-
-  // TODO(crbug.com/346148554): Do not create a SidePanelRegistry or
-  // dependencies for non-normal browsers.
-  side_panel_registry_ =
-      GetUserDataFactory().CreateInstance<SidePanelRegistry>(tab, &tab);
 
   // This block instantiate the page action controllers. They do not require any
   // pre-condition. Because some feature need them during their instantiation,
@@ -175,20 +164,10 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         GetUserDataFactory().CreateInstance<actor::ActorTabData>(tab, &tab);
   }
 
-  extension_side_panel_manager_ =
-      std::make_unique<extensions::ExtensionSidePanelManager>(
-          profile, &tab, side_panel_registry_.get());
-
   tab_dialog_manager_ = std::make_unique<TabDialogManager>(&tab);
 
   data_protection_tab_controller_ = std::make_unique<
       enterprise_data_protection::DataProtectionNavigationController>(&tab);
-
-  // Create the ReadAnythingController first to ensure it exists before
-  // any potential consumers, like the side panel controller.
-  read_anything_controller_ =
-      GetUserDataFactory().CreateInstance<ReadAnythingController>(
-          tab, &tab, side_panel_registry_.get());
 
   // Create the HttpAuthCacheStatus to start observing resource load
   // completions.
@@ -221,10 +200,8 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
             tab, tab, tab.GetContents());
   }
 
-  if (!webui_browser::IsWebUIBrowserEnabled()) {
-    sad_tab_helper_ = GetUserDataFactory().CreateInstance<SadTabHelper>(
-        tab, tab, tab.GetContents());
-  }
+  sad_tab_helper_ = GetUserDataFactory().CreateInstance<SadTabHelper>(
+      tab, tab, tab.GetContents());
 
   from_gws_navigation_and_keep_alive_request_observer_ =
       FromGWSNavigationAndKeepAliveRequestObserver::MaybeCreate(
@@ -249,12 +226,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 #endif
 
 #if BUILDFLAG(IS_WIN)
-  if (base::FeatureList::IsEnabled(
-          feature_engagement::kIPHSearchPromotionFeature)) {
-    search_promotion_navigation_observer_ =
-        GetUserDataFactory().CreateInstance<SearchPromotionNavigationObserver>(
-            tab, tab);
-  }
   commit_limit_oom_recovery_tracker_ =
       GetUserDataFactory().CreateInstance<CommitLimitOOMRecoveryTracker>(tab,
                                                                          tab);
@@ -320,11 +291,6 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
                                       content::WebContents* old_contents,
                                       content::WebContents* new_contents) {
   DCHECK_EQ(old_contents, tab->GetContents());
-
-  // Deregister side-panel entries that are web-contents scoped rather than tab
-  // scoped.
-  side_panel_registry_->Deregister(
-      SidePanelEntry::Key(SidePanelEntry::Id::kAboutThisSite));
 
   focus_tab_after_navigation_helper_ =
       std::make_unique<FocusTabAfterNavigationHelper>(new_contents);

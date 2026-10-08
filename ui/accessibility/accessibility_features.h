@@ -294,11 +294,6 @@ AX_BASE_EXPORT BASE_DECLARE_FEATURE(
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityAndroidMath);
 AX_BASE_EXPORT bool IsAccessibilityAndroidMathEnabled();
 
-// Controls the new native C++ implementation for Read Aloud on Android,
-// replacing the previous Speakr service integration.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAloudNative);
-AX_BASE_EXPORT bool IsReadAloudNativeEnabled();
-
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -312,87 +307,9 @@ AX_BASE_EXPORT bool IsAXTreeFixingEnabled();
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kMainNodeAnnotations);
 AX_BASE_EXPORT bool IsMainNodeAnnotationsEnabled();
 
-// Enable Improved Read Aloud.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kImprovedReadAloud);
-AX_BASE_EXPORT bool IsImprovedReadAloudEnabled();
-
 // Enable heuristic enhancements for PDF accessibility.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kPdfAccessibilityHeuristicEnhancements);
 AX_BASE_EXPORT bool IsPdfAccessibilityHeuristicEnhancementsEnabled();
-
-enum class ReadAnythingMenuShuffleExperimentGroup {
-  kDefault,              // Leaves in default position
-  kPlaceWithSeparation,  // Adds a UI separator from previous element.
-  kPlaceAtBottom         // Places at bottom of context menu.
-};
-
-// Current usage of ReadAnything corresponds to fairly short sessions on
-// sites that are not naturally readable sites. We want to research whether
-// people are entering reading mode by accident. Given the proximity to
-// the Lens feature (and similar usage) in the context menu. We want to test
-// the hypothesis of whether or not people are clicking on the ReadAnything
-// menu item by mistake (targeting instead Lens).
-// The parameters allow us to see the effects if we separate Lens and
-// ReadAnything and if we take a more extreme position of sending ReadAnything
-// to the bottom.
-AX_BASE_EXPORT ReadAnythingMenuShuffleExperimentGroup
-GetReadAnythingMenuShuffleExperimentGroup();
-
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingMenuShuffleExperiment);
-AX_BASE_EXPORT bool IsReadAnythingMenuShuffleExperimentEnabled();
-
-// Enable the select text feature for Read Anything Readability.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingReadabilitySelectText);
-AX_BASE_EXPORT bool IsReadAnythingReadabilitySelectTextEnabled();
-
-// Enable the experimental playback UI for Read Anything Read Aloud.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kReadAnythingReadAloudExperimentalPlaybackUi);
-AX_BASE_EXPORT bool IsReadAnythingReadAloudExperimentalPlaybackUiEnabled();
-
-// Enable phrase highlighting in Read Anything Read Aloud.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingReadAloudPhraseHighlighting);
-AX_BASE_EXPORT bool IsReadAnythingReadAloudPhraseHighlightingEnabled();
-
-// Enable the omnibox entrypoint for Read Anything.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingOmniboxChip);
-AX_BASE_EXPORT bool IsReadAnythingOmniboxChipEnabled();
-
-// Enable the translate entrypoint for Read Anything.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingTranslateEntryPoint);
-AX_BASE_EXPORT bool IsReadAnythingTranslateEntryPointEnabled();
-
-// Enable improved UI layouts and controls in Read Anything.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingImprovedUi);
-AX_BASE_EXPORT bool IsReadAnythingImprovedUiEnabled();
-
-// Enable the line focus feature for Read Anything.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingLineFocus);
-AX_BASE_EXPORT bool IsReadAnythingLineFocusEnabled();
-
-// Enable HaTS survey for Reading Mode.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kHatsReadingModeSurvey);
-AX_BASE_EXPORT bool IsHatsReadingModeSurveyEnabled();
-
-AX_BASE_EXPORT bool IsReadAnythingDocsIntegrationEnabled();
-
-// Enable "load more" button to show at the end of Reading Mode panel.
-// Should be disabled by default.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingDocsLoadMoreButton);
-AX_BASE_EXPORT bool IsReadAnythingDocsLoadMoreButtonEnabled();
-
-// Enable ReadabilityJS as the distillation source for Reading Mode.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingWithReadability);
-AX_BASE_EXPORT bool IsReadAnythingWithReadabilityEnabled();
-
-// Enable distillation quality evaluation for Reading Mode.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingDistillationQualityEvaluation);
-AX_BASE_EXPORT bool IsReadAnythingDistillationQualityEvaluationEnabled();
-
-// Enables unifying distillation triggers to the renderer and decoupling
-// distillation logic.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingDistillerRefactor);
-AX_BASE_EXPORT bool IsReadAnythingDistillerRefactorEnabled();
 
 // ScreenAI library's Main Content Extraction service is enabled.
 AX_BASE_EXPORT bool IsScreenAIMainContentExtractionEnabled();

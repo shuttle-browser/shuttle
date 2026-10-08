@@ -44,7 +44,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar_controller_util.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/webui_content_setting_image_control.h"
@@ -67,7 +66,6 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/ukm/content/source_url_recorder.h"
-#include "components/user_education/common/user_education_class_properties.h"
 #include "components/viz/common/features.h"
 #include "components/zoom/zoom_controller.h"
 #include "content/public/browser/browser_accessibility_state.h"
@@ -616,42 +614,19 @@ void WebUIToolbarWebView::HandleContextMenu(
         kPinnedActionShowPaymentsBubbleOrPage:
     case toolbar_ui_api::mojom::ContextMenuType::
         kPinnedActionShowAddressesBubbleOrPage:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowBookmarks:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowReadingList:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowHistoryCluster:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionShowDownloads:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionClearBrowsingData:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionPrint:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowLensOverlayResults:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionShowTranslate:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionQrCodeGenerator:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionRouteMedia:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowReadAnything:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionCopyUrl:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionSendTabToSelf:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionTaskManager:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionDevTools:
     case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionTabSearch:
     case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowContextualTasks:
-    case toolbar_ui_api::mojom::ContextMenuType::kPinnedActionSidePanelShowLens:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowAboutThisSite:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowCustomizeChrome:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowShoppingInsights:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowMerchantTrust:
-    case toolbar_ui_api::mojom::ContextMenuType::
         kPinnedActionSendSharedTabGroupFeedback:
-    case toolbar_ui_api::mojom::ContextMenuType::
-        kPinnedActionSidePanelShowComments:
       pinned_toolbar_actions_.HandleContextMenu(menu_type, screen_rect, source);
       break;
     case toolbar_ui_api::mojom::ContextMenuType::kAppMenu:

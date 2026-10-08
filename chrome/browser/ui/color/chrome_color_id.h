@@ -193,20 +193,12 @@
   E_CPONLY(kColorFeatureFirstRunInfoContainerBackground) \
   E_CPONLY(kColorFeatureFirstRunIconColor) \
   /* Feature Promo bubble colors. */ \
-  E_CPONLY(kColorFeaturePromoBubbleBackground) \
-  E_CPONLY(kColorFeaturePromoBubbleButtonBorder) \
-  E_CPONLY(kColorFeaturePromoBubbleCloseButtonInkDrop) \
-  E_CPONLY(kColorFeaturePromoBubbleDefaultButtonBackground) \
-  E_CPONLY(kColorFeaturePromoBubbleDefaultButtonForeground) \
-  E_CPONLY(kColorFeaturePromoBubbleForeground) \
   /* Feature Showcase colors. */ \
   E_CPONLY(kColorFeatureShowcaseStepperCheck) \
   E_CPONLY(kColorFeatureShowcaseStepperDot) \
   E_CPONLY(kColorFeatureShowcaseThemePickerWrapperBackground) \
   E_CPONLY(kColorFeatureShowcaseThemePickerBackground) \
   E_CPONLY(kColorFeatureShowcaseThemeColorBorder) \
-  E_CPONLY(kColorFeatureLensPromoBubbleBackground) \
-  E_CPONLY(kColorFeatureLensPromoBubbleForeground) \
   /* Find bar colors. */ \
   E_CPONLY(kColorFindBarBackground) \
   E_CPONLY(kColorFindBarButtonIcon) \
@@ -630,172 +622,6 @@
   E_CPONLY(kColorQuickAnswersReportQueryButtonBackground) \
   E_CPONLY(kColorQuickAnswersReportQueryButtonForeground) \
     /* Read Anything colors. */ \
-  E_CPONLY(kColorReadAnythingBackground) \
-  E_CPONLY(kColorReadAnythingBackgroundBlue) \
-  E_CPONLY(kColorReadAnythingBackgroundDark) \
-  E_CPONLY(kColorReadAnythingBackgroundLight) \
-  E_CPONLY(kColorReadAnythingBackgroundYellow) \
-  E_CPONLY(kColorReadAnythingBackgroundHighContrast) \
-  E_CPONLY(kColorReadAnythingBackgroundLowContrastLight) \
-  E_CPONLY(kColorReadAnythingBackgroundLowContrastDark) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlight) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightBlue) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightDark) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightLight) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightYellow) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightHighContrast) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightLowContrastLight) \
-  E_CPONLY(kColorReadAnythingCurrentReadAloudHighlightLowContrastDark) \
-  E_CPONLY(kColorReadAnythingFocusRingBackground) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundBlue) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundDark) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundLight) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundYellow) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundHighContrast) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundLowContrastLight) \
-  E_CPONLY(kColorReadAnythingFocusRingBackgroundLowContrastDark) \
-  E_CPONLY(kColorReadAnythingForeground) \
-  E_CPONLY(kColorReadAnythingForegroundBlue) \
-  E_CPONLY(kColorReadAnythingForegroundDark) \
-  E_CPONLY(kColorReadAnythingForegroundLight) \
-  E_CPONLY(kColorReadAnythingForegroundYellow) \
-  E_CPONLY(kColorReadAnythingForegroundHighContrast) \
-  E_CPONLY(kColorReadAnythingForegroundLowContrastLight) \
-  E_CPONLY(kColorReadAnythingForegroundLowContrastDark) \
-  E_CPONLY(kColorReadAnythingLineFocus) \
-  E_CPONLY(kColorReadAnythingLineFocusBlue) \
-  E_CPONLY(kColorReadAnythingLineFocusDark) \
-  E_CPONLY(kColorReadAnythingLineFocusLight) \
-  E_CPONLY(kColorReadAnythingLineFocusYellow) \
-  E_CPONLY(kColorReadAnythingLineFocusHighContrast) \
-  E_CPONLY(kColorReadAnythingLineFocusScrim) \
-  E_CPONLY(kColorReadAnythingLineFocusLowContrastLight) \
-  E_CPONLY(kColorReadAnythingLineFocusLowContrastDark) \
-  E_CPONLY(kColorReadAnythingSeparator) \
-  E_CPONLY(kColorReadAnythingSeparatorBlue) \
-  E_CPONLY(kColorReadAnythingSeparatorDark) \
-  E_CPONLY(kColorReadAnythingSeparatorLight) \
-  E_CPONLY(kColorReadAnythingSeparatorYellow) \
-  E_CPONLY(kColorReadAnythingSeparatorHighContrast) \
-  E_CPONLY(kColorReadAnythingSeparatorLowContrastLight) \
-  E_CPONLY(kColorReadAnythingSeparatorLowContrastDark) \
-  E_CPONLY(kColorReadAnythingDropdownBackground) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundBlue) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundDark) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundLight) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundYellow) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundHighContrast) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundLowContrastLight) \
-  E_CPONLY(kColorReadAnythingDropdownBackgroundLowContrastDark) \
-  E_CPONLY(kColorReadAnythingDropdownSelected) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedBlue) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedDark) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedLight) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedYellow) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedHighContrast) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedLowContrastLight) \
-  E_CPONLY(kColorReadAnythingDropdownSelectedLowContrastDark) \
-  E_CPONLY(kColorReadAnythingTextSelection) \
-  E_CPONLY(kColorReadAnythingTextSelectionBlue) \
-  E_CPONLY(kColorReadAnythingTextSelectionDark) \
-  E_CPONLY(kColorReadAnythingTextSelectionLight) \
-  E_CPONLY(kColorReadAnythingTextSelectionYellow) \
-  E_CPONLY(kColorReadAnythingTextSelectionHighContrast) \
-  E_CPONLY(kColorReadAnythingTextSelectionLowContrastLight) \
-  E_CPONLY(kColorReadAnythingTextSelectionLowContrastDark) \
-  E_CPONLY(kColorReadAnythingLinkDefault) \
-  E_CPONLY(kColorReadAnythingLinkDefaultBlue) \
-  E_CPONLY(kColorReadAnythingLinkDefaultDark) \
-  E_CPONLY(kColorReadAnythingLinkDefaultLight) \
-  E_CPONLY(kColorReadAnythingLinkDefaultYellow) \
-  E_CPONLY(kColorReadAnythingLinkDefaultHighContrast) \
-  E_CPONLY(kColorReadAnythingLinkDefaultLowContrastLight) \
-  E_CPONLY(kColorReadAnythingLinkDefaultLowContrastDark) \
-  E_CPONLY(kColorReadAnythingLinkVisited) \
-  E_CPONLY(kColorReadAnythingLinkVisitedBlue) \
-  E_CPONLY(kColorReadAnythingLinkVisitedDark) \
-  E_CPONLY(kColorReadAnythingLinkVisitedLight) \
-  E_CPONLY(kColorReadAnythingLinkVisitedYellow) \
-  E_CPONLY(kColorReadAnythingLinkVisitedHighContrast) \
-  E_CPONLY(kColorReadAnythingLinkVisitedLowContrastLight) \
-  E_CPONLY(kColorReadAnythingLinkVisitedLowContrastDark) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlight) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightBlue) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightDark) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightLight) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightYellow) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightHighContrast) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightLowContrastLight) \
-  E_CPONLY(kColorReadAnythingPreviousReadAloudHighlightLowContrastDark) \
-  E_CPONLY(kColorReadAnythingAiPlaybackBackground) \
-  E_CPONLY(kColorReadAnythingAiPlaybackHoverBackground) \
-  E_CPONLY(kColorReadAnythingAiPlaybackIcon) \
-  E_CPONLY(kColorReadAnythingAiPlaybackActiveBackground) \
-  E_CPONLY(kColorReadAnythingAiPlaybackActiveIcon) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackground) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundBlue) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundDark) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundLight) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundYellow) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundHighContrast) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundLowContrastLight) \
-  E_CPONLY(kColorReadAnythingAudioPlayerBackgroundLowContrastDark) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIcon) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconBlue) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconDark) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconLight) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconYellow) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconHighContrast) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconLowContrastLight) \
-  E_CPONLY(kColorReadAnythingAudioPlayerIconLowContrastDark) \
-  E_CPONLY(kColorReadAnythingToolbarIcon) \
-  E_CPONLY(kColorReadAnythingToolbarIconBlue) \
-  E_CPONLY(kColorReadAnythingToolbarIconDark) \
-  E_CPONLY(kColorReadAnythingToolbarIconLight) \
-  E_CPONLY(kColorReadAnythingToolbarIconYellow) \
-  E_CPONLY(kColorReadAnythingToolbarIconHighContrast) \
-  E_CPONLY(kColorReadAnythingToolbarIconLowContrast) \
-  E_CPONLY(kColorReadAnythingToolbarIconLowContrastLight) \
-  E_CPONLY(kColorReadAnythingToolbarIconLowContrastDark) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackground) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundBlue) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundDark) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundLight) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundYellow) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundHighContrast) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundLowContrastLight) \
-  E_CPONLY(kColorReadAnythingToolbarIconHoverBackgroundLowContrastDark) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutline) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineBlue) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineDark) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineLight) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineYellow) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineHighContrast) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineLowContrastLight) \
-  E_CPONLY(kColorReadAnythingToolbarFocusOutlineLowContrastDark) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutline) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineBlue) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineDark) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineLight) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineYellow) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineHighContrast) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineLowContrastLight) \
-  E_CPONLY(kColorReadAnythingOnAudioPlayerFocusOutlineLowContrastDark) \
-  E_CPONLY(kColorReadAnythingAudioControlsIcon) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconBlue) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconDark) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconLight) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconYellow) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconHighContrast) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconLowContrastLight) \
-  E_CPONLY(kColorReadAnythingAudioControlsIconLowContrastDark) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarBlue) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarDark) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarLight) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarYellow) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarHighContrast) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarLowContrastLight) \
-  E_CPONLY(kColorReadAnythingFullPageScrollbarLowContrastDark) \
   /* Realbox colors. */ \
   E_CPONLY(kColorSearchboxAnswerIconBackground) \
   E_CPONLY(kColorSearchboxAnswerIconForeground) \
@@ -862,71 +688,7 @@
   E_CPONLY(kColorSharingRecentActivityDialogFaviconContainer) \
   E_CPONLY(kColorSharingRecentActivityDialogActivityContainer) \
   /* Side panel colors. */ \
-  E_CPONLY(kColorSidePanelSearchFieldBackground) \
-  E_CPONLY(kColorSidePanelBackground) \
-  E_CPONLY(kColorSidePanelBadgeBackground) \
-  E_CPONLY(kColorSidePanelBadgeBackgroundUpdated) \
-  E_CPONLY(kColorSidePanelBadgeForeground) \
-  E_CPONLY(kColorSidePanelBadgeForegroundUpdated) \
-  E_CPONLY(kColorSidePanelBookmarksSelectedFolderBackground) \
-  E_CPONLY(kColorSidePanelBookmarksSelectedFolderForeground) \
-  E_CPONLY(kColorSidePanelBookmarksSelectedFolderIcon) \
-  E_CPONLY(kColorSidePanelBookmarksActiveFolderForeground) \
-  E_CPONLY(kColorSidePanelBookmarksActiveFolderBackground) \
-  E_CPONLY(kColorSidePanelCardBackground) \
-  E_CPONLY(kColorSidePanelCardPrimaryForeground) \
-  E_CPONLY(kColorSidePanelCardSecondaryForeground) \
-  E_CPONLY(kColorSidePanelCommerceGraphAxis) \
-  E_CPONLY(kColorSidePanelCommerceGraphBubbleBackground) \
-  E_CPONLY(kColorSidePanelCommerceGraphLine) \
-  E_CPONLY(kColorSidePanelContentAreaSeparator) \
-  E_CPONLY(kColorSidePanelContentBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeClassicChromeTileBorder) \
-  E_CPONLY(kColorSidePanelCustomizeChromeCornerNtpBorder) \
-  E_CPONLY(kColorSidePanelCustomizeChromeCustomOptionBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeCustomOptionForeground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpActiveTab) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpArrowsAndRefreshButton) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpBorder) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpCaron) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpCaronContainer) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpChromeLogo) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpOmnibox) \
-  E_CPONLY(kColorSidePanelCustomizeChromeMiniNtpTabStripBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeThemeBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeThemeCheckmarkBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeThemeCheckmarkForeground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeThemeSnapshotBackground) \
-  E_CPONLY(kColorSidePanelCustomizeChromeWebStoreBorder) \
-  E_CPONLY(kColorSidePanelDialogBackground) \
-  E_CPONLY(kColorSidePanelDialogDivider) \
-  E_CPONLY(kColorSidePanelDialogPrimaryForeground) \
-  E_CPONLY(kColorSidePanelDialogSecondaryForeground) \
-  E_CPONLY(kColorSidePanelDivider) \
-  E_CPONLY(kColorSidePanelEditFooterBorder) \
-  E_CPONLY(kColorSidePanelComboboxEntryIcon) \
-  E_CPONLY(kColorSidePanelComboboxEntryTitle) \
-  E_CPONLY(kColorSidePanelEntryIcon) \
-  E_CPONLY(kColorSidePanelEntryDropdownIcon) \
-  E_CPONLY(kColorSidePanelEntryTitle) \
-  E_CPONLY(kColorSidePanelFilterChipBorder) \
-  E_CPONLY(kColorSidePanelFilterChipForeground) \
-  E_CPONLY(kColorSidePanelFilterChipForegroundSelected) \
-  E_CPONLY(kColorSidePanelFilterChipIcon) \
-  E_CPONLY(kColorSidePanelFilterChipIconSelected) \
-  E_CPONLY(kColorSidePanelFilterChipBackgroundHover) \
-  E_CPONLY(kColorSidePanelFilterChipBackgroundSelected) \
-  E_CPONLY(kColorSidePanelHeaderButtonIcon) \
-  E_CPONLY(kColorSidePanelHeaderButtonIconDisabled) \
-  E_CPONLY(kColorSidePanelHoverResizeAreaHandle) \
-  E_CPONLY(kColorSidePanelResizeAreaHandle) \
-  E_CPONLY(kColorSidePanelScrollbarThumb) \
-  E_CPONLY(kColorSidePanelTextfieldBorder) \
-  E_CPONLY(kColorSidePanelWallpaperSearchTileBackground) \
-  E_CPONLY(kColorSidePanelWallpaperSearchErrorButtonBackground) \
-  E_CPONLY(kColorSidePanelWallpaperSearchErrorButtonText) \
-  E_CPONLY(kColorSidePanelWallpaperSearchInspirationDescriptors) \
+  E_CPONLY(kColorMultiContentsResizeAreaHandle) \
   /* Slider colors. */ \
   E_CPONLY(kColorSliderActive) \
   E_CPONLY(kColorSliderActiveContainer) \
@@ -1120,7 +882,6 @@
   E_CPONLY(kColorToolbarContextualTasksButtonShadow) \
   E_CPONLY(kColorToolbarExtensionSeparatorDisabled) \
   E_CPONLY(kColorToolbarExtensionSeparatorEnabled) \
-  E_CPONLY(kColorToolbarFeaturePromoHighlight) \
   E_CPONLY(kColorToolbarGlicButtonBackgroundDefault) \
   E_CPONLY(kColorToolbarIconContainerBorder) \
   E_CPONLY(kColorToolbarInkDrop) \

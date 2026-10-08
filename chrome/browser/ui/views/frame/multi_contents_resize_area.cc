@@ -50,7 +50,7 @@ MultiContentsResizeHandle::MultiContentsResizeHandle() {
               kMultiContentsResizeHandleElementId);
 
   SetBackground(views::CreateRoundedRectBackground(
-      kColorSidePanelHoverResizeAreaHandle, kHandleCornerRadius));
+      kColorMultiContentsResizeAreaHandle, kHandleCornerRadius));
 }
 
 void MultiContentsResizeHandle::UpdateVisibility() {

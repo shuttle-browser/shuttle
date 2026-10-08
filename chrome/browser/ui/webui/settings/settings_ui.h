@@ -10,7 +10,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/user_education/webui/help_bubble_handler.h"
 #include "content/public/browser/web_ui_controller.h"
 #include "content/public/browser/webui_config.h"
 #include "content/public/common/url_constants.h"
@@ -19,7 +18,6 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "ui/webui/mojo_web_ui_controller.h"
 #include "ui/webui/resources/cr_components/customize_color_scheme_mode/customize_color_scheme_mode.mojom.h"
-#include "ui/webui/resources/cr_components/help_bubble/help_bubble.mojom.h"
 
 #if !BUILDFLAG(IS_CHROMEOS)
 #include "ui/webui/resources/cr_components/theme_color_picker/theme_color_picker.mojom.h"
@@ -52,7 +50,6 @@ class SettingsUIConfig : public content::DefaultWebUIConfig<SettingsUI> {
 // The WebUI handler for chrome://settings.
 class SettingsUI
     : public ui::MojoWebUIController,
-      public help_bubble::mojom::HelpBubbleHandlerFactory,
       public customize_color_scheme_mode::mojom::
           CustomizeColorSchemeModeHandlerFactory
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -87,12 +84,6 @@ class SettingsUI
                          pending_receiver);
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
-  // Implements support for help bubbles (IPH, tutorials, etc.) in settings
-  // pages.
-  void BindInterface(
-      mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-          pending_receiver);
-
   void BindInterface(
       mojo::PendingReceiver<customize_color_scheme_mode::mojom::
                                 CustomizeColorSchemeModeHandlerFactory>
@@ -114,16 +105,6 @@ class SettingsUI
   mojo::Receiver<theme_color_picker::mojom::ThemeColorPickerHandlerFactory>
       theme_color_picker_handler_factory_receiver_{this};
 #endif  // !BUILDFLAG(IS_CHROMEOS)
-
-  // help_bubble::mojom::HelpBubbleHandlerFactory:
-  void CreateHelpBubbleHandler(
-      mojo::PendingRemote<help_bubble::mojom::HelpBubbleClient> client,
-      mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler)
-      override;
-
-  std::unique_ptr<user_education::HelpBubbleHandler> help_bubble_handler_;
-  mojo::Receiver<help_bubble::mojom::HelpBubbleHandlerFactory>
-      help_bubble_handler_factory_receiver_{this};
 
   void CreateCustomizeColorSchemeModeHandler(
       mojo::PendingRemote<

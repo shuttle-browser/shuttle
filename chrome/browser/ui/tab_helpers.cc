@@ -28,9 +28,6 @@
 #include "chrome/browser/file_system_access/file_system_access_features.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_request_manager.h"
 #include "chrome/browser/file_system_access/file_system_access_tab_helper.h"
-#include "chrome/browser/finds/core/finds_features.h"
-#include "chrome/browser/finds/core/finds_tab_helper.h"
-#include "chrome/browser/finds/finds_service_factory.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/history/top_sites_factory.h"
 #include "chrome/browser/history_clusters/history_clusters_tab_helper.h"
@@ -47,7 +44,6 @@
 #include "chrome/browser/page_content_annotations/multi_source_page_context_fetcher.h"
 #include "chrome/browser/page_content_annotations/page_content_annotations_service_factory.h"
 #include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
-#include "chrome/browser/page_info/about_this_site_tab_helper.h"
 #include "chrome/browser/page_info/page_info_features.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/permissions/one_time_permissions_tracker_helper.h"
@@ -157,7 +153,6 @@
 #include "content/public/common/content_features.h"
 #else
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_desktop.h"
-#include "chrome/browser/ui/read_anything/read_anything_side_panel_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/uma_browsing_activity_observer.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
@@ -178,7 +173,6 @@
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/shared_highlighting/shared_highlighting_promo.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -192,7 +186,6 @@
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/app_tab_helper.h"
-#include "chrome/browser/ui/extensions/extension_side_panel_utils.h"
 #include "extensions/common/extension_features.h"
 #include "extensions/common/mojom/view_type.mojom.h"
 #endif
@@ -295,13 +288,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
 
   // --- Section 1: Common tab helpers ---
-  if (page_info::IsAboutThisSiteFeatureEnabled()) {
-    if (auto* optimization_guide_decider =
-            OptimizationGuideKeyedServiceFactory::GetForProfile(profile)) {
-      AboutThisSiteTabHelper::CreateForWebContents(web_contents,
-                                                   optimization_guide_decider);
-    }
-  }
 #if BUILDFLAG(IS_ANDROID)
   if (base::FeatureList::IsEnabled(media::kAutoPictureInPictureAndroid)) {
     AutoPictureInPictureTabHelper::CreateForWebContents(web_contents);
@@ -506,17 +492,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   }
   ContextMenuHelper::CreateForWebContents(web_contents);
 
-  if (base::FeatureList::IsEnabled(finds::features::kChromeFinds)) {
-    if (auto* finds_service =
-            finds::FindsServiceFactory::GetForProfile(profile)) {
-      finds::FindsTabHelper::CreateForWebContents(
-          web_contents, finds_service,
-          OptimizationGuideKeyedServiceFactory::GetForProfile(profile),
-          TemplateURLServiceFactory::GetForProfile(profile),
-          profile->GetPrefs());
-    }
-  }
-
   if (base::FeatureList::IsEnabled(
           page_load_metrics::features::kBeaconLeakageLogging)) {
     FromGWSNavigationAndKeepAliveRequestTabHelper::CreateForWebContents(
@@ -568,11 +543,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   metrics::DesktopSessionDurationObserver::CreateForWebContents(web_contents);
-#endif
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  SharedHighlightingPromo::CreateForWebContents(web_contents);
 #endif
 
 #if BUILDFLAG(IS_WIN)

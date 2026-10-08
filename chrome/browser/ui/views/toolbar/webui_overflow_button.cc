@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_controller.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
@@ -53,8 +52,6 @@ void WebUIOverflowButton::ExecuteCommand(
       absl::Overload{[this](actions::ActionId id) {
                        pinned_actions_info_->GetActionItemFor(id)->InvokeAction(
                            actions::ActionInvocationContext::Builder()
-                               .SetProperty(kSidePanelOpenTriggerKey,
-                                            SidePanelOpenTrigger::kOverflowMenu)
                                .Build());
                      },
                      [this](OverflowMenu::ElementIdInfo element_info) {

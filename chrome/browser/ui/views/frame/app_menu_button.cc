@@ -114,7 +114,6 @@ void AppMenuButton::RunMenu(std::unique_ptr<AppMenuModel> menu_model,
   // in the class declaration.
   menu_.reset();
   menu_model_ = std::move(menu_model);
-  highlighter_.MaybeHighlight(browser, this, menu_model_.get());
   menu_model_->Init();
 
   menu_ = std::make_unique<AppMenu>(

@@ -42,17 +42,8 @@
   <message name="IDS_HISTORY_CLUSTERS_NO_SEARCH_RESULTS" desc="Text used to denote that there are no search results for a search term in history clusters.">
     No search results
   </message>
-  <message name="IDS_HISTORY_CLUSTERS_SHOW_SIDE_PANEL" desc="Label of the item in drop-down menu that allows user to open the history cluster in the side panel.">
-    Show history in side panel
-  </message>
   <message name="IDS_HISTORY_CLUSTERS_OPEN_ALL_IN_TABGROUP" desc="Label of the item in drop-down menu that allows the user to open a group of urls in a tab group.">
     Open all in new tab group
-  </message>
-  <message name="IDS_HISTORY_CLUSTERS_OPEN_IN_NEW_TAB" desc="Label of the item in drop-down menu that allows the user to open a link in a new tab.">
-    Open Link in New Tab
-  </message>
-  <message name="IDS_HISTORY_CLUSTERS_OPEN_IN_NEW_WINDOW" desc="Label of the item in drop-down menu that allows the user to open a link in a new window.">
-    Open Link in New Window
   </message>
   <message name="IDS_HISTORY_CLUSTERS_RELATED_SEARCHES_HEADER" desc="Header text shown for the section containing search suggestions related to a group of search and browsing activities.">
     Related searches
@@ -68,17 +59,5 @@
   </message>
   <message name="IDS_HISTORY_CLUSTERS_REMOVE_SELECTED_ITEMS" desc="Title of the button that allows the user to remove the selected history cluster items">
     Delete selected items
-  </message>
-  <message name="IDS_HISTORY_CLUSTERS_CUT" desc="Label of the item in drop-down menu that allows the user to cut the searchbox query">
-    Cut
-  </message>
-  <message name="IDS_HISTORY_CLUSTERS_COPY" desc="Label of the item in drop-down menu that allows the user to copy the searchbox query">
-    Copy
-  </message>
-  <message name="IDS_HISTORY_CLUSTERS_PASTE" desc="Label of the item in drop-down menu that allows the user to paste into the searchbox">
-    Paste
-  </message>
-  <message name="IDS_HISTORY_CLUSTERS_COPY_LINK" desc="Label of the item in drop-down menu that allows the user to copy a link.">
-    Copy Link Address
   </message>
 </grit-part>

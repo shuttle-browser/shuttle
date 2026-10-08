@@ -32,7 +32,6 @@ namespace {
 
 // Known configuration file keys.
 namespace keys {
-constexpr char kEnableUserEducationUI[] = "enableUserEducationUI";
 constexpr char kEnableSearchEngineChoiceDialog[] =
     "enableSearchEngineChoiceDialog";
 constexpr char kEnableVirtualClipboard[] = "enableVirtualClipboard";
@@ -98,7 +97,6 @@ void OverrideRequiredComponentsDir(PrefService* pref_service) {
 
 bool IsKnownKey(std::string_view key) {
   static const base::NoDestructor<base::flat_set<std::string_view>> kKnownKeys({
-      keys::kEnableUserEducationUI,
       keys::kEnableSearchEngineChoiceDialog,
       keys::kEnableVirtualClipboard,
       keys::kRequiredComponents,
@@ -166,7 +164,6 @@ bool LoadConfig(PrefService* pref_service) {
     const char* json_key;
     const char* pref_name;
   } kConfigPrefMapping[] = {
-      {keys::kEnableUserEducationUI, prefs::kEnableUserEducationUI},
       {keys::kEnableSearchEngineChoiceDialog,
        prefs::kEnableSearchEngineChoiceDialog},
       {keys::kEnableVirtualClipboard, prefs::kEnableVirtualClipboard},
@@ -229,11 +226,6 @@ bool LoadConfig(PrefService* pref_service) {
   }
 
   return true;
-}
-
-bool IsEnableUserEducationUI() {
-  const PrefService* pref_service = g_browser_process->local_state();
-  return pref_service->GetBoolean(prefs::kEnableUserEducationUI);
 }
 
 bool IsEnableSearchEngineChoiceDialog() {

@@ -311,7 +311,6 @@ class RenderViewContextMenu
   void AppendPartialTranslateItem();
   void AppendTranslateItem();
   void AppendMediaRouterItem();
-  void AppendReadAnythingItem();
   void AppendSaveToMemoryBanksItem();
   void AppendGlicItems();
   void AppendRotationItems();
@@ -416,8 +415,6 @@ class RenderViewContextMenu
   void ExecLanguageSettings(int event_flags);
   void ExecProtocolHandlerSettings(int event_flags);
   void ExecPictureInPicture();
-  void ExecOpenInReadAnything();
-  void ExecListenToThisPage();
   void ExecSaveToMemoryBanks();
 
   void MediaPlayerAction(const blink::mojom::MediaPlayerAction& action);

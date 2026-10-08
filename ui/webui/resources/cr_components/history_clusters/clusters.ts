@@ -68,14 +68,6 @@ export class HistoryClustersElement extends HistoryClustersElementBase {
     return {
 
       /**
-       * Whether the clusters are in the side panel.
-       */
-      inSidePanel_: {
-        type: Boolean,
-        reflect: true,
-      },
-
-      /**
        * The current query for which related clusters are requested and shown.
        */
       query: {type: String},
@@ -136,8 +128,6 @@ export class HistoryClustersElement extends HistoryClustersElementBase {
   protected accessor hasResult_: boolean = false;
   protected accessor resultQuery_: string = '';
   private browserProxy_: BrowserProxy;
-  private accessor inSidePanel_: boolean =
-      loadTimeData.getBoolean('inSidePanel');
   private lastOffsetHeight_: number = 0;
   private resizeObserver_: ResizeObserver = new ResizeObserver(() => {
     if (this.lastOffsetHeight_ === 0) {
@@ -193,10 +183,6 @@ export class HistoryClustersElement extends HistoryClustersElementBase {
     this.onQueryChangedByUserListenerId_ =
         this.browserProxy_.callbackRouter.onQueryChangedByUser.addListener(
             this.onQueryChangedByUser_.bind(this));
-
-    if (this.inSidePanel_) {
-      this.browserProxy_.handler.showSidePanelUI();
-    }
   }
 
   override disconnectedCallback() {

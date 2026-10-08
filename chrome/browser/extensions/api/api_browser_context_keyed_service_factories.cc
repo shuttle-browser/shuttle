@@ -5,7 +5,6 @@
 #include "chrome/browser/extensions/api/cookies/cookies_api.h"
 #include "chrome/browser/extensions/api/developer_private/developer_private_api.h"
 #include "chrome/browser/extensions/api/font_settings/font_settings_api.h"
-#include "chrome/browser/extensions/api/gcm/extension_gcm_app_handler.h"
 #include "chrome/browser/extensions/api/history/history_api.h"
 #include "chrome/browser/extensions/api/identity/identity_api.h"
 #include "chrome/browser/extensions/api/notifications/extension_notification_display_helper_factory.h"
@@ -36,7 +35,6 @@
 #include "chrome/browser/extensions/api/networking_private/networking_private_ui_delegate_factory_impl.h"
 #include "chrome/browser/extensions/api/settings_overrides/settings_overrides_api.h"
 #include "chrome/browser/extensions/api/settings_private/settings_private_event_router_factory.h"
-#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
 #include "components/safe_browsing/buildflags.h"
 #include "extensions/browser/api/networking_private/networking_private_delegate_factory.h"
 #include "pdf/buildflags.h"
@@ -74,7 +72,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::DeveloperPrivateAPI::GetFactoryInstance();
   extensions::ExtensionNotificationDisplayHelperFactory::GetInstance();
   extensions::FontSettingsAPI::GetFactoryInstance();
-  extensions::ExtensionGCMAppHandler::GetFactoryInstance();
   extensions::HistoryAPI::GetFactoryInstance();
   extensions::IdentityAPI::GetFactoryInstance();
   extensions::OmniboxAPI::GetFactoryInstance();
@@ -116,7 +113,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
 #endif
   extensions::SettingsPrivateEventRouterFactory::GetInstance();
   extensions::SettingsOverridesAPI::GetFactoryInstance();
-  extensions::SidePanelService::GetFactoryInstance();
 #if BUILDFLAG(IS_CHROMEOS)
   extensions::TerminalPrivateAPI::GetFactoryInstance();
   extensions::VerifyTrustApiService::GetFactoryInstance();

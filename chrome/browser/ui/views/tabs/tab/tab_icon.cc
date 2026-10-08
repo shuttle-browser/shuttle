@@ -21,9 +21,7 @@
 #include "chrome/browser/ui/tabs/tab_data.h"
 #include "chrome/browser/ui/tabs/tab_favicon_theming.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/dotted_icon.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/prefs/pref_service.h"
@@ -532,21 +530,6 @@ void TabIcon::SetDiscarded(bool discarded) {
           gfx::Animation::RichAnimationDuration(base::Seconds(1)));
       tab_discard_animation_.Start();
       favicon_size_animation_.Hide();
-
-      // Potentially show an IPH if a tab was discarded.
-      const ui::ElementContext context =
-          views::ElementTrackerViews::GetInstance()->GetContextForView(this);
-      BrowserWindowInterface* browser = nullptr;
-      ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-          [&](BrowserWindowInterface* current_browser) {
-            if (BrowserElements::From(current_browser)->GetContext() ==
-                context) {
-              browser = current_browser;
-            }
-            return !browser;
-          });
-      BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
-          feature_engagement::kIPHDiscardRingFeature);
     } else {
       tab_discard_animation_.Stop();
       favicon_size_animation_.Show();

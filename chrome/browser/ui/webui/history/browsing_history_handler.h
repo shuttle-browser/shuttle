@@ -52,14 +52,10 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
 
   ~BrowsingHistoryHandler() override;
 
-  void SetSidePanelUIEmbedder(
-      base::WeakPtr<TopChromeWebUIController::Embedder> side_panel_embedder);
-
   void StartQueryHistory();
 
   void SetPage(mojo::PendingRemote<history::mojom::Page> pending_page) override;
 
-  void ShowSidePanelUI() override;
 
   void QueryHistory(const std::string& query,
                     int max_count,
@@ -118,8 +114,6 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
   FRIEND_TEST_ALL_PREFIXES(BrowsingHistoryHandlerTest,
                            ObservingWebHistoryDeletions);
   FRIEND_TEST_ALL_PREFIXES(BrowsingHistoryHandlerTest, MdTruncatesTitles);
-
-  base::WeakPtr<TopChromeWebUIController::Embedder> side_panel_embedder_;
 
   void CriticalActionsFetched(
       const std::vector<history::BrowsingHistoryService::HistoryEntry>& results,

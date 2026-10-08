@@ -124,8 +124,6 @@ source_set("extensions") {
     "api/identity/web_auth_flow.h",
     "api/identity/web_auth_flow_info_bar_delegate.cc",
     "api/identity/web_auth_flow_info_bar_delegate.h",
-    "api/instance_id/instance_id_api.cc",
-    "api/instance_id/instance_id_api.h",
     "api/management/chrome_management_api_delegate.cc",
     "api/management/chrome_management_api_delegate.h",
     "api/metrics_private/chrome_metrics_private_delegate.cc",
@@ -142,8 +140,6 @@ source_set("extensions") {
     "api/sessions/session_id.h",
     "api/sessions/sessions_api.cc",
     "api/sessions/sessions_api.h",
-    "api/side_panel/side_panel_service.cc",
-    "api/side_panel/side_panel_service.h",
     "api/storage/managed_value_store_cache.cc",
     "api/storage/managed_value_store_cache.h",
     "api/storage/policy_value_store.cc",
@@ -382,8 +378,6 @@ source_set("extensions") {
     "settings_api_helpers.h",
     "shared_module_service_factory.cc",
     "shared_module_service_factory.h",
-    "side_panel_helper.cc",
-    "side_panel_helper.h",
     "standard_management_policy_provider.cc",
     "standard_management_policy_provider.h",
     "startup_helper.cc",
@@ -507,7 +501,6 @@ source_set("extensions") {
     "//chrome/browser/ui/navigator",
     "//chrome/browser/ui/prefs",
     "//chrome/browser/ui/select_file_policy",
-    "//chrome/browser/ui/side_panel",
     "//chrome/browser/ui/toolbar",
     "//chrome/browser/ui/webui:favicon_source",
     "//chrome/browser/ui/webui:theme_source",
@@ -650,7 +643,6 @@ source_set("extensions") {
     deps += [
       "//chrome/browser/ui:browser_init_state",
       "//chrome/browser/ui/interaction",
-      "//chrome/browser/ui/user_education",
       "//extensions/browser/mime_handler",
       "//extensions/browser/mime_handler:stream_container",
     ]
@@ -806,7 +798,6 @@ source_set("extensions") {
       # TODO(crbug.com/344921703): Remove circular dependencies.
 
       # TODO(crbug.com/345487716): Remove this circular dependency.
-      "//chrome/browser/ui/views/side_panel",
     ]
 
     # Since browser and browser_extensions actually depend on each other,
@@ -860,13 +851,10 @@ source_set("extensions") {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/extensions",
       "//chrome/browser/ui/prefs",
-      "//chrome/browser/ui/side_panel",
-      "//chrome/browser/ui/side_panel:side_panel_views_dependent",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/tabs:tab_group",
       "//chrome/browser/ui/tabs:tab_model",
       "//chrome/browser/ui/toolbar",
-      "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/window_sizer",
       "//chrome/browser/ui/zoom",

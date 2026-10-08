@@ -32,7 +32,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/webui_browser/webui_browser.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/grit/browser_resources.h"
 #include "components/guest_view/browser/guest_view_base.h"
@@ -100,8 +99,7 @@ bool GetExtensionInfo(content::WebContents* wc,
   }
 
   auto view_type = extensions::GetViewType(wc);
-  if (view_type == extensions::mojom::ViewType::kExtensionPopup ||
-      view_type == extensions::mojom::ViewType::kExtensionSidePanel) {
+  if (view_type == extensions::mojom::ViewType::kExtensionPopup) {
     // Note that we are intentionally not setting name here, so that we can
     // construct a name based on the URL or page title in
     // RenderFrameDevToolsAgentHost::GetTitle()
@@ -252,10 +250,6 @@ void ChromeDevToolsManagerDelegate::HandleCommand(
 
 std::string ChromeDevToolsManagerDelegate::GetTargetType(
     content::WebContents* web_contents) {
-  if (webui_browser::IsBrowserUIWebContents(web_contents)) {
-    return DevToolsAgentHost::kTypeBrowserUI;
-  }
-
   if (tabs::TabInterface::MaybeGetFromContents(web_contents)) {
     return DevToolsAgentHost::kTypePage;
   }
@@ -275,14 +269,6 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
 
 std::optional<bool> ChromeDevToolsManagerDelegate::ShouldReportAsTabTarget(
     content::WebContents* web_contents) {
-  if (webui_browser::IsBrowserUIWebContents(web_contents)) {
-    // Return false for browser UI so its WebContents is not reported as Tab.
-    // Browser UI is not a Tab and can not be interacted as a Tab. Reporting
-    // browser UI WebContents as Tab target will confuse tools such as test
-    // drivers and cause them to fail.
-    return false;
-  }
-
   if (tabs::TabInterface::MaybeGetFromContents(web_contents)) {
     return true;
   }

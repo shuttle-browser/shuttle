@@ -18,7 +18,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
-#include "components/feature_engagement/public/tracker.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/page_content_annotations/content/annotate_page_content_request.h"
@@ -72,22 +71,8 @@ optimization_guide::proto::PageContext ToPageContext(
 }
 
 // Returns whether the page content cache is enabled.
-bool IsPageContentCacheEnabled(feature_engagement::Tracker* tracker) {
-  bool enabled = base::FeatureList::IsEnabled(features::kPageContentCache);
-
-#if BUILDFLAG(IS_ANDROID)
-  if (enabled && features::kPageContentCacheUseUserEngagement.Get()) {
-    if (!tracker) {
-      return false;
-    }
-    // If user engagement is required, and user has not engaged with the
-    // feature. Turn off the feature. This is currently only used on Android.
-    return tracker->WouldTriggerHelpUI(
-        feature_engagement::kIPHFuseboxAttachmentFeature);
-  }
-#endif  // BUILDFLAG(IS_ANDROID)
-
-  return enabled;
+bool IsPageContentCacheEnabled() {
+  return base::FeatureList::IsEnabled(features::kPageContentCache);
 }
 
 // Creates the PageContentCacheHandler if the cache is enabled.
@@ -152,9 +137,8 @@ RefCountedPDFTextPtr GetPDFTextPtrFromPageContent(PageContent&& content) {
 
 PageContentExtractionService::PageContentExtractionService(
     os_crypt_async::OSCryptAsync* os_crypt_async,
-    const base::FilePath& profile_path,
-    feature_engagement::Tracker* tracker)
-    : is_page_content_cache_enabled_(IsPageContentCacheEnabled(tracker)),
+    const base::FilePath& profile_path)
+    : is_page_content_cache_enabled_(IsPageContentCacheEnabled()),
       page_content_cache_handler_(
           CreatePageContentCacheHandler(is_page_content_cache_enabled_,
                                         os_crypt_async,

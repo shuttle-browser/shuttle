@@ -69,9 +69,6 @@ enum ChromeTextContext {
   // Body text label in the IPH bubble. Usually 14pt.
   CONTEXT_IPH_BUBBLE_BODY,
 
-  // Title label in the browser side panel. Usually 13pt.
-  CONTEXT_SIDE_PANEL_TITLE,
-
   // Body label in the toast. Usually 13pt.
   CONTEXT_TOAST_BODY_TEXT,
 };

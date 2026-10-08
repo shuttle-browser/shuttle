@@ -4,7 +4,6 @@
 
 #include "components/security_interstitials/core/https_only_mode_ui_util.h"
 
-#include "components/feature_engagement/public/feature_list.h"
 #include "components/security_interstitials/core/common_string_util.h"
 #include "components/security_interstitials/core/https_only_mode_metrics.h"
 #include "components/strings/grit/components_strings.h"

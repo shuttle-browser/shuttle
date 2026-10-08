@@ -32,16 +32,6 @@ DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowDownloadsElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowPasswordsBubbleOrPageElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowPaymentsBubbleOrPageElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowTranslateElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowAboutThisSiteElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowContextualTasksElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowCustomizeChromeElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowHistoryClusterElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowLensElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowMerchantTrustElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowReadAnythingElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowReadingListElementId);
-DECLARE_ELEMENT_IDENTIFIER_VALUE(
-    kToolbarSidePanelShowShoppingInsightsElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarTabSearchElementId);
 DECLARE_ELEMENT_IDENTIFIER_VALUE(kToolbarTaskManagerElementId);
 
@@ -57,15 +47,6 @@ DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowDownloadsElementId);
 DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowPasswordsBubbleOrPageElementId);
 DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowPaymentsBubbleOrPageElementId);
 DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarShowTranslateElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowAboutThisSiteElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowContextualTasksElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowCustomizeChromeElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowHistoryClusterElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowLensElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowMerchantTrustElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowReadAnythingElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowReadingListElementId);
-DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarSidePanelShowShoppingInsightsElementId);
 DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarTabSearchElementId);
 DEFINE_ELEMENT_IDENTIFIER_VALUE(kToolbarTaskManagerElementId);
 
@@ -82,15 +63,6 @@ std::vector<ui::ElementIdentifier> GetPinnedToolbarActionElementIds() {
           webui_toolbar::kToolbarShowPasswordsBubbleOrPageElementId,
           webui_toolbar::kToolbarShowPaymentsBubbleOrPageElementId,
           webui_toolbar::kToolbarShowTranslateElementId,
-          webui_toolbar::kToolbarSidePanelShowAboutThisSiteElementId,
-          webui_toolbar::kToolbarSidePanelShowContextualTasksElementId,
-          webui_toolbar::kToolbarSidePanelShowCustomizeChromeElementId,
-          webui_toolbar::kToolbarSidePanelShowHistoryClusterElementId,
-          webui_toolbar::kToolbarSidePanelShowLensElementId,
-          webui_toolbar::kToolbarSidePanelShowMerchantTrustElementId,
-          webui_toolbar::kToolbarSidePanelShowReadAnythingElementId,
-          webui_toolbar::kToolbarSidePanelShowReadingListElementId,
-          webui_toolbar::kToolbarSidePanelShowShoppingInsightsElementId,
           webui_toolbar::kToolbarTabSearchElementId,
           webui_toolbar::kToolbarTaskManagerElementId};
 }
@@ -106,10 +78,6 @@ ui::ElementIdentifier ActionIdToElementIdentifier(actions::ActionId action) {
       return kToolbarShowPaymentsBubbleOrPageElementId;
     case kActionShowAddressesBubbleOrPage:
       return kToolbarShowAddressesBubbleOrPageElementId;
-    case kActionSidePanelShowReadingList:
-      return kToolbarSidePanelShowReadingListElementId;
-    case kActionSidePanelShowHistoryCluster:
-      return kToolbarSidePanelShowHistoryClusterElementId;
     case kActionShowDownloads:
       return kToolbarShowDownloadsElementId;
     case kActionClearBrowsingData:
@@ -122,8 +90,6 @@ ui::ElementIdentifier ActionIdToElementIdentifier(actions::ActionId action) {
       return kToolbarQrCodeGeneratorElementId;
     case kActionRouteMedia:
       return kToolbarRouteMediaElementId;
-    case kActionSidePanelShowReadAnything:
-      return kToolbarSidePanelShowReadAnythingElementId;
     case kActionCopyUrl:
       return kToolbarCopyUrlElementId;
     case kActionTaskManager:
@@ -132,18 +98,6 @@ ui::ElementIdentifier ActionIdToElementIdentifier(actions::ActionId action) {
       return kToolbarDevToolsElementId;
     case kActionTabSearch:
       return kToolbarTabSearchElementId;
-    case kActionSidePanelShowContextualTasks:
-      return kToolbarSidePanelShowContextualTasksElementId;
-    case kActionSidePanelShowLens:
-      return kToolbarSidePanelShowLensElementId;
-    case kActionSidePanelShowAboutThisSite:
-      return kToolbarSidePanelShowAboutThisSiteElementId;
-    case kActionSidePanelShowCustomizeChrome:
-      return kToolbarSidePanelShowCustomizeChromeElementId;
-    case kActionSidePanelShowShoppingInsights:
-      return kToolbarSidePanelShowShoppingInsightsElementId;
-    case kActionSidePanelShowMerchantTrust:
-      return kToolbarSidePanelShowMerchantTrustElementId;
     default:
       return ui::ElementIdentifier();
   }
@@ -182,24 +136,6 @@ ActionItemToPinnedToolbarAction(actions::ActionItem* item) {
                            : vector_icons::kLocationOnChromeRefreshOldIcon));
       return toolbar_ui_api::mojom::PinnedToolbarAction::
           kShowAddressesBubbleOrPage;
-    case kActionSidePanelShowBookmarks:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? kHotelClassIcon
-                           : kBookmarksSidePanelRefreshOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowBookmarks;
-    case kActionSidePanelShowReadingList:
-      CHECK_EQ(icon,
-               &(features::IsRoundedIconsEnabled() ? kListAltIcon
-                                                   : kReadingListOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowReadingList;
-    case kActionSidePanelShowHistoryCluster:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? vector_icons::kHistoryIcon
-                           : vector_icons::kHistoryChromeRefreshOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowHistoryCluster;
     case kActionShowDownloads:
       CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
                            ? kDownloadIcon
@@ -214,16 +150,6 @@ ActionItemToPinnedToolbarAction(actions::ActionItem* item) {
       CHECK_EQ(icon, &(features::IsRoundedIconsEnabled() ? kPrintIcon
                                                          : kPrintMenuOldIcon));
       return toolbar_ui_api::mojom::PinnedToolbarAction::kPrint;
-    case kActionSidePanelShowLensOverlayResults:
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-      CHECK_EQ(icon, &vector_icons::kGoogleLensMonochromeLogoIcon);
-#else
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? vector_icons::kSearchIcon
-                           : vector_icons::kSearchChromeRefreshOldIcon));
-#endif  // !BUILDFLAG(GOOGLE_CHROME_BRANDING)
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowLensOverlayResults;
     case kActionShowTranslate:
       CHECK_EQ(icon, &vector_icons::kGTranslateIcon);
       return toolbar_ui_api::mojom::PinnedToolbarAction::kShowTranslate;
@@ -252,12 +178,6 @@ ActionItemToPinnedToolbarAction(actions::ActionItem* item) {
                         ? kCastIcon
                         : kCastChromeRefreshOldIcon));
       return toolbar_ui_api::mojom::PinnedToolbarAction::kRouteMedia;
-    case kActionSidePanelShowReadAnything:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? kMenuBookIcon
-                           : kMenuBookChromeRefreshOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowReadAnything;
     case kActionCopyUrl:
       CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
                            ? vector_icons::kLinkIcon
@@ -281,56 +201,12 @@ ActionItemToPinnedToolbarAction(actions::ActionItem* item) {
                            ? kManageSearchIcon
                            : kTabSearchTabStripOldIcon));
       return toolbar_ui_api::mojom::PinnedToolbarAction::kTabSearch;
-    case kActionSidePanelShowContextualTasks:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? omnibox::kSearchSparkIcon
-                           : omnibox::kSearchSparkOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowContextualTasks;
-    case kActionSidePanelShowLens:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? vector_icons::kImageSearchIcon
-                           : vector_icons::kImageSearchOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowLens;
-    case kActionSidePanelShowAboutThisSite:
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-      CHECK_EQ(icon, &vector_icons::kPageInsightsIcon);
-#else
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? views::kInfoIcon
-                           : views::kInfoChromeRefreshOldIcon));
-#endif  // !BUILDFLAG(GOOGLE_CHROME_BRANDING)
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowAboutThisSite;
-    case kActionSidePanelShowCustomizeChrome:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? kEditIcon
-                           : vector_icons::kEditChromeRefreshOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowCustomizeChrome;
-    case kActionSidePanelShowShoppingInsights:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? vector_icons::kShoppingBagIcon
-                           : vector_icons::kShoppingBagOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowShoppingInsights;
-    case kActionSidePanelShowMerchantTrust:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? vector_icons::kStorefrontIcon
-                           : vector_icons::kStorefrontOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::
-          kSidePanelShowMerchantTrust;
     case kActionSendSharedTabGroupFeedback:
       CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
                            ? vector_icons::kFeedbackIcon
                            : vector_icons::kFeedbackOldIcon));
       return toolbar_ui_api::mojom::PinnedToolbarAction::
           kSendSharedTabGroupFeedback;
-    case kActionSidePanelShowComments:
-      CHECK_EQ(icon, &(features::IsRoundedIconsEnabled()
-                           ? vector_icons::kChatIcon
-                           : vector_icons::kChatOldIcon));
-      return toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowComments;
     default:
       return std::nullopt;
   }
@@ -349,30 +225,18 @@ std::optional<actions::ActionId> PinnedToolbarActionToActionId(
       return kActionShowPaymentsBubbleOrPage;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kShowAddressesBubbleOrPage:
       return kActionShowAddressesBubbleOrPage;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowBookmarks:
-      return kActionSidePanelShowBookmarks;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowReadingList:
-      return kActionSidePanelShowReadingList;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowHistoryCluster:
-      return kActionSidePanelShowHistoryCluster;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kShowDownloads:
       return kActionShowDownloads;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kClearBrowsingData:
       return kActionClearBrowsingData;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kPrint:
       return kActionPrint;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowLensOverlayResults:
-      return kActionSidePanelShowLensOverlayResults;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kShowTranslate:
       return kActionShowTranslate;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kQrCodeGenerator:
       return kActionQrCodeGenerator;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kRouteMedia:
       return kActionRouteMedia;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowReadAnything:
-      return kActionSidePanelShowReadAnything;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kCopyUrl:
       return kActionCopyUrl;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kSendTabToSelf:
@@ -384,27 +248,8 @@ std::optional<actions::ActionId> PinnedToolbarActionToActionId(
     case toolbar_ui_api::mojom::PinnedToolbarAction::kTabSearch:
       return kActionTabSearch;
     case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowContextualTasks:
-      return kActionSidePanelShowContextualTasks;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowLens:
-      return kActionSidePanelShowLens;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowAboutThisSite:
-      return kActionSidePanelShowAboutThisSite;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowCustomizeChrome:
-      return kActionSidePanelShowCustomizeChrome;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowShoppingInsights:
-      return kActionSidePanelShowShoppingInsights;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
-        kSidePanelShowMerchantTrust:
-      return kActionSidePanelShowMerchantTrust;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::
         kSendSharedTabGroupFeedback:
       return kActionSendSharedTabGroupFeedback;
-    case toolbar_ui_api::mojom::PinnedToolbarAction::kSidePanelShowComments:
-      return kActionSidePanelShowComments;
     case toolbar_ui_api::mojom::PinnedToolbarAction::kDivider:
       return std::nullopt;
   }
@@ -420,8 +265,6 @@ actions::ActionId MojomPageActionIdToActionId(
       return kActionIndigo;
     case MojomPageActionId::kActionMultistepFilter:
       return kActionMultistepFilter;
-    case MojomPageActionId::kActionSidePanelShowLensOverlayResults:
-      return kActionSidePanelShowLensOverlayResults;
     case MojomPageActionId::kActionLensOverlayHomework:
       return kActionLensOverlayHomework;
     case MojomPageActionId::kActionShowTranslate:
@@ -436,8 +279,6 @@ actions::ActionId MojomPageActionIdToActionId(
       return kActionShowIntentPicker;
     case MojomPageActionId::kActionShowZoomBubble:
       return kActionShowZoomBubble;
-    case MojomPageActionId::kActionSidePanelShowReadAnything:
-      return kActionSidePanelShowReadAnything;
     case MojomPageActionId::kActionOffersAndRewardsForPage:
       return kActionOffersAndRewardsForPage;
     case MojomPageActionId::kActionShowFileSystemAccess:
@@ -466,8 +307,6 @@ actions::ActionId MojomPageActionIdToActionId(
       return kActionFilledCardInformation;
     case MojomPageActionId::kActionShowPaymentsBubbleOrPage:
       return kActionShowPaymentsBubbleOrPage;
-    case MojomPageActionId::kActionSidePanelShowContextualTasks:
-      return kActionSidePanelShowContextualTasks;
     case MojomPageActionId::kActionBookmarkThisTab:
       return kActionBookmarkThisTab;
     case MojomPageActionId::kActionFederation:
@@ -496,8 +335,6 @@ MojomPageActionId ActionIdToMojomPageActionId(actions::ActionId action_id) {
       return MojomPageActionId::kActionIndigo;
     case kActionMultistepFilter:
       return MojomPageActionId::kActionMultistepFilter;
-    case kActionSidePanelShowLensOverlayResults:
-      return MojomPageActionId::kActionSidePanelShowLensOverlayResults;
     case kActionLensOverlayHomework:
       return MojomPageActionId::kActionLensOverlayHomework;
     case kActionShowTranslate:
@@ -512,8 +349,6 @@ MojomPageActionId ActionIdToMojomPageActionId(actions::ActionId action_id) {
       return MojomPageActionId::kActionShowIntentPicker;
     case kActionShowZoomBubble:
       return MojomPageActionId::kActionShowZoomBubble;
-    case kActionSidePanelShowReadAnything:
-      return MojomPageActionId::kActionSidePanelShowReadAnything;
     case kActionOffersAndRewardsForPage:
       return MojomPageActionId::kActionOffersAndRewardsForPage;
     case kActionShowFileSystemAccess:
@@ -542,8 +377,6 @@ MojomPageActionId ActionIdToMojomPageActionId(actions::ActionId action_id) {
       return MojomPageActionId::kActionFilledCardInformation;
     case kActionShowPaymentsBubbleOrPage:
       return MojomPageActionId::kActionShowPaymentsBubbleOrPage;
-    case kActionSidePanelShowContextualTasks:
-      return MojomPageActionId::kActionSidePanelShowContextualTasks;
     case kActionBookmarkThisTab:
       return MojomPageActionId::kActionBookmarkThisTab;
     case kActionFederation:

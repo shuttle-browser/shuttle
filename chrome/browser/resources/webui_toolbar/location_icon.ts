@@ -13,7 +13,6 @@ import {DragEventSource} from '//resources/mojo/ui/base/dragdrop/mojom/drag_drop
 import {IconTable} from '/shared/icon_table.js';
 import {LhsChipIdentifier, SecurityChipRole, SecurityLevel} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
 import type {SecurityChipState} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
-import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 
 import {BrowserProxyImpl} from './browser_proxy.js';
 import {getCss} from './location_icon.css.js';
@@ -27,7 +26,7 @@ export interface LocationIconElement {
   };
 }
 
-const LocationIconElementBase = HelpBubbleMixinLit(CrLitElement);
+const LocationIconElementBase = CrLitElement;
 
 export class LocationIconElement extends LocationIconElementBase {
   protected getAccessibilityRole_(): string {
@@ -122,21 +121,8 @@ export class LocationIconElement extends LocationIconElementBase {
   private animationTimer_: TimerHelper = new TimerHelper();
   private isSecureIcon_: boolean = false;
 
-  override connectedCallback() {
-    super.connectedCallback();
-    this.registerHelpBubble('kLocationIconElementId', this, {
-      onHighlightChanged: (highlighted: boolean) => {
-        // Manually toggle the DOM attribute to bypass Lit's asynchronous
-        // update batching, ensuring the style updates synchronously without
-        // a 1-frame tear against the fast native IPCs.
-        this.toggleAttribute('anchor-highlighted', highlighted);
-      },
-    });
-  }
-
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.unregisterHelpBubble('kLocationIconElementId');
     this.eventTracker_.removeAll();
     this.animationTimer_.clearTimeout();
     this.isAnimating_ = false;

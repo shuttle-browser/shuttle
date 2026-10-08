@@ -54,8 +54,6 @@ const base::flat_map<const gfx::VectorIcon*, IconInfo>& KnownIcons() {
            {"webui-toolbar:account_box", IconType::kIconSet}},
           {{&kAccountBoxOldIcon},
            {"webui-toolbar:account_box", IconType::kIconSet}},
-          {{&kBookmarksSidePanelRefreshOldIcon},
-           {"webui-toolbar:hotel_class", IconType::kIconSet}},
           {{&kCastChromeRefreshOldIcon},
            {"webui-toolbar:cast", IconType::kIconSet}},
           {{&kCastIcon}, {"webui-toolbar:cast", IconType::kIconSet}},

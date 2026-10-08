@@ -15,7 +15,6 @@ source_set("pdf") {
     "//chrome/browser/download",
     "//chrome/browser/pdf",
     "//chrome/browser/ui/tab_contents",
-    "//chrome/browser/ui/user_education",
     "//chrome/common",
     "//components/pdf/browser",
     "//components/tabs:public",

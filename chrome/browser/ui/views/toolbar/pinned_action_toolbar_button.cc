@@ -18,7 +18,6 @@
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/layout_constants.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_ids.h"
 #include "chrome/browser/ui/views/event_utils.h"
@@ -359,11 +358,7 @@ void PinnedActionToolbarButtonActionViewInterface::InvokeActionImpl(
 
   base::AutoReset<bool> needs_delayed_destruction =
       action_view_->SetNeedsDelayedDestruction(true);
-  action_item->InvokeAction(
-      actions::ActionInvocationContext::Builder()
-          .SetProperty(kSidePanelOpenTriggerKey,
-                       SidePanelOpenTrigger::kPinnedEntryToolbarButton)
-          .Build());
+  action_item->InvokeAction(actions::ActionInvocationContext::Builder().Build());
 }
 
 void PinnedActionToolbarButtonActionViewInterface::OnViewChangedImpl(

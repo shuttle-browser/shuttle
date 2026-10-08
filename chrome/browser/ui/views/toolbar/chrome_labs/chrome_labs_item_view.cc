@@ -16,8 +16,6 @@
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/chrome_typography.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/user_education/common/new_badge/new_badge_controller.h"
-#include "components/user_education/views/new_badge_label.h"
 #include "components/webui/flags/feature_entry.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -105,10 +103,8 @@ ChromeLabsItemView::ChromeLabsItemView(
                       0)));
 
   experiment_name_ = AddChildView(
-      std::make_unique<user_education::NewBadgeLabel>(lab.visible_name));
+      std::make_unique<views::Label>(lab.visible_name));
   experiment_name_->SetHorizontalAlignment(gfx::ALIGN_LEFT);
-  experiment_name_->SetBadgePlacement(
-      user_education::NewBadgeLabel::BadgePlacement::kImmediatelyAfterText);
 
   views::Label* experiment_description;
   AddChildView(
@@ -193,13 +189,6 @@ ChromeLabsItemView::~ChromeLabsItemView() = default;
 
 std::optional<size_t> ChromeLabsItemView::GetSelectedIndex() const {
   return lab_state_combobox_->GetSelectedIndex();
-}
-
-// Same as NewBadgeLabel::SetDisplayNewBadge this should only be called before
-// the label is shown.
-void ChromeLabsItemView::SetShowNewBadge(
-    user_education::DisplayNewBadge show_new_badge) {
-  experiment_name_->SetDisplayNewBadge(show_new_badge);
 }
 
 const flags_ui::FeatureEntry* ChromeLabsItemView::GetFeatureEntry() {

@@ -7,7 +7,6 @@
 
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
-#include "components/user_education/common/new_badge/new_badge_controller.h"
 
 class BrowserWindowInterface;
 class ChromeLabsBubbleView;
@@ -41,8 +40,6 @@ class ChromeLabsViewController {
 
   void SetRestartCallback();
 
-  user_education::DisplayNewBadge ShouldLabShowNewBadge(Profile* profile,
-                                                        const LabInfo& lab);
   raw_ptr<ChromeLabsBubbleView, AcrossTasksDanglingUntriaged>
       chrome_labs_bubble_view_;
   base::CallbackListSubscription restart_callback_;

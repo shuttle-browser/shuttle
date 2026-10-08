@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/feature_engagement/features.h",
-  "+components/segmentation_platform/public/features.h",
-  "+extensions/buildflags",
-]

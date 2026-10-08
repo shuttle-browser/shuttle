@@ -70,13 +70,11 @@ source_set("performance_manager") {
 
   if (!is_android) {
     public += [
-      "execution_context_priority/side_panel_loading_voter.h",
       "metrics/metrics_provider_desktop.h",
       "policies/freezing_opt_out_checker.h",
       "policies/memory_saver_mode_policy.h",
       "policies/sustained_memory_pressure_evaluator.h",
       "policies/urgent_page_discarding_policy.h",
-      "public/side_panel_loading_policy.h",
       "user_tuning/cpu_health_tracker.h",
     ]
     public_deps += [
@@ -210,13 +208,11 @@ source_set("impl") {
 
   if (!is_android) {
     sources += [
-      "execution_context_priority/side_panel_loading_voter.cc",
       "metrics/metrics_provider_desktop.cc",
       "policies/freezing_opt_out_checker.cc",
       "policies/memory_saver_mode_policy.cc",
       "policies/sustained_memory_pressure_evaluator.cc",
       "policies/urgent_page_discarding_policy.cc",
-      "side_panel_loading_policy.cc",
       "user_tuning/battery_saver_mode_manager.cc",
       "user_tuning/cpu_health_tracker.cc",
       "user_tuning/performance_detection_manager.cc",

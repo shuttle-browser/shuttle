@@ -25,7 +25,6 @@
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/side_panel/history_clusters/history_clusters_side_panel_coordinator.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -215,20 +214,6 @@ std::vector<RecentTabItem> RecentTabsBuilder::BuildHistoryEntries(
       ui::kColorMenuIcon, gfx::kFaviconSize));
   items.push_back(std::move(history));
 
-  if (feature->side_panel_ui()) {
-    if (HistoryClustersSidePanelCoordinator::IsSupported(profile)) {
-      RecentTabItem clusters(
-          RecentTabItem::Type::kCommand,
-          l10n_util::GetStringUTF16(IDS_HISTORY_CLUSTERS_SHOW_SIDE_PANEL));
-      clusters.set_action_id(kActionSidePanelShowHistoryCluster);
-      clusters.set_icon(ui::ImageModel::FromVectorIcon(
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kHistoryIcon
-              : vector_icons::kHistoryChromeRefreshOldIcon,
-          ui::kColorMenuIcon, gfx::kFaviconSize));
-      items.push_back(std::move(clusters));
-    }
-  }
 
   return items;
 }

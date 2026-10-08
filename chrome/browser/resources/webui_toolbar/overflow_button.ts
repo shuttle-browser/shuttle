@@ -11,9 +11,9 @@ import type {OverflowMenuItem} from '/shared/toolbar_ui_api.mojom-webui.js';
 import {BrowserProxyImpl} from './browser_proxy.js';
 import {getHtml} from './overflow_button.html.js';
 import {getCss} from './toolbar_button.css.js';
-import {BUTTON_LEFT, getClickSourceType, getContextMenuPosition, HelpBubbleAnchorMixin} from './toolbar_button.js';
+import {BUTTON_LEFT, getClickSourceType, getContextMenuPosition} from './toolbar_button.js';
 
-const OverflowButtonElementBase = HelpBubbleAnchorMixin(CrLitElement);
+const OverflowButtonElementBase = CrLitElement;
 
 export class OverflowButtonElement extends OverflowButtonElementBase {
   static get is() {

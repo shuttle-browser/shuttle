@@ -16,7 +16,6 @@ import './side_bar.js';
 import '/strings.m.js';
 
 import {ColorChangeUpdater, COLORS_CSS_SELECTOR} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
-import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 import {HistoryResultType} from 'chrome://resources/cr_components/history/constants.js';
 import type {PageCallbackRouter, QueryResult, QueryState} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
@@ -31,7 +30,6 @@ import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {hasKeyModifiers} from 'chrome://resources/js/util.js';
 import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
-import {browserProxyFactory as userEducationProxyFactory} from 'chrome://resources/mojo/components/user_education/webui/user_education.mojom-webui.js';
 
 import {getCss} from './app.css.js';
 import {getHtml} from './app.html.js';
@@ -98,8 +96,8 @@ export interface HistoryAppElement {
   };
 }
 
-const HistoryAppElementBase = HelpBubbleMixinLit(
-    FindShortcutMixinLit(WebUiListenerMixinLit(CrLitElement)));
+const HistoryAppElementBase =
+    FindShortcutMixinLit(WebUiListenerMixinLit(CrLitElement));
 
 export class HistoryAppElement extends HistoryAppElementBase {
   static get is() {
@@ -351,27 +349,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
     const searchField = this.$.toolbar.searchField;
     if (!searchField.narrow) {
       searchField.getSearchInput().focus();
-    }
-
-    if (loadTimeData.getBoolean('isCriticalActionsEnabled') &&
-        this.showFilterChips_()) {
-      const filterChipsEl =
-          this.shadowRoot.querySelector<CrLitElement>('#historyFilterChips');
-      if (filterChipsEl) {
-        filterChipsEl.updateComplete.then(() => {
-          const chipEl = filterChipsEl.shadowRoot.querySelector<HTMLElement>(
-              '#actorVisitsChip');
-          if (chipEl) {
-            this.registerHelpBubble(
-                'HistoryUI::kHistoryGeminiFilterChipElementId', chipEl);
-            setTimeout(() => {
-              userEducationProxyFactory.getInstance()
-                  .handler.maybeShowFeaturePromo(
-                      {featureName: 'IPH_CriticalActionFilterChip', key: null});
-            }, 1000);
-          }
-        });
-      }
     }
 
     requestIdleCallback(function() {

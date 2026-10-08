@@ -21,7 +21,6 @@
 #include "components/enterprise/common/proto/connectors.pb.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/safe_browsing/core/browser/db/v4_protocol_manager_util.h"
-#include "components/safe_browsing/core/browser/intelligent_scan_delegate.h"
 #include "components/safe_browsing/core/browser/referring_app_info.h"
 #include "components/safe_browsing/core/browser/safe_browsing_token_fetcher.h"
 #include "components/safe_browsing/core/browser/utils/backoff_operator.h"
@@ -106,7 +105,6 @@ class RealTimeUrlLookupServiceBase : public KeyedService {
       std::unique_ptr<SafeBrowsingTokenFetcher> token_fetcher,
       PrefService* pref_service,
       WebUIDelegate* webui_delegate,
-      IntelligentScanDelegate* intelligent_scan_delegate,
       base::RepeatingCallback<network::mojom::NetworkContext*()>
           network_context_getter);
 
@@ -495,8 +493,6 @@ class RealTimeUrlLookupServiceBase : public KeyedService {
   // contract.
   raw_ptr<WebUIDelegate> webui_delegate_ = nullptr;
 
-  // Unowned object used for getting the supported intelligent scan model type.
-  raw_ptr<IntelligentScanDelegate> intelligent_scan_delegate_;
 
   // Provides the NetworkContext to be used for DNS resolution. Can be a null
   // callback for testing.

@@ -10,8 +10,6 @@
 #include "chrome/browser/ui/views/frame/browser_native_widget_factory.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
-#include "chrome/browser/ui/webui_browser/webui_browser.h"
-#include "chrome/browser/ui/webui_browser/webui_browser_window.h"
 #include "ui/views/widget/widget.h"
 
 #if defined(USE_AURA)
@@ -30,12 +28,6 @@ std::unique_ptr<BrowserWindow, BrowserWindowDeleter>
 BrowserWindow::CreateBrowserWindow(BrowserWindowInterface* browser,
                                    bool user_gesture,
                                    bool in_tab_dragging) {
-  if (webui_browser::IsWebUIBrowserEnabled() &&
-      browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
-    return std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(
-        new WebUIBrowserWindow(browser));
-  }
-
 #if defined(USE_AURA)
   // Avoid generating too many occlusion tracking calculation events before this
   // function returns. The occlusion status will be computed only once once this
@@ -90,14 +82,10 @@ const BrowserWindow* BrowserWindow::FromBrowser(
   if (!browser) {
     return nullptr;
   }
-  // The two production subclasses (BrowserView, WebUIBrowserWindow) each
-  // register themselves under the BrowserWidget's NativeWindow properties, so
-  // for any given Browser at most one of these lookups will succeed.
+  // BrowserView registers itself under the BrowserWidget's NativeWindow
+  // properties.
   if (auto* view = BrowserView::GetBrowserViewForBrowser(browser)) {
     return view;
-  }
-  if (auto* webui = WebUIBrowserWindow::FromBrowser(browser)) {
-    return webui;
   }
   // Fallback for BrowserWindow implementations that are not reachable through
   // the NativeWindow property table (notably TestBrowserWindow in unit tests,

@@ -19,7 +19,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/memory/enterprise_memory_limit_pref_observer.h"
 #include "chrome/browser/performance_manager/decorators/helpers/page_live_state_decorator_helper.h"
-#include "chrome/browser/performance_manager/execution_context_priority/side_panel_loading_voter.h"
 #include "chrome/browser/performance_manager/metrics/metrics_provider_desktop.h"
 #include "chrome/browser/performance_manager/observers/page_load_metrics_observer.h"
 #include "chrome/browser/performance_manager/policies/background_tab_loading_policy.h"
@@ -298,12 +297,6 @@ void ChromeBrowserMainExtraPartsPerformanceManager::CreatePoliciesAndDecorators(
   if (auto* voting_system = graph->GetRegisteredObjectAs<
                             performance_manager::execution_context_priority::
                                 PriorityVotingSystem>()) {
-    // Ensures the contents of a Side Panel loads at a high priority, even when
-    // it is not visible.
-    voting_system
-        ->AddPriorityVoter<performance_manager::execution_context_priority::
-                               SidePanelLoadingVoter>();
-
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
     // Keeps the renderer of a navigation-blocking extension service worker out
     // of EcoQoS. See crbug.com/484218883.

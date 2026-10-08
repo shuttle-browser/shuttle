@@ -40,7 +40,6 @@ group("resources") {
     ":components_scaled_resources",
     ":dev_ui_components_resources",
     "../crash/core/browser/resources",
-    "../gcm_driver/resources",
     "../metrics:server_urls_grd",
     "../net_log/resources",
     "../webui:resources",

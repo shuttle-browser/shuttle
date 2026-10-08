@@ -14,7 +14,6 @@
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager.h"
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
 #include "chrome/browser/safe_browsing/chrome_user_population_helper.h"
-#include "chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
@@ -87,7 +86,6 @@ ChromeEnterpriseRealTimeUrlLookupServiceFactory::
   DependsOn(SafeBrowsingNavigationObserverManagerFactory::GetInstance());
   DependsOn(IdentityManagerFactory::GetInstance());
   DependsOn(policy::ManagementServiceFactory::GetInstance());
-  DependsOn(ClientSideDetectionIntelligentScanDelegateFactory::GetInstance());
 }
 
 std::unique_ptr<KeyedService> ChromeEnterpriseRealTimeUrlLookupServiceFactory::
@@ -127,7 +125,6 @@ std::unique_ptr<KeyedService> ChromeEnterpriseRealTimeUrlLookupServiceFactory::
           IdentityManagerFactory::GetForProfile(profile)),
       base::BindRepeating(&enterprise_util::IsProfileAffiliated, profile),
       /*is_command_line_switch_supported=*/IsCommandLineSwitchSupported(),
-      ClientSideDetectionIntelligentScanDelegateFactory::GetForProfile(profile),
       network_context_getter);
 }
 

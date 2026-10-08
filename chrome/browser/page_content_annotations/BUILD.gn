@@ -71,7 +71,6 @@ source_set("extraction_service") {
     "//build:buildflag_header_h",
     "//chrome/browser:browser_process",
     "//chrome/browser/app_mode",
-    "//chrome/browser/feature_engagement",
     "//chrome/browser/profiles:profile_manager",
     "//chrome/browser/profiles:profile_util",
     "//chrome/common:chrome_features",

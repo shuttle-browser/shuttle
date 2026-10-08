@@ -336,11 +336,6 @@ BrowsingHistoryHandler::BrowsingHistoryHandler(
 
 BrowsingHistoryHandler::~BrowsingHistoryHandler() = default;
 
-void BrowsingHistoryHandler::SetSidePanelUIEmbedder(
-    base::WeakPtr<TopChromeWebUIController::Embedder> side_panel_embedder) {
-  side_panel_embedder_ = side_panel_embedder;
-}
-
 void BrowsingHistoryHandler::SetPage(
     mojo::PendingRemote<history::mojom::Page> pending_page) {
   page_.Bind(std::move(pending_page));
@@ -349,12 +344,6 @@ void BrowsingHistoryHandler::SetPage(
     std::move(deferred_callback).Run();
   }
   deferred_callbacks_.clear();
-}
-
-void BrowsingHistoryHandler::ShowSidePanelUI() {
-  if (side_panel_embedder_) {
-    side_panel_embedder_->ShowUI();
-  }
 }
 
 void BrowsingHistoryHandler::StartQueryHistory() {

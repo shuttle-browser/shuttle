@@ -666,7 +666,6 @@ const int ClientSideDetectionHost::kMaxHighResScreenshotHeight = 2160;
 std::unique_ptr<ClientSideDetectionHost> ClientSideDetectionHost::Create(
     content::WebContents* tab,
     std::unique_ptr<Delegate> delegate,
-    IntelligentScanDelegate* intelligent_scan_delegate,
     PrefService* pref_service,
     VerdictCacheManager* cache_manager,
     history::HistoryService* history_service,
@@ -675,7 +674,7 @@ std::unique_ptr<ClientSideDetectionHost> ClientSideDetectionHost::Create(
     bool is_off_the_record,
     const PrimaryAccountSignedIn& account_signed_in_callback) {
   return base::WrapUnique(new ClientSideDetectionHost(
-      tab, std::move(delegate), intelligent_scan_delegate, pref_service,
+      tab, std::move(delegate), pref_service,
       cache_manager, history_service, csd_service, std::move(token_fetcher),
       is_off_the_record, account_signed_in_callback));
 }
@@ -683,7 +682,6 @@ std::unique_ptr<ClientSideDetectionHost> ClientSideDetectionHost::Create(
 ClientSideDetectionHost::ClientSideDetectionHost(
     WebContents* tab,
     std::unique_ptr<Delegate> delegate,
-    IntelligentScanDelegate* intelligent_scan_delegate,
     PrefService* pref_service,
     VerdictCacheManager* cache_manager,
     history::HistoryService* history_service,
@@ -693,7 +691,6 @@ ClientSideDetectionHost::ClientSideDetectionHost(
     const PrimaryAccountSignedIn& account_signed_in_callback)
     : ClientSideDetectionHostBase(csd_service,
                                   cache_manager,
-                                  intelligent_scan_delegate,
                                   pref_service,
                                   std::move(token_fetcher),
                                   history_service,
@@ -1377,14 +1374,6 @@ void ClientSideDetectionHost::AddReferrerChain(ClientPhishingRequest* verdict) {
     delegate_->AddReferrerChain(verdict, current_url(),
                                 current_outermost_main_frame_id_);
   }
-}
-
-void ClientSideDetectionHost::MaybeStartGeminiAntiscamProtection(
-    GURL url,
-    ClientSideDetectionType request_type,
-    std::optional<bool> did_match_high_confidence_allowlist) {
-  delegate_->MaybeStartGeminiAntiscamProtection(
-      url, request_type, did_match_high_confidence_allowlist);
 }
 
 ClientSideDetectionFeatureCacheBase*

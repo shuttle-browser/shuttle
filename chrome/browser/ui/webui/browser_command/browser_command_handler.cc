@@ -27,9 +27,6 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
-#include "chrome/browser/user_education/tutorial_identifiers.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
@@ -43,8 +40,6 @@
 #include "components/safe_browsing/core/common/safebrowsing_referral_methods.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tabs/public/tab_interface.h"
-#include "components/user_education/common/tutorial/tutorial_identifier.h"
-#include "components/user_education/common/tutorial/tutorial_service.h"
 #include "net/base/url_util.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/page_transition_types.h"
@@ -113,7 +108,8 @@ void BrowserCommandHandler::CanExecuteCommand(
       break;
     case Command::kStartTabGroupTutorial:
     case Command::kStartSavedTabGroupTutorial:
-      can_execute = TutorialServiceExists() && BrowserSupportsTabGroups();
+      // Agent Chrome: user education (tutorials) was removed.
+      can_execute = false;
       break;
     case Command::kOpenPasswordManager:
       // Agent Chrome: the password manager was removed.
@@ -206,7 +202,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
       break;
     case Command::kStartTabGroupTutorial:
     case Command::kStartSavedTabGroupTutorial:
-      StartTabGroupTutorial();
+      // Not executable; see CanExecuteCommand().
       break;
     case Command::kOpenPasswordManager:
       // Not executable; see CanExecuteCommand().
@@ -249,43 +245,10 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
   }
 }
 
-void BrowserCommandHandler::OnTutorialStarted(
-    user_education::TutorialIdentifier tutorial_id,
-    user_education::TutorialService* tutorial_service) {
-  if (tutorial_service) {
-    tutorial_service->LogStartedFromWhatsNewPage(
-        tutorial_id, tutorial_service->IsRunningTutorial(tutorial_id));
-  }
-}
-
-void BrowserCommandHandler::StartTutorial(StartTutorialInPage::Params params) {
-  BrowserWindowInterface* browser =
-      ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
-  StartTutorialInPage::Start(browser, std::move(params));
-}
-
-bool BrowserCommandHandler::TutorialServiceExists() {
-  auto* service = UserEducationServiceFactory::GetForBrowserContext(profile_);
-  auto* tutorial_service = service ? &service->tutorial_service() : nullptr;
-  return !!tutorial_service;
-}
-
 bool BrowserCommandHandler::BrowserSupportsTabGroups() {
   BrowserWindowInterface* browser =
       ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
   return browser->GetTabStripModel()->SupportsTabGroups();
-}
-
-void BrowserCommandHandler::StartTabGroupTutorial() {
-  auto* tutorial_id = kTabGroupTutorialId;
-
-  if (BrowserSupportsTabGroups()) {
-    StartTutorialInPage::Params params;
-    params.tutorial_id = tutorial_id;
-    params.callback = base::BindOnce(&BrowserCommandHandler::OnTutorialStarted,
-                                     base::Unretained(this), tutorial_id);
-    StartTutorial(std::move(params));
-  }
 }
 
 void BrowserCommandHandler::NavigateToEnhancedProtectionSetting() {

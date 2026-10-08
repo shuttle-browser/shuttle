@@ -22,7 +22,6 @@
 #include "chrome/browser/actor/actor_task_metadata.h"
 #include "chrome/browser/actor/enterprise_policy_checker.h"
 #include "chrome/browser/actor/tools/tab_management_tool_request.h"
-#include "chrome/browser/ai/ai_data_keyed_service.h"
 #include "chrome/browser/extensions/chrome_extension_function_details.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/profiles/profile.h"
@@ -117,13 +116,15 @@ ExperimentalActorApiFunction::ExperimentalActorApiFunction() = default;
 ExperimentalActorApiFunction::~ExperimentalActorApiFunction() = default;
 
 bool ExperimentalActorApiFunction::PreRunValidation(std::string* error) {
-  if (GetCurrentChannel() == version_info::Channel::STABLE &&
-      !AiDataKeyedService::IsExtensionAllowlistedForStable(extension_id())) {
+  // Agent Chrome: AiDataKeyedService and its Finch allowlists were removed.
+  // Only the extension used by api_test/experimental_actor stays allowlisted,
+  // and never on the stable channel.
+  if (GetCurrentChannel() == version_info::Channel::STABLE) {
     *error = "API access not allowed on this channel.";
     return false;
   }
 
-  if (!AiDataKeyedService::IsExtensionAllowlistedForActions(extension_id())) {
+  if (extension_id() != "kbanhggbnnaciicfpdkheonkpkeakfal") {
     *error = "Actions API access restricted for this extension.";
     return false;
   }

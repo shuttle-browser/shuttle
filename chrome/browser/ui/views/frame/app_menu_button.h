@@ -12,7 +12,6 @@
 #include "base/timer/elapsed_timer.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_button.h"
-#include "chrome/browser/ui/views/toolbar/toolbar_button_menu_highlighter.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 
 class AppMenu;
@@ -90,7 +89,6 @@ class AppMenuButton : public ToolbarButton, public AppMenuControl {
   base::ObserverList<AppMenuButtonObserver>::Unchecked observer_list_;
 
   raw_ptr<views::MenuButtonController> menu_button_controller_;
-  ToolbarButtonMenuHighlighter highlighter_;
 
   base::WeakPtrFactory<AppMenuButton> weak_ptr_factory_{this};
 };

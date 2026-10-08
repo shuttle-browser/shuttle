@@ -24,10 +24,6 @@
 #include "printing/buildflags/buildflags.h"
 #include "ui/accessibility/accessibility_features.h"
 
-#if BUILDFLAG(IS_ANDROID)
-#include "chrome/services/readaloud/read_aloud_playback_controller.h"  // nogncheck
-#endif  // BUILDFLAG(IS_ANDROID)
-
 #if BUILDFLAG(IS_WIN)
 #include "chrome/services/system_signals/win/win_system_signals_service.h"
 #include "chrome/services/util_win/processor_metrics.h"
@@ -54,7 +50,6 @@
 #endif  // BUILDFLAG(IS_LINUX)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/services/reading_mode_metrics/reading_mode_metrics_service.h"
 #include "components/mirroring/service/mirroring_service.h"
 #include "services/proxy_resolver/proxy_resolver_factory_impl.h"  // nogncheck
 #include "services/proxy_resolver/public/mojom/proxy_resolver.mojom.h"
@@ -235,16 +230,6 @@ auto RunSpeechRecognitionService(
 }
 #endif  // !BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
 
-#if !BUILDFLAG(IS_ANDROID)
-
-auto RunReadingModeMetricsService(
-    mojo::PendingReceiver<reading_mode::mojom::DistillationEvaluator>
-        receiver) {
-  return std::make_unique<reading_mode::ReadingModeMetricsService>(
-      std::move(receiver));
-}
-#endif
-
 #if (BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && \
      !BUILDFLAG(IS_ANDROID)) ||                      \
     BUILDFLAG(IS_CHROMEOS)
@@ -392,19 +377,6 @@ auto RunBabelOrcaTachyonParsingService(
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(IS_ANDROID)
-std::unique_ptr<readaloud::ReadAloudPlaybackController>
-RunReadAloudPlaybackControllerFactory(
-    mojo::PendingReceiver<
-        read_aloud::mojom::ReadAloudPlaybackControllerFactory> receiver) {
-  if (!features::IsReadAloudNativeEnabled()) {
-    return nullptr;
-  }
-  return std::make_unique<readaloud::ReadAloudPlaybackController>(
-      std::move(receiver));
-}
-#endif  // BUILDFLAG(IS_ANDROID)
-
 }  // namespace
 
 void RegisterElevatedMainThreadServices(mojo::ServiceFactory& services) {
@@ -420,13 +392,8 @@ void RegisterMainThreadServices(mojo::ServiceFactory& services) {
   services.Add(RunFilePatcher);
   services.Add(RunUnzipper);
 
-#if BUILDFLAG(IS_ANDROID)
-  services.Add(RunReadAloudPlaybackControllerFactory);
-#endif  // BUILDFLAG(IS_ANDROID)
-
 #if !BUILDFLAG(IS_ANDROID)
   services.Add(RunMirroringService);
-  services.Add(RunReadingModeMetricsService);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING_REDIRECTION)

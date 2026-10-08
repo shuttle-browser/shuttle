@@ -51,8 +51,6 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/recent_tabs_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -62,11 +60,7 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
-#include "chrome/browser/user_education/tutorial_identifiers.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_paths.h"
@@ -79,8 +73,6 @@
 #include "components/dom_distiller/content/browser/uma_helper.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/dom_distiller/core/url_utils.h"
-#include "components/feature_engagement/public/event_constants.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/omnibox/browser/vector_icons.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
@@ -90,7 +82,6 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/vector_icons/vector_icons.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
@@ -161,7 +152,6 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel,
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuModel, kHelpMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ToolsMenuModel, kPerformanceMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ToolsMenuModel, kChromeLabsMenuItem);
-DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ToolsMenuModel, kReadingModeMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ExtensionsMenuModel,
                                       kManageExtensionsMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ExtensionsMenuModel,
@@ -361,23 +351,8 @@ void ToolsMenuModel::Build(BrowserWindowInterface* browser) {
                                     : kDockToRightOldIcon
           : features::IsRoundedIconsEnabled() ? kDockToRightIcon
                                               : kDockToLeftOldIcon);
-      const user_education::DisplayNewBadge show_badge =
-          UserEducationService::MaybeShowNewBadge(browser->GetProfile(),
-                                                  tabs::kVerticalTabsNewBadge);
-      SetIsNewFeatureAt(GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),
-                        show_badge, ui::NewBadgeType::kNew);
     }
   }
-
-  AddSeparator(ui::NORMAL_SEPARATOR);
-
-  AddItemWithStringIdAndVectorIcon(
-      this, IDC_SHOW_READING_MODE_SIDE_PANEL, IDS_SHOW_READING_MODE_SIDE_PANEL,
-      features::IsRoundedIconsEnabled() ? kMenuBookIcon
-                                        : kMenuBookChromeRefreshOldIcon);
-  SetElementIdentifierAt(
-      GetIndexOfCommandId(IDC_SHOW_READING_MODE_SIDE_PANEL).value(),
-      kReadingModeMenuItem);
 
   AddSeparator(ui::NORMAL_SEPARATOR);
 
@@ -521,26 +496,7 @@ void AppMenuModel::ExecuteCommand(int command_id, int event_flags) {
 
   LogMenuMetrics(command_id);
 
-  switch (command_id) {
-    case IDC_SHOW_BOOKMARK_SIDE_PANEL:
-    case IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL:
-    case IDC_SHOW_READING_MODE_SIDE_PANEL: {
-      actions::ActionInvocationContext context =
-          actions::ActionInvocationContext::Builder()
-              .SetProperty(
-                  kSidePanelOpenTriggerKey,
-                  static_cast<std::underlying_type_t<SidePanelOpenTrigger>>(
-                      SidePanelOpenTrigger::kAppMenu))
-              .Build();
-      chrome::ExecuteCommandWithContext(browser_, command_id,
-                                        std::move(context));
-      break;
-    }
-
-    default:
-      chrome::ExecuteCommand(browser_, command_id);
-      break;
-  }
+  chrome::ExecuteCommand(browser_, command_id);
 }
 
 void AppMenuModel::LogMenuMetrics(int command_id) {
@@ -571,18 +527,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
                                       delta);
       }
       LogMenuAction(MENU_ACTION_SHOW_BOOKMARK_BAR);
-      break;
-    case IDC_SHOW_BOOKMARK_SIDE_PANEL:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowBookmarkSidePanel", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_BOOKMARK_SIDE_PANEL);
-      // Close IPH for side panel menu, if shown.
-      BrowserUserEducationInterface::From(browser())
-          ->NotifyFeaturePromoFeatureUsed(
-              feature_engagement::kIPHPowerBookmarksSidePanelFeature,
-              FeaturePromoFeatureUsedAction::kIgnorePromoIfPresent);
       break;
     case IDC_SHOW_BOOKMARK_MANAGER:
       if (!uma_action_recorded_) {
@@ -819,25 +763,6 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       }
       LogMenuAction(MENU_ACTION_SHOW_CHROME_LABS);
       break;
-    case IDC_SHOW_HISTORY_CLUSTERS_SIDE_PANEL:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowHistoryClustersSidePanel", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_HISTORY_CLUSTER_SIDE_PANEL);
-      break;
-    case IDC_SHOW_READING_MODE_SIDE_PANEL:
-      if (!uma_action_recorded_) {
-        base::UmaHistogramMediumTimes(
-            "WrenchMenu.TimeToAction.ShowReadingModeSidePanel", delta);
-      }
-      LogMenuAction(MENU_ACTION_SHOW_READING_MODE_SIDE_PANEL);
-      // Close IPH for side panel menu, if shown.
-      BrowserUserEducationInterface::From(browser())
-          ->NotifyFeaturePromoFeatureUsed(
-              feature_engagement::kIPHReadingModeSidePanelFeature,
-              FeaturePromoFeatureUsedAction::kIgnorePromoIfPresent);
-      break;
     // Zoom menu
     case IDC_ZOOM_MINUS:
       if (!uma_action_recorded_) {
@@ -1042,14 +967,6 @@ bool AppMenuModel::IsCommandIdAlerted(int command_id) const {
 bool AppMenuModel::GetAcceleratorForCommandId(
     int command_id,
     ui::Accelerator* accelerator) const {
-  // Reading mode uses different command IDs for different ways of opening
-  // it, so adjust to use the command ID for the keyboard shortcut to grab
-  // the proper accelerator.
-  if (command_id == IDC_SHOW_READING_MODE_SIDE_PANEL) {
-    return provider_->GetAcceleratorForCommandId(IDC_SHOW_READING_MODE_KEYBOARD,
-                                                 accelerator);
-  }
-
   return provider_->GetAcceleratorForCommandId(command_id, accelerator);
 }
 

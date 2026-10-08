@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/views/page_info/star_rating_view.h"
 #include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/common/url_constants.h"
-#include "components/page_info/core/about_this_site_service.h"
 #include "components/page_info/core/features.h"
 #include "components/page_info/page_info_ui_delegate.h"
 #include "components/permissions/permission_util.h"
@@ -205,13 +204,6 @@ PageInfoMainView::PageInfoMainView(
       PageInfoViewFactory::VIEW_ID_PAGE_INFO_EXTENDED_SITE_INFO_SECTION);
   // Hide until at least one of the children buttons is visible.
   extended_site_info_section_->SetVisible(false);
-
-  if (allow_extended_site_info &&
-      page_info::IsAboutThisSiteFeatureEnabled(
-          g_browser_process->GetApplicationLocale())) {
-    about_this_site_section_ =
-        extended_site_info_section_->AddChildView(CreateContainerView());
-  }
 
   presenter_->InitializeUiState(this, std::move(initialized_callback));
 }
@@ -438,17 +430,6 @@ void PageInfoMainView::SetIdentityInfo(const IdentityInfo& identity_info) {
     connection_button_->SetTitleTextStyleAndColor(
         views::style::STYLE_BODY_3_MEDIUM, kColorPageInfoForeground);
 
-    // Show "About this site" and "Merchant trust" sections only if connection
-    // is secure, because security information has higher priority.
-    if (about_this_site_section_) {
-      auto info = ui_delegate_->GetAboutThisSiteInfo();
-      if (info.has_value()) {
-        about_this_site_section_->RemoveAllChildViews();
-        about_this_site_section_->AddChildView(
-            CreateAboutThisSiteButton(info.value()));
-        extended_site_info_section_->SetVisible(true);
-      }
-    }
   } else {
     security_content_view_ = security_container_view_->AddChildView(
         std::make_unique<PageInfoSecurityContentView>(
@@ -635,44 +616,6 @@ std::unique_ptr<views::View> PageInfoMainView::CreateBubbleHeaderView() {
                                     button->GetInsets());
               })))
       .Build();
-}
-
-std::unique_ptr<views::View> PageInfoMainView::CreateAboutThisSiteButton(
-    const page_info::proto::SiteInfo& info) {
-  const std::u16string title =
-      l10n_util::GetStringUTF16(IDS_PAGE_INFO_ABOUT_THIS_PAGE_TITLE);
-  const auto& description =
-      info.has_description()
-          ? base::UTF8ToUTF16(info.description().description())
-          : l10n_util::GetStringUTF16(
-                IDS_PAGE_INFO_ABOUT_THIS_PAGE_DESCRIPTION_PLACEHOLDER);
-
-  auto about_this_site_button = std::make_unique<RichHoverButton>(
-      base::BindRepeating(
-          [](PageInfoMainView* view, GURL more_info_url, bool has_description,
-             const ui::Event& event) {
-            page_info::AboutThisSiteService::OnAboutThisSiteRowClicked(
-                has_description);
-            view->presenter_->RecordPageInfoAction(
-                page_info::PAGE_INFO_ABOUT_THIS_SITE_PAGE_OPENED);
-            view->ui_delegate_->OpenMoreAboutThisPageUrl(more_info_url, event);
-            view->GetWidget()->Close();
-          },
-          this, GURL(info.more_about().url()), info.has_description()),
-      PageInfoViewFactory::GetImageModel(
-          PageInfoViewFactory::GetAboutThisSiteVectorIcon()),
-      title, description, PageInfoViewFactory::GetLaunchIcon());
-  about_this_site_button->SetID(
-      PageInfoViewFactory::VIEW_ID_PAGE_INFO_ABOUT_THIS_SITE_BUTTON);
-  about_this_site_button->SetSubtitleMultiline(false);
-  about_this_site_button->SetTooltipText(
-      l10n_util::GetStringUTF16(IDS_PAGE_INFO_ABOUT_THIS_PAGE_TOOLTIP));
-  about_this_site_button->SetTitleTextStyleAndColor(
-      views::style::STYLE_BODY_3_MEDIUM, kColorPageInfoForeground);
-  about_this_site_button->SetSubtitleTextStyleAndColor(
-      views::style::STYLE_BODY_4, kColorPageInfoSubtitleForeground);
-
-  return about_this_site_button;
 }
 
 std::unique_ptr<views::View> PageInfoMainView::CreateSuspiciousSiteBannerView(

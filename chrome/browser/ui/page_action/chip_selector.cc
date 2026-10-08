@@ -15,15 +15,12 @@
 #include "base/metrics/histogram_functions.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "components/user_education/product_messaging/product_messaging_controller.h"
-#include "components/user_education/product_messaging/product_messaging_types.h"
 #include "ui/actions/action_id.h"
 
 namespace page_actions {
 
 namespace internal {
 
-DEFINE_CLASS_PRODUCT_MESSAGE_KEY(PriorityChipSelector, kAnchoredMessageId);
 DefaultChipSelector::DefaultChipSelector(
     base::RepeatingCallback<void(actions::ActionId,
                                  const SuggestionChipConfig&)>
@@ -144,13 +141,11 @@ PriorityChipSelector::PriorityChipSelector(
                                  const AnchoredMessageConfig&)>
         show_anchored_message_callback,
     base::RepeatingCallback<void(actions::ActionId)>
-        hide_anchored_message_callback,
-    user_education::ProductMessagingController* product_messaging_controller)
+        hide_anchored_message_callback)
     : show_chip_callback_(show_chip_callback),
       hide_chip_callback_(hide_chip_callback),
       show_anchored_message_callback_(show_anchored_message_callback),
-      hide_anchored_message_callback_(hide_anchored_message_callback),
-      product_messaging_controller_(product_messaging_controller) {}
+      hide_anchored_message_callback_(hide_anchored_message_callback) {}
 
 PriorityChipSelector::~PriorityChipSelector() {
   CancelPendingAnchoredMessage();
@@ -279,7 +274,6 @@ void PriorityChipSelector::RequestAnchoredMessageShow(
     // suggestion chip, and show the requested one.
     CancelPendingAnchoredMessage();
     if (active_anchored_message_) {
-      pmc_handle_.reset();
       hide_anchored_message_callback_.Run(active_anchored_message_.value());
       show_chip_callback_.Run(active_anchored_message_.value(),
                               {.priority = active_priority_.value()});
@@ -314,7 +308,6 @@ void PriorityChipSelector::RequestAnchoredMessageHide(
   if (active_anchored_message_ != page_action_id) {
     return;
   }
-  pmc_handle_.reset();
   active_anchored_message_.reset();
   hide_anchored_message_callback_.Run(page_action_id);
 
@@ -345,7 +338,6 @@ void PriorityChipSelector::OnTabActiveChanged(bool is_tab_active) {
     return;
   }
 
-  pmc_handle_.reset();
   actions::ActionId page_action_id = active_anchored_message_.value();
   PageActionPriorityCategory priority = active_priority_.value();
   hide_anchored_message_callback_.Run(page_action_id);
@@ -360,7 +352,6 @@ void PriorityChipSelector::HideAllActive() {
   }
   active_chips_.clear();
   if (active_anchored_message_) {
-    pmc_handle_.reset();
     hide_anchored_message_callback_.Run(active_anchored_message_.value());
   }
   active_anchored_message_.reset();
@@ -395,89 +386,20 @@ void PriorityChipSelector::ShowAnchoredMessage(
   active_priority_ = config.priority;
 }
 
-bool PriorityChipSelector::ShouldUsePmc(
-    const AnchoredMessageConfig& config) const {
-  // The anchored message active tab flag check is needed to avoid 2 different
-  // tabs trying to schedule anchored messages at the same time.
-  return base::FeatureList::IsEnabled(
-             features::
-                 kPageActionsPrioritySelectorProductMessagingController) &&
-         base::FeatureList::IsEnabled(
-             features::kPageActionAnchoredMessageActiveTabOnly) &&
-         product_messaging_controller_ != nullptr &&
-         config.priority != PageActionPriorityCategory::kUserInteraction;
-}
-
 void PriorityChipSelector::MaybeShowOrQueueAnchoredMessage(
     actions::ActionId page_action_id,
     const AnchoredMessageConfig& config) {
-  if (ShouldUsePmc(config)) {
-    QueueAnchoredMessage(page_action_id, config);
-  } else {
-    ShowAnchoredMessage(page_action_id, config);
-  }
-}
-
-void PriorityChipSelector::QueueAnchoredMessage(
-    actions::ActionId page_action_id,
-    const AnchoredMessageConfig& config) {
-  CHECK(!pending_anchored_message_);
-  CHECK(!active_anchored_message_);
-  CHECK(product_messaging_controller_);
-  pending_anchored_message_ =
-      std::make_unique<PendingAnchoredMessage>(page_action_id, config);
-  active_priority_ = config.priority;
-
-  pmc_timeout_timer_.Start(
-      FROM_HERE, kPmcTimeout,
-      base::BindOnce(&PriorityChipSelector::OnPmcTimeout,
-                     weak_ptr_factory_.GetWeakPtr(), page_action_id));
-
-  product_messaging_controller_->QueueMessage(
-      kAnchoredMessageId,
-      base::BindOnce(&PriorityChipSelector::OnPmcPermissionGranted,
-                     weak_ptr_factory_.GetWeakPtr(), page_action_id),
-      kPmcTimeout);
+  ShowAnchoredMessage(page_action_id, config);
 }
 
 void PriorityChipSelector::CancelPendingAnchoredMessage() {
   if (!pending_anchored_message_) {
     return;
   }
-  pmc_timeout_timer_.Stop();
-  if (product_messaging_controller_) {
-    product_messaging_controller_->UnqueueMessage(kAnchoredMessageId);
-  }
   pending_anchored_message_.reset();
   if (active_chips_.empty() && !active_anchored_message_) {
     active_priority_.reset();
   }
-}
-
-void PriorityChipSelector::OnPmcPermissionGranted(
-    actions::ActionId page_action_id,
-    user_education::ProductMessagingHandle handle) {
-  if (!pending_anchored_message_ ||
-      pending_anchored_message_->page_action_id != page_action_id) {
-    return;
-  }
-  pmc_timeout_timer_.Stop();
-  pmc_handle_ = std::move(handle);
-  pmc_handle_->SetShown();
-  AnchoredMessageConfig config = pending_anchored_message_->config;
-  pending_anchored_message_.reset();
-  ShowAnchoredMessage(page_action_id, config);
-}
-
-void PriorityChipSelector::OnPmcTimeout(actions::ActionId page_action_id) {
-  if (!pending_anchored_message_ ||
-      pending_anchored_message_->page_action_id != page_action_id) {
-    return;
-  }
-  PageActionPriorityCategory priority =
-      pending_anchored_message_->config.priority;
-  CancelPendingAnchoredMessage();
-  ShowChip(page_action_id, {.priority = priority});
 }
 
 }  // namespace internal
@@ -491,12 +413,11 @@ std::unique_ptr<ChipSelector> CreateChipSelector(
                                  const AnchoredMessageConfig&)>
         show_anchored_message_callback,
     base::RepeatingCallback<void(actions::ActionId)>
-        hide_anchored_message_callback,
-    user_education::ProductMessagingController* product_messaging_controller) {
+        hide_anchored_message_callback) {
   if (base::FeatureList::IsEnabled(features::kPageActionsPrioritySelector)) {
     return std::make_unique<internal::PriorityChipSelector>(
         show_chip_callback, hide_chip_callback, show_anchored_message_callback,
-        hide_anchored_message_callback, product_messaging_controller);
+        hide_anchored_message_callback);
   }
   return std::make_unique<internal::DefaultChipSelector>(
       show_chip_callback, hide_chip_callback, show_anchored_message_callback,

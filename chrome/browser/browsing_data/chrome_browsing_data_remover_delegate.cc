@@ -153,7 +153,6 @@
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/user_education/browser_user_education_storage_service.h"
 #include "content/public/browser/storage_partition_config.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -516,13 +515,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       share_history->Clear(delete_begin_, delete_end_);
     if (auto* share_ranking = sharing::ShareRanking::Get(profile_))
       share_ranking->Clear(delete_begin_, delete_end_);
-#endif
-
-#if !BUILDFLAG(IS_ANDROID)
-    // Clear any stored User Education session data. Note that we can't clear a
-    // specific date range, as this is used for longitudinal metrics reporting,
-    // so selectively deleting entries would make the telemetry invalid.
-    BrowserUserEducationStorageService::ClearUsageHistory(profile_);
 #endif
 
     // Cleared for DATA_TYPE_HISTORY, DATA_TYPE_COOKIES and DATA_TYPE_PASSWORDS.

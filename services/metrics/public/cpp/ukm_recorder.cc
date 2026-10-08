@@ -206,14 +206,6 @@ ukm::SourceId UkmRecorder::GetSourceIdForNotificationEvent(
 
 // static
 ukm::SourceId UkmRecorder::GetSourceIdForNotificationEvent(
-    base::PassKey<safe_browsing::NotificationContentDetectionUkmUtil>,
-    const GURL& url) {
-  return UkmRecorder::GetSourceIdFromScopeImpl(url,
-                                               SourceIdType::NOTIFICATION_ID);
-}
-
-// static
-ukm::SourceId UkmRecorder::GetSourceIdForNotificationEvent(
     base::PassKey<AbusiveNotificationPermissionsManager>,
     const GURL& url) {
   return UkmRecorder::GetSourceIdFromScopeImpl(url,

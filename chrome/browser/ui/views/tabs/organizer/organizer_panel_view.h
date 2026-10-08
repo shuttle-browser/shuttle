@@ -22,9 +22,6 @@
 #include "ui/views/view.h"
 #include "ui/views/view_tracker.h"
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "extensions/common/extension_id.h"
-#endif
 
 namespace gfx {
 class Point;
@@ -36,13 +33,6 @@ class EventMonitor;
 class ViewShadow;
 }  // namespace views
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-class ExtensionViewViews;
-namespace extensions {
-class ExtensionHost;
-class ExtensionViewHost;
-}  // namespace extensions
-#endif
 
 class BrowserWindowInterface;
 class OrganizerPanelStateController;
@@ -109,11 +99,6 @@ class OrganizerPanelView : public views::View,
     return controls_view_;
   }
   views::View* web_view_for_testing();
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  bool has_extension_observer_helper_for_testing() const {
-    return extension_observer_helper_ != nullptr;
-  }
-#endif
 
   void set_on_close_animation_ended_callback_for_testing(
       base::OnceClosure on_close_animation_ended_callback) {
@@ -184,22 +169,6 @@ class OrganizerPanelView : public views::View,
   // restored when the panel is closed.
   views::ViewTracker last_focused_view_before_opening_;
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  class ExtensionObserverHelper;
-
-  void OnViewDestroying();
-  void OnExtensionHostDestroyed(extensions::ExtensionHost* host);
-
-  void HandleCloseExtensionHost(extensions::ExtensionHost* host);
-  void UpdateExtensionContent(const extensions::ExtensionId& extension_id);
-  void UpdateDefaultExtensionContent();
-  void ResetExtensionContent();
-
-  std::unique_ptr<extensions::ExtensionViewHost> extension_host_;
-  raw_ptr<ExtensionViewViews> extension_view_ = nullptr;
-  std::optional<extensions::ExtensionId> current_extension_id_;
-  std::unique_ptr<ExtensionObserverHelper> extension_observer_helper_;
-#endif
 
   base::WeakPtrFactory<OrganizerPanelView> weak_ptr_factory_{this};
 };

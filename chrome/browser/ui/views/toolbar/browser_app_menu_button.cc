@@ -21,7 +21,6 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/grit/browser_resources.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -45,7 +44,6 @@
 #include "ui/views/view_class_properties.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/base/ime/virtual_keyboard_controller.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -259,17 +257,6 @@ void BrowserAppMenuButton::OnTouchUiChanged() {
 }
 
 void BrowserAppMenuButton::ButtonPressed(const ui::Event& event) {
-#if BUILDFLAG(IS_CHROMEOS)
-  auto* const user_education =
-      BrowserUserEducationInterface::From(toolbar_view_->browser());
-  if (user_education->IsFeaturePromoActive(
-          feature_engagement::kIPHPasswordsSavePrimingPromoFeature)) {
-    user_education->NotifyFeaturePromoFeatureUsed(
-        feature_engagement::kIPHPasswordsSavePrimingPromoFeature,
-        FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  }
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   if (features::IsToolbarGlowUpEnabled() && !IsMenuShowing()) {
     views::SingleAnimatedImageContainer::AnimationConfig config{

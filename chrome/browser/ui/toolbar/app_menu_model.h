@@ -13,7 +13,6 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "components/prefs/pref_change_registrar.h"
-#include "components/user_education/common/menu/highlighting_simple_menu_model_delegate.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/models/button_menu_item_model.h"
@@ -140,7 +139,6 @@ class ToolsMenuModel : public ui::SimpleMenuModel {
  public:
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kPerformanceMenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kChromeLabsMenuItem);
-  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kReadingModeMenuItem);
 
   ToolsMenuModel(ui::SimpleMenuModel::Delegate* delegate,
                  BrowserWindowInterface* browser);
@@ -189,7 +187,7 @@ class HelpMenuModel : public ui::SimpleMenuModel {
 
 // A menu model that builds the contents of the app menu.
 class AppMenuModel : public ui::SimpleMenuModel,
-                     public user_education::HighlightingSimpleMenuModelDelegate,
+                     public ui::SimpleMenuModel::Delegate,
                      public ui::ButtonMenuItemModel::Delegate {
  public:
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kProfileMenuItem);

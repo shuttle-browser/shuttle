@@ -180,14 +180,6 @@ class SuggestionWindowView;
 class UndoWindow;
 }  // namespace ui::ime
 
-namespace user_education {
-class HelpBubbleView;
-
-namespace test {
-class TestCustomHelpBubbleView;
-}
-}  // namespace user_education
-
 namespace webid {
 class AccountSelectionBubbleView;
 }
@@ -928,8 +920,6 @@ class VIEWS_EXPORT BubbleDialogDelegateView : public View,
   friend class ::ui::ime::InfolistWindow;
   friend class ::ui::ime::SuggestionWindowView;
   friend class ::ui::ime::UndoWindow;
-  friend class ::user_education::HelpBubbleView;
-  friend class ::user_education::test::TestCustomHelpBubbleView;
   friend class ::webid::AccountSelectionBubbleView;
   friend class AnchorTestBubbleDialogDelegateView;
   friend class FocusManagerTestBubbleDialogDelegateView;

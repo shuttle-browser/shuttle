@@ -7,11 +7,8 @@
 #include "base/metrics/histogram_functions.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/user_education/user_education_service.h"
-#include "chrome/browser/user_education/user_education_service_factory.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
-#include "components/user_education/common/session/user_education_session_manager.h"
 #include "third_party/metrics_proto/chrome_user_metrics_extension.pb.h"
 
 TabMetricsProvider::TabMetricsProvider(ProfileManager* profile_manager)
@@ -56,24 +53,6 @@ void TabMetricsProvider::ProvideCurrentSessionData(
 }
 
 void TabMetricsProvider::OnProfileAdded(Profile* profile) {
-  UserEducationService* user_education_service =
-      UserEducationServiceFactory::GetForBrowserContext(profile);
-  if (!user_education_service) {
-    return;
-  }
-
-  user_education::UserEducationSessionManager& user_education_session_manager =
-      user_education_service->user_education_session_manager();
-  if (user_education_session_manager.GetNewSessionSinceStartup()) {
-    OnUserEducationSessionStart(profile);
-  }
-  session_start_subscriptions_.push_back(
-      user_education_session_manager.AddNewSessionCallback(
-          base::BindRepeating(&TabMetricsProvider::OnUserEducationSessionStart,
-                              base::Unretained(this), profile)));
-}
-
-void TabMetricsProvider::OnUserEducationSessionStart(Profile* profile) {
   base::UmaHistogramBoolean(
       "Tabs.VerticalTabs.EnabledAtSessionStart",
       profile->GetPrefs() &&

@@ -31,7 +31,6 @@ class Extension;
 class ExtensionAction;
 
 #if !BUILDFLAG(IS_ANDROID)
-class SidePanelService;
 #endif
 
 // The context menu model for extension icons.
@@ -63,7 +62,6 @@ class ExtensionContextMenuModel : public ui::SimpleMenuModel,
     PAGE_ACCESS_PERMISSIONS_PAGE,
     VIEW_WEB_PERMISSIONS,
     POLICY_INSTALLED,
-    TOGGLE_SIDE_PANEL_VISIBILITY,
     RATE_EXTENSION,
     // NOTE: If you update this, you probably need to update the
     // ContextMenuAction enum below.
@@ -172,7 +170,6 @@ class ExtensionContextMenuModel : public ui::SimpleMenuModel,
 
   // Returns the side panel service for the current profile.
 #if !BUILDFLAG(IS_ANDROID)
-  SidePanelService* GetSidePanelService() const;
 #endif
 
   // Appends the extension's context menu items.
@@ -181,7 +178,6 @@ class ExtensionContextMenuModel : public ui::SimpleMenuModel,
 #if !BUILDFLAG(IS_ANDROID)
   // Appends the side panel menu item to the context menu if `extension` has one
   // it can open.
-  void AddSidePanelEntryIfPresent(const Extension& extension);
 #endif
 
   // A copy of the extension's id.

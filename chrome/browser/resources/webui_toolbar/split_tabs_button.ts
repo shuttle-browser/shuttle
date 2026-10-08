@@ -17,10 +17,10 @@ import type {BrowserProxy} from './browser_proxy.js';
 import {OverflowableButtonMixin} from './overflowable_button.js';
 import {getHtml} from './split_tabs_button.html.js';
 import {getCss} from './toolbar_button.css.js';
-import {BUTTON_LEFT, getClickSourceType, getContextMenuPosition, getContextMenuSourceType, HelpBubbleAnchorMixin, roundedIconsEnabled} from './toolbar_button.js';
+import {BUTTON_LEFT, getClickSourceType, getContextMenuPosition, getContextMenuSourceType, roundedIconsEnabled} from './toolbar_button.js';
 
 const SplitTabsButtonElementBase =
-    HelpBubbleAnchorMixin(OverflowableButtonMixin(CrLitElement));
+    OverflowableButtonMixin(CrLitElement);
 
 export class SplitTabsButtonElement extends SplitTabsButtonElementBase {
   static get is() {
@@ -105,7 +105,7 @@ export class SplitTabsButtonElement extends SplitTabsButtonElementBase {
   }
 
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(this.getLabel());
+    return this.getLabel();
   }
 
   /**

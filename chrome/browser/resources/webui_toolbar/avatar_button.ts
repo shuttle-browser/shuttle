@@ -8,14 +8,12 @@ import '//resources/cr_elements/icons.html.js';
 import '/shared/icon_from_table.js';
 
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
-import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import type {AvatarControlState} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
 import {AvatarToolbarButtonState} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
 
 import {getCss} from './avatar_button.css.js';
 import {getHtml} from './avatar_button.html.js';
 import {BrowserProxyImpl} from './browser_proxy.js';
-import {HelpBubbleAnchorMixin, setHasHelpBubble} from './toolbar_button.js';
 import type {ToolbarChipButtonElement} from './toolbar_chip_button.js';
 
 export interface AvatarButtonElement {
@@ -24,7 +22,7 @@ export interface AvatarButtonElement {
   };
 }
 
-const AvatarButtonElementBase = HelpBubbleAnchorMixin(CrLitElement);
+const AvatarButtonElementBase = CrLitElement;
 
 export class AvatarButtonElement extends AvatarButtonElementBase {
   static get is() {
@@ -46,30 +44,6 @@ export class AvatarButtonElement extends AvatarButtonElementBase {
     };
   }
 
-  override connectedCallback() {
-    super.connectedCallback();
-    this.registerHelpBubble('kToolbarAvatarButtonElementId', this.$.button, {
-      onHighlightChanged: (highlighted: boolean) => {
-        this.classList.toggle('anchor-highlight', highlighted);
-      },
-      onHelpBubbleShown: () => setHasHelpBubble(this, true),
-      onHelpBubbleHidden: () => setHasHelpBubble(this, false),
-    });
-  }
-
-  override disconnectedCallback() {
-    super.disconnectedCallback();
-    this.unregisterHelpBubble('kToolbarAvatarButtonElementId');
-  }
-
-  override updated(changedProperties: PropertyValues<this>) {
-    super.updated(changedProperties);
-    if (changedProperties.has('hasHelpBubble')) {
-      BrowserProxyImpl.getInstance()
-          .toolbarUIHandler.setAvatarButtonIphPromoShowing(this.hasHelpBubble);
-    }
-  }
-
   protected accessor state: AvatarControlState = {
     state: AvatarToolbarButtonState.kNormal,
     icon: {handleId: 0n},
@@ -82,7 +56,7 @@ export class AvatarButtonElement extends AvatarButtonElementBase {
   };
 
   protected getTooltip_(): string {
-    return this.adjustTooltipForHelpBubble(this.state?.tooltip || '');
+    return this.state?.tooltip || '';
   }
 
   protected shouldPaintBorder(): boolean {
@@ -92,9 +66,6 @@ export class AvatarButtonElement extends AvatarButtonElementBase {
 
   protected getButtonClass_(): string {
     const classes = [];
-    if (this.hasHelpBubble) {
-      classes.push('help-anchor-highlight');
-    }
     if (this.state.text) {
       switch (this.state.state) {
         case AvatarToolbarButtonState.kSyncError:
