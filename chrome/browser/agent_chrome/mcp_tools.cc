@@ -271,7 +271,9 @@ void OpenSession(const ToolContext& context,
   }
   const Session& session = context.service->sessions().Open(*agent);
   base::DictValue result = DescribeSession(context, session);
-  result.Set("cdpEndpoint", "http://" + HostOrDefault(context));
+  // A browser-level CDP connection scoped to the session.
+  result.Set("cdpEndpoint", base::StrCat({"ws://", HostOrDefault(context),
+                                          "/devtools/session/", session.id}));
   std::move(callback).Run(ToolResult::Json(base::Value(std::move(result))));
 }
 
@@ -466,8 +468,16 @@ void CaptureTab(const ToolContext& context,
     std::move(callback).Run(ToolResult::Error("The tab has no view yet"));
     return;
   }
+  // CSS pixels (not device pixels): a quarter of the data on 2x screens.
+  // Crop to the agent's viewport, which may be smaller than the view of the
+  // active tab.
+  gfx::Rect source(view->GetViewBounds().size());
+  if (std::optional<gfx::Size> viewport =
+          SessionManager::ViewportOf(contents)) {
+    source.Intersect(gfx::Rect(*viewport));
+  }
   view->CopyFromSurface(
-      gfx::Rect(), gfx::Size(), kCaptureTimeout,
+      source, source.size(), kCaptureTimeout,
       base::BindOnce(
           [](bool png, ToolCallback callback,
              const content::CopyFromSurfaceResult& result) {
@@ -562,27 +572,40 @@ constexpr Tool kTools[] = {
      "Close the agent's sessions and tabs and wipe its storage.",
      kAgentIdArgs, &DeleteAgent},
     {"open-session",
-     "Start working as an agent. Returns a sessionId; tabs you allocate form "
-     "one tab group with the agent's name and color. cdpEndpoint works with "
-     "Playwright connectOverCDP.",
+     "Start working as an agent. Returns a sessionId and cdpEndpoint; tabs "
+     "you allocate form one tab group with the agent's name and color. "
+     "cdpEndpoint is a browser-level CDP WebSocket that only sees this "
+     "session's tabs: use it with Playwright connectOverCDP or agent-browser "
+     "--cdp. There, the default browser context is the agent's (cookies, "
+     "storage), new pages (Target.createTarget, Playwright newPage) become "
+     "session tabs, and Browser.close ends the session. Don't create browser "
+     "contexts.",
      kOpenSessionArgs, &OpenSession},
     {"list-sessions", "List open sessions and their tabs.", kNoArgs,
      &ListSessions},
     {"close-session", "Close the session's tabs and end it.", kSessionIdArgs,
      &CloseSession},
     {"allocate-tab",
-     "Open a tab leased to the session, in its agent's storage. Returns "
-     "targetId and cdpUrl (page WebSocket) to drive it over CDP. Tabs it "
-     "opens (popups, target=_blank) join the session.",
+     "Open a background tab leased to the session, in its agent's storage. "
+     "Returns targetId (in Playwright: the page whose CDP session reports "
+     "it via Target.getTargetInfo) and cdpUrl (this tab's own page "
+     "WebSocket). Tabs it opens (popups, target=_blank) join the session. "
+     "width/height set its viewport (see set-tab-viewport).",
      kAllocateTabArgs, &AllocateTab},
     {"release-tab", "Close a leased tab.", kReleaseTabArgs, &ReleaseTab},
-    {"navigate-tab", "Navigate a leased tab and wait for the load to commit.",
+    {"navigate-tab",
+     "Navigate a leased tab and wait until the navigation commits (not until "
+     "the page has loaded or rendered: wait for your own readiness signal, "
+     "e.g. a selector, on single-page apps).",
      kNavigateTabArgs, &NavigateTab},
     {"set-tab-viewport",
-     "Resize a leased tab's viewport (works below the window minimum, e.g. "
-     "390x844). Returns the size applied.",
+     "Set a leased tab's viewport in CSS px (device emulation: works for "
+     "the active tab and below the window minimum, e.g. 390x844). Kept "
+     "across navigations. Returns the size applied.",
      kViewportArgs, &SetTabViewport},
-    {"capture-tab", "Screenshot of a leased tab (also in the background).",
+    {"capture-tab",
+     "Screenshot of a leased tab's viewport in CSS px (also in the "
+     "background).",
      kCaptureArgs, &CaptureTab},
 };
 

@@ -75,6 +75,8 @@ const char kDevToolsHandlerThreadName[] = "Chrome_DevToolsHandlerThread";
 
 const char kPageUrlPrefix[] = "/devtools/page/";
 const char kBrowserUrlPrefix[] = "/devtools/browser";
+// Agent Chrome: a browser-level connection scoped to one agent session.
+const char kSessionUrlPrefix[] = "/devtools/session/";
 
 const char kTargetIdField[] = "id";
 const char kTargetParentIdField[] = "parentId";
@@ -328,12 +330,22 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
       scoped_refptr<base::SingleThreadTaskRunner> task_runner,
       ServerWrapper* server_wrapper,
       int connection_id,
-      scoped_refptr<DevToolsAgentHost> agent_host)
+      scoped_refptr<DevToolsAgentHost> agent_host,
+      std::unique_ptr<DevToolsManagerDelegate::ConnectionFilter> filter =
+          nullptr)
       : task_runner_(std::move(task_runner)),
         server_wrapper_(server_wrapper),
         connection_id_(connection_id),
-        agent_host_(agent_host) {
+        agent_host_(agent_host),
+        filter_(std::move(filter)) {
     DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    if (filter_) {
+      filter_->Start(
+          base::BindRepeating(&DevToolsAgentHostClientImpl::SendToAgent,
+                              weak_factory_.GetWeakPtr()),
+          base::BindRepeating(&DevToolsAgentHostClientImpl::SendToClient,
+                              weak_factory_.GetWeakPtr()));
+    }
     // TODO(dgozman): handle return value of AttachClient.
     agent_host_->AttachClient(this);
   }
@@ -366,24 +378,45 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
                                base::span<const uint8_t> message) override {
     DCHECK_CURRENTLY_ON(BrowserThread::UI);
     DCHECK(agent_host == agent_host_.get());
-    task_runner_->PostTask(
-        FROM_HERE,
-        base::BindOnce(&ServerWrapper::SendOverWebSocket,
-                       base::Unretained(server_wrapper_), connection_id_,
-                       std::string(message.begin(), message.end())));
+    std::string text(message.begin(), message.end());
+    if (filter_) {
+      filter_->OnAgentMessage(std::move(text));
+      return;
+    }
+    SendToClient(std::move(text));
   }
 
   void OnMessage(base::span<const uint8_t> message) {
     DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    if (filter_) {
+      filter_->OnClientMessage(std::string(message.begin(), message.end()));
+      return;
+    }
     if (agent_host_)
       agent_host_->DispatchProtocolMessage(this, message);
   }
 
  private:
+  void SendToClient(std::string message) {
+    task_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&ServerWrapper::SendOverWebSocket,
+                       base::Unretained(server_wrapper_), connection_id_,
+                       std::move(message)));
+  }
+
+  void SendToAgent(std::string message) {
+    if (agent_host_) {
+      agent_host_->DispatchProtocolMessage(this, base::as_byte_span(message));
+    }
+  }
+
   const scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
   const raw_ptr<ServerWrapper> server_wrapper_;
   const int connection_id_;
   scoped_refptr<DevToolsAgentHost> agent_host_;
+  std::unique_ptr<DevToolsManagerDelegate::ConnectionFilter> filter_;
+  base::WeakPtrFactory<DevToolsAgentHostClientImpl> weak_factory_{this};
 };
 
 static bool TimeComparator(scoped_refptr<DevToolsAgentHost> host1,
@@ -914,6 +947,31 @@ void DevToolsHttpHandler::OnWebSocketRequest(
     return;
   }
 
+  // Agent Chrome: /devtools/session/<id> is a browser-level connection that
+  // only sees the session's tabs (the delegate's filter enforces it).
+  if (base::StartsWith(request.path, kSessionUrlPrefix,
+                       base::CompareCase::SENSITIVE)) {
+    std::string session_id = request.path.substr(strlen(kSessionUrlPrefix));
+    std::unique_ptr<DevToolsManagerDelegate::ConnectionFilter> filter =
+        delegate_ ? delegate_->CreateConnectionFilter(session_id, "")
+                  : nullptr;
+    if (!filter) {
+      Send404(connection_id);
+      return;
+    }
+    scoped_refptr<DevToolsAgentHost> browser_agent =
+        DevToolsAgentHost::CreateForBrowser(
+            thread_->task_runner(),
+            base::BindRepeating(&DevToolsSocketFactory::CreateForTethering,
+                                base::Unretained(socket_factory_.get())));
+    connection_to_client_[connection_id] =
+        std::make_unique<DevToolsAgentHostClientImpl>(
+            thread_->task_runner(), server_wrapper_.get(), connection_id,
+            browser_agent, std::move(filter));
+    AcceptWebSocket(connection_id, request);
+    return;
+  }
+
   if (!base::StartsWith(request.path, kPageUrlPrefix,
                         base::CompareCase::SENSITIVE)) {
     Send404(connection_id);
@@ -930,7 +988,9 @@ void DevToolsHttpHandler::OnWebSocketRequest(
 
   connection_to_client_[connection_id] =
       std::make_unique<DevToolsAgentHostClientImpl>(
-          thread_->task_runner(), server_wrapper_.get(), connection_id, agent);
+          thread_->task_runner(), server_wrapper_.get(), connection_id, agent,
+          delegate_ ? delegate_->CreateConnectionFilter("", target_id)
+                    : nullptr);
 
   AcceptWebSocket(connection_id, request);
 }

@@ -10,6 +10,7 @@
 
 #include "base/functional/callback_forward.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "content/public/browser/devtools_manager_delegate.h"
 
 class Profile;
 
@@ -38,6 +39,13 @@ class AgentChromeService : public KeyedService {
   void HandleMcpRequest(const std::string& host,
                         const std::string& body,
                         HttpResponseCallback callback);
+
+  // A filter scoping a CDP connection to an agent session, or nullptr:
+  // /devtools/session/<session_id> (nullptr if unknown), or a page connection
+  // to `target_id` (nullptr unless it is a leased tab).
+  std::unique_ptr<content::DevToolsManagerDelegate::ConnectionFilter>
+  CreateConnectionFilter(const std::string& session_id,
+                         const std::string& target_id);
 
   ProfileRegistry& profiles() { return *profiles_; }
   SessionManager& sessions() { return *sessions_; }

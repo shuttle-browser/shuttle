@@ -73,6 +73,9 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate {
   void HandleMcpRequest(const std::string& host,
                         const std::string& body,
                         HttpResponseCallback callback) override;
+  std::unique_ptr<ConnectionFilter> CreateConnectionFilter(
+      const std::string& session_id,
+      const std::string& target_id) override;
   std::string GetTargetType(content::WebContents* web_contents) override;
   std::string GetTargetTitle(content::WebContents* web_contents) override;
   std::unique_ptr<base::DictValue> GetTargetEmbedderData(

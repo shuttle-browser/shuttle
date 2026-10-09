@@ -12197,6 +12197,11 @@ bool WebContentsImpl::SetDeviceEmulationSize(const gfx::Size& new_size) {
   OPTIONAL_TRACE_EVENT0("content", "WebContentsImpl::SetDeviceEmulationSize");
   device_emulation_size_ = new_size;
   RenderWidgetHostView* rwhv = GetPrimaryMainFrame()->GetView();
+  // Agent Chrome: no view yet (or the renderer is gone); Emulation over CDP
+  // must not crash the browser.
+  if (!rwhv) {
+    return false;
+  }
 
   const gfx::Size current_size = rwhv->GetViewBounds().size();
   if (view_size_before_emulation_.IsEmpty()) {

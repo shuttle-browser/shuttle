@@ -10,13 +10,15 @@
 
 #include "base/auto_reset.h"
 #include "base/functional/bind.h"
-#include "base/functional/callback_helpers.h"
 #include "base/containers/span.h"
+#include "base/functional/callback_helpers.h"
+#include "base/json/json_writer.h"
 #include "base/rand_util.h"
 #include "base/types/expected_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/values.h"
 #include "chrome/browser/agent_chrome/profile_registry.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -31,12 +33,15 @@
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/devtools_agent_host.h"
+#include "content/public/browser/devtools_agent_host_client.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/site_instance.h"
+#include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
+#include "services/network/public/mojom/cookie_manager.mojom.h"
 #include "ui/base/base_window.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
@@ -52,6 +57,53 @@ namespace {
 constexpr int kMinViewport = 100;
 constexpr int kMaxViewport = 8192;
 
+// Applies an agent's viewport size with device emulation (an internal
+// DevTools session): unlike WebContents::Resize, it also holds for the active
+// tab, whose view otherwise follows the window.
+class ViewportEmulator : public content::DevToolsAgentHostClient {
+ public:
+  ViewportEmulator() = default;
+  ViewportEmulator(const ViewportEmulator&) = delete;
+  ViewportEmulator& operator=(const ViewportEmulator&) = delete;
+  ~ViewportEmulator() override {
+    if (host_) {
+      host_->DetachClient(this);
+    }
+  }
+
+  void Apply(content::WebContents* contents, const gfx::Size& size) {
+    if (!host_) {
+      host_ = content::DevToolsAgentHost::GetOrCreateFor(contents);
+      if (!host_->AttachClient(this)) {
+        host_ = nullptr;
+        return;
+      }
+    }
+    base::DictValue message;
+    message.Set("id", ++last_id_);
+    message.Set("method", "Emulation.setDeviceMetricsOverride");
+    message.Set("params", base::DictValue()
+                              .Set("width", size.width())
+                              .Set("height", size.height())
+                              .Set("deviceScaleFactor", 0)
+                              .Set("mobile", false));
+    std::string json = base::WriteJson(message).value_or("{}");
+    host_->DispatchProtocolMessage(this, base::as_byte_span(json));
+  }
+
+  // content::DevToolsAgentHostClient:
+  void DispatchProtocolMessage(content::DevToolsAgentHost* host,
+                               base::span<const uint8_t> message) override {}
+  void AgentHostClosed(content::DevToolsAgentHost* host) override {
+    host_ = nullptr;
+  }
+  std::string GetTypeForMetrics() override { return "Other"; }
+
+ private:
+  scoped_refptr<content::DevToolsAgentHost> host_;
+  int last_id_ = 0;
+};
+
 // Lease of a tab to a session: keeps the tab rendering like a foreground tab
 // (a capture handle) and re-applies its viewport size after activation.
 class AgentTabLease : public content::WebContentsUserData<AgentTabLease>,
@@ -61,7 +113,10 @@ class AgentTabLease : public content::WebContentsUserData<AgentTabLease>,
 
   const std::string& session_id() const { return session_id_; }
   const std::optional<gfx::Size>& viewport() const { return viewport_; }
-  void set_viewport(const gfx::Size& size) { viewport_ = size; }
+  void set_viewport(const gfx::Size& size) {
+    viewport_ = size;
+    emulator_.Apply(web_contents(), size);
+  }
 
   // content::WebContentsObserver:
   void DidOpenRequestedURL(content::WebContents* new_contents,
@@ -113,6 +168,7 @@ class AgentTabLease : public content::WebContentsUserData<AgentTabLease>,
   base::WeakPtr<SessionManager> manager_;
   base::ScopedClosureRunner capture_;
   std::optional<gfx::Size> viewport_;
+  ViewportEmulator emulator_;
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
@@ -320,16 +376,35 @@ gfx::Size SessionManager::SetViewport(content::WebContents* contents,
   gfx::Size size(std::clamp(requested.width(), kMinViewport, kMaxViewport),
                  std::clamp(requested.height(), kMinViewport, kMaxViewport));
   if (AgentTabLease* lease = AgentTabLease::FromWebContents(contents)) {
+    // Device emulation: holds for the active tab too.
     lease->set_viewport(size);
   }
-  // The active tab follows the window; its size is applied once it is back
-  // in the background.
+  // Background tabs also get a view of that size (the active tab's view
+  // follows the window).
   TabLocation location = FindInTabStrips(contents);
   if (!location.tab_strip ||
       location.tab_strip->active_index() != location.index) {
     contents->Resize(gfx::Rect(size));
   }
   return size;
+}
+
+network::mojom::CookieManager* SessionManager::CookieManagerOf(
+    const std::string& session_id) {
+  const Session* session = Get(session_id);
+  if (!session) {
+    return nullptr;
+  }
+  content::StoragePartition* partition = profile_->GetStoragePartition(
+      registry_->PartitionConfig(session->agent), /*can_create=*/true);
+  return partition ? partition->GetCookieManagerForBrowserProcess() : nullptr;
+}
+
+// static
+std::optional<gfx::Size> SessionManager::ViewportOf(
+    content::WebContents* contents) {
+  AgentTabLease* lease = AgentTabLease::FromWebContents(contents);
+  return lease ? lease->viewport() : std::nullopt;
 }
 
 // static

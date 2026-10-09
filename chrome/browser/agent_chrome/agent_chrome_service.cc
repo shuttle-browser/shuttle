@@ -18,8 +18,10 @@
 #include "chrome/browser/agent_chrome/agent_chrome_service_factory.h"
 #include "chrome/browser/agent_chrome/mcp_tools.h"
 #include "chrome/browser/agent_chrome/profile_registry.h"
+#include "chrome/browser/agent_chrome/session_cdp_filter.h"
 #include "chrome/browser/agent_chrome/session_manager.h"
 #include "chrome/browser/profiles/profile.h"
+#include "content/public/browser/web_contents.h"
 
 namespace agent_chrome {
 
@@ -33,9 +35,11 @@ constexpr char kInstructions[] =
     "Agent Chrome runs agents in tabs. An agent has an identity (name, "
     "color, avatar: shown on its tab group) and its own storage (logins "
     "persist). Flow: create-agent (once) -> open-session (agent id) -> "
-    "allocate-tab -> drive the tab over CDP with the returned cdpUrl (or "
-    "Playwright connectOverCDP(cdpEndpoint) and pick the page by targetId) "
-    "-> release-tab / close-session when done.";
+    "allocate-tab -> drive the tab over CDP -> release-tab / close-session "
+    "when done. Drive pages through the session's cdpEndpoint (Playwright "
+    "connectOverCDP(cdpEndpoint), agent-browser --cdp <cdpEndpoint>): it "
+    "only sees the session's tabs and the agent's storage. Don't use the "
+    "browser-wide endpoint (/json/version) for agent work.";
 
 // JSON-RPC error codes.
 constexpr int kParseError = -32700;
@@ -209,6 +213,26 @@ void AgentChromeService::Shutdown() {
   // Cookies set shortly before exit are otherwise lost (seen in the
   // partition spike with Browser.close).
   profiles_->FlushAllCookies();
+}
+
+std::unique_ptr<content::DevToolsManagerDelegate::ConnectionFilter>
+AgentChromeService::CreateConnectionFilter(const std::string& session_id,
+                                           const std::string& target_id) {
+  if (!session_id.empty()) {
+    if (!sessions_->Get(session_id)) {
+      return nullptr;
+    }
+    return std::make_unique<SessionCdpFilter>(sessions_->GetWeakPtr(),
+                                              session_id,
+                                              /*page_connection=*/false);
+  }
+  content::WebContents* contents = SessionManager::FindTab(target_id);
+  std::string owner = contents ? SessionManager::SessionOf(contents) : "";
+  if (owner.empty()) {
+    return nullptr;
+  }
+  return std::make_unique<SessionCdpFilter>(sessions_->GetWeakPtr(), owner,
+                                            /*page_connection=*/true);
 }
 
 }  // namespace agent_chrome

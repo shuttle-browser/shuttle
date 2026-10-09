@@ -27,6 +27,10 @@ namespace content {
 class WebContents;
 }
 
+namespace network::mojom {
+class CookieManager;
+}
+
 namespace agent_chrome {
 
 class ProfileRegistry;
@@ -88,9 +92,20 @@ class SessionManager : public TabStripModelObserver {
   std::vector<content::WebContents*> TabsOf(
       const std::string& session_id) const;
 
-  // Resizes a leased tab's viewport; it is re-applied when the tab goes back
-  // to the background. Returns the size actually applied.
+  // Sets a leased tab's viewport (device emulation, so it also holds while
+  // the tab is active; background tabs are resized too). Returns the size
+  // actually applied (clamped).
   gfx::Size SetViewport(content::WebContents* contents, const gfx::Size& size);
+
+  // The cookie manager of the session's agent storage, or nullptr.
+  network::mojom::CookieManager* CookieManagerOf(const std::string& session_id);
+
+  base::WeakPtr<SessionManager> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+
+  // The viewport an agent set for a leased tab, if any.
+  static std::optional<gfx::Size> ViewportOf(content::WebContents* contents);
 
   // Returns the session a tab is leased to, or "".
   static std::string SessionOf(content::WebContents* contents);

@@ -17,6 +17,7 @@ source_set("agent_chrome") {
     "//base",
     "//chrome/browser/profiles:profile",
     "//components/keyed_service/core",
+    "//content/public/browser",
   ]
 }
 
@@ -29,6 +30,8 @@ source_set("impl") {
     "pref_names.h",
     "profile_registry.cc",
     "profile_registry.h",
+    "session_cdp_filter.cc",
+    "session_cdp_filter.h",
     "session_manager.cc",
     "session_manager.h",
   ]

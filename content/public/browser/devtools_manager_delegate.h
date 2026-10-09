@@ -199,6 +199,30 @@ class CONTENT_EXPORT DevToolsManagerDelegate {
                                 const std::string& body,
                                 HttpResponseCallback callback);
 
+  // Agent Chrome: filters the protocol messages of one remote debugging
+  // WebSocket connection in both directions (scoped per-session CDP).
+  class ConnectionFilter {
+   public:
+    using SendCallback = base::RepeatingCallback<void(std::string)>;
+    virtual ~ConnectionFilter() = default;
+    // Called once, before any message. `to_agent` sends a protocol message to
+    // the connection's DevTools agent host, `to_client` to the WebSocket.
+    // Both are safe to call after the connection is gone (no-ops).
+    virtual void Start(SendCallback to_agent, SendCallback to_client) = 0;
+    // A message from the client; forward it with `to_agent`, answer it with
+    // `to_client`, or both.
+    virtual void OnClientMessage(std::string message) = 0;
+    // A message from the agent host; forward it with `to_client` or drop it.
+    virtual void OnAgentMessage(std::string message) = 0;
+  };
+  // Agent Chrome: returns a filter for a new WebSocket connection, or nullptr.
+  // `session_id` is set for /devtools/session/<session_id> (a browser-level
+  // connection; nullptr rejects it), `target_id` for /devtools/page/<target_id>
+  // (nullptr leaves it unfiltered).
+  virtual std::unique_ptr<ConnectionFilter> CreateConnectionFilter(
+      const std::string& session_id,
+      const std::string& target_id);
+
   virtual ~DevToolsManagerDelegate();
 };
 

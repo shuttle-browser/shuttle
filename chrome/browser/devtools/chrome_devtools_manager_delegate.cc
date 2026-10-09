@@ -45,6 +45,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
 #include "content/public/common/content_switches.h"
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/extension_registry.h"
@@ -262,6 +263,19 @@ void ChromeDevToolsManagerDelegate::HandleMcpRequest(
   service->HandleMcpRequest(host, body, std::move(callback));
 }
 
+std::unique_ptr<content::DevToolsManagerDelegate::ConnectionFilter>
+ChromeDevToolsManagerDelegate::CreateConnectionFilter(
+    const std::string& session_id,
+    const std::string& target_id) {
+  Profile* profile = ProfileManager::GetLastUsedProfileIfLoaded();
+  agent_chrome::AgentChromeService* service =
+      profile ? agent_chrome::AgentChromeService::Get(
+                    profile->GetOriginalProfile())
+              : nullptr;
+  return service ? service->CreateConnectionFilter(session_id, target_id)
+                 : nullptr;
+}
+
 void ChromeDevToolsManagerDelegate::HandleCommand(
     content::DevToolsAgentHostClientChannel* channel,
     base::span<const uint8_t> message,
@@ -289,6 +303,16 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
   }
 
   if (views::WebView::IsWebViewContents(web_contents)) {
+    // Agent Chrome: browser UI (chrome://*.top-chrome, e.g. the omnibox
+    // popup) is not a page; automation clients that attach to every page
+    // must not drive it.
+    const GURL& url = web_contents->GetLastCommittedURL().is_empty()
+                          ? web_contents->GetVisibleURL()
+                          : web_contents->GetLastCommittedURL();
+    if (url.SchemeIs(content::kChromeUIScheme) &&
+        url.host().ends_with(".top-chrome")) {
+      return DevToolsAgentHost::kTypeOther;
+    }
     return DevToolsAgentHost::kTypePage;
   }
 

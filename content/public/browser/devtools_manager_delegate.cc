@@ -135,6 +135,12 @@ void DevToolsManagerDelegate::AcceptDebugging(AcceptCallback callback) {
 
 void DevToolsManagerDelegate::SetActiveWebSocketConnections(size_t count) {}
 
+std::unique_ptr<DevToolsManagerDelegate::ConnectionFilter>
+DevToolsManagerDelegate::CreateConnectionFilter(const std::string& session_id,
+                                                const std::string& target_id) {
+  return nullptr;
+}
+
 void DevToolsManagerDelegate::HandleMcpRequest(const std::string& host,
                                                const std::string& body,
                                                HttpResponseCallback callback) {
