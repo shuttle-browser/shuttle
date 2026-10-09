@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -65,9 +66,16 @@ class SessionManager : public TabStripModelObserver {
 
   // Closes the session's tabs and forgets it. Returns false if unknown.
   bool Close(const std::string& session_id);
+  // Runs after a session closed (explicitly, or with its agent).
+  using SessionClosedCallback =
+      base::RepeatingCallback<void(const std::string& session_id)>;
+  void SetSessionClosedCallback(SessionClosedCallback callback) {
+    session_closed_callback_ = std::move(callback);
+  }
   void CloseProfileSessions(const std::string& agent_id);
 
-  // Re-applies the agent's name and color to its tab group.
+  // Re-applies the agent's name and color to its tab group (and repaints it,
+  // for the avatar).
   void RefreshGroups(const std::string& agent_id);
 
   // Opens a background tab in the session's profile partition, leased to
@@ -157,6 +165,11 @@ class SessionManager : public TabStripModelObserver {
   // storage partitions).
   void AdoptTab(base::WeakPtr<content::WebContents> contents,
                 const std::string& agent_id);
+  // A leased tab the user dragged out of its agent's group goes back to the
+  // user, like "Take back from agent". Waits while a tab drag runs (the tab
+  // may still be dropped into a group); gives up after `attempts_left`.
+  void TakeBackIfUngrouped(base::WeakPtr<content::WebContents> contents,
+                           int attempts_left);
   const Session* LatestSession(const std::string& agent_id) const;
   void Observe(TabStripModel* tab_strip);
   // Returns the tab strip holding `group`, or nullptr.
@@ -165,6 +178,7 @@ class SessionManager : public TabStripModelObserver {
   raw_ptr<Profile> profile_;
   raw_ptr<ProfileRegistry> registry_;
   std::map<std::string, Session> sessions_;
+  SessionClosedCallback session_closed_callback_;
   // Agent id -> its tab group. Created with the agent's first tab (a tab
   // group can't be empty); gone once its last tab closes.
   std::map<std::string, tab_groups::TabGroupId> groups_;

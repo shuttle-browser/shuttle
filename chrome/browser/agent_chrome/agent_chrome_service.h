@@ -12,6 +12,7 @@
 #include "base/functional/callback_forward.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/devtools_manager_delegate.h"
+#include "ui/gfx/image/image_skia.h"
 
 class Profile;
 
@@ -25,6 +26,8 @@ class TabGroupId;
 
 namespace agent_chrome {
 
+class AvatarCache;
+class PageToolManager;
 class ProfileRegistry;
 class SessionManager;
 
@@ -68,6 +71,9 @@ class AgentChromeService : public KeyedService {
   std::string AgentOfTab(content::WebContents* contents) const;
   // The agent whose tabs form `group`, or "".
   std::string AgentOfGroup(const tab_groups::TabGroupId& group) const;
+  // The avatar of the agent whose tabs form `group` (round, see
+  // AvatarCache), or an empty image. A late image repaints the group.
+  gfx::ImageSkia AvatarOfGroup(const tab_groups::TabGroupId& group);
   // Hands a user's tab (or another agent's) to `agent_id`.
   void HandTabToAgent(content::WebContents* contents,
                       const std::string& agent_id);
@@ -83,6 +89,9 @@ class AgentChromeService : public KeyedService {
  private:
   std::unique_ptr<ProfileRegistry> profiles_;
   std::unique_ptr<SessionManager> sessions_;
+  std::unique_ptr<AvatarCache> avatars_;
+  // After sessions_: sidecars die before the sessions they serve.
+  std::unique_ptr<PageToolManager> page_tools_;
 };
 
 }  // namespace agent_chrome

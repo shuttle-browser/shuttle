@@ -22,6 +22,7 @@
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/mojom/menu_source_type.mojom-forward.h"
+#include "ui/gfx/image/image_skia.h"
 #include "ui/views/context_menu_controller.h"
 #include "ui/views/controls/focus_ring.h"
 #include "ui/views/view_targeter_delegate.h"
@@ -173,6 +174,8 @@ class TabGroupHeader : public TabSlotView,
 
   // Determines if we should show the header icon in front of the title.
   bool should_show_header_icon_;
+  // Agent Chrome: the agent's avatar, shown in the sync icon's slot.
+  gfx::ImageSkia agent_avatar_;
 
   // Local saved collapsed state. When this differs from
   // `TabSlotController::IsGroupCollapsed()`, then the collapsed state has

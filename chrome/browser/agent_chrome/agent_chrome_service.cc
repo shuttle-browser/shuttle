@@ -18,7 +18,9 @@
 #include "base/values.h"
 #include "base/version_info/version_info.h"
 #include "chrome/browser/agent_chrome/agent_chrome_service_factory.h"
+#include "chrome/browser/agent_chrome/avatar_cache.h"
 #include "chrome/browser/agent_chrome/mcp_tools.h"
+#include "chrome/browser/agent_chrome/page_tools.h"
 #include "chrome/browser/agent_chrome/profile_registry.h"
 #include "chrome/browser/agent_chrome/session_cdp_filter.h"
 #include "chrome/browser/agent_chrome/session_manager.h"
@@ -35,13 +37,14 @@ constexpr std::string_view kProtocolVersions[] = {"2025-06-18", "2025-03-26",
 
 constexpr char kInstructions[] =
     "Agent Chrome runs agents in tabs. An agent has an identity (name, "
-    "color, avatar: shown on its tab group) and its own storage (logins "
+    "color, avatar: shown on its tabs) and its own storage (logins "
     "persist). Flow: create-agent (once) -> open-session (agent id) -> "
-    "allocate-tab -> drive the tab over CDP -> release-tab / close-session "
-    "when done. Drive pages through the session's cdpEndpoint (Playwright "
-    "connectOverCDP(cdpEndpoint), agent-browser --cdp <cdpEndpoint>): it "
-    "only sees the session's tabs and the agent's storage. Don't use the "
-    "browser-wide endpoint (/json/version) for agent work.";
+    "allocate-tab -> snapshot / click / fill ... (page tools, take the "
+    "targetId from allocate-tab; refs are @eN from snapshot) -> release-tab / "
+    "close-session when done. Or drive the tab yourself through the session's "
+    "cdpEndpoint (Playwright connectOverCDP(cdpEndpoint), agent-browser --cdp "
+    "<cdpEndpoint>): it only sees the session's tabs and the agent's storage. "
+    "Don't use the browser-wide endpoint (/json/version) for agent work.";
 
 // JSON-RPC error codes.
 constexpr int kParseError = -32700;
@@ -110,6 +113,9 @@ base::DictValue ToolsListResult() {
                      .Set("description", tool.description)
                      .Set("inputSchema", std::move(*schema)));
   }
+  for (base::Value& tool : PageToolManager::ListTools()) {
+    tools.Append(std::move(tool));
+  }
   return base::DictValue().Set("tools", std::move(tools));
 }
 
@@ -117,7 +123,17 @@ base::DictValue ToolsListResult() {
 
 AgentChromeService::AgentChromeService(Profile* profile)
     : profiles_(std::make_unique<ProfileRegistry>(profile)),
-      sessions_(std::make_unique<SessionManager>(profile, profiles_.get())) {}
+      sessions_(std::make_unique<SessionManager>(profile, profiles_.get())),
+      avatars_(std::make_unique<AvatarCache>(
+          profile,
+          profiles_.get(),
+          base::BindRepeating(&SessionManager::RefreshGroups,
+                              base::Unretained(sessions_.get())))),
+      page_tools_(std::make_unique<PageToolManager>(sessions_.get(),
+                                                    profile->GetPath())) {
+  sessions_->SetSessionClosedCallback(base::BindRepeating(
+      &PageToolManager::OnSessionClosed, base::Unretained(page_tools_.get())));
+}
 
 AgentChromeService::~AgentChromeService() = default;
 
@@ -182,6 +198,10 @@ void AgentChromeService::HandleMcpRequest(const std::string& host,
   }
 
   const std::string* name = params ? params->FindString("name") : nullptr;
+  const base::DictValue* arguments =
+      params ? params->FindDict("arguments") : nullptr;
+  base::DictValue empty_arguments;
+  ToolContext context{this, host};
   const Tool* tool = nullptr;
   if (name) {
     for (const Tool& candidate : GetTools()) {
@@ -190,6 +210,20 @@ void AgentChromeService::HandleMcpRequest(const std::string& host,
       }
     }
   }
+  if (!tool && name && PageToolManager::IsPageTool(*name)) {
+    // Page tools answer asynchronously (the sidecar round trip).
+    page_tools_->Call(
+        *name, context, arguments ? *arguments : empty_arguments,
+        base::BindOnce(
+            [](base::Value id, HttpResponseCallback callback,
+               ToolResult result) {
+              std::move(callback).Run(
+                  kHttpOk, kJson,
+                  ResultMessage(id, std::move(result).ToValue()));
+            },
+            id->Clone(), std::move(callback)));
+    return;
+  }
   if (!tool) {
     std::move(callback).Run(
         kHttpOk, kJson,
@@ -197,9 +231,6 @@ void AgentChromeService::HandleMcpRequest(const std::string& host,
                      base::StrCat({"Unknown tool: ", name ? *name : ""})));
     return;
   }
-  const base::DictValue* arguments = params->FindDict("arguments");
-  base::DictValue empty_arguments;
-  ToolContext context{this, host};
   tool->run(context, arguments ? *arguments : empty_arguments,
             base::BindOnce(
                 [](base::Value id, HttpResponseCallback callback,
@@ -233,6 +264,12 @@ std::string AgentChromeService::AgentOfGroup(
   return sessions_->AgentOfGroup(group);
 }
 
+gfx::ImageSkia AgentChromeService::AvatarOfGroup(
+    const tab_groups::TabGroupId& group) {
+  std::string agent_id = sessions_->AgentOfGroup(group);
+  return agent_id.empty() ? gfx::ImageSkia() : avatars_->Get(agent_id);
+}
+
 void AgentChromeService::HandTabToAgent(content::WebContents* contents,
                                         const std::string& agent_id) {
   sessions_->HandTabToAgent(contents, agent_id);
@@ -246,6 +283,7 @@ void AgentChromeService::Shutdown() {
   // Cookies set shortly before exit are otherwise lost (seen in the
   // partition spike with Browser.close).
   profiles_->FlushAllCookies();
+  page_tools_->Shutdown();
 }
 
 std::unique_ptr<content::DevToolsManagerDelegate::ConnectionFilter>

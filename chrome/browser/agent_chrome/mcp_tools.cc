@@ -4,6 +4,7 @@
 
 #include "chrome/browser/agent_chrome/mcp_tools.h"
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <utility>
@@ -14,6 +15,8 @@
 #include "base/json/json_writer.h"
 #include "base/i18n/time_formatting.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
@@ -118,14 +121,25 @@ std::optional<gfx::Size> GetViewport(const base::DictValue& args,
 
 // Agents --------------------------------------------------------------------
 
-base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry) {
+// `avatar_data`: inline uploaded avatars (chrome://agents shows them).
+base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry,
+                              bool avatar_data) {
   base::DictValue dict =
       base::DictValue()
           .Set("id", entry.id)
           .Set("name", entry.name)
           .Set("color", ProfileRegistry::ColorName(entry.color))
           .Set("createdAt", base::TimeFormatAsIso8601(entry.created));
-  if (!entry.avatar.empty()) {
+  if (!avatar_data && base::StartsWith(entry.avatar, "data:")) {
+    // Uploaded images run to 256 KB: name the kind and size, not the bytes
+    // (an agent listing three agents shouldn't read a megabyte).
+    size_t comma = entry.avatar.find(',');
+    dict.Set("avatar",
+             base::StrCat({entry.avatar.substr(0, std::min(comma,
+                                                           entry.avatar.find(';'))),
+                           " (", base::NumberToString(entry.avatar.size() / 1024 + 1),
+                           " KB, set; content omitted)"}));
+  } else if (!entry.avatar.empty()) {
     dict.Set("avatar", entry.avatar);
   }
   return dict;
@@ -174,7 +188,7 @@ void ListAgents(const ToolContext& context,
   base::ListValue list;
   for (const ProfileRegistry::Entry& entry :
        context.service->profiles().List()) {
-    list.Append(DescribeAgent(entry)
+    list.Append(DescribeAgent(entry, args.FindBool("avatarData").value_or(false))
                     .Set("sessions", sessions[entry.id])
                     .Set("tabs", tabs[entry.id]));
   }
@@ -206,7 +220,8 @@ void CreateAgent(const ToolContext& context,
     return;
   }
   std::move(callback).Run(ToolResult::Json(
-      base::Value(DescribeAgent(*context.service->profiles().Get(*id)))));
+      base::Value(DescribeAgent(*context.service->profiles().Get(*id),
+                                args.FindBool("avatarData").value_or(false)))));
 }
 
 void UpdateAgent(const ToolContext& context,
@@ -229,7 +244,8 @@ void UpdateAgent(const ToolContext& context,
   }
   context.service->sessions().RefreshGroups(*id);
   std::move(callback).Run(ToolResult::Json(
-      base::Value(DescribeAgent(*context.service->profiles().Get(*id)))));
+      base::Value(DescribeAgent(*context.service->profiles().Get(*id),
+                                args.FindBool("avatarData").value_or(false)))));
 }
 
 void DeleteAgent(const ToolContext& context,
@@ -512,15 +528,15 @@ constexpr char kAgentIdArgs[] = R"({"type":"object","properties":{
 
 constexpr char kCreateAgentArgs[] = R"({"type":"object","properties":{
   "id":{"type":"string","description":"Agent id: kebab-case slug, max 64 chars."},
-  "name":{"type":"string","description":"Friendly name, shown on the tab group (max 64 chars; default: the id)."},
-  "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Tab group color (default: picked from the id)."},
+  "name":{"type":"string","description":"Friendly name, shown on the agent's tabs (max 64 chars; default: the id)."},
+  "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Color of the agent's tabs (default: picked from the id)."},
   "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."}},
   "required":["id"]})";
 
 constexpr char kUpdateAgentArgs[] = R"({"type":"object","properties":{
   "id":{"type":"string"},
-  "name":{"type":"string","description":"Friendly name, shown on the tab group (max 64 chars; default: the id)."},
-  "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Tab group color (default: picked from the id)."},
+  "name":{"type":"string","description":"Friendly name, shown on the agent's tabs (max 64 chars; default: the id)."},
+  "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Color of the agent's tabs (default: picked from the id)."},
   "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."}},
   "required":["id"]})";
 
@@ -557,23 +573,26 @@ constexpr char kCaptureArgs[] = R"({"type":"object","properties":{
   "format":{"type":"string","enum":["jpeg","png"],"description":"Default jpeg."}},
   "required":["targetId"]})";
 
+constexpr char kListAgentsArgs[] = R"({"type":"object","properties":{
+  "avatarData":{"type":"boolean","description":"Include uploaded avatar images (large; default: summarized)."}}})";
+
 constexpr Tool kTools[] = {
     {"list-agents",
      "List agents: identity (name, color, avatar), open sessions and tabs.",
-     kNoArgs, &ListAgents},
+     kListAgentsArgs, &ListAgents},
     {"create-agent",
-     "Create an agent: an identity shown on its tab groups, and its own "
+     "Create an agent: an identity shown on its tabs, and its own "
      "cookies, logins and storage, kept across restarts.",
      kCreateAgentArgs, &CreateAgent},
     {"update-agent",
-     "Change an agent's name, color or avatar; its open tab groups follow.",
+     "Change an agent's name, color or avatar; its open tabs follow.",
      kUpdateAgentArgs, &UpdateAgent},
     {"delete-agent",
      "Close the agent's sessions and tabs and wipe its storage.",
      kAgentIdArgs, &DeleteAgent},
     {"open-session",
      "Start working as an agent. Returns a sessionId and cdpEndpoint; tabs "
-     "you allocate form one tab group with the agent's name and color. "
+     "you allocate are grouped under the agent's name and color. "
      "cdpEndpoint is a browser-level CDP WebSocket that only sees this "
      "session's tabs: use it with Playwright connectOverCDP or agent-browser "
      "--cdp. There, the default browser context is the agent's (cookies, "

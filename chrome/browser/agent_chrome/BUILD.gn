@@ -18,15 +18,23 @@ source_set("agent_chrome") {
     "//chrome/browser/profiles:profile",
     "//components/keyed_service/core",
     "//content/public/browser",
+    "//ui/gfx",
   ]
 }
 
 source_set("impl") {
   sources = [
+    "agent_browser_sidecar.cc",
+    "agent_browser_sidecar.h",
     "agent_chrome_service.cc",
     "agent_chrome_service_factory.cc",
+    "avatar_cache.cc",
+    "avatar_cache.h",
     "mcp_tools.cc",
     "mcp_tools.h",
+    "page_tools.cc",
+    "page_tools.h",
+    "page_tools_data.inc",
     "pref_names.h",
     "profile_registry.cc",
     "profile_registry.h",
@@ -56,6 +64,8 @@ source_set("impl") {
     "//components/viz/common",
     "//content/public/browser",
     "//net",
+    "//services/data_decoder/public/cpp",
+    "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//skia",
     "//ui/base",

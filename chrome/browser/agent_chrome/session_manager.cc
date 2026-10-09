@@ -28,6 +28,7 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/tab_group.h"
@@ -180,6 +181,11 @@ struct TabLocation {
   int index = TabStripModel::kNoTab;
 };
 
+// A tab dragged out of an agent's group: how long to wait for the drag to
+// end before deciding (120 x 250 ms = 30 s).
+constexpr int kTakeBackAttempts = 120;
+constexpr base::TimeDelta kTakeBackRetryDelay = base::Milliseconds(250);
+
 TabLocation FindInTabStrips(content::WebContents* contents) {
   for (BrowserWindowInterface* browser : GetAllBrowserWindowInterfaces()) {
     TabStripModel* tab_strip = browser->GetTabStripModel();
@@ -246,6 +252,9 @@ bool SessionManager::Close(const std::string& session_id) {
   }
   sessions_.erase(session_id);
   registry_->FlushCookies(agent_id);
+  if (session_closed_callback_) {
+    session_closed_callback_.Run(session_id);
+  }
   return true;
 }
 
@@ -491,12 +500,8 @@ void SessionManager::RefreshGroups(const std::string& agent_id) {
   }
   tab_groups::TabGroupVisualData visuals(base::UTF8ToUTF16(agent->name),
                                          agent->color);
-  const tab_groups::TabGroupVisualData* current =
-      tab_strip->group_model()->GetTabGroup(group->second)->visual_data();
-  if (current->title() == visuals.title() &&
-      current->color() == visuals.color()) {
-    return;
-  }
+  // Also unchanged visuals: the avatar may have changed, and this repaints
+  // the group's header.
   base::AutoReset<bool> applying(&applying_visuals_, true);
   tab_strip->ChangeTabGroupVisuals(group->second, visuals);
 }
@@ -539,7 +544,22 @@ void SessionManager::TabGroupedStateChanged(
     std::optional<tab_groups::TabGroupId> new_group,
     tabs::TabInterface* tab,
     int index) {
-  if (!new_group || !tab || !tab->GetContents()) {
+  if (!tab || !tab->GetContents()) {
+    return;
+  }
+  if (!new_group) {
+    // Out of an agent's group (a drag, or the tab strip's own ungroup):
+    // decide once the tab strip has settled. Moving into another agent's
+    // group also passes here first; the tab is grouped again by then.
+    if (old_group && !AgentOfGroup(*old_group).empty() &&
+        AgentOf(tab->GetContents()) == AgentOfGroup(*old_group)) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE,
+          base::BindOnce(&SessionManager::TakeBackIfUngrouped,
+                         weak_factory_.GetWeakPtr(),
+                         tab->GetContents()->GetWeakPtr(),
+                         kTakeBackAttempts));
+    }
     return;
   }
   std::string agent_id = AgentOfGroup(*new_group);
@@ -551,6 +571,33 @@ void SessionManager::TabGroupedStateChanged(
       FROM_HERE,
       base::BindOnce(&SessionManager::AdoptTab, weak_factory_.GetWeakPtr(),
                      tab->GetContents()->GetWeakPtr(), agent_id));
+}
+
+void SessionManager::TakeBackIfUngrouped(
+    base::WeakPtr<content::WebContents> contents,
+    int attempts_left) {
+  if (!contents || SessionOf(contents.get()).empty()) {
+    return;  // Closed, or already taken back.
+  }
+  TabLocation location = FindInTabStrips(contents.get());
+  bool dragging = !location.tab_strip ||
+                  (location.tab_strip->delegate() &&
+                   !location.tab_strip->delegate()->IsTabStripEditable());
+  if (dragging) {
+    if (attempts_left > 0) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(&SessionManager::TakeBackIfUngrouped,
+                         weak_factory_.GetWeakPtr(), contents,
+                         attempts_left - 1),
+          kTakeBackRetryDelay);
+    }
+    return;
+  }
+  if (location.tab_strip->GetTabGroupForTab(location.index)) {
+    return;  // Dropped back into a group (its own or another agent's).
+  }
+  TakeBackTab(contents.get());
 }
 
 void SessionManager::AdoptTab(base::WeakPtr<content::WebContents> contents,

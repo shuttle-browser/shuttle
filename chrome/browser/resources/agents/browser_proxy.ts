@@ -56,7 +56,7 @@ export class BrowserProxyImpl implements BrowserProxy {
   }
 
   listAgents() {
-    return this.callTool_<{agents: Agent[]}>('list-agents');
+    return this.callTool_<{agents: Agent[]}>('list-agents', {avatarData: true});
   }
 
   listSessions() {
@@ -64,11 +64,13 @@ export class BrowserProxyImpl implements BrowserProxy {
   }
 
   createAgent(id: string, identity: AgentIdentity) {
-    return this.callTool_<Agent>('create-agent', {id, ...identity});
+    return this.callTool_<Agent>(
+        'create-agent', {id, ...identity, avatarData: true});
   }
 
   updateAgent(id: string, identity: AgentIdentity) {
-    return this.callTool_<Agent>('update-agent', {id, ...identity});
+    return this.callTool_<Agent>(
+        'update-agent', {id, ...identity, avatarData: true});
   }
 
   deleteAgent(id: string) {
