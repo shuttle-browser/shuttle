@@ -185,6 +185,7 @@ template("chrome_extra_paks") {
       # New paks should be added here by default.
       sources += [
         "$root_gen_dir/chrome/actor_overlay_resources.pak",
+        "$root_gen_dir/chrome/agents_resources.pak",
         "$root_gen_dir/chrome/browser/actor/resources/actor_browser_resources.pak",
         "$root_gen_dir/chrome/browser/actor/resources/actor_common_resources.pak",
         "$root_gen_dir/chrome/certificate_manager_resources.pak",

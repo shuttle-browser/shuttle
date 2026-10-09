@@ -26,6 +26,7 @@ ts_library("build_ts") {
 
     "//chrome/browser/resources/access_code_cast:build_ts",
     "//chrome/browser/resources/actor_overlay:build_ts",
+    "//chrome/browser/resources/agents:build_ts",
     "//chrome/browser/resources/browser_switch:build_ts",
     "//chrome/browser/resources/certificate_manager:build_ts",
     "//chrome/browser/resources/certificate_viewer:build_ts",

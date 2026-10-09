@@ -464,6 +464,10 @@
    "META": {"sizes": {"includes": [20]}},
     "includes": [3780],
   },
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/agents/resources.grd": {
+    "META": {"sizes": {"includes": [10],}},
+    "includes": [3800],
+  },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/device_log/resources.grd": {
     "META": {"sizes": {"includes": [5],}},
     "includes": [3820],

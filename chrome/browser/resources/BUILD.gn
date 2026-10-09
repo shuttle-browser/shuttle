@@ -40,6 +40,7 @@ group("resources") {
       ":app_icon_resources",
       ":dev_ui_paks",
       "actor_overlay:resources",
+      "agents:resources",
       "certificate_manager:resources",
       "content_settings:resources",
       "downloads:resources",

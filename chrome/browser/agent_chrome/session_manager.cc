@@ -13,6 +13,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/containers/span.h"
 #include "base/rand_util.h"
+#include "base/types/expected_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
@@ -36,6 +37,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
+#include "ui/base/base_window.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
@@ -240,6 +242,38 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
   load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
   contents->GetController().LoadURLWithParams(load_params);
   return contents;
+}
+
+base::expected<content::WebContents*, std::string>
+SessionManager::OpenTabForUser(const std::string& agent_id, const GURL& url) {
+  if (!registry_->Exists(agent_id)) {
+    return base::unexpected("Unknown agent: " + agent_id);
+  }
+  const Session* session = LatestSession(agent_id);
+  std::string session_id = session ? session->id : Open(agent_id).id;
+  ASSIGN_OR_RETURN(content::WebContents * contents,
+                   AllocateTab(session_id, url, std::nullopt));
+  ShowTab(contents);
+  return contents;
+}
+
+// static
+bool SessionManager::ShowTab(content::WebContents* contents) {
+  for (BrowserWindowInterface* browser : GetAllBrowserWindowInterfaces()) {
+    TabStripModel* tab_strip = browser->GetTabStripModel();
+    int index = tab_strip ? tab_strip->GetIndexOfWebContents(contents)
+                          : TabStripModel::kNoTab;
+    if (index == TabStripModel::kNoTab) {
+      continue;
+    }
+    tab_strip->ActivateTabAt(index);
+    if (ui::BaseWindow* window = browser->GetWindow()) {
+      window->Show();
+      window->Activate();
+    }
+    return true;
+  }
+  return false;
 }
 
 std::unique_ptr<content::WebContents> SessionManager::CreateAgentContents(

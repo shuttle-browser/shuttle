@@ -578,6 +578,8 @@ template("build_webui") {
       legacy_chrome_send_users = [
         # Note: DO NOT add new entries to the list below. All new WebUIs should
         # use Mojo instead, see https://chromium.googlesource.com/chromium/src/+/main/docs/webui/webui_explainer.md#Pre_Mojo-alternative_chrome_send_WebUIMessageHandler
+        # Agent Chrome: chrome://agents calls the MCP tools via chrome.send.
+        "//chrome/browser/resources/agents",
         "//ios/chrome/app/resources/profile_internals",
         "//chrome/browser/resources/access_code_cast",
         "//chrome/browser/resources/accessibility",

@@ -74,6 +74,16 @@ class SessionManager : public TabStripModelObserver {
       std::optional<gfx::Size> viewport);
   void ReleaseTab(content::WebContents* contents);
 
+  // For the user (chrome://agents): opens `url` (about:blank if empty) in a
+  // new foreground tab of `agent_id`, leased to its latest session (or a new
+  // one), and brings its window to the front.
+  base::expected<content::WebContents*, std::string> OpenTabForUser(
+      const std::string& agent_id,
+      const GURL& url);
+  // Activates `contents` in its tab strip and brings its window to the
+  // front. Returns false if it isn't in a tab strip.
+  static bool ShowTab(content::WebContents* contents);
+
   // Leased tabs of a session, in tab strip order.
   std::vector<content::WebContents*> TabsOf(
       const std::string& session_id) const;
