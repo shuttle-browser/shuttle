@@ -350,21 +350,7 @@ void HistoryClustersHandler::OpenVisitUrlsInTabGroup(
       tab_indices.push_back(tab_index);
     }
   }
-  // Sometimes tab_indices is empty, and TabStripModel::AddToNewGroup
-  // requires a non-empty vector (Fixes https://crbug.com/40060062)
-  if (tab_indices.empty()) {
-    return;
-  }
-  auto new_group_id = model->AddToNewGroup(tab_indices);
-  if (!new_group_id.is_empty() && tab_group_name) {
-    if (auto* group_model = model->group_model()) {
-      auto* tab_group = group_model->GetTabGroup(new_group_id);
-      // Copy and modify the existing visual data with a new title.
-      tab_groups::TabGroupVisualData visual_data = *tab_group->visual_data();
-      visual_data.SetTitle(base::UTF8ToUTF16(*tab_group_name));
-      model->ChangeTabGroupVisuals(new_group_id, visual_data);
-    }
-  }
+  // Agent Chrome: tab groups are agents; the tabs open ungrouped.
 }
 
 void HistoryClustersHandler::OnDebugMessage(const std::string& message) {

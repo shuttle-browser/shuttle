@@ -654,25 +654,6 @@ bool PrintPreviewShowing(const BrowserWindowInterface* browser) {
 }
 #endif  // BUILDFLAG(ENABLE_BASIC_PRINT_DIALOG)
 
-// Helper function for tab grouping commands.
-// Returns a vector of indices of ungrouped, non-pinned tabs.
-std::vector<int> GetUngroupedTabIndices(BrowserWindowInterface* browser) {
-  TabStripModel* tab_strip_model = browser->GetTabStripModel();
-  std::vector<int> indices;
-  if (!tab_strip_model->SupportsTabGroups()) {
-    return indices;
-  }
-
-  int i = 0;
-  for (const tabs::TabInterface* t : *tab_strip_model) {
-    if (!t->GetGroup() && !t->IsPinned()) {
-      indices.push_back(i);
-    }
-    ++i;
-  }
-  return indices;
-}
-
 }  // namespace
 
 bool IsCommandEnabled(BrowserWindowInterface* browser, int command) {
@@ -1467,9 +1448,7 @@ void PinTab(BrowserWindowInterface* browser) {
 }
 
 void GroupTab(BrowserWindowInterface* browser) {
-  browser->GetTabStripModel()->ExecuteContextMenuCommand(
-      browser->GetTabStripModel()->active_index(),
-      TabStripModel::ContextMenuCommand::CommandToggleGrouped);
+  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
 }
 
 void NewSplitTab(BrowserWindowInterface* browser,
@@ -1509,10 +1488,7 @@ void AddNewTabToGroup(BrowserWindowInterface* browser) {
 }
 
 void CreateNewTabGroup(BrowserWindowInterface* browser) {
-  NewTab(browser, NewTabTypes::kNewTabCommand);
-  browser->GetTabStripModel()->ExecuteContextMenuCommand(
-      browser->GetTabStripModel()->active_index(),
-      TabStripModel::ContextMenuCommand::CommandAddToNewGroupFromMenuItem);
+  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
 }
 
 void CloseTabGroup(BrowserWindowInterface* browser) {
@@ -1592,19 +1568,13 @@ void FocusPreviousTabGroup(BrowserWindowInterface* browser) {
 }
 
 bool CanGroupAllUngroupedTabs(BrowserWindowInterface* browser) {
-  return !GetUngroupedTabIndices(browser).empty();
+  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  return false;
 }
 
 bool GroupAllUngroupedTabs(BrowserWindowInterface* browser) {
-  std::vector<int> indices = GetUngroupedTabIndices(browser);
-  if (indices.empty()) {
-    return false;
-  }
-
-  TabStripModel* tab_strip_model = browser->GetTabStripModel();
-  tab_groups::TabGroupId group = tab_strip_model->AddToNewGroup(indices);
-  tab_strip_model->OpenTabGroupEditor(group);
-  return true;
+  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  return false;
 }
 
 void AddNewTabToRecentGroup(BrowserWindowInterface* browser) {
@@ -1665,12 +1635,7 @@ void PinKeyboardFocusedTab(BrowserWindowInterface* browser) {
 }
 
 void GroupKeyboardFocusedTab(BrowserWindowInterface* browser) {
-  if (!HasKeyboardFocusedTab(browser)) {
-    return;
-  }
-  browser->GetTabStripModel()->ExecuteContextMenuCommand(
-      *GetKeyboardFocusedTabIndex(browser),
-      TabStripModel::ContextMenuCommand::CommandToggleGrouped);
+  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
 }
 
 void DuplicateKeyboardFocusedTab(BrowserWindowInterface* browser) {

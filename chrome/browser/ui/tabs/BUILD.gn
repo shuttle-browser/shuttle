@@ -133,6 +133,7 @@ if (!is_android) {
     ]
 
     deps = [
+      "//chrome/browser/agent_chrome",
       ":tab_menu",
       ":tab_model",
       ":tab_strip",
@@ -319,6 +320,7 @@ if (!is_android) {
     ]
 
     deps = [
+      "//chrome/browser/agent_chrome",
       ":tab_group",
       ":tab_model",
       ":tab_strip",

@@ -602,6 +602,70 @@ void SessionManager::AdoptTab(base::WeakPtr<content::WebContents> contents,
   adopted->GetController().LoadURLWithParams(load_params);
 }
 
+void SessionManager::HandTabToAgent(content::WebContents* contents,
+                                    const std::string& agent_id) {
+  std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);
+  TabLocation location = FindInTabStrips(contents);
+  if (!agent || !location.tab_strip || AgentOf(contents) == agent_id) {
+    return;
+  }
+  TabStripModel* tab_strip = location.tab_strip;
+  Observe(tab_strip);
+  auto group = groups_.find(agent_id);
+  if (group != groups_.end() && FindGroup(group->second) == tab_strip) {
+    // TabGroupedStateChanged adopts it.
+    tab_strip->AddToExistingGroup({location.index}, group->second);
+    return;
+  }
+  // The agent has no tabs in this window: the tab starts its group here.
+  {
+    base::AutoReset<bool> applying(&applying_visuals_, true);
+    tab_groups::TabGroupId new_group =
+        tab_strip->AddToNewGroup({location.index});
+    groups_.insert_or_assign(agent_id, new_group);
+    tab_strip->ChangeTabGroupVisuals(
+        new_group, tab_groups::TabGroupVisualData(
+                       base::UTF8ToUTF16(agent->name), agent->color));
+  }
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&SessionManager::AdoptTab, weak_factory_.GetWeakPtr(),
+                     contents->GetWeakPtr(), agent_id));
+}
+
+void SessionManager::TakeBackTab(content::WebContents* contents) {
+  TabLocation location = FindInTabStrips(contents);
+  if (!location.tab_strip || SessionOf(contents).empty()) {
+    return;
+  }
+  TabStripModel* tab_strip = location.tab_strip;
+  // Out of the agent's group first: the new tab must not land inside it.
+  if (tab_strip->GetTabGroupForTab(location.index)) {
+    tab_strip->RemoveFromGroup({location.index});
+  }
+  int index = tab_strip->GetIndexOfWebContents(contents);
+  if (index == TabStripModel::kNoTab) {
+    return;
+  }
+  bool active = tab_strip->active_index() == index;
+  GURL url = contents->GetLastCommittedURL();
+  if (!url.SchemeIsHTTPOrHTTPS()) {
+    url = GURL(url::kAboutBlankURL);
+  }
+  content::WebContents::CreateParams create_params(profile_);
+  create_params.initially_hidden = !active;
+  std::unique_ptr<content::WebContents> new_contents =
+      content::WebContents::Create(create_params);
+  content::WebContents* user_tab = new_contents.get();
+  tab_strip->InsertWebContentsAt(
+      index + 1, std::move(new_contents),
+      active ? AddTabTypes::ADD_ACTIVE : AddTabTypes::ADD_NONE, std::nullopt);
+  ReleaseTab(contents);
+  content::NavigationController::LoadURLParams load_params(url);
+  load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
+  user_tab->GetController().LoadURLWithParams(load_params);
+}
+
 std::string SessionManager::AgentOf(content::WebContents* contents) const {
   const Session* session = Get(SessionOf(contents));
   return session ? session->agent : std::string();

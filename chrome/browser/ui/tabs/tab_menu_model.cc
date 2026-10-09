@@ -13,16 +13,17 @@
 #include "base/functional/bind.h"
 #include "base/i18n/rtl.h"
 #include "base/metrics/user_metrics.h"
+#include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/agent_chrome/agent_chrome_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
-#include "chrome/browser/ui/tabs/existing_tab_group_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/existing_window_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/split_tab_menu_model.h"
@@ -59,7 +60,53 @@ using base::UserMetricsAction;
 
 namespace {
 constexpr int kTabMenuIconSize = 16;
-}
+
+// Agent Chrome: "Hand to agent" submenu, one item per agent.
+class HandToAgentMenuModel : public ui::SimpleMenuModel,
+                             public ui::SimpleMenuModel::Delegate {
+ public:
+  HandToAgentMenuModel(agent_chrome::AgentChromeService* agents,
+                       TabStripModel* tab_strip,
+                       const std::vector<int>& indices)
+      : ui::SimpleMenuModel(this),
+        agents_(agents),
+        list_(agents->ListAgents()) {
+    for (int index : indices) {
+      if (tabs::TabInterface* tab = tab_strip->GetTabAtIndex(index)) {
+        tabs_.push_back(tab->GetWeakPtr());
+      }
+    }
+    // Agents the tabs all belong to already are left out.
+    for (size_t i = 0; i < list_.size(); ++i) {
+      bool all_theirs = true;
+      for (const auto& tab : tabs_) {
+        all_theirs &= agents_->AgentOfTab(tab->GetContents()) == list_[i].id;
+      }
+      if (!all_theirs) {
+        AddItem(static_cast<int>(i), base::UTF8ToUTF16(list_[i].name));
+      }
+    }
+  }
+
+  // ui::SimpleMenuModel::Delegate:
+  void ExecuteCommand(int command_id, int event_flags) override {
+    if (command_id < 0 || static_cast<size_t>(command_id) >= list_.size()) {
+      return;
+    }
+    for (const auto& tab : tabs_) {
+      if (tab && tab->GetContents()) {
+        agents_->HandTabToAgent(tab->GetContents(), list_[command_id].id);
+      }
+    }
+  }
+
+ private:
+  raw_ptr<agent_chrome::AgentChromeService> agents_;
+  std::vector<agent_chrome::AgentChromeService::AgentSummary> list_;
+  std::vector<base::WeakPtr<tabs::TabInterface>> tabs_;
+};
+
+}  // namespace
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kAddANoteTabMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kSplitTabsMenuItem);
@@ -184,46 +231,26 @@ void TabMenuModel::Build(int index) {
     SetElementIdentifierAt(GetItemCount() - 1, kArrangeSplitTabsMenuItem);
   }
 
-  if (ExistingTabGroupSubMenuModel::ShouldShowSubmenu(
-          tab_strip_, index, tab_menu_model_delegate_)) {
-    // Create submenu with existing groups
-    add_to_existing_group_submenu_ =
-        std::make_unique<ExistingTabGroupSubMenuModel>(
-            delegate(), tab_menu_model_delegate_, tab_strip_, index);
-    AddSubMenu(TabStripModel::CommandAddToExistingGroup,
-               l10n_util::GetPluralStringFUTF16(IDS_TAB_CXMENU_ADD_TAB_TO_GROUP,
-                                                num_tabs),
-               add_to_existing_group_submenu_.get());
-    if (features::IsMenuSimplificationEnabled()) {
-      SetIconForCommandId(
-          TabStripModel::CommandAddToExistingGroup,
-          ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? kGridViewIcon
-                  : kSavedTabGroupBarEverythingOldIcon,
-              ui::kColorMenuIcon, ui::SimpleMenuModel::kDefaultIconSize));
+  // Agent Chrome: tab groups are agents (made over MCP, never by hand). A
+  // tab can be handed to an agent, or taken back from one.
+  if (auto* agents =
+          agent_chrome::AgentChromeService::Get(tab_strip_->profile())) {
+    auto hand_to_agent = std::make_unique<HandToAgentMenuModel>(
+        agents, tab_strip_, indices);
+    if (hand_to_agent->GetItemCount() > 0) {
+      add_to_existing_group_submenu_ = std::move(hand_to_agent);
+      AddSubMenu(TabStripModel::CommandAddToExistingGroup,
+                 l10n_util::GetPluralStringFUTF16(
+                     IDS_TAB_CXMENU_ADD_TAB_TO_GROUP, num_tabs),
+                 add_to_existing_group_submenu_.get());
     }
-  } else {
-    AddItem(TabStripModel::CommandAddToNewGroup,
-            l10n_util::GetPluralStringFUTF16(
-                IDS_TAB_CXMENU_ADD_TAB_TO_NEW_GROUP, num_tabs));
-    SetElementIdentifierAt(GetItemCount() - 1, kAddToNewGroupItemIdentifier);
-    if (features::IsMenuSimplificationEnabled()) {
-      SetIconForCommandId(
-          TabStripModel::CommandAddToNewGroup,
-          ui::ImageModel::FromVectorIcon(
-              features::IsRoundedIconsEnabled()
-                  ? kGridViewIcon
-                  : kSavedTabGroupBarEverythingOldIcon,
-              ui::kColorMenuIcon, ui::SimpleMenuModel::kDefaultIconSize));
-    }
-  }
-
-  for (const auto& selection : indices) {
-    if (tab_strip_->GetTabGroupForTab(selection).has_value()) {
-      AddItemWithStringId(TabStripModel::CommandRemoveFromGroup,
-                          IDS_TAB_CXMENU_REMOVE_TAB_FROM_GROUP);
-      break;
+    for (int selection : indices) {
+      tabs::TabInterface* tab = tab_strip_->GetTabAtIndex(selection);
+      if (tab && !agents->AgentOfTab(tab->GetContents()).empty()) {
+        AddItemWithStringId(TabStripModel::CommandRemoveFromGroup,
+                            IDS_TAB_CXMENU_REMOVE_TAB_FROM_GROUP);
+        break;
+      }
     }
   }
 

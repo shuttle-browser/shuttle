@@ -1283,7 +1283,7 @@ are declared in tools/grit/grit_args.gni.
         R&amp;eopen closed window
       </message>
       <message name="IDS_REOPEN_GROUP" desc="The text label of the Reopen Closed Group menu item">
-        Reopen closed group
+        Reopen closed agent tabs
       </message>
       <message name="IDS_REOPEN_SPLIT" desc="The text label of the Reopen Closed Split menu item">
         Reopen closed split view
@@ -1292,7 +1292,7 @@ are declared in tools/grit/grit_args.gni.
         &amp;Restore window
       </message>
       <message name="IDS_RESTORE_GROUP" desc="The text label of the Restore Group menu item">
-        &amp;Restore group
+        &amp;Restore agent tabs
       </message>
       <if expr="use_titlecase">
         <message name="IDS_TAKE_SCREENSHOT" desc="The text label of the Take Screenshot menu item">
@@ -1302,7 +1302,7 @@ are declared in tools/grit/grit_args.gni.
           R&amp;eopen Closed Window
         </message>
         <message name="IDS_REOPEN_GROUP_MAC" desc="In Title Case: The text label of the Reopen Closed Group menu item">
-          Reopen Closed Group
+          Reopen Closed Agent Tabs
         </message>
         <message name="IDS_REOPEN_SPLIT_MAC" desc="In Title Case: The text label of the Reopen Closed Split menu item">
           Reopen Closed Split View
@@ -4317,7 +4317,7 @@ are declared in tools/grit/grit_args.gni.
           Identify and eject storage devices
         </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_TAB_GROUPS" desc="Permission string for access to tab groups.">
-          View and manage your tab groups
+          View and manage your agents
         </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_TOPSITES" desc="Permission string for access to the list of most frequently visited websites.">
           Read a list of your most frequently visited websites
@@ -6282,7 +6282,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
 
       <message name="IDS_TAB_GROUPS_UNNAMED_GROUP_TOOLTIP" desc="Static tooltip to display on hover over unnamed tab group.">
-        Unnamed group - <ph name="GROUP_CONTENT_STRING">$1<ex>"New Tab" and one other</ex></ph>
+        Unnamed agent - <ph name="GROUP_CONTENT_STRING">$1<ex>"New Tab" and one other</ex></ph>
       </message>
       <message name="IDS_TAB_GROUPS_NAMED_GROUP_TOOLTIP" desc="Dynamic tooltip to display on hover over named tab group.">
         <ph name="GROUP_NAME">$1<ex>New Group</ex></ph> - <ph name="GROUP_CONTENT_STRING">$2<ex>"New Tab" and one other</ex></ph>
@@ -6612,8 +6612,8 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_GROUP" desc="The label of the tab context menu submenu for adding one or more tabs to either a new group or an existing tab group. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural,
-          =1 {Add tab to group}
-          other {Add tabs to group}}
+          =1 {Hand tab to agent}
+          other {Hand tabs to agent}}
         </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_NEW_GROUP" desc="The label of the tab context menu item for creating a new tab group and adding one or more tabs to it. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural,
@@ -6636,7 +6636,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
           New group
         </message>
         <message name="IDS_TAB_CXMENU_REMOVE_TAB_FROM_GROUP" desc="The label of the tab context menu item for removing one or more tabs from the groups that contain them.">
-          Remove from group
+          Take back from agent
         </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 other tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # other tabs}}
@@ -6700,8 +6700,8 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_GROUP" desc="In Title Case: The label of the tab context menu submenu for adding one or more tabs to either a new group or an existing tab group. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural,
-          =1 {Add Tab to Group}
-          other {Add Tabs to Group}}
+          =1 {Hand Tab to Agent}
+          other {Hand Tabs to Agent}}
         </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_NEW_GROUP" desc="In Title Case: The label of the tab context menu item for creating a new tab group and adding one or more tabs to it. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
           {NUM_TABS, plural,
@@ -6724,7 +6724,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
           New Group
         </message>
         <message name="IDS_TAB_CXMENU_REMOVE_TAB_FROM_GROUP" desc="In Title Case: The label of the tab context menu item for removing one or more tabs from the groups that contain them.">
-          Remove From Group
+          Take Back From Agent
         </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="In Title Case: The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 Other Tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # Other Tabs}}
@@ -6865,10 +6865,10 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
       <if expr="not use_titlecase">
         <message name="IDS_NEW_TAB_IN_GROUP" desc="The label of a context menu item for adding a new tab into an existing group.">
-          New tab in <ph name="GROUP_NAME">$1<ex>Vacation</ex></ph>
+          New tab for <ph name="GROUP_NAME">$1<ex>Vacation</ex></ph>
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_GROUPS" desc="The label of a context menu item for adding a new tab into a group, and no groups are open.">
-          New tab in group
+          New tab for agent
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New tab in 1 tab} other {New tab in # tabs}}
@@ -6879,10 +6879,10 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </if>
       <if expr="use_titlecase">
         <message name="IDS_NEW_TAB_IN_GROUP" desc="The label of a context menu item for adding a new tab into a group.">
-          New Tab in <ph name="GROUP_NAME">$1<ex>Vacation</ex></ph>
+          New Tab for <ph name="GROUP_NAME">$1<ex>Vacation</ex></ph>
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_GROUPS" desc="The label of a context menu item for adding a new tab into a group, and no groups are open.">
-          New Tab in Group
+          New Tab for Agent
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New Tab in 1 Tab} other {New Tab in # Tabs}}
@@ -6914,13 +6914,13 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
       <!-- Tab Group Editor Bubble -->
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_TAB_GROUP_TITLE_ACCESSIBLE_NAME" desc="The accessible name of the tab-group-title textfield.">
-          Tab-group title
+          Agent name
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_NEW_TAB_IN_GROUP" desc="The label of the tab group header context menu item for adding a new tab into the current group.">
-        New tab in group
+        New tab for agent
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_HOME" desc="Home option in tab group bubble">
-        Home
+        Manage agents
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_UNGROUP" desc="The label of the tab group header context menu item for ungrouping the current group.">
         Ungroup
@@ -6932,7 +6932,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Unfocus group
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_CLOSE_GROUP" desc="The label of the tab group header context menu item for closing all tabs in the current group.">
-        Close group
+        Close agent tabs
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_DELETE_GROUP" desc="The label of the tab group header context menu item for deleting all tabs in the current group.">
         Delete group
@@ -6941,7 +6941,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Move group to new window
       </message>
       <message name="IDS_TAB_GROUP_HEADER_BUBBLE_TITLE_PLACEHOLDER" desc="The placeholder text to display within the input field of the tab group editor bubble for naming a tab group.">
-        Name this group
+        Agent name
       </message>
 
     <!-- Data Sharing -->
@@ -8271,7 +8271,7 @@ This can include information about installed software, files, your browser, the 
           Restore Window
         </message>
         <message name="IDS_HISTORY_CLOSED_RESTORE_GROUP_MAC" desc="In Title Case: The Mac menu item for restoring all the tabs of a recently closed group.">
-          Restore Group
+          Restore Agent Tabs
         </message>
         <message name="IDS_HISTORY_CLOSED_RESTORE_SPLIT_MAC" desc="In Title Case: The Mac menu item for restoring a recently closed split.">
           Restore Split View
@@ -8954,10 +8954,10 @@ This can include information about installed software, files, your browser, the 
         <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Bottom view
       </message>
       <message name="IDS_TAB_AX_LABEL_UNNAMED_GROUP_FORMAT" desc="Accessibility label text for a tab, when it is in a group that has not been named by the user. Example: 'Google Search - Part of unnamed group'">
-        <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Part of unnamed group
+        <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Part of unnamed agent
       </message>
       <message name="IDS_TAB_AX_LABEL_NAMED_GROUP_FORMAT" desc="Accessibility label text for a tab, when it is in a group that has been named by the user. Example: 'Google Search - Part of group MyGroupName'">
-        <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Part of group <ph name="GROUP_NAME">$2</ph>
+        <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Part of agent <ph name="GROUP_NAME">$2</ph>
       </message>
       <message name="IDS_TAB_AX_LABEL_PINNED_FORMAT" is_accessibility_with_no_ui="true" desc="Accessibility label text, when a tab is pinned. Example: 'Google Search - Pinned'">
         <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Pinned
@@ -8978,10 +8978,10 @@ This can include information about installed software, files, your browser, the 
         </message>
       </if>
       <message name="IDS_GROUP_AX_LABEL_UNNAMED_GROUP_FORMAT" desc="Spoken by screen readers when a tab group header that has not been named by the user gets focused but is not visually rendered. Example: 'Unnamed group - Google Search and 3 other tabs - Expanded'">
-       <ph name="SHARE_STATE">$1<ex>Shared</ex></ph> unnamed group - <ph name="GROUP_CONTENTS">$2<ex>Google Search and 3 other tabs</ex></ph> - <ph name="COLLAPSED_STATE">$3</ph>
+       <ph name="SHARE_STATE">$1<ex>Shared</ex></ph> unnamed agent - <ph name="GROUP_CONTENTS">$2<ex>Google Search and 3 other tabs</ex></ph> - <ph name="COLLAPSED_STATE">$3</ph>
       </message>
       <message name="IDS_GROUP_AX_LABEL_NAMED_GROUP_FORMAT" desc="Spoken by screen readers when a tab group header that has been named by the user gets focused but is not visually rendered. Example: 'Group MyGroupName - Google Search and 3 other tabs - Collapsed'">
-       <ph name="SHARE_STATE">$1<ex>Shared</ex></ph> group <ph name="GROUP_NAME">$2</ph> - <ph name="GROUP_CONTENTS">$3<ex>Google Search and 3 other tabs</ex></ph> - <ph name="COLLAPSED_STATE">$4</ph>
+       <ph name="SHARE_STATE">$1<ex>Shared</ex></ph> agent <ph name="GROUP_NAME">$2</ph> - <ph name="GROUP_CONTENTS">$3<ex>Google Search and 3 other tabs</ex></ph> - <ph name="COLLAPSED_STATE">$4</ph>
       </message>
       <message name="IDS_GROUP_AX_LABEL_COLLAPSED" desc="Used as part of the accessibility label text of a group header for a collapsed tab group.">
         Collapsed
@@ -9011,16 +9011,16 @@ This can include information about installed software, files, your browser, the 
         Tab moved to end of tabstrip
       </message>
       <message name="IDS_TAB_AX_ANNOUNCE_TAB_ADDED_TO_UNNAMED_GROUP" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the user inputs a hotkey for moving the currently-selected tab and it results in the tab being added to a tab group with no title">
-        Tab moved into unnamed group - <ph name="GROUP_CONTENTS">$1<ex>Google Search and 3 other tabs</ex></ph>
+        Tab handed to unnamed agent - <ph name="GROUP_CONTENTS">$1<ex>Google Search and 3 other tabs</ex></ph>
       </message>
       <message name="IDS_TAB_AX_ANNOUNCE_TAB_ADDED_TO_NAMED_GROUP" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the user inputs a hotkey for moving the currently-selected tab and it results in the tab being added to a tab group with a title">
-        Tab moved into group <ph name="GROUP_NAME">$1</ph> - <ph name="GROUP_CONTENTS">$2<ex>Google Search and 3 other tabs</ex></ph>
+        Tab handed to agent <ph name="GROUP_NAME">$1</ph> - <ph name="GROUP_CONTENTS">$2<ex>Google Search and 3 other tabs</ex></ph>
       </message>
       <message name="IDS_TAB_AX_ANNOUNCE_TAB_REMOVED_FROM_UNNAMED_GROUP" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the user inputs a hotkey for moving the currently-selected tab and it results in the tab being removed from a tab group with no title">
-        Tab removed from unnamed group - <ph name="GROUP_CONTENTS">$1<ex>Google Search and 3 other tabs</ex></ph>
+        Tab taken back from unnamed agent - <ph name="GROUP_CONTENTS">$1<ex>Google Search and 3 other tabs</ex></ph>
       </message>
       <message name="IDS_TAB_AX_ANNOUNCE_TAB_REMOVED_FROM_NAMED_GROUP" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the user inputs a hotkey for moving the currently-selected tab and it results in the tab being removed from a tab group with a title">
-        Tab removed from group <ph name="GROUP_NAME">$1</ph> - <ph name="GROUP_CONTENTS">$2<ex>Google Search and 3 other tabs</ex></ph>
+        Tab taken back from agent <ph name="GROUP_NAME">$1</ph> - <ph name="GROUP_CONTENTS">$2<ex>Google Search and 3 other tabs</ex></ph>
       </message>
       <message name="IDS_PAGE_LOADING_AX_TITLE_FORMAT" is_accessibility_with_no_ui="true" desc="Screen reader announcement when the back/forward button is focused and has been pressed. If the title of the page can be obtained, it will be included. Example: 'Loading Google News'.">
           Loading <ph name="WINDOW_TITLE">$1<ex>Google News</ex></ph>
@@ -11047,7 +11047,7 @@ This can include information about installed software, files, your browser, the 
       </if>
       <if expr="is_posix and not is_macosx">
       <message name="IDS_HISTORY_CLOSED_RESTORE_GROUP_LINUX" desc="The Linux menu item for restoring all the tabs of a recently closed group.">
-          Restore group
+          Restore agent tabs
         </message>
       </if>
       <if expr="is_posix and not is_macosx">

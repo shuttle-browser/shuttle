@@ -21,6 +21,10 @@ import {getHtml} from './app.html.js';
 import type {Agent, AgentIdentity, BrowserProxy, Session} from './browser_proxy.js';
 import {AGENT_COLORS, BrowserProxyImpl} from './browser_proxy.js';
 
+// Avatar images from files: edge length in px, and the browser's size limit.
+const AVATAR_SIZE = 256;
+const AVATAR_MAX_LENGTH = 256 * 1024;
+
 // How often the page refreshes while visible (agents change things too).
 const REFRESH_MS = 2000;
 
@@ -260,8 +264,59 @@ export class AgentsAppElement extends CrLitElement {
   }
 
   protected onAvatarValueChanged_(e: CustomEvent<{value: string}>) {
-    if (this.edit_) {
+    // The URL field shows "" for an image from a file: that "" isn't an edit.
+    if (this.edit_ && (e.detail.value || !this.isDataAvatar_())) {
       this.edit_ = {...this.edit_, avatar: e.detail.value};
+    }
+  }
+
+  protected isDataAvatar_(): boolean {
+    return !!this.edit_?.avatar.startsWith('data:');
+  }
+
+  protected onAvatarChooseClick_() {
+    const input =
+        this.shadowRoot.querySelector<HTMLInputElement>('#avatarFile');
+    if (input) {
+      input.value = '';
+      input.click();
+    }
+  }
+
+  protected onAvatarRemoveClick_() {
+    if (this.edit_) {
+      this.edit_ = {...this.edit_, avatar: ''};
+    }
+  }
+
+  // Scales the chosen image down to a 256x256 square (center crop) and keeps
+  // it as a data: URL, well under the browser's 256 KB avatar limit.
+  protected async onAvatarFileChange_(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file || !this.edit_) {
+      return;
+    }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const side = Math.min(bitmap.width, bitmap.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = AVATAR_SIZE;
+      const context = canvas.getContext('2d')!;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(
+          bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side,
+          side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      bitmap.close();
+      let url = canvas.toDataURL('image/png');
+      if (url.length > AVATAR_MAX_LENGTH / 2) {
+        url = canvas.toDataURL('image/jpeg', 0.9);
+      }
+      if (this.edit_) {
+        this.edit_ = {...this.edit_, avatar: url};
+        this.editError_ = '';
+      }
+    } catch {
+      this.editError_ = 'Could not read that image';
     }
   }
 

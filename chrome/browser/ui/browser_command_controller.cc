@@ -1229,13 +1229,12 @@ void BrowserCommandController::InitCommandState() {
                                          can_reload);
   command_updater_->UpdateCommandEnabled(IDC_RELOAD_CLEARING_CACHE, can_reload);
 
-  // Tab group commands
+  // Tab group (agent) commands. Agent Chrome: no commands that create
+  // groups; agents are made over MCP.
   command_updater_->UpdateCommandEnabled(IDC_ADD_NEW_TAB_TO_GROUP, true);
-  command_updater_->UpdateCommandEnabled(IDC_CREATE_NEW_TAB_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_FOCUS_NEXT_TAB_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_FOCUS_PREV_TAB_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_CLOSE_TAB_GROUP, true);
-  command_updater_->UpdateCommandEnabled(IDC_GROUP_UNGROUPED_TABS, true);
   command_updater_->UpdateCommandEnabled(IDC_ADD_NEW_TAB_RECENT_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_UNFOCUS_TAB_GROUP, true);
 
@@ -1403,7 +1402,6 @@ void BrowserCommandController::InitCommandState() {
 
   command_updater_->UpdateCommandEnabled(IDC_WINDOW_MUTE_SITE, normal_window);
   command_updater_->UpdateCommandEnabled(IDC_WINDOW_PIN_TAB, normal_window);
-  command_updater_->UpdateCommandEnabled(IDC_WINDOW_GROUP_TAB, normal_window);
   command_updater_->UpdateCommandEnabled(IDC_WINDOW_CLOSE_TABS_TO_RIGHT,
                                          normal_window);
   command_updater_->UpdateCommandEnabled(IDC_WINDOW_CLOSE_OTHER_TABS,
@@ -1554,7 +1552,6 @@ void BrowserCommandController::UpdateCommandsForTabState() {
                                          !is_app && CanDuplicateTab(browser_));
   command_updater_->UpdateCommandEnabled(IDC_WINDOW_MUTE_SITE, !is_app);
   command_updater_->UpdateCommandEnabled(IDC_WINDOW_PIN_TAB, is_normal);
-  command_updater_->UpdateCommandEnabled(IDC_WINDOW_GROUP_TAB, is_normal);
 
   // Page-related commands
   command_updater_->UpdateCommandEnabled(IDC_VIEW_SOURCE,
@@ -1945,8 +1942,6 @@ void BrowserCommandController::UpdateCommandsForTabKeyboardFocus(
       IDC_MUTE_TARGET_SITE, normal_window && target_index.has_value());
   command_updater_->UpdateCommandEnabled(
       IDC_PIN_TARGET_TAB, normal_window && target_index.has_value());
-  command_updater_->UpdateCommandEnabled(
-      IDC_GROUP_TARGET_TAB, normal_window && target_index.has_value());
 }
 
 void BrowserCommandController::UpdateCommandsForWebContentsFocus() {

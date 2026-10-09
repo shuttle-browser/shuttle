@@ -26,6 +26,7 @@
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
+#include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -458,56 +459,12 @@ void TabGroupEditorBubbleView::RebuildMenuContents() {
   color_selector_ = AddChildView(BuildColorPicker());
   AddChildView(BuildSeparator());
 
-  if (!CanSaveGroups()) {
-    simple_menu_items_.push_back(AddChildView(BuildNewTabInGroupButton()));
-    if (base::FeatureList::IsEnabled(tabs::kTabGroupHome)) {
-      simple_menu_items_.push_back(AddChildView(BuildHomeButton()));
-    }
-    simple_menu_items_.push_back(
-        AddChildView(BuildMoveGroupToNewWindowButton()));
-    if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
-      if (browser_->GetTabStripModel()->GetFocusedGroup() == group_) {
-        simple_menu_items_.push_back(AddChildView(BuildUnfocusGroupButton()));
-      } else {
-        simple_menu_items_.push_back(AddChildView(BuildFocusGroupButton()));
-      }
-    }
-    AddChildView(BuildSeparator());
-    simple_menu_items_.push_back(AddChildView(BuildUngroupButton()));
-    simple_menu_items_.push_back(AddChildView(BuildCloseGroupButton()));
-  } else {
-    simple_menu_items_.push_back(AddChildView(BuildNewTabInGroupButton()));
-    if (base::FeatureList::IsEnabled(tabs::kTabGroupHome)) {
-      simple_menu_items_.push_back(AddChildView(BuildHomeButton()));
-    }
-    simple_menu_items_.push_back(
-        AddChildView(BuildMoveGroupToNewWindowButton()));
-
-    if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
-      if (browser_->GetTabStripModel()->GetFocusedGroup() == group_) {
-        simple_menu_items_.push_back(AddChildView(BuildUnfocusGroupButton()));
-      } else {
-        simple_menu_items_.push_back(AddChildView(BuildFocusGroupButton()));
-      }
-    }
-
-    simple_menu_items_.push_back(AddChildView(BuildCloseGroupButton()));
-    AddChildView(BuildSeparator());
-
-    if (!IsGroupShared()) {
-      simple_menu_items_.push_back(AddChildView(BuildUngroupButton()));
-    }
-
-    if (OwnsGroup()) {
-      simple_menu_items_.push_back(AddChildView(BuildDeleteGroupButton()));
-    } else {
-      simple_menu_items_.push_back(AddChildView(BuildLeaveGroupButton()));
-    }
-
-    if (ShouldShowSavedFooter()) {
-      footer_ = AddChildView(std::make_unique<Footer>(browser_));
-    }
-  }
+  // Agent Chrome: a tab group is an agent. Name and color edit the agent
+  // (SessionManager syncs both ways); no ungroup, delete, move or focus.
+  simple_menu_items_.push_back(AddChildView(BuildNewTabInGroupButton()));
+  simple_menu_items_.push_back(AddChildView(BuildHomeButton()));
+  AddChildView(BuildSeparator());
+  simple_menu_items_.push_back(AddChildView(BuildCloseGroupButton()));
 
   UpdateMenuContentsVisibility();
 }
@@ -720,8 +677,8 @@ void TabGroupEditorBubbleView::NewTabInGroupPressed() {
 }
 
 void TabGroupEditorBubbleView::HomePressed() {
-  chrome::AddSelectedTabWithURL(browser_, GURL("chrome://tab-group-home/"),
-                                ui::PAGE_TRANSITION_TYPED);
+  // Agent Chrome: "Manage agents" opens chrome://agents.
+  ShowSingletonTab(browser_, GURL("chrome://agents/"));
   GetWidget()->Close();
 }
 

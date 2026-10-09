@@ -1163,7 +1163,10 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       TabGroup* model_tab_group =
           browser->GetTabStripModel()->group_model()->GetTabGroup(
               new_tab_group_id);
-      CHECK(model_tab_group);
+      // Agent Chrome: restored tabs come back ungrouped (browser_tabrestore).
+      if (!model_tab_group) {
+        continue;
+      }
       browser->GetTabStripModel()->ChangeTabGroupVisuals(
           new_tab_group_id, session_tab_group->visual_data);
     }

@@ -37,11 +37,7 @@ NewTabButtonMenuModel::NewTabButtonMenuModel(BrowserWindowInterface* browser)
   SetElementIdentifierAt(GetIndexOfCommandId(IDC_NEW_TAB).value(), kNewTab);
   AddNewTabInGroupItem();
 
-  AddSeparator(ui::NORMAL_SEPARATOR);
-
-  AddItemWithStringId(IDC_CREATE_NEW_TAB_GROUP, IDS_NEW_TAB_GROUP);
-  SetElementIdentifierAt(GetIndexOfCommandId(IDC_CREATE_NEW_TAB_GROUP).value(),
-                         kCreateNewTabGroup);
+  // Agent Chrome: no "New tab group"; tab groups are agents, made over MCP.
 
   AddSeparator(ui::NORMAL_SEPARATOR);
   AddNewSplitTabItem();

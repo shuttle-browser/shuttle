@@ -128,6 +128,9 @@ WebContents* AddRestoredTabImpl(std::unique_ptr<WebContents> web_contents,
                                 bool from_session_restore,
                                 std::optional<bool> is_active_browser) {
   TabStripModel* const tab_strip_model = browser->tab_strip_model();
+  // Agent Chrome: tab groups are agents, made over MCP. Restored tabs come
+  // back as the user's own, ungrouped.
+  group = std::nullopt;
 
   int add_types = select ? AddTabTypes::ADD_ACTIVE : AddTabTypes::ADD_NONE;
   if (pin) {

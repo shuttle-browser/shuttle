@@ -123,9 +123,28 @@ export function getHtml(this: AgentsAppElement) {
             aria-checked="${color === this.edit_?.color}"
             @click="${this.onColorClick_}"></button>`)}
     </div>
-    <cr-input id="avatarInput" label="Avatar URL (optional)"
-        .value="${this.edit_?.avatar || ''}"
-        placeholder="https://… or data:image/…" spellcheck="false"
+    <div class="field-label">Avatar</div>
+    <div class="avatar-row">
+      <div class="avatar" data-color="${this.edit_?.color || 'grey'}">
+        ${this.edit_?.avatar ? html`<img src="${this.edit_.avatar}" alt="">` :
+            (this.edit_?.name || this.edit_?.newId || '?')
+                .slice(0, 1).toUpperCase()}
+      </div>
+      <cr-button id="avatarChoose" @click="${this.onAvatarChooseClick_}">
+        Choose image…
+      </cr-button>
+      ${this.edit_?.avatar ? html`
+        <cr-button id="avatarRemove" @click="${this.onAvatarRemoveClick_}">
+          Remove
+        </cr-button>` : nothing}
+      <input id="avatarFile" type="file" accept="image/*" hidden
+          @change="${this.onAvatarFileChange_}">
+    </div>
+    <cr-input id="avatarInput" label="Or image URL (optional)"
+        .value="${this.isDataAvatar_() ? '' : (this.edit_?.avatar || '')}"
+        placeholder="${this.isDataAvatar_() ? 'Image from file' :
+                                              'https://…'}"
+        spellcheck="false"
         ?invalid="${!!this.edit_?.id && !!this.editError_}"
         error-message="${this.editError_}"
         @value-changed="${this.onAvatarValueChanged_}">
@@ -146,7 +165,7 @@ export function getHtml(this: AgentsAppElement) {
   <div slot="title">Open a tab as ${this.openAgent_?.name || ''}</div>
   <div slot="body">
     <div class="dialog-text">The tab uses this agent's cookies and logins,
-        for example to sign in for it, and joins its tab group.</div>
+        for example to sign in for it, and sits with its other tabs.</div>
     <cr-input id="urlInput" label="URL (optional)" .value="${this.openUrl_}"
         placeholder="https://example.com" spellcheck="false"
         ?invalid="${!!this.openError_}" error-message="${this.openError_}"

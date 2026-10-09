@@ -234,7 +234,10 @@ void BrowserLiveTabContext::SetVisualDataForGroup(
     const tab_groups::TabGroupVisualData& visual_data) {
   TabGroupModel* group_model = tab_strip_model_->group_model();
   CHECK(group_model);
-  CHECK(group_model->ContainsTabGroup(group));
+  // Agent Chrome: restored tabs come back ungrouped (browser_tabrestore).
+  if (!group_model->ContainsTabGroup(group)) {
+    return;
+  }
   tab_strip_model_->ChangeTabGroupVisuals(group, std::move(visual_data));
 }
 

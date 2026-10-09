@@ -88,6 +88,19 @@ class SessionManager : public TabStripModelObserver {
   // front. Returns false if it isn't in a tab strip.
   static bool ShowTab(content::WebContents* contents);
 
+  // For the user (tab context menu): hands a tab to `agent_id` (joins the
+  // agent's tabs, see AdoptTab), starting the agent's tab group in the tab's
+  // window if it has none there.
+  void HandTabToAgent(content::WebContents* contents,
+                      const std::string& agent_id);
+  // For the user: takes a tab back from its agent. The page reopens in the
+  // user's own storage as an ordinary tab next to it; the agent's tab closes.
+  void TakeBackTab(content::WebContents* contents);
+  // Returns the agent whose tab group is `group`, or "".
+  std::string AgentOfGroup(const tab_groups::TabGroupId& group) const;
+  // Agent of the session `contents` is leased to, or "".
+  std::string AgentOf(content::WebContents* contents) const;
+
   // Leased tabs of a session, in tab strip order.
   std::vector<content::WebContents*> TabsOf(
       const std::string& session_id) const;
@@ -145,11 +158,7 @@ class SessionManager : public TabStripModelObserver {
   void AdoptTab(base::WeakPtr<content::WebContents> contents,
                 const std::string& agent_id);
   const Session* LatestSession(const std::string& agent_id) const;
-  // Agent of the session `contents` is leased to, or "".
-  std::string AgentOf(content::WebContents* contents) const;
   void Observe(TabStripModel* tab_strip);
-  // Returns the agent whose tab group is `group`, or "".
-  std::string AgentOfGroup(const tab_groups::TabGroupId& group) const;
   // Returns the tab strip holding `group`, or nullptr.
   TabStripModel* FindGroup(const tab_groups::TabGroupId& group) const;
 

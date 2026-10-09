@@ -493,12 +493,6 @@ NSMenuItem* BuildTabMenu(NSApplication* nsapp,
                   .command_id(IDC_PIN_TARGET_TAB)
                   .is_alternate()
                   .key_equivalent(@"", NSEventModifierFlagOption),
-              Item(IDS_GROUP_TAB_MAC)
-                  .command_id(IDC_WINDOW_GROUP_TAB),
-              Item(IDS_GROUP_TARGET_TAB_MAC)
-                  .command_id(IDC_GROUP_TARGET_TAB)
-                  .is_alternate()
-                  .key_equivalent(@"", NSEventModifierFlagOption),
               Item(IDS_TAB_CXMENU_CLOSEOTHERTABS)
                   .command_id(IDC_WINDOW_CLOSE_OTHER_TABS),
               Item(is_rtl ? IDS_TAB_CXMENU_CLOSETABSTOLEFT

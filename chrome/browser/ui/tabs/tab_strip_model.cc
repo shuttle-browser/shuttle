@@ -40,6 +40,7 @@
 #include "base/types/pass_key.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/agent_chrome/agent_chrome_service.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
@@ -2882,19 +2883,20 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
 
       base::RecordAction(UserMetricsAction("TabContextMenu_RemoveFromGroup"));
 
-      std::vector<int> indices_to_remove = GetIndicesForCommand(context_index);
-      std::vector<tab_groups::TabGroupId> groups_to_delete =
-          GetGroupsDestroyedFromRemovingIndices(indices_to_remove);
-      MarkTabGroupsForClosing(groups_to_delete);
-
-      base::OnceCallback<void()> callback =
-          base::BindOnce(&TabStripModel::RemoveFromGroup,
-                         base::Unretained(this), indices_to_remove);
-      if (!groups_to_delete.empty()) {
-        return delegate_->OnRemovingAllTabsFromGroups(groups_to_delete,
-                                                      std::move(callback));
-      } else {
-        std::move(callback).Run();
+      // Agent Chrome: tab groups are agents; "Take back from agent" reopens
+      // the agents' tabs as the user's own.
+      auto* agents = agent_chrome::AgentChromeService::Get(profile());
+      if (!agents) {
+        break;
+      }
+      std::vector<base::WeakPtr<content::WebContents>> contents;
+      for (int index : GetIndicesForCommand(context_index)) {
+        contents.push_back(GetWebContentsAt(index)->GetWeakPtr());
+      }
+      for (const auto& tab : contents) {
+        if (tab) {
+          agents->TakeBackTab(tab.get());
+        }
       }
       break;
     }

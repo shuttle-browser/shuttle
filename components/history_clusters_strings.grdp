@@ -43,7 +43,7 @@
     No search results
   </message>
   <message name="IDS_HISTORY_CLUSTERS_OPEN_ALL_IN_TABGROUP" desc="Label of the item in drop-down menu that allows the user to open a group of urls in a tab group.">
-    Open all in new tab group
+    Open all in new tabs
   </message>
   <message name="IDS_HISTORY_CLUSTERS_RELATED_SEARCHES_HEADER" desc="Header text shown for the section containing search suggestions related to a group of search and browsing activities.">
     Related searches

@@ -635,7 +635,7 @@
     Draft a cover letter intro that highlights my skills and experience for a specific role
   </message>
   <message name="IDS_OMNIBOX_HUB_TYPED_MATCH_HEADER" desc="The header for the typed match suggestions section.">
-    Tabs and tab groups
+    Tabs and agents
   </message>
 
       <message name="IDS_NTP_ACTION_CHIP_BRAINSTORM_SHORT_PROMPT_1" desc="Suggestion shown on the NTP searchbox dropdown" >

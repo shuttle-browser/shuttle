@@ -4,6 +4,7 @@
 
 #include "chrome/browser/agent_chrome/agent_chrome_service.h"
 
+#include <algorithm>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -13,6 +14,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_util.h"
 #include "base/values.h"
 #include "base/version_info/version_info.h"
 #include "chrome/browser/agent_chrome/agent_chrome_service_factory.h"
@@ -207,6 +209,37 @@ void AgentChromeService::HandleMcpRequest(const std::string& host,
                       ResultMessage(id, std::move(result).ToValue()));
                 },
                 id->Clone(), std::move(callback)));
+}
+
+std::vector<AgentChromeService::AgentSummary> AgentChromeService::ListAgents()
+    const {
+  std::vector<AgentSummary> agents;
+  for (const ProfileRegistry::Entry& entry : profiles_->List()) {
+    agents.push_back({entry.id, entry.name});
+  }
+  std::ranges::sort(agents, [](const AgentSummary& a, const AgentSummary& b) {
+    return base::ToLowerASCII(a.name) < base::ToLowerASCII(b.name);
+  });
+  return agents;
+}
+
+std::string AgentChromeService::AgentOfTab(
+    content::WebContents* contents) const {
+  return sessions_->AgentOf(contents);
+}
+
+std::string AgentChromeService::AgentOfGroup(
+    const tab_groups::TabGroupId& group) const {
+  return sessions_->AgentOfGroup(group);
+}
+
+void AgentChromeService::HandTabToAgent(content::WebContents* contents,
+                                        const std::string& agent_id) {
+  sessions_->HandTabToAgent(contents, agent_id);
+}
+
+void AgentChromeService::TakeBackTab(content::WebContents* contents) {
+  sessions_->TakeBackTab(contents);
 }
 
 void AgentChromeService::Shutdown() {
