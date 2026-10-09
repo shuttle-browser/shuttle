@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Galluogi Thema</translation>
 <translation id="1135328998467923690">Mae'r pecyn yn annilys: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Yn wynebu'r amgylchedd</translation>
-<translation id="1171831736360285680">Mae <ph name="PARTNER_NAME" /> wedi ychwanegu estyniad a allai newid y ffordd y mae Chromium yn gweithio.
+<translation id="6853317349523111347">Mae <ph name="PARTNER_NAME" /> wedi ychwanegu estyniad a allai newid y ffordd y mae Shuttle yn gweithio.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Wedi methu ag allforio allwedd breifat.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Methwyd â disodli ffeil crx. Gwiriwch a yw'r ffeil yn cael ei defnyddio.</translation>
 <translation id="3163201441334626963">Cynnyrch anhysbys <ph name="PRODUCT_ID" /> gan y gwerthwr <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Mae mynediad at yr estyniad hwn wedi'i rwystro gan eich sefydliad.</translation>
-<translation id="3183357154200327217">Mae rhaglen arall ar eich cyfrifiadur wedi ychwanegu thema a allai newid y ffordd y mae Chromium yn gweithio.
+<translation id="7846451875700317002">Mae rhaglen arall ar eich cyfrifiadur wedi ychwanegu thema a allai newid y ffordd y mae Shuttle yn gweithio.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Rhaid gosod ap gyda'r briodwedd maniffest 'kiosk_only' ym modd Kiosk ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Gwrthod</translation>
 <translation id="3984413272403535372">Bu gwall wrth lofnodi estyniad.</translation>
 <translation id="4014432863917027322">Trwsio "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Ychwanegodd rhaglen arall ar eich cyfrifiadur estyniad a allai newid y ffordd y mae Chromium yn gweithio.
+<translation id="7396546976728149133">Ychwanegodd rhaglen arall ar eich cyfrifiadur estyniad a allai newid y ffordd y mae Shuttle yn gweithio.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Mae mynediad at y categori estyniad hwn wedi'i rwystro gan eich sefydliad.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Mae'r fersiwn fwyaf newydd o "<ph name="EXTENSION_NAME" />" wedi'i analluogi oherwydd bod angen rhagor o ganiatadau arno.</translation>
 <translation id="5242724311594467048">Galluogi "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Gwedd ap: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Tynnu o Chromium</translation>
+<translation id="2064155379595075287">Tynnu o Shuttle</translation>
 <translation id="5456409301717116725">Mae'r estyniad hwn yn cynnwys y ffeil allwedd '<ph name="KEY_PATH" />'. Mae'n debyg nad ydych eisiau gwneud hynny.</translation>
 <translation id="5485102783864353244">Ychwanegu ap</translation>
 <translation id="5486326529110362464">Rhaid i werth mewnbwn ar gyfer allwedd breifat fodoli.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Mae gweinyddwr y peiriant hwn yn ei gwneud yn ofynnol i osod <ph name="EXTENSION_NAME" />. Ni ellir ei ddadosod.</translation>
 <translation id="6027032947578871493">Cynnyrch anhysbys <ph name="PRODUCT_ID" /> gan <ph name="VENDOR_NAME" /> (rhif cyfresol <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> gan y gwerthwr <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Ychwanegodd rhaglen arall ar eich cyfrifiadur ap a allai newid y ffordd y mae Chromium yn gweithio.
+<translation id="5918487821361452587">Ychwanegodd rhaglen arall ar eich cyfrifiadur ap a allai newid y ffordd y mae Shuttle yn gweithio.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Gwall Llwytho Estyniad</translation>

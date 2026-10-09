@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">థీమ్‌ను ప్రారంభించండి</translation>
 <translation id="1135328998467923690">ప్యాకేజీ చెల్లదు: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">పర్యావరణం వైపుగా</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ఎక్స్‌టెన్షన్ కారణంగా Chromium పని చేసే విధానం మారవచ్చు.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ఎక్స్‌టెన్షన్ కారణంగా Shuttle పని చేసే విధానం మారవచ్చు.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ప్రైవేట్ కీని ఎగుమతి చేయడానికి విఫలమైంది.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ఫైల్ భర్తీ విఫలమైంది. ఫైల్ వినియోగంలో ఉందా అని చెక్ చేయండి.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> నుండి <ph name="PRODUCT_ID" /> తెలియని ఉత్పత్తి</translation>
 <translation id="3174723475300476613">ఈ ఎక్స్‌టెన్షన్‌కు యాక్సెస్‌ను మీ సంస్థ బ్లాక్ చేసింది.</translation>
-<translation id="3183357154200327217">మీ కంప్యూటర్‌లోని మరో ప్రోగ్రామ్ జోడించిన థీమ్ కారణంగా, Chromium పని చేసే విధానం మారవచ్చు.
+<translation id="7846451875700317002">మీ కంప్యూటర్‌లోని మరో ప్రోగ్రామ్ జోడించిన థీమ్ కారణంగా, Shuttle పని చేసే విధానం మారవచ్చు.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' మ్యానిఫెస్ట్ లక్షణం గల యాప్‌ను తప్పనిసరిగా ChromeOS కియోస్క్ మోడ్‌లో ఇన్‌స్టాల్ చేయాలి</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">తిరస్కరించు</translation>
 <translation id="3984413272403535372">ఎక్స్‌టెన్షన్‌కు సంతకం చేసేటప్పుడు ఎర్రర్.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />"ని సరి చేయాలా?</translation>
-<translation id="4061696872429826774">మీ కంప్యూటర్‌లోని మరో ప్రోగ్రామ్ జోడించిన ఎక్స్‌టెన్షన్ కారణంగా Chromium పని చేసే విధానం మారవచ్చు.
+<translation id="7396546976728149133">మీ కంప్యూటర్‌లోని మరో ప్రోగ్రామ్ జోడించిన ఎక్స్‌టెన్షన్ కారణంగా Shuttle పని చేసే విధానం మారవచ్చు.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">ఈ ఎక్స్‌టెన్షన్ కేటగిరీకి యాక్సెస్‌ను మీ సంస్థ బ్లాక్ చేసింది.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" కొత్త వెర్షన్ నిలిపివేయబడింది ఎందుకంటే దానికి మరిన్ని అనుమతులు అవసరం.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />"ను ప్రారంభించాలా?</translation>
 <translation id="5356315618422219272">యాప్‌ వీక్షణ: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium నుండి తీసివేయండి</translation>
+<translation id="2064155379595075287">Shuttle నుండి తీసివేయండి</translation>
 <translation id="5456409301717116725">ఈ ఎక్స్‌టెన్షన్‌ '<ph name="KEY_PATH" />' కీ ఫైల్‌ను కలిగి ఉంది. బహుశా మీరు దాన్ని చేయకూడదు.</translation>
 <translation id="5485102783864353244">యాప్‌ను జోడించండి</translation>
 <translation id="5486326529110362464">ప్రైవేట్ కీ కోసం ఇన్‌పుట్ విలువ తప్పనిసరిగా ఉండాలి.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692"><ph name="EXTENSION_NAME" />ని ఇన్‌స్టాల్ చేయడం ఈ మెషిన్‌ నిర్వాహకుడికి అవసరం. ఇది అన్ఇన్‌స్టాల్ చేయబడదు.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> నుండి తెలియని ఉత్పత్తి <ph name="PRODUCT_ID" /> (క్రమ సంఖ్య <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> విక్రేత నుండి <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">మీ కంప్యూటర్‌లోని మరొక ప్రోగ్రామ్ జోడించిన యాప్ కారణంగా, Chromium పని చేసే విధానం మారవచ్చు.
+<translation id="5918487821361452587">మీ కంప్యూటర్‌లోని మరొక ప్రోగ్రామ్ జోడించిన యాప్ కారణంగా, Shuttle పని చేసే విధానం మారవచ్చు.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">ఎక్స్‌టెన్షన్‌ను లోడ్ చేయడంలో ఎర్రర్</translation>

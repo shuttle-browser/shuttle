@@ -40,7 +40,7 @@
 #include "base/types/pass_key.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
@@ -2883,9 +2883,9 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
 
       base::RecordAction(UserMetricsAction("TabContextMenu_RemoveFromGroup"));
 
-      // Agent Chrome: tab groups are agents; "Take back from agent" reopens
+      // Shuttle: tab groups are agents; "Take back from agent" reopens
       // the agents' tabs as the user's own.
-      auto* agents = agent_chrome::AgentChromeService::Get(profile());
+      auto* agents = shuttle::ShuttleService::Get(profile());
       if (!agents) {
         break;
       }

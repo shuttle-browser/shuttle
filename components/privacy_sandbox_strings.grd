@@ -305,7 +305,7 @@
         </then>
         <else>
           <message name="IDS_SETTINGS_COOKIES_BLOCK_THIRD_PARTY_SETTINGS_ALLOW_BULLET_THREE" desc="This text is for a bullet that provides detail about the first setting option. It describes the key new detail that now applies to this setting option." formatter_data="android_java">
-            When you're in Incognito mode, Chromium blocks sites from using third-party cookies
+            When you're in Incognito mode, Shuttle blocks sites from using third-party cookies
           </message>
         </else>
       </if>

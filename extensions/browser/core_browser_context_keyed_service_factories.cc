@@ -58,7 +58,7 @@ void EnsureCoreBrowserContextKeyedServiceFactoriesBuilt() {
   EventRouterFactory::GetInstance();
   ExtensionActionManager::GetFactory();
   ExtensionFunction::EnsureShutdownNotifierFactoryBuilt();
-  // Agent Chrome: upstream only registered these via DependsOn() from the
+  // Shuttle: upstream only registered these via DependsOn() from the
   // (removed) contextual tasks / AIM eligibility bridge factories.
   ExtensionConfigMapFactory::GetInstance();
   ExtensionMojoBinderRegistryFactory::GetInstance();

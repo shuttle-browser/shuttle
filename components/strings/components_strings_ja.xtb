@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">詳細を報告する</translation>
 <translation id="1016671033299705843">運転免許証を安全に追加</translation>
 <translation id="1019413721762100891">オフ</translation>
-<translation id="1021753677514347426">この問題は、あなたまたは他のユーザーがデバイスにインストールした証明書が原因で発生します。該当の証明書は、ネットワークの監視と傍受に使われることが確認されており、Chromium では信頼されていません。学校や会社のネットワークなどで合法的に監視されているケースもありますが、ユーザーが監視を止められないとしても監視の事実を把握できるように、Chromium ではこのメッセージを表示しています。監視の対象は、ブラウザ、またはウェブにアクセスするアプリケーションです。</translation>
+<translation id="768230658237634872">この問題は、あなたまたは他のユーザーがデバイスにインストールした証明書が原因で発生します。該当の証明書は、ネットワークの監視と傍受に使われることが確認されており、Shuttle では信頼されていません。学校や会社のネットワークなどで合法的に監視されているケースもありますが、ユーザーが監視を止められないとしても監視の事実を把握できるように、Shuttle ではこのメッセージを表示しています。監視の対象は、ブラウザ、またはウェブにアクセスするアプリケーションです。</translation>
 <translation id="1024111578869940408">不正なユーザーが、ウェブアドレスを一目ではわからないように改変してサイトを偽装している可能性があります。</translation>
 <translation id="102916930470544692">パスキー</translation>
 <translation id="1030706264415084469"><ph name="URL" /> から、デバイスに大きなデータを永続的に保存する許可を求められています</translation>
@@ -809,7 +809,7 @@
 <translation id="2348836501965732644">[設定] で情報を管理したり、入力候補を表示しないよう設定したりできます</translation>
 <translation id="2349957959687031096">[シークレット タブを開く] ボタンです。実行すると、新しいシークレット タブを開いてシークレット モードでブラウジングできます</translation>
 <translation id="2350796302381711542">すべての <ph name="PROTOCOL" /> リンクを <ph name="REPLACED_HANDLER_TITLE" /> ではなく <ph name="HANDLER_HOSTNAME" /> で開きますか？</translation>
-<translation id="2351718832234620840">このサーバーは、Chromium またはウェブ トラフィック暗号化のシステム構成で信頼されていないセキュリティ証明書を使用しているため、<ph name="DOMAIN" /> であることを証明できませんでした。原因として、設定が不適切であるか、悪意のあるユーザーが接続を妨害していることが考えられます。</translation>
+<translation id="4798228153726623290">このサーバーは、Shuttle またはウェブ トラフィック暗号化のシステム構成で信頼されていないセキュリティ証明書を使用しているため、<ph name="DOMAIN" /> であることを証明できませんでした。原因として、設定が不適切であるか、悪意のあるユーザーが接続を妨害していることが考えられます。</translation>
 <translation id="2353297238722298836">カメラとマイクを使用できます</translation>
 <translation id="2354001756790975382">その他のブックマーク</translation>
 <translation id="2355395290879513365">このサイトで目にする画像は、悪意のあるユーザーによって差し替えられたものである可能性があります。</translation>
@@ -1046,7 +1046,7 @@
 <translation id="2728127805433021124">サーバーの証明書は脆弱な署名アルゴリズムを使用して署名されています。</translation>
 <translation id="272937284275742856">お支払い情報を安全に確認しています...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />接続診断ツールを実行する<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Chromium で使用する検索エンジンについての詳細</translation>
+<translation id="5216476641707900057">Shuttle で使用する検索エンジンについての詳細</translation>
 <translation id="2731382536835015353">44x68 インチ</translation>
 <translation id="2734797989819862638">コピーしない</translation>
 <translation id="2738771556149464852">終了時刻</translation>
@@ -1344,7 +1344,7 @@
 <translation id="3272091146646336650">スーパー B</translation>
 <translation id="3272112314896217187"><ph name="NUMBER_OF_DIGITS" /> 桁の確認コードを入力してください</translation>
 <translation id="3272643614306383237">1 MB 未満。サイトによっては、次回アクセスする際に読み込みに時間がかかる可能性があります。</translation>
-<translation id="3273738040255912340">管理者は、ユーザーのプロフィールやブラウザをリモートで変更したり、レポートを通じてブラウザに関する情報を分析したり、その他の必要なタスクを行ったりすることができます。このデバイス上のアクティビティは、Chromium の外部でも管理されている可能性があります。<ph name="BEGIN_LINK" />詳細<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">管理者は、ユーザーのプロフィールやブラウザをリモートで変更したり、レポートを通じてブラウザに関する情報を分析したり、その他の必要なタスクを行ったりすることができます。このデバイス上のアクティビティは、Shuttle の外部でも管理されている可能性があります。<ph name="BEGIN_LINK" />詳細<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">[IBAN を保存] が画面全体に表示されています。</translation>
 <translation id="327455571215090823">プライバシーを保護してスマートに自動入力</translation>
 <translation id="3280440382387335343">Google ウォレットでパスポートを安全に更新</translation>
@@ -1613,7 +1613,7 @@
 <translation id="3742104862808477448">Google のサーバーでデータを安全に処理することで、Chromium が複雑なフォームをより的確に理解して入力できるようにします。お客様の情報は非公開に保たれ、人の目に触れることはありません。</translation>
 <translation id="3744111561329211289">バックグラウンド同期</translation>
 <translation id="3744212718085287312">次回から仮想カードでセキュリティを強化しますか？</translation>
-<translation id="3744899669254331632"><ph name="SITE" /> から送信された暗号化済みの認証情報を Chromium で処理できないため、現在このウェブサイトにアクセスできません。通常、ネットワーク エラーやネットワークへの攻撃は一時的なものです。しばらくするとページにアクセスできるようになります。</translation>
+<translation id="58356321557204990"><ph name="SITE" /> から送信された暗号化済みの認証情報を Shuttle で処理できないため、現在このウェブサイトにアクセスできません。通常、ネットワーク エラーやネットワークへの攻撃は一時的なものです。しばらくするとページにアクセスできるようになります。</translation>
 <translation id="3745599309295009257">入力したテキストとページのコンテンツおよび URL が Google に送信され、人間による確認が行われ、この機能の改善に使用されます。個人情報（医療や財務情報など）を入力したり、個人情報や機密情報を含むサイトでこのツールを使用したりしないでください。</translation>
 <translation id="3748009735914587286">金属（高光沢）</translation>
 <translation id="3748647055058832337">この販売者ではご利用いただけません</translation>
@@ -2199,7 +2199,7 @@
 <translation id="4732860731866514038"><ph name="LANGUAGE" /> の言語パックをダウンロードしています... <ph name="PERCENT" />% 完了</translation>
 <translation id="4733082559415072992">デバイスの位置情報について、<ph name="URL" /> が使用許可を求めています</translation>
 <translation id="473414950835101501">カメラの使用</translation>
-<translation id="4736825316280949806">Chromium を再起動する</translation>
+<translation id="5713993618957185264">Shuttle を再起動する</translation>
 <translation id="4736934858538408121">仮想カード</translation>
 <translation id="473775607612524610">更新</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> の検索候補</translation>
@@ -2421,7 +2421,7 @@
 <translation id="5089810972385038852">都道府県 / 州</translation>
 <translation id="5093232627742069661">Z 折り</translation>
 <translation id="5093417502834168387">ログインできない場合は、別の方法を試すことができます</translation>
-<translation id="5094747076828555589">このサーバーが <ph name="DOMAIN" /> であることを確認できませんでした。このサーバーのセキュリティ証明書は Chromium によって信頼されているものではありません。原因としては、不適切な設定や、悪意のあるユーザーによる接続妨害が考えられます。</translation>
+<translation id="5713412634455044803">このサーバーが <ph name="DOMAIN" /> であることを確認できませんでした。このサーバーのセキュリティ証明書は Shuttle によって信頼されているものではありません。原因としては、不適切な設定や、悪意のあるユーザーによる接続妨害が考えられます。</translation>
 <translation id="5096066272198024688">情報を保存しています...</translation>
 <translation id="5097099694988056070">CPU や RAM の使用率などのデバイスの統計情報</translation>
 <translation id="5097468150760963273">27x39 インチ</translation>
@@ -3173,7 +3173,7 @@
 <translation id="635394585025793320">ある人に好印象を与えたい。2 人分の空席がある話題のレストランを探して</translation>
 <translation id="6354918092619878358">SECG 楕円曲線 secp256r1（別名 ANSI X9.62 prime256v1、NIST P-256）</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" /> です。Tab キー、Enter キーの順に押すと、他のデバイスのタブを表示できます</translation>
-<translation id="6355392890578844978">このブラウザは、会社またはその他の組織によって管理されていません。このデバイス上のアクティビティは、Chromium の外部で管理されている可能性があります。<ph name="BEGIN_LINK" />詳細<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">このブラウザは、会社またはその他の組織によって管理されていません。このデバイス上のアクティビティは、Shuttle の外部で管理されている可能性があります。<ph name="BEGIN_LINK" />詳細<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">「<ph name="GROUP_TITLE_1" />」と「<ph name="GROUP_TITLE_2" />」のタブグループは使用できなくなりました</translation>
 <translation id="6358088212770985041">お支払い方法を編集します</translation>
 <translation id="6358450015545214790">ヘルプ</translation>
@@ -4138,7 +4138,7 @@
 <translation id="7995512525968007366">指定なし</translation>
 <translation id="7997855386298213183">共有タブ</translation>
 <translation id="7999482381722829925">部屋ごとの大掃除のチェックリストを優先順位付きで作成して。見落としがちな場所を含めてほしい</translation>
-<translation id="8001912761979890298">このサーバーは、Chromium またはウェブ トラフィック暗号化のシステム構成で信頼されていないセキュリティ証明書を使用しているため、<ph name="DOMAIN" /> であることを証明できませんでした。原因として、設定が不適切であるか、悪意のあるユーザーが接続を妨害していることが考えられます。<ph name="BEGIN_VIEW_CERTIFICATE_LINK" />証明書を表示<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">このサーバーは、Shuttle またはウェブ トラフィック暗号化のシステム構成で信頼されていないセキュリティ証明書を使用しているため、<ph name="DOMAIN" /> であることを証明できませんでした。原因として、設定が不適切であるか、悪意のあるユーザーが接続を妨害していることが考えられます。<ph name="BEGIN_VIEW_CERTIFICATE_LINK" />証明書を表示<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">メモリを解放するために、他のタブやプログラムを閉じてみてください。</translation>
 <translation id="8002230960325005199">新しいタブで関連サイトを表示</translation>
 <translation id="8003046808285812021">「<ph name="SEARCH_TERMS" />」</translation>
@@ -4229,7 +4229,7 @@
 <translation id="8175796834047840627">ログインしている場合は、その Google アカウントにカードを保存できます。この動作は設定で変更できます。</translation>
 <translation id="8176440868214972690">このデバイスの管理者は、次のウェブサイトに設定やポリシーなどの情報を送信するよう設定しています。</translation>
 <translation id="818254048113802060">{0,plural, =1{コンテンツが原因で <ph name="FILE_NAME" /> がブロックされました}other{コンテンツが原因で <ph name="FILE_COUNT" /> 個のファイルがブロックされました}}</translation>
-<translation id="8186171296341598122">検索エンジンは Chromium の設定でいつでも変更できます。ご希望の検索エンジンが表示されない場合は、その検索エンジンのサイトで検索してください。Chromium の設定に最近アクセスした検索エンジンとして表示され、デフォルトに設定できます。</translation>
+<translation id="2852542171920460365">検索エンジンは Shuttle の設定でいつでも変更できます。ご希望の検索エンジンが表示されない場合は、その検索エンジンのサイトで検索してください。Shuttle の設定に最近アクセスした検索エンジンとして表示され、デフォルトに設定できます。</translation>
 <translation id="8188830160449823068">IBAN はデバイスのみに保存されました</translation>
 <translation id="8189557652711717875">選択した検索エンジンは、アドレスバーからの検索やウェブページの画像からの検索などの機能に使用されます。</translation>
 <translation id="8190193880870196235">拡張機能によって管理されています</translation>
@@ -4313,7 +4313,7 @@
 <translation id="8316555157357957253">現在使用中</translation>
 <translation id="8319414634934645341">拡張キーの用途</translation>
 <translation id="831997045666694187">夕方</translation>
-<translation id="8321448084834652864">検索エンジンは Chromium の設定でいつでも変更できます。</translation>
+<translation id="332470347080865446">検索エンジンは Shuttle の設定でいつでも変更できます。</translation>
 <translation id="8321476692217554900">通知</translation>
 <translation id="8323505966575306467">パスワードの保護を強化</translation>
 <translation id="832547548543012337">パスポートの削除</translation>
@@ -4535,7 +4535,7 @@
 <translation id="8736059027199600831">30x40 インチ</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" /> です。Tab キー、Enter キーの順に押すと、新しいシークレット ウィンドウを開いてシークレット モードでブラウジングします</translation>
 <translation id="8737685506611670901"><ph name="REPLACED_HANDLER_TITLE" /> の代わりに「<ph name="PROTOCOL" />」リンクを開く</translation>
-<translation id="8738058698779197622">安全な接続を確立するには時計が正しく設定されている必要があります。この理由は、本物のウェブサイトであることを示すためにウェブサイトで使用される証明書には、有効期間（発効日時と失効日時）が設定されているためです。デバイスの時計が正しくないため、Chromium ではこれらの証明書を確認できません。</translation>
+<translation id="4709963803166322417">安全な接続を確立するには時計が正しく設定されている必要があります。この理由は、本物のウェブサイトであることを示すためにウェブサイトで使用される証明書には、有効期間（発効日時と失効日時）が設定されているためです。デバイスの時計が正しくないため、Shuttle ではこれらの証明書を確認できません。</translation>
 <translation id="8740359287975076522"><ph name="HOST_NAME" /> の &lt;abbr id="dnsDefinition"&gt;DNS アドレス&lt;/abbr&gt;が見つかりませんでした。問題を診断しています。</translation>
 <translation id="874918643257405732">このタブをブックマークに追加します</translation>
 <translation id="8749274696886550762">このサイトは安全ではない可能性があります</translation>
@@ -4744,7 +4744,7 @@
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" /> です。Tab、Enter キーの順に押すと、iOS 設定で Chrome をシステムの既定のブラウザとして設定できます</translation>
 <translation id="9101450247048146228">カメラの使用と移動（<ph name="CAMERAS_COUNT" />）</translation>
 <translation id="9101630580131696064">トレイ 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> では通常、暗号化して情報を保護しています。今回、Chromium から <ph name="SITE" /> への接続試行時に、このウェブサイトからいつもとは異なる誤った認証情報が返されました。悪意のあるユーザーが <ph name="SITE" /> になりすまそうとしているか、Wi-Fi ログイン画面で接続が中断された可能性があります。データのやり取りが行われる前に Chromium によって接続が停止されたため、情報は引き続き保護されています。</translation>
+<translation id="733422146945994640"><ph name="SITE" /> では通常、暗号化して情報を保護しています。今回、Shuttle から <ph name="SITE" /> への接続試行時に、このウェブサイトからいつもとは異なる誤った認証情報が返されました。悪意のあるユーザーが <ph name="SITE" /> になりすまそうとしているか、Wi-Fi ログイン画面で接続が中断された可能性があります。データのやり取りが行われる前に Shuttle によって接続が停止されたため、情報は引き続き保護されています。</translation>
 <translation id="9107199998619088551">プロファイルは <ph name="MANAGER" /> によって管理されています</translation>
 <translation id="9107467864910557787">ご使用のブラウザは <ph name="MANAGER" /> によって管理されています</translation>
 <translation id="91108059142052966">管理者のポリシーによって、機密コンテンツが表示されているときは、<ph name="APPLICATION_TITLE" /> との画面共有が無効になります</translation>

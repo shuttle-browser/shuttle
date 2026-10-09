@@ -152,7 +152,9 @@ if (!is_android && !is_mac) {
   if (is_win) {
     _chrome_output_name = "initialexe/chrome"
   } else {
-    _chrome_output_name = "chrome"
+    # Shuttle: the Linux binary is `shuttle` (`ninja chrome` still builds it
+    # through group("chrome")).
+    _chrome_output_name = "shuttle"
   }
 
   executable("chrome_initial") {
@@ -1855,7 +1857,7 @@ if (is_linux || is_chromeos) {
       ]
     }
     extract_symbols("chrome_symbols") {
-      binary = "$root_out_dir/chrome"
+      binary = "$root_out_dir/shuttle"
 
       if (current_cpu == "x86") {
         # GYP used "ia32" so keep that naming for back-compat.

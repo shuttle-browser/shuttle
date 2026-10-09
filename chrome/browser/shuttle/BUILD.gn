@@ -1,16 +1,16 @@
-# Copyright 2026 The Agent Chrome Authors
+# Copyright 2026 Silkweave
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 # The in-browser MCP server (agent profiles, sessions, tabs). Design:
-# docs/plans/MCP-V1.md in the agent-chrome-tools repo.
+# docs/plans/MCP-V1.md in the shuttle-tools repo.
 
 assert(!is_android)
 
-source_set("agent_chrome") {
+source_set("shuttle") {
   public = [
-    "agent_chrome_service.h",
-    "agent_chrome_service_factory.h",
+    "shuttle_service.h",
+    "shuttle_service_factory.h",
   ]
 
   public_deps = [
@@ -26,8 +26,8 @@ source_set("impl") {
   sources = [
     "agent_browser_sidecar.cc",
     "agent_browser_sidecar.h",
-    "agent_chrome_service.cc",
-    "agent_chrome_service_factory.cc",
+    "shuttle_service.cc",
+    "shuttle_service_factory.cc",
     "avatar_cache.cc",
     "avatar_cache.h",
     "mcp_tools.cc",
@@ -45,7 +45,7 @@ source_set("impl") {
   ]
 
   deps = [
-    ":agent_chrome",
+    ":shuttle",
     "//base",
     "//base:i18n",
     "//chrome/browser:browser_public_dependencies",

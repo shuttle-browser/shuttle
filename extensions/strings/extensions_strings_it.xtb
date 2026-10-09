@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Attiva tema</translation>
 <translation id="1135328998467923690">Il pacchetto non è valido: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Fotocamera posteriore</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ha aggiunto un'estensione che potrebbe modificare il funzionamento di Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ha aggiunto un'estensione che potrebbe modificare il funzionamento di Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Operazione di esportazione della chiave privata non riuscita.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Impossibile sostituire il file crx. Controlla se il file è in uso.</translation>
 <translation id="3163201441334626963">Prodotto sconosciuto <ph name="PRODUCT_ID" /> del fornitore <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">L'accesso a questa estensione è bloccato dalla tua organizzazione.</translation>
-<translation id="3183357154200327217">Un altro programma sul computer ha aggiunto un tema che potrebbe modificare il funzionamento di Chromium.
+<translation id="7846451875700317002">Un altro programma sul computer ha aggiunto un tema che potrebbe modificare il funzionamento di Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">L'app con l'attributo del file manifest "kiosk_only" deve essere installata in modalità kiosk di ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Non consentire</translation>
 <translation id="3984413272403535372">Errore durante la firma dell'estensione.</translation>
 <translation id="4014432863917027322">Riparare "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Un altro programma sul computer ha aggiunto un'estensione che potrebbe modificare il funzionamento di Chromium.
+<translation id="7396546976728149133">Un altro programma sul computer ha aggiunto un'estensione che potrebbe modificare il funzionamento di Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">L'accesso a questa categoria di estensioni è bloccato dalla tua organizzazione.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">La versione più recente di "<ph name="EXTENSION_NAME" />" è stata disattivata perché richiede altre autorizzazioni.</translation>
 <translation id="5242724311594467048">Attivare "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Rimuovi da Chromium</translation>
+<translation id="2064155379595075287">Rimuovi da Shuttle</translation>
 <translation id="5456409301717116725">Questa estensione include il file di chiave "<ph name="KEY_PATH" />". Probabilmente preferiresti che non l'includesse.</translation>
 <translation id="5485102783864353244">Aggiungi app</translation>
 <translation id="5486326529110362464">Il valore di input per la chiave privata deve essere esistente.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">L'amministratore di questo computer richiede che l'estensione <ph name="EXTENSION_NAME" /> sia installata. Non è possibile disinstallarla.</translation>
 <translation id="6027032947578871493">Prodotto sconosciuto <ph name="PRODUCT_ID" /> di <ph name="VENDOR_NAME" /> (numero di serie <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> del fornitore <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Un altro programma sul computer ha aggiunto un'app che potrebbe modificare il funzionamento di Chromium.
+<translation id="5918487821361452587">Un altro programma sul computer ha aggiunto un'app che potrebbe modificare il funzionamento di Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Errore di caricamento dell'estensione</translation>

@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Proporcioneu més informació</translation>
 <translation id="1016671033299705843">Afegeix el permís de conduir de manera segura</translation>
 <translation id="1019413721762100891">Desactivat</translation>
-<translation id="1021753677514347426">Aquest problema es produeix a causa d'un certificat que tu o una altra persona heu instal·lat al dispositiu. Se sap que aquest certificat s'utilitza per supervisar i interceptar xarxes, i Chromium no hi confia. Tot i que hi ha casos en què és legítim dur a terme una supervisió, per exemple, en el cas d'una empresa o d'un centre educatiu, Chromium vol assegurar-se que estiguis al cas d'aquesta situació, encara que no la puguis evitar. La supervisió es pot produir en qualsevol navegador o aplicació que accedeixi al web.</translation>
+<translation id="768230658237634872">Aquest problema es produeix a causa d'un certificat que tu o una altra persona heu instal·lat al dispositiu. Se sap que aquest certificat s'utilitza per supervisar i interceptar xarxes, i Shuttle no hi confia. Tot i que hi ha casos en què és legítim dur a terme una supervisió, per exemple, en el cas d'una empresa o d'un centre educatiu, Shuttle vol assegurar-se que estiguis al cas d'aquesta situació, encara que no la puguis evitar. La supervisió es pot produir en qualsevol navegador o aplicació que accedeixi al web.</translation>
 <translation id="1024111578869940408">De vegades, els atacants imiten llocs web introduint canvis difícils de veure a l'adreça web.</translation>
 <translation id="102916930470544692">Clau d'accés</translation>
 <translation id="1030706264415084469"><ph name="URL" /> vol emmagatzemar una gran quantitat de dades al dispositiu de manera permanent</translation>
@@ -809,7 +809,7 @@ En cas contrari, la configuració de privadesa el bloquejarà. Això permetrà q
 <translation id="2348836501965732644">Gestiona la teva informació o desactiva aquests suggeriments a Configuració</translation>
 <translation id="2349957959687031096">Botó Obre una pestanya d'incògnit: activa'l per obrir una pestanya d'incògnit nova i navegar en privat</translation>
 <translation id="2350796302381711542">Voleu permetre que <ph name="HANDLER_HOSTNAME" /> obri tots els enllaços de <ph name="PROTOCOL" /> en comptes de <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Aquest servidor no ha pogut comprovar que sigui <ph name="DOMAIN" /> perquè utilitza un certificat de seguretat que Chromium o la configuració del sistema per a l'encriptació del trànsit web no consideren de confiança. Això pot ser a causa d'una configuració incorrecta o d'un atacant que ha interceptat la teva connexió.</translation>
+<translation id="4798228153726623290">Aquest servidor no ha pogut comprovar que sigui <ph name="DOMAIN" /> perquè utilitza un certificat de seguretat que Shuttle o la configuració del sistema per a l'encriptació del trànsit web no consideren de confiança. Això pot ser a causa d'una configuració incorrecta o d'un atacant que ha interceptat la teva connexió.</translation>
 <translation id="2353297238722298836">La càmera i el micròfon es poden utilitzar</translation>
 <translation id="2354001756790975382">Altres adreces d'interès</translation>
 <translation id="2355395290879513365">És possible que els atacants puguin veure les imatges que miris en aquest lloc i que les modifiquin per enganyar-te.</translation>
@@ -1046,7 +1046,7 @@ En cas contrari, la configuració de privadesa el bloquejarà. Això permetrà q
 <translation id="2728127805433021124">El certificat del servidor està signat mitjançant un algoritme de signatura dèbil.</translation>
 <translation id="272937284275742856">S'estan verificant les dades de pagament de manera segura...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Executar el Diagnòstic de connectivitat<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Més informació sobre el teu motor de cerca a Chromium</translation>
+<translation id="5216476641707900057">Més informació sobre el teu motor de cerca a Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 polzades</translation>
 <translation id="2734797989819862638">No copiïs</translation>
 <translation id="2738771556149464852">No després</translation>
@@ -1344,7 +1344,7 @@ Per amagar les opcions de Paga més tard, ves a la <ph name="BEGIN_LINK" />confi
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Introdueix el codi de verificació de <ph name="NUMBER_OF_DIGITS" /> dígits</translation>
 <translation id="3272643614306383237">Menys d'1 MB. És possible que alguns llocs web es carreguin més a poc a poc la propera vegada que els visitis.</translation>
-<translation id="3273738040255912340">L'administrador pot fer canvis al perfil i al navegador de manera remota, analitzar informació sobre el navegador mitjançant informes i dur a terme altres tasques necessàries. És possible que l'activitat d'aquest dispositiu també es gestioni fora de Chromium. <ph name="BEGIN_LINK" />Més informació<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">L'administrador pot fer canvis al perfil i al navegador de manera remota, analitzar informació sobre el navegador mitjançant informes i dur a terme altres tasques necessàries. És possible que l'activitat d'aquest dispositiu també es gestioni fora de Shuttle. <ph name="BEGIN_LINK" />Més informació<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Desa l'IBAN està obert a alçada completa.</translation>
 <translation id="327455571215090823">Emplenament automàtic més intel·ligent mantenint la privadesa</translation>
 <translation id="3280440382387335343">Actualitza el passaport de manera segura a Google Wallet</translation>
@@ -1613,7 +1613,7 @@ Per amagar les opcions de Paga més tard, ves a la <ph name="BEGIN_LINK" />confi
 <translation id="3742104862808477448">Ajuda Chromium a entendre i emplenar millor els formularis complexos processant les dades de manera segura als servidors de Google. La teva informació continua sent privada i ningú no la revisa.</translation>
 <translation id="3744111561329211289">Sincronització en segon pla</translation>
 <translation id="3744212718085287312">Vols augmentar la seguretat amb una targeta virtual la pròxima vegada?</translation>
-<translation id="3744899669254331632">En aquest moments no podeu visitar la pàgina <ph name="SITE" /> perquè el lloc web ha enviat credencials aleatòries que Chromium no pot processar. Els atacs i els errors de xarxa acostumen a ser temporals, o sigui que probablement la pàgina funcionarà més endavant.</translation>
+<translation id="58356321557204990">En aquest moments no podeu visitar la pàgina <ph name="SITE" /> perquè el lloc web ha enviat credencials aleatòries que Shuttle no pot processar. Els atacs i els errors de xarxa acostumen a ser temporals, o sigui que probablement la pàgina funcionarà més endavant.</translation>
 <translation id="3745599309295009257">El teu text i el contingut i l'URL de la pàgina en què escrius s'enviaran a Google, un equip de persones els revisarà i s'utilitzaran per millorar aquesta funció. No introdueixis informació personal, com ara dades mèdiques o financeres, ni utilitzis aquesta eina en llocs web que continguin informació privada o sensible.</translation>
 <translation id="3748009735914587286">Metall (brillantor alta)</translation>
 <translation id="3748647055058832337">No disponible per a aquest comerciant</translation>
@@ -2199,7 +2199,7 @@ Per amagar les opcions de Paga més tard, ves a la <ph name="BEGIN_LINK" />confi
 <translation id="4732860731866514038">S'està baixant el paquet d'idioma en <ph name="LANGUAGE" />... <ph name="PERCENT" /> %</translation>
 <translation id="4733082559415072992"><ph name="URL" /> vol utilitzar la ubicació del dispositiu</translation>
 <translation id="473414950835101501">Utilitzar les càmeres</translation>
-<translation id="4736825316280949806">Reinicia Chromium</translation>
+<translation id="5713993618957185264">Reinicia Shuttle</translation>
 <translation id="4736934858538408121">Targeta virtual</translation>
 <translation id="473775607612524610">Actualitza</translation>
 <translation id="4738601419177586157">Suggeriment de cerca de <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Per amagar les opcions de Paga més tard, ves a la <ph name="BEGIN_LINK" />confi
 <translation id="5089810972385038852">Estat</translation>
 <translation id="5093232627742069661">Plegat en Z</translation>
 <translation id="5093417502834168387">No pots iniciar la sessió? Prova una altra manera.</translation>
-<translation id="5094747076828555589">Aquest servidor no ha pogut comprovar que sigui <ph name="DOMAIN" /> perquè Chromium considera que el seu certificat de seguretat no és de confiança. Això pot ser a causa d'una configuració incorrecta o d'un atacant que intercepta la vostra connexió.</translation>
+<translation id="5713412634455044803">Aquest servidor no ha pogut comprovar que sigui <ph name="DOMAIN" /> perquè Shuttle considera que el seu certificat de seguretat no és de confiança. Això pot ser a causa d'una configuració incorrecta o d'un atacant que intercepta la vostra connexió.</translation>
 <translation id="5096066272198024688">S'està desant la teva informació...</translation>
 <translation id="5097099694988056070">Estadístiques del dispositiu, com ara l'ús de CPU o RAM</translation>
 <translation id="5097468150760963273">27 x 39 polzades</translation>
@@ -3173,7 +3173,7 @@ Per amagar les opcions de Paga més tard, ves a la <ph name="BEGIN_LINK" />confi
 <translation id="635394585025793320">Vull impressionar algú. Cerca taula per a 2 persones als restaurants de què tothom parla ara mateix.</translation>
 <translation id="6354918092619878358">Corba el·líptica secp256r1 d'SECG (també coneguda com a X9.62 prime256v1 d'ANSI o NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />: prem Tab i, a continuació, Retorn per veure més pestanyes d'altres dispositius</translation>
-<translation id="6355392890578844978">Cap empresa ni cap altra organització no gestiona aquest navegador. És possible que l'activitat d'aquest dispositiu es gestioni fora de Chromium. <ph name="BEGIN_LINK" />Més informació<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Cap empresa ni cap altra organització no gestiona aquest navegador. És possible que l'activitat d'aquest dispositiu es gestioni fora de Shuttle. <ph name="BEGIN_LINK" />Més informació<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Els grups de pestanyes "<ph name="GROUP_TITLE_1" />" i "<ph name="GROUP_TITLE_2" />" ja no estan disponibles</translation>
 <translation id="6358088212770985041">editar les formes de pagament</translation>
 <translation id="6358450015545214790">Què vol dir tot això?</translation>
@@ -4138,7 +4138,7 @@ Detalls addicionals:
 <translation id="7995512525968007366">No especificat</translation>
 <translation id="7997855386298213183">pestanyes compartides</translation>
 <translation id="7999482381722829925">Crea una llista de comprovació per fer una neteja a fons. Ordena-la per prioritats i habitacions i centra-la en els llocs que se solen passar per alt.</translation>
-<translation id="8001912761979890298">Aquest servidor no ha pogut comprovar que sigui <ph name="DOMAIN" /> perquè utilitza un certificat de seguretat que Chromium o la configuració del sistema per a l'encriptació del trànsit web no consideren de confiança. Això pot ser a causa d'una configuració incorrecta o d'un atacant que ha interceptat la teva connexió. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Mostra el certificat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Aquest servidor no ha pogut comprovar que sigui <ph name="DOMAIN" /> perquè utilitza un certificat de seguretat que Shuttle o la configuració del sistema per a l'encriptació del trànsit web no consideren de confiança. Això pot ser a causa d'una configuració incorrecta o d'un atacant que ha interceptat la teva connexió. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Mostra el certificat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Prova de tancar altres pestanyes o programes per alliberar memòria.</translation>
 <translation id="8002230960325005199">Mostra llocs web relacionats en una pestanya nova</translation>
 <translation id="8003046808285812021">"<ph name="SEARCH_TERMS" />"</translation>
@@ -4229,7 +4229,7 @@ Detalls addicionals:
 <translation id="8175796834047840627">Chrome t'està oferint desar les targetes al Compte de Google perquè tens la sessió iniciada. Pots canviar aquest comportament a la configuració.</translation>
 <translation id="8176440868214972690">L'administrador d'aquest dispositiu ha enviat informació als llocs web següents, com ara opcions de configuració o polítiques.</translation>
 <translation id="818254048113802060">{0,plural, =1{S'ha bloquejat <ph name="FILE_NAME" /> a causa del contingut}other{S'han bloquejat <ph name="FILE_COUNT" /> fitxers a causa del contingut}}</translation>
-<translation id="8186171296341598122">Pots canviar el motor de cerca en qualsevol moment a la configuració de Chromium. Si no veus el teu motor de cerca preferit, pots fer una cerca des del seu lloc web. Veuràs que apareix com a motor de cerca visitat recentment a la configuració de Chromium i podràs establir-lo com a motor de cerca predeterminat.</translation>
+<translation id="2852542171920460365">Pots canviar el motor de cerca en qualsevol moment a la configuració de Shuttle. Si no veus el teu motor de cerca preferit, pots fer una cerca des del seu lloc web. Veuràs que apareix com a motor de cerca visitat recentment a la configuració de Shuttle i podràs establir-lo com a motor de cerca predeterminat.</translation>
 <translation id="8188830160449823068">L'IBAN només s'ha desat al dispositiu</translation>
 <translation id="8189557652711717875">El motor de cerca que triïs s'utilitzarà per a funcions com ara fer cerques des de la barra d'adreces i a partir d'imatges en pàgines web.</translation>
 <translation id="8190193880870196235">Gestionat per una extensió</translation>
@@ -4313,7 +4313,7 @@ Detalls addicionals:
 <translation id="8316555157357957253">S'està utilitzant</translation>
 <translation id="8319414634934645341">Ús ampliat de claus</translation>
 <translation id="831997045666694187">Tarda</translation>
-<translation id="8321448084834652864">Pots canviar el motor de cerca en qualsevol moment a la configuració de Chromium.</translation>
+<translation id="332470347080865446">Pots canviar el motor de cerca en qualsevol moment a la configuració de Shuttle.</translation>
 <translation id="8321476692217554900">notificacions</translation>
 <translation id="8323505966575306467">Afegeix més protecció a les contrasenyes</translation>
 <translation id="832547548543012337">Suprimeix el passaport</translation>
@@ -4534,7 +4534,7 @@ Detalls addicionals:
 <translation id="8736059027199600831">30 x 40 polzades</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />; prem Tab i després Retorn per obrir una finestra d'incògnit nova i navegar en privat</translation>
 <translation id="8737685506611670901">Obrir els enllaços del protocol <ph name="PROTOCOL" /> en lloc del gestor <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Per establir una connexió segura, el rellotge ha d'estar ben ajustat, perquè els certificats que els llocs web fan servir per identificar-se només són vàlids per a períodes de temps concrets. Com que el rellotge del dispositiu no està ben ajustat, Chromium no pot verificar aquests certificats.</translation>
+<translation id="4709963803166322417">Per establir una connexió segura, el rellotge ha d'estar ben ajustat, perquè els certificats que els llocs web fan servir per identificar-se només són vàlids per a períodes de temps concrets. Com que el rellotge del dispositiu no està ben ajustat, Shuttle no pot verificar aquests certificats.</translation>
 <translation id="8740359287975076522">No s'ha trobat l'&lt;abbr id="dnsDefinition"&gt;adreça DNS&lt;/abbr&gt; de <ph name="HOST_NAME" />. S'està diagnosticant el problema.</translation>
 <translation id="874918643257405732">Afegeix aquesta pestanya a les adreces d'interès</translation>
 <translation id="8749274696886550762">Aquest lloc web no sembla correcte</translation>
@@ -4743,7 +4743,7 @@ Detalls addicionals:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />: prem Tab i, a continuació, Retorn per establir Chrome com a navegador predeterminat del sistema a la configuració d'iOS.</translation>
 <translation id="9101450247048146228">Ús i moviment de les càmeres (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Safata 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> utilitza normalment l'encriptació per protegir la vostra informació. En aquesta ocasió, quan Chromium ha provat de connectar-se a <ph name="SITE" />, el lloc web ha enviat credencials poc comunes i incorrectes. Pot ser que un atacant estigui provant de fer-se passar per <ph name="SITE" /> o que una pantalla d'inici de sessió a la xarxa Wi-Fi hagi interromput la connexió. En qualsevol cas, la vostra informació continua estant segura, perquè Chromium ha aturat la connexió abans no s'intercanviés cap dada.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> utilitza normalment l'encriptació per protegir la vostra informació. En aquesta ocasió, quan Shuttle ha provat de connectar-se a <ph name="SITE" />, el lloc web ha enviat credencials poc comunes i incorrectes. Pot ser que un atacant estigui provant de fer-se passar per <ph name="SITE" /> o que una pantalla d'inici de sessió a la xarxa Wi-Fi hagi interromput la connexió. En qualsevol cas, la vostra informació continua estant segura, perquè Shuttle ha aturat la connexió abans no s'intercanviés cap dada.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> gestiona el teu perfil</translation>
 <translation id="9107467864910557787">El navegador està gestionat per <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">La política de l'administrador desactiva la compartició de pantalla amb <ph name="APPLICATION_TITLE" /> quan es mostra contingut confidencial</translation>

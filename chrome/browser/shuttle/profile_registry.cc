@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/profile_registry.h"
+#include "chrome/browser/shuttle/profile_registry.h"
 
 #include <array>
 #include <utility>
@@ -17,7 +17,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
-#include "chrome/browser/agent_chrome/pref_names.h"
+#include "chrome/browser/shuttle/pref_names.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
@@ -25,11 +25,11 @@
 #include "content/public/browser/storage_partition.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
-constexpr char kDomainPrefix[] = "ac-";
+constexpr char kDomainPrefix[] = "shuttle-";
 constexpr size_t kMaxIdLength = 64;
 constexpr size_t kMaxNameLength = 64;  // UTF-16 code units.
 // Avatars live in prefs; keep data: URLs small (a 256x256 PNG or JPEG fits).
@@ -322,4 +322,4 @@ void ProfileRegistry::FlushAllCookies() {
   profile_->ForEachLoadedStoragePartition(&FlushPartition);
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

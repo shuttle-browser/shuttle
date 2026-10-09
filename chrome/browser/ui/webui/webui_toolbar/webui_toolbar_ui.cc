@@ -235,7 +235,7 @@ WebUIToolbarUI::WebUIToolbarUI(content::WebUI* web_ui)
                      features::IsWebUIPinnedToolbarActionsEnabled());
   source->AddBoolean("enableAppMenuButton",
                      features::IsWebUIAppMenuButtonEnabled());
-  // Agent Chrome: no avatar button (profile menu removed).
+  // Shuttle: no avatar button (profile menu removed).
   source->AddBoolean("enableAvatarButton", false);
   source->AddBoolean("enableExtensionsContainer",
                      features::IsWebUIExtensionsContainerEnabled());

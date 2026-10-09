@@ -3,21 +3,21 @@
 <translationbundle lang="da">
 <translation id="1026101648481255140">Genoptag installation</translation>
 <translation id="1029669172902658969">Genstart og opdater &amp;Chromium OS</translation>
-<translation id="8271032073852564289">Agent Chrome anbefaler, at du gennemgår denne udvidelse</translation>
-<translation id="1395700234492294565">Når et website anmoder om at forudindlæse links privat på websitets side, anvender Agent Chrome Googles servere. På denne måde skjules din identitet fra det forudindlæste website, men Google registrerer, hvilke websites der forudindlæses.</translation>
+<translation id="9022540553404839453">Shuttle anbefaler, at du gennemgår denne udvidelse</translation>
+<translation id="5410799103647685860">Når et website anmoder om at forudindlæse links privat på websitets side, anvender Shuttle Googles servere. På denne måde skjules din identitet fra det forudindlæste website, men Google registrerer, hvilke websites der forudindlæses.</translation>
 <translation id="1051793555070215510">Hjælp os med at forbedre inkognito ved at deltage i denne undersøgelse, der kun tager 1 minut.</translation>
 <translation id="1065672644894730302">Dine præferencer kan ikke læses. Visse funktioner er muligvis ikke tilgængelige, og ændringer af præferencer gemmes ikke.</translation>
-<translation id="3693661839172633833">Din forælder har deaktiveret "Tilladelser for websites, apps og udvidelser" for Agent Chrome</translation>
-<translation id="4676383270508741906">Hvis du vil søge efter en bestemt Agent Chrome-funktion eller -udvidelse, skal du angive genvejen til den i adresselinjen efterfulgt af din valgte tastaturtast</translation>
+<translation id="2526735598866766848">Din forælder har deaktiveret "Tilladelser for websites, apps og udvidelser" for Shuttle</translation>
+<translation id="4554538601245550915">Hvis du vil søge efter en bestemt Shuttle-funktion eller -udvidelse, skal du angive genvejen til den i adresselinjen efterfulgt af din valgte tastaturtast</translation>
 <translation id="1098493699368672217">Vis søgning med Chromium i systembakken, og aktivér tastaturgenvejen</translation>
 <translation id="1104942323762546749">Chromium anmoder om at eksportere dine adgangskoder. Angiv din Windows-adgangskode for at tillade dette.</translation>
 <translation id="112640046208448578">Identificer ting eller steder, og kopiér eller oversæt tekst. Når du bruger billedsøgning, sendes der et screenshot af siden til serveren. <ph name="LEARN_MORE" /></translation>
-<translation id="5373975050135708711">Agent Chrome er din standardbrowser</translation>
+<translation id="5857101132283857610">Shuttle er din standardbrowser</translation>
 <translation id="1131805035311359397">Du kan tjekke, om dine adgangskoder er beskyttet mod brud på datasikkerheden og andre sikkerhedsproblemer ved at <ph name="BEGIN_LINK" />logge ind på Chromium<ph name="END_LINK" />.</translation>
 <translation id="1153368717515616349">Klik på Chromium-menuen</translation>
 <translation id="1157985233335035034">Seneste sprog</translation>
 <translation id="1184145431117212167">Installationen mislykkedes, da din version af Windows ikke understøttes.</translation>
-<translation id="604454529346438712">Om Agent Chrome</translation>
+<translation id="2517811539192985920">Om Shuttle</translation>
 <translation id="1186645291482254714">Få underretninger om prissporing med Chromium på din telefon</translation>
 <translation id="1203500561924088507">Tak for installationen. Du skal genstarte browseren, før du bruger <ph name="BUNDLE_NAME" />.</translation>
 <translation id="1232234696885483911">Når du åbner Billedsøgning, sendes sidetitlen, webadressen og indholdet, herunder PDF-filer, automatisk til serveren. <ph name="LEARN_MORE" /></translation>
@@ -25,13 +25,13 @@
 <translation id="1244381985120794049">Vis Gemini i Chromium på Mac-menulinjen</translation>
 <translation id="1257483544893909270">Brug tastaturgenvejen til at markere en del af skærmen i Gemini i Chromium.</translation>
 <translation id="1262876892872089030">Mens denne fane var inaktiv, blev der frigjort hukommelse for at sikre, at Chromium kører hurtigt. Du kan vælge, at dette website altid skal være inaktivt.</translation>
-<translation id="3777643518642881741">Agent Chrome har blokeret denne download, fordi filen er skadelig</translation>
+<translation id="5920228800659800735">Shuttle har blokeret denne download, fordi filen er skadelig</translation>
 <translation id="126567311906253476">Når du logger ind i Google-tjenester som f.eks. Gmail eller YouTube med <ph name="USER_EMAIL" />, kan du automatisk logge ind i Chromium med den samme konto</translation>
 <translation id="1287534462498555020">Hent Chromium på din telefon</translation>
 <translation id="1290883685122687410">Konfigurationsfejl: <ph name="METAINSTALLER_EXIT_CODE" />. <ph name="WINDOWS_ERROR" /></translation>
 <translation id="1315551408014407711">Konfigurer din nye Chromium-profil</translation>
 <translation id="132092532143527429">Prøv med Gemini i Chromium</translation>
-<translation id="200785071050073583">Agent Chrome skal have adgang til Bluetooth for at finde 
+<translation id="7886367104480106107">Shuttle skal have adgang til Bluetooth for at finde 
  Bluetooth-enheder. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="1329040302064168406">Log ind i Chromium på din telefon</translation>
 <translation id="1330562121671411446">Registrer sprog</translation>
@@ -41,33 +41,33 @@
 <translation id="1383876407941801731">Søg</translation>
 <translation id="1388276868779258475">Brug Chromium-appen til at browse videre på farten</translation>
 <translation id="141901961143729572">Del dine tanker</translation>
-<translation id="8789809509510733987">Tillad skærmoptagelse for Agent Chrome under Systemindstillinger for at dele dit vindue.</translation>
+<translation id="1958991777362218128">Tillad skærmoptagelse for Shuttle under Systemindstillinger for at dele dit vindue.</translation>
 <translation id="1478370723027452770">Få hjælp til Chrome for Testing</translation>
 <translation id="1497802159252041924">Installationsfejl: <ph name="INSTALL_ERROR" /></translation>
 <translation id="1518627427551567882">Denne side er beskyttet</translation>
-<translation id="3850708453627715578">Del en Agent Chrome-fane</translation>
+<translation id="8079206111514107729">Del en Shuttle-fane</translation>
 <translation id="154404805518949443">Log ind i Chromium</translation>
 <translation id="1547469039832541117">Afslutter den fremhævede opgave.</translation>
-<translation id="8546278207686764484">Fastgør Agent Chrome</translation>
+<translation id="5481132473679919711">Fastgør Shuttle</translation>
 <translation id="1574377791422810894">Chromiums sikkerhedsværktøjer</translation>
 <translation id="1594928384848033697">Chromium anmoder om tilladelse til at slette dine data i Adgangskodeadministrator. Angiv din Windows-adgangskode for at tillade dette.</translation>
-<translation id="551713766576210710">{COUNT,plural, =0{Din administrator kræver, at du genstarter Agent Chrome for at anvende en opdatering}=1{Din administrator kræver, at du genstarter Agent Chrome for at anvende en opdatering. Dit inkognitovindue åbnes ikke igen.}one{Din administrator kræver, at du genstarter Agent Chrome for at anvende en opdatering. # inkognitovindue åbnes ikke igen.}other{Din administrator kræver, at du genstarter Agent Chrome for at anvende en opdatering. Dine # inkognitovinduer åbnes ikke igen.}}</translation>
+<translation id="9144100729492133749">{COUNT,plural, =0{Din administrator kræver, at du genstarter Shuttle for at anvende en opdatering}=1{Din administrator kræver, at du genstarter Shuttle for at anvende en opdatering. Dit inkognitovindue åbnes ikke igen.}one{Din administrator kræver, at du genstarter Shuttle for at anvende en opdatering. # inkognitovindue åbnes ikke igen.}other{Din administrator kræver, at du genstarter Shuttle for at anvende en opdatering. Dine # inkognitovinduer åbnes ikke igen.}}</translation>
 <translation id="1623563412065267963">Få det bedste fra Google med Chromium-appen på din telefon</translation>
 <translation id="1625909126243026060">Gennemgå vigtige privatlivs- og sikkerhedsindstillinger i Chromium</translation>
 <translation id="1640672724030957280">Downloader...</translation>
 <translation id="1665602916345474427">Logget ind som <ph name="USER_NAME" />, <ph name="USER_EMAIL" />, medlemskab. Åbn kontomenuen</translation>
-<translation id="2604712040942461790">Du kan bruge Agent Chrome, hver gang du klikker på links i beskeder, dokumenter og andre apps. Den fastgøres også til proceslinjen.</translation>
+<translation id="5133024692341945870">Du kan bruge Shuttle, hver gang du klikker på links i beskeder, dokumenter og andre apps. Den fastgøres også til proceslinjen.</translation>
 <translation id="1709772298389099340">Giver udvidede adgangsrettigheder til <ph name="BROWSER_NAME" />.</translation>
 <translation id="1722488837206509557">Dette giver dig mulighed for at vælge mellem tilgængelige enheder og vise indhold på dem.</translation>
-<translation id="4145295773323539953">Agent Chrome sletter snart browserdataene</translation>
+<translation id="5930953237660560582">Shuttle sletter snart browserdataene</translation>
 <translation id="1736443181683099871">Chromium vil forsøge at opgradere navigationen til HTTPS</translation>
-<translation id="7280502947294080605">Agent Chrome-data blev ryddet</translation>
+<translation id="3225043540098941089">Shuttle-data blev ryddet</translation>
 <translation id="1745121272106313518">Chromium genstarter om <ph name="REMAINING_TIME" /></translation>
 <translation id="1749104137266986751">Når HTTPS er utilgængelig, anvender Chromium en usikker forbindelse uden at advare dig</translation>
-<translation id="1887395919652703120">Lad Agent Chrome køre i baggrunden</translation>
+<translation id="4139175757782872962">Lad Shuttle køre i baggrunden</translation>
 <translation id="1779356040007214683">For at gøre Chromium sikrere har vi slået nogle udvidelser fra, som ikke er anført i <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> og muligvis er blevet tilføjet, uden at du vidste det.</translation>
 <translation id="1793486931176048546">Klik på <ph name="BEGIN_BOLD" />Ja<ph name="END_BOLD" /> i Windows-notifikationen for at fastgøre Chromium til proceslinjen og få hurtig adgang.</translation>
-<translation id="357645171972700077">Geninstaller Agent Chrome</translation>
+<translation id="6621264839978531733">Geninstaller Shuttle</translation>
 <translation id="1820835682567584003">Chromium forsøger at <ph name="AUTHENTICATION_PURPOSE" /></translation>
 <translation id="183031085822326697">Næste gang du åbner Chromium på din <ph name="DEVICE_TYPE" />, får du en meddelelse om at bruge Google Adgangskodeadministrator.</translation>
 <translation id="1838374766361614909">Ryd søgning</translation>
@@ -78,15 +78,15 @@
 <translation id="1863837059069884561"><ph name="EXISTING_USER" /> er allerede logget ind. Hvis du vil holde din browsing adskilt, skal du logge ind i Chromium på din egen profil som <ph name="USER_EMAIL_ADDRESS" />. Du kan også se dine bogmærker og meget mere fra <ph name="DEVICE" />.</translation>
 <translation id="1880677175115548835">Vælg tekst</translation>
 <translation id="1881322772814446296">Du er ved at logge ind med en managerstyret konto og give dens administrator kontrol over din profil i Chromium. Dine Chromium-data, f.eks. dine apps, bogmærker, historikdata, adgangskoder og andre indstillinger, knyttes permanent til <ph name="USER_NAME" />. Du kan slette disse data via kontrolpanelet for Google Konti, men du kan ikke knytte disse data til en anden konto. Du kan eventuelt oprette en ny profil for at holde dine Chromium-data adskilt. <ph name="LEARN_MORE" /></translation>
-<translation id="4964792828232534953">Agent Chrome sparer på batteriet ved at begrænse aktivitet i baggrunden og visuelle effekter, f.eks. smooth scrolling og videobilledfrekvenser. <ph name="BEGIN_LINK" />Få flere oplysninger om Energisparefunktion<ph name="END_LINK" /></translation>
+<translation id="1305483712531564950">Shuttle sparer på batteriet ved at begrænse aktivitet i baggrunden og visuelle effekter, f.eks. smooth scrolling og videobilledfrekvenser. <ph name="BEGIN_LINK" />Få flere oplysninger om Energisparefunktion<ph name="END_LINK" /></translation>
 <translation id="1900969832270057921">Chromium Updater Service</translation>
 <translation id="1911763535808217981">Når du deaktiverer denne indstilling, kan du logge ind på Google-websites som f.eks. Gmail uden at logge ind i Chromium</translation>
 <translation id="1929939181775079593">Chromium svarer ikke. Vil du genstarte nu?</translation>
 <translation id="1933341829955786215">Din organisation, <ph name="MANAGER" />, kræver, at du logger ind i Chromium</translation>
 <translation id="193439633299369377">Chromium OS skal genstartes, før opdateringen kan anvendes.</translation>
-<translation id="207375373460618430">Agent Chrome har blokeret denne download, fordi filtypen normalt ikke downloades og kan være skadelig</translation>
+<translation id="4872059215343855880">Shuttle har blokeret denne download, fordi filtypen normalt ikke downloades og kan være skadelig</translation>
 <translation id="1953553007165777902">Downloader… Der er <ph name="MINUTE" /> minutter tilbage</translation>
-<translation id="700162948230159797">Agent Chrome kan ikke fastlægge eller angive standardbrowseren</translation>
+<translation id="1220136003951684816">Shuttle kan ikke fastlægge eller angive standardbrowseren</translation>
 <translation id="197326043290947695">Browse smartere med Billedsøgning</translation>
 <translation id="1990262977744080398">Se, hvorfor Chromium blokerer visse filer (åbnes på en ny fane)</translation>
 <translation id="1999715455684970349">Holder din Chromium-software opdateret. Hvis denne tjeneste deaktiveres eller stoppes, bliver din Chromium-software ikke opdateret. Dette betyder, at eventuelle sikkerhedsbrister ikke kan rettes, og at funktioner muligvis ikke fungerer. Denne tjeneste afinstallerer sig selv, når den ikke bruges af nogen Chromium-software.</translation>
@@ -96,19 +96,19 @@
 <translation id="2049376729098081731">Vælg, om du vil inkludere Chromium-historikken for at få mere personligt tilpassede oplevelser i Googles tjenester</translation>
 <translation id="2050698962207788467">Indbygget i Chromium for at hjælpe dig med at oprette, gemme og automatisk udfylde stærke adgangskoder. Tilføj genvejen for at få nem adgang.</translation>
 <translation id="2064856577282482477">Klik på knappen Tilpas Chromium på siden Ny fane for at give Chromium et nyt udseende</translation>
-<translation id="6816376218079012438">Agent Chrome har blokeret denne download, fordi filen er vildledende og kan foretage uventede ændringer på din enhed</translation>
+<translation id="4748815521068816647">Shuttle har blokeret denne download, fordi filen er vildledende og kan foretage uventede ændringer på din enhed</translation>
 <translation id="208726765006323911">Du får en meddelelse om at prøve <ph name="FEATURE_NAME" />, næste gang du åbner Chromium til iOS.</translation>
 <translation id="2099452623287920103">Dine adgangskoder og andre Chromium-data, som du har gemt på din Google-konto, fjernes fra denne enhed. Hvis du vil bruge dem igen i Chromium, skal du logge ind igen.</translation>
-<translation id="8983263343920390117">{COUNT,plural, =1{Din organisation sletter automatisk browserdata, når Agent Chrome ikke bruges i 1 minut. Disse kan omfatte historik, autofyld og downloads. Dine faner forbliver åbne.}one{Din organisation sletter automatisk browserdata, når Agent Chrome ikke bruges i # minut. Disse kan omfatte historik, autofyld og downloads. Dine faner forbliver åbne.}other{Din organisation sletter automatisk browserdata, når Agent Chrome ikke bruges i # minutter. Disse kan omfatte historik, autofyld og downloads. Dine faner forbliver åbne.}}</translation>
+<translation id="8053870167789043907">{COUNT,plural, =1{Din organisation sletter automatisk browserdata, når Shuttle ikke bruges i 1 minut. Disse kan omfatte historik, autofyld og downloads. Dine faner forbliver åbne.}one{Din organisation sletter automatisk browserdata, når Shuttle ikke bruges i # minut. Disse kan omfatte historik, autofyld og downloads. Dine faner forbliver åbne.}other{Din organisation sletter automatisk browserdata, når Shuttle ikke bruges i # minutter. Disse kan omfatte historik, autofyld og downloads. Dine faner forbliver åbne.}}</translation>
 <translation id="2125838419757773031">Vælg et område på skærmen, du vil søge i</translation>
 <translation id="2126108037660393668">Verificering af den downloadede fil mislykkedes.</translation>
 <translation id="2135919691573380097">Rapportér dette website</translation>
 <translation id="2137162749895930932">Luk oversættelsesskærmen</translation>
-<translation id="822057692680289847">Agent Chrome har blokeret denne download, fordi websitet ikke anvender en sikker forbindelse, og der kan være blevet manipuleret med filen</translation>
+<translation id="8598177558941030115">Shuttle har blokeret denne download, fordi websitet ikke anvender en sikker forbindelse, og der kan være blevet manipuleret med filen</translation>
 <translation id="2170098639895543546">Markér hvad som helst på siden</translation>
 <translation id="2174178932569897599">Tilpas Chromium</translation>
 <translation id="2174917724755363426">Installationen er ikke fuldført. Er du sikker på, at du vil annullere?</translation>
-<translation id="922967513335788675">Agent Chrome – Login på netværk – <ph name="PAGE_TITLE" /></translation>
+<translation id="2629211622516729574">Shuttle – Login på netværk – <ph name="PAGE_TITLE" /></translation>
 <translation id="2190166659037789668">Fejl ved søgning efter opdatering: <ph name="UPDATE_CHECK_ERROR" />.</translation>
 <translation id="2199210295479376551">Fjern kontoen fra Chromium</translation>
 <translation id="2201788217099588893">Brug Chromium-appen til at tage de bedste shoppingværktøjer med på farten</translation>
@@ -125,10 +125,10 @@
 <translation id="2356070529366658676">Spørg</translation>
 <translation id="2359808026110333948">Fortsæt</translation>
 <translation id="2361918034042471035">Udvidelsen "<ph name="EXTENSION_NAME" />" vil have dig til at logge ind i Chromium</translation>
-<translation id="2028456545634496358">Deaktiver, at Agent Chrome-apps kører i baggrunden</translation>
+<translation id="2875952783855795871">Deaktiver, at Shuttle-apps kører i baggrunden</translation>
 <translation id="2374216753258219393">Log ind i Chromium for at bruge denne udvidelse som <ph name="USER_EMAIL_ADDRESS" />.</translation>
 <translation id="2384373936468275798">Chromium OS kunne ikke synkronisere dine data, fordi loginoplysningerne til din konto er forældede.</translation>
-<translation id="3040857862310351495">{NUM_DEVICES,plural, =0{En eller flere Agent Chrome-udvidelser havde adgang til 1 HID-enhed}=1{En eller flere Agent Chrome-udvidelser har adgang til 1 HID-enhed}one{En eller flere Agent Chrome-udvidelser har adgang til # HID-enhed}other{En eller flere Agent Chrome-udvidelser har adgang til # HID-enheder}}</translation>
+<translation id="2792662518458751900">{NUM_DEVICES,plural, =0{En eller flere Shuttle-udvidelser havde adgang til 1 HID-enhed}=1{En eller flere Shuttle-udvidelser har adgang til 1 HID-enhed}one{En eller flere Shuttle-udvidelser har adgang til # HID-enhed}other{En eller flere Shuttle-udvidelser har adgang til # HID-enheder}}</translation>
 <translation id="2401032172288869980">Chromium skal have adgangstilladelse til kamera og mikrofon for at bruge dette website</translation>
 <translation id="2403703063067034158">Opstartsfejl: En anden konfigurationsinstans kører i øjeblikket. Prøv igen senere.</translation>
 <translation id="2418322681019544463">Åbn links i Chromium fra en hvilken som helst app, og sørg for, at browseren altid er tilgængelig på proceslinjen</translation>
@@ -136,37 +136,37 @@
 <translation id="2440750600860946460">Med <ph name="BEGIN_LINK" />værktøjer fra Chromium<ph name="END_LINK" /> kan du søge sikkert på nettet og bevare styringen</translation>
 <translation id="2449487342837813167"><ph name="EXISTING_USER" /> er allerede logget ind. Hvis du vil holde din browsing adskilt, skal du logge ind i Chromium på din egen profil som <ph name="USER_EMAIL_ADDRESS" />. Du kan også se dine adgangskoder og meget mere på alle dine enheder.</translation>
 <translation id="2451727308784734061">Brug din genvej til hurtigt at gå til Adgangs­kode­admin­istrator. Du kan flytte din genvej til din computers startskærm eller appliste.</translation>
-<translation id="4405360797107732759">Agent Chrome lukkes snart</translation>
-<translation id="1660473983484527105">I Agent Chrome</translation>
+<translation id="2236435189491185832">Shuttle lukkes snart</translation>
+<translation id="8393832920806146440">I Shuttle</translation>
 <translation id="2485422356828889247">Afinstaller</translation>
 <translation id="2513154137948333830">Genstart er påkrævet: <ph name="INSTALL_SUCCESS" /></translation>
 <translation id="2542968102051442371">Vælg tekst med billedsøgning</translation>
 <translation id="2554739539410784893">Chromium forsøger at erstatte eksisterende adgangskoder. Angiv din Windows-adgangskode for at tillade dette.</translation>
 <translation id="2560420686485554789">Chromium skal have lageradgang for at downloade filer</translation>
-<translation id="8620990455069644819">Agent Chrome Helper</translation>
+<translation id="2562045627058601347">Shuttle Helper</translation>
 <translation id="2575822587468774919">Vælg det, du vil søge efter med billedsøgning</translation>
 <translation id="2576118232315942160">For at kunne se dine adgangskoder m.m. på alle dine enheder skal du logge ind på Chromium</translation>
 <translation id="2587622539943955767">Scan QR-koden med din telefon for at downloade Chromium og logge ind på din Google-konto.</translation>
-<translation id="4496289616420025644">Fortsæt med at bruge Agent Chrome</translation>
+<translation id="4702236029576678227">Fortsæt med at bruge Shuttle</translation>
 <translation id="259935314519650377">Det downloadede installationsprogram kunne ikke gemmes i cache. Fejl: <ph name="UNPACK_CACHING_ERROR_CODE" />.</translation>
 <translation id="2620436844016719705">System</translation>
 <translation id="2629740064077610681">Din organisation kan se og administrere browserdata, f.eks. bogmærker, historik og adgangskoder. Den kan ikke se browserdata på dine andre Chromium-profiler</translation>
 <translation id="2635452620547538388">Verificer din identitet for at bruge og gemme Chromium-data på din konto, <ph name="ACCOUNT_EMAIL" /></translation>
-<translation id="8944895445911901418">{COUNT,plural, =0{Avanceret beskyttelse kræver, at du genstarter Agent Chrome for at anvende en opdatering}=1{Avanceret beskyttelse kræver, at du genstarter Agent Chrome for at anvende en opdatering. Dit inkognitovindue åbnes ikke igen.}one{Avanceret beskyttelse kræver, at du genstarter Agent Chrome for at anvende en opdatering. # inkognitovindue åbnes ikke igen.}other{Avanceret beskyttelse kræver, at du genstarter Agent Chrome for at anvende en opdatering. # inkognitovinduer åbnes ikke igen.}}</translation>
+<translation id="8493546940144832853">{COUNT,plural, =0{Avanceret beskyttelse kræver, at du genstarter Shuttle for at anvende en opdatering}=1{Avanceret beskyttelse kræver, at du genstarter Shuttle for at anvende en opdatering. Dit inkognitovindue åbnes ikke igen.}one{Avanceret beskyttelse kræver, at du genstarter Shuttle for at anvende en opdatering. # inkognitovindue åbnes ikke igen.}other{Avanceret beskyttelse kræver, at du genstarter Shuttle for at anvende en opdatering. # inkognitovinduer åbnes ikke igen.}}</translation>
 <translation id="263863604136125912">Start Chromium</translation>
 <translation id="2648074677641340862">Der opstod en fejl i operativsystemet under installationen. Download Chromium igen.</translation>
 <translation id="2661879430930417727">Hvis du deler en enhed, kan venner og familie browse individuelt og konfigurere Chromium hver især</translation>
 <translation id="2676569452213089702">Nem adgang til Gemini i Chromium overalt på din enhed, selvom Chromium er minimeret.</translation>
-<translation id="3144164911846092828">Fanen Agent Chrome</translation>
+<translation id="1290871231853377661">Fanen Shuttle</translation>
 <translation id="2718390899429598676">Som et ekstra sikkerhedsniveau krypterer Chromium dine data.</translation>
 <translation id="2721354645805494590">Log ud for at fjerne din Google-konto fra Chromium</translation>
 <translation id="2722636413143664436">For at kunne se dine adgangskoder m.m. på alle dine enheder skal du logge ind i Chromium</translation>
 <translation id="2738871930057338499">Der kan ikke oprettes forbindelse til internettet. HTTP 403 (forbudt). Tjek din proxykonfiguration.</translation>
 <translation id="2753623023919742414">Klik for at søge</translation>
-<translation id="2657110490709402112">Angiv Agent Chrome som din standard PDF-fremviser</translation>
-<translation id="4262158525170658092">Denne udvidelse indeholder malware og er ikke sikker. Fjern den fra Agent Chrome, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
+<translation id="8088988796099973210">Angiv Shuttle som din standard PDF-fremviser</translation>
+<translation id="2218752565776962982">Denne udvidelse indeholder malware og er ikke sikker. Fjern den fra Shuttle, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
 <translation id="2799223571221894425">Genstart</translation>
-<translation id="4930235474290498361">Dit Agent Chrome</translation>
+<translation id="7485171825548475983">Dit Shuttle</translation>
 <translation id="2816462166102338036">Søg med denne video via Billedsøgning</translation>
 <translation id="282591729717417030">Find produkter med dit kamera, hold øje med prisfald m.m. på farten med Chromium i iOS.</translation>
 <translation id="2841525013647267359">Oversæt fra</translation>
@@ -174,52 +174,52 @@
 <translation id="2847479871509788944">Fjern fra Chromium...</translation>
 <translation id="2850691299438350830">Beskytter dig i Chromium og kan bruges til at forbedre din sikkerhed i andre Google-apps, når du er logget ind.</translation>
 <translation id="2885378588091291677">Jobliste</translation>
-<translation id="8454027198329266279">Om &amp;Agent Chrome</translation>
+<translation id="4736743449957355772">Om &amp;Shuttle</translation>
 <translation id="2915996080311180594">Genstart senere</translation>
 <translation id="2933336679234709858">Dine data krypteres med din adgangssætning. Angiv adgangssætningen for at bruge og gemme Chromium-data på din Google-konto.</translation>
 <translation id="2945997411976714835">Installationsfejl: Installationsprocessen kunne ikke startes.</translation>
 <translation id="2948852018303413228">Log hurtigere ind på websites ved hjælp af gemte adgangskoder til Chromium i iOS</translation>
-<translation id="80325676287146281">Din organisation administrerer Agent Chrome</translation>
-<translation id="789940813130504773">Agent Chrome er opdateret</translation>
+<translation id="5394294335480248696">Din organisation administrerer Shuttle</translation>
+<translation id="6474149732639814113">Shuttle er opdateret</translation>
 <translation id="2977506796191543575">Hvis et website forsøger at stjæle din adgangskode, eller hvis du downloader en skadelig fil, sender Chromium muligvis også webadresser, bl.a. mindre mængder sideindhold, til Beskyttet browsing</translation>
 <translation id="2981563588585023386">Log ind i Chromium for at blive beskyttet på nettet med dine forældres valg</translation>
 <translation id="3003694935412297923">Alle opgaver</translation>
 <translation id="3012615494352020668">{count,plural, =1{Chromium skal verificere din identitet, før visse data kan gemmes på din Google-konto og bruges på alle dine enheder. Hvis du logger ud nu, slettes disse data (1 element).}one{Chromium skal verificere din identitet, før visse data kan gemmes på din Google-konto og bruges på alle dine enheder. Hvis du logger ud nu, slettes disse data ({count} element).}other{Chromium skal verificere din identitet, før visse data kan gemmes på din Google-konto og bruges på alle dine enheder. Hvis du logger ud nu, slettes disse data ({count} elementer).}}</translation>
-<translation id="8084335581332031126">Åbn <ph name="URL" /> på en ny fane i Agent Chrome.</translation>
+<translation id="6798600078593703276">Åbn <ph name="URL" /> på en ny fane i Shuttle.</translation>
 <translation id="302551344979399011">AI-innovationer som f.eks. færdigheder gemmes på din Google-konto og administreres separat via Chromium-synkronisering</translation>
-<translation id="7024173799494459794">Føjer til Agent Chrome...</translation>
+<translation id="2572386815899642990">Føjer til Shuttle...</translation>
 <translation id="3038232873781883849">Venter på at installere…</translation>
 <translation id="3045032126857188731">Oversat sprog: <ph name="LANGUAGE" /></translation>
 <translation id="3047590466164881923">Luk dialogboks til feedback</translation>
 <translation id="3068187312562070417">Andre Chromium-profiler</translation>
 <translation id="3068290154869370196">Udvidelser er tilføjelser, der giver dig mulighed for at tilpasse Chromium. Udvidelser hjælper dig med at organisere og forenkle hverdagens opgaver ved at tilpasse Chromium efter dine behov.</translation>
-<translation id="7027973430362347863">Hjælp med at gøre Agent Chrome bedre ved at sende fejlrapporter og <ph name="UMA_LINK" /> til Google</translation>
+<translation id="1841107660132296794">Hjælp med at gøre Shuttle bedre ved at sende fejlrapporter og <ph name="UMA_LINK" /> til Google</translation>
 <translation id="3071024987058544609">Brug Chromium-appen til at få Googles sikkerhedsfunktioner med på farten</translation>
-<translation id="4925327325707966890">{NUM_DEVICES,plural, =0{En eller flere Agent Chrome-udvidelser havde adgang til 1 USB-enhed}=1{En eller flere Agent Chrome-udvidelser har adgang til 1 USB-enhed}one{En eller flere Agent Chrome-udvidelser har adgang til # USB-enhed}other{En eller flere Agent Chrome-udvidelser har adgang til # USB-enheder}}</translation>
-<translation id="6827369771274328769">Agent Chrome-historik</translation>
+<translation id="3739686665197813096">{NUM_DEVICES,plural, =0{En eller flere Shuttle-udvidelser havde adgang til 1 USB-enhed}=1{En eller flere Shuttle-udvidelser har adgang til 1 USB-enhed}one{En eller flere Shuttle-udvidelser har adgang til # USB-enhed}other{En eller flere Shuttle-udvidelser har adgang til # USB-enheder}}</translation>
+<translation id="2502156653706673977">Shuttle-historik</translation>
 <translation id="3103660991484857065">Installationsprogrammet kunne ikke pakke arkivet ud. Download Chromium igen.</translation>
 <translation id="310459126943037700">Opgaverne kunne ikke afsluttes.</translation>
 <translation id="3104828284009500087">Søg efter hvad som helst på siden</translation>
 <translation id="3126784891977756556">Hold dine adgangskoder, bogmærker og din historik perfekt synkroniseret på alle enheder. Få nem adgang til de funktioner, du kender og elsker, ved at opdatere din standardbrowser til Chromium.</translation>
-<translation id="2894555444497054373">Agent Chrome bruger din mikrofon.</translation>
+<translation id="1074920430236894401">Shuttle bruger din mikrofon.</translation>
 <translation id="3130333203120345554">Ny søgning</translation>
 <translation id="3137969841538672700">Træk for at søge</translation>
 <translation id="3144188012276422546">Denne fane bruger ekstra ressourcer. Du kan forbedre ydeevnen ved at give Chromium tilladelse til at gøre den inaktiv.</translation>
-<translation id="3092580151719004572">Tillad skærmoptagelse for Agent Chrome under Systemindstillinger for at dele din skærm.</translation>
-<translation id="2314296667497715523">Genstart Agent Chrome</translation>
+<translation id="6825554846760229393">Tillad skærmoptagelse for Shuttle under Systemindstillinger for at dele din skærm.</translation>
+<translation id="3761350857202901706">Genstart Shuttle</translation>
 <translation id="3161522574479303604">Alle sprog</translation>
 <translation id="3179665906251668410">Åbn linket i et Chromium-inko&amp;gnitovindue</translation>
 <translation id="3185330573522821672">Tilpas din nye Chromium-profil</translation>
 <translation id="3189205223539394158">Du kan fortsætte med at chatte med AI-tilstand uden at skifte faner. Log ind i Chromium for at komme i gang. Du kan også se dine adgangskoder m.m. på alle dine enheder.</translation>
 <translation id="3224847870593914902">Hvis du vil fjerne din Google-konto fra Chromium, skal du logge ud af Chromium på siden Indstillinger</translation>
 <translation id="3234316605225071811">Senere kan Chromium spørge, om du vil bruge gemte oplysninger til automatisk at udfylde formularer</translation>
-<translation id="5982289753835865194">Agent Chrome kan ikke læse og skrive til sin datamappe:
+<translation id="9058828139997344018">Shuttle kan ikke læse og skrive til sin datamappe:
 
 <ph name="USER_DATA_DIRECTORY" /></translation>
 <translation id="3263249950597659484">Tag dine foretrukne Google AI-værktøjer med på farten med Chromium i iOS.</translation>
 <translation id="3286538390144397061">Genstart nu</translation>
-<translation id="3920105041734426863">Der mangler Google API-nøgler. Nogle funktioner i Agent Chrome deaktiveres.</translation>
-<translation id="5621884903587730053">Fortsæt med at køre baggrundsapps, når Agent Chrome er lukket</translation>
+<translation id="8765302055862543686">Der mangler Google API-nøgler. Nogle funktioner i Shuttle deaktiveres.</translation>
+<translation id="4826503398521877963">Fortsæt med at køre baggrundsapps, når Shuttle er lukket</translation>
 <translation id="3313189106987092621">Chromium advarer dig, inden et website indlæses via en usikker forbindelse</translation>
 <translation id="3316771292331273802">Du logges ud af de fleste websites, når du lukker alle Chromium-vinduer, med undtagelse af din Google-konto, hvis du er logget ind i Chromium. <ph name="SETTINGS_LINK" /> for at give websites tilladelse til at huske dig.</translation>
 <translation id="3352986031709923790">øverste højre hjørne af søgeområdet: højre <ph name="RIGHT" /> %, øverste <ph name="TOP" /> %</translation>
@@ -234,126 +234,126 @@
 <translation id="3474745554856756813">Denne handling sletter <ph name="ITEMS_COUNT" /> elementer på denne enhed. Hvis du senere vil hente dine data igen, skal du logge ind på Chromium som <ph name="USER_EMAIL" />.</translation>
 <translation id="3497319089134299931"><ph name="SHORTCUT" /> kan skifte mellem Chromium-profiler</translation>
 <translation id="3509308970982693815">Luk alle Chromium-vinduer, og prøv igen.</translation>
-<translation id="4449744684308538611">Tillad skærmoptagelse for Agent Chrome under Systemindstillinger for at dele dit vindue.</translation>
+<translation id="5876629139177327931">Tillad skærmoptagelse for Shuttle under Systemindstillinger for at dele dit vindue.</translation>
 <translation id="3530103706039034513"><ph name="EXISTING_USER" /> er allerede logget ind.  Hvis du vil holde din browsing adskilt, skal du logge ind i Chromium på din egen profil som <ph name="USER_EMAIL_ADDRESS" />.</translation>
 <translation id="3531741627422851418">QR-kode til at downloade Chromium-browseren til mobilenheder</translation>
 <translation id="354621070532799440">Påmindelse: Få Googles bedste sikkerhedsfunktioner med i lommen</translation>
-<translation id="4902762267468919597">Tillad skærmoptagelse for Agent Chrome under Systemindstillinger for at dele din skærm.</translation>
-<translation id="4199561934263811659">Forbedret beskyttelse deaktiverer JavaScript-optimering for websites, som Agent Chrome ikke genkender</translation>
+<translation id="2337565425943560376">Tillad skærmoptagelse for Shuttle under Systemindstillinger for at dele din skærm.</translation>
+<translation id="4821889377524170187">Forbedret beskyttelse deaktiverer JavaScript-optimering for websites, som Shuttle ikke genkender</translation>
 <translation id="3597003331831379823">Konfigurationen med udvidede adgangsrettigheder kunne ikke køres. <ph name="METAINSTALLER_ERROR" /></translation>
 <translation id="3600428265489994557">Log ind i Chromium</translation>
 <translation id="3639635944603682591">Brugerens browserdata slettes fra denne enhed. Log ind på Chromium som <ph name="USER_EMAIL" /> for at gendanne dataene.</translation>
-<translation id="7335807248512894660">{COUNT,plural, =0{Der er en ny Agent Chrome-opdatering, som anvendes, så snart du genstarter.}=1{Der er en ny Agent Chrome-opdatering, som anvendes, så snart du genstarter. Dit inkognitovindue åbnes ikke igen.}one{Der er en ny Agent Chrome-opdatering, som anvendes, så snart du genstarter. # inkognitovindue åbnes ikke igen.}other{Der er en ny Agent Chrome-opdatering, som anvendes, så snart du genstarter. Dine # inkognitovinduer åbnes ikke igen.}}</translation>
+<translation id="1300475218926632111">{COUNT,plural, =0{Der er en ny Shuttle-opdatering, som anvendes, så snart du genstarter.}=1{Der er en ny Shuttle-opdatering, som anvendes, så snart du genstarter. Dit inkognitovindue åbnes ikke igen.}one{Der er en ny Shuttle-opdatering, som anvendes, så snart du genstarter. # inkognitovindue åbnes ikke igen.}other{Der er en ny Shuttle-opdatering, som anvendes, så snart du genstarter. Dine # inkognitovinduer åbnes ikke igen.}}</translation>
 <translation id="3667616615096815454">Appen kan ikke installeres. Serveren kender ikke appen.</translation>
 <translation id="3675854891107786059">Brug din <ph name="BEGIN_LINK" />egen adgangssætning<ph name="END_LINK" /> til at kryptere alle Chromium-data på din Google-konto. Betalingsmetoder og adresser fra Google Pay krypteres ikke. Browserhistorik fra Chromium synkroniseres ikke.</translation>
-<translation id="3697825383460320042">{COUNT,plural, =0{Din administrator anmoder om, at du genstarter Agent Chrome for at anvende denne opdatering}=1{Din administrator anmoder om, at du genstarter Agent Chrome for at anvende denne opdatering. Dit inkognitovindue åbnes ikke igen.}one{Din administrator anmoder om, at du genstarter Agent Chrome for at anvende denne opdatering. # inkognitovindue åbnes ikke igen.}other{Din administrator anmoder om, at du genstarter Agent Chrome for at anvende denne opdatering. Dine # inkognitovinduer åbnes ikke igen.}}</translation>
-<translation id="7584080815951640016">Åbn linket på en ny Agent Chrome-&amp;fane</translation>
+<translation id="5274497473086430153">{COUNT,plural, =0{Din administrator anmoder om, at du genstarter Shuttle for at anvende denne opdatering}=1{Din administrator anmoder om, at du genstarter Shuttle for at anvende denne opdatering. Dit inkognitovindue åbnes ikke igen.}one{Din administrator anmoder om, at du genstarter Shuttle for at anvende denne opdatering. # inkognitovindue åbnes ikke igen.}other{Din administrator anmoder om, at du genstarter Shuttle for at anvende denne opdatering. Dine # inkognitovinduer åbnes ikke igen.}}</translation>
+<translation id="6123757042710639920">Åbn linket på en ny Shuttle-&amp;fane</translation>
 <translation id="3728124580182886854">Tilknyt Chromium og andre Google-tjenester med henblik på personlig tilpasning og andre formål</translation>
 <translation id="3729187154190517324">Gør din søgning mere dybdegående ved at tilføje flere faner, filer og værktøjer ved hjælp af knappen "Tilføj en fane og meget mere".</translation>
 <translation id="3788675262216168505">Administrer Chromium-profiler</translation>
-<translation id="9153620230534680918">Få flere oplysninger om, hvorfor Agent Chrome blokerer visse downloads</translation>
+<translation id="4583231988142868515">Få flere oplysninger om, hvorfor Shuttle blokerer visse downloads</translation>
 <translation id="379589255253486813">Chromium giver dig besked, hvis der er noget, du skal gennemgå</translation>
-<translation id="4835254782629421085">Agent Chrome forudindlæser sider, du sandsynligvis vil besøge, så disse sider indlæses hurtigere, når du besøger dem</translation>
+<translation id="9161544906744429402">Shuttle forudindlæser sider, du sandsynligvis vil besøge, så disse sider indlæses hurtigere, når du besøger dem</translation>
 <translation id="3810973564298564668">Administrer</translation>
 <translation id="3823384748599722168">Hvis du vil bruge dine gemte adgangskoder, skal du følge QR-koden, downloade Chromium til iOS og logge ind på din Google-konto</translation>
 <translation id="3846683726093018685">**Opsummer:** Beskriv det primære emne og formålet med indholdet på screenshottet i én sætning på under 30 ord.
 
           **Foreslå spørgsmål:** Generér en opstilling med punkttegn med 3-5 tankevækkende spørgsmål, som en bruger kan stille for bedre at forstå screenshottet. Disse spørgsmål skal omfatte mindst ét spørgsmål, der specifikt handler om et visuelt objekt, dets design eller dets placering.</translation>
-<translation id="5151092236561494204"><ph name="PAGE_TITLE" /> – Agent Chrome</translation>
+<translation id="4250996466392346267"><ph name="PAGE_TITLE" /> – Shuttle</translation>
 <translation id="387514319934708384">Chromium skal have adgangstilladelse til det lokale netværk for at bruge dette website</translation>
 <translation id="3885770153807205175">Sprogvælger</translation>
-<translation id="8310546736680726676">Tilpas og administrer Agent Chrome. Noget kræver din opmærksomhed – klik for at få oplysninger.</translation>
+<translation id="3870879982795295801">Tilpas og administrer Shuttle. Noget kræver din opmærksomhed – klik for at få oplysninger.</translation>
 <translation id="3889543394854987837">Klik på dit navn for at åbne Chromium og gå i gang med at browse.</translation>
 <translation id="3892148308691398805">Kopiér tekst</translation>
 <translation id="390528597099634151"><ph name="EXISTING_USER" /> er allerede logget ind på denne Chromium-profil. Hvis du vil holde din browsing adskilt, kan Chromium oprette en ny profil til dig.</translation>
-<translation id="334040592769172771">Denne udvidelse overtræder politikken for Chrome Webshop og er muligvis ikke sikker. Fjern den fra Agent Chrome, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
+<translation id="2803413259281481072">Denne udvidelse overtræder politikken for Chrome Webshop og er muligvis ikke sikker. Fjern den fra Shuttle, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
 <translation id="3941890832296813527">Installationsfejl: Installationens filnavn er ugyldigt eller understøttes ikke.</translation>
 <translation id="3945058413678539331">Chromium forsøger at kopiere adgangskoder. Angiv din Windows-adgangskode for at tillade dette.</translation>
 <translation id="3954172517175569325">De adgangskoder, betalingsmetoder og adresser, du har gemt på din Google-konto, fjernes fra denne enhed. Hvis du vil bruge dem igen i Chromium, skal du logge ind igen.</translation>
 <translation id="395904275706073188">Beskyttede sider kan ikke læses. Prøv en anden side.</translation>
 <translation id="3962647064319009959">Se, hvordan Chromium beskytter dig</translation>
 <translation id="3967822245660637423">Download fuldført</translation>
-<translation id="6274881217831291926">Når du skriver i adresselinjen eller søgefeltet, sender Agent Chrome det, du skriver, til din organisations søge-, AI- og agentværktøjer for at få forslag.</translation>
+<translation id="8478344872731892094">Når du skriver i adresselinjen eller søgefeltet, sender Shuttle det, du skriver, til din organisations søge-, AI- og agentværktøjer for at få forslag.</translation>
 <translation id="3975724895399328945">Om &amp;Google Chrome for Testing</translation>
 <translation id="3997429360543082038">Om Chromium OS</translation>
-<translation id="8089050973791989914">Når du besøger et website, sender Agent Chrome en sløret del af webadressen til <ph name="BEGIN_LINK" />Google Beskyttet browsing<ph name="END_LINK" /> via en privatlivsbeskyttende server, der skjuler din IP-adresse. Hvis et website foretager sig noget mistænkeligt, sendes hele webadresser og uddrag af sideindhold også.</translation>
+<translation id="1813754478883624120">Når du besøger et website, sender Shuttle en sløret del af webadressen til <ph name="BEGIN_LINK" />Google Beskyttet browsing<ph name="END_LINK" /> via en privatlivsbeskyttende server, der skjuler din IP-adresse. Hvis et website foretager sig noget mistænkeligt, sendes hele webadresser og uddrag af sideindhold også.</translation>
 <translation id="4016217212818346953">Beskyt dine oplysninger med Adgangskodeadministrator</translation>
 <translation id="4019629340646866719">Chromium OS leveres ved hjælp af <ph name="BEGIN_LINK_CROS_OSS" />open source-software<ph name="END_LINK_CROS_OSS" />. Det samme gælder for <ph name="BEGIN_LINK_LINUX_OSS" />Linux-udviklingsmiljøet<ph name="END_LINK_LINUX_OSS" />.</translation>
 <translation id="4022972681110646219">Oversæt skærmen</translation>
 <translation id="4023601594785368013">Originalsprog: <ph name="LANGUAGE" /></translation>
 <translation id="4023845192681161785">Åbn links i Chromium fra en hvilken som helst app. Den fastgøres også til proceslinjen, så du nemt kan tilgå den.</translation>
-<translation id="2466379549068383575">Hjælp med at gøre Agent Chrome bedre ved at rapportere de <ph name="BEGIN_LINK" />aktuelle indstillinger<ph name="END_LINK" />.</translation>
+<translation id="3334942702828280015">Hjælp med at gøre Shuttle bedre ved at rapportere de <ph name="BEGIN_LINK" />aktuelle indstillinger<ph name="END_LINK" />.</translation>
 <translation id="4050175100176540509">Vigtige sikkerhedsforbedringer og nye funktioner er tilgængelige i den seneste version.</translation>
 <translation id="4055805654398742145">Adgangs­kode­admin­istrator</translation>
-<translation id="409373329602981607">{COUNT,plural, =1{Din organisation lukker automatisk Agent Chrome, når den ikke bruges i 1 minut. Browserdataene slettes. Disse kan omfatte historik, autofyld og downloads.}one{Din organisation lukker automatisk Agent Chrome, når den ikke bruges i # minut. Browserdataene slettes. Disse kan omfatte historik, autofyld og downloads.}other{Din organisation lukker automatisk Agent Chrome, når den ikke bruges i # minutter. Browserdataene slettes. Disse kan omfatte historik, autofyld og downloads.}}</translation>
+<translation id="4210170830543121132">{COUNT,plural, =1{Din organisation lukker automatisk Shuttle, når den ikke bruges i 1 minut. Browserdataene slettes. Disse kan omfatte historik, autofyld og downloads.}one{Din organisation lukker automatisk Shuttle, når den ikke bruges i # minut. Browserdataene slettes. Disse kan omfatte historik, autofyld og downloads.}other{Din organisation lukker automatisk Shuttle, når den ikke bruges i # minutter. Browserdataene slettes. Disse kan omfatte historik, autofyld og downloads.}}</translation>
 <translation id="4118474109249235144">Inkognitotilstand i Chromium</translation>
 <translation id="4122186850977583290">Gå til siden Om Chromium</translation>
 <translation id="4135244987012252068">Tilpas Chromium for at give din browser et nyt udseende</translation>
 <translation id="4147856324248078748">Tilpas Chromium</translation>
 <translation id="4148957013307229264">Installerer...</translation>
-<translation id="2058774528396152893"><ph name="PAGE_TITLE" /> – Login på netværk – Agent Chrome</translation>
-<translation id="7685529984676330289">Find fantastiske apps, spil, udvidelser og temaer til Agent Chrome.</translation>
+<translation id="6643591336183767153"><ph name="PAGE_TITLE" /> – Login på netværk – Shuttle</translation>
+<translation id="8999328492520314624">Find fantastiske apps, spil, udvidelser og temaer til Shuttle.</translation>
 <translation id="4217080900579554343">Log ind i Chromium for at få denne udvidelse m.m. på alle dine computere</translation>
 <translation id="4217972271355023382">Du kan skifte til din Chromium-profil, hvor du allerede er logget ind som <ph name="USER_EMAIL_ADDRESS" />, for at beskytte dig selv bedre på nettet med dine forældres valg</translation>
 <translation id="4222932583846282852">Annullerer…</translation>
 <translation id="4224210481850767180">Installationen er blevet annulleret.</translation>
 <translation id="4230135487732243613">Vil du linke dine Chromium-data til denne konto?</translation>
-<translation id="274377438883177878">Advarer dig om skadelige websites – også websites, som Google ikke tidligere har kendt til – ved at analysere flere data fra websites end Standardbeskyttelse. Du kan vælge at springe Agent Chrome-advarsler over.</translation>
+<translation id="2078444352649860973">Advarer dig om skadelige websites – også websites, som Google ikke tidligere har kendt til – ved at analysere flere data fra websites end Standardbeskyttelse. Du kan vælge at springe Shuttle-advarsler over.</translation>
 <translation id="4269093074552541569">Log ud af Chromium</translation>
-<translation id="8361584154950824008">Få hjælp til Agent Chrome</translation>
+<translation id="5558993553168424235">Få hjælp til Shuttle</translation>
 <translation id="4281844954008187215">Servicevilkår</translation>
 <translation id="4285930937574705105">Installationen mislykkedes på grund af en ikke-specificeret fejl. Hvis Chromium kører, skal du lukke programmet og prøve igen.</translation>
 <translation id="4298125729853015961">Eksportér adgangskoder fra Chromium</translation>
 <translation id="4304713468139749426">Adgangskode­administrator</translation>
 <translation id="4334241893986177674">Søg i dette screenshot</translation>
 <translation id="4368547723231502008">Søg og stil spørgsmål overalt, selvom Chromium er minimeret</translation>
-<translation id="1172096072757635810">Åbn Agent Chrome, når Windows starter</translation>
+<translation id="5810569516587906396">Åbn Shuttle, når Windows starter</translation>
 <translation id="4400772909124543403">Der er ingen tilgængelig opdatering</translation>
-<translation id="8069611125329654712">Vil du afslutte Agent Chrome alligevel?</translation>
+<translation id="3931397122598189404">Vil du afslutte Shuttle alligevel?</translation>
 <translation id="4413205837991854510">Vis altid genvejen til billedsøgning</translation>
-<translation id="3727041326435831325">Lad Agent Chrome køre i baggrunden</translation>
-<translation id="1713490836766202786">{NUM_EXTENSIONS,plural, =1{Agent Chrome anbefaler, at du fjerner den. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" />}one{Agent Chrome anbefaler, at du fjerner den. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" />}other{Agent Chrome anbefaler, at du fjerner dem. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" />}}</translation>
-<translation id="7567010943765939594">Tilpas og kontrollér Agent Chrome</translation>
+<translation id="8644661686228434842">Lad Shuttle køre i baggrunden</translation>
+<translation id="603827111501511568">{NUM_EXTENSIONS,plural, =1{Shuttle anbefaler, at du fjerner den. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" />}one{Shuttle anbefaler, at du fjerner den. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" />}other{Shuttle anbefaler, at du fjerner dem. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" />}}</translation>
+<translation id="8695231474189911275">Tilpas og kontrollér Shuttle</translation>
 <translation id="4427306783828095590">Forbedret beskyttelse gør mere end at blokere phishing og malware</translation>
 <translation id="4434353761996769206">Installationsfejl: <ph name="INSTALLER_ERROR" /></translation>
-<translation id="7498286168885369820"><ph name="MANAGER" /> administrerer Agent Chrome</translation>
+<translation id="3897345295068202634"><ph name="MANAGER" /> administrerer Shuttle</translation>
 <translation id="444069871276811466">Tilføj Chromium-profil</translation>
 <translation id="4447409407328223819">Om Chrome for Testing</translation>
 <translation id="4470974262661801543">Angiv din adgangssætning for at bruge og gemme Chromium-data på din Google-konto</translation>
 <translation id="4493028449971051158">Opstartsfejl: Kør installationsprogrammet som administrator.</translation>
 <translation id="4501471624619070934">Installationen mislykkedes, fordi der er begrænset adgang i dette land.</translation>
-<translation id="4615766574627629942">Denne udvidelse har ikke offentliggjort privatlivsprocedurer, f.eks. hvordan den indsamler og bruger data. Agent Chrome anbefaler, at du fjerner den.</translation>
+<translation id="7538943987967358068">Denne udvidelse har ikke offentliggjort privatlivsprocedurer, f.eks. hvordan den indsamler og bruger data. Shuttle anbefaler, at du fjerner den.</translation>
 <translation id="452711251841752011">Velkommen til Chromium – Et nyt browservindue er åbnet</translation>
 <translation id="4531137820806573936">Chromium skal have tilladelse til at registrere dine omgivelser og håndbevægelser</translation>
 <translation id="4536805923587466102">Du er allerede logget ind som <ph name="USER_EMAIL_ADDRESS" /> på en anden Chromium-profil</translation>
-<translation id="5945053225725114995">Agent Chrome forudindlæser sider, hvilket gør det hurtigere at browse og søge. <ph name="BEGIN_LINK" />Få flere oplysninger om forudindlæsning af sider<ph name="END_LINK" /></translation>
+<translation id="7291454099139632344">Shuttle forudindlæser sider, hvilket gør det hurtigere at browse og søge. <ph name="BEGIN_LINK" />Få flere oplysninger om forudindlæsning af sider<ph name="END_LINK" /></translation>
 <translation id="4549180975214802957">Vær med til at forbedre onlinesikkerheden for alle ved at rapportere et website, du mener er skadeligt.</translation>
-<translation id="2899198307620821227">Agent Chrome har blokeret denne download, fordi du har deaktiveret Beskyttet browsing, og filen ikke kan verificeres</translation>
+<translation id="4229052424516163100">Shuttle har blokeret denne download, fordi du har deaktiveret Beskyttet browsing, og filen ikke kan verificeres</translation>
 <translation id="4583692638088316420">Prøv Google Lens med Chromium på din telefon</translation>
 <translation id="4594305310729380060">I Adgangs­kode­admin­istrator på denne enhed</translation>
-<translation id="6944119370969619446">Agent Chrome-apps</translation>
+<translation id="4559123577107659130">Shuttle-apps</translation>
 <translation id="4598116752460667024">Søg efter en proces på listen.</translation>
 <translation id="4613863813562375431">Chromium OS-version</translation>
-<translation id="6401103202303237090">Næsten opdateret. Genstart Agent Chrome for at afslutte opdateringen.</translation>
-<translation id="4807663225386362301">Gør websites hurtigere ved hjælp af Agent Chromes V8-maskine, men gør Agent Chrome en smule mindre modstandsdygtig over for angreb</translation>
+<translation id="8540523969518172575">Næsten opdateret. Genstart Shuttle for at afslutte opdateringen.</translation>
+<translation id="2509032609305193511">Gør websites hurtigere ved hjælp af Shuttles V8-maskine, men gør Shuttle en smule mindre modstandsdygtig over for angreb</translation>
 <translation id="4626321472657185181">Åbn søgning med Chromium</translation>
-<translation id="521912697020157864">Advarsel! Agent Chrome kan ikke forhindre udvidelser i at registrere din browserhistorik. Fjern markeringen af denne valgmulighed for at deaktivere denne udvidelse i inkognitotilstand.</translation>
+<translation id="7601899887920501075">Advarsel! Shuttle kan ikke forhindre udvidelser i at registrere din browserhistorik. Fjern markeringen af denne valgmulighed for at deaktivere denne udvidelse i inkognitotilstand.</translation>
 <translation id="4673151026126227699">Hvis du også deler Chromium-brugsrapporter, omfatter de pågældende rapporter de webadresser, du besøger</translation>
 <translation id="4673710618874938871">Logget ind som <ph name="USER_NAME" />, medlemskab. Åbn kontomenuen</translation>
-<translation id="5833534934470627293">Profilen ser ud til at være i brug i en anden Agent Chrome-proces (<ph name="PROCESS_ID" />) på en anden computer (<ph name="HOST_NAME" />). Agent Chrome har låst profilen, så den ikke bliver beskadiget. Hvis du er sikker på, at ingen andre processer anvender denne profil, kan du fjerne blokeringen af profilen og genstarte Agent Chrome.</translation>
+<translation id="1081748947768053336">Profilen ser ud til at være i brug i en anden Shuttle-proces (<ph name="PROCESS_ID" />) på en anden computer (<ph name="HOST_NAME" />). Shuttle har låst profilen, så den ikke bliver beskadiget. Hvis du er sikker på, at ingen andre processer anvender denne profil, kan du fjerne blokeringen af profilen og genstarte Shuttle.</translation>
 <translation id="4680828127924988555">Annuller installation</translation>
 <translation id="469259825538636168">Nogle af dine Chromium-data er endnu ikke gemt på din Google-konto. Prøv at vente et par minutter, før du logger ud. Hvis du logger ud nu, slettes disse data.</translation>
 <translation id="4708193446201257833">Mens du er logget ind, kan du bruge dine adgangskoder m.m. fra din Google-konto i Chromium. <ph name="SHORTCUT" /> kan ændre dine indstillinger for Google-tjenester.</translation>
 <translation id="4708774505295300557">Nogen har tidligere logget ind på Chromium på denne computer som <ph name="ACCOUNT_EMAIL_LAST" />. Opret en ny Chromium-bruger for at holde dine oplysninger adskilt.</translation>
 <translation id="4724676981607797757">Installationen mislykkedes på grund af en fejl med ikke-understøttet protokol.</translation>
-<translation id="2783410850122241193">Vil du slutte Agent Chrome alligevel?</translation>
+<translation id="333286104758608669">Vil du slutte Shuttle alligevel?</translation>
 <translation id="4748217263233248895">En særlig sikkerhedsopdatering til Chromium blev netop anvendt. Genstart nu, hvorefter vi gendanner dine faner.</translation>
 <translation id="4771701986670315895">Du har ikke besøgt websitet for nylig. Chromium har fjernet <ph name="PERMISSION_1" />, <ph name="PERMISSION_2" /> og <ph name="COUNT" /> andre.</translation>
 <translation id="4786083865378785874">Hvis Gemini i Chromium er åben, forbliver sidepanelet åbent, når der oprettes nye faner</translation>
 <translation id="479167709087336770">Dette anvender den samme stavekontrol, som anvendes i Google Søgning. Tekst, som du angiver i browseren, sendes til Google. Du kan altid ændre denne adfærd i indstillingerne.</translation>
 <translation id="4814736265800133385">Brug Chromium uden en konto</translation>
 <translation id="4888717733111232871">Indgående regel for Chromium om at tillade mDNS-trafik.</translation>
-<translation id="5600814355607573136">Genstart og opdater &amp;Agent Chrome</translation>
+<translation id="3854801763817831716">Genstart og opdater &amp;Shuttle</translation>
 <translation id="4918086044614829423">Accepter</translation>
 <translation id="4918844574251943176">Billedet er kopieret</translation>
 <translation id="4943838377383847465">Chromium kører i baggrunden.</translation>
@@ -374,7 +374,7 @@
 <translation id="5234764350956374838">Luk</translation>
 <translation id="5249261924633168472">Åbn linket i et inkognitovindue i Chromium</translation>
 <translation id="5276305953263010518">Hent Chromium-appen for at gemme adgangskoder på farten</translation>
-<translation id="1601187459465935178">Åbn Agent Chrome igen for at anvende ændringerne</translation>
+<translation id="6904011543478254794">Åbn Shuttle igen for at anvende ændringerne</translation>
 <translation id="5286907366254680517">Registreret</translation>
 <translation id="5289287148052354622">Hent Chromium-appen</translation>
 <translation id="5294316920224716406">Når du browser i inkognitotilstand, advarer Chromium dig, inden et website indlæses via en usikker forbindelse</translation>
@@ -390,23 +390,23 @@
 <translation id="5368118228313795342">Ekstra kode: <ph name="EXTRA_CODE" />.</translation>
 <translation id="5377622451696208284">Medtag Chromium i Web- og appaktivitet for at få personlig tilpasning</translation>
 <translation id="5382964351116519680">Åbn søgning med Chromium</translation>
-<translation id="2524054769026663683">Se, hvorfor Agent Chrome blokerer visse filer</translation>
-<translation id="8615009965479156445">Opdaterer Agent Chrome (<ph name="PROGRESS_PERCENT" />)</translation>
+<translation id="4877717772512674872">Se, hvorfor Shuttle blokerer visse filer</translation>
+<translation id="8341327126333983765">Opdaterer Shuttle (<ph name="PROGRESS_PERCENT" />)</translation>
 <translation id="538767207339317086">Tillad login via Chromium</translation>
-<translation id="6256236118124872626">Fjern fra Agent Chrome</translation>
-<translation id="5774731921051444461">Reducerer ydeevnen, men gør Agent Chrome mere modstandsdygtig over for angreb</translation>
+<translation id="2064155379595075287">Fjern fra Shuttle</translation>
+<translation id="1764424071909520660">Reducerer ydeevnen, men gør Shuttle mere modstandsdygtig over for angreb</translation>
 <translation id="5427571867875391349">Angiv Chromium som din standardbrowser</translation>
-<translation id="8709870882148322247"><ph name="PAGE_TITLE" /> – Agent Chrome beta</translation>
+<translation id="3552564955884420948"><ph name="PAGE_TITLE" /> – Shuttle beta</translation>
 <translation id="5460618461609401056">{NUM_TABS,plural, =1{Chromium anbefaler, at du sætter den fane, der gør din browser langsom, på pause}one{Chromium anbefaler, at du sætter den fane, der gør din browser langsom, på pause}other{Chromium anbefaler, at du sætter de faner, der gør din browser langsom, på pause}}</translation>
-<translation id="3217425685577630218">Agent Chrome fungerer muligvis ikke korrekt, da det ikke længere understøttes af denne Linux-distribution</translation>
-<translation id="1045655099853558439">Agent Chrome har blokeret denne download, fordi filen kan skade dine personlige konti og dine konti på sociale netværk</translation>
+<translation id="3837394572112225231">Shuttle fungerer muligvis ikke korrekt, da det ikke længere understøttes af denne Linux-distribution</translation>
+<translation id="2864501208955185201">Shuttle har blokeret denne download, fordi filen kan skade dine personlige konti og dine konti på sociale netværk</translation>
 <translation id="549669000822060376">Vent, mens Chromium installerer de nyeste systemopdateringer.</translation>
 <translation id="5496810170689441661">Chromium forsøger at redigere adgangskoder. Angiv din Windows-adgangskode for at tillade dette.</translation>
 <translation id="549975168243349205">Brug nemt dine foretrukne apps som f.eks. Google Drev og YouTube på farten med Chromium.</translation>
 <translation id="5524890928877629608">øverste venstre hjørne af søgeområdet: venstre <ph name="LEFT" /> %, øverste <ph name="TOP" /> %</translation>
-<translation id="565863787292824328">Åbn PDF-filer i Agent Chrome</translation>
+<translation id="3510916764590863589">Åbn PDF-filer i Shuttle</translation>
 <translation id="5536164441519929134">Stil spørgsmål<ph name="LINE_BREAK" />om denne fane</translation>
-<translation id="8869089999448782168">Af sikkerhedsmæssige årsager deaktiverer Agent Chrome JavaScript-optimering, når du besøger et website for første gang.
+<translation id="8317102978607899723">Af sikkerhedsmæssige årsager deaktiverer Shuttle JavaScript-optimering, når du besøger et website for første gang.
 
 Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering.</translation>
 <translation id="5575874067957905201">Vis Gemini i Chromium på Mac-menulinjen, og aktivér tastaturgenvejen</translation>
@@ -416,24 +416,24 @@ Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering
 <translation id="5596627076506792578">Flere valgmuligheder</translation>
 <translation id="5605834417512968703">Vælg det, du vil søge efter med billedsøgning, eller tryk på Escape for at lukke billedsøgning</translation>
 <translation id="5618818588972826921">Vælg den tekst eller det billede, du vil søge efter med Billedsøgning, eller tryk på Escape for at lukke Billedsøgning</translation>
-<translation id="4814380868372526025">{0,plural, =0{Der er en tilgængelig Agent Chrome-opdatering}=1{Der er en tilgængelig Agent Chrome-opdatering}one{En Agent Chrome-opdatering har været tilgængelig i # dag}other{En Agent Chrome-opdatering har været tilgængelig i # dage}}</translation>
-<translation id="188722644954983559">Slet altid websitedata fra din enhed, når du lukker Agent Chrome</translation>
+<translation id="8908504550344650717">{0,plural, =0{Der er en tilgængelig Shuttle-opdatering}=1{Der er en tilgængelig Shuttle-opdatering}one{En Shuttle-opdatering har været tilgængelig i # dag}other{En Shuttle-opdatering har været tilgængelig i # dage}}</translation>
+<translation id="1107298128800350481">Slet altid websitedata fra din enhed, når du lukker Shuttle</translation>
 <translation id="5653831366781983928">Genstart Chromium nu</translation>
 <translation id="5690427481109656848">Google LLC</translation>
-<translation id="1525044488102751845">Vis Agent Chrome på dette sprog</translation>
+<translation id="3675878834104730294">Vis Shuttle på dette sprog</translation>
 <translation id="569897634095159764">Der kan ikke oprettes forbindelse til internettet. Proxyserveren kræver godkendelse.</translation>
-<translation id="7750959567789509941">Agent Chrome frigør hukommelse fra inaktive faner. Dette tildeler aktive faner og andre apps flere computerressourcer og gør Agent Chrome hurtig. Dine inaktive faner bliver automatisk aktive igen, når du vender tilbage til dem. <ph name="BEGIN_LINK" />Få flere oplysninger om Hukommelsessparefunktion<ph name="END_LINK" /></translation>
+<translation id="7168202961287328687">Shuttle frigør hukommelse fra inaktive faner. Dette tildeler aktive faner og andre apps flere computerressourcer og gør Shuttle hurtig. Dine inaktive faner bliver automatisk aktive igen, når du vender tilbage til dem. <ph name="BEGIN_LINK" />Få flere oplysninger om Hukommelsessparefunktion<ph name="END_LINK" /></translation>
 <translation id="5775198138441669627">Hvis du glemmer din adgangssætning eller vil ændre denne indstilling, skal du <ph name="SETTINGS_LINK" /> Chromium-dataene på din konto.</translation>
 <translation id="5800158606660203929">Tilpas og styr Chromium. Angiv Chromium som din standardbrowser.</translation>
 <translation id="5802618941556161431">Hold dine adgangskoder, dine bogmærker og din historik perfekt synkroniseret på alle enheder ved at angive Chromium som din standardbrowser.</translation>
 <translation id="5809516625706423866">Der kan ikke oprettes forbindelse til internettet. HTTP 401 (uautoriseret). Tjek din proxykonfiguration.</translation>
-<translation id="2755468387099310604">Gør websites hurtigere ved hjælp af Agent Chromes V8-maskine, men gør Agent Chrome en smule mindre modstandsdygtig over for angreb. Denne indstilling er deaktiveret.</translation>
+<translation id="4687670724165839540">Gør websites hurtigere ved hjælp af Shuttles V8-maskine, men gør Shuttle en smule mindre modstandsdygtig over for angreb. Denne indstilling er deaktiveret.</translation>
 <translation id="5821520528363214608">For at bruge og gemme Chromium-data på din Google-konto skal du opdatere Chromium</translation>
 <translation id="5824893331272123205">Dette panel kunne ikke indlæses. Prøv igen</translation>
-<translation id="8972968824660717915">Velkommen til Agent Chrome</translation>
-<translation id="8898055105597601099">Aktiverer yderligere funktioner for at levere Agent Chromes stærkeste beskyttelse</translation>
+<translation id="137189936820997722">Velkommen til Shuttle</translation>
+<translation id="6407035307321626411">Aktiverer yderligere funktioner for at levere Shuttles stærkeste beskyttelse</translation>
 <translation id="5871205389137001634">Klik for at afslutte billedsøgning</translation>
-<translation id="9158119422063615519">Agent Chrome har registreret malware i disse elementer:</translation>
+<translation id="3128663943810469943">Shuttle har registreret malware i disse elementer:</translation>
 <translation id="5889361821821684993">Chromium tjekker regelmæssigt, om din browser har de sikreste indstillinger. Vi giver dig besked, hvis der er noget, du skal gennemgå.</translation>
 <translation id="5895138241574237353">Genstart</translation>
 <translation id="5903106910045431592"><ph name="PAGE_TITLE" /> – Login på netværk</translation>
@@ -444,7 +444,7 @@ Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering
 <translation id="5953657885167112863">Sæt dit personlige præg på Chromium</translation>
 <translation id="5960071705175224773">Dine indstillinger blev ændret af en ukendt app</translation>
 <translation id="5977420883993828287">Funktionen er fastgjort. Brug kontekstbaserede opgaver igen via værktøjslinjen</translation>
-<translation id="1956376169666014494">{COUNT,plural, =1{Din organisation lukker automatisk Agent Chrome, når den ikke bruges i 1 minut.}one{Din organisation lukker automatisk Agent Chrome, når den ikke bruges i # minut.}other{Din organisation lukker automatisk Agent Chrome, når den ikke bruges i # minutter.}}</translation>
+<translation id="5340341384223569715">{COUNT,plural, =1{Din organisation lukker automatisk Shuttle, når den ikke bruges i 1 minut.}one{Din organisation lukker automatisk Shuttle, når den ikke bruges i # minut.}other{Din organisation lukker automatisk Shuttle, når den ikke bruges i # minutter.}}</translation>
 <translation id="5987687638152509985">Opdater Chromium for at starte synkronisering</translation>
 <translation id="5990360079535151574">Via knappen "Kontekstbaserede opgaver" på værktøjslinjen kan du genåbne Kontekstbaserede opgaver for at stille spørgsmål, mens du browser</translation>
 <translation id="6003112304606738118">Downloader… Der er <ph name="HOURS" /> timer tilbage</translation>
@@ -454,25 +454,25 @@ Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering
 <translation id="6058380562449900225">Du kan beskytte dine data ved at lade Chromium fjerne tilladelser fra websites, du ikke har besøgt for nylig. Dette forhindrer ikke notifikationer.</translation>
 <translation id="6063093106622310249">Åbn i Chr&amp;omium</translation>
 <translation id="6069027071882229820">Kopiér som billede</translation>
-<translation id="8654038583091834120"><ph name="EXTENSION_NAME" /> er føjet til Agent Chrome</translation>
-<translation id="8940723094351907049">Tilpas og administrer Agent Chrome. Der er en tilgængelig opdatering.</translation>
-<translation id="334648248941185659">Til • Agent Chrome kan ikke verificere, hvor denne udvidelse kommer fra</translation>
+<translation id="3642130578728163190"><ph name="EXTENSION_NAME" /> er føjet til Shuttle</translation>
+<translation id="2484600148019262399">Tilpas og administrer Shuttle. Der er en tilgængelig opdatering.</translation>
+<translation id="5098189861342100628">Til • Shuttle kan ikke verificere, hvor denne udvidelse kommer fra</translation>
 <translation id="611228897408671387">Din konto i Chromium</translation>
-<translation id="1961808482688487456">Tillad, at udvidelsen viser adgangsanmodninger på Agent Chrome-værktøjslinjen</translation>
-<translation id="6880945371922378763"><ph name="FILE_NAME" /> er skadelig, så Agent Chrome har blokeret den.</translation>
-<translation id="829957199361894387">Agent Chrome lukkes snart, og dataene slettes</translation>
+<translation id="8603072311189086377">Tillad, at udvidelsen viser adgangsanmodninger på Shuttle-værktøjslinjen</translation>
+<translation id="6801818398062031196"><ph name="FILE_NAME" /> er skadelig, så Shuttle har blokeret den.</translation>
+<translation id="4712579756381990057">Shuttle lukkes snart, og dataene slettes</translation>
 <translation id="6145820983052037069">Her kan du skifte mellem Chromium-profiler</translation>
-<translation id="8333733115616087710">Hvis du tillader cookies, kan Agent Chrome bruge dem under forudindlæsning</translation>
+<translation id="4257025918694286900">Hvis du tillader cookies, kan Shuttle bruge dem under forudindlæsning</translation>
 <translation id="6165508094623778733">Flere oplysninger</translation>
 <translation id="6173308241973263798">Ryd Chromium-dataene på din konto</translation>
-<translation id="8439223334931595792">Denne fil kan være skadelig<ph name="LINE_BREAK" />Agent Chrome kan tjekke denne download for dig, hvis du angiver adgangskoden. Oplysninger om filen sendes til Google Beskyttet browsing, men filens indhold og adgangskoden forbliver på din enhed.</translation>
+<translation id="8755328651499078855">Denne fil kan være skadelig<ph name="LINE_BREAK" />Shuttle kan tjekke denne download for dig, hvis du angiver adgangskoden. Oplysninger om filen sendes til Google Beskyttet browsing, men filens indhold og adgangskoden forbliver på din enhed.</translation>
 <translation id="6182736845697986886">Installationen mislykkedes på grund af en intern fejl i opdateringsserveren.</translation>
 <translation id="6183079672144801177">Sørg for, at du er logget ind på Chromium på din <ph name="TARGET_DEVICE_NAME" />, og prøv derefter at sende igen.</translation>
 <translation id="6212496753309875659">Computeren har allerede en nyere version af Chromium. Hvis softwaren ikke virker, skal du afinstallere Chromium og prøve igen.</translation>
-<translation id="6375381612105819561">{0,plural, =0{Agent Chrome genstarter nu}=1{Agent Chrome genstarter om 1 sekund}one{Agent Chrome genstarter om # sekund}other{Agent Chrome genstarter om # sekunder}}</translation>
+<translation id="1515663301924664480">{0,plural, =0{Shuttle genstarter nu}=1{Shuttle genstarter om 1 sekund}one{Shuttle genstarter om # sekund}other{Shuttle genstarter om # sekunder}}</translation>
 <translation id="6241367896540709610">Chromium skal have adgangstilladelse til lagerplads for at downloade filer</translation>
 <translation id="6245734527075554892">Webadresser tjekkes i forhold til en liste over usikre websites, der er gemt i Chromium</translation>
-<translation id="5070229316792137581">Gør Agent Chrome til din standardbrowser</translation>
+<translation id="4713635402704891510">Gør Shuttle til din standardbrowser</translation>
 <translation id="6248988683584659830">Søg efter indstillinger</translation>
 <translation id="6261803579884938625">Få Googles bedste sikkerhedsfunktioner på farten med Chromium-appen på din telefon</translation>
 <translation id="6268381023930128611">Vil du logge ud af Chromium?</translation>
@@ -480,13 +480,13 @@ Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering
 <translation id="6281746429495226318">Tilpas din Chromium-profil</translation>
 <translation id="6290827346642914212">Giv din Chromium-profil et navn</translation>
 <translation id="6294831894865512704">En udvidelse vil have dig til at logge ind i Chromium</translation>
-<translation id="1356965940380155951"><ph name="FILE_NAME" /> kan være skadelig, så Agent Chrome har blokeret den.</translation>
-<translation id="7321042153033393145">Agent Chrome bruger dit kamera.</translation>
+<translation id="3997120491472930522"><ph name="FILE_NAME" /> kan være skadelig, så Shuttle har blokeret den.</translation>
+<translation id="5186109991568427789">Shuttle bruger dit kamera.</translation>
 <translation id="6333502561965082103">En anden handling i Chromium er i gang. Prøv igen senere.</translation>
 <translation id="6334986366598267305">Det er nu blevet nemmere at bruge Chromium med din Google-konto og på delte computere.</translation>
 <translation id="6347002662287820329">Få nem adgang til de funktioner, du kender, elsker og har tillid til, ved at angive Chromium som din standardbrowser.</translation>
-<translation id="6663103136563143835">Agent Chrome-genvej</translation>
-<translation id="8324836837188781073">Agent Chrome har blokeret denne download, fordi filen normalt ikke downloades og kan være skadelig</translation>
+<translation id="7093968037936297432">Shuttle-genvej</translation>
+<translation id="7334991367988739135">Shuttle har blokeret denne download, fordi filen normalt ikke downloades og kan være skadelig</translation>
 <translation id="6373523479360886564">Er du sikker på, at du vil afinstallere Chromium?</translation>
 <translation id="6375219077595103062">Tilføj en genvej til Adgangs­kode­admin­istrator</translation>
 <translation id="6388799252195623474">hjælp mig med dette</translation>
@@ -494,31 +494,31 @@ Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering
 <translation id="6400112897226594999">Chromium-logo på en computerskærm.</translation>
 <translation id="6403826409255603130">Chromium er en webbrowser, der kører websider og apps med lynets hast. Den er hurtig, stabil og brugervenlig. Beskyttelse mod malware og phishing er indbygget i Chromium, så du kan søge mere sikkert på internettet.</translation>
 <translation id="6414624068245092115">Verificer din identitet for at sikre, at du altid kan bruge og gemme Chromium-data på din Google-konto</translation>
-<translation id="5698692159722140301">Agent Chrome kører hurtigere, og funktioner, der bruger JavaScript, bør fungere som forventet</translation>
+<translation id="3077581991710361221">Shuttle kører hurtigere, og funktioner, der bruger JavaScript, bør fungere som forventet</translation>
 <translation id="6436260184216827876">Billedsøgning er ikke tilgængelig. Prøv igen senere.</translation>
 <translation id="6442900851116057561">Genstart Chromium OS</translation>
-<translation id="1150325299163558144">Agent Chrome forudindlæser endnu flere sider, som du sandsynligvis vil besøge, så de indlæses hurtigere, når du besøger dem</translation>
+<translation id="6836481692352030024">Shuttle forudindlæser endnu flere sider, som du sandsynligvis vil besøge, så de indlæses hurtigere, når du besøger dem</translation>
 <translation id="6450948450282634257">Download Chromium på din telefon for at overvåge priser og få underretninger, når prisen falder på et website</translation>
-<translation id="2302438614865168038">Fra • Agent Chrome kan ikke verificere, hvor denne udvidelse kommer fra</translation>
+<translation id="2653849928907685021">Fra • Shuttle kan ikke verificere, hvor denne udvidelse kommer fra</translation>
 <translation id="6455857529632101747">Velkommen til Chromium-profiler</translation>
 <translation id="6460614424172581323">Næste gang du åbner Chromium på din <ph name="DEVICE_TYPE" />, får du en meddelelse om at bruge fanegrupper.</translation>
 <translation id="6466344609055215035">Fjern kontoen fra Chromium</translation>
-<translation id="5526497172610025231">Den styrer også, hvilken side der vises, når du åbner Agent Chrome.</translation>
+<translation id="4119585981464207648">Den styrer også, hvilken side der vises, når du åbner Shuttle.</translation>
 <translation id="648319183876919572">Udvidet beskyttet browsing gør mere for at beskytte dig mod skadelige websites og downloads</translation>
 <translation id="6510925080656968729">Afinstaller Chromium</translation>
-<translation id="124295298108005714">Genveje åbnes i Agent Chrome</translation>
-<translation id="9177671044583442813">Din organisation lukker Agent Chrome, når browseren ikke har været i brug i <ph name="TIMEOUT_DURATION" />. Browserdataene blev slettet. Disse data kan omfatte historik, Autofyld og downloads.</translation>
+<translation id="4635313972402880015">Genveje åbnes i Shuttle</translation>
+<translation id="4810254941066760486">Din organisation lukker Shuttle, når browseren ikke har været i brug i <ph name="TIMEOUT_DURATION" />. Browserdataene blev slettet. Disse data kan omfatte historik, Autofyld og downloads.</translation>
 <translation id="6542839706527980775">Hver profil har sine egne Chromium-oplysninger som f.eks. bogmærker, historik, adgangskoder m.m.</translation>
 <translation id="6556755379298048869">Søg med en tastaturgenvej.</translation>
-<translation id="5677032436425073715">Se, <ph name="BEGIN_LINK" />hvordan Agent Chrome beskytter dine data<ph name="END_LINK" /></translation>
-<translation id="5967753610833950399">Ændringerne af denne indstilling anvendes, når Agent Chrome genstartes.</translation>
-<translation id="4790842900919490952">Administrer dine udvidelser ved at klikke på Udvidelser i Agent Chrome-hovedmenuen.</translation>
+<translation id="2636806189032302779">Se, <ph name="BEGIN_LINK" />hvordan Shuttle beskytter dine data<ph name="END_LINK" /></translation>
+<translation id="5478536825661470867">Ændringerne af denne indstilling anvendes, når Shuttle genstartes.</translation>
+<translation id="4113260229270901158">Administrer dine udvidelser ved at klikke på Udvidelser i Shuttle-hovedmenuen.</translation>
 <translation id="656935081669708576">Du kan skifte for at se adgangskoder fra en anden Chromium-profil</translation>
 <translation id="6569556444379005948">Brug Chromium-appen til at få de bedste AI-værktøjer med på farten</translation>
-<translation id="8124768693572849485">Agent Chrome sender den tekst, du skriver i tekstfelter, til Google for at rette stavefejl</translation>
+<translation id="7057131640166361945">Shuttle sender den tekst, du skriver i tekstfelter, til Google for at rette stavefejl</translation>
 <translation id="6598877126913850652">Gå til indstillinger for Chromium-notifikationer</translation>
 <translation id="6600016381025017075">Søg efter hvad som helst på denne side</translation>
-<translation id="1736130262142947818">Dine ændringer træder i kraft, næste gang du genstarter Agent Chrome.</translation>
+<translation id="3051968423457057392">Dine ændringer træder i kraft, næste gang du genstarter Shuttle.</translation>
 <translation id="6637908313088374648">Chromium åbnes nu, når Windows starter, så du kan begynde at browse med det samme. Du kan deaktivere dette i indstillingerne.</translation>
 <translation id="6648212540664651655">Fortsæt, hvor du slap: Chromium har gendannet dine faner fra din seneste session. Du kan deaktivere dette i</translation>
 <translation id="665732753414869868">Chromium skal have kameratilladelse for at oprette et 3D-kort over dine omgivelser</translation>
@@ -528,30 +528,30 @@ Hvis denne side ikke fungerer som forventet, kan du prøve at tillade optimering
 <translation id="6691132793308828750">Fjern denne apps data fra Chromium</translation>
 <translation id="6709350901466051922">Chromium skal have adgangstilladelse til mikrofon for at bruge dette website</translation>
 <translation id="6712881677154121168">Downloadfejl: <ph name="DOWNLOAD_ERROR" />.</translation>
-<translation id="7755971898820142787">Din profil kan ikke bruges, da den stammer fra en nyere version af Agent Chrome.
+<translation id="2725737003556499783">Din profil kan ikke bruges, da den stammer fra en nyere version af Shuttle.
 
-Visse funktioner kan være utilgængelige. Angiv en anden profilmappe, eller brug en nyere version af Agent Chrome.</translation>
+Visse funktioner kan være utilgængelige. Angiv en anden profilmappe, eller brug en nyere version af Shuttle.</translation>
 <translation id="6729124504294600478">For at få personlig tilpasning og andre funktioner skal du medtage Chromium i Web- og appaktivitet og tilknyttede Google-tjenester</translation>
 <translation id="6734291798041940871">Chromium er allerede installeret for alle brugere på computeren.</translation>
 <translation id="6742093177587589736">Hvis du vil have dine bogmærker m.m. på alle dine enheder, skal du logge ind i Chromium. Denne adgangskode gemmes på din Google-konto, når du er logget ind.</translation>
-<translation id="7821834337023193240">Gør websites hurtigere ved hjælp af Agent Chromes V8-maskine, men gør Agent Chrome en smule mindre modstandsdygtig over for angreb. Denne indstilling er aktiveret.</translation>
+<translation id="1073375677278272498">Gør websites hurtigere ved hjælp af Shuttles V8-maskine, men gør Shuttle en smule mindre modstandsdygtig over for angreb. Denne indstilling er aktiveret.</translation>
 <translation id="6754665438209053659">{count,plural, =1{Nogle af dine Chromium-data er endnu ikke gemt på din Google-konto. Prøv at vente et par minutter, før du logger ud. Hvis du logger ud nu, slettes disse data (1 element).}one{Nogle af dine Chromium-data er endnu ikke gemt på din Google-konto. Prøv at vente et par minutter, før du logger ud. Hvis du logger ud nu, slettes disse data ({count} element).}other{Nogle af dine Chromium-data er endnu ikke gemt på din Google-konto. Prøv at vente et par minutter, før du logger ud. Hvis du logger ud nu, slettes disse data ({count} elementer).}}</translation>
 <translation id="67706546131546258">Chromium anbefaler, at du scanner denne fil, da den kan være skadelig.</translation>
 <translation id="6779406956731413166">Chromium OS leveres ved hjælp af <ph name="BEGIN_LINK_CROS_OSS" />open source-software<ph name="END_LINK_CROS_OSS" />.</translation>
 <translation id="6831043979455480757">Oversæt</translation>
 <translation id="6847869444787758381">Chromium giver dig besked, hvis dine adgangskoder kompromitteres</translation>
 <translation id="684888714667046800">Der kunne ikke oprettes forbindelse til internettet. Hvis du bruger en firewall, skal du angive <ph name="PRODUCT_EXE_NAME" /> på tilladelseslisten.</translation>
-<translation id="6219638737609534419">Agent Chrome – <ph name="PAGE_TITLE" /></translation>
+<translation id="776553009482398136">Shuttle – <ph name="PAGE_TITLE" /></translation>
 <translation id="6859580922007887573">Tryk på Tab for at fortsætte</translation>
 <translation id="6862030660799253820">Søg med dette billede via Billedsøgning</translation>
 <translation id="6869568587896659271">Nem adgang til websites under adresselinjen</translation>
-<translation id="7421523967177993052">Agent Chrome har registreret malware i "<ph name="EXTENSION_NAME" />"</translation>
+<translation id="5180440422324801473">Shuttle har registreret malware i "<ph name="EXTENSION_NAME" />"</translation>
 <translation id="6877155553248388166">nederste højre hjørne af søgeområdet: højre <ph name="RIGHT" /> %, nederste <ph name="BOTTOM" /> %</translation>
 <translation id="6896758677409633944">Kopiér</translation>
 <translation id="6898028264630240901">Du kan fastgøre kontekstbaserede opgaver for nemt at stille spørgsmål, mens du browser</translation>
 <translation id="6901631050894301805">Angiv Chromium som din standardbrowser, og fastgør den til din proceslinje</translation>
 <translation id="6909503629704372277">&amp;Administrer Chromium-profiler</translation>
-<translation id="9199111398679939226">Denne handling gør følgende:
+<translation id="4581248703262892072">Denne handling gør følgende:
           <ph name="LINE_BREAKS" />
             • Nulstiller din opstartsside, siden Ny fane, din søgemaskine og dine fastgjorte faner
             <ph name="LINE_BREAK" />
@@ -559,7 +559,7 @@ Visse funktioner kan være utilgængelige. Angiv en anden profilmappe, eller bru
             <ph name="LINE_BREAK" />
             • Sletter cookies og andre midlertidige websitedata
             <ph name="LINE_BREAK" />
-            • Nulstiller Agent Chrome-genveje
+            • Nulstiller Shuttle-genveje
             <ph name="LINE_BREAKS" />
             Bogmærker, historik og gemte adgangskoder påvirkes ikke.</translation>
 <translation id="6948031725951063910">Du har nået Chromiums grænse på <ph name="BOOKMARK_LIMIT" /> bogmærker, så nogle af dine bogmærker er endnu ikke gemt på din Google-konto.
@@ -574,66 +574,66 @@ Nye bogmærker kan ikke gemmes på din konto, før du sletter nogle. Hvis du log
 <translation id="7045244423563602563">Tilpas Chromium</translation>
 <translation id="7047386856539490735">Er disse resultater nyttige?</translation>
 <translation id="705851970750939768">Opdater Chromium</translation>
-<translation id="1222890016986172619">Hvis et billede ikke har en brugbar beskrivelse, forsøger Agent Chrome at angive en for dig. Billederne sendes til Google, så der kan oprettes beskrivelser.</translation>
+<translation id="3425455063038300019">Hvis et billede ikke har en brugbar beskrivelse, forsøger Shuttle at angive en for dig. Billederne sendes til Google, så der kan oprettes beskrivelser.</translation>
 <translation id="7074836723476134809">Få nyttige AI-funktioner, når du bruger Chromium-appen på din <ph name="DEVICE_TYPE" /></translation>
 <translation id="7134687062119989071">Tag dine adgangskoder, faner m.m. med på farten med Chromium-appen på din telefon</translation>
 <translation id="7141270731789036260">Tilpas Chrome for Testing</translation>
-<translation id="5669948510815930830">Du kan bruge Agent Chrome, hver gang du klikker på links i beskeder, dokumenter og andre apps</translation>
-<translation id="5576210706466474421">Fjern <ph name="EXTENSION_NAME" /> fra Agent Chrome</translation>
-<translation id="4588941330171478873">Din organisation sletter Agent Chrome-data, når de ikke har været i brug i <ph name="TIMEOUT_DURATION" />. Disse data kan omfatte historik, Autofyld og downloads.</translation>
+<translation id="2566749447284070075">Du kan bruge Shuttle, hver gang du klikker på links i beskeder, dokumenter og andre apps</translation>
+<translation id="4717037424104880768">Fjern <ph name="EXTENSION_NAME" /> fra Shuttle</translation>
+<translation id="5499504683862746062">Din organisation sletter Shuttle-data, når de ikke har været i brug i <ph name="TIMEOUT_DURATION" />. Disse data kan omfatte historik, Autofyld og downloads.</translation>
 <translation id="718435575166326686">Chromium skal have kameratilladelse for at bruge dette website</translation>
-<translation id="2916059341902838041">Agent Chrome kunne ikke startes. Prøv igen.</translation>
+<translation id="73779270539924806">Shuttle kunne ikke startes. Prøv igen.</translation>
 <translation id="7204669035546236137">Spørg om alt, lige der hvor du er, med Gemini i Chromium</translation>
-<translation id="1716746018761150810">Behold Agent Chrome på din applinje, så du hurtigt kan tilgå appen</translation>
+<translation id="3909780788712619547">Behold Shuttle på din applinje, så du hurtigt kan tilgå appen</translation>
 <translation id="7213407614656404070">Brug Chromium, hver gang du klikker på links i beskeder, dokumenter og andre apps</translation>
 <translation id="7216228761061470870">Når du bruger Billedsøgning på en computer, sendes sidetitlen, webadressen og indholdet, herunder PDF-filer, til serveren</translation>
-<translation id="4816956813330284757">Jobliste – Agent Chrome</translation>
+<translation id="5152543266278054880">Jobliste – Shuttle</translation>
 <translation id="7227958669698166857"><ph name="EXISTING_USER" /> er allerede logget ind. Hvis du vil holde din browsing adskilt, skal du logge ind i Chromium på din egen profil som <ph name="USER_EMAIL_ADDRESS" />. Du kan også se dine gemte oplysninger og meget mere på alle dine enheder.</translation>
 <translation id="7252276985725323153">Begynd at browse med det samme: Chromium kan nu åbnes, når Windows starter.</translation>
 <translation id="7274695763216404502">Panelet er fastgjort. Brug billedsøgning igen via værktøjslinjen</translation>
 <translation id="7288567540154601580">Faner og udvidelser</translation>
-<translation id="3631444715156784168">{NUM_EXTENSIONS,plural, =1{Agent Chrome anbefaler, at du fjerner den}one{Agent Chrome anbefaler, at du fjerner den}other{Agent Chrome anbefaler, at du fjerner dem}}</translation>
-<translation id="2739521415810397215">Hvis du vil dele systemlyd, skal du åbne Systemindstillinger og tillade "Kun optagelse af systemlyd" for Agent Chrome. Genstart derefter Agent Chrome.</translation>
-<translation id="1945073734373493421">Agent Chrome opdateres</translation>
-<translation id="7323500970718355745">Din præferencefil er beskadiget eller ugyldig.
+<translation id="7301179260332476710">{NUM_EXTENSIONS,plural, =1{Shuttle anbefaler, at du fjerner den}one{Shuttle anbefaler, at du fjerner den}other{Shuttle anbefaler, at du fjerner dem}}</translation>
+<translation id="6738087381969111286">Hvis du vil dele systemlyd, skal du åbne Systemindstillinger og tillade "Kun optagelse af systemlyd" for Shuttle. Genstart derefter Shuttle.</translation>
+<translation id="882134845922037914">Shuttle opdateres</translation>
+<translation id="5911508944834868675">Din præferencefil er beskadiget eller ugyldig.
 
-Agent Chrome kan ikke gendanne dine præferencer.</translation>
+Shuttle kan ikke gendanne dine præferencer.</translation>
 <translation id="7324051657739063017">Du kan genåbne Kontekstbaserede opgaver for at stille spørgsmål, mens du browser</translation>
 <translation id="734373864078049451">Dit webindhold, dine bogmærker og andre Chromium-ting kan findes her.</translation>
 <translation id="7347827960336370838">Kun personer med din adgangssætning kan læse dine krypterede data. Adgangssætningen bliver ikke sendt til eller gemt af Google. Hvis du glemmer din adgangssætning eller vil ændre denne indstilling, skal du <ph name="BEGIN_LINK" />slette Chromium-dataene på din konto<ph name="END_LINK" />.</translation>
-<translation id="7994662313190863803">Din systemadministrator har konfigureret Agent Chrome til at åbne <ph name="ALTERNATIVE_BROWSER_NAME" /> for at få adgang til <ph name="TARGET_URL_HOSTNAME" />.</translation>
+<translation id="5213396397254545050">Din systemadministrator har konfigureret Shuttle til at åbne <ph name="ALTERNATIVE_BROWSER_NAME" /> for at få adgang til <ph name="TARGET_URL_HOSTNAME" />.</translation>
 <translation id="7352651011704765696">Noget gik galt</translation>
-<translation id="4438212735766904761">Hvis du vil have Agent Chrome-opdateringer fremover, skal du have macOS 13 eller nyere. Denne computer anvender macOS 12.</translation>
+<translation id="7241271939430402377">Hvis du vil have Shuttle-opdateringer fremover, skal du have macOS 13 eller nyere. Denne computer anvender macOS 12.</translation>
 <translation id="7376384068949534168">Du har ikke besøgt websitet for nylig. Chromium har fjernet <ph name="PERMISSION_1" /> og <ph name="PERMISSION_2" />.</translation>
 <translation id="73786666777299047">Åbn Chrome Webshop</translation>
 <translation id="7394275517973019558">Vis Gemini i Chromium i systembakken</translation>
 <translation id="7401687852903179959">Søg i denne video via billedsøgning</translation>
 <translation id="7407655596887111931">Chromium er nu din standardbrowser</translation>
-<translation id="3957050361764426740">Fortsæt, hvor du slap: Agent Chrome gendanner dine faner, hver gang du genstarter. For at deaktivere dette skal du gå til</translation>
+<translation id="3052711235626610530">Fortsæt, hvor du slap: Shuttle gendanner dine faner, hver gang du genstarter. For at deaktivere dette skal du gå til</translation>
 <translation id="7427879960656355200">Importér adgangskoder til Chromium</translation>
 <translation id="744815265653811511">1. Klik på <ph name="BUTTON_LABEL" /> nedenfor
 2. Klik på <ph name="BUTTON_2" /> i dine Windows-indstillinger
 3. Klik på <ph name="BUTTON_3" /> i Windows-notifikationen for at fastgøre Chromium til proceslinjen, så du hurtigt kan tilgå browseren</translation>
-<translation id="4378256924846450484"><ph name="PAGE_TITLE" /> – Agent Chrome for udviklere</translation>
+<translation id="9197089209084271928"><ph name="PAGE_TITLE" /> – Shuttle for udviklere</translation>
 <translation id="7450541714075000668">Teksten blev kopieret</translation>
-<translation id="1661210845845599119">Giv Agent Chrome adgang i <ph name="BEGIN_LINK" />systemindstillingerne<ph name="END_LINK" /> for at bruge din mikrofon</translation>
+<translation id="313710343255539509">Giv Shuttle adgang i <ph name="BEGIN_LINK" />systemindstillingerne<ph name="END_LINK" /> for at bruge din mikrofon</translation>
 <translation id="7461356015007898716">Hvis du vil have fremtidige Chromium-opdateringer, skal du have Windows 10 eller nyere. Denne computer anvender Windows 7.</translation>
-<translation id="7782360127659485548">Vil du genstarte Agent Chrome?</translation>
+<translation id="3993055863855039235">Vil du genstarte Shuttle?</translation>
 <translation id="7483335560992089831">Kan ikke installere den samme version af Chromium som den, der kører i øjeblikket. Luk Chromium, og prøv igen.</translation>
 <translation id="7510190804000607802">Påmindelse: Få det bedste fra Google med i lommen</translation>
-<translation id="4114725046952451715">Websites fungerer sandsynligvis som forventet. Du logges ud af de fleste websites, når du lukker alle Agent Chrome-vinduer, med undtagelse af din Google-konto, hvis du er logget ind i Agent Chrome.</translation>
-<translation id="8460803820751380899">{0,plural, =1{Agent Chrome genstarter om 1 minut}one{Agent Chrome genstarter om # minut}other{Agent Chrome genstarter om # minutter}}</translation>
+<translation id="8341160057232502783">Websites fungerer sandsynligvis som forventet. Du logges ud af de fleste websites, når du lukker alle Shuttle-vinduer, med undtagelse af din Google-konto, hvis du er logget ind i Shuttle.</translation>
+<translation id="6139170930430750545">{0,plural, =1{Shuttle genstarter om 1 minut}one{Shuttle genstarter om # minut}other{Shuttle genstarter om # minutter}}</translation>
 <translation id="7565444033145385702">Du kan beskytte dine data ved at lade Chromium fjerne tilladelser fra websites, du ikke har besøgt for nylig.</translation>
-<translation id="7806190892617295204">Åbn Agent Chrome automatisk for at begynde at browse med det samme.</translation>
+<translation id="7445475294019002626">Åbn Shuttle automatisk for at begynde at browse med det samme.</translation>
 <translation id="7583399374488819119">Installationsprogram til <ph name="COMPANY_NAME" /></translation>
-<translation id="4114499337401148821">Agent Chrome bruger dit kamera og din mikrofon.</translation>
+<translation id="3770734847062637711">Shuttle bruger dit kamera og din mikrofon.</translation>
 <translation id="7617377681829253106">Chromium er blevet bedre</translation>
-<translation id="4075526625511660913">Du har nu flere tilgængelige funktioner i Agent Chrome</translation>
+<translation id="8871277779820248167">Du har nu flere tilgængelige funktioner i Shuttle</translation>
 <translation id="7624307931717240213">Vi bruger oplysninger til at forbedre denne tjeneste. Se privatlivspolitikken og servicevilkårene.</translation>
 <translation id="7649070708921625228">Hjælp</translation>
 <translation id="7650134251917003571">Hent Chromium-appen</translation>
 <translation id="7658239707568436148">Annuller</translation>
-<translation id="5829091955527196771">Agent Chrome er ikke din standardbrowser</translation>
+<translation id="8213236740307893655">Shuttle er ikke din standardbrowser</translation>
 <translation id="7689606757190482937">Synkroniser og personligt tilpas Chromium på alle dine enheder</translation>
 <translation id="7699779824407626136">Chromium-opdatering</translation>
 <translation id="7700735928747402058">Dit arbejde beskyttes i Chromium</translation>
@@ -646,16 +646,16 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="7752521946322750699">For at beskytte dit arbejde i Chromium kan din organisation se eller administrere visse oplysninger, når du er logget ind i Chromium.</translation>
 <translation id="7781047659465034537">Angiv Chromium som standard, og fastgør den til proceslinjen</translation>
 <translation id="7786760609782648049">Gør Chromium hurtigere</translation>
-<translation id="1092858669153166534"><ph name="PAGE_TITLE" /> – Agent Chrome Canary</translation>
-<translation id="6890902183809417868">Gør det sværere for brugere med adgang til din internettrafik at se, hvilke websites du besøger. Agent Chrome anvender en sikker forbindelse til at slå et websites IP-adresse op i domænenavnesystemet (DNS, Domain Name System).</translation>
+<translation id="5390209367680424449"><ph name="PAGE_TITLE" /> – Shuttle Canary</translation>
+<translation id="5236799997529789289">Gør det sværere for brugere med adgang til din internettrafik at se, hvilke websites du besøger. Shuttle anvender en sikker forbindelse til at slå et websites IP-adresse op i domænenavnesystemet (DNS, Domain Name System).</translation>
 <translation id="7810005234485217901">Du kan fastgøre billedsøgning for at få nem adgang</translation>
-<translation id="4343938787674079986">Vælg, hvad du vil dele med Agent Chrome</translation>
+<translation id="6809035843240398711">Vælg, hvad du vil dele med Shuttle</translation>
 <translation id="7828947555739565424">Der findes allerede en Chromium-profil med denne konto på enheden</translation>
 <translation id="7845233973568007926">Tak for installationen. Du skal genstarte computeren, før du bruger <ph name="BUNDLE_NAME" />.</translation>
-<translation id="6129792107484731038">Din søgemaskine blev ændret uden for Agent Chrome. Agent Chrome har nulstillet den til den oprindelige standard for at beskytte dig. <ph name="LEARN_MORE_LINK" /></translation>
+<translation id="2536014991386708485">Din søgemaskine blev ændret uden for Shuttle. Shuttle har nulstillet den til den oprindelige standard for at beskytte dig. <ph name="LEARN_MORE_LINK" /></translation>
 <translation id="7853661403199074278">Tilpas Chromium for at give browseren et nyt udseende</translation>
-<translation id="5018331886385637870">Når du indtaster noget i adresselinjen eller søgefeltet, sender Agent Chrome det, du skriver, til din standardsøgemaskine for at få bedre forslag. Dette er deaktiveret i inkognitotilstand.</translation>
-<translation id="473441635289092936">Agent Chrome kunne ikke opdatere til den nyeste version, så du går glip af nye funktioner og sikkerhedsrettelser.</translation>
+<translation id="2266811154496778101">Når du indtaster noget i adresselinjen eller søgefeltet, sender Shuttle det, du skriver, til din standardsøgemaskine for at få bedre forslag. Dette er deaktiveret i inkognitotilstand.</translation>
+<translation id="6065091602420830">Shuttle kunne ikke opdatere til den nyeste version, så du går glip af nye funktioner og sikkerhedsrettelser.</translation>
 <translation id="7872446069773932638">Downloader… Der er <ph name="SECONDS" /> sekunder tilbage</translation>
 <translation id="7873537467422636035">Hvis du glemmer din adgangssætning eller vil ændre denne indstilling, skal du <ph name="BEGIN_LINK" />slette Chromium-dataene på din konto<ph name="END_LINK" /></translation>
 <translation id="7874369989024033742">Åbn hurtigt Gemini i Chromium, når du har brug for det</translation>
@@ -663,17 +663,17 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="7934340546140346950">Chromium opgraderer automatisk usikre forbindelser til HTTPS, når det er muligt</translation>
 <translation id="7937630085815544518">Du loggede ind på Chromium som <ph name="USER_EMAIL_ADDRESS" />. Brug den samme konto til at logge ind igen.</translation>
 <translation id="7944602660083060118"><ph name="EXISTING_USER" /> er allerede logget ind. Hvis du vil holde din browsing adskilt, skal du logge ind i Chromium på din egen profil som <ph name="USER_EMAIL_ADDRESS" />. Du kan også se dine bogmærker og meget mere på alle dine enheder.</translation>
-<translation id="688313102897865477">Dette er en sekundær installation af Agent Chrome, og den kan ikke gøres til din standardbrowser.</translation>
-<translation id="8514782479541580218">Udvidelser, apps og temaer fra ukendte kilder kan skade din enhed. Agent Chrome anbefaler, at de kun installeres via <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /></translation>
+<translation id="7585793177462647372">Dette er en sekundær installation af Shuttle, og den kan ikke gøres til din standardbrowser.</translation>
+<translation id="6559029165921633261">Udvidelser, apps og temaer fra ukendte kilder kan skade din enhed. Shuttle anbefaler, at de kun installeres via <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /></translation>
 <translation id="8000759043835159571">Få det bedste fra Google med Chromium-appen på din <ph name="DEVICE_TYPE" /></translation>
 <translation id="8004582292198964060">Browser</translation>
 <translation id="8010081455002666927">Automatisk registrering</translation>
-<translation id="403216574291780144">Når Agent Chrome har adgang, kan websites bede dig om adgang.</translation>
-<translation id="7835197459694498831">Fastgør Agent Chrome til proceslinjen, så du hurtigt kan få adgang til den</translation>
+<translation id="8002328729078921180">Når Shuttle har adgang, kan websites bede dig om adgang.</translation>
+<translation id="818329629430342049">Fastgør Shuttle til proceslinjen, så du hurtigt kan få adgang til den</translation>
 <translation id="80471789339884597">Tak for installationen. Du skal genstarte alle dine browsere, før du bruger <ph name="BUNDLE_NAME" />.</translation>
 <translation id="8054112667659782652">Vis altid genvejen til billedsøgning</translation>
 <translation id="8069447462453318634">Vælg "Fastgør til værktøjslinje"</translation>
-<translation id="787536271006179882">Deaktiver, at Agent Chrome-apps kører i baggrunden</translation>
+<translation id="3155838504016687695">Deaktiver, at Shuttle-apps kører i baggrunden</translation>
 <translation id="80790299200510644">Billedsøgning</translation>
 <translation id="8086881907087796310">Installationen mislykkedes, fordi din computer ikke opfylder minimumskravene til hardware.</translation>
 <translation id="8096472344908884505"><ph name="PAGE_TITLE" /> – Google Chrome for Testing</translation>
@@ -685,15 +685,15 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="8133124826068723441">Chromium OS kunne ikke synkronisere dine data, fordi synkronisering ikke er tilgængeligt på dit domæne.</translation>
 <translation id="813913629614996137">Initialiserer...</translation>
 <translation id="8161503455832158203">Åbn Gemini i Chromium med en tastaturgenvej.</translation>
-<translation id="7109772131778940712">Yderligere servicevilkår for Agent Chrome</translation>
-<translation id="7759642951398174884">Denne fil er farlig, så Agent Chrome har blokeret den.</translation>
+<translation id="369114052288176160">Yderligere servicevilkår for Shuttle</translation>
+<translation id="680378955833427720">Denne fil er farlig, så Shuttle har blokeret den.</translation>
 <translation id="8177472873527554730">Der blev ikke fundet indhold på siden</translation>
 <translation id="8200109504272824693">Angiv din adgangssætning for at bruge og gemme Chromium-data på din konto, <ph name="USER_EMAIL" /></translation>
 <translation id="820759916613250543">Søg i dette billede via billedsøgning</translation>
 <translation id="8221491193165283816">Du blokerer som regel notifikationer. Klik her for at give websitet tilladelse til at sende notifikationer.</translation>
-<translation id="5410773870087525304">Giv Agent Chrome adgang i <ph name="BEGIN_LINK" />systemindstillingerne<ph name="END_LINK" /> for at bruge dit kamera</translation>
-<translation id="1057772683559103555">Agent Chrome kan ikke verificere, hvor denne udvidelse kommer fra, og den kan derfor være skadelig. Du bør fjerne udvidelsen fra Agent Chrome, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
-<translation id="1968416200800224093">Hvis et billede ikke har en brugbar beskrivelse, forsøger Agent Chrome at angive en for dig. Billederne sendes til Google, så der kan oprettes beskrivelser. Du kan til enhver tid deaktivere denne funktion i indstillingerne.</translation>
+<translation id="8107647892434846563">Giv Shuttle adgang i <ph name="BEGIN_LINK" />systemindstillingerne<ph name="END_LINK" /> for at bruge dit kamera</translation>
+<translation id="1786899383568465391">Shuttle kan ikke verificere, hvor denne udvidelse kommer fra, og den kan derfor være skadelig. Du bør fjerne udvidelsen fra Shuttle, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
+<translation id="493819615490030185">Hvis et billede ikke har en brugbar beskrivelse, forsøger Shuttle at angive en for dig. Billederne sendes til Google, så der kan oprettes beskrivelser. Du kan til enhver tid deaktivere denne funktion i indstillingerne.</translation>
 <translation id="8254601181414348851">Vil du logge ind i Chromium med en ny profil?</translation>
 <translation id="8262224117913639129"><ph name="EXISTING_USER" /> er allerede logget ind. Hvis du vil holde din browsing adskilt, skal du logge ind i Chromium på din egen profil som <ph name="USER_EMAIL_ADDRESS" />. Du kan også se dine adgangskoder og meget mere fra <ph name="DEVICE" />.</translation>
 <translation id="8277334259226003205">Vis Gemini i Chromium i systembakken, og aktivér tastaturgenvejen</translation>
@@ -702,7 +702,7 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="8296236834352487533">Køb, oversæt og identificer det, du ser gennem dit kamera, i Chromium-appen til iOS</translation>
 <translation id="8310603974518734211">QR-kode til at logge ind i Chromium som <ph name="USER_NAME" /></translation>
 <translation id="8313851650939857356">Opstartsfejl: <ph name="STARTUP_ERROR" />.</translation>
-<translation id="2256229026962116267">Din organisation lukker Agent Chrome, når browseren ikke har været i brug i <ph name="TIMEOUT_DURATION" />.</translation>
+<translation id="2189465505625523876">Din organisation lukker Shuttle, når browseren ikke har været i brug i <ph name="TIMEOUT_DURATION" />.</translation>
 <translation id="8321888067342493336">Gem som billede</translation>
 <translation id="8340674089072921962"><ph name="USER_EMAIL_ADDRESS" /> brugte tidligere Chromium</translation>
 <translation id="8351551329754447960">Aktivér Færdigheder i Chromium</translation>
@@ -712,11 +712,11 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="8367705492654390392">Stil et spørgsmål</translation>
 <translation id="8370517070665726704">Copyright <ph name="YEAR" /> Google LLC. Alle rettigheder forbeholdes.</translation>
 <translation id="8372327902843331129">For at kunne se dine adgangskoder m.m. på alle dine enheder skal du logge ind på Chromium. Denne adgangskode gemmes på din Google-konto, når du er logget ind.</translation>
-<translation id="3962779702290581702">Du skal derefter genstarte Agent Chrome.</translation>
-<translation id="6085013152567092546">Agent Chrome anbefaler, at du fjerner den. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" /></translation>
-<translation id="8142784445734351509">Udgivelsen af denne udvidelse blev fjernet af dens udvikler og er muligvis ikke sikker. Fjern den fra Agent Chrome, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
+<translation id="7737586770085807713">Du skal derefter genstarte Shuttle.</translation>
+<translation id="458720374088121514">Shuttle anbefaler, at du fjerner den. <ph name="BEGIN_LINK" />Få flere oplysninger om understøttede udvidelser<ph name="END_LINK" /></translation>
+<translation id="3243699608914041912">Udgivelsen af denne udvidelse blev fjernet af dens udvikler og er muligvis ikke sikker. Fjern den fra Shuttle, så den ikke længere kan se og ændre dine data på de websites, du besøger, bl.a. dine personlige oplysninger.</translation>
 <translation id="8416884904046428725">Chromium skal verificere din identitet, før visse data kan gemmes på din Google-konto og bruges på alle dine enheder. Hvis du logger ud nu, slettes disse data.</translation>
-<translation id="7611805576553766531">{0,plural, =1{Genstart Agent Chrome inden for en dag}one{Genstart Agent Chrome inden for # dag}other{Genstart Agent Chrome inden for # dag}}</translation>
+<translation id="2803567348225973544">{0,plural, =1{Genstart Shuttle inden for en dag}one{Genstart Shuttle inden for # dag}other{Genstart Shuttle inden for # dag}}</translation>
 <translation id="8438543370129609977">Når du bruger Billedsøgning, sendes sidetitlen, webadressen og indholdet, herunder PDF-filer, til serveren. <ph name="LEARN_MORE" /></translation>
 <translation id="8447525028100794994">Få flere oplysninger om at bruge billedsøgning i Chromium</translation>
 <translation id="8453117565092476964">Installationsarkivet er beskadiget eller ugyldigt. Download Chromium igen.</translation>
@@ -724,23 +724,23 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="8463672209299734063">Valgfrit: Vær med til at forbedre funktioner og ydeevne i Chromium OS ved automatisk at sende diagnostik og brugsdata til Google.</translation>
 <translation id="8471947159125090285">Verificer din identitet for at bruge og gemme Chromium-data på din Google-konto</translation>
 <translation id="8482493977473846331">Viser meddelelser om at logge ind i Chromium</translation>
-<translation id="6049002268233195982">Agent Chrome er forældet</translation>
-<translation id="6156435126546305838">Tak, fordi du har valgt Agent Chrome som din standardbrowser.</translation>
+<translation id="4333599663015089415">Shuttle er forældet</translation>
+<translation id="8376091195503089226">Tak, fordi du har valgt Shuttle som din standardbrowser.</translation>
 <translation id="8522801943730206384">Chromium kan tjekke dine adgangskoder, når du gemmer dem</translation>
 <translation id="8525579356836940628">Installationen blev afbrudt</translation>
 <translation id="8545729292258443488">Tag dine adgangskoder, faner m.m. med på farten med Chromium-appen på din <ph name="DEVICE_TYPE" /></translation>
 <translation id="8548787790260785208">Få en advarsel, hvis Chromium registrerer, at én af dine adgangskoder er blevet offentligt tilgængelig i forbindelse med et brud på datasikkerheden</translation>
 <translation id="8555465886620020932">Tjenestefejl: <ph name="SERVICE_ERROR" />.</translation>
-<translation id="2713372071612730965">Nogle Agent Chrome-funktioner og -udvidelser har genveje. Du kan vælge at aktivere dem igen.</translation>
+<translation id="3871600948131730253">Nogle Shuttle-funktioner og -udvidelser har genveje. Du kan vælge at aktivere dem igen.</translation>
 <translation id="8556420416730706394">Du kan fastgøre billedsøgning for at få nem adgang. Klik på knappen Fastgør øverst i sidepanelet</translation>
 <translation id="856656450041460113">Søg i sproglisten</translation>
-<translation id="1783040386392706016">Flere organisationer administrerer Agent Chrome</translation>
-<translation id="7921569471494089882">Copyright <ph name="YEAR" /> Forfatterne bag Agent Chrome. Alle rettigheder forbeholdes.</translation>
+<translation id="2164758091986776102">Flere organisationer administrerer Shuttle</translation>
+<translation id="7921569471494089882">Copyright <ph name="YEAR" /> Silkweave. All rights reserved.</translation>
 <translation id="8601359445272098721">Nyhed! Du kan oversætte både tekst og billeder på din skærm ved at vælge knappen "Oversæt skærmen"</translation>
-<translation id="6294059080097269555">Starter Agent Chrome...</translation>
+<translation id="5197416451456327645">Starter Shuttle...</translation>
 <translation id="8624541899164515475">Indstillinger (åbnes på en ny fane).</translation>
 <translation id="8648201657708811153">Google Chrome for Testing kan ikke angives som din standardbrowser.</translation>
-<translation id="5652647471010716562">Den styrer også, hvilken side der vises, når du åbner Agent Chrome eller søger via omnifeltet.</translation>
+<translation id="733927313102300080">Den styrer også, hvilken side der vises, når du åbner Shuttle eller søger via omnifeltet.</translation>
 <translation id="8704119203788522458">Dette er din Chromium-browser</translation>
 <translation id="8712637175834984815">OK</translation>
 <translation id="8719993436687031146">Vil du logge ind i Chromium?</translation>
@@ -749,17 +749,17 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="8813277370772331957">Påmind mig senere</translation>
 <translation id="8816416449795340678">Del dette dokument med Gemini i Chromium for at få en hurtig oversigt og stille opfølgende spørgsmål</translation>
 <translation id="8818550178040858407">Vil du logge ind i Chromium?</translation>
-<translation id="4188893721116572726">Gør Agent Chrome til standardbrowser, og fastgør den til proceslinjen</translation>
+<translation id="1740477639007879167">Gør Shuttle til standardbrowser, og fastgør den til proceslinjen</translation>
 <translation id="8826492472752484139">Klik på "Adgangs­kode­admin­istrator"</translation>
 <translation id="8833697763442816810">Chromium OS-system</translation>
-<translation id="341256515309503869">Dette sprog bruges i menuer, indstillinger, underretninger og anden tekst i Agent Chrome</translation>
+<translation id="51810846847651902">Dette sprog bruges i menuer, indstillinger, underretninger og anden tekst i Shuttle</translation>
 <translation id="8862326446509486874">Du har ikke de nødvendige rettigheder til en installation på systemniveau. Prøv at køre installationsprogrammet igen som administrator.</translation>
 <translation id="8876044221123442390">Tilføj Chromium-profil</translation>
 <translation id="8890569919834781711">ChromiumOS kunne ikke gemme Chromium-data på din Google-konto på grund af en loginfejl</translation>
 <translation id="8891709362986793894">Din organisation kræver, at du logger ind i Chromium</translation>
 <translation id="8907580949721785412">Chromium forsøger at vise adgangskoder. Angiv din Windows-adgangskode for at tillade dette.</translation>
 <translation id="8932992523185907506">Chromium er ikke længere din standardbrowser. Vil du gøre Chromium til din standardbrowser?</translation>
-<translation id="2086624065931944916">Agent Chrome kunne ikke opdateres</translation>
+<translation id="7727082350762937793">Shuttle kunne ikke opdateres</translation>
 <translation id="8944232836376404813">Denne handling gør følgende:
           <ph name="LINE_BREAKS" />
             • Nulstiller din opstartsside, siden Ny fane, din søgemaskine og dine fastgjorte faner
@@ -770,31 +770,31 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
             <ph name="LINE_BREAKS" />
             Bogmærker, historik og gemte adgangskoder påvirkes ikke.</translation>
 <translation id="8966875421152977384">Vis Chromium-websitegenveje</translation>
-<translation id="4591081057798655502">Agent Chrome Enterprise-logo</translation>
+<translation id="1008106080699243847">Shuttle Enterprise-logo</translation>
 <translation id="8980139959902937527">Tag Googles sikkerhedsfunktioner med på farten med Chromium-appen på din <ph name="DEVICE_TYPE" /></translation>
-<translation id="352721818246741864">Agent Chrome kan ikke startes, da der gik noget galt ved åbningen af din profil. Prøv at genstarte Agent Chrome.</translation>
+<translation id="3649746906258419479">Shuttle kan ikke startes, da der gik noget galt ved åbningen af din profil. Prøv at genstarte Shuttle.</translation>
 <translation id="8988036198400390003">Administrer Chromium-profiler</translation>
 <translation id="8993855408334954620">Brug dit tastatur til at navigere mellem Gemini i Chromium og din åbne fane.</translation>
 <translation id="9018218886431812662">Installationen er fuldført</translation>
 <translation id="9019929317751753759">For at gøre Chromium mere sikker har vi deaktiveret følgende udvidelser, som ikke er anført i <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> og muligvis er blevet tilføjet, uden at du vidste det.</translation>
 <translation id="9022552996538154597">Log ind på Chromium</translation>
 <translation id="9035791714111278917">Vis søgning med Chromium på Mac-menulinjen, og aktivér tastaturgenvejen</translation>
-<translation id="144293525744948128">Agent Chrome har blokeret denne download, fordi arkivfilen indeholder andre filer, der muligvis skjuler malware</translation>
+<translation id="3267341748208131224">Shuttle har blokeret denne download, fordi arkivfilen indeholder andre filer, der muligvis skjuler malware</translation>
 <translation id="9053882453960391422">Hold dine adgangskoder, bogmærker og din historik perfekt synkroniseret på alle enheder. Få nem adgang til de funktioner, du kender og elsker, ved at opdatere din standardbrowser til Chromium. Chromium fastgøres til proceslinjen, så du hurtigt kan tilgå den.</translation>
 <translation id="9056398481763999048">Brug Googles bedste AI-værktøjer med Chromium-appen på din telefon</translation>
 <translation id="9062666675513499497">Log ind i Chromium, når du logger ind i andre Google-tjenester</translation>
-<translation id="5989671354018094677">Agent Chrome blev automatisk lukket</translation>
-<translation id="5288426372256126088">Agent Chrome er forældet</translation>
-<translation id="8599483501705081932">{0,plural, =1{Agent Chrome genstarter om en time}one{Agent Chrome genstarter om # time}other{Agent Chrome genstarter om # timer}}</translation>
+<translation id="4265215433857167851">Shuttle blev automatisk lukket</translation>
+<translation id="7469466263552552140">Shuttle er forældet</translation>
+<translation id="72499647218501325">{0,plural, =1{Shuttle genstarter om en time}one{Shuttle genstarter om # time}other{Shuttle genstarter om # timer}}</translation>
 <translation id="9106236359747881194">Markér den tekst, du vil søge efter</translation>
 <translation id="9106612006984859720">Hvis du vil have fremtidige Chromium-opdateringer, skal du have Windows 10 eller nyere. Denne computer anvender Windows 8.1.</translation>
-<translation id="6660967356554387137">Åbn linket på en ny Agent Chrome-&amp;fane</translation>
+<translation id="3313508441926611846">Åbn linket på en ny Shuttle-&amp;fane</translation>
 <translation id="911206726377975832">Slet også dine browserdata</translation>
 <translation id="9134482777260927479">Lektiehjælp</translation>
 <translation id="9148058034647219655">Afslut</translation>
-<translation id="356554850028684199">Fortsæt, hvor du slap: Agent Chrome kan gendanne dine faner, hver gang du genstarter. For at aktivere dette skal du gå til</translation>
-<translation id="2217675621893057123">Din systemadministrator har konfigureret Agent Chrome til at åbne en anden browser for at få adgang til <ph name="TARGET_URL_HOSTNAME" />.</translation>
-<translation id="7637726452490203009">Genstart og opdater &amp;Agent Chrome</translation>
+<translation id="373308981796873164">Fortsæt, hvor du slap: Shuttle kan gendanne dine faner, hver gang du genstarter. For at aktivere dette skal du gå til</translation>
+<translation id="4482819741686179260">Din systemadministrator har konfigureret Shuttle til at åbne en anden browser for at få adgang til <ph name="TARGET_URL_HOSTNAME" />.</translation>
+<translation id="5239882079227870661">Genstart og opdater &amp;Shuttle</translation>
 <translation id="9190841055450128916">Chromium (mDNS-In)</translation>
 <translation id="924957577793602335">Tilpas Chromium</translation>
 <translation id="93478295209880648">Chromium fungerer muligvis ikke korrekt på grund af manglende understøttelse i Windows XP og Windows Vista</translation>
@@ -804,7 +804,7 @@ Agent Chrome kan ikke gendanne dine præferencer.</translation>
 <translation id="967427899662692980">Få Chromiums stærkeste beskyttelse</translation>
 <translation id="983803489796659991">Installationen mislykkedes, fordi opdateringsserveren ikke har nogen hash-data for appen.</translation>
 <translation id="985498048907240953">Brug Chromium uden en konto</translation>
-<translation id="5192139095541169725">Forfatterne til Agent Chrome</translation>
+<translation id="5192139095541169725">Silkweave</translation>
 <translation id="989970834842471429">Vælg en tekst eller et billede for at søge med Billedsøgning</translation>
-<translation id="5834693163377136360">Giv Agent Chrome adgang i <ph name="BEGIN_LINK" />systemindstillingerne<ph name="END_LINK" /> for at bruge din lokation</translation>
+<translation id="1699696098551154749">Giv Shuttle adgang i <ph name="BEGIN_LINK" />systemindstillingerne<ph name="END_LINK" /> for at bruge din lokation</translation>
 </translationbundle>

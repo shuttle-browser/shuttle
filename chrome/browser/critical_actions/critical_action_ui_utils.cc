@@ -20,7 +20,7 @@ std::string GetCriticalActionLinkoutUrl(const CriticalActionEntry& action) {
     case ActionType::kFederatedLogin:
     case ActionType::kCredentialsOtp:
     case ActionType::kFormFill:
-      // Agent Chrome: no password manager or autofill settings pages.
+      // Shuttle: no password manager or autofill settings pages.
       return chrome::kChromeUISettingsURL;
     case ActionType::kDownload:
       return chrome::kChromeUIDownloadsURL;

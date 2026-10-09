@@ -45,7 +45,7 @@ void ChromeAppsAPIProvider::AddAPIJSONSources(
 }
 
 bool ChromeAppsAPIProvider::IsAPISchemaGenerated(const std::string& name) {
-  // Agent Chrome: no Chrome Apps API schemas are generated on macOS.
+  // Shuttle: no Chrome Apps API schemas are generated on macOS.
   return false;
 }
 

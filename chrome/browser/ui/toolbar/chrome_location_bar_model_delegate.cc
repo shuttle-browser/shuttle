@@ -223,7 +223,7 @@ bool ChromeLocationBarModelDelegate::IsNewTabPage() const {
     return false;
   }
 
-  // Agent Chrome: the New Tab page is always chrome://newtab (there is no
+  // Shuttle: the New Tab page is always chrome://newtab (there is no
   // WebUI NTP to rewrite to).
   const GURL& ntp_url = chrome::ChromeUINewTabURLAsGURL();
   return ntp_url.scheme() == entry->GetURL().scheme() &&

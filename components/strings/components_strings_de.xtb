@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Weitere Details angeben</translation>
 <translation id="1016671033299705843">Führerschein sicher hinzufügen</translation>
 <translation id="1019413721762100891">Aus</translation>
-<translation id="1021753677514347426">Du siehst diesen Fehler aufgrund eines Zertifikats, das auf deinem Gerät installiert ist. Chromium vertraut dem Zertifikat nicht, weil es Netzwerke unterbrechen und überwachen kann. Natürlich gibt es berechtigte Gründe für eine Überwachung, z. B. im Netzwerk von Schulen oder Unternehmen. Trotzdem soll sichergestellt werden, dass du über die Überwachung informiert bist, selbst wenn du sie nicht unterbinden kannst. Die Überwachung ist in jedem Browser und jeder Anwendung mit Webzugriff möglich.</translation>
+<translation id="768230658237634872">Du siehst diesen Fehler aufgrund eines Zertifikats, das auf deinem Gerät installiert ist. Shuttle vertraut dem Zertifikat nicht, weil es Netzwerke unterbrechen und überwachen kann. Natürlich gibt es berechtigte Gründe für eine Überwachung, z. B. im Netzwerk von Schulen oder Unternehmen. Trotzdem soll sichergestellt werden, dass du über die Überwachung informiert bist, selbst wenn du sie nicht unterbinden kannst. Die Überwachung ist in jedem Browser und jeder Anwendung mit Webzugriff möglich.</translation>
 <translation id="1024111578869940408">Angreifer kopieren manchmal Websites und nehmen unauffällige Änderungen an der Webadresse vor.</translation>
 <translation id="102916930470544692">Passkey</translation>
 <translation id="1030706264415084469"><ph name="URL" /> möchte dauerhaft umfangreiche Daten auf deinem Gerät speichern</translation>
@@ -809,7 +809,7 @@ Du wirst sonst gemäß deinen Datenschutzeinstellungen blockiert. Wenn Cookies u
 <translation id="2348836501965732644">Du kannst deine Informationen verwalten oder diese Vorschläge in den Einstellungen deaktivieren</translation>
 <translation id="2349957959687031096">Button „Inkognitotab öffnen“ – aktivieren, um einen neuen Inkognitotab zu öffnen und privat zu surfen</translation>
 <translation id="2350796302381711542">Öffnen aller <ph name="PROTOCOL" />-Links durch <ph name="HANDLER_HOSTNAME" /> anstatt <ph name="REPLACED_HANDLER_TITLE" /> zulassen?</translation>
-<translation id="2351718832234620840">Dieser Server konnte nicht beweisen, dass er <ph name="DOMAIN" /> ist, da er ein Sicherheitszertifikat verwendet, das von Chromium oder deiner Systemkonfiguration für die Verschlüsselung von Web-Traffic nicht als vertrauenswürdig eingestuft wird. Mögliche Gründe sind eine fehlerhafte Konfiguration oder ein Angreifer, der deine Verbindung abfängt.</translation>
+<translation id="4798228153726623290">Dieser Server konnte nicht beweisen, dass er <ph name="DOMAIN" /> ist, da er ein Sicherheitszertifikat verwendet, das von Shuttle oder deiner Systemkonfiguration für die Verschlüsselung von Web-Traffic nicht als vertrauenswürdig eingestuft wird. Mögliche Gründe sind eine fehlerhafte Konfiguration oder ein Angreifer, der deine Verbindung abfängt.</translation>
 <translation id="2353297238722298836">Kamera- und Mikrofonnutzung zulässig</translation>
 <translation id="2354001756790975382">Weitere Lesezeichen</translation>
 <translation id="2355395290879513365">Angreifer können unter Umständen die Bilder sehen, die du dir auf dieser Website ansiehst, und könnten dann versuchen, dich durch Ändern der Bilder zu täuschen.</translation>
@@ -1046,7 +1046,7 @@ Du wirst sonst gemäß deinen Datenschutzeinstellungen blockiert. Wenn Cookies u
 <translation id="2728127805433021124">Das Serverzertifikat ist mit einem schwachen Signaturalgorithmus signiert.</translation>
 <translation id="272937284275742856">Datenschutz ist uns wichtig, während wir deine Zahlungsdetails prüfen…</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Verbindungsdiagnose ausführen<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Weitere Informationen zu deiner Suchmaschine in Chromium</translation>
+<translation id="5216476641707900057">Weitere Informationen zu deiner Suchmaschine in Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 Zoll</translation>
 <translation id="2734797989819862638">Nicht kopieren</translation>
 <translation id="2738771556149464852">Nicht nach</translation>
@@ -1344,7 +1344,7 @@ Wenn du die Optionen für „Später bezahlen“ ausblenden möchtest, rufe die 
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187"><ph name="NUMBER_OF_DIGITS" />-stelligen Bestätigungscode eingeben</translation>
 <translation id="3272643614306383237">Weniger als 1 MB. Einige Websites werden beim nächsten Besuch möglicherweise langsamer geladen.</translation>
-<translation id="3273738040255912340">Dein Administrator kann Änderungen an deinem Profil und Browser per Fernzugriff vornehmen, Informationen über den Browser durch Berichte analysieren und andere notwendige Aufgaben ausführen. Aktivitäten auf diesem Gerät können auch außerhalb von Chromium verwaltet werden. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Dein Administrator kann Änderungen an deinem Profil und Browser per Fernzugriff vornehmen, Informationen über den Browser durch Berichte analysieren und andere notwendige Aufgaben ausführen. Aktivitäten auf diesem Gerät können auch außerhalb von Shuttle verwaltet werden. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Die Ansicht „IBAN speichern“ ist vollständig geöffnet.</translation>
 <translation id="327455571215090823">Nutze die Cloud – für eine smartere „Autofill“-Funktion</translation>
 <translation id="3280440382387335343">Reisepass sicher in Google Wallet aktualisieren</translation>
@@ -1611,7 +1611,7 @@ Wenn du die Optionen für „Später bezahlen“ ausblenden möchtest, rufe die 
 <translation id="3742104862808477448">Hilf Chromium, komplexe Formulare besser zu verstehen und auszufüllen, indem Daten sicher auf Google-Servern verarbeitet werden. Deine Informationen bleiben privat und werden von niemandem überprüft.</translation>
 <translation id="3744111561329211289">Hintergrundsynchronisierung</translation>
 <translation id="3744212718085287312">Nächstes Mal mit virtueller Karte noch sicherer bezahlen?</translation>
-<translation id="3744899669254331632">Du kannst <ph name="SITE" /> zurzeit nicht aufrufen, weil die Website verschlüsselte Anmeldedaten gesendet hat, die von Chromium nicht verarbeitet werden können. Netzwerkfehler und Angriffe sind in der Regel nur vorübergehend, sodass die Seite wahrscheinlich später wieder funktioniert.</translation>
+<translation id="58356321557204990">Du kannst <ph name="SITE" /> zurzeit nicht aufrufen, weil die Website verschlüsselte Anmeldedaten gesendet hat, die von Shuttle nicht verarbeitet werden können. Netzwerkfehler und Angriffe sind in der Regel nur vorübergehend, sodass die Seite wahrscheinlich später wieder funktioniert.</translation>
 <translation id="3745599309295009257">Dein Text sowie der Inhalt und die URL der Seite, auf der du schreibst, werden an Google gesendet, manuell geprüft und zur Verbesserung dieser Funktion verwendet. Vermeide die Eingabe personenbezogener Daten (z. B. medizinische oder finanzielle Daten) und vermeide die Nutzung des Tools auf Websites, die private oder vertrauliche Informationen enthalten.</translation>
 <translation id="3748009735914587286">Metall (hochglanz)</translation>
 <translation id="3748647055058832337">Für diesen Händler nicht verfügbar</translation>
@@ -2197,7 +2197,7 @@ Wenn du die Optionen für „Später bezahlen“ ausblenden möchtest, rufe die 
 <translation id="4732860731866514038">Sprachpaket für <ph name="LANGUAGE" /> wird heruntergeladen… <ph name="PERCENT" /> %</translation>
 <translation id="4733082559415072992"><ph name="URL" /> möchte den Standort deines Geräts verwenden</translation>
 <translation id="473414950835101501">Kamera verwenden</translation>
-<translation id="4736825316280949806">Chromium neu starten</translation>
+<translation id="5713993618957185264">Shuttle neu starten</translation>
 <translation id="4736934858538408121">Virtuelle Karte</translation>
 <translation id="473775607612524610">Aktualisieren</translation>
 <translation id="4738601419177586157">Suchvorschlag: <ph name="TEXT" /></translation>
@@ -2419,7 +2419,7 @@ Wenn du die Optionen für „Später bezahlen“ ausblenden möchtest, rufe die 
 <translation id="5089810972385038852">Bundesstaat/-land</translation>
 <translation id="5093232627742069661">Z-Faltung</translation>
 <translation id="5093417502834168387">Anmeldeprobleme? Andere Option wählen</translation>
-<translation id="5094747076828555589">Dieser Server konnte nicht beweisen, dass er <ph name="DOMAIN" /> ist. Sein Sicherheitszertifikat wird von Chromium als nicht vertrauenswürdig eingestuft. Mögliche Gründe sind eine fehlerhafte Konfiguration oder ein Angreifer, der deine Verbindung abfängt.</translation>
+<translation id="5713412634455044803">Dieser Server konnte nicht beweisen, dass er <ph name="DOMAIN" /> ist. Sein Sicherheitszertifikat wird von Shuttle als nicht vertrauenswürdig eingestuft. Mögliche Gründe sind eine fehlerhafte Konfiguration oder ein Angreifer, der deine Verbindung abfängt.</translation>
 <translation id="5096066272198024688">Informationen werden gespeichert…</translation>
 <translation id="5097099694988056070">Gerätestatistiken, z. B. CPU/RAM-Nutzung</translation>
 <translation id="5097468150760963273">27 x 39 Zoll</translation>
@@ -3171,7 +3171,7 @@ Wenn du die Optionen für „Später bezahlen“ ausblenden möchtest, rufe die 
 <translation id="635394585025793320">Ich möchte jemanden beeindrucken. Suche nach freien Tischen für 2 Personen in Restaurants, die gerade angesagt sind.</translation>
 <translation id="6354918092619878358">Elliptische SECG-Kurve secp256r1 (ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" /> – drücke die Tabulatortaste und dann die Eingabetaste, um weitere Tabs von anderen Geräten zu sehen</translation>
-<translation id="6355392890578844978">Dieser Browser wird nicht von einem Unternehmen oder einer anderen Organisation verwaltet. Aktivitäten auf diesem Gerät können außerhalb von Chromium verwaltet werden. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Dieser Browser wird nicht von einem Unternehmen oder einer anderen Organisation verwaltet. Aktivitäten auf diesem Gerät können außerhalb von Shuttle verwaltet werden. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Die Tabgruppen „<ph name="GROUP_TITLE_1" />“ und „<ph name="GROUP_TITLE_2" />“ sind nicht mehr verfügbar</translation>
 <translation id="6358088212770985041">Zahlungsmethoden zu bearbeiten</translation>
 <translation id="6358450015545214790">Was bedeuten diese Hinweise?</translation>
@@ -4136,7 +4136,7 @@ Weitere Details:
 <translation id="7995512525968007366">Nicht angegeben</translation>
 <translation id="7997855386298213183">geteilte Tabs</translation>
 <translation id="7999482381722829925">Erstelle eine priorisierte Checkliste für die gründliche Reinigung aller Räume, mit Fokus auf häufig übersehene Stellen</translation>
-<translation id="8001912761979890298">Dieser Server konnte nicht beweisen, dass er <ph name="DOMAIN" /> ist, da er ein Sicherheitszertifikat verwendet, das von Chromium oder deiner Systemkonfiguration für die Verschlüsselung von Web-Traffic nicht als vertrauenswürdig eingestuft wird. Mögliche Gründe sind eine fehlerhafte Konfiguration oder ein Angreifer, der deine Verbindung abfängt. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Zertifikat ansehen<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Dieser Server konnte nicht beweisen, dass er <ph name="DOMAIN" /> ist, da er ein Sicherheitszertifikat verwendet, das von Shuttle oder deiner Systemkonfiguration für die Verschlüsselung von Web-Traffic nicht als vertrauenswürdig eingestuft wird. Mögliche Gründe sind eine fehlerhafte Konfiguration oder ein Angreifer, der deine Verbindung abfängt. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Zertifikat ansehen<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Versuche, andere Tabs oder Programme zu schließen, um Speicher freizugeben.</translation>
 <translation id="8002230960325005199">Ähnliche Websites in einem neuen Tab ansehen</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />“</translation>
@@ -4227,7 +4227,7 @@ Weitere Details:
 <translation id="8175796834047840627">Chrome bietet dir die Möglichkeit, die Karten in deinem Google-Konto zu speichern, weil du angemeldet bist. Du kannst dies in den Einstellungen ändern.</translation>
 <translation id="8176440868214972690">Der Administrator dieses Geräts hat Informationen wie z. B. Einstellungen oder Richtlinien an folgende Websites gesendet.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> wurde aufgrund des Inhalts blockiert}other{<ph name="FILE_COUNT" /> Dateien wurden aufgrund des Inhalts blockiert}}</translation>
-<translation id="8186171296341598122">Du kannst deine Suchmaschine jederzeit in den Einstellungen von Chromium ändern. Wenn deine bevorzugte Suchmaschine nicht angezeigt wird, kannst du eine Suche auf der entsprechenden Website durchführen. Dann wird diese Suchmaschine in den Chromium-Einstellungen als zuletzt verwendete Suchmaschine aufgeführt und du kannst sie als Standard festlegen.</translation>
+<translation id="2852542171920460365">Du kannst deine Suchmaschine jederzeit in den Einstellungen von Shuttle ändern. Wenn deine bevorzugte Suchmaschine nicht angezeigt wird, kannst du eine Suche auf der entsprechenden Website durchführen. Dann wird diese Suchmaschine in den Shuttle-Einstellungen als zuletzt verwendete Suchmaschine aufgeführt und du kannst sie als Standard festlegen.</translation>
 <translation id="8188830160449823068">IBAN nur auf dem Gerät gespeichert</translation>
 <translation id="8189557652711717875">Die von dir ausgewählte Suchmaschine wird für Funktionen wie die Suche über die Adressleiste oder die Suche anhand von Bildern auf Webseiten verwendet.</translation>
 <translation id="8190193880870196235">Wird über eine Erweiterung verwaltet</translation>
@@ -4311,7 +4311,7 @@ Weitere Details:
 <translation id="8316555157357957253">Wird verwendet</translation>
 <translation id="8319414634934645341">Erweiterte Schlüsselverwendung</translation>
 <translation id="831997045666694187">Abends</translation>
-<translation id="8321448084834652864">Du kannst deine Suchmaschine jederzeit in den Einstellungen von Chromium ändern.</translation>
+<translation id="332470347080865446">Du kannst deine Suchmaschine jederzeit in den Einstellungen von Shuttle ändern.</translation>
 <translation id="8321476692217554900">Benachrichtigungen</translation>
 <translation id="8323505966575306467">Noch mehr Schutz für deine Passwörter</translation>
 <translation id="832547548543012337">Ausweis löschen</translation>
@@ -4533,7 +4533,7 @@ Weitere Details:
 <translation id="8736059027199600831">30 × 40 Zoll</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" /> – drücke die Tabulatortaste und dann die Eingabetaste, um ein neues Inkognitofenster zu öffnen und privat zu surfen</translation>
 <translation id="8737685506611670901"><ph name="PROTOCOL" />-Links anstelle von <ph name="REPLACED_HANDLER_TITLE" /> öffnen</translation>
-<translation id="8738058698779197622">Zum Aufbau einer sicheren Verbindung muss die Uhrzeit richtig eingestellt sein. Der Grund hierfür ist, dass Websites sich mithilfe von Zertifikaten identifizieren, die nur für einen bestimmten Zeitraum gelten. Da die Uhrzeit deines Geräts falsch ist, kann Chromium diese Zertifikate nicht bestätigen.</translation>
+<translation id="4709963803166322417">Zum Aufbau einer sicheren Verbindung muss die Uhrzeit richtig eingestellt sein. Der Grund hierfür ist, dass Websites sich mithilfe von Zertifikaten identifizieren, die nur für einen bestimmten Zeitraum gelten. Da die Uhrzeit deines Geräts falsch ist, kann Shuttle diese Zertifikate nicht bestätigen.</translation>
 <translation id="8740359287975076522">Die &lt;abbr id="dnsDefinition"&gt;DNS-Adresse&lt;/abbr&gt; von <ph name="HOST_NAME" /> wurde nicht gefunden. Eine Problemdiagnose wird durchgeführt.</translation>
 <translation id="874918643257405732">Lesezeichen für diesen Tab erstellen</translation>
 <translation id="8749274696886550762">Diese Website scheint nicht korrekt zu sein</translation>
@@ -4743,7 +4743,7 @@ Weitere Details:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" /> – Drück die Tabulatortaste und dann die Eingabetaste, um Chrome in den iOS-Einstellungen als Standardbrowser für das System festzulegen</translation>
 <translation id="9101450247048146228">Kamera-Nutzung und ‑Bewegung (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Fach 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> schützt deine Daten in der Regel durch Verschlüsselung. Als Chromium dieses Mal versuchte, eine Verbindung zu <ph name="SITE" /> herzustellen, gab die Website ungewöhnliche und falsche Anmeldedaten zurück. Entweder versucht ein Angreifer, sich als <ph name="SITE" /> auszugeben, oder die Verbindung wurde durch eine WLAN-Anmeldeseite unterbrochen. Da Chromium die Verbindung vor dem Austausch von Daten unterbrochen hat, sind deine Informationen weiterhin sicher.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> schützt deine Daten in der Regel durch Verschlüsselung. Als Shuttle dieses Mal versuchte, eine Verbindung zu <ph name="SITE" /> herzustellen, gab die Website ungewöhnliche und falsche Anmeldedaten zurück. Entweder versucht ein Angreifer, sich als <ph name="SITE" /> auszugeben, oder die Verbindung wurde durch eine WLAN-Anmeldeseite unterbrochen. Da Shuttle die Verbindung vor dem Austausch von Daten unterbrochen hat, sind deine Informationen weiterhin sicher.</translation>
 <translation id="9107199998619088551">Dein Profil wird von <ph name="MANAGER" /> verwaltet</translation>
 <translation id="9107467864910557787">Der Browser wird von <ph name="MANAGER" /> verwaltet</translation>
 <translation id="91108059142052966">Die Administratorrichtlinie blockiert die Bildschirmfreigabe mit <ph name="APPLICATION_TITLE" />, wenn vertrauliche Inhalte sichtbar sind</translation>

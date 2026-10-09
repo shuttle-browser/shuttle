@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">ಥೀಮ್ ಸಕ್ರಿಯಗೊಳಿಸಿ</translation>
 <translation id="1135328998467923690">ಪ್ಯಾಕೇಜ್ ಅಮಾನ್ಯವಾಗಿದೆ: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">ಪರಿಸರಕ್ಕೆ ಮುಖಮಾಡಿದೆ</translation>
-<translation id="1171831736360285680">Chromium ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ಒಂದನ್ನು <ph name="PARTNER_NAME" /> ಸೇರಿಸಿದೆ.
+<translation id="6853317349523111347">Shuttle ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ಒಂದನ್ನು <ph name="PARTNER_NAME" /> ಸೇರಿಸಿದೆ.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ಖಾಸಗಿ ಕೀಲಿಯನ್ನು ರಫ್ತು ಮಾಡಲು ವಿಫಲವಾಗಿದೆ.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ಫೈಲ್ ಅನ್ನು ಸ್ಥಾನಾಂತರಿಸುವಲ್ಲಿ ವಿಫಲಗೊಂಡಿದೆ. ಫೈಲ್ ಬಳಕೆಯಲ್ಲಿದೆಯೆ ಎಂದು ಪರಿಶೀಲಿಸಿ.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> ಮಾರಾಟಗಾರರಿಂದ <ph name="PRODUCT_ID" /> ಅಪರಿಚಿತ ಉತ್ಪನ್ನ</translation>
 <translation id="3174723475300476613">ಈ ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗೆ ಇರುವ ಆ್ಯಕ್ಸೆಸ್ ಅನ್ನು ನಿಮ್ಮ ಸಂಸ್ಥೆಯು ನಿರ್ಬಂಧಿಸಿದೆ.</translation>
-<translation id="3183357154200327217">ನಿಮ್ಮ ಕಂಪ್ಯೂಟರ್‌ನಲ್ಲಿನ ಮತ್ತೊಂದು ಪ್ರೋಗ್ರಾಂ Chromium ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಥೀಮ್ ಒಂದನ್ನು ಸೇರಿಸಿದೆ.
+<translation id="7846451875700317002">ನಿಮ್ಮ ಕಂಪ್ಯೂಟರ್‌ನಲ್ಲಿನ ಮತ್ತೊಂದು ಪ್ರೋಗ್ರಾಂ Shuttle ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಥೀಮ್ ಒಂದನ್ನು ಸೇರಿಸಿದೆ.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">ChromeOS ಕಿಯೋಸ್ಕ್ ಮೋಡ್‌ನಲ್ಲಿ 'kiosk_only' ಮ್ಯಾನಿಫೆಸ್ಟ್‌ ಲಕ್ಷಣದ ಜೊತೆಗಿನ ಆ್ಯಪ್ ಅನ್ನು ಇನ್‍ಸ್ಟಾಲ್ ಮಾಡಿರಬೇಕು</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">ನಿರಾಕರಿಸಿ</translation>
 <translation id="3984413272403535372">ವಿಸ್ತರಣೆಗೆ ಸೈನ್ ಇನ್ ಮಾಡುವಾಗ ದೋಷ.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" ಸರಿಪಡಿಸಬೇಕೆ?</translation>
-<translation id="4061696872429826774">ನಿಮ್ಮ ಕಂಪ್ಯೂಟರ್‌ನಲ್ಲಿನ ಮತ್ತೊಂದು ಪ್ರೋಗ್ರಾಂ Chromium ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ಒಂದನ್ನು ಸೇರಿಸಿದೆ.
+<translation id="7396546976728149133">ನಿಮ್ಮ ಕಂಪ್ಯೂಟರ್‌ನಲ್ಲಿನ ಮತ್ತೊಂದು ಪ್ರೋಗ್ರಾಂ Shuttle ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ಒಂದನ್ನು ಸೇರಿಸಿದೆ.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">ಈ ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ವರ್ಗಕ್ಕೆ ಇರುವ ಆ್ಯಕ್ಸೆಸ್ ಅನ್ನು ನಿಮ್ಮ ಸಂಸ್ಥೆಯು ನಿರ್ಬಂಧಿಸಿದೆ.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" ನ ಹೊಸ ಆವೃತ್ತಿಗೆ ಹೆಚ್ಚಿನ ಅನುಮತಿಗಳ ಅಗತ್ಯವಿರುವ ಕಾರಣ ಅದನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" ಸಕ್ರಿಯಗೊಳಿಸುವುದೆ?</translation>
 <translation id="5356315618422219272">ಅಪ್ಲಿಕೇಶನ್ ವೀಕ್ಷಣೆ: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium ನಿಂದ ತೆಗೆದುಹಾಕಿ</translation>
+<translation id="2064155379595075287">Shuttle ನಿಂದ ತೆಗೆದುಹಾಕಿ</translation>
 <translation id="5456409301717116725">ಈ ವಿಸ್ತರಣೆಯು ಕೀ ಫೈಲ್ '<ph name="KEY_PATH" />' ಅನ್ನು ಒಳಗೊಂಡಿದೆ. ನೀವು ಸಾಮಾನ್ಯವಾಗಿ ಹಾಗೆ ಮಾಡಲು ಬಯಸುವುದಿಲ್ಲ.</translation>
 <translation id="5485102783864353244">ಅಪ್ಲಿಕೇಶನ್‌ ಸೇರಿಸು</translation>
 <translation id="5486326529110362464">ಖಾಸಗಿ ಕೀಲಿಗಾಗಿ ಇನ್‌ಪುಟ್ ಮೌಲ್ಯ ಅಸ್ತಿತ್ವದಲ್ಲಿರಬೇಕು.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">ಈ ಯಂತ್ರದ ನಿರ್ವಾಹಕರಿಗೆ <ph name="EXTENSION_NAME" /> ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡುವ ಅಗತ್ಯವಿದೆ. ಇದನ್ನು ಅನ್ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲು ಸಾಧ್ಯವಿಲ್ಲ.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> ಅವರಿಂದ <ph name="PRODUCT_ID" /> ಅಪರಿಚಿತ ಉತ್ಪನ್ನ (ಕ್ರಮ ಸಂಖ್ಯೆ <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> ಮಾರಾಟಗಾರರಿಂದ <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">ನಿಮ್ಮ ಕಂಪ್ಯೂಟರ್‌ನಲ್ಲಿನ ಮತ್ತೊಂದು ಪ್ರೋಗ್ರಾಂ Chromium ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಆ್ಯಪ್ ಒಂದನ್ನು ಸೇರಿಸಿದೆ.
+<translation id="5918487821361452587">ನಿಮ್ಮ ಕಂಪ್ಯೂಟರ್‌ನಲ್ಲಿನ ಮತ್ತೊಂದು ಪ್ರೋಗ್ರಾಂ Shuttle ಕಾರ್ಯನಿರ್ವಹಿಸುವ ವಿಧಾನವನ್ನು ಬದಲಿಸಬಹುದಾದ ಆ್ಯಪ್ ಒಂದನ್ನು ಸೇರಿಸಿದೆ.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">ವಿಸ್ತರಣೆ ಲೋಡ್ ಮಾಡುವಾಗ ದೋಷ</translation>

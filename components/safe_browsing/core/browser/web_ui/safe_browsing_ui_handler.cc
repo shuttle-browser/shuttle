@@ -108,7 +108,7 @@ void SafeBrowsingUIHandler::OnGetCookie(
 
 void SafeBrowsingUIHandler::GetSavedPasswords(const base::ListValue& args) {
   DCHECK(!args.empty());
-  // Agent Chrome: no password manager, so no saved password hashes.
+  // Shuttle: no password manager, so no saved password hashes.
   ResolveCallback(args[0].GetString(), base::ListValue());
 }
 

@@ -60,7 +60,7 @@ bool PinnedToolbarActionsModel::CanUpdate() {
   // TODO(dljames/corising): Update this function as needed with other guards /
   // requirements as they come up.
 
-  // Agent Chrome: every profile is a regular profile.
+  // Shuttle: every profile is a regular profile.
   return true;
 }
 

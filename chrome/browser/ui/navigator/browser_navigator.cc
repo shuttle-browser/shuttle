@@ -389,7 +389,7 @@ std::unique_ptr<content::WebContents> CreateTargetContents(
       params.opener ? params.opener->GetSiteInstance()
                     : tab_util::GetSiteInstanceForNewTab(
                           params.browser->GetProfile(), url);
-  // Agent Chrome: a tab opened from a tab in a non-default storage partition
+  // Shuttle: a tab opened from a tab in a non-default storage partition
   // stays in that partition.
   if (!params.opener && params.source_site_instance) {
     const content::StoragePartitionConfig& source_config =

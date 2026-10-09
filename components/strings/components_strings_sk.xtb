@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Poskytnite ďalšie podrobnosti</translation>
 <translation id="1016671033299705843">Bezpečne si pridajte vodičský preukaz</translation>
 <translation id="1019413721762100891">vypnuté</translation>
-<translation id="1021753677514347426">Tento problém je spôsobený certifikátom, ktorý bol v zariadení nainštalovaný vami alebo niekým iným. O tomto certifikáte je známe, že sa pomocou neho sledujú a narúšajú siete. Chromium mu nedôveruje. Niekedy existujú legitímne prípady sledovania, napríklad v školskej alebo firemnej sieti. Chromium sa však chce uistiť, či viete, že k tomu dochádza (aj keď to nemôžete zastaviť). Sledovanie môže prebiehať v ktoromkoľvek prehliadači alebo aplikácii s prístupom na internet.</translation>
+<translation id="768230658237634872">Tento problém je spôsobený certifikátom, ktorý bol v zariadení nainštalovaný vami alebo niekým iným. O tomto certifikáte je známe, že sa pomocou neho sledujú a narúšajú siete. Shuttle mu nedôveruje. Niekedy existujú legitímne prípady sledovania, napríklad v školskej alebo firemnej sieti. Shuttle sa však chce uistiť, či viete, že k tomu dochádza (aj keď to nemôžete zastaviť). Sledovanie môže prebiehať v ktoromkoľvek prehliadači alebo aplikácii s prístupom na internet.</translation>
 <translation id="1024111578869940408">Útočníci niekedy weby napodobňujú tak, že vo webovej adrese vykonajú ťažko odhaliteľné zmeny.</translation>
 <translation id="102916930470544692">Prístupový kľúč</translation>
 <translation id="1030706264415084469"><ph name="URL" /> chce natrvalo ukladať veľké množstvo dát vo vašom zariadení</translation>
@@ -809,7 +809,7 @@ Ich používanie by bolo inak blokované vašimi nastaveniami ochrany súkromia.
 <translation id="2348836501965732644">V Nastaveniach môžete spravovať svoje informácie alebo tieto návrhy vypnúť</translation>
 <translation id="2349957959687031096">Tlačidlo Otvoriť kartu inkognito, ktorého aktivovaním otvoríte novú kartu inkognito na anonymné prehliadanie</translation>
 <translation id="2350796302381711542">Chcete povoliť obslužnému nástroju <ph name="HANDLER_HOSTNAME" /> otvárať všetky odkazy s protokolom <ph name="PROTOCOL" /> (namiesto obslužného nástroja <ph name="REPLACED_HANDLER_TITLE" />)?</translation>
-<translation id="2351718832234620840">Tento server nedokázal potvrdiť, či ide o doménu <ph name="DOMAIN" />, pretože používa bezpečnostný certifikát, ktorý nie je pre Chromium alebo vašu systémovú konfiguráciu šifrovania internetovej návštevnosti dôveryhodný. Môže to byť spôsobené nesprávnou konfiguráciou alebo napadnutím vášho pripojenia útočníkom.</translation>
+<translation id="4798228153726623290">Tento server nedokázal potvrdiť, či ide o doménu <ph name="DOMAIN" />, pretože používa bezpečnostný certifikát, ktorý nie je pre Shuttle alebo vašu systémovú konfiguráciu šifrovania internetovej návštevnosti dôveryhodný. Môže to byť spôsobené nesprávnou konfiguráciou alebo napadnutím vášho pripojenia útočníkom.</translation>
 <translation id="2353297238722298836">Kamera a mikrofón sú povolené</translation>
 <translation id="2354001756790975382">Ostatné</translation>
 <translation id="2355395290879513365">Útočníci môžu vidieť obrázky, ktoré si prehliadate na tomto webe, a môžu vás napadnúť tým, že ich podvodným spôsobom upravia.</translation>
@@ -1046,7 +1046,7 @@ Ich používanie by bolo inak blokované vašimi nastaveniami ochrany súkromia.
 <translation id="2728127805433021124">Certifikát servera je podpísaný pomocou slabého podpisového algoritmu.</translation>
 <translation id="272937284275742856">Overujú sa vaše platobné údaje zabezpečeným spôsobom...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Spustiť nástroj Diagnostika konektivity<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Ďalšie informácie o vašom vyhľadávači v prehliadači Chromium</translation>
+<translation id="5216476641707900057">Ďalšie informácie o vašom vyhľadávači v prehliadači Shuttle</translation>
 <translation id="2731382536835015353">44 × 68 palcov</translation>
 <translation id="2734797989819862638">Nekopírovať</translation>
 <translation id="2738771556149464852">Nie po</translation>
@@ -1341,7 +1341,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Zadajte <ph name="NUMBER_OF_DIGITS" />‑miestny overovací kód</translation>
 <translation id="3272643614306383237">Menej ako 1 MB. Pri vašej ďalšej návšteve sa môžu niektoré weby načítať pomalšie.</translation>
-<translation id="3273738040255912340">Správca môže vzdialene vykonávať zmeny v profile a prehliadači, analyzovať informácie o prehliadači na základe reportov a vykonávať ďalšie potrebné úlohy. Aktivita v tomto zariadení môže byť spravovaná aj mimo prehliadača Chromium. <ph name="BEGIN_LINK" />Ďalšie informácie<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Správca môže vzdialene vykonávať zmeny v profile a prehliadači, analyzovať informácie o prehliadači na základe reportov a vykonávať ďalšie potrebné úlohy. Aktivita v tomto zariadení môže byť spravovaná aj mimo prehliadača Shuttle. <ph name="BEGIN_LINK" />Ďalšie informácie<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Okno uloženia čísla IBAN je otvorené na celú výšku.</translation>
 <translation id="327455571215090823">Inteligentnejšie automatické dopĺňanie, ktoré zostáva súkromné</translation>
 <translation id="3280440382387335343">Bezpečne si aktualizujte pas v Peňaženke Google</translation>
@@ -1609,7 +1609,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="3742104862808477448">Pomôžte prehliadaču Chromium lepšie porozumieť zložitým formulárom a vypĺňať ich bezpečným spracúvaním údajov na serveroch Googlu. Vaše informácie zostanú súkromné a nikto ich nebude kontrolovať.</translation>
 <translation id="3744111561329211289">Synchronizácia na pozadí</translation>
 <translation id="3744212718085287312">Chcete nabudúce zlepšiť zabezpečenie pomocou virtuálnej karty?</translation>
-<translation id="3744899669254331632">Webové stránky <ph name="SITE" /> momentálne nemôžete navštíviť, pretože odoslali zakódované poverenia, ktoré Chromium neodkáže spracovať. Chyby siete a útoky sú zvyčajne dočasné, takže táto stránka by mala pravdepodobne neskôr fungovať.</translation>
+<translation id="58356321557204990">Webové stránky <ph name="SITE" /> momentálne nemôžete navštíviť, pretože odoslali zakódované poverenia, ktoré Shuttle neodkáže spracovať. Chyby siete a útoky sú zvyčajne dočasné, takže táto stránka by mala pravdepodobne neskôr fungovať.</translation>
 <translation id="3745599309295009257">Váš text, obsah a webová adresa stránky, na ktorej píšete, budú odoslané Googlu, kde ich skontrolujú kontrolóri. Pomocou týchto údajov budeme túto funkciu zlepšovať. Nezadávajte osobné údaje (napríklad zdravotné alebo finančné) a nepoužívajte tento nástroj na weboch obsahujúcich súkromné či citlivé údaje.</translation>
 <translation id="3748009735914587286">Kov (vysoký lesk)</translation>
 <translation id="3748647055058832337">Nie je k dispozícii pre tohto obchodníka</translation>
@@ -2195,7 +2195,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="4732860731866514038">Sťahuje sa jazykový balíček <ph name="LANGUAGE" />… <ph name="PERCENT" /> %</translation>
 <translation id="4733082559415072992">Web <ph name="URL" /> chce používať polohu vášho zariadenia</translation>
 <translation id="473414950835101501">Používať vaše kamery</translation>
-<translation id="4736825316280949806">Reštartujte Chromium</translation>
+<translation id="5713993618957185264">Reštartujte Shuttle</translation>
 <translation id="4736934858538408121">Virtuálna karta</translation>
 <translation id="473775607612524610">Aktualizovať</translation>
 <translation id="4738601419177586157">Návrh vyhľadávania <ph name="TEXT" /></translation>
@@ -2417,7 +2417,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="5089810972385038852">Štát</translation>
 <translation id="5093232627742069661">Záhyb v tvare písmena Z</translation>
 <translation id="5093417502834168387">Máte problém prihlásiť sa? Skúsiť iný spôsob.</translation>
-<translation id="5094747076828555589">Server nedokáže overiť, či ide o doménu <ph name="DOMAIN" />, Chromium nedôveruje jej bezpečnostnému certifikátu. Môže to byť spôsobené nesprávnou konfiguráciou alebo tým, že vaše pripojenie zachytil útočník.</translation>
+<translation id="5713412634455044803">Server nedokáže overiť, či ide o doménu <ph name="DOMAIN" />, Shuttle nedôveruje jej bezpečnostnému certifikátu. Môže to byť spôsobené nesprávnou konfiguráciou alebo tým, že vaše pripojenie zachytil útočník.</translation>
 <translation id="5096066272198024688">Vaše údaje sa ukladajú…</translation>
 <translation id="5097099694988056070">Štatistiky zariadenia, ako napríklad využitie procesora alebo pamäte RAM</translation>
 <translation id="5097468150760963273">27 × 39 palcov</translation>
@@ -3168,7 +3168,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="635394585025793320">Chcem na niekoho urobiť dojem. Nájdi voľné stoly pre dvoch v reštauráciách, ktoré sú práve vychytené.</translation>
 <translation id="6354918092619878358">Eliptická krivka SECG secp256r1 (známa tiež ako ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, stlačením klávesov Tab a potom Enter zobrazíte ďalšie karty z iných zariadení</translation>
-<translation id="6355392890578844978">Tento prehliadač nespravuje firma ani iná organizácia. Aktivita v tomto zariadení môže byť spravovaná mimo prehliadača Chromium. <ph name="BEGIN_LINK" />Ďalšie informácie<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Tento prehliadač nespravuje firma ani iná organizácia. Aktivita v tomto zariadení môže byť spravovaná mimo prehliadača Shuttle. <ph name="BEGIN_LINK" />Ďalšie informácie<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Skupiny kariet <ph name="GROUP_TITLE_1" /> a <ph name="GROUP_TITLE_2" /> už nie sú k dispozícii</translation>
 <translation id="6358088212770985041">upraviť spôsoby platby</translation>
 <translation id="6358450015545214790">Čo znamenajú tieto položky?</translation>
@@ -4133,7 +4133,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="7995512525968007366">Nie je upresnené</translation>
 <translation id="7997855386298213183">zdieľané karty</translation>
 <translation id="7999482381722829925">Vytvor kontrolný zoznam s pokynmi na dôkladné upratovanie jednotlivých miestností. Nech je zoradený podľa priority a pamätá aj na bežne prehliadané miesta.</translation>
-<translation id="8001912761979890298">Tento server nedokázal potvrdiť, či ide o doménu <ph name="DOMAIN" />, pretože používa bezpečnostný certifikát, ktorý nie je pre Chromium alebo vašu systémovú konfiguráciu šifrovania internetovej návštevnosti dôveryhodný. Môže to byť spôsobené nesprávnou konfiguráciou alebo napadnutím vášho pripojenia útočníkom. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Zobraziť certifikát<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Tento server nedokázal potvrdiť, či ide o doménu <ph name="DOMAIN" />, pretože používa bezpečnostný certifikát, ktorý nie je pre Shuttle alebo vašu systémovú konfiguráciu šifrovania internetovej návštevnosti dôveryhodný. Môže to byť spôsobené nesprávnou konfiguráciou alebo napadnutím vášho pripojenia útočníkom. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Zobraziť certifikát<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Skúste zavrieť ostatné karty alebo programy a uvoľniť tak miesto v pamäti.</translation>
 <translation id="8002230960325005199">Zobraziť súvisiace weby na novej karte</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />“</translation>
@@ -4224,7 +4224,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="8175796834047840627">Chrome poskytuje možnosť uložiť karty v účte Google, pretože ste sa prihlásili. Toto správanie môžete zmeniť v nastaveniach.</translation>
 <translation id="8176440868214972690">Správca tohto zariadenia odoslal na nasledujúce weby nejaké informácie, napríklad nastavenia alebo pravidlá.</translation>
 <translation id="818254048113802060">{0,plural, =1{Súbor <ph name="FILE_NAME" /> bol zablokovaný na základe obsahu}few{<ph name="FILE_COUNT" /> súbory boli zablokované na základe obsahu}many{<ph name="FILE_COUNT" /> files were blocked because of content}other{<ph name="FILE_COUNT" /> súborov bolo zablokovaných na základe obsahu}}</translation>
-<translation id="8186171296341598122">Vyhľadávač môžete kedykoľvek zmeniť v nastaveniach prehliadača Chromium. Ak sa váš preferovaný vyhľadávač nezobrazuje, môžete uskutočniť vyhľadávanie na jeho webe. V nastaveniach prehliadača Chromium ho uvidíte ako nedávno navštívený vyhľadávač a môžete ho nastaviť ako predvolený.</translation>
+<translation id="2852542171920460365">Vyhľadávač môžete kedykoľvek zmeniť v nastaveniach prehliadača Shuttle. Ak sa váš preferovaný vyhľadávač nezobrazuje, môžete uskutočniť vyhľadávanie na jeho webe. V nastaveniach prehliadača Shuttle ho uvidíte ako nedávno navštívený vyhľadávač a môžete ho nastaviť ako predvolený.</translation>
 <translation id="8188830160449823068">Číslo IBAN bolo uložené iba v zariadení</translation>
 <translation id="8189557652711717875">Vybraný vyhľadávač bude použitý v prípade funkcií, ako je vyhľadávanie na paneli s adresou a v obrázkoch na webových stránkach.</translation>
 <translation id="8190193880870196235">Spravované rozšírením</translation>
@@ -4308,7 +4308,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="8316555157357957253">Používa sa teraz</translation>
 <translation id="8319414634934645341">Rozšírené použitie kľúča</translation>
 <translation id="831997045666694187">Večer</translation>
-<translation id="8321448084834652864">Vyhľadávač môžete kedykoľvek zmeniť v nastaveniach prehliadača Chromium.</translation>
+<translation id="332470347080865446">Vyhľadávač môžete kedykoľvek zmeniť v nastaveniach prehliadača Shuttle.</translation>
 <translation id="8321476692217554900">upozornenia</translation>
 <translation id="8323505966575306467">Zvýšte ochranu svojich hesiel</translation>
 <translation id="832547548543012337">Odstránenie pasu</translation>
@@ -4530,7 +4530,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="8736059027199600831">30 × 40 palcov</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, stlačením klávesov Tab a potom Enter otvorte nové okno inkognito a prehliadajte v súkromí</translation>
 <translation id="8737685506611670901">Otvárať odkazy protokolu <ph name="PROTOCOL" /> a nie aplikáciu <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Ak chcete nadviazať zabezpečené pripojenie, vaše hodiny musia byť nastavené správne. Je to preto, že certifikáty, ktoré webové stránky používajú na vlastnú identifikáciu, sú platné iba určitý čas. Keďže nie sú hodiny vášho zariadenia nastavené správne, Chromium nemôže tieto certifikáty overiť.</translation>
+<translation id="4709963803166322417">Ak chcete nadviazať zabezpečené pripojenie, vaše hodiny musia byť nastavené správne. Je to preto, že certifikáty, ktoré webové stránky používajú na vlastnú identifikáciu, sú platné iba určitý čas. Keďže nie sú hodiny vášho zariadenia nastavené správne, Shuttle nemôže tieto certifikáty overiť.</translation>
 <translation id="8740359287975076522">&lt;abbr id="dnsDefinition"&gt;Adresa DNS&lt;/abbr&gt; webu <ph name="HOST_NAME" /> sa nenašla. Problém sa diagnostikuje.</translation>
 <translation id="874918643257405732">Pridať kartu medzi záložky</translation>
 <translation id="8749274696886550762">Zdá sa, že tento web nie je v poriadku</translation>
@@ -4739,7 +4739,7 @@ Ak chcete skryť možnosti zaplatenia neskôr, prejdite do sekcie <ph name="BEGI
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, postupným stlačením klávesov Tab a Enter nastavíte Chrome ako predvolený prehliadač systému v nastaveniach iOS</translation>
 <translation id="9101450247048146228">Používanie kamier a pohybovanie nimi (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Priehradka č. 1</translation>
-<translation id="9103872766612412690">Web <ph name="SITE" /> zvyčajne chráni vaše informácie pomocou šifrovania. Keď sa prehliadač Chromium tentokrát pokúsil pripojiť k webu <ph name="SITE" />, odoslal späť nezvyčajné a nesprávne poverenia. Môže sa to stať vtedy, keď sa za web <ph name="SITE" /> snaží vydávať útočník alebo keď pripojenie preruší prihlasovacia obrazovka siete Wi‑Fi. Vaše informácie sú stále zabezpečené, pretože prehliadač Chromium zastavil pripojenie ešte pred výmenou dát.</translation>
+<translation id="733422146945994640">Web <ph name="SITE" /> zvyčajne chráni vaše informácie pomocou šifrovania. Keď sa prehliadač Shuttle tentokrát pokúsil pripojiť k webu <ph name="SITE" />, odoslal späť nezvyčajné a nesprávne poverenia. Môže sa to stať vtedy, keď sa za web <ph name="SITE" /> snaží vydávať útočník alebo keď pripojenie preruší prihlasovacia obrazovka siete Wi‑Fi. Vaše informácie sú stále zabezpečené, pretože prehliadač Shuttle zastavil pripojenie ešte pred výmenou dát.</translation>
 <translation id="9107199998619088551">Váš profil spravuje <ph name="MANAGER" /></translation>
 <translation id="9107467864910557787">Váš prehliadač spravuje <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Keď je viditeľný dôverný obsah, pravidlá správcu deaktivujú zdieľanie obrazovky pomocou aplikácie <ph name="APPLICATION_TITLE" /></translation>

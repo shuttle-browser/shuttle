@@ -129,7 +129,7 @@ base::RefCountedMemory* NTPResourceCache::GetNewTabHTML(
   switch (win_type) {
     case NORMAL:
       if (!new_tab_normal_html_) {
-        // Agent Chrome: regular profiles get a blank New Tab page.
+        // Shuttle: regular profiles get a blank New Tab page.
         new_tab_normal_html_ = base::MakeRefCounted<base::RefCountedString>(
             "<!doctype html><html><head><meta charset=\"utf-8\"><title>" +
             base::EscapeForHTML(l10n_util::GetStringUTF8(IDS_NEW_TAB_TITLE)) +

@@ -6,8 +6,8 @@
 
 namespace extensions {
 
-// Agent Chrome: sign-in promos were removed, so there is never a footnote.
-// TODO(agent-chrome): drop the caller in extension_post_install_dialog.cc and
+// Shuttle: sign-in promos were removed, so there is never a footnote.
+// TODO(shuttle): drop the caller in extension_post_install_dialog.cc and
 // delete this file.
 void MaybeAddSigninPromoFootnoteView(
     Profile* profile,

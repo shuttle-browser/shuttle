@@ -3,22 +3,22 @@
 <translationbundle lang="fr">
 <translation id="1026101648481255140">Reprendre l'installation</translation>
 <translation id="1029669172902658969">Relancer et mettre à jour &amp;Chromium OS</translation>
-<translation id="8271032073852564289">Agent Chrome vous recommande d'examiner cette extension</translation>
-<translation id="1395700234492294565">Lorsqu'un site demande à précharger en mode privé des liens sur sa page, Agent Chrome utilise les serveurs Google. Le site préchargé ignore votre identité, mais Google sait quels sites sont préchargés.</translation>
+<translation id="9022540553404839453">Shuttle vous recommande d'examiner cette extension</translation>
+<translation id="5410799103647685860">Lorsqu'un site demande à précharger en mode privé des liens sur sa page, Shuttle utilise les serveurs Google. Le site préchargé ignore votre identité, mais Google sait quels sites sont préchargés.</translation>
 <translation id="1051793555070215510">Aidez-nous à améliorer la navigation privée en répondant à cette enquête d'une minute.</translation>
 <translation id="1065672644894730302">Impossible de lire vos préférences.
 Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifications apportées à vos préférences ne seront pas enregistrées.</translation>
-<translation id="3693661839172633833">Ton parent a désactivé "Autorisations des sites, applications et extensions" pour Agent Chrome</translation>
-<translation id="4676383270508741906">Pour effectuer une recherche sur une fonctionnalité ou extension Agent Chrome spécifique, tapez son raccourci dans la barre d'adresse, suivi de la touche de clavier de votre choix</translation>
+<translation id="2526735598866766848">Ton parent a désactivé "Autorisations des sites, applications et extensions" pour Shuttle</translation>
+<translation id="4554538601245550915">Pour effectuer une recherche sur une fonctionnalité ou extension Shuttle spécifique, tapez son raccourci dans la barre d'adresse, suivi de la touche de clavier de votre choix</translation>
 <translation id="1098493699368672217">Afficher la recherche avec Chromium dans la barre d'état système et activer le raccourci clavier</translation>
 <translation id="1104942323762546749">Chromium veut exporter vos mots de passe. Pour autoriser cette action, saisissez votre mot de passe Windows.</translation>
 <translation id="112640046208448578">Identifiez des objets ou des lieux, et copiez ou traduisez du texte. Lorsque vous utilisez la recherche dans une image, une capture d'écran de la page est envoyée au serveur. <ph name="LEARN_MORE" /></translation>
-<translation id="5373975050135708711">Agent Chrome est votre navigateur par défaut</translation>
+<translation id="5857101132283857610">Shuttle est votre navigateur par défaut</translation>
 <translation id="1131805035311359397">Pour vérifier si vos mots de passe sont suffisamment sécurisés afin d'empêcher toute violation de données et autres problèmes de sécurité, <ph name="BEGIN_LINK" />connectez-vous à Chromium<ph name="END_LINK" />.</translation>
 <translation id="1153368717515616349">Cliquez sur le menu Chromium</translation>
 <translation id="1157985233335035034">Langues récentes</translation>
 <translation id="1184145431117212167">Échec de l'installation en raison d'une incompatibilité avec votre version de Windows.</translation>
-<translation id="604454529346438712">À propos de Agent Chrome</translation>
+<translation id="2517811539192985920">À propos de Shuttle</translation>
 <translation id="1186645291482254714">Recevez des alertes de suivi des prix avec Chromium sur votre téléphone</translation>
 <translation id="1203500561924088507">Merci d'avoir installé notre produit. Vous devez redémarrer votre navigateur avant d'utiliser <ph name="BUNDLE_NAME" />.</translation>
 <translation id="1232234696885483911">Lorsque vous ouvrez la recherche dans des images, le titre, l'URL et le contenu de la page (PDF compris) sont automatiquement envoyés au serveur. <ph name="LEARN_MORE" /></translation>
@@ -26,13 +26,13 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="1244381985120794049">Afficher Gemini dans Chromium dans la barre de menu Mac</translation>
 <translation id="1257483544893909270">Pour sélectionner une partie de l'écran dans Gemini dans Chromium, utilisez un raccourci clavier.</translation>
 <translation id="1262876892872089030">Lorsque cet onglet était inactif, de la mémoire a été libérée pour préserver la rapidité de Chromium. Si vous le souhaitez, vous pouvez exclure définitivement ce site de la liste des sites inactifs.</translation>
-<translation id="3777643518642881741">Agent Chrome a bloqué ce téléchargement, car le fichier est dangereux</translation>
+<translation id="5920228800659800735">Shuttle a bloqué ce téléchargement, car le fichier est dangereux</translation>
 <translation id="126567311906253476">Lorsque vous vous connectez à des services Google comme Gmail ou YouTube avec <ph name="USER_EMAIL" />, vous pouvez vous connecter automatiquement à Chromium avec ce même compte</translation>
 <translation id="1287534462498555020">Téléchargez Chromium sur votre téléphone</translation>
 <translation id="1290883685122687410">Erreur de configuration : <ph name="METAINSTALLER_EXIT_CODE" />. <ph name="WINDOWS_ERROR" /></translation>
 <translation id="1315551408014407711">Configurer votre nouveau profil Chromium</translation>
 <translation id="132092532143527429">Essayer avec Gemini dans Chromium</translation>
-<translation id="200785071050073583">Agent Chrome a besoin d'accéder au Bluetooth pour explorer les appareils Bluetooth. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
+<translation id="7886367104480106107">Shuttle a besoin d'accéder au Bluetooth pour explorer les appareils Bluetooth. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="1329040302064168406">Connectez-vous à Chromium sur votre téléphone</translation>
 <translation id="1330562121671411446">Détecter la langue</translation>
 <translation id="1342274909142618978">Supprimer également les données de Chromium (<ph name="URL" />) ?</translation>
@@ -41,33 +41,33 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="1383876407941801731">Rechercher</translation>
 <translation id="1388276868779258475">Utilisez l'appli Chromium pour continuer à naviguer où que vous soyez</translation>
 <translation id="141901961143729572">Donnez-nous votre avis</translation>
-<translation id="8789809509510733987">Pour partager votre fenêtre, autorisez l'enregistrement d'écran pour Agent Chrome dans les réglages système.</translation>
+<translation id="1958991777362218128">Pour partager votre fenêtre, autorisez l'enregistrement d'écran pour Shuttle dans les réglages système.</translation>
 <translation id="1478370723027452770">Obtenir de l'aide concernant Chrome for Testing</translation>
 <translation id="1497802159252041924">Erreur d'installation : <ph name="INSTALL_ERROR" /></translation>
 <translation id="1518627427551567882">Cette page est protégée</translation>
-<translation id="3850708453627715578">Partager un onglet Agent Chrome</translation>
+<translation id="8079206111514107729">Partager un onglet Shuttle</translation>
 <translation id="154404805518949443">Se connecter à Chromium</translation>
 <translation id="1547469039832541117">Arrête la tâche mise en surbrillance.</translation>
-<translation id="8546278207686764484">Épingler Agent Chrome</translation>
+<translation id="5481132473679919711">Épingler Shuttle</translation>
 <translation id="1574377791422810894">Outils de sécurité de Chromium</translation>
 <translation id="1594928384848033697">Chromium souhaite supprimer les données du Gestionnaire de mots de passe. Saisissez votre mot de passe Windows pour autoriser l'opération.</translation>
-<translation id="551713766576210710">{COUNT,plural, =0{À la demande de votre administrateur, vous devez relancer Agent Chrome pour installer une mise à jour}=1{À la demande de votre administrateur, vous devez relancer Agent Chrome pour installer une mise à jour. Sachez que la fenêtre de navigation privée ne sera pas rouverte.}one{À la demande de votre administrateur, vous devez relancer Agent Chrome pour installer une mise à jour. Sachez que la fenêtre de navigation privée (#) ne sera pas rouverte.}other{À la demande de votre administrateur, vous devez relancer Agent Chrome pour installer une mise à jour. Sachez que les # fenêtres de navigation privée ne seront pas rouvertes.}}</translation>
+<translation id="9144100729492133749">{COUNT,plural, =0{À la demande de votre administrateur, vous devez relancer Shuttle pour installer une mise à jour}=1{À la demande de votre administrateur, vous devez relancer Shuttle pour installer une mise à jour. Sachez que la fenêtre de navigation privée ne sera pas rouverte.}one{À la demande de votre administrateur, vous devez relancer Shuttle pour installer une mise à jour. Sachez que la fenêtre de navigation privée (#) ne sera pas rouverte.}other{À la demande de votre administrateur, vous devez relancer Shuttle pour installer une mise à jour. Sachez que les # fenêtres de navigation privée ne seront pas rouvertes.}}</translation>
 <translation id="1623563412065267963">Profitez du meilleur de Google avec l'appli Chromium sur votre téléphone</translation>
 <translation id="1625909126243026060">Passez en revue les principaux paramètres de confidentialité et de sécurité dans Chromium</translation>
 <translation id="1640672724030957280">Téléchargement en cours…</translation>
 <translation id="1665602916345474427">Connexion en tant que <ph name="USER_NAME" />, <ph name="USER_EMAIL" />, abonnement. Ouvrir le menu du compte</translation>
-<translation id="2604712040942461790">Vous pouvez utiliser Agent Chrome chaque fois que vous cliquez sur des liens dans des messages, des documents et d'autres applis. Il sera aussi épinglé à votre barre des tâches.</translation>
+<translation id="5133024692341945870">Vous pouvez utiliser Shuttle chaque fois que vous cliquez sur des liens dans des messages, des documents et d'autres applis. Il sera aussi épinglé à votre barre des tâches.</translation>
 <translation id="1709772298389099340">Fournit des droits élevés pour <ph name="BROWSER_NAME" />.</translation>
 <translation id="1722488837206509557">Cela vous permettra de sélectionner des appareils disponibles et d'y afficher du contenu.</translation>
-<translation id="4145295773323539953">Agent Chrome supprimera bientôt les données de navigation</translation>
+<translation id="5930953237660560582">Shuttle supprimera bientôt les données de navigation</translation>
 <translation id="1736443181683099871">Chromium tentera de faire passer la navigation en HTTPS</translation>
-<translation id="7280502947294080605">Données de Agent Chrome effacées</translation>
+<translation id="3225043540098941089">Données de Shuttle effacées</translation>
 <translation id="1745121272106313518">Chromium va redémarrer dans <ph name="REMAINING_TIME" /></translation>
 <translation id="1749104137266986751">Lorsque HTTPS n'est pas disponible, Chromium utilise une connexion non sécurisée sans vous avertir</translation>
-<translation id="1887395919652703120">Laisser Agent Chrome s'exécuter en arrière-plan</translation>
+<translation id="4139175757782872962">Laisser Shuttle s'exécuter en arrière-plan</translation>
 <translation id="1779356040007214683">Afin de rendre Chrome plus sûr, nous avons désactivé certaines extensions qui ne sont pas répertoriées sur le <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> et qui ont pu être ajoutées à votre insu.</translation>
 <translation id="1793486931176048546">Cliquez sur <ph name="BEGIN_BOLD" />Oui<ph name="END_BOLD" /> dans la notification Windows pour épingler Chromium à la barre des tâches et y accéder rapidement.</translation>
-<translation id="357645171972700077">Réinstaller Agent Chrome</translation>
+<translation id="6621264839978531733">Réinstaller Shuttle</translation>
 <translation id="1820835682567584003">Chromium tente <ph name="AUTHENTICATION_PURPOSE" /></translation>
 <translation id="183031085822326697">La prochaine fois que vous ouvrirez Chromium sur votre <ph name="DEVICE_TYPE" />, une invite vous proposera d'utiliser le Gestionnaire de mots de passe de Google.</translation>
 <translation id="1838374766361614909">Effacer la recherche</translation>
@@ -78,15 +78,15 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="1863837059069884561"><ph name="EXISTING_USER" /> est déjà connecté. Pour séparer votre navigation, connectez-vous à Chromium dans votre propre profil en tant que <ph name="USER_EMAIL_ADDRESS" />. Vous pourrez aussi accéder à vos favoris et à d'autres données de <ph name="DEVICE" />.</translation>
 <translation id="1880677175115548835">Sélectionner du texte</translation>
 <translation id="1881322772814446296">Vous vous connectez avec un compte géré et donnez le contrôle de votre profil Chromium à son administrateur. Vos données Chromium, telles que les applications, les favoris, l'historique, les mots de passe et les autres paramètres, vont être définitivement associées à <ph name="USER_NAME" />. Vous pouvez supprimer ces données via le tableau de bord des comptes Google, mais vous ne pouvez pas les associer à un autre compte. Vous pouvez éventuellement créer un nouveau profil pour maintenir vos données Chromium séparées. <ph name="LEARN_MORE" /></translation>
-<translation id="4964792828232534953">Agent Chrome préserve l'autonomie de la batterie en limitant l'activité et les effets visuels en arrière-plan, comme le défilement fluide et la fréquence d'images vidéo. <ph name="BEGIN_LINK" />En savoir plus sur l'économiseur d'énergie<ph name="END_LINK" /></translation>
+<translation id="1305483712531564950">Shuttle préserve l'autonomie de la batterie en limitant l'activité et les effets visuels en arrière-plan, comme le défilement fluide et la fréquence d'images vidéo. <ph name="BEGIN_LINK" />En savoir plus sur l'économiseur d'énergie<ph name="END_LINK" /></translation>
 <translation id="1900969832270057921">Service de mise à jour Chromium</translation>
 <translation id="1911763535808217981">Désactiver cette option vous permet de vous connecter à des sites Google tels que Gmail sans vous connecter à Chromium</translation>
 <translation id="1929939181775079593">Chromium ne répond pas. Voulez-vous le relancer maintenant ?</translation>
 <translation id="1933341829955786215">Votre organisation (<ph name="MANAGER" />) exige que vous vous connectiez à Chromium</translation>
 <translation id="193439633299369377">Redémarrez Chromium OS pour appliquer la mise à jour.</translation>
-<translation id="207375373460618430">Agent Chrome a bloqué ce téléchargement, car ce type de fichier n'est pas souvent téléchargé et peut être dangereux</translation>
+<translation id="4872059215343855880">Shuttle a bloqué ce téléchargement, car ce type de fichier n'est pas souvent téléchargé et peut être dangereux</translation>
 <translation id="1953553007165777902">Téléchargement… <ph name="MINUTE" /> minute(s) restante(s)</translation>
-<translation id="700162948230159797">Impossible d'identifier ou de définir le navigateur par défaut avec Agent Chrome</translation>
+<translation id="1220136003951684816">Impossible d'identifier ou de définir le navigateur par défaut avec Shuttle</translation>
 <translation id="197326043290947695">Naviguez malin avec la rech. dans images</translation>
 <translation id="1990262977744080398">Découvrir pourquoi Chromium bloque certains fichiers, s'ouvre dans un nouvel onglet</translation>
 <translation id="1999715455684970349">Ce service maintient à jour votre logiciel Chromium, ce qui ne sera pas le cas s'il est désactivé ou arrêté. Toute faille de sécurité susceptible d'apparaître ne pourra alors pas être corrigée, et il est possible que certaines options ne fonctionneront pas. Ce service se désinstalle automatiquement quand aucun logiciel Chromium ne l'utilise.</translation>
@@ -96,19 +96,19 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="2049376729098081731">Choisissez d'inclure l'historique Chromium pour une expérience plus personnalisée dans les services Google</translation>
 <translation id="2050698962207788467">Intégré à Chromium pour vous aider à créer, enregistrer et saisir automatiquement des mots de passe sécurisés. Ajoutez le raccourci pour y accéder facilement.</translation>
 <translation id="2064856577282482477">Cliquez sur le bouton "Personnaliser Chromium" sur la page "Nouvel onglet" pour donner une nouvelle apparence à Chromium</translation>
-<translation id="6816376218079012438">Agent Chrome a bloqué ce téléchargement, car le fichier est trompeur et risque d'apporter des modifications inattendues à votre appareil</translation>
+<translation id="4748815521068816647">Shuttle a bloqué ce téléchargement, car le fichier est trompeur et risque d'apporter des modifications inattendues à votre appareil</translation>
 <translation id="208726765006323911">La prochaine fois que vous ouvrirez Chromium iOS, une invite vous proposera d'essayer <ph name="FEATURE_NAME" />.</translation>
 <translation id="2099452623287920103">Vos mots de passe et d'autres données Chromium enregistrés dans votre compte Google seront supprimés de cet appareil. Pour les utiliser de nouveau dans Chromium, reconnectez-vous.</translation>
-<translation id="8983263343920390117">{COUNT,plural, =1{Votre organisation supprime automatiquement les données de navigation lorsque Agent Chrome n'est pas utilisé pendant 1 minute. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements. Vos onglets resteront ouverts.}one{Votre organisation supprime automatiquement les données de navigation quand Agent Chrome n'est pas utilisé pendant # minute. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements. Vos onglets resteront ouverts.}other{Votre organisation supprime automatiquement les données de navigation quand Agent Chrome n'est pas utilisé pendant # minutes. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements. Vos onglets resteront ouverts.}}</translation>
+<translation id="8053870167789043907">{COUNT,plural, =1{Votre organisation supprime automatiquement les données de navigation lorsque Shuttle n'est pas utilisé pendant 1 minute. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements. Vos onglets resteront ouverts.}one{Votre organisation supprime automatiquement les données de navigation quand Shuttle n'est pas utilisé pendant # minute. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements. Vos onglets resteront ouverts.}other{Votre organisation supprime automatiquement les données de navigation quand Shuttle n'est pas utilisé pendant # minutes. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements. Vos onglets resteront ouverts.}}</translation>
 <translation id="2125838419757773031">Sélectionner une zone de l'écran pour lancer une recherche</translation>
 <translation id="2126108037660393668">Échec de validation du fichier téléchargé.</translation>
 <translation id="2135919691573380097">Signaler ce site</translation>
 <translation id="2137162749895930932">Fermer l'écran de traduction</translation>
-<translation id="822057692680289847">Agent Chrome a bloqué ce téléchargement, car le site n'utilise pas une connexion sécurisée et le fichier a peut-être été altéré</translation>
+<translation id="8598177558941030115">Shuttle a bloqué ce téléchargement, car le site n'utilise pas une connexion sécurisée et le fichier a peut-être été altéré</translation>
 <translation id="2170098639895543546">Sélectionnez n'importe quel élément sur la page</translation>
 <translation id="2174178932569897599">Personnaliser Chromium</translation>
 <translation id="2174917724755363426">Installation non terminée. Voulez-vous vraiment annuler ?</translation>
-<translation id="922967513335788675">Agent Chrome - Connexion au réseau - <ph name="PAGE_TITLE" /></translation>
+<translation id="2629211622516729574">Shuttle - Connexion au réseau - <ph name="PAGE_TITLE" /></translation>
 <translation id="2190166659037789668">Erreur lors de la recherche de mises à jour : <ph name="UPDATE_CHECK_ERROR" />.</translation>
 <translation id="2199210295479376551">Retirer le compte de Chromium</translation>
 <translation id="2201788217099588893">Utilisez l'appli Chromium pour profiter des meilleurs outils d'achat où que vous soyez</translation>
@@ -125,10 +125,10 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="2356070529366658676">Demander</translation>
 <translation id="2359808026110333948">Continuer</translation>
 <translation id="2361918034042471035">L'extension <ph name="EXTENSION_NAME" /> vous demande de vous connecter à Chromium</translation>
-<translation id="2028456545634496358">Désactiver l'exécution de Agent Chrome en arrière-plan pour les applis</translation>
+<translation id="2875952783855795871">Désactiver l'exécution de Shuttle en arrière-plan pour les applis</translation>
 <translation id="2374216753258219393">Pour utiliser cette extension en tant que <ph name="USER_EMAIL_ADDRESS" />, connectez-vous à Chromium.</translation>
 <translation id="2384373936468275798">Impossible de synchroniser vos données dans Chromium OS, car les informations de connexion de votre compte ne sont plus à jour.</translation>
-<translation id="3040857862310351495">{NUM_DEVICES,plural, =0{Une ou plusieurs extensions Agent Chrome ont accédé à 1 appareil HID}=1{Une ou plusieurs extensions Agent Chrome accèdent à 1 appareil HID}one{Une ou plusieurs extensions Agent Chrome accèdent à # appareil HID}other{Une ou plusieurs extensions Agent Chrome accèdent à # appareils HID}}</translation>
+<translation id="2792662518458751900">{NUM_DEVICES,plural, =0{Une ou plusieurs extensions Shuttle ont accédé à 1 appareil HID}=1{Une ou plusieurs extensions Shuttle accèdent à 1 appareil HID}one{Une ou plusieurs extensions Shuttle accèdent à # appareil HID}other{Une ou plusieurs extensions Shuttle accèdent à # appareils HID}}</translation>
 <translation id="2401032172288869980">Chromium a besoin de l'autorisation d'accéder au micro et à la caméra pour ce site</translation>
 <translation id="2403703063067034158">Erreur de démarrage : Une autre instance de configuration est en cours d'exécution. Veuillez réessayer plus tard.</translation>
 <translation id="2418322681019544463">Ouvrez les liens dans Chromium depuis n'importe quelle appli et gardez le navigateur à portée de main dans la barre des tâches</translation>
@@ -136,37 +136,37 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="2440750600860946460">Avec les <ph name="BEGIN_LINK" />outils de Chromium<ph name="END_LINK" />, vous pouvez naviguer de façon sécurisée et garder le contrôle</translation>
 <translation id="2449487342837813167"><ph name="EXISTING_USER" /> est déjà connecté. Pour séparer votre navigation, connectez-vous à Chromium dans votre propre profil en tant que <ph name="USER_EMAIL_ADDRESS" />. Vous pourrez aussi accéder à vos mots de passe et à d'autres données sur tous vos appareils.</translation>
 <translation id="2451727308784734061">Utilisez votre raccourci pour accéder rapidement au Gestionnaire de mots de passe. Vous pouvez déplacer ce raccourci vers le Lanceur d'applications ou l'écran d'accueil de votre ordinateur.</translation>
-<translation id="4405360797107732759">Agent Chrome se fermera bientôt</translation>
-<translation id="1660473983484527105">Dans Agent Chrome</translation>
+<translation id="2236435189491185832">Shuttle se fermera bientôt</translation>
+<translation id="8393832920806146440">Dans Shuttle</translation>
 <translation id="2485422356828889247">Désinstaller</translation>
 <translation id="2513154137948333830">Redémarrage requis : <ph name="INSTALL_SUCCESS" /></translation>
 <translation id="2542968102051442371">Sélectionnez du texte avec la recherche dans des images</translation>
 <translation id="2554739539410784893">Chromium tente de remplacer les mots de passe existants. Saisissez votre mot de passe Windows pour autoriser l'opération.</translation>
 <translation id="2560420686485554789">Pour télécharger des fichiers, Chromium a besoin d'accéder à l'espace de stockage</translation>
-<translation id="8620990455069644819">Agent Chrome Helper</translation>
+<translation id="2562045627058601347">Shuttle Helper</translation>
 <translation id="2575822587468774919">Sélectionnez un élément dans lequel effectuer une recherche avec la recherche dans des images</translation>
 <translation id="2576118232315942160">Pour accéder à vos mots de passe et plus encore sur tous vos appareils, connectez-vous à Chromium</translation>
 <translation id="2587622539943955767">Scannez le QR code avec votre téléphone pour télécharger Chromium et vous connecter à votre compte Google.</translation>
-<translation id="4496289616420025644">Continuer à utiliser Agent Chrome</translation>
+<translation id="4702236029576678227">Continuer à utiliser Shuttle</translation>
 <translation id="259935314519650377">Échec de la mise en cache du programme d'installation téléchargé. Erreur : <ph name="UNPACK_CACHING_ERROR_CODE" />.</translation>
 <translation id="2620436844016719705">Système</translation>
 <translation id="2629740064077610681">Votre organisation peut voir et gérer les données de navigation, telles que vos favoris, votre historique et vos mots de passe. Elle ne peut pas voir les données de navigation d'autres profils Chromium.</translation>
 <translation id="2635452620547538388">Confirmez votre identité pour utiliser et enregistrer des données Chromium dans votre compte <ph name="ACCOUNT_EMAIL" /></translation>
-<translation id="8944895445911901418">{COUNT,plural, =0{La Protection Avancée nécessite que vous relanciez Agent Chrome pour appliquer une mise à jour}=1{La Protection Avancée nécessite que vous relanciez Agent Chrome pour appliquer une mise à jour. La fenêtre de navigation privée ne se rouvrira pas.}one{La Protection Avancée nécessite que vous relanciez Agent Chrome pour appliquer une mise à jour. # fenêtre de navigation privée ne se rouvrira pas.}other{La Protection Avancée nécessite que vous relanciez Agent Chrome pour appliquer une mise à jour. Les # fenêtres de navigation privée ne se rouvriront pas.}}</translation>
+<translation id="8493546940144832853">{COUNT,plural, =0{La Protection Avancée nécessite que vous relanciez Shuttle pour appliquer une mise à jour}=1{La Protection Avancée nécessite que vous relanciez Shuttle pour appliquer une mise à jour. La fenêtre de navigation privée ne se rouvrira pas.}one{La Protection Avancée nécessite que vous relanciez Shuttle pour appliquer une mise à jour. # fenêtre de navigation privée ne se rouvrira pas.}other{La Protection Avancée nécessite que vous relanciez Shuttle pour appliquer une mise à jour. Les # fenêtres de navigation privée ne se rouvriront pas.}}</translation>
 <translation id="263863604136125912">Démarrer Chromium</translation>
 <translation id="2648074677641340862">Une erreur du système d'exploitation s'est produite pendant l'installation. Veuillez télécharger Chromium à nouveau.</translation>
 <translation id="2661879430930417727">Si vous partagez un appareil avec vos proches, ceux-ci peuvent configurer Chromium selon leurs préférences et naviguer sur le Web de façon indépendante.</translation>
 <translation id="2676569452213089702">Accédez facilement à Gemini dans Chromium partout sur votre appareil, même si Chromium est réduit.</translation>
-<translation id="3144164911846092828">Onglet Agent Chrome</translation>
+<translation id="1290871231853377661">Onglet Shuttle</translation>
 <translation id="2718390899429598676">Pour plus de sécurité, vos données seront chiffrées dans Chromium.</translation>
 <translation id="2721354645805494590">Pour supprimer votre compte Google de Chromium, déconnectez-vous</translation>
 <translation id="2722636413143664436">Pour accéder à vos mots de passe, vos favoris et plus sur tous vos appareils, connectez-vous à Chromium</translation>
 <translation id="2738871930057338499">Impossible de se connecter à Internet : erreur HTTP 403 (accès interdit). Veuillez vérifier la configuration de votre proxy.</translation>
 <translation id="2753623023919742414">Cliquer pour rechercher</translation>
-<translation id="2657110490709402112">Définir Agent Chrome comme visionneuse de PDF par défaut</translation>
-<translation id="4262158525170658092">Cette extension contient un logiciel malveillant et n'est pas sécurisée. Supprimez-la de Agent Chrome pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
+<translation id="8088988796099973210">Définir Shuttle comme visionneuse de PDF par défaut</translation>
+<translation id="2218752565776962982">Cette extension contient un logiciel malveillant et n'est pas sécurisée. Supprimez-la de Shuttle pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
 <translation id="2799223571221894425">Relancer</translation>
-<translation id="4930235474290498361">Votre Agent Chrome</translation>
+<translation id="7485171825548475983">Votre Shuttle</translation>
 <translation id="2816462166102338036">Rechercher dans cette vidéo avec la recherche dans des images</translation>
 <translation id="282591729717417030">Découvrez des produits avec votre appareil photo, suivez les baisses de prix et plus encore où que vous soyez grâce à Chromium sur iOS.</translation>
 <translation id="2841525013647267359">Traduire depuis</translation>
@@ -174,52 +174,52 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="2847479871509788944">Supprimer de Chromium</translation>
 <translation id="2850691299438350830">Ce mode vous protège dans Chromium et peut servir à renforcer votre sécurité dans d'autres applis Google lorsque vous êtes connecté.</translation>
 <translation id="2885378588091291677">Gestionnaire de tâches</translation>
-<translation id="8454027198329266279">À propos de &amp;Agent Chrome</translation>
+<translation id="4736743449957355772">À propos de &amp;Shuttle</translation>
 <translation id="2915996080311180594">Redémarrer plus tard</translation>
 <translation id="2933336679234709858">Vos données sont chiffrées avec votre phrase secrète. Saisissez-la pour utiliser et enregistrer les données Chromium dans votre compte Google.</translation>
 <translation id="2945997411976714835">Erreur d'installation : échec de démarrage du processus d'installation.</translation>
 <translation id="2948852018303413228">Connectez-vous plus rapidement aux sites en utilisant les mots de passe enregistrés pour Chromium sur iOS</translation>
-<translation id="80325676287146281">Votre organisation gère Agent Chrome</translation>
-<translation id="789940813130504773">Agent Chrome est à jour</translation>
+<translation id="5394294335480248696">Votre organisation gère Shuttle</translation>
+<translation id="6474149732639814113">Shuttle est à jour</translation>
 <translation id="2977506796191543575">Si un site tente de voler votre mot de passe ou si vous téléchargez un fichier dangereux, Chromium peut également envoyer les URL concernées, y compris des extraits du contenu des pages, à la fonctionnalité de navigation sécurisée</translation>
 <translation id="2981563588585023386">Pour te protéger en ligne avec les choix de ton parent, connecte-toi à Chromium</translation>
 <translation id="3003694935412297923">Toutes les tâches</translation>
 <translation id="3012615494352020668">{count,plural, =1{Chromium doit valider votre identité avant que certaines données puissent être enregistrées dans votre compte Google et utilisées sur tous vos appareils. Si vous vous déconnectez maintenant, ces données (1 élément) seront supprimées.}one{Chromium doit valider votre identité avant que certaines données puissent être enregistrées dans votre compte Google et utilisées sur tous vos appareils. Si vous vous déconnectez maintenant, ces données ({count} élément) seront supprimées.}other{Chromium doit valider votre identité avant que certaines données puissent être enregistrées dans votre compte Google et utilisées sur tous vos appareils. Si vous vous déconnectez maintenant, ces données ({count} éléments) seront supprimées.}}</translation>
-<translation id="8084335581332031126">Ouvrir <ph name="URL" /> dans un nouvel onglet dans Agent Chrome.</translation>
+<translation id="6798600078593703276">Ouvrir <ph name="URL" /> dans un nouvel onglet dans Shuttle.</translation>
 <translation id="302551344979399011">Les innovations d'IA comme les compétences sont enregistrées dans votre compte Google et gérées séparément de la synchronisation Chromium</translation>
-<translation id="7024173799494459794">Ajout à Agent Chrome en cours…</translation>
+<translation id="2572386815899642990">Ajout à Shuttle en cours…</translation>
 <translation id="3038232873781883849">En attente d'installation...</translation>
 <translation id="3045032126857188731">Langue de traduction : <ph name="LANGUAGE" /></translation>
 <translation id="3047590466164881923">Fermer la boîte de dialogue des commentaires</translation>
 <translation id="3068187312562070417">Autres profils Chromium</translation>
 <translation id="3068290154869370196">Les extensions sont des modules complémentaires qui vous permettent de personnaliser Chromium, que ce soit pour vous organiser ou pour simplifier vos tâches quotidiennes.</translation>
-<translation id="7027973430362347863">Aidez-nous à améliorer Agent Chrome en nous envoyant des rapports d'erreur et des <ph name="UMA_LINK" />.</translation>
+<translation id="1841107660132296794">Aidez-nous à améliorer Shuttle en nous envoyant des rapports d'erreur et des <ph name="UMA_LINK" />.</translation>
 <translation id="3071024987058544609">Utilisez l'appli Chromium pour profiter de la sécurité de Google où que vous soyez</translation>
-<translation id="4925327325707966890">{NUM_DEVICES,plural, =0{Une ou plusieurs extensions Agent Chrome ont accédé à 1 appareil USB}=1{Une ou plusieurs extensions Agent Chrome accèdent à 1 appareil USB}one{Une ou plusieurs extensions Agent Chrome accèdent à # appareil USB}other{Une ou plusieurs extensions Agent Chrome accèdent à # appareils USB}}</translation>
-<translation id="6827369771274328769">Historique Agent Chrome</translation>
+<translation id="3739686665197813096">{NUM_DEVICES,plural, =0{Une ou plusieurs extensions Shuttle ont accédé à 1 appareil USB}=1{Une ou plusieurs extensions Shuttle accèdent à 1 appareil USB}one{Une ou plusieurs extensions Shuttle accèdent à # appareil USB}other{Une ou plusieurs extensions Shuttle accèdent à # appareils USB}}</translation>
+<translation id="2502156653706673977">Historique Shuttle</translation>
 <translation id="3103660991484857065">Échec de la décompression de l'archive par le programme d'installation. Veuillez télécharger Chromium à nouveau.</translation>
 <translation id="310459126943037700">Échec de l'arrêt de la ou des tâches.</translation>
 <translation id="3104828284009500087">Recherchez ce que vous voulez sur la page</translation>
 <translation id="3126784891977756556">Synchronisez parfaitement vos mots de passe, vos favoris et votre historique sur tous vos appareils. Accédez facilement aux fonctionnalités que vous connaissez et appréciez en définissant Chromium comme navigateur par défaut.</translation>
-<translation id="2894555444497054373">Votre micro est en cours d'utilisation dans Agent Chrome.</translation>
+<translation id="1074920430236894401">Votre micro est en cours d'utilisation dans Shuttle.</translation>
 <translation id="3130333203120345554">Nouvelle recherche</translation>
 <translation id="3137969841538672700">Faire glisser pour rechercher</translation>
 <translation id="3144188012276422546">Cet onglet utilise des ressources supplémentaires. Pour améliorer les performances, autorisez Chromium à le désactiver.</translation>
-<translation id="3092580151719004572">Pour partager votre écran, autorisez l'enregistrement d'écran pour Agent Chrome dans les réglages système</translation>
-<translation id="2314296667497715523">Relancer Agent Chrome</translation>
+<translation id="6825554846760229393">Pour partager votre écran, autorisez l'enregistrement d'écran pour Shuttle dans les réglages système</translation>
+<translation id="3761350857202901706">Relancer Shuttle</translation>
 <translation id="3161522574479303604">Toutes les langues</translation>
 <translation id="3179665906251668410">Ouvrir le lien dans la fenêtre de navi&amp;gation privée Chromium</translation>
 <translation id="3185330573522821672">Personnalisez votre nouveau profil Chromium</translation>
 <translation id="3189205223539394158">Vous pouvez continuer à discuter en Mode IA sans changer d'onglet. Pour commencer, connectez-vous à Chromium. Vous pourrez également accéder à vos mots de passe et à d'autres données sur tous vos appareils.</translation>
 <translation id="3224847870593914902">Pour supprimer votre compte Google de Chromium, déconnectez-vous de Chromium sur la page de paramètres</translation>
 <translation id="3234316605225071811">Plus tard, Chromium pourra vous demander si vous souhaitez utiliser les informations enregistrées pour remplir automatiquement des formulaires</translation>
-<translation id="5982289753835865194">Agent Chrome ne peut ni lire, ni écrire dans son répertoire de données :
+<translation id="9058828139997344018">Shuttle ne peut ni lire, ni écrire dans son répertoire de données :
 
 <ph name="USER_DATA_DIRECTORY" /></translation>
 <translation id="3263249950597659484">Emportez vos outils d'IA de Google préférés partout avec Chromium sur iOS.</translation>
 <translation id="3286538390144397061">Redémarrer maintenant</translation>
-<translation id="3920105041734426863">Les clés API Google sont manquantes. Certaines fonctionnalités de Agent Chrome vont être désactivées.</translation>
-<translation id="5621884903587730053">Poursuivre l'exécution des applications en arrière-plan après la fermeture de Agent Chrome</translation>
+<translation id="8765302055862543686">Les clés API Google sont manquantes. Certaines fonctionnalités de Shuttle vont être désactivées.</translation>
+<translation id="4826503398521877963">Poursuivre l'exécution des applications en arrière-plan après la fermeture de Shuttle</translation>
 <translation id="3313189106987092621">Chromium vous avertit avant de charger un site à l'aide d'une connexion non sécurisée</translation>
 <translation id="3316771292331273802">Lorsque vous fermerez toutes les fenêtres Chromium, vous serez déconnecté de la plupart des sites, à l'exception de votre compte Google si vous êtes connecté à Chromium. Pour autoriser les sites à se souvenir de vous, <ph name="SETTINGS_LINK" />.</translation>
 <translation id="3352986031709923790">angle supérieur droit de la zone de recherche : <ph name="RIGHT" /> % droite, <ph name="TOP" /> % haut</translation>
@@ -234,126 +234,126 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="3474745554856756813">Cette action aura pour effet de supprimer <ph name="ITEMS_COUNT" /> éléments de cet appareil. Pour récupérer vos données ultérieurement, connectez-vous à Chromium en tant que <ph name="USER_EMAIL" />.</translation>
 <translation id="3497319089134299931"><ph name="SHORTCUT" /> permet de passer d'un profil Chromium à un autre</translation>
 <translation id="3509308970982693815">Veuillez fermer toutes les fenêtres de Chromium, puis réessayer.</translation>
-<translation id="4449744684308538611">Pour partager votre fenêtre, autorisez l'enregistrement d'écran pour Agent Chrome dans les réglages système</translation>
+<translation id="5876629139177327931">Pour partager votre fenêtre, autorisez l'enregistrement d'écran pour Shuttle dans les réglages système</translation>
 <translation id="3530103706039034513"><ph name="EXISTING_USER" /> est déjà connecté.  Pour séparer votre navigation, connectez-vous à Chromium dans votre propre profil en tant que <ph name="USER_EMAIL_ADDRESS" />.</translation>
 <translation id="3531741627422851418">QR code pour télécharger le navigateur Chromium sur des appareils mobiles</translation>
 <translation id="354621070532799440">Rappel : Les meilleures fonctionnalités de sécurité de Google dans votre poche</translation>
-<translation id="4902762267468919597">Pour partager votre écran, autorisez l'enregistrement d'écran pour Agent Chrome dans les réglages système.</translation>
-<translation id="4199561934263811659">La protection renforcée désactive l'optimisation JavaScript pour les sites que Agent Chrome ne reconnaît pas</translation>
+<translation id="2337565425943560376">Pour partager votre écran, autorisez l'enregistrement d'écran pour Shuttle dans les réglages système.</translation>
+<translation id="4821889377524170187">La protection renforcée désactive l'optimisation JavaScript pour les sites que Shuttle ne reconnaît pas</translation>
 <translation id="3597003331831379823">Échec de l'exécution de la configuration avec des droits élevés. <ph name="METAINSTALLER_ERROR" /></translation>
 <translation id="3600428265489994557">Connectez-vous à Chromium</translation>
 <translation id="3639635944603682591">Les données de navigation de cet utilisateur vont être supprimées de cet appareil. Pour les récupérer, connectez-vous à Chromium en tant que <ph name="USER_EMAIL" />.</translation>
-<translation id="7335807248512894660">{COUNT,plural, =0{Une nouvelle mise à jour de Agent Chrome est disponible. Elle sera installée dès que vous relancerez le navigateur.}=1{Une nouvelle mise à jour de Agent Chrome est disponible. Elle sera installée dès que vous relancerez le navigateur. Sachez que la fenêtre de navigation privée ne sera pas rouverte.}one{Une nouvelle mise à jour de Agent Chrome est disponible. Elle sera installée dès que vous relancerez le navigateur. Sachez que la fenêtre de navigation privée (#) ne sera pas rouverte.}other{Une nouvelle mise à jour de Agent Chrome est disponible. Elle sera installée dès que vous relancerez le navigateur. Sachez que les # fenêtres de navigation privée ne seront pas rouvertes.}}</translation>
+<translation id="1300475218926632111">{COUNT,plural, =0{Une nouvelle mise à jour de Shuttle est disponible. Elle sera installée dès que vous relancerez le navigateur.}=1{Une nouvelle mise à jour de Shuttle est disponible. Elle sera installée dès que vous relancerez le navigateur. Sachez que la fenêtre de navigation privée ne sera pas rouverte.}one{Une nouvelle mise à jour de Shuttle est disponible. Elle sera installée dès que vous relancerez le navigateur. Sachez que la fenêtre de navigation privée (#) ne sera pas rouverte.}other{Une nouvelle mise à jour de Shuttle est disponible. Elle sera installée dès que vous relancerez le navigateur. Sachez que les # fenêtres de navigation privée ne seront pas rouvertes.}}</translation>
 <translation id="3667616615096815454">Installation impossible. Le serveur ne reconnaît pas l'appli.</translation>
 <translation id="3675854891107786059">Utiliser votre <ph name="BEGIN_LINK" />propre phrase secrète<ph name="END_LINK" /> pour chiffrer toutes les données Chromium de votre compte Google. Les adresses et les modes de paiement Google Pay ne seront pas chiffrés. L'historique de navigation de Chromium ne sera pas synchronisé.</translation>
-<translation id="3697825383460320042">{COUNT,plural, =0{Votre administrateur vous demande de relancer Agent Chrome pour installer cette mise à jour}=1{Votre administrateur vous demande de relancer Agent Chrome pour installer cette mise à jour. Sachez que la fenêtre de navigation privée ne sera pas rouverte.}one{Votre administrateur vous demande de relancer Agent Chrome pour installer cette mise à jour. Sachez que la fenêtre de navigation privée (#) ne sera pas rouverte.}other{Votre administrateur vous demande de relancer Agent Chrome pour installer cette mise à jour. Sachez que les # fenêtres de navigation privée ne seront pas rouvertes.}}</translation>
-<translation id="7584080815951640016">Ouvrir le lien dans un nouvel ongle&amp;t Agent Chrome</translation>
+<translation id="5274497473086430153">{COUNT,plural, =0{Votre administrateur vous demande de relancer Shuttle pour installer cette mise à jour}=1{Votre administrateur vous demande de relancer Shuttle pour installer cette mise à jour. Sachez que la fenêtre de navigation privée ne sera pas rouverte.}one{Votre administrateur vous demande de relancer Shuttle pour installer cette mise à jour. Sachez que la fenêtre de navigation privée (#) ne sera pas rouverte.}other{Votre administrateur vous demande de relancer Shuttle pour installer cette mise à jour. Sachez que les # fenêtres de navigation privée ne seront pas rouvertes.}}</translation>
+<translation id="6123757042710639920">Ouvrir le lien dans un nouvel ongle&amp;t Shuttle</translation>
 <translation id="3728124580182886854">Associez Chromium et d'autres services Google à des fins de personnalisation et autres</translation>
 <translation id="3729187154190517324">Approfondissez votre recherche en ajoutant plusieurs onglets, fichiers et outils avec le bouton "Ajouter un onglet et plus".</translation>
 <translation id="3788675262216168505">Gérer les profils Chromium</translation>
-<translation id="9153620230534680918">Découvrez pourquoi Agent Chrome bloque certains téléchargements</translation>
+<translation id="4583231988142868515">Découvrez pourquoi Shuttle bloque certains téléchargements</translation>
 <translation id="379589255253486813">Chromium vous avertira si quelque chose doit être examiné</translation>
-<translation id="4835254782629421085">Agent Chrome précharge des pages susceptibles de vous intéresser afin qu'elles se chargent plus rapidement lorsque vous les consultez</translation>
+<translation id="9161544906744429402">Shuttle précharge des pages susceptibles de vous intéresser afin qu'elles se chargent plus rapidement lorsque vous les consultez</translation>
 <translation id="3810973564298564668">Gérer</translation>
 <translation id="3823384748599722168">Pour utiliser vos mots de passe enregistrés, scannez le QR code, téléchargez Chromium pour iOS et connectez-vous à votre compte Google</translation>
 <translation id="3846683726093018685">**Résume :** En une seule phrase de moins de 30 mots, décris le sujet principal et l'objectif du contenu de la capture d'écran.
 
           **Suggère des questions** : génère une liste à puces de trois à cinq questions qui poussent à la réflexion et qu'un utilisateur pourrait poser pour mieux comprendre la capture d'écran. Ces questions doivent inclure au moins une question portant spécifiquement sur un objet visuel, sa conception ou son emplacement.</translation>
-<translation id="5151092236561494204"><ph name="PAGE_TITLE" /> – Agent Chrome</translation>
+<translation id="4250996466392346267"><ph name="PAGE_TITLE" /> – Shuttle</translation>
 <translation id="387514319934708384">Chromium a besoin de l'autorisation d'accéder au réseau local pour ce site</translation>
 <translation id="3885770153807205175">Outil de sélection de langue</translation>
-<translation id="8310546736680726676">Personnalisez et contrôlez Agent Chrome. Une action de votre part est requise. Cliquez pour en savoir plus.</translation>
+<translation id="3870879982795295801">Personnalisez et contrôlez Shuttle. Une action de votre part est requise. Cliquez pour en savoir plus.</translation>
 <translation id="3889543394854987837">Cliquez sur votre nom pour ouvrir Chromium et commencer à naviguer.</translation>
 <translation id="3892148308691398805">Copier le texte</translation>
 <translation id="390528597099634151">L'utilisateur <ph name="EXISTING_USER" /> est déjà connecté à ce profil Chromium. Chromium peut vous créer un profil de navigation individuel.</translation>
-<translation id="334040592769172771">Cette extension ne respecte pas les règles du Chrome Web Store et peut présenter des risques. Supprimez-la de Agent Chrome pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
+<translation id="2803413259281481072">Cette extension ne respecte pas les règles du Chrome Web Store et peut présenter des risques. Supprimez-la de Shuttle pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
 <translation id="3941890832296813527">Erreur d'installation : le nom de fichier du programme d'installation est incorrect ou non compatible.</translation>
 <translation id="3945058413678539331">Chromium tente de copier les mots de passe. Saisissez votre mot de passe Windows pour autoriser cette opération.</translation>
 <translation id="3954172517175569325">Les mots de passe, modes de paiement et adresses que vous avez enregistrés dans votre compte Google seront supprimés de cet appareil. Pour les utiliser de nouveau dans Chromium, reconnectez-vous.</translation>
 <translation id="395904275706073188">Impossible de lire les pages protégées. Essayez une autre page.</translation>
 <translation id="3962647064319009959">Découvrir comment Chromium vous protège</translation>
 <translation id="3967822245660637423">Téléchargement terminé</translation>
-<translation id="6274881217831291926">Lorsque vous tapez du texte dans la barre d'adresse ou le champ de recherche, Agent Chrome l'envoie aux outils de recherche, d'IA et d'agent de votre organisation pour obtenir des suggestions.</translation>
+<translation id="8478344872731892094">Lorsque vous tapez du texte dans la barre d'adresse ou le champ de recherche, Shuttle l'envoie aux outils de recherche, d'IA et d'agent de votre organisation pour obtenir des suggestions.</translation>
 <translation id="3975724895399328945">À propos de &amp;Google Chrome for Testing</translation>
 <translation id="3997429360543082038">À propos de Chromium OS</translation>
-<translation id="8089050973791989914">Lorsque vous consultez un site, Agent Chrome envoie une partie obscurcie de l'URL à la <ph name="BEGIN_LINK" />navigation sécurisée Google<ph name="END_LINK" /> par le biais d'un serveur de confidentialité qui masque votre adresse IP. Si un site a un comportement suspect, les URL complètes et des extraits du contenu des pages sont également envoyés.</translation>
+<translation id="1813754478883624120">Lorsque vous consultez un site, Shuttle envoie une partie obscurcie de l'URL à la <ph name="BEGIN_LINK" />navigation sécurisée Google<ph name="END_LINK" /> par le biais d'un serveur de confidentialité qui masque votre adresse IP. Si un site a un comportement suspect, les URL complètes et des extraits du contenu des pages sont également envoyés.</translation>
 <translation id="4016217212818346953">Protégez-vous avec Gestionnaire de mots de passe</translation>
 <translation id="4019629340646866719">Chromium OS dépend d'autres <ph name="BEGIN_LINK_CROS_OSS" />logiciels Open Source<ph name="END_LINK_CROS_OSS" />, et l'<ph name="BEGIN_LINK_LINUX_OSS" />environnement de développement Linux<ph name="END_LINK_LINUX_OSS" /> en est un.</translation>
 <translation id="4022972681110646219">Traduire l'écran</translation>
 <translation id="4023601594785368013">Langue d'origine : <ph name="LANGUAGE" /></translation>
 <translation id="4023845192681161785">Ouvrez les liens dans Chromium depuis n'importe quelle appli. Chromium est épinglé à la barre des tâches pour un accès plus simple.</translation>
-<translation id="2466379549068383575">Aidez-nous à améliorer Agent Chrome en nous signalant vos <ph name="BEGIN_LINK" />paramètres actuels<ph name="END_LINK" /></translation>
+<translation id="3334942702828280015">Aidez-nous à améliorer Shuttle en nous signalant vos <ph name="BEGIN_LINK" />paramètres actuels<ph name="END_LINK" /></translation>
 <translation id="4050175100176540509">La dernière version propose d'importantes améliorations de la sécurité ainsi que de nouvelles fonctionnalités.</translation>
 <translation id="4055805654398742145">Gestionnaire de mots de p&amp;asse</translation>
-<translation id="409373329602981607">{COUNT,plural, =1{Votre organisation ferme automatiquement Agent Chrome lorsqu'il n'est pas utilisé pendant 1 minute. Les données de navigation sont supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.}one{Votre organisation ferme automatiquement Agent Chrome lorsqu'il n'est pas utilisé pendant # minute. Les données de navigation sont supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.}other{Votre organisation ferme automatiquement Agent Chrome lorsqu'il n'est pas utilisé pendant # minutes. Les données de navigation sont supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.}}</translation>
+<translation id="4210170830543121132">{COUNT,plural, =1{Votre organisation ferme automatiquement Shuttle lorsqu'il n'est pas utilisé pendant 1 minute. Les données de navigation sont supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.}one{Votre organisation ferme automatiquement Shuttle lorsqu'il n'est pas utilisé pendant # minute. Les données de navigation sont supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.}other{Votre organisation ferme automatiquement Shuttle lorsqu'il n'est pas utilisé pendant # minutes. Les données de navigation sont supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.}}</translation>
 <translation id="4118474109249235144">Navigation privée dans Chromium</translation>
 <translation id="4122186850977583290">Accéder à la page "À propos de Chromium"</translation>
 <translation id="4135244987012252068">Personnalisez Chromium pour donner un nouveau look à votre navigateur</translation>
 <translation id="4147856324248078748">P&amp;ersonnaliser Chromium</translation>
 <translation id="4148957013307229264">Installation...</translation>
-<translation id="2058774528396152893"><ph name="PAGE_TITLE" /> - Connexion au réseau - Agent Chrome</translation>
-<translation id="7685529984676330289">Découvrez des applications, des jeux, des extensions et des thèmes exceptionnels pour Agent Chrome.</translation>
+<translation id="6643591336183767153"><ph name="PAGE_TITLE" /> - Connexion au réseau - Shuttle</translation>
+<translation id="8999328492520314624">Découvrez des applications, des jeux, des extensions et des thèmes exceptionnels pour Shuttle.</translation>
 <translation id="4217080900579554343">Pour accéder à cette extension et plus encore sur tous vos ordinateurs, connectez-vous à Chromium</translation>
 <translation id="4217972271355023382">Pour te protéger en ligne avec les choix de ton parent, passe au profil Chromium sur lequel tu es déjà connecté en tant que <ph name="USER_EMAIL_ADDRESS" /></translation>
 <translation id="4222932583846282852">Annulation…</translation>
 <translation id="4224210481850767180">L'installation a été annulée.</translation>
 <translation id="4230135487732243613">Associer vos données Chromium à ce compte ?</translation>
-<translation id="274377438883177878">Vous avertit en cas de sites dangereux, y compris ceux dont Google n'avait pas connaissance, en analysant plus de données provenant des sites que la protection standard. Vous pouvez ignorer les avertissements de Agent Chrome.</translation>
+<translation id="2078444352649860973">Vous avertit en cas de sites dangereux, y compris ceux dont Google n'avait pas connaissance, en analysant plus de données provenant des sites que la protection standard. Vous pouvez ignorer les avertissements de Shuttle.</translation>
 <translation id="4269093074552541569">Se déconnecter de Chromium</translation>
-<translation id="8361584154950824008">Obtenir de l'aide avec Agent Chrome</translation>
+<translation id="5558993553168424235">Obtenir de l'aide avec Shuttle</translation>
 <translation id="4281844954008187215">Conditions d'utilisation</translation>
 <translation id="4285930937574705105">Échec de l'installation suite à une erreur non spécifiée. Si Chromium est en cours d'exécution, veuillez le fermer, puis réessayer.</translation>
 <translation id="4298125729853015961">Exporter les mots de passe depuis Chromium</translation>
 <translation id="4304713468139749426">Gestionnaire de mots de passe</translation>
 <translation id="4334241893986177674">Rechercher dans cette capture d'écran</translation>
 <translation id="4368547723231502008">Effectuez des recherches et posez des questions de n'importe où, même si Chromium est réduit</translation>
-<translation id="1172096072757635810">Lancer Agent Chrome au démarrage de Windows</translation>
+<translation id="5810569516587906396">Lancer Shuttle au démarrage de Windows</translation>
 <translation id="4400772909124543403">Aucune mise à jour disponible</translation>
-<translation id="8069611125329654712">Quitter Agent Chrome quand même ?</translation>
+<translation id="3931397122598189404">Quitter Shuttle quand même ?</translation>
 <translation id="4413205837991854510">Toujours afficher le raccourci de recherche dans des images</translation>
-<translation id="3727041326435831325">Laisser Agent Chrome s'exécuter en arrière-plan</translation>
-<translation id="1713490836766202786">{NUM_EXTENSIONS,plural, =1{Agent Chrome vous recommande de la supprimer. <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" />}one{Agent Chrome vous recommande de la supprimer. <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" />}other{Agent Chrome vous recommande de les supprimer <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" />}}</translation>
-<translation id="7567010943765939594">Personnaliser et contrôler Agent Chrome</translation>
+<translation id="8644661686228434842">Laisser Shuttle s'exécuter en arrière-plan</translation>
+<translation id="603827111501511568">{NUM_EXTENSIONS,plural, =1{Shuttle vous recommande de la supprimer. <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" />}one{Shuttle vous recommande de la supprimer. <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" />}other{Shuttle vous recommande de les supprimer <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" />}}</translation>
+<translation id="8695231474189911275">Personnaliser et contrôler Shuttle</translation>
 <translation id="4427306783828095590">La protection renforcée assure une meilleure protection contre l'hameçonnage et les logiciels malveillants</translation>
 <translation id="4434353761996769206">Erreur du programme d'installation : <ph name="INSTALLER_ERROR" /></translation>
-<translation id="7498286168885369820"><ph name="MANAGER" /> gère Agent Chrome</translation>
+<translation id="3897345295068202634"><ph name="MANAGER" /> gère Shuttle</translation>
 <translation id="444069871276811466">Ajouter un profil Chromium</translation>
 <translation id="4447409407328223819">À propos de Chrome for Testing</translation>
 <translation id="4470974262661801543">Pour utiliser et enregistrer des données Chromium dans votre compte Google, saisissez votre phrase secrète</translation>
 <translation id="4493028449971051158">Erreur au démarrage : Veuillez exécuter le programme d'installation en tant qu'administrateur.</translation>
 <translation id="4501471624619070934">L'installation a échoué, car l'accès est limité dans ce pays.</translation>
-<translation id="4615766574627629942">Cette extension n'a pas publié de pratiques en matière de confidentialité, comme la façon dont elle collecte et utilise les données. Agent Chrome vous recommande de la supprimer.</translation>
+<translation id="7538943987967358068">Cette extension n'a pas publié de pratiques en matière de confidentialité, comme la façon dont elle collecte et utilise les données. Shuttle vous recommande de la supprimer.</translation>
 <translation id="452711251841752011">Bienvenue dans Chromium, une nouvelle fenêtre du navigateur a été ouverte</translation>
 <translation id="4531137820806573936">Chromium a besoin de votre autorisation pour cartographier votre environnement et suivre vos mains</translation>
 <translation id="4536805923587466102">Vous êtes déjà connecté en tant que <ph name="USER_EMAIL_ADDRESS" /> dans un autre profil Chromium</translation>
-<translation id="5945053225725114995">Agent Chrome précharge les pages, ce qui accélère la navigation et la recherche. <ph name="BEGIN_LINK" />En savoir plus sur le préchargement des pages<ph name="END_LINK" /></translation>
+<translation id="7291454099139632344">Shuttle précharge les pages, ce qui accélère la navigation et la recherche. <ph name="BEGIN_LINK" />En savoir plus sur le préchargement des pages<ph name="END_LINK" /></translation>
 <translation id="4549180975214802957">Améliorez la sécurité en ligne pour tous en signalant un site que vous jugez dangereux.</translation>
-<translation id="2899198307620821227">Agent Chrome a bloqué ce téléchargement, car vous avez désactivé la navigation sécurisée et le fichier ne peut pas être validé</translation>
+<translation id="4229052424516163100">Shuttle a bloqué ce téléchargement, car vous avez désactivé la navigation sécurisée et le fichier ne peut pas être validé</translation>
 <translation id="4583692638088316420">Essayez Google Lens avec Chromium sur votre téléphone</translation>
 <translation id="4594305310729380060">Dans le Gestionnaire de mots de passe sur cet appareil</translation>
-<translation id="6944119370969619446">Applications Agent Chrome</translation>
+<translation id="4559123577107659130">Applications Shuttle</translation>
 <translation id="4598116752460667024">Rechercher n'importe quel processus dans la liste.</translation>
 <translation id="4613863813562375431">Version de Chromium OS</translation>
-<translation id="6401103202303237090">Mise à jour presque terminée. Relancez Agent Chrome pour la finaliser.</translation>
-<translation id="4807663225386362301">Accélère les sites avec le moteur V8 de Agent Chrome, mais rend Agent Chrome légèrement moins résistant aux attaques</translation>
+<translation id="8540523969518172575">Mise à jour presque terminée. Relancez Shuttle pour la finaliser.</translation>
+<translation id="2509032609305193511">Accélère les sites avec le moteur V8 de Shuttle, mais rend Shuttle légèrement moins résistant aux attaques</translation>
 <translation id="4626321472657185181">Ouvrir Rechercher avec Chromium</translation>
-<translation id="521912697020157864">Avertissement : Agent Chrome ne peut pas empêcher les extensions d'enregistrer l'historique de votre navigation. Pour désactiver cette extension en mode navigation privée, désélectionnez cette option.</translation>
+<translation id="7601899887920501075">Avertissement : Shuttle ne peut pas empêcher les extensions d'enregistrer l'historique de votre navigation. Pour désactiver cette extension en mode navigation privée, désélectionnez cette option.</translation>
 <translation id="4673151026126227699">Si vous partagez aussi les rapports d'utilisation Chromium, ceux-ci incluent les URL que vous consultez</translation>
 <translation id="4673710618874938871">Connexion en tant que <ph name="USER_NAME" />, abonnement. Ouvrir le menu du compte</translation>
-<translation id="5833534934470627293">Le profil semble être utilisé dans le cadre d'un autre processus Agent Chrome (<ph name="PROCESS_ID" />) sur un autre ordinateur (<ph name="HOST_NAME" />). Ce profil a été verrouillé de sorte qu'il ne soit pas endommagé. Si vous êtes sûr que le profil n'est utilisé dans le cadre d'aucun autre processus, vous pouvez le déverrouiller et relancer Agent Chrome.</translation>
+<translation id="1081748947768053336">Le profil semble être utilisé dans le cadre d'un autre processus Shuttle (<ph name="PROCESS_ID" />) sur un autre ordinateur (<ph name="HOST_NAME" />). Ce profil a été verrouillé de sorte qu'il ne soit pas endommagé. Si vous êtes sûr que le profil n'est utilisé dans le cadre d'aucun autre processus, vous pouvez le déverrouiller et relancer Shuttle.</translation>
 <translation id="4680828127924988555">Annuler l'installation</translation>
 <translation id="469259825538636168">Certaines de vos données Chromium n'ont pas encore été enregistrées dans votre compte Google. Patientez quelques minutes avant de vous déconnecter. Si vous vous déconnectez maintenant, ces données seront supprimées.</translation>
 <translation id="4708193446201257833">Lorsque vous êtes connecté, vous pouvez utiliser vos mots de passe et d'autres éléments de votre compte Google dans Chromium. <ph name="SHORTCUT" /> peut modifier les paramètres de vos services Google.</translation>
 <translation id="4708774505295300557">Un utilisateur s'est récemment connecté à Chromium sur cet ordinateur en tant que <ph name="ACCOUNT_EMAIL_LAST" />. Veuillez créer un autre utilisateur Chromium pour séparer vos informations.</translation>
 <translation id="4724676981607797757">Échec de l'installation en raison d'une erreur de protocole non compatible.</translation>
-<translation id="2783410850122241193">Quitter Agent Chrome quand même ?</translation>
+<translation id="333286104758608669">Quitter Shuttle quand même ?</translation>
 <translation id="4748217263233248895">Une mise à jour spéciale de sécurité pour Chromium vient d'être installée. Veuillez redémarrer le navigateur. Vos onglets seront restaurés.</translation>
 <translation id="4771701986670315895">Vous n'avez pas consulté le site récemment. Chromium a supprimé "<ph name="PERMISSION_2" />", "<ph name="PERMISSION_1" />" et <ph name="COUNT" /> autre(s).</translation>
 <translation id="4786083865378785874">Si Gemini dans Chromium est ouvert, le panneau latéral reste ouvert lorsque vous créez des onglets</translation>
 <translation id="479167709087336770">Le correcteur orthographique utilisé est le même que celui employé dans la recherche Google. Le texte que vous saisissez dans le navigateur est envoyé à Google. Vous pouvez toujours modifier ce comportement dans les paramètres.</translation>
 <translation id="4814736265800133385">Utiliser Chromium sans compte</translation>
 <translation id="4888717733111232871">Règle de trafic entrant pour Chromium autorisant le trafic mDNS</translation>
-<translation id="5600814355607573136">Relancer et mettre à jour &amp;Agent Chrome</translation>
+<translation id="3854801763817831716">Relancer et mettre à jour &amp;Shuttle</translation>
 <translation id="4918086044614829423">Accepter</translation>
 <translation id="4918844574251943176">Image copiée</translation>
 <translation id="4943838377383847465">Chromium est exécuté en mode arrière-plan</translation>
@@ -374,7 +374,7 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="5234764350956374838">Ignorer</translation>
 <translation id="5249261924633168472">Ouvrir le lien dans la fenêtre de navi&amp;gation privée Chromium</translation>
 <translation id="5276305953263010518">Téléchargez l'appli Chromium pour enregistrer des mots de passe où que vous soyez</translation>
-<translation id="1601187459465935178">Pour appliquer vos modifications, relancez Agent Chrome</translation>
+<translation id="6904011543478254794">Pour appliquer vos modifications, relancez Shuttle</translation>
 <translation id="5286907366254680517">Détecté</translation>
 <translation id="5289287148052354622">Télécharger l'appli Chromium</translation>
 <translation id="5294316920224716406">Lorsque vous naviguez en mode navigation privée, Chromium vous avertit avant de charger un site à l'aide d'une connexion non sécurisée</translation>
@@ -390,23 +390,23 @@ Certaines fonctionnalités ne seront peut-être pas disponibles, et les modifica
 <translation id="5368118228313795342">Code supplémentaire : <ph name="EXTRA_CODE" />.</translation>
 <translation id="5377622451696208284">Pour bénéficier de la personnalisation, ajoutez Chromium à l'activité sur le Web et les applications</translation>
 <translation id="5382964351116519680">Ouvrir Rechercher avec Chromium</translation>
-<translation id="2524054769026663683">Découvrez pourquoi Agent Chrome bloque certains fichiers</translation>
-<translation id="8615009965479156445">Mise à jour de Agent Chrome (<ph name="PROGRESS_PERCENT" />)…</translation>
+<translation id="4877717772512674872">Découvrez pourquoi Shuttle bloque certains fichiers</translation>
+<translation id="8341327126333983765">Mise à jour de Shuttle (<ph name="PROGRESS_PERCENT" />)…</translation>
 <translation id="538767207339317086">Autoriser la connexion à Chromium</translation>
-<translation id="6256236118124872626">Supprimer de Agent Chrome</translation>
-<translation id="5774731921051444461">Réduit les performances, mais rend Agent Chrome plus résistant aux attaques</translation>
+<translation id="2064155379595075287">Supprimer de Shuttle</translation>
+<translation id="1764424071909520660">Réduit les performances, mais rend Shuttle plus résistant aux attaques</translation>
 <translation id="5427571867875391349">Définir Chromium comme navigateur par défaut</translation>
-<translation id="8709870882148322247"><ph name="PAGE_TITLE" /> – Agent Chrome Bêta</translation>
+<translation id="3552564955884420948"><ph name="PAGE_TITLE" /> – Shuttle Bêta</translation>
 <translation id="5460618461609401056">{NUM_TABS,plural, =1{Chromium recommande de suspendre l'onglet qui ralentit votre navigateur}one{Chromium recommande de suspendre l'onglet qui ralentit votre navigateur}other{Chromium recommande de suspendre les onglets qui ralentissent votre navigateur}}</translation>
-<translation id="3217425685577630218">Agent Chrome risque de ne pas fonctionner correctement, car la compatibilité n'est plus assurée sur cette distribution Linux.</translation>
-<translation id="1045655099853558439">Agent Chrome a bloqué ce téléchargement, car le fichier peut compromettre vos comptes personnels et de réseaux sociaux</translation>
+<translation id="3837394572112225231">Shuttle risque de ne pas fonctionner correctement, car la compatibilité n'est plus assurée sur cette distribution Linux.</translation>
+<translation id="2864501208955185201">Shuttle a bloqué ce téléchargement, car le fichier peut compromettre vos comptes personnels et de réseaux sociaux</translation>
 <translation id="549669000822060376">Veuillez patienter pendant que Chromium installe les dernières mises à jour du système.</translation>
 <translation id="5496810170689441661">Chromium tente de modifier les mots de passe. Saisissez votre mot de passe Windows pour autoriser cette opération.</translation>
 <translation id="549975168243349205">Travaillez de manière fluide avec vos applis préférées, comme Google Drive et YouTube, où que vous soyez grâce à Chromium.</translation>
 <translation id="5524890928877629608">angle supérieur gauche de la zone de recherche : <ph name="LEFT" /> % gauche, <ph name="TOP" /> % haut</translation>
-<translation id="565863787292824328">Ouvrir les PDF dans Agent Chrome</translation>
+<translation id="3510916764590863589">Ouvrir les PDF dans Shuttle</translation>
 <translation id="5536164441519929134">Posez une question<ph name="LINE_BREAK" />concernant cet onglet</translation>
-<translation id="8869089999448782168">Pour des raisons de sécurité, Agent Chrome désactive l'optimisation JavaScript lorsque vous consultez un site pour la première fois.
+<translation id="8317102978607899723">Pour des raisons de sécurité, Shuttle désactive l'optimisation JavaScript lorsque vous consultez un site pour la première fois.
 
 Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation.</translation>
 <translation id="5575874067957905201">Afficher Gemini dans Chromium dans la barre de menu Mac et activer le raccourci clavier</translation>
@@ -416,24 +416,24 @@ Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation
 <translation id="5596627076506792578">Plus d'options</translation>
 <translation id="5605834417512968703">Sélectionnez un objet dans lequel effectuer une recherche à l'aide de la recherche dans des images ou appuyez sur Échap pour quitter cette fonctionnalité</translation>
 <translation id="5618818588972826921">Sélectionnez le texte ou l'image à rechercher, ou appuyez sur Échap pour quitter la recherche dans une image</translation>
-<translation id="4814380868372526025">{0,plural, =0{Une mise à jour de Agent Chrome est disponible}=1{Une mise à jour de Agent Chrome est disponible}one{Une mise à jour de Agent Chrome est disponible depuis # jour}other{Une mise à jour de Agent Chrome est disponible depuis # jours}}</translation>
-<translation id="188722644954983559">Toujours supprimer les données des sites de votre appareil lorsque vous fermez Agent Chrome</translation>
+<translation id="8908504550344650717">{0,plural, =0{Une mise à jour de Shuttle est disponible}=1{Une mise à jour de Shuttle est disponible}one{Une mise à jour de Shuttle est disponible depuis # jour}other{Une mise à jour de Shuttle est disponible depuis # jours}}</translation>
+<translation id="1107298128800350481">Toujours supprimer les données des sites de votre appareil lorsque vous fermez Shuttle</translation>
 <translation id="5653831366781983928">Veuillez redémarrer Chromium maintenant</translation>
 <translation id="5690427481109656848">Google LLC</translation>
-<translation id="1525044488102751845">Afficher Agent Chrome dans cette langue</translation>
+<translation id="3675878834104730294">Afficher Shuttle dans cette langue</translation>
 <translation id="569897634095159764">Impossible de se connecter à Internet. Le serveur proxy exige que vous vous authentifiiez.</translation>
-<translation id="7750959567789509941">Agent Chrome libère de la mémoire dans les onglets inactifs. Ainsi, les onglets actifs et d'autres applis peuvent utiliser davantage de ressources, et Agent Chrome reste rapide. Vos onglets inactifs redeviennent actifs lorsque vous les consultez. <ph name="BEGIN_LINK" />En savoir plus sur l'économiseur de mémoire<ph name="END_LINK" /></translation>
+<translation id="7168202961287328687">Shuttle libère de la mémoire dans les onglets inactifs. Ainsi, les onglets actifs et d'autres applis peuvent utiliser davantage de ressources, et Shuttle reste rapide. Vos onglets inactifs redeviennent actifs lorsque vous les consultez. <ph name="BEGIN_LINK" />En savoir plus sur l'économiseur de mémoire<ph name="END_LINK" /></translation>
 <translation id="5775198138441669627">Si vous avez oublié votre phrase secrète ou si vous souhaitez modifier ce paramètre, <ph name="SETTINGS_LINK" /> les données Chromium de votre compte</translation>
 <translation id="5800158606660203929">Personnaliser et contrôler Chromium. Définir Chromium comme navigateur par défaut.</translation>
 <translation id="5802618941556161431">Synchronisez parfaitement vos mots de passe, vos favoris et votre historique sur tous vos appareils en définissant Chromium comme navigateur par défaut.</translation>
 <translation id="5809516625706423866">Impossible de se connecter à Internet : erreur HTTP 401 (accès non autorisé). Veuillez vérifier la configuration de votre proxy.</translation>
-<translation id="2755468387099310604">Accélère les sites avec le moteur V8 de Agent Chrome, mais rend Agent Chrome légèrement moins résistant aux attaques. Ce paramètre est désactivé.</translation>
+<translation id="4687670724165839540">Accélère les sites avec le moteur V8 de Shuttle, mais rend Shuttle légèrement moins résistant aux attaques. Ce paramètre est désactivé.</translation>
 <translation id="5821520528363214608">Pour utiliser et enregistrer des données Chromium dans votre compte Google, mettez à jour Chromium</translation>
 <translation id="5824893331272123205">Impossible de charger ce panneau. Réessayez.</translation>
-<translation id="8972968824660717915">Bienvenue dans Agent Chrome</translation>
-<translation id="8898055105597601099">Active des fonctionnalités supplémentaires pour fournir les protections les plus efficaces de Agent Chrome</translation>
+<translation id="137189936820997722">Bienvenue dans Shuttle</translation>
+<translation id="6407035307321626411">Active des fonctionnalités supplémentaires pour fournir les protections les plus efficaces de Shuttle</translation>
 <translation id="5871205389137001634">Cliquer pour quitter la recherche dans des images</translation>
-<translation id="9158119422063615519">Agent Chrome a détecté que ces éléments contiennent des logiciels malveillants :</translation>
+<translation id="3128663943810469943">Shuttle a détecté que ces éléments contiennent des logiciels malveillants :</translation>
 <translation id="5889361821821684993">Chromium vérifie régulièrement que les paramètres de votre navigateur sont les plus sûrs possibles. Si vous devez examiner quoi que ce soit, nous vous le signalerons.</translation>
 <translation id="5895138241574237353">Redémarrer</translation>
 <translation id="5903106910045431592"><ph name="PAGE_TITLE" /> - Connexion au réseau</translation>
@@ -444,7 +444,7 @@ Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation
 <translation id="5953657885167112863">Personnalisez Chromium</translation>
 <translation id="5960071705175224773">Vos paramètres ont été modifiés par une appli inconnue</translation>
 <translation id="5977420883993828287">C'est épinglé ! Vous retrouverez les tâches contextuelles dans la barre d'outils</translation>
-<translation id="1956376169666014494">{COUNT,plural, =1{Votre organisation ferme automatiquement Agent Chrome lorsqu'il n'est pas utilisé pendant 1 minute.}one{Votre organisation ferme automatiquement Agent Chrome lorsqu'il n'est pas utilisé pendant # minute.}other{Votre organisation ferme automatiquement Agent Chrome lorsqu'il n'est pas utilisé pendant # minutes.}}</translation>
+<translation id="5340341384223569715">{COUNT,plural, =1{Votre organisation ferme automatiquement Shuttle lorsqu'il n'est pas utilisé pendant 1 minute.}one{Votre organisation ferme automatiquement Shuttle lorsqu'il n'est pas utilisé pendant # minute.}other{Votre organisation ferme automatiquement Shuttle lorsqu'il n'est pas utilisé pendant # minutes.}}</translation>
 <translation id="5987687638152509985">Mettre à jour Chromium pour lancer la synchronisation</translation>
 <translation id="5990360079535151574">Vous pouvez rouvrir les tâches contextuelles à partir du bouton "Tâches contextuelles" de la barre d'outils pour poser des questions pendant que vous naviguez</translation>
 <translation id="6003112304606738118">Téléchargement… <ph name="HOURS" /> heure(s) restante(s)</translation>
@@ -454,25 +454,25 @@ Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation
 <translation id="6058380562449900225">Pour protéger vos données, autorisez Chromium à supprimer les autorisations des sites que vous n'avez pas consultés récemment. Ne bloque pas les notifications.</translation>
 <translation id="6063093106622310249">&amp;Ouvrir dans Chromium</translation>
 <translation id="6069027071882229820">Copier en tant qu'image</translation>
-<translation id="8654038583091834120">L'extension <ph name="EXTENSION_NAME" /> a été ajoutée à Agent Chrome</translation>
-<translation id="8940723094351907049">Personnalisez et contrôlez Agent Chrome. Une mise à jour est disponible.</translation>
-<translation id="334648248941185659">Activée • Agent Chrome ne peut pas vérifier d'où vient cette extension</translation>
+<translation id="3642130578728163190">L'extension <ph name="EXTENSION_NAME" /> a été ajoutée à Shuttle</translation>
+<translation id="2484600148019262399">Personnalisez et contrôlez Shuttle. Une mise à jour est disponible.</translation>
+<translation id="5098189861342100628">Activée • Shuttle ne peut pas vérifier d'où vient cette extension</translation>
 <translation id="611228897408671387">Votre compte dans Chromium</translation>
-<translation id="1961808482688487456">Autoriser l'extension à afficher les demandes d'accès dans la barre d'outils Agent Chrome</translation>
-<translation id="6880945371922378763">Agent Chrome a bloqué <ph name="FILE_NAME" />, car ce fichier est dangereux.</translation>
-<translation id="829957199361894387">Agent Chrome se fermera bientôt et supprimera les données</translation>
+<translation id="8603072311189086377">Autoriser l'extension à afficher les demandes d'accès dans la barre d'outils Shuttle</translation>
+<translation id="6801818398062031196">Shuttle a bloqué <ph name="FILE_NAME" />, car ce fichier est dangereux.</translation>
+<translation id="4712579756381990057">Shuttle se fermera bientôt et supprimera les données</translation>
 <translation id="6145820983052037069">Vous pouvez passer d'un profil Chromium à un autre ici</translation>
-<translation id="8333733115616087710">Si vous autorisez les cookies, Agent Chrome peut les utiliser pour le préchargement</translation>
+<translation id="4257025918694286900">Si vous autorisez les cookies, Shuttle peut les utiliser pour le préchargement</translation>
 <translation id="6165508094623778733">En savoir plus</translation>
 <translation id="6173308241973263798">Effacer les données Chromium de votre compte</translation>
-<translation id="8439223334931595792">Ce fichier est peut-être dangereux<ph name="LINE_BREAK" />Si vous fournissez le mot de passe, Agent Chrome peut vérifier ce téléchargement. Des infos sur le fichier sont envoyées à la navigation sécurisée Google, mais son contenu et le mot de passe restent sur votre appareil.</translation>
+<translation id="8755328651499078855">Ce fichier est peut-être dangereux<ph name="LINE_BREAK" />Si vous fournissez le mot de passe, Shuttle peut vérifier ce téléchargement. Des infos sur le fichier sont envoyées à la navigation sécurisée Google, mais son contenu et le mot de passe restent sur votre appareil.</translation>
 <translation id="6182736845697986886">Échec de l'installation en raison d'une erreur interne du serveur de mise à jour.</translation>
 <translation id="6183079672144801177">Vérifiez si vous êtes bien connecté à Chromium sur votre <ph name="TARGET_DEVICE_NAME" />, puis procédez de nouveau à l'envoi.</translation>
 <translation id="6212496753309875659">Cet ordinateur dispose déjà d'une version plus récente de Chromium. Si le logiciel ne fonctionne pas, veuillez le désinstaller, puis réessayer.</translation>
-<translation id="6375381612105819561">{0,plural, =0{Agent Chrome va être relancé maintenant}=1{Agent Chrome va être relancé dans 1 seconde}one{Agent Chrome va être relancé dans # seconde}other{Agent Chrome va être relancé dans # secondes}}</translation>
+<translation id="1515663301924664480">{0,plural, =0{Shuttle va être relancé maintenant}=1{Shuttle va être relancé dans 1 seconde}one{Shuttle va être relancé dans # seconde}other{Shuttle va être relancé dans # secondes}}</translation>
 <translation id="6241367896540709610">Pour télécharger des fichiers, Chromium a besoin de l'autorisation d'accéder à l'espace de stockage</translation>
 <translation id="6245734527075554892">Les URL sont vérifiées d'après une liste de sites dangereux stockée dans Chromium</translation>
-<translation id="5070229316792137581">Définir Agent Chrome en tant que navigateur par défaut</translation>
+<translation id="4713635402704891510">Définir Shuttle en tant que navigateur par défaut</translation>
 <translation id="6248988683584659830">Rechercher dans les paramètres</translation>
 <translation id="6261803579884938625">Profitez des meilleures fonctionnalités de sécurité de Google où que vous soyez avec l'appli Chromium sur votre téléphone</translation>
 <translation id="6268381023930128611">Se déconnecter de Chromium ?</translation>
@@ -480,13 +480,13 @@ Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation
 <translation id="6281746429495226318">Personnaliser votre profil Chromium</translation>
 <translation id="6290827346642914212">Nommer votre profil Chromium</translation>
 <translation id="6294831894865512704">Une extension vous demande de vous connecter à Chromium</translation>
-<translation id="1356965940380155951">Agent Chrome a bloqué <ph name="FILE_NAME" />, car ce fichier peut être dangereux.</translation>
-<translation id="7321042153033393145">Votre webcam est en cours d'utilisation dans Agent Chrome.</translation>
+<translation id="3997120491472930522">Shuttle a bloqué <ph name="FILE_NAME" />, car ce fichier peut être dangereux.</translation>
+<translation id="5186109991568427789">Votre webcam est en cours d'utilisation dans Shuttle.</translation>
 <translation id="6333502561965082103">Une autre opération est en cours dans Chromium. Veuillez réessayer plus tard.</translation>
 <translation id="6334986366598267305">Il est désormais plus facile d'utiliser Chromium avec votre compte Google et sur des ordinateurs partagés.</translation>
 <translation id="6347002662287820329">Accédez facilement aux fonctionnalités que vous connaissez, appréciez et auxquelles vous faites confiance en définissant Chromium comme navigateur par défaut.</translation>
-<translation id="6663103136563143835">Raccourci Agent Chrome</translation>
-<translation id="8324836837188781073">Agent Chrome a bloqué ce téléchargement, car le fichier n'est pas souvent téléchargé et peut être dangereux</translation>
+<translation id="7093968037936297432">Raccourci Shuttle</translation>
+<translation id="7334991367988739135">Shuttle a bloqué ce téléchargement, car le fichier n'est pas souvent téléchargé et peut être dangereux</translation>
 <translation id="6373523479360886564">Voulez-vous vraiment désinstaller Chromium ?</translation>
 <translation id="6375219077595103062">Ajouter un raccourci vers le Gestionnaire de mots de passe</translation>
 <translation id="6388799252195623474">aide-moi avec ça</translation>
@@ -494,31 +494,31 @@ Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation
 <translation id="6400112897226594999">Logo Chromium sur un écran d'ordinateur.</translation>
 <translation id="6403826409255603130">Chromium est un navigateur Web qui exécute les pages Web et les applications à une vitesse fulgurante. Il est rapide, stable et simple d'utilisation. Naviguez sur le Web en toute sécurité tout en bénéficiant de la protection offerte par Chromium contre les logiciels malveillants et de phishing.</translation>
 <translation id="6414624068245092115">Pour toujours pouvoir utiliser et enregistrer des données Chromium dans votre compte Google, confirmez votre identité</translation>
-<translation id="5698692159722140301">Agent Chrome s'exécute plus rapidement et les fonctionnalités qui utilisent JavaScript devraient fonctionner comme prévu</translation>
+<translation id="3077581991710361221">Shuttle s'exécute plus rapidement et les fonctionnalités qui utilisent JavaScript devraient fonctionner comme prévu</translation>
 <translation id="6436260184216827876">La recherche dans des images n'est pas disponible. Réessayez plus tard.</translation>
 <translation id="6442900851116057561">Redémarrer Chromium OS</translation>
-<translation id="1150325299163558144">Agent Chrome précharge davantage de pages susceptibles de vous intéresser afin qu'elles se chargent plus rapidement lorsque vous les consultez</translation>
+<translation id="6836481692352030024">Shuttle précharge davantage de pages susceptibles de vous intéresser afin qu'elles se chargent plus rapidement lorsque vous les consultez</translation>
 <translation id="6450948450282634257">Téléchargez Chromium sur votre téléphone pour suivre les prix et recevoir des alertes en cas de baisse de prix sur un site</translation>
-<translation id="2302438614865168038">Désactivée • Agent Chrome ne peut pas vérifier d'où vient cette extension</translation>
+<translation id="2653849928907685021">Désactivée • Shuttle ne peut pas vérifier d'où vient cette extension</translation>
 <translation id="6455857529632101747">Bienvenue sur la page de profils Chromium</translation>
 <translation id="6460614424172581323">La prochaine fois que vous ouvrirez Chromium sur votre <ph name="DEVICE_TYPE" />, une invite vous proposera d'utiliser les groupes d'onglets.</translation>
 <translation id="6466344609055215035">Retirer le compte de Chromium</translation>
-<translation id="5526497172610025231">Elle contrôle également la page qui s'affiche au démarrage de Agent Chrome.</translation>
+<translation id="4119585981464207648">Elle contrôle également la page qui s'affiche au démarrage de Shuttle.</translation>
 <translation id="648319183876919572">La navigation sécurisée avec protection renforcée vous protège davantage contre les sites Web et les téléchargements malveillants</translation>
 <translation id="6510925080656968729">Désinstaller Chromium</translation>
-<translation id="124295298108005714">Les raccourcis s'ouvrent dans Agent Chrome</translation>
-<translation id="9177671044583442813">Votre organisation ferme Agent Chrome lorsqu'il n'est pas utilisé pendant <ph name="TIMEOUT_DURATION" />. Les données de navigation ont été supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.</translation>
+<translation id="4635313972402880015">Les raccourcis s'ouvrent dans Shuttle</translation>
+<translation id="4810254941066760486">Votre organisation ferme Shuttle lorsqu'il n'est pas utilisé pendant <ph name="TIMEOUT_DURATION" />. Les données de navigation ont été supprimées. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.</translation>
 <translation id="6542839706527980775">Chaque profil possède ses propres informations Chromium, comme des favoris, un historique, des mots de passe, etc.</translation>
 <translation id="6556755379298048869">Recherchez avec un raccourci clavier.</translation>
-<translation id="5677032436425073715">Découvrez <ph name="BEGIN_LINK" />comment Agent Chrome protège la confidentialité de vos données<ph name="END_LINK" /></translation>
-<translation id="5967753610833950399">Les modifications apportées à ce paramètre seront appliquées quand Agent Chrome redémarrera.</translation>
-<translation id="4790842900919490952">Pour gérer vos extensions, cliquez sur "Extensions" dans le menu principal de Agent Chrome.</translation>
+<translation id="2636806189032302779">Découvrez <ph name="BEGIN_LINK" />comment Shuttle protège la confidentialité de vos données<ph name="END_LINK" /></translation>
+<translation id="5478536825661470867">Les modifications apportées à ce paramètre seront appliquées quand Shuttle redémarrera.</translation>
+<translation id="4113260229270901158">Pour gérer vos extensions, cliquez sur "Extensions" dans le menu principal de Shuttle.</translation>
 <translation id="656935081669708576">Vous pouvez changer de profil pour voir les mots de passe d'un autre profil Chromium</translation>
 <translation id="6569556444379005948">Utilisez l'appli Chromium pour emporter les meilleurs outils d'IA partout avec vous</translation>
-<translation id="8124768693572849485">Pour corriger les fautes d'orthographe, Agent Chrome envoie à Google le texte que vous saisissez dans les champs</translation>
+<translation id="7057131640166361945">Pour corriger les fautes d'orthographe, Shuttle envoie à Google le texte que vous saisissez dans les champs</translation>
 <translation id="6598877126913850652">Accéder aux paramètres de notification Chromium</translation>
 <translation id="6600016381025017075">Recherchez ce que vous voulez sur cette page</translation>
-<translation id="1736130262142947818">Vos modifications seront prises en compte au prochain redémarrage de Agent Chrome.</translation>
+<translation id="3051968423457057392">Vos modifications seront prises en compte au prochain redémarrage de Shuttle.</translation>
 <translation id="6637908313088374648">Chromium se lance désormais au démarrage de Windows pour que vous puissiez commencer à naviguer instantanément. Vous pouvez désactiver cette option dans les paramètres.</translation>
 <translation id="6648212540664651655">Reprenez là où vous en étiez : Chromium a restauré les onglets de votre dernière session. Vous pouvez désactiver cette option dans les</translation>
 <translation id="665732753414869868">Pour créer un plan 3D de votre environnement, Chromium a besoin de l'autorisation d'accéder à la caméra</translation>
@@ -528,30 +528,30 @@ Si cette page ne fonctionne pas comme prévu, essayez d'autoriser l'optimisation
 <translation id="6691132793308828750">Supprimer les données de cette appli de Chromium</translation>
 <translation id="6709350901466051922">Chromium a besoin de l'autorisation d'accéder au micro pour ce site</translation>
 <translation id="6712881677154121168">Erreur de téléchargement : <ph name="DOWNLOAD_ERROR" />.</translation>
-<translation id="7755971898820142787">Votre profil ne peut pas être utilisé, car il provient d'une version plus récente de Agent Chrome.
+<translation id="2725737003556499783">Votre profil ne peut pas être utilisé, car il provient d'une version plus récente de Shuttle.
 
-Certaines fonctionnalités seront peut-être indisponibles. Veuillez spécifier un autre répertoire de profil ou utiliser une version plus récente de Agent Chrome.</translation>
+Certaines fonctionnalités seront peut-être indisponibles. Veuillez spécifier un autre répertoire de profil ou utiliser une version plus récente de Shuttle.</translation>
 <translation id="6729124504294600478">Pour bénéficier de la personnalisation et d'autres fonctionnalités, ajoutez Chromium à l'activité sur le Web et les applications ainsi qu'aux services Google associés</translation>
 <translation id="6734291798041940871">Chromium est déjà installé pour tous les utilisateurs de votre ordinateur.</translation>
 <translation id="6742093177587589736">Pour accéder à vos favoris et plus sur tous vos appareils, connectez-vous à Chromium. Ce favori sera enregistré dans votre compte Google une fois que vous vous serez connecté.</translation>
-<translation id="7821834337023193240">Accélère les sites avec le moteur V8 de Agent Chrome, mais rend Agent Chrome légèrement moins résistant aux attaques. Ce paramètre est activé.</translation>
+<translation id="1073375677278272498">Accélère les sites avec le moteur V8 de Shuttle, mais rend Shuttle légèrement moins résistant aux attaques. Ce paramètre est activé.</translation>
 <translation id="6754665438209053659">{count,plural, =1{Certaines de vos données Chromium n'ont pas encore été enregistrées dans votre compte Google. Patientez quelques minutes avant de vous déconnecter. Si vous vous déconnectez maintenant, ces données (1 élément) seront supprimées.}one{Certaines de vos données Chromium n'ont pas encore été enregistrées dans votre compte Google. Patientez quelques minutes avant de vous déconnecter. Si vous vous déconnectez maintenant, ces données ({count} élément) seront supprimées.}other{Certaines de vos données Chromium n'ont pas encore été enregistrées dans votre compte Google. Patientez quelques minutes avant de vous déconnecter. Si vous vous déconnectez maintenant, ces données ({count} éléments) seront supprimées.}}</translation>
 <translation id="67706546131546258">Chromium recommande d'analyser ce fichier, car il est peut-être dangereux.</translation>
 <translation id="6779406956731413166">Chromium OS fonctionne grâce à d'autres <ph name="BEGIN_LINK_CROS_OSS" />logiciels Open Source<ph name="END_LINK_CROS_OSS" />.</translation>
 <translation id="6831043979455480757">Traduire</translation>
 <translation id="6847869444787758381">Chromium vous indique si vos mots de passe ont été piratés</translation>
 <translation id="684888714667046800">Impossible de se connecter à Internet. Si vous utilisez un pare-feu, assurez-vous que <ph name="PRODUCT_EXE_NAME" /> figure dans la liste d'autorisation.</translation>
-<translation id="6219638737609534419">Agent Chrome – <ph name="PAGE_TITLE" /></translation>
+<translation id="776553009482398136">Shuttle – <ph name="PAGE_TITLE" /></translation>
 <translation id="6859580922007887573">Appuyez pour continuer</translation>
 <translation id="6862030660799253820">Rechercher dans cette image avec la recherche dans des images</translation>
 <translation id="6869568587896659271">Accès facile aux sites Web sous la barre d'adresse</translation>
-<translation id="7421523967177993052">Agent Chrome a détecté que <ph name="EXTENSION_NAME" /> contient un logiciel malveillant</translation>
+<translation id="5180440422324801473">Shuttle a détecté que <ph name="EXTENSION_NAME" /> contient un logiciel malveillant</translation>
 <translation id="6877155553248388166">angle inférieur droit de la zone de recherche : <ph name="RIGHT" /> % droite, <ph name="BOTTOM" /> % bas</translation>
 <translation id="6896758677409633944">Copier</translation>
 <translation id="6898028264630240901">Vous pouvez épingler les tâches contextuelles pour poser des questions pendant que vous naviguez</translation>
 <translation id="6901631050894301805">Définissez Chromium comme navigateur par défaut et épinglez-le à la barre des tâches</translation>
 <translation id="6909503629704372277">&amp;Gérer les profils Chromium</translation>
-<translation id="9199111398679939226">Conséquences de cette action :
+<translation id="4581248703262892072">Conséquences de cette action :
           <ph name="LINE_BREAKS" />
             • La page de démarrage, la page "Nouvel onglet", le moteur de recherche et les onglets épinglés seront réinitialisés
             <ph name="LINE_BREAK" />
@@ -559,7 +559,7 @@ Certaines fonctionnalités seront peut-être indisponibles. Veuillez spécifier 
             <ph name="LINE_BREAK" />
             • Les cookies et les autres données de sites temporaires seront supprimés
             <ph name="LINE_BREAK" />
-            • Les raccourcis Agent Chrome seront réinitialisés
+            • Les raccourcis Shuttle seront réinitialisés
             <ph name="LINE_BREAKS" />
             Les favoris, l'historique et les mots de passe enregistrés ne seront pas affectés.</translation>
 <translation id="6948031725951063910">Vous avez atteint la limite de <ph name="BOOKMARK_LIMIT" /> favoris de Chromium. Par conséquent, certains de vos favoris n'ont pas encore été enregistrés dans votre compte Google.
@@ -574,66 +574,66 @@ Vous ne pourrez pas enregistrer de nouveaux favoris dans votre compte tant que v
 <translation id="7045244423563602563">Personnalisez Chromium</translation>
 <translation id="7047386856539490735">Ces résultats sont-ils utiles ?</translation>
 <translation id="705851970750939768">Mettre à jour Chromium</translation>
-<translation id="1222890016986172619">Si une image n'est pas accompagnée d'une description utile, Agent Chrome essaiera de vous en proposer une. Pour nous permettre de créer des descriptions, les images sont envoyées à Google.</translation>
+<translation id="3425455063038300019">Si une image n'est pas accompagnée d'une description utile, Shuttle essaiera de vous en proposer une. Pour nous permettre de créer des descriptions, les images sont envoyées à Google.</translation>
 <translation id="7074836723476134809">Profitez pleinement de la puissance de l'IA lorsque vous utilisez l'appli Chromium sur votre <ph name="DEVICE_TYPE" /></translation>
 <translation id="7134687062119989071">Accédez à vos mots de passe, vos onglets et plus, même en déplacement, avec l'appli Chromium sur votre téléphone</translation>
 <translation id="7141270731789036260">Personnaliser Chrome for Testing</translation>
-<translation id="5669948510815930830">Vous pouvez utiliser Agent Chrome chaque fois que vous cliquez sur des liens dans des messages, des documents et d'autres applis</translation>
-<translation id="5576210706466474421">Retirer <ph name="EXTENSION_NAME" /> de Agent Chrome</translation>
-<translation id="4588941330171478873">Votre organisation supprime les données Agent Chrome lorsqu'elles ne sont pas utilisées pendant <ph name="TIMEOUT_DURATION" />. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.</translation>
+<translation id="2566749447284070075">Vous pouvez utiliser Shuttle chaque fois que vous cliquez sur des liens dans des messages, des documents et d'autres applis</translation>
+<translation id="4717037424104880768">Retirer <ph name="EXTENSION_NAME" /> de Shuttle</translation>
+<translation id="5499504683862746062">Votre organisation supprime les données Shuttle lorsqu'elles ne sont pas utilisées pendant <ph name="TIMEOUT_DURATION" />. Il peut s'agir de l'historique, de la saisie automatique et des téléchargements.</translation>
 <translation id="718435575166326686">Chromium a besoin de l'autorisation d'accéder à la caméra pour ce site</translation>
-<translation id="2916059341902838041">Impossible de lancer Agent Chrome. Réessayez.</translation>
+<translation id="73779270539924806">Impossible de lancer Shuttle. Réessayez.</translation>
 <translation id="7204669035546236137">Posez une question là où vous êtes avec Gemini dans Chromium</translation>
-<translation id="1716746018761150810">Gardez Agent Chrome dans votre Dock pour y accéder rapidement à tout moment</translation>
+<translation id="3909780788712619547">Gardez Shuttle dans votre Dock pour y accéder rapidement à tout moment</translation>
 <translation id="7213407614656404070">Utilisez Chromium chaque fois que vous cliquez sur des liens dans des messages, des documents et d'autres applis</translation>
 <translation id="7216228761061470870">Lorsque vous utilisez la recherche dans des images sur ordinateur, le titre, l'URL et le contenu de la page, y compris les PDF, sont envoyés au serveur</translation>
-<translation id="4816956813330284757">Gestionnaire de tâches – Agent Chrome</translation>
+<translation id="5152543266278054880">Gestionnaire de tâches – Shuttle</translation>
 <translation id="7227958669698166857"><ph name="EXISTING_USER" /> est déjà connecté. Pour séparer votre navigation, connectez-vous à Chromium dans votre propre profil en tant que <ph name="USER_EMAIL_ADDRESS" />. Vous pourrez aussi accéder à vos informations enregistrées et à d'autres données sur tous vos appareils.</translation>
 <translation id="7252276985725323153">Commencez à naviguer instantanément : Chromium peut désormais se lancer au démarrage de Windows.</translation>
 <translation id="7274695763216404502">Recherche dans des images épinglée. Réutilisez-la à partir de la barre d'outils.</translation>
 <translation id="7288567540154601580">Onglets et extensions</translation>
-<translation id="3631444715156784168">{NUM_EXTENSIONS,plural, =1{Agent Chrome vous recommande de la supprimer}one{Agent Chrome vous recommande de la supprimer}other{Agent Chrome vous recommande de les supprimer}}</translation>
-<translation id="2739521415810397215">Pour partager l'audio du système, ouvrez Réglages Système et autorisez "Enregistrement des sons du système uniquement" pour Agent Chrome. Vous devrez ensuite redémarrer Agent Chrome.</translation>
-<translation id="1945073734373493421">Mise à jour de Agent Chrome...</translation>
-<translation id="7323500970718355745">Le fichier des préférences est corrompu ou n'est pas valide. 
+<translation id="7301179260332476710">{NUM_EXTENSIONS,plural, =1{Shuttle vous recommande de la supprimer}one{Shuttle vous recommande de la supprimer}other{Shuttle vous recommande de les supprimer}}</translation>
+<translation id="6738087381969111286">Pour partager l'audio du système, ouvrez Réglages Système et autorisez "Enregistrement des sons du système uniquement" pour Shuttle. Vous devrez ensuite redémarrer Shuttle.</translation>
+<translation id="882134845922037914">Mise à jour de Shuttle...</translation>
+<translation id="5911508944834868675">Le fichier des préférences est corrompu ou n'est pas valide. 
 
-Agent Chrome ne peut pas récupérer vos paramètres.</translation>
+Shuttle ne peut pas récupérer vos paramètres.</translation>
 <translation id="7324051657739063017">Vous pouvez rouvrir les tâches contextuelles pour poser des questions pendant que vous naviguez</translation>
 <translation id="734373864078049451">Votre contenu Web, vos favoris et toutes vos données Chromium sont conservés ici.</translation>
 <translation id="7347827960336370838">Seule une personne connaissant votre phrase secrète peut lire vos données chiffrées. Google ne reçoit pas ni n'enregistre votre phrase secrète. Si vous l'avez oubliée ou si vous souhaitez modifier ce paramètre, vous devrez <ph name="BEGIN_LINK" />supprimez les données Chromium de votre compte<ph name="END_LINK" />.</translation>
-<translation id="7994662313190863803">Votre administrateur système a configuré Agent Chrome de sorte que <ph name="ALTERNATIVE_BROWSER_NAME" /> s'ouvre pour accéder à <ph name="TARGET_URL_HOSTNAME" />.</translation>
+<translation id="5213396397254545050">Votre administrateur système a configuré Shuttle de sorte que <ph name="ALTERNATIVE_BROWSER_NAME" /> s'ouvre pour accéder à <ph name="TARGET_URL_HOSTNAME" />.</translation>
 <translation id="7352651011704765696">Un problème est survenu</translation>
-<translation id="4438212735766904761">Vous devez disposer de macOS 13 ou version ultérieure pour recevoir les futures mises à jour de Agent Chrome. macOS 12 est installé sur cet ordinateur.</translation>
+<translation id="7241271939430402377">Vous devez disposer de macOS 13 ou version ultérieure pour recevoir les futures mises à jour de Shuttle. macOS 12 est installé sur cet ordinateur.</translation>
 <translation id="7376384068949534168">Vous n'avez pas consulté le site récemment. Chromium a supprimé "<ph name="PERMISSION_1" />" et "<ph name="PERMISSION_2" />".</translation>
 <translation id="73786666777299047">Ouvrir le Chrome Web Store</translation>
 <translation id="7394275517973019558">Afficher Gemini dans Chromium dans la barre d'état système</translation>
 <translation id="7401687852903179959">Utiliser la recherche dans des images sur cette vidéo</translation>
 <translation id="7407655596887111931">Chromium est désormais votre navigateur par défaut</translation>
-<translation id="3957050361764426740">Reprenez là où vous en étiez : Agent Chrome restaure vos onglets à chaque redémarrage. Pour désactiver cette option, accédez aux</translation>
+<translation id="3052711235626610530">Reprenez là où vous en étiez : Shuttle restaure vos onglets à chaque redémarrage. Pour désactiver cette option, accédez aux</translation>
 <translation id="7427879960656355200">Importer les mots de passe dans Chromium</translation>
 <translation id="744815265653811511">1. Cliquez sur <ph name="BUTTON_LABEL" /> ci-dessous
 2. Cliquez sur <ph name="BUTTON_2" /> dans les paramètres Windows
 3. Cliquez sur <ph name="BUTTON_3" /> dans la notification Windows pour épingler Chromium à la barre des tâches et y accéder rapidement</translation>
-<translation id="4378256924846450484"><ph name="PAGE_TITLE" /> – Agent Chrome pour les développeurs</translation>
+<translation id="9197089209084271928"><ph name="PAGE_TITLE" /> – Shuttle pour les développeurs</translation>
 <translation id="7450541714075000668">Texte copié</translation>
-<translation id="1661210845845599119">Pour que Agent Chrome puisse utiliser votre micro, autorisez-le à y accéder dans les <ph name="BEGIN_LINK" />paramètres système<ph name="END_LINK" /></translation>
+<translation id="313710343255539509">Pour que Shuttle puisse utiliser votre micro, autorisez-le à y accéder dans les <ph name="BEGIN_LINK" />paramètres système<ph name="END_LINK" /></translation>
 <translation id="7461356015007898716">Pour recevoir les futures mises à jour de Chromium, vous devez disposer de Windows 10 ou d'une version ultérieure. Cet ordinateur utilise Windows 7.</translation>
-<translation id="7782360127659485548">Relancer Agent Chrome ?</translation>
+<translation id="3993055863855039235">Relancer Shuttle ?</translation>
 <translation id="7483335560992089831">Impossible d'installer la même version de Chromium que celle qui est en cours d'exécution. Veuillez fermer Chromium, puis réessayer.</translation>
 <translation id="7510190804000607802">Rappel : Le meilleur de Google dans votre poche</translation>
-<translation id="4114725046952451715">Les sites fonctionneront probablement comme prévu. Lorsque vous fermerez toutes les fenêtres Agent Chrome, vous serez déconnecté de la plupart des sites, à l'exception de votre compte Google si vous êtes connecté à Agent Chrome.</translation>
-<translation id="8460803820751380899">{0,plural, =1{Agent Chrome va être relancé dans 1 minute}one{Agent Chrome va être relancé dans # minute}other{Agent Chrome va être relancé dans # minutes}}</translation>
+<translation id="8341160057232502783">Les sites fonctionneront probablement comme prévu. Lorsque vous fermerez toutes les fenêtres Shuttle, vous serez déconnecté de la plupart des sites, à l'exception de votre compte Google si vous êtes connecté à Shuttle.</translation>
+<translation id="6139170930430750545">{0,plural, =1{Shuttle va être relancé dans 1 minute}one{Shuttle va être relancé dans # minute}other{Shuttle va être relancé dans # minutes}}</translation>
 <translation id="7565444033145385702">Pour protéger vos données, autorisez Chromium à supprimer les autorisations des sites que vous n'avez pas consultés récemment.</translation>
-<translation id="7806190892617295204">Lancez Agent Chrome automatiquement pour commencer à naviguer instantanément.</translation>
+<translation id="7445475294019002626">Lancez Shuttle automatiquement pour commencer à naviguer instantanément.</translation>
 <translation id="7583399374488819119">Programme d'installation de <ph name="COMPANY_NAME" /></translation>
-<translation id="4114499337401148821">Votre webcam et votre micro sont en cours d'utilisation dans Agent Chrome.</translation>
+<translation id="3770734847062637711">Votre webcam et votre micro sont en cours d'utilisation dans Shuttle.</translation>
 <translation id="7617377681829253106">Chromium s'est amélioré</translation>
-<translation id="4075526625511660913">Vous disposez désormais de plus de fonctionnalités dans Agent Chrome</translation>
+<translation id="8871277779820248167">Vous disposez désormais de plus de fonctionnalités dans Shuttle</translation>
 <translation id="7624307931717240213">Nous utilisons ces informations pour améliorer ce service. Consultez les règles de confidentialité et Conditions d'utilisation.</translation>
 <translation id="7649070708921625228">Aide</translation>
 <translation id="7650134251917003571">Télécharger l'appli Chromium</translation>
 <translation id="7658239707568436148">Annuler</translation>
-<translation id="5829091955527196771">Agent Chrome n'est pas votre navigateur par défaut</translation>
+<translation id="8213236740307893655">Shuttle n'est pas votre navigateur par défaut</translation>
 <translation id="7689606757190482937">Synchroniser et personnaliser Chromium sur vos appareils</translation>
 <translation id="7699779824407626136">Mise à jour de Chromium</translation>
 <translation id="7700735928747402058">Votre travail est sécurisé sur Chromium</translation>
@@ -646,16 +646,16 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="7752521946322750699">Pour sécuriser votre travail sur Chromium, votre organisation pourra afficher ou gérer certaines informations lorsque vous serez connecté à Chromium.</translation>
 <translation id="7781047659465034537">Définissez Chromium comme navigateur par défaut et épinglez-le à la barre des tâches</translation>
 <translation id="7786760609782648049">Rendre Chromium plus rapide</translation>
-<translation id="1092858669153166534"><ph name="PAGE_TITLE" /> – Agent Chrome Canary</translation>
-<translation id="6890902183809417868">Faites en sorte qu'il soit plus difficile pour les personnes ayant accès à votre trafic Internet de voir quels sites vous consultez. Agent Chrome utilise une connexion sécurisée pour rechercher l'adresse IP d'un site dans le système de noms de domaine (DNS).</translation>
+<translation id="5390209367680424449"><ph name="PAGE_TITLE" /> – Shuttle Canary</translation>
+<translation id="5236799997529789289">Faites en sorte qu'il soit plus difficile pour les personnes ayant accès à votre trafic Internet de voir quels sites vous consultez. Shuttle utilise une connexion sécurisée pour rechercher l'adresse IP d'un site dans le système de noms de domaine (DNS).</translation>
 <translation id="7810005234485217901">Vous pouvez épingler la recherche dans des images pour y accéder facilement</translation>
-<translation id="4343938787674079986">Choisissez ce que vous partagez avec Agent Chrome</translation>
+<translation id="6809035843240398711">Choisissez ce que vous partagez avec Shuttle</translation>
 <translation id="7828947555739565424">Il existe déjà un profil Chromium associé à ce compte sur cet appareil</translation>
 <translation id="7845233973568007926">Merci d'avoir installé notre produit. Vous devez redémarrer votre ordinateur avant d'utiliser <ph name="BUNDLE_NAME" />.</translation>
-<translation id="6129792107484731038">Votre moteur de recherche a été modifié en dehors de Agent Chrome. Pour vous protéger, Agent Chrome a rétabli sa valeur par défaut d'origine. <ph name="LEARN_MORE_LINK" /></translation>
+<translation id="2536014991386708485">Votre moteur de recherche a été modifié en dehors de Shuttle. Pour vous protéger, Shuttle a rétabli sa valeur par défaut d'origine. <ph name="LEARN_MORE_LINK" /></translation>
 <translation id="7853661403199074278">Personnalisez Chromium pour lui donner une nouvelle apparence</translation>
-<translation id="5018331886385637870">Lorsque vous saisissez du texte dans la barre d'adresse ou le champ de recherche, Agent Chrome envoie le contenu saisi à votre moteur de recherche par défaut pour obtenir de meilleures suggestions. Ce paramètre est désactivé en navigation privée.</translation>
-<translation id="473441635289092936">Échec de l'installation de la dernière version de Agent Chrome. Vous ne disposez donc pas des nouvelles fonctionnalités, ni des correctifs de sécurité.</translation>
+<translation id="2266811154496778101">Lorsque vous saisissez du texte dans la barre d'adresse ou le champ de recherche, Shuttle envoie le contenu saisi à votre moteur de recherche par défaut pour obtenir de meilleures suggestions. Ce paramètre est désactivé en navigation privée.</translation>
+<translation id="6065091602420830">Échec de l'installation de la dernière version de Shuttle. Vous ne disposez donc pas des nouvelles fonctionnalités, ni des correctifs de sécurité.</translation>
 <translation id="7872446069773932638">Téléchargement… <ph name="SECONDS" /> seconde(s) restante(s)</translation>
 <translation id="7873537467422636035">Si vous avez oublié votre phrase secrète ou si vous souhaitez modifier ce paramètre, <ph name="BEGIN_LINK" />supprimez les données Chromium de votre compte<ph name="END_LINK" />.</translation>
 <translation id="7874369989024033742">Ouvrez rapidement Gemini dans Chromium quand vous en avez besoin</translation>
@@ -663,17 +663,17 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="7934340546140346950">Chromium convertit automatiquement les connexions non sécurisées en HTTPS lorsque c'est possible</translation>
 <translation id="7937630085815544518">Vous étiez connecté à Chromium en tant que <ph name="USER_EMAIL_ADDRESS" />. Veuillez utiliser le même compte pour vous reconnecter.</translation>
 <translation id="7944602660083060118"><ph name="EXISTING_USER" /> est déjà connecté. Pour séparer votre navigation, connectez-vous à Chromium dans votre propre profil en tant que <ph name="USER_EMAIL_ADDRESS" />. Vous pourrez aussi accéder à vos favoris et à d'autres données sur tous vos appareils.</translation>
-<translation id="688313102897865477">Ceci est une installation secondaire de Agent Chrome. Vous ne pouvez pas le définir comme navigateur par défaut.</translation>
-<translation id="8514782479541580218">Les extensions, les applications et les thèmes provenant de sources inconnues risquent d'endommager votre appareil. Agent Chrome recommande de les installer uniquement à partir du <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /></translation>
+<translation id="7585793177462647372">Ceci est une installation secondaire de Shuttle. Vous ne pouvez pas le définir comme navigateur par défaut.</translation>
+<translation id="6559029165921633261">Les extensions, les applications et les thèmes provenant de sources inconnues risquent d'endommager votre appareil. Shuttle recommande de les installer uniquement à partir du <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /></translation>
 <translation id="8000759043835159571">Profitez du meilleur de Google avec l'appli Chromium sur votre <ph name="DEVICE_TYPE" /></translation>
 <translation id="8004582292198964060">Navigateur</translation>
 <translation id="8010081455002666927">Détection automatique</translation>
-<translation id="403216574291780144">Une fois l'accès à une ressource accordé à Agent Chrome, les sites Web sont également en mesure de vous demander l'accès.</translation>
-<translation id="7835197459694498831">Épinglez Agent Chrome à la barre des tâches pour y accéder rapidement à tout moment</translation>
+<translation id="8002328729078921180">Une fois l'accès à une ressource accordé à Shuttle, les sites Web sont également en mesure de vous demander l'accès.</translation>
+<translation id="818329629430342049">Épinglez Shuttle à la barre des tâches pour y accéder rapidement à tout moment</translation>
 <translation id="80471789339884597">Merci d'avoir installé notre produit. Vous devez redémarrer tous vos navigateurs avant d'utiliser <ph name="BUNDLE_NAME" />.</translation>
 <translation id="8054112667659782652">Toujours afficher le raccourci de recherche dans des images</translation>
 <translation id="8069447462453318634">Sélectionnez "Épingler à la barre d'outils"</translation>
-<translation id="787536271006179882">Désactiver l'exécution de Agent Chrome en arrière-plan pour les applis</translation>
+<translation id="3155838504016687695">Désactiver l'exécution de Shuttle en arrière-plan pour les applis</translation>
 <translation id="80790299200510644">Recherche dans des images</translation>
 <translation id="8086881907087796310">L'installation a échoué, car votre ordinateur ne dispose pas de la configuration matérielle minimale requise.</translation>
 <translation id="8096472344908884505"><ph name="PAGE_TITLE" /> – Google Chrome for Testing</translation>
@@ -685,15 +685,15 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="8133124826068723441">Impossible de synchroniser vos données dans Chromium OS, car la synchronisation n'est pas disponible pour votre domaine.</translation>
 <translation id="813913629614996137">Initialisation…</translation>
 <translation id="8161503455832158203">Ouvrez Gemini dans Chromium avec un raccourci clavier.</translation>
-<translation id="7109772131778940712">Conditions d'utilisation supplémentaires de Agent Chrome</translation>
-<translation id="7759642951398174884">Agent Chrome a bloqué ce fichier, car ce dernier est dangereux.</translation>
+<translation id="369114052288176160">Conditions d'utilisation supplémentaires de Shuttle</translation>
+<translation id="680378955833427720">Shuttle a bloqué ce fichier, car ce dernier est dangereux.</translation>
 <translation id="8177472873527554730">Impossible de trouver du contenu sur la page</translation>
 <translation id="8200109504272824693">Saisissez votre phrase secrète pour utiliser et enregistrer des données Chromium dans votre compte <ph name="USER_EMAIL" /></translation>
 <translation id="820759916613250543">Utiliser la recherche dans des images sur cette image</translation>
 <translation id="8221491193165283816">Les notifications sont bloquées par défaut. Pour autoriser ce site à vous envoyer des notifications, cliquez ici.</translation>
-<translation id="5410773870087525304">Pour que Agent Chrome puisse utiliser votre caméra, autorisez-le à y accéder dans les <ph name="BEGIN_LINK" />paramètres système<ph name="END_LINK" /></translation>
-<translation id="1057772683559103555">Agent Chrome ne peut pas déterminer l'origine de cette extension, et elle est peut-être dangereuse. Supprimez-la de Agent Chrome pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
-<translation id="1968416200800224093">Si une image n'est pas accompagnée d'une description utile, Agent Chrome essaiera de vous en proposer une. Pour nous permettre de créer des descriptions, les images sont envoyées à Google. Vous pouvez désactiver à tout moment cette option dans les paramètres.</translation>
+<translation id="8107647892434846563">Pour que Shuttle puisse utiliser votre caméra, autorisez-le à y accéder dans les <ph name="BEGIN_LINK" />paramètres système<ph name="END_LINK" /></translation>
+<translation id="1786899383568465391">Shuttle ne peut pas déterminer l'origine de cette extension, et elle est peut-être dangereuse. Supprimez-la de Shuttle pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
+<translation id="493819615490030185">Si une image n'est pas accompagnée d'une description utile, Shuttle essaiera de vous en proposer une. Pour nous permettre de créer des descriptions, les images sont envoyées à Google. Vous pouvez désactiver à tout moment cette option dans les paramètres.</translation>
 <translation id="8254601181414348851">Se connecter à Chromium avec un nouveau profil ?</translation>
 <translation id="8262224117913639129"><ph name="EXISTING_USER" /> est déjà connecté. Pour séparer votre navigation, connectez-vous à Chromium dans votre propre profil en tant que <ph name="USER_EMAIL_ADDRESS" />. Vous pourrez aussi accéder à vos mots de passe et à d'autres données de <ph name="DEVICE" />.</translation>
 <translation id="8277334259226003205">Afficher Gemini dans Chromium dans la barre d'état système et activer le raccourci clavier</translation>
@@ -702,7 +702,7 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="8296236834352487533">Achetez, traduisez et identifiez ce que vous voyez à l'aide de votre appareil photo dans l'appli iOS Chromium</translation>
 <translation id="8310603974518734211">QR code pour se connecter à Chromium en tant que <ph name="USER_NAME" /></translation>
 <translation id="8313851650939857356">Erreur au démarrage : <ph name="STARTUP_ERROR" />.</translation>
-<translation id="2256229026962116267">Votre organisation ferme Agent Chrome lorsqu'il n'est pas utilisé pendant <ph name="TIMEOUT_DURATION" />.</translation>
+<translation id="2189465505625523876">Votre organisation ferme Shuttle lorsqu'il n'est pas utilisé pendant <ph name="TIMEOUT_DURATION" />.</translation>
 <translation id="8321888067342493336">Enregistrer en tant qu'image</translation>
 <translation id="8340674089072921962"><ph name="USER_EMAIL_ADDRESS" /> utilisait Chromium précédemment</translation>
 <translation id="8351551329754447960">Activer les compétences dans Chromium</translation>
@@ -712,11 +712,11 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="8367705492654390392">Posez une question</translation>
 <translation id="8370517070665726704">© <ph name="YEAR" /> Google LLC. Tous droits réservés.</translation>
 <translation id="8372327902843331129">Pour accéder à vos mots de passe et plus encore sur tous vos appareils, connectez-vous à Chromium. Ce mot de passe sera enregistré dans votre compte Google une fois que vous vous serez connecté.</translation>
-<translation id="3962779702290581702">Vous devrez ensuite redémarrer Agent Chrome.</translation>
-<translation id="6085013152567092546">Agent Chrome vous recommande de la supprimer. <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" /></translation>
-<translation id="8142784445734351509">Cette extension peut présenter des risques, car son développeur a annulé sa publication. Supprimez-la de Agent Chrome pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
+<translation id="7737586770085807713">Vous devrez ensuite redémarrer Shuttle.</translation>
+<translation id="458720374088121514">Shuttle vous recommande de la supprimer. <ph name="BEGIN_LINK" />En savoir plus sur les extensions prises en charge<ph name="END_LINK" /></translation>
+<translation id="3243699608914041912">Cette extension peut présenter des risques, car son développeur a annulé sa publication. Supprimez-la de Shuttle pour qu'elle ne puisse plus voir ni modifier vos données (y compris vos informations personnelles) sur les sites que vous consultez.</translation>
 <translation id="8416884904046428725">Chromium doit valider votre identité avant que certaines données puissent être enregistrées dans votre compte Google et utilisées sur tous vos appareils. Si vous vous déconnectez maintenant, ces données seront supprimées.</translation>
-<translation id="7611805576553766531">{0,plural, =1{Relancer Agent Chrome d'ici un jour}one{Relancer Agent Chrome d'ici # jour}other{Relancer Agent Chrome d'ici # jours}}</translation>
+<translation id="2803567348225973544">{0,plural, =1{Relancer Shuttle d'ici un jour}one{Relancer Shuttle d'ici # jour}other{Relancer Shuttle d'ici # jours}}</translation>
 <translation id="8438543370129609977">Lorsque vous utilisez la recherche dans des images, le titre, l'URL et le contenu de la page, y compris les PDF, sont envoyés au serveur. <ph name="LEARN_MORE" /></translation>
 <translation id="8447525028100794994">En savoir plus sur la recherche d'images dans Chromium</translation>
 <translation id="8453117565092476964">L'archive du programme d'installation est corrompue ou n'est pas valide. Veuillez télécharger Chromium à nouveau.</translation>
@@ -724,23 +724,23 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="8463672209299734063">Facultatif : contribuez à améliorer les fonctionnalités et les performances de Chromium OS en envoyant automatiquement des données de diagnostic et d'utilisation à Google.</translation>
 <translation id="8471947159125090285">Pour utiliser et enregistrer des données Chromium dans votre compte Google, confirmez votre identité</translation>
 <translation id="8482493977473846331">Affiche des invites de connexion à Chromium</translation>
-<translation id="6049002268233195982">Version de Agent Chrome obsolète</translation>
-<translation id="6156435126546305838">Merci d'avoir choisi Agent Chrome comme navigateur par défaut.</translation>
+<translation id="4333599663015089415">Version de Shuttle obsolète</translation>
+<translation id="8376091195503089226">Merci d'avoir choisi Shuttle comme navigateur par défaut.</translation>
 <translation id="8522801943730206384">Chromium ne peut vérifier vos mots de passe que si vous les enregistrez</translation>
 <translation id="8525579356836940628">Installation interrompue</translation>
 <translation id="8545729292258443488">Accédez à vos mots de passe, vos onglets et bien plus où que vous soyez grâce à l'appli Chromium sur votre <ph name="DEVICE_TYPE" /></translation>
 <translation id="8548787790260785208">Recevez une alerte si Chromium trouve l'un de vos mots de passe du fait d'une violation de données publique</translation>
 <translation id="8555465886620020932">Erreur du service : <ph name="SERVICE_ERROR" />.</translation>
-<translation id="2713372071612730965">Certaines fonctionnalités et extensions Agent Chrome sont accompagnées de raccourcis. Vous pouvez choisir de les réactiver.</translation>
+<translation id="3871600948131730253">Certaines fonctionnalités et extensions Shuttle sont accompagnées de raccourcis. Vous pouvez choisir de les réactiver.</translation>
 <translation id="8556420416730706394">Vous pouvez épingler la recherche dans des images pour y accéder facilement. Pour cela, cliquez sur le bouton "Épingler" en haut du panneau latéral.</translation>
 <translation id="856656450041460113">Rechercher dans la liste des langues</translation>
-<translation id="1783040386392706016">Plusieurs organisations gèrent Agent Chrome</translation>
-<translation id="7921569471494089882">Copyright Auteurs de Agent Chrome <ph name="YEAR" />. Tous droits réservés.</translation>
+<translation id="2164758091986776102">Plusieurs organisations gèrent Shuttle</translation>
+<translation id="7921569471494089882">Copyright <ph name="YEAR" /> Silkweave. All rights reserved.</translation>
 <translation id="8601359445272098721">Nouveau ! Vous pouvez traduire du texte et des images sur votre écran en sélectionnant le bouton "Traduire l'écran".</translation>
-<translation id="6294059080097269555">Lancement de Agent Chrome…</translation>
+<translation id="5197416451456327645">Lancement de Shuttle…</translation>
 <translation id="8624541899164515475">Paramètres, s'ouvre dans un nouvel onglet.</translation>
 <translation id="8648201657708811153">Impossible de définir Google Chrome for Testing comme navigateur par défaut.</translation>
-<translation id="5652647471010716562">Elle contrôle également la page qui s'affiche au démarrage de Agent Chrome ou lorsque vous effectuez une recherche dans l'omnibox.</translation>
+<translation id="733927313102300080">Elle contrôle également la page qui s'affiche au démarrage de Shuttle ou lorsque vous effectuez une recherche dans l'omnibox.</translation>
 <translation id="8704119203788522458">Voici votre Chromium</translation>
 <translation id="8712637175834984815">OK</translation>
 <translation id="8719993436687031146">Se connecter à Chromium ?</translation>
@@ -749,17 +749,17 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="8813277370772331957">Plus tard</translation>
 <translation id="8816416449795340678">Partagez ce document avec Gemini dans Chromium pour obtenir un aperçu rapide et poser des questions complémentaires</translation>
 <translation id="8818550178040858407">Se connecter à Chromium ?</translation>
-<translation id="4188893721116572726">Définir Agent Chrome comme navigateur par défaut et l'épingler à la barre des tâches</translation>
+<translation id="1740477639007879167">Définir Shuttle comme navigateur par défaut et l'épingler à la barre des tâches</translation>
 <translation id="8826492472752484139">Cliquez sur "Gestionnaire de mots de passe"</translation>
 <translation id="8833697763442816810">Système Chromium OS</translation>
-<translation id="341256515309503869">Cette langue est utilisée pour afficher les menus, les paramètres, les alertes et d'autres textes dans Agent Chrome</translation>
+<translation id="51810846847651902">Cette langue est utilisée pour afficher les menus, les paramètres, les alertes et d'autres textes dans Shuttle</translation>
 <translation id="8862326446509486874">Vous ne disposez pas des droits requis pour installer la version système. Relancez l'installation en vous connectant comme administrateur.</translation>
 <translation id="8876044221123442390">Ajouter un profil Chromium</translation>
 <translation id="8890569919834781711">ChromiumOS n'a pas pu enregistrer les données Chromium dans votre compte Google en raison d'une erreur lors de la connexion</translation>
 <translation id="8891709362986793894">Votre organisation exige que vous vous connectiez à Chromium</translation>
 <translation id="8907580949721785412">Chromium tente d'afficher les mots de passe. Pour autoriser cette action, saisissez votre mot de passe Windows.</translation>
 <translation id="8932992523185907506">Chromium n'est plus votre navigateur par défaut. Définir Chromium comme navigateur par défaut ?</translation>
-<translation id="2086624065931944916">Impossible de mettre Agent Chrome à jour</translation>
+<translation id="7727082350762937793">Impossible de mettre Shuttle à jour</translation>
 <translation id="8944232836376404813">Conséquences de cette action :
           <ph name="LINE_BREAKS" />
            • La page de démarrage, la page "Nouvel onglet", le moteur de recherche et les onglets épinglés seront réinitialisés
@@ -770,31 +770,31 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
             <ph name="LINE_BREAKS" />
            Les favoris, l'historique et les mots de passe enregistrés ne seront pas affectés.</translation>
 <translation id="8966875421152977384">Afficher les raccourcis de sites Chromium</translation>
-<translation id="4591081057798655502">Logo Agent Chrome Enterprise</translation>
+<translation id="1008106080699243847">Logo Shuttle Enterprise</translation>
 <translation id="8980139959902937527">Profitez de la sécurité de Google où que vous soyez avec l'appli Chromium sur votre <ph name="DEVICE_TYPE" /></translation>
-<translation id="352721818246741864">Impossible de démarrer Agent Chrome, car un problème est survenu lors de l'ouverture de votre profil. Essayez de redémarrer Agent Chrome.</translation>
+<translation id="3649746906258419479">Impossible de démarrer Shuttle, car un problème est survenu lors de l'ouverture de votre profil. Essayez de redémarrer Shuttle.</translation>
 <translation id="8988036198400390003">Gérer les profils Chromium</translation>
 <translation id="8993855408334954620">Utilisez votre clavier pour naviguer entre Gemini dans Chromium et votre onglet ouvert.</translation>
 <translation id="9018218886431812662">Installation terminée</translation>
 <translation id="9019929317751753759">Afin de rendre Chromium plus sûr, nous avons désactivé l'extension suivante qui n'est pas répertoriée sur le <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> et qui a pu être ajoutée à votre insu.</translation>
 <translation id="9022552996538154597">Se connecter à Chromium</translation>
 <translation id="9035791714111278917">Afficher la recherche avec Chromium dans la barre de menu Mac et activer le raccourci clavier</translation>
-<translation id="144293525744948128">Agent Chrome a bloqué ce téléchargement, car le fichier d'archive contient d'autres fichiers susceptibles de dissimuler un logiciel malveillant</translation>
+<translation id="3267341748208131224">Shuttle a bloqué ce téléchargement, car le fichier d'archive contient d'autres fichiers susceptibles de dissimuler un logiciel malveillant</translation>
 <translation id="9053882453960391422">Synchronisez parfaitement vos mots de passe, vos favoris et votre historique sur tous vos appareils. Accédez facilement aux fonctionnalités que vous connaissez et appréciez en définissant Chromium comme navigateur par défaut. Chromium sera épinglé à la barre des tâches pour un accès rapide.</translation>
 <translation id="9056398481763999048">Utilisez les meilleurs outils IA de Google avec l'appli Chromium sur votre téléphone</translation>
 <translation id="9062666675513499497">Se connecter à Chromium lorsque vous vous connectez aux autres services Google</translation>
-<translation id="5989671354018094677">Agent Chrome a été fermé automatiquement</translation>
-<translation id="5288426372256126088">Version de Agent Chrome obsolète</translation>
-<translation id="8599483501705081932">{0,plural, =1{Agent Chrome va être relancé dans une heure}one{Agent Chrome va être relancé dans # heure}other{Agent Chrome va être relancé dans # heures}}</translation>
+<translation id="4265215433857167851">Shuttle a été fermé automatiquement</translation>
+<translation id="7469466263552552140">Version de Shuttle obsolète</translation>
+<translation id="72499647218501325">{0,plural, =1{Shuttle va être relancé dans une heure}one{Shuttle va être relancé dans # heure}other{Shuttle va être relancé dans # heures}}</translation>
 <translation id="9106236359747881194">Sélectionner le texte à rechercher</translation>
 <translation id="9106612006984859720">Pour recevoir les futures mises à jour de Chromium, vous devez disposer de Windows 10 ou d'une version ultérieure. Cet ordinateur utilise Windows 8.1.</translation>
-<translation id="6660967356554387137">Ouvrir le lien dans un nouvel ongle&amp;t Agent Chrome</translation>
+<translation id="3313508441926611846">Ouvrir le lien dans un nouvel ongle&amp;t Shuttle</translation>
 <translation id="911206726377975832">Supprimer également vos données de navigation ?</translation>
 <translation id="9134482777260927479">Aide aux devoirs</translation>
 <translation id="9148058034647219655">Quitter</translation>
-<translation id="356554850028684199">Reprenez là où vous en étiez : Agent Chrome peut restaurer vos onglets à chaque redémarrage. Pour activer cette option, accédez aux</translation>
-<translation id="2217675621893057123">Votre administrateur système a configuré Agent Chrome pour que <ph name="TARGET_URL_HOSTNAME" /> s'ouvre dans un autre navigateur.</translation>
-<translation id="7637726452490203009">Relancer et mettre à jour &amp;Agent Chrome</translation>
+<translation id="373308981796873164">Reprenez là où vous en étiez : Shuttle peut restaurer vos onglets à chaque redémarrage. Pour activer cette option, accédez aux</translation>
+<translation id="4482819741686179260">Votre administrateur système a configuré Shuttle pour que <ph name="TARGET_URL_HOSTNAME" /> s'ouvre dans un autre navigateur.</translation>
+<translation id="5239882079227870661">Relancer et mettre à jour &amp;Shuttle</translation>
 <translation id="9190841055450128916">Chromium (mDNS-In)</translation>
 <translation id="924957577793602335">Personnaliser Chromium</translation>
 <translation id="93478295209880648">Chromium risque de ne pas fonctionner correctement, car la compatibilité n'est plus assurée sur Windows XP et Windows Vista</translation>
@@ -804,7 +804,7 @@ Agent Chrome ne peut pas récupérer vos paramètres.</translation>
 <translation id="967427899662692980">Renforcer la sécurité de Chromium</translation>
 <translation id="983803489796659991">Échec de l'installation, car le serveur de mise à jour ne dispose d'aucune donnée de hachage pour l'application.</translation>
 <translation id="985498048907240953">Utiliser Chromium sans compte</translation>
-<translation id="5192139095541169725">Auteurs de Agent Chrome</translation>
+<translation id="5192139095541169725">Silkweave</translation>
 <translation id="989970834842471429">Sélectionnez le texte ou l'image à rechercher</translation>
-<translation id="5834693163377136360">Pour que Agent Chrome puisse utiliser votre position, autorisez-le à y accéder dans les <ph name="BEGIN_LINK" />paramètres système<ph name="END_LINK" /></translation>
+<translation id="1699696098551154749">Pour que Shuttle puisse utiliser votre position, autorisez-le à y accéder dans les <ph name="BEGIN_LINK" />paramètres système<ph name="END_LINK" /></translation>
 </translationbundle>

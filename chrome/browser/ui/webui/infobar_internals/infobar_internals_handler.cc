@@ -431,7 +431,7 @@ bool InfoBarInternalsHandler::TriggerInfoBarInternal(InfoBarType type) {
       return true;
     }
     case InfoBarType::kIncognitoConnectability:
-      // Agent Chrome: incognito connectability was removed.
+      // Shuttle: incognito connectability was removed.
       return false;
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     case InfoBarType::kInstallationError: {

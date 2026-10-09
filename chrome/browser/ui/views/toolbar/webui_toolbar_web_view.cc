@@ -794,7 +794,7 @@ WebUIToolbarWebView::OnOmniboxAction(
   }
 }
 
-// Agent Chrome has no avatar button (profile menu removed); the WebUI toolbar
+// Shuttle has no avatar button (profile menu removed); the WebUI toolbar
 // never shows it (enableAvatarButton is false), so these are no-ops.
 void WebUIToolbarWebView::ShowAvatarMenu() {}
 

@@ -151,7 +151,7 @@ void ChromeMessagingDelegate::QueryIncognitoConnectability(
     content::WebContents* source_contents,
     const GURL& source_url,
     base::OnceCallback<void(bool)> callback) {
-  // Agent Chrome: no incognito product; never allow incognito connections.
+  // Shuttle: no incognito product; never allow incognito connections.
   std::move(callback).Run(false);
 }
 

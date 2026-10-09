@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/mcp_tools.h"
+#include "chrome/browser/shuttle/mcp_tools.h"
 
 #include <algorithm>
 #include <map>
@@ -20,9 +20,9 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
-#include "chrome/browser/agent_chrome/profile_registry.h"
-#include "chrome/browser/agent_chrome/session_manager.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
+#include "chrome/browser/shuttle/profile_registry.h"
+#include "chrome/browser/shuttle/session_manager.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_handle.h"
@@ -37,7 +37,7 @@
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -683,4 +683,4 @@ base::span<const Tool> GetTools() {
   return kTools;
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

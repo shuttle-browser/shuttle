@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/page_tools.h"
+#include "chrome/browser/shuttle/page_tools.h"
 
 #include <algorithm>
 #include <optional>
@@ -25,11 +25,11 @@
 #include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
-#include "chrome/browser/agent_chrome/agent_browser_sidecar.h"
-#include "chrome/browser/agent_chrome/session_manager.h"
+#include "chrome/browser/shuttle/agent_browser_sidecar.h"
+#include "chrome/browser/shuttle/session_manager.h"
 #include "content/public/browser/web_contents.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -37,10 +37,10 @@ namespace {
 // A C++ raw string rather than a .grd resource: no resource plumbing, and the
 // list is parsed once at first use.
 constexpr char kPageToolsJson[] =
-#include "chrome/browser/agent_chrome/page_tools_data.inc"
+#include "chrome/browser/shuttle/page_tools_data.inc"
     ;
 
-constexpr char kBinaryEnv[] = "AGENT_CHROME_AGENT_BROWSER";
+constexpr char kBinaryEnv[] = "SHUTTLE_AGENT_BROWSER";
 constexpr base::TimeDelta kDefaultTimeout = base::Seconds(60);
 constexpr base::TimeDelta kTimeoutSlack = base::Seconds(15);
 
@@ -316,7 +316,7 @@ base::FilePath PageToolManager::FindBinary() {
   base::FilePath exe;
   base::PathService::Get(base::FILE_EXE, &exe);
 #if BUILDFLAG(IS_MAC)
-  // <app>/Contents/MacOS/Agent Chrome -> <app>/Contents/Helpers/agent-browser.
+  // <app>/Contents/MacOS/Shuttle -> <app>/Contents/Helpers/agent-browser.
   // (Helper processes run from nested bundles, but the browser process
   // spawns the sidecar, so FILE_EXE is the main executable.)
   return exe.DirName().DirName().Append("Helpers").Append("agent-browser");
@@ -350,7 +350,7 @@ void PageToolManager::Call(std::string_view name,
   }
 
   base::FilePath states_dir =
-      profile_path_.Append("agent-chrome").Append("states").Append(session->agent);
+      profile_path_.Append("shuttle").Append("states").Append(session->agent);
   Translated translated;
   std::string error = Translate(*tool, args, states_dir, &translated);
   if (!error.empty()) {
@@ -433,4 +433,4 @@ void PageToolManager::Shutdown() {
   retiring_.clear();
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

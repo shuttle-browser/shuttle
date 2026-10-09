@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Design aktivieren</translation>
 <translation id="1135328998467923690">Paket ist ungültig: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Rückkamera</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> hat eine Erweiterung hinzugefügt, die sich möglicherweise auf die Funktionsweise von Chromium auswirkt.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> hat eine Erweiterung hinzugefügt, die sich möglicherweise auf die Funktionsweise von Shuttle auswirkt.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Privater Schlüssel konnte nicht exportiert werden.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">CRX-Datei konnte nicht ersetzt werden. Überprüfe, ob die Datei verwendet wird.</translation>
 <translation id="3163201441334626963">Unbekanntes Produkt <ph name="PRODUCT_ID" /> von Anbieter <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Der Zugriff auf diese Erweiterung wird von deiner Organisation blockiert.</translation>
-<translation id="3183357154200327217">Ein anderes Programm auf deinem Computer hat ein Design hinzugefügt, das sich möglicherweise auf die Funktionsweise von Chromium auswirkt.
+<translation id="7846451875700317002">Ein anderes Programm auf deinem Computer hat ein Design hinzugefügt, das sich möglicherweise auf die Funktionsweise von Shuttle auswirkt.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">App mit Manifest-Attribut „kiosk_only“ muss im Chrome OS-Kioskmodus installiert werden</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Ablehnen</translation>
 <translation id="3984413272403535372">Fehler bei der Signatur der Erweiterung</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" reparieren?</translation>
-<translation id="4061696872429826774">Ein anderes Programm auf deinem Computer hat eine Erweiterung hinzugefügt, die sich möglicherweise auf die Funktionsweise von Chromium auswirkt.
+<translation id="7396546976728149133">Ein anderes Programm auf deinem Computer hat eine Erweiterung hinzugefügt, die sich möglicherweise auf die Funktionsweise von Shuttle auswirkt.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Der Zugriff auf diese Erweiterungskategorie wird von deiner Organisation blockiert.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Die aktuelle Version von "<ph name="EXTENSION_NAME" />" wurde deaktiviert, weil sie weitere Berechtigungen erfordert.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" aktivieren?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Aus Chromium entfernen</translation>
+<translation id="2064155379595075287">Aus Shuttle entfernen</translation>
 <translation id="5456409301717116725">Die Erweiterung enthält die Schlüsseldatei „<ph name="KEY_PATH" />“. Möchtest du den Vorgang wirklich fortsetzen?</translation>
 <translation id="5485102783864353244">App hinzufügen</translation>
 <translation id="5486326529110362464">Es muss ein Eingabewert für den privaten Schlüssel vorhanden sein.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Der Administrator dieses Computers hat die Installation von <ph name="EXTENSION_NAME" /> vorgegeben. Eine Deinstallation ist daher nicht möglich.</translation>
 <translation id="6027032947578871493">Unbekanntes Produkt <ph name="PRODUCT_ID" /> von <ph name="VENDOR_NAME" /> (Seriennummer <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> von Anbieter <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Ein anderes Programm auf deinem Computer hat eine App hinzugefügt, die sich möglicherweise auf die Funktionsweise von Chromium auswirkt.
+<translation id="5918487821361452587">Ein anderes Programm auf deinem Computer hat eine App hinzugefügt, die sich möglicherweise auf die Funktionsweise von Shuttle auswirkt.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Fehler beim Laden der Erweiterung</translation>

@@ -1229,7 +1229,7 @@ void BrowserCommandController::InitCommandState() {
                                          can_reload);
   command_updater_->UpdateCommandEnabled(IDC_RELOAD_CLEARING_CACHE, can_reload);
 
-  // Tab group (agent) commands. Agent Chrome: no commands that create
+  // Tab group (agent) commands. Shuttle: no commands that create
   // groups; agents are made over MCP.
   command_updater_->UpdateCommandEnabled(IDC_ADD_NEW_TAB_TO_GROUP, true);
   command_updater_->UpdateCommandEnabled(IDC_FOCUS_NEXT_TAB_GROUP, true);

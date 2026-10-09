@@ -13,7 +13,7 @@
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/layout_constants.h"
@@ -74,7 +74,7 @@ namespace {
 
 // The amount of padding between the label and the sync icon.
 constexpr int kSyncIconPaddingFromLabel = 2;
-// Agent Chrome: space between the agent's avatar and its name.
+// Shuttle: space between the agent's avatar and its name.
 constexpr int kAvatarPaddingFromLabel = 5;
 
 bool SupportsDataSharing() {
@@ -523,9 +523,9 @@ void TabGroupHeader::VisualsChanged() {
 
   color_ = tab_slot_controller_->GetPaintedGroupColor(
       tab_slot_controller_->GetGroupColorId(tab_group_id));
-  // Agent Chrome: the agent's avatar takes the sync icon's place.
+  // Shuttle: the agent's avatar takes the sync icon's place.
   agent_avatar_ = gfx::ImageSkia();
-  if (auto* agents = agent_chrome::AgentChromeService::Get(
+  if (auto* agents = shuttle::ShuttleService::Get(
           tab_slot_controller_->GetBrowserWindowInterface()->GetProfile())) {
     agent_avatar_ = agents->AvatarOfGroup(tab_group_id);
   }
@@ -594,7 +594,7 @@ int TabGroupHeader::GetChipY() const {
 }
 
 bool TabGroupHeader::ShouldShowHeaderIcon() const {
-  // Agent Chrome: no saved/shared tab groups, so no sync or share icon; the
+  // Shuttle: no saved/shared tab groups, so no sync or share icon; the
   // slot shows the agent's avatar instead.
   return !agent_avatar_.isNull();
 }
@@ -717,7 +717,7 @@ void TabGroupHeader::CreateHeaderWithTitle() {
   // [Left Inset][Sync Icon][Padding][Group Title][Attention][Right Inset]
   const int sync_icon_width =
       should_show_header_icon_ ? group_style_->GetSyncIconWidth() : 0;
-  // Agent Chrome: an avatar sits concentric in the chip's rounded start (same
+  // Shuttle: an avatar sits concentric in the chip's rounded start (same
   // gap left as above and below) with a little more room before the name.
   const bool has_avatar = !agent_avatar_.isNull();
   const int padding_between_label_sync_icon =

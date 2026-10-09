@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Тақырыпты қосу</translation>
 <translation id="1135328998467923690">Пакет жарамсыз: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Артқы</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> кеңейтім қосты, ол Chromium жұмысын өзгертуі мүмкін.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> кеңейтім қосты, ол Shuttle жұмысын өзгертуі мүмкін.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Жеке кілтті экспорттау сәтсіз аяқталды.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">CRX файлын ауыстыру мүмкін болмады. Файл пайдаланылып жатқан болуы мүмкін.</translation>
 <translation id="3163201441334626963">Жеткізуші <ph name="VENDOR_ID" /> ұсынған белгісіз өнім <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">Бұл кеңейтімді пайдалану рұқсатын ұйымыңыз блоктаған.</translation>
-<translation id="3183357154200327217">Компьютеріңіздегі басқа бір бағдарлама тақырып қосты, ол Chromium жұмысын өзгертуі мүмкін.
+<translation id="7846451875700317002">Компьютеріңіздегі басқа бір бағдарлама тақырып қосты, ол Shuttle жұмысын өзгертуі мүмкін.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">"kiosk_only" манифест төлсипатына ие қолданба ChromeOS киоск режимінде орнатылуы тиіс.</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Тыйым салу</translation>
 <translation id="3984413272403535372">Кеңейтімді белгілеу кезіндегі қате.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" жөндейсіз бе?</translation>
-<translation id="4061696872429826774">Компьютеріңіздегі басқа бір бағдарлама кеңейтім қосты, ол Chromium жұмысын өзгертуі мүмкін.
+<translation id="7396546976728149133">Компьютеріңіздегі басқа бір бағдарлама кеңейтім қосты, ол Shuttle жұмысын өзгертуі мүмкін.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Бұл кеңейтім санатын пайдалану рұқсатын ұйымыңыз блоктаған.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" ең жаңа нұсқасы өшірілді, себебі ол қосымша рұқсаттарды талап етеді.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" қосасыз ба?</translation>
 <translation id="5356315618422219272">Қолданба көрінісі: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium-нен жою</translation>
+<translation id="2064155379595075287">Shuttle-нен жою</translation>
 <translation id="5456409301717116725">Бұл кеңейтім "<ph name="KEY_PATH" />" кілт файлын қамтиды. Оны қолданбаған дұрыс шығар.</translation>
 <translation id="5485102783864353244">Қолданба қосу</translation>
 <translation id="5486326529110362464">Жеке кілт үшін енгізілетін мән болуы қажет.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Бұл машинаның әкімшісі <ph name="EXTENSION_NAME" /> кеңейтімін орнатуды қажет етеді. Оны жою мүмкін емес.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> ұсынған белгісіз өнім <ph name="PRODUCT_ID" /> (сериялық нөмірі <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> ұсынған <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">Компьютеріңіздегі басқа бір бағдарлама қолданба қосты, ол Chromium жұмысын өзгертуі мүмкін.
+<translation id="5918487821361452587">Компьютеріңіздегі басқа бір бағдарлама қолданба қосты, ол Shuttle жұмысын өзгертуі мүмкін.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Кеңейтім жүктеу қатесі</translation>

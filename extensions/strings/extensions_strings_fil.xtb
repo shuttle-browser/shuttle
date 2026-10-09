@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">I-enable ang Tema</translation>
 <translation id="1135328998467923690">Di-wasto ang package: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Nakaharap sa paligid</translation>
-<translation id="1171831736360285680">Nagdagdag ang <ph name="PARTNER_NAME" /> ng extension na posibleng bumago sa paraan ng paggana ng Chromium.
+<translation id="6853317349523111347">Nagdagdag ang <ph name="PARTNER_NAME" /> ng extension na posibleng bumago sa paraan ng paggana ng Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Nabigong i-export ang pribadong key.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Nabigong palitan ang crx na file. Tingnan upang malaman kung ginagamit ang file.</translation>
 <translation id="3163201441334626963">Hindi kilalang produkto na <ph name="PRODUCT_ID" /> mula sa vendor na <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Bina-block ng iyong organisasyon ang access sa extension na ito.</translation>
-<translation id="3183357154200327217">Nagdagdag ang ibang program sa iyong computer ng tema na posibleng magpabago sa paraan ng paggana ng Chromium.
+<translation id="7846451875700317002">Nagdagdag ang ibang program sa iyong computer ng tema na posibleng magpabago sa paraan ng paggana ng Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Naka-install dapat sa kiosk mode ng ChromeOS ang app na may 'kiosk_only' na manifest attribute</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Tanggihan</translation>
 <translation id="3984413272403535372">Nagka-error habang linalagdaan ang extension.</translation>
 <translation id="4014432863917027322">Ayusin ang "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Nagdagdag ang ibang program sa iyong computer ng extension na posibleng magpabago sa paraan ng paggana ng Chromium.
+<translation id="7396546976728149133">Nagdagdag ang ibang program sa iyong computer ng extension na posibleng magpabago sa paraan ng paggana ng Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Bina-block ng iyong organisasyon ang access sa kategorya ng extension na ito.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Hindi pinagana ang pinakabagong bersyon ng "<ph name="EXTENSION_NAME" />" dahil nangangailangan ito ng higit pang mga pahintulot.</translation>
 <translation id="5242724311594467048">I-enable ang "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Alisin mula sa Chromium</translation>
+<translation id="2064155379595075287">Alisin mula sa Shuttle</translation>
 <translation id="5456409301717116725">Kasama sa extension na ito ang key file na '<ph name="KEY_PATH" />'. Malamang na hindi mo iyon gustong gawin.</translation>
 <translation id="5485102783864353244">Magdagdag ng app</translation>
 <translation id="5486326529110362464">Dapat na umiiral ang halaga ng input para sa pribadong key.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Kinakailangan ng administrator ng machine na ito na naka-install ang <ph name="EXTENSION_NAME" />. Hindi ito maaaring i-uninstall.</translation>
 <translation id="6027032947578871493">Hindi kilalang produkto na <ph name="PRODUCT_ID" /> mula sa <ph name="VENDOR_NAME" /> (serial number na <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> mula sa vendor na <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Nagdagdag ang ibang program sa iyong computer ng app na posibleng magpabago sa paraan ng paggana ng Chromium.
+<translation id="5918487821361452587">Nagdagdag ang ibang program sa iyong computer ng app na posibleng magpabago sa paraan ng paggana ng Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Error sa Paglo-load ng Extension</translation>

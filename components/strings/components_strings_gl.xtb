@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Proporcionar información adicional</translation>
 <translation id="1016671033299705843">Engadir o permiso de conducir de forma segura</translation>
 <translation id="1019413721762100891">Desactivado</translation>
-<translation id="1021753677514347426">Este problema prodúcese por causa dun certificado instalado por ti ou por outra persoa no teu dispositivo. Sábese que este certificado se utiliza para supervisar e interceptar redes, e Chromium non confía nel. Aínda que existen algunhas situacións lexítimas para a supervisión, como no caso de redes de empresas ou de centros educativos, Chromium quere asegurarse de que sexas consciente do que acontece, inda que non poidas facer nada ao respecto. A supervisión pode levarse a cabo en calquera navegador ou aplicación que acceda á Web.</translation>
+<translation id="768230658237634872">Este problema prodúcese por causa dun certificado instalado por ti ou por outra persoa no teu dispositivo. Sábese que este certificado se utiliza para supervisar e interceptar redes, e Shuttle non confía nel. Aínda que existen algunhas situacións lexítimas para a supervisión, como no caso de redes de empresas ou de centros educativos, Shuttle quere asegurarse de que sexas consciente do que acontece, inda que non poidas facer nada ao respecto. A supervisión pode levarse a cabo en calquera navegador ou aplicación que acceda á Web.</translation>
 <translation id="1024111578869940408">Ás veces, os atacantes imitan sitios facendo cambios no enderezo web que son difíciles de ver.</translation>
 <translation id="102916930470544692">Clave de acceso</translation>
 <translation id="1030706264415084469">O URL <ph name="URL" /> quere almacenar un gran volume de datos de forma permanente no teu dispositivo</translation>
@@ -809,7 +809,7 @@ En caso contrario, a configuración de privacidade impedirao. Se o permites, o c
 <translation id="2348836501965732644">Xestiona a túa información ou desactiva estas suxestións en Configuración</translation>
 <translation id="2349957959687031096">Botón para abrir unha pestana do modo de incógnito. Actívao para abrir unha nova pestana do modo de incógnito e navegar de forma privada</translation>
 <translation id="2350796302381711542">Queres permitir que se use <ph name="HANDLER_HOSTNAME" /> en lugar de <ph name="REPLACED_HANDLER_TITLE" /> para abrir todas as ligazóns de <ph name="PROTOCOL" />?</translation>
-<translation id="2351718832234620840">Este servidor non puido demostrar que é <ph name="DOMAIN" /> porque utiliza un certificado de seguranza no que Chromium ou a configuración do sistema para a encriptación de tráfico web non confían. Isto pode deberse a un erro de configuración ou a que un atacante interceptase a túa conexión.</translation>
+<translation id="4798228153726623290">Este servidor non puido demostrar que é <ph name="DOMAIN" /> porque utiliza un certificado de seguranza no que Shuttle ou a configuración do sistema para a encriptación de tráfico web non confían. Isto pode deberse a un erro de configuración ou a que un atacante interceptase a túa conexión.</translation>
 <translation id="2353297238722298836">Permítense a cámara e o micrófono</translation>
 <translation id="2354001756790975382">Outros marcadores</translation>
 <translation id="2355395290879513365">É posible que os atacantes poidan ver as imaxes que estás observando neste sitio e enganarte modificándoas.</translation>
@@ -1046,7 +1046,7 @@ En caso contrario, a configuración de privacidade impedirao. Se o permites, o c
 <translation id="2728127805433021124">O certificado do servidor está asinado cun algoritmo de sinatura débil.</translation>
 <translation id="272937284275742856">Verificando os detalles de pago de maneira segura...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Executar diagnósticos de conectividade<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Máis información sobre o buscador en Chromium</translation>
+<translation id="5216476641707900057">Máis información sobre o buscador en Shuttle</translation>
 <translation id="2731382536835015353">44 × 68 in</translation>
 <translation id="2734797989819862638">Non copiar</translation>
 <translation id="2738771556149464852">Non despois de</translation>
@@ -1344,7 +1344,7 @@ Para ocultar as opcións de pago aprazado, vai á <ph name="BEGIN_LINK" />config
 <translation id="3272091146646336650">Súper B</translation>
 <translation id="3272112314896217187">Escribe o código de verificación de <ph name="NUMBER_OF_DIGITS" /> díxitos</translation>
 <translation id="3272643614306383237">Menos de 1 MB. Algúns sitios pode que carguen máis lentamente a próxima vez que os visites.</translation>
-<translation id="3273738040255912340">A persoa administradora pode facer cambios no teu perfil e no teu navegador de forma remota, analizar información sobre o navegador mediante informes e realizar outras tarefas necesarias. A actividade deste dispositivo tamén se pode xestionar fóra de Chromium. <ph name="BEGIN_LINK" />Máis información<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">A persoa administradora pode facer cambios no teu perfil e no teu navegador de forma remota, analizar información sobre o navegador mediante informes e realizar outras tarefas necesarias. A actividade deste dispositivo tamén se pode xestionar fóra de Shuttle. <ph name="BEGIN_LINK" />Máis información<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Opción de gardar o IBAN aberta a altura completa.</translation>
 <translation id="327455571215090823">Función Autocompletar máis intelixente, mantendo a privacidade</translation>
 <translation id="3280440382387335343">Actualiza o pasaporte de forma segura en Google Wallet</translation>
@@ -1613,7 +1613,7 @@ Para ocultar as opcións de pago aprazado, vai á <ph name="BEGIN_LINK" />config
 <translation id="3742104862808477448">Axúdalle a Chromium a entender e completar mellor os formularios complexos procesando de forma segura os datos nos servidores de Google. A túa información segue sendo privada e ninguén a revisa.</translation>
 <translation id="3744111561329211289">Sincronización en segundo plano</translation>
 <translation id="3744212718085287312">Queres aumentar a protección cunha tarxeta virtual a próxima vez?</translation>
-<translation id="3744899669254331632">Non se pode visitar <ph name="SITE" /> nestes momentos porque o sitio web enviou credenciais codificadas que Chromium non pode procesar. Os erros e ataques da rede normalmente son temporais, polo que é probable que esta páxina funcione máis tarde.</translation>
+<translation id="58356321557204990">Non se pode visitar <ph name="SITE" /> nestes momentos porque o sitio web enviou credenciais codificadas que Shuttle non pode procesar. Os erros e ataques da rede normalmente son temporais, polo que é probable que esta páxina funcione máis tarde.</translation>
 <translation id="3745599309295009257">O teu texto, así como o contido e URL da páxina na que estás escribindo, enviarase a Google. Esa información someterase a un proceso de revisión humana e usarase para mellorar a función. Non inclúas información persoal (como datos médicos ou financeiros) nin utilices esta ferramenta en sitios que conteñan datos privados ou confidenciais.</translation>
 <translation id="3748009735914587286">Metal (alto brillo)</translation>
 <translation id="3748647055058832337">Non dispoñible para este comerciante</translation>
@@ -2199,7 +2199,7 @@ Para ocultar as opcións de pago aprazado, vai á <ph name="BEGIN_LINK" />config
 <translation id="4732860731866514038">Descargando paquete de idioma (<ph name="LANGUAGE" />)… <ph name="PERCENT" /> %</translation>
 <translation id="4733082559415072992">O URL <ph name="URL" /> quere utilizar a localización do teu dispositivo</translation>
 <translation id="473414950835101501">Usar as cámaras</translation>
-<translation id="4736825316280949806">Reinicia Chromium</translation>
+<translation id="5713993618957185264">Reinicia Shuttle</translation>
 <translation id="4736934858538408121">Tarxeta virtual</translation>
 <translation id="473775607612524610">Actualizar</translation>
 <translation id="4738601419177586157">Suxestión de busca de "<ph name="TEXT" />"</translation>
@@ -2421,7 +2421,7 @@ Para ocultar as opcións de pago aprazado, vai á <ph name="BEGIN_LINK" />config
 <translation id="5089810972385038852">Estado</translation>
 <translation id="5093232627742069661">Dobrez en Z</translation>
 <translation id="5093417502834168387">Tes problemas para iniciar sesión? Proba con outro método</translation>
-<translation id="5094747076828555589">Este servidor non puido demostrar que é <ph name="DOMAIN" /> porque Chromium non confía no seu certificado de seguranza. É posible que isto se deba a un erro de configuración ou a que un atacante interceptase a túa conexión.</translation>
+<translation id="5713412634455044803">Este servidor non puido demostrar que é <ph name="DOMAIN" /> porque Shuttle non confía no seu certificado de seguranza. É posible que isto se deba a un erro de configuración ou a que un atacante interceptase a túa conexión.</translation>
 <translation id="5096066272198024688">Gardando a túa información...</translation>
 <translation id="5097099694988056070">Estatísticas do hardware, como o uso de CPU/RAM</translation>
 <translation id="5097468150760963273">27 × 39 in</translation>
@@ -3173,7 +3173,7 @@ Para ocultar as opcións de pago aprazado, vai á <ph name="BEGIN_LINK" />config
 <translation id="635394585025793320">Quero impresionar a alguén. Busca mesas libres para dúas persoas nos restaurantes dos que todo o mundo fala agora mesmo</translation>
 <translation id="6354918092619878358">SECG Elliptic Curve secp256r1 (tamén se denomina ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, preme Tabulador e despois Introducir para ver máis pestanas doutros dispositivos</translation>
-<translation id="6355392890578844978">Ningunha compañía ou organización xestiona este navegador. A actividade deste dispositivo pódese xestionar fóra de Chromium. <ph name="BEGIN_LINK" />Máis información<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Ningunha compañía ou organización xestiona este navegador. A actividade deste dispositivo pódese xestionar fóra de Shuttle. <ph name="BEGIN_LINK" />Máis información<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Os grupos de pestanas "<ph name="GROUP_TITLE_1" />" e "<ph name="GROUP_TITLE_2" />" xa non están dispoñibles</translation>
 <translation id="6358088212770985041">editar os métodos de pago</translation>
 <translation id="6358450015545214790">Que significan estas seccións?</translation>
@@ -4137,7 +4137,7 @@ Detalles adicionais:
 <translation id="7995512525968007366">Non especificado</translation>
 <translation id="7997855386298213183">pestanas compartidas</translation>
 <translation id="7999482381722829925">Crea unha lista de comprobación de limpeza a fondo priorizada e organizada por cuartos que se centre nos lugares que adoitan pasarse por alto</translation>
-<translation id="8001912761979890298">Este servidor non puido demostrar que é <ph name="DOMAIN" /> porque utiliza un certificado de seguranza no que Chromium ou a configuración do sistema para a encriptación de tráfico web non confían. Isto pode deberse a un erro de configuración ou a que un atacante interceptase a túa conexión. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Ver o certificado<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Este servidor non puido demostrar que é <ph name="DOMAIN" /> porque utiliza un certificado de seguranza no que Shuttle ou a configuración do sistema para a encriptación de tráfico web non confían. Isto pode deberse a un erro de configuración ou a que un atacante interceptase a túa conexión. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Ver o certificado<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Proba a pechar outras pestanas ou programas para liberar memoria.</translation>
 <translation id="8002230960325005199">Ver os sitios relacionados nunha pestana nova</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4228,7 +4228,7 @@ Detalles adicionais:
 <translation id="8175796834047840627">Chrome permíteche gardar as túas tarxetas na túa Conta de Google porque tes a sesión iniciada. Podes cambiar esta opción na configuración cando queiras.</translation>
 <translation id="8176440868214972690">O administrador deste dispositivo enviou algúns datos (por exemplo, opcións de configuración ou políticas) aos seguintes sitios web.</translation>
 <translation id="818254048113802060">{0,plural, =1{Bloqueouse <ph name="FILE_NAME" /> debido ao contido}other{Bloqueáronse <ph name="FILE_COUNT" /> ficheiros debido ao contido}}</translation>
-<translation id="8186171296341598122">Podes cambiar o buscador en calquera momento na configuración de Chromium. Se non ves o teu buscador preferido, podes facer unha busca desde o seu sitio. Verás que aparece como buscador visitado recentemente na configuración de Chromium e poderás definilo como predeterminado.</translation>
+<translation id="2852542171920460365">Podes cambiar o buscador en calquera momento na configuración de Shuttle. Se non ves o teu buscador preferido, podes facer unha busca desde o seu sitio. Verás que aparece como buscador visitado recentemente na configuración de Shuttle e poderás definilo como predeterminado.</translation>
 <translation id="8188830160449823068">Esta IBAN gardouse só no dispositivo</translation>
 <translation id="8189557652711717875">O buscador que escollas usarase para funcións como facer buscas desde a barra de enderezos e a partir de imaxes nas páxinas web.</translation>
 <translation id="8190193880870196235">Permiso xestionado por unha extensión</translation>
@@ -4312,7 +4312,7 @@ Detalles adicionais:
 <translation id="8316555157357957253">En uso agora</translation>
 <translation id="8319414634934645341">Uso ampliado de claves</translation>
 <translation id="831997045666694187">Serán</translation>
-<translation id="8321448084834652864">Podes cambiar o buscador en calquera momento na configuración de Chromium.</translation>
+<translation id="332470347080865446">Podes cambiar o buscador en calquera momento na configuración de Shuttle.</translation>
 <translation id="8321476692217554900">notificacións</translation>
 <translation id="8323505966575306467">Engade máis protección aos teus contrasinais</translation>
 <translation id="832547548543012337">Eliminar o pasaporte</translation>
@@ -4533,7 +4533,7 @@ Detalles adicionais:
 <translation id="8736059027199600831">30 x 40 polgadas</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, preme Tab e, a continuación, Intro para abrir unha ventá do modo de incógnito e navegar de forma privada</translation>
 <translation id="8737685506611670901">Abrir ligazóns de <ph name="PROTOCOL" /> en lugar de <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Para establecer unha conexión segura, é necesario axustar o reloxo correctamente. Isto débese a que os certificados que utilizan os sitios web para identificarse só son válidos durante períodos de tempo específicos. Debido a que o reloxo do dispositivo non está correctamente axustado, Chromium non pode verificar estes certificados.</translation>
+<translation id="4709963803166322417">Para establecer unha conexión segura, é necesario axustar o reloxo correctamente. Isto débese a que os certificados que utilizan os sitios web para identificarse só son válidos durante períodos de tempo específicos. Debido a que o reloxo do dispositivo non está correctamente axustado, Shuttle non pode verificar estes certificados.</translation>
 <translation id="8740359287975076522">Non se puido atopar o &lt;abbr id="dnsDefinition"&gt;enderezo DNS&lt;/abbr&gt; de <ph name="HOST_NAME" />. Estase diagnosticando o problema.</translation>
 <translation id="874918643257405732">Engadir esta pestana aos marcadores</translation>
 <translation id="8749274696886550762">Este sitio non parece correcto</translation>
@@ -4742,7 +4742,7 @@ Detalles adicionais:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />. Para establecer Chrome como navegador predeterminado do sistema na configuración de iOS, preme Tabulador e, a continuación, Introducir</translation>
 <translation id="9101450247048146228">Uso e movemento das cámaras (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Bandexa 1</translation>
-<translation id="9103872766612412690">Normalmente, <ph name="SITE" /> encripta a túa información para protexela. Nesta ocasión, cando Chromium tentou conectar con <ph name="SITE" />, o sitio web devolveu credenciais estrañas e incorrectas. É posible que un atacante tentase facerse pasar por <ph name="SITE" /> ou que a pantalla de inicio de sesión de wifi interrompese a conexión. Non obstante, a túa información segue a salvo porque Chromium detivo a conexión antes de intercambiar datos.</translation>
+<translation id="733422146945994640">Normalmente, <ph name="SITE" /> encripta a túa información para protexela. Nesta ocasión, cando Shuttle tentou conectar con <ph name="SITE" />, o sitio web devolveu credenciais estrañas e incorrectas. É posible que un atacante tentase facerse pasar por <ph name="SITE" /> ou que a pantalla de inicio de sesión de wifi interrompese a conexión. Non obstante, a túa información segue a salvo porque Shuttle detivo a conexión antes de intercambiar datos.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> xestiona o teu perfil</translation>
 <translation id="9107467864910557787"><ph name="MANAGER" /> xestiona o teu navegador</translation>
 <translation id="91108059142052966">A política do administrador desactiva a pantalla compartida con <ph name="APPLICATION_TITLE" /> cando hai contido confidencial á vista</translation>

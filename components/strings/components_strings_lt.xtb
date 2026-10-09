@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Pateikti papildomos išsamios informacijos</translation>
 <translation id="1016671033299705843">Saugiai pridėkite vairuotojo pažymėjimo duomenis</translation>
 <translation id="1019413721762100891">Išjungta</translation>
-<translation id="1021753677514347426">Ši problema kyla dėl sertifikato, kurį jūs ar kitas asmuo įdiegėte įrenginyje. Žinoma, kad sertifikatas naudojamas tinklams stebėti ir nuskaityti ir nėra patikimas sistemoje „Chromium“. Kai kurie stebėjimo atvejai yra teisėti, pvz., mokyklos ar įmonės tinkle, bet „Chromium“ nori būti tikras, kad apie stebėjimą būsite informuoti, net jei jo nutraukti negalite. Stebėjimas galimas bet kurioje naršyklėje ar programoje, iš kurių pasiekiamas žiniatinklis.</translation>
+<translation id="768230658237634872">Ši problema kyla dėl sertifikato, kurį jūs ar kitas asmuo įdiegėte įrenginyje. Žinoma, kad sertifikatas naudojamas tinklams stebėti ir nuskaityti ir nėra patikimas sistemoje „Shuttle“. Kai kurie stebėjimo atvejai yra teisėti, pvz., mokyklos ar įmonės tinkle, bet „Shuttle“ nori būti tikras, kad apie stebėjimą būsite informuoti, net jei jo nutraukti negalite. Stebėjimas galimas bet kurioje naršyklėje ar programoje, iš kurių pasiekiamas žiniatinklis.</translation>
 <translation id="1024111578869940408">Kartais atakos vykdytojai kurdami svetainių kopijas atlieka sunkiai pastebimų žiniatinklio adreso pakeitimų.</translation>
 <translation id="102916930470544692">Prieigos raktas</translation>
 <translation id="1030706264415084469"><ph name="URL" /> prašo leidimo nuolat saugoti daug duomenų įrenginyje</translation>
@@ -809,7 +809,7 @@ Kitu atveju tai bus užblokuota pagal jūsų privatumo nustatymus. Taip turinys,
 <translation id="2348836501965732644">Tvarkykite informaciją arba išjunkite šiuos pasiūlymus skiltyje „Nustatymai“</translation>
 <translation id="2349957959687031096">Mygtukas „Atidaryti inkognito skirtuką“; suaktyvinkite, kad būtų atidarytas naujas privataus naršymo inkognito skirtukas</translation>
 <translation id="2350796302381711542">Leisti „<ph name="HANDLER_HOSTNAME" />“ atidaryti visas <ph name="PROTOCOL" /> nuorodas vietoje „<ph name="REPLACED_HANDLER_TITLE" />“?</translation>
-<translation id="2351718832234620840">Šiam serveriui nepavyko patvirtinti, kad tai yra <ph name="DOMAIN" />, nes jis naudoja saugos sertifikatą, kuris nėra patikimas naršyklėje „Chromium“ arba jūsų žiniatinklio srauto šifruotės sistemos konfigūracijoje. Taip gali būti dėl netinkamos konfigūracijos ar dėl ryšį pertraukusio užpuolėjo.</translation>
+<translation id="4798228153726623290">Šiam serveriui nepavyko patvirtinti, kad tai yra <ph name="DOMAIN" />, nes jis naudoja saugos sertifikatą, kuris nėra patikimas naršyklėje „Shuttle“ arba jūsų žiniatinklio srauto šifruotės sistemos konfigūracijoje. Taip gali būti dėl netinkamos konfigūracijos ar dėl ryšį pertraukusio užpuolėjo.</translation>
 <translation id="2353297238722298836">Fotoaparatas ir mikrofonas leidžiami</translation>
 <translation id="2354001756790975382">Kitos žymės</translation>
 <translation id="2355395290879513365">Užpuolikai galbūt galės matyti, kuriuos šios svetainės vaizdus peržiūrite, ir juos pakeis siekdami jus suklaidinti.</translation>
@@ -1046,7 +1046,7 @@ Kitu atveju tai bus užblokuota pagal jūsų privatumo nustatymus. Taip turinys,
 <translation id="2728127805433021124">Serverio sertifikatas pasirašytas naudojant nepatikimą parašo algoritmą.</translation>
 <translation id="272937284275742856">Saugus išsamios mokėjimo metodo informacijos patvirtinimas...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Paleistas ryšio diagnostikos įrankis<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Sužinokite daugiau apie paieškos variklį naršyklėje „Chromium“</translation>
+<translation id="5216476641707900057">Sužinokite daugiau apie paieškos variklį naršyklėje „Shuttle“</translation>
 <translation id="2731382536835015353">44 x 68 col.</translation>
 <translation id="2734797989819862638">Nekopijuoti</translation>
 <translation id="2738771556149464852">Iki</translation>
@@ -1345,7 +1345,7 @@ Jei norite paslėpti mokėjimo vėliau parinktis, eikite į <ph name="BEGIN_LINK
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Įveskite <ph name="NUMBER_OF_DIGITS" /> skaitm. patvirtinimo kodą</translation>
 <translation id="3272643614306383237">Mažiau nei 1 MB. Per kitą apsilankymą kai kurios svetainės gali būti įkeltos gerokai lėčiau.</translation>
-<translation id="3273738040255912340">Administratorius gali nuotoliniu būdu atlikti profilio ir naršyklės pakeitimų, analizuoti informaciją apie naršyklę pateikdamas ataskaitas ir atlikti kitas reikiamas užduotis. Veiklą šiame įrenginyje taip pat galima tvarkyti ne naršyklėje „Chromium“. <ph name="BEGIN_LINK" />Sužinokite daugiau<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Administratorius gali nuotoliniu būdu atlikti profilio ir naršyklės pakeitimų, analizuoti informaciją apie naršyklę pateikdamas ataskaitas ir atlikti kitas reikiamas užduotis. Veiklą šiame įrenginyje taip pat galima tvarkyti ne naršyklėje „Shuttle“. <ph name="BEGIN_LINK" />Sužinokite daugiau<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">IBAN išsaugojimo langas atidarytas per visą ekrano aukštį.</translation>
 <translation id="327455571215090823">Privatus išmanesnis automatinis pildymas</translation>
 <translation id="3280440382387335343">Patikimai atnaujinkite paso duomenis sistemoje „Google Wallet“</translation>
@@ -1614,7 +1614,7 @@ Jei norite paslėpti mokėjimo vėliau parinktis, eikite į <ph name="BEGIN_LINK
 <translation id="3742104862808477448">Padėkite „Chromium“ geriau suprasti ir užpildyti sudėtingas formas saugiai apdorodami duomenis „Google“ serveriuose. Jūsų informacija lieka privati ir niekas jos neperžiūri.</translation>
 <translation id="3744111561329211289">Fono sinchronizavimas</translation>
 <translation id="3744212718085287312">Kitą kartą labiau apsaugoti naudojant virtualią kortelę?</translation>
-<translation id="3744899669254331632">Negalite dabar apsilankyti svetainėje <ph name="SITE" />, nes ji atsiuntė užšifruotus prisijungimo duomenis, kurių „Chromium“ negali apdoroti. Tinklo klaidos ir užpuolimai dažniausiai yra laikini, todėl šis puslapis vėliau tikriausiai veiks.</translation>
+<translation id="58356321557204990">Negalite dabar apsilankyti svetainėje <ph name="SITE" />, nes ji atsiuntė užšifruotus prisijungimo duomenis, kurių „Shuttle“ negali apdoroti. Tinklo klaidos ir užpuolimai dažniausiai yra laikini, todėl šis puslapis vėliau tikriausiai veiks.</translation>
 <translation id="3745599309295009257">Puslapio, kuriame rašote, tekstas, turinys ir URL bus siunčiami „Google“, peržiūrimi žmonių ir naudojami šiai funkcijai tobulinti. Neįveskite asmens informacijos (pvz., išsamios medicininės ar finansinės informacijos) ir nenaudokite šio įrankio svetainėse, kuriose yra privačios ar neskelbtinos informacijos.</translation>
 <translation id="3748009735914587286">Metalas (itin blizgus)</translation>
 <translation id="3748647055058832337">Šiam prekybininkui naudoti neleidžiama</translation>
@@ -2200,7 +2200,7 @@ Jei norite paslėpti mokėjimo vėliau parinktis, eikite į <ph name="BEGIN_LINK
 <translation id="4732860731866514038">Atsisiunčiamas <ph name="LANGUAGE" /> k. paketas... <ph name="PERCENT" /> proc.</translation>
 <translation id="4733082559415072992"><ph name="URL" /> nori naudoti įrenginio vietovę</translation>
 <translation id="473414950835101501">Naudoti jūsų vaizdo kameras</translation>
-<translation id="4736825316280949806">Iš naujo paleiskite „Chromium“</translation>
+<translation id="5713993618957185264">Iš naujo paleiskite „Shuttle“</translation>
 <translation id="4736934858538408121">Virtuali kortelė</translation>
 <translation id="473775607612524610">Atnaujinti</translation>
 <translation id="4738601419177586157">„<ph name="TEXT" />“ paieškos pasiūlymas</translation>
@@ -2422,7 +2422,7 @@ Jei norite paslėpti mokėjimo vėliau parinktis, eikite į <ph name="BEGIN_LINK
 <translation id="5089810972385038852">Valstija</translation>
 <translation id="5093232627742069661">Z formos perlenkimas</translation>
 <translation id="5093417502834168387">Nepavyksta prisijungti? Išbandykite kitą metodą</translation>
-<translation id="5094747076828555589">Šiam serveriui nepavyko patvirtinti, kad tai yra <ph name="DOMAIN" />; jo saugos sertifikatas nėra patikimas „Chromium“. Taip gali nutikti dėl netinkamos konfigūracijos ar dėl ryšį pertraukusio užgrobėjo.</translation>
+<translation id="5713412634455044803">Šiam serveriui nepavyko patvirtinti, kad tai yra <ph name="DOMAIN" />; jo saugos sertifikatas nėra patikimas „Shuttle“. Taip gali nutikti dėl netinkamos konfigūracijos ar dėl ryšį pertraukusio užgrobėjo.</translation>
 <translation id="5096066272198024688">Informacija išsaugoma...</translation>
 <translation id="5097099694988056070">Įrenginio statistika, pvz., centrinio procesoriaus / laisvosios prieigos atminties naudojimas</translation>
 <translation id="5097468150760963273">27 x 39 col.</translation>
@@ -3174,7 +3174,7 @@ Jei norite paslėpti mokėjimo vėliau parinktis, eikite į <ph name="BEGIN_LINK
 <translation id="635394585025793320">Noriu padaryti įspūdį. Ieškok laisvų staliukų dviem žmonėms restoranuose, apie kuriuos šiuo metu visi kalba</translation>
 <translation id="6354918092619878358">SECG elipsės formos kreivės secp256r1 (taip pat vadinama ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, paspauskite tabuliavimo klavišą, tada paspauskite klavišą „Enter“, kad būtų rodoma daugiau skirtukų iš kitų įrenginių</translation>
-<translation id="6355392890578844978">Šios naršyklės netvarko įmonė ar kita organizacija. Veiklą šiame įrenginyje galima tvarkyti ne naršyklėje „Chromium“. <ph name="BEGIN_LINK" />Sužinokite daugiau<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Šios naršyklės netvarko įmonė ar kita organizacija. Veiklą šiame įrenginyje galima tvarkyti ne naršyklėje „Shuttle“. <ph name="BEGIN_LINK" />Sužinokite daugiau<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Skirtukų grupės „<ph name="GROUP_TITLE_1" />“ ir „<ph name="GROUP_TITLE_2" />“ nebepasiekiamos</translation>
 <translation id="6358088212770985041">redaguoti mokėjimo metodus</translation>
 <translation id="6358450015545214790">Ką tai reiškia?</translation>
@@ -4139,7 +4139,7 @@ Papildoma išsami informacija:
 <translation id="7995512525968007366">Nenurodytas</translation>
 <translation id="7997855386298213183">bendrinami skirtukai</translation>
 <translation id="7999482381722829925">Sukurk prioritetinį, kiekvieno kambario kruopštaus valymo kontrolinį sąrašą, skirtą dažnai praleidžiamoms vietoms</translation>
-<translation id="8001912761979890298">Šiam serveriui nepavyko patvirtinti, kad tai yra <ph name="DOMAIN" />, nes jis naudoja saugos sertifikatą, kuris nėra patikimas naršyklėje „Chromium“ arba jūsų žiniatinklio srauto šifruotės sistemos konfigūracijoje. Taip gali būti dėl netinkamos konfigūracijos ar dėl ryšį pertraukusio užpuolėjo. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Žr. sertifikatą<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Šiam serveriui nepavyko patvirtinti, kad tai yra <ph name="DOMAIN" />, nes jis naudoja saugos sertifikatą, kuris nėra patikimas naršyklėje „Shuttle“ arba jūsų žiniatinklio srauto šifruotės sistemos konfigūracijoje. Taip gali būti dėl netinkamos konfigūracijos ar dėl ryšį pertraukusio užpuolėjo. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Žr. sertifikatą<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Pabandykite uždaryti skirtukus arba kitas programas, kad atlaisvintumėte atminties.</translation>
 <translation id="8002230960325005199">Žr. susijusias svetaines naujame skirtuke</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />“</translation>
@@ -4230,7 +4230,7 @@ Papildoma išsami informacija:
 <translation id="8175796834047840627">„Chrome“ siūlo išsaugoti korteles „Google“ paskyroje, nes esate prisijungę. Šią elgseną galite pakeisti nustatymuose.</translation>
 <translation id="8176440868214972690">Šio įrenginio administratorius nusiuntė tam tikros informacijos, pvz., informacijos apie nustatymus ar politikos nuostatas, toliau nurodytoms svetainėms.</translation>
 <translation id="818254048113802060">{0,plural, =1{Failas „<ph name="FILE_NAME" />“ užblokuotas dėl turinio}one{<ph name="FILE_COUNT" /> failas užblokuotas dėl turinio}few{<ph name="FILE_COUNT" /> failai užblokuoti dėl turinio}many{<ph name="FILE_COUNT" /> failo užblokuota dėl turinio}other{<ph name="FILE_COUNT" /> failų užblokuota dėl turinio}}</translation>
-<translation id="8186171296341598122">Paieškos variklį galite bet kada pakeisti „Chromium“ nustatymuose. Jei nematote pageidaujamo paieškos variklio, galite atlikti paiešką jo svetainėje. Jis bus rodomas kaip neseniai lankytas paieškos variklis „Chromium“ nustatymuose ir galėsite jį nustatyti kaip numatytąjį.</translation>
+<translation id="2852542171920460365">Paieškos variklį galite bet kada pakeisti „Shuttle“ nustatymuose. Jei nematote pageidaujamo paieškos variklio, galite atlikti paiešką jo svetainėje. Jis bus rodomas kaip neseniai lankytas paieškos variklis „Shuttle“ nustatymuose ir galėsite jį nustatyti kaip numatytąjį.</translation>
 <translation id="8188830160449823068">IBAN išsaugotas tik įrenginyje</translation>
 <translation id="8189557652711717875">Pasirinktas paieškos variklis bus naudojamas tokioms funkcijoms kaip paieška iš adreso juostos ir pagal vaizdus tinklalapiuose.</translation>
 <translation id="8190193880870196235">Tvarkoma naudojant plėtinį</translation>
@@ -4314,7 +4314,7 @@ Papildoma išsami informacija:
 <translation id="8316555157357957253">Naudojama dabar</translation>
 <translation id="8319414634934645341">Išplėstinis rakto naudojimas</translation>
 <translation id="831997045666694187">Vakaras</translation>
-<translation id="8321448084834652864">Paieškos variklį galite bet kada pakeisti „Chromium“ nustatymuose.</translation>
+<translation id="332470347080865446">Paieškos variklį galite bet kada pakeisti „Shuttle“ nustatymuose.</translation>
 <translation id="8321476692217554900">pranešimai</translation>
 <translation id="8323505966575306467">Užtikrinkite geresnę slaptažodžių apsaugą</translation>
 <translation id="832547548543012337">Ištrinti pasą</translation>
@@ -4536,7 +4536,7 @@ Papildoma išsami informacija:
 <translation id="8736059027199600831">30 x 40 col.</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, paspauskite tabuliavimo klavišą, tada – „Enter“, kad būtų atidarytas naujas privataus naršymo inkognito langas</translation>
 <translation id="8737685506611670901">Atidaryti „<ph name="PROTOCOL" />“ nuorodas vietoje „<ph name="REPLACED_HANDLER_TITLE" />“</translation>
-<translation id="8738058698779197622">Jei norite užmegzti saugų ryšį, turėsite tinkamai nustatyti laikrodį. To reikalaujama todėl, kad svetainių tapatybei įrodyti naudojami sertifikatai galioja tik tam tikrą laikotarpį. Kadangi įrenginio laikrodis nustatytas netinkamai, „Chromium“ negali tinkamai patvirtinti sertifikatų.</translation>
+<translation id="4709963803166322417">Jei norite užmegzti saugų ryšį, turėsite tinkamai nustatyti laikrodį. To reikalaujama todėl, kad svetainių tapatybei įrodyti naudojami sertifikatai galioja tik tam tikrą laikotarpį. Kadangi įrenginio laikrodis nustatytas netinkamai, „Shuttle“ negali tinkamai patvirtinti sertifikatų.</translation>
 <translation id="8740359287975076522">Nepavyko rasti <ph name="HOST_NAME" /> &lt;abbr id="dnsDefinition"&gt;DNS adreso&lt;/abbr&gt;. Nustatoma problema.</translation>
 <translation id="874918643257405732">Žymėti šį skirtuką</translation>
 <translation id="8749274696886550762">Ši svetainė atrodo įtartina</translation>
@@ -4745,7 +4745,7 @@ Papildoma išsami informacija:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />; paspauskite tabuliavimo klavišą, tada „Enter“, kad nustatytumėte „Chrome“ kaip numatytąją sistemos naršyklę „iOS“ nustatymuose</translation>
 <translation id="9101450247048146228">Naudoti ir judinti vaizdo kameras (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">1 dėklas</translation>
-<translation id="9103872766612412690">Svetainėje <ph name="SITE" /> įprastai naudojama šifruotė informacijai apsaugoti. Šį kartą „Chromium“ bandant prisijungti prie <ph name="SITE" />, ji pateikė neįprastus ir netinkamus prisijungimo duomenis. Gali būti, kad užpuolėjas bando apsimesti svetaine <ph name="SITE" /> arba „Wi-Fi“ prisijungimo ekrane nutrūko ryšys. Jūsų informacija vis tiek liko apsaugota, nes „Chromium“ sustabdė prisijungimą prieš apsikeitimą bet kokiais duomenimis.</translation>
+<translation id="733422146945994640">Svetainėje <ph name="SITE" /> įprastai naudojama šifruotė informacijai apsaugoti. Šį kartą „Shuttle“ bandant prisijungti prie <ph name="SITE" />, ji pateikė neįprastus ir netinkamus prisijungimo duomenis. Gali būti, kad užpuolėjas bando apsimesti svetaine <ph name="SITE" /> arba „Wi-Fi“ prisijungimo ekrane nutrūko ryšys. Jūsų informacija vis tiek liko apsaugota, nes „Shuttle“ sustabdė prisijungimą prieš apsikeitimą bet kokiais duomenimis.</translation>
 <translation id="9107199998619088551">„<ph name="MANAGER" />“ tvarko jūsų profilį</translation>
 <translation id="9107467864910557787">Jūsų naršyklę tvarko <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Pagal administratoriaus politiką ekrano bendrinimas su „<ph name="APPLICATION_TITLE" />“ išjungiamas, kai matomas konfidencialus turinys</translation>

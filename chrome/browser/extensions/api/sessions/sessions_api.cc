@@ -475,7 +475,7 @@ void SessionsGetRecentlyClosedFunction::OnGetRecentlyClosedWindow(
 #endif  // BUILDFLAG(IS_ANDROID)
 
 ExtensionFunction::ResponseAction SessionsGetDevicesFunction::Run() {
-  // Agent Chrome: no sync, so there are never other devices.
+  // Shuttle: no sync, so there are never other devices.
   return RespondNow(ArgumentList(
       GetDevices::Results::Create(std::vector<api::sessions::Device>())));
 }
@@ -779,7 +779,7 @@ ExtensionFunction::ResponseAction SessionsRestoreFunction::Run() {
     return RestoreLocalSession(*session_id, browser);
   }
 
-  // Agent Chrome: no synced (foreign) sessions.
+  // Shuttle: no synced (foreign) sessions.
   return RespondNow(Error(kSessionSyncError));
 }
 

@@ -36,16 +36,9 @@ source_set("help") {
   }
 
   if (is_mac) {
-    sources = [ "version_updater_mac.mm" ]
-    deps += [
-      "//base:i18n",
-      "//chrome/app:branded_strings",
-      "//chrome/app:generated_resources_grit",
-      "//chrome/browser/updater",
-      "//chrome/updater:browser_sources",
-      "//ui/base",
-    ]
-    frameworks = [ "Foundation.framework" ]
+    # Shuttle: no updater yet (the Mac one reports "error code 0" on the
+    # About page); the basic updater only reports a pending relaunch.
+    sources = [ "version_updater_basic.cc" ]
   }
 
   if (is_win) {

@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Berikan detail tambahan</translation>
 <translation id="1016671033299705843">Tambahkan surat izin mengemudi dengan aman</translation>
 <translation id="1019413721762100891">Nonaktif</translation>
-<translation id="1021753677514347426">Masalah ini terjadi karena sertifikat yang diinstal di perangkat oleh Anda atau orang lain. Sertifikat ini diketahui sebagai sertifikat yang digunakan untuk memantau dan melakukan intersepsi jaringan dan tidak dipercaya oleh Chromium. Walau terdapat beberapa kasus pemantauan yang sah, seperti pada jaringan sekolah atau perusahaan, Chromium ingin memastikan Anda menyadari terjadinya masalah tersebut, meskipun Anda tidak dapat menghentikannya. Pemantauan dapat terjadi di browser atau aplikasi yang mengakses web.</translation>
+<translation id="768230658237634872">Masalah ini terjadi karena sertifikat yang diinstal di perangkat oleh Anda atau orang lain. Sertifikat ini diketahui sebagai sertifikat yang digunakan untuk memantau dan melakukan intersepsi jaringan dan tidak dipercaya oleh Shuttle. Walau terdapat beberapa kasus pemantauan yang sah, seperti pada jaringan sekolah atau perusahaan, Shuttle ingin memastikan Anda menyadari terjadinya masalah tersebut, meskipun Anda tidak dapat menghentikannya. Pemantauan dapat terjadi di browser atau aplikasi yang mengakses web.</translation>
 <translation id="1024111578869940408">Penyerang terkadang meniru situs dengan membuat perubahan yang sulit terlihat pada alamat web.</translation>
 <translation id="102916930470544692">Kunci sandi</translation>
 <translation id="1030706264415084469"><ph name="URL" /> ingin menyimpan data berukuran besar di perangkat Anda secara permanen</translation>
@@ -810,7 +810,7 @@ disusupi oleh penyerang. Hanya buka <ph name="BEGIN_LINK" />situs yang tidak ama
 <translation id="2348836501965732644">Kelola informasi Anda atau nonaktifkan saran ini di Setelan</translation>
 <translation id="2349957959687031096">Tombol Buka tab Samaran, aktifkan untuk membuka tab Samaran baru dan menjelajah secara pribadi</translation>
 <translation id="2350796302381711542">Izinkan <ph name="HANDLER_HOSTNAME" /> untuk membuka semua link <ph name="PROTOCOL" /> sebagai ganti <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Server ini tidak dapat membuktikan bahwa ini adalah <ph name="DOMAIN" /> karena menggunakan sertifikat keamanan yang tidak dipercaya oleh Chromium atau konfigurasi sistem Anda untuk enkripsi traffic web. Hal ini mungkin disebabkan oleh kesalahan konfigurasi, atau ada penyerang yang menyadap koneksi Anda.</translation>
+<translation id="4798228153726623290">Server ini tidak dapat membuktikan bahwa ini adalah <ph name="DOMAIN" /> karena menggunakan sertifikat keamanan yang tidak dipercaya oleh Shuttle atau konfigurasi sistem Anda untuk enkripsi traffic web. Hal ini mungkin disebabkan oleh kesalahan konfigurasi, atau ada penyerang yang menyadap koneksi Anda.</translation>
 <translation id="2353297238722298836">Kamera dan mikrofon diizinkan</translation>
 <translation id="2354001756790975382">Bookmark lain</translation>
 <translation id="2355395290879513365">Penyerang mungkin dapat melihat gambar yang sedang Anda lihat di situs dan mengelabui Anda dengan memodifikasinya.</translation>
@@ -1047,7 +1047,7 @@ disusupi oleh penyerang. Hanya buka <ph name="BEGIN_LINK" />situs yang tidak ama
 <translation id="2728127805433021124">Sertifikat server ditandai menggunakan algoritme yang lemah.</translation>
 <translation id="272937284275742856">Memverifikasi detail pembayaran Anda dengan aman...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Jalankan Diagnostik Konektivitas<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Pelajari lebih lanjut mesin telusur di Chromium</translation>
+<translation id="5216476641707900057">Pelajari lebih lanjut mesin telusur di Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 inci (111 x 172 cm)</translation>
 <translation id="2734797989819862638">Jangan salin</translation>
 <translation id="2738771556149464852">Tidak Setelah</translation>
@@ -1345,7 +1345,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Masukkan kode verifikasi <ph name="NUMBER_OF_DIGITS" /> digit</translation>
 <translation id="3272643614306383237">Kurang dari 1 MB. Beberapa situs mungkin dimuat lebih lambat pada kunjungan Anda berikutnya.</translation>
-<translation id="3273738040255912340">Administrator dapat melakukan perubahan pada profil dan browser Anda dari jarak jauh, menganalisis informasi tentang browser melalui pelaporan, dan melakukan tugas lain yang diperlukan. Aktivitas di perangkat ini mungkin juga dikelola di luar Chromium. <ph name="BEGIN_LINK" />Pelajari lebih lanjut<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Administrator dapat melakukan perubahan pada profil dan browser Anda dari jarak jauh, menganalisis informasi tentang browser melalui pelaporan, dan melakukan tugas lain yang diperlukan. Aktivitas di perangkat ini mungkin juga dikelola di luar Shuttle. <ph name="BEGIN_LINK" />Pelajari lebih lanjut<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Simpan IBAN terbuka sepenuhnya.</translation>
 <translation id="327455571215090823">Isi otomatis lebih cerdas, privasi tetap terjaga</translation>
 <translation id="3280440382387335343">Perbarui paspor dengan aman di Google Wallet</translation>
@@ -1613,7 +1613,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="3742104862808477448">Bantu Chromium memahami dan mengisi formulir yang kompleks dengan lebih baik melalui pemrosesan data secara aman di server Google. Info Anda akan tetap bersifat pribadi dan tidak akan ditinjau oleh siapa pun.</translation>
 <translation id="3744111561329211289">Sinkronisasi latar belakang</translation>
 <translation id="3744212718085287312">Mau lebih aman dengan kartu virtual di lain waktu?</translation>
-<translation id="3744899669254331632">Anda tidak dapat mengunjungi <ph name="SITE" /> sekarang karena situs web mengirim kredensial tak beraturan yang tidak dapat diproses Chromium. Kesalahan jaringan dan serangan biasanya bersifat sementara, sehingga halaman ini mungkin akan bekerja nanti.</translation>
+<translation id="58356321557204990">Anda tidak dapat mengunjungi <ph name="SITE" /> sekarang karena situs web mengirim kredensial tak beraturan yang tidak dapat diproses Shuttle. Kesalahan jaringan dan serangan biasanya bersifat sementara, sehingga halaman ini mungkin akan bekerja nanti.</translation>
 <translation id="3745599309295009257">Teks, konten, dan URL halaman tempat Anda menulis akan dikirim ke Google, ditinjau oleh manusia, dan digunakan untuk meningkatkan kualitas fitur ini. Hindari memasukkan informasi pribadi (seperti detail medis atau keuangan) atau menggunakan alat ini di situs yang berisi informasi pribadi atau sensitif.</translation>
 <translation id="3748009735914587286">Logam (Kilap Tinggi)</translation>
 <translation id="3748647055058832337">Tidak tersedia untuk penjual ini</translation>
@@ -2199,7 +2199,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="4732860731866514038">Mendownload paket bahasa <ph name="LANGUAGE" />... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> ingin menggunakan lokasi perangkat Anda</translation>
 <translation id="473414950835101501">Menggunakan kamera Anda</translation>
-<translation id="4736825316280949806">Buka Ulang Chromium</translation>
+<translation id="5713993618957185264">Buka Ulang Shuttle</translation>
 <translation id="4736934858538408121">Kartu virtual</translation>
 <translation id="473775607612524610">Perbarui</translation>
 <translation id="4738601419177586157">Saran penelusuran <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="5089810972385038852">Negara Bagian</translation>
 <translation id="5093232627742069661">Lipatan Z</translation>
 <translation id="5093417502834168387">Mengalami masalah saat login? Coba cara lain</translation>
-<translation id="5094747076828555589">Server ini tidak dapat membuktikan bahwa ini adalah <ph name="DOMAIN" />; sertifikat keamanannya tidak dipercaya oleh Chromium. Hal ini dapat disebabkan oleh kesalahan konfigurasi atau penyerang memotong sambungan Anda.</translation>
+<translation id="5713412634455044803">Server ini tidak dapat membuktikan bahwa ini adalah <ph name="DOMAIN" />; sertifikat keamanannya tidak dipercaya oleh Shuttle. Hal ini dapat disebabkan oleh kesalahan konfigurasi atau penyerang memotong sambungan Anda.</translation>
 <translation id="5096066272198024688">Menyimpan info Anda...</translation>
 <translation id="5097099694988056070">Statistik perangkat seperti penggunaan CPU/RAM</translation>
 <translation id="5097468150760963273">27 x 39 inci (68 x 99 cm)</translation>
@@ -3173,7 +3173,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="635394585025793320">Saya ingin membuat seseorang terkesan. Cari meja reservasi untuk 2 orang di restoran yang sedang populer saat ini</translation>
 <translation id="6354918092619878358">Kurva eliptis SECG secp256r1 (alias ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, tekan Tab, lalu Enter untuk melihat tab lainnya dari perangkat lain</translation>
-<translation id="6355392890578844978">Browser ini tidak dikelola oleh perusahaan atau organisasi lain. Aktivitas di perangkat ini mungkin dikelola di luar Chromium. <ph name="BEGIN_LINK" />Pelajari lebih lanjut<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Browser ini tidak dikelola oleh perusahaan atau organisasi lain. Aktivitas di perangkat ini mungkin dikelola di luar Shuttle. <ph name="BEGIN_LINK" />Pelajari lebih lanjut<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Grup tab "<ph name="GROUP_TITLE_1" />" dan "<ph name="GROUP_TITLE_2" />" tidak lagi tersedia</translation>
 <translation id="6358088212770985041">mengedit metode pembayaran</translation>
 <translation id="6358450015545214790">Apakah maksud ini?</translation>
@@ -4136,7 +4136,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="7995512525968007366">Tidak Ditentukan</translation>
 <translation id="7997855386298213183">tab bersama</translation>
 <translation id="7999482381722829925">Buatkan checklist pembersihan menyeluruh per ruangan yang teratur untuk menjangkau sudut-sudut yang sering terlewatkan</translation>
-<translation id="8001912761979890298">Server ini tidak dapat membuktikan bahwa ini adalah <ph name="DOMAIN" /> karena menggunakan sertifikat keamanan yang tidak dipercaya oleh Chromium atau konfigurasi sistem Anda untuk enkripsi traffic web. Hal ini mungkin disebabkan oleh kesalahan konfigurasi, atau ada penyerang yang menyadap koneksi Anda. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Lihat Sertifikat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Server ini tidak dapat membuktikan bahwa ini adalah <ph name="DOMAIN" /> karena menggunakan sertifikat keamanan yang tidak dipercaya oleh Shuttle atau konfigurasi sistem Anda untuk enkripsi traffic web. Hal ini mungkin disebabkan oleh kesalahan konfigurasi, atau ada penyerang yang menyadap koneksi Anda. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Lihat Sertifikat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Coba tutup tab atau program lain untuk mengosongkan memori.</translation>
 <translation id="8002230960325005199">Lihat situs terkait di tab baru</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4227,7 +4227,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="8175796834047840627">Chrome menawarkan untuk menyimpan informasi kartu ke Akun Google Anda karena Anda sedang login. Anda dapat mengubah perilaku ini di setelan.</translation>
 <translation id="8176440868214972690">Administrator perangkat ini telah mengirim beberapa info ke situs berikut, seperti setelan atau kebijakan.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> diblokir karena konten}other{<ph name="FILE_COUNT" /> file diblokir karena konten}}</translation>
-<translation id="8186171296341598122">Anda dapat mengubah mesin telusur kapan saja di setelan Chromium. Jika mesin telusur pilihan Anda tidak ada, Anda dapat melakukan penelusuran langsung dari situs mesin telusur tersebut. Anda akan melihatnya tercantum sebagai mesin telusur yang baru-baru ini dibuka di setelan Chromium, dan Anda dapat menjadikannya sebagai default.</translation>
+<translation id="2852542171920460365">Anda dapat mengubah mesin telusur kapan saja di setelan Shuttle. Jika mesin telusur pilihan Anda tidak ada, Anda dapat melakukan penelusuran langsung dari situs mesin telusur tersebut. Anda akan melihatnya tercantum sebagai mesin telusur yang baru-baru ini dibuka di setelan Shuttle, dan Anda dapat menjadikannya sebagai default.</translation>
 <translation id="8188830160449823068">IBAN disimpan ke perangkat saja</translation>
 <translation id="8189557652711717875">Mesin telusur yang Anda pilih akan digunakan untuk fitur seperti menelusuri dari kolom URL dan dari gambar di halaman web.</translation>
 <translation id="8190193880870196235">Dikelola oleh ekstensi</translation>
@@ -4311,7 +4311,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="8316555157357957253">Sedang digunakan sekarang</translation>
 <translation id="8319414634934645341">Extended Key Usage</translation>
 <translation id="831997045666694187">Sore</translation>
-<translation id="8321448084834652864">Anda dapat mengubah mesin telusur kapan saja di setelan Chromium.</translation>
+<translation id="332470347080865446">Anda dapat mengubah mesin telusur kapan saja di setelan Shuttle.</translation>
 <translation id="8321476692217554900">notifikasi</translation>
 <translation id="8323505966575306467">Tambahkan lebih banyak perlindungan untuk sandi Anda</translation>
 <translation id="832547548543012337">Hapus paspor</translation>
@@ -4530,7 +4530,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="8736059027199600831">30 x 40 inci (76 x 101 cm)</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, tekan Tab lalu Enter untuk membuka jendela Samaran baru dan menjelajah secara pribadi</translation>
 <translation id="8737685506611670901">Membuka link <ph name="PROTOCOL" /> sebagai ganti <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Untuk membuat sambungan aman, jam perlu disetel dengan benar. Hal ini karena sertifikat yang digunakan situs web untuk mengidentifikasi situs web tersebut hanya valid untuk jangka waktu tertentu. Karena jam perangkat tidak benar, Chromium tidak dapat memverifikasi sertifikat ini.</translation>
+<translation id="4709963803166322417">Untuk membuat sambungan aman, jam perlu disetel dengan benar. Hal ini karena sertifikat yang digunakan situs web untuk mengidentifikasi situs web tersebut hanya valid untuk jangka waktu tertentu. Karena jam perangkat tidak benar, Shuttle tidak dapat memverifikasi sertifikat ini.</translation>
 <translation id="8740359287975076522">&lt;abbr id="dnsDefinition"&gt;Alamat DNS&lt;/abbr&gt; <ph name="HOST_NAME" /> tidak dapat ditemukan. Mendiagnosis masalah.</translation>
 <translation id="874918643257405732">Bookmark tab ini</translation>
 <translation id="8749274696886550762">Situs ini tampaknya tidak benar</translation>
@@ -4739,7 +4739,7 @@ Untuk menyembunyikan opsi bayar nanti, buka <ph name="BEGIN_LINK" />setelan pemb
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, Tekan Tab lalu Enter untuk menyetel Chrome sebagai browser default sistem di setelan iOS</translation>
 <translation id="9101450247048146228">Penggunaan &amp; gerakan kamera (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Baki 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> biasanya menggunakan enkripsi untuk melindungi informasi Anda. Saat Chromium mencoba menyambung ke <ph name="SITE" /> kali ini, situs web mengembalikan kredensial yang salah dan tidak biasa. Hal ini dapat terjadi jika ada penyerang yang berpura-pura menjadi <ph name="SITE" />, atau layar masuk Wi-Fi mengganggu sambungan. Informasi Anda masih aman karena Chromium menghentikan sambungan sebelum terjadi pertukaran data apa pun.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> biasanya menggunakan enkripsi untuk melindungi informasi Anda. Saat Shuttle mencoba menyambung ke <ph name="SITE" /> kali ini, situs web mengembalikan kredensial yang salah dan tidak biasa. Hal ini dapat terjadi jika ada penyerang yang berpura-pura menjadi <ph name="SITE" />, atau layar masuk Wi-Fi mengganggu sambungan. Informasi Anda masih aman karena Shuttle menghentikan sambungan sebelum terjadi pertukaran data apa pun.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> mengelola profil Anda</translation>
 <translation id="9107467864910557787">Browser Anda dikelola oleh <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Kebijakan administrator menonaktifkan berbagi layar dengan <ph name="APPLICATION_TITLE" /> saat konten rahasia terlihat</translation>

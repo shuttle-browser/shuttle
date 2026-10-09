@@ -74,7 +74,7 @@
       </if>
       <if expr="not _google_chrome">
         <message name="IDS_SAD_TAB_RELOAD_RESTART_BROWSER" desc="One of the bullet points displayed on the web page if a reload failed to fix the issue, advising the user to restart Chromium." formatter_data="android_java">
-          Restart Chromium
+          Restart Shuttle
         </message>
       </if>
       <if expr="is_android or is_ios">

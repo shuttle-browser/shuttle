@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Включить тему</translation>
 <translation id="1135328998467923690">Пакет недействителен: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Основная</translation>
-<translation id="1171831736360285680">Партнер "<ph name="PARTNER_NAME" />" установил расширение, которое может влиять на работу Chromium.
+<translation id="6853317349523111347">Партнер "<ph name="PARTNER_NAME" />" установил расширение, которое может влиять на работу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Не удалось экспортировать закрытый ключ.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Не удалось переместить CRX-файл. Убедитесь, что он не используется.</translation>
 <translation id="3163201441334626963">Неизвестный продукт <ph name="PRODUCT_ID" /> от поставщика <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Доступ к этому расширению заблокирован вашей организацией.</translation>
-<translation id="3183357154200327217">Одна из программ на вашем компьютере установила тему, которая может влиять на работу Chromium.
+<translation id="7846451875700317002">Одна из программ на вашем компьютере установила тему, которая может влиять на работу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Приложения, у которых в манифесте есть атрибут kiosk_only, можно устанавливать только в режиме киоска Chrome OS.</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Запретить</translation>
 <translation id="3984413272403535372">Ошибка при подписи расширения.</translation>
 <translation id="4014432863917027322">Восстановить "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Одна из программ на вашем компьютере установила расширение, которое может влиять на работу Chromium.
+<translation id="7396546976728149133">Одна из программ на вашем компьютере установила расширение, которое может влиять на работу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Доступ к этой категории расширений заблокирован вашей организацией.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Новая версия "<ph name="EXTENSION_NAME" />" была отключена, так как для нее требуются дополнительные разрешения.</translation>
 <translation id="5242724311594467048">Включить приложение "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Удалить из Chromium</translation>
+<translation id="2064155379595075287">Удалить из Shuttle</translation>
 <translation id="5456409301717116725">Это расширение содержит файл ключа <ph name="KEY_PATH" />. Вероятно, это неприемлемо.</translation>
 <translation id="5485102783864353244">Установить приложение</translation>
 <translation id="5486326529110362464">Должно существовать входное значение для закрытого ключа.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Удаление расширения "<ph name="EXTENSION_NAME" />" на этом компьютере запрещено администратором</translation>
 <translation id="6027032947578871493">Неизвестный продукт <ph name="PRODUCT_ID" /> от <ph name="VENDOR_NAME" /> (серийный номер <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> от поставщика <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Одна из программ на вашем компьютере установила приложение, которое может влиять на работу Chromium.
+<translation id="5918487821361452587">Одна из программ на вашем компьютере установила приложение, которое может влиять на работу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Ошибка при загрузке расширения</translation>

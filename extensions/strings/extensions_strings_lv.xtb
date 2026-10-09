@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Iespējot motīvu</translation>
 <translation id="1135328998467923690">Pakotne nav derīga: <ph name="ERROR_CODE" />.</translation>
 <translation id="1140871961407805696">Vērsta uz aizmuguri</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> pievienoja paplašinājumu, kas var ietekmēt pārlūka Chromium darbību.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> pievienoja paplašinājumu, kas var ietekmēt pārlūka Shuttle darbību.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Neizdevās eksportēt privāto atslēgu.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Neizdevās aizstāt crx failu. Pārbaudiet, vai fails tiek izmantots.</translation>
 <translation id="3163201441334626963">Nezināms produkts (ID: <ph name="PRODUCT_ID" />), ko piedāvā <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Jūsu organizācija ir bloķējusi piekļuvi šim paplašinājumam.</translation>
-<translation id="3183357154200327217">Cita datorā instalēta programma pievienoja motīvu, kas var ietekmēt pārlūka Chromium darbību.
+<translation id="7846451875700317002">Cita datorā instalēta programma pievienoja motīvu, kas var ietekmēt pārlūka Shuttle darbību.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Lai instalētu lietotni ar manifesta atribūtu kiosk_only, ir jāizmanto Chrome OS kioska režīms.</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Neatļaut</translation>
 <translation id="3984413272403535372">Kļūda paplašinājuma parakstīšanas laikā.</translation>
 <translation id="4014432863917027322">Vai labot “<ph name="EXTENSION_NAME" />”?</translation>
-<translation id="4061696872429826774">Cita datorā instalēta programma pievienoja paplašinājumu, kas var ietekmēt pārlūka Chromium darbību.
+<translation id="7396546976728149133">Cita datorā instalēta programma pievienoja paplašinājumu, kas var ietekmēt pārlūka Shuttle darbību.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Jūsu organizācija ir bloķējusi piekļuvi šai paplašinājumu kategorijai.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454"><ph name="EXTENSION_NAME" /> jaunākā versija ir atspējota, jo tai ir nepieciešams vairāk atļauju.</translation>
 <translation id="5242724311594467048">Vai iespējot “<ph name="EXTENSION_NAME" />”?</translation>
 <translation id="5356315618422219272">Lietotnes skats: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Noņemt no pārlūka Chromium</translation>
+<translation id="2064155379595075287">Noņemt no pārlūka Shuttle</translation>
 <translation id="5456409301717116725">Šis paplašinājums ietver atslēgas failu <ph name="KEY_PATH" />. Iespējams, jūs to nevēlaties izmantot.</translation>
 <translation id="5485102783864353244">Pievienot lietotni</translation>
 <translation id="5486326529110362464">Privātās atslēgas ievades vērtībai jābūt.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Šīs ierīces administrators pieprasa, lai būtu instalēts paplašinājums <ph name="EXTENSION_NAME" />. To nevar atinstalēt.</translation>
 <translation id="6027032947578871493">Nezināms produkts (ID: <ph name="PRODUCT_ID" />), ko piedāvā <ph name="VENDOR_NAME" /> (sērijas numurs: <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" />, ko piedāvā <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Cita datorā instalēta programma pievienoja lietotni, kas var ietekmēt pārlūka Chromium darbību.
+<translation id="5918487821361452587">Cita datorā instalēta programma pievienoja lietotni, kas var ietekmēt pārlūka Shuttle darbību.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Paplašinājuma ielādes kļūda</translation>

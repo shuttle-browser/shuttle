@@ -6,7 +6,7 @@
 <translation id="1076698951459398590">विषयवस्तुलाई सक्षम पार्नुहोस्</translation>
 <translation id="1135328998467923690">प्याकेज अवैध छ: '<ph name="ERROR_CODE" />'।</translation>
 <translation id="1140871961407805696">वातावरणतिर फार्काइएको</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ले Chromium ले काम गर्ने तरिका परिवर्तन गर्न सक्ने एक्स्टेन्सन हालेको छ।
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ले Shuttle ले काम गर्ने तरिका परिवर्तन गर्न सक्ने एक्स्टेन्सन हालेको छ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">निजी कुञ्जी निर्यात गर्न असफल भयो।</translation>
@@ -46,7 +46,7 @@
 <translation id="3144135466825225871">crx फाइललाई प्रतिस्थापन गर्न असफल भयो। फाइल प्रयोगमा भए नभएको हेर्न जाँच गर्नुहोस्।</translation>
 <translation id="3163201441334626963">बिक्रेता <ph name="VENDOR_ID" /> बाट अज्ञात उत्पादन <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">तपाईंको सङ्गठनले यो एक्स्टेन्सन एक्सेस गर्न रोक लगाएको छ।</translation>
-<translation id="3183357154200327217">तपाईंको कम्प्युटरमा भएको अर्को प्रोग्रामले Chromium ले काम गर्ने तरिका परिवर्तन गर्न सक्ने थिम हालेको छ।
+<translation id="7846451875700317002">तपाईंको कम्प्युटरमा भएको अर्को प्रोग्रामले Shuttle ले काम गर्ने तरिका परिवर्तन गर्न सक्ने थिम हालेको छ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' म्यानिफेस्ट विशेषता भएको एप अनिवार्य रूपमा ChromeOS को किअस्क मोडमा इन्स्टल गर्नु पर्छ</translation>
@@ -62,7 +62,7 @@
 <translation id="3927932062596804919">अस्वीकार गर्नुहोस्</translation>
 <translation id="3984413272403535372">विस्तार साइनइन गर्दा त्रुटि भयो।</translation>
 <translation id="4014432863917027322">मर्मत गर्नुहोस् "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">तपाईंको कम्प्युटरमा भएको अर्को प्रोग्रामले Chromium ले काम गर्ने तरिका परिवर्तन गर्न सक्ने एक्स्टेन्सन हालेको छ।
+<translation id="7396546976728149133">तपाईंको कम्प्युटरमा भएको अर्को प्रोग्रामले Shuttle ले काम गर्ने तरिका परिवर्तन गर्न सक्ने एक्स्टेन्सन हालेको छ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">तपाईंको सङ्गठनले एक्स्टेन्सनको यो कोटी एक्सेस गर्न रोक लगाएको छ।</translation>
@@ -85,7 +85,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" को नयाँ संस्करणलाई अक्षम गरिएको छ किनकी यसलाई धेरै अनुमतिहरूको आवश्यकता पर्छ।</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" /> " सक्षम गर्ने?</translation>
 <translation id="5356315618422219272">अनुप्रयोगदृश्य: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">क्रोमियमबाट हटाउनुहोस्</translation>
+<translation id="2064155379595075287">क्रोमियमबाट हटाउनुहोस्</translation>
 <translation id="5456409301717116725">विस्तारले कुञ्जी फाइल '<ph name="KEY_PATH" />' समावेश गर्छ। तपाइँले सम्भव्य रूपमा त्यो गर्न चाहनुहुन्न।</translation>
 <translation id="5485102783864353244">एप थप्नुहोस्</translation>
 <translation id="5486326529110362464">निजी कुञ्जीको लागि मान विद्यमान हुनु पर्छ।</translation>
@@ -95,7 +95,7 @@
 <translation id="5972529113578162692">यस कम्प्युटरका प्रशासक यहाँ <ph name="EXTENSION_NAME" /> स्थापना होस् भन्ने चाहान्छन्। यसलाई हटाउन मिल्दैन।</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> (क्रम नम्बर <ph name="SERIAL_NUMBER" /> ) बाट अज्ञात उत्पादन <ph name="PRODUCT_ID" /></translation>
 <translation id="6068932090455285721">बिक्रेता <ph name="VENDOR_ID" /> बाट <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">तपाईंको कम्प्युटरमा भएको अर्को प्रोग्रामले Chromium ले काम गर्ने तरिका परिवर्तन गर्न सक्ने एप हालेको छ।
+<translation id="5918487821361452587">तपाईंको कम्प्युटरमा भएको अर्को प्रोग्रामले Shuttle ले काम गर्ने तरिका परिवर्तन गर्न सक्ने एप हालेको छ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">एक्सटेन्सन लोड गर्दा त्रुटि</translation>

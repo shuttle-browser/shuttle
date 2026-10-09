@@ -75,10 +75,10 @@
       </if>
       <if expr="not _google_chrome">
         <message name="IDS_MANAGEMENT_BROWSER_NOTICE" desc="Message shown when the (non-Google-branded) Chromium browser is managed, it indicates what the administrator can do on the browser.">
-        Your administrator can make changes to your profile and browser remotely, analyze information about the browser through reporting, and perform other necessary tasks. Activity on this device may also be managed outside of Chromium. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
+        Your administrator can make changes to your profile and browser remotely, analyze information about the browser through reporting, and perform other necessary tasks. Activity on this device may also be managed outside of Shuttle. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
         </message>
         <message name="IDS_MANAGEMENT_NOT_MANAGED_NOTICE" desc="Message indicating that the (non-Google-branded) Chromium browser is not managed">
-        This browser is not managed by a company or other organization. Activity on this device may be managed outside of Chromium. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
+        This browser is not managed by a company or other organization. Activity on this device may be managed outside of Shuttle. <ph name="BEGIN_LINK">&lt;a target="_blank" href="$1" aria-label="$2"&gt;</ph>Learn more<ph name="END_LINK">&lt;/a&gt;</ph>
         </message>
       </if>
       <message name="IDS_MANAGEMENT_PROFILE_NOTICE" desc="Message shown when one profile from the Chrome browser is managed, it indicates what the administrator can do for that profile.">

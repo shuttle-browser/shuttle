@@ -48,7 +48,7 @@ bool DefaultSearchProviderIsGoogle(Profile* profile) {
 }
 
 bool IsNTPOrRelatedURL(const GURL& url, Profile* profile) {
-  // Agent Chrome: the only New Tab Page is the blank chrome://newtab.
+  // Shuttle: the only New Tab Page is the blank chrome://newtab.
   return url.is_valid() && url == chrome::ChromeUINewTabURLAsGURL();
 }
 

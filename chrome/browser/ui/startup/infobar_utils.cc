@@ -173,7 +173,7 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
     return;
   }
 
-  // Agent Chrome: no "controlled by automated test software" infobar.
+  // Shuttle: no "controlled by automated test software" infobar.
   bool show_bad_flags_security_warnings = ShouldShowBadFlagsSecurityWarnings();
 
   if (show_bad_flags_security_warnings) {
@@ -240,7 +240,7 @@ void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
   infobars::ContentInfoBarManager* infobar_manager =
       infobars::ContentInfoBarManager::FromWebContents(web_contents);
 
-  // Agent Chrome: no "Google API keys are missing" infobar. The fork ships
+  // Shuttle: no "Google API keys are missing" infobar. The fork ships
   // without Google API keys by design.
 
   if (ObsoleteSystem::IsObsoleteNowOrSoon()) {

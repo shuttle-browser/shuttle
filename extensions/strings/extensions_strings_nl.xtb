@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Thema aanzetten</translation>
 <translation id="1135328998467923690">Pakket is ongeldig: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Camera aan achterzijde</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> heeft een extensie toegevoegd die de manier kan wijzigen waarop Chromium werkt.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> heeft een extensie toegevoegd die de manier kan wijzigen waarop Shuttle werkt.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Exporteren van persoonlijke sleutel is mislukt.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Vervangen van crx-bestand is mislukt. Controleer of het bestand wordt gebruikt.</translation>
 <translation id="3163201441334626963">Onbekend product <ph name="PRODUCT_ID" /> van leverancier <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">De toegang tot deze extensie is geblokkeerd door je organisatie.</translation>
-<translation id="3183357154200327217">Een ander programma op je computer heeft een thema toegevoegd dat de manier waarop Chromium werkt kan wijzigen.
+<translation id="7846451875700317002">Een ander programma op je computer heeft een thema toegevoegd dat de manier waarop Shuttle werkt kan wijzigen.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Een app met het manifestkenmerk 'kiosk_only' moet worden geïnstalleerd in de Chrome OS-kioskmodus</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Weigeren</translation>
 <translation id="3984413272403535372">Fout bij ondertekenen van extensie.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" repareren?</translation>
-<translation id="4061696872429826774">Een ander programma op je computer heeft een extensie toegevoegd die de manier waarop Chromium werkt kan wijzigen.
+<translation id="7396546976728149133">Een ander programma op je computer heeft een extensie toegevoegd die de manier waarop Shuttle werkt kan wijzigen.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">De toegang tot deze extensiecategorie is geblokkeerd door je organisatie.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">De nieuwste versie van <ph name="EXTENSION_NAME" /> is uitgezet omdat er meer rechten voor nodig zijn.</translation>
 <translation id="5242724311594467048"><ph name="EXTENSION_NAME" /> aanzetten?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Verwijderen uit Chromium</translation>
+<translation id="2064155379595075287">Verwijderen uit Shuttle</translation>
 <translation id="5456409301717116725">Deze extensie bevat het sleutelbestand '<ph name="KEY_PATH" />'. Dit is waarschijnlijk niet je bedoeling.</translation>
 <translation id="5485102783864353244">App toevoegen</translation>
 <translation id="5486326529110362464">Invoerwaarde voor persoonlijke sleutel moet aanwezig zijn.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">De beheerder van deze machine vereist dat <ph name="EXTENSION_NAME" /> wordt geïnstalleerd. Deze kan niet worden verwijderd.</translation>
 <translation id="6027032947578871493">Onbekend product <ph name="PRODUCT_ID" /> van <ph name="VENDOR_NAME" /> (serienummer <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> van leverancier <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Een ander programma op je computer heeft een app toegevoegd die de manier waarop Chromium werkt kan wijzigen.
+<translation id="5918487821361452587">Een ander programma op je computer heeft een app toegevoegd die de manier waarop Shuttle werkt kan wijzigen.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Fout bij laden van extensie</translation>

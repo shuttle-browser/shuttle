@@ -17,7 +17,7 @@
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -61,11 +61,11 @@ using base::UserMetricsAction;
 namespace {
 constexpr int kTabMenuIconSize = 16;
 
-// Agent Chrome: "Hand to agent" submenu, one item per agent.
+// Shuttle: "Hand to agent" submenu, one item per agent.
 class HandToAgentMenuModel : public ui::SimpleMenuModel,
                              public ui::SimpleMenuModel::Delegate {
  public:
-  HandToAgentMenuModel(agent_chrome::AgentChromeService* agents,
+  HandToAgentMenuModel(shuttle::ShuttleService* agents,
                        TabStripModel* tab_strip,
                        const std::vector<int>& indices)
       : ui::SimpleMenuModel(this),
@@ -101,8 +101,8 @@ class HandToAgentMenuModel : public ui::SimpleMenuModel,
   }
 
  private:
-  raw_ptr<agent_chrome::AgentChromeService> agents_;
-  std::vector<agent_chrome::AgentChromeService::AgentSummary> list_;
+  raw_ptr<shuttle::ShuttleService> agents_;
+  std::vector<shuttle::ShuttleService::AgentSummary> list_;
   std::vector<base::WeakPtr<tabs::TabInterface>> tabs_;
 };
 
@@ -231,10 +231,10 @@ void TabMenuModel::Build(int index) {
     SetElementIdentifierAt(GetItemCount() - 1, kArrangeSplitTabsMenuItem);
   }
 
-  // Agent Chrome: tab groups are agents (made over MCP, never by hand). A
+  // Shuttle: tab groups are agents (made over MCP, never by hand). A
   // tab can be handed to an agent, or taken back from one.
   if (auto* agents =
-          agent_chrome::AgentChromeService::Get(tab_strip_->profile())) {
+          shuttle::ShuttleService::Get(tab_strip_->profile())) {
     auto hand_to_agent = std::make_unique<HandToAgentMenuModel>(
         agents, tab_strip_, indices);
     if (hand_to_agent->GetItemCount() > 0) {

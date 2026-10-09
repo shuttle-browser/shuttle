@@ -3,23 +3,23 @@
 <translationbundle lang="am">
 <translation id="1026101648481255140">መጫኑን ከቆመበት ቀጥል</translation>
 <translation id="1029669172902658969">&amp;ChromiumOSን ለማዘመን ዳግም ያስነሱት</translation>
-<translation id="8271032073852564289">Agent Chrome ይህን ቅጥያ እንዲገመግሙ ይመክርዎታል</translation>
-<translation id="1395700234492294565">አንድ ጣቢያ በገጻቸው ላይ በግል አገናኞችን ቅድሚያ ለመጫን ሲጠይቅ Agent Chrome የGoogle አገልጋዮችን ይጠቀማል። ይህ ማንነትዎን ቅድሚያ ከተጫነው ጣቢያ ይደብቃል ነገር ግን Google ምን ጣቢያዎች ቅድሚያ እንደሚጫኑ ያውቃል።</translation>
+<translation id="9022540553404839453">Shuttle ይህን ቅጥያ እንዲገመግሙ ይመክርዎታል</translation>
+<translation id="5410799103647685860">አንድ ጣቢያ በገጻቸው ላይ በግል አገናኞችን ቅድሚያ ለመጫን ሲጠይቅ Shuttle የGoogle አገልጋዮችን ይጠቀማል። ይህ ማንነትዎን ቅድሚያ ከተጫነው ጣቢያ ይደብቃል ነገር ግን Google ምን ጣቢያዎች ቅድሚያ እንደሚጫኑ ያውቃል።</translation>
 <translation id="1051793555070215510">ይህን የ1 ደቂቃ የዳሰሳ ጥናት በመውሰድ ማንነት የማያሳውቅን እንድናሻሽል ያግዙን።</translation>
 <translation id="1065672644894730302">አማራጮችዎ ሊነበቡ አልቻሉም።
 
 አንዳንድ ባህሪያት ላይገኙ ይችላሉ፣ እና በአማራጮች ላይ የተደረጉ ለውጦች አይቀመጡም።</translation>
-<translation id="3693661839172633833">የእርስዎ ወላጅ ለAgent Chrome «የጣቢያዎች፣ መተግበሪያዎች እና ቅጥያዎች ፈቃዶች» የሚለውን አጥፍተዋል።</translation>
-<translation id="4676383270508741906">አንድን የተወሰነ የAgent Chrome ባህሪ ወይም ቅጥያ ለመፈለግ የእርስዎን የተመረጠ የቁልፍ ሰሌዳ ቁልፍ በማስከተል በአድራሻ አሞሌው ውስጥ አቋራጩን ይተይቡ</translation>
+<translation id="2526735598866766848">የእርስዎ ወላጅ ለShuttle «የጣቢያዎች፣ መተግበሪያዎች እና ቅጥያዎች ፈቃዶች» የሚለውን አጥፍተዋል።</translation>
+<translation id="4554538601245550915">አንድን የተወሰነ የShuttle ባህሪ ወይም ቅጥያ ለመፈለግ የእርስዎን የተመረጠ የቁልፍ ሰሌዳ ቁልፍ በማስከተል በአድራሻ አሞሌው ውስጥ አቋራጩን ይተይቡ</translation>
 <translation id="1098493699368672217">ፍለጋን በሥርዓት ትሪ ውስጥ በChromium አሳይ እና የቁልፍ ሰሌዳ አቋራጭን አብራ</translation>
 <translation id="1104942323762546749">Chromium የእርስዎን የይለፍ ቃላት ወደ ውጭ መላክ ይፈልጋል። ይህንን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
 <translation id="112640046208448578">ነገሮችን ወይም ቦታዎች ይለዩ እና ጽሁፍን ይቅዱ ወይም ይተርጉሙ። የምስል ፍለጋ ሲጠቀሙ የገፁ ቅጽበታዊ ገፅ ዕይታ ወደ አገልጋዩ ይላካል። <ph name="LEARN_MORE" /></translation>
-<translation id="5373975050135708711">Agent Chrome የእርስዎ ነባሪ አሳሽ ነው</translation>
+<translation id="5857101132283857610">Shuttle የእርስዎ ነባሪ አሳሽ ነው</translation>
 <translation id="1131805035311359397">የእርስዎ የይለፍ ቃላት ከውሂብ ጥሰቶች እና ሌሎች የደህንነት ችግሮች ነፃ መሆናቸውን ለማረጋገጥ <ph name="BEGIN_LINK" />በመለያ ወደ Chromium ይግቡ<ph name="END_LINK" />።</translation>
 <translation id="1153368717515616349">Chromium ምናሌው ላይ ጠቅ ያድርጉ</translation>
 <translation id="1157985233335035034">የቅርብ ጊዜ ቋንቋዎች</translation>
 <translation id="1184145431117212167">የእርስዎ የመስኮቶች ሥሪት ስለማይደገፍ ጭነቱ ተሰናክሏል።</translation>
-<translation id="604454529346438712">ስለAgent Chrome</translation>
+<translation id="2517811539192985920">ስለShuttle</translation>
 <translation id="1186645291482254714">በስልክዎ ላይ በChromium የዋጋ ክትትል ማንቂያዎችን ያግኙ</translation>
 <translation id="1203500561924088507">ሰለተጫኑ እናመሰግናለን። <ph name="BUNDLE_NAME" />ን ከመጠቀምዎ በፊት አሳሽዎን እንደገና ማስጀመር አለብዎት።</translation>
 <translation id="1232234696885483911">የምስል ፍለጋን ሲከፍቱ PDFዎችን ጨምሮ የገጹ ርዕስ፣ ዩአርኤል እና ይዘት በራስ-ሰር ወደ አገልጋዩ ይላካሉ። <ph name="LEARN_MORE" /></translation>
@@ -27,13 +27,13 @@
 <translation id="1244381985120794049">Gemini በChromium ውስጥ በMac የምናሌ አሞሌ ውስጥ አሳይ</translation>
 <translation id="1257483544893909270">Gemini ውስጥ Chromium ውስጥ የማያ ገጹን ክፍል ለመምረጥ የቁልፍ ሰሌዳ አቋራጭ ይጠቀሙ።</translation>
 <translation id="1262876892872089030">ይህ ትር ቦዝኖ ሳለ Chromiumን ፈጣን እንደሆነ ለማቆየት ማህደረ ትውስታ ነፃ ተደርጓል። ይህን ጣቢያ ሁልጊዜ ከመቦዘን ማግለል መምረጥ ይችላሉ።</translation>
-<translation id="3777643518642881741">ፋይሉ አደገኛ ስለሆነ Agent Chrome ይህን ውርድ አግዷል</translation>
+<translation id="5920228800659800735">ፋይሉ አደገኛ ስለሆነ Shuttle ይህን ውርድ አግዷል</translation>
 <translation id="126567311906253476">በ<ph name="USER_EMAIL" /> እንደ Gmail ወይም YouTube ወዳሉ የGoogle አገልግሎቶች ሲገቡ በተመሳሳይ መለያ ወደ Chromium መግባት ይችላሉ</translation>
 <translation id="1287534462498555020">Chromiumን በስልክዎ ላይ ያግኙ</translation>
 <translation id="1290883685122687410">የውቅረት ስህተት፦ <ph name="METAINSTALLER_EXIT_CODE" />. <ph name="WINDOWS_ERROR" /></translation>
 <translation id="1315551408014407711">አዲሱን የChromium መገለጫዎ ያቀናብሩት</translation>
 <translation id="132092532143527429">በGemini በChromium ውስጥ ይሞክሩ</translation>
-<translation id="200785071050073583">Agent Chrome የብሉቱዝ መሣሪያዎችን ለማሰስ የብሉቱዝ መዳረሻ 
+<translation id="7886367104480106107">Shuttle የብሉቱዝ መሣሪያዎችን ለማሰስ የብሉቱዝ መዳረሻ 
 ያስፈልገዋል። <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="1329040302064168406">በስልክዎ ላይ ወደ Chromium ይግቡ</translation>
 <translation id="1330562121671411446">ቋንቋ አግኝ</translation>
@@ -43,33 +43,33 @@
 <translation id="1383876407941801731">ፍለጋ </translation>
 <translation id="1388276868779258475">በመሄድ ላይ እያሉ ማሰስን ለመቀጠል የChromium መተግበሪያን ይጠቀሙ</translation>
 <translation id="141901961143729572">ሀሳቦችዎን ያጋሩ</translation>
-<translation id="8789809509510733987">መስኮትዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለAgent Chrome የማያ ገፅ መቅረጽን ይፍቀዱ።</translation>
+<translation id="1958991777362218128">መስኮትዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለShuttle የማያ ገፅ መቅረጽን ይፍቀዱ።</translation>
 <translation id="1478370723027452770">በChrome ለሙከራ ላይ እገዛ ያግኙ</translation>
 <translation id="1497802159252041924">የጭነት ስህተት፦ <ph name="INSTALL_ERROR" /></translation>
 <translation id="1518627427551567882">ይህ ገፅ የተጠበቀ ነው</translation>
-<translation id="3850708453627715578">የAgent Chrome ትር ያጋሩ</translation>
+<translation id="8079206111514107729">የShuttle ትር ያጋሩ</translation>
 <translation id="154404805518949443">Chromium ውስጥ ይግቡ</translation>
 <translation id="1547469039832541117">የደመቀውን ተግባር ይጨርሳል።</translation>
-<translation id="8546278207686764484">Agent Chromeን ፒን አድርግ</translation>
+<translation id="5481132473679919711">Shuttleን ፒን አድርግ</translation>
 <translation id="1574377791422810894">የChromium የደህንነት መሣሪያዎች</translation>
 <translation id="1594928384848033697">Chromium የእርስዎን የይለፍ ቃል አስተዳዳሪ ውሂብ መሰረዝ ይፈልጋል። ይህን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
-<translation id="551713766576210710">{COUNT,plural, =0{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይፈልግብዎታል}=1{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይፈልግብዎታል። የእርስዎ ማንነት የማያሳውቅ መስኮት ዳግም አይከፈትም}one{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይፈልግብዎታል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}other{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይፈልግብዎታል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}}</translation>
+<translation id="9144100729492133749">{COUNT,plural, =0{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይፈልግብዎታል}=1{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይፈልግብዎታል። የእርስዎ ማንነት የማያሳውቅ መስኮት ዳግም አይከፈትም}one{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይፈልግብዎታል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}other{አንድ ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይፈልግብዎታል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}}</translation>
 <translation id="1623563412065267963">በስልክዎ ላይ በChromium መተግበሪያ የGoogle ምርጡን ያግኙ</translation>
 <translation id="1625909126243026060">በChromium ውስጥ ቁልፍ የግላዊነት እና የደህንነት ቁጥጥሮችን ይገምግሙ</translation>
 <translation id="1640672724030957280">በማውረድ ላይ...</translation>
 <translation id="1665602916345474427">እንደ <ph name="USER_NAME" />፣ <ph name="USER_EMAIL" />፣ አባልነት በመለያ ገብተዋል። የመለያ ምናሌውን ይክፈቱ</translation>
-<translation id="2604712040942461790">በመልዕክቶች፣ ሰነዶች እና ሌሎች መተግበሪያዎች ውስጥ አገናኞች ላይ ጠቅ በምታደርግበት ማንኛውም ጊዜ Agent Chrome መጠቀም ይችላሉ። እንዲሁም በተግባር አሞሌዎ ላይ ይሰካል።</translation>
+<translation id="5133024692341945870">በመልዕክቶች፣ ሰነዶች እና ሌሎች መተግበሪያዎች ውስጥ አገናኞች ላይ ጠቅ በምታደርግበት ማንኛውም ጊዜ Shuttle መጠቀም ይችላሉ። እንዲሁም በተግባር አሞሌዎ ላይ ይሰካል።</translation>
 <translation id="1709772298389099340">ለ<ph name="BROWSER_NAME" /> የላቁ ልዩ መብቶች ያቀርባል።</translation>
 <translation id="1722488837206509557">ይህ ከሚገኙ መሣሪያዎች እንዲመርጡ እና ይዘቶችን እንዲያሳዩ ያስችልዎታል።</translation>
-<translation id="4145295773323539953">Agent Chrome በቅርቡ የአሰሳ ውሂብን ይሰርዛል</translation>
+<translation id="5930953237660560582">Shuttle በቅርቡ የአሰሳ ውሂብን ይሰርዛል</translation>
 <translation id="1736443181683099871">Chromium አሰሳዎችን ወደ ኤችቲቲፒኤስ ለማሻሻል ይሞክራል</translation>
-<translation id="7280502947294080605">የAgent Chrome ውሂብ ጸድቷል</translation>
+<translation id="3225043540098941089">የShuttle ውሂብ ጸድቷል</translation>
 <translation id="1745121272106313518">Chromium በ<ph name="REMAINING_TIME" /> ውስጥ እንደገና ይጀምራል</translation>
 <translation id="1749104137266986751">ኤችቲቲፒኤስ በማይኖርበት ጊዜ Chromium እርስዎን ሳያስጠነቅቅ ደህንነቱ ያልተጠበቀ ግንኙነት ይጠቀማል</translation>
-<translation id="1887395919652703120">Agent Chrome ጀርባ ላይ ይሂድ</translation>
+<translation id="4139175757782872962">Shuttle ጀርባ ላይ ይሂድ</translation>
 <translation id="1779356040007214683">Chromium ይበልጥ ደህንነቱ የተጠበቀ እንዲሆን ለማድረግ፣ በ<ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> ውስጥ ያልተጠቀሱ እና እርስዎ ሳያውቋቸው የታከሉ ሊሆኑ የሚችሉ የተወሰኑ ዝርዝሮችን አሰናክለናል።</translation>
 <translation id="1793486931176048546">ለፈጣን መዳረሻ Chromiumን በተግባር አሞሌዎ ላይ ለመሰካት በWindows ማሳወቂያ ውስጥ <ph name="BEGIN_BOLD" />አዎ<ph name="END_BOLD" /> ላይ ጠቅ ያድርጉ</translation>
-<translation id="357645171972700077">Agent Chromeን ዳግም ጫን</translation>
+<translation id="6621264839978531733">Shuttleን ዳግም ጫን</translation>
 <translation id="1820835682567584003">Chromium <ph name="AUTHENTICATION_PURPOSE" /> በመሞከር ላይ ነው</translation>
 <translation id="183031085822326697">በሚቀጥለው ጊዜ Chromiumን በእርስዎ <ph name="DEVICE_TYPE" /> ላይ ሲከፍቱ Google የይለፍ ቃል አስተዳዳሪን ለመጠቀም ጥያቄ ያያሉ።</translation>
 <translation id="1838374766361614909">ፍለጋን ያፅዱ</translation>
@@ -80,15 +80,15 @@
 <translation id="1863837059069884561"><ph name="EXISTING_USER" /> አስቀድመው ገብተዋል። አሰሳዎን ለያይተው ለማቆየት በራስዎ መገለጫ ውስጥ እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ይግቡ። እንዲሁም ከ<ph name="DEVICE" /> የእርስዎን እልባቶች እና ሌሎችንም ያገኛሉ።</translation>
 <translation id="1880677175115548835">ጽሁፍ ይምረጡ</translation>
 <translation id="1881322772814446296">በሚተዳደር መለያ እየገቡ ነው፣ እና አስተዳዳሪው በእርስዎ Chromium መገለጫ ላይ ቁጥጥር እየሰጡት ነው። እንደ እርስዎ መተግበሪያዎች፣ ዕልባቶች፣ ታሪክ፣ የይለፍ ቃላት እና ሌሎች ቅንብሮች ያሉ የእርስዎ Chromium ውሂብ እስከ መጨረሻው ከ<ph name="USER_NAME" /> ጋር የተያያዙ ይሆናሉ። ይህን ውሂብ በGoogle የመለያዎች Dashboard አማካኝነት ሊሰርዙት ይችላሉ፣ ነገር ግን ይህን ውሂብ ከሌላ መለያ ጋር ሊያጎዳኙት አይችሉም። ነባሩ የእርስዎ Chromium ውሂብ ለይተው ለማስቀመጥም አዲስ መገለጫ እንደ አማራጭ መፍጠር ይችላሉ። <ph name="LEARN_MORE" /></translation>
-<translation id="4964792828232534953">Agent Chrome የዳራ እንቅስቃሴን እና እንደ ለስላሳ ሽብለላ እና የቪድዮ ፍሬም ፍጥነቶች ያሉ ምስላዊ ተጽዕኖዎችን በመገደብ የባትሪ ኃይልን ይቆጥባል። <ph name="BEGIN_LINK" />ስለ ኃይል ቆጣቢ የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
+<translation id="1305483712531564950">Shuttle የዳራ እንቅስቃሴን እና እንደ ለስላሳ ሽብለላ እና የቪድዮ ፍሬም ፍጥነቶች ያሉ ምስላዊ ተጽዕኖዎችን በመገደብ የባትሪ ኃይልን ይቆጥባል። <ph name="BEGIN_LINK" />ስለ ኃይል ቆጣቢ የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
 <translation id="1900969832270057921">የChromium ማዘመኛ አገልግሎት</translation>
 <translation id="1911763535808217981">ይህንን በማጥፋት፣ እንደ Gmail ወደ መሰሉ የGoogle ጣቢያዎች ወደ Chromium በመለያ ሳይገቡ መግባት ይችላሉ</translation>
 <translation id="1929939181775079593">Chromium መልስ አይሰጥም። አሁን ዳግም ይጀምር?</translation>
 <translation id="1933341829955786215">ድርጅትዎ፣ <ph name="MANAGER" /> ወደ Chromium እንዲገቡ ይጠይቃል</translation>
 <translation id="193439633299369377">ChromiumOS ዝማኔውን ለመተግበር ዳግም መጀመር አለበት።</translation>
-<translation id="207375373460618430">የፋይል ዓይነቱ በተለምዶ ስላማይወርድ እና አደገኛ ሊሆን ስለሚችል Agent Chrome ይህን ውርድ አግዷል</translation>
+<translation id="4872059215343855880">የፋይል ዓይነቱ በተለምዶ ስላማይወርድ እና አደገኛ ሊሆን ስለሚችል Shuttle ይህን ውርድ አግዷል</translation>
 <translation id="1953553007165777902">በማውረድ ላይ... <ph name="MINUTE" /> ደቂቃ(ዎች) ይቀራል(ሉ)</translation>
-<translation id="700162948230159797">Agent Chrome ነባሪ አሳሹን ማወቅ ወይም ማቀናበር አልቻለም</translation>
+<translation id="1220136003951684816">Shuttle ነባሪ አሳሹን ማወቅ ወይም ማቀናበር አልቻለም</translation>
 <translation id="197326043290947695">በምስል ፍለጋ ይበልጥ በብልህነት ያስሱ</translation>
 <translation id="1990262977744080398">Chromium ለምን አንዳንድ ፋይሎችን እንደሚያግድ ይወቁ፣ በአዲስ ትር ውስጥ ይከፍታል</translation>
 <translation id="1999715455684970349">የእርስዎን Chromium ሶፍትዌር ወቅታዊ አድርጎ ያቆያል። ይህ አገልግሎት ከተሰናከለ ወይም ከቆመ የChromium ሶፍትዌርዎ እንደተዘመነ አይቆይም፣ ይህ ማለት ሊከሰቱ የሚችሉ የደህንነት ተጋላጭነቶች ሊስተካከሉ አይችሉም እና ባህሪያት ላይሠሩ ይችላሉ። ይህ አገልግሎት እሱን የሚጠቀም የChromium ሶፍትዌር በማይኖርበት ጊዜ ራሱን ያራግፋል።</translation>
@@ -98,19 +98,19 @@
 <translation id="2049376729098081731">በGoogle አገልግሎቶች ውስጥ ተጨማሪ ግላዊነት የተላበሱ ተሞክሮዎችን ለማግኘት የChromium ታሪክን ለማካተት እና ላለማካተት ይምረጡ</translation>
 <translation id="2050698962207788467">እርስዎ ጠንካራ የይለፍ ቃላትን እንዲፈጥሩ፣ እንዲያስቀምጡ እና በራስ-ሰር እንዲሞሉ ለማገዝ Chromium ውስጥ የተገነባ። ለቀላል መዳረሻ አቋራጩን ያክሉ።</translation>
 <translation id="2064856577282482477">ለChromium አዲስ መልክ ለመስጠት በአዲስ ትር ገጽ ላይ ያለውን Chromium አብጅ የሚለውን አዝራር ጠቅ ያድርጉ</translation>
-<translation id="6816376218079012438">ፋይሉ አታላይ ስለሆነ እና በመሣሪያዎ ላይ ያልተጠበቁ ለውጦችን ሊያደርግ ስለሚችል Agent Chrome ይህን ውርድ አግዷል</translation>
+<translation id="4748815521068816647">ፋይሉ አታላይ ስለሆነ እና በመሣሪያዎ ላይ ያልተጠበቁ ለውጦችን ሊያደርግ ስለሚችል Shuttle ይህን ውርድ አግዷል</translation>
 <translation id="208726765006323911">Chromium iOS በሚከፍቱበት ቀጣዩ ጊዜ <ph name="FEATURE_NAME" />ን ለመሞከር ጥያቄ ያያሉ።</translation>
 <translation id="2099452623287920103">Google መለያ ውስጥ ያስቀመጧቸው የይለፍ ቃላትዎ እና ሌላ Chromium ውሂብ ከዚህ መሣሪያ ይወገዳሉ። እንደገና Chromium ውስጥ እነሱን ለመጠቀም መልሰው በመለያ ይግቡ።</translation>
-<translation id="8983263343920390117">{COUNT,plural, =1{ድርጅትዎ Agent Chrome ለ1 ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ-ሰር የአሰሳ ውሂብን ይሰርዛል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል። የእርስዎ ትሮች ክፍት ሆነው ይቆያሉ።}one{ድርጅትዎ Agent Chrome ለ# ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ-ሰር የአሰሳ ውሂብን ይሰርዛል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል። የእርስዎ ትሮች ክፍት ሆነው ይቆያሉ።}other{ድርጅትዎ Agent Chrome ለ# ደቂቃዎች ጥቅም ላይ ሳይውል ሲቀር በራስ-ሰር የአሰሳ ውሂብን ይሰርዛል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል። የእርስዎ ትሮች ክፍት ሆነው ይቆያሉ።}}</translation>
+<translation id="8053870167789043907">{COUNT,plural, =1{ድርጅትዎ Shuttle ለ1 ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ-ሰር የአሰሳ ውሂብን ይሰርዛል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል። የእርስዎ ትሮች ክፍት ሆነው ይቆያሉ።}one{ድርጅትዎ Shuttle ለ# ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ-ሰር የአሰሳ ውሂብን ይሰርዛል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል። የእርስዎ ትሮች ክፍት ሆነው ይቆያሉ።}other{ድርጅትዎ Shuttle ለ# ደቂቃዎች ጥቅም ላይ ሳይውል ሲቀር በራስ-ሰር የአሰሳ ውሂብን ይሰርዛል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል። የእርስዎ ትሮች ክፍት ሆነው ይቆያሉ።}}</translation>
 <translation id="2125838419757773031">ለመፈለግ የማያ ገጽ ክልል ይምረጡ</translation>
 <translation id="2126108037660393668">የወረደው ፋይል ማረጋገጫን አላለፈም።</translation>
 <translation id="2135919691573380097">ይህን ጣቢያ ሪፖርት ያድርጉ</translation>
 <translation id="2137162749895930932">የመተርጎሚያ ማያ ገፅን ዝጋ</translation>
-<translation id="822057692680289847">ጣቢያው ደህንነቱ የተጠበቀ ግንኙነት እየተጠቀመ ስላልሆነ እና ፋይሉ ተነካክቶ ሊሆን ስለሚችል Agent Chrome ይህን ውርድ አግዷል</translation>
+<translation id="8598177558941030115">ጣቢያው ደህንነቱ የተጠበቀ ግንኙነት እየተጠቀመ ስላልሆነ እና ፋይሉ ተነካክቶ ሊሆን ስለሚችል Shuttle ይህን ውርድ አግዷል</translation>
 <translation id="2170098639895543546">በገጽ ላይ ማንኛውንም ነገር ይምረጡ</translation>
 <translation id="2174178932569897599">Chromiumን አብጅ</translation>
 <translation id="2174917724755363426">መጫኑ አልተጠናቀቀም። እርግጠኛ ነዎት መሰረዝ ይፈልጋሉ?</translation>
-<translation id="922967513335788675">Agent Chrome - በአውታረ መረብ ወደ መለያ መግባት - <ph name="PAGE_TITLE" /></translation>
+<translation id="2629211622516729574">Shuttle - በአውታረ መረብ ወደ መለያ መግባት - <ph name="PAGE_TITLE" /></translation>
 <translation id="2190166659037789668">የዝማኔ ፍተሻ ስህተት፦ <ph name="UPDATE_CHECK_ERROR" />።</translation>
 <translation id="2199210295479376551">መለያን ከChromium አስወግድ</translation>
 <translation id="2201788217099588893">በመሄድ ላይ ሳሉ ምርጥ የሸመታ መሣሪያዎችን ለመውሰድ የChromium መተግበሪያን ይጠቀሙ</translation>
@@ -127,10 +127,10 @@
 <translation id="2356070529366658676">ጠይቅ</translation>
 <translation id="2359808026110333948">ቀጥል</translation>
 <translation id="2361918034042471035">ቅጥያው «<ph name="EXTENSION_NAME" />» ወደ በመለያ Chromium እንዲገቡ ይፈልጋል</translation>
-<translation id="2028456545634496358">Agent Chrome ለመተግበሪያዎች በዳራ ውስጥ እንዳያሄድ አሰናክል</translation>
+<translation id="2875952783855795871">Shuttle ለመተግበሪያዎች በዳራ ውስጥ እንዳያሄድ አሰናክል</translation>
 <translation id="2374216753258219393">እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ይህን ቅጥያ ለመጠቀም በመለያ ወደ Chromium ይግቡ።</translation>
 <translation id="2384373936468275798">የመለያ መግቢያ ዝርዝሮችዎ ጊዜ ያለፈባቸው ስለሆኑ ChromiumOS ውሂብዎን ማስመር አልቻለም።</translation>
-<translation id="3040857862310351495">{NUM_DEVICES,plural, =0{1 የኤችአይዲ መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰበት ነበር}=1{1 የኤችአይዲ መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰበት ነው}one{# የኤችአይዲ መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰበት ነው}other{# የኤችአይዲ መሣሪያዎች በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰባቸው ነው}}</translation>
+<translation id="2792662518458751900">{NUM_DEVICES,plural, =0{1 የኤችአይዲ መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰበት ነበር}=1{1 የኤችአይዲ መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰበት ነው}one{# የኤችአይዲ መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰበት ነው}other{# የኤችአይዲ መሣሪያዎች በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰባቸው ነው}}</translation>
 <translation id="2401032172288869980">Chromium ለዚህ ጣቢያ የካሜራ እና የማይክሮፎን ፈቃዶች ያስፈልጉታል</translation>
 <translation id="2403703063067034158">የማስነሻ ስህተት፦ ሌላ የማዋቀር አብነት አሁን እያሄደ ነው፣ እባክዎ በኋላ እንደገና ይሞክሩ።</translation>
 <translation id="2418322681019544463">ከማንኛውም መተግበሪያ ላይ አገናኞችን በChromium ውስጥ ይክፈቱ እና አሳሹን በተግባር አሞሌዎ ላይ ተደራሽ አድርገው ያቆዩት</translation>
@@ -138,37 +138,37 @@
 <translation id="2440750600860946460"><ph name="BEGIN_LINK" />ከChromium በመጡ መሣሪያዎች <ph name="END_LINK" /> ደህንነቱ በተጠበቀ መንገድ ማሰስ እና በቁጥጥር ውስጥ ሆነው መቆየት ይችላሉ</translation>
 <translation id="2449487342837813167"><ph name="EXISTING_USER" /> አስቀድመው ገብተዋል። አሰሳዎን ለያይተው ለማቆየት በራስዎ መገለጫ ውስጥ እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ይግቡ። እንዲሁም በሁሉም መሣሪያዎችዎ ላይ የእርስዎን የይለፍ ቃላት እና ሌሎችንም ያገኛሉ።</translation>
 <translation id="2451727308784734061">ወደ የይለፍ ቃል አስተዳዳሪ በፍጥነት ለመድረስ የእርስዎን አቋራጭ ይጠቀሙ። አቋራጭዎን ወደ ኮምፒውተርዎ መነሻ ማያ ገጽ ወይም የመተግበሪያ አስጀማሪ መውሰድ ይችላሉ።</translation>
-<translation id="4405360797107732759">Agent Chrome በቅርቡ ይዘጋል</translation>
-<translation id="1660473983484527105">በAgent Chrome ውስጥ</translation>
+<translation id="2236435189491185832">Shuttle በቅርቡ ይዘጋል</translation>
+<translation id="8393832920806146440">በShuttle ውስጥ</translation>
 <translation id="2485422356828889247">አራግፍ</translation>
 <translation id="2513154137948333830">ዳግም ማስነሳት ያስፈልጋል፦ <ph name="INSTALL_SUCCESS" /></translation>
 <translation id="2542968102051442371">በምስል ፍለጋ ጽሁፍ ይምረጡ</translation>
 <translation id="2554739539410784893">Chromium ነባር የይለፍ ቃላትን ለመተካት እየሞከረ ነው። ይህን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
 <translation id="2560420686485554789">Chromium ፋይሎችን ለማውረድ የማከማቻ መዳረሻ ያስፈልገዋል</translation>
-<translation id="8620990455069644819">Agent Chrome አጋዥ</translation>
+<translation id="2562045627058601347">Shuttle አጋዥ</translation>
 <translation id="2575822587468774919">በምስል ፍለጋ ለመፈለግ ማንኛውንም ነገር ይምረጡ</translation>
 <translation id="2576118232315942160">የይለፍ ቃላትዎን እና ሌሎችንም በሁሉም መሣሪያዎችዎ ላይ ለማግኘት ወደ Chromium ይግቡ</translation>
 <translation id="2587622539943955767">Chromiumን ለማውረድ እና ወደ Google መለያዎ ለመግባት QR ኮዱን በስልክዎ ይቃኙ።</translation>
-<translation id="4496289616420025644">Agent Chromeን መጠቀምዎን ይቀጥሉ</translation>
+<translation id="4702236029576678227">Shuttleን መጠቀምዎን ይቀጥሉ</translation>
 <translation id="259935314519650377">የወረደውን ጫኝ መሸጎጥ አልተሳካም። ስህተት፦ <ph name="UNPACK_CACHING_ERROR_CODE" />.</translation>
 <translation id="2620436844016719705">ስርዓት</translation>
 <translation id="2629740064077610681">ድርጅትዎ እንደ የእርስዎ እልባቶች፣ ታሪክ እና የይለፍ ቃሎች ያለ የአሰሳ ውሂብን ማየት እና ማስተዳደር ይችላል። በሌሎች Chromium መገለጫዎች ውስጥ የአሰሳ ውሂብን ማየት አይችልም</translation>
 <translation id="2635452620547538388">በእርስዎ መለያ <ph name="ACCOUNT_EMAIL" /> ውስጥ Chromium ውሂብን ለመጠቀም እና ለማስቀመጥ እርስዎ መሆንዎን ያረጋግጡ</translation>
-<translation id="8944895445911901418">{COUNT,plural, =0{የላቀ ጥበቃ ዝማኔ ለመተግበር Agent Chromeን ዳግም እንዲያስጀምሩ ይጠይቃል}=1{የላቀ ጥበቃ ዝማኔ ለመተግበር Agent Chromeን ዳግም እንዲያስጀምሩ ይጠይቃል። የእርስዎ ማንነትን የማያሳውቅ መስኮት እንደገና አይከፈትም።}one{የላቀ ጥበቃ ዝማኔ ለመተግበር Agent Chromeን ዳግም እንዲያስጀምሩ ይጠይቃል። የእርስዎ # ማንነትን የማያሳውቅ መስኮት እንደገና አይከፈትም።}other{የላቀ ጥበቃ ዝማኔ ለመተግበር Agent Chromeን ዳግም እንዲያስጀምሩ ይጠይቃል። የእርስዎ # ማንነትን የማያሳውቁ መስኮቶች እንደገና አይከፈቱም።}}</translation>
+<translation id="8493546940144832853">{COUNT,plural, =0{የላቀ ጥበቃ ዝማኔ ለመተግበር Shuttleን ዳግም እንዲያስጀምሩ ይጠይቃል}=1{የላቀ ጥበቃ ዝማኔ ለመተግበር Shuttleን ዳግም እንዲያስጀምሩ ይጠይቃል። የእርስዎ ማንነትን የማያሳውቅ መስኮት እንደገና አይከፈትም።}one{የላቀ ጥበቃ ዝማኔ ለመተግበር Shuttleን ዳግም እንዲያስጀምሩ ይጠይቃል። የእርስዎ # ማንነትን የማያሳውቅ መስኮት እንደገና አይከፈትም።}other{የላቀ ጥበቃ ዝማኔ ለመተግበር Shuttleን ዳግም እንዲያስጀምሩ ይጠይቃል። የእርስዎ # ማንነትን የማያሳውቁ መስኮቶች እንደገና አይከፈቱም።}}</translation>
 <translation id="263863604136125912">Chromiumን ጀምር</translation>
 <translation id="2648074677641340862">በጭነት ጊዜ የስርዓተ ክወና ስህተት ተፈጥሯል። እባክዎ Chromiumን እንደገና ያውርዱት።</translation>
 <translation id="2661879430930417727">መሣሪያ የሚያጋሩ ከሆኑ ጓደኛዎች እና ቤተሰብ ተለይተው ሊያስሱ እና Chromiumን በሚፈልጉበት መንገድ ማዋቀር ይችላሉ</translation>
 <translation id="2676569452213089702">Chromium አንሶ ሳለ እንኳን በመላው መሣሪያዎ ላይ Gemini በChromium ውስጥ ለመጠቀም ቀላል መዳረሻ።</translation>
-<translation id="3144164911846092828">የAgent Chrome ትር</translation>
+<translation id="1290871231853377661">የShuttle ትር</translation>
 <translation id="2718390899429598676">ለተጨማሪ ደህንነት ሲባል Chromium ውሂብዎን ያመሰጥረዋል።</translation>
 <translation id="2721354645805494590">የGoogle መለያዎን ከChromium ለማስወገድ ዘግተው ይውጡ</translation>
 <translation id="2722636413143664436">የእርስዎን የይለፍ ቃላት፣ ዕልባቶች እና ሌሎችንም በሁሉም መሣሪያዎችዎ ላይ ለማግኘት ወደ Chromium ይግቡ</translation>
 <translation id="2738871930057338499">ከበይነመረብ ጋር መገናኘት አልተቻለም። ኤችቲቲፒኤስ 403 ተከልክሏል። እባክዎ ተኪ ውቅረትዎን ይፈትሹ።</translation>
 <translation id="2753623023919742414">ለመፈለግ ጠቅ ያድርጉ</translation>
-<translation id="2657110490709402112">Agent Chromeን እንደ ነባሪ ፒዲኤፍ መመልከቻዎ ያቀናብሩ</translation>
-<translation id="4262158525170658092">ይህ ቅጥያ ተንኮል አዘል ዌርን ይዟል እና ደህንነቱ የተጠበቀ አይደለም። የግል መረጃዎን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎን ውሂብ ማየት እና መለወጥ እንዳይችል ከAgent Chrome ያስወግዱት።</translation>
+<translation id="8088988796099973210">Shuttleን እንደ ነባሪ ፒዲኤፍ መመልከቻዎ ያቀናብሩ</translation>
+<translation id="2218752565776962982">ይህ ቅጥያ ተንኮል አዘል ዌርን ይዟል እና ደህንነቱ የተጠበቀ አይደለም። የግል መረጃዎን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎን ውሂብ ማየት እና መለወጥ እንዳይችል ከShuttle ያስወግዱት።</translation>
 <translation id="2799223571221894425">ዳግም አስጀምር</translation>
-<translation id="4930235474290498361">የእርስዎ Agent Chrome</translation>
+<translation id="7485171825548475983">የእርስዎ Shuttle</translation>
 <translation id="2816462166102338036">ይህን ቪድዮ በምስል ፍለጋ ይፈልጉ</translation>
 <translation id="282591729717417030">በካሜራዎ ምርቶችን ያግኙ፣ የዋጋ ቅነሳዎችን ይከታተሉ እና በiOS ላይ በChromium በመሄድ ላይ ሳሉ ሌሎችንም ያድርጉ።</translation>
 <translation id="2841525013647267359">ተርጉም ከ</translation>
@@ -176,52 +176,52 @@
 <translation id="2847479871509788944">ከChromium አስወግድ...</translation>
 <translation id="2850691299438350830">በChromium ላይ ደህንነትዎን ይጠብቃል እና በመለያ በገቡባቸው ሌሎች የGoogle መተግበሪያዎች ላይ ደህንነትዎን ለማሻሻል ሥራ ላይ ሊውል ይችላል።</translation>
 <translation id="2885378588091291677">ተግባር መሪ</translation>
-<translation id="8454027198329266279">ስለ &amp;Agent Chrome</translation>
+<translation id="4736743449957355772">ስለ &amp;Shuttle</translation>
 <translation id="2915996080311180594">በኋላ ዳግም አስነሳ</translation>
 <translation id="2933336679234709858">የእርስዎ ውሂብ በእርስዎ የይለፍ ሐረግ የተመሰጠረ ነው። የChromium ውሂብን በGoogle መለያዎ ውስጥ ለመጠቀም እና ለማስቀመጥ እሱን ያስገቡ።</translation>
 <translation id="2945997411976714835">የጭነት ስህተት፦ የጫኙ ሂደት መጀመር አልተሳካም።</translation>
 <translation id="2948852018303413228">የተቀመጡ የይለፍ ቃላት ለChromium በiOS ላይ በመጠቀም ወደ ጣቢያዎች ይበልጥ በፍጥነት ይግቡ</translation>
-<translation id="80325676287146281">የእርስዎ ድርጅቶች Agent Chromeን ያስተዳድራሉ</translation>
-<translation id="789940813130504773">Agent Chrome የተዘመነ ነው</translation>
+<translation id="5394294335480248696">የእርስዎ ድርጅቶች Shuttleን ያስተዳድራሉ</translation>
+<translation id="6474149732639814113">Shuttle የተዘመነ ነው</translation>
 <translation id="2977506796191543575">አንድ ጣቢያ የእርስዎን የይለፍ ቃል ለመስረቅ ከሞከረ ወይም ጎጂ ፋይል ሲያወርዱ Chromium እንዲሁም የገጽ ይዘት ቢትስንም ጨምሮ ዩአርኤሎችን ወደ የጥንቃቄ አሰሳ ሊልክ ይችላል</translation>
 <translation id="2981563588585023386">በወላጆችዎ ምርጫዎች ደህንነትዎ የበለጠ ተጠብቆ ለመቆየት ወደ Chromium በመለያ ይግቡ</translation>
 <translation id="3003694935412297923">ሁሉም ተግባሮች</translation>
 <translation id="3012615494352020668">{count,plural, =1{የተወሰነ ውሂብ በGoogle መለያዎ ውስጥ መቀመጥ እና በሁሉም መሣሪያዎችዎ ላይ ጥቅም ላይ መዋል ከመቻሉ በፊት Chromium እርስዎ መሆንዎን ማረጋገጥ አለበት። አሁን ዘግተው ከወጡ ይህ ውሂብ (1 ንጥል) ይሰረዛል።}one{የተወሰነ ውሂብ በGoogle መለያዎ ውስጥ መቀመጥ እና በሁሉም መሣሪያዎችዎ ላይ ጥቅም ላይ መዋል ከመቻሉ በፊት Chromium እርስዎ መሆንዎን ማረጋገጥ አለበት። አሁን ዘግተው ከወጡ ይህ ውሂብ ({count} ንጥል) ይሰረዛል።}other{የተወሰነ ውሂብ በGoogle መለያዎ ውስጥ መቀመጥ እና በሁሉም መሣሪያዎችዎ ላይ ጥቅም ላይ መዋል ከመቻሉ በፊት Chromium እርስዎ መሆንዎን ማረጋገጥ አለበት። አሁን ዘግተው ከወጡ ይህ ውሂብ ({count} ንጥሎች) ይሰረዛል።}}</translation>
-<translation id="8084335581332031126"><ph name="URL" />ን በAgent Chrome ውስጥ በአዲስ ትር ይክፈቱ።</translation>
+<translation id="6798600078593703276"><ph name="URL" />ን በShuttle ውስጥ በአዲስ ትር ይክፈቱ።</translation>
 <translation id="302551344979399011">እንደ ክህሎቶች ያሉ የሰው ሠራሽ አስተውሎት ፈጠራዎች ወደ Google መለያዎ ይቀመጣሉ እና ከChromium ሥምረት በተለየ መልኩ ይተዳደራሉ</translation>
-<translation id="7024173799494459794">ወደ Agent Chrome በማከል ላይ...</translation>
+<translation id="2572386815899642990">ወደ Shuttle በማከል ላይ...</translation>
 <translation id="3038232873781883849">ለመጫን በመጠበቅ ላይ...</translation>
 <translation id="3045032126857188731">የተተረጎመው ቋንቋ፦ <ph name="LANGUAGE" /></translation>
 <translation id="3047590466164881923">የግብረመልስ መገናኛን ይዝጉ</translation>
 <translation id="3068187312562070417">ሌሎች የChromium መገለጫዎች</translation>
 <translation id="3068290154869370196">ቅጥያዎች Chromiumን እንዲያበጁ የሚያስችሉዎት ተጨማሪዎች ናቸው። ተደራጅቶ ከመቆየት ጀምሮ የዕለት ተዕለት ተግባሮችን እስከማቃለል ድረስ ቅጥያዎች Chromiumን የራስዎ እንዲያደርጉ ያግዙዎታል።</translation>
-<translation id="7027973430362347863">የብልሽት ሪፖርቶችን እና <ph name="UMA_LINK" /> ወደ Google በመላክ Agent Chromeን የተሻለ ለማድረግ እገዛ ያድርጉ</translation>
+<translation id="1841107660132296794">የብልሽት ሪፖርቶችን እና <ph name="UMA_LINK" /> ወደ Google በመላክ Shuttleን የተሻለ ለማድረግ እገዛ ያድርጉ</translation>
 <translation id="3071024987058544609">የGoogle ደኅንነትን በመሄድ ላይ ለማድረግ የChromium መተግበሪያን ይጠቀሙ</translation>
-<translation id="4925327325707966890">{NUM_DEVICES,plural, =0{1 የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰባቸው ነበር}=1{1 የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰባቸው ነው}one{# የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰባቸው ነው}other{# የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የAgent Chrome ቅጥያዎች እየተደረሰባቸው ነው}}</translation>
-<translation id="6827369771274328769">Agent Chrome ታሪክ</translation>
+<translation id="3739686665197813096">{NUM_DEVICES,plural, =0{1 የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰባቸው ነበር}=1{1 የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰባቸው ነው}one{# የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰባቸው ነው}other{# የUSB መሣሪያ በአንድ ወይም ከዚያ በላይ በሆኑ የShuttle ቅጥያዎች እየተደረሰባቸው ነው}}</translation>
+<translation id="2502156653706673977">Shuttle ታሪክ</translation>
 <translation id="3103660991484857065">ጫኚው መዝገቡን መበተን አልቻለም። እባክዎ Chromiumን እንደገና ያውርዱት።</translation>
 <translation id="310459126943037700">ተግባር(ራት)ን ማብቃት አልተሳካም።</translation>
 <translation id="3104828284009500087">በገጽ ላይ ማንኛውንም ነገር ይፈልጉ</translation>
 <translation id="3126784891977756556">የይለፍ ቃልዎን፣ ዕልባቶችዎን እና ታሪክዎን በመላው መሣሪያዎችዎ ላይ በትክክል ሠምረው እንዲቆዩ ያድርጉ። ነባሪ አሳሽዎን ወደ Chromium በማዘመን በቀላሉ የሚያውቋቸውን እና የሚወዷቸውን ባህሪያት ይድረሱ።</translation>
-<translation id="2894555444497054373">Agent Chrome ማይክሮፎንዎን እየተጠቀመ ነው።</translation>
+<translation id="1074920430236894401">Shuttle ማይክሮፎንዎን እየተጠቀመ ነው።</translation>
 <translation id="3130333203120345554">አዲስ ፍለጋ</translation>
 <translation id="3137969841538672700">ለመፈለግ ይጎትቱ</translation>
 <translation id="3144188012276422546">ይህ ትር ተጨማሪ ንብረቶችን እየተጠቀመ ነው። አፈጻጸምዎን ለማሻሻል Chromium እንዲያቦዝነው ይፍቀዱ።</translation>
-<translation id="3092580151719004572">ማያ ገፅዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለAgent Chrome የማያ ገፅ መቅረጽን ይፍቀዱ</translation>
-<translation id="2314296667497715523">Agent Chromeን ዳግም አስጀምር</translation>
+<translation id="6825554846760229393">ማያ ገፅዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለShuttle የማያ ገፅ መቅረጽን ይፍቀዱ</translation>
+<translation id="3761350857202901706">Shuttleን ዳግም አስጀምር</translation>
 <translation id="3161522574479303604">ሁሉም ቋንቋዎች</translation>
 <translation id="3179665906251668410">አገናኙን በChromium ማን&amp;ነትን በማያሳውቅ መስኮት ውስጥ ክፈት</translation>
 <translation id="3185330573522821672">አዲሱን የChromium መገለጫዎን ያብጁ</translation>
 <translation id="3189205223539394158">ትሮችን ሳይቀይሩ ከሰው ሠራሽ አስተውሎት ሁነታ ጋር መወያየት መቀጠል ይችላሉ። ለመጀመር ወደ Chromium ይግቡ። እንዲሁም የይለፍ ቃላትዎን እና ሌሎችንም በሁሉም መሣሪያዎችዎ ላይ ያገኛሉ።</translation>
 <translation id="3224847870593914902">የGoogle መለያዎን ከChromium ለማስወገድ በቅንብሮች ገጽ ውስጥ ከChromium ዘግተው ይውጡ</translation>
 <translation id="3234316605225071811">በኋላ ላይ Chromium ለእርስዎ ቅጾችን በራስ-ለመሙላት የተቀመጠ መረጃ መጠቅም እንደሚፈልጉ ይጠይቃል</translation>
-<translation id="5982289753835865194">Agent Chrome የውሂብ አቃፊው ላይ ማንበብ እና መጻፍ አይችልም፦
+<translation id="9058828139997344018">Shuttle የውሂብ አቃፊው ላይ ማንበብ እና መጻፍ አይችልም፦
 
 <ph name="USER_DATA_DIRECTORY" /></translation>
 <translation id="3263249950597659484">በiOS ላይ ከChromium ጋር ተወዳጅ የGoogle ሰው ሠራሽ አስተውሎት መሣሪያዎችዎን ይዘው ይሂዱ።</translation>
 <translation id="3286538390144397061">አሁን ዳግም አስጀምር</translation>
-<translation id="3920105041734426863">የGoogle ኤ ፒ አይ ቁልፎች ይጎድላሉ። አንዳንድ የAgent Chrome ተግባራት ይሰናከላሉ።</translation>
-<translation id="5621884903587730053">Agent Chrome ሲዘጋ የጀርባ መተግበሪያዎች ማሂዱን ይቀጥሉ</translation>
+<translation id="8765302055862543686">የGoogle ኤ ፒ አይ ቁልፎች ይጎድላሉ። አንዳንድ የShuttle ተግባራት ይሰናከላሉ።</translation>
+<translation id="4826503398521877963">Shuttle ሲዘጋ የጀርባ መተግበሪያዎች ማሂዱን ይቀጥሉ</translation>
 <translation id="3313189106987092621">Chromium ደህንነቱ ያልተጠበቀ ግንኙነት በመጠቀም ማንኛውንም ጣቢያ ከመጫንዎ በፊት ያስጠነቅቀዎታል</translation>
 <translation id="3316771292331273802">ከGoogle መለያዎ በስተቀር በChromium ውስጥ ገብተው ከሆነ፣ ሁሉንም የChromium መስኮቶች ሲዘጉ ከአብዛኞቹ ጣቢያዎች ይወጣሉ። ጣቢያዎች እንዲያስታውሱዎ ለማድረግ <ph name="SETTINGS_LINK" />።</translation>
 <translation id="3352986031709923790">የፍለጋው አካባቢ ከላይ በስተቀኝ ጥግ፦ ቀኝ <ph name="RIGHT" />%፣ ከላይ <ph name="TOP" />%</translation>
@@ -236,126 +236,126 @@
 <translation id="3474745554856756813">ይሄ <ph name="ITEMS_COUNT" /> ንጥሎችን ከዚህ መሣሪያ ይሰርዛል። ውሂብዎን በኋላ ላይ ሰርስረው ለማውጣት እንደ <ph name="USER_EMAIL" /> ሆነው ወደ Chromium ይግቡ።</translation>
 <translation id="3497319089134299931"><ph name="SHORTCUT" /> በChromium መገለጫዎች መካከል መቀያየር ይችላል</translation>
 <translation id="3509308970982693815">እባክዎ ሁሉንም የChromium መስኮቶችን ይዝጉና እንደገና ይሞክሩ።</translation>
-<translation id="4449744684308538611">መስኮትዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለAgent Chrome የማያ ገፅ መቅረጽን ይፍቀዱ</translation>
+<translation id="5876629139177327931">መስኮትዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለShuttle የማያ ገፅ መቅረጽን ይፍቀዱ</translation>
 <translation id="3530103706039034513"><ph name="EXISTING_USER" /> አስቀድመው ገብተዋል።  አሰሳዎን ለያይተው ለመጠቀም በራስዎ መገለጫ ውስጥ እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ይግቡ።</translation>
 <translation id="3531741627422851418">Chromium አሳሽን በተንቀሳቃሽ መሣሪያዎች ላይ ለማውረድ QR ኮድ</translation>
 <translation id="354621070532799440">አስታዋሽ፦ የGoogle ምርጥ የደኅንነት ባህሪያት በኪስዎ ውስጥ</translation>
-<translation id="4902762267468919597">ማያ ገፅዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለAgent Chrome የማያ ገፅ መቅረጽን ይፍቀዱ።</translation>
-<translation id="4199561934263811659">የላቀ ጥበቃ Agent Chrome ለማያውቃቸው ጣቢያዎች የጃቫስክሪፕት ማትባትን ያጠፋል</translation>
+<translation id="2337565425943560376">ማያ ገፅዎን ለማጋራት በሥርዓት ቅንብሮች ውስጥ ለShuttle የማያ ገፅ መቅረጽን ይፍቀዱ።</translation>
+<translation id="4821889377524170187">የላቀ ጥበቃ Shuttle ለማያውቃቸው ጣቢያዎች የጃቫስክሪፕት ማትባትን ያጠፋል</translation>
 <translation id="3597003331831379823">በላቁ ልዩ መብቶች ማዋቀርን ማስሄድ አልተሳካም። <ph name="METAINSTALLER_ERROR" /></translation>
 <translation id="3600428265489994557">Chromium ውስጥ ይግቡ</translation>
 <translation id="3639635944603682591">ይህ ሰው የአሰሳ ውሂብ ከዚህ መሣሪያ ይሰረዛል። ውሂቡን መልሶ ለማግኘት እንደ <ph name="USER_EMAIL" /> ሆነው ወደ Chromium ይግቡ።</translation>
-<translation id="7335807248512894660">{COUNT,plural, =0{አዲስ ዝማኔ ለAgent Chrome የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል።}=1{አዲስ ዝማኔ ለAgent Chrome የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል። የእርስዎ ማንነት የማያሳውቅ መስኮት ዳግም አይከፈትም}one{አዲስ ዝማኔ ለAgent Chrome የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}other{አዲስ ዝማኔ ለAgent Chrome የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}}</translation>
+<translation id="1300475218926632111">{COUNT,plural, =0{አዲስ ዝማኔ ለShuttle የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል።}=1{አዲስ ዝማኔ ለShuttle የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል። የእርስዎ ማንነት የማያሳውቅ መስኮት ዳግም አይከፈትም}one{አዲስ ዝማኔ ለShuttle የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}other{አዲስ ዝማኔ ለShuttle የሚገኝ ሲሆን ልክ ዳግም ሲያስጀምሩት ይተገበራል። የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}}</translation>
 <translation id="3667616615096815454">መጫን አልተቻለም፣ አገልጋዩ መተግበሪያውን አያውቀውም።</translation>
 <translation id="3675854891107786059">በGoogle መለያዎ ውስጥ ያሉትን ሁሉንም የChromium ውሂብ ለማመስጠር <ph name="BEGIN_LINK" />የራስዎን የይለፍ ሐረግ<ph name="END_LINK" /> ይጠቀሙ። የGoogle Pay የመክፈያ ዘዴዎች እና አድራሻዎች አይመሰጠሩም። የChromium የአሰሳ ታሪክ አይሰምርም።</translation>
-<translation id="3697825383460320042">{COUNT,plural, =0{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይጠይቀዎታል}=1{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይጠይቀዎታል የእርስዎ ማንነት የማያሳውቅ መስኮት ዳግም አይከፈትም}one{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይጠይቀዎታል የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}other{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Agent Chromeን ዳግም እንዲያስጀምሩት ይጠይቀዎታል የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}}</translation>
-<translation id="7584080815951640016">አገናኙን በAgent Chrome አዲስ &amp;ትር ውስጥ ክፈት</translation>
+<translation id="5274497473086430153">{COUNT,plural, =0{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይጠይቀዎታል}=1{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይጠይቀዎታል የእርስዎ ማንነት የማያሳውቅ መስኮት ዳግም አይከፈትም}one{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይጠይቀዎታል የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}other{ይህን ዝማኔ ለመተግበር አስተዳዳሪዎ Shuttleን ዳግም እንዲያስጀምሩት ይጠይቀዎታል የእርስዎ # ማንነት የማያሳውቁ መስኮቶች ዳግም አይከፈቱም}}</translation>
+<translation id="6123757042710639920">አገናኙን በShuttle አዲስ &amp;ትር ውስጥ ክፈት</translation>
 <translation id="3728124580182886854">Chromiumን እና ሌሎች የGoogle አገልግሎቶችን ግላዊነት ለማላበስ እና ለሌሎች ዓላማዎች ያገናኟቸው</translation>
 <translation id="3729187154190517324">«ትር እና ሌሎችም አክል» የሚለውን አዝራር በመጠቀም ብዙ ትሮችን፣ ፋይሎችን እና መሣሪያዎችን በማከል ፍለጋዎን ያጥልቁ።</translation>
 <translation id="3788675262216168505">የChromium መገለጫዎችን ያስተዳድሩ</translation>
-<translation id="9153620230534680918">ለምን Agent Chrome የተወሰኑ ውርዶችን እንዳገደ ይወቁ</translation>
+<translation id="4583231988142868515">ለምን Shuttle የተወሰኑ ውርዶችን እንዳገደ ይወቁ</translation>
 <translation id="379589255253486813">ማንኛውም ነገር ግምገማ ካስፈለገው Chromium ያሳውቅዎታል</translation>
-<translation id="4835254782629421085">እርስዎ የመጎብኘት ዕድልዎ ከፍተኛ የሆኑባቸው ገፆች ሲጎበኟቸው ይበልጥ በፍጥነት እንዲጫኑ Agent Chrome በቅድሚያ ይጭናቸዋል</translation>
+<translation id="9161544906744429402">እርስዎ የመጎብኘት ዕድልዎ ከፍተኛ የሆኑባቸው ገፆች ሲጎበኟቸው ይበልጥ በፍጥነት እንዲጫኑ Shuttle በቅድሚያ ይጭናቸዋል</translation>
 <translation id="3810973564298564668">አደራጅ</translation>
 <translation id="3823384748599722168">የተቀመጡ የይለፍ ቃላትዎን ለመጠቀም፣ QR ኮዱን ይከተሉ፣ Chromium ለiOS ያውርዱ እና ወደ Google መለያዎ ይግቡ</translation>
 <translation id="3846683726093018685">**አጠቃልል፦** በአንድ ዓረፍተ ነገር ውስጥ ከ30 ባነሱ ቃላት የይዘቱን ዋና ርዕሰ ጉዳይ እና ዓላማ በቅጽበታዊ ገጽ እይታ ውስጥ ግለጽ።
 
           **ጥያቄዎችን ጠቁም፦** ቅጽበታዊ ገጽ እይታውን በተሻለ ለመረዳት ተጠቃሚው ሊጠይቃቸው የሚችላቸው 3-5 ሀሳብ አመንጪ ጥያቄዎች ነጥበ ምልክት ዝርዝርን አመንጭ። እነዚህ ጥያቄዎች በተለይ ስለ ምስላዊ ነገር፣ ስለ ንድፉ ወይም ስለ አቀማመጡ የሚመለከት ቢያንስ አንዱን ማካተት አለባቸው።</translation>
-<translation id="5151092236561494204"><ph name="PAGE_TITLE" /> - Agent Chrome</translation>
+<translation id="4250996466392346267"><ph name="PAGE_TITLE" /> - Shuttle</translation>
 <translation id="387514319934708384">Chromium ለዚህ ጣቢያ የአካባቢያዊ አውታረ መረብ ፈቃድ ያስፈልገዋል</translation>
 <translation id="3885770153807205175">ቋንቋ መራጭ</translation>
-<translation id="8310546736680726676">Agent Chromeን ያብጁ እና ይቆጣጠሩ። የሆነ ነገር ትኩረትዎ ያስፈልገዋል - ለዝርዝሮች ጠቅ ያድርጉ።</translation>
+<translation id="3870879982795295801">Shuttleን ያብጁ እና ይቆጣጠሩ። የሆነ ነገር ትኩረትዎ ያስፈልገዋል - ለዝርዝሮች ጠቅ ያድርጉ።</translation>
 <translation id="3889543394854987837">Chromiumን ለመክፈት እና ማሰስ ለመጀመር ስምዎን ጠቅ ያድርጉት።</translation>
 <translation id="3892148308691398805">ጽሁፍ ቅዳ</translation>
 <translation id="390528597099634151"><ph name="EXISTING_USER" /> አስቀድመው ወደዚህ የChromium መገለጫ ገብተዋል። አሰሳዎን የተለየ እንደሆነ ለማቆየት Chromium የራስዎን መገለጫ ለእርስዎ መፍጠር ይችላል።</translation>
-<translation id="334040592769172771">ይህ ቅጥያ የChrome የድር መደብር መመሪያን ይጥሳል እና ደህንነቱ ያልተጠበቀ ሊሆን ይችላል። የግል መረጃዎን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎን ውሂብ ማየት እና መለወጥ እንዳይችል ከAgent Chrome ያስወግዱት።</translation>
+<translation id="2803413259281481072">ይህ ቅጥያ የChrome የድር መደብር መመሪያን ይጥሳል እና ደህንነቱ ያልተጠበቀ ሊሆን ይችላል። የግል መረጃዎን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎን ውሂብ ማየት እና መለወጥ እንዳይችል ከShuttle ያስወግዱት።</translation>
 <translation id="3941890832296813527">የጭነት ስህተት፦ የጫኙ የፋይል ስም ልክ ያልሆነ ወይም የማይደገፍ ነው።</translation>
 <translation id="3945058413678539331">Chromium የይለፍ ቃላትን ለመቅዳት እየሞከረ ነው። ይህንን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
 <translation id="3954172517175569325">የእርስዎ የይለፍ ቃላቶች፣ የመክፈያ ዘዴዎች እና በGoogle መለያዎ ውስጥ ያስቀመጧቸው አድራሻዎች ከዚህ መሣሪያ ይወገዳሉ። እንደገና Chromium ውስጥ እነሱን ለመጠቀም መልሰው በመለያ ይግቡ።</translation>
 <translation id="395904275706073188">የተጠብቁ ገፆች ሊነበቡ አይችሉም። የተለተ ገፅ ይሞክሩ።</translation>
 <translation id="3962647064319009959">Chromium እንዴት ደህንነትዎን እንደሚጠብቅ ይወቁ</translation>
 <translation id="3967822245660637423">ማውረድ ተጠናቅቋል</translation>
-<translation id="6274881217831291926">የአድራሻ አሞሌው ወይም የፍለጋ ሳጥኑ ውስጥ ሲተይቡ ወይም መታ ሲያደርጉ Agent Chrome ጥቆማዎችን ለማግኘት ወደ ድርጅትዎ ፍለጋ፣ ሰው ሠራሽ አስተውሎት እና ወኪል መሣሪያዎች ውስጥ የሚተይቡትን ነገር ይልካል።</translation>
+<translation id="8478344872731892094">የአድራሻ አሞሌው ወይም የፍለጋ ሳጥኑ ውስጥ ሲተይቡ ወይም መታ ሲያደርጉ Shuttle ጥቆማዎችን ለማግኘት ወደ ድርጅትዎ ፍለጋ፣ ሰው ሠራሽ አስተውሎት እና ወኪል መሣሪያዎች ውስጥ የሚተይቡትን ነገር ይልካል።</translation>
 <translation id="3975724895399328945">ስለ Google Chrome ለሙከራ</translation>
 <translation id="3997429360543082038">ስለChromiumOS</translation>
-<translation id="8089050973791989914">አንድን ጣቢያ ሲጎበኙ Agent Chrome የአይፒ አድራሻዎን በሚደብቅ የግላዊነት አገልጋይ በኩል የተደበቀውን የዩአርኤል ክፍል ወደ <ph name="BEGIN_LINK" />Google የጥንቃቄ አሰሳ<ph name="END_LINK" /> ይልካል። ጣቢያ አጠራጣሪ ነገር ካደረገ፣ እንዲሁም የገጽ ይዘት ሙሉ ዩአርኤሎች እና ቢቶች ይላካሉ።</translation>
+<translation id="1813754478883624120">አንድን ጣቢያ ሲጎበኙ Shuttle የአይፒ አድራሻዎን በሚደብቅ የግላዊነት አገልጋይ በኩል የተደበቀውን የዩአርኤል ክፍል ወደ <ph name="BEGIN_LINK" />Google የጥንቃቄ አሰሳ<ph name="END_LINK" /> ይልካል። ጣቢያ አጠራጣሪ ነገር ካደረገ፣ እንዲሁም የገጽ ይዘት ሙሉ ዩአርኤሎች እና ቢቶች ይላካሉ።</translation>
 <translation id="4016217212818346953">በሚስጥር ቁልፍ አስተዳዳሪ ደኅንነትዎን ይጠብቁ</translation>
 <translation id="4019629340646866719">ChromiumOS እና <ph name="BEGIN_LINK_LINUX_OSS" />የLinux ግንባታ ምህዳር<ph name="END_LINK_LINUX_OSS" /> ሊሠሩ የቻሉት በተጨማሪ <ph name="BEGIN_LINK_CROS_OSS" />የክፍት ምንጭ ሶፍትዌር<ph name="END_LINK_CROS_OSS" /> ነው።</translation>
 <translation id="4022972681110646219">ማያ ገፁን ተርጉም</translation>
 <translation id="4023601594785368013">የመጀመሪያው ቋንቋ፦ <ph name="LANGUAGE" /></translation>
 <translation id="4023845192681161785">ከማንኛውም መተግበሪያ ላይ አገናኞችን Chromium ውስጥ ይከፍታል። በተጨማሪም፣ ለቀላል መዳረሻ የተግባር አሞሌዎ ላይ ፒን ይደረጋል።</translation>
-<translation id="2466379549068383575"><ph name="BEGIN_LINK" />የአሁኖቹን ቅንብሮች<ph name="END_LINK" /> ሪፖርት በማድረግ Agent Chrome የተሻለ እንዲሆን ያግዙ</translation>
+<translation id="3334942702828280015"><ph name="BEGIN_LINK" />የአሁኖቹን ቅንብሮች<ph name="END_LINK" /> ሪፖርት በማድረግ Shuttle የተሻለ እንዲሆን ያግዙ</translation>
 <translation id="4050175100176540509">አስፈላጊ የደህንነት ማሻሻያዎች እና አዲስ ባህሪያት በቅርብ ጊዜው ስሪቱ ላይ ይገኛሉ።</translation>
 <translation id="4055805654398742145">የይለፍ ቃል አስተዳዳሪ</translation>
-<translation id="409373329602981607">{COUNT,plural, =1{ድርጅትዎ Agent Chrome ለ1 ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።}one{ድርጅትዎ Agent Chrome ለ# ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።}other{ድርጅትዎ Agent Chrome ለ# ደቂቃዎች ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።}}</translation>
+<translation id="4210170830543121132">{COUNT,plural, =1{ድርጅትዎ Shuttle ለ1 ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።}one{ድርጅትዎ Shuttle ለ# ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።}other{ድርጅትዎ Shuttle ለ# ደቂቃዎች ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።}}</translation>
 <translation id="4118474109249235144">Chromium ማንነት የማያሳውቅ</translation>
 <translation id="4122186850977583290">ወደ ስለChromium ገጽ ይሂዱ</translation>
 <translation id="4135244987012252068">ለአሳሸዎ አዲስ መልክ ለመስጠት Chromeን ያብጁ</translation>
 <translation id="4147856324248078748">የእርስዎን Chromium ያብጁ</translation>
 <translation id="4148957013307229264">በመጫን ላይ...</translation>
-<translation id="2058774528396152893"><ph name="PAGE_TITLE" /> - በአውታረ መረብ ወደ መለያ መግባት - Agent Chrome</translation>
-<translation id="7685529984676330289">ለAgent Chrome ምርጥ መተግበሪያዎችን፣ ጨዋታዎችን፣ ቅጥያዎችን እና ገጽታዎችን ያግኙ።</translation>
+<translation id="6643591336183767153"><ph name="PAGE_TITLE" /> - በአውታረ መረብ ወደ መለያ መግባት - Shuttle</translation>
+<translation id="8999328492520314624">ለShuttle ምርጥ መተግበሪያዎችን፣ ጨዋታዎችን፣ ቅጥያዎችን እና ገጽታዎችን ያግኙ።</translation>
 <translation id="4217080900579554343">በሁሉም ኮምፒውተርዎችዎ ላይ ይህን ቅጥያ እና ተጨማሪ ለማግኘት ወደ Chromium ይግቡ</translation>
 <translation id="4217972271355023382">በወላጅዎ ምርጫ መስመር ላይ የበለጠ ደህንነቱ የተጠበቀ ሆኖ ለመቆየት፣ አስቀድመው እንደ <ph name="USER_EMAIL_ADDRESS" /> ወደ ገቡበት የChromium መገለጫ ይቀይሩ</translation>
 <translation id="4222932583846282852">በመሰረዝ ላይ...</translation>
 <translation id="4224210481850767180">ጭነቱ ተሰርዟል።</translation>
 <translation id="4230135487732243613">የChromium ውሂዎ ከዚህ መለያ ጋር ይገናኝ?</translation>
-<translation id="274377438883177878">ከመደበኛ ጥበቃ በላይ ተጨማሪ ውሂብ ከጣቢያዎች ትንታኔ በመስጠት Google እንኳን በፊት ስላላወቃቸው አደገኛ ጣቢያዎች ያስጠነቅቅዎታል። የAgent Chrome ማስጠንቀቂያዎችን ለመዝለል መምረጥ ይችላሉ።</translation>
+<translation id="2078444352649860973">ከመደበኛ ጥበቃ በላይ ተጨማሪ ውሂብ ከጣቢያዎች ትንታኔ በመስጠት Google እንኳን በፊት ስላላወቃቸው አደገኛ ጣቢያዎች ያስጠነቅቅዎታል። የShuttle ማስጠንቀቂያዎችን ለመዝለል መምረጥ ይችላሉ።</translation>
 <translation id="4269093074552541569">ከChromium ዘግተህ ውጣ</translation>
-<translation id="8361584154950824008">Agent Chrome ላይ እገዛ ያግኙ</translation>
+<translation id="5558993553168424235">Shuttle ላይ እገዛ ያግኙ</translation>
 <translation id="4281844954008187215">የአግልግሎት ውል</translation>
 <translation id="4285930937574705105">ተለይቶ ባልታወቀ ስህተት ምክንያት ጭነት ከሽፏል። Chromium አሁን እያሄደ ከሆነ እባክዎ ይዝጉትና እንደገና ይሞክሩ።</translation>
 <translation id="4298125729853015961">የይለፍ ቃላትን ከChromium ወደ ውጪ ይላኩ</translation>
 <translation id="4304713468139749426">የይለፍ ቃል አስተዳዳሪ</translation>
 <translation id="4334241893986177674">ይህን ቅጽበታዊ ገጽ እይታ ይፈልጉ</translation>
 <translation id="4368547723231502008">Chromium ቢቀንስ እንኳን ከየትኛውም ቦታ ሆነው ፈልግ እና ጥያቄዎችን ጠይቅ</translation>
-<translation id="1172096072757635810">Windows ሲጀምር Agent Chromeን አስጀምር</translation>
+<translation id="5810569516587906396">Windows ሲጀምር Shuttleን አስጀምር</translation>
 <translation id="4400772909124543403">ምንም ዝማኔ አይገኝም</translation>
-<translation id="8069611125329654712">የሆነው ሆኖ ከAgent Chrome ይወጣ?</translation>
+<translation id="3931397122598189404">የሆነው ሆኖ ከShuttle ይወጣ?</translation>
 <translation id="4413205837991854510">የምስል ፍለጋ አቋራጭን ሁልጊዜ አሳይ</translation>
-<translation id="3727041326435831325">Agent Chrome በበስተጀርባ ላይ ያሂድ</translation>
-<translation id="1713490836766202786">{NUM_EXTENSIONS,plural, =1{Agent Chrome እንዲያስወግዱት ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፍ ቅጥያ የበለጠ ይወቁ<ph name="END_LINK" />}one{Agent Chrome እንዲያስወግዱት ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፍ ቅጥያ የበለጠ ይወቁ<ph name="END_LINK" />}other{Agent Chrome እንዲያስወግዷቸው ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፉ ቅጥያዎች የበለጠ ይወቁ<ph name="END_LINK" />}}</translation>
-<translation id="7567010943765939594">Agent Chromeን ያብጁ እና ይቆጣጠሩ</translation>
+<translation id="8644661686228434842">Shuttle በበስተጀርባ ላይ ያሂድ</translation>
+<translation id="603827111501511568">{NUM_EXTENSIONS,plural, =1{Shuttle እንዲያስወግዱት ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፍ ቅጥያ የበለጠ ይወቁ<ph name="END_LINK" />}one{Shuttle እንዲያስወግዱት ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፍ ቅጥያ የበለጠ ይወቁ<ph name="END_LINK" />}other{Shuttle እንዲያስወግዷቸው ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፉ ቅጥያዎች የበለጠ ይወቁ<ph name="END_LINK" />}}</translation>
+<translation id="8695231474189911275">Shuttleን ያብጁ እና ይቆጣጠሩ</translation>
 <translation id="4427306783828095590">የተሻሻለ ጥበቃ ማስገር እና ተንኮል-አዘል ዌር ለማገድ የበለጠ ይሠራል</translation>
 <translation id="4434353761996769206">የጫኚ ስህተት፦ <ph name="INSTALLER_ERROR" /></translation>
-<translation id="7498286168885369820"><ph name="MANAGER" /> Agent Chromeን ያስተዳድራል</translation>
+<translation id="3897345295068202634"><ph name="MANAGER" /> Shuttleን ያስተዳድራል</translation>
 <translation id="444069871276811466">የChromium መገለጫ ያክሉ</translation>
 <translation id="4447409407328223819">ስለ Chrome ለሙከራ</translation>
 <translation id="4470974262661801543">በGoogle መለያዎ ውስጥ የChromium ውሂብን ለመጠቀም እና ለማስቀመጥ የእርስዎን የይለፍ ሐረግ ያስገቡ</translation>
 <translation id="4493028449971051158">የማስነሻ ስህተት፦ እባክዎ መጫኛውን እንደ አስተዳዳሪ ያሂዱ።</translation>
 <translation id="4501471624619070934">በዚህ አገር መዳረሻ የተገደበ ስለሆነ ጭነት አልተሳካም።</translation>
-<translation id="4615766574627629942">ይህ ቅጥያ እንደ ውሂብን እንዴት እንደሚሰበስብ እና እንደሚጠቀም ያሉ የግላዊነት ተግባሮችን አላተመም። Agent Chrome እንዲያስወግዱት ይመክራል።</translation>
+<translation id="7538943987967358068">ይህ ቅጥያ እንደ ውሂብን እንዴት እንደሚሰበስብ እና እንደሚጠቀም ያሉ የግላዊነት ተግባሮችን አላተመም። Shuttle እንዲያስወግዱት ይመክራል።</translation>
 <translation id="452711251841752011">እንኳን ወደ Chromium በደህና መጡ፤ አዲስ የአሳሽ መስኮት ተከፍቷል</translation>
 <translation id="4531137820806573936">Chromium አካባቢዎን በካርታ ለመንደፍ እና የእጆችዎን እንቅስቃሴዎች ለመከታተል ፈቃድ ይፈልጋል</translation>
 <translation id="4536805923587466102">አስቀድመው በሌላ የChromium መገለጫ እንደ <ph name="USER_EMAIL_ADDRESS" /> ገብተዋል</translation>
-<translation id="5945053225725114995">Agent Chrome ገፆችን ቅድሚያ ይጭናል፣ ይህም ማሰስ እና መፈለግን የበለጠ ፈጣን ያደርጋል። <ph name="BEGIN_LINK" />በቅድሚያ ስለሚጫኑ ገፆች የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
+<translation id="7291454099139632344">Shuttle ገፆችን ቅድሚያ ይጭናል፣ ይህም ማሰስ እና መፈለግን የበለጠ ፈጣን ያደርጋል። <ph name="BEGIN_LINK" />በቅድሚያ ስለሚጫኑ ገፆች የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
 <translation id="4549180975214802957">እርስዎ ጎጂ ነው ብለው የሚያስቡትን ጣቢያ ሪፖርት ሲያደርጉ ለሁሉም ሰው የመስመር ላይ ደኅንነትን ያሻሽሉ።</translation>
-<translation id="2899198307620821227">እርስዎ ደህንነቱ የተጠበቀ አሰሳን ስላጠፉ እና ፋይሉ ሊረጋገጥ ስለማይችል Agent Chrome ይህን ውርድ አግዷል</translation>
+<translation id="4229052424516163100">እርስዎ ደህንነቱ የተጠበቀ አሰሳን ስላጠፉ እና ፋይሉ ሊረጋገጥ ስለማይችል Shuttle ይህን ውርድ አግዷል</translation>
 <translation id="4583692638088316420">በስልክዎ ላይ Google ሌንስን ከChromium ጋር ይሞክሩ</translation>
 <translation id="4594305310729380060">በዚህ መሣሪያ ላይ ወደ የይለፍ ቃል አስተዳዳሪ</translation>
-<translation id="6944119370969619446">የAgent Chrome መተግበሪያዎች</translation>
+<translation id="4559123577107659130">የShuttle መተግበሪያዎች</translation>
 <translation id="4598116752460667024">ከዝርዝሩ ማንኛውንም ሂደት ይፈልጉ።</translation>
 <translation id="4613863813562375431">የChromiumOS ስሪት</translation>
-<translation id="6401103202303237090">የተዘመነ ለመሆን ጥቂት ብቻ ቀርቷል! ማዘመን ለማጠናቀቅ Agent Chromeን ዳግም ያስጀምሩት።</translation>
-<translation id="4807663225386362301">በAgent Chrome V8 ሞተር ጣቢያዎችን ያፋጥናል ነገር ግን የAgent Chromeን ጥቃቶችን የመቋቋም አቅም በመጠኑ ያነሰ ያደርገዋል</translation>
+<translation id="8540523969518172575">የተዘመነ ለመሆን ጥቂት ብቻ ቀርቷል! ማዘመን ለማጠናቀቅ Shuttleን ዳግም ያስጀምሩት።</translation>
+<translation id="2509032609305193511">በShuttle V8 ሞተር ጣቢያዎችን ያፋጥናል ነገር ግን የShuttleን ጥቃቶችን የመቋቋም አቅም በመጠኑ ያነሰ ያደርገዋል</translation>
 <translation id="4626321472657185181">ፍለጋን በChromium ክፈት</translation>
-<translation id="521912697020157864">ማስጠንቀቂያ፦ Agent Chrome ቅጥያዎች የአሰሳ ታሪክዎን እንዳይመዘግቡ መከልከል አይችልም። ይህን ቅጥያ ማንነት በማያሳውቅ ሁነት ላይ ለማሰናከል ይህን አማራጭ አይምረጡ።</translation>
+<translation id="7601899887920501075">ማስጠንቀቂያ፦ Shuttle ቅጥያዎች የአሰሳ ታሪክዎን እንዳይመዘግቡ መከልከል አይችልም። ይህን ቅጥያ ማንነት በማያሳውቅ ሁነት ላይ ለማሰናከል ይህን አማራጭ አይምረጡ።</translation>
 <translation id="4673151026126227699">እንዲሁም የChromium አጠቃቀም ሪፖርቶችን ካጋሩ፣ እነዚያ ሪፖርቶች እርስዎ የሚጎበኟቸውን ዩአርኤሎች ያካትታሉ</translation>
 <translation id="4673710618874938871">እንደ <ph name="USER_NAME" />፣ አባልነት ገብተዋል። የመለያ ምናሌውን ይክፈቱ</translation>
-<translation id="5833534934470627293">መገለጫው በሌላ ኮምፒውተር (<ph name="HOST_NAME" />) ላይ በሌላ የAgent Chrome ሂደት (<ph name="PROCESS_ID" />) የተያዘ ይመስላል። Agent Chrome መገለጫው እንዳይበላሽ ቆልፎታል። ሌሎች ሂደቶች ይህን መገለጫ እየተጠቀሙበት እንዳልሆኑ እርግጠኛ ከሆኑ መገለጫውን አስከፍተው Agent Chromeን ዳግም ማስጀመር ይችላሉ።</translation>
+<translation id="1081748947768053336">መገለጫው በሌላ ኮምፒውተር (<ph name="HOST_NAME" />) ላይ በሌላ የShuttle ሂደት (<ph name="PROCESS_ID" />) የተያዘ ይመስላል። Shuttle መገለጫው እንዳይበላሽ ቆልፎታል። ሌሎች ሂደቶች ይህን መገለጫ እየተጠቀሙበት እንዳልሆኑ እርግጠኛ ከሆኑ መገለጫውን አስከፍተው Shuttleን ዳግም ማስጀመር ይችላሉ።</translation>
 <translation id="4680828127924988555">መጫኑን ሰርዝ</translation>
 <translation id="469259825538636168">አንዳንድ የChromium ውሂብዎ በGoogle መለያዎ ውስጥ ገና አልተቀመጠም። ዘግተው ከመውጣትዎ በፊት ጥቂት ደቂቃዎች ለመጠበቅ ይሞክሩ። አሁን ዘግተው ከወጡ ይህ ውሂብ ይሰረዛል።</translation>
 <translation id="4708193446201257833">በመለያ ገብተው ሳለ በChromium ውስጥ ከGoogle መለያዎ የይለፍ ቃላትዎን እና ሌሎችንም መጠቀም ይችላሉ። <ph name="SHORTCUT" /> የGoogle አገልግሎቶች ቅንብሮችዎን መለወጥ ይችላል።</translation>
 <translation id="4708774505295300557">የሆነ ሰው ከዚህ ቀደም በዚህ ኮምፒውተር ላይ እንደ <ph name="ACCOUNT_EMAIL_LAST" /> ሆነው ገብተዋል። የእርስዎን መረጃ ለይተው ለማስቀመጥ እባክዎ አዲስ የChromium ተጠቃሚ ይፍጠሩ።</translation>
 <translation id="4724676981607797757">በማይደገፍ የፕሮቶኮል ስህተት ምክንያት መጫኑ አልተሳካም።</translation>
-<translation id="2783410850122241193">የሆነው ሆኖ Agent Chrome ይቁም?</translation>
+<translation id="333286104758608669">የሆነው ሆኖ Shuttle ይቁም?</translation>
 <translation id="4748217263233248895">ለChromium ልዩ የደህንነት ዝማኔ ተፈጻሚ ተደርጓል። አሁን ዳግም ያስጀምሩ እና የእርስዎን ትሮች ወደ ነበሩበት እንመልሳለን።</translation>
 <translation id="4771701986670315895">በቅርብ ጊዜ አልጎበኙም። Chromium <ph name="PERMISSION_1" />፣ <ph name="PERMISSION_2" /> እና <ph name="COUNT" /> ሌሎችንም አስወግዷል።</translation>
 <translation id="4786083865378785874">Gemini በChromium ውስጥ ክፍት ከሆነ አዲስ ትሮች ሲፈጠሩ የጎን ፓነሉ ክፍት ሆኖ ይቆያል</translation>
 <translation id="479167709087336770">ይህ በ Google ፍለጋ ውስጥ ጥቅም ላይ ጋር ተመሳሳይ የፊደል አራሚ ይጠቀማል። በአሳሽ ውስጥ የሚተይቡት ጽሁፍ ወደ Google ይላካል። ይህን ባህሪ ሁልጊዜ በቅንብሮች ውስጥ መለወጥ ይችላሉ።</translation>
 <translation id="4814736265800133385">Chromiumን ያለመለያ ይጠቀሙ</translation>
 <translation id="4888717733111232871">Chromium ለmDNS ትራፊክ ለመፍቀድ የውስጥ ደንብ።</translation>
-<translation id="5600814355607573136">&amp;Agent Chromeን ለማዘመን ዳግም ያስነሱት</translation>
+<translation id="3854801763817831716">&amp;Shuttleን ለማዘመን ዳግም ያስነሱት</translation>
 <translation id="4918086044614829423">ይቀበሉ</translation>
 <translation id="4918844574251943176">ምስል ተቀድቷል</translation>
 <translation id="4943838377383847465">Chromium በጀርባ ሁነታ ላይ ነው።</translation>
@@ -376,7 +376,7 @@
 <translation id="5234764350956374838">አሰናብት</translation>
 <translation id="5249261924633168472">አገናኙን በChromium ማን&amp;ነትን በማያሳውቅ መስኮት ውስጥ ክፈት</translation>
 <translation id="5276305953263010518">በመሄድ ላይ ሳሉ የይለፍ ቃላትን ለማስቀመጥ የChromium መተግበሪያን ያግኙ</translation>
-<translation id="1601187459465935178">የእርስዎን ለውጦች ተፈጻሚ ለማድረግ፣ Agent Chromeን ዳግም ያስጀምሩ</translation>
+<translation id="6904011543478254794">የእርስዎን ለውጦች ተፈጻሚ ለማድረግ፣ Shuttleን ዳግም ያስጀምሩ</translation>
 <translation id="5286907366254680517">ተገኝቷል</translation>
 <translation id="5289287148052354622">የChromium መተግበሪያን አግኝ</translation>
 <translation id="5294316920224716406">ማንነትን በማያሳውቅ ሁነታ ሲያስሱ፣ Chromium ደህንነቱ ያልተጠበቀ ግንኙነት በመጠቀም ጣቢያ ከመጫንዎ በፊት ያስጠነቅቀዎታል</translation>
@@ -392,23 +392,23 @@
 <translation id="5368118228313795342">ተጨማሪ ኮድ፦ <ph name="EXTRA_CODE" />።</translation>
 <translation id="5377622451696208284">ግላዊነት ለማላበስ Chromiumን በድር እና በመተግበሪያ እንቅስቃሴ ውስጥ ያካትቱ</translation>
 <translation id="5382964351116519680">ፍለጋን በChromium ክፈት</translation>
-<translation id="2524054769026663683">Agent Chrome ለምን አንዳንድ ፋይሎችን እንደሚያግድ ይወቁ</translation>
-<translation id="8615009965479156445">Agent Chromeን በማዘመን ላይ (<ph name="PROGRESS_PERCENT" />)</translation>
+<translation id="4877717772512674872">Shuttle ለምን አንዳንድ ፋይሎችን እንደሚያግድ ይወቁ</translation>
+<translation id="8341327126333983765">Shuttleን በማዘመን ላይ (<ph name="PROGRESS_PERCENT" />)</translation>
 <translation id="538767207339317086">የChromium በመለያ መግባትን ይፍቀዱ</translation>
-<translation id="6256236118124872626">ከAgent Chrome አስወግድ</translation>
-<translation id="5774731921051444461">አፈጻጸምን ይቀንሳል ነገር ግን Agent Chrome ጥቃቶችን ይበልጥ እንዲቋቋም ያደርገዋል</translation>
+<translation id="2064155379595075287">ከShuttle አስወግድ</translation>
+<translation id="1764424071909520660">አፈጻጸምን ይቀንሳል ነገር ግን Shuttle ጥቃቶችን ይበልጥ እንዲቋቋም ያደርገዋል</translation>
 <translation id="5427571867875391349">Chromium እንደ ነባሪ አሳሽዎ አድርገው ያዋቅሩት</translation>
-<translation id="8709870882148322247"><ph name="PAGE_TITLE" /> - Agent Chrome ቅድመ-ይሁንታ</translation>
+<translation id="3552564955884420948"><ph name="PAGE_TITLE" /> - Shuttle ቅድመ-ይሁንታ</translation>
 <translation id="5460618461609401056">{NUM_TABS,plural, =1{Chromium አሳሽዎን እያዘገየ ያለውን ትር ባለበት እንዲያቆሙ ይመክራል}one{Chromium አሳሽዎን እያዘገየ ያለውን ትር ባለበት እንዲያቆሙ ይመክራል}other{Chromium አሳሽዎን እያዘገዩ ያሉትን ትሮች ባሉበት እንዲያቆሙ ይመክራል}}</translation>
-<translation id="3217425685577630218">በዚህ የLinux ስርጭት ላይ ከእንግዲህ ስለማይደገፍ Agent Chrome በአግባቡ ላይሰራ ይችላል።</translation>
-<translation id="1045655099853558439">ፋይሉ የእርስዎን የግል እና የማህበራዊ አውታረ መረብ መለያዎች ሊጎዳ ስለሚችል Agent Chrome ይህን ውርድ አግዶታል</translation>
+<translation id="3837394572112225231">በዚህ የLinux ስርጭት ላይ ከእንግዲህ ስለማይደገፍ Shuttle በአግባቡ ላይሰራ ይችላል።</translation>
+<translation id="2864501208955185201">ፋይሉ የእርስዎን የግል እና የማህበራዊ አውታረ መረብ መለያዎች ሊጎዳ ስለሚችል Shuttle ይህን ውርድ አግዶታል</translation>
 <translation id="549669000822060376">Chromium የቅርብ ጊዜዎቹ የስርዓቱ ዝማኔዎችን እስኪጭን ድረስ እባክዎ ይጠብቁ።</translation>
 <translation id="5496810170689441661">Chromium የይለፍ ቃላትን ለማርትዕ እየሞከረ ነው። ይህንን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
 <translation id="549975168243349205">በChromium በመሄድ ላይ እንደ Google Drive እና YouTube ካሉ ተወዳጅ መተግበሪያዎችዎ ጋር እንከን የለሽ በሆነ መልኩ ይሥሩ።</translation>
 <translation id="5524890928877629608">የፍለጋው አካባቢ ከላይ በስተግራ ጥግ፦ ግራ <ph name="LEFT" />%፣ ከላይ <ph name="TOP" />%</translation>
-<translation id="565863787292824328">PDFዎችን በAgent Chrome ውስጥ ክፈት</translation>
+<translation id="3510916764590863589">PDFዎችን በShuttle ውስጥ ክፈት</translation>
 <translation id="5536164441519929134">ስለዚህ<ph name="LINE_BREAK" />ትር ይጠይቁ</translation>
-<translation id="8869089999448782168">ለደኅንነት ሲባል፣ Agent Chrome አንድን ጣቢያ ለመጀመሪያ ጊዜ ሲጎበኙ የጃቫስክሪፕት ማትባትን ያጠፋል።
+<translation id="8317102978607899723">ለደኅንነት ሲባል፣ Shuttle አንድን ጣቢያ ለመጀመሪያ ጊዜ ሲጎበኙ የጃቫስክሪፕት ማትባትን ያጠፋል።
 
 ይህ ገጽ እንደተጠበቀው እየሠራ ካልሆነ፣ ማትባትን ለመፍቀድ ይሞክሩ።</translation>
 <translation id="5575874067957905201">Gemini በChromium ውስጥ በMac የምናሌ አሞሌ ውስጥ ያሳዩ እና የቁልፍ ሰሌዳ አቋራጭን ያብሩ</translation>
@@ -418,24 +418,24 @@
 <translation id="5596627076506792578">ተጨማሪ አማራጮች</translation>
 <translation id="5605834417512968703">በምስል ፍለጋ ለመፈለግ ማንኛውንም ነገር ይምረጡ ወይም ከምስል ፍለጋ ለመውጣት ዝለልን ይጫኑ</translation>
 <translation id="5618818588972826921">በምስል ፍለጋ ለመፈለግ ማንኛውንም ጽሑፍ ወይም ምስል ይምረጡ ወይም ከምስል ፍለጋ ለመውጣት ዝለልን ይጫኑ</translation>
-<translation id="4814380868372526025">{0,plural, =0{የAgent Chrome ዝማኔ ይገኛል}=1{የAgent Chrome ዝማኔ ይገኛል}one{አንድ የAgent Chrome ዝማኔ ለ# ቀኖች ነበር}other{አንድ የAgent Chrome ዝማኔ ለ# ቀኖች ነበር}}</translation>
-<translation id="188722644954983559">Agent Chrome በሚዘጉበት ጊዜ የጣቢያ ውሂብን ሁልጊዜ ከመሣሪያዎ ላይ ይሰርዙ</translation>
+<translation id="8908504550344650717">{0,plural, =0{የShuttle ዝማኔ ይገኛል}=1{የShuttle ዝማኔ ይገኛል}one{አንድ የShuttle ዝማኔ ለ# ቀኖች ነበር}other{አንድ የShuttle ዝማኔ ለ# ቀኖች ነበር}}</translation>
+<translation id="1107298128800350481">Shuttle በሚዘጉበት ጊዜ የጣቢያ ውሂብን ሁልጊዜ ከመሣሪያዎ ላይ ይሰርዙ</translation>
 <translation id="5653831366781983928">እባክዎ Chromium ን አህን ዳግም ያስጀምሩ</translation>
 <translation id="5690427481109656848">Google LLC</translation>
-<translation id="1525044488102751845">Agent Chromeን በዚህ ቋንቋ አሳይ</translation>
+<translation id="3675878834104730294">Shuttleን በዚህ ቋንቋ አሳይ</translation>
 <translation id="569897634095159764">ከበይነመረብ ጋር መገናኘት አልተቻለም። ተኪ አገልጋይ ማረጋገጥ ያስፈልገዋል።</translation>
-<translation id="7750959567789509941">Agent Chrome ገቢር ካልሆኑ ትሮች ላይ ማህደረ ትውስታ ነፃ ያደርጋል። ይህ ገቢር ለሆኑ ትሮች እና ለሌሎች መተግበሪያዎች ተጨማሪ የኮምፒውተር ግብዓቶችን ይሰጣል እና Agent Chrome ፈጣን ሆኖ እንዲቆይ ያደርጋል። ገቢር ያልሆኑ ትሮችዎ እርስዎ ተመልሰው ሲሄዱባቸው በራስ-ሰር እንደገና ገቢር ይሆናሉ። <ph name="BEGIN_LINK" />ስለ የማህደረ ትውስታ ቆጣቢ የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
+<translation id="7168202961287328687">Shuttle ገቢር ካልሆኑ ትሮች ላይ ማህደረ ትውስታ ነፃ ያደርጋል። ይህ ገቢር ለሆኑ ትሮች እና ለሌሎች መተግበሪያዎች ተጨማሪ የኮምፒውተር ግብዓቶችን ይሰጣል እና Shuttle ፈጣን ሆኖ እንዲቆይ ያደርጋል። ገቢር ያልሆኑ ትሮችዎ እርስዎ ተመልሰው ሲሄዱባቸው በራስ-ሰር እንደገና ገቢር ይሆናሉ። <ph name="BEGIN_LINK" />ስለ የማህደረ ትውስታ ቆጣቢ የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
 <translation id="5775198138441669627">የይለፍ ሐረግዎን ከረሱ ወይም ይህን ቅንብር መለወጥ ከፈለጉ በመለያዎ ውስጥ ያለውን የChromium ውሂብ <ph name="SETTINGS_LINK" /></translation>
 <translation id="5800158606660203929">Chromiumን ያብጁ እና ይቆጣጠሩ። Chromiumን እንደ ነባሪ ያቀናብሩት።</translation>
 <translation id="5802618941556161431">Chromiumን እንደ ነባሪ አሳሽዎ በማቀናበር የይለፍ ቃላትዎን፣ ዕልባቶችዎን እና ታሪክዎን በመላው መሣሪያዎችዎ ላይ በትክክል ሠምረው እንዲቆዩ ያድርጉ።</translation>
 <translation id="5809516625706423866">ከበይነመረብ ጋር መገናኘት አልተቻለም። ኤችቲቲፒኤስ 401 አልተፈቀደም። እባክዎ ተኪ ውቅረትዎን ይፈትሹ።</translation>
-<translation id="2755468387099310604">በAgent Chrome V8 ሞተር ጣቢያዎችን ያፋጥናል ነገር ግን የAgent Chromeን ጥቃቶችን የመቋቋም አቅም በመጠኑ ያነሰ ያደርገዋል። ይህ ቅንብር ጠፍቷል።</translation>
+<translation id="4687670724165839540">በShuttle V8 ሞተር ጣቢያዎችን ያፋጥናል ነገር ግን የShuttleን ጥቃቶችን የመቋቋም አቅም በመጠኑ ያነሰ ያደርገዋል። ይህ ቅንብር ጠፍቷል።</translation>
 <translation id="5821520528363214608">የChromium ውሂብን በGoogle መለያዎ ላይ ለመጠቀም እና ለማስቀመጥ Chromium ያዘምኑ</translation>
 <translation id="5824893331272123205">ይህን ፓነል መጫን አልተቻለም፣ እንደገና ይሞክሩ</translation>
-<translation id="8972968824660717915">ወደ Agent Chrome እንኳን በደህና መጡ</translation>
-<translation id="8898055105597601099">የAgent Chromeን በጣም ጠንካራ ጥበቃዎች ለማቅረብ ተጨማሪ ባህሪያትን ያበራል</translation>
+<translation id="137189936820997722">ወደ Shuttle እንኳን በደህና መጡ</translation>
+<translation id="6407035307321626411">የShuttleን በጣም ጠንካራ ጥበቃዎች ለማቅረብ ተጨማሪ ባህሪያትን ያበራል</translation>
 <translation id="5871205389137001634">ከምስል ፍለጋ ለመውጣት ጠቅ ያድርጉ</translation>
-<translation id="9158119422063615519">Agent Chrome እነዚህ ንጥሎች ተንኮል አዘል ዌር እንደያዙ አግኝቷል፦</translation>
+<translation id="3128663943810469943">Shuttle እነዚህ ንጥሎች ተንኮል አዘል ዌር እንደያዙ አግኝቷል፦</translation>
 <translation id="5889361821821684993">Chromium የእርስዎ አሳሽ ደህንነታቸው የተጠበቁ ቅንብሮች እንዳለው ለማረጋገጥ በመደበኛነት ይፈትሻል። ማንኛውም ነገር የእርስዎ ግምገማ ካስፈለገው እናሳውቅዎታለን።</translation>
 <translation id="5895138241574237353">እንደገና ጀምር</translation>
 <translation id="5903106910045431592"><ph name="PAGE_TITLE" /> - በአውታረ መረብ ወደ መለያ መግባት</translation>
@@ -446,7 +446,7 @@
 <translation id="5953657885167112863">Chromiumን የእርስዎ ያድርጉ</translation>
 <translation id="5960071705175224773">ቅንብሮችዎ ባልታወቀ መተግበሪያ ተለውጠዋል</translation>
 <translation id="5977420883993828287">ተሰክቷል! ዓውዳዊ ተግባራትን ከመሣሪያ አሞሌው እንደገና ይጠቀሙ</translation>
-<translation id="1956376169666014494">{COUNT,plural, =1{ድርጅትዎ Agent Chrome ለ1 ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል።}one{ድርጅትዎ Agent Chrome ለ# ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል።}other{ድርጅትዎ Agent Chrome ለ# ደቂቃዎች ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል።}}</translation>
+<translation id="5340341384223569715">{COUNT,plural, =1{ድርጅትዎ Shuttle ለ1 ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል።}one{ድርጅትዎ Shuttle ለ# ደቂቃ ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል።}other{ድርጅትዎ Shuttle ለ# ደቂቃዎች ጥቅም ላይ ሳይውል ሲቀር በራስ ሰር ይዘጋዋል።}}</translation>
 <translation id="5987687638152509985">ስምረትን ለመጀመር Chromiumን ያዘምኑ</translation>
 <translation id="5990360079535151574">በመሣሪያ አሞሌው ላይ ካለው «ዓውዳዊ ተግባራት» አዝራር ላይ በሚያስሱበት ጊዜ ጥያቄዎችን ለመጠየቅ ዓውዳዊ ተግባራትን እንደገና መክፈት ይችላሉ</translation>
 <translation id="6003112304606738118">በማውረድ ላይ... <ph name="HOURS" /> ሰዓት(ታት) ይቀራል(ሉ)</translation>
@@ -456,25 +456,25 @@
 <translation id="6058380562449900225">ውሂብዎን ለመጠበቅ እርስዎ በቅርቡ ካልጎበኟቸው ጣቢያዎች Chromium ፈቃዶችን እንዲያስወግድ ይፍቀዱ። ማሳወቂያዎችን አያቆምም።</translation>
 <translation id="6063093106622310249">በChromium ውስጥ &amp;ክፈት</translation>
 <translation id="6069027071882229820">እንደ ምስል ቅዳ</translation>
-<translation id="8654038583091834120"><ph name="EXTENSION_NAME" /> ወደ Agent Chrome ታክሏል።</translation>
-<translation id="8940723094351907049">Agent Chromeን ያብጁትና ይቆጣጠሩት። ዝማኔ ይገኛል።</translation>
-<translation id="334648248941185659">በርቷል • Agent Chrome ይህ ቅጥያ ከየት እንደመጣ ማረጋገጥ አይችልም</translation>
+<translation id="3642130578728163190"><ph name="EXTENSION_NAME" /> ወደ Shuttle ታክሏል።</translation>
+<translation id="2484600148019262399">Shuttleን ያብጁትና ይቆጣጠሩት። ዝማኔ ይገኛል።</translation>
+<translation id="5098189861342100628">በርቷል • Shuttle ይህ ቅጥያ ከየት እንደመጣ ማረጋገጥ አይችልም</translation>
 <translation id="611228897408671387">Chromium ውስጥ ያለ መለያዎ</translation>
-<translation id="1961808482688487456">ቅጥያ በAgent Chrome የመሣሪያ አሞሌ ውስጥ የመዳረሻ ጥያቄዎችን እንዲያሳይ ፍቀድ</translation>
-<translation id="6880945371922378763"><ph name="FILE_NAME" /> አደገኛ ነው፣ ስለዚህ Agent Chrome አግዶታል።</translation>
-<translation id="829957199361894387">Agent Chrome በቅርቡ ይዘጋል እና ውሂብ ይሰርዛል</translation>
+<translation id="8603072311189086377">ቅጥያ በShuttle የመሣሪያ አሞሌ ውስጥ የመዳረሻ ጥያቄዎችን እንዲያሳይ ፍቀድ</translation>
+<translation id="6801818398062031196"><ph name="FILE_NAME" /> አደገኛ ነው፣ ስለዚህ Shuttle አግዶታል።</translation>
+<translation id="4712579756381990057">Shuttle በቅርቡ ይዘጋል እና ውሂብ ይሰርዛል</translation>
 <translation id="6145820983052037069">እዚህ በChromium መገለጫዎች መካከል መቀያየር ይችላሉ</translation>
-<translation id="8333733115616087710">ኩኪዎችን ከፈቀዱ Agent Chrome ቅድሚያ በመጫን ጊዜ ሊጠቀምባቸው ይችላል</translation>
+<translation id="4257025918694286900">ኩኪዎችን ከፈቀዱ Shuttle ቅድሚያ በመጫን ጊዜ ሊጠቀምባቸው ይችላል</translation>
 <translation id="6165508094623778733">የበለጠ ለመረዳት</translation>
 <translation id="6173308241973263798">በመለያዎ ውስጥ የChromium ውሂብን ያጽዱ</translation>
-<translation id="8439223334931595792">ይህ ፋይል አደገኛ ሊሆን ይችላል<ph name="LINE_BREAK" />የይለፍ ቃሉን ካቀረቡ Agent Chrome ይህንን ውርድ ሊፈትሽልዎ ይችላል። የፋይሉ መረጃ ወደ የGoogle ጥንቃቄ አሰሳ ይላካል፣ ነገር ግን የፋይሉ ይዘት እና የይለፍ ቃል በመሣሪያዎ ላይ ይቆያሉ።</translation>
+<translation id="8755328651499078855">ይህ ፋይል አደገኛ ሊሆን ይችላል<ph name="LINE_BREAK" />የይለፍ ቃሉን ካቀረቡ Shuttle ይህንን ውርድ ሊፈትሽልዎ ይችላል። የፋይሉ መረጃ ወደ የGoogle ጥንቃቄ አሰሳ ይላካል፣ ነገር ግን የፋይሉ ይዘት እና የይለፍ ቃል በመሣሪያዎ ላይ ይቆያሉ።</translation>
 <translation id="6182736845697986886">በዝማኔ አገልጋይ የውስጥ ስህተት ምክንያት መጫኑ አልተሳካም።</translation>
 <translation id="6183079672144801177">በእርስዎ <ph name="TARGET_DEVICE_NAME" /> ላይ በመለያ ወደ Chromium መግባትዎን ያረጋግጡ እና እንደገና ለመላክ ይሞክሩ።</translation>
 <translation id="6212496753309875659">ይህ ኮምፒውተር አስቀድሞ ይበልጥ አዲስ የሆነ የChromium ስሪት አለው። ሶፍትዌሩ የማይሰራ ከሆነ እባክዎ Chromiumን ያራግፉና እንደገና ይሞክሩ።</translation>
-<translation id="6375381612105819561">{0,plural, =0{Agent Chrome አሁን ዳግም ይጀመራል}=1{Agent Chrome በ1 ሰከንድ ውስጥ ዳግም ይጀመራል}one{Agent Chrome በ# ሰከንዶች ውስጥ ዳግም ይጀመራል}other{Agent Chrome በ# ሰከንዶች ውስጥ ዳግም ይጀመራል}}</translation>
+<translation id="1515663301924664480">{0,plural, =0{Shuttle አሁን ዳግም ይጀመራል}=1{Shuttle በ1 ሰከንድ ውስጥ ዳግም ይጀመራል}one{Shuttle በ# ሰከንዶች ውስጥ ዳግም ይጀመራል}other{Shuttle በ# ሰከንዶች ውስጥ ዳግም ይጀመራል}}</translation>
 <translation id="6241367896540709610">Chromium ፋይሎችን ለማውረድ የማከማቻ መዳረሻ ፈቃድ ያስፈልገዋል</translation>
 <translation id="6245734527075554892">በChromium ላይ በተከማቹ ደህንነታቸው ያልተጠበቁ ጣቢያዎች ዝርዝር ጋር ዩአርኤሎችን ይፈትሻል</translation>
-<translation id="5070229316792137581">Agent Chrome ነባሪውን አሳሽ ያድርጉ።</translation>
+<translation id="4713635402704891510">Shuttle ነባሪውን አሳሽ ያድርጉ።</translation>
 <translation id="6248988683584659830">የፍለጋ ቅንብሮች</translation>
 <translation id="6261803579884938625">በመሄድ ላይ ሳሉ በስልክዎ ላይ በChromium መተግበሪያ የGoogleን ምርጥ የደህንነት ባህሪያት ያግኙ</translation>
 <translation id="6268381023930128611">ከChromium ተዘግቶ ይውጣ?</translation>
@@ -482,13 +482,13 @@
 <translation id="6281746429495226318">የChromium መገለጫዎን ያብጁ</translation>
 <translation id="6290827346642914212">የChromium መገለጫዎን ይሰይሙ</translation>
 <translation id="6294831894865512704">አንድ ቅጥያ ወደ Chromium እንዲገቡ ይፈልጋል</translation>
-<translation id="1356965940380155951"><ph name="FILE_NAME" /> አደገኛ ሊሆን ስለሚችል Agent Chrome አግዶታል።</translation>
-<translation id="7321042153033393145">Agent Chrome ካሜራዎን እየተጠቀመ ነው።</translation>
+<translation id="3997120491472930522"><ph name="FILE_NAME" /> አደገኛ ሊሆን ስለሚችል Shuttle አግዶታል።</translation>
+<translation id="5186109991568427789">Shuttle ካሜራዎን እየተጠቀመ ነው።</translation>
 <translation id="6333502561965082103">ሌላ ሥርዓተ ክወና በChromium ላይ በሂደት ላይ ነው። እባክዎ ቆይተው እንደገና ይሞክሩ።</translation>
 <translation id="6334986366598267305">አሁን Chromiumን ከGoogle መለያዎ ጋር እና በተጋሩ ኮምፒውተሮች ላይ መጠቀም ይበልጥ ቀላል ነው።</translation>
 <translation id="6347002662287820329">Chromiumን እንደ ነባሪ አሳሽዎ በማቀናበር የሚያውቋቸውን፣ የሚወዷቸውን እና የሚያምኗቸውን ባህሪያት ቀላል መዳረሻ ያግኙ።</translation>
-<translation id="6663103136563143835">የAgent Chrome አቋራጭ</translation>
-<translation id="8324836837188781073">ፋይሉ በተለምዶ ስላማይወርድ እና አደገኛ ሊሆን ስለሚችል Agent Chrome ይህን ውርድ አግዷል</translation>
+<translation id="7093968037936297432">የShuttle አቋራጭ</translation>
+<translation id="7334991367988739135">ፋይሉ በተለምዶ ስላማይወርድ እና አደገኛ ሊሆን ስለሚችል Shuttle ይህን ውርድ አግዷል</translation>
 <translation id="6373523479360886564">እርግጠኛ ነዎት Chromiumን ማራገፍ ይፈልጋሉ?</translation>
 <translation id="6375219077595103062">ለየሚስጥር ቁልፍ አስተዳዳሪ አቋራጭ ያክሉ</translation>
 <translation id="6388799252195623474">በዚህ አግዘኝ</translation>
@@ -496,31 +496,31 @@
 <translation id="6400112897226594999">በኮምፒውተር ማያ ገፅ ውስጥ የChromium ዓርማ።</translation>
 <translation id="6403826409255603130">Chromium ድረ-ገጾችን እና መተግበሪያዎችን እጅግ በጣም ፈጣን በሆነ ፍጥነት የሚያሄድ ድር አሳሽ ነው። ፈጣን፣ የረጋ እና ለመጠቀም ቀላል ነው። Chromium ውስጥ አብሮ በተሰራላቸው የተንኮል-አዘል ሶፍትዌር እና የማስገሪያ መከላከያዎች አማካኝነት ደህንነትዎ ይበልጥ በተጠበቀ ሁኔታ ድሩን ያስሱ።</translation>
 <translation id="6414624068245092115">በGoogle መለያዎ ውስጥ የChromium ውሂብን ሁልጊዜ መጠቀም እና ማስቀመጥ መቻልዎን ለማረጋገጥ እርስዎ መሆንዎን ያረጋግጡ</translation>
-<translation id="5698692159722140301">Agent Chrome ይበልጥ በፍጥነት ያሄዳል እና ጃቫስክሪፕት የሚጠቀሙ ባህሪያት እንደተነደፉት መስራት አለባቸው</translation>
+<translation id="3077581991710361221">Shuttle ይበልጥ በፍጥነት ያሄዳል እና ጃቫስክሪፕት የሚጠቀሙ ባህሪያት እንደተነደፉት መስራት አለባቸው</translation>
 <translation id="6436260184216827876">የምስል ፍለጋ አይገኝም። ቆይተው እንደገና ይሞክሩ።</translation>
 <translation id="6442900851116057561">ChromiumOSን ዳግም አስጀምር</translation>
-<translation id="1150325299163558144">እርስዎ የመጎብኘት ዕድልዎ ከፍተኛ የሆኑባቸው ተጨማሪ ገጾች ሲጎበኟቸው ይበልጥ በፍጥነት እንዲጫኑ Agent Chrome በቅድሚያ ይጭናቸዋል</translation>
+<translation id="6836481692352030024">እርስዎ የመጎብኘት ዕድልዎ ከፍተኛ የሆኑባቸው ተጨማሪ ገጾች ሲጎበኟቸው ይበልጥ በፍጥነት እንዲጫኑ Shuttle በቅድሚያ ይጭናቸዋል</translation>
 <translation id="6450948450282634257">ዋጋዎችን ለመከታተል እና ዋጋው በማንኛውም ጣቢያ ላይ ሲቀንስ ማንቂያዎችን ለማግኘት Chromiumን በስልክዎ ላይ ያውርዱ</translation>
-<translation id="2302438614865168038">ጠፍቷል • Agent Chrome ይህ ቅጥያ ከየት እንደመጣ ማረጋገጥ አይችልም</translation>
+<translation id="2653849928907685021">ጠፍቷል • Shuttle ይህ ቅጥያ ከየት እንደመጣ ማረጋገጥ አይችልም</translation>
 <translation id="6455857529632101747">ወደ Chromium መገለጫዎች እንኳን በደህና መጡ</translation>
 <translation id="6460614424172581323">በሚቀጥለው ጊዜ Chromiumን በእርስዎ <ph name="DEVICE_TYPE" /> ላይ ሲከፍቱ፣ የትር ቡድኖችን ለመጠቀም ጥያቄ ያያሉ።</translation>
 <translation id="6466344609055215035">መለያን ከChromium አስወግድ</translation>
-<translation id="5526497172610025231">እንዲሁም Agent Chromeን ሲጀምሩት የሚታየውን ገፅ ይቆጣጠራል።</translation>
+<translation id="4119585981464207648">እንዲሁም Shuttleን ሲጀምሩት የሚታየውን ገፅ ይቆጣጠራል።</translation>
 <translation id="648319183876919572">የተሻሻለ የደህንነት አሰሳ እርስዎን ከአደገኛ ድር ጣቢያዎች እና ውርዶች ለመጠበቅ ይበልጥ ያደርጋል</translation>
 <translation id="6510925080656968729">Chromiumን ያራግፉ</translation>
-<translation id="124295298108005714">አቋራጮች በAgent Chrome ውስጥ ይከፍታሉ</translation>
-<translation id="9177671044583442813">ድርጅትዎ Agent Chrome ለ<ph name="TIMEOUT_DURATION" /> ያህል ሥራ ላይ ሳይውል ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።</translation>
+<translation id="4635313972402880015">አቋራጮች በShuttle ውስጥ ይከፍታሉ</translation>
+<translation id="4810254941066760486">ድርጅትዎ Shuttle ለ<ph name="TIMEOUT_DURATION" /> ያህል ሥራ ላይ ሳይውል ይዘጋዋል። የአሰሳ ውሂብ ተሰርዟል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።</translation>
 <translation id="6542839706527980775">እያንዳንዱ መገለጫ እንደ ዕልባቶች፣ ታሪክ፣ የይለፍ ቃላት እና ሌሎችም ያሉ የራሱ የChromium መረጃዎችን ይይዛል</translation>
 <translation id="6556755379298048869">በቁልፍ ሰሌዳ አቋራጭ ይፈልጉ።</translation>
-<translation id="5677032436425073715"><ph name="BEGIN_LINK" />Agent Chrome እንዴት የእርስዎን ውሂብ በግል እንደሚያስቀምጥ<ph name="END_LINK" /> የበለጠ ይወቁ</translation>
-<translation id="5967753610833950399">አንዴ Agent Chrome እንደገና ከጀመረ በኋላ በዚህ ቅንብር ላይ ያሉ ለውጦች ይተገበራሉ።</translation>
-<translation id="4790842900919490952">በAgent Chrome ዋና ምናሌ ውስጥ ቅጥያዎች የሚለውን ጠቅ በማድረግ ቅጥያዎችዎን ያስተዳድሩ።</translation>
+<translation id="2636806189032302779"><ph name="BEGIN_LINK" />Shuttle እንዴት የእርስዎን ውሂብ በግል እንደሚያስቀምጥ<ph name="END_LINK" /> የበለጠ ይወቁ</translation>
+<translation id="5478536825661470867">አንዴ Shuttle እንደገና ከጀመረ በኋላ በዚህ ቅንብር ላይ ያሉ ለውጦች ይተገበራሉ።</translation>
+<translation id="4113260229270901158">በShuttle ዋና ምናሌ ውስጥ ቅጥያዎች የሚለውን ጠቅ በማድረግ ቅጥያዎችዎን ያስተዳድሩ።</translation>
 <translation id="656935081669708576">ከሌላ የChromium መገለጫ የይለፍ ቃላትን ለማየት መቀየር ይችላሉ</translation>
 <translation id="6569556444379005948">በመሄድ ላይ ሳሉ ምርጥ የሰው ሠራሽ አስተውሎት መሣሪያዎችን ለመውሰድ የChromium መተግበሪያን ይጠቀሙ</translation>
-<translation id="8124768693572849485">የሥርዓተ ፊደል አጻጻፍ ስህተቶችን ለማስተካከል፣ Agent Chrome እርስዎ በጽሁፍ መስኮች ውስጥ የሚተይቡትን ጽሁፍ ወደ Google ይልካል</translation>
+<translation id="7057131640166361945">የሥርዓተ ፊደል አጻጻፍ ስህተቶችን ለማስተካከል፣ Shuttle እርስዎ በጽሁፍ መስኮች ውስጥ የሚተይቡትን ጽሁፍ ወደ Google ይልካል</translation>
 <translation id="6598877126913850652">ወደ የChromium ማሳወቂያ ቅንብሮች ይሂዱ</translation>
 <translation id="6600016381025017075">በዚህ ገጽ ላይ ማንኛውንም ነገር ይፈልጉ</translation>
-<translation id="1736130262142947818">ለውጦችዎ Agent Chrome በሚያስጀምሩበት ቀጣዩ ጊዜ ላይ ይተገበራሉ።</translation>
+<translation id="3051968423457057392">ለውጦችዎ Shuttle በሚያስጀምሩበት ቀጣዩ ጊዜ ላይ ይተገበራሉ።</translation>
 <translation id="6637908313088374648">አሁን ላይ Windows ሲጀምር Chromium ይጀመራል ስለዚህ እርስዎ በቅጽበት ማሰስ መጀመር ይችላሉ። ይህን በቅንብሮች ውስጥ ማጥፋት ይችላሉ።</translation>
 <translation id="6648212540664651655">ካቆሙበት ይቀጥሉ፦ Chromium የእርስዎን ትሮች ከመጨረሻው ክፍለ ጊዜዎ ወደነበሩበት ይመልሳል። ይህን የሚከተለው ውስጥ ማጥፋት ይችላሉ</translation>
 <translation id="665732753414869868">Chromium የዙሪያዎን የ3ል ካርታ ለመፍጠር የካሜራ ፈቃድ ያስፈልገዋል</translation>
@@ -530,30 +530,30 @@
 <translation id="6691132793308828750">የዚህን መተግበሪያ ውሂብ ከChromium ላይ ያስወግዱ</translation>
 <translation id="6709350901466051922">Chromium ለዚህ ጣቢያ የማይክሮፎን ፈቃድ ያስፈልገዋል</translation>
 <translation id="6712881677154121168">የማውረድ ስህተት፦ <ph name="DOWNLOAD_ERROR" />.</translation>
-<translation id="7755971898820142787">መገለጫዎ ከአዲስ የAgent Chrome ስሪት ስለሆነ የመጣው ሥራ ላይ ሊውል አይችልም።
+<translation id="2725737003556499783">መገለጫዎ ከአዲስ የShuttle ስሪት ስለሆነ የመጣው ሥራ ላይ ሊውል አይችልም።
 
-አንዳንድ ባህሪያት ላይገኙ ይችላሉ። እባክዎ የተለየ የመገለጫ አቃፊ ይግለጹ ወይም ይበልጥ አዲስ የሆነ የAgent Chrome ስሪት ይጠቀሙ።</translation>
+አንዳንድ ባህሪያት ላይገኙ ይችላሉ። እባክዎ የተለየ የመገለጫ አቃፊ ይግለጹ ወይም ይበልጥ አዲስ የሆነ የShuttle ስሪት ይጠቀሙ።</translation>
 <translation id="6729124504294600478">ግላዊነት ማላበስን እና ሌሎች ባህሪያትን ለማግኘት Chromiumን በድር እና በመተግበሪያ እንቅስቃሴ እና በተገናኙ የGoogle አገልግሎቶች ውስጥ ያካትቱ</translation>
 <translation id="6734291798041940871">Chromium ለሁሉም በእርስዎ ኮምፒውተር ላይ ላሉ ተጠቃሚዎች አስቀድሞ ተጭኗል።</translation>
 <translation id="6742093177587589736">የእርስዎን ዕልባቶች እና ሌሎችንም በሁሉም መሣሪያዎችዎ ላይ ለማግኘት ወደ Chromium ይግቡ በመለያ ከገቡ በኋላ ይህ ዕልባት Google መለያዎ ውስጥ ይቀመጣል።</translation>
-<translation id="7821834337023193240">በAgent Chrome V8 ሞተር ጣቢያዎችን ያፋጥናል ነገር ግን የAgent Chromeን ጥቃቶችን የመቋቋም አቅም በመጠኑ ያነሰ ያደርገዋል። ይህ ቅንብር በርቷል።</translation>
+<translation id="1073375677278272498">በShuttle V8 ሞተር ጣቢያዎችን ያፋጥናል ነገር ግን የShuttleን ጥቃቶችን የመቋቋም አቅም በመጠኑ ያነሰ ያደርገዋል። ይህ ቅንብር በርቷል።</translation>
 <translation id="6754665438209053659">{count,plural, =1{የተወሰነ የChromium ውሂብዎ በGoogle መለያዎ ውስጥ ገና አልተቀመጠም። ዘግተው ከመውጣትዎ በፊት ጥቂት ደቂቃዎች ለመጠበቅ ይሞክሩ። አሁን ዘግተው ከወጡ ይህ ውሂብ (1 ንጥል) ይሰረዛል።}one{የተወሰነ የChromium ውሂብዎ በGoogle መለያዎ ውስጥ ገና አልተቀመጠም። ዘግተው ከመውጣትዎ በፊት ጥቂት ደቂቃዎች ለመጠበቅ ይሞክሩ። አሁን ዘግተው ከወጡ ይህ ውሂብ ({count} ንጥል) ይሰረዛል።}other{የተወሰነ የChromium ውሂብዎ በGoogle መለያዎ ውስጥ ገና አልተቀመጠም። ዘግተው ከመውጣትዎ በፊት ጥቂት ደቂቃዎች ለመጠበቅ ይሞክሩ። አሁን ዘግተው ከወጡ ይህ ውሂብ ({count} ንጥሎች) ይሰረዛል።}}</translation>
 <translation id="67706546131546258">Chromium ይህ ፋይል አደገኛ ሊሆን ስለሚችል እንዲቃኙት ይመክራል።</translation>
 <translation id="6779406956731413166">ChromiumOS በተጨማሪ <ph name="BEGIN_LINK_CROS_OSS" />ክፍት ምንጭ ሶፍትዌር<ph name="END_LINK_CROS_OSS" /> እውን ሊሆን ችሏል።</translation>
 <translation id="6831043979455480757">መተርጎም</translation>
 <translation id="6847869444787758381">Chromium የእርስዎ የይለፍ ቃላት ከተነጠቁ እርስዎ እንዲያውቁት ያደርግዎታል</translation>
 <translation id="684888714667046800">ከበይነመረቡ ጋር መገናኘት አልተቻለም። ኬላ የሚጠቀሙ ከሆነ እባክዎ <ph name="PRODUCT_EXE_NAME" /> በተፈቀደ ዝርዝር ውስጥ መሆኑን ያረጋግጡ።</translation>
-<translation id="6219638737609534419">Agent Chrome - <ph name="PAGE_TITLE" /></translation>
+<translation id="776553009482398136">Shuttle - <ph name="PAGE_TITLE" /></translation>
 <translation id="6859580922007887573">ለመቀጠል ትር</translation>
 <translation id="6862030660799253820">ይህን ምስል በምስል ፍለጋ ይፈልጉ</translation>
 <translation id="6869568587896659271">ከአድራሻ አሞሌው በታች ላሉ ድር ጣቢያዎች ቀላል መዳረሻ</translation>
-<translation id="7421523967177993052">Agent Chrome «<ph name="EXTENSION_NAME" />» ተንኮል አዘል ዌር እንደያዘ አግኝቷል</translation>
+<translation id="5180440422324801473">Shuttle «<ph name="EXTENSION_NAME" />» ተንኮል አዘል ዌር እንደያዘ አግኝቷል</translation>
 <translation id="6877155553248388166">የፍለጋው አካባቢ ከታች በስተቀኝ ጥግ፦ ቀኝ <ph name="RIGHT" />%፣ ከታች <ph name="BOTTOM" />%</translation>
 <translation id="6896758677409633944">ቅዳ</translation>
 <translation id="6898028264630240901">በሚያስሱበት ጊዜ ጥያቄዎችን ለመጠየቅ ዓውዳዊ ተግባራትን ፒን ማድረግ ይችላሉ</translation>
 <translation id="6901631050894301805">Chromiumን እንደ ነባሪ አሳሽዎ ያቀናብሩ እና የተግባር አሞሌዎ ላይ ፒን ያድርጉት</translation>
 <translation id="6909503629704372277">እና የChromium መገለጫዎችን ያስተዳድሩ</translation>
-<translation id="9199111398679939226">ይህ እርምጃ የሚከተሉትን ያደርጋል፦
+<translation id="4581248703262892072">ይህ እርምጃ የሚከተሉትን ያደርጋል፦
           <ph name="LINE_BREAKS" />
             • የእርስዎን የመነሻ ገጽ፣ አዲስ የትር ገጽ፣ የፍለጋ ፕሮግራም እና ፒን የተደረጉ ትሮችን ዳግም ያስጀምራል
             <ph name="LINE_BREAK" />
@@ -561,7 +561,7 @@
             <ph name="LINE_BREAK" />
             • ኩኪዎችን እና ሌላ ጊዜያዊ የጣቢያ ውሂብን ይሰርዛል
             <ph name="LINE_BREAK" />
-            • የAgent Chrome አቋራጮችን ዳግም ያስጀምራል
+            • የShuttle አቋራጮችን ዳግም ያስጀምራል
             <ph name="LINE_BREAKS" />
             ዕልባቶች፣ ታሪክ እና የተቀመጡ የይለፍ ቃላት አይነኩም።</translation>
 <translation id="6948031725951063910">የChromiumን የ<ph name="BOOKMARK_LIMIT" /> እልባቶች ገደብ ላይ ደርሰዋል፣ ስለዚህ አንዳንድ እልባቶችዎ እስካሁን በGoogle መለያዎ ውስጥ አልተቀመጡም።
@@ -576,66 +576,66 @@
 <translation id="7045244423563602563">Chromiumን የራስዎ ያድርጉት</translation>
 <translation id="7047386856539490735">እነዚህ ውጤቶች ጠቃሚ ናቸው?</translation>
 <translation id="705851970750939768">Chromiumን አዘምን</translation>
-<translation id="1222890016986172619">አንድ ምስል ጠቃሚ መግለጫ ከሌለው Agent Chrome ለእርስዎ አንድ ለማቅረብ ይሞክራል። ዝርዝር መግለጫዎችን ለመፍጠር፣ ምስሎች ወደ Google ይላካሉ።</translation>
+<translation id="3425455063038300019">አንድ ምስል ጠቃሚ መግለጫ ከሌለው Shuttle ለእርስዎ አንድ ለማቅረብ ይሞክራል። ዝርዝር መግለጫዎችን ለመፍጠር፣ ምስሎች ወደ Google ይላካሉ።</translation>
 <translation id="7074836723476134809">የChromium መተግበሪያን በእርስዎ <ph name="DEVICE_TYPE" /> ላይ ሲጠቀሙ የሰው ሠራሽ አስተውሎት ኃይልን ያግኙ</translation>
 <translation id="7134687062119989071">በስልክዎ ላይ ባለው የChromium መተግበሪያ የይለፍ ቃላትዎን፣ ትሮችን እና ሌሎችንም በመሄድ ላይ ይውሰዱ</translation>
 <translation id="7141270731789036260">Chromeን ለሙከራ አብጅ</translation>
-<translation id="5669948510815930830">በመልዕክቶች፣ ሰነዶች እና ሌሎች መተግበሪያዎች ውስጥ አገናኞች ላይ ጠቅ በሚያደርጉበት ማንኛውም ጊዜ Agent Chrome መጠቀም ይችላሉ</translation>
-<translation id="5576210706466474421"><ph name="EXTENSION_NAME" /> ከAgent Chrome አስወግድ</translation>
-<translation id="4588941330171478873">ድርጅትዎ የAgent Chrome ውሂብን ለ<ph name="TIMEOUT_DURATION" /> ያህል ሥራ ላይ ሳይውል ይሰርዘዋል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።</translation>
+<translation id="2566749447284070075">በመልዕክቶች፣ ሰነዶች እና ሌሎች መተግበሪያዎች ውስጥ አገናኞች ላይ ጠቅ በሚያደርጉበት ማንኛውም ጊዜ Shuttle መጠቀም ይችላሉ</translation>
+<translation id="4717037424104880768"><ph name="EXTENSION_NAME" /> ከShuttle አስወግድ</translation>
+<translation id="5499504683862746062">ድርጅትዎ የShuttle ውሂብን ለ<ph name="TIMEOUT_DURATION" /> ያህል ሥራ ላይ ሳይውል ይሰርዘዋል። ይህ ታሪክን፣ ራስ-ሙላን እና ውርዶችን ሊያካትት ይችላል።</translation>
 <translation id="718435575166326686">Chromium ለዚህ ጣቢያ የካሜራ ፈቃድ ያስፈልገዋል</translation>
-<translation id="2916059341902838041">Agent Chromeን ማስጀመር አልተቻለም። እንደገና ይሞክሩ።</translation>
+<translation id="73779270539924806">Shuttleን ማስጀመር አልተቻለም። እንደገና ይሞክሩ።</translation>
 <translation id="7204669035546236137">በGemini በChromium ውስጥ፣ ባሉበት ሆነው ማንኛውንም ነገር ይጠይቁ</translation>
-<translation id="1716746018761150810">በማንኛውም ጊዜ Agent Chromeን በቀላሉ ማግኘት እንዲችሉ በእርስዎ መትከያ ውስጥ ያቆዩት</translation>
+<translation id="3909780788712619547">በማንኛውም ጊዜ Shuttleን በቀላሉ ማግኘት እንዲችሉ በእርስዎ መትከያ ውስጥ ያቆዩት</translation>
 <translation id="7213407614656404070">በመልዕክቶች፣ ሰነዶች እና ሌሎች መተግበሪያዎች ውስጥ አገናኞች ላይ ጠቅ በሚያደርጉበት ማንኛውም ጊዜ Chromium ይጠቀሙ</translation>
 <translation id="7216228761061470870">በዴስክቶፕ ላይ የምስል ፍለጋን ሲጠቀሙ የገጹ ርዕስ፣ ዩአርኤል እና PDFዎችን ጨምሮ ይዘት ወደ አገልጋዩ ይላካሉ</translation>
-<translation id="4816956813330284757">ተግባር መሪ - Agent Chrome</translation>
+<translation id="5152543266278054880">ተግባር መሪ - Shuttle</translation>
 <translation id="7227958669698166857"><ph name="EXISTING_USER" /> አስቀድመው ገብተዋል። አሰሳዎን ለያይተው ለማቆየት በራስዎ መገለጫ ውስጥ እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ይግቡ። እንዲሁም በሁሉም መሣሪያዎችዎ ላይ የተቀመጠ የእርስዎን መረጃ እና ሌሎችንም ያገኛሉ።</translation>
 <translation id="7252276985725323153">በቅጽበት ማሰስ ይጀምሩ፦ አሁን Windows ሲጀምር Chromium መጀመር ይችላል።</translation>
 <translation id="7274695763216404502">ፒን ተደርጓል! ከመሣሪያ አሞሌው እንደገና የምስል ፍለጋ ይጠቀሙ</translation>
 <translation id="7288567540154601580">ትሮች እና ቅጥያዎች</translation>
-<translation id="3631444715156784168">{NUM_EXTENSIONS,plural, =1{Agent Chrome እንዲያስወግዱት ይመክራል}one{Agent Chrome እንዲያስወግዱት ይመክራል}other{Agent Chrome እንዲያስወግዷቸው ይመክራል}}</translation>
-<translation id="2739521415810397215">የሥርዓት ኦዲዮን ለማጋራት የሥርዓት ቅንብሮችን ይክፈቱ እና ለAgent Chrome «የሥርዓት የኦዲዮ ቀረጻ ብቻ» ይፍቀዱ። ከዚያ Agent Chromeን እንደገና ማስጀመር ይኖርብዎታል።</translation>
-<translation id="1945073734373493421">Agent Chromeን በማዘመን ላይ...</translation>
-<translation id="7323500970718355745">የምርጫዎች ፋይልዎ የተበላሸ ወይም ልክ ያልሆነ ነው።
+<translation id="7301179260332476710">{NUM_EXTENSIONS,plural, =1{Shuttle እንዲያስወግዱት ይመክራል}one{Shuttle እንዲያስወግዱት ይመክራል}other{Shuttle እንዲያስወግዷቸው ይመክራል}}</translation>
+<translation id="6738087381969111286">የሥርዓት ኦዲዮን ለማጋራት የሥርዓት ቅንብሮችን ይክፈቱ እና ለShuttle «የሥርዓት የኦዲዮ ቀረጻ ብቻ» ይፍቀዱ። ከዚያ Shuttleን እንደገና ማስጀመር ይኖርብዎታል።</translation>
+<translation id="882134845922037914">Shuttleን በማዘመን ላይ...</translation>
+<translation id="5911508944834868675">የምርጫዎች ፋይልዎ የተበላሸ ወይም ልክ ያልሆነ ነው።
 
-Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translation>
+Shuttle ቅንብሮችዎን ማስመለስ አልቻለም።</translation>
 <translation id="7324051657739063017">በሚያስሱበት ጊዜ ጥያቄዎችን ለመጠየቅ ዓውዳዊ ተግባራትን እንደገና መክፈት ይችላሉ</translation>
 <translation id="734373864078049451">የእርስዎ ድር፣ ዕልባቶች እና ሌሎች የChromium ነገሮች እዚህ ይኖራሉ።</translation>
 <translation id="7347827960336370838">የእርስዎን የተመሰጠረ ውሂብ ማንበብ የሚችለው የይለፍ ሐረግዎ ያለው ሰው ብቻ ነው። የይለፍ ሐረጉ ወደ Google አይላክም ወይም በGoogle አይከማችም። የእርስዎን የይለፍ ሐረግ ከረሱ ወይም ይህን ቅንብር መለወጥ ከፈለጉ <ph name="BEGIN_LINK" />በመለያዎ ውስጥ ያለውን Chromium ውሂብ መሰረዝ<ph name="END_LINK" /> ይኖርብዎታል።</translation>
-<translation id="7994662313190863803">የእርስዎ ስርዓት አስተዳዳሪ Agent Chrome <ph name="TARGET_URL_HOSTNAME" />ን ለመድረስ <ph name="ALTERNATIVE_BROWSER_NAME" />ን እንዲከፍት አዋቅሮታል።</translation>
+<translation id="5213396397254545050">የእርስዎ ስርዓት አስተዳዳሪ Shuttle <ph name="TARGET_URL_HOSTNAME" />ን ለመድረስ <ph name="ALTERNATIVE_BROWSER_NAME" />ን እንዲከፍት አዋቅሮታል።</translation>
 <translation id="7352651011704765696">የሆነ ችግር ተፈጥሯል</translation>
-<translation id="4438212735766904761">የወደፊት የAgent Chrome ዝማኔዎችን ለማግኘት macOS 13 ወይም ከዚያ በላይ ያስፈልግዎታል። ይህ ኮምፒውተር macOS 12 እየተጠቀመ ነው።</translation>
+<translation id="7241271939430402377">የወደፊት የShuttle ዝማኔዎችን ለማግኘት macOS 13 ወይም ከዚያ በላይ ያስፈልግዎታል። ይህ ኮምፒውተር macOS 12 እየተጠቀመ ነው።</translation>
 <translation id="7376384068949534168">በቅርብ ጊዜ አልጎበኙም። Chromium <ph name="PERMISSION_1" />፣ <ph name="PERMISSION_2" />ን አስወግዷል።</translation>
 <translation id="73786666777299047">Chrome የድር መደብርን ይክፈቱ</translation>
 <translation id="7394275517973019558">Geminiን በሥርዓት ትሪ ውስጥ በChromium ውስጥ አሳይ</translation>
 <translation id="7401687852903179959">ይህን ቪድዮ በምስል ፍለጋ ፈልግ</translation>
 <translation id="7407655596887111931">Chromium አሁን የእርስዎ ነባሪ አሳሽ ነው</translation>
-<translation id="3957050361764426740">ካቆሙበት ይቀጥሉ፦ Agent Chrome እንደገና በጀመሩ ቁጥር የእርስዎን ትሮች ወደነበሩበት ይመልሳል። ይህን ለማጥፋት ወደሚከተለው ይሂዱ</translation>
+<translation id="3052711235626610530">ካቆሙበት ይቀጥሉ፦ Shuttle እንደገና በጀመሩ ቁጥር የእርስዎን ትሮች ወደነበሩበት ይመልሳል። ይህን ለማጥፋት ወደሚከተለው ይሂዱ</translation>
 <translation id="7427879960656355200">የይለፍ ቃላትን ወደ Chromium ያምጡ</translation>
 <translation id="744815265653811511">1. ከታች <ph name="BUTTON_LABEL" /> ላይ ጠቅ ያድርጉ
 2. በWindows ቅንብሮችዎ ውስጥ <ph name="BUTTON_2" /> ላይ ጠቅ ያድርጉ
 3. ለፈጣን መዳረሻ Chromiumን በተግባር አሞሌዎ ላይ ለመሰካት በWindows ማሳወቂያ ውስጥ <ph name="BUTTON_3" /> ላይ ጠቅ ያድርጉ</translation>
-<translation id="4378256924846450484"><ph name="PAGE_TITLE" /> - Agent Chrome ግንባታ</translation>
+<translation id="9197089209084271928"><ph name="PAGE_TITLE" /> - Shuttle ግንባታ</translation>
 <translation id="7450541714075000668">ጽሁፍ ገልብጧል</translation>
-<translation id="1661210845845599119">ማይክሮፎንዎን ለመጠቀም <ph name="BEGIN_LINK" />የሥርዓት ቅንብሮች<ph name="END_LINK" /> ውስጥ ለAgent Chrome መዳረሻ ይስጡ</translation>
+<translation id="313710343255539509">ማይክሮፎንዎን ለመጠቀም <ph name="BEGIN_LINK" />የሥርዓት ቅንብሮች<ph name="END_LINK" /> ውስጥ ለShuttle መዳረሻ ይስጡ</translation>
 <translation id="7461356015007898716">የወደፊት የChromium ዝማኔዎችን ለማግኘት Windows 10 ወይም ከዚያ በላይ ያስፈልግዎታል። ይህ ኮምፒውተር Windows 7ን እየተጠቀመ ነው።</translation>
-<translation id="7782360127659485548">Agent Chrome ዳግም ይጀመር?</translation>
+<translation id="3993055863855039235">Shuttle ዳግም ይጀመር?</translation>
 <translation id="7483335560992089831">እየሄደ ያለውን ተመሳሳዩን የChromium ስሪት መጫን አይቻልም። እባክዎ Chromiumን ይዝጉና እንደገና ይሞክሩ።</translation>
 <translation id="7510190804000607802">አስታዋሽ፦ የGoogle ምርጡ በኪስዎ ውስጥ</translation>
-<translation id="4114725046952451715">ጣቢያዎች እንደተጠበቀው መስራታቸው አይቀርም። ከGoogle መለያዎ በስተቀር በ Agent Chrome ውስጥ ገብተው ከሆነ፣ ሁሉንም የAgent Chrome መስኮቶች ሲዘጉ ከአብዛኞቹ ጣቢያዎች ይወጣሉ።</translation>
-<translation id="8460803820751380899">{0,plural, =1{Agent Chrome በ1 ደቂቃ ውስጥ ዳግም ይጀመራል}one{Agent Chrome በ# ደቂቃዎች ውስጥ ዳግም ይጀመራል}other{Agent Chrome በ# ደቂቃዎች ውስጥ ዳግም ይጀመራል}}</translation>
+<translation id="8341160057232502783">ጣቢያዎች እንደተጠበቀው መስራታቸው አይቀርም። ከGoogle መለያዎ በስተቀር በ Shuttle ውስጥ ገብተው ከሆነ፣ ሁሉንም የShuttle መስኮቶች ሲዘጉ ከአብዛኞቹ ጣቢያዎች ይወጣሉ።</translation>
+<translation id="6139170930430750545">{0,plural, =1{Shuttle በ1 ደቂቃ ውስጥ ዳግም ይጀመራል}one{Shuttle በ# ደቂቃዎች ውስጥ ዳግም ይጀመራል}other{Shuttle በ# ደቂቃዎች ውስጥ ዳግም ይጀመራል}}</translation>
 <translation id="7565444033145385702">ውሂብዎን ለመጠበቅ Chromium እርስዎ በቅርቡ ካልጎበኟቸው ጣቢያዎች ላይ ፈቃዶችን እንዲያስወግድ ይፍቀዱ።</translation>
-<translation id="7806190892617295204">በቅጽበት ማሰስ ለመጀመር Agent Chromeን በራስ-ሰር አስጀምር።</translation>
+<translation id="7445475294019002626">በቅጽበት ማሰስ ለመጀመር Shuttleን በራስ-ሰር አስጀምር።</translation>
 <translation id="7583399374488819119"><ph name="COMPANY_NAME" /> ጫኝ</translation>
-<translation id="4114499337401148821">Agent Chrome ካሜራዎን እና ማይክሮፎንዎን እየተጠቀመ ነው።</translation>
+<translation id="3770734847062637711">Shuttle ካሜራዎን እና ማይክሮፎንዎን እየተጠቀመ ነው።</translation>
 <translation id="7617377681829253106">Chromium አሁን ይበልጥ ተሻሽሏል</translation>
-<translation id="4075526625511660913">አሁን Agent Chrome ውስጥ የሚገኙ ተጨማሪ ባህሪያት አሉዎት</translation>
+<translation id="8871277779820248167">አሁን Shuttle ውስጥ የሚገኙ ተጨማሪ ባህሪያት አሉዎት</translation>
 <translation id="7624307931717240213">ይህን አገልግሎት ለማሻሻል መረጃ እንጠቀማለን። የግላዊነት መመሪያን እና የአገልግሎት ውልን ይመልከቱ።</translation>
 <translation id="7649070708921625228">እገዛ</translation>
 <translation id="7650134251917003571">የChromium መተግበሪያን ያግኙ</translation>
 <translation id="7658239707568436148">ይቅር</translation>
-<translation id="5829091955527196771">Agent Chrome ነባሪ አሳሽዎ አይደለም</translation>
+<translation id="8213236740307893655">Shuttle ነባሪ አሳሽዎ አይደለም</translation>
 <translation id="7689606757190482937">በመላ መሣሪያዎችዎ ላይ Chromiumን ያሳምሩ እና ግላዊነት ያላብሱ</translation>
 <translation id="7699779824407626136">Chromium ዝማኔ</translation>
 <translation id="7700735928747402058">ሥራዎ Chromium ላይ ደኅንነቱ ተጠብቋል</translation>
@@ -648,16 +648,16 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="7752521946322750699">በChromium ላይ ሥራዎን ደኅንነት ለመጠበቅ፣ ወደ Chromium ሲገቡ ድርጅትዎ የተወሰነ መረጃን ማየት ወይም ማስተዳደር ይችላል።</translation>
 <translation id="7781047659465034537">Chromiumን እንደ ነባሪ ያቀናብሩ እና የተግባር አሞሌው ላይ ይሰኩት</translation>
 <translation id="7786760609782648049">Chromiumን የበለጠ ፈጣን ያድርጉት</translation>
-<translation id="1092858669153166534"><ph name="PAGE_TITLE" /> - Agent Chrome Canary</translation>
-<translation id="6890902183809417868">የበይነመረብ ትራፊክዎ መዳረሻ ላላቸው ሰዎች እርስዎ የትኞቹን ጣቢያዎች እንደሚጎበኙ ማየት ያክብዱባቸው። Agent Chrome የጣቢያውን አይ ፒ አድራሻ በዲኤንኤስ (የጎራ ስም ሥርዓት) ውስጥ ለመፈለግ የተመሰጠረ ግንኙነትን ይጠቀማል።</translation>
+<translation id="5390209367680424449"><ph name="PAGE_TITLE" /> - Shuttle Canary</translation>
+<translation id="5236799997529789289">የበይነመረብ ትራፊክዎ መዳረሻ ላላቸው ሰዎች እርስዎ የትኞቹን ጣቢያዎች እንደሚጎበኙ ማየት ያክብዱባቸው። Shuttle የጣቢያውን አይ ፒ አድራሻ በዲኤንኤስ (የጎራ ስም ሥርዓት) ውስጥ ለመፈለግ የተመሰጠረ ግንኙነትን ይጠቀማል።</translation>
 <translation id="7810005234485217901">በቀላሉ ለመድረስ የምስል ፍለጋን ፒን ማድረግ ይችላሉ</translation>
-<translation id="4343938787674079986">ከAgent Chrome ጋር ምን እንደሚያጋሩ ይምረጡ</translation>
+<translation id="6809035843240398711">ከShuttle ጋር ምን እንደሚያጋሩ ይምረጡ</translation>
 <translation id="7828947555739565424">ይህን መለያ ያለው አንድ የChromium መገለጫ አስቀድሞ በዚህ መሣሪያ ላይ አለ</translation>
 <translation id="7845233973568007926">ሰለተጫኑ እናመሰግናለን። <ph name="BUNDLE_NAME" />ን ከመጠቀምዎ በፊት ኮምፒውተርዎን እንደገና ማስጀመር አለብዎት።</translation>
-<translation id="6129792107484731038">የፍለጋ ፕሮግራምዎ ከAgent Chrome ውጭ ተለውጧል። እርስዎን ለመጠበቅ Agent Chrome ወደ መጀመሪያው ነባሪ ዳግም አስጀምሮታል። <ph name="LEARN_MORE_LINK" /></translation>
+<translation id="2536014991386708485">የፍለጋ ፕሮግራምዎ ከShuttle ውጭ ተለውጧል። እርስዎን ለመጠበቅ Shuttle ወደ መጀመሪያው ነባሪ ዳግም አስጀምሮታል። <ph name="LEARN_MORE_LINK" /></translation>
 <translation id="7853661403199074278">Chromiumን አዲስ መልክ ለመስጠት ያብጁት</translation>
-<translation id="5018331886385637870">የአድራሻ አሞሌ ወይም የፍለጋ ሳጥን ውስጥ ሲተይቡ የተሻሉ ጥቆማዎችን ለማግኘት Agent Chrome የሚተይቡትን ለእርስዎ ነባሪ የፍለጋ ፕሮግራም ይልካል። ይህ ማንነት የማያሳውቅ ውስጥ ጠፍቷል።</translation>
-<translation id="473441635289092936">Agent Chrome ወደ የቅርብ ጊዜው ስሪት ሊዘመን አልቻለም፣ ስለዚህ አዲስ ባህሪያት እና የደህንነት ጥገናዎች እያመለጡዎት ናቸው። Agent Chromeን ማዘመን አለብዎት።</translation>
+<translation id="2266811154496778101">የአድራሻ አሞሌ ወይም የፍለጋ ሳጥን ውስጥ ሲተይቡ የተሻሉ ጥቆማዎችን ለማግኘት Shuttle የሚተይቡትን ለእርስዎ ነባሪ የፍለጋ ፕሮግራም ይልካል። ይህ ማንነት የማያሳውቅ ውስጥ ጠፍቷል።</translation>
+<translation id="6065091602420830">Shuttle ወደ የቅርብ ጊዜው ስሪት ሊዘመን አልቻለም፣ ስለዚህ አዲስ ባህሪያት እና የደህንነት ጥገናዎች እያመለጡዎት ናቸው። Shuttleን ማዘመን አለብዎት።</translation>
 <translation id="7872446069773932638">በማውረድ ላይ... <ph name="SECONDS" /> ሰከንድ(ዶች) ይቀራሉ</translation>
 <translation id="7873537467422636035">የይለፍ ሐረግዎን ከረሱ ወይም ይህን ቅንብር መለወጥ ከፈለጉ <ph name="BEGIN_LINK" />በመለያዎ ውስጥ ያለውን የChromium ውሂብ ይሰርዙ<ph name="END_LINK" /></translation>
 <translation id="7874369989024033742">Geminiን በሚያስፈልግዎ ማንኛውም ጊዜ በChromium ውስጥ በፍጥነት ይክፈቱት</translation>
@@ -665,17 +665,17 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="7934340546140346950">Chromium በሚቻልበት ጊዜ ደህንነታቸው ያልተጠበቀ ግንኙነቶችን በራስ-ሰር ወደ ኤችቲቲፒኤስ ያልቃል</translation>
 <translation id="7937630085815544518">እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ገብተዋል። እባክዎ እንደገና ለመግባት ተመሳሳዩን መለያ ይጠቀሙ።</translation>
 <translation id="7944602660083060118"><ph name="EXISTING_USER" /> አስቀድመው ገብተዋል። አሰሳዎን ለያይተው ለማቆየት በራስዎ መገለጫ ውስጥ እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ይግቡ። እንዲሁም በሁሉም መሣሪያዎችዎ ላይ የእርስዎን እልባቶች እና ሌሎችንም ያገኛሉ።</translation>
-<translation id="688313102897865477">ይሄ ሁለተኛ የAgent Chrome ጭነት ነው፣ እና ነባሪ አሳሽዎ ማድረግ አይቻልም።</translation>
-<translation id="8514782479541580218">ካልታወቁ ምንጮች የመጡ ቅጥያዎች፣ መተግበሪያዎች እና ገጽታዎች መሣሪያዎን ሊጎዱ ይችላሉ። Agent Chrome እነሱን ከ<ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> ብቻ መጫንን ይመክራል</translation>
+<translation id="7585793177462647372">ይሄ ሁለተኛ የShuttle ጭነት ነው፣ እና ነባሪ አሳሽዎ ማድረግ አይቻልም።</translation>
+<translation id="6559029165921633261">ካልታወቁ ምንጮች የመጡ ቅጥያዎች፣ መተግበሪያዎች እና ገጽታዎች መሣሪያዎን ሊጎዱ ይችላሉ። Shuttle እነሱን ከ<ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> ብቻ መጫንን ይመክራል</translation>
 <translation id="8000759043835159571">በእርስዎ <ph name="DEVICE_TYPE" /> ላይ በChromium መተግበሪያ የGoogle ምርጡን ያግኙ</translation>
 <translation id="8004582292198964060">አሳሽ</translation>
 <translation id="8010081455002666927">በራስ-አግኝ</translation>
-<translation id="403216574291780144">አንዴ Agent Chrome መዳረሻ ከኖረው በኋላ ድር ጣቢያዎች እርስዎን መዳረሻ መጠየቅ ይችላሉ።</translation>
-<translation id="7835197459694498831">በማንኛውም ጊዜ በፍጥነት ወደ Agent Chrome ለመሄድ ፒን ያድርጉት</translation>
+<translation id="8002328729078921180">አንዴ Shuttle መዳረሻ ከኖረው በኋላ ድር ጣቢያዎች እርስዎን መዳረሻ መጠየቅ ይችላሉ።</translation>
+<translation id="818329629430342049">በማንኛውም ጊዜ በፍጥነት ወደ Shuttle ለመሄድ ፒን ያድርጉት</translation>
 <translation id="80471789339884597">ሰለተጫኑ እናመሰግናለን። <ph name="BUNDLE_NAME" />ን ከመጠቀምዎ በፊት ሁሉንም አሳሾችዎን እንደገና ማስጀመር አለብዎት።</translation>
 <translation id="8054112667659782652">የምስል ፍለጋ አቋራጭን ሁልጊዜ አሳይ</translation>
 <translation id="8069447462453318634">«ወደ የመሣሪያ አሞሌ ሰካ» የሚለውን ይምረጡ</translation>
-<translation id="787536271006179882">Agent Chrome ለመተግበሪያዎች በዳራ ውስጥ እንዳያሄድ አሰናክል</translation>
+<translation id="3155838504016687695">Shuttle ለመተግበሪያዎች በዳራ ውስጥ እንዳያሄድ አሰናክል</translation>
 <translation id="80790299200510644">ምስል ፈልግ</translation>
 <translation id="8086881907087796310">ኮምፒውተርዎ አነስተኛውን የሃርድዌር መስፈርቶች ስላላሟላ መጫኑ አልተሳካም።</translation>
 <translation id="8096472344908884505"><ph name="PAGE_TITLE" /> - Google Chrome ለሙከራ</translation>
@@ -687,15 +687,15 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="8133124826068723441">ማስመር ለጎራዎ ስለማይገኝ ChromiumOS ውሂብዎን ማስመር አይችልም።</translation>
 <translation id="813913629614996137">በማስጀመር ላይ…</translation>
 <translation id="8161503455832158203">Gemini በChromium ውስጥ በቁልፍ ሰሌዳ አቋራጭ ይክፈቱ።</translation>
-<translation id="7109772131778940712">የAgent Chrome ተጨማሪ የአገልግሎት ውል</translation>
-<translation id="7759642951398174884">ይህ ፋይል አደገኛ ስለሆነ Agent Chrome አግዶታል።</translation>
+<translation id="369114052288176160">የShuttle ተጨማሪ የአገልግሎት ውል</translation>
+<translation id="680378955833427720">ይህ ፋይል አደገኛ ስለሆነ Shuttle አግዶታል።</translation>
 <translation id="8177472873527554730">በገፅ ውስጥ ያለ ይዘትን ማግኘት አይቻልም</translation>
 <translation id="8200109504272824693">Chromium ውሂብን በእርስዎ መለያ <ph name="USER_EMAIL" /> ውስጥ ለመጠቀም እና ለማስቀመጥ የይለፍ ሐረግዎን ያስገቡ</translation>
 <translation id="820759916613250543">ይህን ምስል በምስል ፍለጋ ፈልግ</translation>
 <translation id="8221491193165283816">ማሳወቂያዎችን ብዙውን ጊዜ ያግዳሉ። ይህን ጣቢያ ለእርስዎ እንዲያሳውቅዎት ለመፍቀድ፣ እዚህ ላይ ጠቅ ያድርጉ።</translation>
-<translation id="5410773870087525304">ካሜራዎን ለመጠቀም <ph name="BEGIN_LINK" />የሥርዓት ቅንብሮች<ph name="END_LINK" /> ውስጥ ለAgent Chrome መዳረሻ ይስጡ</translation>
-<translation id="1057772683559103555">Agent Chrome ይህ ቅጥያ ከየት እንደመጣ ማረጋገጥ አይችልም፣ እና ደህንነቱ ያልተጠበቀ ሊሆን ይችላል። የግል መረጃን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎትን ውሂብ ማየት እና መለወጥ እንዳይችል ከAgent Chrome ያስወግዱት።</translation>
-<translation id="1968416200800224093">አንድ ምስል ጠቃሚ መግለጫ ከሌለው Agent Chrome ለእርስዎ አንድ ለማቅረብ ይሞክራል። ዝርዝር መግለጫዎችን ለመፍጠር፣ ምስሎች ወደ Google ይላካሉ። ይህን በማንኛውም ጊዜ በቅንብሮች ውስጥ ሊያጠፉት ይችላሉ።</translation>
+<translation id="8107647892434846563">ካሜራዎን ለመጠቀም <ph name="BEGIN_LINK" />የሥርዓት ቅንብሮች<ph name="END_LINK" /> ውስጥ ለShuttle መዳረሻ ይስጡ</translation>
+<translation id="1786899383568465391">Shuttle ይህ ቅጥያ ከየት እንደመጣ ማረጋገጥ አይችልም፣ እና ደህንነቱ ያልተጠበቀ ሊሆን ይችላል። የግል መረጃን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎትን ውሂብ ማየት እና መለወጥ እንዳይችል ከShuttle ያስወግዱት።</translation>
+<translation id="493819615490030185">አንድ ምስል ጠቃሚ መግለጫ ከሌለው Shuttle ለእርስዎ አንድ ለማቅረብ ይሞክራል። ዝርዝር መግለጫዎችን ለመፍጠር፣ ምስሎች ወደ Google ይላካሉ። ይህን በማንኛውም ጊዜ በቅንብሮች ውስጥ ሊያጠፉት ይችላሉ።</translation>
 <translation id="8254601181414348851">በአዲስ መገለጫ ወደ Chromium ይግቡ?</translation>
 <translation id="8262224117913639129"><ph name="EXISTING_USER" /> አስቀድመው ገብተዋል። አሰሳዎን ለያይተው ለማቆየት በራስዎ መገለጫ ውስጥ እንደ <ph name="USER_EMAIL_ADDRESS" /> ሆነው ወደ Chromium ይግቡ። እንዲሁም ከ<ph name="DEVICE" /> የእርስዎን የይለፍ ቃላት እና ሌሎችንም ያገኛሉ።</translation>
 <translation id="8277334259226003205">Geminiን በሥርዓት ትሪ ውስጥ በChromium ውስጥ ያሳዩ እና የቁልፍ ሰሌዳ አቋራጭን ያብሩ</translation>
@@ -704,7 +704,7 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="8296236834352487533">በChromium iOS መተግበሪያ ላይ በካሜራዎ የሚያዩትን ይሸምቱ፣ ይተርጉሙ እና ይለዩ</translation>
 <translation id="8310603974518734211">ወደ Chromium እንደ <ph name="USER_NAME" /> ለመግባት የሚሆን QR ኮድ</translation>
 <translation id="8313851650939857356">የማስነሻ ስህተት፦ <ph name="STARTUP_ERROR" /></translation>
-<translation id="2256229026962116267">ድርጅትዎ Agent Chrome ለ<ph name="TIMEOUT_DURATION" /> ያህል ሥራ ላይ ሳይውል ይዘጋዋል።</translation>
+<translation id="2189465505625523876">ድርጅትዎ Shuttle ለ<ph name="TIMEOUT_DURATION" /> ያህል ሥራ ላይ ሳይውል ይዘጋዋል።</translation>
 <translation id="8321888067342493336">እንደ ምስል አስቀምጥ</translation>
 <translation id="8340674089072921962"><ph name="USER_EMAIL_ADDRESS" /> ከዚህ ቀደም Chromiumን እየተጠቀመ ነበር</translation>
 <translation id="8351551329754447960">Chromium ውስጥ ክህሎቶችን አንቃ</translation>
@@ -714,11 +714,11 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="8367705492654390392">ማንኛውም ነገር ይጠይቁ</translation>
 <translation id="8370517070665726704">የቅጂ መብት <ph name="YEAR" /> Google LLC. ሁሉም መብቶች በህግ የተጠበቁ ናቸው።</translation>
 <translation id="8372327902843331129">የይለፍ ቃላትዎን እና ሌሎችንም በሁሉም መሣሪያዎችዎ ላይ ለማግኘት ወደ Chromium ይግቡ። በመለያ ከገቡ በኋላ ይህ የይለፍ ቃል በGoogle መለያዎ ውስጥ ይቀመጣል።</translation>
-<translation id="3962779702290581702">ከዚያ Agent Chromeን እንደገና መጀመር ይኖርብዎታል።</translation>
-<translation id="6085013152567092546">Agent Chrome እንዲያስወግዱት ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፉ ቅጥያዎች የበለጠ ይወቁ<ph name="END_LINK" /></translation>
-<translation id="8142784445734351509">ይህ ቅጥያ በገንቢው ከህትመት ወጥቷል እና ደህንነቱ የተጠበቀ ላይሆን ይችላል። የግል መረጃዎን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎን ውሂብ ማየት እና መለወጥ እንዳይችል ከAgent Chrome ያስወግዱት።</translation>
+<translation id="7737586770085807713">ከዚያ Shuttleን እንደገና መጀመር ይኖርብዎታል።</translation>
+<translation id="458720374088121514">Shuttle እንዲያስወግዱት ይመክራል። <ph name="BEGIN_LINK" />ስለሚደገፉ ቅጥያዎች የበለጠ ይወቁ<ph name="END_LINK" /></translation>
+<translation id="3243699608914041912">ይህ ቅጥያ በገንቢው ከህትመት ወጥቷል እና ደህንነቱ የተጠበቀ ላይሆን ይችላል። የግል መረጃዎን ጨምሮ ከእንግዲህ እርስዎ በሚጎበኟቸው ጣቢያዎች ላይ ያለዎን ውሂብ ማየት እና መለወጥ እንዳይችል ከShuttle ያስወግዱት።</translation>
 <translation id="8416884904046428725">የተወሰነ ውሂብ በGoogle መለያዎ ውስጥ መቀመጥ እና በሁሉም መሣሪያዎችዎ ላይ ጥቅም ላይ መዋል ከመቻሉ በፊት Chromium ማንነትዎን ማረጋገጥ አለበት። አሁን ዘግተው ከወጡ ይህ ውሂብ ይሰረዛል።</translation>
-<translation id="7611805576553766531">{0,plural, =1{በአንድ ቀን ውስጥ Agent Chromeን ዳግም አስጀምር}one{በ# ቀኖች ውስጥ Agent Chromeን ዳግም አስጀምር}other{በ# ቀኖች ውስጥ Agent Chromeን ዳግም አስጀምር}}</translation>
+<translation id="2803567348225973544">{0,plural, =1{በአንድ ቀን ውስጥ Shuttleን ዳግም አስጀምር}one{በ# ቀኖች ውስጥ Shuttleን ዳግም አስጀምር}other{በ# ቀኖች ውስጥ Shuttleን ዳግም አስጀምር}}</translation>
 <translation id="8438543370129609977">የምስል ፍለጋ ሲያደርጉ PDFዎችን ጨምሮ የገፁ ርዕስ፣ ዩአርኤል እና ይዘት ወደ አገልጋዩ ይላካሉ። <ph name="LEARN_MORE" /></translation>
 <translation id="8447525028100794994">Chromium ውስጥ በምስል ፍለጋ ስለመፈለግ የበለጠ ይወቁ</translation>
 <translation id="8453117565092476964">የጫኚው መዝገብ ተበላሽቷል ወይም ትክክል አይደለም። እባክዎ Chromiumን እንደገና ያውርዱ።</translation>
@@ -726,23 +726,23 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="8463672209299734063">ከተፈለገ፦ የምርመራ እና የአጠቃቀም ውሂብ ወደ Google በራስ-ሰር በመላክ የChromiumOS ባህሪያትን እና አፈጻጸምን እንዲሻሻል ያግዙ።</translation>
 <translation id="8471947159125090285">Google መለያዎ ውስጥ የChromium ውሂብን ለመጠቀም እና ለማስቀመጥ እርስዎ መሆንዎን ያረጋግጡ</translation>
 <translation id="8482493977473846331">ወደ Chromium ለመግባት ጥያቄዎችን ያሳያል</translation>
-<translation id="6049002268233195982">Agent Chrome ጊዜው አልፎበታል</translation>
-<translation id="6156435126546305838">Agent Chromeን እንደ ነባሪ አሳሽዎ ስለመረጡ እናመሰግናለን!</translation>
+<translation id="4333599663015089415">Shuttle ጊዜው አልፎበታል</translation>
+<translation id="8376091195503089226">Shuttleን እንደ ነባሪ አሳሽዎ ስለመረጡ እናመሰግናለን!</translation>
 <translation id="8522801943730206384">እርስዎ የይለፍ ቃላትዎን ሲያስቀምጧቸው Chromium መፈተሽ ይችላል</translation>
 <translation id="8525579356836940628">ጭነት ቆሟል</translation>
 <translation id="8545729292258443488">በእርስዎ <ph name="DEVICE_TYPE" /> ላይ ባለው የChromium መተግበሪያ የይለፍ ቃላትዎን፣ ትሮችዎን እና ሌሎችንም በመሄድ ላይ ይውሰዱ</translation>
 <translation id="8548787790260785208">Chromium ከይለፍ ቃሎችዎ ውስጥ አንዱን በይፋዊ የውሂብ ጥሰት ውስጥ ካገኘ ማስጠንቀቂያ ያግኙ</translation>
 <translation id="8555465886620020932">የአገልግሎት ስህተት፡ <ph name="SERVICE_ERROR" />።</translation>
-<translation id="2713372071612730965">አንዳንድ የAgent Chrome ባህሪያት እና ቅጥያዎች ከአቋራጮች ጋር ይመጣሉ። መልሰው ለማብራት መምረጥ ይችላሉ።</translation>
+<translation id="3871600948131730253">አንዳንድ የShuttle ባህሪያት እና ቅጥያዎች ከአቋራጮች ጋር ይመጣሉ። መልሰው ለማብራት መምረጥ ይችላሉ።</translation>
 <translation id="8556420416730706394">በቀላሉ ለመድረስ የምስል ፍለጋ ፒን ማድረግ ይችላሉ፤ በጎን ፓነሉ አናት ላይ የሚገኘውን ፒን አድርግ አዝራርን ጠቅ ያድርጉ</translation>
 <translation id="856656450041460113">የቋንቋ ዝርዝር ፈልግ</translation>
-<translation id="1783040386392706016">ብዙ ድርጅቶች Agent Chromeን ያስተዳድራሉ</translation>
-<translation id="7921569471494089882">የቅጂ መብት <ph name="YEAR" /> የAgent Chrome ደራሲያን። ሁሉም መብቶች የተጠበቁ ናቸው።</translation>
+<translation id="2164758091986776102">ብዙ ድርጅቶች Shuttleን ያስተዳድራሉ</translation>
+<translation id="7921569471494089882">Copyright <ph name="YEAR" /> Silkweave. All rights reserved.</translation>
 <translation id="8601359445272098721">አዲስ! «ማያ ገፅ ተርጉም» የሚለውን ቁልፍ በመምረጥ ሁለቱንም ጽሁፍ እና ምስሎች በማያ ገፁ ላይ መተርጎም ይችላሉ</translation>
-<translation id="6294059080097269555">Agent Chromeን በማስጀመር ላይ...</translation>
+<translation id="5197416451456327645">Shuttleን በማስጀመር ላይ...</translation>
 <translation id="8624541899164515475">ቅንብሮች፣ በአዲስ ትር ውስጥ ይከፈታል።</translation>
 <translation id="8648201657708811153">Google Chrome ለሙከራ የእርስዎ ነባሪ አሳሽ እንዲሆን ማድረግ አይቻልም።</translation>
-<translation id="5652647471010716562">እንዲሁም Agent Chromeን ሲጀምሩት ወይም ከኦምኒቦክሱ ሆነው ሲፈልጉ የሚታየውን ገፅ ይቆጣጠራል።</translation>
+<translation id="733927313102300080">እንዲሁም Shuttleን ሲጀምሩት ወይም ከኦምኒቦክሱ ሆነው ሲፈልጉ የሚታየውን ገፅ ይቆጣጠራል።</translation>
 <translation id="8704119203788522458">ይሄ የእርስዎ Chromium ነው</translation>
 <translation id="8712637175834984815">ገባኝ</translation>
 <translation id="8719993436687031146">ወደ Chromium ይግቡ?</translation>
@@ -751,17 +751,17 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="8813277370772331957">ቆይተህ አስታውሰኝ</translation>
 <translation id="8816416449795340678">ፈጣን አጠቃላይ ዕይታ ለማግኘት እና ተከታይ ጥያቄዎችን ለመጠየቅ ይህን ሰነድ በChromium ውስጥ ካለው Gemini ጋር ያጋሩ</translation>
 <translation id="8818550178040858407">ወደ Chromium ይግቡ?</translation>
-<translation id="4188893721116572726">Agent Chrome ነባሪ አሳሽ እንዲሆን ያድርጉ እና ወደ የተግባር አሞሌው ፒን ያድርጉት</translation>
+<translation id="1740477639007879167">Shuttle ነባሪ አሳሽ እንዲሆን ያድርጉ እና ወደ የተግባር አሞሌው ፒን ያድርጉት</translation>
 <translation id="8826492472752484139">«የሚስጥር ቁልፍ አስተዳዳሪ» ላይ ጠቅ ያድርጉ</translation>
 <translation id="8833697763442816810">የChromiumOS ስርዓት</translation>
-<translation id="341256515309503869">ይህ ቋንቋ Agent Chrome ውስጥ ምናሌዎች፣ ቅንብሮች፣ ማንቂያዎች እና ሌላ ጽሁፍ ለማሳየት ጥቅም ላይ ይውላል</translation>
+<translation id="51810846847651902">ይህ ቋንቋ Shuttle ውስጥ ምናሌዎች፣ ቅንብሮች፣ ማንቂያዎች እና ሌላ ጽሁፍ ለማሳየት ጥቅም ላይ ይውላል</translation>
 <translation id="8862326446509486874">ለስርዓተ-ደረጃ ጭነት ተገቢ መብቶች የሉዎትም። ጫኚውን እንደ አስተዳዳሪ በማሄድ እንደገና ይሞክሩ።</translation>
 <translation id="8876044221123442390">የChromium መገለጫ ያክሉ</translation>
 <translation id="8890569919834781711">በመለያ በመግባት ላይ ባለ ስሕተት ምክንያት ChromiumOS የChromium ውሂብን በGoogle መለያዎ ውስጥ ማስቀመጥ አልቻለም</translation>
 <translation id="8891709362986793894">ድርጅትዎ ወደ Chromium እንዲገቡ ይጠይቃል</translation>
 <translation id="8907580949721785412">Chromium የይለፍ ቃሎችን ለማሳየት እየሞከረ ነው። ይህንን ለመፍቀድ የWindows የይለፍ ቃልዎን ይተይቡ።</translation>
 <translation id="8932992523185907506">Chromium ከእንግዲህ የእርስዎ ነባሪ አሳሽ አይደለም። Chromium ነባሪውን አሳሽ ያድርጉት?</translation>
-<translation id="2086624065931944916">Agent Chromeን ማዘመን አልተቻለም</translation>
+<translation id="7727082350762937793">Shuttleን ማዘመን አልተቻለም</translation>
 <translation id="8944232836376404813">ይህ እርምጃ የሚከተሉትን ያደርጋል፦
           <ph name="LINE_BREAKS" />
             • የእርስዎን የመነሻ ገጽ፣ አዲስ የትር ገጽ፣ የፍለጋ ፕሮግራም እና ፒን የተደረጉ ትሮችን ዳግም ያስጀምራል
@@ -772,31 +772,31 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
             <ph name="LINE_BREAKS" />
             ዕልባቶች፣ ታሪክ እና የተቀመጡ የይለፍ ቃላት አይነኩም።</translation>
 <translation id="8966875421152977384">የChromium ጣቢያ አቋራጮችን አሳይ</translation>
-<translation id="4591081057798655502">የAgent Chrome Enterprise ዓርማ</translation>
+<translation id="1008106080699243847">የShuttle Enterprise ዓርማ</translation>
 <translation id="8980139959902937527">በእርስዎ <ph name="DEVICE_TYPE" /> ላይ ባለው የChromium መተግበሪያ የGoogleን ደኅንነት በመሄድ ላይ ይውሰዱ</translation>
-<translation id="352721818246741864">መገለጫዎን ሲከፍቱ የሆነ ስሕተት ስለተከሰተ Agent Chromeን መጀመር አይቻልም። Agent Chromeን እንደገና ለማስጀመር ይሞክሩ።</translation>
+<translation id="3649746906258419479">መገለጫዎን ሲከፍቱ የሆነ ስሕተት ስለተከሰተ Shuttleን መጀመር አይቻልም። Shuttleን እንደገና ለማስጀመር ይሞክሩ።</translation>
 <translation id="8988036198400390003">የChromium መገለጫዎችን ያስተዳድሩ</translation>
 <translation id="8993855408334954620">በGemini በChromium ውስጥ እና በክፍት ትርዎ መካከል ለመዳሰስ የቁልፍ ሰሌዳዎን ይጠቀሙ።</translation>
 <translation id="9018218886431812662">ጭነት ተጠናቅቋል</translation>
 <translation id="9019929317751753759">Chromiumን ይበልጥ ደህንነቱ የተጠበቀ እንዲሆን ለማድረግ፣ በ<ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> ውስጥ ያልተዘረዘረውን የሚከተለውን ቅጥያ አሰናክለነዋል እና እርስዎ ሳያውቁት የታከለ ሊሆን ይችላል።</translation>
 <translation id="9022552996538154597">Chromium ውስጥ ይግቡ</translation>
 <translation id="9035791714111278917">በMac የምናሌ አሞሌ ውስጥ በChromium ፍለጋን አሳይ እና የቁልፍ ሰሌዳ አቋራጭን አብራ</translation>
-<translation id="144293525744948128">የማህደር ፋይሉ ተንኮል አዘል ዌርን ሊደብቁ የሚችሉ ሌሎች ፋይሎችን ስላካተተ Agent Chrome ይህን ውርድ አግዶታል</translation>
+<translation id="3267341748208131224">የማህደር ፋይሉ ተንኮል አዘል ዌርን ሊደብቁ የሚችሉ ሌሎች ፋይሎችን ስላካተተ Shuttle ይህን ውርድ አግዶታል</translation>
 <translation id="9053882453960391422">የይለፍ ቃላትዎን፣ እልባቶችዎን እና ታሪክዎን በመላው መሣሪያዎችዎ ላይ በትክክል ሠምረው እንዲቆዩ ያድርጉ። ነባሪ አሳሽዎን ወደ Chromium በማዘመን በቀላሉ የሚያውቋቸውን እና የሚወዷቸውን ባህሪያት ይድረሱ። ለፈጣን መዳረሻ Chromium በተግባር አሞሌዎ ላይ ይሰካል።</translation>
 <translation id="9056398481763999048">በስልክዎ ላይ የChromium መተግበሪያን በመጠቀም የGoogleን ምርጥ የሰው ሠራሽ አስተውሎት መሣሪያዎች ይጠቀሙ</translation>
 <translation id="9062666675513499497">ወደ ሌሎች የGoogle አገልግሎቶች ሲገቡ ወደ Chromium ይግቡ</translation>
-<translation id="5989671354018094677">Agent Chrome በራስ-ሰር ተዘግቷል</translation>
-<translation id="5288426372256126088">Agent Chrome ጊዜው አልፎበታል</translation>
-<translation id="8599483501705081932">{0,plural, =1{Agent Chrome በአንድ ሰዓት ውስጥ ዳግም ይጀምራል}one{Agent Chrome በ# ሰዓቶች ውስጥ ዳግም ይጀምራል}other{Agent Chrome በ# ሰዓቶች ውስጥ ዳግም ይጀምራል}}</translation>
+<translation id="4265215433857167851">Shuttle በራስ-ሰር ተዘግቷል</translation>
+<translation id="7469466263552552140">Shuttle ጊዜው አልፎበታል</translation>
+<translation id="72499647218501325">{0,plural, =1{Shuttle በአንድ ሰዓት ውስጥ ዳግም ይጀምራል}one{Shuttle በ# ሰዓቶች ውስጥ ዳግም ይጀምራል}other{Shuttle በ# ሰዓቶች ውስጥ ዳግም ይጀምራል}}</translation>
 <translation id="9106236359747881194">ለመፈለግ ጽሑፍ ይምረጡ</translation>
 <translation id="9106612006984859720">የወደፊት የChromium ዝማኔዎችን ለማግኘት Windows 10 ወይም ከዚያ በላይ ያስፈልግዎታል። ይህ ኮምፒውተር Windows 8.1ን እየተጠቀመ ነው።</translation>
-<translation id="6660967356554387137">አገናኙን በAgent Chrome አዲስ &amp;ትር ውስጥ ክፈት</translation>
+<translation id="3313508441926611846">አገናኙን በShuttle አዲስ &amp;ትር ውስጥ ክፈት</translation>
 <translation id="911206726377975832">የአሰሳ ውሂብዎም ይሰረዝ?</translation>
 <translation id="9134482777260927479">የቤት ሥራ እገዛ</translation>
 <translation id="9148058034647219655">ውጣ</translation>
-<translation id="356554850028684199">ካቆሙበት ይቀጥሉ፦ Agent Chrome እንደገና በጀመሩ ቁጥር የእርስዎን ትሮች ወደነበሩበት መመለስ ይችላል። ይህን ለማብራት ወደሚከተለው ይሂዱ</translation>
-<translation id="2217675621893057123">የእርስዎ የስርዓት አስተዳዳሪ <ph name="TARGET_URL_HOSTNAME" />ን ለመድረስ Agent Chrome ተለዋጭ አሳሽን እንዲከፍት አዋቅረውታል።</translation>
-<translation id="7637726452490203009">&amp;Agent Chromeን ለማዘመን ዳግም ያስነሱት</translation>
+<translation id="373308981796873164">ካቆሙበት ይቀጥሉ፦ Shuttle እንደገና በጀመሩ ቁጥር የእርስዎን ትሮች ወደነበሩበት መመለስ ይችላል። ይህን ለማብራት ወደሚከተለው ይሂዱ</translation>
+<translation id="4482819741686179260">የእርስዎ የስርዓት አስተዳዳሪ <ph name="TARGET_URL_HOSTNAME" />ን ለመድረስ Shuttle ተለዋጭ አሳሽን እንዲከፍት አዋቅረውታል።</translation>
+<translation id="5239882079227870661">&amp;Shuttleን ለማዘመን ዳግም ያስነሱት</translation>
 <translation id="9190841055450128916">Chromium (mDNS-In)</translation>
 <translation id="924957577793602335">Chromiumን የራስዎ ያድርጉት</translation>
 <translation id="93478295209880648">Chromium በWindows XP ወይም Windows Vista ላይ ከእንግዲህ ስለማይደገፍ በአግባቡ ላይሰራ ይችላል</translation>
@@ -806,7 +806,7 @@ Agent Chrome ቅንብሮችዎን ማስመለስ አልቻለም።</translati
 <translation id="967427899662692980">የChromiumን ጠንካራ ደህንነት ያግኙ</translation>
 <translation id="983803489796659991">የዝማኔ አገልጋዩ ለመተግበሪያው ምንም ሃሽ ውሂብ ስለሌለው መጫኑ አልተሳካም።</translation>
 <translation id="985498048907240953">Chromiumን ያለመለያ ተጠቀም</translation>
-<translation id="5192139095541169725">የAgent Chrome ደራሲዎች</translation>
+<translation id="5192139095541169725">Silkweave</translation>
 <translation id="989970834842471429">በምስል ፍለጋ ለመፈለግ ማንኛውንም ጽሑፍ ወይም ምስል ይምረጡ</translation>
-<translation id="5834693163377136360">አካባቢዎን ለመጠቀም <ph name="BEGIN_LINK" />የሥርዓት ቅንብሮች<ph name="END_LINK" /> ውስጥ ለAgent Chrome መዳረሻ ይስጡ</translation>
+<translation id="1699696098551154749">አካባቢዎን ለመጠቀም <ph name="BEGIN_LINK" />የሥርዓት ቅንብሮች<ph name="END_LINK" /> ውስጥ ለShuttle መዳረሻ ይስጡ</translation>
 </translationbundle>

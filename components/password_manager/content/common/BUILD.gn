@@ -2,5 +2,5 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Agent Chrome: credential_manager_mojom_traits.{h,cc} are compiled by
+# Shuttle: credential_manager_mojom_traits.{h,cc} are compiled by
 # //third_party/blink/public/mojom (credential_manager typemap).

@@ -1113,7 +1113,7 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
   const base::CommandLine& command_line =
       *base::CommandLine::ForCurrentProcess();
 
-  // Agent Chrome: the browser process always behaves as if launched with
+  // Shuttle: the browser process always behaves as if launched with
   // --no-first-run --no-default-browser-check. This skips the welcome/first-run
   // experience, the default-browser prompt, the search engine choice dialog,
   // What's New and feature promos. Headless mode does the same

@@ -20,7 +20,7 @@ class RemoteDebuggingServer {
  public:
   static constexpr int kDefaultDevToolsPort = 9222;
 
-  // Starts the always-on remote debugging server (Agent Chrome): HTTP on
+  // Starts the always-on remote debugging server (Shuttle): HTTP on
   // localhost (--remote-debugging-port, default 9222 with fallback), plus the
   // pipe handler when --remote-debugging-pipe is given.
   static std::unique_ptr<RemoteDebuggingServer> Start();

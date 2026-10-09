@@ -306,7 +306,7 @@ void BindSpeechRecognitionContextHandler(
   CrosSpeechRecognitionServiceFactory::GetForProfile(profile)
       ->BindSpeechRecognitionContext(std::move(receiver));
 #else
-  // Agent Chrome builds with enable_browser_speech_service=false: there is no
+  // Shuttle builds with enable_browser_speech_service=false: there is no
   // speech recognition service, so the receiver is dropped.
 #endif
 }

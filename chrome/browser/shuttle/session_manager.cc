@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/session_manager.h"
+#include "chrome/browser/shuttle/session_manager.h"
 
 #include <algorithm>
 #include <array>
@@ -19,7 +19,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
-#include "chrome/browser/agent_chrome/profile_registry.h"
+#include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -49,7 +49,7 @@
 #include "ui/gfx/geometry/rect.h"
 #include "url/url_constants.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -761,4 +761,4 @@ TabStripModel* SessionManager::FindGroup(
   return nullptr;
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

@@ -98,7 +98,7 @@ source_set("signin") {
     public += [ "signin_util_win.h" ]
   }
 
-  # Agent Chrome: device-bound sessions and the unexportable-keys internals
+  # Shuttle: device-bound sessions and the unexportable-keys internals
   # page use these even with enable_bound_session_credentials=false.
   if (enable_bound_session_credentials || enable_device_bound_sessions) {
     public += [

@@ -8,7 +8,7 @@ I-<ph name="EXTENSION_NAME" /></translation>
 <translation id="1076698951459398590">Nika amandla itimu</translation>
 <translation id="1135328998467923690">Iphakheji alivumelekile: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Ukubhekana nemvelo</translation>
-<translation id="1171831736360285680">U-<ph name="PARTNER_NAME" /> wengeze isandiso esingaguqula indlela iChromium esebenza ngayo.
+<translation id="6853317349523111347">U-<ph name="PARTNER_NAME" /> wengeze isandiso esingaguqula indlela iShuttle esebenza ngayo.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Yehlulekile ukuthumela ukhiye oyimfihlo.</translation>
@@ -50,7 +50,7 @@ I-<ph name="EXTENSION_NAME" /></translation>
 <translation id="3144135466825225871">Yehlulekile ukufaka esikhundleni sefayela le-crx. Hlola ukuze ubone uma ngabe ifayela lisetshenziswa.</translation>
 <translation id="3163201441334626963">Umkhiqizo ongaziwa ongu-<ph name="PRODUCT_ID" /> kusukela kumthengisi ongu-<ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Ukufinyelela kulesi sandiso kuvinjwe inhlangano yakho.</translation>
-<translation id="3183357154200327217">Olunye uhlelo kukhompyutha yakho lwengeze itimu engaguqula indlela iChromium esebenza ngayo.
+<translation id="7846451875700317002">Olunye uhlelo kukhompyutha yakho lwengeze itimu engaguqula indlela iShuttle esebenza ngayo.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Izinhelo zokusebenza ezinesibaluli se-manifest se-'kiosk_only' kumele sifakwe kumodi yekhiyoski ye-ChromeOS</translation>
@@ -66,7 +66,7 @@ I-<ph name="EXTENSION_NAME" /></translation>
 <translation id="3927932062596804919">Phika</translation>
 <translation id="3984413272403535372">Iphutha ngenkathi isayina isandiso.</translation>
 <translation id="4014432863917027322">Lungisa i-"<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Olunye uhlelo olukukhompyutha yakho lwengeze isandiso esingaguqula indlela iChromium esebenza ngayo.
+<translation id="7396546976728149133">Olunye uhlelo olukukhompyutha yakho lwengeze isandiso esingaguqula indlela iShuttle esebenza ngayo.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Ukufinyelela kulesi sigaba sesandiso kuvinjwe inhlangano yakho.</translation>
@@ -89,7 +89,7 @@ I-<ph name="EXTENSION_NAME" /></translation>
 <translation id="5185386675596372454">Inguqulo entsha ye-"<ph name="EXTENSION_NAME" />" ikhutshaziwe ngoba idinga izimvume eziningi.</translation>
 <translation id="5242724311594467048">Nika amandla i-"<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Ukubuka kohlelo lokusebenza: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Susa kusuka  ku-Chromium</translation>
+<translation id="2064155379595075287">Susa kusuka  ku-Shuttle</translation>
 <translation id="5456409301717116725">Lesi sandiso sifaka ifayela lokhiye i-'<ph name="KEY_PATH" />'. Awufuni ukwenza lokho.</translation>
 <translation id="5485102783864353244">Engeza uhlelo lokusbenza</translation>
 <translation id="5486326529110362464">Inani lokufaka lokhiye oyimfihlo kumele libe khona.</translation>
@@ -99,7 +99,7 @@ I-<ph name="EXTENSION_NAME" /></translation>
 <translation id="5972529113578162692">Umlawuli walo mshini udnga i--<ph name="EXTENSION_NAME" /> ukuthi ifakwe. Ayikwazi ukukhishwa.</translation>
 <translation id="6027032947578871493">Umkhiqizo ongaziwa ongu-<ph name="PRODUCT_ID" /> kusukela ku-<ph name="VENDOR_NAME" /> (inombolo yomkhiqizo engu-<ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721">I-<ph name="PRODUCT_NAME" /> kusukela kumthengisi ongu-<ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Olunye uhlelo kukhompuyutha yakho lwengeze i-app engaguqula indlela iChromium esebenza ngayo.
+<translation id="5918487821361452587">Olunye uhlelo kukhompuyutha yakho lwengeze i-app engaguqula indlela iShuttle esebenza ngayo.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Iphutha ukulayisha isandiso</translation>

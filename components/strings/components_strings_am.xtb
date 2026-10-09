@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">ተጨማሪ ዝርዝሮችን ያቅርቡ</translation>
 <translation id="1016671033299705843">የመንጃ ፈቃድን ደኅንነቱ በተጠበቀ ሁኔታ ያክሉ</translation>
 <translation id="1019413721762100891">ጠፍቷል</translation>
-<translation id="1021753677514347426">ይህ ችግር የተፈጠረው በእርስዎ ወይም በሌላ ሰው በእርስዎ መሣሪያ ላይ በተጫነ የዕውቅና ማረጋገጫ ምክንያት ነው። ይህ የዕውቅና ማረጋገጫ አውታረ መረቦችን እንደሚከታተል እና አቋርጦ እንደሚገባ የታወቀ ነው እና በChromium የታመነ አይደለም። ክትትል ለማድረግ እንደ ትምህርት ቤት ወይም የኩባንያ አውታረ መረብ በመሳሰሉ አንዳንድ ሕጋዊ አስፈላጊ ምክንያቶች ቢኖሩም Chromium ይህ እየተፈጠረ እንዳለ ምንም እንኳ እርስዎ ሊያስቆሙት ባይችሉም እንዲያውቁት ማድረግ ይፈልጋል። ክትትል ማድረግ በማናቸውም ድሩን በሚደርስ አሳሽ ወይም መተግበሪያ ላይ ሊያጋጥም ይችል ይሆናል።</translation>
+<translation id="768230658237634872">ይህ ችግር የተፈጠረው በእርስዎ ወይም በሌላ ሰው በእርስዎ መሣሪያ ላይ በተጫነ የዕውቅና ማረጋገጫ ምክንያት ነው። ይህ የዕውቅና ማረጋገጫ አውታረ መረቦችን እንደሚከታተል እና አቋርጦ እንደሚገባ የታወቀ ነው እና በShuttle የታመነ አይደለም። ክትትል ለማድረግ እንደ ትምህርት ቤት ወይም የኩባንያ አውታረ መረብ በመሳሰሉ አንዳንድ ሕጋዊ አስፈላጊ ምክንያቶች ቢኖሩም Shuttle ይህ እየተፈጠረ እንዳለ ምንም እንኳ እርስዎ ሊያስቆሙት ባይችሉም እንዲያውቁት ማድረግ ይፈልጋል። ክትትል ማድረግ በማናቸውም ድሩን በሚደርስ አሳሽ ወይም መተግበሪያ ላይ ሊያጋጥም ይችል ይሆናል።</translation>
 <translation id="1024111578869940408">አጥቂዎች አንዳንድ ጊዜ በድር አድራሻው ላይ ለማየት የሚያስቸግሩ ለውጦችን ለማድረግ ጣቢያዎችን ያስመስላሉ።</translation>
 <translation id="102916930470544692">የይለፍ ቁልፍ</translation>
 <translation id="1030706264415084469"><ph name="URL" /> ትልቅ ውሂብ በእርስዎ መሣሪያ ላይ እስከ መጨረሻው ማከማቸት ይፈልጋል</translation>
@@ -809,7 +809,7 @@
 <translation id="2348836501965732644">የእርስዎን መረጃ ያስተዳድሩ ወይም እነዚህን ጥቆማዎች ቅንብሮች ውስጥ ያጥፉ</translation>
 <translation id="2349957959687031096">ማንነትን የማያሳውቅ ትር አዝራርን ይክፈቱ፣ በግል ለማሰስ አዲስ ማንነትን የማያሳውቅ ትር ለመክፈት ያግብሩ</translation>
 <translation id="2350796302381711542"><ph name="HANDLER_HOSTNAME" /> ከ<ph name="REPLACED_HANDLER_TITLE" /> ይልቅ ሁሉንም የ<ph name="PROTOCOL" /> አገናኞች እንዲከፍት ይፈቀድለት?</translation>
-<translation id="2351718832234620840">ይህ አገልጋይ ለድር ትራፊክ ምሥጠራ በChromium ወይም በእርስዎ የሥርዓት ውቅረት ተዓማኒነት የሌለው የደኅንነት የዕውቅና ማረጋገጫ እየተጠቀመ ስለሆነ <ph name="DOMAIN" /> መሆኑን ማረጋገጥ አልቻለም። ይህ በተሳሳተ አወቃቀር ወይም አንድ አጥቂ ግንኙነትዎን በመጥለፉ የተከሰተ ሊሆን ይችላል።</translation>
+<translation id="4798228153726623290">ይህ አገልጋይ ለድር ትራፊክ ምሥጠራ በShuttle ወይም በእርስዎ የሥርዓት ውቅረት ተዓማኒነት የሌለው የደኅንነት የዕውቅና ማረጋገጫ እየተጠቀመ ስለሆነ <ph name="DOMAIN" /> መሆኑን ማረጋገጥ አልቻለም። ይህ በተሳሳተ አወቃቀር ወይም አንድ አጥቂ ግንኙነትዎን በመጥለፉ የተከሰተ ሊሆን ይችላል።</translation>
 <translation id="2353297238722298836">ካሜራ እና ማይክሮፎን ይፈቀዳሉ</translation>
 <translation id="2354001756790975382">ሌላ እልባቶች</translation>
 <translation id="2355395290879513365">አጥቂዎች በዚህ ጣቢያ ላይ እርስዎ እየተመለከቱዋቸው ያሉ ምስሎችን ማየት እና በላያቸው ላይ ለውጦችን በማድረግ ሊያታልልዎት ይችሉ ይሆናል።</translation>
@@ -1046,7 +1046,7 @@
 <translation id="2728127805433021124">የአገልጋዩ እውቅና ማረጋገጫ የተፈረመው በደካማ የፊርማ ስልተቀመር ነው።</translation>
 <translation id="272937284275742856">የክፍያ ዝርዝሮችዎን ደህንነቱ በተጠበቀ ሁኔታ ማረጋገጥ...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />የግንኙነት መመርመሪያን በማሄድ ላይ<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">በChromium ውስጥ ስለፍለጋ ፕሮግራምዎ የበለጠ ይወቁ</translation>
+<translation id="5216476641707900057">በShuttle ውስጥ ስለፍለጋ ፕሮግራምዎ የበለጠ ይወቁ</translation>
 <translation id="2731382536835015353">44 x 68 ኢንች</translation>
 <translation id="2734797989819862638">አትቅዳ</translation>
 <translation id="2738771556149464852">ከኋላ ያለሆነ</translation>
@@ -1343,7 +1343,7 @@
 <translation id="3272091146646336650">ልዕለ B</translation>
 <translation id="3272112314896217187"><ph name="NUMBER_OF_DIGITS" />-አሃዝ የማረጋገጫ ኮድ ያስገቡ</translation>
 <translation id="3272643614306383237">ከ1 ሜባ ያነሰ። አንዳንድ ጣቢያዎች በሚቀጥለው ጉብኝትዎ ላይ ይበልጥ ቀስ ብለው ሊጭኑ ይችላሉ።</translation>
-<translation id="3273738040255912340">አስተዳዳሪዎ በመገለጫዎ ላይ በርቀት ለውጦችን ማድረግ፣ ሪፖርት በማድረግ ስለአሳሹ መረጃን መተንተን እና ሌሎች አስፈላጊ ተግባራትን ማከናወን ይችላል። በዚህ መሣሪያ ላይ ያለ እንቅስቃሴ እንዲሁም ከChromium ውጭ ሊተዳደር ይችላል። <ph name="BEGIN_LINK" />የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">አስተዳዳሪዎ በመገለጫዎ ላይ በርቀት ለውጦችን ማድረግ፣ ሪፖርት በማድረግ ስለአሳሹ መረጃን መተንተን እና ሌሎች አስፈላጊ ተግባራትን ማከናወን ይችላል። በዚህ መሣሪያ ላይ ያለ እንቅስቃሴ እንዲሁም ከShuttle ውጭ ሊተዳደር ይችላል። <ph name="BEGIN_LINK" />የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">የአይቢኤኤን ማስቀመጥ በሙሉ ቁመት ተከፍቷል።</translation>
 <translation id="327455571215090823">ይበልጥ ዘመናዊ ራስ-ሙላ፣ በግል ተይዟል</translation>
 <translation id="3280440382387335343">ፓስፖርትን ደኅንነቱ በተጠበቀ ሁኔታ በGoogle Wallet ውስጥ ያዘምኑ</translation>
@@ -1612,7 +1612,7 @@
 <translation id="3742104862808477448">በGoogle አገልጋዮች ላይ ውሂብን ደኅንነቱ በተጠበቀ መልኩ በማሰናዳት Chromium የተሻለ እንዲረዳ እና ውስብስብ ቅጾችን እንዲሞላ ያግዙ። መረጃዎ የግል ሆኖ ይቆያል እና በማንም አይገመገምም።</translation>
 <translation id="3744111561329211289">የዳራ ስምረት</translation>
 <translation id="3744212718085287312">በቀጣይ ጊዜ በምናባዊ ካርድ ደህንነቱ ይበልጥ የተጠበቀ ይሁን?</translation>
-<translation id="3744899669254331632">የድር ጣቢያው Chromium ሊያስኬዳቸው የማይችሉ የተዘበራረቁ ምስክርነቶችን ስለላከ አሁን ላይ <ph name="SITE" />ን መጎብኘት አይችሉም። የአውታረ መረብ ስህተቶች እና ጥቃቶች ብዙውን ጊዜ ጊዜያዊ ናቸው፣ ስለዚህ ይህ ገፅ በኋላ ላይ ምናልባት ሊሰራ ይችል ይሆናል።</translation>
+<translation id="58356321557204990">የድር ጣቢያው Shuttle ሊያስኬዳቸው የማይችሉ የተዘበራረቁ ምስክርነቶችን ስለላከ አሁን ላይ <ph name="SITE" />ን መጎብኘት አይችሉም። የአውታረ መረብ ስህተቶች እና ጥቃቶች ብዙውን ጊዜ ጊዜያዊ ናቸው፣ ስለዚህ ይህ ገፅ በኋላ ላይ ምናልባት ሊሰራ ይችል ይሆናል።</translation>
 <translation id="3745599309295009257">የእርስዎ ጽሑፍ እና እርስዎ የሚጽፉበት ገጽ ይዘት እና ዩአርኤል ወደ Google ይላካሉ፣ በሰዎች ይገመገማሉ እና ይህንን ባህሪ ለማሻሻል ያገለግላሉ። የግል መረጃን (ለምሳሌ የሕክምና ወይም የፋይናንስ ዝርዝሮችን) ከማስገባት እንዲሁም የግል ወይም ልዩ ጥንቃቄ የሚያስፈልገው መረጃን በሚያካትቱ ጣቢያዎች ላይ ይህን መሣሪያ ከመጠቀም ተቆጠቡ።</translation>
 <translation id="3748009735914587286">ብረት (ከፍተኛ ማንጸባረቅ)</translation>
 <translation id="3748647055058832337">ለእኚህ ነጋዴ አይገኝም</translation>
@@ -2198,7 +2198,7 @@
 <translation id="4732860731866514038">የ<ph name="LANGUAGE" /> የቋንቋ ጥቅልን በማውረድ ላይ...<ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> የመሣሪያዎን አካባቢ መጠቀም ይፈልጋል</translation>
 <translation id="473414950835101501">ካሜራዎቾን መጠቀም</translation>
-<translation id="4736825316280949806">Chromiumን ዳግም ያስጀምሩት</translation>
+<translation id="5713993618957185264">Shuttleን ዳግም ያስጀምሩት</translation>
 <translation id="4736934858538408121">ምናባዊ ካርድ</translation>
 <translation id="473775607612524610">አዘምን</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> የፍለጋ አስተያየት ጥቆማ</translation>
@@ -2420,7 +2420,7 @@
 <translation id="5089810972385038852">ግዛት</translation>
 <translation id="5093232627742069661">Z-እጥፋት</translation>
 <translation id="5093417502834168387">በመግባት ላይ ችግር አጋጠመዎት? ሌላ መንገድ ይሞክሩ</translation>
-<translation id="5094747076828555589">ይህ አገልጋይ <ph name="DOMAIN" /> መሆኑን ሊያረጋግጥ አልቻለም፤ የደህንነት እውቅና ማረጋገጫው በChromium የሚታመን አይደለም። ይሄ በተሳሳተ አወቃቀር ወይም አንድ አጥቂ ግንኙነትዎን በመጥለፉ የተከሰተ ሊሆን ይችላል።</translation>
+<translation id="5713412634455044803">ይህ አገልጋይ <ph name="DOMAIN" /> መሆኑን ሊያረጋግጥ አልቻለም፤ የደህንነት እውቅና ማረጋገጫው በShuttle የሚታመን አይደለም። ይሄ በተሳሳተ አወቃቀር ወይም አንድ አጥቂ ግንኙነትዎን በመጥለፉ የተከሰተ ሊሆን ይችላል።</translation>
 <translation id="5096066272198024688">መረጃዎን በማስቀመጥ ላይ...</translation>
 <translation id="5097099694988056070">እንደ የሲፒዩ/ራም አጠቃቀም ያለ የመሣሪያ ስታቲስቲክስ</translation>
 <translation id="5097468150760963273">27 x 39 ኢንች</translation>
@@ -3172,7 +3172,7 @@
 <translation id="635394585025793320">አንድን ሰው ማስደመም እፈልጋለሁ። አሁን ሁሉም ሰው እያወራባቸው ባሉ ምግብ ቤቶች ውስጥ ለ2 ክፍት ጠረጴዛዎችን ፈልግ</translation>
 <translation id="6354918092619878358">የSECG ሞላላ ጥምዝ secp256r1 (እንዲሁም ANSI X9.62 prime256v1, NIST P-256 በመባት የሚታወቅ)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />፣ ከሌሎች መሣሪያዎች ተጨማሪ ትሮችን ለማግኘት ትርን፣ ከዚያ አስገባን ይጫኑ</translation>
-<translation id="6355392890578844978">ይህ አሳሽ በኩባንያ ወይም በሌላ ድርጅት አይተዳደርም። በዚህ መሣሪያ ላይ ያለ እንቅስቃሴ ከChromium ውጭ ሊተዳደር ይችላል። <ph name="BEGIN_LINK" />የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">ይህ አሳሽ በኩባንያ ወይም በሌላ ድርጅት አይተዳደርም። በዚህ መሣሪያ ላይ ያለ እንቅስቃሴ ከShuttle ውጭ ሊተዳደር ይችላል። <ph name="BEGIN_LINK" />የበለጠ ለመረዳት<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">«<ph name="GROUP_TITLE_1" />» እና «<ph name="GROUP_TITLE_2" />» የትር ቡድኖች ከእንግዲህ አይገኙም</translation>
 <translation id="6358088212770985041">የመክፈያ ዘዴዎችን አርትዕ ያድርጉ።</translation>
 <translation id="6358450015545214790">እነዚህ ምን ማለት ናቸው?</translation>
@@ -4137,7 +4137,7 @@
 <translation id="7995512525968007366">አልተጠቀሰም</translation>
 <translation id="7997855386298213183">የተጋሩ ትሮች</translation>
 <translation id="7999482381722829925">በተለምዶ የሚረሱ ቦታዎችን ዒላማ የሚያደርግ ቅድሚያ የተሰጠው፣ ከክፍል ወደ ክፍል ጥልቅ የጽዳት ማረጋገጫ ዝርዝር ፍጠር</translation>
-<translation id="8001912761979890298">ይህ አገልጋይ ለድር ትራፊክ ምሥጠራ በChromium ወይም በእርስዎ የሥርዓት ውቅረት ተዓማኒነት የሌለው የደኅንነት የዕውቅና ማረጋገጫ እየተጠቀመ ስለሆነ <ph name="DOMAIN" /> መሆኑን ማረጋገጥ አልቻለም። ይህ በተሳሳተ አወቃቀር ወይም አንድ አጥቂ ግንኙነትዎን በመጥለፉ የተከሰተ ሊሆን ይችላል። <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />የዕውቅና ማረጋገጫን ይመልከቱ<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">ይህ አገልጋይ ለድር ትራፊክ ምሥጠራ በShuttle ወይም በእርስዎ የሥርዓት ውቅረት ተዓማኒነት የሌለው የደኅንነት የዕውቅና ማረጋገጫ እየተጠቀመ ስለሆነ <ph name="DOMAIN" /> መሆኑን ማረጋገጥ አልቻለም። ይህ በተሳሳተ አወቃቀር ወይም አንድ አጥቂ ግንኙነትዎን በመጥለፉ የተከሰተ ሊሆን ይችላል። <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />የዕውቅና ማረጋገጫን ይመልከቱ<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">የማህደረ ትውስታ ቦታን ለማስለቀቅ ሌሎች ትሮችን ወይም ፕሮግራሞችን ዘግተው ይሞክሩ።</translation>
 <translation id="8002230960325005199">ተዛማጅ ጣቢያዎችን በአዲስ ትር ውስጥ ይመልከቱ</translation>
 <translation id="8003046808285812021">«<ph name="SEARCH_TERMS" />»</translation>
@@ -4228,7 +4228,7 @@
 <translation id="8175796834047840627">እርስዎ በመለያ ስለገቡ Chrome ወደ የእርስዎ የGoogle መለያ ለማስቀመጥ አማራጭ እያቀረበ ነው። ይህን ባህሪ በቅንብሮች ውስጥ መለወጥ ይችላሉ።</translation>
 <translation id="8176440868214972690">የዚህ መሣሪያ አስተዳዳሪ እንደ ቅንብሮች ወይም መመሪያዎች ላሉት ለሚከተሉት ድር ጣቢያዎች የተወሰነ መረጃ ልኳል።</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> በይዘት ምክንያት ታግዷል}one{<ph name="FILE_COUNT" /> ፋይል በይዘት ምክንያት ታግዷል}other{<ph name="FILE_COUNT" /> ፋይሎች በይዘት ምክንያት ታግደዋል}}</translation>
-<translation id="8186171296341598122">የእርስዎን የፍለጋ ፕሮግራም በማንኛውም ጊዜ በChromium ቅንብሮች ውስጥ መለወጥ ይችላሉ። የእርስዎን ተመራጭ የፍለጋ ፕሮግራም ካላዩ ከጣቢያቸው ላይ ፍለጋ ማከናወን ይችላሉ። በቅርቡ የተጎበኘ የፍለጋ ፕሮግራም ተብሎ በChromium ቅንብሮች ውስጥ ተዘርዝሮ ያዩታል እና ነባሪዎ ማድረግ ይችላሉ።</translation>
+<translation id="2852542171920460365">የእርስዎን የፍለጋ ፕሮግራም በማንኛውም ጊዜ በShuttle ቅንብሮች ውስጥ መለወጥ ይችላሉ። የእርስዎን ተመራጭ የፍለጋ ፕሮግራም ካላዩ ከጣቢያቸው ላይ ፍለጋ ማከናወን ይችላሉ። በቅርቡ የተጎበኘ የፍለጋ ፕሮግራም ተብሎ በShuttle ቅንብሮች ውስጥ ተዘርዝሮ ያዩታል እና ነባሪዎ ማድረግ ይችላሉ።</translation>
 <translation id="8188830160449823068">አይቢኤኤን ወደ መሣሪያ ብቻ ተቀምጧል</translation>
 <translation id="8189557652711717875">የሚመርጡት የፍለጋ ፕሮግራም እንደ ከፍለጋ አሞሌ እና በድረ-ገፆች ላይ ካሉ ምስሎች መፈለግ ለመሳሰሉ ባህሪያት ጥቅም ላይ ይውላል።</translation>
 <translation id="8190193880870196235">በቅጥያ የሚተዳደር</translation>
@@ -4312,7 +4312,7 @@
 <translation id="8316555157357957253">አሁን ጥቅም ላይ እየወለ ያለ</translation>
 <translation id="8319414634934645341">የተስፋፋ ቁልፍ አጠቃቀም</translation>
 <translation id="831997045666694187">ምሽት</translation>
-<translation id="8321448084834652864">የእርስዎን የፍለጋ ፕሮግራም በማንኛውም ጊዜ በChromium ቅንብሮች ውስጥ መለወጥ ይችላሉ።</translation>
+<translation id="332470347080865446">የእርስዎን የፍለጋ ፕሮግራም በማንኛውም ጊዜ በShuttle ቅንብሮች ውስጥ መለወጥ ይችላሉ።</translation>
 <translation id="8321476692217554900">ማሳወቂያዎች</translation>
 <translation id="8323505966575306467">ለይለፍ ቃላቶችዎ ተጨማሪ ጥበቃ ያክሉ</translation>
 <translation id="832547548543012337">ፓስፖርትን ይሰርዙ</translation>
@@ -4534,7 +4534,7 @@
 <translation id="8736059027199600831">30 x 40 ኢንች</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />፣ ትርን ይጫኑና ከዚያ በግል እንዲያስሱ ማንነት የማያሳውቅ ሁነታ መስኮት ለመክፈት አስገባን ይጫኑ</translation>
 <translation id="8737685506611670901"><ph name="PROTOCOL" /> አገናኞች በ<ph name="REPLACED_HANDLER_TITLE" /> ፈንታ ክፈት</translation>
-<translation id="8738058698779197622">ደህንነቱ የተጠበቀ ግንኙነት ለመመስረት፣ የእርስዎ ሰዓት በትክክል መቀናበር ያስፈልገዋል። ይህን የሆነበት ምክንያት የድር ጣቢያዎች ራሳቸውን ለማሳወቅ የሚጠቀሙባቸው የምስክር ወረቀቶች የሚሰሩት ለተወሰኑ ክፍለ ጊዜያቶች ብቻ ስለሆነ ነው። የእርስዎ መሣሪያ ሰዓት ልክ እንዳለመሆኑ መጠን Chromium እነዚህን ምስክር ወረቀቶች ሊያረጋግጣቸው አይችልም።</translation>
+<translation id="4709963803166322417">ደህንነቱ የተጠበቀ ግንኙነት ለመመስረት፣ የእርስዎ ሰዓት በትክክል መቀናበር ያስፈልገዋል። ይህን የሆነበት ምክንያት የድር ጣቢያዎች ራሳቸውን ለማሳወቅ የሚጠቀሙባቸው የምስክር ወረቀቶች የሚሰሩት ለተወሰኑ ክፍለ ጊዜያቶች ብቻ ስለሆነ ነው። የእርስዎ መሣሪያ ሰዓት ልክ እንዳለመሆኑ መጠን Shuttle እነዚህን ምስክር ወረቀቶች ሊያረጋግጣቸው አይችልም።</translation>
 <translation id="8740359287975076522">የ<ph name="HOST_NAME" /> &lt;abbr id="dnsDefinition"&gt;የዲኤንኤስ አድራሻ&lt;/abbr&gt; ሊገኝ አልተቻለም። ችግሩን በመመርመር ላይ።</translation>
 <translation id="874918643257405732">ይህን ትር ዕልባት ያድርጉት</translation>
 <translation id="8749274696886550762">ይህ ጣቢያ ትክክል አይመስልም</translation>
@@ -4743,7 +4743,7 @@
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />፣ Chromeን በiOS ቅንብሮች ውስጥ እንደ የስርዓቱ ነባሪ አሳሽ ለማዋቀር ትርን ከዛ አስገባን ይጫኑ</translation>
 <translation id="9101450247048146228">የካሜራ አጠቃቀም እና እንቅስቃሴ (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">መሳቢያ 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> የእርስዎን መረጃ ለመጠበቅ በመደበኝነት ምስጠራን ይጠቀማል። Chromium አሁን ከ<ph name="SITE" /> ጋር ለመገናኘት ሲሞክር ድር ጣቢያው ያልተለመዱ እና ትክክል ያልሆኑ ምስክርነቶችን መልሷል። ይህ አንድ አጥቂ <ph name="SITE" />ን አስመስሎ ለመቅረብ ሲሞክር ነው ወይም አንድ የWi-Fi መግቢያ ገፅ ግንኙነቱን ሲቋረጥ ሊከሰት ይችላል። Chromium ማንኛውም የውሂብ ልውውጥ ከመካሄዱ በፊት ግንኙነቱን ስላቋረጠው አሁንም የእርስዎ መረጃ ደህንነት የተጠበቀ ነው።</translation>
+<translation id="733422146945994640"><ph name="SITE" /> የእርስዎን መረጃ ለመጠበቅ በመደበኝነት ምስጠራን ይጠቀማል። Shuttle አሁን ከ<ph name="SITE" /> ጋር ለመገናኘት ሲሞክር ድር ጣቢያው ያልተለመዱ እና ትክክል ያልሆኑ ምስክርነቶችን መልሷል። ይህ አንድ አጥቂ <ph name="SITE" />ን አስመስሎ ለመቅረብ ሲሞክር ነው ወይም አንድ የWi-Fi መግቢያ ገፅ ግንኙነቱን ሲቋረጥ ሊከሰት ይችላል። Shuttle ማንኛውም የውሂብ ልውውጥ ከመካሄዱ በፊት ግንኙነቱን ስላቋረጠው አሁንም የእርስዎ መረጃ ደህንነት የተጠበቀ ነው።</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> መገለጫዎን ያስተዳድራል</translation>
 <translation id="9107467864910557787">የእርስዎ አሳሽ የሚተዳደረው በ<ph name="MANAGER" /> ነው</translation>
 <translation id="91108059142052966">ሚስጥራዊ ይዘት በሚታይበት ጊዜ የአስተዳዳሪ መመሪያ ከ <ph name="APPLICATION_TITLE" /> ጋር የማያ ገፅ መጋራትን ያሰናክላል</translation>

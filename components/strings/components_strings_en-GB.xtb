@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Provide additional details.</translation>
 <translation id="1016671033299705843">Add driving licence securely</translation>
 <translation id="1019413721762100891">Off</translation>
-<translation id="1021753677514347426">This problem happens because of a certificate that you or someone else installed on your device. The certificate is known to be used to monitor and intercept networks, and is not trusted by Chromium. While some legitimate cases for monitoring do exist, like on a school or company network, Chromium wants to make sure that you're aware it's happening, even if you can't stop it. Monitoring may happen in any browser or application that accesses the web.</translation>
+<translation id="768230658237634872">This problem happens because of a certificate that you or someone else installed on your device. The certificate is known to be used to monitor and intercept networks, and is not trusted by Shuttle. While some legitimate cases for monitoring do exist, like on a school or company network, Shuttle wants to make sure that you're aware it's happening, even if you can't stop it. Monitoring may happen in any browser or application that accesses the web.</translation>
 <translation id="1024111578869940408">Attackers sometimes mimic sites by making hard-to-see changes to the web address.</translation>
 <translation id="102916930470544692">Passkey</translation>
 <translation id="1030706264415084469"><ph name="URL" /> wants to permanently store large data on your device</translation>
@@ -809,7 +809,7 @@ This will otherwise be blocked by your privacy settings. This will allow the con
 <translation id="2348836501965732644">Manage your information or turn these suggestions off in Settings</translation>
 <translation id="2349957959687031096">Open Incognito tab button, activate to open a new Incognito tab to browse privately</translation>
 <translation id="2350796302381711542">Allow <ph name="HANDLER_HOSTNAME" /> to open all <ph name="PROTOCOL" /> links instead of <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">This server could not prove that it is <ph name="DOMAIN" /> because it is using a security certificate that is not trusted by Chromium or your system configuration for web traffic encryption. This may be caused by a misconfiguration or an attacker intercepting your connection.</translation>
+<translation id="4798228153726623290">This server could not prove that it is <ph name="DOMAIN" /> because it is using a security certificate that is not trusted by Shuttle or your system configuration for web traffic encryption. This may be caused by a misconfiguration or an attacker intercepting your connection.</translation>
 <translation id="2353297238722298836">Camera and microphone allowed</translation>
 <translation id="2354001756790975382">Other bookmarks</translation>
 <translation id="2355395290879513365">Attackers might be able to see the images that you’re looking at on this site and trick you by modifying them.</translation>
@@ -1046,7 +1046,7 @@ This will otherwise be blocked by your privacy settings. This will allow the con
 <translation id="2728127805433021124">Server's certificate is signed using a weak signature algorithm.</translation>
 <translation id="272937284275742856">Securely verifying your payment details…</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Running Connectivity Diagnostics<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Learn more about your search engine in Chromium</translation>
+<translation id="5216476641707900057">Learn more about your search engine in Shuttle</translation>
 <translation id="2731382536835015353">44 in x 68 in</translation>
 <translation id="2734797989819862638">Don't copy</translation>
 <translation id="2738771556149464852">Not After</translation>
@@ -1344,7 +1344,7 @@ To hide pay later options, go to <ph name="BEGIN_LINK" />payment settings<ph nam
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Enter <ph name="NUMBER_OF_DIGITS" />-digit verification code</translation>
 <translation id="3272643614306383237">Less than 1 MB. Some sites may load more slowly on your next visit.</translation>
-<translation id="3273738040255912340">Your administrator can make changes to your profile and browser remotely, analyse information about the browser through reporting and perform other necessary tasks. Activity on this device may also be managed outside of Chromium. <ph name="BEGIN_LINK" />Learn more<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Your administrator can make changes to your profile and browser remotely, analyse information about the browser through reporting and perform other necessary tasks. Activity on this device may also be managed outside of Shuttle. <ph name="BEGIN_LINK" />Learn more<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Save IBAN opened at full height.</translation>
 <translation id="327455571215090823">Smarter autofill, kept private</translation>
 <translation id="3280440382387335343">Update passport securely in Google Wallet</translation>
@@ -1613,7 +1613,7 @@ To hide pay later options, go to <ph name="BEGIN_LINK" />payment settings<ph nam
 <translation id="3742104862808477448">Help Chromium better understand and fill complex forms by securely processing data on Google's servers. Your info remains private and isn't reviewed by anyone.</translation>
 <translation id="3744111561329211289">Background sync</translation>
 <translation id="3744212718085287312">Make it more secure with a virtual card next time?</translation>
-<translation id="3744899669254331632">You cannot visit <ph name="SITE" /> right now because the website sent scrambled credentials that Chromium cannot process. Network errors and attacks are usually temporary, so this page will probably work later.</translation>
+<translation id="58356321557204990">You cannot visit <ph name="SITE" /> right now because the website sent scrambled credentials that Shuttle cannot process. Network errors and attacks are usually temporary, so this page will probably work later.</translation>
 <translation id="3745599309295009257">Your text and the content and URL of the page that you're writing on will be sent to Google, reviewed by humans and used to improve this feature. Avoid entering personal information (like medical or financial details) or using this tool on sites that contain private or sensitive information.</translation>
 <translation id="3748009735914587286">Metal (high gloss)</translation>
 <translation id="3748647055058832337">Not available for this merchant</translation>
@@ -2199,7 +2199,7 @@ To hide pay later options, go to <ph name="BEGIN_LINK" />payment settings<ph nam
 <translation id="4732860731866514038">Downloading <ph name="LANGUAGE" /> language pack… <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> wants to use your device's location</translation>
 <translation id="473414950835101501">Use your cameras</translation>
-<translation id="4736825316280949806">Restart Chromium</translation>
+<translation id="5713993618957185264">Restart Shuttle</translation>
 <translation id="4736934858538408121">Virtual card</translation>
 <translation id="473775607612524610">Update</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> search suggestion</translation>
@@ -2421,7 +2421,7 @@ To hide pay later options, go to <ph name="BEGIN_LINK" />payment settings<ph nam
 <translation id="5089810972385038852">State</translation>
 <translation id="5093232627742069661">Z-fold</translation>
 <translation id="5093417502834168387">Trouble signing in? Try another way</translation>
-<translation id="5094747076828555589">This server could not prove that it is <ph name="DOMAIN" />; its security certificate is not trusted by Chromium. This may be caused by a misconfiguration or an attacker intercepting your connection.</translation>
+<translation id="5713412634455044803">This server could not prove that it is <ph name="DOMAIN" />; its security certificate is not trusted by Shuttle. This may be caused by a misconfiguration or an attacker intercepting your connection.</translation>
 <translation id="5096066272198024688">Saving your info…</translation>
 <translation id="5097099694988056070">Device statistics such as CPU/RAM usage</translation>
 <translation id="5097468150760963273">27 in x 39 in</translation>
@@ -3173,7 +3173,7 @@ To hide pay later options, go to <ph name="BEGIN_LINK" />payment settings<ph nam
 <translation id="635394585025793320">I want to impress someone. Look for open tables for 2 at restaurants that everyone's talking about right now</translation>
 <translation id="6354918092619878358">SECG elliptic curve secp256r1 (aka ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, press Tab, then Enter for more tabs from other devices</translation>
-<translation id="6355392890578844978">This browser is not managed by a company or other organisation. Activity on this device may be managed outside of Chromium. <ph name="BEGIN_LINK" />Learn more<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">This browser is not managed by a company or other organisation. Activity on this device may be managed outside of Shuttle. <ph name="BEGIN_LINK" />Learn more<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">'<ph name="GROUP_TITLE_1" />' and '<ph name="GROUP_TITLE_2" />' tab groups no longer available</translation>
 <translation id="6358088212770985041">edit payment methods</translation>
 <translation id="6358450015545214790">What do these mean?</translation>
@@ -4138,7 +4138,7 @@ Additional details:
 <translation id="7995512525968007366">Not Specified</translation>
 <translation id="7997855386298213183">shared tabs</translation>
 <translation id="7999482381722829925">Create a prioritised, room-by-room deep cleaning checklist targeting commonly missed spots</translation>
-<translation id="8001912761979890298">This server could not prove that it is <ph name="DOMAIN" /> because it is using a security certificate that is not trusted by Chromium or your system configuration for web traffic encryption. This may be caused by a misconfiguration or an attacker intercepting your connection. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />View certificate<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">This server could not prove that it is <ph name="DOMAIN" /> because it is using a security certificate that is not trusted by Shuttle or your system configuration for web traffic encryption. This may be caused by a misconfiguration or an attacker intercepting your connection. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />View certificate<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Try closing other tabs or programmes to free up memory.</translation>
 <translation id="8002230960325005199">See related sites in a new tab</translation>
 <translation id="8003046808285812021">'<ph name="SEARCH_TERMS" />'</translation>
@@ -4229,7 +4229,7 @@ Additional details:
 <translation id="8175796834047840627">Chrome is offering to save your cards in your Google Account because you are signed in. You can change this behaviour in settings.</translation>
 <translation id="8176440868214972690">The administrator of this device has sent some info to the following websites, like settings or policies.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> was blocked because of content}other{<ph name="FILE_COUNT" /> files were blocked because of content}}</translation>
-<translation id="8186171296341598122">You can change your search engine at any time in Chromium's settings. If you don't see your preferred search engine, you can perform a search from their site. You'll see it listed as a recently visited search engine in Chromium settings, and you can make it your default.</translation>
+<translation id="2852542171920460365">You can change your search engine at any time in Shuttle's settings. If you don't see your preferred search engine, you can perform a search from their site. You'll see it listed as a recently visited search engine in Shuttle settings, and you can make it your default.</translation>
 <translation id="8188830160449823068">IBAN saved to device only</translation>
 <translation id="8189557652711717875">The search engine that you choose will be used for features such as searching from the address bar and from images on web pages.</translation>
 <translation id="8190193880870196235">Managed by an extension</translation>
@@ -4313,7 +4313,7 @@ Additional details:
 <translation id="8316555157357957253">Using now</translation>
 <translation id="8319414634934645341">Extended Key Usage</translation>
 <translation id="831997045666694187">Evening</translation>
-<translation id="8321448084834652864">You can change your search engine at any time in Chromium's settings.</translation>
+<translation id="332470347080865446">You can change your search engine at any time in Shuttle's settings.</translation>
 <translation id="8321476692217554900">notifications</translation>
 <translation id="8323505966575306467">Add more protection to your passwords</translation>
 <translation id="832547548543012337">Delete passport</translation>
@@ -4534,7 +4534,7 @@ Additional details:
 <translation id="8736059027199600831">30 in x 40 in</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, press tab, then enter to open a new incognito window to browse privately</translation>
 <translation id="8737685506611670901">Open <ph name="PROTOCOL" /> links instead of <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">To establish a secure connection, your clock needs to be set correctly. This is because the certificates that websites use to identify themselves are only valid for specific periods of time. Since your device's clock is incorrect, Chromium cannot verify these certificates.</translation>
+<translation id="4709963803166322417">To establish a secure connection, your clock needs to be set correctly. This is because the certificates that websites use to identify themselves are only valid for specific periods of time. Since your device's clock is incorrect, Shuttle cannot verify these certificates.</translation>
 <translation id="8740359287975076522"><ph name="HOST_NAME" />’s &lt;abbr id="dnsDefinition"&gt;DNS address&lt;/abbr&gt; could not be found. Diagnosing the problem.</translation>
 <translation id="874918643257405732">Bookmark this tab</translation>
 <translation id="8749274696886550762">This site doesn't seem right</translation>
@@ -4743,7 +4743,7 @@ Additional details:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, press Tab and then Enter to set Chrome as the system's default browser in iOS settings</translation>
 <translation id="9101450247048146228">Camera use and movement (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Tray 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> normally uses encryption to protect your information. When Chromium tried to connect to <ph name="SITE" /> this time, the website sent back unusual and incorrect credentials. This may happen when an attacker is trying to pretend to be <ph name="SITE" />, or a Wi-Fi sign-in screen has interrupted the connection. Your information is still secure because Chromium stopped the connection before any data was exchanged.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> normally uses encryption to protect your information. When Shuttle tried to connect to <ph name="SITE" /> this time, the website sent back unusual and incorrect credentials. This may happen when an attacker is trying to pretend to be <ph name="SITE" />, or a Wi-Fi sign-in screen has interrupted the connection. Your information is still secure because Shuttle stopped the connection before any data was exchanged.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> manages your profile</translation>
 <translation id="9107467864910557787">Your browser is managed by <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Administrator policy disables screen sharing with <ph name="APPLICATION_TITLE" /> when confidential content is visible</translation>

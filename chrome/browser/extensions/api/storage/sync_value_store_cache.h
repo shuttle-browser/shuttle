@@ -24,7 +24,7 @@ class ValueStoreFactory;
 
 namespace extensions {
 
-// ValueStoreCache for the SYNC namespace. Agent Chrome has no sync service, so
+// ValueStoreCache for the SYNC namespace. Shuttle has no sync service, so
 // chrome.storage.sync is served from a plain on-disk store (like the LOCAL
 // namespace) in its own directory, with the sync quotas enforced.
 class SyncValueStoreCache : public ValueStoreCache {

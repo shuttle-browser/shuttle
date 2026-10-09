@@ -197,7 +197,7 @@ void RemoteDebuggingServer::StopPipeHandler() {
 
 // static
 std::unique_ptr<RemoteDebuggingServer> RemoteDebuggingServer::Start() {
-  // Agent Chrome: the browser exists to be driven by agents, so the
+  // Shuttle: the browser exists to be driven by agents, so the
   // remote debugging server is always on. There is no approval prompt, no
   // "controlled by automated test software" infobar, no policy or default
   // user-data-dir gate. The server listens on localhost only and keeps the

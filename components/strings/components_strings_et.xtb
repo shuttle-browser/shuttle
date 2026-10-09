@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Esitage lisateavet</translation>
 <translation id="1016671033299705843">Juhiloa turvaliselt lisamine</translation>
 <translation id="1019413721762100891">Väljas</translation>
-<translation id="1021753677514347426">Selle probleemi põhjuseks on teie või kellegi teise installitud sertifikaat. Seda sertifikaati kasutatakse võrkude jälgimiseks ja ühenduste katkestamiseks ning Chromium ei usalda seda. Kuigi mõnel puhul on jälgimine seaduslik (nt kooli või ettevõtte võrgus), soovib Chromium tagada, et oleksite sellest teadlik ka juhul, kui te ei saa seda peatada. Jälgimine võib toimuda veebiühendusega brauseris või rakenduses.</translation>
+<translation id="768230658237634872">Selle probleemi põhjuseks on teie või kellegi teise installitud sertifikaat. Seda sertifikaati kasutatakse võrkude jälgimiseks ja ühenduste katkestamiseks ning Shuttle ei usalda seda. Kuigi mõnel puhul on jälgimine seaduslik (nt kooli või ettevõtte võrgus), soovib Shuttle tagada, et oleksite sellest teadlik ka juhul, kui te ei saa seda peatada. Jälgimine võib toimuda veebiühendusega brauseris või rakenduses.</translation>
 <translation id="1024111578869940408">Ründajad imiteerivad mõnikord saite, tehes veebiaadressis väikeseid raskesti märgatavaid muudatusi.</translation>
 <translation id="102916930470544692">Pääsuvõti</translation>
 <translation id="1030706264415084469"><ph name="URL" /> soovib suure koguse andmeid alaliselt teie seadmesse salvestada</translation>
@@ -809,7 +809,7 @@ Vastasel korral blokeeritakse see teie privaatsusseadetes. See võimaldab teie k
 <translation id="2348836501965732644">Hallake oma teavet või lülitage need soovitused seadetes välja.</translation>
 <translation id="2349957959687031096">Nupp Inkognito vahelehe avamine nupp, aktiveerige nupp, et avada uus inkognito vaheleht ja sirvida privaatselt</translation>
 <translation id="2350796302381711542">Kas lubada kasutajal <ph name="HANDLER_HOSTNAME" /> avada kõik protokolli <ph name="PROTOCOL" /> lingid kasutaja <ph name="REPLACED_HANDLER_TITLE" /> asemel?</translation>
-<translation id="2351718832234620840">See server ei suutnud tõestada, et tegemist on domeeniga <ph name="DOMAIN" />, kuna kasutab turbesertifikaati, mida Chromium või teie süsteemi veebiliikluse krüpteerimise seadistus ei usalda. Põhjuseks võib olla vale seadistus või teie ühendusele juurdepääsu saanud ründaja.</translation>
+<translation id="4798228153726623290">See server ei suutnud tõestada, et tegemist on domeeniga <ph name="DOMAIN" />, kuna kasutab turbesertifikaati, mida Shuttle või teie süsteemi veebiliikluse krüpteerimise seadistus ei usalda. Põhjuseks võib olla vale seadistus või teie ühendusele juurdepääsu saanud ründaja.</translation>
 <translation id="2353297238722298836">Kaamera ja mikrofon on lubatud</translation>
 <translation id="2354001756790975382">Muud järjehoidjad</translation>
 <translation id="2355395290879513365">Ründajad võivad näha pilte, mida sellel saidil vaatate, ja teid neid pilte muutes petta.</translation>
@@ -1046,7 +1046,7 @@ Vastasel korral blokeeritakse see teie privaatsusseadetes. See võimaldab teie k
 <translation id="2728127805433021124">Serveri sertifikaat on allkirjastatud nõrga allkirjaalgoritmiga.</translation>
 <translation id="272937284275742856">Teie makseteavet kontrollitakse turvaliselt...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Ühenduvusdiagnostika käitamine<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Lisateave otsingumootori kohta Chromiumis</translation>
+<translation id="5216476641707900057">Lisateave otsingumootori kohta Shuttleis</translation>
 <translation id="2731382536835015353">44 × 68 tolli</translation>
 <translation id="2734797989819862638">Ära kopeeri</translation>
 <translation id="2738771556149464852">Mitte pärast</translation>
@@ -1344,7 +1344,7 @@ Hiljem maksmise valikute peitmiseks avage <ph name="BEGIN_LINK" />makseseaded<ph
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Sisestage <ph name="NUMBER_OF_DIGITS" />-kohaline kinnituskood</translation>
 <translation id="3272643614306383237">Alla 1 MB. Mõned saidid võivad teie järgmise külastuse ajal aeglasemalt laadida.</translation>
-<translation id="3273738040255912340">Teie administraator saab teha teie profiilil ja brauseris distantsilt muudatusi, analüüsida aruandluse kaudu brauseri teavet ning teha muid vajalikke ülesandeid. Selle seadme tegevusi võidakse hallata ka väljaspool Chromiumi. <ph name="BEGIN_LINK" />Lisateave<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Teie administraator saab teha teie profiilil ja brauseris distantsilt muudatusi, analüüsida aruandluse kaudu brauseri teavet ning teha muid vajalikke ülesandeid. Selle seadme tegevusi võidakse hallata ka väljaspool Shuttlei. <ph name="BEGIN_LINK" />Lisateave<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">IBAN-i salvestamise leht on avatud täiskõrgusel.</translation>
 <translation id="327455571215090823">Nutikam automaattäide, mis jääb privaatseks</translation>
 <translation id="3280440382387335343">Passi turvaliselt Google Walletis värskendamine</translation>
@@ -1613,7 +1613,7 @@ Hiljem maksmise valikute peitmiseks avage <ph name="BEGIN_LINK" />makseseaded<ph
 <translation id="3742104862808477448">See aitab Chromiumil keerukaid vorme paremini mõista ja täita, töödeldes andmeid turvaliselt Google'i serverites. Teie teave jääb privaatseks ja keegi ei vaata seda üle.</translation>
 <translation id="3744111561329211289">Taustal sünkroonimine</translation>
 <translation id="3744212718085287312">Kas soovite selle muuta järgmisel korral virtuaalkaardiga veelgi turvalisemaks?</translation>
-<translation id="3744899669254331632">Te ei saa saiti <ph name="SITE" /> praegu külastada, sest veebisait saatis tagasi arusaamatud mandaadid, mida Chromium ei saa töödelda. Võrguvead ja -rünnakud on tavaliselt ajutised, nii et leht tõenäoliselt hiljem töötab.</translation>
+<translation id="58356321557204990">Te ei saa saiti <ph name="SITE" /> praegu külastada, sest veebisait saatis tagasi arusaamatud mandaadid, mida Shuttle ei saa töödelda. Võrguvead ja -rünnakud on tavaliselt ajutised, nii et leht tõenäoliselt hiljem töötab.</translation>
 <translation id="3745599309295009257">Teie tekst ja sisu ning lehe URL, millel kirjutate, saadetakse Google'ile, inimesed vaatavad selle üle ning seda kasutatakse selle funktsiooni täiustamiseks. Ärge sisestage isiklikku teavet (nt meditsiini- või finantsdetaile) ega kasutage seda tööriista saitidel, mis sisaldavad privaatset või delikaatset teavet.</translation>
 <translation id="3748009735914587286">Metall (kõrgläikega)</translation>
 <translation id="3748647055058832337">Ei ole selle kaupmehe jaoks saadaval</translation>
@@ -2199,7 +2199,7 @@ Hiljem maksmise valikute peitmiseks avage <ph name="BEGIN_LINK" />makseseaded<ph
 <translation id="4732860731866514038"><ph name="LANGUAGE" /> keele paketi allalaadimine... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> soovib kasutada teie seadme asukohta</translation>
 <translation id="473414950835101501">Kasutada teie kaameraid</translation>
-<translation id="4736825316280949806">Taaskäivitage Chromium</translation>
+<translation id="5713993618957185264">Taaskäivitage Shuttle</translation>
 <translation id="4736934858538408121">Virtuaalkaart</translation>
 <translation id="473775607612524610">Värskenda</translation>
 <translation id="4738601419177586157">Otsingusoovitus: <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Hiljem maksmise valikute peitmiseks avage <ph name="BEGIN_LINK" />makseseaded<ph
 <translation id="5089810972385038852">Osariik/Maakond</translation>
 <translation id="5093232627742069661">Z-kujuliselt volditud</translation>
 <translation id="5093417502834168387">Kas sisselogimisega on probleeme? Proovige mõnda muud võimalust</translation>
-<translation id="5094747076828555589">Server ei suutnud tõestada, et see on domeen <ph name="DOMAIN" />, Chromium ei usalda selle turvasertifikaati. Selle põhjuseks võib olla vale seadistus või ründaja, kes on sekkunud teie ühendusse.</translation>
+<translation id="5713412634455044803">Server ei suutnud tõestada, et see on domeen <ph name="DOMAIN" />, Shuttle ei usalda selle turvasertifikaati. Selle põhjuseks võib olla vale seadistus või ründaja, kes on sekkunud teie ühendusse.</translation>
 <translation id="5096066272198024688">Teie teabe salvestamine…</translation>
 <translation id="5097099694988056070">Seadme statistika, näiteks protsessori/muutmälu kasutus</translation>
 <translation id="5097468150760963273">27 × 39 tolli</translation>
@@ -3173,7 +3173,7 @@ Hiljem maksmise valikute peitmiseks avage <ph name="BEGIN_LINK" />makseseaded<ph
 <translation id="635394585025793320">Tahan kellelegi muljet avaldada. Otsi vabu laudu kahele restoranides, millest kõik praegu räägivad</translation>
 <translation id="6354918092619878358">SECG elliptilise kõveraga secp256r1 (ehk ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />; vajutage tabulaatorit ja seejärel sisestusklahvi, et näha rohkem vahelehti teistest seadmetest</translation>
-<translation id="6355392890578844978">Seda brauserit ei halda ettevõte ega muu organisatsioon. Selle seadme tegevusi võidakse hallata ka väljaspool Chromiumi. <ph name="BEGIN_LINK" />Lisateave<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Seda brauserit ei halda ettevõte ega muu organisatsioon. Selle seadme tegevusi võidakse hallata ka väljaspool Shuttlei. <ph name="BEGIN_LINK" />Lisateave<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Vahelehegrupid „<ph name="GROUP_TITLE_1" />“ ja „<ph name="GROUP_TITLE_2" />“ ei ole enam saadaval</translation>
 <translation id="6358088212770985041">muuda makseviise</translation>
 <translation id="6358450015545214790">Mida need tähendavad?</translation>
@@ -4138,7 +4138,7 @@ Lisateave:
 <translation id="7995512525968007366">Ei ole määratud</translation>
 <translation id="7997855386298213183">jagatud vahelehtede</translation>
 <translation id="7999482381722829925">Loo prioriseeritud, ruumipõhine põhjaliku koristamise kontroll-leht, mis keskendub sageli vahele jäävatele kohtadele</translation>
-<translation id="8001912761979890298">See server ei suutnud tõestada, et tegemist on domeeniga <ph name="DOMAIN" />, kuna kasutab turbesertifikaati, mida Chromium või teie süsteemi veebiliikluse krüpteerimise seadistus ei usalda. Põhjuseks võib olla vale seadistus või teie ühendusele juurdepääsu saanud ründaja. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Kuva sertifikaat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">See server ei suutnud tõestada, et tegemist on domeeniga <ph name="DOMAIN" />, kuna kasutab turbesertifikaati, mida Shuttle või teie süsteemi veebiliikluse krüpteerimise seadistus ei usalda. Põhjuseks võib olla vale seadistus või teie ühendusele juurdepääsu saanud ründaja. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Kuva sertifikaat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Sulgege muud vahelehed või programmid, et mälu vabastada.</translation>
 <translation id="8002230960325005199">Seotud saitide nägemine uuel vahelehel</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />”</translation>
@@ -4229,7 +4229,7 @@ Lisateave:
 <translation id="8175796834047840627">Chrome pakub võimalust salvestada kaardid teie Google'i kontole, kuna olete sisse logitud. Seda käitumist saab seadetes muuta.</translation>
 <translation id="8176440868214972690">Seadme administraator on järgmistele veebisaitidele teatud teavet saatnud, näiteks seadete ja eeskirjade teavet.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> blokeeriti sisu tõttu}other{<ph name="FILE_COUNT" /> faili blokeeriti sisu tõttu}}</translation>
-<translation id="8186171296341598122">Saate oma otsingumootorit Chromiumi seadetes alati muuta. Kui teie eelistatud otsingumootorit ei kuvata, võite selle saidil otsingu teha. Näete seda Chromiumi seadetes hiljuti külastatud otsingumootorite loendis ja saate selle oma vaikeotsingumootoriks määrata.</translation>
+<translation id="2852542171920460365">Saate oma otsingumootorit Shuttlei seadetes alati muuta. Kui teie eelistatud otsingumootorit ei kuvata, võite selle saidil otsingu teha. Näete seda Shuttlei seadetes hiljuti külastatud otsingumootorite loendis ja saate selle oma vaikeotsingumootoriks määrata.</translation>
 <translation id="8188830160449823068">IBAN salvestati ainult seadmesse</translation>
 <translation id="8189557652711717875">Teie valitavat otsingumootorit kasutatakse funktsioonide jaoks, nagu otsimine aadressiribalt ja veebilehtedel olevatelt piltidelt.</translation>
 <translation id="8190193880870196235">Haldab laiendus</translation>
@@ -4313,7 +4313,7 @@ Lisateave:
 <translation id="8316555157357957253">Kasutatakse praegu</translation>
 <translation id="8319414634934645341">Laiendatud võtmekasutus</translation>
 <translation id="831997045666694187">Õhtu</translation>
-<translation id="8321448084834652864">Saate oma otsingumootorit Chromiumi seadetes alati muuta.</translation>
+<translation id="332470347080865446">Saate oma otsingumootorit Shuttlei seadetes alati muuta.</translation>
 <translation id="8321476692217554900">märguanded</translation>
 <translation id="8323505966575306467">Lisage paroolidele täiendav kaitse</translation>
 <translation id="832547548543012337">Kustuta pass</translation>
@@ -4534,7 +4534,7 @@ Lisateave:
 <translation id="8736059027199600831">30 × 40 tolli</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, vajutage privaatse sirvimise jaoks uue inkognito akna avamiseks tabulaatorit ja seejärel sisestusklahvi</translation>
 <translation id="8737685506611670901">Ava protokolli <ph name="PROTOCOL" /> lingid teenuse <ph name="REPLACED_HANDLER_TITLE" /> asemel</translation>
-<translation id="8738058698779197622">Turvalise ühenduse loomiseks peab kell olema õigesti seadistatud. See on nii, kuna sertifikaadid, mida veebisaidid kasutavad enda tuvastamiseks, kehtivad ainult teatud perioodi jooksul. Kuna teie seadme kell on vale, ei saa Chromium neid sertifikaate kinnitada.</translation>
+<translation id="4709963803166322417">Turvalise ühenduse loomiseks peab kell olema õigesti seadistatud. See on nii, kuna sertifikaadid, mida veebisaidid kasutavad enda tuvastamiseks, kehtivad ainult teatud perioodi jooksul. Kuna teie seadme kell on vale, ei saa Shuttle neid sertifikaate kinnitada.</translation>
 <translation id="8740359287975076522">Hosti <ph name="HOST_NAME" /> &lt;abbr id="dnsDefinition"&gt;DNS-aadressi&lt;/abbr&gt; ei leitud. Probleemi diagnoositakse.</translation>
 <translation id="874918643257405732">Lisa vaheleht järjehoidjatesse</translation>
 <translation id="8749274696886550762">See sait ei tundu õige</translation>
@@ -4743,7 +4743,7 @@ Lisateave:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />. Vajutage tabulaatorit, seejärel sisestusklahvi, et määrata Chrome iOS-i seadetes süsteemi vaikebrauseriks</translation>
 <translation id="9101450247048146228">Kaamera kasutamine ja liigutamine (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Salv 1</translation>
-<translation id="9103872766612412690">Sait <ph name="SITE" /> kasutab teie teabe kaitsmiseks tavaliselt krüpteerimist. Kui Chromium püüdis seekord saidiga <ph name="SITE" /> ühendust luua, tagastas veebisait ebatavalised ja valed mandaadid. See võib juhtuda siis, kui ründaja proovib teeselda, et on sait <ph name="SITE" />, või WiFi sisselogimisekraan on ühenduse katkestanud. Teie teave on endiselt kaitstud, sest Chromium peatas ühenduse enne andmevahetust.</translation>
+<translation id="733422146945994640">Sait <ph name="SITE" /> kasutab teie teabe kaitsmiseks tavaliselt krüpteerimist. Kui Shuttle püüdis seekord saidiga <ph name="SITE" /> ühendust luua, tagastas veebisait ebatavalised ja valed mandaadid. See võib juhtuda siis, kui ründaja proovib teeselda, et on sait <ph name="SITE" />, või WiFi sisselogimisekraan on ühenduse katkestanud. Teie teave on endiselt kaitstud, sest Shuttle peatas ühenduse enne andmevahetust.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> haldab teie profiili</translation>
 <translation id="9107467864910557787">Teie brauserit haldab <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Administraatori eeskirjad keelavad ekraanikuva jagamise rakendusega <ph name="APPLICATION_TITLE" />, kui konfidentsiaalne sisu on nähtaval</translation>

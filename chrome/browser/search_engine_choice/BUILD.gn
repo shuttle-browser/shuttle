@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Agent Chrome: only the SearchEngineChoiceService keyed-service factory is
+# Shuttle: only the SearchEngineChoiceService keyed-service factory is
 # kept (TemplateURLService depends on the service). The choice-screen dialog
 # has been removed.
 

@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 
 #include <algorithm>
 #include <optional>
@@ -17,17 +17,17 @@
 #include "base/strings/string_util.h"
 #include "base/values.h"
 #include "base/version_info/version_info.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service_factory.h"
-#include "chrome/browser/agent_chrome/avatar_cache.h"
-#include "chrome/browser/agent_chrome/mcp_tools.h"
-#include "chrome/browser/agent_chrome/page_tools.h"
-#include "chrome/browser/agent_chrome/profile_registry.h"
-#include "chrome/browser/agent_chrome/session_cdp_filter.h"
-#include "chrome/browser/agent_chrome/session_manager.h"
+#include "chrome/browser/shuttle/shuttle_service_factory.h"
+#include "chrome/browser/shuttle/avatar_cache.h"
+#include "chrome/browser/shuttle/mcp_tools.h"
+#include "chrome/browser/shuttle/page_tools.h"
+#include "chrome/browser/shuttle/profile_registry.h"
+#include "chrome/browser/shuttle/session_cdp_filter.h"
+#include "chrome/browser/shuttle/session_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/web_contents.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -36,7 +36,7 @@ constexpr std::string_view kProtocolVersions[] = {"2025-06-18", "2025-03-26",
                                                   "2024-11-05"};
 
 constexpr char kInstructions[] =
-    "Agent Chrome runs agents in tabs. An agent has an identity (name, "
+    "Shuttle runs agents in tabs. An agent has an identity (name, "
     "color, avatar: shown on its tabs) and its own storage (logins "
     "persist). Flow: create-agent (once) -> open-session (agent id) -> "
     "allocate-tab -> snapshot / click / fill ... (page tools, take the "
@@ -97,7 +97,7 @@ base::DictValue InitializeResult(const base::DictValue* params) {
                "tools", base::DictValue().Set("listChanged", false)))
       .Set("serverInfo",
            base::DictValue()
-               .Set("name", "agent-chrome")
+               .Set("name", "shuttle")
                .Set("version", version_info::GetVersionNumber()))
       .Set("instructions", kInstructions);
 }
@@ -121,7 +121,7 @@ base::DictValue ToolsListResult() {
 
 }  // namespace
 
-AgentChromeService::AgentChromeService(Profile* profile)
+ShuttleService::ShuttleService(Profile* profile)
     : profiles_(std::make_unique<ProfileRegistry>(profile)),
       sessions_(std::make_unique<SessionManager>(profile, profiles_.get())),
       avatars_(std::make_unique<AvatarCache>(
@@ -135,14 +135,14 @@ AgentChromeService::AgentChromeService(Profile* profile)
       &PageToolManager::OnSessionClosed, base::Unretained(page_tools_.get())));
 }
 
-AgentChromeService::~AgentChromeService() = default;
+ShuttleService::~ShuttleService() = default;
 
 // static
-AgentChromeService* AgentChromeService::Get(Profile* profile) {
-  return AgentChromeServiceFactory::GetForProfile(profile);
+ShuttleService* ShuttleService::Get(Profile* profile) {
+  return ShuttleServiceFactory::GetForProfile(profile);
 }
 
-void AgentChromeService::HandleMcpRequest(const std::string& host,
+void ShuttleService::HandleMcpRequest(const std::string& host,
                                           const std::string& body,
                                           HttpResponseCallback callback) {
   const base::Value null_id;
@@ -242,7 +242,7 @@ void AgentChromeService::HandleMcpRequest(const std::string& host,
                 id->Clone(), std::move(callback)));
 }
 
-std::vector<AgentChromeService::AgentSummary> AgentChromeService::ListAgents()
+std::vector<ShuttleService::AgentSummary> ShuttleService::ListAgents()
     const {
   std::vector<AgentSummary> agents;
   for (const ProfileRegistry::Entry& entry : profiles_->List()) {
@@ -254,32 +254,32 @@ std::vector<AgentChromeService::AgentSummary> AgentChromeService::ListAgents()
   return agents;
 }
 
-std::string AgentChromeService::AgentOfTab(
+std::string ShuttleService::AgentOfTab(
     content::WebContents* contents) const {
   return sessions_->AgentOf(contents);
 }
 
-std::string AgentChromeService::AgentOfGroup(
+std::string ShuttleService::AgentOfGroup(
     const tab_groups::TabGroupId& group) const {
   return sessions_->AgentOfGroup(group);
 }
 
-gfx::ImageSkia AgentChromeService::AvatarOfGroup(
+gfx::ImageSkia ShuttleService::AvatarOfGroup(
     const tab_groups::TabGroupId& group) {
   std::string agent_id = sessions_->AgentOfGroup(group);
   return agent_id.empty() ? gfx::ImageSkia() : avatars_->Get(agent_id);
 }
 
-void AgentChromeService::HandTabToAgent(content::WebContents* contents,
+void ShuttleService::HandTabToAgent(content::WebContents* contents,
                                         const std::string& agent_id) {
   sessions_->HandTabToAgent(contents, agent_id);
 }
 
-void AgentChromeService::TakeBackTab(content::WebContents* contents) {
+void ShuttleService::TakeBackTab(content::WebContents* contents) {
   sessions_->TakeBackTab(contents);
 }
 
-void AgentChromeService::Shutdown() {
+void ShuttleService::Shutdown() {
   // Cookies set shortly before exit are otherwise lost (seen in the
   // partition spike with Browser.close).
   profiles_->FlushAllCookies();
@@ -287,7 +287,7 @@ void AgentChromeService::Shutdown() {
 }
 
 std::unique_ptr<content::DevToolsManagerDelegate::ConnectionFilter>
-AgentChromeService::CreateConnectionFilter(const std::string& session_id,
+ShuttleService::CreateConnectionFilter(const std::string& session_id,
                                            const std::string& target_id) {
   if (!session_id.empty()) {
     if (!sessions_->Get(session_id)) {
@@ -306,4 +306,4 @@ AgentChromeService::CreateConnectionFilter(const std::string& session_id,
                                             /*page_connection=*/true);
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">ਥੀਮ ਨੂੰ ਚਾਲੂ ਕਰੋ</translation>
 <translation id="1135328998467923690">ਪੈਕੇਜ ਅਵੈਧ ਹੈ: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">ਪਿਛਲਾ</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ਨੇ ਇੱਕ ਅਜਿਹੀ ਐਕਸਟੈਂਸ਼ਨ ਸ਼ਾਮਲ ਕੀਤੀ ਹੈ ਜੋ Chromium ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦੀ ਹੈ।
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ਨੇ ਇੱਕ ਅਜਿਹੀ ਐਕਸਟੈਂਸ਼ਨ ਸ਼ਾਮਲ ਕੀਤੀ ਹੈ ਜੋ Shuttle ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦੀ ਹੈ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ਨਿੱਜੀ ਕੁੰਜੀ ਨਿਰਯਾਤ ਕਰਨ ਵਿੱਚ ਅਸਫਲ।</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ਫ਼ਾਈਲ ਬਦਲੀ ਕਰਨਾ ਅਸਫਲ ਰਿਹਾ। ਇਹ ਦੇਖਣ ਲਈ ਜਾਂਚ ਕਰੋ ਕਿ ਫ਼ਾਈਲ ਵਰਤੋਂ ਵਿੱਚ ਹੈ ਜਾਂ ਨਹੀਂ।</translation>
 <translation id="3163201441334626963">ਵਿਕਰੇਤਾ <ph name="VENDOR_ID" /> ਤੋਂ ਅਗਿਆਤ ਉਤਪਾਦ <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">ਤੁਹਾਡੀ ਸੰਸਥਾ ਵੱਲੋਂ ਇਸ ਐਕਸਟੈਂਸ਼ਨ ਤੱਕ ਪਹੁੰਚ ਨੂੰ ਬਲਾਕ ਕੀਤਾ ਗਿਆ ਹੈ।</translation>
-<translation id="3183357154200327217">ਤੁਹਾਡੇ ਕੰਪਿਊਟਰ 'ਤੇ ਕਿਸੇ ਹੋਰ ਪ੍ਰੋਗਰਾਮ ਨੇ ਇੱਕ ਅਜਿਹਾ ਥੀਮ ਸ਼ਾਮਲ ਕੀਤਾ ਹੈ ਜੋ Chromium ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦਾ ਹੈ।
+<translation id="7846451875700317002">ਤੁਹਾਡੇ ਕੰਪਿਊਟਰ 'ਤੇ ਕਿਸੇ ਹੋਰ ਪ੍ਰੋਗਰਾਮ ਨੇ ਇੱਕ ਅਜਿਹਾ ਥੀਮ ਸ਼ਾਮਲ ਕੀਤਾ ਹੈ ਜੋ Shuttle ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦਾ ਹੈ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' ਮੈਨੀਫ਼ੈਸਟ ਵਿਸ਼ੇਸ਼ਤਾ ਵਾਲੀ ਐਪ ਨੂੰ ChromeOS ਕਿਓਸਕ ਮੋਡ ਵਿੱਚ ਸਥਾਪਤ ਕਰਨਾ ਲਾਜ਼ਮੀ ਹੈ</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">ਅਸਵੀਕਾਰ ਕਰੋ</translation>
 <translation id="3984413272403535372">ਐਕਸਟੈਂਸ਼ਨ ਸਾਈਨ-ਇਨ ਕਰਨ ਵੇਲੇ ਗੜਬੜ।</translation>
 <translation id="4014432863917027322">ਕੀ "<ph name="EXTENSION_NAME" />" ਨੂੰ ਰਿਪੇਅਰ ਕਰਨਾ ਹੈ?</translation>
-<translation id="4061696872429826774">ਤੁਹਾਡੇ ਕੰਪਿਊਟਰ 'ਤੇ ਕਿਸੇ ਹੋਰ ਪ੍ਰੋਗਰਾਮ ਨੇ ਇੱਕ ਅਜਿਹੀ ਐਕਸਟੈਂਸ਼ਨ ਸ਼ਾਮਲ ਕੀਤੀ ਹੈ ਜੋ Chromium ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦੀ ਹੈ।
+<translation id="7396546976728149133">ਤੁਹਾਡੇ ਕੰਪਿਊਟਰ 'ਤੇ ਕਿਸੇ ਹੋਰ ਪ੍ਰੋਗਰਾਮ ਨੇ ਇੱਕ ਅਜਿਹੀ ਐਕਸਟੈਂਸ਼ਨ ਸ਼ਾਮਲ ਕੀਤੀ ਹੈ ਜੋ Shuttle ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦੀ ਹੈ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">ਤੁਹਾਡੀ ਸੰਸਥਾ ਵੱਲੋਂ ਇਸ ਐਕਸਟੈਂਸ਼ਨ ਸ਼੍ਰੇਣੀ ਤੱਕ ਪਹੁੰਚ ਨੂੰ ਬਲਾਕ ਕੀਤਾ ਗਿਆ ਹੈ।</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" ਦੇ ਬਿਲਕੁਲ ਨਵੇਂ ਵਰਜਨ ਨੂੰ ਬੰਦ ਕੀਤਾ ਗਿਆ ਹੈ ਕਿਉਂਕਿ ਇਸਦੇ ਲਈ ਵੱਧ ਇਜਾਜ਼ਤਾਂ ਦੀ ਲੋੜ ਹੈ।</translation>
 <translation id="5242724311594467048">ਕੀ "<ph name="EXTENSION_NAME" />" ਨੂੰ ਚਾਲੂ ਕਰਨਾ ਹੈ?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium ਤੋਂ ਹਟਾਓ</translation>
+<translation id="2064155379595075287">Shuttle ਤੋਂ ਹਟਾਓ</translation>
 <translation id="5456409301717116725">ਇਸ ਐਕਸਟੈਂਸ਼ਨ ਵਿੱਚ ਮੁੱਖ ਫਾਈਲ '<ph name="KEY_PATH" />' ਸ਼ਾਮਲ ਹੈ। ਸੰਭਵ ਤੌਰ 'ਤੇ ਤੁਸੀਂ ਇਹ ਨਹੀਂ ਚਾਹੁੰਦੇ।</translation>
 <translation id="5485102783864353244">ਐਪ ਸ਼ਾਮਲ ਕਰੋ</translation>
 <translation id="5486326529110362464">ਨਿੱਜੀ ਕੁੰਜੀ ਲਈ ਇਨਪੁਟ ਵੈਲਯੂ ਮੌਜੂਦ ਹੋਣੀ ਚਾਹੀਦੀ ਹੈ।</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">ਇਸ ਮਸ਼ੀਨ ਦੇ ਪ੍ਰਬੰਧਕ ਨੂੰ <ph name="EXTENSION_NAME" /> ਇੰਸਟੌਲ ਕੀਤੇ ਜਾਣ ਦੀ ਲੋੜ ਹੈ। ਇਸਨੂੰ ਅਣਇੰਸਟੌਲ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ।</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> ਤੋਂ ਅਗਿਆਤ ਉਤਪਾਦ <ph name="PRODUCT_ID" /> (ਸੀਰੀਅਲ ਨੰਬਰ <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721">ਵਿਕਰੇਤਾ <ph name="VENDOR_ID" /> ਤੋਂ <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">ਤੁਹਾਡੇ ਕੰਪਿਊਟਰ 'ਤੇ ਕਿਸੇ ਹੋਰ ਪ੍ਰੋਗਰਾਮ ਨੇ ਇੱਕ ਅਜਿਹੀ ਐਪ ਸ਼ਾਮਲ ਕੀਤੀ ਹੈ ਜੋ Chromium ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦੀ ਹੈ।
+<translation id="5918487821361452587">ਤੁਹਾਡੇ ਕੰਪਿਊਟਰ 'ਤੇ ਕਿਸੇ ਹੋਰ ਪ੍ਰੋਗਰਾਮ ਨੇ ਇੱਕ ਅਜਿਹੀ ਐਪ ਸ਼ਾਮਲ ਕੀਤੀ ਹੈ ਜੋ Shuttle ਦੇ ਕੰਮ ਕਰਨ ਦੇ ਤਰੀਕੇ ਨੂੰ ਬਦਲ ਸਕਦੀ ਹੈ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">ਐਕਸਟੈਂਸ਼ਨ ਲੋਡ ਕਰਨ ਵਿੱਚ ਗੜਬੜ</translation>

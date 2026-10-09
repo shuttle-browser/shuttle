@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">提供額外詳情</translation>
 <translation id="1016671033299705843">安全地新增駕駛執照</translation>
 <translation id="1019413721762100891">關閉</translation>
-<translation id="1021753677514347426">此問題由您或其他人在裝置上安裝的憑證而導致。由於憑證曾用作監控及網絡攔截，因此不獲 Chromium 信任。雖然有些監控理由合理 (例如學校或公司網絡)，且無法停止有關監控，但 Chromium 仍希望就此通知您。任何使用網絡的瀏覽器和應用程式都可能受到監控。</translation>
+<translation id="768230658237634872">此問題由您或其他人在裝置上安裝的憑證而導致。由於憑證曾用作監控及網絡攔截，因此不獲 Shuttle 信任。雖然有些監控理由合理 (例如學校或公司網絡)，且無法停止有關監控，但 Shuttle 仍希望就此通知您。任何使用網絡的瀏覽器和應用程式都可能受到監控。</translation>
 <translation id="1024111578869940408">攻擊者有時會在網址中加入難以辨識的變更來仿冒網站。</translation>
 <translation id="102916930470544692">密鑰</translation>
 <translation id="1030706264415084469"><ph name="URL" /> 要求在您的裝置上永久儲存大量數據</translation>
@@ -809,7 +809,7 @@
 <translation id="2348836501965732644">在「設定」中管理資料或關閉這些建議</translation>
 <translation id="2349957959687031096">開啟無痕式分頁按鈕，啟動之後就可以開新嘅無痕式分頁私下瀏覽</translation>
 <translation id="2350796302381711542">要允許 <ph name="HANDLER_HOSTNAME" /> 取代 <ph name="REPLACED_HANDLER_TITLE" /> 開啟所有 <ph name="PROTOCOL" /> 連結嗎？</translation>
-<translation id="2351718832234620840">伺服器所用的安全性憑證未受 Chromium 或系統網絡流量加密設定的信任，因此無法證明屬於 <ph name="DOMAIN" /> 網域。這可能是由於設定錯誤，或有攻擊者攔截你的連線。</translation>
+<translation id="4798228153726623290">伺服器所用的安全性憑證未受 Shuttle 或系統網絡流量加密設定的信任，因此無法證明屬於 <ph name="DOMAIN" /> 網域。這可能是由於設定錯誤，或有攻擊者攔截你的連線。</translation>
 <translation id="2353297238722298836">已允許使用相機和麥克風</translation>
 <translation id="2354001756790975382">其他書籤</translation>
 <translation id="2355395290879513365">攻擊者可能可以看到您正在此網站上看到的圖片，然後透過修改圖片來欺騙您。</translation>
@@ -1046,7 +1046,7 @@
 <translation id="2728127805433021124">伺服器憑證以防護力較弱的簽章演算法簽署。</translation>
 <translation id="272937284275742856">正在安全地驗證付款資料…</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />執行連線診斷<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">進一步了解你喺 Chromium 入面嘅搜尋引擎</translation>
+<translation id="5216476641707900057">進一步了解你喺 Shuttle 入面嘅搜尋引擎</translation>
 <translation id="2731382536835015353">44 x 68 吋</translation>
 <translation id="2734797989819862638">不要複製</translation>
 <translation id="2738771556149464852">此日期之前</translation>
@@ -1344,7 +1344,7 @@
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">請輸入 <ph name="NUMBER_OF_DIGITS" /> 位數驗證碼</translation>
 <translation id="3272643614306383237">小於 1 MB。下次瀏覽部分網站時，載入速度可能會變慢。</translation>
-<translation id="3273738040255912340">管理員可遠端變更你的設定檔和瀏覽器、透過報告分析瀏覽器相關資料，以及執行其他必要工作。此裝置上的活動亦可透過 Chromium 以外的服務管理。<ph name="BEGIN_LINK" />瞭解詳情<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">管理員可遠端變更你的設定檔和瀏覽器、透過報告分析瀏覽器相關資料，以及執行其他必要工作。此裝置上的活動亦可透過 Shuttle 以外的服務管理。<ph name="BEGIN_LINK" />瞭解詳情<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">打開咗儲存 IBAN 嘅底部工作表，宜家顯示喺成個畫面。</translation>
 <translation id="327455571215090823">自動填入更智能，確保資料保密</translation>
 <translation id="3280440382387335343">安全地更新「Google 錢包」中的護照</translation>
@@ -1612,7 +1612,7 @@
 <translation id="3742104862808477448">透過在 Google 伺服器上安全處理資料，協助 Chromium 更有效瞭解並填寫複雜表格。你的資料會保密，不會送交任何人審核。</translation>
 <translation id="3744111561329211289">背景同步處理</translation>
 <translation id="3744212718085287312">下次要透過虛擬卡來提升卡的安全性嗎？</translation>
-<translation id="3744899669254331632">您目前無法瀏覽 <ph name="SITE" />，因為該網站傳送了 Chromium 無法處理的干擾憑證。網絡錯誤及攻擊行為通常是短暫性問題，因此這個網頁稍後應可正常運作。</translation>
+<translation id="58356321557204990">您目前無法瀏覽 <ph name="SITE" />，因為該網站傳送了 Shuttle 無法處理的干擾憑證。網絡錯誤及攻擊行為通常是短暫性問題，因此這個網頁稍後應可正常運作。</translation>
 <translation id="3745599309295009257">你在頁面上的文字和該頁內容與網址都會傳送給 Google、由真人審核，並用來改善此功能。因此，請勿輸入醫療或財務資料等個人資料，亦不要在含有私人或敏感資料的網站上使用此工具。</translation>
 <translation id="3748009735914587286">金屬 (高光面)</translation>
 <translation id="3748647055058832337">不適用於此商家</translation>
@@ -2198,7 +2198,7 @@
 <translation id="4732860731866514038">正在下載<ph name="LANGUAGE" />語言套件…<ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> 要求使用裝置的位置資料</translation>
 <translation id="473414950835101501">使用攝錄機</translation>
-<translation id="4736825316280949806">重新啟動 Chromium</translation>
+<translation id="5713993618957185264">重新啟動 Shuttle</translation>
 <translation id="4736934858538408121">虛擬卡</translation>
 <translation id="473775607612524610">更新</translation>
 <translation id="4738601419177586157">「<ph name="TEXT" />」搜尋建議</translation>
@@ -2420,7 +2420,7 @@
 <translation id="5089810972385038852">州</translation>
 <translation id="5093232627742069661">風琴摺</translation>
 <translation id="5093417502834168387">登入時發生問題嗎？改用其他方式</translation>
-<translation id="5094747076828555589">伺服器無法證明其屬於 <ph name="DOMAIN" /> 網域；其安全性憑證未取得 Chromium 的信任。這可能是因為設定錯誤，或有攻擊者攔截您的連線。</translation>
+<translation id="5713412634455044803">伺服器無法證明其屬於 <ph name="DOMAIN" /> 網域；其安全性憑證未取得 Shuttle 的信任。這可能是因為設定錯誤，或有攻擊者攔截您的連線。</translation>
 <translation id="5096066272198024688">儲存緊資料…</translation>
 <translation id="5097099694988056070">CPU/RAM 使用情況等裝置統計資料</translation>
 <translation id="5097468150760963273">27 x 39 吋</translation>
@@ -3172,7 +3172,7 @@
 <translation id="635394585025793320">我想給人留下深刻印象。尋找目前有 2 人空枱的熱門餐廳</translation>
 <translation id="6354918092619878358">SECG 橢圓曲線 secp256r1 (亦稱為 ANSI X9.62 prime256v1、NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />，㩒一下 Tab 鍵，然後㩒一下 Enter 鍵就可以睇多啲其他裝置嘅分頁</translation>
-<translation id="6355392890578844978">此瀏覽器未受任何公司或其他機構管理。此裝置上的活動可透過 Chromium 以外的服務管理。<ph name="BEGIN_LINK" />瞭解詳情<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">此瀏覽器未受任何公司或其他機構管理。此裝置上的活動可透過 Shuttle 以外的服務管理。<ph name="BEGIN_LINK" />瞭解詳情<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">「<ph name="GROUP_TITLE_1" />」和「<ph name="GROUP_TITLE_2" />」分頁群組已無法使用</translation>
 <translation id="6358088212770985041">編輯付款方法</translation>
 <translation id="6358450015545214790">我需要進一步資料</translation>
@@ -4137,7 +4137,7 @@
 <translation id="7995512525968007366">未指定　</translation>
 <translation id="7997855386298213183">已分享的分頁</translation>
 <translation id="7999482381722829925">建立按房間劃分優先順序的深度清潔檢查清單，重點放在容易忽略的地方</translation>
-<translation id="8001912761979890298">伺服器所用的安全性憑證未受 Chromium 或系統網絡流量加密設定的信任，因此無法證明屬於 <ph name="DOMAIN" /> 網域。這可能是由於設定錯誤，或有攻擊者攔截你的連線。<ph name="BEGIN_VIEW_CERTIFICATE_LINK" />查看憑證<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">伺服器所用的安全性憑證未受 Shuttle 或系統網絡流量加密設定的信任，因此無法證明屬於 <ph name="DOMAIN" /> 網域。這可能是由於設定錯誤，或有攻擊者攔截你的連線。<ph name="BEGIN_VIEW_CERTIFICATE_LINK" />查看憑證<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">嘗試關閉其他分頁或應用程式，以釋出記憶體。</translation>
 <translation id="8002230960325005199">在新分頁中查看相關網站</translation>
 <translation id="8003046808285812021">「<ph name="SEARCH_TERMS" />」</translation>
@@ -4228,7 +4228,7 @@
 <translation id="8175796834047840627">由於您已登入，因此 Chrome 提議將您的付款卡儲存至 Google 帳戶。您可以在設定中變更此行為。</translation>
 <translation id="8176440868214972690">此裝置的管理員已將一些資訊 (例如設定或政策) 傳送到以下網站。</translation>
 <translation id="818254048113802060">{0,plural, =1{「<ph name="FILE_NAME" />」因內容而被封鎖}other{<ph name="FILE_COUNT" /> 個檔案因內容而被封鎖}}</translation>
-<translation id="8186171296341598122">你可隨時在 Chromium 設定中變更搜尋引擎設定。如果看不到偏好的搜尋引擎，你可以在其網站上執行搜尋查詢。這會在 Chromium 設定中列為最近瀏覽過的搜尋引擎，並可以設定為預設值。</translation>
+<translation id="2852542171920460365">你可隨時在 Shuttle 設定中變更搜尋引擎設定。如果看不到偏好的搜尋引擎，你可以在其網站上執行搜尋查詢。這會在 Shuttle 設定中列為最近瀏覽過的搜尋引擎，並可以設定為預設值。</translation>
 <translation id="8188830160449823068">IBAN 僅儲存至裝置</translation>
 <translation id="8189557652711717875">你選擇的搜尋引擎將用於多種功能，例如網址列搜尋和網頁上的圖片搜尋。</translation>
 <translation id="8190193880870196235">由擴充程式管理</translation>
@@ -4312,7 +4312,7 @@
 <translation id="8316555157357957253">使用中</translation>
 <translation id="8319414634934645341">擴充金鑰使用方法</translation>
 <translation id="831997045666694187">傍晚</translation>
-<translation id="8321448084834652864">你可在 Chromium 設定中隨時變更搜尋引擎設定。</translation>
+<translation id="332470347080865446">你可在 Shuttle 設定中隨時變更搜尋引擎設定。</translation>
 <translation id="8321476692217554900">通知</translation>
 <translation id="8323505966575306467">加強保護密碼</translation>
 <translation id="832547548543012337">刪除護照</translation>
@@ -4533,7 +4533,7 @@
 <translation id="8736059027199600831">30 x 40 吋</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />，㩒一下 Tab 鍵，然後㩒一下 Enter 鍵就可以開新嘅無痕式視窗私下瀏覽</translation>
 <translation id="8737685506611670901">開啟<ph name="PROTOCOL" />連結 (而非 <ph name="REPLACED_HANDLER_TITLE" />)</translation>
-<translation id="8738058698779197622">如要建立安全連線，您時鐘的設定必須正確無誤；因為網站用於自我識別的憑證僅在特定時間內有效。由於您裝置的時鐘設定有誤，Chromium 無法驗證這些憑證。</translation>
+<translation id="4709963803166322417">如要建立安全連線，您時鐘的設定必須正確無誤；因為網站用於自我識別的憑證僅在特定時間內有效。由於您裝置的時鐘設定有誤，Shuttle 無法驗證這些憑證。</translation>
 <translation id="8740359287975076522">找不到 <ph name="HOST_NAME" /> 的 &lt;abbr id="dnsDefinition"&gt;網域名稱系統 (DNS) 地址&lt;/abbr&gt;。正在診斷問題。</translation>
 <translation id="874918643257405732">將此分頁加入書籤</translation>
 <translation id="8749274696886550762">此網站似乎有問題</translation>
@@ -4742,7 +4742,7 @@
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />，㩒一下 Tab 鍵，然後㩒一下 Enter 鍵就可以喺 iOS 設定度將 Chrome 設定做系統嘅預設瀏覽器</translation>
 <translation id="9101450247048146228">使用及調整攝錄機 (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">紙匣 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> 通常會透過加密方式保護您的資料。Chromium 這次嘗試連線至 <ph name="SITE" /> 時，該網站傳回異常且錯誤的憑證。這可能是因為有攻擊者試圖偽裝成 <ph name="SITE" />，或 Wi-Fi 登入畫面導致連線中斷。請放心，Chromium 未有交換任何資料並已終止連線，所以您的資料仍然安全。</translation>
+<translation id="733422146945994640"><ph name="SITE" /> 通常會透過加密方式保護您的資料。Shuttle 這次嘗試連線至 <ph name="SITE" /> 時，該網站傳回異常且錯誤的憑證。這可能是因為有攻擊者試圖偽裝成 <ph name="SITE" />，或 Wi-Fi 登入畫面導致連線中斷。請放心，Shuttle 未有交換任何資料並已終止連線，所以您的資料仍然安全。</translation>
 <translation id="9107199998619088551">你的設定檔由「<ph name="MANAGER" />」管理</translation>
 <translation id="9107467864910557787">您的瀏覽器由 <ph name="MANAGER" /> 管理</translation>
 <translation id="91108059142052966">當畫面上出現機密內容，管理員政策就會停用與「<ph name="APPLICATION_TITLE" />」分享螢幕畫面的功能</translation>

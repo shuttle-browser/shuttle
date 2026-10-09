@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Уключыць тэму</translation>
 <translation id="1135328998467923690">Пакет несапраўдны: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Задняя</translation>
-<translation id="1171831736360285680">Праграма "<ph name="PARTNER_NAME" />" дадала пашырэнне, якое можа змяніць працу Chromium.
+<translation id="6853317349523111347">Праграма "<ph name="PARTNER_NAME" />" дадала пашырэнне, якое можа змяніць працу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Не ўдалося экспартаваць закрыты ключ.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Не ўдалося замяніць файл "crx". Праверце, ці не выкарыстоўваецца гэты файл зараз.</translation>
 <translation id="3163201441334626963">Невядомы прадукт <ph name="PRODUCT_ID" /> ад пастаўшчыка <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Ваша арганізацыя заблакіравала доступ да гэтага пашырэння.</translation>
-<translation id="3183357154200327217">Іншая праграма на камп’ютары дадала тэму, якая можа змяніць працу Chromium.
+<translation id="7846451875700317002">Іншая праграма на камп’ютары дадала тэму, якая можа змяніць працу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Праграма з атрыбутам маніфеста "kiosk_only" павінна ўсталёўвацца ў рэжыме кіёска Chrome OS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Адмовіць</translation>
 <translation id="3984413272403535372">Памылка падчас подпісу пашырэння.</translation>
 <translation id="4014432863917027322">Выправіць "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Іншая праграма на камп’ютары дадала пашырэнне, якое можа змяніць працу Chromium.
+<translation id="7396546976728149133">Іншая праграма на камп’ютары дадала пашырэнне, якое можа змяніць працу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Ваша арганізацыя заблакіравала доступ да гэтай катэгорыі пашырэнняў.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Новая версія пашырэння "<ph name="EXTENSION_NAME" />" была выключана, бо яна патрабуе дадатковых дазволаў.</translation>
 <translation id="5242724311594467048">Уключыць пашырэнне "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Акно праграмы: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Выдаліць з Chromium</translation>
+<translation id="2064155379595075287">Выдаліць з Shuttle</translation>
 <translation id="5456409301717116725">Гэта пашырэнне змяшчае файл ключа "<ph name="KEY_PATH" />". Магчыма, вам не варта гэтага рабіць.</translation>
 <translation id="5485102783864353244">Дадаць праграму</translation>
 <translation id="5486326529110362464">Для закрытага ключа павінна існаваць значэнне ўводу.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Адміністратар гэтай прылады патрабуе, каб пашырэнне "<ph name="EXTENSION_NAME" />" было ўсталявана. Выдаліць яго нельга.</translation>
 <translation id="6027032947578871493">Невядомы прадукт <ph name="PRODUCT_ID" /> ад пастаўшчыка <ph name="VENDOR_NAME" /> (серыйны нумар <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> ад пастаўшчыка <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Іншая праграма на камп’ютары дадала праграму, якая можа змяніць працу Chromium.
+<translation id="5918487821361452587">Іншая праграма на камп’ютары дадала праграму, якая можа змяніць працу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Памылка загрузкі пашырэння</translation>

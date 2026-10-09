@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Aktivizo temën</translation>
 <translation id="1135328998467923690">Paketa është e pavlefshme: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Drejtuar drejt mjedisit</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ka shtuar një shtesë që mund të ndryshojë mënyrën se si funksionon Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ka shtuar një shtesë që mund të ndryshojë mënyrën se si funksionon Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Eksportimi i çelësit privat dështoi.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Zëvendësimi i skedarit crx dështoi. Kontrollo për të parë nëse skedari është në përdorim.</translation>
 <translation id="3163201441334626963">Produkt i panjohur <ph name="PRODUCT_ID" /> nga shitësi <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Qasja në këtë shtesë është bllokuar nga organizata jote.</translation>
-<translation id="3183357154200327217">Një program tjetër në kompjuterin tënd shtoi një temë që mund të ndryshojë mënyrën se si funksionon Chromium.
+<translation id="7846451875700317002">Një program tjetër në kompjuterin tënd shtoi një temë që mund të ndryshojë mënyrën se si funksionon Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplikacioni me atributin e manifestimit "kiosk_only" duhet të instalohet në modalitetin "kioskë" të ChromeOS.</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Refuzo</translation>
 <translation id="3984413272403535372">Gabim gjatë nënshkrimit të shtesës.</translation>
 <translation id="4014432863917027322">Të riparohet "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Një program tjetër në kompjuterin tënd shtoi një shtesë që mund të ndryshojë mënyrën se si funksionon Chromium.
+<translation id="7396546976728149133">Një program tjetër në kompjuterin tënd shtoi një shtesë që mund të ndryshojë mënyrën se si funksionon Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Qasja në këtë kategori shtesash është bllokuar nga organizata jote.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Versioni më i ri i "<ph name="EXTENSION_NAME" />" është çaktivizuar, sepse kërkon më shumë leje.</translation>
 <translation id="5242724311594467048">Të aktivizohet "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Pamja e aplikacionit: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Hiq nga Chromium</translation>
+<translation id="2064155379595075287">Hiq nga Shuttle</translation>
 <translation id="5456409301717116725">Kjo shtesë përfshin skedarin e çelësit "<ph name="KEY_PATH" />". Nuk mendoj se dëshiron ta bësh këtë.</translation>
 <translation id="5485102783864353244">Shto një aplikacion</translation>
 <translation id="5486326529110362464">Duhet të ekzistojë një vlerë hyrëse për çelësin privat.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administratori i kësaj makinerie kërkon instalimin e <ph name="EXTENSION_NAME" /> dhe ajo nuk mund të çinstalohet.</translation>
 <translation id="6027032947578871493">Produkt i panjohur <ph name="PRODUCT_ID" /> nga <ph name="VENDOR_NAME" /> (numri i serisë <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> nga shitësi <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Një program tjetër në kompjuterin tënd shtoi një aplikacion që mund të ndryshojë mënyrën se si funksionon Chromium.
+<translation id="5918487821361452587">Një program tjetër në kompjuterin tënd shtoi një aplikacion që mund të ndryshojë mënyrën se si funksionon Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Gabim në ngarkimin e shtesës</translation>

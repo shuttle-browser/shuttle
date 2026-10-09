@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_MCP_TOOLS_H_
-#define CHROME_BROWSER_AGENT_CHROME_MCP_TOOLS_H_
+#ifndef CHROME_BROWSER_SHUTTLE_MCP_TOOLS_H_
+#define CHROME_BROWSER_SHUTTLE_MCP_TOOLS_H_
 
 #include <string>
 #include <string_view>
@@ -13,9 +13,9 @@
 #include "base/memory/raw_ptr.h"
 #include "base/values.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
-class AgentChromeService;
+class ShuttleService;
 
 // Result of an MCP tool call (`CallToolResult`).
 struct ToolResult {
@@ -39,7 +39,7 @@ struct ToolResult {
 using ToolCallback = base::OnceCallback<void(ToolResult)>;
 
 struct ToolContext {
-  raw_ptr<AgentChromeService> service;
+  raw_ptr<ShuttleService> service;
   // Host header of the MCP request ("127.0.0.1:9222"), for CDP URLs.
   std::string host;
 };
@@ -58,6 +58,6 @@ struct Tool {
 
 base::span<const Tool> GetTools();
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_MCP_TOOLS_H_
+#endif  // CHROME_BROWSER_SHUTTLE_MCP_TOOLS_H_

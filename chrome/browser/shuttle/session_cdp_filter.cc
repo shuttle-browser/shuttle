@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/session_cdp_filter.h"
+#include "chrome/browser/shuttle/session_cdp_filter.h"
 
 #include <optional>
 #include <string_view>
@@ -16,7 +16,7 @@
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
-#include "chrome/browser/agent_chrome/session_manager.h"
+#include "chrome/browser/shuttle/session_manager.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/web_contents.h"
 #include "net/cookies/canonical_cookie.h"
@@ -26,7 +26,7 @@
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 #include "url/gurl.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -215,13 +215,13 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
     std::string target_id = StringParam(params, "targetId");
     if (!target_id.empty() && !Owns(target_id, "")) {
       SendError(*id, session,
-                "Agent Chrome: target " + target_id +
+                "Shuttle: target " + target_id +
                     " is not a tab of this agent session");
       return;
     }
   } else if (name == "Target.attachToBrowserTarget") {
     SendError(*id, session,
-              "Agent Chrome: an agent session can't attach to the browser");
+              "Shuttle: an agent session can't attach to the browser");
     return;
   } else if (name == "Target.createTarget") {
     CreateTarget(*id, session, params);
@@ -229,14 +229,14 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
   } else if (name == "Target.createBrowserContext" ||
              name == "Target.disposeBrowserContext") {
     SendError(*id, session,
-              "Agent Chrome: an agent session has one browser context, its "
+              "Shuttle: an agent session has one browser context, its "
               "agent's storage (create agents over MCP instead)");
     return;
   } else if (name == "Browser.close") {
     CloseSession(*id, session);
     return;
   } else if (name == "Browser.crash" || name == "Browser.crashGpuProcess") {
-    SendError(*id, session, "Agent Chrome: not allowed for agent sessions");
+    SendError(*id, session, "Shuttle: not allowed for agent sessions");
     return;
   } else if (!page_connection_ && !session &&
              base::StartsWith(name, "Storage.")) {
@@ -409,7 +409,7 @@ void SessionCdpFilter::CreateTarget(const base::Value& id,
                                     const std::string* session,
                                     const base::DictValue* params) {
   if (!manager_) {
-    SendError(id, session, "Agent Chrome is shutting down");
+    SendError(id, session, "Shuttle is shutting down");
     return;
   }
   allocating_ = true;
@@ -447,7 +447,7 @@ void SessionCdpFilter::GetCookies(const base::Value& id,
   network::mojom::CookieManager* cookies =
       manager_ ? manager_->CookieManagerOf(session_id_) : nullptr;
   if (!cookies) {
-    SendError(id, session, "Agent Chrome: no storage for this session");
+    SendError(id, session, "Shuttle: no storage for this session");
     return;
   }
   std::optional<std::string> session_copy =
@@ -519,7 +519,7 @@ void SessionCdpFilter::ClearCookies(const base::Value& id,
   network::mojom::CookieManager* cookies =
       manager_ ? manager_->CookieManagerOf(session_id_) : nullptr;
   if (!cookies) {
-    SendError(id, session, "Agent Chrome: no storage for this session");
+    SendError(id, session, "Shuttle: no storage for this session");
     return;
   }
   std::optional<std::string> session_copy =
@@ -589,4 +589,4 @@ void SessionCdpFilter::SendInternal(const std::string& method,
           base::WriteJson(message).value_or("{}")));
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

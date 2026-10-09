@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Activer le thème</translation>
 <translation id="1135328998467923690">Package incorrect : "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Caméra arrière</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> a ajouté une extension qui pourrait modifier le fonctionnement de Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> a ajouté une extension qui pourrait modifier le fonctionnement de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Échec d'exportation de la clé privée</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Échec lors du remplacement du fichier CRX. Vérifiez qu'il n'est pas en cours d'utilisation.</translation>
 <translation id="3163201441334626963">Produit inconnu <ph name="PRODUCT_ID" /> du fournisseur <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">L'accès à cette extension est bloqué par votre organisation.</translation>
-<translation id="3183357154200327217">Un autre programme sur votre ordinateur a ajouté un thème qui pourrait modifier le fonctionnement de Chromium.
+<translation id="7846451875700317002">Un autre programme sur votre ordinateur a ajouté un thème qui pourrait modifier le fonctionnement de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">L'appli dont le fichier manifeste comporte un attribut "kiosk_only" doit être installée en mode Kiosque pour Chrome OS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Refuser</translation>
 <translation id="3984413272403535372">Erreur lors de la signature de l'extension</translation>
 <translation id="4014432863917027322">Réparer "<ph name="EXTENSION_NAME" />" ?</translation>
-<translation id="4061696872429826774">Un autre programme sur votre ordinateur a ajouté une extension qui pourrait modifier le fonctionnement de Chromium.
+<translation id="7396546976728149133">Un autre programme sur votre ordinateur a ajouté une extension qui pourrait modifier le fonctionnement de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">L'accès à cette catégorie d'extensions est bloqué par votre organisation.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">La nouvelle version de "<ph name="EXTENSION_NAME" />" a été désactivée, car elle nécessite davantage d'autorisations.</translation>
 <translation id="5242724311594467048">Activer "<ph name="EXTENSION_NAME" />" ?</translation>
 <translation id="5356315618422219272">Appview : <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Supprimer de Chromium</translation>
+<translation id="2064155379595075287">Supprimer de Shuttle</translation>
 <translation id="5456409301717116725">Cette extension comprend le fichier clé <ph name="KEY_PATH" />. Vous ne voulez probablement pas poursuivre.</translation>
 <translation id="5485102783864353244">Ajouter l'application</translation>
 <translation id="5486326529110362464">La valeur d'entrée de la clé privée est obligatoire.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">L'administrateur de cet ordinateur exige que l'extension <ph name="EXTENSION_NAME" /> soit installée. Cette extension ne pourra pas être désinstallée.</translation>
 <translation id="6027032947578871493">Produit inconnu <ph name="PRODUCT_ID" /> fourni par <ph name="VENDOR_NAME" /> (numéro de série : <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> du fournisseur <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Un autre programme sur votre ordinateur a ajouté une appli qui pourrait modifier le fonctionnement de Chromium.
+<translation id="5918487821361452587">Un autre programme sur votre ordinateur a ajouté une appli qui pourrait modifier le fonctionnement de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Erreur lors du chargement de l'extension</translation>

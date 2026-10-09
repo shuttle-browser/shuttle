@@ -38,8 +38,8 @@ namespace {
 const char kDefaultServiceName[] = "Chrome Safe Storage";
 const char kDefaultAccountName[] = "Chrome";
 #else
-const char kDefaultServiceName[] = "Agent Chrome Safe Storage";
-const char kDefaultAccountName[] = "Agent Chrome";
+const char kDefaultServiceName[] = "Shuttle Safe Storage";
+const char kDefaultAccountName[] = "Shuttle";
 #endif
 
 // These values are persisted to logs. Entries should not be renumbered and

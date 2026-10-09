@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Aktivera temat</translation>
 <translation id="1135328998467923690">Paketet är ogiltigt: <ph name="ERROR_CODE" />.</translation>
 <translation id="1140871961407805696">Vänd mot omgivningen</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> har lagt till ett tillägg som kan ändra hur Chromium fungerar.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> har lagt till ett tillägg som kan ändra hur Shuttle fungerar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Det gick inte att exportera den privata nyckeln.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Det gick inte att ersätta CRX-filen. Kontrollera om filen används.</translation>
 <translation id="3163201441334626963">Okänd produkt (<ph name="PRODUCT_ID" />) från leverantören <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Åtkomst till detta tillägg blockeras av organisationen.</translation>
-<translation id="3183357154200327217">Ett annat program i datorn har lagt till ett tema som kan ändra hur Chromium fungerar.
+<translation id="7846451875700317002">Ett annat program i datorn har lagt till ett tema som kan ändra hur Shuttle fungerar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">En app med manifestattributet kiosk_only måste installeras i kioskläget i ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Neka</translation>
 <translation id="3984413272403535372">Ett fel uppstod när tillägget skulle signeras.</translation>
 <translation id="4014432863917027322">Vill du reparera <ph name="EXTENSION_NAME" />?</translation>
-<translation id="4061696872429826774">Ett annat program i datorn har lagt till ett tillägg som kan ändra hur Chromium fungerar.
+<translation id="7396546976728149133">Ett annat program i datorn har lagt till ett tillägg som kan ändra hur Shuttle fungerar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Åtkomst till den här tilläggskategorin blockeras av organisationen.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Den senaste versionen av <ph name="EXTENSION_NAME" /> har inaktiverats eftersom ytterligare rättigheter krävs.</translation>
 <translation id="5242724311594467048">Vill du aktivera <ph name="EXTENSION_NAME" />?</translation>
 <translation id="5356315618422219272">Appvy: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Ta bort från Chromium</translation>
+<translation id="2064155379595075287">Ta bort från Shuttle</translation>
 <translation id="5456409301717116725">Detta tillägg omfattar nyckelfilen <ph name="KEY_PATH" />. Du vill antagligen inte göra detta.</translation>
 <translation id="5485102783864353244">Lägg till app</translation>
 <translation id="5486326529110362464">Det angivna värdet för den privata nyckeln måste finnas.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administratören för den här datorn kräver att <ph name="EXTENSION_NAME" /> installeras. Det kan inte avinstalleras.</translation>
 <translation id="6027032947578871493">Okänd produkt (<ph name="PRODUCT_ID" />) från <ph name="VENDOR_NAME" /> (serienummer <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> från leverantören <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Ett annat program i datorn har lagt till en app som kan ändra hur Chromium fungerar.
+<translation id="5918487821361452587">Ett annat program i datorn har lagt till en app som kan ändra hur Shuttle fungerar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Ett fel uppstod när tillägg skulle läsas in</translation>

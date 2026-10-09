@@ -5,5 +5,5 @@
 declare_args() {
   # On Device Translation is still not supported on other platforms.
   # TODO(crbug.com/364795294): Support other platforms.
-  enable_on_device_translation = false  # Agent Chrome: removed
+  enable_on_device_translation = false  # Shuttle: removed
 }

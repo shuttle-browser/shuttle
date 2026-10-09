@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">თემის ჩართვა</translation>
 <translation id="1135328998467923690">პაკეტი არასწორია: „<ph name="ERROR_CODE" />“.</translation>
 <translation id="1140871961407805696">უკანა</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" />-მა დაამატა გაფართოება, რომელმაც შეიძლება შეცვალოს Chromium-ის მუშაობის პრინციპი.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" />-მა დაამატა გაფართოება, რომელმაც შეიძლება შეცვალოს Shuttle-ის მუშაობის პრინციპი.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">პირადი გასაღები ვერ დაექსპორტდა.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ფაილის შეცვლა ვერ მოხერხდა. შეამოწმეთ, რომ ფაილი არ გამოიყენება.</translation>
 <translation id="3163201441334626963">უცნობი პროდუქტი – <ph name="PRODUCT_ID" /> მომწოდებლისგან: <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">ამ გაფართოებაზე წვდომა დაბლოკილია თქვენი ორგანიზაციის მიერ.</translation>
-<translation id="3183357154200327217">სხვა პროგრამამ თქვენს კომპიუტერში დაამატა თემა, რომელმაც შეიძლება შეცვალოს Chromium-ის მუშაობის პრინციპი.
+<translation id="7846451875700317002">სხვა პროგრამამ თქვენს კომპიუტერში დაამატა თემა, რომელმაც შეიძლება შეცვალოს Shuttle-ის მუშაობის პრინციპი.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">აპი, რომლის მანიფესტის ატრიბუტიცაა „kiosk_only“, უნდა დაინსტალირდეს ChromeOS-ის კიოსკის რეჟიმში</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">უარყოფა</translation>
 <translation id="3984413272403535372">შეცდომა გაფართოების ხელმოწერისას.</translation>
 <translation id="4014432863917027322">აღვადგინოთ „<ph name="EXTENSION_NAME" />“?</translation>
-<translation id="4061696872429826774">სხვა პროგრამამ თქვენს კომპიუტერში დაამატა გაფართოება, რომელმაც შეიძლება შეცვალოს Chromium-ის მუშაობის პრინციპი.
+<translation id="7396546976728149133">სხვა პროგრამამ თქვენს კომპიუტერში დაამატა გაფართოება, რომელმაც შეიძლება შეცვალოს Shuttle-ის მუშაობის პრინციპი.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">ამ გაფართოების კატეგორიაზე წვდომა დაბლოკილია თქვენი ორგანიზაციის მიერ.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">„<ph name="EXTENSION_NAME" />“-ის უახლესი ვერსია გამორთულია, რადგან იგი მოითხოვს დამატებით ნებართვებს.</translation>
 <translation id="5242724311594467048">ჩავრთოთ "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">პროგრამის ხედი: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium-იდან ამოღება</translation>
+<translation id="2064155379595075287">Shuttle-იდან ამოღება</translation>
 <translation id="5456409301717116725">ეს გაფართოება შეიცავს მთვარ ფაილს „<ph name="KEY_PATH" />“. თქვენ ალბათ არ გსურთ ამის გაკეთება.</translation>
 <translation id="5485102783864353244">აპის დამატება</translation>
 <translation id="5486326529110362464">უნდა არსებობდეს შეყვანის მნიშვნელობა პირადი გასაღებისთვის.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">ამ მოწყობილობის ადმინისტრირებისთვის საჭიროა <ph name="EXTENSION_NAME" />-ის ინსტალაცია. მისი წაშლა დაუშვებელია.</translation>
 <translation id="6027032947578871493">უცნობი პროდუქტი – <ph name="PRODUCT_ID" /> მომწოდებლისგან: <ph name="VENDOR_NAME" /> (სერიული ნომერი: <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> მომწოდებლისგან: <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">სხვა პროგრამამ თქვენს კომპიუტერში დაამატა აპი, რომელმაც შეიძლება შეცვალოს Chromium-ის მუშაობის პრინციპი.
+<translation id="5918487821361452587">სხვა პროგრამამ თქვენს კომპიუტერში დაამატა აპი, რომელმაც შეიძლება შეცვალოს Shuttle-ის მუშაობის პრინციპი.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">გაფართოვების ჩატვირთვის ხარვეზი</translation>

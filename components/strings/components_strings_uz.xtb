@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Qo‘shimcha ma’lumotlarni to‘ldiring</translation>
 <translation id="1016671033299705843">Haydovchilik guvohnomasini xavfsiz kiriting</translation>
 <translation id="1019413721762100891">Oʻchiq</translation>
-<translation id="1021753677514347426">Bu muammo qurilmangizda oʻrnatilgan sertifikat sababli yuz berishi ham mumkin. Bunday sertifikat ishonchli hisoblanmaydi, chunki u odatda tarmoqdagi maʼlumotlarni kuzatish va olish uchun foydalaniladi. Bunday funksiyadan ish joylarida yoki taʼlim muassasalarida foydalanishadi. Nima boʻlganda ham biz ushbu sertifikat mavjudligi haqida sizni ogohlantirmoqchimiz. Har qanday internetga ulangan brauzer yoki ilovada faoliyatni kuzatish mumkin.</translation>
+<translation id="768230658237634872">Bu muammo qurilmangizda oʻrnatilgan sertifikat sababli yuz berishi ham mumkin. Bunday sertifikat ishonchli hisoblanmaydi, chunki u odatda tarmoqdagi maʼlumotlarni kuzatish va olish uchun foydalaniladi. Bunday funksiyadan ish joylarida yoki taʼlim muassasalarida foydalanishadi. Nima boʻlganda ham biz ushbu sertifikat mavjudligi haqida sizni ogohlantirmoqchimiz. Har qanday internetga ulangan brauzer yoki ilovada faoliyatni kuzatish mumkin.</translation>
 <translation id="1024111578869940408">Odatda shubhali kimsalar sayt manzilida kichik oʻzgarishlar kiritib, saytlarga soxta nusxalar yasaydi.</translation>
 <translation id="102916930470544692">Kalit</translation>
 <translation id="1030706264415084469"><ph name="URL" /> saytidan katta hajmdagi ma’lumotlarni mobil qurilmangizda saqlashga ruxsat so‘rovi keldi</translation>
@@ -808,7 +808,7 @@ Aks holda bu maxfiylik sozlamalaringiz tomonidan bloklanadi. Bunda siz ochgan sa
 <translation id="2348836501965732644">Maʼlumotlaringizni boshqaring yoki bu takliflarni Sozlamalar orqali faolsizlantiring</translation>
 <translation id="2349957959687031096">Inkognito varaq ochish tugmasi, yangi Inkognito varaqni ochish va Internetdan maxfiy foydalanish uchun faollashtiring</translation>
 <translation id="2350796302381711542">“<ph name="PROTOCOL" />” kabi havolalarga ishlov berish uchun <ph name="REPLACED_HANDLER_TITLE" /> o‘rniga <ph name="HANDLER_HOSTNAME" /> xizmati foydalanilsinmi?</translation>
-<translation id="2351718832234620840">Bu server <ph name="DOMAIN" /> veb-trafikni shifrlash uchun Chromium yoki tizim konfiguratsiyasida ishonchli xavfsizlik sertifikatidan foydalanishini tasdiqlay olmadi. Bunda konfiguratsiya xato sozlangan yoki ulanishingizga buzgʻunchi kirishga urinayotgan boʻlishi mumkin.</translation>
+<translation id="4798228153726623290">Bu server <ph name="DOMAIN" /> veb-trafikni shifrlash uchun Shuttle yoki tizim konfiguratsiyasida ishonchli xavfsizlik sertifikatidan foydalanishini tasdiqlay olmadi. Bunda konfiguratsiya xato sozlangan yoki ulanishingizga buzgʻunchi kirishga urinayotgan boʻlishi mumkin.</translation>
 <translation id="2353297238722298836">Kamera va mikrofondan foydalanish mumkin</translation>
 <translation id="2354001756790975382">Boshqa xatcho‘plar</translation>
 <translation id="2355395290879513365">Firibgarlar bu saytda siz ochgan rasmlarni ko‘rishi va bu rasmlarni qalbakilashtirib, o‘zgartirishi mumkin.</translation>
@@ -1045,7 +1045,7 @@ Aks holda bu maxfiylik sozlamalaringiz tomonidan bloklanadi. Bunda siz ochgan sa
 <translation id="2728127805433021124">Server sertifikati kuchsiz imzo algoritmi yordamida imzolangan.</translation>
 <translation id="272937284275742856">Toʻlov tafsilotlari xavfsiz tekshirilmoqda...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Aloqa diagnostikasini ishga tushiring<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Chromiumdagi qidiruv tizimi haqida batafsil</translation>
+<translation id="5216476641707900057">Shuttledagi qidiruv tizimi haqida batafsil</translation>
 <translation id="2731382536835015353">44 x 68 in</translation>
 <translation id="2734797989819862638">Nusxalanmasin</translation>
 <translation id="2738771556149464852">Bundan kechiktirmasdan</translation>
@@ -1341,7 +1341,7 @@ Keyinroq toʻlash usullarini berkitish uchun <ph name="BEGIN_LINK" />toʻlov soz
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187"><ph name="NUMBER_OF_DIGITS" /> xonali tasdiqlash kodini kiriting</translation>
 <translation id="3272643614306383237">1 MBdan kam Ayrim saytlar keyingi kirishda sekinroq yuklanishi mumkin.</translation>
-<translation id="3273738040255912340">Administrator profil va brauzer sozlamalarini masofadan oʻzgartirishi, brauzer maʼlumotlaridan iborat hisobotlarni tahlil qilishi hamda boshqa vazifalarni bajarishi mumkin. Bu qurilmadagi amallar Chromium tashqarisidan boshqarilishi mumkin. <ph name="BEGIN_LINK" />Batafsil<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Administrator profil va brauzer sozlamalarini masofadan oʻzgartirishi, brauzer maʼlumotlaridan iborat hisobotlarni tahlil qilishi hamda boshqa vazifalarni bajarishi mumkin. Bu qurilmadagi amallar Shuttle tashqarisidan boshqarilishi mumkin. <ph name="BEGIN_LINK" />Batafsil<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">IBAN saqlash paneli toʻliq hajmda ochildi</translation>
 <translation id="327455571215090823">Yanada qulay avtomatik kiritish — maxfiylik kafolatlangan</translation>
 <translation id="3280440382387335343">Google Walletda pasportni xavfsiz yangilang</translation>
@@ -1608,7 +1608,7 @@ Keyinroq toʻlash usullarini berkitish uchun <ph name="BEGIN_LINK" />toʻlov soz
 <translation id="3742104862808477448">Google serverlarida maʼlumotlarni xavfsiz qayta ishlash orqali Chromiumga murakkab shakllarni yaxshiroq tushunish va toʻldirishga yordam bering. Axborotingiz maxfiy qoladi va hech kim tomonidan tekshirilmaydi.</translation>
 <translation id="3744111561329211289">Orqa fonda sinxronlash</translation>
 <translation id="3744212718085287312">Keyingi safar himoyasi virtual karta bilan oshirilsinmi?</translation>
-<translation id="3744899669254331632"><ph name="SITE" /> saytiga o‘tib bo‘lmadi, chunki veb-sayt shifrlangan hisob ma’lumotlarini yubordi, Chromium ular bilan ishlay olmaydi. Tarmoq xatoligi yoki saytga hujumlar odatda vaqtinchalik bo‘ladi, shu sababli bu sahifa keyinroq ishga tushishi mumkin.</translation>
+<translation id="58356321557204990"><ph name="SITE" /> saytiga o‘tib bo‘lmadi, chunki veb-sayt shifrlangan hisob ma’lumotlarini yubordi, Shuttle ular bilan ishlay olmaydi. Tarmoq xatoligi yoki saytga hujumlar odatda vaqtinchalik bo‘ladi, shu sababli bu sahifa keyinroq ishga tushishi mumkin.</translation>
 <translation id="3745599309295009257">Matningiz, shuningdek, siz yozgan sahifaning mazmuni va URL manzili Googlega yuboriladi, ekspertlar koʻrib chiqadi va shu funksiyani yaxshilash uchun foydalaniladi. Tibbiy yoki moliyaviy maʼlumotlar kabi shaxsiy maʼlumotlarni kiritmang yoki shaxsiy yoki qaltis axborot bor saytlarda ushbu vositadan foydalanmang.</translation>
 <translation id="3748009735914587286">Metall (juda yaltiroq)</translation>
 <translation id="3748647055058832337">Bu sotuvchi uchun ishlamaydi</translation>
@@ -2194,7 +2194,7 @@ Keyinroq toʻlash usullarini berkitish uchun <ph name="BEGIN_LINK" />toʻlov soz
 <translation id="4732860731866514038"><ph name="LANGUAGE" /> tili paketi yuklab olinmoqda...<ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> sayti qurilmangiz joylashuvidan foydalanmoqchi</translation>
 <translation id="473414950835101501">Kameralardan foydalanish</translation>
-<translation id="4736825316280949806">Chromium’ni qayta ishga tushiring</translation>
+<translation id="5713993618957185264">Shuttle’ni qayta ishga tushiring</translation>
 <translation id="4736934858538408121">Virtual karta</translation>
 <translation id="473775607612524610">Yangilash</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> qidiruv taklifi</translation>
@@ -2416,7 +2416,7 @@ Keyinroq toʻlash usullarini berkitish uchun <ph name="BEGIN_LINK" />toʻlov soz
 <translation id="5089810972385038852">Shtat</translation>
 <translation id="5093232627742069661">Z shaklida taxlash</translation>
 <translation id="5093417502834168387">Kirishda muammo yuz berdimi? Boshqa usulni sinang</translation>
-<translation id="5094747076828555589">Bu <ph name="DOMAIN" /> serveri ekanligini tasdiqlab bo‘lmadi. Uning havfsizlik sertifikati Chromium‘ga ishonchli tuyulmayapti. Server noto‘g‘ri sozlangan yoki kimdir ma’lumotlaringizni o‘g‘rilashga urinayotgan bo‘lishi mumkin.</translation>
+<translation id="5713412634455044803">Bu <ph name="DOMAIN" /> serveri ekanligini tasdiqlab bo‘lmadi. Uning havfsizlik sertifikati Shuttle‘ga ishonchli tuyulmayapti. Server noto‘g‘ri sozlangan yoki kimdir ma’lumotlaringizni o‘g‘rilashga urinayotgan bo‘lishi mumkin.</translation>
 <translation id="5096066272198024688">Axborotingiz saqlanmoqda...</translation>
 <translation id="5097099694988056070">Protsessor yoki operativ xotiradan foydalanish (CPU/RAM) statistikasi</translation>
 <translation id="5097468150760963273">27 x 39 in</translation>
@@ -3167,7 +3167,7 @@ Keyinroq toʻlash usullarini berkitish uchun <ph name="BEGIN_LINK" />toʻlov soz
 <translation id="635394585025793320">Bittasini hursand qilmoqchiman. Hozirgi eng oldi restoranlarda 2 kishilik boʻsh stollarni qidir</translation>
 <translation id="6354918092619878358">SECG elliptik egri chiziqli secp256r1 (ANSI X9.62 prime256v1, NIST P-256) ochiq kalit algoritmi</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, boshqa qurilmalardagi varaqlarni koʻrish uchun avval Tab, keyin Enter tugmasini bosing</translation>
-<translation id="6355392890578844978">Bu brauzer kompaniya yoki tashkilot boshqaruvida emas. Bu qurilmadagi amallar Chromiumdan tashqarida boshqarilishi mumkin. <ph name="BEGIN_LINK" />Batafsil<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Bu brauzer kompaniya yoki tashkilot boshqaruvida emas. Bu qurilmadagi amallar Shuttledan tashqarida boshqarilishi mumkin. <ph name="BEGIN_LINK" />Batafsil<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">“<ph name="GROUP_TITLE_1" />” va “<ph name="GROUP_TITLE_2" />” varaqlar guruhlari endi mavjud emas</translation>
 <translation id="6358088212770985041">toʻlov usullarini oʻzgartirishga urinmoqda</translation>
 <translation id="6358450015545214790">Bu nima degani?</translation>
@@ -4131,7 +4131,7 @@ Batafsil axborot:
 <translation id="7995512525968007366">Ko‘rsatilmagan</translation>
 <translation id="7997855386298213183">umumiy varaqlar</translation>
 <translation id="7999482381722829925">Odatda eʼtibordan chetda qoladigan joylarga qaratilgan, xonalar boʻyicha tartiblangan chuqur tozalash rejasini tuzib ber</translation>
-<translation id="8001912761979890298">Bu server <ph name="DOMAIN" /> veb-trafikni shifrlash uchun Chromium yoki tizim konfiguratsiyasida ishonchli xavfsizlik sertifikatidan foydalanishini tasdiqlay olmadi. Bunda konfiguratsiya xato sozlangan yoki ulanishingizga buzgʻunchi kirishga urinayotgan boʻlishi mumkin. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Sertifikatni ochish<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Bu server <ph name="DOMAIN" /> veb-trafikni shifrlash uchun Shuttle yoki tizim konfiguratsiyasida ishonchli xavfsizlik sertifikatidan foydalanishini tasdiqlay olmadi. Bunda konfiguratsiya xato sozlangan yoki ulanishingizga buzgʻunchi kirishga urinayotgan boʻlishi mumkin. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Sertifikatni ochish<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Xotirani bo‘shatish uchun boshqa oyna va dasturlarni yopib ko‘ring</translation>
 <translation id="8002230960325005199">Aloqador saytlarni yangi varaqda ochish</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4222,7 +4222,7 @@ Batafsil axborot:
 <translation id="8175796834047840627">Hisobingizga kirganingiz uchun Chrome kartalarni Google hisobingizga saqlashni taklif qilmoqda. Buni sozlamalar orqali oʻzgartirish mumkin.</translation>
 <translation id="8176440868214972690">Bu qurilma administratori quyidagi saytlarga sozlamalar va qoidalar kabi ayrim axborotlarni yubordi.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> kontent tufayli taqiqlangan}other{<ph name="FILE_COUNT" /> ta fayl kontent tufayli taqiqlangan}}</translation>
-<translation id="8186171296341598122">Qidiruv vositasini istalgan vaqt Chromium sozlamalari orqali almashtirishingiz mumkin. Kerakli qidiruv tizimi chiqmasa, uning sayti orqali qidirish mumkin. U Chromium sozlamalarida yaqinda ochilgan qidiruv tizimi sifatida chiqadi va uni birlamchi qilib belgilashingiz mumkin.</translation>
+<translation id="2852542171920460365">Qidiruv vositasini istalgan vaqt Shuttle sozlamalari orqali almashtirishingiz mumkin. Kerakli qidiruv tizimi chiqmasa, uning sayti orqali qidirish mumkin. U Shuttle sozlamalarida yaqinda ochilgan qidiruv tizimi sifatida chiqadi va uni birlamchi qilib belgilashingiz mumkin.</translation>
 <translation id="8188830160449823068">IBAN raqami faqat qurilmada saqlanadi</translation>
 <translation id="8189557652711717875">Manzil qatori va veb-sahifalardagi rasmlardan qidirish kabi funksiyalar uchun tanlangan qidiruv tizimi ishlatiladi.</translation>
 <translation id="8190193880870196235">Kengaytma tomonidan boshqariladi</translation>
@@ -4306,7 +4306,7 @@ Batafsil axborot:
 <translation id="8316555157357957253">Hozir foydalanilmoqda</translation>
 <translation id="8319414634934645341">Kalitdan keng miqyosda foydalanish</translation>
 <translation id="831997045666694187">Kechqurun</translation>
-<translation id="8321448084834652864">Qidiruv vositasini istalgan vaqt Chromium sozlamalari orqali almashtirishingiz mumkin.</translation>
+<translation id="332470347080865446">Qidiruv vositasini istalgan vaqt Shuttle sozlamalari orqali almashtirishingiz mumkin.</translation>
 <translation id="8321476692217554900">bildirishnomalar</translation>
 <translation id="8323505966575306467">Parollarni qoʻshimcha himoyalang</translation>
 <translation id="832547548543012337">Pasportni oʻchirish</translation>
@@ -4527,7 +4527,7 @@ Batafsil axborot:
 <translation id="8736059027199600831">30 x 40 in</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, yangi Inkognito oynasini ochib internetni kuzatuvsiz kezish uchun avval Tab, keyin esa Enter tugmasini bosing</translation>
 <translation id="8737685506611670901">“<ph name="PROTOCOL" />” havolalari <ph name="REPLACED_HANDLER_TITLE" /> xizmati o‘rnida qo‘llanilsin</translation>
-<translation id="8738058698779197622">Tezkor havfsiz aloqa o‘rnatish uchun tizim soati to‘g‘ri sozlangan bo‘lishi kerak. Chunki sertifikatlar saytlarda haqiqiylik tekshiruvi uchun muddat cheklamalariga ega. Agar qurilmadagi vaqt noto‘g‘ri bo‘lsa, Chromium sertifikatlardan hali ham foydalanish mumkinligini tekshira olmaydi.</translation>
+<translation id="4709963803166322417">Tezkor havfsiz aloqa o‘rnatish uchun tizim soati to‘g‘ri sozlangan bo‘lishi kerak. Chunki sertifikatlar saytlarda haqiqiylik tekshiruvi uchun muddat cheklamalariga ega. Agar qurilmadagi vaqt noto‘g‘ri bo‘lsa, Shuttle sertifikatlardan hali ham foydalanish mumkinligini tekshira olmaydi.</translation>
 <translation id="8740359287975076522"><ph name="HOST_NAME" /> saytining &lt;abbr id="dnsDefinition"&gt;DNS manzili&lt;/abbr&gt; topilmadi. Muammo o‘rganilmoqda.</translation>
 <translation id="874918643257405732">Bu varaqni bukmarklash</translation>
 <translation id="8749274696886550762">Bu sayt shubhali koʻrinadi</translation>
@@ -4736,7 +4736,7 @@ Batafsil axborot:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, iOS sozlamalari orqali Chrome brauzerini tizimning asosiy brauzeri sifatida sozlash uchun avval Tab, keyin esa Enter tugmasini bosing.</translation>
 <translation id="9101450247048146228">Kameradan foydalanish va siljitish (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Tarnov 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> sayti ma’lumotlaringizni himoyalash uchun shifrlashdan foydalanadi, lekin hozir Chromium <ph name="SITE" /> saytiga ulanish uchun uringanda, ushbu sayt shubhali va noto‘g‘ri tasdiqlash ma’lumotlarini qaytarmoqda. Bunday holat zararli sayt o‘zini <ph name="SITE" /> o‘rnida ko‘rsatayotganda yoki Wi-Fi ulanishi uzilib qolganda yuz berishi mumkin. Shaxsiy ma’lumotlaringizga hech qanday xavf tug‘ilgani yo‘q, chunki Chromium aloqani ma’lumotlar almashinuvidan oldin uzib qo‘ydi.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> sayti ma’lumotlaringizni himoyalash uchun shifrlashdan foydalanadi, lekin hozir Shuttle <ph name="SITE" /> saytiga ulanish uchun uringanda, ushbu sayt shubhali va noto‘g‘ri tasdiqlash ma’lumotlarini qaytarmoqda. Bunday holat zararli sayt o‘zini <ph name="SITE" /> o‘rnida ko‘rsatayotganda yoki Wi-Fi ulanishi uzilib qolganda yuz berishi mumkin. Shaxsiy ma’lumotlaringizga hech qanday xavf tug‘ilgani yo‘q, chunki Shuttle aloqani ma’lumotlar almashinuvidan oldin uzib qo‘ydi.</translation>
 <translation id="9107199998619088551">Profilingiz <ph name="MANAGER" /> boshqaruvida</translation>
 <translation id="9107467864910557787">Brauzeringiz <ph name="MANAGER" /> tomonidan boshqariladi</translation>
 <translation id="91108059142052966">Maxfiy axborotlar koʻrinib turganda administrator ekran namoyishini <ph name="APPLICATION_TITLE" /> uchun taqiqlagan</translation>

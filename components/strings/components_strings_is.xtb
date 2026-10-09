@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Veita frekari upplýsingar</translation>
 <translation id="1016671033299705843">Bættu ökuskírteini við á öruggan hátt</translation>
 <translation id="1019413721762100891">Slökkt</translation>
-<translation id="1021753677514347426">Þetta vandamál tengist vottorði sem þú eða einhver annar setti upp í tækinu þínu. Vitað er að þetta vottorð er notað til að fylgjast með og grípa inn í netkerfi og Chromium treystir því ekki. Þrátt fyrir að notkun þess geti í einhverjum tilvikum átt rétt á sér, svo sem á skóla- eða fyrirtækjaneti, vill Chromium tryggja að þú vitir af því, þótt þú getir ekki komið í veg fyrir notkun þess. Eftirlit getur átt sér stað í öllum vöfrum eða forritum sem nota vefinn.</translation>
+<translation id="768230658237634872">Þetta vandamál tengist vottorði sem þú eða einhver annar setti upp í tækinu þínu. Vitað er að þetta vottorð er notað til að fylgjast með og grípa inn í netkerfi og Shuttle treystir því ekki. Þrátt fyrir að notkun þess geti í einhverjum tilvikum átt rétt á sér, svo sem á skóla- eða fyrirtækjaneti, vill Shuttle tryggja að þú vitir af því, þótt þú getir ekki komið í veg fyrir notkun þess. Eftirlit getur átt sér stað í öllum vöfrum eða forritum sem nota vefinn.</translation>
 <translation id="1024111578869940408">Stundum herma tölvuþrjótar eftir vefsvæðum með því að gera illgreinanlegar breytingar á vefslóðinni.</translation>
 <translation id="102916930470544692">Aðgangslykill</translation>
 <translation id="1030706264415084469"><ph name="URL" /> vill fá að geyma mikið magn gagna varanlega í tækinu þínu</translation>
@@ -809,7 +809,7 @@ Ef þú gerir það ekki loka persónuverndarstillingar þínar á þennan aðga
 <translation id="2348836501965732644">Stjórnaðu upplýsingunum þínum eða slökktu á þessum tillögum í Stillingum</translation>
 <translation id="2349957959687031096">Hnappurinn „Opna huliðsglugga“, virkjaðu til að opna nýjan huliðsglugga og fara huldu höfði</translation>
 <translation id="2350796302381711542">Leyfa <ph name="HANDLER_HOSTNAME" /> að opna alla <ph name="PROTOCOL" />-tengla í stað <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Þessi þjónn gat ekki sannað að hann væri <ph name="DOMAIN" /> vegna þess að hann notar öryggisvottorð sem Chromium eða kerfisstillingin þín treystir ekki fyrir dulkóðun vefumferðar. Þetta kann að orsakast af rangri stillingu eða tölvuþrjóti sem hefur komist inn í tenginguna.</translation>
+<translation id="4798228153726623290">Þessi þjónn gat ekki sannað að hann væri <ph name="DOMAIN" /> vegna þess að hann notar öryggisvottorð sem Shuttle eða kerfisstillingin þín treystir ekki fyrir dulkóðun vefumferðar. Þetta kann að orsakast af rangri stillingu eða tölvuþrjóti sem hefur komist inn í tenginguna.</translation>
 <translation id="2353297238722298836">Myndavél og hljóðnemi eru leyfð</translation>
 <translation id="2354001756790975382">Önnur bókamerki</translation>
 <translation id="2355395290879513365">Tölvuþrjótar gætu séð myndirnar sem þú skoðar á þessu vefsvæði og gabbað þig með því að breyta þeim.</translation>
@@ -1046,7 +1046,7 @@ Ef þú gerir það ekki loka persónuverndarstillingar þínar á þennan aðga
 <translation id="2728127805433021124">Vottorð þjónsins er undirritað með ótraustu undirritunarreikniriti.</translation>
 <translation id="272937284275742856">Staðfestir greiðsluupplýsingarnar þínar á öruggan hátt...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Keyrir greiningu á tengigetu<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Frekari upplýsingar um leitarvélina þína í Chromium</translation>
+<translation id="5216476641707900057">Frekari upplýsingar um leitarvélina þína í Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 to.</translation>
 <translation id="2734797989819862638">Ekki afrita</translation>
 <translation id="2738771556149464852">Ekki eftir</translation>
@@ -1344,7 +1344,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Sláðu inn <ph name="NUMBER_OF_DIGITS" /> tölustafa staðfestingarkóða</translation>
 <translation id="3272643614306383237">Minna en 1 MB. Sum vefsvæði kunna að hlaðast hægar í næstu heimsókn.</translation>
-<translation id="3273738040255912340">Kerfisstjórinn þinn getur breytt prófíl- og vafrastillingunum þínum með fjaraðgangi, greint upplýsingar um vafrann í gegnum tilkynningar og innt önnur nauðsynleg verkefni af hendi. Einnig er hægt er að hafa umsjón með aðgerðum í þessu tæki utan Chromium. <ph name="BEGIN_LINK" />Nánar<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Kerfisstjórinn þinn getur breytt prófíl- og vafrastillingunum þínum með fjaraðgangi, greint upplýsingar um vafrann í gegnum tilkynningar og innt önnur nauðsynleg verkefni af hendi. Einnig er hægt er að hafa umsjón með aðgerðum í þessu tæki utan Shuttle. <ph name="BEGIN_LINK" />Nánar<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">„Vista IBAN“, opið til fulls.</translation>
 <translation id="327455571215090823">Snjallari sjálfvirk útfylling, haldið lokuðu</translation>
 <translation id="3280440382387335343">Uppfærðu vegabréf á öruggan hátt í Google-veski</translation>
@@ -1613,7 +1613,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="3742104862808477448">Auðveldaðu Chromium að greina og fylla út flókin eyðublöð með því að vinna úr gögnum á öruggan hátt á þjónum Google. Upplýsingarnar þínar eru áfram lokaðar og enginn fer yfir þær.</translation>
 <translation id="3744111561329211289">Samstilling í bakgrunni</translation>
 <translation id="3744212718085287312">Auka öryggið með sýndarkorti næst?</translation>
-<translation id="3744899669254331632">Þú getur ekki heimsótt <ph name="SITE" /> í augnablikinu vegna þess að vefsvæðið sendi dulkóðuð skilríki sem Chromium getur ekki unnið úr. Netkerfisvillur og árásir ganga yfirleitt fljótt yfir svo síðan mun líklega virka aftur síðar.</translation>
+<translation id="58356321557204990">Þú getur ekki heimsótt <ph name="SITE" /> í augnablikinu vegna þess að vefsvæðið sendi dulkóðuð skilríki sem Shuttle getur ekki unnið úr. Netkerfisvillur og árásir ganga yfirleitt fljótt yfir svo síðan mun líklega virka aftur síðar.</translation>
 <translation id="3745599309295009257">Textinn, efni og vefslóð síðunnar sem þú skrifar á verða send til Google, yfirfarin af mennskum aðilum og notuð til að bæta þennan eiginleika. Forðastu að láta persónuupplýsingar fylgja (s.s. heilsufars- eða fjárhagsupplýsingar) eða nota verkfærið á vefsvæðum sem innihalda persónulegar eða viðkvæmar upplýsingar.</translation>
 <translation id="3748009735914587286">Málmur (háglans)</translation>
 <translation id="3748647055058832337">Ekki í boði fyrir þennan söluaðila</translation>
@@ -2199,7 +2199,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="4732860731866514038">Sækir tungumálapakka fyrir „<ph name="LANGUAGE" />“... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> vill nota staðsetningu tækisins</translation>
 <translation id="473414950835101501">Notaðu myndavélarnar</translation>
-<translation id="4736825316280949806">Endurræsa Chromium</translation>
+<translation id="5713993618957185264">Endurræsa Shuttle</translation>
 <translation id="4736934858538408121">Sýndarkort</translation>
 <translation id="473775607612524610">Uppfæra</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> leitartillaga</translation>
@@ -2421,7 +2421,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="5089810972385038852">Ríki</translation>
 <translation id="5093232627742069661">Z-brot</translation>
 <translation id="5093417502834168387">Vandamál með innskráningu? Prófa aðra leið</translation>
-<translation id="5094747076828555589">Þessi þjónn gat ekki sannað að hann væri <ph name="DOMAIN" />; Chromium treystir ekki öryggisvottorðinu hans. Þetta kann að orsakast af vanstillingu eða tölvuþrjóti sem komist hefur inn í tenginguna.</translation>
+<translation id="5713412634455044803">Þessi þjónn gat ekki sannað að hann væri <ph name="DOMAIN" />; Shuttle treystir ekki öryggisvottorðinu hans. Þetta kann að orsakast af vanstillingu eða tölvuþrjóti sem komist hefur inn í tenginguna.</translation>
 <translation id="5096066272198024688">Vistar upplýsingarnar þínar...</translation>
 <translation id="5097099694988056070">Talnagögn tækis eins og notkun örgjörva/vinnsluminnis</translation>
 <translation id="5097468150760963273">27 x 39 to.</translation>
@@ -3173,7 +3173,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="635394585025793320">Ég vil ganga í augun á manneskju. Leitaðu að lausum borðum fyrir tvo á veitingastöðum sem mikið er talað um þessa stundina</translation>
 <translation id="6354918092619878358">SECG sporger ferill secp256r1 (e.þ.s. ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, ýttu á dálkalykilinn (Tab) og svo á Enter til að sjá fleiri flipa úr öðrum tækjum</translation>
-<translation id="6355392890578844978">Þessi vafri er ekki í umsjón fyrirtækis eða stofnunar Hægt er að hafa umsjón með aðgerðum í þessu tæki utan Chromium. <ph name="BEGIN_LINK" />Nánar<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Þessi vafri er ekki í umsjón fyrirtækis eða stofnunar Hægt er að hafa umsjón með aðgerðum í þessu tæki utan Shuttle. <ph name="BEGIN_LINK" />Nánar<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Flipahóparnir „<ph name="GROUP_TITLE_1" />“ og „<ph name="GROUP_TITLE_2" />“ eru ekki tiltækir lengur</translation>
 <translation id="6358088212770985041">breyta greiðslumátum</translation>
 <translation id="6358450015545214790">Hvað þýðir þetta?</translation>
@@ -4137,7 +4137,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="7995512525968007366">Ekki tilgreint</translation>
 <translation id="7997855386298213183">samnýttir flipar</translation>
 <translation id="7999482381722829925">Búðu til gátlista fyrir ítarleg þrif sem er forgangsraðað eftir herbergjum og beinist helst að stöðum sem oft gleymast</translation>
-<translation id="8001912761979890298">Þessi þjónn gat ekki sannað að hann væri <ph name="DOMAIN" /> vegna þess að hann notar öryggisvottorð sem Chromium eða kerfisstillingin þín treystir ekki fyrir dulkóðun vefumferðar. Þetta kann að orsakast af rangri stillingu eða tölvuþrjóti sem hefur komist inn í tenginguna. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Skoða vottorð<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Þessi þjónn gat ekki sannað að hann væri <ph name="DOMAIN" /> vegna þess að hann notar öryggisvottorð sem Shuttle eða kerfisstillingin þín treystir ekki fyrir dulkóðun vefumferðar. Þetta kann að orsakast af rangri stillingu eða tölvuþrjóti sem hefur komist inn í tenginguna. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Skoða vottorð<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Prófaðu að loka öðrum forritum til að losa um minni.</translation>
 <translation id="8002230960325005199">Sjá tengd vefsvæði á nýjum flipa</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />“</translation>
@@ -4228,7 +4228,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="8175796834047840627">Chrome býður þér að vista kortin þín á Google-reikningnum vegna þess að þú ert innskráð(ur). Þú getur breytt þessu í stillingunum.</translation>
 <translation id="8176440868214972690">Stjórnandi tækisins hefur sent einhverjar upplýsingar á eftirfarandi vefsvæði, á borð við stillingar og reglur.</translation>
 <translation id="818254048113802060">{0,plural, =1{Lokað var á <ph name="FILE_NAME" /> vegna efnis}one{Lokað var á <ph name="FILE_COUNT" /> skrá vegna efnis}other{Lokað var á <ph name="FILE_COUNT" /> skrár vegna efnis}}</translation>
-<translation id="8186171296341598122">Þú getur skipt um leitarvél hvenær sem er í stillingum Chromium. Ef þú sérð ekki leitarvélina sem þú vilt nota geturðu leitað á vefsvæði hennar. Þú munt sjá hana á listanum yfir nýlega heimsóttar leitarvélar í stillingum Chromium og þú getur stillt hana sem sjálfgefna.</translation>
+<translation id="2852542171920460365">Þú getur skipt um leitarvél hvenær sem er í stillingum Shuttle. Ef þú sérð ekki leitarvélina sem þú vilt nota geturðu leitað á vefsvæði hennar. Þú munt sjá hana á listanum yfir nýlega heimsóttar leitarvélar í stillingum Shuttle og þú getur stillt hana sem sjálfgefna.</translation>
 <translation id="8188830160449823068">IBAN-númer aðeins vistað í tækinu</translation>
 <translation id="8189557652711717875">Leitarvélin sem þú velur verður notuð við eiginleika á borð við að leita frá veffangastikunni og frá myndum á vefsíðum.</translation>
 <translation id="8190193880870196235">Stjórnað af viðbót</translation>
@@ -4312,7 +4312,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="8316555157357957253">Í notkun núna</translation>
 <translation id="8319414634934645341">Útvíkkuð lyklanotkun</translation>
 <translation id="831997045666694187">Kvöld</translation>
-<translation id="8321448084834652864">Þú getur skipt um leitarvél hvenær sem er í stillingum Chromium.</translation>
+<translation id="332470347080865446">Þú getur skipt um leitarvél hvenær sem er í stillingum Shuttle.</translation>
 <translation id="8321476692217554900">tilkynningar</translation>
 <translation id="8323505966575306467">Bæta við meiri vernd fyrir aðgangsorðin þín</translation>
 <translation id="832547548543012337">Eyða vegabréfi</translation>
@@ -4533,7 +4533,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="8736059027199600831">30 x 40 to.</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, ýttu á Tab og svo Enter til að opna nýjan huliðsglugga og fara huldu höfði</translation>
 <translation id="8737685506611670901">Opna tengla fyrir <ph name="PROTOCOL" /> í staðinn fyrir <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Klukka tölvunnar þarf að vera rétt til að hægt sé að koma á öruggri nettengingu. Þetta er vegna þess að vottorðin sem vefsvæði nota til að auðkenna sig eru aðeins gild í tiltekinn tíma. Chromium getur ekki kannað vottorðin þar sem klukka tækisins er röng.</translation>
+<translation id="4709963803166322417">Klukka tölvunnar þarf að vera rétt til að hægt sé að koma á öruggri nettengingu. Þetta er vegna þess að vottorðin sem vefsvæði nota til að auðkenna sig eru aðeins gild í tiltekinn tíma. Shuttle getur ekki kannað vottorðin þar sem klukka tækisins er röng.</translation>
 <translation id="8740359287975076522">&lt;abbr id="dnsDefinition"&gt;DNS-slóð&lt;/abbr&gt; <ph name="HOST_NAME" /> fannst ekki. Vandamálið er í greiningu.</translation>
 <translation id="874918643257405732">Setja þennan flipa í bókamerki</translation>
 <translation id="8749274696886550762">Þetta vefsvæði virðist ekki vera rétt</translation>
@@ -4742,7 +4742,7 @@ Farðu í <ph name="BEGIN_LINK" />greiðslustillingar<ph name="END_LINK" /> til 
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, Ýttu á dálkalykilinn (Tab) og svo á Enter til að stilla Chrome sem sjálfgefinn vafra kerfisins í stillingum iOS</translation>
 <translation id="9101450247048146228">Notkun og hreyfingar myndavéla (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Bakki 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> notast yfirleitt við dulkóðun til að vernda upplýsingarnar þínar. Þegar Chromium reyndi að tengjast <ph name="SITE" /> í þetta skiptið sendi vefsvæðið óvenjuleg og röng skilríki til baka. Þetta getur gerst þegar tölvuþrjótur reynir að þykjast vera <ph name="SITE" /> eða innskráningarskjár fyrir Wi-Fi hefur truflað tenginguna. Upplýsingarnar þínar eru enn öruggar vegna þess að Chromium sleit tengingunni áður en skipst var á gögnum.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> notast yfirleitt við dulkóðun til að vernda upplýsingarnar þínar. Þegar Shuttle reyndi að tengjast <ph name="SITE" /> í þetta skiptið sendi vefsvæðið óvenjuleg og röng skilríki til baka. Þetta getur gerst þegar tölvuþrjótur reynir að þykjast vera <ph name="SITE" /> eða innskráningarskjár fyrir Wi-Fi hefur truflað tenginguna. Upplýsingarnar þínar eru enn öruggar vegna þess að Shuttle sleit tengingunni áður en skipst var á gögnum.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> hefur umsjón með prófílnum þínum</translation>
 <translation id="9107467864910557787"><ph name="MANAGER" /> hefur umsjón með vafranum þínum</translation>
 <translation id="91108059142052966">Reglur stjórnenda útiloka skjádeilingu með <ph name="APPLICATION_TITLE" /> þegar trúnaðarefni er sýnilegt</translation>

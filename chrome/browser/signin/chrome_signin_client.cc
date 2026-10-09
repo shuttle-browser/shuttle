@@ -149,12 +149,12 @@ class ChromeOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
   }
 
   signin::OAuthConsumer GetOAuthConsumerForSkillsService() const override {
-    // Skills were removed from Agent Chrome.
+    // Skills were removed from Shuttle.
     NOTREACHED();
   }
 
   signin::OAuthConsumer GetOAuthConsumerForContextualTasks() const override {
-    // Contextual tasks were removed from Agent Chrome.
+    // Contextual tasks were removed from Shuttle.
     NOTREACHED();
   }
 
@@ -417,7 +417,7 @@ SigninClient::SignoutDecision ChromeSigninClient::GetSignoutDecision(
 }
 
 void ChromeSigninClient::VerifySyncToken() {
-  // Agent Chrome: force-signin verification was removed.
+  // Shuttle: force-signin verification was removed.
 }
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -507,5 +507,5 @@ void ChromeSigninClient::LockForceSigninProfile(
 }
 
 void ChromeSigninClient::ShowUserManager(const base::FilePath& profile_path) {
-  // Agent Chrome: no profile picker.
+  // Shuttle: no profile picker.
 }

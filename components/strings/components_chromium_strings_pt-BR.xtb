@@ -3,29 +3,29 @@
 <translationbundle lang="pt-BR">
 <translation id="130631256467250065">As alterações entrarão em vigor na próxima vez que você reiniciar o dispositivo.</translation>
 <translation id="1965068424387304464">Dica do Chromium: salve senhas</translation>
-<translation id="261308610302996111">Acesse
-          o menu do Chromium &gt;
+<translation id="6181600115274209660">Acesse
+          o menu do Shuttle &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="SYSTEM_TITLE" />
           &gt;
           <ph name="PROXIES_TITLE" />
           e confirme se sua configuração está definida como "No proxy" ou "Direct".</translation>
-<translation id="275588974610408078">O relatório de erros não está disponível no Chromium.</translation>
-<translation id="3064346599913645280">Você está vendo uma página segura do Chromium</translation>
+<translation id="8019164406370393370">O relatório de erros não está disponível no Shuttle.</translation>
+<translation id="7131945667699137625">Você está vendo uma página segura do Shuttle</translation>
 <translation id="3255926992597692024">O Chromium está tentando modificar as configurações para preenchimento de formas de pagamento.</translation>
-<translation id="358997566136285270">Logotipo do Chromium</translation>
+<translation id="3757825924724354052">Logotipo do Shuttle</translation>
 <translation id="3837584850181228767">Dica do Chromium: Navegação Segura com Maior Proteção</translation>
 <translation id="4050599136622776556">O Chromium está tentando editar formas de pagamento.</translation>
-<translation id="4365115785552740256">O Chromium tornou-se possível graças ao projeto de código aberto <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> e outros <ph name="BEGIN_LINK_OSS" />softwares de código aberto<ph name="END_LINK_OSS" />.</translation>
-<translation id="4622039161600275920">Esta página foi bloqueada pelo Chromium</translation>
-<translation id="48558539577516920">Permitir que o Chromium acesse a rede nas configurações do seu
+<translation id="8988476603327209803">O Shuttle tornou-se possível graças ao projeto de código aberto <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> e outros <ph name="BEGIN_LINK_OSS" />softwares de código aberto<ph name="END_LINK_OSS" />.</translation>
+<translation id="2477509191993550467">Esta página foi bloqueada pelo Shuttle</translation>
+<translation id="4604973006041022107">Permitir que o Shuttle acesse a rede nas configurações do seu
           firewall ou antivírus.</translation>
 <translation id="4949828774841497663">Acesse Aplicativos &gt; Ajustes do Sistema &gt; Rede, selecione a
           rede ativa, clique no botão Detalhes… e desmarque todos os proxies
           que podem ter sido selecionados.</translation>
-<translation id="6480456350195404966">Acesse
-          o menu do Chromium &gt;
+<translation id="6683794703230411154">Acesse
+          o menu do Shuttle &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="SYSTEM_TITLE" />
@@ -34,14 +34,14 @@
           &gt;
           Rede e Internet &gt; Proxy
           e desmarque "Detectar configurações automaticamente".</translation>
-<translation id="648062525172759633">Estas páginas se destinam para uso dos desenvolvedores do Chromium e podem não ser mantidas ou testadas ativamente. Para ativá-las, acesse <ph name="BEGIN_LINK" />chrome://chrome-urls<ph name="LINK_END" />, clique no botão para ativar as páginas de depuração. Em seguida, volte para esta página.</translation>
+<translation id="262795629490583875">Estas páginas se destinam para uso dos desenvolvedores do Shuttle e podem não ser mantidas ou testadas ativamente. Para ativá-las, acesse <ph name="BEGIN_LINK" />chrome://chrome-urls<ph name="LINK_END" />, clique no botão para ativar as páginas de depuração. Em seguida, volte para esta página.</translation>
 <translation id="6549378540556750549">A criação do Chromium só foi possível graças a outro <ph name="BEGIN_LINK_OSS" />software de código aberto<ph name="END_LINK_OSS" />.</translation>
-<translation id="6613594504749178791">As alterações entrarão em vigor na próxima vez que você reiniciar o Chromium.</translation>
-<translation id="691026815377248078">O Chromium precisa acessar o Bluetooth para continuar o 
+<translation id="3051968423457057392">As alterações entrarão em vigor na próxima vez que você reiniciar o Shuttle.</translation>
+<translation id="7251378182421874967">O Shuttle precisa acessar o Bluetooth para continuar o 
  pareamento. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="7681937895330411637">A criação do Chromium só foi possível graças ao projeto de código aberto do <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" />.</translation>
-<translation id="7861509383340276692">Vá até
-          o menu do Chromium &gt;
+<translation id="6298583427647441415">Vá até
+          o menu do Shuttle &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="ADVANCED_TITLE" />
@@ -49,6 +49,6 @@
           Se isso não resolver o problema, recomendamos que você selecione essa opção
           novamente para melhorar o desempenho.</translation>
 <translation id="8597726643333341451">Você está em uma página segura do Chrome for Testing</translation>
-<translation id="8684913864886094367">O Chromium não foi encerrado corretamente.</translation>
+<translation id="1627254898104673072">O Shuttle não foi encerrado corretamente.</translation>
 <translation id="9183331186620388872">Dica do Chromium: pesquise com o Lens</translation>
 </translationbundle>

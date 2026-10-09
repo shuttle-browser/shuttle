@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Овозможи тема</translation>
 <translation id="1135328998467923690">Пакетот не е важечки: „<ph name="ERROR_CODE" />“.</translation>
 <translation id="1140871961407805696">Задна камера</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> додаде екстензија што може да го промени начинот на функционирање на Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> додаде екстензија што може да го промени начинот на функционирање на Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Не успеа да извезе приватен клуч.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Преместувањето на датотеката crx не успеа. Проверете за да видите дали датотеката е во употреба.</translation>
 <translation id="3163201441334626963">Непознат производ <ph name="PRODUCT_ID" /> од продавачот <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Вашата организација го блокира пристапот до екстензијава.</translation>
-<translation id="3183357154200327217">Друга програма на компјутерот додаде тема што може да го промени начинот на функционирање на Chromium.
+<translation id="7846451875700317002">Друга програма на компјутерот додаде тема што може да го промени начинот на функционирање на Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Апликацијата со атрибут на манифестот „kiosk_only“ мора да се инсталира во режим на киоск на Chrome OS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Одбиј</translation>
 <translation id="3984413272403535372">Грешка при потпишување наставка.</translation>
 <translation id="4014432863917027322">Поправи „<ph name="EXTENSION_NAME" />“?</translation>
-<translation id="4061696872429826774">Друга програма на компјутерот додаде екстензија што може да го промени начинот на функционирање на Chromium.
+<translation id="7396546976728149133">Друга програма на компјутерот додаде екстензија што може да го промени начинот на функционирање на Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Вашата организација го блокира пристапот до категоријава екстензии.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Најновата верзија на „<ph name="EXTENSION_NAME" />“ е оневозможена бидејќи бара повеќе дозволи.</translation>
 <translation id="5242724311594467048">Да се овозможи „<ph name="EXTENSION_NAME" />“?</translation>
 <translation id="5356315618422219272">Преглед на апликација: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Отстрани од Chromium</translation>
+<translation id="2064155379595075287">Отстрани од Shuttle</translation>
 <translation id="5456409301717116725">Оваа наставка ја вклучува датотеката со клуч „<ph name="KEY_PATH" />“. Веројатно не сакате да го направите ова.</translation>
 <translation id="5485102783864353244">Додај апликација</translation>
 <translation id="5486326529110362464">Мора да постои влезна вредност за приватен клуч.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Администраторот на оваа машина бара да има инсталирано <ph name="EXTENSION_NAME" />. Не може да се деинсталира.</translation>
 <translation id="6027032947578871493">Непознат производ <ph name="PRODUCT_ID" /> од <ph name="VENDOR_NAME" /> (сериски број <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> од продавачот <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Друга програма на компјутерот додаде апликација што може да го промени начинот на функционирање на Chromium.
+<translation id="5918487821361452587">Друга програма на компјутерот додаде апликација што може да го промени начинот на функционирање на Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Грешка при вчитување наставка</translation>

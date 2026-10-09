@@ -1448,7 +1448,7 @@ void PinTab(BrowserWindowInterface* browser) {
 }
 
 void GroupTab(BrowserWindowInterface* browser) {
-  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  // Shuttle: tab groups are agents, made over MCP, never by hand.
 }
 
 void NewSplitTab(BrowserWindowInterface* browser,
@@ -1488,7 +1488,7 @@ void AddNewTabToGroup(BrowserWindowInterface* browser) {
 }
 
 void CreateNewTabGroup(BrowserWindowInterface* browser) {
-  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  // Shuttle: tab groups are agents, made over MCP, never by hand.
 }
 
 void CloseTabGroup(BrowserWindowInterface* browser) {
@@ -1568,12 +1568,12 @@ void FocusPreviousTabGroup(BrowserWindowInterface* browser) {
 }
 
 bool CanGroupAllUngroupedTabs(BrowserWindowInterface* browser) {
-  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  // Shuttle: tab groups are agents, made over MCP, never by hand.
   return false;
 }
 
 bool GroupAllUngroupedTabs(BrowserWindowInterface* browser) {
-  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  // Shuttle: tab groups are agents, made over MCP, never by hand.
   return false;
 }
 
@@ -1635,7 +1635,7 @@ void PinKeyboardFocusedTab(BrowserWindowInterface* browser) {
 }
 
 void GroupKeyboardFocusedTab(BrowserWindowInterface* browser) {
-  // Agent Chrome: tab groups are agents, made over MCP, never by hand.
+  // Shuttle: tab groups are agents, made over MCP, never by hand.
 }
 
 void DuplicateKeyboardFocusedTab(BrowserWindowInterface* browser) {

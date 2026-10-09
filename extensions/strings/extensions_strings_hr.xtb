@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Omogući temu</translation>
 <translation id="1135328998467923690">Paket je nevažeći: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Prema okruženju</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> dodao je proširenje koje može promijeniti Chromiumov način rada.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> dodao je proširenje koje može promijeniti Shuttleov način rada.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Izvoz osobnog ključa nije uspio.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Zamjena CRX datoteke nije uspjela. Provjerite je li datoteka u upotrebi.</translation>
 <translation id="3163201441334626963">Nepoznati proizvod <ph name="PRODUCT_ID" /> dobavljača <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Vaša organizacija blokirala je pristup tom proširenju.</translation>
-<translation id="3183357154200327217">Drugi program na vašem računalu dodao je temu koja može promijeniti Chromiumov način rada.
+<translation id="7846451875700317002">Drugi program na vašem računalu dodao je temu koja može promijeniti Shuttleov način rada.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplikaciju s atributom manifesta kiosk_only potrebno je instalirati u načinu kioska Chrome OS-a</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Odbij</translation>
 <translation id="3984413272403535372">Došlo je do pogreške tijekom potpisivanja proširenja.</translation>
 <translation id="4014432863917027322">Popraviti "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Drugi program na vašem računalu dodao je proširenje koje može promijeniti Chromiumov način rada.
+<translation id="7396546976728149133">Drugi program na vašem računalu dodao je proširenje koje može promijeniti Shuttleov način rada.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Vaša organizacija blokirala je pristup ovoj kategoriji proširenja.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Najnovija verzija "<ph name="EXTENSION_NAME" />" onemogućena je jer zahtijeva više dozvola.</translation>
 <translation id="5242724311594467048">Omogućiti proširenje "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Uklanjanje iz Chromiuma</translation>
+<translation id="2064155379595075287">Uklanjanje iz Shuttlea</translation>
 <translation id="5456409301717116725">To proširenje uključuje ključnu datoteku "<ph name="KEY_PATH" />". Vjerojatno ne želite to učiniti.</translation>
 <translation id="5485102783864353244">Dodaj aplikaciju</translation>
 <translation id="5486326529110362464">Vrijednost unosa za osobni ključ mora postojati.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administrator ovog računala zahtijeva instaliranje proširenja <ph name="EXTENSION_NAME" /> i ono se ne može deinstalirati.</translation>
 <translation id="6027032947578871493">Nepoznati proizvod <ph name="PRODUCT_ID" />, <ph name="VENDOR_NAME" /> (serijski broj <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> dobavljača <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Drugi program na vašem računalu dodao je aplikaciju koja može promijeniti Chromiumov način rada.
+<translation id="5918487821361452587">Drugi program na vašem računalu dodao je aplikaciju koja može promijeniti Shuttleov način rada.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Pogreška prilikom učitavanja proširenja</translation>

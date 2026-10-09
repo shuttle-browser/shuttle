@@ -116,7 +116,7 @@ ExperimentalActorApiFunction::ExperimentalActorApiFunction() = default;
 ExperimentalActorApiFunction::~ExperimentalActorApiFunction() = default;
 
 bool ExperimentalActorApiFunction::PreRunValidation(std::string* error) {
-  // Agent Chrome: AiDataKeyedService and its Finch allowlists were removed.
+  // Shuttle: AiDataKeyedService and its Finch allowlists were removed.
   // Only the extension used by api_test/experimental_actor stays allowlisted,
   // and never on the stable channel.
   if (GetCurrentChannel() == version_info::Channel::STABLE) {

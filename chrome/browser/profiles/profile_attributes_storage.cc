@@ -1000,7 +1000,7 @@ void ProfileAttributesStorage::DownloadHighResAvatarIfNeeded(
 void ProfileAttributesStorage::DownloadHighResAvatar(
     size_t icon_index,
     const base::FilePath& profile_path) {
-  // Agent Chrome: high-res avatar downloads were removed (no profile UI).
+  // Shuttle: high-res avatar downloads were removed (no profile UI).
 }
 
 void ProfileAttributesStorage::SaveAvatarImageAtPath(

@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Sniegt papildu informāciju</translation>
 <translation id="1016671033299705843">Autovadītāja apliecības informācijas droša pievienošana</translation>
 <translation id="1019413721762100891">Izsl.</translation>
-<translation id="1021753677514347426">Šīs problēmas iemesls ir sertifikāts, kuru jūs vai kāds cits ir instalējis jūsu ierīcē. Ir zināms, ka šis sertifikāts tiek izmantots tīklu pārraudzībai un pārtveršanai, un pārlūks Chromium tam neuzticas. Lai gan pastāv daži likumīgi pārraudzības gadījumi, piemēram, skolas vai uzņēmuma tīklā, pārlūks Chromium vēlas pārliecināties, ka esat par to informēts, pat ja nevarat to apturēt. Pārraudzība var notikt jebkurā pārlūkā vai lietojumprogrammā ar piekļuvi tīmeklim.</translation>
+<translation id="768230658237634872">Šīs problēmas iemesls ir sertifikāts, kuru jūs vai kāds cits ir instalējis jūsu ierīcē. Ir zināms, ka šis sertifikāts tiek izmantots tīklu pārraudzībai un pārtveršanai, un pārlūks Shuttle tam neuzticas. Lai gan pastāv daži likumīgi pārraudzības gadījumi, piemēram, skolas vai uzņēmuma tīklā, pārlūks Shuttle vēlas pārliecināties, ka esat par to informēts, pat ja nevarat to apturēt. Pārraudzība var notikt jebkurā pārlūkā vai lietojumprogrammā ar piekļuvi tīmeklim.</translation>
 <translation id="1024111578869940408">Uzbrucēji dažkārt atdarina vietnes, veicot grūti pamanāmas izmaiņas tīmekļa adresē.</translation>
 <translation id="102916930470544692">Piekļuves atslēga</translation>
 <translation id="1030706264415084469">Vietnē <ph name="URL" /> tika pieprasīta atļauja pastāvīgi glabāt jūsu ierīcē lielu datu apjomu.</translation>
@@ -809,7 +809,7 @@ Pretējā gadījumā šī iespēja būtu liegta saskaņā ar jūsu konfidenciali
 <translation id="2348836501965732644">Pārvaldiet savu informāciju vai izslēdziet šos ieteikumus sadaļā Iestatījumi.</translation>
 <translation id="2349957959687031096">Poga “Atvērt inkognito cilni”. Aktivizējiet, lai atvērtu jaunu inkognito cilni privātai pārlūkošanai.</translation>
 <translation id="2350796302381711542">Vai ļaut <ph name="HANDLER_HOSTNAME" /> atvērt visas <ph name="PROTOCOL" /> saites <ph name="REPLACED_HANDLER_TITLE" /> vietā?</translation>
-<translation id="2351718832234620840">Šis serveris nevarēja pierādīt, ka šī ir vietne <ph name="DOMAIN" />, jo tajā tiek izmantots drošības sertifikāts, kas netiek uzskatīts par uzticamu pārlūkā Chromium vai jūsu sistēmas konfigurācijā, lai šifrētu tīmekļa datplūsmu. Šī problēma var rasties nepareizas konfigurācijas dēļ vai tādēļ, ka kāds uzbrucējs ir pārtvēris jūsu savienojumu.</translation>
+<translation id="4798228153726623290">Šis serveris nevarēja pierādīt, ka šī ir vietne <ph name="DOMAIN" />, jo tajā tiek izmantots drošības sertifikāts, kas netiek uzskatīts par uzticamu pārlūkā Shuttle vai jūsu sistēmas konfigurācijā, lai šifrētu tīmekļa datplūsmu. Šī problēma var rasties nepareizas konfigurācijas dēļ vai tādēļ, ka kāds uzbrucējs ir pārtvēris jūsu savienojumu.</translation>
 <translation id="2353297238722298836">Kameras un mikrofona lietošana ir atļauta</translation>
 <translation id="2354001756790975382">Citas grāmatzīmes</translation>
 <translation id="2355395290879513365">Uzbrucēji var skatīt attēlus, kurus skatāt šajā vietnē, un apmānīt jūs, pārveidojot šos attēlus.</translation>
@@ -1046,7 +1046,7 @@ Pretējā gadījumā šī iespēja būtu liegta saskaņā ar jūsu konfidenciali
 <translation id="2728127805433021124">Servera sertifikāts ir parakstīts, izmantojot vāju paraksta algoritmu.</translation>
 <translation id="272937284275742856">Notiek droša jūsu maksājumu informācijas pārbaude...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Palaist savienojamības diagnostiku<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Uzzināt vairāk par meklētājprogrammu, ko izmantojat pārlūkā Chromium</translation>
+<translation id="5216476641707900057">Uzzināt vairāk par meklētājprogrammu, ko izmantojat pārlūkā Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 collas</translation>
 <translation id="2734797989819862638">Nekopēt</translation>
 <translation id="2738771556149464852">Nevis pēc</translation>
@@ -1344,7 +1344,7 @@ Lai paslēptu vēlākas maksāšanas iespējas, pārejiet uz <ph name="BEGIN_LIN
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Ievadiet <ph name="NUMBER_OF_DIGITS" /> ciparu verifikācijas kodu</translation>
 <translation id="3272643614306383237">Mazāk nekā 1 MB. Dažas vietnes nākamā apmeklējuma laikā, iespējams, tiks ielādētas lēnāk.</translation>
-<translation id="3273738040255912340">Administrators var attālināti veikt izmaiņas jūsu profilā un pārlūkā, analizēt informāciju par pārlūku, izmantojot pārskatus, kā arī veikt citus nepieciešamos uzdevumus. Darbības šajā ierīcē var pārvaldīt arī ārpus pārlūka Chromium. <ph name="BEGIN_LINK" />Uzziniet vairāk<ph name="END_LINK" />.</translation>
+<translation id="4272590266334452792">Administrators var attālināti veikt izmaiņas jūsu profilā un pārlūkā, analizēt informāciju par pārlūku, izmantojot pārskatus, kā arī veikt citus nepieciešamos uzdevumus. Darbības šajā ierīcē var pārvaldīt arī ārpus pārlūka Shuttle. <ph name="BEGIN_LINK" />Uzziniet vairāk<ph name="END_LINK" />.</translation>
 <translation id="3273757719652748628">Uzvedne “Saglabāt IBAN” ir atvērta pilnā augstumā.</translation>
 <translation id="327455571215090823">Viedāka automātiskā aizpilde, saglabājot jūsu datu konfidencialitāti</translation>
 <translation id="3280440382387335343">Pases informācijas droša atjaunināšana Google makā</translation>
@@ -1612,7 +1612,7 @@ Lai paslēptu vēlākas maksāšanas iespējas, pārejiet uz <ph name="BEGIN_LIN
 <translation id="3742104862808477448">Palīdziet Chromium labāk izprast un aizpildīt sarežģītas veidlapas, droši apstrādājot datus Google serveros. Jūsu informācija ir privāta, un neviens to nepārskata.</translation>
 <translation id="3744111561329211289">Sinhronizācija fonā</translation>
 <translation id="3744212718085287312">Vai vēlaties nākamreiz uzlabot drošību, izmantojot virtuālo karti?</translation>
-<translation id="3744899669254331632">Pašlaik jūs nevarat apmeklēt vietni <ph name="SITE" />, jo šī vietne nosūtīja kodētus akreditācijas datus, kurus Chromium nevar apstrādāt. Tā kā tīkla kļūdas un uzbrukumi parasti ir īslaicīga problēma, iespējams, vēlāk šī lapa atkal darbosies.</translation>
+<translation id="58356321557204990">Pašlaik jūs nevarat apmeklēt vietni <ph name="SITE" />, jo šī vietne nosūtīja kodētus akreditācijas datus, kurus Shuttle nevar apstrādāt. Tā kā tīkla kļūdas un uzbrukumi parasti ir īslaicīga problēma, iespējams, vēlāk šī lapa atkal darbosies.</translation>
 <translation id="3745599309295009257">Jūsu teksts, kā arī tās lapas saturs un vietrādis URL, kurā rakstāt tekstu, tiks nosūtīts uzņēmumam Google, to pārskatīs cilvēki, un tas tiks izmantots šīs funkcijas uzlabošanai. Neievadiet personas informāciju (piemēram, medicīniskos datus vai finanšu informāciju) un neizmantojiet šo rīku vietnēs, kas ietver privātu vai sensitīvu informāciju.</translation>
 <translation id="3748009735914587286">Metāls (augsti glancēts)</translation>
 <translation id="3748647055058832337">Nav pieejams šim tirgotājam</translation>
@@ -2197,7 +2197,7 @@ Varat arī sazināties ar vietnes īpašnieku un ieteikt jaunināt vietni uz pro
 <translation id="4732860731866514038">Notiek šādas valodas pakotnes lejupielāde: <ph name="LANGUAGE" />… <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992">Vietnē <ph name="URL" /> tiek pieprasīta atļauja izmantot jūsu ierīces atrašanās vietu.</translation>
 <translation id="473414950835101501">Izmantot jūsu kameras</translation>
-<translation id="4736825316280949806">Restartējiet pārlūku Chromium</translation>
+<translation id="5713993618957185264">Restartējiet pārlūku Shuttle</translation>
 <translation id="4736934858538408121">Virtuāla karte</translation>
 <translation id="473775607612524610">Atjaunināt</translation>
 <translation id="4738601419177586157">Meklēšanas ieteikums vaicājumam “<ph name="TEXT" />”</translation>
@@ -2419,7 +2419,7 @@ Varat arī sazināties ar vietnes īpašnieku un ieteikt jaunināt vietni uz pro
 <translation id="5089810972385038852">Štats</translation>
 <translation id="5093232627742069661">Z-veida locījums</translation>
 <translation id="5093417502834168387">Vai nevarat pierakstīties? Mēģiniet to izdarīt citā veidā.</translation>
-<translation id="5094747076828555589">Šis serveris nevarēja pierādīt, ka šī ir vietne <ph name="DOMAIN" />; tās drošības sertifikāts netiek uzskatīts par uzticamu Chromium sistēmā. Iespējams, tas ir nepareizas konfigurācijas dēļ vai arī kāds ir ļaunprātīgi izmantojis jūsu savienojumu.</translation>
+<translation id="5713412634455044803">Šis serveris nevarēja pierādīt, ka šī ir vietne <ph name="DOMAIN" />; tās drošības sertifikāts netiek uzskatīts par uzticamu Shuttle sistēmā. Iespējams, tas ir nepareizas konfigurācijas dēļ vai arī kāds ir ļaunprātīgi izmantojis jūsu savienojumu.</translation>
 <translation id="5096066272198024688">Notiek jūsu informācijas saglabāšana…</translation>
 <translation id="5097099694988056070">Ierīces statistika, piemēram, CPU/RAM lietojums</translation>
 <translation id="5097468150760963273">27 x 39 collas</translation>
@@ -3171,7 +3171,7 @@ Varat arī sazināties ar vietnes īpašnieku un ieteikt jaunināt vietni uz pro
 <translation id="635394585025793320">Es vēlos kādu pārsteigt. Atrodi galdiņu divām personām restorānos, par kuriem pašlaik visi runā.</translation>
 <translation id="6354918092619878358">SECG eliptiskā līkne secp256r1 (jeb ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />; nospiediet tabulēšanas taustiņu un pēc tam — taustiņu Enter, lai skatītu vairak ciļņu no citām ierīcēm</translation>
-<translation id="6355392890578844978">Šo pārlūku nepārvalda uzņēmums vai cita organizācija. Darbības šajā ierīcē var pārvaldīt ārpus pārlūka Chromium. <ph name="BEGIN_LINK" />Uzziniet vairāk<ph name="END_LINK" />.</translation>
+<translation id="2348087332519756531">Šo pārlūku nepārvalda uzņēmums vai cita organizācija. Darbības šajā ierīcē var pārvaldīt ārpus pārlūka Shuttle. <ph name="BEGIN_LINK" />Uzziniet vairāk<ph name="END_LINK" />.</translation>
 <translation id="6357546827188504216">Ciļņu grupas “<ph name="GROUP_TITLE_1" />” un “<ph name="GROUP_TITLE_2" />” vairs nav pieejamas.</translation>
 <translation id="6358088212770985041">rediģēt maksājumu veidus</translation>
 <translation id="6358450015545214790">Ko tas nozīmē?</translation>
@@ -4136,7 +4136,7 @@ Papildu informācija:
 <translation id="7995512525968007366">Nav norādīts</translation>
 <translation id="7997855386298213183">kopīgoto ciļņu</translation>
 <translation id="7999482381722829925">Izveido prioritāru, pa telpām sadalītu dziļās tīrīšanas kontrolsarakstu, kurā ir norādītas bieži aizmirstas vietas.</translation>
-<translation id="8001912761979890298">Šis serveris nevarēja pierādīt, ka šī ir vietne <ph name="DOMAIN" />, jo tajā tiek izmantots drošības sertifikāts, kas netiek uzskatīts par uzticamu pārlūkā Chromium vai jūsu sistēmas konfigurācijā, lai šifrētu tīmekļa datplūsmu. Šī problēma var rasties nepareizas konfigurācijas dēļ vai tādēļ, ka kāds uzbrucējs ir pārtvēris jūsu savienojumu. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Skatīt sertifikātu<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Šis serveris nevarēja pierādīt, ka šī ir vietne <ph name="DOMAIN" />, jo tajā tiek izmantots drošības sertifikāts, kas netiek uzskatīts par uzticamu pārlūkā Shuttle vai jūsu sistēmas konfigurācijā, lai šifrētu tīmekļa datplūsmu. Šī problēma var rasties nepareizas konfigurācijas dēļ vai tādēļ, ka kāds uzbrucējs ir pārtvēris jūsu savienojumu. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Skatīt sertifikātu<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Aizveriet citas cilnes vai programmas, lai atbrīvotu vietu atmiņā.</translation>
 <translation id="8002230960325005199">Jaunā cilnē skatīt saistītās vietnes</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4227,7 +4227,7 @@ Papildu informācija:
 <translation id="8175796834047840627">Pārlūkprogrammā Chrome tiek piedāvāts saglabāt jūsu kartes Google kontā, jo esat pierakstījies. Varat mainīt šo darbību iestatījumos.</translation>
 <translation id="8176440868214972690">Šīs ierīces administrators ir nosūtījis informāciju, piemēram, iestatījumus vai politikas, uz tālāk norādītajām vietnēm.</translation>
 <translation id="818254048113802060">{0,plural, =1{Fails “<ph name="FILE_NAME" />” tika bloķēts satura dēļ}zero{<ph name="FILE_COUNT" /> faili tika bloķēti satura dēļ}one{<ph name="FILE_COUNT" /> fails tika bloķēts satura dēļ}other{<ph name="FILE_COUNT" /> faili tika bloķēti satura dēļ}}</translation>
-<translation id="8186171296341598122">Jebkurā brīdī Chromium iestatījumos varat mainīt meklētājprogrammu. Ja neredzat savu vēlamo meklētājprogrammu, varat veikt meklēšanu tās vietnē. Chromium iestatījumos tā būs norādīta kā nesen apmeklēta meklētājprogramma, un varēsiet to iestatīt kā noklusējuma meklētājprogrammu.</translation>
+<translation id="2852542171920460365">Jebkurā brīdī Shuttle iestatījumos varat mainīt meklētājprogrammu. Ja neredzat savu vēlamo meklētājprogrammu, varat veikt meklēšanu tās vietnē. Shuttle iestatījumos tā būs norādīta kā nesen apmeklēta meklētājprogramma, un varēsiet to iestatīt kā noklusējuma meklētājprogrammu.</translation>
 <translation id="8188830160449823068">IBAN ir saglabāts tikai ierīcē</translation>
 <translation id="8189557652711717875">Izvēlētā meklētājprogramma tiks izmantota tādām funkcijām kā meklēšana no adreses joslas un meklēšana pēc attēliem tīmekļa lapās.</translation>
 <translation id="8190193880870196235">Pārvalda paplašinājums</translation>
@@ -4311,7 +4311,7 @@ Papildu informācija:
 <translation id="8316555157357957253">Pašlaik tiek lietota</translation>
 <translation id="8319414634934645341">Paplašināta atslēgas lietošana</translation>
 <translation id="831997045666694187">Vakarā</translation>
-<translation id="8321448084834652864">Jebkurā brīdī Chromium iestatījumos varat mainīt meklētājprogrammu.</translation>
+<translation id="332470347080865446">Jebkurā brīdī Shuttle iestatījumos varat mainīt meklētājprogrammu.</translation>
 <translation id="8321476692217554900">paziņojumi</translation>
 <translation id="8323505966575306467">Pievienojiet papildu aizsardzību parolēm</translation>
 <translation id="832547548543012337">Dzēst pasi</translation>
@@ -4533,7 +4533,7 @@ Papildu informācija:
 <translation id="8736059027199600831">30 x 40 collas</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />. Lai privātai pārlūkošanai atvērtu inkognito režīma logu, nospiediet tabulēšanas taustiņu un pēc tam — ievadīšanas taustiņu.</translation>
 <translation id="8737685506611670901">atvērt <ph name="PROTOCOL" /> saites, nevis <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Lai izveidotu drošu savienojumu, ir jāiestata pareizs pulksteņa laiks. Tas ir nepieciešams, jo sertifikāti, kurus vietnes izmanto, lai tiktu identificētas, ir derīgi tikai noteiktos laika periodos. Tā kā jūsu ierīces pulkstenis nav pareizi iestatīts, Chromium nevar verificēt šos sertifikātus.</translation>
+<translation id="4709963803166322417">Lai izveidotu drošu savienojumu, ir jāiestata pareizs pulksteņa laiks. Tas ir nepieciešams, jo sertifikāti, kurus vietnes izmanto, lai tiktu identificētas, ir derīgi tikai noteiktos laika periodos. Tā kā jūsu ierīces pulkstenis nav pareizi iestatīts, Shuttle nevar verificēt šos sertifikātus.</translation>
 <translation id="8740359287975076522">Nevarēja atrast <ph name="HOST_NAME" /> &lt;abbr id="dnsDefinition"&gt;DNS adresi&lt;/abbr&gt;. Notiek problēmas diagnosticēšana.</translation>
 <translation id="874918643257405732">Saglabāt šo cilni kā grāmatzīmi</translation>
 <translation id="8749274696886550762">Šī vietne šķiet aizdomīga</translation>
@@ -4742,7 +4742,7 @@ Papildu informācija:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />; nospiediet tabulēšanas taustiņu un pēc tam — taustiņu Enter, lai iestatītu Chrome kā sistēmas noklusējuma pārlūku iOS iestatījumos.</translation>
 <translation id="9101450247048146228">Kameras lietojums un kustība (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">1. paplāte</translation>
-<translation id="9103872766612412690">Vietnē <ph name="SITE" /> informācijas aizsargāšanai parasti tiek izmantota šifrēšana. Kad pārlūkā Chromium tika mēģināts izveidot savienojumu ar vietni <ph name="SITE" />, šoreiz tā nosūtīja neparastus un nepareizus akreditācijas datus. Iespējams, tas notika, jo uzbrucējs mēģināja uzdoties par vietni <ph name="SITE" />, vai arī Wi-Fi pierakstīšanās ekrāns pārtrauca savienojumu. Jūsu informācija joprojām ir drošībā, jo pārlūks Chromium pārtrauca savienojumu, pirms tika veikta jebkādu datu apmaiņa.</translation>
+<translation id="733422146945994640">Vietnē <ph name="SITE" /> informācijas aizsargāšanai parasti tiek izmantota šifrēšana. Kad pārlūkā Shuttle tika mēģināts izveidot savienojumu ar vietni <ph name="SITE" />, šoreiz tā nosūtīja neparastus un nepareizus akreditācijas datus. Iespējams, tas notika, jo uzbrucējs mēģināja uzdoties par vietni <ph name="SITE" />, vai arī Wi-Fi pierakstīšanās ekrāns pārtrauca savienojumu. Jūsu informācija joprojām ir drošībā, jo pārlūks Shuttle pārtrauca savienojumu, pirms tika veikta jebkādu datu apmaiņa.</translation>
 <translation id="9107199998619088551">Jūsu profilu pārvalda organizācija “<ph name="MANAGER" />”</translation>
 <translation id="9107467864910557787">Jūsu pārlūku pārvalda <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Saskaņā ar administratora iestatīto politiku ekrāna kopīgošana ar lietojumprogrammu <ph name="APPLICATION_TITLE" /> tiek atspējota, kad ir redzams konfidenciāls saturs.</translation>

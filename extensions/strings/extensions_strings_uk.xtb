@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Увімкнути тему</translation>
 <translation id="1135328998467923690">Пакет недійсний: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Задня камера</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> додає розширення, яке може вплинути на роботу Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> додає розширення, яке може вплинути на роботу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Не вдалося експортувати секретний ключ.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Не вдалося замінити файл у форматі crx. Перевірте, чи файл зараз не використовується.</translation>
 <translation id="3163201441334626963">Невідомий продукт <ph name="PRODUCT_ID" /> від постачальника <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Ваша організація заблокувала доступ до цього розширення.</translation>
-<translation id="3183357154200327217">Інша програма на вашому комп’ютері додала тему, яка може впливати на роботу Chromium.
+<translation id="7846451875700317002">Інша програма на вашому комп’ютері додала тему, яка може впливати на роботу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Додаток з атрибутом маніфесту "kiosk_only" потрібно встановлювати в режимі термінала ОС Chrome</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Відмовити</translation>
 <translation id="3984413272403535372">Помилка під час підписування розширення.</translation>
 <translation id="4014432863917027322">Відновити розширення <ph name="EXTENSION_NAME" />?</translation>
-<translation id="4061696872429826774">Інша програма на вашому комп’ютері додала розширення, яке може впливати на роботу Chromium.
+<translation id="7396546976728149133">Інша програма на вашому комп’ютері додала розширення, яке може впливати на роботу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Ваша організація заблокувала доступ до цієї категорії розширень.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Нову версію розширення "<ph name="EXTENSION_NAME" />" вимкнено, оскільки для неї потрібно більше дозволів.</translation>
 <translation id="5242724311594467048">Увімкнути розширення "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Тег Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Видалити з Chromium</translation>
+<translation id="2064155379595075287">Видалити з Shuttle</translation>
 <translation id="5456409301717116725">Це розширення включає файл ключа "<ph name="KEY_PATH" />". Можливо, ви не хочете цього робити.</translation>
 <translation id="5485102783864353244">Установити додаток</translation>
 <translation id="5486326529110362464">Має бути дійсне значення секретного ключа.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Адміністратор цього комп’ютера вимагає встановити розширення <ph name="EXTENSION_NAME" />. Його неможливо видалити.</translation>
 <translation id="6027032947578871493">Невідомий продукт <ph name="PRODUCT_ID" /> від постачальника <ph name="VENDOR_NAME" /> (серійний номер: <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> від постачальника <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Інша програма на вашому комп’ютері встановила додаток, який може впливати на роботу Chromium.
+<translation id="5918487821361452587">Інша програма на вашому комп’ютері встановила додаток, який може впливати на роботу Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Не вдалося завантажити розширення</translation>

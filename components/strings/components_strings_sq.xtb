@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Jep detaje të tjera</translation>
 <translation id="1016671033299705843">Shto lejen e drejtimit në mënyrë të sigurt</translation>
 <translation id="1019413721762100891">Joaktive</translation>
-<translation id="1021753677514347426">Ky problem ndodh për shkak të një certifikate që instalove ti ose dikush tjetër në pajisjen tënde. Certifikata njihet se është përdorur për të monitoruar dhe ndërhyrë në rrjete dhe nuk është e besuar nga Chromium. Megjithëse ekzistojnë disa raste legjitime për monitorimin, si p.sh. një rrjet shkolle ose kompanie, Chromium dëshiron të sigurohet që je në dijeni se kjo ndodh, edhe nëse nuk arrin ta ndalosh. Monitorimi mund të ndodhë në çdo shfletues ose aplikacion që ka qasje në ueb.</translation>
+<translation id="768230658237634872">Ky problem ndodh për shkak të një certifikate që instalove ti ose dikush tjetër në pajisjen tënde. Certifikata njihet se është përdorur për të monitoruar dhe ndërhyrë në rrjete dhe nuk është e besuar nga Shuttle. Megjithëse ekzistojnë disa raste legjitime për monitorimin, si p.sh. një rrjet shkolle ose kompanie, Shuttle dëshiron të sigurohet që je në dijeni se kjo ndodh, edhe nëse nuk arrin ta ndalosh. Monitorimi mund të ndodhë në çdo shfletues ose aplikacion që ka qasje në ueb.</translation>
 <translation id="1024111578869940408">Sulmuesit ndonjëherë i imitojnë sajtet duke bërë tek adresa e uebit ndryshime që janë të vështira për t'u dalluar.</translation>
 <translation id="102916930470544692">Çelësi i kalimit</translation>
 <translation id="1030706264415084469"><ph name="URL" /> do të ruajë në mënyrë të përhershme të dhëna të mëdha në pajisjen tënde</translation>
@@ -809,7 +809,7 @@ Ndryshe kjo do të bllokohet nga cilësimet e tua të privatësisë. Kjo do ta l
 <translation id="2348836501965732644">Menaxho informacionet e tua ose çaktivizoji këto sugjerime te "Cilësimet"</translation>
 <translation id="2349957959687031096">Butoni "Hap skedën 'e fshehtë'". Aktivizoje për të hapur një skedë të re "të fshehtë" për të shfletuar në mënyrë private</translation>
 <translation id="2350796302381711542">Të lejohet <ph name="HANDLER_HOSTNAME" /> të hapë të gjitha lidhjet <ph name="PROTOCOL" /> në vend të <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Ky server nuk mund të vërtetonte që është <ph name="DOMAIN" /> sepse po përdor një certifikatë sigurie që nuk është e besuar nga Chromium ose nga konfigurimi i sistemit tënd për enkriptimin e trafikut të uebit. Kjo mund të jetë shkaktuar nga një konfigurim i gabuar ose nga ndërhyrja e një sulmuesi në lidhjen tënde.</translation>
+<translation id="4798228153726623290">Ky server nuk mund të vërtetonte që është <ph name="DOMAIN" /> sepse po përdor një certifikatë sigurie që nuk është e besuar nga Shuttle ose nga konfigurimi i sistemit tënd për enkriptimin e trafikut të uebit. Kjo mund të jetë shkaktuar nga një konfigurim i gabuar ose nga ndërhyrja e një sulmuesi në lidhjen tënde.</translation>
 <translation id="2353297238722298836">Kamera dhe mikrofoni lejohen</translation>
 <translation id="2354001756790975382">Faqeshënues të tjerë</translation>
 <translation id="2355395290879513365">Sulmuesit mund të arrijnë t'i shikojnë imazhet që po shikon në këtë sajt dhe të të mashtrojnë duke i modifikuar ato.</translation>
@@ -1046,7 +1046,7 @@ Ndryshe kjo do të bllokohet nga cilësimet e tua të privatësisë. Kjo do ta l
 <translation id="2728127805433021124">Certifikata e serverit është nënshkruar duke përdorur një algoritëm të dobët nënshkrimi.</translation>
 <translation id="272937284275742856">Po verifikohen në mënyrë të sigurt detajet e pagesës...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Po ekzekuton diagnostikimin e lidhjes<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Mëso më shumë për motorin e kërkimit në Chromium</translation>
+<translation id="5216476641707900057">Mëso më shumë për motorin e kërkimit në Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 inç</translation>
 <translation id="2734797989819862638">Mos kopjo</translation>
 <translation id="2738771556149464852">Jo pas</translation>
@@ -1344,7 +1344,7 @@ Për të fshehur opsionet e "Paguaj më vonë", shko te <ph name="BEGIN_LINK" />
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Fut kodin e verifikimit <ph name="NUMBER_OF_DIGITS" />-shifror</translation>
 <translation id="3272643614306383237">Më pak se 1 MB. Disa sajte mund të ngarkohen më ngadalë në vizitën tënde të radhës.</translation>
-<translation id="3273738040255912340">Administratori yt mund të bëjë ndryshime në profilin dhe shfletuesin tënd në distancë, mund të analizojë informacionet rreth shfletuesit nëpërmjet raportimit dhe mund të kryejë detyra të tjera të nevojshme. Aktiviteti në këtë pajisje mund të menaxhohet edhe jashtë Chromium. <ph name="BEGIN_LINK" />Mëso më shumë<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Administratori yt mund të bëjë ndryshime në profilin dhe shfletuesin tënd në distancë, mund të analizojë informacionet rreth shfletuesit nëpërmjet raportimit dhe mund të kryejë detyra të tjera të nevojshme. Aktiviteti në këtë pajisje mund të menaxhohet edhe jashtë Shuttle. <ph name="BEGIN_LINK" />Mëso më shumë<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">"Ruaj numrin IBAN" hapur në lartësi të plotë.</translation>
 <translation id="327455571215090823">Plotësim automatik më inteligjent, i mbajtur privat</translation>
 <translation id="3280440382387335343">Përditëso pasaportën në mënyrë të sigurt te "Portofoli i Google"</translation>
@@ -1613,7 +1613,7 @@ Për të fshehur opsionet e "Paguaj më vonë", shko te <ph name="BEGIN_LINK" />
 <translation id="3742104862808477448">Ndihmo Chromium të kuptojë dhe të plotësojë më mirë formularët kompleksë duke përpunuar në mënyrë të sigurt të dhënat në serverët e Google. Informacionet e tua mbeten private dhe nuk shqyrtohen nga askush.</translation>
 <translation id="3744111561329211289">Sinkronizimi në sfond</translation>
 <translation id="3744212718085287312">Të bëhet më e sigurt me një kartë virtuale herën tjetër?</translation>
-<translation id="3744899669254331632">Nuk mund ta vizitosh <ph name="SITE" /> tani sepse uebsajti dërgoi kredenciale të koduara që nuk mund të përpunohen nga Chromium. Gabimet dhe sulmet në rrjet zakonisht janë të përkohshme, kështu që kjo faqe ndoshta do të punojë më vonë.</translation>
+<translation id="58356321557204990">Nuk mund ta vizitosh <ph name="SITE" /> tani sepse uebsajti dërgoi kredenciale të koduara që nuk mund të përpunohen nga Shuttle. Gabimet dhe sulmet në rrjet zakonisht janë të përkohshme, kështu që kjo faqe ndoshta do të punojë më vonë.</translation>
 <translation id="3745599309295009257">Teksti yt, përmbajtja dhe URL-ja e faqes ku po shkruan do të dërgohen te Google, do të shqyrtohen nga njerëz dhe do të përdoren për ta përmirësuar këtë veçori. Shmang futjen e informacioneve personale (si p.sh. detaje mjekësore ose financiare) ose përdorimin e kësaj vegle në sajte që përfshijnë informacione private ose delikate.</translation>
 <translation id="3748009735914587286">Metal (me shumë shkëlqim)</translation>
 <translation id="3748647055058832337">Nuk ofrohet për këtë tregtar</translation>
@@ -2199,7 +2199,7 @@ Për të fshehur opsionet e "Paguaj më vonë", shko te <ph name="BEGIN_LINK" />
 <translation id="4732860731866514038">Po shkarkohet paketa gjuhësore në <ph name="LANGUAGE" />... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> kërkon të përdorë vendndodhjen e pajisjes sate</translation>
 <translation id="473414950835101501">Të përdorë kamerat e tua</translation>
-<translation id="4736825316280949806">Rinis Chromium</translation>
+<translation id="5713993618957185264">Rinis Shuttle</translation>
 <translation id="4736934858538408121">Karta virtuale</translation>
 <translation id="473775607612524610">Përditësoje</translation>
 <translation id="4738601419177586157">Sugjerim kërkimi për <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Për të fshehur opsionet e "Paguaj më vonë", shko te <ph name="BEGIN_LINK" />
 <translation id="5089810972385038852">Shteti</translation>
 <translation id="5093232627742069661">Palosje Z</translation>
 <translation id="5093417502834168387">Ke probleme me identifikimin? Provo një mënyrë tjetër</translation>
-<translation id="5094747076828555589">Ky server nuk mundi të dëshmonte se kjo është <ph name="DOMAIN" />; certifikata e tij e sigurisë nuk është e besueshme nga Chromium. Kjo mund të shkaktohet nga keqkonfigurimi ose një sulmues që po kap lidhjen tënde.</translation>
+<translation id="5713412634455044803">Ky server nuk mundi të dëshmonte se kjo është <ph name="DOMAIN" />; certifikata e tij e sigurisë nuk është e besueshme nga Shuttle. Kjo mund të shkaktohet nga keqkonfigurimi ose një sulmues që po kap lidhjen tënde.</translation>
 <translation id="5096066272198024688">Informacionet e tua po ruhen</translation>
 <translation id="5097099694988056070">Statistikat e pajisjes si p.sh. përdorimin e njësisë CPU/RAM</translation>
 <translation id="5097468150760963273">27 x 39 inç</translation>
@@ -3172,7 +3172,7 @@ Për të fshehur opsionet e "Paguaj më vonë", shko te <ph name="BEGIN_LINK" />
 <translation id="635394585025793320">Dua të bëj përshtypje te dikush. Shiko për tavolina të lira për 2 persona në restorantet për të cilat po flasin të gjithë tani</translation>
 <translation id="6354918092619878358">Kurba eliptike SECG secp256r1 (e njohur edhe si ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, shtyp Tab dhe më pas Enter për më shumë skeda nga pajisjet e tjera</translation>
-<translation id="6355392890578844978">Ky shfletues nuk menaxhohet nga një kompani ose organizatë tjetër. Aktiviteti në këtë pajisje mund të menaxhohet jashtë Chromium. <ph name="BEGIN_LINK" />Mëso më shumë<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Ky shfletues nuk menaxhohet nga një kompani ose organizatë tjetër. Aktiviteti në këtë pajisje mund të menaxhohet jashtë Shuttle. <ph name="BEGIN_LINK" />Mëso më shumë<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Grupet e skedave "<ph name="GROUP_TITLE_1" />" dhe "<ph name="GROUP_TITLE_2" />" nuk ofrohen më</translation>
 <translation id="6358088212770985041">të modifikojë mënyrat e pagesës</translation>
 <translation id="6358450015545214790">Çfarë kuptimi kanë këto?</translation>
@@ -4136,7 +4136,7 @@ Detaje shtesë:
 <translation id="7995512525968007366">Nuk është specifikuar</translation>
 <translation id="7997855386298213183">skedave të ndara</translation>
 <translation id="7999482381722829925">Krijo një listë kontrolli të pastrimit të thellë të prioritizuar dhomë pas dhome që synon vendet që shpesh harrohen</translation>
-<translation id="8001912761979890298">Ky server nuk mund të vërtetonte që është <ph name="DOMAIN" /> sepse po përdor një certifikatë sigurie që nuk është e besuar nga Chromium ose nga konfigurimi i sistemit tënd për enkriptimin e trafikut të uebit. Kjo mund të jetë shkaktuar nga një konfigurim i gabuar ose nga ndërhyrja e një sulmuesi në lidhjen tënde. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Shiko certifikatën<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Ky server nuk mund të vërtetonte që është <ph name="DOMAIN" /> sepse po përdor një certifikatë sigurie që nuk është e besuar nga Shuttle ose nga konfigurimi i sistemit tënd për enkriptimin e trafikut të uebit. Kjo mund të jetë shkaktuar nga një konfigurim i gabuar ose nga ndërhyrja e një sulmuesi në lidhjen tënde. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Shiko certifikatën<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Provo të mbyllësh skedat ose programet e tjera për të liruar memorien.</translation>
 <translation id="8002230960325005199">Shiko sajtet e lidhura në një skedë të re</translation>
 <translation id="8003046808285812021">"<ph name="SEARCH_TERMS" />"</translation>
@@ -4227,7 +4227,7 @@ Detaje shtesë:
 <translation id="8175796834047840627">Chrome po ofron që të ruash kartat e tua në "Llogarinë tënde të Google" sepse je i identifikuar. Mund ta ndryshosh këtë sjellje te cilësimet.</translation>
 <translation id="8176440868214972690">Administratori i kësaj pajisjeje ka dërguar disa informacione te sajtet e mëposhtme të uebit, si p.sh. cilësime ose politika.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> është bllokuar për shkak të përmbajtjes}other{<ph name="FILE_COUNT" /> skedarë janë bllokuar për shkak të përmbajtjes}}</translation>
-<translation id="8186171296341598122">Mund ta ndryshosh motorin e kërkimit në çdo kohë te cilësimet e Chromium. Nëse nuk e shikon motorin e preferuar të kërkimit, mund të kryesh një kërkim nga sajti i tyre. Do ta shohësh të listuar si një motor kërkimi të vizituar së fundi te cilësimet e Chromium dhe mund ta bësh atë të parazgjedhurin tënd.</translation>
+<translation id="2852542171920460365">Mund ta ndryshosh motorin e kërkimit në çdo kohë te cilësimet e Shuttle. Nëse nuk e shikon motorin e preferuar të kërkimit, mund të kryesh një kërkim nga sajti i tyre. Do ta shohësh të listuar si një motor kërkimi të vizituar së fundi te cilësimet e Shuttle dhe mund ta bësh atë të parazgjedhurin tënd.</translation>
 <translation id="8188830160449823068">Numri IBAN është ruajtur vetëm në pajisje</translation>
 <translation id="8189557652711717875">Motori i kërkimit që ti zgjedh do të përdoret për veçori të tilla, si p.sh. për kërkimin nga shiriti i adresave dhe nga imazhet në faqet e uebit.</translation>
 <translation id="8190193880870196235">Menaxhuar nga një shtesë</translation>
@@ -4311,7 +4311,7 @@ Detaje shtesë:
 <translation id="8316555157357957253">Po përdoret tani</translation>
 <translation id="8319414634934645341">Përdorimi i zgjeruar i çelësit</translation>
 <translation id="831997045666694187">Mbrëmje</translation>
-<translation id="8321448084834652864">Mund ta ndryshosh motorin e kërkimit në çdo kohë te cilësimet e Chromium.</translation>
+<translation id="332470347080865446">Mund ta ndryshosh motorin e kërkimit në çdo kohë te cilësimet e Shuttle.</translation>
 <translation id="8321476692217554900">njoftimet</translation>
 <translation id="8323505966575306467">Shto më shumë mbrojtje për fjalëkalimet e tua</translation>
 <translation id="832547548543012337">Fshi pasaportën</translation>
@@ -4532,7 +4532,7 @@ Detaje shtesë:
 <translation id="8736059027199600831">30 x 40 inç</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, shtyp "Tab", më pas "Enter" për të hapur një dritare të re "të fshehtë" për të shfletuar në mënyrë private</translation>
 <translation id="8737685506611670901">Hap lidhjet e <ph name="PROTOCOL" /> në vend të <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Për të krijuar një lidhje të sigurt, ora duhet të vendoset në mënyrë të saktë. Kjo ndodh sepse certifikatat që përdorin sajtet e internetit për t'u identifikuar janë të vlefshme vetëm për periudha specifike kohore. Meqenëse ora e pajisjes është e pasaktë, Chromium nuk mund t'i verifikojë këto certifikata.</translation>
+<translation id="4709963803166322417">Për të krijuar një lidhje të sigurt, ora duhet të vendoset në mënyrë të saktë. Kjo ndodh sepse certifikatat që përdorin sajtet e internetit për t'u identifikuar janë të vlefshme vetëm për periudha specifike kohore. Meqenëse ora e pajisjes është e pasaktë, Shuttle nuk mund t'i verifikojë këto certifikata.</translation>
 <translation id="8740359287975076522">&lt;abbr id="dnsDefinition"&gt;Adresa DNS&lt;/abbr&gt; e <ph name="HOST_NAME" /> nuk mund të gjendej. Problemi po diagnostikohet.</translation>
 <translation id="874918643257405732">Shtoje këtë skedë te faqeshënuesit</translation>
 <translation id="8749274696886550762">Ky sajt nuk duket se është në rregull</translation>
@@ -4741,7 +4741,7 @@ Detaje shtesë:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />; shtyp "Tab" dhe më pas "Enter" për të caktuar Chrome si shfletuesin e parazgjedhur të sistemit te cilësimet e iOS</translation>
 <translation id="9101450247048146228">Përdorimi dhe lëvizja e kamerës (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Tabakaja 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> përdor zakonisht enkriptimin për mbrojtjen e informacioneve të tua. Kur Chromium u përpoq të lidhej me <ph name="SITE" /> këtë herë, uebsajti dërgoi prapa kredenciale të pazakonta dhe të pasakta. Kjo mund të ndodhë kur një sulmues pretendon se është <ph name="SITE" /> ose kur lidhja është ndërprerë nga një ekran i identifikimit të Wi-Fi. Informacionet e tua janë ende të sigurta sepse Chromium e ndaloi lidhjen përpara se të shkëmbeheshin të dhënat.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> përdor zakonisht enkriptimin për mbrojtjen e informacioneve të tua. Kur Shuttle u përpoq të lidhej me <ph name="SITE" /> këtë herë, uebsajti dërgoi prapa kredenciale të pazakonta dhe të pasakta. Kjo mund të ndodhë kur një sulmues pretendon se është <ph name="SITE" /> ose kur lidhja është ndërprerë nga një ekran i identifikimit të Wi-Fi. Informacionet e tua janë ende të sigurta sepse Shuttle e ndaloi lidhjen përpara se të shkëmbeheshin të dhënat.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> menaxhon profilin tënd</translation>
 <translation id="9107467864910557787">Shfletuesi yt menaxhohet nga <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Politika e administratorit çaktivizon ndarjen e ekranit me <ph name="APPLICATION_TITLE" /> kur përmbajtja konfidenciale është e dukshme</translation>

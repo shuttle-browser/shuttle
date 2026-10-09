@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Gaitu gaia</translation>
 <translation id="1135328998467923690">Paketeak ez du balio: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Atzeko kamera</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> bazkideak Chromium-en funtzionamenduari agian eragingo dion luzapen bat gehitu du.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> bazkideak Shuttle-en funtzionamenduari agian eragingo dion luzapen bat gehitu du.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Ezin izan da gako pribatua esportatu.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Ezin izan da crx fitxategia ordeztu. Begiratu fitxategia nonbait erabiltzen ari den.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> saltzailearen <ph name="PRODUCT_ID" /> produktu ezezaguna</translation>
 <translation id="3174723475300476613">Luzapen honetarako sarbidea blokeatu du zure erakundeak.</translation>
-<translation id="3183357154200327217">Ordenagailuko beste programa batek Chromium-en funtzionamenduari agian eragingo dion gai bat gehitu du.
+<translation id="7846451875700317002">Ordenagailuko beste programa batek Shuttle-en funtzionamenduari agian eragingo dion gai bat gehitu du.
 
 <ph name="EXTENSION_NAME" />.</translation>
 <translation id="3242289508736283383">kiosk_only manifestu-atributua duen aplikazio bat instalatu behar da Chrome OS-ren kiosko moduan</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Ukatu</translation>
 <translation id="3984413272403535372">Errore bat gertatu da luzapena sinatzean.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" konpondu nahi duzu?</translation>
-<translation id="4061696872429826774">Ordenagailuko beste programa batek Chromium-en funtzionamenduari agian eragingo dion luzapen bat gehitu du.
+<translation id="7396546976728149133">Ordenagailuko beste programa batek Shuttle-en funtzionamenduari agian eragingo dion luzapen bat gehitu du.
 
 <ph name="EXTENSION_NAME" />.</translation>
 <translation id="4094452115117798451">Luzapen-kategoria honetarako sarbidea blokeatu du zure erakundeak.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" luzapenaren bertsiorik berriena desgaitu egin da baimen gehigarriak behar dituelako.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" gaitu nahi duzu?</translation>
 <translation id="5356315618422219272">Aplikazio-ikuspegia: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Kendu Chromium-etik</translation>
+<translation id="2064155379595075287">Kendu Shuttle-etik</translation>
 <translation id="5456409301717116725">Luzapen honek "<ph name="KEY_PATH" />" karaktere-fitxategia du. Ziur aski ez duzu hori egin nahi.</translation>
 <translation id="5485102783864353244">Gehitu aplikazioa</translation>
 <translation id="5486326529110362464">Gako pribatua idatzi behar da.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Gailuaren administratzaileak <ph name="EXTENSION_NAME" /> instalatzea eskatzen du. Ezin da desinstalatu.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> saltzailearen <ph name="PRODUCT_ID" /> produktu ezezaguna (<ph name="SERIAL_NUMBER" /> serie-zenbakia)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> saltzailearen <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">Ordenagailuko beste programa batek Chromium-en funtzionamenduari agian eragingo dion aplikazio bat gehitu du.
+<translation id="5918487821361452587">Ordenagailuko beste programa batek Shuttle-en funtzionamenduari agian eragingo dion aplikazio bat gehitu du.
 
 <ph name="EXTENSION_NAME" />.</translation>
 <translation id="6220413761270491930">Errore bat gertatu da luzapena kargatzean</translation>

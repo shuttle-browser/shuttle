@@ -350,7 +350,7 @@ void HistoryClustersHandler::OpenVisitUrlsInTabGroup(
       tab_indices.push_back(tab_index);
     }
   }
-  // Agent Chrome: tab groups are agents; the tabs open ungrouped.
+  // Shuttle: tab groups are agents; the tabs open ungrouped.
 }
 
 void HistoryClustersHandler::OnDebugMessage(const std::string& message) {

@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">เปิดใช้ธีม</translation>
 <translation id="1135328998467923690">แพ็กเกจไม่ถูกต้อง: "<ph name="ERROR_CODE" />"</translation>
 <translation id="1140871961407805696">กล้องหลัง</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ได้เพิ่มส่วนขยายที่อาจเปลี่ยนวิธีการทำงานของ Chromium
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ได้เพิ่มส่วนขยายที่อาจเปลี่ยนวิธีการทำงานของ Shuttle
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ไม่สามารถส่งออกคีย์ส่วนตัว</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">ไม่สามารถแทนที่ไฟล์ CRX ได้ โปรดตรวจสอบดูว่าไฟล์มีการใช้งานอยู่หรือไม่</translation>
 <translation id="3163201441334626963">ผลิตภัณฑ์ที่ไม่รู้จัก <ph name="PRODUCT_ID" /> จากผู้ขาย <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">องค์กรของคุณบล็อกการเข้าถึงส่วนขยายนี้</translation>
-<translation id="3183357154200327217">โปรแกรมอื่นในคอมพิวเตอร์เพิ่มธีมที่อาจเปลี่ยนวิธีการทำงานของ Chromium
+<translation id="7846451875700317002">โปรแกรมอื่นในคอมพิวเตอร์เพิ่มธีมที่อาจเปลี่ยนวิธีการทำงานของ Shuttle
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">ต้องติดตั้งแอปที่มีแอตทริบิวต์ไฟล์ Manifest ที่ชื่อ "kiosk_only" ในโหมดคีออสก์ของ Chrome OS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">ปฏิเสธ</translation>
 <translation id="3984413272403535372">พบข้อผิดพลาดขณะเซ็นชื่อบนส่วนขยาย</translation>
 <translation id="4014432863917027322">ต้องการซ่อม "<ph name="EXTENSION_NAME" />" ไหม</translation>
-<translation id="4061696872429826774">โปรแกรมอื่นในคอมพิวเตอร์เพิ่มส่วนขยายที่อาจเปลี่ยนวิธีการทำงานของ Chromium
+<translation id="7396546976728149133">โปรแกรมอื่นในคอมพิวเตอร์เพิ่มส่วนขยายที่อาจเปลี่ยนวิธีการทำงานของ Shuttle
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">องค์กรของคุณบล็อกการเข้าถึงหมวดหมู่ส่วนขยายนี้</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">รุ่นใหม่ล่าสุดของ "<ph name="EXTENSION_NAME" />" ถูกปิดใช้งาน เนื่องจากต้องได้รับการอนุญาตมากกว่านี้</translation>
 <translation id="5242724311594467048">เปิดใช้งาน "<ph name="EXTENSION_NAME" />" ไหม</translation>
 <translation id="5356315618422219272">การดูแอป: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">ลบจาก Chromium</translation>
+<translation id="2064155379595075287">ลบจาก Shuttle</translation>
 <translation id="5456409301717116725">ส่วนขยายนี้มีไฟล์คีย์ "<ph name="KEY_PATH" />" คุณอาจจะไม่ต้องการดำเนินการนั้น</translation>
 <translation id="5485102783864353244">เพิ่มแอป</translation>
 <translation id="5486326529110362464">ค่าที่ป้อนสำหรับคีย์ส่วนตัวต้องมีอยู่จริง</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">ผู้ดูแลระบบของอุปกรณ์เครื่องนี้กำหนดให้ติดตั้ง <ph name="EXTENSION_NAME" /> ไม่สามารถถอนการติดตั้งส่วนขยายนี้ได้</translation>
 <translation id="6027032947578871493">ผลิตภัณฑ์ที่ไม่รู้จัก <ph name="PRODUCT_ID" /> จาก <ph name="VENDOR_NAME" /> (หมายเลขซีเรียล <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> จากผู้ขาย <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">โปรแกรมอื่นในคอมพิวเตอร์เพิ่มแอปที่อาจเปลี่ยนวิธีการทำงานของ Chromium
+<translation id="5918487821361452587">โปรแกรมอื่นในคอมพิวเตอร์เพิ่มแอปที่อาจเปลี่ยนวิธีการทำงานของ Shuttle
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">ข้อผิดพลาดในการโหลดส่วนขยาย</translation>

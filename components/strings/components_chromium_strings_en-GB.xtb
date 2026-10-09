@@ -3,29 +3,29 @@
 <translationbundle lang="en-GB">
 <translation id="130631256467250065">Your changes will take effect the next time that you restart your device.</translation>
 <translation id="1965068424387304464">Chromium tip: Save passwords</translation>
-<translation id="261308610302996111">Go to
-          the Chromium menu &gt;
+<translation id="6181600115274209660">Go to
+          the Shuttle menu &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="SYSTEM_TITLE" />
           &gt;
           <ph name="PROXIES_TITLE" />
           and make sure that your configuration is set to 'no proxy' or 'direct'.</translation>
-<translation id="275588974610408078">Crash reporting is not available in Chromium.</translation>
-<translation id="3064346599913645280">You're viewing a secure Chromium page</translation>
+<translation id="8019164406370393370">Crash reporting is not available in Shuttle.</translation>
+<translation id="7131945667699137625">You're viewing a secure Shuttle page</translation>
 <translation id="3255926992597692024">Chromium is trying to modify settings for filling payment methods.</translation>
-<translation id="358997566136285270">Chromium logo</translation>
+<translation id="3757825924724354052">Shuttle logo</translation>
 <translation id="3837584850181228767">Chromium tip: Enhanced Safe Browsing</translation>
 <translation id="4050599136622776556">Chromium is trying to edit payment methods.</translation>
-<translation id="4365115785552740256">Chromium is made possible by the <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> open source project and other <ph name="BEGIN_LINK_OSS" />open source software<ph name="END_LINK_OSS" />.</translation>
-<translation id="4622039161600275920">This page has been blocked by Chromium</translation>
-<translation id="48558539577516920">Allow Chromium to access the network in your firewall or antivirus
+<translation id="8988476603327209803">Shuttle is made possible by the <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> open source project and other <ph name="BEGIN_LINK_OSS" />open source software<ph name="END_LINK_OSS" />.</translation>
+<translation id="2477509191993550467">This page has been blocked by Shuttle</translation>
+<translation id="4604973006041022107">Allow Shuttle to access the network in your firewall or antivirus
           settings.</translation>
 <translation id="4949828774841497663">Go to Applications &gt; System Settings &gt; Network, select the
           active network, click the Details... button and deselect any proxies
           that may have been selected.</translation>
-<translation id="6480456350195404966">Go to
-          the Chromium menu &gt;
+<translation id="6683794703230411154">Go to
+          the Shuttle menu &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="SYSTEM_TITLE" />
@@ -34,13 +34,13 @@
           &gt;
           Network and Internet &gt; Proxy
           and deselect 'Automatically detect settings'.</translation>
-<translation id="648062525172759633">These pages are intended for use by Chromium developers, and may not be actively maintained or tested. To enable them, navigate to <ph name="BEGIN_LINK" />chrome://chrome-urls<ph name="LINK_END" />, click the button to enable debug pages and then navigate to this page again.</translation>
+<translation id="262795629490583875">These pages are intended for use by Shuttle developers, and may not be actively maintained or tested. To enable them, navigate to <ph name="BEGIN_LINK" />chrome://chrome-urls<ph name="LINK_END" />, click the button to enable debug pages and then navigate to this page again.</translation>
 <translation id="6549378540556750549">Chromium is also made possible by other <ph name="BEGIN_LINK_OSS" />open-source software<ph name="END_LINK_OSS" />.</translation>
-<translation id="6613594504749178791">Your changes will take effect the next time you relaunch Chromium.</translation>
-<translation id="691026815377248078">Chromium needs Bluetooth access to continue pairing. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
+<translation id="3051968423457057392">Your changes will take effect the next time you relaunch Shuttle.</translation>
+<translation id="7251378182421874967">Shuttle needs Bluetooth access to continue pairing. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="7681937895330411637">Chromium is made possible by the <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> open-source project.</translation>
-<translation id="7861509383340276692">Go to
-          the Chromium menu &gt;
+<translation id="6298583427647441415">Go to
+          the Shuttle menu &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="ADVANCED_TITLE" />
@@ -48,6 +48,6 @@
           If this does not resolve the issue, we recommend selecting this option
           again for improved performance.</translation>
 <translation id="8597726643333341451">You're viewing a secure Chrome for testing page</translation>
-<translation id="8684913864886094367">Chromium didn't shut down correctly.</translation>
+<translation id="1627254898104673072">Shuttle didn't shut down correctly.</translation>
 <translation id="9183331186620388872">Chromium tip: Search with Lens</translation>
 </translationbundle>

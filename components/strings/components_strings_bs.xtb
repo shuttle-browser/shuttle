@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Navedite dodatne detalje</translation>
 <translation id="1016671033299705843">Sigurno dodajte vozačku dozvolu</translation>
 <translation id="1019413721762100891">Isključeno</translation>
-<translation id="1021753677514347426">Ovaj problem nastaje zbog potvrde koju ste vi ili neko drugi instalirali na uređaj. Poznato je da se ta potvrda koristi za nadzor i presretanje mreža te je Chromium ne smatra pouzdanom. Iako postoje opravdani slučajevi za nadzor, naprimjer na mrežama u školama ili preduzećima, Chromium želi potvrditi da ste toga svjesni čak i ako taj proces ne možete zaustaviti. Nadzor se može vršiti u bilo kojem pregledniku ili bilo kojoj aplikaciji koja pristupa webu.</translation>
+<translation id="768230658237634872">Ovaj problem nastaje zbog potvrde koju ste vi ili neko drugi instalirali na uređaj. Poznato je da se ta potvrda koristi za nadzor i presretanje mreža te je Shuttle ne smatra pouzdanom. Iako postoje opravdani slučajevi za nadzor, naprimjer na mrežama u školama ili preduzećima, Shuttle želi potvrditi da ste toga svjesni čak i ako taj proces ne možete zaustaviti. Nadzor se može vršiti u bilo kojem pregledniku ili bilo kojoj aplikaciji koja pristupa webu.</translation>
 <translation id="1024111578869940408">Napadači ponekad oponašaju web lokacije pomoću teško primjetnih izmjena web adrese.</translation>
 <translation id="102916930470544692">Pristupni ključ</translation>
 <translation id="1030706264415084469"><ph name="URL" /> želi trajno pohraniti veliku količinu podataka na vaš uređaj</translation>
@@ -809,7 +809,7 @@ To će u suprotnom biti blokirano prema vašim postavkama privatnosti. Ovo će o
 <translation id="2348836501965732644">Upravljajte informacijama ili isključite ove prijedloge u Postavkama</translation>
 <translation id="2349957959687031096">Dugme Otvori anonimnu karticu, aktivirajte da otvorite novu anonimnu karticu i da privatno pregledate</translation>
 <translation id="2350796302381711542">Dozvoliti da <ph name="HANDLER_HOSTNAME" /> otvori sve linkove za <ph name="PROTOCOL" /> umjesto obrađivača <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Server nije mogao dokazati da je <ph name="DOMAIN" /> jer koristi sigurnosni certifikat koji Chromium ili konfiguracija sistema za šifriranje web saobraćaja ne smatraju pouzdanim. Uzrok tome može biti pogrešna konfiguracija ili napadač koji je prekinuo vašu vezu.</translation>
+<translation id="4798228153726623290">Server nije mogao dokazati da je <ph name="DOMAIN" /> jer koristi sigurnosni certifikat koji Shuttle ili konfiguracija sistema za šifriranje web saobraćaja ne smatraju pouzdanim. Uzrok tome može biti pogrešna konfiguracija ili napadač koji je prekinuo vašu vezu.</translation>
 <translation id="2353297238722298836">Kamera i mikrofon su dozvoljeni</translation>
 <translation id="2354001756790975382">Ostale oznake</translation>
 <translation id="2355395290879513365">Napadači mogu vidjeti slike koje gledate na ovoj web lokaciji i navesti vas da ih izmijenite.</translation>
@@ -1046,7 +1046,7 @@ To će u suprotnom biti blokirano prema vašim postavkama privatnosti. Ovo će o
 <translation id="2728127805433021124">Certifikat servera je potpisan korištenjem slabog algoritma za potpisivanje.</translation>
 <translation id="272937284275742856">Sigurno potvrđivanje podataka o plaćanju…</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Pokrenuti dijagnostiku povezivosti<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Više informacija o pretraživaču u Chromiumu</translation>
+<translation id="5216476641707900057">Više informacija o pretraživaču u Shuttleu</translation>
 <translation id="2731382536835015353">44 x 68 in</translation>
 <translation id="2734797989819862638">Nemoj kopirati</translation>
 <translation id="2738771556149464852">Ne poslije</translation>
@@ -1344,7 +1344,7 @@ Da sakrijete opcije kasnijeg plaćanja, idite u <ph name="BEGIN_LINK" />postavke
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Unesite <ph name="NUMBER_OF_DIGITS" />-cifreni kôd za potvrdu</translation>
 <translation id="3272643614306383237">Manje od 1 MB. Moguće je sporije učitavanje nekih web lokacija prilikom sljedeće posjete.</translation>
-<translation id="3273738040255912340">Administrator može daljinski unositi izmjene profila i preglednika, analizirati informacije o pregledniku putem izvještavanja i obavljati druge potrebne zadatke. Aktivnostima na ovom uređaju se može upravljati i izvan Chromiuma. <ph name="BEGIN_LINK" />Saznajte više<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Administrator može daljinski unositi izmjene profila i preglednika, analizirati informacije o pregledniku putem izvještavanja i obavljati druge potrebne zadatke. Aktivnostima na ovom uređaju se može upravljati i izvan Shuttlea. <ph name="BEGIN_LINK" />Saznajte više<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Upit za pohranjivanje IBAN-a je otvoren u punoj visini.</translation>
 <translation id="327455571215090823">Pametnije automatsko popunjavanje koje ostaje privatno</translation>
 <translation id="3280440382387335343">Sigurno ažurirajte pasoš u Google Novčaniku</translation>
@@ -1613,7 +1613,7 @@ Da sakrijete opcije kasnijeg plaćanja, idite u <ph name="BEGIN_LINK" />postavke
 <translation id="3742104862808477448">Pomozite Chromiumu da bolje razumije i popunjava složene obrasce sigurnom obradom podataka na Googleovim serverima. Vaše informacije ostaju privatne i niko ih ne pregleda.</translation>
 <translation id="3744111561329211289">Sinhronizacija u pozadini</translation>
 <translation id="3744212718085287312">Dodatno zaštititi virtuelnom karticom sljedeći put?</translation>
-<translation id="3744899669254331632">Trenutno ne možete posjetiti <ph name="SITE" /> jer je ova web lokacija poslala kodirane akreditive koje Chromium ne može obraditi. Greške i napadi na mreži su obično privremeni, pa će ova web lokacija vjerovatno raditi kasnije.</translation>
+<translation id="58356321557204990">Trenutno ne možete posjetiti <ph name="SITE" /> jer je ova web lokacija poslala kodirane akreditive koje Shuttle ne može obraditi. Greške i napadi na mreži su obično privremeni, pa će ova web lokacija vjerovatno raditi kasnije.</translation>
 <translation id="3745599309295009257">Vaš tekst te sadržaj i URL stranice na kojoj pišete će se poslati Googleu, osobe će ih pregledati i koristit će se za poboljšanje ove funkcije. Nemojte unositi lične informacije (kao što su zdravstveni ili finansijski podaci) niti koristiti ovaj alat na web lokacijama koje sadržavaju privatne ili osjetljive informacije.</translation>
 <translation id="3748009735914587286">Metal (visoki sjaj)</translation>
 <translation id="3748647055058832337">Nije dostupno za ovog trgovca</translation>
@@ -2199,7 +2199,7 @@ Da sakrijete opcije kasnijeg plaćanja, idite u <ph name="BEGIN_LINK" />postavke
 <translation id="4732860731866514038">Preuzimanje jezičkog paketa za <ph name="LANGUAGE" />… <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> želi koristiti lokciju vašeg uređaja</translation>
 <translation id="473414950835101501">Koristiti vaše kamere</translation>
-<translation id="4736825316280949806">Ponovo pokrenite Chromium</translation>
+<translation id="5713993618957185264">Ponovo pokrenite Shuttle</translation>
 <translation id="4736934858538408121">Virtuelna kartica</translation>
 <translation id="473775607612524610">Ažuriraj</translation>
 <translation id="4738601419177586157">Prijedlog za pretraživanje: <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Da sakrijete opcije kasnijeg plaćanja, idite u <ph name="BEGIN_LINK" />postavke
 <translation id="5089810972385038852">Država</translation>
 <translation id="5093232627742069661">Z-presavijanje</translation>
 <translation id="5093417502834168387">Imate li poteškoće s prijavom? Pokušajte na drugi način</translation>
-<translation id="5094747076828555589">Ovaj server ne može dokazati da pripada domeni <ph name="DOMAIN" />; Chromium ne vjeruje njegovoj sigurnosnoj potvrdi. Uzrok tome može biti pogrešna konfiguracija ili napadač koji je prekinuo vašu vezu.</translation>
+<translation id="5713412634455044803">Ovaj server ne može dokazati da pripada domeni <ph name="DOMAIN" />; Shuttle ne vjeruje njegovoj sigurnosnoj potvrdi. Uzrok tome može biti pogrešna konfiguracija ili napadač koji je prekinuo vašu vezu.</translation>
 <translation id="5096066272198024688">Pohranjivanje informacija…</translation>
 <translation id="5097099694988056070">Statistika uređaja kao što je iskorištenost CPU-a/RAM-a</translation>
 <translation id="5097468150760963273">27 x 39 in</translation>
@@ -3173,7 +3173,7 @@ Da sakrijete opcije kasnijeg plaćanja, idite u <ph name="BEGIN_LINK" />postavke
 <translation id="635394585025793320">Želim impresionirati nekoga. Potraži slobodne stolove za 2 osobe u restoranima o kojima se trenutno najviše priča</translation>
 <translation id="6354918092619878358">SECG eliptična krivulja secp256r1 (poznata i kao ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, pritisak na Tab, a zatim na Enter za više kartica s drugih uređaja</translation>
-<translation id="6355392890578844978">Ovim preglednikom ne upravlja kompanija ili neka druga organizacija. Aktivnostima na ovom uređaju se može upravljati van Chromiuma. <ph name="BEGIN_LINK" />Saznajte više<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Ovim preglednikom ne upravlja kompanija ili neka druga organizacija. Aktivnostima na ovom uređaju se može upravljati van Shuttlea. <ph name="BEGIN_LINK" />Saznajte više<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Grupe kartica "<ph name="GROUP_TITLE_1" />" i "<ph name="GROUP_TITLE_2" />" više nisu dostupne</translation>
 <translation id="6358088212770985041">urediti načine plaćanja</translation>
 <translation id="6358450015545214790">Šta ovo znači?</translation>
@@ -4138,7 +4138,7 @@ Dodatni detalji:
 <translation id="7995512525968007366">Nije navedeno</translation>
 <translation id="7997855386298213183">dijeljene kartice</translation>
 <translation id="7999482381722829925">Kreiraj kontrolnu listu za detaljno čišćenje po prostorijama, poredanu po prioritetima, s fokusom na mjesta koja se često propuste</translation>
-<translation id="8001912761979890298">Server nije mogao dokazati da je <ph name="DOMAIN" /> jer koristi sigurnosni certifikat koji Chromium ili konfiguracija sistema za šifriranje web saobraćaja ne smatraju pouzdanim. Uzrok tome može biti pogrešna konfiguracija ili napadač koji je prekinuo vašu vezu. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Pregledajte certifikat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Server nije mogao dokazati da je <ph name="DOMAIN" /> jer koristi sigurnosni certifikat koji Shuttle ili konfiguracija sistema za šifriranje web saobraćaja ne smatraju pouzdanim. Uzrok tome može biti pogrešna konfiguracija ili napadač koji je prekinuo vašu vezu. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Pregledajte certifikat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Pokušajte zatvoriti druge kartice ili programe da oslobodite memoriju.</translation>
 <translation id="8002230960325005199">Pogledajte srodne web lokacije na novoj kartici</translation>
 <translation id="8003046808285812021">"<ph name="SEARCH_TERMS" />"</translation>
@@ -4229,7 +4229,7 @@ Dodatni detalji:
 <translation id="8175796834047840627">Chrome vam nudi pohranjivanje vaših kartica na Google računu zato što ste prijavljeni. Ovo ponašanje možete promjeniti u postavkama</translation>
 <translation id="8176440868214972690">Administrator ovog uređaja je poslao određene informacije web lokacijama u nastavku, naprimjer postavke ili pravila.</translation>
 <translation id="818254048113802060">{0,plural, =1{Fajl <ph name="FILE_NAME" /> je blokiran zbog sadržaja}one{<ph name="FILE_COUNT" /> fajl je blokiran zbog sadržaja}few{<ph name="FILE_COUNT" /> fajla su blokirana zbog sadržaja}other{<ph name="FILE_COUNT" /> fajlova je blokirano zbog sadržaja}}</translation>
-<translation id="8186171296341598122">Možete promijeniti pretraživač bilo kada u postavkama Chromiuma. Ako ne vidite željeni pretraživač, možete izvršiti pretraživanje s njegove web lokacije. Prikazat će se na listi nedavno posjećenih pretraživača u postavkama Chromiuma i možete ga postaviti kao zadanog.</translation>
+<translation id="2852542171920460365">Možete promijeniti pretraživač bilo kada u postavkama Shuttlea. Ako ne vidite željeni pretraživač, možete izvršiti pretraživanje s njegove web lokacije. Prikazat će se na listi nedavno posjećenih pretraživača u postavkama Shuttlea i možete ga postaviti kao zadanog.</translation>
 <translation id="8188830160449823068">IBAN sačuvan samo na uređaj</translation>
 <translation id="8189557652711717875">Pretraživač koji odaberete će se koristiti za funkcije kao što je pretraživanje iz trake za adresu i sa slika na web lokacijama.</translation>
 <translation id="8190193880870196235">Upravlja ekstenzija</translation>
@@ -4313,7 +4313,7 @@ Dodatni detalji:
 <translation id="8316555157357957253">Koristi se sada</translation>
 <translation id="8319414634934645341">Produžena upotreba ključa</translation>
 <translation id="831997045666694187">Večer</translation>
-<translation id="8321448084834652864">Možete promijeniti pretraživač bilo kada u postavkama Chromiuma.</translation>
+<translation id="332470347080865446">Možete promijeniti pretraživač bilo kada u postavkama Shuttlea.</translation>
 <translation id="8321476692217554900">obavještenja</translation>
 <translation id="8323505966575306467">Dodajte veću zaštitu za lozinke</translation>
 <translation id="832547548543012337">Izbrišite pasoš</translation>
@@ -4534,7 +4534,7 @@ Dodatni detalji:
 <translation id="8736059027199600831">30 x 40 in</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />. Pritisnite Tab, a zatim Enter da otvorite novi anonimni prozor i da privatno pregledate</translation>
 <translation id="8737685506611670901">Otvaranje linkova protokola <ph name="PROTOCOL" /> umjesto obrađivača <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Ispravno podesite sat da uspostavite sigurnu vezu. Razlog tome je taj što su certifikati koji web lokacije koriste da se identificiraju valjane samo na određeni period. Kako sat na vašem uređaju nije ispravan, Chromium ne može provjeriti ove certifikate.</translation>
+<translation id="4709963803166322417">Ispravno podesite sat da uspostavite sigurnu vezu. Razlog tome je taj što su certifikati koji web lokacije koriste da se identificiraju valjane samo na određeni period. Kako sat na vašem uređaju nije ispravan, Shuttle ne može provjeriti ove certifikate.</translation>
 <translation id="8740359287975076522">Nije moguće pronaći &lt;abbr id="dnsDefinition"&gt;DNS adresu&lt;/abbr&gt; host računara <ph name="HOST_NAME" />. Dijagnosticiranje problema.</translation>
 <translation id="874918643257405732">Označite ovu karticu</translation>
 <translation id="8749274696886550762">Izgleda da ova web lokacija nije ispravna</translation>
@@ -4743,7 +4743,7 @@ Dodatni detalji:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, pritisnite Tab, a zatim Enter da postavite Chrome kao zadani preglednik sistema u postavkama iOS-a</translation>
 <translation id="9101450247048146228">Korištenje i pomicanje kamere (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Ladica 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> obično koristi šifriranje za zaštitu vaših informacija. Kada se Chromium ovaj put pokušao povezati s web lokacijom <ph name="SITE" />, web lokacija je vratila neobične i netačne akreditive. To se može dogoditi kada se napadač pokušava predstaviti kao web lokacija <ph name="SITE" /> ili kada vezu prekine ekran za prijavu na WiFi. Vaše informacije su i dalje sigurne jer je Chromium prekinuo vezu prije bilo kakve razmjene podataka.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> obično koristi šifriranje za zaštitu vaših informacija. Kada se Shuttle ovaj put pokušao povezati s web lokacijom <ph name="SITE" />, web lokacija je vratila neobične i netačne akreditive. To se može dogoditi kada se napadač pokušava predstaviti kao web lokacija <ph name="SITE" /> ili kada vezu prekine ekran za prijavu na WiFi. Vaše informacije su i dalje sigurne jer je Shuttle prekinuo vezu prije bilo kakve razmjene podataka.</translation>
 <translation id="9107199998619088551">Organizacija <ph name="MANAGER" /> upravlja vašim profilom</translation>
 <translation id="9107467864910557787">Vašim preglednikom upravlja <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Pravilo administratora onemogućava dijeljenje ekrana s aplikacijom <ph name="APPLICATION_TITLE" /> kada je vidljiv povjerljivi sadržaj</translation>

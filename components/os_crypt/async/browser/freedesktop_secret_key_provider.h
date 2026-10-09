@@ -158,9 +158,9 @@ class FreedesktopSecretKeyProvider : public KeyProvider {
   static constexpr char kKeyName[] = "Chrome Safe Storage";
   static constexpr char kAppName[] = "chrome";
 #else
-  static constexpr char kKWalletFolder[] = "Chromium Keys";
-  static constexpr char kKeyName[] = "Agent Chrome Safe Storage";
-  static constexpr char kAppName[] = "chromium";
+  static constexpr char kKWalletFolder[] = "Shuttle Keys";
+  static constexpr char kKeyName[] = "Shuttle Safe Storage";
+  static constexpr char kAppName[] = "shuttle";
 #endif
 
   void InitializeFreedesktopSecretService();

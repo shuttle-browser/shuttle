@@ -75,7 +75,7 @@ const char kDevToolsHandlerThreadName[] = "Chrome_DevToolsHandlerThread";
 
 const char kPageUrlPrefix[] = "/devtools/page/";
 const char kBrowserUrlPrefix[] = "/devtools/browser";
-// Agent Chrome: a browser-level connection scoped to one agent session.
+// Shuttle: a browser-level connection scoped to one agent session.
 const char kSessionUrlPrefix[] = "/devtools/session/";
 
 const char kTargetIdField[] = "id";
@@ -499,7 +499,7 @@ void ServerWrapper::OnHttpRequest(int connection_id,
 
   server_->SetSendBufferSize(connection_id, kSendBufferSizeForDevTools);
 
-  // Agent Chrome: the in-browser MCP server.
+  // Shuttle: the in-browser MCP server.
   if (PathWithoutParams(info.path) == "/mcp") {
     GetUIThreadTaskRunner({})->PostTask(
         FROM_HERE, base::BindOnce(&DevToolsHttpHandler::OnMcpRequest, handler_,
@@ -947,7 +947,7 @@ void DevToolsHttpHandler::OnWebSocketRequest(
     return;
   }
 
-  // Agent Chrome: /devtools/session/<id> is a browser-level connection that
+  // Shuttle: /devtools/session/<id> is a browser-level connection that
   // only sees the session's tabs (the delegate's filter enforces it).
   if (base::StartsWith(request.path, kSessionUrlPrefix,
                        base::CompareCase::SENSITIVE)) {

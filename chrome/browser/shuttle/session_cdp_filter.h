@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_SESSION_CDP_FILTER_H_
-#define CHROME_BROWSER_AGENT_CHROME_SESSION_CDP_FILTER_H_
+#ifndef CHROME_BROWSER_SHUTTLE_SESSION_CDP_FILTER_H_
+#define CHROME_BROWSER_SHUTTLE_SESSION_CDP_FILTER_H_
 
 #include <map>
 #include <set>
@@ -13,7 +13,7 @@
 #include "base/values.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 class SessionManager;
 
@@ -92,6 +92,6 @@ class SessionCdpFilter
   base::WeakPtrFactory<SessionCdpFilter> weak_factory_{this};
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_SESSION_CDP_FILTER_H_
+#endif  // CHROME_BROWSER_SHUTTLE_SESSION_CDP_FILTER_H_

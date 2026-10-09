@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Enable Theme</translation>
 <translation id="1135328998467923690">Package is invalid: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Environment-facing</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> has added an extension that may change the way that Chromium works.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> has added an extension that may change the way that Shuttle works.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Failed to export private key.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Failed to replace crx file. Check to see if the file is in use.</translation>
 <translation id="3163201441334626963">Unknown product <ph name="PRODUCT_ID" /> from vendor <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Access to this extension is blocked by your organisation.</translation>
-<translation id="3183357154200327217">Another program on your computer added a theme that may change the way Chromium works.
+<translation id="7846451875700317002">Another program on your computer added a theme that may change the way Shuttle works.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">App with 'kiosk_only' manifest attribute must be installed in Chrome OS kiosk mode</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Deny</translation>
 <translation id="3984413272403535372">Error while signing extension.</translation>
 <translation id="4014432863917027322">Repair "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Another program on your computer added an extension that may change the way Chromium works.
+<translation id="7396546976728149133">Another program on your computer added an extension that may change the way Shuttle works.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Access to this extension category is blocked by your organisation.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">The newest version of "<ph name="EXTENSION_NAME" />" has been disabled because it requires more permissions.</translation>
 <translation id="5242724311594467048">Enable "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Remove from Chromium</translation>
+<translation id="2064155379595075287">Remove from Shuttle</translation>
 <translation id="5456409301717116725">This extension includes the key file '<ph name="KEY_PATH" />'. You probably don't want to do that.</translation>
 <translation id="5485102783864353244">Add app</translation>
 <translation id="5486326529110362464">Input value for private key must exist.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">The administrator of this machine requires <ph name="EXTENSION_NAME" /> to be installed. It cannot be uninstalled.</translation>
 <translation id="6027032947578871493">Unknown product <ph name="PRODUCT_ID" /> from <ph name="VENDOR_NAME" /> (serial number <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> from vendor <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Another program on your computer added an app that may change the way Chromium works.
+<translation id="5918487821361452587">Another program on your computer added an app that may change the way Shuttle works.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Error Loading Extension</translation>

@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Omogući temu</translation>
 <translation id="1135328998467923690">Paket je nevažeći: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Zadnja kamera</translation>
-<translation id="1171831736360285680">Partner <ph name="PARTNER_NAME" /> je dodao ekstenziju koja će možda promijeniti funkcioniranje Chromiuma.
+<translation id="6853317349523111347">Partner <ph name="PARTNER_NAME" /> je dodao ekstenziju koja će možda promijeniti funkcioniranje Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Izvoz privatnog ključa nije uspio.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Zamjena crx fajla nije uspjela. Provjerite je li fajl upotrebi.</translation>
 <translation id="3163201441334626963">Nepoznati proizvod <ph name="PRODUCT_ID" /> dobavljača <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Vaša organizacija je blokirala pristup ovoj ekstenziji.</translation>
-<translation id="3183357154200327217">Drugi program na računaru je dodao temu koja će možda promijeniti rad Chromiuma.
+<translation id="7846451875700317002">Drugi program na računaru je dodao temu koja će možda promijeniti rad Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplikacija s atributom deklaracije "kiosk_only" se mora instalirati u načinu rada kioska ChromeOS-a</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Odbij</translation>
 <translation id="3984413272403535372">Došlo je do greške prilikom potpisivanja ekstenzije.</translation>
 <translation id="4014432863917027322">Popraviti "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Drugi program na računaru je dodao ekstenziju koja će možda promijeniti rad Chromiuma.
+<translation id="7396546976728149133">Drugi program na računaru je dodao ekstenziju koja će možda promijeniti rad Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Vaša organizacija je blokirala pristup ovoj kategoriji ekstenzija.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Najnovija verzija ekstenzije "<ph name="EXTENSION_NAME" />" je onemogućena jer joj je potrebno više odobrenja.</translation>
 <translation id="5242724311594467048">Omogućiti "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Prikaz aplikacije: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Ukloni iz Chromiuma</translation>
+<translation id="2064155379595075287">Ukloni iz Shuttlea</translation>
 <translation id="5456409301717116725">Ova ekstenzija uključuje fajl s ključem "<ph name="KEY_PATH" />". Vjerovatno to ne želite učiniti.</translation>
 <translation id="5485102783864353244">Dodaj aplikaciju</translation>
 <translation id="5486326529110362464">Mora postojati ulazna vrijednost za privatni ključ.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administrator ovog uređaja traži instaliranje ekstenzije <ph name="EXTENSION_NAME" />. Nije je moguće deinstalirati.</translation>
 <translation id="6027032947578871493">Nepoznati proizvod <ph name="PRODUCT_ID" /> dobavljača <ph name="VENDOR_NAME" /> (serijski broj <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> od dobavljača <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Drugi program na računaru je dodao aplikaciju koja će možda promijeniti rad Chromiuma.
+<translation id="5918487821361452587">Drugi program na računaru je dodao aplikaciju koja će možda promijeniti rad Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Greška pri učitavanju ekstenzije</translation>

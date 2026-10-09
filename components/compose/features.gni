@@ -4,5 +4,5 @@
 
 declare_args() {
   # Whether Compose is enabled in the build.
-  enable_compose = false  # Agent Chrome: removed
+  enable_compose = false  # Shuttle: removed
 }

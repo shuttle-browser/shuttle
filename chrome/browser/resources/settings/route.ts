@@ -255,7 +255,7 @@ export let routes: SettingsRoutes = Router.getInstance().getRoutes();
 
 // Returns the "effective" route when at chrome://settings/.
 export function getTopLevelRoute(): Route {
-  // Agent Chrome: no People section; Privacy is the first section.
+  // Shuttle: no People section; Privacy is the first section.
   if (!loadTimeData.getBoolean('isGuest')) {
     return routes.PRIVACY;
   }

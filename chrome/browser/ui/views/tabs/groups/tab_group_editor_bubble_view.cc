@@ -415,7 +415,7 @@ std::u16string TabGroupEditorBubbleView::GetTextForCloseButton() const {
   return l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_CLOSE_GROUP);
 }
 
-// Agent Chrome: saved and shared tab groups are removed.
+// Shuttle: saved and shared tab groups are removed.
 bool TabGroupEditorBubbleView::CanSaveGroups() const {
   return false;
 }
@@ -459,7 +459,7 @@ void TabGroupEditorBubbleView::RebuildMenuContents() {
   color_selector_ = AddChildView(BuildColorPicker());
   AddChildView(BuildSeparator());
 
-  // Agent Chrome: a tab group is an agent. Name and color edit the agent
+  // Shuttle: a tab group is an agent. Name and color edit the agent
   // (SessionManager syncs both ways); no ungroup, delete, move or focus.
   simple_menu_items_.push_back(AddChildView(BuildNewTabInGroupButton()));
   simple_menu_items_.push_back(AddChildView(BuildHomeButton()));
@@ -677,7 +677,7 @@ void TabGroupEditorBubbleView::NewTabInGroupPressed() {
 }
 
 void TabGroupEditorBubbleView::HomePressed() {
-  // Agent Chrome: "Manage agents" opens chrome://agents.
+  // Shuttle: "Manage agents" opens chrome://agents.
   ShowSingletonTab(browser_, GURL("chrome://agents/"));
   GetWidget()->Close();
 }
@@ -712,12 +712,12 @@ void TabGroupEditorBubbleView::CloseGroupPressed() {
 void TabGroupEditorBubbleView::DeleteGroupPressed() {
   base::RecordAction(
       base::UserMetricsAction("TabGroups_TabGroupBubble_DeleteGroup"));
-  // Agent Chrome: without saved groups, deleting a group closes it.
+  // Shuttle: without saved groups, deleting a group closes it.
   CloseGroupPressed();
 }
 
 void TabGroupEditorBubbleView::LeaveGroupPressed() {
-  // Agent Chrome: no shared groups to leave.
+  // Shuttle: no shared groups to leave.
 }
 
 void TabGroupEditorBubbleView::MoveGroupToNewWindowPressed() {

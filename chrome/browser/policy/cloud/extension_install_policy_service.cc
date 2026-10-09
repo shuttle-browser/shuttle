@@ -478,7 +478,7 @@ void ExtensionInstallPolicyServiceImpl::OnCloudPolicyManagerReady(
   initialization_waiters_.erase(manager);
 
   if (manager == profile_->GetCloudPolicyManager()) {
-    // Agent Chrome: policy invalidations were removed.
+    // Shuttle: policy invalidations were removed.
     return;
   }
 

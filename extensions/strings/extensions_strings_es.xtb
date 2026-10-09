@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Habilitar tema</translation>
 <translation id="1135328998467923690">El paquete no es válido: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Trasera</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ha añadido una extensión que puede cambiar el funcionamiento de Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ha añadido una extensión que puede cambiar el funcionamiento de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Se ha producido un error al exportar la clave privada.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">No se ha podido reemplazar el archivo .crx. Comprueba si se está utilizando el archivo.</translation>
 <translation id="3163201441334626963">Producto <ph name="PRODUCT_ID" /> del proveedor <ph name="VENDOR_ID" /> desconocido</translation>
 <translation id="3174723475300476613">Tu organización ha bloqueado el acceso a esta extensión.</translation>
-<translation id="3183357154200327217">Otro programa de tu ordenador ha añadido un tema que puede cambiar el funcionamiento de Chromium.
+<translation id="7846451875700317002">Otro programa de tu ordenador ha añadido un tema que puede cambiar el funcionamiento de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">La aplicación con el atributo del archivo de manifiesto "kiosk_only" se debe instalar en el modo Kiosco de ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Denegar</translation>
 <translation id="3984413272403535372">Se ha producido un error al firmar la extensión.</translation>
 <translation id="4014432863917027322">¿Reparar "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Otro programa de tu ordenador ha añadido una extensión que puede cambiar el funcionamiento de Chromium.
+<translation id="7396546976728149133">Otro programa de tu ordenador ha añadido una extensión que puede cambiar el funcionamiento de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Tu organización ha bloqueado el acceso a esta categoría de extensiones.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Se ha inhabilitado la versión más reciente de "<ph name="EXTENSION_NAME" />" porque requiere más permisos.</translation>
 <translation id="5242724311594467048">¿Habilitar "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Eliminar de Chromium</translation>
+<translation id="2064155379595075287">Eliminar de Shuttle</translation>
 <translation id="5456409301717116725">Esta extensión incluye el archivo de clave "<ph name="KEY_PATH" />". Probablemente no quieras incluir este archivo.</translation>
 <translation id="5485102783864353244">Añadir aplicación</translation>
 <translation id="5486326529110362464">Debe existir un valor de entrada para la clave privada.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692"><ph name="EXTENSION_NAME" /> no se puede desinstalar porque el administrador de este ordenador requiere que esté instalado.</translation>
 <translation id="6027032947578871493">Producto <ph name="PRODUCT_ID" /> de <ph name="VENDOR_NAME" /> desconocido (número de serie <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> del proveedor <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Otro programa de tu ordenador ha añadido una aplicación que puede cambiar el funcionamiento de Chromium.
+<translation id="5918487821361452587">Otro programa de tu ordenador ha añadido una aplicación que puede cambiar el funcionamiento de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Error al cargar extensión</translation>

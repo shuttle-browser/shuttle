@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">テーマを有効にする</translation>
 <translation id="1135328998467923690">パッケージが無効です: <ph name="ERROR_CODE" /></translation>
 <translation id="1140871961407805696">外向き</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> により、Chromium の動作方法を変更する可能性のある拡張機能が追加されました。
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> により、Shuttle の動作方法を変更する可能性のある拡張機能が追加されました。
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">秘密鍵をエクスポートできませんでした。</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ファイルを置き換えられませんでした。ファイルが使用されていないか確認してください。</translation>
 <translation id="3163201441334626963">不明な商品（<ph name="PRODUCT_ID" />、ベンダー: <ph name="VENDOR_ID" />）</translation>
 <translation id="3174723475300476613">この拡張機能へのアクセスは組織によってブロックされています。</translation>
-<translation id="3183357154200327217">パソコン上の別のプログラムにより、Chromium の動作方法を変更する可能性のあるテーマが追加されました。<ph name="EXTENSION_NAME" /></translation>
+<translation id="7846451875700317002">パソコン上の別のプログラムにより、Shuttle の動作方法を変更する可能性のあるテーマが追加されました。<ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">「kiosk_only」マニフェスト属性が指定されているアプリは、ChromeOS キオスクモードでインストールする必要があります。</translation>
 <translation id="3364986687961713424">管理者からのメッセージ: <ph name="ADMIN_MESSAGE" /></translation>
 <translation id="3393440416772303020"><ph name="PRODUCT_NAME" />（シリアル番号: <ph name="SERIAL_NUMBER" />）</translation>
@@ -64,7 +64,7 @@
 <translation id="3927932062596804919">拒否</translation>
 <translation id="3984413272403535372">拡張機能の署名中にエラーが発生しました。</translation>
 <translation id="4014432863917027322">「<ph name="EXTENSION_NAME" />」を修復しますか？</translation>
-<translation id="4061696872429826774">パソコン上の別のプログラムにより、Chromium の動作方法を変更する可能性のある拡張機能が追加されました。<ph name="EXTENSION_NAME" /></translation>
+<translation id="7396546976728149133">パソコン上の別のプログラムにより、Shuttle の動作方法を変更する可能性のある拡張機能が追加されました。<ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">この拡張機能カテゴリへのアクセスは組織によってブロックされています。</translation>
 <translation id="4233778200880751280">情報ページ「<ph name="ABOUT_PAGE" />」を読み込めませんでした。</translation>
 <translation id="424963718355121712">アプリは関連付けられたホストから配信される必要があります</translation>
@@ -85,7 +85,7 @@
 <translation id="5185386675596372454">「<ph name="EXTENSION_NAME" />」の最新バージョンは、さらに許可が必要なため無効になっています。</translation>
 <translation id="5242724311594467048">「<ph name="EXTENSION_NAME" />」を有効にしますか？</translation>
 <translation id="5356315618422219272">アプリビュー: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium から削除</translation>
+<translation id="2064155379595075287">Shuttle から削除</translation>
 <translation id="5456409301717116725">この拡張機能には、鍵ファイル「<ph name="KEY_PATH" />」が含まれていますが、おそらくその必要性はありません。</translation>
 <translation id="5485102783864353244">アプリを追加</translation>
 <translation id="5486326529110362464">秘密鍵の入力値が存在している必要があります。</translation>
@@ -95,7 +95,7 @@
 <translation id="5972529113578162692">このパソコンの管理者により、<ph name="EXTENSION_NAME" /> をインストールすることが要件として指定されています。この拡張機能はアンインストールできません。</translation>
 <translation id="6027032947578871493">不明な商品（<ph name="PRODUCT_ID" />、ベンダー: <ph name="VENDOR_NAME" />、シリアル番号: <ph name="SERIAL_NUMBER" />）</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" />（ベンダー: <ph name="VENDOR_ID" />）</translation>
-<translation id="6204922163963157461">パソコン上の別のプログラムにより、Chromium の動作方法を変更する可能性のあるアプリが追加されました。<ph name="EXTENSION_NAME" /></translation>
+<translation id="5918487821361452587">パソコン上の別のプログラムにより、Shuttle の動作方法を変更する可能性のあるアプリが追加されました。<ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">拡張機能の読み込みエラー</translation>
 <translation id="6220551899604141979"><ph name="PARTNER_NAME" /> により、Chrome の動作方法を変更する可能性のある拡張機能が追加されました。
 

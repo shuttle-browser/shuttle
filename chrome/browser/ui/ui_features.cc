@@ -402,7 +402,7 @@ bool IsWebUISplitTabsButtonEnabled() {
 }
 
 bool IsWebUIAvatarButtonEnabled() {
-  // Agent Chrome: the avatar button and profile menu were removed.
+  // Shuttle: the avatar button and profile menu were removed.
   return false;
 }
 

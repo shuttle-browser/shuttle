@@ -414,7 +414,7 @@ void ChromeAuthenticatorRequestDelegate::ConfigureDiscoveries(
     return;
   }
 
-  // Agent Chrome: password credentials in WebAuthn requests are not
+  // Shuttle: password credentials in WebAuthn requests are not
   // supported (no password manager).
   if (!discovery_factory) {
     return;
@@ -689,7 +689,7 @@ bool ChromeAuthenticatorRequestDelegate::MaybeHandleImmediateMediation(
 }
 
 void ChromeAuthenticatorRequestDelegate::ShowUI(TransportAvailabilityInfo tai) {
-  // Agent Chrome: conditional (autofill), ambient and passkey-upgrade requests
+  // Shuttle: conditional (autofill), ambient and passkey-upgrade requests
   // have no UI without the password manager/autofill. They stay pending until
   // the page aborts them.
   switch (dialog_controller_->ui_presentation()) {

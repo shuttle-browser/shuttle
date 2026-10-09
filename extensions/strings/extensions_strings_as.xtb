@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">থীম সক্ষম কৰক</translation>
 <translation id="1135328998467923690">পেকেজটো অমান্য: '<ph name="ERROR_CODE" />'।</translation>
 <translation id="1140871961407805696">পশ্চাৎ কেমেৰা</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" />এ এটা এক্সটেনশ্বন যোগ দিছে, যিটোৱে Chromiumৰ কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" />এ এটা এক্সটেনশ্বন যোগ দিছে, যিটোৱে Shuttleৰ কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ব্যক্তিগত চাবিটো ৰপ্তানি কৰিব পৰা নগ’ল৷</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ফাইল সলনি কৰিব পৰা নগ‘ল। ফাইলটো ব্যৱহাৰ হৈ আছে নেকি চাওক।</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" />ৰ অজ্ঞাত প্ৰডাক্ট <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">আপোনাৰ প্ৰতিষ্ঠানে এই এক্সটেনশ্বনটোৰ এক্সেছ অৱৰোধ কৰিছে।</translation>
-<translation id="3183357154200327217">আপোনাৰ কম্পিউটাৰৰ অন্য এটা প্ৰ’গ্ৰামে এটা থীম যোগ কৰিছে যিয়ে Chromiumৰ কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
+<translation id="7846451875700317002">আপোনাৰ কম্পিউটাৰৰ অন্য এটা প্ৰ’গ্ৰামে এটা থীম যোগ কৰিছে যিয়ে Shuttleৰ কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' মেনিফেষ্টৰ বৈশিষ্ট্য থকা এপক ChromeOS কিঅ’স্ক ম’ডতেই ইনষ্টল কৰিব লাগে</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">অস্বীকাৰ কৰক</translation>
 <translation id="3984413272403535372">এক্সটেনশ্বন ছাইনিং কৰি থাকোঁতে আঁসোৱাহ হ’ল।</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" মেৰামতি কৰিবনে?</translation>
-<translation id="4061696872429826774">আপোনাৰ কম্পিউটাৰৰ অন্য কোনো প্ৰ’গ্ৰামে এটা এক্সটেনশ্বন যোগ কৰিছে যিয়ে Chromium কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
+<translation id="7396546976728149133">আপোনাৰ কম্পিউটাৰৰ অন্য কোনো প্ৰ’গ্ৰামে এটা এক্সটেনশ্বন যোগ কৰিছে যিয়ে Shuttle কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">আপোনাৰ প্ৰতিষ্ঠানে এই এক্সটেনশ্বনৰ শ্ৰেণীটোৰ এক্সেছ অৱৰোধ কৰিছে।</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />"ৰ নতুন সংস্কৰণটো অক্ষম কৰা হৈছে কাৰণ ইয়াক অধিক অনুমতিৰ প্ৰয়োজন।</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" সক্ষম কৰিবনে?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromiumৰ পৰা আঁতৰাওক</translation>
+<translation id="2064155379595075287">Shuttleৰ পৰা আঁতৰাওক</translation>
 <translation id="5456409301717116725">এই এক্সটেনশ্বনত ব্যক্তিগত চাবি অন্তর্ভুক্ত '<ph name="KEY_PATH" />' আছে। আপুনি হয়তো সেয়া কৰিবলৈ নোখোজে।</translation>
 <translation id="5485102783864353244">এপ্ যোগ কৰক</translation>
 <translation id="5486326529110362464">ব্যক্তিগত কীৰ বাবে ইনপুট মান থাকিবই লাগিব।</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">এই মেচিনটোৰ প্ৰশাসকৰ বাবে <ph name="EXTENSION_NAME" /> ইনষ্টল হৈ থকাটো আৱশ্যক। ইয়াক আনইনষ্টল কৰিব নোৱাৰি।</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" />ৰ অজ্ঞাত প্ৰডাক্ট <ph name="PRODUCT_ID" /> (ক্ৰমিক নম্বৰ <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> বিক্ৰেতাৰ <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">আপোনাৰ কম্পিউটাৰৰ অন্য কোনো প্ৰ’গ্ৰামে এটা এপ্‌ যোগ কৰিছে যিয়ে Chromiumৰ কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
+<translation id="5918487821361452587">আপোনাৰ কম্পিউটাৰৰ অন্য কোনো প্ৰ’গ্ৰামে এটা এপ্‌ যোগ কৰিছে যিয়ে Shuttleৰ কাৰ্যপ্ৰণালী সলনি কৰিব পাৰে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">এক্সটেনশ্বন ল’ড কৰোতে আসোঁৱাহ হৈছে</translation>

@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Diğer ayrıntıları sağlayın</translation>
 <translation id="1016671033299705843">Sürücü belgesini güvenli şekilde ekleyin</translation>
 <translation id="1019413721762100891">Kapalı</translation>
-<translation id="1021753677514347426">Bu sorunun nedeni sizin veya başka birinin cihazınıza yüklediği bir sertifika olabilir. Sertifikanın ağa müdahale etmek ve izlemek amacıyla kullanıldığı bilindiğinden, Chromium bu sertifikaya güvenmez. Okul veya şirket ağı gibi izlemenin meşru olduğu durumlar vardır. İzlemeyi durduramasanız bile Chromium yine de farkında olmanızı sağlamak ister. Web’e erişen her tarayıcı ve uygulamada izleme yapılabilir.</translation>
+<translation id="768230658237634872">Bu sorunun nedeni sizin veya başka birinin cihazınıza yüklediği bir sertifika olabilir. Sertifikanın ağa müdahale etmek ve izlemek amacıyla kullanıldığı bilindiğinden, Shuttle bu sertifikaya güvenmez. Okul veya şirket ağı gibi izlemenin meşru olduğu durumlar vardır. İzlemeyi durduramasanız bile Shuttle yine de farkında olmanızı sağlamak ister. Web’e erişen her tarayıcı ve uygulamada izleme yapılabilir.</translation>
 <translation id="1024111578869940408">Saldırganlar bazen web adresinde görülmesi zor değişiklikler yaparak siteleri taklit ederler.</translation>
 <translation id="102916930470544692">Geçiş anahtarı</translation>
 <translation id="1030706264415084469"><ph name="URL" /> büyük miktarda veriyi cihazınızda kalıcı olarak depolamak istiyor</translation>
@@ -809,7 +809,7 @@ Aksi halde bu işlem gizlilik ayarlarınız tarafından engellenecek. Buna izin 
 <translation id="2348836501965732644">Bilgilerinizi yönetin veya bu önerileri Ayarlar'dan devre dışı bırakın</translation>
 <translation id="2349957959687031096">Gizli sekme aç düğmesi, yeni gizli sekme açıp gizli olarak göz atmak için etkinleştirin</translation>
 <translation id="2350796302381711542">Tüm <ph name="PROTOCOL" /> bağlantılarını <ph name="REPLACED_HANDLER_TITLE" /> yerine <ph name="HANDLER_HOSTNAME" /> ana makinesinin açmasına izin verilsin mi?</translation>
-<translation id="2351718832234620840">Bu sunucu, web trafiği şifrelemesi için Chromium veya sistem yapılandırmanız tarafından güvenilmeyen bir güvenlik sertifikası kullandığından <ph name="DOMAIN" /> olduğunu kanıtlayamadı. Bu durum, yanlış yapılandırmadan veya bağlantınıza müdahale eden bir saldırgandan kaynaklanıyor olabilir.</translation>
+<translation id="4798228153726623290">Bu sunucu, web trafiği şifrelemesi için Shuttle veya sistem yapılandırmanız tarafından güvenilmeyen bir güvenlik sertifikası kullandığından <ph name="DOMAIN" /> olduğunu kanıtlayamadı. Bu durum, yanlış yapılandırmadan veya bağlantınıza müdahale eden bir saldırgandan kaynaklanıyor olabilir.</translation>
 <translation id="2353297238722298836">Kamera ve mikrofona izin verildi</translation>
 <translation id="2354001756790975382">Diğer yer işaretleri</translation>
 <translation id="2355395290879513365">Saldırganlar bu sitede baktığınız resimleri görebilir ve bu resimler üzerinde değişiklik yaparak sizi kandırabilirler.</translation>
@@ -1046,7 +1046,7 @@ Aksi halde bu işlem gizlilik ayarlarınız tarafından engellenecek. Buna izin 
 <translation id="2728127805433021124">Sunucunun sertifikası, zayıf bir imza algoritması kullanılarak imzalanmış.</translation>
 <translation id="272937284275742856">Ödeme bilgileriniz güvenli bir şekilde doğrulanıyor...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Bağlantı Teşhislerini Çalıştırma<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Chromium'daki arama motorunuz hakkında daha fazla bilgi</translation>
+<translation id="5216476641707900057">Shuttle'daki arama motorunuz hakkında daha fazla bilgi</translation>
 <translation id="2731382536835015353">44 x 68 inç</translation>
 <translation id="2734797989819862638">Kopyalanmasın</translation>
 <translation id="2738771556149464852">Şundan Sonra Değil:</translation>
@@ -1344,7 +1344,7 @@ Sonra ödeme seçeneklerini gizlemek için <ph name="BEGIN_LINK" />ödeme ayarla
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187"><ph name="NUMBER_OF_DIGITS" /> haneli doğrulama kodunu girin</translation>
 <translation id="3272643614306383237">1 MB'tan az. Sonraki ziyaretinizde bazı siteler daha yavaş yüklenebilir.</translation>
-<translation id="3273738040255912340">Yöneticiniz profilinizde ve tarayıcınızda uzaktan değişiklik yapabilir, raporlama aracılığıyla tarayıcı hakkındaki bilgileri analiz edebilir ve diğer gerekli görevleri yerine getirebilir. Bu cihazdaki etkinlikler Chromium dışında da yönetilebilir. <ph name="BEGIN_LINK" />Daha fazla bilgi<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Yöneticiniz profilinizde ve tarayıcınızda uzaktan değişiklik yapabilir, raporlama aracılığıyla tarayıcı hakkındaki bilgileri analiz edebilir ve diğer gerekli görevleri yerine getirebilir. Bu cihazdaki etkinlikler Shuttle dışında da yönetilebilir. <ph name="BEGIN_LINK" />Daha fazla bilgi<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">IBAN'ı kaydet alt sayfası tam ekranda açıldı.</translation>
 <translation id="327455571215090823">Gizliliği korunan, daha akıllı otomatik doldurma özelliği</translation>
 <translation id="3280440382387335343">Google Cüzdan'daki pasaportu güvenli bir şekilde güncelleyin</translation>
@@ -1613,7 +1613,7 @@ Sonra ödeme seçeneklerini gizlemek için <ph name="BEGIN_LINK" />ödeme ayarla
 <translation id="3742104862808477448">Google'ın sunucularındaki verileri güvenli bir şekilde işleyerek Chromium'un karmaşık formları daha iyi anlamasına ve doldurmasına yardımcı olun. Bilgileriniz gizli kalır ve kimse tarafından incelenmez.</translation>
 <translation id="3744111561329211289">Arka plan senkronizasyonu</translation>
 <translation id="3744212718085287312">Bir dahaki sefere sanal kartla daha güvenli hale getirilsin mi?</translation>
-<translation id="3744899669254331632">Web sitesi Chromium'un işleyemediği karışık kimlik bilgileri gönderdiğinden <ph name="SITE" /> sitesini şu anda ziyaret edemezsiniz. Ağ hataları ve saldırılar genellikle geçici türdendir, dolayısıyla bu sayfa muhtemelen daha sonra çalışacaktır.</translation>
+<translation id="58356321557204990">Web sitesi Shuttle'un işleyemediği karışık kimlik bilgileri gönderdiğinden <ph name="SITE" /> sitesini şu anda ziyaret edemezsiniz. Ağ hataları ve saldırılar genellikle geçici türdendir, dolayısıyla bu sayfa muhtemelen daha sonra çalışacaktır.</translation>
 <translation id="3745599309295009257">Metniniz ile yazdığınız sayfanın içeriği ve URL'si Google'a gönderilecek, gerçek kişiler tarafından incelenecek ve bu özelliği iyileştirmek için kullanılacaktır. Kişisel bilgiler (ör. tıbbi veya finansal bilgiler) girmeyin veya bu aracı özel ya da hassas bilgiler içeren sitelerde kullanmayın.</translation>
 <translation id="3748009735914587286">Metal (Çok Parlak)</translation>
 <translation id="3748647055058832337">Bu satıcı için mevcut değil</translation>
@@ -2199,7 +2199,7 @@ Sonra ödeme seçeneklerini gizlemek için <ph name="BEGIN_LINK" />ödeme ayarla
 <translation id="4732860731866514038"><ph name="LANGUAGE" /> dil paketi indiriliyor... %<ph name="PERCENT" /></translation>
 <translation id="4733082559415072992"><ph name="URL" />, cihazınızın konumunu kullanmak istiyor</translation>
 <translation id="473414950835101501">Kameralarınızı kullanma</translation>
-<translation id="4736825316280949806">Chromium'u yeniden başlatın</translation>
+<translation id="5713993618957185264">Shuttle'u yeniden başlatın</translation>
 <translation id="4736934858538408121">Sanal kart</translation>
 <translation id="473775607612524610">Güncelle</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> arama önerisi</translation>
@@ -2421,7 +2421,7 @@ Sonra ödeme seçeneklerini gizlemek için <ph name="BEGIN_LINK" />ödeme ayarla
 <translation id="5089810972385038852">Eyalet</translation>
 <translation id="5093232627742069661">Z katlama</translation>
 <translation id="5093417502834168387">Oturum açma sorunu mu yaşıyorsunuz? Başka bir yol deneyin</translation>
-<translation id="5094747076828555589">Bu sunucu <ph name="DOMAIN" /> olduğunu kanıtlayamadı; Chromium, sunucunun güvenlik sertifikasına güvenmiyor. Bu durum, bir yanlış yapılandırmadan veya bağlantıya müdahale eden bir saldırgandan kaynaklanıyor olabilir.</translation>
+<translation id="5713412634455044803">Bu sunucu <ph name="DOMAIN" /> olduğunu kanıtlayamadı; Shuttle, sunucunun güvenlik sertifikasına güvenmiyor. Bu durum, bir yanlış yapılandırmadan veya bağlantıya müdahale eden bir saldırgandan kaynaklanıyor olabilir.</translation>
 <translation id="5096066272198024688">Bilgileriniz kaydediliyor...</translation>
 <translation id="5097099694988056070">CPU/RAM kullanımı gibi cihaz istatistikleri</translation>
 <translation id="5097468150760963273">27 x 39 inç</translation>
@@ -3173,7 +3173,7 @@ Sonra ödeme seçeneklerini gizlemek için <ph name="BEGIN_LINK" />ödeme ayarla
 <translation id="635394585025793320">Birini etkilemek istiyorum. Şu anda herkesin dilinden düşürmediği restoranlarda 2 kişilik boş masa ara</translation>
 <translation id="6354918092619878358">SECG eliptik eğri secp256r1 (önceki adları ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, diğer cihazlardaki diğer sekmeleri görmek için Sekme'ye, ardından Enter'a basın</translation>
-<translation id="6355392890578844978">Bu tarayıcı bir şirket veya başka bir kuruluş tarafından yönetilmemektedir. Bu cihazdaki etkinlikler Chromium dışında yönetilebilir. <ph name="BEGIN_LINK" />Daha fazla bilgi<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Bu tarayıcı bir şirket veya başka bir kuruluş tarafından yönetilmemektedir. Bu cihazdaki etkinlikler Shuttle dışında yönetilebilir. <ph name="BEGIN_LINK" />Daha fazla bilgi<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">"<ph name="GROUP_TITLE_1" />" ve "<ph name="GROUP_TITLE_2" />" sekme grupları artık kullanılamıyor</translation>
 <translation id="6358088212770985041">ödeme yöntemlerini düzenleme</translation>
 <translation id="6358450015545214790">Bunlar ne anlama geliyor?</translation>
@@ -4138,7 +4138,7 @@ Ek ayrıntılar:
 <translation id="7995512525968007366">Belirtilmedi</translation>
 <translation id="7997855386298213183">paylaşılan sekmeler</translation>
 <translation id="7999482381722829925">Genellikle gözden kaçan noktaları hedefleyen, oda oda öncelik sırasına göre hazırlanmış bir detaylı temizlik kontrol listesi oluştur</translation>
-<translation id="8001912761979890298">Bu sunucu, web trafiği şifrelemesi için Chromium veya sistem yapılandırmanız tarafından güvenilmeyen bir güvenlik sertifikası kullandığından <ph name="DOMAIN" /> olduğunu kanıtlayamadı. Bu durum, yanlış yapılandırmadan veya bağlantınıza müdahale eden bir saldırgandan kaynaklanıyor olabilir. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Sertifikayı Göster<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Bu sunucu, web trafiği şifrelemesi için Shuttle veya sistem yapılandırmanız tarafından güvenilmeyen bir güvenlik sertifikası kullandığından <ph name="DOMAIN" /> olduğunu kanıtlayamadı. Bu durum, yanlış yapılandırmadan veya bağlantınıza müdahale eden bir saldırgandan kaynaklanıyor olabilir. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Sertifikayı Göster<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Bellekte yer açmak için diğer sekmeleri veya programları kapatmayı deneyin.</translation>
 <translation id="8002230960325005199">İlgili siteler yeni bir sekmede gösterilir</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4229,7 +4229,7 @@ Ek ayrıntılar:
 <translation id="8175796834047840627">Chrome, oturumunuz açık olduğu için kartlarınızı Google Hesabınıza kaydetmeyi öneriyor. Bu davranışı ayarlardan değiştirebilirsiniz.</translation>
 <translation id="8176440868214972690">Bu cihazın yöneticisi, aşağıdaki web sitelerine ayarlar ve politikalar gibi bazı bilgiler gönderdi.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" />, içerik nedeniyle engellendi}other{<ph name="FILE_COUNT" /> dosya, içerik nedeniyle engellendi}}</translation>
-<translation id="8186171296341598122">Arama motorunuzu istediğiniz zaman Chromium ayarlarından değiştirebilirsiniz. Tercih ettiğiniz arama motorunu göremiyorsanız doğrudan kendi sitesi üzerinden arama yapabilirsiniz. Bunu Chromium ayarlarındaki son ziyaret edilen arama motorları listesinde görebilir ve varsayılan yapabilirsiniz.</translation>
+<translation id="2852542171920460365">Arama motorunuzu istediğiniz zaman Shuttle ayarlarından değiştirebilirsiniz. Tercih ettiğiniz arama motorunu göremiyorsanız doğrudan kendi sitesi üzerinden arama yapabilirsiniz. Bunu Shuttle ayarlarındaki son ziyaret edilen arama motorları listesinde görebilir ve varsayılan yapabilirsiniz.</translation>
 <translation id="8188830160449823068">IBAN yalnızca cihaza kaydedildi</translation>
 <translation id="8189557652711717875">Seçtiğiniz arama motoru, adres çubuğundan ve web sayfalarındaki resimlerden arama yapma gibi özellikler için kullanılır.</translation>
 <translation id="8190193880870196235">Bir uzantı tarafından yönetiliyor</translation>
@@ -4313,7 +4313,7 @@ Ek ayrıntılar:
 <translation id="8316555157357957253">Şu anda kullanılıyor</translation>
 <translation id="8319414634934645341">Uzatılmış Anahtar Kullanımı</translation>
 <translation id="831997045666694187">Akşam</translation>
-<translation id="8321448084834652864">Arama motorunuzu istediğiniz zaman Chromium ayarlarından değiştirebilirsiniz.</translation>
+<translation id="332470347080865446">Arama motorunuzu istediğiniz zaman Shuttle ayarlarından değiştirebilirsiniz.</translation>
 <translation id="8321476692217554900">bildirimler</translation>
 <translation id="8323505966575306467">Şifrelerinize daha fazla koruma ekleyin</translation>
 <translation id="832547548543012337">Pasaportu silin</translation>
@@ -4535,7 +4535,7 @@ Ek ayrıntılar:
 <translation id="8736059027199600831">30 x 40 inç</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, yeni bir Gizli pencere açıp gizli olarak göz atmak için Sekme'ye, sonra Enter'a basın</translation>
 <translation id="8737685506611670901"><ph name="REPLACED_HANDLER_TITLE" /> yerine <ph name="PROTOCOL" /> bağlantılarını açma</translation>
-<translation id="8738058698779197622">Güvenli bir bağlantı kurmak için saatinizin doğru ayarlanmış olması gerekir. Bunun sebebi, web sitelerinin kendilerini tanımlamak için kullandıkları sertifikaların sadece belli süreler için geçerli olmasıdır. Cihazınızın saati yanlış olduğundan, Chromium bu sertifikaları doğrulayamaz.</translation>
+<translation id="4709963803166322417">Güvenli bir bağlantı kurmak için saatinizin doğru ayarlanmış olması gerekir. Bunun sebebi, web sitelerinin kendilerini tanımlamak için kullandıkları sertifikaların sadece belli süreler için geçerli olmasıdır. Cihazınızın saati yanlış olduğundan, Shuttle bu sertifikaları doğrulayamaz.</translation>
 <translation id="8740359287975076522"><ph name="HOST_NAME" /> ana makinesinin &lt;abbr id="dnsDefinition"&gt;DNS adresi&lt;/abbr&gt; bulunamadı. Sorun teşhis ediliyor.</translation>
 <translation id="874918643257405732">Bu sekmeye yer işareti koy</translation>
 <translation id="8749274696886550762">Bu site güvenli görünmüyor</translation>
@@ -4744,7 +4744,7 @@ Ek ayrıntılar:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, Chrome'u iOS ayarlarından sistemin varsayılan tarayıcısı olarak ayarlamak için sekmeye, ardından Enter'a basın</translation>
 <translation id="9101450247048146228">Kamera kullanımı ve hareket (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Tepsi 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> normalde bilgilerinizi korumak için şifreleme kullanmaktadır. Chromium bu sefer <ph name="SITE" /> sitesine bağlanmayı denediğinde, web sitesi sıra dışı ve yanlış kimlik bilgileri döndürdü. Bir saldırgan <ph name="SITE" /> gibi davranmaya çalışıyor olabilir ya da bir Kablosuz oturum açma ekranı bağlantıyı kesmiştir. Chromium herhangi bir veri alışverişinden önce bağlantıyı durdurduğu için bilgileriniz hâlâ güvendedir.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> normalde bilgilerinizi korumak için şifreleme kullanmaktadır. Shuttle bu sefer <ph name="SITE" /> sitesine bağlanmayı denediğinde, web sitesi sıra dışı ve yanlış kimlik bilgileri döndürdü. Bir saldırgan <ph name="SITE" /> gibi davranmaya çalışıyor olabilir ya da bir Kablosuz oturum açma ekranı bağlantıyı kesmiştir. Shuttle herhangi bir veri alışverişinden önce bağlantıyı durdurduğu için bilgileriniz hâlâ güvendedir.</translation>
 <translation id="9107199998619088551">Profilinizi <ph name="MANAGER" /> yönetiyor</translation>
 <translation id="9107467864910557787">Tarayıcınız <ph name="MANAGER" /> tarafından yönetiliyor</translation>
 <translation id="91108059142052966">Yönetici politikası, gizli içerik görünür haldeyken <ph name="APPLICATION_TITLE" /> ile ekran paylaşımını devre dışı bırakır</translation>

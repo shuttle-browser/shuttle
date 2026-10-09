@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Activar tema</translation>
 <translation id="1135328998467923690">O paquete non é válido: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Cámara traseira</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> engadiu unha extensión que pode cambiar o funcionamento de Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> engadiu unha extensión que pode cambiar o funcionamento de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Erro ao exportar a clave privada.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Non se puido substituír o ficheiro crx. Comproba se se está utilizando o ficheiro.</translation>
 <translation id="3163201441334626963">Produto descoñecido <ph name="PRODUCT_ID" /> do provedor <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">A túa organización bloqueou o acceso a esta extensión.</translation>
-<translation id="3183357154200327217">Outro programa do teu ordenador engadiu un tema que pode cambiar o funcionamento de Chrome.
+<translation id="7846451875700317002">Outro programa do teu ordenador engadiu un tema que pode cambiar o funcionamento de Chrome.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">É necesario instalar a aplicación co atributo de manifesto "kiosk_only" no modo de quiosco de Chrome OS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Denegar</translation>
 <translation id="3984413272403535372">Erro ao asinar a extensión.</translation>
 <translation id="4014432863917027322">Queres reparar "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Outro programa do teu ordenador engadiu unha extensión que pode cambiar o funcionamento de Chrome.
+<translation id="7396546976728149133">Outro programa do teu ordenador engadiu unha extensión que pode cambiar o funcionamento de Chrome.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">A túa organización bloqueou o acceso a esta categoría de extensións.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Desactivouse a versión máis recente de "<ph name="EXTENSION_NAME" />" porque require máis permisos.</translation>
 <translation id="5242724311594467048">Queres activar <ph name="EXTENSION_NAME" />?</translation>
 <translation id="5356315618422219272">Vista da aplicación: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Eliminar de Chromium</translation>
+<translation id="2064155379595075287">Eliminar de Shuttle</translation>
 <translation id="5456409301717116725">Esta extensión inclúe o ficheiro de clave "<ph name="KEY_PATH" />". É probable que non queiras realizar esta acción.</translation>
 <translation id="5485102783864353244">Engadir aplicación</translation>
 <translation id="5486326529110362464">Debe existir o valor de entrada da clave privada.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">O administrador deste equipo necesita que se instale <ph name="EXTENSION_NAME" />. Non se pode instalar.</translation>
 <translation id="6027032947578871493">Produto descoñecido <ph name="PRODUCT_ID" /> de <ph name="VENDOR_NAME" /> (número de serie <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> do provedor <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Outro programa do teu ordenador engadiu unha aplicación que pode cambiar o funcionamento de Chromium.
+<translation id="5918487821361452587">Outro programa do teu ordenador engadiu unha aplicación que pode cambiar o funcionamento de Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Erro ao cargar a extensión</translation>

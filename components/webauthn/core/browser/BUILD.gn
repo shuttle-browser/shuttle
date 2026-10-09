@@ -4,7 +4,7 @@
 
 import("//build/config/features.gni")
 
-# Agent Chrome: the passkey model (Google Password Manager passkeys), its sync
+# Shuttle: the passkey model (Google Password Manager passkeys), its sync
 # bridge, passkey import and the Signal API helpers are removed.
 source_set("browser") {
   sources = [

@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_PAGE_TOOLS_H_
-#define CHROME_BROWSER_AGENT_CHROME_PAGE_TOOLS_H_
+#ifndef CHROME_BROWSER_SHUTTLE_PAGE_TOOLS_H_
+#define CHROME_BROWSER_SHUTTLE_PAGE_TOOLS_H_
 
 #include <map>
 #include <memory>
@@ -15,9 +15,9 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
-#include "chrome/browser/agent_chrome/mcp_tools.h"
+#include "chrome/browser/shuttle/mcp_tools.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 class Sidecar;
 class SessionManager;
@@ -50,7 +50,7 @@ class PageToolManager {
   // Browser shutdown: kill all sidecars now.
   void Shutdown();
 
-  // Path of the agent-browser binary: $AGENT_CHROME_AGENT_BROWSER, else
+  // Path of the agent-browser binary: $SHUTTLE_AGENT_BROWSER, else
   // <app>/Contents/Helpers/agent-browser (macOS) or next to the executable.
   static base::FilePath FindBinary();
 
@@ -68,6 +68,6 @@ class PageToolManager {
   base::WeakPtrFactory<PageToolManager> weak_factory_{this};
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_PAGE_TOOLS_H_
+#endif  // CHROME_BROWSER_SHUTTLE_PAGE_TOOLS_H_

@@ -1,4 +1,4 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,9 @@
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
-#include "chrome/browser/agent_chrome/mcp_tools.h"
-#include "chrome/browser/agent_chrome/session_manager.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
+#include "chrome/browser/shuttle/mcp_tools.h"
+#include "chrome/browser/shuttle/session_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/grit/agents_resources.h"
@@ -28,7 +28,7 @@
 #include "ui/webui/webui_util.h"
 #include "url/gurl.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -53,8 +53,8 @@ class AgentsHandler : public content::WebUIMessageHandler {
   }
 
  private:
-  AgentChromeService* service() {
-    return AgentChromeService::Get(Profile::FromWebUI(web_ui()));
+  ShuttleService* service() {
+    return ShuttleService::Get(Profile::FromWebUI(web_ui()));
   }
 
   // Rejects with `message` (shown by the page).
@@ -70,7 +70,7 @@ class AgentsHandler : public content::WebUIMessageHandler {
     const std::string* name = args.size() > 1 ? args[1].GetIfString() : nullptr;
     const base::DictValue* tool_args =
         args.size() > 2 ? args[2].GetIfDict() : nullptr;
-    AgentChromeService* agents = service();
+    ShuttleService* agents = service();
     if (!name || !agents) {
       Reject(callback_id, "Agents are not available");
       return;
@@ -119,7 +119,7 @@ class AgentsHandler : public content::WebUIMessageHandler {
     const std::string* agent_id =
         args.size() > 1 ? args[1].GetIfString() : nullptr;
     const std::string* url = args.size() > 2 ? args[2].GetIfString() : nullptr;
-    AgentChromeService* agents = service();
+    ShuttleService* agents = service();
     if (!agent_id || !agents) {
       Reject(callback_id, "Agents are not available");
       return;
@@ -183,4 +183,4 @@ AgentsUI::AgentsUI(content::WebUI* web_ui) : content::WebUIController(web_ui) {
 
 AgentsUI::~AgentsUI() = default;
 
-}  // namespace agent_chrome
+}  // namespace shuttle

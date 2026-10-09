@@ -451,7 +451,7 @@ void StartupBrowserCreator::LaunchBrowserForLastProfiles(
       return;
     }
 
-    // Agent Chrome: no profile picker; fall back to opening the profile.
+    // Shuttle: no profile picker; fall back to opening the profile.
     LaunchBrowser(command_line, profile, cur_dir, process_startup,
                   is_first_run, restore_tabbed_browser);
     return;
@@ -930,7 +930,7 @@ bool HasPendingUncleanExit(Profile* profile) {
              switches::kHideCrashRestoreBubble);
 }
 
-// Agent Chrome: the profile picker is gone. The three-argument form stays only
+// Shuttle: the profile picker is gone. The three-argument form stays only
 // because base::ScopedAllowBlocking befriends that exact signature (changing
 // base/threading/thread_restrictions.h would rebuild the whole tree); the flag
 // is ignored.

@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Cung cấp chi tiết bổ sung</translation>
 <translation id="1016671033299705843">Thêm giấy phép lái xe một cách an toàn</translation>
 <translation id="1019413721762100891">Đang tắt</translation>
-<translation id="1021753677514347426">Sự cố này xảy ra do một chứng chỉ mà bạn hoặc ai đó đã cài đặt trên thiết bị của bạn. Chromium không tin cậy chứng chỉ này vì chứng chỉ được xác định là dùng để chặn và giám sát mạng. Mặc dù có một số trường hợp trong đó hoạt động giám sát là hợp pháp, chẳng hạn như mạng của trường học hay công ty, nhưng Chromium muốn đảm bảo rằng bạn biết điều này, ngay cả khi bạn không thể ngăn chặn. Hoạt động giám sát có thể diễn ra trong bất kỳ trình duyệt hoặc ứng dụng nào có quyền truy cập vào web.</translation>
+<translation id="768230658237634872">Sự cố này xảy ra do một chứng chỉ mà bạn hoặc ai đó đã cài đặt trên thiết bị của bạn. Shuttle không tin cậy chứng chỉ này vì chứng chỉ được xác định là dùng để chặn và giám sát mạng. Mặc dù có một số trường hợp trong đó hoạt động giám sát là hợp pháp, chẳng hạn như mạng của trường học hay công ty, nhưng Shuttle muốn đảm bảo rằng bạn biết điều này, ngay cả khi bạn không thể ngăn chặn. Hoạt động giám sát có thể diễn ra trong bất kỳ trình duyệt hoặc ứng dụng nào có quyền truy cập vào web.</translation>
 <translation id="1024111578869940408">Đôi khi, kẻ tấn công giả mạo các trang web bằng cách thực hiện các thay đổi đối với địa chỉ web mà bạn khó nhận ra.</translation>
 <translation id="102916930470544692">Khoá truy cập</translation>
 <translation id="1030706264415084469"><ph name="URL" /> muốn lưu trữ vĩnh viễn một lượng lớn dữ liệu trên thiết bị của bạn</translation>
@@ -809,7 +809,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="2348836501965732644">Hãy quản lý thông tin của bạn hoặc tắt các đề xuất này trong phần Cài đặt</translation>
 <translation id="2349957959687031096">Nút Mở thẻ ẩn danh, hãy nhấn nút này để mở một thẻ ẩn danh mới và duyệt web ở chế độ riêng tư</translation>
 <translation id="2350796302381711542">Cho phép <ph name="HANDLER_HOSTNAME" /> mở tất cả liên kết <ph name="PROTOCOL" /> thay vì <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Máy chủ này không chứng minh được rằng đó là <ph name="DOMAIN" /> vì máy chủ này đang sử dụng một chứng chỉ bảo mật mà Chromium hoặc cấu hình hệ thống của bạn không tin cậy để mã hoá lưu lượng truy cập web. Nguyên nhân có thể là do định cấu hình sai hoặc có kẻ tấn công chặn kết nối của bạn.</translation>
+<translation id="4798228153726623290">Máy chủ này không chứng minh được rằng đó là <ph name="DOMAIN" /> vì máy chủ này đang sử dụng một chứng chỉ bảo mật mà Shuttle hoặc cấu hình hệ thống của bạn không tin cậy để mã hoá lưu lượng truy cập web. Nguyên nhân có thể là do định cấu hình sai hoặc có kẻ tấn công chặn kết nối của bạn.</translation>
 <translation id="2353297238722298836">Cho phép máy ảnh và micrô</translation>
 <translation id="2354001756790975382">Dấu trang khác</translation>
 <translation id="2355395290879513365">Kẻ tấn công có thể thấy những hình ảnh mà bạn đang xem trên trang web này và lừa bạn bằng cách sửa đổi những hình ảnh đó.</translation>
@@ -1046,7 +1046,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="2728127805433021124">Chứng chỉ của máy chủ đã được ký bằng thuật toán chữ ký yếu.</translation>
 <translation id="272937284275742856">Đang xác minh thông tin thanh toán của bạn một cách an toàn...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Chạy Chẩn đoán kết nối<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Tìm hiểu thêm về công cụ tìm kiếm của bạn trong Chromium</translation>
+<translation id="5216476641707900057">Tìm hiểu thêm về công cụ tìm kiếm của bạn trong Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 inch</translation>
 <translation id="2734797989819862638">Không sao chép</translation>
 <translation id="2738771556149464852">Không được Sau</translation>
@@ -1344,7 +1344,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Nhập mã xác minh gồm <ph name="NUMBER_OF_DIGITS" /> chữ số</translation>
 <translation id="3272643614306383237">Dưới 1 MB. Một số trang web có thể tải chậm hơn vào lần tới bạn truy cập.</translation>
-<translation id="3273738040255912340">Quản trị viên có thể thay đổi hồ sơ và trình duyệt của bạn từ xa, phân tích thông tin về trình duyệt thông qua báo cáo và thực hiện những nhiệm vụ cần thiết khác. Hoạt động trên thiết bị này cũng có thể được quản lý bên ngoài Chromium. <ph name="BEGIN_LINK" />Tìm hiểu thêm<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Quản trị viên có thể thay đổi hồ sơ và trình duyệt của bạn từ xa, phân tích thông tin về trình duyệt thông qua báo cáo và thực hiện những nhiệm vụ cần thiết khác. Hoạt động trên thiết bị này cũng có thể được quản lý bên ngoài Shuttle. <ph name="BEGIN_LINK" />Tìm hiểu thêm<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Lưu IBAN đã mở trên toàn màn hình.</translation>
 <translation id="327455571215090823">Tính năng tự động điền thông minh hơn, đảm bảo riêng tư</translation>
 <translation id="3280440382387335343">Cập nhật thông tin hộ chiếu một cách an toàn trong Google Wallet</translation>
@@ -1613,7 +1613,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="3742104862808477448">Giúp Chromium hiểu rõ hơn và điền vào các biểu mẫu phức tạp nhờ xử lý dữ liệu một cách an toàn trên máy chủ của Google. Thông tin của bạn luôn được bảo mật và không ai có thể xem được.</translation>
 <translation id="3744111561329211289">Đồng bộ hoá trong nền</translation>
 <translation id="3744212718085287312">Tăng cường bảo mật bằng một thẻ ảo vào lần tới?</translation>
-<translation id="3744899669254331632">Bạn không thể truy cập <ph name="SITE" /> ngay bây giờ vì trang web này đã gửi thông tin đăng nhập hỗn độn mà Chromium không thể xử lý. Lỗi mạng và các cuộc tấn công thường chỉ diễn ra tạm thời nên trang này có thể sẽ hoạt động sau.</translation>
+<translation id="58356321557204990">Bạn không thể truy cập <ph name="SITE" /> ngay bây giờ vì trang web này đã gửi thông tin đăng nhập hỗn độn mà Shuttle không thể xử lý. Lỗi mạng và các cuộc tấn công thường chỉ diễn ra tạm thời nên trang này có thể sẽ hoạt động sau.</translation>
 <translation id="3745599309295009257">Văn bản bạn nhập cũng như nội dung và URL của trang mà bạn đang viết sẽ được gửi tới Google để các nhân viên xem xét và sử dụng cho mục đích cải thiện tính năng này. Bạn cần tránh nhập thông tin cá nhân (chẳng hạn như thông tin y tế hoặc tài chính) hay sử dụng công cụ này trên các trang web chứa thông tin riêng tư hoặc nhạy cảm.</translation>
 <translation id="3748009735914587286">Kim loại (Độ bóng cao)</translation>
 <translation id="3748647055058832337">Không dành cho người bán này</translation>
@@ -2199,7 +2199,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="4732860731866514038">Đang tải gói ngôn ngữ <ph name="LANGUAGE" /> xuống... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> muốn sử dụng thông tin vị trí thiết bị của bạn</translation>
 <translation id="473414950835101501">Sử dụng camera của bạn</translation>
-<translation id="4736825316280949806">Khởi động lại Chromium</translation>
+<translation id="5713993618957185264">Khởi động lại Shuttle</translation>
 <translation id="4736934858538408121">Thẻ ảo</translation>
 <translation id="473775607612524610">Cập nhật</translation>
 <translation id="4738601419177586157">Đề xuất tìm kiếm <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="5089810972385038852">Tỉnh/Bang</translation>
 <translation id="5093232627742069661">Gấp kiểu chữ Z</translation>
 <translation id="5093417502834168387">Bạn gặp sự cố khi đăng nhập? Thử cách khác</translation>
-<translation id="5094747076828555589">Máy chủ này không chứng minh được rằng đó là <ph name="DOMAIN" />; chứng chỉ bảo mật của máy chủ này không được Chromium tin cậy. Điều này có thể do định cấu hình sai hoặc có kẻ tấn công chặn kết nối của bạn.</translation>
+<translation id="5713412634455044803">Máy chủ này không chứng minh được rằng đó là <ph name="DOMAIN" />; chứng chỉ bảo mật của máy chủ này không được Shuttle tin cậy. Điều này có thể do định cấu hình sai hoặc có kẻ tấn công chặn kết nối của bạn.</translation>
 <translation id="5096066272198024688">Đang lưu thông tin của bạn...</translation>
 <translation id="5097099694988056070">Số liệu thống kê về thiết bị, chẳng hạn như mức sử dụng CPU/RAM</translation>
 <translation id="5097468150760963273">27 x 39 inch</translation>
@@ -3173,7 +3173,7 @@ Nếu bạn từ chối, chế độ cài đặt quyền riêng tư của bạn 
 <translation id="635394585025793320">Tôi muốn gây ấn tượng với một người. Tìm bàn trống cho 2 người tại các nhà hàng đang nổi đình đám hiện nay</translation>
 <translation id="6354918092619878358">Đường cong elip SECG secp256r1 (aka ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, nhấn phím Tab rồi nhấn phím Enter để xem thêm các thẻ trên các thiết bị khác</translation>
-<translation id="6355392890578844978">Không có công ty hay tổ chức nào quản lý trình duyệt này. Hoạt động trên thiết bị này có thể được quản lý ở bên ngoài Chromium. <ph name="BEGIN_LINK" />Tìm hiểu thêm<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Không có công ty hay tổ chức nào quản lý trình duyệt này. Hoạt động trên thiết bị này có thể được quản lý ở bên ngoài Shuttle. <ph name="BEGIN_LINK" />Tìm hiểu thêm<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Các nhóm thẻ "<ph name="GROUP_TITLE_1" />" và "<ph name="GROUP_TITLE_2" />" không còn hoạt động</translation>
 <translation id="6358088212770985041">chỉnh sửa phương thức thanh toán</translation>
 <translation id="6358450015545214790">Những phần này có ý nghĩa gì?</translation>
@@ -4138,7 +4138,7 @@ Thông tin chi tiết bổ sung:
 <translation id="7995512525968007366">Không chỉ định</translation>
 <translation id="7997855386298213183">các thẻ được chia sẻ</translation>
 <translation id="7999482381722829925">Tạo danh sách kiểm tra theo thứ tự ưu tiên để dọn dẹp kỹ lưỡng từng phòng, tập trung vào những vị trí thường bị bỏ sót</translation>
-<translation id="8001912761979890298">Máy chủ này không chứng minh được rằng đó là <ph name="DOMAIN" /> vì máy chủ này đang sử dụng một chứng chỉ bảo mật mà Chromium hoặc cấu hình hệ thống của bạn không tin cậy để mã hoá lưu lượng truy cập web. Nguyên nhân có thể là do định cấu hình sai hoặc có kẻ tấn công chặn kết nối của bạn. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Xem chứng chỉ<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Máy chủ này không chứng minh được rằng đó là <ph name="DOMAIN" /> vì máy chủ này đang sử dụng một chứng chỉ bảo mật mà Shuttle hoặc cấu hình hệ thống của bạn không tin cậy để mã hoá lưu lượng truy cập web. Nguyên nhân có thể là do định cấu hình sai hoặc có kẻ tấn công chặn kết nối của bạn. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Xem chứng chỉ<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Thử đóng các thẻ hoặc chương trình khác để giải phóng bộ nhớ.</translation>
 <translation id="8002230960325005199">Xem các trang web liên quan trong thẻ mới</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4229,7 +4229,7 @@ Thông tin chi tiết bổ sung:
 <translation id="8175796834047840627">Chrome đang đề xuất lưu thẻ của bạn vào Tài khoản Google vì bạn đã đăng nhập. Bạn có thể thay đổi hành động này trong phần cài đặt.</translation>
 <translation id="8176440868214972690">Quản trị viên của thiết bị này đã gửi một số thông tin (chẳng hạn như chế độ cài đặt hoặc chính sách) đến các trang web sau đây.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> đã bị chặn do nội dung}other{<ph name="FILE_COUNT" /> tệp đã bị chặn do nội dung}}</translation>
-<translation id="8186171296341598122">Bạn có thể thay đổi công cụ tìm kiếm bất kỳ lúc nào trong phần cài đặt của Chromium. Nếu không thấy công cụ tìm kiếm mà bạn muốn, hãy thực hiện một lượt tìm kiếm trên trang web của công cụ đó. Bạn sẽ thấy công cụ đó trong danh sách công cụ tìm kiếm mà bạn đã truy cập gần đây trong phần cài đặt của Chromium và có thể đặt công cụ đó làm mặc định.</translation>
+<translation id="2852542171920460365">Bạn có thể thay đổi công cụ tìm kiếm bất kỳ lúc nào trong phần cài đặt của Shuttle. Nếu không thấy công cụ tìm kiếm mà bạn muốn, hãy thực hiện một lượt tìm kiếm trên trang web của công cụ đó. Bạn sẽ thấy công cụ đó trong danh sách công cụ tìm kiếm mà bạn đã truy cập gần đây trong phần cài đặt của Shuttle và có thể đặt công cụ đó làm mặc định.</translation>
 <translation id="8188830160449823068">IBAN chỉ được lưu vào thiết bị</translation>
 <translation id="8189557652711717875">Công cụ tìm kiếm mà bạn chọn sẽ được dùng cho những tính năng như tìm kiếm từ thanh địa chỉ và từ hình ảnh trên trang web.</translation>
 <translation id="8190193880870196235">Do một tiện ích quản lý</translation>
@@ -4313,7 +4313,7 @@ Thông tin chi tiết bổ sung:
 <translation id="8316555157357957253">Đang sử dụng</translation>
 <translation id="8319414634934645341">Sử dụng Khoá Mở rộng</translation>
 <translation id="831997045666694187">Buổi tối</translation>
-<translation id="8321448084834652864">Bạn có thể thay đổi công cụ tìm kiếm bất kỳ lúc nào trong phần cài đặt của Chromium.</translation>
+<translation id="332470347080865446">Bạn có thể thay đổi công cụ tìm kiếm bất kỳ lúc nào trong phần cài đặt của Shuttle.</translation>
 <translation id="8321476692217554900">thông báo</translation>
 <translation id="8323505966575306467">Tăng cường biện pháp bảo vệ mật khẩu</translation>
 <translation id="832547548543012337">Xoá hộ chiếu</translation>
@@ -4535,7 +4535,7 @@ Thông tin chi tiết bổ sung:
 <translation id="8736059027199600831">30 x 40 inch</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, nhấn phím Tab rồi nhấn Enter để mở cửa sổ Ẩn danh mới nhằm duyệt web ở chế độ riêng tư</translation>
 <translation id="8737685506611670901">Mở đường liên kết <ph name="PROTOCOL" /> thay vì <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Để thiết lập kết nối an toàn, bạn cần đặt thời gian đúng cho đồng hồ. Nguyên nhân là do chứng chỉ mà các trang web dùng để tự nhận dạng chỉ có hiệu lực trong khoảng thời gian cụ thể. Vì đồng hồ trên thiết bị của bạn không đúng nên Chromium không thể xác minh các chứng chỉ này.</translation>
+<translation id="4709963803166322417">Để thiết lập kết nối an toàn, bạn cần đặt thời gian đúng cho đồng hồ. Nguyên nhân là do chứng chỉ mà các trang web dùng để tự nhận dạng chỉ có hiệu lực trong khoảng thời gian cụ thể. Vì đồng hồ trên thiết bị của bạn không đúng nên Shuttle không thể xác minh các chứng chỉ này.</translation>
 <translation id="8740359287975076522">Không thể tìm thấy &lt;abbr id="dnsDefinition"&gt;địa chỉ DNS&lt;/abbr&gt; của <ph name="HOST_NAME" />. Đang chẩn đoán sự cố.</translation>
 <translation id="874918643257405732">Đánh dấu thẻ này</translation>
 <translation id="8749274696886550762">Trang web này có vẻ không ổn</translation>
@@ -4744,7 +4744,7 @@ Thông tin chi tiết bổ sung:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, Nhấn Tab rồi nhấn Enter để đặt Chrome làm trình duyệt mặc định của hệ thống trong phần cài đặt iOS</translation>
 <translation id="9101450247048146228">Sử dụng và di chuyển camera (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Khay 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> thường sử dụng mã hóa để bảo vệ thông tin của bạn. Khi Chromium cố gắng kết nối với <ph name="SITE" /> tại thời điểm này, trang web đã gửi lại thông tin đăng nhập không chính xác và bất thường. Điều này có thể xảy ra khi kẻ tấn công đang cố gắng giả mạo là <ph name="SITE" /> hoặc màn hình đăng nhập Wi-Fi đã làm gián đoạn kết nối. Thông tin của bạn vẫn an toàn do Chromium đã ngừng kết nối trước khi bất kỳ dữ liệu nào được trao đổi.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> thường sử dụng mã hóa để bảo vệ thông tin của bạn. Khi Shuttle cố gắng kết nối với <ph name="SITE" /> tại thời điểm này, trang web đã gửi lại thông tin đăng nhập không chính xác và bất thường. Điều này có thể xảy ra khi kẻ tấn công đang cố gắng giả mạo là <ph name="SITE" /> hoặc màn hình đăng nhập Wi-Fi đã làm gián đoạn kết nối. Thông tin của bạn vẫn an toàn do Shuttle đã ngừng kết nối trước khi bất kỳ dữ liệu nào được trao đổi.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> quản lý hồ sơ của bạn</translation>
 <translation id="9107467864910557787">Trình duyệt của bạn do <ph name="MANAGER" /> quản lý</translation>
 <translation id="91108059142052966">Tính năng chia sẻ màn hình với <ph name="APPLICATION_TITLE" /> khi hiển thị nội dung bí mật bị vô hiệu hóa theo chính sách của quản trị viên</translation>

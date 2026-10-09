@@ -279,7 +279,7 @@ ChromeWebAuthenticationDelegate::MaybeGetRequestProxy(
 #endif
 }
 
-// Agent Chrome: there is no browser-provided passkey store (Google Password
+// Shuttle: there is no browser-provided passkey store (Google Password
 // Manager is removed), so the WebAuthn Signal API has nothing to update.
 void ChromeWebAuthenticationDelegate::PasskeyUnrecognized(
     content::WebContents* web_contents,
@@ -348,6 +348,6 @@ ChromeWebAuthenticationDelegate::GetGenerateRequestIdCallback(
 void ChromeWebAuthenticationDelegate::BrowserProvidedPasskeysAvailable(
     content::BrowserContext* browser_context,
     base::OnceCallback<void(bool)> callback) {
-  // Agent Chrome: no Google Password Manager passkeys (enclave authenticator).
+  // Shuttle: no Google Password Manager passkeys (enclave authenticator).
   std::move(callback).Run(false);
 }

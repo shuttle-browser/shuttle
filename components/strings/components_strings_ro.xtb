@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Specifică detalii suplimentare</translation>
 <translation id="1016671033299705843">Adaugă în siguranță permisul de conducere</translation>
 <translation id="1019413721762100891">dezactivate</translation>
-<translation id="1021753677514347426">Această problemă apare din cauza unui certificat pe care tu sau altcineva l-ați instalat pe dispozitiv. Certificatul este folosit pentru a monitoriza și a intercepta rețelele, nefiind autorizat de Chromium. Deși există cazuri legitime pentru monitorizare, de exemplu, într-o rețea de la școală sau de la serviciu, Chromium vrea să se asigure că știi ce se întâmplă, chiar dacă nu poți opri acest lucru. Monitorizarea se poate face în orice browser sau aplicație care intră pe web.</translation>
+<translation id="768230658237634872">Această problemă apare din cauza unui certificat pe care tu sau altcineva l-ați instalat pe dispozitiv. Certificatul este folosit pentru a monitoriza și a intercepta rețelele, nefiind autorizat de Shuttle. Deși există cazuri legitime pentru monitorizare, de exemplu, într-o rețea de la școală sau de la serviciu, Shuttle vrea să se asigure că știi ce se întâmplă, chiar dacă nu poți opri acest lucru. Monitorizarea se poate face în orice browser sau aplicație care intră pe web.</translation>
 <translation id="1024111578869940408">Uneori, atacatorii imită site-uri aducând modificări greu de observat adresei web.</translation>
 <translation id="102916930470544692">Cheie de acces</translation>
 <translation id="1030706264415084469"><ph name="URL" /> dorește să stocheze permanent cantități mari de date pe dispozitiv</translation>
@@ -809,7 +809,7 @@
 <translation id="2348836501965732644">Gestionează-ți informațiile sau dezactivează aceste sugestii în Setări</translation>
 <translation id="2349957959687031096">Butonul Deschide o filă incognito, activează pentru a deschide o nouă filă incognito ca să navighezi în privat</translation>
 <translation id="2350796302381711542">Permiteți ca <ph name="HANDLER_HOSTNAME" /> să deschidă toate linkurile <ph name="PROTOCOL" /> în locul <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Acest server nu a putut dovedi că este <ph name="DOMAIN" />, deoarece folosește un certificat de securitate în care Chromium sau configurația sistemului pentru criptarea traficului web nu are încredere. Cauza poate fi o eroare de configurare sau interceptarea conexiunii de către un atacator.</translation>
+<translation id="4798228153726623290">Acest server nu a putut dovedi că este <ph name="DOMAIN" />, deoarece folosește un certificat de securitate în care Shuttle sau configurația sistemului pentru criptarea traficului web nu are încredere. Cauza poate fi o eroare de configurare sau interceptarea conexiunii de către un atacator.</translation>
 <translation id="2353297238722298836">Camera foto și microfonul sunt permise</translation>
 <translation id="2354001756790975382">Alte marcaje</translation>
 <translation id="2355395290879513365">Este posibil ca atacatorii să poată vedea imaginile la care te uiți pe acest site și să te păcălească prin modificarea lor.</translation>
@@ -1046,7 +1046,7 @@
 <translation id="2728127805433021124">Certificatul serverului este semnat utilizând un algoritm de semnătură slab.</translation>
 <translation id="272937284275742856">Se verifică în siguranță detaliile de plată...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />să rulezi Diagnostice conectivitate<ph name="END_LINK" />;</translation>
-<translation id="2731220418440848219">Află mai multe despre motorul tău de căutare din Chromium</translation>
+<translation id="5216476641707900057">Află mai multe despre motorul tău de căutare din Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 in</translation>
 <translation id="2734797989819862638">Nu copia</translation>
 <translation id="2738771556149464852">Nu după</translation>
@@ -1344,7 +1344,7 @@ Pentru a ascunde opțiunile de plată mai târziu, accesează <ph name="BEGIN_LI
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Introdu codul de verificare din <ph name="NUMBER_OF_DIGITS" /> cifre</translation>
 <translation id="3272643614306383237">Mai puțin de 1 MB. Este posibil ca unele site-uri să se încarce mai lent la următoarea vizită.</translation>
-<translation id="3273738040255912340">Administratorul poate să modifice profilul și browserul de la distanță, să analizeze informațiile despre browser cu ajutorul rapoartelor și să finalizeze alte activități necesare. Este posibil ca activitatea de pe acest dispozitiv să fie gestionată și din afara Chromium. <ph name="BEGIN_LINK" />Află mai multe<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Administratorul poate să modifice profilul și browserul de la distanță, să analizeze informațiile despre browser cu ajutorul rapoartelor și să finalizeze alte activități necesare. Este posibil ca activitatea de pe acest dispozitiv să fie gestionată și din afara Shuttle. <ph name="BEGIN_LINK" />Află mai multe<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Salvează codul IBAN deschis la înălțimea completă.</translation>
 <translation id="327455571215090823">Completare automată mai inteligentă, păstrată privată</translation>
 <translation id="3280440382387335343">Actualizează în siguranță pașaportul în Portofelul Google</translation>
@@ -1613,7 +1613,7 @@ Pentru a ascunde opțiunile de plată mai târziu, accesează <ph name="BEGIN_LI
 <translation id="3742104862808477448">Ajută Chromium să înțeleagă și să completeze mai bine formulare complexe, procesând în siguranță datele pe serverele Google. Informațiile tale rămân private și nimeni nu le examinează.</translation>
 <translation id="3744111561329211289">Sincronizare în fundal</translation>
 <translation id="3744212718085287312">Dorești să-l securizezi folosind un card virtual data viitoare?</translation>
-<translation id="3744899669254331632">Nu poți accesa acum <ph name="SITE" />, deoarece site-ul a trimis date de conectare într-un format necunoscut pe care Chromium nu le poate procesa. Erorile de rețea și atacurile sunt de obicei temporare și probabil că această pagină va funcționa mai târziu.</translation>
+<translation id="58356321557204990">Nu poți accesa acum <ph name="SITE" />, deoarece site-ul a trimis date de conectare într-un format necunoscut pe care Shuttle nu le poate procesa. Erorile de rețea și atacurile sunt de obicei temporare și probabil că această pagină va funcționa mai târziu.</translation>
 <translation id="3745599309295009257">Textul, conținutul și adresa URL a paginii pe care scrii vor fi trimise la Google, examinate de oameni și folosite pentru a îmbunătăți această funcție. Evită să introduci informații cu caracter personal (cum ar fi detalii medicale sau financiare) sau să folosești acest instrument pe site-uri care conțin informații private sau sensibile.</translation>
 <translation id="3748009735914587286">Metal (foarte lucios)</translation>
 <translation id="3748647055058832337">Opțiune indisponibilă pentru acest comerciant</translation>
@@ -2199,7 +2199,7 @@ Pentru a ascunde opțiunile de plată mai târziu, accesează <ph name="BEGIN_LI
 <translation id="4732860731866514038">Se descarcă pachetul lingvistic pentru <ph name="LANGUAGE" />... <ph name="PERCENT" /> %</translation>
 <translation id="4733082559415072992"><ph name="URL" /> dorește să utilizeze locația dispozitivului</translation>
 <translation id="473414950835101501">Îți folosească camerele</translation>
-<translation id="4736825316280949806">repornește Chromium;</translation>
+<translation id="5713993618957185264">repornește Shuttle;</translation>
 <translation id="4736934858538408121">Card virtual</translation>
 <translation id="473775607612524610">Actualizează</translation>
 <translation id="4738601419177586157">Sugestie de căutare <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Pentru a ascunde opțiunile de plată mai târziu, accesează <ph name="BEGIN_LI
 <translation id="5089810972385038852">Stat</translation>
 <translation id="5093232627742069661">Îndoire în Z</translation>
 <translation id="5093417502834168387">Probleme la conectare? Încearcă altă metodă</translation>
-<translation id="5094747076828555589">Acest server nu a putut dovedi că este <ph name="DOMAIN" />; Chromium nu consideră că certificatul său de securitate este de încredere. Cauza poate fi o configurare greșită sau interceptarea conexiunii de către un atacator.</translation>
+<translation id="5713412634455044803">Acest server nu a putut dovedi că este <ph name="DOMAIN" />; Shuttle nu consideră că certificatul său de securitate este de încredere. Cauza poate fi o configurare greșită sau interceptarea conexiunii de către un atacator.</translation>
 <translation id="5096066272198024688">Ți se salvează informațiile...</translation>
 <translation id="5097099694988056070">Statistici privind dispozitivul, cum ar fi utilizarea CPU/RAM</translation>
 <translation id="5097468150760963273">27 x 39 in</translation>
@@ -3173,7 +3173,7 @@ Pentru a ascunde opțiunile de plată mai târziu, accesează <ph name="BEGIN_LI
 <translation id="635394585025793320">Vreau să impresionez pe cineva. Caută mese libere pentru două persoane în restaurantele despre care vorbește toată lumea acum</translation>
 <translation id="6354918092619878358">Curbură eliptică SECG secp256r1 (cunoscută și sub numele de ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, apasă pe Tab, apoi pe Enter pentru mai multe file de pe alte dispozitive</translation>
-<translation id="6355392890578844978">Browserul nu este gestionat de o companie sau o altă organizație. Este posibil ca activitatea de pe acest dispozitiv să fie gestionată în afara Chromium. <ph name="BEGIN_LINK" />Află mai multe<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Browserul nu este gestionat de o companie sau o altă organizație. Este posibil ca activitatea de pe acest dispozitiv să fie gestionată în afara Shuttle. <ph name="BEGIN_LINK" />Află mai multe<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Grupurile de file <ph name="GROUP_TITLE_1" /> și <ph name="GROUP_TITLE_2" /> nu mai sunt disponibile</translation>
 <translation id="6358088212770985041">să modifice metodele de plată</translation>
 <translation id="6358450015545214790">Ce înseamnă acestea?</translation>
@@ -4138,7 +4138,7 @@ Detalii suplimentare:
 <translation id="7995512525968007366">Nespecificată</translation>
 <translation id="7997855386298213183">file comune</translation>
 <translation id="7999482381722829925">Creează o listă de verificare prioritizată pentru curățenie în profunzime, cameră cu cameră, care vizează locurile omise frecvent</translation>
-<translation id="8001912761979890298">Acest server nu a putut dovedi că este <ph name="DOMAIN" />, deoarece folosește un certificat de securitate în care Chromium sau configurația sistemului pentru criptarea traficului web nu are încredere. Cauza poate fi o eroare de configurare sau interceptarea conexiunii de către un atacator. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Vezi certificatul<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Acest server nu a putut dovedi că este <ph name="DOMAIN" />, deoarece folosește un certificat de securitate în care Shuttle sau configurația sistemului pentru criptarea traficului web nu are încredere. Cauza poate fi o eroare de configurare sau interceptarea conexiunii de către un atacator. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Vezi certificatul<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Încearcă să închizi celelalte file sau programe pentru a elibera memoria.</translation>
 <translation id="8002230960325005199">Vezi site-urile conexe într-o filă nouă</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />”</translation>
@@ -4229,7 +4229,7 @@ Detalii suplimentare:
 <translation id="8175796834047840627">Chrome oferă salvarea cardurilor în Contul Google pentru că te-ai conectat. Poți schimba acest comportament în setări.</translation>
 <translation id="8176440868214972690">Administratorul dispozitivului a trimis câteva informații următoarelor site-uri, cum ar fi setări sau politici.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> a fost blocat din cauza conținutului}few{<ph name="FILE_COUNT" /> fișiere au fost blocate din cauza conținutului}other{<ph name="FILE_COUNT" /> de fișiere au fost blocate din cauza conținutului}}</translation>
-<translation id="8186171296341598122">Poți să schimbi oricând motorul de căutare din setările Chromium. Dacă nu vezi motorul de căutare dorit, poți să faci o căutare de pe site-ul respectiv. Va fi afișat ca motor de căutare accesat recent în setările Chromium și îl poți seta ca prestabilit.</translation>
+<translation id="2852542171920460365">Poți să schimbi oricând motorul de căutare din setările Shuttle. Dacă nu vezi motorul de căutare dorit, poți să faci o căutare de pe site-ul respectiv. Va fi afișat ca motor de căutare accesat recent în setările Shuttle și îl poți seta ca prestabilit.</translation>
 <translation id="8188830160449823068">Codul IBAN a fost salvat numai pe dispozitiv</translation>
 <translation id="8189557652711717875">Motorul de căutare ales se va folosi pentru funcții cum ar fi căutarea din bara de adrese și din imaginile de pe paginile web.</translation>
 <translation id="8190193880870196235">Gestionată printr-o extensie</translation>
@@ -4313,7 +4313,7 @@ Detalii suplimentare:
 <translation id="8316555157357957253">Se folosește acum</translation>
 <translation id="8319414634934645341">Utilizare de cheie extinsă</translation>
 <translation id="831997045666694187">Seara</translation>
-<translation id="8321448084834652864">Poți să schimbi oricând motorul de căutare din setările Chromium.</translation>
+<translation id="332470347080865446">Poți să schimbi oricând motorul de căutare din setările Shuttle.</translation>
 <translation id="8321476692217554900">Notificări</translation>
 <translation id="8323505966575306467">Adaugă mai multă protecție parolelor</translation>
 <translation id="832547548543012337">Șterge pașaportul</translation>
@@ -4535,7 +4535,7 @@ Detalii suplimentare:
 <translation id="8736059027199600831">30 x 40 in</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, apasă pe Tab, apoi pe Enter pentru a deschide o nouă fereastră incognito ca să navighezi în privat</translation>
 <translation id="8737685506611670901">Deschide linkurile <ph name="PROTOCOL" /> și nu <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Pentru a stabili o conexiune securizată, ceasul trebuie să fie setat corect. Aceasta deoarece certificatele pe care site-urile le folosesc pentru a se identifica sunt valabile numai pentru anumite intervale de timp. Din moment ce ora de pe dispozitiv este incorectă, Chromium nu poate verifica aceste certificate.</translation>
+<translation id="4709963803166322417">Pentru a stabili o conexiune securizată, ceasul trebuie să fie setat corect. Aceasta deoarece certificatele pe care site-urile le folosesc pentru a se identifica sunt valabile numai pentru anumite intervale de timp. Din moment ce ora de pe dispozitiv este incorectă, Shuttle nu poate verifica aceste certificate.</translation>
 <translation id="8740359287975076522">&lt;abbr id="dnsDefinition"&gt;Adresa DNS&lt;/abbr&gt; pentru <ph name="HOST_NAME" /> nu a putut fi găsită. Se diagnostichează problema.</translation>
 <translation id="874918643257405732">Marchează această filă</translation>
 <translation id="8749274696886550762">Acest site pare ciudat</translation>
@@ -4744,7 +4744,7 @@ Detalii suplimentare:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, apasă pe tab, apoi pe Enter ca să setezi Chrome ca browser prestabilit pentru sistem în setările iOS</translation>
 <translation id="9101450247048146228">Folosirea și deplasarea camerei (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Tava 1</translation>
-<translation id="9103872766612412690">Site-ul <ph name="SITE" /> folosește în mod obișnuit criptarea pentru a-ți proteja informațiile. Când Chromium a încercat să se conecteze la <ph name="SITE" /> de această dată, site-ul a returnat date de conectare neobișnuite și incorecte. Acest lucru s-a întâmplat fie pentru că un atacator încearcă să falsifice site-ul <ph name="SITE" />, fie pentru că un ecran de conectare Wi-Fi a întrerupt conexiunea. Securitatea informațiilor tale nu a fost afectată, deoarece Chromium a oprit conexiunea înainte ca datele să fie transferate.</translation>
+<translation id="733422146945994640">Site-ul <ph name="SITE" /> folosește în mod obișnuit criptarea pentru a-ți proteja informațiile. Când Shuttle a încercat să se conecteze la <ph name="SITE" /> de această dată, site-ul a returnat date de conectare neobișnuite și incorecte. Acest lucru s-a întâmplat fie pentru că un atacator încearcă să falsifice site-ul <ph name="SITE" />, fie pentru că un ecran de conectare Wi-Fi a întrerupt conexiunea. Securitatea informațiilor tale nu a fost afectată, deoarece Shuttle a oprit conexiunea înainte ca datele să fie transferate.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> îți gestionează profilul</translation>
 <translation id="9107467864910557787">Browserul este gestionat de <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Politica implementată de administrator dezactivează permiterea accesului la ecran pentru <ph name="APPLICATION_TITLE" /> atunci când este vizibil conținut confidențial</translation>

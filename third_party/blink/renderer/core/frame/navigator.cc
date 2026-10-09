@@ -98,7 +98,7 @@ bool Navigator::cookieEnabled() const {
 }
 
 bool Navigator::webdriver() const {
-  // Agent Chrome: never report automation to pages (--enable-automation,
+  // Shuttle: never report automation to pages (--enable-automation,
   // --headless, pipe/ephemeral-port debugging and
   // Emulation.setAutomationOverride all used to set this).
   return false;

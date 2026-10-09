@@ -32,7 +32,7 @@ group("apps_features") {
 ################################################################################
 # Private Targets
 
-# Agent Chrome: no Chrome Apps API schemas are left on macOS.
+# Shuttle: no Chrome Apps API schemas are left on macOS.
 if (chrome_apps_api_schema_files != []) {
   generated_json_strings("generated_api_json_strings") {
     sources = chrome_apps_api_schema_files

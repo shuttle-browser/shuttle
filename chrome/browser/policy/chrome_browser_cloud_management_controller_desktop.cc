@@ -187,7 +187,7 @@ bool ChromeBrowserCloudManagementControllerDesktop::
 void ChromeBrowserCloudManagementControllerDesktop::OnServiceAccountSet(
     CloudPolicyClient* client,
     const std::string& account_email) {
-  // Agent Chrome: policy invalidations were removed; nothing to start.
+  // Shuttle: policy invalidations were removed; nothing to start.
 }
 
 void ChromeBrowserCloudManagementControllerDesktop::ShutDown() {

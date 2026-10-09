@@ -174,7 +174,7 @@ class TabGroupHeader : public TabSlotView,
 
   // Determines if we should show the header icon in front of the title.
   bool should_show_header_icon_;
-  // Agent Chrome: the agent's avatar, shown in the sync icon's slot.
+  // Shuttle: the agent's avatar, shown in the sync icon's slot.
   gfx::ImageSkia agent_avatar_;
 
   // Local saved collapsed state. When this differs from

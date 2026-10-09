@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_AGENT_BROWSER_SIDECAR_H_
-#define CHROME_BROWSER_AGENT_CHROME_AGENT_BROWSER_SIDECAR_H_
+#ifndef CHROME_BROWSER_SHUTTLE_AGENT_BROWSER_SIDECAR_H_
+#define CHROME_BROWSER_SHUTTLE_AGENT_BROWSER_SIDECAR_H_
 
 #include <deque>
 #include <map>
@@ -19,7 +19,7 @@
 #include "base/types/expected.h"
 #include "base/values.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 // One `agent-browser mcp` child process (stdio, newline-delimited JSON-RPC)
 // serving one agent session. Lives on the UI thread; spawning, writing and
@@ -129,6 +129,6 @@ class Sidecar {
   base::WeakPtrFactory<Sidecar> weak_factory_{this};
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_AGENT_BROWSER_SIDECAR_H_
+#endif  // CHROME_BROWSER_SHUTTLE_AGENT_BROWSER_SIDECAR_H_

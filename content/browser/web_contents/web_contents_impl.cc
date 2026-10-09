@@ -5687,7 +5687,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
       site_instance =
           SiteInstance::CreateForGuest(GetBrowserContext(), partition_config);
     } else if (source_site_instance->IsFixedStoragePartition()) {
-      // Agent Chrome: noopener windows stay in the opener's fixed partition.
+      // Shuttle: noopener windows stay in the opener's fixed partition.
       site_instance = SiteInstance::CreateForFixedStoragePartition(
           GetBrowserContext(), params.target_url, partition_config);
     } else {
@@ -12197,7 +12197,7 @@ bool WebContentsImpl::SetDeviceEmulationSize(const gfx::Size& new_size) {
   OPTIONAL_TRACE_EVENT0("content", "WebContentsImpl::SetDeviceEmulationSize");
   device_emulation_size_ = new_size;
   RenderWidgetHostView* rwhv = GetPrimaryMainFrame()->GetView();
-  // Agent Chrome: no view yet (or the renderer is gone); Emulation over CDP
+  // Shuttle: no view yet (or the renderer is gone); Emulation over CDP
   // must not crash the browser.
   if (!rwhv) {
     return false;

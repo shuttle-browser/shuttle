@@ -1775,7 +1775,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   supervised_user::RegisterProfilePrefs(registry);
   TemplateURLPrepopulateData::RegisterProfilePrefs(registry);
   universal_optout::prefs::RegisterProfilePrefs(registry);
-  // Agent Chrome: UnifiedConsentService is gone (B2d); its pref stays registered
+  // Shuttle: UnifiedConsentService is gone (B2d); its pref stays registered
   // (always false) because the pref-based consent helper still reads it.
   registry->RegisterBooleanPref(
       unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled, false);
@@ -1836,7 +1836,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 #endif
 
   UnifiedAutoplayConfig::RegisterProfilePrefs(registry);
-  // Agent Chrome: the WebUI NTP is gone, but this pref is still read.
+  // Shuttle: the WebUI NTP is gone, but this pref is still read.
   registry->RegisterBooleanPref(prefs::kNtpFooterVisible, true);
 
 #if BUILDFLAG(IS_ANDROID)

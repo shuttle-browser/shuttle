@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Rhowch ragor o fanylion</translation>
 <translation id="1016671033299705843">Ychwanegu trwydded yrru yn ddiogel</translation>
 <translation id="1019413721762100891">Diffodd</translation>
-<translation id="1021753677514347426">Mae'r broblem hon yn digwydd oherwydd tystysgrif rydych chi neu rywun arall wedi'i gosod ar eich dyfais. Mae'n hysbys bod y dystysgrif yn cael ei defnyddio i fonitro a rhyng-gipio rhwydweithiau, ac nid yw Chromium yn ymddiried ynddi. Er bod rhai achosion dilys yn bodoli ar gyfer monitro, fel ar rwydwaith ysgol neu gwmni, mae Chromium am sicrhau eich bod yn ymwybodol ei fod yn digwydd, hyd yn oed os na allwch ei atal. Gallai monitro ddigwydd mewn unrhyw borwr neu raglen sy'n defnyddio'r we.</translation>
+<translation id="768230658237634872">Mae'r broblem hon yn digwydd oherwydd tystysgrif rydych chi neu rywun arall wedi'i gosod ar eich dyfais. Mae'n hysbys bod y dystysgrif yn cael ei defnyddio i fonitro a rhyng-gipio rhwydweithiau, ac nid yw Shuttle yn ymddiried ynddi. Er bod rhai achosion dilys yn bodoli ar gyfer monitro, fel ar rwydwaith ysgol neu gwmni, mae Shuttle am sicrhau eich bod yn ymwybodol ei fod yn digwydd, hyd yn oed os na allwch ei atal. Gallai monitro ddigwydd mewn unrhyw borwr neu raglen sy'n defnyddio'r we.</translation>
 <translation id="1024111578869940408">Mae ymosodwyr yn dynwared gwefannau weithiau, gan wneud newidiadau sy'n anodd eu gweld yn y cyfeiriad gwe.</translation>
 <translation id="102916930470544692">Cod pas</translation>
 <translation id="1030706264415084469">Mae <ph name="URL" /> eisiau storio data mawr ar eich dyfais yn barhaol</translation>
@@ -809,7 +809,7 @@ Fel arall, bydd eich gosodiadau preifatrwydd yn rhwystro hyn. Bydd hyn yn caniat
 <translation id="2348836501965732644">Rheoli eich gwybodaeth neu ddiffodd yr awgrymiadau hyn yn y Gosodiadau</translation>
 <translation id="2349957959687031096">Botwm agor tab Anhysbys, gweithredwch i agor tab Anhysbys newydd i bori'n breifat</translation>
 <translation id="2350796302381711542">Caniatáu i <ph name="HANDLER_HOSTNAME" /> agor yr holl ddolenni <ph name="PROTOCOL" /> yn hytrach na <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Ni allai'r gweinydd hwn brofi ei fod yn <ph name="DOMAIN" /> oherwydd ei fod yn defnyddio tystysgrif diogelwch nad yw Chromium na ffurfweddiad eich system yn ymddiried ynddi ar gyfer amgryptio traffig gwe. Gall hyn gael ei achosi gan gamffurfweddiad neu ymosodwr yn rhyng-gipio'ch cysylltiad.</translation>
+<translation id="4798228153726623290">Ni allai'r gweinydd hwn brofi ei fod yn <ph name="DOMAIN" /> oherwydd ei fod yn defnyddio tystysgrif diogelwch nad yw Shuttle na ffurfweddiad eich system yn ymddiried ynddi ar gyfer amgryptio traffig gwe. Gall hyn gael ei achosi gan gamffurfweddiad neu ymosodwr yn rhyng-gipio'ch cysylltiad.</translation>
 <translation id="2353297238722298836">Caniateir y camera a'r meicroffon</translation>
 <translation id="2354001756790975382">Nodau tudalen eraill</translation>
 <translation id="2355395290879513365">Mae'n bosib y bydd ymosodwyr yn gallu gweld y lluniau rydych yn edrych arnynt ar y wefan hon a'ch twyllo drwy eu haddasu.</translation>
@@ -1046,7 +1046,7 @@ Fel arall, bydd eich gosodiadau preifatrwydd yn rhwystro hyn. Bydd hyn yn caniat
 <translation id="2728127805433021124">Llofnodir tystysgrif gweinyddwr gan ddefnyddio algorithm llofnodi gwan.</translation>
 <translation id="272937284275742856">Wrthi'n dilysu eich manylion talu yn ddiogel...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Wrthi'n Rhedeg Diagnosteg Cysylltedd<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Dysgu rhagor am eich peiriant chwilio yn Chromium</translation>
+<translation id="5216476641707900057">Dysgu rhagor am eich peiriant chwilio yn Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 modfedd</translation>
 <translation id="2734797989819862638">Peidio â chopïo</translation>
 <translation id="2738771556149464852">Nid ar ôl</translation>
@@ -1344,7 +1344,7 @@ I guddio opsiynau talu'n ddiweddarach, ewch i'r <ph name="BEGIN_LINK" />gosodiad
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Rhowch god dilysu <ph name="NUMBER_OF_DIGITS" />-digid</translation>
 <translation id="3272643614306383237">Llai nag 1 MB. Mae'n bosib y bydd rhai gwefannau yn llwytho'n fwy araf ar eich ymweliad nesaf.</translation>
-<translation id="3273738040255912340">Gall eich gweinyddwr wneud newidiadau i'ch proffil a'ch porwr o bell, dadansoddi gwybodaeth am y porwr trwy adrodd, a chyflawni tasgau angenrheidiol eraill. Gellir rheoli gweithgarwch ar y ddyfais hon y tu allan i Chromium hefyd. <ph name="BEGIN_LINK" />Dysgu rhagor<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Gall eich gweinyddwr wneud newidiadau i'ch proffil a'ch porwr o bell, dadansoddi gwybodaeth am y porwr trwy adrodd, a chyflawni tasgau angenrheidiol eraill. Gellir rheoli gweithgarwch ar y ddyfais hon y tu allan i Shuttle hefyd. <ph name="BEGIN_LINK" />Dysgu rhagor<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Cadw IBAN wedi'i agor ar uchder llawn.</translation>
 <translation id="327455571215090823">Awtolenwi clyfrach, wedi'i gadw'n breifat</translation>
 <translation id="3280440382387335343">Diweddaru pasbort yn ddiogel yn Google Wallet</translation>
@@ -1613,7 +1613,7 @@ I guddio opsiynau talu'n ddiweddarach, ewch i'r <ph name="BEGIN_LINK" />gosodiad
 <translation id="3742104862808477448">Helpwch Chromium i ddeall a llenwi ffurflenni cymhleth yn well trwy brosesu data'n ddiogel ar weinyddion Google. Mae eich gwybodaeth yn parhau i fod yn breifat ac nid yw'n cael ei hadolygu gan unrhyw un.</translation>
 <translation id="3744111561329211289">Cysoni yn y cefndir</translation>
 <translation id="3744212718085287312">Gwneud hi'n fwy diogel gyda cherdyn rhithwir y tro nesaf?</translation>
-<translation id="3744899669254331632">Ni allwch fynd i <ph name="SITE" /> ar hyn o bryd gan fod y wefan wedi anfon manylion sydd wedi'u sgramblo na all Google eu prosesu. Mae gwallau ac ymosodiadau rhwydwaith yn rhai dros dro fel arfer, felly mae'n debyg y bydd y dudalen hon yn gweithio'n nes ymlaen.</translation>
+<translation id="58356321557204990">Ni allwch fynd i <ph name="SITE" /> ar hyn o bryd gan fod y wefan wedi anfon manylion sydd wedi'u sgramblo na all Google eu prosesu. Mae gwallau ac ymosodiadau rhwydwaith yn rhai dros dro fel arfer, felly mae'n debyg y bydd y dudalen hon yn gweithio'n nes ymlaen.</translation>
 <translation id="3745599309295009257">Bydd eich testun a chynnwys ac URL y dudalen rydych chi'n ysgrifennu arni yn cael eu hanfon at Google, eu hadolygu gan bobl, a'u defnyddio i wella'r nodwedd hon. Ceisiwch osgoi rhoi gwybodaeth bersonol (fel manylion meddygol neu ariannol) neu ddefnyddio'r offeryn hwn ar wefannau sy'n cynnwys gwybodaeth breifat neu sensitif.</translation>
 <translation id="3748009735914587286">Metel (Sglein Uchel)</translation>
 <translation id="3748647055058832337">Ddim ar gael ar gyfer y masnachwr hwn</translation>
@@ -2199,7 +2199,7 @@ I guddio opsiynau talu'n ddiweddarach, ewch i'r <ph name="BEGIN_LINK" />gosodiad
 <translation id="4732860731866514038">Wrthi'n lawrlwytho'r pecyn iaith <ph name="LANGUAGE" />... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992">Mae <ph name="URL" /> eisiau defnyddio lleoliad eich dyfais</translation>
 <translation id="473414950835101501">Defnyddio eich camerâu</translation>
-<translation id="4736825316280949806">Ailgychwyn Chromium</translation>
+<translation id="5713993618957185264">Ailgychwyn Shuttle</translation>
 <translation id="4736934858538408121">Cerdyn rhithwir</translation>
 <translation id="473775607612524610">Diweddaru</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> awgrym chwilio</translation>
@@ -2421,7 +2421,7 @@ I guddio opsiynau talu'n ddiweddarach, ewch i'r <ph name="BEGIN_LINK" />gosodiad
 <translation id="5089810972385038852">Talaith</translation>
 <translation id="5093232627742069661">Plyg Z</translation>
 <translation id="5093417502834168387">Cael trafferth wrth fewngofnodi? Rhowch gynnig ar ffordd arall</translation>
-<translation id="5094747076828555589">Ni allai'r gweinydd hwn brofi ei fod yn <ph name="DOMAIN" />; nid yw Chromium yn ymddiried yn ei dystysgrif ddiogelwch. Gall hyn gael ei achosi gan gamffurfweddiad neu ymosodwr yn rhyng-gipio'ch cysylltiad.</translation>
+<translation id="5713412634455044803">Ni allai'r gweinydd hwn brofi ei fod yn <ph name="DOMAIN" />; nid yw Shuttle yn ymddiried yn ei dystysgrif ddiogelwch. Gall hyn gael ei achosi gan gamffurfweddiad neu ymosodwr yn rhyng-gipio'ch cysylltiad.</translation>
 <translation id="5096066272198024688">Wrthi'n cadw eich gwybodaeth...</translation>
 <translation id="5097099694988056070">Ystadegau'r ddyfais megis defnydd o CPU/RAM</translation>
 <translation id="5097468150760963273">27 x 39 modfedd</translation>
@@ -3173,7 +3173,7 @@ I guddio opsiynau talu'n ddiweddarach, ewch i'r <ph name="BEGIN_LINK" />gosodiad
 <translation id="635394585025793320">Rwyf eisiau creu argraff ar rywun. Chwilia am fyrddau rhydd i 2 mewn bwytai y mae pawb yn sôn amdanynt ar hyn o bryd</translation>
 <translation id="6354918092619878358">Cromlin eliptig SECG secp256r1 (gelwir heyd ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, pwyswch Tab, yna Enter am fwy o dabiau o ddyfeisiau eraill</translation>
-<translation id="6355392890578844978">Nid yw'r porwr hwn yn cael ei reoli gan gwmni neu sefydliad arall. Gellir rheoli gweithgarwch ar y ddyfais hon y tu allan i Chromium. <ph name="BEGIN_LINK" />Dysgu rhagor<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Nid yw'r porwr hwn yn cael ei reoli gan gwmni neu sefydliad arall. Gellir rheoli gweithgarwch ar y ddyfais hon y tu allan i Shuttle. <ph name="BEGIN_LINK" />Dysgu rhagor<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Nid yw'r grwpiau tabiau "<ph name="GROUP_TITLE_1" />" a "<ph name="GROUP_TITLE_2" />" ar gael mwyach</translation>
 <translation id="6358088212770985041">golygu dulliau talu</translation>
 <translation id="6358450015545214790">Beth mae'r rhain yn ei olygu?</translation>
@@ -4137,7 +4137,7 @@ Manylion ychwanegol:
 <translation id="7995512525968007366">Heb ei Nodi</translation>
 <translation id="7997855386298213183">tabiau a rennir</translation>
 <translation id="7999482381722829925">Creu rhestr wirio glanhau trylwyr ystafell wrth ystafell â blaenoriaeth, gan dargedu mannau sy'n cael eu methu yn aml</translation>
-<translation id="8001912761979890298">Ni allai'r gweinydd hwn brofi ei fod yn <ph name="DOMAIN" /> oherwydd ei fod yn defnyddio tystysgrif diogelwch nad yw Chromium na ffurfweddiad eich system yn ymddiried ynddi ar gyfer amgryptio traffig gwe. Gall hyn gael ei achosi gan gamffurfweddiad neu ymosodwr yn rhyng-gipio'ch cysylltiad. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Gweld y Dystysgrif<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Ni allai'r gweinydd hwn brofi ei fod yn <ph name="DOMAIN" /> oherwydd ei fod yn defnyddio tystysgrif diogelwch nad yw Shuttle na ffurfweddiad eich system yn ymddiried ynddi ar gyfer amgryptio traffig gwe. Gall hyn gael ei achosi gan gamffurfweddiad neu ymosodwr yn rhyng-gipio'ch cysylltiad. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Gweld y Dystysgrif<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Rhowch gynnig ar gau tabiau neu raglenni eraill i leihau'r defnydd cof.</translation>
 <translation id="8002230960325005199">Gweld gwefannau cysylltiedig mewn tab newydd</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4228,7 +4228,7 @@ Manylion ychwanegol:
 <translation id="8175796834047840627">Mae Chrome yn cynnig cadw eich cardiau yn eich Cyfrif Google oherwydd eich bod wedi mewngofnodi. Gallwch newid yr ymddygiad hwn yn y gosodiadau.</translation>
 <translation id="8176440868214972690">Mae gweinyddwr y ddyfais hon wedi anfon rhywfaint o wybodaeth at y gwefannau canlynol, megis gosodiadau neu bolisïau.</translation>
 <translation id="818254048113802060">{0,plural, =1{Cafodd <ph name="FILE_NAME" /> ei rhwystro oherwydd y cynnwys}zero{Cafodd <ph name="FILE_COUNT" /> ffeil eu rhwystro oherwydd y cynnwys}two{Cafodd <ph name="FILE_COUNT" /> ffeil eu rhwystro oherwydd y cynnwys}few{Cafodd <ph name="FILE_COUNT" /> ffeil eu rhwystro oherwydd y cynnwys}many{Cafodd <ph name="FILE_COUNT" /> ffeil eu rhwystro oherwydd y cynnwys}other{Cafodd <ph name="FILE_COUNT" /> ffeil eu rhwystro oherwydd y cynnwys}}</translation>
-<translation id="8186171296341598122">Gallwch newid eich peiriant chwilio ar unrhyw adeg yng ngosodiadau Chromium. Os na welwch eich peiriant chwilio dewisol, gallwch berfformio chwiliad o'u gwefan. Fe welwch ef wedi'i restru fel peiriant chwilio yr ymwelwyd ag ef yn ddiweddar yng ngosodiadau Chromium, a gallwch ei wneud yn beiriant chwilio diofyn.</translation>
+<translation id="2852542171920460365">Gallwch newid eich peiriant chwilio ar unrhyw adeg yng ngosodiadau Shuttle. Os na welwch eich peiriant chwilio dewisol, gallwch berfformio chwiliad o'u gwefan. Fe welwch ef wedi'i restru fel peiriant chwilio yr ymwelwyd ag ef yn ddiweddar yng ngosodiadau Shuttle, a gallwch ei wneud yn beiriant chwilio diofyn.</translation>
 <translation id="8188830160449823068">Mae'r IBAN wedi'i gadw i ddyfais yn unig</translation>
 <translation id="8189557652711717875">Bydd y peiriant chwilio a ddewiswch yn cael ei ddefnyddio ar gyfer nodweddion fel chwilio o'r bar cyfeiriad ac o luniau ar dudalennau gwe.</translation>
 <translation id="8190193880870196235">Rheolir gan estyniad</translation>
@@ -4312,7 +4312,7 @@ Manylion ychwanegol:
 <translation id="8316555157357957253">Defnyddio nawr</translation>
 <translation id="8319414634934645341">Defnydd Allweddau Estynedig</translation>
 <translation id="831997045666694187">Nos</translation>
-<translation id="8321448084834652864">Gallwch newid eich peiriant chwilio ar unrhyw adeg yng ngosodiadau Chromium.</translation>
+<translation id="332470347080865446">Gallwch newid eich peiriant chwilio ar unrhyw adeg yng ngosodiadau Shuttle.</translation>
 <translation id="8321476692217554900">hysbysiadau</translation>
 <translation id="8323505966575306467">Ychwanegu mwy o amddiffyniad at eich cyfrineiriau</translation>
 <translation id="832547548543012337">Dileu pasbort</translation>
@@ -4533,7 +4533,7 @@ Manylion ychwanegol:
 <translation id="8736059027199600831">30 x 40 modfedd</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, pwyswch Tab yna Enter i agor ffenestr Anhysbys newydd i bori'n breifat</translation>
 <translation id="8737685506611670901">Agor dolenni <ph name="PROTOCOL" /> yn lle <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Er mwyn gosod cysylltiad diogel, mae angen gosod eich cloc yn gywir. Mae hyn oherwydd bod y tystysgrifau y mae gwefannau yn eu defnyddio i adnabod eu hunain yn ddilys am gyfnodau penodol yn unig. Gan fod cloc eich dyfais yn anghywir, ni all Chromium ddilysu'r tystysgrifau hyn.</translation>
+<translation id="4709963803166322417">Er mwyn gosod cysylltiad diogel, mae angen gosod eich cloc yn gywir. Mae hyn oherwydd bod y tystysgrifau y mae gwefannau yn eu defnyddio i adnabod eu hunain yn ddilys am gyfnodau penodol yn unig. Gan fod cloc eich dyfais yn anghywir, ni all Shuttle ddilysu'r tystysgrifau hyn.</translation>
 <translation id="8740359287975076522">Ni ellid dod o hyd i &lt;abbr id="dnsDefinition"&gt;gyfeiriad DNS&lt;/abbr&gt; <ph name="HOST_NAME" />. Wrthi'n diagnosio'r broblem.</translation>
 <translation id="874918643257405732">Creu nod tudalen ar gyfer y tab hwn</translation>
 <translation id="8749274696886550762">Nid yw'r wefan hon yn ymddangos yn iawn</translation>
@@ -4742,7 +4742,7 @@ Manylion ychwanegol:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, Pwyswch Tab yna Enter i osod Chrome fel porwr diofyn y system yng ngosodiadau iOS</translation>
 <translation id="9101450247048146228">Symudiad a defnydd camera (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Hambwrdd 1</translation>
-<translation id="9103872766612412690">Mae <ph name="SITE" /> fel arfer yn defnyddio amgryptio i amddiffyn eich gwybodaeth. Pan geisiodd Chromium gysylltu â <ph name="SITE" /> y tro hwn, anfonodd y wefan manylion adnabod anarferol ac anghywir yn ôl. Gall hyn ddigwydd pan fydd ymosodwr yn ceisio gweithredu fel <ph name="SITE" />, neu pan fydd sgrîn mewngofnodi Wi-Fi wedi torri ar draws y cysylltiad. Mae eich gwybodaeth yn dal yn ddiogel oherwydd stopiodd Chromium y cysylltiad cyn i unrhyw ddata gael eu cyfnewid.</translation>
+<translation id="733422146945994640">Mae <ph name="SITE" /> fel arfer yn defnyddio amgryptio i amddiffyn eich gwybodaeth. Pan geisiodd Shuttle gysylltu â <ph name="SITE" /> y tro hwn, anfonodd y wefan manylion adnabod anarferol ac anghywir yn ôl. Gall hyn ddigwydd pan fydd ymosodwr yn ceisio gweithredu fel <ph name="SITE" />, neu pan fydd sgrîn mewngofnodi Wi-Fi wedi torri ar draws y cysylltiad. Mae eich gwybodaeth yn dal yn ddiogel oherwydd stopiodd Shuttle y cysylltiad cyn i unrhyw ddata gael eu cyfnewid.</translation>
 <translation id="9107199998619088551">Mae <ph name="MANAGER" /> yn rheoli eich proffil</translation>
 <translation id="9107467864910557787">Rheolir eich porwr gan <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Mae polisi gweinyddwr yn analluogi rhannu sgrîn â <ph name="APPLICATION_TITLE" /> pan fydd cynnwys cyfrinachol yn weladwy</translation>

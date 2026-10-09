@@ -409,7 +409,7 @@ export class SettingsClearBrowsingDataDialogElement extends
   }
 
   private onCheckboxSubLabelLinkClick_(e: CustomEvent<{id: string}>) {
-    // Agent Chrome: no sign-in, so the cookies "sign out" link never appears.
+    // Shuttle: no sign-in, so the cookies "sign out" link never appears.
     console.warn(`Unhandled sub-label link with id: ${e.detail.id}`);
   }
 }

@@ -996,7 +996,7 @@ void ProfileImpl::OnLocaleReady(CreateMode create_mode) {
   }
 #endif
 
-  // Agent Chrome: the sync->signin migration is gone.
+  // Shuttle: the sync->signin migration is gone.
   CHECK(GetPrefs());
   OnSyncToSigninMigrationMaybeCompleted(create_mode);
 }

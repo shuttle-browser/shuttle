@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">থিম সক্ষম করুন</translation>
 <translation id="1135328998467923690">এই প্যাকেজটি ভুল: '<ph name="ERROR_CODE" />'৷</translation>
 <translation id="1140871961407805696">পেছন দিকে মুখ করা</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> এমন একটি এক্সটেনশন যোগ করেছে যেটি Chromium কাজ করার পদ্ধতি পরিবর্তন করতে পারে।
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> এমন একটি এক্সটেনশন যোগ করেছে যেটি Shuttle কাজ করার পদ্ধতি পরিবর্তন করতে পারে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ব্যক্তিগত কী রপ্তানি করতে ব্যর্থ৷</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ফাইলটি প্রতিস্থাপন করতে ব্যর্থ৷ ফাইলটি ব্যবহার হচ্ছে কিনা দেখে নিন৷</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> বিক্রেতার থেকে অজানা পণ্য <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">আপনার সংস্থা এই এক্সটেনশনের অ্যাক্সেস ব্লক করেছে।</translation>
-<translation id="3183357154200327217">আপনার কম্পিউটারের অন্য একটি প্রোগ্রাম একটি থিম যোগ করেছে, ফলে Chromium-এর কাজ করার ধরন পাল্টে যেতে পারে।
+<translation id="7846451875700317002">আপনার কম্পিউটারের অন্য একটি প্রোগ্রাম একটি থিম যোগ করেছে, ফলে Shuttle-এর কাজ করার ধরন পাল্টে যেতে পারে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'Kiosk_only' ম্যানিফেস্ট অ্যাট্রিবিউটের সাথে অ্যাপকে অবশ্যই ChromeOS কিয়স্ক মোডে ইনস্টল করতে হবে</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">অস্বীকার</translation>
 <translation id="3984413272403535372">এক্সটেনশন স্বাক্ষরের সময় সমস্যা৷</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" মেরামত করবেন?</translation>
-<translation id="4061696872429826774">আপনার কম্পিউটারের অন্য একটি প্রোগ্রাম এক্সটেনশন যোগ করেছে, ফলে Chromium-এর কাজ করার ধরন পাল্টে যেতে পারে।
+<translation id="7396546976728149133">আপনার কম্পিউটারের অন্য একটি প্রোগ্রাম এক্সটেনশন যোগ করেছে, ফলে Shuttle-এর কাজ করার ধরন পাল্টে যেতে পারে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">আপনার সংস্থা এই এক্সটেনশন বিভাগের অ্যাক্সেস ব্লক করেছে।</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />"-এর নতুনতম ভার্সনটি বন্ধ হয়েছে কারণ এটির আরও বেশি অনুমতির প্রয়োজন৷</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" সক্ষম করবেন?</translation>
 <translation id="5356315618422219272">অ্যাপ্লিকেশান দর্শন: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium থেকে সরান</translation>
+<translation id="2064155379595075287">Shuttle থেকে সরান</translation>
 <translation id="5456409301717116725">এই এক্সটেনশনটি '<ph name="KEY_PATH" />' মুখ্য ফাইলকে অন্তর্ভুক্ত করে৷ আপনি সম্ভবত এটি করতে চাইবেন না৷</translation>
 <translation id="5485102783864353244">অ্যাপ্লিকেশান যোগ করুন</translation>
 <translation id="5486326529110362464">ব্যক্তিগত কী-র জন্য ইনপুট মান থাকা আবশ্যক৷</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">এই মেশিনের প্রশাসকের <ph name="EXTENSION_NAME" /> ইন্সটল করা প্রয়োজন। এটি আনইন্সটল করা যাবে না।</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> এর থেকে অজানা পণ্য <ph name="PRODUCT_ID" /> (সিরিয়াল নম্বর <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> বিক্রেতার থেকে <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">আপনার কম্পিউটারের অন্য একটি প্রোগ্রাম একটি অ্যাপ যোগ করেছে, ফলে Chromium-এর কাজ করার ধরন পাল্টে যেতে পারে।
+<translation id="5918487821361452587">আপনার কম্পিউটারের অন্য একটি প্রোগ্রাম একটি অ্যাপ যোগ করেছে, ফলে Shuttle-এর কাজ করার ধরন পাল্টে যেতে পারে।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">এক্সটেনশন লোড হওয়ার সময় সমস্যা</translation>

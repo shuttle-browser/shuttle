@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Activează tema</translation>
 <translation id="1135328998467923690">Pachetul nu este valid: „<ph name="ERROR_CODE" />”.</translation>
 <translation id="1140871961407805696">Camera foto din spate</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> a adăugat o extensie care poate schimba modul în care funcționează Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> a adăugat o extensie care poate schimba modul în care funcționează Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Cheia privată nu a putut fi exportată.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Înlocuirea fișierului crx a eșuat. Verificați dacă fișierul este în uz.</translation>
 <translation id="3163201441334626963">Produs necunoscut <ph name="PRODUCT_ID" /> de la furnizorul <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Accesul la această extensie este blocat de organizația ta.</translation>
-<translation id="3183357154200327217">Un alt program de pe computerul tău a adăugat o temă care poate schimba modul în care funcționează Chromium.
+<translation id="7846451875700317002">Un alt program de pe computerul tău a adăugat o temă care poate schimba modul în care funcționează Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplicația cu atributul „kiosk_only” din manifest trebuie să fie instalată în modul chioșc pentru sistemul de operare Chrome</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Refuză</translation>
 <translation id="3984413272403535372">Eroare la semnarea extensiei.</translation>
 <translation id="4014432863917027322">Repari „<ph name="EXTENSION_NAME" />”?</translation>
-<translation id="4061696872429826774">Un alt program de pe computerul tău a adăugat o extensie care poate schimba modul în care funcționează Chromium.
+<translation id="7396546976728149133">Un alt program de pe computerul tău a adăugat o extensie care poate schimba modul în care funcționează Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Accesul la această categorie de extensii este blocat de organizația ta.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Cea mai nouă versiune a „<ph name="EXTENSION_NAME" />” a fost dezactivată, deoarece necesită permisiuni suplimentare.</translation>
 <translation id="5242724311594467048">Activați extensia „<ph name="EXTENSION_NAME" />”?</translation>
 <translation id="5356315618422219272">Eticheta appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Eliminați din Chromium</translation>
+<translation id="2064155379595075287">Eliminați din Shuttle</translation>
 <translation id="5456409301717116725">Această extensie include fișierul cheie „<ph name="KEY_PATH" />”. Probabil că nu doriți să faceți asta.</translation>
 <translation id="5485102783864353244">Adaugă o aplicație</translation>
 <translation id="5486326529110362464">Trebuie să existe o valoarea introdusă pentru cheia privată.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administratorul acestui computer solicită ca <ph name="EXTENSION_NAME" /> să fie instalată. Aceasta nu poate fi dezinstalată.</translation>
 <translation id="6027032947578871493">Produs necunoscut <ph name="PRODUCT_ID" /> de la <ph name="VENDOR_NAME" /> (numărul de serie <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> de la furnizorul <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Un alt program de pe computerul tău a adăugat o aplicație care poate schimba modul în care funcționează Chromium.
+<translation id="5918487821361452587">Un alt program de pe computerul tău a adăugat o aplicație care poate schimba modul în care funcționează Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Eroare la încărcarea extensiei</translation>

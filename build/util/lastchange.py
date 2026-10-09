@@ -322,7 +322,7 @@ def GetGitVersion(source_dir, commit_filter, merge_base_ref):
             git_top_dir, commit_filter, start_commit
         )
     except RuntimeError as e:
-        # Agent Chrome: the fork's history starts at an upstream snapshot
+        # Shuttle: the fork's history starts at an upstream snapshot
         # commit without Gerrit trailers, so the Change-Id filter matches
         # nothing. Fall back to the newest commit instead of 0.0.0 (a 1970
         # build time breaks clock/CT/outdated-build checks).

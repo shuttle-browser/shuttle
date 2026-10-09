@@ -2328,7 +2328,7 @@ void AuthenticatorCommonImpl::
     std::move(callback).Run(false);
     return;
   }
-  // Agent Chrome: no autofill UI, so conditional (autofill) mediation has no
+  // Shuttle: no autofill UI, so conditional (autofill) mediation has no
   // surface to show passkeys in.
   std::move(callback).Run(false);
 }

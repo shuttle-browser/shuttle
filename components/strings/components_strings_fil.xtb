@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Magbigay ng mga karagdagang detalye</translation>
 <translation id="1016671033299705843">Secure na magdagdag ng lisensya sa pagmamaneho</translation>
 <translation id="1019413721762100891">I-off</translation>
-<translation id="1021753677514347426">Nangyayari ang problemang ito dahil sa isang certificate na na-install mo o ng ibang tao sa iyong device. Kilala ang certificate sa pagsubaybay at pag-intercept ng mga network, at hindi ito pinagkakatiwalaan ng Chromium. Bagama't mayroong mga lehitimong kaso ng pagsubaybay, gaya sa network sa paaralan o kumpanya, gustong tiyakin ng Chromium na alam mong nangyayari ito, kahit na hindi mo ito mapipigilan. Posibleng mangyari ang pagsubaybay sa anumang browser o application na nag-a-access ng web.</translation>
+<translation id="768230658237634872">Nangyayari ang problemang ito dahil sa isang certificate na na-install mo o ng ibang tao sa iyong device. Kilala ang certificate sa pagsubaybay at pag-intercept ng mga network, at hindi ito pinagkakatiwalaan ng Shuttle. Bagama't mayroong mga lehitimong kaso ng pagsubaybay, gaya sa network sa paaralan o kumpanya, gustong tiyakin ng Shuttle na alam mong nangyayari ito, kahit na hindi mo ito mapipigilan. Posibleng mangyari ang pagsubaybay sa anumang browser o application na nag-a-access ng web.</translation>
 <translation id="1024111578869940408">Kung minsan, ginagaya ng mga attacker ang mga site sa pamamagitan ng paggawa ng mga mahirap makitang pagbabago sa address sa web.</translation>
 <translation id="102916930470544692">Passkey</translation>
 <translation id="1030706264415084469">Gusto ng <ph name="URL" /> na permanenteng mag-store ng malaking data sa iyong device</translation>
@@ -809,7 +809,7 @@ Kung ayaw mo, iba-block ito ng iyong mga setting ng privacy. Papayagan nito ang 
 <translation id="2348836501965732644">Pamahalaan ang iyong impormasyon o i-off ang mga suhestyong ito sa Mga Setting</translation>
 <translation id="2349957959687031096">Button na Magbukas ng tab na Incognito, i-activate para makapagbukas ng bagong tab na Incognito para makapag-browse nang pribado</translation>
 <translation id="2350796302381711542">Papayagan ang <ph name="HANDLER_HOSTNAME" /> na buksan ang lahat ng <ph name="PROTOCOL" /> (na) link sa halip na ang <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Hindi mapatunayan ng server na ito na <ph name="DOMAIN" /> ito dahil gumagamit ito ng certificate na panseguridad na hindi pinagkakatiwalaan ng Chromium o ng iyong configuration ng system para sa pag-encrypt ng trapiko sa web. Posibleng sanhi ito ng maling pag-configure, o ng pag-intercept ng isang attacker sa koneksyon mo.</translation>
+<translation id="4798228153726623290">Hindi mapatunayan ng server na ito na <ph name="DOMAIN" /> ito dahil gumagamit ito ng certificate na panseguridad na hindi pinagkakatiwalaan ng Shuttle o ng iyong configuration ng system para sa pag-encrypt ng trapiko sa web. Posibleng sanhi ito ng maling pag-configure, o ng pag-intercept ng isang attacker sa koneksyon mo.</translation>
 <translation id="2353297238722298836">Pinapayagan ang camera at mikropono</translation>
 <translation id="2354001756790975382">Iba pang mga bookmark</translation>
 <translation id="2355395290879513365">Maaaring makita ng mga umaatake ang mga larawang tinitingnan mo sa site na ito at lilinlangin ka sa pamamagitan ng pagbago sa mga ito.</translation>
@@ -1046,7 +1046,7 @@ Kung ayaw mo, iba-block ito ng iyong mga setting ng privacy. Papayagan nito ang 
 <translation id="2728127805433021124">Nilagdaan ang certificate ng server gamit ang mahinang algorithm ng lagda.</translation>
 <translation id="272937284275742856">Secure na vine-verify ang iyong mga detalye ng pagbabayad...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Magpatakbo ng Connectivity Diagnostics<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Matuto pa tungkol sa iyong search engine sa Chromium</translation>
+<translation id="5216476641707900057">Matuto pa tungkol sa iyong search engine sa Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 in</translation>
 <translation id="2734797989819862638">Huwag kopyahin</translation>
 <translation id="2738771556149464852">Hindi Pagkatapos</translation>
@@ -1344,7 +1344,7 @@ Para i-hide ang mga opsyon sa pay later, pumunta sa <ph name="BEGIN_LINK" />mga 
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Ilagay ang code sa pag-verify na may <ph name="NUMBER_OF_DIGITS" /> (na) digit</translation>
 <translation id="3272643614306383237">Wala pang 1 MB. Posibleng mas mabagal na mag-load ang ilang site sa iyong susunod na pagbisita.</translation>
-<translation id="3273738040255912340">Puwedeng remote na gumawa ng mga pagbabago sa profile at browser mo, magsuri ng impormasyon tungkol sa browser sa pamamagitan ng pag-uulat, at gumawa ng iba pang kinakailangang gawain ang iyong administrator. Puwede ring pamahalaan sa labas ng Chromium ang aktibidad sa device na ito. <ph name="BEGIN_LINK" />Matuto pa<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Puwedeng remote na gumawa ng mga pagbabago sa profile at browser mo, magsuri ng impormasyon tungkol sa browser sa pamamagitan ng pag-uulat, at gumawa ng iba pang kinakailangang gawain ang iyong administrator. Puwede ring pamahalaan sa labas ng Shuttle ang aktibidad sa device na ito. <ph name="BEGIN_LINK" />Matuto pa<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Binuksan ang I-save ang IBAN nang buo.</translation>
 <translation id="327455571215090823">Mas smart na autofill, pinapanatiling pribado</translation>
 <translation id="3280440382387335343">Secure na i-update ang passport sa Google Wallet</translation>
@@ -1613,7 +1613,7 @@ Para i-hide ang mga opsyon sa pay later, pumunta sa <ph name="BEGIN_LINK" />mga 
 <translation id="3742104862808477448">Tulungan ang Chromium na mas maunawaan at punan ang mga kumplikadong form sa pamamagitan ng secure na pagpoproseso ng data sa mga server ng Google. Mananatiling pribado ang iyong impormasyon at hindi ito susuriin ng kahit sino.</translation>
 <translation id="3744111561329211289">Pag-sync sa background</translation>
 <translation id="3744212718085287312">Gawin itong mas secure gamit ang isang virtual card sa susunod?</translation>
-<translation id="3744899669254331632">Hindi mo maaaring bisitahin ang <ph name="SITE" /> sa ngayon dahil nagpadala ang website ng mga pinaghalong kredensyal na hindi maproseso ng Chromium. Karaniwang pansamantala ang mga error at pag-atake sa network, kaya malamang na gagana ang page na ito sa ibang pagkakataon.</translation>
+<translation id="58356321557204990">Hindi mo maaaring bisitahin ang <ph name="SITE" /> sa ngayon dahil nagpadala ang website ng mga pinaghalong kredensyal na hindi maproseso ng Shuttle. Karaniwang pansamantala ang mga error at pag-atake sa network, kaya malamang na gagana ang page na ito sa ibang pagkakataon.</translation>
 <translation id="3745599309295009257">Ang text mo, at ang content at URL ng page na sinusulatan mo ay ipapadala sa Google, susuriin ng mga tao, at gagamitin para mapahusay ang feature na ito. Iwasang maglagay ng personal na impormasyon (tulad ng mga medikal at pinansyal na detalye) o gamitin ang tool na ito sa mga site na naglalaman ng pribado at sensitibong impormasyon.</translation>
 <translation id="3748009735914587286">Metal (High-Gloss)</translation>
 <translation id="3748647055058832337">Hindi available para sa merchant na ito</translation>
@@ -2199,7 +2199,7 @@ Para i-hide ang mga opsyon sa pay later, pumunta sa <ph name="BEGIN_LINK" />mga 
 <translation id="4732860731866514038">Dina-download ang <ph name="LANGUAGE" /> language pack... <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992">Gustong gamitin ng <ph name="URL" /> ang lokasyon ng iyong device</translation>
 <translation id="473414950835101501">Gamitin ang iyong mga camera</translation>
-<translation id="4736825316280949806">I-restart ang Chromium</translation>
+<translation id="5713993618957185264">I-restart ang Shuttle</translation>
 <translation id="4736934858538408121">Virtual na card</translation>
 <translation id="473775607612524610">I-update</translation>
 <translation id="4738601419177586157">Suhestyon sa paghahanap para sa <ph name="TEXT" /></translation>
@@ -2421,7 +2421,7 @@ Para i-hide ang mga opsyon sa pay later, pumunta sa <ph name="BEGIN_LINK" />mga 
 <translation id="5089810972385038852">Estado</translation>
 <translation id="5093232627742069661">Z-fold</translation>
 <translation id="5093417502834168387">Nagkakaproblema sa pag-sign in? Sumubok ng ibang paraan</translation>
-<translation id="5094747076828555589">Hindi mapatunayan ng server na ito na ito ay <ph name="DOMAIN" />; hindi pinagkakatiwalaan ng Chromium ang certificate ng seguridad nito. Maaaring dulot ito ng maling configuration o isang umaatake na hinahadlangan ang iyong koneksyon.</translation>
+<translation id="5713412634455044803">Hindi mapatunayan ng server na ito na ito ay <ph name="DOMAIN" />; hindi pinagkakatiwalaan ng Shuttle ang certificate ng seguridad nito. Maaaring dulot ito ng maling configuration o isang umaatake na hinahadlangan ang iyong koneksyon.</translation>
 <translation id="5096066272198024688">Sine-save ang iyong impormasyon...</translation>
 <translation id="5097099694988056070">Mga istatistika ng device gaya ng paggamit ng CPU/RAM</translation>
 <translation id="5097468150760963273">27 x 39 in</translation>
@@ -3173,7 +3173,7 @@ Para i-hide ang mga opsyon sa pay later, pumunta sa <ph name="BEGIN_LINK" />mga 
 <translation id="635394585025793320">Gusto kong mapabilib ang isang tao. Maghanap ng mga bakanteng mesa para sa 2 sa mga restaurant na pinag-uusapan ng lahat sa ngayon</translation>
 <translation id="6354918092619878358">SECG elliptic curve secp256r1 (na tinatawag ding ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, pindutin ang Tab, pagkatapos ay ang Enter para sa higit pang tab mula sa iba pang device</translation>
-<translation id="6355392890578844978">Hindi pinapamahalaan ng kumpanya o iba pang organisasyon ang browser na ito. Posibleng pinapamahalaan sa labas ng Chromium ang aktibidad sa device na ito. <ph name="BEGIN_LINK" />Matuto pa<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Hindi pinapamahalaan ng kumpanya o iba pang organisasyon ang browser na ito. Posibleng pinapamahalaan sa labas ng Shuttle ang aktibidad sa device na ito. <ph name="BEGIN_LINK" />Matuto pa<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Hindi na available ang mga grupo ng tab na "<ph name="GROUP_TITLE_1" />" at "<ph name="GROUP_TITLE_2" />"</translation>
 <translation id="6358088212770985041">i-edit ang mga paraan ng pagbabayad</translation>
 <translation id="6358450015545214790">Ano ang ibig sabihin ng mga ito?</translation>
@@ -4138,7 +4138,7 @@ Mga karagdagang detalye:
 <translation id="7995512525968007366">Hindi Tinukoy</translation>
 <translation id="7997855386298213183">mga naka-share na tab</translation>
 <translation id="7999482381722829925">Gumawa ng may priyoridad at room-by-room na checklist sa malalim na paglilinis na nagta-target sa mga lugar na karaniwang nakakaligtaan</translation>
-<translation id="8001912761979890298">Hindi mapatunayan ng server na ito na <ph name="DOMAIN" /> ito dahil gumagamit ito ng certificate na panseguridad na hindi pinagkakatiwalaan ng Chromium o ng iyong configuration ng system para sa pag-encrypt ng trapiko sa web. Posibleng sanhi ito ng maling pag-configure, o ng pag-intercept ng isang attacker sa koneksyon mo. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Tingnan ang Certificate<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Hindi mapatunayan ng server na ito na <ph name="DOMAIN" /> ito dahil gumagamit ito ng certificate na panseguridad na hindi pinagkakatiwalaan ng Shuttle o ng iyong configuration ng system para sa pag-encrypt ng trapiko sa web. Posibleng sanhi ito ng maling pag-configure, o ng pag-intercept ng isang attacker sa koneksyon mo. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Tingnan ang Certificate<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Subukang isara ang iba pang tab o program upang magbakante ng memory.</translation>
 <translation id="8002230960325005199">Tingnan ang mga kaugnay na site sa bagong tab</translation>
 <translation id="8003046808285812021">“<ph name="SEARCH_TERMS" />”</translation>
@@ -4229,7 +4229,7 @@ Mga karagdagang detalye:
 <translation id="8175796834047840627">Nag-aalok ang Chrome na i-save ang iyong mga card sa Google Account mo dahil naka-sign in ka. Maaari mong baguhin ang gawing ito sa mga setting.</translation>
 <translation id="8176440868214972690">Nagpadala ang administrator ng device na ito ng ilang impormasyon sa mga sumusunod na website, tulad ng mga setting o patakaran.</translation>
 <translation id="818254048113802060">{0,plural, =1{Na-block ang <ph name="FILE_NAME" /> dahil sa content}one{<ph name="FILE_COUNT" /> file ang na-block dahil sa content}other{<ph name="FILE_COUNT" /> na file ang na-block dahil sa content}}</translation>
-<translation id="8186171296341598122">Puwede mong palitan ang iyong search engine anumang oras sa mga setting ng Chromium. Kung hindi mo nakikita ang gusto mong search engine, puwede kang maghanap mula sa site nito. Makikita mo itong nakalista bilang kamakailang binisitang search engine sa mga setting ng Chromium, at puwede mo itong gawing iyong default.</translation>
+<translation id="2852542171920460365">Puwede mong palitan ang iyong search engine anumang oras sa mga setting ng Shuttle. Kung hindi mo nakikita ang gusto mong search engine, puwede kang maghanap mula sa site nito. Makikita mo itong nakalista bilang kamakailang binisitang search engine sa mga setting ng Shuttle, at puwede mo itong gawing iyong default.</translation>
 <translation id="8188830160449823068">Sa device lang na-save ang IBAN</translation>
 <translation id="8189557652711717875">Gagamitin ang search engine na pipiliin mo para sa mga feature na tulad ng paghahanap mula sa address bar at mula sa mga larawan sa mga web page.</translation>
 <translation id="8190193880870196235">Pinamamahalaan ng isang extension</translation>
@@ -4313,7 +4313,7 @@ Mga karagdagang detalye:
 <translation id="8316555157357957253">Ginagamit ngayon</translation>
 <translation id="8319414634934645341">Extended na Paggamit ng Key</translation>
 <translation id="831997045666694187">Gabi</translation>
-<translation id="8321448084834652864">Puwede mong palitan ang iyong search engine anumang oras sa mga setting ng Chromium.</translation>
+<translation id="332470347080865446">Puwede mong palitan ang iyong search engine anumang oras sa mga setting ng Shuttle.</translation>
 <translation id="8321476692217554900">mga notification</translation>
 <translation id="8323505966575306467">Magdagdag ng higit pang proteksyon sa iyong mga password</translation>
 <translation id="832547548543012337">I-delete ang passport</translation>
@@ -4534,7 +4534,7 @@ Mga karagdagang detalye:
 <translation id="8736059027199600831">30 x 40 in</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, pindutin ang Tab at pagkatapos ay Enter para magbukas ng bagong Incognito window para makapag-browse nang pribado</translation>
 <translation id="8737685506611670901">Buksan ang mga link ng <ph name="PROTOCOL" /> sa halip na ang <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Upang makapagtatag ng secure na koneksyon, kailangang itakda nang tama ang iyong orasan. Ito ay dahil sa may-bisa lang ang mga certificate na ginagamit ng mga website upang tukuyin ang mga sarili ng mga ito sa loob ng mga partikular na tagal ng panahon. Dahil mali ang orasan ng iyong device, hindi ma-verify ng Chromium ang mga certificate na ito.</translation>
+<translation id="4709963803166322417">Upang makapagtatag ng secure na koneksyon, kailangang itakda nang tama ang iyong orasan. Ito ay dahil sa may-bisa lang ang mga certificate na ginagamit ng mga website upang tukuyin ang mga sarili ng mga ito sa loob ng mga partikular na tagal ng panahon. Dahil mali ang orasan ng iyong device, hindi ma-verify ng Shuttle ang mga certificate na ito.</translation>
 <translation id="8740359287975076522">Hindi makita ang &lt;abbr id="dnsDefinition"&gt;DNS address&lt;/abbr&gt; ng <ph name="HOST_NAME" />. Dina-diagnose ang problema.</translation>
 <translation id="874918643257405732">I-bookmark ang tab na ito</translation>
 <translation id="8749274696886550762">Mukhang hindi tama ang site na ito</translation>
@@ -4743,7 +4743,7 @@ Mga karagdagang detalye:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, Pindutin ang tab at pagkatapos ay ang Enter para itakda ang Chrome bilang default na browser ng system sa mga setting ng iOS</translation>
 <translation id="9101450247048146228">Paggamit at paggalaw ng camera (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Tray 1</translation>
-<translation id="9103872766612412690">Karaniwang gumagamit ang <ph name="SITE" /> ng pag-encrypt upang protektahan ang iyong impormasyon. Noong sinubukang kumonekta ng Chromium sa <ph name="SITE" /> sa pagkakataong ito, nagbalik ang website ng mga hindi pangkaraniwan at maling kredensyal. Maaari itong mangyari kapag sinusubukan ng isang attacker na magpanggap bilang <ph name="SITE" />, o naputol ang koneksyon dahil sa isang screen ng pag-sign in sa Wi-Fi. Secure pa rin ang iyong impormasyon dahil inihinto ng Chromium ang koneksyon bago magkaroon ng palitan ng anumang data.</translation>
+<translation id="733422146945994640">Karaniwang gumagamit ang <ph name="SITE" /> ng pag-encrypt upang protektahan ang iyong impormasyon. Noong sinubukang kumonekta ng Shuttle sa <ph name="SITE" /> sa pagkakataong ito, nagbalik ang website ng mga hindi pangkaraniwan at maling kredensyal. Maaari itong mangyari kapag sinusubukan ng isang attacker na magpanggap bilang <ph name="SITE" />, o naputol ang koneksyon dahil sa isang screen ng pag-sign in sa Wi-Fi. Secure pa rin ang iyong impormasyon dahil inihinto ng Shuttle ang koneksyon bago magkaroon ng palitan ng anumang data.</translation>
 <translation id="9107199998619088551">Pinapamahalaan ni <ph name="MANAGER" /> ang iyong profile</translation>
 <translation id="9107467864910557787">Pinapamahalaan ng <ph name="MANAGER" /> ang iyong browser</translation>
 <translation id="91108059142052966">Dini-disable ng patakaran ng administrator ang pagbabahagi ng screen sa <ph name="APPLICATION_TITLE" /> kapag may nakikitang kumpidensyal na content</translation>

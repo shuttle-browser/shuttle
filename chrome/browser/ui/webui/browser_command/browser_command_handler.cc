@@ -108,11 +108,11 @@ void BrowserCommandHandler::CanExecuteCommand(
       break;
     case Command::kStartTabGroupTutorial:
     case Command::kStartSavedTabGroupTutorial:
-      // Agent Chrome: user education (tutorials) was removed.
+      // Shuttle: user education (tutorials) was removed.
       can_execute = false;
       break;
     case Command::kOpenPasswordManager:
-      // Agent Chrome: the password manager was removed.
+      // Shuttle: the password manager was removed.
       can_execute = false;
       break;
     case Command::kNoOpCommand:
@@ -122,11 +122,11 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = true;
       break;
     case Command::kOpenNTPAndStartCustomizeChromeTutorial:
-      // Agent Chrome: the Customize Chrome side panel was removed.
+      // Shuttle: the Customize Chrome side panel was removed.
       can_execute = false;
       break;
     case Command::kStartPasswordManagerTutorial:
-      // Agent Chrome: the password manager was removed.
+      // Shuttle: the password manager was removed.
       can_execute = false;
       break;
     case Command::kOpenAISettings:

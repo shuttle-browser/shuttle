@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">啟用主題背景</translation>
 <translation id="1135328998467923690">套件無效：<ph name="ERROR_CODE" />。</translation>
 <translation id="1140871961407805696">後置相機</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> 所新增的擴充程式可能會變更 Chromium 的運作方式。
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> 所新增的擴充程式可能會變更 Shuttle 的運作方式。
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">匯出私密金鑰失敗。</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">無法取代 crx 檔案，請檢查檔案是否正在使用中。</translation>
 <translation id="3163201441334626963">來自供應商 <ph name="VENDOR_ID" /> 的不明產品 <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">你的機構已封鎖此擴充程式的存取權。</translation>
-<translation id="3183357154200327217">電腦中其他程式所新增的主題可能會變更 Chromium 的運作方式。
+<translation id="7846451875700317002">電腦中其他程式所新增的主題可能會變更 Shuttle 的運作方式。
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">含有「kiosk_only」資訊清單屬性的應用程式必須在 Chrome OS Kiosk 模式中安裝</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">拒絕</translation>
 <translation id="3984413272403535372">簽署擴充功能時發生錯誤。</translation>
 <translation id="4014432863917027322">修復「<ph name="EXTENSION_NAME" />」？</translation>
-<translation id="4061696872429826774">電腦中其他程式所新增的擴充功能可能會變更 Chromium 的運作方式。
+<translation id="7396546976728149133">電腦中其他程式所新增的擴充功能可能會變更 Shuttle 的運作方式。
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">你的機構已封鎖此擴充程式類別的存取權。</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">由於最新版本的「<ph name="EXTENSION_NAME" />」需要更多權限，因此已經停用。</translation>
 <translation id="5242724311594467048">啟用「<ph name="EXTENSION_NAME" />」？</translation>
 <translation id="5356315618422219272">Appview：<ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">從 Chromium 中移除</translation>
+<translation id="2064155379595075287">從 Shuttle 中移除</translation>
 <translation id="5456409301717116725">這個擴充功能含有金鑰檔「<ph name="KEY_PATH" />」。請考慮是否仍要執行。</translation>
 <translation id="5485102783864353244">新增應用程式</translation>
 <translation id="5486326529110362464">必須輸入私密金鑰值。</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">這部裝置的管理員要求安裝 <ph name="EXTENSION_NAME" />，因此您無法解除安裝該擴充功能。</translation>
 <translation id="6027032947578871493">來自 <ph name="VENDOR_NAME" /> 的不明產品 <ph name="PRODUCT_ID" /> (序號：<ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721">來自供應商 <ph name="VENDOR_ID" /> 的 <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">電腦中其他程式所新增的應用程式可能會變更 Chromium 的運作方式。<ph name="EXTENSION_NAME" /></translation>
+<translation id="5918487821361452587">電腦中其他程式所新增的應用程式可能會變更 Shuttle 的運作方式。<ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">載入擴充功能時發生錯誤</translation>
 <translation id="6220551899604141979"><ph name="PARTNER_NAME" /> 所新增的擴充程式可能會變更 Chrome 的運作方式。
 

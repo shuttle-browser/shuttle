@@ -201,7 +201,7 @@ const base::FeatureParam<bool> kDevToolsGdpProfilesStarterBadgeEnabled{
 BASE_FEATURE(kDevToolsEnableDurableMessages, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, allows starting remote debugging in a running Chrome instance.
-// Agent Chrome: disabled. The debugging server is always on
+// Shuttle: disabled. The debugging server is always on
 // (RemoteDebuggingServer::Start), so the chrome://inspect approval-mode toggle
 // is hidden.
 BASE_FEATURE(kDevToolsAcceptDebuggingConnections,

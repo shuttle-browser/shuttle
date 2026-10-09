@@ -13,7 +13,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 
-// Agent Chrome: incognito (off-the-record) profiles no longer exist, so
+// Shuttle: incognito (off-the-record) profiles no longer exist, so
 // `Target.createBrowserContext` is not supported and only the default browser
 // context is exposed to DevTools.
 class DevToolsBrowserContextManager {

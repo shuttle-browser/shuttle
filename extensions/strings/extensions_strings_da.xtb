@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Aktivér tema</translation>
 <translation id="1135328998467923690">Pakken er ugyldig: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Kamera på bagsiden</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> har tilføjet en udvidelse, som kan ændre måden, Chromium fungerer på.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> har tilføjet en udvidelse, som kan ændre måden, Shuttle fungerer på.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Den personlige nøgle kunne ikke eksporteres.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Crx-filen kunne ikke erstattes. Tjek, om filen er i brug.</translation>
 <translation id="3163201441334626963">Ukendt produkt, <ph name="PRODUCT_ID" />, fra leverandøren <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Adgangen til denne udvidelse er blokeret af din organisation.</translation>
-<translation id="3183357154200327217">Et andet program på din computer har tilføjet et tema, som kan ændre måden, Chromium fungerer på.
+<translation id="7846451875700317002">Et andet program på din computer har tilføjet et tema, som kan ændre måden, Shuttle fungerer på.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Appen med manifestattributten "kiosk_only" skal installeres i ChromeOS-terminaltilstand</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Afvis</translation>
 <translation id="3984413272403535372">Fejl under signering af udvidelse.</translation>
 <translation id="4014432863917027322">Vil du reparere "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Et andet program på din computer har tilføjet en udvidelse, som kan ændre måden, Chromium fungerer på.
+<translation id="7396546976728149133">Et andet program på din computer har tilføjet en udvidelse, som kan ændre måden, Shuttle fungerer på.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Adgangen til denne udvidelseskategori er blokeret af din organisation.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Den nyeste version af "<ph name="EXTENSION_NAME" />" er blevet deaktiveret, fordi den kræver flere tilladelser.</translation>
 <translation id="5242724311594467048">Skal "<ph name="EXTENSION_NAME" />" aktiveres?</translation>
 <translation id="5356315618422219272">Appvisning: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Fjern fra Chromium</translation>
+<translation id="2064155379595075287">Fjern fra Shuttle</translation>
 <translation id="5456409301717116725">Denne udvidelse inkluderer nøglefilen "<ph name="KEY_PATH" />". Det ønsker du sandsynligvis ikke at gøre.</translation>
 <translation id="5485102783864353244">Tilføj app</translation>
 <translation id="5486326529110362464">Indtastningsværdien for personlig nøgle skal eksistere.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administratoren af denne maskine kræver, at <ph name="EXTENSION_NAME" /> er installeret. Denne kan ikke afinstalleres.</translation>
 <translation id="6027032947578871493">Ukendt produkt, <ph name="PRODUCT_ID" />, fra <ph name="VENDOR_NAME" /> (serienummer <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> fra leverandøren <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Et andet program på din computer har tilføjet en app, som kan ændre måden, Chromium fungerer på.
+<translation id="5918487821361452587">Et andet program på din computer har tilføjet en app, som kan ændre måden, Shuttle fungerer på.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Der opstod en fejl ved indlæsning af udvidelsen</translation>

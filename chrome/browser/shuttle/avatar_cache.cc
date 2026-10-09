@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/avatar_cache.h"
+#include "chrome/browser/shuttle/avatar_cache.h"
 
 #include <algorithm>
 #include <utility>
@@ -10,7 +10,7 @@
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/strings/string_util.h"
-#include "chrome/browser/agent_chrome/profile_registry.h"
+#include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/storage_partition.h"
 #include "net/base/data_url.h"
@@ -27,7 +27,7 @@
 #include "third_party/skia/include/core/SkSamplingOptions.h"
 #include "url/gurl.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -35,9 +35,9 @@ namespace {
 constexpr size_t kMaxAvatarBytes = 256 * 1024;
 
 constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
-    net::DefineNetworkTrafficAnnotation("agent_chrome_avatar", R"(
+    net::DefineNetworkTrafficAnnotation("shuttle_avatar", R"(
       semantics {
-        sender: "Agent Chrome"
+        sender: "Shuttle"
         description:
           "Fetches an agent's avatar image (an https: URL the user or an MCP "
           "client set) to show it on the agent's tabs."
@@ -170,4 +170,4 @@ void AvatarCache::OnDecoded(const std::string& agent_id,
   on_changed_.Run(agent_id);
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

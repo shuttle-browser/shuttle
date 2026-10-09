@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Միացնել թեման</translation>
 <translation id="1135328998467923690">Փաթեթն անվավեր է` «<ph name="ERROR_CODE" />»:</translation>
 <translation id="1140871961407805696">Հիմնական</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" />-ն ավելացրել է ընդլայնում, որը կարող է ազդել Chromium-ի աշխատանքի վրա։
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" />-ն ավելացրել է ընդլայնում, որը կարող է ազդել Shuttle-ի աշխատանքի վրա։
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Մասնավոր բանալին չարտահանվեց:</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Չհաջողվեց փոխարինել crx ֆայլը: Ստուգեք՝ արդյոք ֆայլը չի օգտագործվում այս պահին:</translation>
 <translation id="3163201441334626963">Անհայտ <ph name="PRODUCT_ID" /> արտադրանք <ph name="VENDOR_ID" /> վաճառողի կողմից</translation>
 <translation id="3174723475300476613">Ձեր կազմակերպությունն արգելափակել է այս ընդլայնման հասանելիությունը։</translation>
-<translation id="3183357154200327217">Ձեր համակարգչի ծրագրերից մեկն ավելացրել է թեմա, որը կարող է ազդել Chromium-ի աշխատանքի վրա։
+<translation id="7846451875700317002">Ձեր համակարգչի ծրագրերից մեկն ավելացրել է թեմա, որը կարող է ազդել Shuttle-ի աշխատանքի վրա։
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">«Kiosk_only» մանիֆեստի հատկանիշով հավելվածը պետք է տեղադրվի ChromeOS-ի կրպակի ռեժիմում</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Մերժել</translation>
 <translation id="3984413272403535372">Ընդլայնումը ստորագրելիս սխալ առաջացավ:</translation>
 <translation id="4014432863917027322">Վերանորոգե՞լ «<ph name="EXTENSION_NAME" />»-ը:</translation>
-<translation id="4061696872429826774">Ձեր համակարգչի ծրագրերից մեկն ավելացրել է ընդլայնում, որը կարող է ազդել Chromium-ի աշխատանքի վրա։
+<translation id="7396546976728149133">Ձեր համակարգչի ծրագրերից մեկն ավելացրել է ընդլայնում, որը կարող է ազդել Shuttle-ի աշխատանքի վրա։
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Ձեր կազմակերպությունն արգելափակել է այս կատեգորիայի ընդլայնումների հասանելիությունը։</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">«<ph name="EXTENSION_NAME" />»-ի նոր տարբերակն անջատվել է, քանի որ նրա համար լրացուցիչ թույլտվություններ են պահանջվում:</translation>
 <translation id="5242724311594467048">Միացնե՞լ «<ph name="EXTENSION_NAME" />» ընդլայնումը:</translation>
 <translation id="5356315618422219272">Appview՝ <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Հեռացնել Chromium-ից</translation>
+<translation id="2064155379595075287">Հեռացնել Shuttle-ից</translation>
 <translation id="5456409301717116725">Այս ընդլայնումը պարունակում է «<ph name="KEY_PATH" />» բանալու ֆայլ: Դա հավանաբար ընդունելի չէ:</translation>
 <translation id="5485102783864353244">Ավելացնել հավելված</translation>
 <translation id="5486326529110362464">Մասնավոր բանալու համար անհրաժեշտ է ներածման արժեք:</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Սարքի ադմինիստրատորը պահանջում, որ <ph name="EXTENSION_NAME" /> ընդլայնումը տեղադրված լինի: Այն հնարավոր չէ ապատեղադրել:</translation>
 <translation id="6027032947578871493">Անհայտ <ph name="PRODUCT_ID" /> արտադրանք <ph name="VENDOR_NAME" />-ի կողմից (սերիական համարը՝ <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> արտադրանք <ph name="VENDOR_ID" /> վաճառողի կողմից</translation>
-<translation id="6204922163963157461">Ձեր համակարգչի ծրագրերից մեկն ավելացրել է հավելված, որը կարող է ազդել Chromium-ի աշխատանքի վրա։
+<translation id="5918487821361452587">Ձեր համակարգչի ծրագրերից մեկն ավելացրել է հավելված, որը կարող է ազդել Shuttle-ի աշխատանքի վրա։
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Ընդլայնումը բեռնելիս սխալ առաջացավ</translation>

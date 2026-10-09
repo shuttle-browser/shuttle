@@ -24,7 +24,7 @@
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -145,7 +145,7 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
   // manager daemon. The extra keep alive is not needed and makes ChromeOS
   // not able to shutdown chrome properly. See https://crbug.com/40167603.
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  // Agent Chrome: the remote debugging server is always on, so no
+  // Shuttle: the remote debugging server is always on, so no
   // --remote-debugging-* switch is required.
   if (command_line->HasSwitch(switches::kNoStartupWindow) ||
       command_line->HasSwitch(switches::kHeadless)) {
@@ -251,13 +251,13 @@ void ChromeDevToolsManagerDelegate::HandleMcpRequest(
   // The MCP server starts once the profile is loaded (GetLastUsedProfile()
   // would block on it).
   Profile* profile = ProfileManager::GetLastUsedProfileIfLoaded();
-  agent_chrome::AgentChromeService* service =
-      profile ? agent_chrome::AgentChromeService::Get(
+  shuttle::ShuttleService* service =
+      profile ? shuttle::ShuttleService::Get(
                     profile->GetOriginalProfile())
               : nullptr;
   if (!service) {
     std::move(callback).Run(503, "text/plain",
-                            "Agent Chrome is still starting up.");
+                            "Shuttle is still starting up.");
     return;
   }
   service->HandleMcpRequest(host, body, std::move(callback));
@@ -268,8 +268,8 @@ ChromeDevToolsManagerDelegate::CreateConnectionFilter(
     const std::string& session_id,
     const std::string& target_id) {
   Profile* profile = ProfileManager::GetLastUsedProfileIfLoaded();
-  agent_chrome::AgentChromeService* service =
-      profile ? agent_chrome::AgentChromeService::Get(
+  shuttle::ShuttleService* service =
+      profile ? shuttle::ShuttleService::Get(
                     profile->GetOriginalProfile())
               : nullptr;
   return service ? service->CreateConnectionFilter(session_id, target_id)
@@ -303,7 +303,7 @@ std::string ChromeDevToolsManagerDelegate::GetTargetType(
   }
 
   if (views::WebView::IsWebViewContents(web_contents)) {
-    // Agent Chrome: browser UI (chrome://*.top-chrome, e.g. the omnibox
+    // Shuttle: browser UI (chrome://*.top-chrome, e.g. the omnibox
     // popup) is not a page; automation clients that attach to every page
     // must not drive it.
     const GURL& url = web_contents->GetLastCommittedURL().is_empty()

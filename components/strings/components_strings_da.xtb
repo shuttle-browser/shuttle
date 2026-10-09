@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Angiv yderligere oplysninger</translation>
 <translation id="1016671033299705843">Tilføj et kørekort på sikker vis</translation>
 <translation id="1019413721762100891">Fra</translation>
-<translation id="1021753677514347426">Dette problem opstår på grund af et certifikat, som du eller en anden har installeret på din enhed. Certifikatet anvendes ofte til at overvåge og opfange netværk, og Chromium har ikke tillid til det. Der findes legitime årsager til at overvåge, f.eks. på skole- og virksomhedsnetværk, men Chromium vil sikre, at du er bevidst om det, når det sker, også selvom du ikke kan stoppe det. Overvågning kan finde sted i enhver browser eller app, der har adgang til nettet.</translation>
+<translation id="768230658237634872">Dette problem opstår på grund af et certifikat, som du eller en anden har installeret på din enhed. Certifikatet anvendes ofte til at overvåge og opfange netværk, og Shuttle har ikke tillid til det. Der findes legitime årsager til at overvåge, f.eks. på skole- og virksomhedsnetværk, men Shuttle vil sikre, at du er bevidst om det, når det sker, også selvom du ikke kan stoppe det. Overvågning kan finde sted i enhver browser eller app, der har adgang til nettet.</translation>
 <translation id="1024111578869940408">Hackere efterligner nogle gange websites ved at foretage små ændringer af webadressen, som er svære at se.</translation>
 <translation id="102916930470544692">Adgangsnøgle</translation>
 <translation id="1030706264415084469"><ph name="URL" /> anmoder om at gemme store datamængder permanent på din enhed</translation>
@@ -809,7 +809,7 @@ Ellers vil det blive blokeret af dine privatlivsindstillinger. Det giver det ind
 <translation id="2348836501965732644">Administrer dine oplysninger, eller deaktiver disse forslag i Indstillinger</translation>
 <translation id="2349957959687031096">Knappen Åbn inkognitofane, aktivér for at åbne en ny inkognitofane, så du kan browse privat</translation>
 <translation id="2350796302381711542">Vil du tillade, at <ph name="HANDLER_HOSTNAME" /> åbner alle <ph name="PROTOCOL" />-links i stedet for <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Denne server kunne ikke bevise, at den er <ph name="DOMAIN" />, fordi den bruger et sikkerhedscertifikat, som Chromium eller din systemkonfiguration til kryptering af webtrafik ikke har tillid til. Dette kan skyldes en fejlkonfiguration, eller at en hacker har opfanget din forbindelse.</translation>
+<translation id="4798228153726623290">Denne server kunne ikke bevise, at den er <ph name="DOMAIN" />, fordi den bruger et sikkerhedscertifikat, som Shuttle eller din systemkonfiguration til kryptering af webtrafik ikke har tillid til. Dette kan skyldes en fejlkonfiguration, eller at en hacker har opfanget din forbindelse.</translation>
 <translation id="2353297238722298836">Der er givet adgang til kameraet og mikrofonen</translation>
 <translation id="2354001756790975382">Andre bogmærker</translation>
 <translation id="2355395290879513365">Hackere kan muligvis se de billeder, du kigger på på dette website, og narre dig ved at ændre dem.</translation>
@@ -1046,7 +1046,7 @@ Ellers vil det blive blokeret af dine privatlivsindstillinger. Det giver det ind
 <translation id="2728127805433021124">Serverens certifikat er signeret ved hjælp af en svag signaturalgoritme.</translation>
 <translation id="272937284275742856">Dine betalingsoplysninger verificeres på sikker vis...</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Køre Diagnosticering af forbindelse<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Få flere oplysninger om din søgemaskine i Chromium</translation>
+<translation id="5216476641707900057">Få flere oplysninger om din søgemaskine i Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 tommer</translation>
 <translation id="2734797989819862638">Undlad at kopiere</translation>
 <translation id="2738771556149464852">Ikke efter</translation>
@@ -1344,7 +1344,7 @@ Gå til <ph name="BEGIN_LINK" />betalingsindstillingerne<ph name="END_LINK" /> f
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Angiv den <ph name="NUMBER_OF_DIGITS" />-cifrede verificeringskode</translation>
 <translation id="3272643614306383237">Mindre end 1 MB. Nogle websites indlæses muligvis langsommere, næste gang du besøger dem.</translation>
-<translation id="3273738040255912340">Din administrator kan foretage ændringer i din profil og browser via fjernadgang, analysere oplysninger om browseren via rapportering og udføre andre nødvendige opgaver. Aktivitet på denne enhed administreres muligvis også uden for Chromium. <ph name="BEGIN_LINK" />Få flere oplysninger<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Din administrator kan foretage ændringer i din profil og browser via fjernadgang, analysere oplysninger om browseren via rapportering og udføre andre nødvendige opgaver. Aktivitet på denne enhed administreres muligvis også uden for Shuttle. <ph name="BEGIN_LINK" />Få flere oplysninger<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">"Gem IBAN" er åbnet i fuld højde.</translation>
 <translation id="327455571215090823">Smartere autofyld, der holdes privat</translation>
 <translation id="3280440382387335343">Opdater passet sikkert i Google Wallet</translation>
@@ -1613,7 +1613,7 @@ Gå til <ph name="BEGIN_LINK" />betalingsindstillingerne<ph name="END_LINK" /> f
 <translation id="3742104862808477448">Hjælp Chromium med bedre at forstå og udfylde komplekse formularer ved at behandle data på en sikker måde på Googles servere. Dine oplysninger forbliver private og gennemgås ikke af nogen.</translation>
 <translation id="3744111561329211289">Synkronisering i baggrunden</translation>
 <translation id="3744212718085287312">Vil du øge sikkerheden ved hjælp af et virtuelt kort næste gang?</translation>
-<translation id="3744899669254331632">Du kan ikke gå til <ph name="SITE" /> lige nu, da websitet sendte krypterede loginoplysninger, som Chromium ikke kan behandle. Netværksfejl og angreb er normalt midlertidige, så denne side vil sandsynligvis fungere igen senere.</translation>
+<translation id="58356321557204990">Du kan ikke gå til <ph name="SITE" /> lige nu, da websitet sendte krypterede loginoplysninger, som Shuttle ikke kan behandle. Netværksfejl og angreb er normalt midlertidige, så denne side vil sandsynligvis fungere igen senere.</translation>
 <translation id="3745599309295009257">Din tekst, indholdet og webadressen på den side, du skriver på, sendes til Google, gennemgås af menneskelige kontrollanter og bruges til at forbedre denne funktion. Undgå at angive personlige oplysninger (f.eks. helbredsoplysninger eller økonomiske oplysninger) eller bruge dette værktøj på websites, der indeholder private eller følsomme oplysninger.</translation>
 <translation id="3748009735914587286">Metal (helblankt)</translation>
 <translation id="3748647055058832337">Ikke tilgængelig for denne sælger</translation>
@@ -2199,7 +2199,7 @@ Gå til <ph name="BEGIN_LINK" />betalingsindstillingerne<ph name="END_LINK" /> f
 <translation id="4732860731866514038">Downloader sprogpakken for <ph name="LANGUAGE" />... <ph name="PERCENT" /> %</translation>
 <translation id="4733082559415072992"><ph name="URL" /> anmoder om at bruge enhedens placering</translation>
 <translation id="473414950835101501">Brug dine kameraer</translation>
-<translation id="4736825316280949806">Genstart Chromium</translation>
+<translation id="5713993618957185264">Genstart Shuttle</translation>
 <translation id="4736934858538408121">Virtuelt kort</translation>
 <translation id="473775607612524610">Opdater</translation>
 <translation id="4738601419177586157"><ph name="TEXT" />-søgeforslag</translation>
@@ -2421,7 +2421,7 @@ Gå til <ph name="BEGIN_LINK" />betalingsindstillingerne<ph name="END_LINK" /> f
 <translation id="5089810972385038852">Stat</translation>
 <translation id="5093232627742069661">Z-fals</translation>
 <translation id="5093417502834168387">Har du problemer med at logge ind? Prøv en anden metode</translation>
-<translation id="5094747076828555589">Denne server kunne ikke bevise, at den er <ph name="DOMAIN" />, da Chromium ikke har tillid til sikkerhedscertifikatet. Dette kan skyldes en fejlkonfiguration, eller at en hacker har opfanget din forbindelse.</translation>
+<translation id="5713412634455044803">Denne server kunne ikke bevise, at den er <ph name="DOMAIN" />, da Shuttle ikke har tillid til sikkerhedscertifikatet. Dette kan skyldes en fejlkonfiguration, eller at en hacker har opfanget din forbindelse.</translation>
 <translation id="5096066272198024688">Dine oplysninger gemmes…</translation>
 <translation id="5097099694988056070">Enhedsstatistik som f.eks. CPU/RAM-forbrug</translation>
 <translation id="5097468150760963273">27 x 39 tommer</translation>
@@ -3173,7 +3173,7 @@ Gå til <ph name="BEGIN_LINK" />betalingsindstillingerne<ph name="END_LINK" /> f
 <translation id="635394585025793320">Jeg vil gerne imponere en person. Søg efter ledige borde til 2 personer på restauranter, som alle taler om lige nu</translation>
 <translation id="6354918092619878358">SECG elliptisk kurve secp256r1 (også kaldet ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, tryk på Tab-tasten efterfulgt af Enter for at se flere faner fra andre enheder</translation>
-<translation id="6355392890578844978">Denne browser administreres ikke af en virksomhed eller en anden organisation. Aktivitet på denne enhed administreres muligvis uden for Chromium. <ph name="BEGIN_LINK" />Få flere oplysninger<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Denne browser administreres ikke af en virksomhed eller en anden organisation. Aktivitet på denne enhed administreres muligvis uden for Shuttle. <ph name="BEGIN_LINK" />Få flere oplysninger<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Fanegrupperne "<ph name="GROUP_TITLE_1" />" og "<ph name="GROUP_TITLE_2" />" er ikke længere tilgængelige</translation>
 <translation id="6358088212770985041">redigere betalingsmetoder</translation>
 <translation id="6358450015545214790">Hvad betyder dette?</translation>
@@ -4138,7 +4138,7 @@ Yderligere oplysninger:
 <translation id="7995512525968007366">Ikke angivet</translation>
 <translation id="7997855386298213183">delte faner</translation>
 <translation id="7999482381722829925">Opret en prioriteret tjekliste til grundig rengøring af hvert rum med fokus på de steder, der ofte overses</translation>
-<translation id="8001912761979890298">Denne server kunne ikke bevise, at den er <ph name="DOMAIN" />, fordi den bruger et sikkerhedscertifikat, som Chromium eller din systemkonfiguration til kryptering af webtrafik ikke har tillid til. Dette kan skyldes en fejlkonfiguration, eller at en hacker har opfanget din forbindelse. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Se certifikat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Denne server kunne ikke bevise, at den er <ph name="DOMAIN" />, fordi den bruger et sikkerhedscertifikat, som Shuttle eller din systemkonfiguration til kryptering af webtrafik ikke har tillid til. Dette kan skyldes en fejlkonfiguration, eller at en hacker har opfanget din forbindelse. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Se certifikat<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Prøv at lukke andre faner eller programmer for at frigøre hukommelse.</translation>
 <translation id="8002230960325005199">Se relaterede websites på en ny fane</translation>
 <translation id="8003046808285812021">"<ph name="SEARCH_TERMS" />"</translation>
@@ -4229,7 +4229,7 @@ Yderligere oplysninger:
 <translation id="8175796834047840627">Chrome tilbyder at gemme dine kort på din Google-konto, fordi du er logget ind. Du kan ændre dette i indstillingerne.</translation>
 <translation id="8176440868214972690">Administratoren af denne enhed har sendt nogle oplysninger til følgende websites, f.eks. indstillinger eller politikker.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> blev blokeret på grund af indhold}one{<ph name="FILE_COUNT" /> fil blev blokeret på grund af indhold}other{<ph name="FILE_COUNT" /> filer blev blokeret på grund af indhold}}</translation>
-<translation id="8186171296341598122">Du kan til enhver tid ændre din søgemaskine i Chromium-indstillingerne. Hvis du ikke kan se din foretrukne søgemaskine, kan du foretage en søgning på dens website. Du kan se den angivet som en søgemaskine, du har besøgt for nylig, i Chromium-indstillingerne, og du kan angive den som din standardsøgemaskine.</translation>
+<translation id="2852542171920460365">Du kan til enhver tid ændre din søgemaskine i Shuttle-indstillingerne. Hvis du ikke kan se din foretrukne søgemaskine, kan du foretage en søgning på dens website. Du kan se den angivet som en søgemaskine, du har besøgt for nylig, i Shuttle-indstillingerne, og du kan angive den som din standardsøgemaskine.</translation>
 <translation id="8188830160449823068">IBAN er kun gemt på enheden</translation>
 <translation id="8189557652711717875">Den søgemaskine, du vælger, anvendes til funktioner som f.eks. søgning via adresselinjen og fra billeder på websider.</translation>
 <translation id="8190193880870196235">Administreres af en udvidelse</translation>
@@ -4313,7 +4313,7 @@ Yderligere oplysninger:
 <translation id="8316555157357957253">Bruges nu</translation>
 <translation id="8319414634934645341">Udvidet brug af nøgle</translation>
 <translation id="831997045666694187">Aften</translation>
-<translation id="8321448084834652864">Du kan til enhver tid ændre din søgemaskine i Chromium-indstillingerne.</translation>
+<translation id="332470347080865446">Du kan til enhver tid ændre din søgemaskine i Shuttle-indstillingerne.</translation>
 <translation id="8321476692217554900">notifikationer</translation>
 <translation id="8323505966575306467">Få bedre beskyttelse af dine adgangskoder</translation>
 <translation id="832547548543012337">Slet pas</translation>
@@ -4535,7 +4535,7 @@ Yderligere oplysninger:
 <translation id="8736059027199600831">30 x 40 tommer</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" /> – tryk på Tab-tasten efterfulgt af Enter for at åbne et nyt inkognitovindue, så du kan browse privat</translation>
 <translation id="8737685506611670901">Åbne <ph name="PROTOCOL" />-links i stedet for <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">For at kunne oprette en sikker forbindelse skal dit ur være indstillet korrekt. Det er vigtigt, da de certifikater, som websites bruger til at identificere sig selv, kun er gyldige i bestemte tidsperioder. Da uret på din enhed går forkert, kan Chromium ikke verificere disse certifikater.</translation>
+<translation id="4709963803166322417">For at kunne oprette en sikker forbindelse skal dit ur være indstillet korrekt. Det er vigtigt, da de certifikater, som websites bruger til at identificere sig selv, kun er gyldige i bestemte tidsperioder. Da uret på din enhed går forkert, kan Shuttle ikke verificere disse certifikater.</translation>
 <translation id="8740359287975076522">&lt;abbr id="dnsDefinition"&gt;DNS-adressen&lt;/abbr&gt; for <ph name="HOST_NAME" /> blev ikke fundet. Diagnosticerer problemet.</translation>
 <translation id="874918643257405732">Tilføj denne fane som bogmærke</translation>
 <translation id="8749274696886550762">Dette website ser mistænkeligt ud</translation>
@@ -4744,7 +4744,7 @@ Yderligere oplysninger:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, tryk på Tab-tasten efterfulgt af Enter for at angive Chrome som systemets standardbrowser i iOS-indstillingerne</translation>
 <translation id="9101450247048146228">Kamerabrug og -bevægelse (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Bakke 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> bruger normalt kryptering til at beskytte dine oplysninger. Da Chromium forsøgte at oprette forbindelse til <ph name="SITE" /> denne gang, returnerede websitet usædvanlige og forkerte loginoplysninger. Dette kan skyldes, at en hacker forsøger at udgive sig for at være <ph name="SITE" />, eller at en Wi-Fi-loginskærm har forstyrret forbindelsen. Dine oplysninger er stadig sikre, idet Chromium afbrød forbindelsen, inden der blev udvekslet data.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> bruger normalt kryptering til at beskytte dine oplysninger. Da Shuttle forsøgte at oprette forbindelse til <ph name="SITE" /> denne gang, returnerede websitet usædvanlige og forkerte loginoplysninger. Dette kan skyldes, at en hacker forsøger at udgive sig for at være <ph name="SITE" />, eller at en Wi-Fi-loginskærm har forstyrret forbindelsen. Dine oplysninger er stadig sikre, idet Shuttle afbrød forbindelsen, inden der blev udvekslet data.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> administrerer din profil</translation>
 <translation id="9107467864910557787">Din browser administreres af <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Administratorpolitikken deaktiverer skærmdeling med <ph name="APPLICATION_TITLE" />, når fortroligt indhold er synligt</translation>

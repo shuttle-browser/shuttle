@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Virkja þema</translation>
 <translation id="1135328998467923690">Pakkinn er ógildur: „<ph name="ERROR_CODE" />“.</translation>
 <translation id="1140871961407805696">Snýr að umhverfi</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> bætti við viðbót sem gæti breytt því hvernig Chromium virkar.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> bætti við viðbót sem gæti breytt því hvernig Shuttle virkar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Mistókst að flytja út einkalykil.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Mistókst að skipta út crx-skrá. Athugaðu hvort skráin er í notkun.</translation>
 <translation id="3163201441334626963">Óþekkt vara <ph name="PRODUCT_ID" /> frá framleiðandanum <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Fyrirtækið þitt hefur lokað á aðgang að þessari viðbót.</translation>
-<translation id="3183357154200327217">Annað forrit í tölvunni þinni bætti þema við sem gæti breytt því hvernig Chromium virkar.
+<translation id="7846451875700317002">Annað forrit í tölvunni þinni bætti þema við sem gæti breytt því hvernig Shuttle virkar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Forrit með upplýsingaskráreigindina „kiosk_only“ verður að vera uppsett í sjálfsalastillingu ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Hafna</translation>
 <translation id="3984413272403535372">Villa við að undirrita viðbót.</translation>
 <translation id="4014432863917027322">Gera við „<ph name="EXTENSION_NAME" />“?</translation>
-<translation id="4061696872429826774">Annað forrit í tölvunni þinni bætti viðbót við sem gæti breytt því hvernig Chromium virkar.
+<translation id="7396546976728149133">Annað forrit í tölvunni þinni bætti viðbót við sem gæti breytt því hvernig Shuttle virkar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Fyrirtækið þitt hefur lokað fyrir aðgang að þessum viðbótarflokki.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Nýjasta útgáfa <ph name="EXTENSION_NAME" /> hefur verið gerð óvirk því að hún krefst frekari heimilda.</translation>
 <translation id="5242724311594467048">Kveikja á „<ph name="EXTENSION_NAME" />“?</translation>
 <translation id="5356315618422219272">Forritsgluggi: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Fjarlægja úr Chromium</translation>
+<translation id="2064155379595075287">Fjarlægja úr Shuttle</translation>
 <translation id="5456409301717116725">Þessi viðbót inniheldur lykilskrána „<ph name="KEY_PATH" />“. Þetta er líklega eitthvað sem þú vilt ekki.</translation>
 <translation id="5485102783864353244">Bæta forriti við</translation>
 <translation id="5486326529110362464">Inntaksgildi einkalykils verður að vera til staðar.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Stjórnandi þessarar vélar krefst þess að <ph name="EXTENSION_NAME" /> sé uppsett. Ekki er hægt að fjarlægja hana.</translation>
 <translation id="6027032947578871493">Óþekkt vara <ph name="PRODUCT_ID" /> frá <ph name="VENDOR_NAME" /> (raðnúmer <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> frá framleiðandanum <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Annað forrit í tölvunni þinni bætti forriti við sem gæti breytt því hvernig Chromium virkar.
+<translation id="5918487821361452587">Annað forrit í tölvunni þinni bætti forriti við sem gæti breytt því hvernig Shuttle virkar.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Villa við að hlaða viðbót</translation>

@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_SESSION_MANAGER_H_
-#define CHROME_BROWSER_AGENT_CHROME_SESSION_MANAGER_H_
+#ifndef CHROME_BROWSER_SHUTTLE_SESSION_MANAGER_H_
+#define CHROME_BROWSER_SHUTTLE_SESSION_MANAGER_H_
 
 #include <map>
 #include <memory>
@@ -32,7 +32,7 @@ namespace network::mojom {
 class CookieManager;
 }
 
-namespace agent_chrome {
+namespace shuttle {
 
 class ProfileRegistry;
 
@@ -188,6 +188,6 @@ class SessionManager : public TabStripModelObserver {
   base::WeakPtrFactory<SessionManager> weak_factory_{this};
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_SESSION_MANAGER_H_
+#endif  // CHROME_BROWSER_SHUTTLE_SESSION_MANAGER_H_

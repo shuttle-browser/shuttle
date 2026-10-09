@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Omogoči temo</translation>
 <translation id="1135328998467923690">Paket je neveljaven: »<ph name="ERROR_CODE" />«.</translation>
 <translation id="1140871961407805696">Hrbtni</translation>
-<translation id="1171831736360285680">Partner <ph name="PARTNER_NAME" /> je dodal razširitev, ki lahko morda spremeni način delovanja Chromiuma.
+<translation id="6853317349523111347">Partner <ph name="PARTNER_NAME" /> je dodal razširitev, ki lahko morda spremeni način delovanja Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Zasebnega ključa ni bilo mogoče izvoziti.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Datoteke .crx ni bilo mogoče zamenjati. Preverite, ali je datoteka v uporabi.</translation>
 <translation id="3163201441334626963">Neznan izdelek <ph name="PRODUCT_ID" /> dobavitelja <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Vaša organizacija je blokirala dostop do te razširitve.</translation>
-<translation id="3183357154200327217">Drug program v računalniku je dodal temo, ki lahko morda spremeni način delovanja Chromiuma.
+<translation id="7846451875700317002">Drug program v računalniku je dodal temo, ki lahko morda spremeni način delovanja Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplikacijo z atributom manifesta »kiosk_only« je treba namestiti v načinu kioska sistema Chrome OS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Ne dovoli</translation>
 <translation id="3984413272403535372">Med podpisovanjem razširitve je prišlo do napake.</translation>
 <translation id="4014432863917027322">Želite popraviti »<ph name="EXTENSION_NAME" />«?</translation>
-<translation id="4061696872429826774">Drug program v računalniku je dodal razširitev, ki lahko morda spremeni način delovanja Chromiuma.
+<translation id="7396546976728149133">Drug program v računalniku je dodal razširitev, ki lahko morda spremeni način delovanja Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Vaša organizacija je blokirala dostop do te kategorije razširitev.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Najnovejša različica razširitve »<ph name="EXTENSION_NAME" />« je bila onemogočena, ker zahteva več dovoljenj.</translation>
 <translation id="5242724311594467048">Ali želite omogočiti »<ph name="EXTENSION_NAME" />«?</translation>
 <translation id="5356315618422219272">Komponenta appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Odstrani iz Chromiuma</translation>
+<translation id="2064155379595075287">Odstrani iz Shuttlea</translation>
 <translation id="5456409301717116725">Ta razširitev vključuje datoteko s ključem »<ph name="KEY_PATH" />«. Verjetno ne želite narediti tega.</translation>
 <translation id="5485102783864353244">Dodaj aplikacijo</translation>
 <translation id="5486326529110362464">Obstajati mora vrednost vnosa za zasebni ključ.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Skrbnik te naprave zahteva, da je nameščena razširitev <ph name="EXTENSION_NAME" />. Odstranitev ni mogoča.</translation>
 <translation id="6027032947578871493">Neznan izdelek <ph name="PRODUCT_ID" /> dobavitelja <ph name="VENDOR_NAME" /> (serijska številka <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> dobavitelja <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Drug program v računalniku je dodal aplikacijo, ki lahko morda spremeni način delovanja Chromiuma.
+<translation id="5918487821361452587">Drug program v računalniku je dodal aplikacijo, ki lahko morda spremeni način delovanja Shuttlea.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Napaka pri nalaganju razširitve</translation>

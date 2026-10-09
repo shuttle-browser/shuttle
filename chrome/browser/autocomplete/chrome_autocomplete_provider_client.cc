@@ -556,19 +556,19 @@ bool ChromeAutocompleteProviderClient::IsWebUiNtpEnabledForDesktopAndroid()
 void ChromeAutocompleteProviderClient::OpenSharingHub() {}
 
 void ChromeAutocompleteProviderClient::NewIncognitoWindow() {
-  // Agent Chrome: no incognito windows.
+  // Shuttle: no incognito windows.
 }
 
 void ChromeAutocompleteProviderClient::OpenIncognitoClearBrowsingDataDialog() {
-  // Agent Chrome: no incognito product.
+  // Shuttle: no incognito product.
 }
 
 void ChromeAutocompleteProviderClient::CloseIncognitoWindows() {
-  // Agent Chrome: no incognito windows.
+  // Shuttle: no incognito windows.
 }
 
 bool ChromeAutocompleteProviderClient::OpenJourneys(const std::string& query) {
-  // Agent Chrome: the History Clusters side panel was removed.
+  // Shuttle: the History Clusters side panel was removed.
   return false;
 }
 

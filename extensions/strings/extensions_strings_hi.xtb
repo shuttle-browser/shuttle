@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">थीम चालू करें</translation>
 <translation id="1135328998467923690">पैकेज अमान्य है: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">पीछे वाला कैमरा</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ने एक ऐसा एक्सटेंशन जोड़ा है जो Chromium के काम करने के तरीके को बदल सकता है.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ने एक ऐसा एक्सटेंशन जोड़ा है जो Shuttle के काम करने के तरीके को बदल सकता है.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">निजी कुंजी निर्यात करने में विफल.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx फ़ाइल बदला नहीं जा सका. यह देखने के लिए जाँच करें कि क्या फ़ाइल उपयोग में है.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> की ओर से अज्ञात <ph name="PRODUCT_ID" /> प्रॉडक्ट</translation>
 <translation id="3174723475300476613">आपके संगठन ने इस एक्सटेंशन का ऐक्सेस ब्लॉक किया है.</translation>
-<translation id="3183357154200327217">आपके कंप्यूटर पर किसी अन्य प्रोग्राम ने ऐसी थीम जोड़ी है जो Chromium के काम करने के तरीके को बदल सकती है.
+<translation id="7846451875700317002">आपके कंप्यूटर पर किसी अन्य प्रोग्राम ने ऐसी थीम जोड़ी है जो Shuttle के काम करने के तरीके को बदल सकती है.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' मेनिफ़ेस्ट एट्रिब्यूट वाला ऐप्लिकेशन ChromeOS कीऑस्क मोड में इंस्टॉल किया जाना चाहिए</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">अस्वीकार करें</translation>
 <translation id="3984413272403535372">एक्सटेंशन हस्ताक्षरित करते समय गड़बड़ी आई.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" को ठीक करें?</translation>
-<translation id="4061696872429826774">आपके कंप्यूटर पर किसी अन्य प्रोग्राम ने ऐसा एक्सटेंशन जोड़ा है जो Chromium के काम करने के तरीके को बदल सकता है.
+<translation id="7396546976728149133">आपके कंप्यूटर पर किसी अन्य प्रोग्राम ने ऐसा एक्सटेंशन जोड़ा है जो Shuttle के काम करने के तरीके को बदल सकता है.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">आपके संगठन ने इस एक्सटेंशन कैटगरी का ऐक्सेस ब्लॉक किया है.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" का नवीनतम वर्शन अक्षम कर दिया गया है क्‍योंकि इसे ज़्यादा अनुमतियों की आवश्‍यकता है.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" को चालू करें?</translation>
 <translation id="5356315618422219272">ऐप्‍स दृश्‍य: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">क्रोमियम से निकालें</translation>
+<translation id="2064155379595075287">क्रोमियम से निकालें</translation>
 <translation id="5456409301717116725">एक्सटेंशन में कुंजी फ़ाइल ‘<ph name="KEY_PATH" />' शामिल है. संभवतः आप ऐसा नहीं करना चाहते हैं.</translation>
 <translation id="5485102783864353244">ऐप्लिकेशन जोड़ें</translation>
 <translation id="5486326529110362464">निजी कुंजी के लिए इनपुट मान मौजूद होना चाहिए.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">इस मशीन के व्‍यवस्‍थापक के लिए आवश्‍यक है कि <ph name="EXTENSION_NAME" /> इंस्‍टॉल किया जाए. उसे अनइंस्‍टॉल नहीं किया जा सकता.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> (क्रमांक <ph name="SERIAL_NUMBER" />) की ओर से अज्ञात <ph name="PRODUCT_ID" /> प्रॉडक्ट</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> विक्रेता की ओर से <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">आपके कंप्यूटर पर किसी अन्य प्रोग्राम ने ऐसा ऐप्लिकेशन जोड़ा है जो Chromium के काम करने के तरीके को बदल सकता है.
+<translation id="5918487821361452587">आपके कंप्यूटर पर किसी अन्य प्रोग्राम ने ऐसा ऐप्लिकेशन जोड़ा है जो Shuttle के काम करने के तरीके को बदल सकता है.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">एक्सटेंशन लोड करने में गड़बड़ी</translation>

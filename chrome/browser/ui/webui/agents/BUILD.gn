@@ -1,4 +1,4 @@
-# Copyright 2026 The Agent Chrome Authors
+# Copyright 2026 Silkweave
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -15,8 +15,8 @@ source_set("agents") {
   public_deps = [ "//content/public/browser" ]
   deps = [
     "//base",
-    "//chrome/browser/agent_chrome",
-    "//chrome/browser/agent_chrome:impl",
+    "//chrome/browser/shuttle",
+    "//chrome/browser/shuttle:impl",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/resources/agents:resources",
     "//chrome/browser/ui/webui:theme_source",

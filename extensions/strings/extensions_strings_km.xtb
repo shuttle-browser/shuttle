@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">បើក​រចនាប័ទ្ម</translation>
 <translation id="1135328998467923690">កញ្ចប់គ្មានសុពលភាព៖ '<ph name="ERROR_CODE" />'។</translation>
 <translation id="1140871961407805696">បែរទៅបរិស្ថាន</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> បាន​បញ្ចូល​កម្មវិធីបន្ថែម​ដែលអាច​ប្ដូររបៀប​ដែល Chromium ដំណើរការ។
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> បាន​បញ្ចូល​កម្មវិធីបន្ថែម​ដែលអាច​ប្ដូររបៀប​ដែល Shuttle ដំណើរការ។
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">បានបរាជ័យក្នុងការនាំចេញសោឯកជន។</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">បានបរាជ័យក្នុងការប្តូរឯកសារ crx។ ពិនិត្យដើម្បីមើលថាតើឯកសារនេះស្ថិតនៅក្នុងការប្រើប្រាស់ឬអត់។</translation>
 <translation id="3163201441334626963">មិនស្គាល់ផលិតផល <ph name="PRODUCT_ID" /> ពីអ្នកលក់ <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">សិទ្ធិចូលប្រើ​កម្មវិធី​បន្ថែមនេះ​ត្រូវបាន​ទប់ស្កាត់​ដោយ​ស្ថាប័ន​របស់អ្នក។</translation>
-<translation id="3183357154200327217">កម្មវិធី​ផ្សេងទៀត​នៅលើ​កុំព្យូទ័រ​របស់អ្នក​បានបញ្ចូល​ទម្រង់រចនា​ដែលអាច​ប្ដូររបៀប​ដែល Chromium ដំណើរការ។
+<translation id="7846451875700317002">កម្មវិធី​ផ្សេងទៀត​នៅលើ​កុំព្យូទ័រ​របស់អ្នក​បានបញ្ចូល​ទម្រង់រចនា​ដែលអាច​ប្ដូររបៀប​ដែល Shuttle ដំណើរការ។
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">កម្មវិធី​ដែលមាន​លក្ខណៈ​មេនីហ្វេសថ៍ 'kiosk_only' ត្រូវតែ​ដំឡើង​នៅក្នុង​មុខងារបញ្ជរ ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">បដិសេធ</translation>
 <translation id="3984413272403535372">កំហុសឆ្គងខណៈពេលចុះហត្ថលេខាកម្មវិធីបន្ថែម។</translation>
 <translation id="4014432863917027322">ជួសជុល "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">កម្មវិធី​ផ្សេងទៀត​នៅលើ​កុំព្យូទ័រ​របស់អ្នក​បានបញ្ចូល​កម្មវិធីបន្ថែម​ដែលអាច​ប្ដូររបៀប​ដែល Chromium ដំណើរការ។
+<translation id="7396546976728149133">កម្មវិធី​ផ្សេងទៀត​នៅលើ​កុំព្យូទ័រ​របស់អ្នក​បានបញ្ចូល​កម្មវិធីបន្ថែម​ដែលអាច​ប្ដូររបៀប​ដែល Shuttle ដំណើរការ។
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">សិទ្ធិចូលប្រើ​ប្រភេទ​កម្មវិធីបន្ថែមនេះ​ត្រូវបាន​ទប់ស្កាត់​ដោយ​ស្ថាប័ន​របស់អ្នក។</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">កំណែថ្មីបំផុតនៃ "<ph name="EXTENSION_NAME" />" ត្រូវបានបិទដំណើរការ ដោយសារតែវាទាមទារ ការអនុញ្ញាតបន្ថែមទៀត។</translation>
 <translation id="5242724311594467048">បើកដំណើរការ "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">មើលកម្មវិធី៖ <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">ដកចេញពី Chromium</translation>
+<translation id="2064155379595075287">ដកចេញពី Shuttle</translation>
 <translation id="5456409301717116725">កម្មវិធីបន្ថែមនេះរាប់បញ្ចូលទាំងឯកសារសោ '<ph name="KEY_PATH" />'។ អ្នកប្រហែលជាមិនចង់ធ្វើដូច្នេះទេ។</translation>
 <translation id="5485102783864353244">បន្ថែមកម្មវិធី</translation>
 <translation id="5486326529110362464">ត្រូវមានតម្លៃធាតុបញ្ចូលសម្រាប់សោឯកជន</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">អ្នកគ្រប់គ្រងម៉ាស៊ីននេះតម្រូវឲ្យតំឡើង <ph name="EXTENSION_NAME" />។ វាមិនអាចលុបការតំឡើងវិញបានទេ។</translation>
 <translation id="6027032947578871493">មិនស្គាល់ផលិតផល <ph name="PRODUCT_ID" /> ពី <ph name="VENDOR_NAME" /> (លេខសេរ៊ី <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> ពីអ្នកលក់ <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">កម្មវិធី​ផ្សេងទៀត​នៅលើ​កុំព្យូទ័រ​របស់អ្នក​បានបញ្ចូល​កម្មវិធី​ដែលអាច​ប្ដូររបៀប​ដែល Chromium ដំណើរការ។
+<translation id="5918487821361452587">កម្មវិធី​ផ្សេងទៀត​នៅលើ​កុំព្យូទ័រ​របស់អ្នក​បានបញ្ចូល​កម្មវិធី​ដែលអាច​ប្ដូររបៀប​ដែល Shuttle ដំណើរការ។
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">កំហុសឆ្គងការដំណើរការកម្មវិធីបន្ថែម</translation>

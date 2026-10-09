@@ -398,7 +398,7 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
                           tabs::IsVerticalTabsExpandOnHoverFeatureEnabled());
   html_source->AddBoolean("showOrganizerPanelEnabled",
                           organizer_panel::IsOrganizerPanelFeatureEnabled());
-  // Agent Chrome: saved tab groups are removed.
+  // Shuttle: saved tab groups are removed.
   html_source->AddBoolean("showEverythingMenuEnabled", false);
 
   html_source->AddBoolean("showCtrlTabMru",

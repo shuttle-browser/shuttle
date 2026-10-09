@@ -1,8 +1,8 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/agent_chrome/agent_browser_sidecar.h"
+#include "chrome/browser/shuttle/agent_browser_sidecar.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -26,7 +26,7 @@
 #include "base/task/thread_pool.h"
 #include "base/version_info/version_info.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 namespace {
 
@@ -273,7 +273,7 @@ void Sidecar::OnStarted(StartResult result) {
           .Set("protocolVersion", "2025-11-25")
           .Set("capabilities", base::DictValue())
           .Set("clientInfo", base::DictValue()
-                                 .Set("name", "agent-chrome")
+                                 .Set("name", "shuttle")
                                  .Set("version", version_info::GetVersionNumber())),
       base::BindOnce(&Sidecar::OnInitialized, weak_factory_.GetWeakPtr()));
 }
@@ -446,4 +446,4 @@ void Sidecar::Write(const base::DictValue& message) {
       .WithArgs(base::WriteJson(message).value_or(std::string()));
 }
 
-}  // namespace agent_chrome
+}  // namespace shuttle

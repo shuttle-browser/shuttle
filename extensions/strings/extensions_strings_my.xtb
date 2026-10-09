@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">အပြင်အဆင်များကို အသုံးပြုရန်</translation>
 <translation id="1135328998467923690">အထုပ်မှာ မမှန်ပါ: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">ကျောဘက်ရှိ ကင်မရာ</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> သည် Chromium အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် နောက်ဆက်တွဲ ထည့်လိုက်ပါသည်။
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> သည် Shuttle အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် နောက်ဆက်တွဲ ထည့်လိုက်ပါသည်။
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ကိုယ်ပိုင် သော့ကို တင်ပို့မှု မအောင်မြင်ခဲ့ပါ။</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Failed to replace crx ဖိုင်ကို အစားထိုးပေး မရခဲ့ပါ။ ဖိုင်ကို သုံးနေသလား စစ်ကြည့်ပါ။</translation>
 <translation id="3163201441334626963">အမည်မသိပစ္စည်း <ph name="PRODUCT_ID" /> သည် ရောင်းသူ <ph name="VENDOR_ID" /> မှဖြစ်၏</translation>
 <translation id="3174723475300476613">ဤနောက်ဆက်တွဲကို သင့်အဖွဲ့အစည်းက သုံးခွင့်ပိတ်ထားသည်။</translation>
-<translation id="3183357154200327217">သင့်ကွန်ပျူတာရှိ အခြားပရိုဂရမ်သည် Chromium အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် အပြင်အဆင် ထည့်လိုက်ပါသည်
+<translation id="7846451875700317002">သင့်ကွန်ပျူတာရှိ အခြားပရိုဂရမ်သည် Shuttle အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် အပြင်အဆင် ထည့်လိုက်ပါသည်
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' မန်နီးဖက်စ်ရည်ညွှန်းချက်ပါသည့် အက်ပ်ကို ChromeOS kiosk မုဒ်တွင် ထည့်သွင်းရမည်</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">ငြင်းပယ်</translation>
 <translation id="3984413272403535372">အိတ်စတန်းရှင်းအား လတ်မှတ်ထိုးစဉ် မှားယွင်းနေ</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" အား ပြင်မည်လား?</translation>
-<translation id="4061696872429826774">သင့်ကွန်ပျူတာရှိ အခြားပရိုဂရမ်သည် Chromium အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် နောက်ဆက်တွဲ ထည့်လိုက်ပါသည်
+<translation id="7396546976728149133">သင့်ကွန်ပျူတာရှိ အခြားပရိုဂရမ်သည် Shuttle အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် နောက်ဆက်တွဲ ထည့်လိုက်ပါသည်
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">ဤနောက်ဆက်တွဲအမျိုးအစားကို သင့်အဖွဲ့အစည်းက သုံးခွင့်ပိတ်ထားသည်။</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">နောက်ဆုံး ဗားရှင်းအတွက် ခွင့်ပြုချက်များ နောက်ထပ် လိုအပ်သေး၍  "<ph name="EXTENSION_NAME" />" ကို ပိတ်ခဲ့ရသည်။</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />"ကို ဖွင့်ထားမလား?</translation>
 <translation id="5356315618422219272">Appview- <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium ထဲမှ ဖယ်ရှားရန်</translation>
+<translation id="2064155379595075287">Shuttle ထဲမှ ဖယ်ရှားရန်</translation>
 <translation id="5456409301717116725">အိတ်စတန်းရှင်းတွင် '<ph name="KEY_PATH" />' ကီးဖိုင်ပါဝင်သည်။ သင်လုပ်ချင်မည်မဟုတ်ပါ။</translation>
 <translation id="5485102783864353244">အပ်ဖ်ပေါင်းထည့်မည်</translation>
 <translation id="5486326529110362464">ကိုယ်ပိုင် သော့ အတွက် ထည့်သွင်းမှု တန်ဖိုး ရှိရမည်။</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">ဤကိရိယာကို စီမံသူသည် <ph name="EXTENSION_NAME" /> အား ရယူတပ်ဆင်ရန်လိုအပ်သည်။ တပ်ပြီးပါက ပြန်ဖြုတ်မရပါ။</translation>
 <translation id="6027032947578871493">အမည်မသိပစ္စည်း <ph name="PRODUCT_ID" /> သည် <ph name="VENDOR_NAME" /> မှဖြစ်၏ (နံပါတ်စဉ် <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> သည် <ph name="VENDOR_ID" /> ထံမှဖြစ်၏</translation>
-<translation id="6204922163963157461">သင့်ကွန်ပျူတာရှိ အခြားပရိုဂရမ်သည် Chromium အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် အက်ပ် ထည့်လိုက်ပါသည်
+<translation id="5918487821361452587">သင့်ကွန်ပျူတာရှိ အခြားပရိုဂရမ်သည် Shuttle အလုပ်လုပ်ပုံကို ပြောင်းလဲနိုင်သည့် အက်ပ် ထည့်လိုက်ပါသည်
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">တိုးချဲ့မှု တင်မှု အမှား</translation>

@@ -3,29 +3,29 @@
 <translationbundle lang="bs">
 <translation id="130631256467250065">Vaše promjene će stupiti na snagu kada sljedeći put ponovo pokrenete uređaj.</translation>
 <translation id="1965068424387304464">Savjet za Chromium: sačuvajte lozinke</translation>
-<translation id="261308610302996111">Idite u
-          meni Chromiuma&gt;
+<translation id="6181600115274209660">Idite u
+          meni Shuttlea&gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="SYSTEM_TITLE" />
           &gt;
           <ph name="PROXIES_TITLE" />
           i provjerite je li vaša konfiguracija postavljena na "bez proksi servera" ili "direktno".</translation>
-<translation id="275588974610408078">Izrada izvještaja o padovima aplikacije nije dostupna na Chromiumu.</translation>
-<translation id="3064346599913645280">Prikazana vam je sigurna stranica Chromiuma</translation>
+<translation id="8019164406370393370">Izrada izvještaja o padovima aplikacije nije dostupna na Shuttleu.</translation>
+<translation id="7131945667699137625">Prikazana vam je sigurna stranica Shuttlea</translation>
 <translation id="3255926992597692024">Chromium pokušava izmijeniti postavke za popunjavanje načina plaćanja.</translation>
-<translation id="358997566136285270">Logotip Chromiuma</translation>
+<translation id="3757825924724354052">Logotip Shuttlea</translation>
 <translation id="3837584850181228767">Savjet za Chromium: poboljšano Sigurno pregledanje</translation>
 <translation id="4050599136622776556">Chromium pokušava urediti načine plaćanja.</translation>
-<translation id="4365115785552740256">Chromium je dostupan zahvaljujući <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> projektu otvorenog koda i drugom <ph name="BEGIN_LINK_OSS" />softveru otvorenog koda<ph name="END_LINK_OSS" />.</translation>
-<translation id="4622039161600275920">Ovu stranicu je blokirao Chromium</translation>
-<translation id="48558539577516920">U postavkama zaštitnog zida ili antivirusnog programa dozvolite Chromiumu da pristupi
+<translation id="8988476603327209803">Shuttle je dostupan zahvaljujući <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> projektu otvorenog koda i drugom <ph name="BEGIN_LINK_OSS" />softveru otvorenog koda<ph name="END_LINK_OSS" />.</translation>
+<translation id="2477509191993550467">Ovu stranicu je blokirao Shuttle</translation>
+<translation id="4604973006041022107">U postavkama zaštitnog zida ili antivirusnog programa dozvolite Shuttleu da pristupi
           mreži.</translation>
 <translation id="4949828774841497663">Idite u Aplikacije &gt; Postavke sistema &gt; Mreža, odaberite
           aktivnu mrežu, kliknite na dugme Detalji… i poništite odabir svih proksi servera
           koji su možda odabrani.</translation>
-<translation id="6480456350195404966">Idite u
-          meni Chromiuma &gt;
+<translation id="6683794703230411154">Idite u
+          meni Shuttlea &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="SYSTEM_TITLE" />
@@ -34,14 +34,14 @@
           &gt;
           Mreža i internet &gt; Proksi server
           i poništite odabir opcije "Automatski otkrivaj postavke".</translation>
-<translation id="648062525172759633">Ove stranice su namijenjene za korištenje programerima Chromiuma i možda se neće aktivno održavati ili testirati. Da ih omogućite, idite na <ph name="BEGIN_LINK" />chrome://chrome-urls<ph name="LINK_END" />, kliknite na dugme da omogućite stranice za otklanjanje grešaka, zatim se vratite na ovu stranicu.</translation>
+<translation id="262795629490583875">Ove stranice su namijenjene za korištenje programerima Shuttlea i možda se neće aktivno održavati ili testirati. Da ih omogućite, idite na <ph name="BEGIN_LINK" />chrome://chrome-urls<ph name="LINK_END" />, kliknite na dugme da omogućite stranice za otklanjanje grešaka, zatim se vratite na ovu stranicu.</translation>
 <translation id="6549378540556750549">Chromium su omogućili i drugi <ph name="BEGIN_LINK_OSS" />softveri otvorenog koda<ph name="END_LINK_OSS" />.</translation>
-<translation id="6613594504749178791">Vaše promjene će stupiti na snagu kada sljedeći put budete ponovo pokrenuli Chromium.</translation>
-<translation id="691026815377248078">Chromiumu je potreban pristup Bluetoothu da nastavi s
+<translation id="3051968423457057392">Vaše promjene će stupiti na snagu kada sljedeći put budete ponovo pokrenuli Shuttle.</translation>
+<translation id="7251378182421874967">Shuttleu je potreban pristup Bluetoothu da nastavi s
 uparivanjem. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="7681937895330411637">Chromium je omogućio <ph name="BEGIN_LINK_CHROMIUM" />Chromium<ph name="END_LINK_CHROMIUM" /> projekat otvorenog koda.</translation>
-<translation id="7861509383340276692">Idite na
-          meni u Chromiumu &gt;
+<translation id="6298583427647441415">Idite na
+          meni u Shuttleu &gt;
           <ph name="SETTINGS_TITLE" />
           &gt;
           <ph name="ADVANCED_TITLE" />
@@ -49,6 +49,6 @@ uparivanjem. <ph name="IDS_BLUETOOTH_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" />
           Ako ovo ne riješi problem, preporučujemo vam da ponovo odaberete
           ovu opcija za unapređenje performansi.</translation>
 <translation id="8597726643333341451">Gledate sigurnu stranicu verzije Chrome for Testing</translation>
-<translation id="8684913864886094367">Chromium se nije ispravno zatvorio.</translation>
+<translation id="1627254898104673072">Shuttle se nije ispravno zatvorio.</translation>
 <translation id="9183331186620388872">Savjet za Chromium: pretražujte putem Objektiva</translation>
 </translationbundle>

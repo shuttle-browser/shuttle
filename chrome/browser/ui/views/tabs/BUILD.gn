@@ -119,7 +119,7 @@ source_set("tab_group_impl") {
   ]
 
   deps = [
-    "//chrome/browser/agent_chrome",
+    "//chrome/browser/shuttle",
     ":base",
     ":tab",
     ":tab_group",

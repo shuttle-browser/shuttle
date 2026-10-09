@@ -241,7 +241,7 @@ void RegisterChromeWebUIConfigs() {
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
   map.AddWebUIConfig(std::make_unique<actor::ui::ActorOverlayUIConfig>());
-  map.AddWebUIConfig(std::make_unique<agent_chrome::AgentsUIConfig>());
+  map.AddWebUIConfig(std::make_unique<shuttle::AgentsUIConfig>());
   map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
   map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());

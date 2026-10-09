@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_AGENT_CHROME_SERVICE_H_
-#define CHROME_BROWSER_AGENT_CHROME_AGENT_CHROME_SERVICE_H_
+#ifndef CHROME_BROWSER_SHUTTLE_SHUTTLE_SERVICE_H_
+#define CHROME_BROWSER_SHUTTLE_SHUTTLE_SERVICE_H_
 
 #include <memory>
 #include <string>
@@ -24,7 +24,7 @@ namespace tab_groups {
 class TabGroupId;
 }
 
-namespace agent_chrome {
+namespace shuttle {
 
 class AvatarCache;
 class PageToolManager;
@@ -34,18 +34,18 @@ class SessionManager;
 // The in-browser MCP server: agent profiles, sessions and tabs. Reached
 // through POST /mcp on the remote debugging port (see
 // ChromeDevToolsManagerDelegate::HandleMcpRequest).
-class AgentChromeService : public KeyedService {
+class ShuttleService : public KeyedService {
  public:
   using HttpResponseCallback = base::OnceCallback<
       void(int status, std::string content_type, std::string body)>;
 
-  explicit AgentChromeService(Profile* profile);
-  AgentChromeService(const AgentChromeService&) = delete;
-  AgentChromeService& operator=(const AgentChromeService&) = delete;
-  ~AgentChromeService() override;
+  explicit ShuttleService(Profile* profile);
+  ShuttleService(const ShuttleService&) = delete;
+  ShuttleService& operator=(const ShuttleService&) = delete;
+  ~ShuttleService() override;
 
   // Returns the service of `profile`, or nullptr for profiles without one.
-  static AgentChromeService* Get(Profile* profile);
+  static ShuttleService* Get(Profile* profile);
 
   // Handles one JSON-RPC message POSTed to /mcp.
   void HandleMcpRequest(const std::string& host,
@@ -94,6 +94,6 @@ class AgentChromeService : public KeyedService {
   std::unique_ptr<PageToolManager> page_tools_;
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_AGENT_CHROME_SERVICE_H_
+#endif  // CHROME_BROWSER_SHUTTLE_SHUTTLE_SERVICE_H_

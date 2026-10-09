@@ -3,23 +3,23 @@
 <translationbundle lang="az">
 <translation id="1026101648481255140">Quraşdırmaya davam edin</translation>
 <translation id="1029669172902658969">&amp;ChromiumOS'i güncəlləmək üçün yenidən başladın</translation>
-<translation id="8271032073852564289">Agent Chrome bu artırmanı nəzərdən keçirməyi tövsiyə edir</translation>
-<translation id="1395700234492294565">Sayt səhifədə keçidləri məxfi qaydada əvvəlcədən yükləmək istədikdə Agent Chrome Google serverlərindən istifadə edir. Bu, kimliyinizi əvvəlcədən yüklənmiş saytdan gizlədir, lakin Google hansı saytların əvvəlcədən yükləndiyini öyrənir.</translation>
+<translation id="9022540553404839453">Shuttle bu artırmanı nəzərdən keçirməyi tövsiyə edir</translation>
+<translation id="5410799103647685860">Sayt səhifədə keçidləri məxfi qaydada əvvəlcədən yükləmək istədikdə Shuttle Google serverlərindən istifadə edir. Bu, kimliyinizi əvvəlcədən yüklənmiş saytdan gizlədir, lakin Google hansı saytların əvvəlcədən yükləndiyini öyrənir.</translation>
 <translation id="1051793555070215510">Anonim rejimini təkmilləşdirməyimizə kömək etmək üçün bu 1 dəqiqəlik sorğunu doldurun.</translation>
 <translation id="1065672644894730302">Tərcihləriniz oxuna bilmir.
 
 Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən dəyişikliklər saxlanmaya bilər.</translation>
-<translation id="3693661839172633833">Valideyn Agent Chrome-da "Sayt, tətbiq və artırmalar üçün icazələr"i deaktiv edib</translation>
-<translation id="4676383270508741906">Xüsusi Agent Chrome funksiyası və ya artırmasını axtarmaq üçün ünvan panelinə onun qısayolunu, sonra isə seçdiyiniz klaviatura düyməsini daxil edin</translation>
+<translation id="2526735598866766848">Valideyn Shuttle-da "Sayt, tətbiq və artırmalar üçün icazələr"i deaktiv edib</translation>
+<translation id="4554538601245550915">Xüsusi Shuttle funksiyası və ya artırmasını axtarmaq üçün ünvan panelinə onun qısayolunu, sonra isə seçdiyiniz klaviatura düyməsini daxil edin</translation>
 <translation id="1098493699368672217">Chromium ilə axtarış bildiriş sahəsində göstərilsin və klaviatura qısayolunu aktivləşdirin</translation>
 <translation id="1104942323762546749">Chromium parollarınızı eksport etmək istəyir. Buna icazə vermək üçün Windows parolunu yazın.</translation>
 <translation id="112640046208448578">Əşya və ya yerləri müəyyənləşdirin və mətni kopiyalayın, yaxud tərcümə edin. Şəkil Axtarışından istifadə etdiyiniz zaman səhifənin skrinşotu serverə göndərilir. <ph name="LEARN_MORE" /></translation>
-<translation id="5373975050135708711">Agent Chrome defolt brauzerinizdir</translation>
+<translation id="5857101132283857610">Shuttle defolt brauzerinizdir</translation>
 <translation id="1131805035311359397">Parollarınızın data pozuntuları və digər güvənlik məsələlərinə qarşı güvəndə olduğunu yoxlamaq üçün <ph name="BEGIN_LINK" />Chromium'a daxil olun<ph name="END_LINK" />.</translation>
 <translation id="1153368717515616349">Chromium menyusuna klikləyin</translation>
 <translation id="1157985233335035034">Son dillər</translation>
 <translation id="1184145431117212167">Windows versiyanız dəstəklənmədiyi üçün quraşdırma alınmadı.</translation>
-<translation id="604454529346438712">Agent Chrome haqqında</translation>
+<translation id="2517811539192985920">Shuttle haqqında</translation>
 <translation id="1186645291482254714">Telefonda Chromium ilə qiymət izləmə xəbərdarlıqları əldə edin</translation>
 <translation id="1203500561924088507">Quraşdırdığınız üçün təşəkkür edirik. <ph name="BUNDLE_NAME" /> istifadə etməzdən əvvəl brauzerinizi yenidən başlatmalısınız.</translation>
 <translation id="1232234696885483911">Şəkil Axtarışını açdığınız zaman səhifənin başlığı, URL və kontent, o cümlədən PDF-lər avtomatik olaraq serverə göndəriləcək. <ph name="LEARN_MORE" /></translation>
@@ -27,13 +27,13 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="1244381985120794049">Mac menyu panelində Chromium-da Gemini göstərilsin</translation>
 <translation id="1257483544893909270">Chromium-da Gemini-da ekranın bir hissəsini seçmək üçün klaviatura qısayolundan istifadə edin.</translation>
 <translation id="1262876892872089030">Bu tab deaktiv olduqda Chromium-u sürətli saxlamaq üçün yaddaş boşaldıldı. Bu saytın deaktiv olmasını həmişə istisna edə bilərsiniz.</translation>
-<translation id="3777643518642881741">Bu fayl təhlükəli olduğu üçün Agent Chrome endirməni blokladı</translation>
+<translation id="5920228800659800735">Bu fayl təhlükəli olduğu üçün Shuttle endirməni blokladı</translation>
 <translation id="126567311906253476"><ph name="USER_EMAIL" /> ilə Gmail və ya YouTube kimi Google xidmətlərinə daxil olduqda eyni hesab ilə Chromium-a avtomatik daxil ola bilərsiniz</translation>
 <translation id="1287534462498555020">Telefonda Chromium əldə edin</translation>
 <translation id="1290883685122687410">Ayarlama xətası: <ph name="METAINSTALLER_EXIT_CODE" />. <ph name="WINDOWS_ERROR" /></translation>
 <translation id="1315551408014407711">Yeni Chromium profilinizi ayarlayın</translation>
 <translation id="132092532143527429">Chromium-da Gemini ilə sınayın</translation>
-<translation id="200785071050073583">Agent Chrome Bluetooth cihazlarını araşdırmaq üçün 
+<translation id="7886367104480106107">Shuttle Bluetooth cihazlarını araşdırmaq üçün 
  Bluetooth-a giriş tələb edir. <ph name="IDS_SERIAL_DEVICE_CHOOSER_AUTHORIZE_BLUETOOTH_LINK" /></translation>
 <translation id="1329040302064168406">Telefonda Chromium-a daxil olun</translation>
 <translation id="1330562121671411446">Dili aşkar edin</translation>
@@ -43,33 +43,33 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="1383876407941801731">Axtar</translation>
 <translation id="1388276868779258475">İstənilən vaxt, istənilən yerdə axtarış etmək üçün Chromium tətbiqindən istifadə edin</translation>
 <translation id="141901961143729572">Fikirlərinizi paylaşın</translation>
-<translation id="8789809509510733987">Pəncərəni paylaşmaq üçün Sistem Ayarlarında Agent Chrome üzrə ekranın qeydə alınmasına icazə verin.</translation>
+<translation id="1958991777362218128">Pəncərəni paylaşmaq üçün Sistem Ayarlarında Shuttle üzrə ekranın qeydə alınmasına icazə verin.</translation>
 <translation id="1478370723027452770">Sınaq üçün Chrome ilə bağlı kömək alın</translation>
 <translation id="1497802159252041924">Quraşdırma xətası: <ph name="INSTALL_ERROR" /></translation>
 <translation id="1518627427551567882">Bu səhifə qorunur</translation>
-<translation id="3850708453627715578">Agent Chrome tabı paylaşın</translation>
+<translation id="8079206111514107729">Shuttle tabı paylaşın</translation>
 <translation id="154404805518949443">Chromium-a daxil olun</translation>
 <translation id="1547469039832541117">Vurğulanan tapşırığı sonlandırır.</translation>
-<translation id="8546278207686764484">Agent Chrome-u bərkidin</translation>
+<translation id="5481132473679919711">Shuttle-u bərkidin</translation>
 <translation id="1574377791422810894">Chromium-un güvənlik alətləri</translation>
 <translation id="1594928384848033697">Chromium Parol Meneceri datanızı silmək istəyir. İcazə vermək üçün Windows parolunu yazın.</translation>
-<translation id="551713766576210710">{COUNT,plural, =0{Administrator güncəlləməni tətbiq etmək üçün Agent Chrome'u yenidən başlatmanızı tələb edir}=1{Administrator güncəlləməni tətbiq etmək üçün Agent Chrome'u yenidən başlatmanızı tələb edir. Anonim pəncərəniz yenidən açılmayacaq.}other{Administrator güncəlləməni tətbiq etmək üçün Agent Chrome'u yenidən başlatmanızı tələb edir. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
+<translation id="9144100729492133749">{COUNT,plural, =0{Administrator güncəlləməni tətbiq etmək üçün Shuttle'u yenidən başlatmanızı tələb edir}=1{Administrator güncəlləməni tətbiq etmək üçün Shuttle'u yenidən başlatmanızı tələb edir. Anonim pəncərəniz yenidən açılmayacaq.}other{Administrator güncəlləməni tətbiq etmək üçün Shuttle'u yenidən başlatmanızı tələb edir. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
 <translation id="1623563412065267963">Telefonunuzdakı Chromium tətbiqi ilə Google-dan daha çox yararlanın</translation>
 <translation id="1625909126243026060">Chromium'da əsas məxfilik və təhlükəsizlik nəzarətlərini nəzərdən keçirin</translation>
 <translation id="1640672724030957280">Endirilir...</translation>
 <translation id="1665602916345474427"><ph name="USER_NAME" />, <ph name="USER_EMAIL" /> olaraq daxil olmusunuz, üzvlük. Hesab menyusunu açın</translation>
-<translation id="2604712040942461790">İstənilən vaxt mesaj, sənəd və digər tətbiqlərdəki keçidlərə kliklədikdə Agent Chrome-dan istifadə edə bilərsiniz. Tapşırıq panelinə də bərkidiləcək.</translation>
+<translation id="5133024692341945870">İstənilən vaxt mesaj, sənəd və digər tətbiqlərdəki keçidlərə kliklədikdə Shuttle-dan istifadə edə bilərsiniz. Tapşırıq panelinə də bərkidiləcək.</translation>
 <translation id="1709772298389099340"><ph name="BROWSER_NAME" /> üçün artırılmış imtiyazlar təmin edir.</translation>
 <translation id="1722488837206509557">Bu, əlçatan cihazlardan seçim etmək və oradakı kontenti göstərmək imkanı verəcək.</translation>
-<translation id="4145295773323539953">Agent Chrome tezliklə baxış datasını siləcək</translation>
+<translation id="5930953237660560582">Shuttle tezliklə baxış datasını siləcək</translation>
 <translation id="1736443181683099871">Chromium naviqasiyaları HTTPS-ə təkmilləşdirməyə cəhd edəcək</translation>
-<translation id="7280502947294080605">Təmizlənmiş Agent Chrome datası</translation>
+<translation id="3225043540098941089">Təmizlənmiş Shuttle datası</translation>
 <translation id="1745121272106313518">Chromium <ph name="REMAINING_TIME" /> sonra yenidən başladılacaq</translation>
 <translation id="1749104137266986751">HTTPS əlçatan olmadıqda Chromium xəbərdarlıq etmədən təhlükəli bağlantı istifadə edəcək</translation>
-<translation id="1887395919652703120">Agent Chrome'a fonda işləməyə icazə verin</translation>
+<translation id="4139175757782872962">Shuttle'a fonda işləməyə icazə verin</translation>
 <translation id="1779356040007214683">Chromium'u güvənli etmək üçün,  <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> siyahısında olmayan və xəbəriniz olmadan əlavə edilən bəzi artırmaları deaktiv etdik.</translation>
 <translation id="1793486931176048546">Sürətli giriş üçün Chromium-u tapşırıqlar panelinizə bərkitmək məqsədilə Windows bildirişində <ph name="BEGIN_BOLD" />Bəli<ph name="END_BOLD" /> seçiminə klikləyin.</translation>
-<translation id="357645171972700077">Agent Chrome'u yenidən quraşdırın</translation>
+<translation id="6621264839978531733">Shuttle'u yenidən quraşdırın</translation>
 <translation id="1820835682567584003">Chromium cəhd edir: <ph name="AUTHENTICATION_PURPOSE" /></translation>
 <translation id="183031085822326697">Növbəti dəfə <ph name="DEVICE_TYPE" /> cihazında Chromium-u açdığınız zaman Google Parol Menecerindən istifadə etmək üçün göstəriş görəcəksiniz.</translation>
 <translation id="1838374766361614909">Axtarışı təmizləyin</translation>
@@ -80,15 +80,15 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="1863837059069884561"><ph name="EXISTING_USER" /> artıq daxil olub. Baxışı ayrı saxlamaq üçün öz profilinizdə Chromium-a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olun. <ph name="DEVICE" /> cihazından əlfəcinlərinizi və daha çoxunu da əldə edəcəksiniz.</translation>
 <translation id="1880677175115548835">Mətn seçin</translation>
 <translation id="1881322772814446296">Nəzarət olunan hesabla daxil olursunuz və hesabın administratoruna Chromium profiliniz üzərində nəzarət etmək imkanı verirsiniz. Tətbiqləriniz, əlfəcinləriniz, tarixçəniz, parollarınız və digər ayarlarınız <ph name="USER_NAME" /> adına həmişəlik bağlı qalacaq. Bu datanı Google Hesab İdarə Paneli vasitəsilə silə biləcəksiniz, lakin bu datanı digər hesabla əlaqələndirə bilməyəcəksiniz. Mövcud Chromium datanızı ayrı saxlamaq üçün yeni profil yarada bilərsiniz. <ph name="LEARN_MORE" /></translation>
-<translation id="4964792828232534953">Agent Chrome arxa fon fəaliyyətini, habelə rahat sürüşdürmə və video çərçivə səviyyəsi kimi vizual effektləri məhdudlaşdırmaqla batareya enerjisinə qənaət edir. <ph name="BEGIN_LINK" />Enerjiyə Qənaət haqqında ətraflı məlumat<ph name="END_LINK" /></translation>
+<translation id="1305483712531564950">Shuttle arxa fon fəaliyyətini, habelə rahat sürüşdürmə və video çərçivə səviyyəsi kimi vizual effektləri məhdudlaşdırmaqla batareya enerjisinə qənaət edir. <ph name="BEGIN_LINK" />Enerjiyə Qənaət haqqında ətraflı məlumat<ph name="END_LINK" /></translation>
 <translation id="1900969832270057921">Chromium Güncəlləyici Xidməti</translation>
 <translation id="1911763535808217981">Bunu deaktiv etməklə Chromium'a giriş etmədən Gmail kimi Google saytlarına daxil ola bilərsiniz</translation>
 <translation id="1929939181775079593">Chromium cavab vermir. İndi yenidən başladılsın?</translation>
 <translation id="1933341829955786215">Təşkilatınız, <ph name="MANAGER" />, Chromium-a daxil olmağınızı tələb edir</translation>
 <translation id="193439633299369377">Güncəlləşmənin tətbiq olunması üçün ChromiumOS yenidən başladılmalıdır.</translation>
-<translation id="207375373460618430">Bu fayl növü adətən endirilmədiyi və təhlükəli ola biləcəyi üçün Agent Chrome endirməni blokladı</translation>
+<translation id="4872059215343855880">Bu fayl növü adətən endirilmədiyi və təhlükəli ola biləcəyi üçün Shuttle endirməni blokladı</translation>
 <translation id="1953553007165777902">Endirilir... <ph name="MINUTE" /> dəqiqə qalıb</translation>
-<translation id="700162948230159797">Agent Chrome defolt brauzeri müəyyən edə və ya ayarlaya bilmir</translation>
+<translation id="1220136003951684816">Shuttle defolt brauzeri müəyyən edə və ya ayarlaya bilmir</translation>
 <translation id="197326043290947695">Şəkil Axtarışı ilə daha səmərəli şəkildə axtarın</translation>
 <translation id="1990262977744080398">Chromium-un bəzi faylları bloklama səbəbini öyrənin, yeni tabda açılır</translation>
 <translation id="1999715455684970349">Chromium proqram təminatını güncəl saxlayır. Bu xidmət deaktiv edilərsə və ya dayandırılarsa, Chromium proqram təminatınız güncəl saxlanılmayacaq, yəni yarana biləcək təhlükəsizlik problemləri aradan qaldırıla bilməz və funksiyalar işləməyə bilər. Bu xidmət ondan istifadə edən Chromium proqram təminatı olmadıqda özünü sistemdən silir.</translation>
@@ -98,19 +98,19 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="2049376729098081731">Google xidmətlərində daha çox fərdiləşdirilmiş təcrübə üçün Chromium tarixçəsinin daxil edilib-edilməməsini seçin</translation>
 <translation id="2050698962207788467">Güclü parollar yaratmağa, onları yadda saxlamağa və avtomatik doldurmağa kömək etmək üçün Chromium-a daxil edilib. Asan giriş üçün qısayol əlavə edin.</translation>
 <translation id="2064856577282482477">Chromium-un görünüşünü dəyişmək üçün Yeni tab səhifəsində Chromium-u fərdiləşdirin düyməsinə klikləyin</translation>
-<translation id="6816376218079012438">Bu fayl aldadıcı olduğu və cihaza gözlənilməz dəyişikliklər edə biləcəyi üçün Agent Chrome endirməni blokladı</translation>
+<translation id="4748815521068816647">Bu fayl aldadıcı olduğu və cihaza gözlənilməz dəyişikliklər edə biləcəyi üçün Shuttle endirməni blokladı</translation>
 <translation id="208726765006323911">Növbəti dəfə Chromium iOS-u açdığınız zaman <ph name="FEATURE_NAME" /> tətbiqini sınamaq üçün göstəriş görəcəksiniz.</translation>
 <translation id="2099452623287920103">Google hesabınızda yadda saxladığınız parollar və digər Chromium datası bu cihazdan silinəcək. Onları Chromium-da yenidən istifadə etmək üçün təkrar daxil olun.</translation>
-<translation id="8983263343920390117">{COUNT,plural, =1{Agent Chrome 1 dəqiqə istifadə edilmədikdə təşkilat baxış datasını avtomatik silir. Bura tarixçə, avtodoldurma və endirmələr daxil ola bilər. Tablar açıq qalacaq.}other{Agent Chrome # dəqiqə istifadə edilmədikdə təşkilat baxış datasını avtomatik silir. Bura tarixçə, avtodoldurma və endirmələr daxil ola bilər. Tablar açıq qalacaq.}}</translation>
+<translation id="8053870167789043907">{COUNT,plural, =1{Shuttle 1 dəqiqə istifadə edilmədikdə təşkilat baxış datasını avtomatik silir. Bura tarixçə, avtodoldurma və endirmələr daxil ola bilər. Tablar açıq qalacaq.}other{Shuttle # dəqiqə istifadə edilmədikdə təşkilat baxış datasını avtomatik silir. Bura tarixçə, avtodoldurma və endirmələr daxil ola bilər. Tablar açıq qalacaq.}}</translation>
 <translation id="2125838419757773031">Axtarmaq üçün ekranın bir hissəsini seçin</translation>
 <translation id="2126108037660393668">Endirilmiş fayl doğrulanmadı.</translation>
 <translation id="2135919691573380097">Bu saytı şikayət edin</translation>
 <translation id="2137162749895930932">Tərcümə ekranını bağlayın</translation>
-<translation id="822057692680289847">Sayt güvənli bağlantı istifadə etmədiyi və bu fayla müdaxilə edilmiş ola biləcəyi üçün Agent Chrome endirməni blokladı</translation>
+<translation id="8598177558941030115">Sayt güvənli bağlantı istifadə etmədiyi və bu fayla müdaxilə edilmiş ola biləcəyi üçün Shuttle endirməni blokladı</translation>
 <translation id="2170098639895543546">Səhifədə istədiyinizi seçin</translation>
 <translation id="2174178932569897599">Chromium'u fərdiləşdirin</translation>
 <translation id="2174917724755363426">Quraşdırma tamamlanmayıb. Ləğv etmək istədiyinizə əminsiniz?</translation>
-<translation id="922967513335788675">Agent Chrome - Şəbəkəyə Giriş - <ph name="PAGE_TITLE" /></translation>
+<translation id="2629211622516729574">Shuttle - Şəbəkəyə Giriş - <ph name="PAGE_TITLE" /></translation>
 <translation id="2190166659037789668">Yeniləmə yoxlaması xətası: <ph name="UPDATE_CHECK_ERROR" />.</translation>
 <translation id="2199210295479376551">Hesabı Chromium-dan silin</translation>
 <translation id="2201788217099588893">İstənilən vaxt, istənilən yerdə ən yaxşı alış-veriş alətlərindən yararlanmaq üçün Chromium tətbiqindən istifadə edin</translation>
@@ -127,10 +127,10 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="2356070529366658676">Soruşun</translation>
 <translation id="2359808026110333948">Davam edin</translation>
 <translation id="2361918034042471035">"<ph name="EXTENSION_NAME" />" artırması Chromium-a daxil olmağınızı istəyir</translation>
-<translation id="2028456545634496358">Tətbiqlər üçün arxa fonda işləyən Agent Chrome-u deaktiv edin</translation>
+<translation id="2875952783855795871">Tətbiqlər üçün arxa fonda işləyən Shuttle-u deaktiv edin</translation>
 <translation id="2374216753258219393"><ph name="USER_EMAIL_ADDRESS" /> kimi bu artırmanı istifadə etmək üçün Chromium-a daxil olun.</translation>
 <translation id="2384373936468275798">ChromiumOS datanızı sinxronizasiya edə bilmir, çünki hesaba giriş məlumatlarınız köhnədir.</translation>
-<translation id="3040857862310351495">{NUM_DEVICES,plural, =0{Bir və ya bir neçə Agent Chrome artırması 1 HID cihazına daxil olurdu}=1{Bir və ya bir neçə Agent Chrome artırması 1 HID cihazına daxil olur}other{Bir və ya bir neçə Agent Chrome artırması # HID cihazına daxil olur}}</translation>
+<translation id="2792662518458751900">{NUM_DEVICES,plural, =0{Bir və ya bir neçə Shuttle artırması 1 HID cihazına daxil olurdu}=1{Bir və ya bir neçə Shuttle artırması 1 HID cihazına daxil olur}other{Bir və ya bir neçə Shuttle artırması # HID cihazına daxil olur}}</translation>
 <translation id="2401032172288869980">Chromium bu sayt üçün kamera və mikrofon icazəsi tələb edir</translation>
 <translation id="2403703063067034158">Başlatma xətası: başqa ayarlama nümunəsi icra edilir. Sonra yenidən cəhd edin.</translation>
 <translation id="2418322681019544463">İstənilən tətbiqdəki keçidləri Chromium-da açın və brauzeri tapşırıqlar panelində əlçatan saxlayın</translation>
@@ -138,37 +138,37 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="2440750600860946460"><ph name="BEGIN_LINK" />Chromium alətləri ilə<ph name="END_LINK" /> təhlükəsiz nəzər sala və nəzarət edə bilərsiniz</translation>
 <translation id="2449487342837813167"><ph name="EXISTING_USER" /> artıq daxil olub. Baxışı ayrı saxlamaq üçün öz profilinizdə Chromium-a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olun. Bütün cihazlarınızda parollarınızı və daha çoxunu da əldə edəcəksiniz.</translation>
 <translation id="2451727308784734061">Qısayol ilə Parol menecerinə tez daxil olun. Qısayolu kompüterin əsas ekranına və ya tətbiq işəsalanına köçürə bilərsiniz.</translation>
-<translation id="4405360797107732759">Agent Chrome tezliklə bağlanacaq</translation>
-<translation id="1660473983484527105">Agent Chrome'da</translation>
+<translation id="2236435189491185832">Shuttle tezliklə bağlanacaq</translation>
+<translation id="8393832920806146440">Shuttle'da</translation>
 <translation id="2485422356828889247">Sistemdən silin</translation>
 <translation id="2513154137948333830">Yenidən yükləmə tələb edilir: <ph name="INSTALL_SUCCESS" /></translation>
 <translation id="2542968102051442371">Şəkil Axtarışı ilə mətn seçin</translation>
 <translation id="2554739539410784893">Chromium mövcud parolları əvəz etmək istəyir. İcazə vermək üçün Windows parolunu yazın.</translation>
 <translation id="2560420686485554789">Faylları endirmək üçün Chromium yaddaşa giriş tələb edir</translation>
-<translation id="8620990455069644819">Agent Chrome Yardım</translation>
+<translation id="2562045627058601347">Shuttle Yardım</translation>
 <translation id="2575822587468774919">Şəkil Axtarışı ilə axtarmaq üçün istədiyinizi seçin</translation>
 <translation id="2576118232315942160">Parolları və s. datanı bütün cihazlarınızda əldə etmək üçün Chromium-a daxil olun</translation>
 <translation id="2587622539943955767">Chromium-u endirmək və Google Hesabınıza daxil olmaq üçün QR kodunu telefonunuzla skan edin.</translation>
-<translation id="4496289616420025644">Agent Chrome istifadəsinə davam edin</translation>
+<translation id="4702236029576678227">Shuttle istifadəsinə davam edin</translation>
 <translation id="259935314519650377">Endirilmiş quraşdırıcı keşlənmədi. Xəta: <ph name="UNPACK_CACHING_ERROR_CODE" />.</translation>
 <translation id="2620436844016719705">Sistem</translation>
 <translation id="2629740064077610681">Təşkilat əlfəcin, tarixçə və parollar kimi axtarış datasını görə və idarə edə bilər. Digər Chromium profillərindəki axtarış datasını görə bilməz</translation>
 <translation id="2635452620547538388">Chromium datasını hesabınızda (<ph name="ACCOUNT_EMAIL" />) istifadə etmək və yadda saxlamaq üçün kimliyinizi doğrulayın</translation>
-<translation id="8944895445911901418">{COUNT,plural, =0{Qabaqcıl Qoruma güncəllənməni tətbiq etmək üçün Agent Chrome-u yenidən başlatmağınızı tələb edir}=1{Qabaqcıl Qoruma güncəllənməni tətbiq etmək üçün Agent Chrome-u yenidən başlatmağınızı tələb edir. Anonim pəncərəniz yenidən açılmayacaq.}other{Qabaqcıl Qoruma güncəllənməni tətbiq etmək üçün Agent Chrome-u yenidən başlatmağınızı tələb edir. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
+<translation id="8493546940144832853">{COUNT,plural, =0{Qabaqcıl Qoruma güncəllənməni tətbiq etmək üçün Shuttle-u yenidən başlatmağınızı tələb edir}=1{Qabaqcıl Qoruma güncəllənməni tətbiq etmək üçün Shuttle-u yenidən başlatmağınızı tələb edir. Anonim pəncərəniz yenidən açılmayacaq.}other{Qabaqcıl Qoruma güncəllənməni tətbiq etmək üçün Shuttle-u yenidən başlatmağınızı tələb edir. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
 <translation id="263863604136125912">Chromium-u başladın</translation>
 <translation id="2648074677641340862">Quraşdırma zamanı əməliyyat sistemi xətası baş verdi. Chromium'u yenidən endirin.</translation>
 <translation id="2661879430930417727">Cihaz paylaşsanız, dostlarınız və ailəniz ayrıca baxış keçirə bilər və Chromium'u istədikləri kimi ayarlaya bilər.</translation>
 <translation id="2676569452213089702">Chromium-un ölçüsü minimuma endirilmiş olsa belə, cihazınızda Chromium-da Gemini-dan istifadə üçün asan giriş.</translation>
-<translation id="3144164911846092828">Agent Chrome Paneli</translation>
+<translation id="1290871231853377661">Shuttle Paneli</translation>
 <translation id="2718390899429598676">Əlavə təhlükəsizlik üçün, Chromium datanızı şifrələyəcək.</translation>
 <translation id="2721354645805494590">Google Hesabını Chromium-dan silmək üçün çıxın</translation>
 <translation id="2722636413143664436">Parolları, əlfəcinləri və s. datanı bütün cihazlarınızda əldə etmək üçün Chromium-a daxil olun</translation>
 <translation id="2738871930057338499">İnternetə qoşulmaq olmur. HTTP 403 qadağan edilib. Proksi konfiqurasiyasını yoxlayın.</translation>
 <translation id="2753623023919742414">Klikləyərək axtarın</translation>
-<translation id="2657110490709402112">Agent Chrome-u defolt PDF görüntüləyicisi kimi təyin edin</translation>
-<translation id="4262158525170658092">Bu artırmada zərərli proqram var və təhlükəlidir. Onu Agent Chrome-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
+<translation id="8088988796099973210">Shuttle-u defolt PDF görüntüləyicisi kimi təyin edin</translation>
+<translation id="2218752565776962982">Bu artırmada zərərli proqram var və təhlükəlidir. Onu Shuttle-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
 <translation id="2799223571221894425">Yenidən başladın</translation>
-<translation id="4930235474290498361">Sizin Agent Chrome</translation>
+<translation id="7485171825548475983">Sizin Shuttle</translation>
 <translation id="2816462166102338036">Bu videonu Şəkil Axtarışı ilə axtarın</translation>
 <translation id="282591729717417030">iOS-da Chromium vasitəsilə istənilən vaxt, istənilən yerdə kamera ilə məhsulları kəşf edin, endirimləri izləyin və daha çox funksiyadan istifadə edin.</translation>
 <translation id="2841525013647267359">Mənbə dil:</translation>
@@ -176,50 +176,50 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="2847479871509788944">Chromium'dan silin...</translation>
 <translation id="2850691299438350830">Daxil olduğunuzda Chromium'da sizi qoruyur və digər Google tətbiqlərində təhlükəsizliyinizi artırmaq üçün istifadə edilə bilər</translation>
 <translation id="2885378588091291677">Tapşırıq Meneceri</translation>
-<translation id="8454027198329266279">Agent Chrome haqqında</translation>
+<translation id="4736743449957355772">Shuttle haqqında</translation>
 <translation id="2915996080311180594">Sonra yenidən başladın</translation>
 <translation id="2933336679234709858">Data parol ifadəsi ilə şifrələnib. Google Hesabında Chromium datasını istifadə etmək və yadda saxlamaq üçün onu daxil edin.</translation>
 <translation id="2945997411976714835">Quraşdırma xətası: Quraşdırıcı prosesini başlatmaq mümkün olmadı.</translation>
 <translation id="2948852018303413228">iOS-da Chromium üçün yadda saxlanmış parollardan istifadə edərək saytlara daha sürətli daxil olun</translation>
-<translation id="80325676287146281">Təşkilatınız Agent Chrome-u idarə edir</translation>
-<translation id="789940813130504773">Agent Chrome güncəldir</translation>
+<translation id="5394294335480248696">Təşkilatınız Shuttle-u idarə edir</translation>
+<translation id="6474149732639814113">Shuttle güncəldir</translation>
 <translation id="2977506796191543575">Sayt parolunuzu oğurlamağa çalışdıqda və ya zərərli fayl endirdiyinizdə Chromium səhifə məzmunundan kiçik nümunələr də daxil olmaqla, URL'ləri Təhlükəsiz Baxışa göndərə bilər</translation>
 <translation id="2981563588585023386">Onlayn təhlükəsizliyinizi valideyninizin seçimləri ilə qorumaq üçün Chromium-a daxil olun</translation>
 <translation id="3003694935412297923">Bütün tapşırıqlar</translation>
 <translation id="3012615494352020668">{count,plural, =1{Müəyyən datanın Google Hesabınızda yadda saxlanılması və bütün cihazlarda istifadə edilməsi üçün Chromium kimliyinizi doğrulamalıdır. İndi çıxsanız, bu data (1 element) silinəcək.}other{Müəyyən datanın Google Hesabınızda yadda saxlanılması və bütün cihazlarda istifadə edilməsi üçün Chromium kimliyinizi doğrulamalıdır. İndi çıxsanız, bu data ({count} element) silinəcək.}}</translation>
-<translation id="8084335581332031126">Agent Chrome-da yeni tabda <ph name="URL" /> açın.</translation>
+<translation id="6798600078593703276">Shuttle-da yeni tabda <ph name="URL" /> açın.</translation>
 <translation id="302551344979399011">Bacarıqlar kimi Sİ yenilikləri Google Hesabınızda yadda saxlanılır və Chromium sinxronizasiyasından ayrı idarə edilir</translation>
-<translation id="7024173799494459794">Xrom durub ...</translation>
+<translation id="2572386815899642990">Xrom durub ...</translation>
 <translation id="3038232873781883849">Quraşdırılması gözlənilir...</translation>
 <translation id="3045032126857188731">Tərcümə edilmiş dil: <ph name="LANGUAGE" /></translation>
 <translation id="3047590466164881923">Rəy dialoqunu bağlayın</translation>
 <translation id="3068187312562070417">Digər Chromium profilləri</translation>
 <translation id="3068290154869370196">Artırmalar Chromium-u fərdiləşdirməyə imkan verən əlavələrdir. Artırmalar nizamlı qalmaqdan tutmuş gündəlik tapşırıqları sadələşdirməyə qədər Chromium-u özünüzə uyğunlaşdırmağa kömək edir.</translation>
-<translation id="7027973430362347863">Qəza raportlarını və <ph name="UMA_LINK" /> linkini Google'a göndərməklə Agent Chrome'un daha keyfiyyətli olmasına yardım olun</translation>
+<translation id="1841107660132296794">Qəza raportlarını və <ph name="UMA_LINK" /> linkini Google'a göndərməklə Shuttle'un daha keyfiyyətli olmasına yardım olun</translation>
 <translation id="3071024987058544609">İstənilən vaxt, istənilən yerdə Google-un təhlükəsizlik imkanlarından yararlanmaq üçün Chromium tətbiqindən istifadə edin</translation>
-<translation id="4925327325707966890">{NUM_DEVICES,plural, =0{Bir və ya bir neçə Agent Chrome artırması 1 USB cihazına daxil olurdu}=1{Bir və ya bir neçə Agent Chrome artırması 1 USB cihazına daxil olur}other{Bir və ya bir neçə Agent Chrome artırması # USB cihazına daxil olur}}</translation>
-<translation id="6827369771274328769">Agent Chrome tarixçəsi</translation>
+<translation id="3739686665197813096">{NUM_DEVICES,plural, =0{Bir və ya bir neçə Shuttle artırması 1 USB cihazına daxil olurdu}=1{Bir və ya bir neçə Shuttle artırması 1 USB cihazına daxil olur}other{Bir və ya bir neçə Shuttle artırması # USB cihazına daxil olur}}</translation>
+<translation id="2502156653706673977">Shuttle tarixçəsi</translation>
 <translation id="3103660991484857065">Quraşdırıcı arxivi dekompres edə bilmədi. Chromium'u yenidən endirməyiniz xahiş olunur.</translation>
 <translation id="310459126943037700">Tapşırıq(lar) sonlandırılmadı.</translation>
 <translation id="3104828284009500087">Səhifədə istədiyinizi axtarın</translation>
 <translation id="3126784891977756556">Parollarınızı, əlfəcinlərinizi və tarixçənizi cihazlar arasında mükəmməl şəkildə sinxronlaşdırın. Defolt brauzerinizi Chromium-a güncəlləməklə bildiyiniz və sevdiyiniz funksiyalara asanlıqla daxil olun.</translation>
-<translation id="2894555444497054373">Agent Chrome mikrofonunuzu istifadə edir.</translation>
+<translation id="1074920430236894401">Shuttle mikrofonunuzu istifadə edir.</translation>
 <translation id="3130333203120345554">Yeni axtarış</translation>
 <translation id="3137969841538672700">Sürüşdürərək axtarın</translation>
 <translation id="3144188012276422546">Bu tab əlavə resurslardan istifadə edir. Performansı təkmilləşdirmək üçün Chromium-a onu deaktiv etmək imkanı verin.</translation>
-<translation id="3092580151719004572">Ekranı paylaşmaq üçün Sistem Ayarlarında Agent Chrome üzrə ekranın qeydə alınmasına icazə verin</translation>
-<translation id="2314296667497715523">Agent Chrome'u yenidən başladın</translation>
+<translation id="6825554846760229393">Ekranı paylaşmaq üçün Sistem Ayarlarında Shuttle üzrə ekranın qeydə alınmasına icazə verin</translation>
+<translation id="3761350857202901706">Shuttle'u yenidən başladın</translation>
 <translation id="3161522574479303604">Bütün dillər</translation>
 <translation id="3179665906251668410">Linki Gizli Chromium Pəncərəsində açın</translation>
 <translation id="3185330573522821672">Yeni Chromium profilinizi fərdiləşdirin</translation>
 <translation id="3189205223539394158">Tabları dəyişmədən Sİ rejimi ilə söhbətə davam edə bilərsiniz. Başlamaq üçün Chromium-a daxil olun. Bütün cihazlarınızda parollarınızı və daha çoxunu da əldə edəcəksiniz.</translation>
 <translation id="3224847870593914902">Google Hesabını Chromium-dan silmək üçün Ayarlar səhifəsində Chromium-dan çıxın</translation>
 <translation id="3234316605225071811">Sonra Chromium formaları avtomatik doldurmaq üçün yadda saxlanmış məlumatdan istifadə etmək istəyib-istəmədiyinizi soruşa bilər</translation>
-<translation id="5982289753835865194">Agent Chrome öz data direktivini oxuya və yaza bilməz:  <ph name="USER_DATA_DIRECTORY" /></translation>
+<translation id="9058828139997344018">Shuttle öz data direktivini oxuya və yaza bilməz:  <ph name="USER_DATA_DIRECTORY" /></translation>
 <translation id="3263249950597659484">iOS-da Chromium vasitəsilə sevimli Google Sİ alətlərinizdən istənilən vaxt, istənilən yerdə istifadə edin.</translation>
 <translation id="3286538390144397061">İndi yenidən başladın</translation>
-<translation id="3920105041734426863">Google API açarları çatışmır. Agent Chrome'un bəzi funksionallığı deaktiv ediləcək.</translation>
-<translation id="5621884903587730053">Agent Chrome bağlı olduqda arxa fon tətbiqləri işləsin?</translation>
+<translation id="8765302055862543686">Google API açarları çatışmır. Shuttle'un bəzi funksionallığı deaktiv ediləcək.</translation>
+<translation id="4826503398521877963">Shuttle bağlı olduqda arxa fon tətbiqləri işləsin?</translation>
 <translation id="3313189106987092621">Chromium təhlükəli bağlantı ilə sayt yükləməzdən əvvəl xəbərdarlıq edəcək</translation>
 <translation id="3316771292331273802">Chromium-a daxil olsanız, Google Hesabı istisna olmaqla bütün Chromium pəncərələrini bağladıqda əksər saytlardan çıxacaqsınız. Saytların sizi xatırlaması üçün <ph name="SETTINGS_LINK" />.</translation>
 <translation id="3352986031709923790">axtarış sahəsinin yuxarı sağ küncü: <ph name="RIGHT" />% sağ, <ph name="TOP" />% yuxarı</translation>
@@ -234,126 +234,126 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="3474745554856756813"><ph name="ITEMS_COUNT" /> element bu cihazdan silinəcək. Sonradan datanızı bərpa etmək üçün Chromiuma <ph name="USER_EMAIL" /> kimi daxil olun.</translation>
 <translation id="3497319089134299931"><ph name="SHORTCUT" /> Chromium profilləri arasında keçid edə bilər</translation>
 <translation id="3509308970982693815">Bütün Chromium pəncərələrini bağlayın və yenidən cəhd edin.</translation>
-<translation id="4449744684308538611">Pəncərəni paylaşmaq üçün Sistem Ayarlarında Agent Chrome üzrə ekranın qeydə alınmasına icazə verin</translation>
+<translation id="5876629139177327931">Pəncərəni paylaşmaq üçün Sistem Ayarlarında Shuttle üzrə ekranın qeydə alınmasına icazə verin</translation>
 <translation id="3530103706039034513"><ph name="EXISTING_USER" /> artıq giriş edib.  Baxışı ayrı saxlamaq üçün öz profilinizdə Chromium-a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olun.</translation>
 <translation id="3531741627422851418">Mobil cihazlarda Chromium brauzerini endirmək üçün QR kodu</translation>
 <translation id="354621070532799440">Xatırlatma: Google-un ən yaxşı təhlükəsizlik funksiyaları cibinizdədir</translation>
-<translation id="4902762267468919597">Ekranı paylaşmaq üçün Sistem Ayarlarında Agent Chrome üçün ekranın qeydə alınmasına icazə verin.</translation>
-<translation id="4199561934263811659">Təkmil qoruma Agent Chrome-un tanımadığı saytlar üçün JavaScript optimallaşdırmasını söndürür</translation>
+<translation id="2337565425943560376">Ekranı paylaşmaq üçün Sistem Ayarlarında Shuttle üçün ekranın qeydə alınmasına icazə verin.</translation>
+<translation id="4821889377524170187">Təkmil qoruma Shuttle-un tanımadığı saytlar üçün JavaScript optimallaşdırmasını söndürür</translation>
 <translation id="3597003331831379823">Artırılmış imtiyazlar ilə ayarlamanı işə salmaq alınmadı. <ph name="METAINSTALLER_ERROR" /></translation>
 <translation id="3600428265489994557">Chromium-a daxil olun</translation>
 <translation id="3639635944603682591">Bu şəxsin axtarış datası bu cihazdan silinəcək. Datanı bərpa etmək üçün Chromium'a <ph name="USER_EMAIL" /> olaraq daxil olun.</translation>
-<translation id="7335807248512894660">{COUNT,plural, =0{Agent Chrome üçün yeni güncəlləmə əlçatandır. Agent Chrome yenidən işə başladıqdan sonra tətbiq ediləcək.}=1{Agent Chrome üçün yeni güncəlləmə əlçatandır. Agent Chrome yenidən işə başladıqdan sonra tətbiq ediləcək. Anonim pəncərəniz yenidən açılmayacaq.}other{Agent Chrome üçün yeni güncəlləmə əlçatandır. Agent Chrome yenidən işə başladıqdan sonra tətbiq ediləcək. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
+<translation id="1300475218926632111">{COUNT,plural, =0{Shuttle üçün yeni güncəlləmə əlçatandır. Shuttle yenidən işə başladıqdan sonra tətbiq ediləcək.}=1{Shuttle üçün yeni güncəlləmə əlçatandır. Shuttle yenidən işə başladıqdan sonra tətbiq ediləcək. Anonim pəncərəniz yenidən açılmayacaq.}other{Shuttle üçün yeni güncəlləmə əlçatandır. Shuttle yenidən işə başladıqdan sonra tətbiq ediləcək. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
 <translation id="3667616615096815454">Quraşdırmaq olmur. Tətbiq serverə məlum deyil.</translation>
 <translation id="3675854891107786059">Google Hesabındakı bütün Chromium datasını şifrələmək üçün <ph name="BEGIN_LINK" />öz parol ifadələrinizdən<ph name="END_LINK" /> istifadə edin. Google Pay-dən ödəniş metodu və ünvanlar şifrələnməyəcək. Chromium-dan brauzer tarixçəsi sinxronlaşdırılmayacaq.</translation>
-<translation id="3697825383460320042">{COUNT,plural, =0{Administrator bu güncəlləməni tətbiq etmək üçün Agent Chrome'u yenidən başlatmanızı tələb edir}=1{Administrator bu güncəlləməni tətbiq etmək üçün Agent Chrome'u yenidən başlatmanızı tələb edir. Anonim pəncərəniz yenidən açılmayacaq.}other{Administrator bu güncəlləməni tətbiq etmək üçün Agent Chrome'u yenidən başlatmanızı tələb edir. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
-<translation id="7584080815951640016">Linki yeni Agent Chrome tabında açın</translation>
+<translation id="5274497473086430153">{COUNT,plural, =0{Administrator bu güncəlləməni tətbiq etmək üçün Shuttle'u yenidən başlatmanızı tələb edir}=1{Administrator bu güncəlləməni tətbiq etmək üçün Shuttle'u yenidən başlatmanızı tələb edir. Anonim pəncərəniz yenidən açılmayacaq.}other{Administrator bu güncəlləməni tətbiq etmək üçün Shuttle'u yenidən başlatmanızı tələb edir. # Anonim pəncərəniz yenidən açılmayacaq.}}</translation>
+<translation id="6123757042710639920">Linki yeni Shuttle tabında açın</translation>
 <translation id="3728124580182886854">Fərdiləşdirmə və digər məqsədlər üçün Chromium və digər Google xidmətlərini əlaqələndirin</translation>
 <translation id="3729187154190517324">"Tab və daha çoxunu əlavə edin" düyməsi vasitəsilə bir neçə tab, fayl və alət əlavə etməklə axtarışınızı dərinləşdirin.</translation>
 <translation id="3788675262216168505">Chromium profillərini idarə edin</translation>
-<translation id="9153620230534680918">Agent Chrome-un bəzi endirmələri bloklama səbəbini öyrənin</translation>
+<translation id="4583231988142868515">Shuttle-un bəzi endirmələri bloklama səbəbini öyrənin</translation>
 <translation id="379589255253486813">Nəzərdən keçirilməli məqam olsa, Chromium sizə bildirəcək</translation>
-<translation id="4835254782629421085">Tez yüklənməsi üçün Agent Chrome daxil ola biləcəyiniz səhifələri əvvəlcədən yükləyir</translation>
+<translation id="9161544906744429402">Tez yüklənməsi üçün Shuttle daxil ola biləcəyiniz səhifələri əvvəlcədən yükləyir</translation>
 <translation id="3810973564298564668">İdarə edin</translation>
 <translation id="3823384748599722168">Yadda saxlanmış parolları istifadə etmək üçün QR kodunu izləyin, iOS üçün Chromium endirin və Google Hesabına daxil olun</translation>
 <translation id="3846683726093018685">**İcmallaşdır:** Skrinşotdakı kontentin əsas mövzusunu və məqsədini bir cümlə ilə və 30 sözdən az olmaqla təsvir et.
 
           **Suallar təklif et:** Skrinşotu daha yaxşı anlamaq üçün istifadəçinin verə biləcəyi 3-5 düşündürücü sualdan ibarət bəndli siyahı yarat. Bu sualların ən azı biri xüsusi olaraq vizual obyektə, onun dizaynına və ya yerləşməsinə aid olmalıdır.</translation>
-<translation id="5151092236561494204"><ph name="PAGE_TITLE" /> - Agent Chrome</translation>
+<translation id="4250996466392346267"><ph name="PAGE_TITLE" /> - Shuttle</translation>
 <translation id="387514319934708384">Chromium bu sayt üçün yerli şəbəkə icazəsi tələb edir</translation>
 <translation id="3885770153807205175">Dil seçicisi</translation>
-<translation id="8310546736680726676">Agent Chrome'u fərdiləşdirin və nəzarət edin. Buna baxmalısınız - ətraflı məlumat üçün klikləyin.</translation>
+<translation id="3870879982795295801">Shuttle'u fərdiləşdirin və nəzarət edin. Buna baxmalısınız - ətraflı məlumat üçün klikləyin.</translation>
 <translation id="3889543394854987837">Chromium'u açmaq üçün adın üzərinə klikləyin və baxışa başlayın.</translation>
 <translation id="3892148308691398805">Mətni kopyalayın</translation>
 <translation id="390528597099634151"><ph name="EXISTING_USER" /> artıq bu Chromium profilinə daxil olub. Baxışınızı ayrı saxlamaq üçün Chromium sizin üçün öz profilinizi yarada bilər.</translation>
-<translation id="334040592769172771">Bu artırma Chrome Veb Dükanı siyasətini pozur və təhlükəli ola bilər. Onu Agent Chrome-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
+<translation id="2803413259281481072">Bu artırma Chrome Veb Dükanı siyasətini pozur və təhlükəli ola bilər. Onu Shuttle-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
 <translation id="3941890832296813527">Quraşdırma xətası: Quraşdırıcı fayl adı yanlışdır və ya dəstəklənmir.</translation>
 <translation id="3945058413678539331">Chromium parolları kopyalamağa çalışır. Buna icazə vermək üçün Windows parolunuzu yazın.</translation>
 <translation id="3954172517175569325">Google Hesabınızda saxladığınız parollarınız, ödəniş metodlarınız və ünvanlarınız bu cihazdan silinəcək. Onları Chromium-da yenidən istifadə etmək üçün təkrar daxil olun.</translation>
 <translation id="395904275706073188">Qorunan səhifələri oxumaq mümkün deyil. Fərqli səhifə yoxlayın.</translation>
 <translation id="3962647064319009959">Chromium-un təhlükəsizlik təminatı haqqında</translation>
 <translation id="3967822245660637423">Endirmə tamamdır</translation>
-<translation id="6274881217831291926">Ünvan zolağına və ya axtarış xanasına yazdığınız zaman Agent Chrome təkliflər təqdim etmək üçün yazdıqlarınızı təşkilatın axtarış, Sİ və agent alətlərinə göndərir.</translation>
+<translation id="8478344872731892094">Ünvan zolağına və ya axtarış xanasına yazdığınız zaman Shuttle təkliflər təqdim etmək üçün yazdıqlarınızı təşkilatın axtarış, Sİ və agent alətlərinə göndərir.</translation>
 <translation id="3975724895399328945">Sınaq üçün Google Chrome haqqında</translation>
 <translation id="3997429360543082038">ChromiumOS haqqında</translation>
-<translation id="8089050973791989914">Sayta daxil olduqda Agent Chrome IP ünvanını gizlədən məxfilik mərkəzi vasitəsilə URL-in gizli hissəsini <ph name="BEGIN_LINK" />Google güvənli baxışa<ph name="END_LINK" /> göndərir. Sayt şübhəli nəsə edərsə, tam URL-lər və səhifə kontentinin bəzi hissələri də göndərilir.</translation>
+<translation id="1813754478883624120">Sayta daxil olduqda Shuttle IP ünvanını gizlədən məxfilik mərkəzi vasitəsilə URL-in gizli hissəsini <ph name="BEGIN_LINK" />Google güvənli baxışa<ph name="END_LINK" /> göndərir. Sayt şübhəli nəsə edərsə, tam URL-lər və səhifə kontentinin bəzi hissələri də göndərilir.</translation>
 <translation id="4016217212818346953">Parol Meneceri ilə təhlükəsizliyinizi təmin edin</translation>
 <translation id="4019629340646866719">ChromiumOS <ph name="BEGIN_LINK_LINUX_OSS" />Linux tərtibat mühiti<ph name="END_LINK_LINUX_OSS" /> kimi əlavə <ph name="BEGIN_LINK_CROS_OSS" />açıq mənbə proqram təminatı<ph name="END_LINK_CROS_OSS" /> ilə əlçatan edilib.</translation>
 <translation id="4022972681110646219">Ekranı tərcümə edin</translation>
 <translation id="4023601594785368013">Orijinal dil: <ph name="LANGUAGE" /></translation>
 <translation id="4023845192681161785">Chromium-da istənilən tətbiqdən linkləri açın. Asan giriş üçün o, işləmə panelinə bərkidilir.</translation>
-<translation id="2466379549068383575"><ph name="BEGIN_LINK" />Cari ayarları<ph name="END_LINK" /> bildirməklə Chormium'u təkmilləşdirməyə kömək edin</translation>
+<translation id="3334942702828280015"><ph name="BEGIN_LINK" />Cari ayarları<ph name="END_LINK" /> bildirməklə Chormium'u təkmilləşdirməyə kömək edin</translation>
 <translation id="4050175100176540509">Mühüm təhlükəsizlik təkmilləşdirilmələri və yeni funksiyalar son versiyada əlçatandır.</translation>
 <translation id="4055805654398742145">Parol Meneceri</translation>
-<translation id="409373329602981607">{COUNT,plural, =1{Agent Chrome 1 dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır. Baxış datası silinir. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.}other{Agent Chrome # dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır. Baxış datası silinir. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.}}</translation>
+<translation id="4210170830543121132">{COUNT,plural, =1{Shuttle 1 dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır. Baxış datası silinir. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.}other{Shuttle # dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır. Baxış datası silinir. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.}}</translation>
 <translation id="4118474109249235144">Chromium Anonim</translation>
 <translation id="4122186850977583290">Chromium haqqında səhifəsinə keçin</translation>
 <translation id="4135244987012252068">Brauzerə yeni görünüş tətbiq etmək üçün Chromium-u fərdiləşdirin</translation>
 <translation id="4147856324248078748">Chromium-u fərdiləşdirin</translation>
 <translation id="4148957013307229264">Quraşdırılır...</translation>
-<translation id="2058774528396152893"><ph name="PAGE_TITLE" /> - Şəbəkəyə Giriş - Agent Chrome</translation>
-<translation id="7685529984676330289">Agent Chrome üçün möhtəşəm tətbiqlər, oyunlar, artırmalar və temalar kəşf edin.</translation>
+<translation id="6643591336183767153"><ph name="PAGE_TITLE" /> - Şəbəkəyə Giriş - Shuttle</translation>
+<translation id="8999328492520314624">Shuttle üçün möhtəşəm tətbiqlər, oyunlar, artırmalar və temalar kəşf edin.</translation>
 <translation id="4217080900579554343">Bu artırmanı və digərlərini bütün kompüterlərinizdə əldə etmək üçün Chromium-a daxil olun</translation>
 <translation id="4217972271355023382">Onlayn təhlükəsizliyinizi valideyninizin seçimləri ilə qorumaq üçün artıq <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olduğunuz Chromium profilinə keçin</translation>
 <translation id="4222932583846282852">Ləğv edilir...</translation>
 <translation id="4224210481850767180">Quraşdırma ləğv edildi.</translation>
 <translation id="4230135487732243613">Chromium datanız bu hesab ilə birləşdirilsin?</translation>
-<translation id="274377438883177878">Standart qoruma ilə müqayisədə saytlardan daha çox data təhlil edərək təhlükəli, hətta Google-un bilmədiyi saytlar haqqında xəbərdar edir. Agent Chrome xəbərdarlıqlarını ötürə bilərsiniz.</translation>
+<translation id="2078444352649860973">Standart qoruma ilə müqayisədə saytlardan daha çox data təhlil edərək təhlükəli, hətta Google-un bilmədiyi saytlar haqqında xəbərdar edir. Shuttle xəbərdarlıqlarını ötürə bilərsiniz.</translation>
 <translation id="4269093074552541569">Chromium-dan çıxın</translation>
-<translation id="8361584154950824008">Agent Chrome ilə yardım alın</translation>
+<translation id="5558993553168424235">Shuttle ilə yardım alın</translation>
 <translation id="4281844954008187215">Xidmət Şərtləri</translation>
 <translation id="4285930937574705105">Naməlum xəta üzündən quraşdırmaq alınmadı. Əgər Chromium hazırda işləyirsə, lütfən, qapadın və yenidən cəhd edin.</translation>
 <translation id="4298125729853015961">Parolları Chromium-dan eksport edin</translation>
 <translation id="4304713468139749426">Parol Meneceri</translation>
 <translation id="4334241893986177674">Bu skrinşotu axtarın</translation>
 <translation id="4368547723231502008">Chromium-un ölçüsü minimuma endirilmiş olsa belə, istənilən yerdən axtarış edin və suallar verin</translation>
-<translation id="1172096072757635810">Windows işə düşdükdə Agent Chrome-u işə salın</translation>
+<translation id="5810569516587906396">Windows işə düşdükdə Shuttle-u işə salın</translation>
 <translation id="4400772909124543403">Güncəllənmə əlçatan deyil</translation>
-<translation id="8069611125329654712">Agent Chrome'dan istənilən halda çıxılsın?</translation>
+<translation id="3931397122598189404">Shuttle'dan istənilən halda çıxılsın?</translation>
 <translation id="4413205837991854510">Şəkil Axtarışı qısayolunu həmişə göstərin</translation>
-<translation id="3727041326435831325">Agent Chrome'a Arxa Fonda İşləmək İcazəsi Verin</translation>
-<translation id="1713490836766202786">{NUM_EXTENSIONS,plural, =1{Agent Chrome onu silməyinizi tövsiyə edir. <ph name="BEGIN_LINK" />Dəstəklənən artırmalar haqqında ətraflı məlumat əldə edin<ph name="END_LINK" />}other{Agent Chrome onları silməyinizi tövsiyə edir. <ph name="BEGIN_LINK" />Dəstəklənən artırmalar haqqında ətraflı məlumat əldə edin<ph name="END_LINK" />}}</translation>
-<translation id="7567010943765939594">Fərdiləşdirin və Agent Chrome'u kontrol edin</translation>
+<translation id="8644661686228434842">Shuttle'a Arxa Fonda İşləmək İcazəsi Verin</translation>
+<translation id="603827111501511568">{NUM_EXTENSIONS,plural, =1{Shuttle onu silməyinizi tövsiyə edir. <ph name="BEGIN_LINK" />Dəstəklənən artırmalar haqqında ətraflı məlumat əldə edin<ph name="END_LINK" />}other{Shuttle onları silməyinizi tövsiyə edir. <ph name="BEGIN_LINK" />Dəstəklənən artırmalar haqqında ətraflı məlumat əldə edin<ph name="END_LINK" />}}</translation>
+<translation id="8695231474189911275">Fərdiləşdirin və Shuttle'u kontrol edin</translation>
 <translation id="4427306783828095590">Təkmil qoruma ilə fişinq və zərərli proqramların bloklanması üçün daha çox iş görülür</translation>
 <translation id="4434353761996769206">Quraşdırıcı xətası: <ph name="INSTALLER_ERROR" /></translation>
-<translation id="7498286168885369820"><ph name="MANAGER" /> Agent Chrome-u idarə edir</translation>
+<translation id="3897345295068202634"><ph name="MANAGER" /> Shuttle-u idarə edir</translation>
 <translation id="444069871276811466">Chromium profili əlavə edin</translation>
 <translation id="4447409407328223819">Sınaq üçün Chrome haqqında</translation>
 <translation id="4470974262661801543">Google Hesabında Chromium datasını istifadə etmək və saxlamaq üçün parol ifadəsi daxil edin</translation>
 <translation id="4493028449971051158">Başlatma xətası: quraşdırıcını administrator kimi işə salın.</translation>
 <translation id="4501471624619070934">Bu ölkədə giriş məhdudlaşdırıldığı üçün quraşdırma alınmadı.</translation>
-<translation id="4615766574627629942">Bu artırma datanın toplanma və istifadə qaydası kimi məxfilik təcrübələrini dərc etməyib. Agent Chrome onu silməyinizi tövsiyə edir.</translation>
+<translation id="7538943987967358068">Bu artırma datanın toplanma və istifadə qaydası kimi məxfilik təcrübələrini dərc etməyib. Shuttle onu silməyinizi tövsiyə edir.</translation>
 <translation id="452711251841752011">Chromium'a xoş gəlmisiniz; yeni brauzer pəncərəsi açılıb</translation>
 <translation id="4531137820806573936">Chromium ətrafın xəritəsini çəkmək və əllərinizi izləmək üçün icazə tələb edir</translation>
 <translation id="4536805923587466102">Artıq başqa Chromium profilində <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olmusunuz</translation>
-<translation id="5945053225725114995">Agent Chrome səhifələri əvvəlcədən yükləyərək baxış və axtarışı sürətləndirir. <ph name="BEGIN_LINK" />Səhifələri əvvəlcədən yükləmək haqqında ətraflı məlumat<ph name="END_LINK" /></translation>
+<translation id="7291454099139632344">Shuttle səhifələri əvvəlcədən yükləyərək baxış və axtarışı sürətləndirir. <ph name="BEGIN_LINK" />Səhifələri əvvəlcədən yükləmək haqqında ətraflı məlumat<ph name="END_LINK" /></translation>
 <translation id="4549180975214802957">Zərərli olduğunu düşündüyünüz saytı şikayət etdiyiniz zaman hər kəs üçün onlayn təhlükəsizliyi artırın.</translation>
-<translation id="2899198307620821227">Güvənli Baxış deaktiv olduğu və bu fayl doğrulanmadığı üçün Agent Chrome endirməni blokladı</translation>
+<translation id="4229052424516163100">Güvənli Baxış deaktiv olduğu və bu fayl doğrulanmadığı üçün Shuttle endirməni blokladı</translation>
 <translation id="4583692638088316420">Telefonda Chromium ilə Google Linzanı sınayın</translation>
 <translation id="4594305310729380060">Bu cihazda Parol Menecerinə</translation>
-<translation id="6944119370969619446">Agent Chrome Tətbiqləri</translation>
+<translation id="4559123577107659130">Shuttle Tətbiqləri</translation>
 <translation id="4598116752460667024">Siyahıdan istənilən prosesi axtarın.</translation>
 <translation id="4613863813562375431">ChromiumOS versiyası</translation>
-<translation id="6401103202303237090">Güncəllənmək üzrədir. Güncəlləşməni tamamlamaq üçün Agent Chrome'u yenidən işə salın.</translation>
-<translation id="4807663225386362301">Agent Chrome-un V8 mühərriki ilə saytları sürətləndirir, lakin Agent Chrome-un hücumlara qarşı müqavimətini bir qədər azaldır</translation>
+<translation id="8540523969518172575">Güncəllənmək üzrədir. Güncəlləşməni tamamlamaq üçün Shuttle'u yenidən işə salın.</translation>
+<translation id="2509032609305193511">Shuttle-un V8 mühərriki ilə saytları sürətləndirir, lakin Shuttle-un hücumlara qarşı müqavimətini bir qədər azaldır</translation>
 <translation id="4626321472657185181">Chromium ilə Axtarışı açın</translation>
-<translation id="521912697020157864">Xəbərdarlıq: Agent Chrome artırmaların brauzer tarixçənizi yazmasının qarşısını ala bilməz. Bu artırmanı Anonim rejimdə deaktiv etmək üçün bu seçimi ləğv edin.</translation>
+<translation id="7601899887920501075">Xəbərdarlıq: Shuttle artırmaların brauzer tarixçənizi yazmasının qarşısını ala bilməz. Bu artırmanı Anonim rejimdə deaktiv etmək üçün bu seçimi ləğv edin.</translation>
 <translation id="4673151026126227699">Chromium istifadə hesabatlarını da paylaşırsınızsa, bu hesabatlara ziyarət etdiyiniz keçidlər daxil olacaq</translation>
 <translation id="4673710618874938871"><ph name="USER_NAME" /> olaraq daxil olmusunuz, üzvlük. Hesab menyusunu açın</translation>
-<translation id="5833534934470627293">Profil başqa kompüterdə başqa Agent Chrome prosesi tərəfindən (<ph name="PROCESS_ID" />)istifadə olunur (<ph name="HOST_NAME" />). Agent Chrome profili xəta almaması üçün qapadıb. Əgər bu profilin başqa proseslər tərəfindən istifadə olunmadığına əminsinizsə, profili blokdan çıxarın və Agent Chrome'u yenidən başladın.</translation>
+<translation id="1081748947768053336">Profil başqa kompüterdə başqa Shuttle prosesi tərəfindən (<ph name="PROCESS_ID" />)istifadə olunur (<ph name="HOST_NAME" />). Shuttle profili xəta almaması üçün qapadıb. Əgər bu profilin başqa proseslər tərəfindən istifadə olunmadığına əminsinizsə, profili blokdan çıxarın və Shuttle'u yenidən başladın.</translation>
 <translation id="4680828127924988555">Quraşdırmanı ləğv edin</translation>
 <translation id="469259825538636168">Müəyyən Chromium datası Google Hesabında yadda saxlanılmayıb. Çıxmazdan əvvəl bir neçə dəqiqə gözləyin. İndi çıxsanız, bu data silinəcək.</translation>
 <translation id="4708193446201257833">Daxil olduğunuz müddətdə Chromium-da Google Hesabınızdan əldə edilən parolları və s. istifadə edə bilərsiniz. <ph name="SHORTCUT" /> Google xidmətləri ayarlarınızı dəyişə bilər.</translation>
 <translation id="4708774505295300557">Kimsə bu kompüterdə <ph name="ACCOUNT_EMAIL_LAST" /> kimi Chromium'a daxil olub. Məlumatınızı ayrı saxlamaq üçün yeni Chromium istifadəçisi yaradın.</translation>
 <translation id="4724676981607797757">Dəstəklənməyən protokol xətası səbəbindən quraşdırma alınmadı.</translation>
-<translation id="2783410850122241193">Agent Chrome'dan istənilən halda çıxılsın?</translation>
+<translation id="333286104758608669">Shuttle'dan istənilən halda çıxılsın?</translation>
 <translation id="4748217263233248895">Chromium üçün xüsusi güvənlik güncəllənməsi indicə tətbiq edildi. Yenidən başladaraq açıq qalmış tablarınızı bərpa edə bilərsiniz.</translation>
 <translation id="4771701986670315895">Bu yaxınlarda daxil olmamısınız. Chromium sildi: <ph name="PERMISSION_1" />, <ph name="PERMISSION_2" /> və daha <ph name="COUNT" /> icazə.</translation>
 <translation id="4786083865378785874">Chromium-da Gemini açıqdırsa, yeni tablar yaradılarkən yan panel açıq qalır</translation>
 <translation id="479167709087336770">Bu, Google axtarışda istifadə edilən eyni orfoqrafiya yoxlayandan istifadə edir. Brauzerdə yazdığınız mətn Google'a göndərilir. Bunu istənilən vaxt ayarlardan dəyişə bilərsiniz.</translation>
 <translation id="4814736265800133385">Hesab olmadan Chromium istifadə edin</translation>
 <translation id="4888717733111232871">mDNS trafikinə imkan vermək üçün Chromium üçün daxil olan qayda.</translation>
-<translation id="5600814355607573136">&amp;Agent Chrome'u Güncəlləmək üçün yenidən başladın</translation>
+<translation id="3854801763817831716">&amp;Shuttle'u Güncəlləmək üçün yenidən başladın</translation>
 <translation id="4918086044614829423">Qəbul edin</translation>
 <translation id="4918844574251943176">Şəkil kopyalandı</translation>
 <translation id="4943838377383847465">Chromium arxa fon rejimindədir.</translation>
@@ -374,7 +374,7 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="5234764350956374838">Kənarlaşdırın</translation>
 <translation id="5249261924633168472">Keçidi anonim Chromium pəncərəsində açın</translation>
 <translation id="5276305953263010518">İstənilən vaxt, istənilən yerdə parolları yadda saxlamaq üçün Chromium tətbiqini əldə edin</translation>
-<translation id="1601187459465935178">Dəyişiklikləri tətbiq etmək üçün Agent Chrome'u yenidən başladın</translation>
+<translation id="6904011543478254794">Dəyişiklikləri tətbiq etmək üçün Shuttle'u yenidən başladın</translation>
 <translation id="5286907366254680517">Aşkarlandı</translation>
 <translation id="5289287148052354622">Chromium tətbiqini əldə edin</translation>
 <translation id="5294316920224716406">Anonim rejimdə nəzər saldıqda Chromium təhlükəli bağlantı ilə sayt yükləməzdən əvvəl xəbərdarlıq edəcək</translation>
@@ -390,23 +390,23 @@ Bəzi funksiyalar əlçatmaz ola bilər ki, nəticədə tərcihlərə edilən d�
 <translation id="5368118228313795342">Əlavə kod: <ph name="EXTRA_CODE" />.</translation>
 <translation id="5377622451696208284">Fərdiləşdirmə üçün Chromium-u Veb və Tətbiq fəaliyyətinə daxil edin</translation>
 <translation id="5382964351116519680">Chromium ilə axtarışı açın</translation>
-<translation id="2524054769026663683">Agent Chrome-un bəzi faylları bloklama səbəbini öyrənin</translation>
-<translation id="8615009965479156445">Agent Chrome güncəllənir (<ph name="PROGRESS_PERCENT" />)</translation>
+<translation id="4877717772512674872">Shuttle-un bəzi faylları bloklama səbəbini öyrənin</translation>
+<translation id="8341327126333983765">Shuttle güncəllənir (<ph name="PROGRESS_PERCENT" />)</translation>
 <translation id="538767207339317086">Chromium girişinə icazə verin</translation>
-<translation id="6256236118124872626">Agent Chrome'dan silin</translation>
-<translation id="5774731921051444461">Performansı azaldır, lakin Agent Chrome-u hücumlara qarşı davamlı edir</translation>
+<translation id="2064155379595075287">Shuttle'dan silin</translation>
+<translation id="1764424071909520660">Performansı azaldır, lakin Shuttle-u hücumlara qarşı davamlı edir</translation>
 <translation id="5427571867875391349">Chromium'u defolt brauzer təyin edin</translation>
-<translation id="8709870882148322247"><ph name="PAGE_TITLE" /> - Agent Chrome Beta</translation>
+<translation id="3552564955884420948"><ph name="PAGE_TITLE" /> - Shuttle Beta</translation>
 <translation id="5460618461609401056">{NUM_TABS,plural, =1{Chromium brauzeri yavaşladan tabı durdurmağı tövsiyə edir}other{Chromium brauzeri yavaşladan tabları durdurmağı tövsiyə edir}}</translation>
-<translation id="3217425685577630218">Agent Chrome düzgün işləməyə bilər, çünki daha Linux sistemi üzərində dəstəklənmir</translation>
-<translation id="1045655099853558439">Agent Chrome bu endirməni blokladı. Çünki fayl şəxsi və sosial şəbəkə hesablarını zədələyə bilər</translation>
+<translation id="3837394572112225231">Shuttle düzgün işləməyə bilər, çünki daha Linux sistemi üzərində dəstəklənmir</translation>
+<translation id="2864501208955185201">Shuttle bu endirməni blokladı. Çünki fayl şəxsi və sosial şəbəkə hesablarını zədələyə bilər</translation>
 <translation id="549669000822060376">Chromium'um ən son sistem güncəlləşmələrini quraşdırmasını gözləyin.</translation>
 <translation id="5496810170689441661">Chromium parolları redaktə etməyə çalışır. Buna icazə vermək üçün Windows parolunuzu yazın.</translation>
 <translation id="549975168243349205">Chromium vasitəsilə istənilən vaxt, istənilən yerdə Google Disk və YouTube kimi sevimli tətbiqlərinizlə problemsiz işləyin.</translation>
 <translation id="5524890928877629608">axtarış sahəsinin yuxarı sol küncü: <ph name="LEFT" />% sol, <ph name="TOP" />% yuxarı</translation>
-<translation id="565863787292824328">PDF-ləri Agent Chrome'da açın</translation>
+<translation id="3510916764590863589">PDF-ləri Shuttle'da açın</translation>
 <translation id="5536164441519929134">Bu tab<ph name="LINE_BREAK" />haqqında soruşun</translation>
-<translation id="8869089999448782168">Təhlükəsizlik üçün ilk dəfə daxil olduqda Agent Chrome JavaScript optimallaşdırmasını deaktiv edir.
+<translation id="8317102978607899723">Təhlükəsizlik üçün ilk dəfə daxil olduqda Shuttle JavaScript optimallaşdırmasını deaktiv edir.
 
 Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməyə cəhd edin.</translation>
 <translation id="5575874067957905201">Mac menyu panelində Chromium-da Gemini göstərilsin və klaviatura qısayolunu aktivləşdirin</translation>
@@ -416,24 +416,24 @@ Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməy
 <translation id="5596627076506792578">Əlavə seçimlər</translation>
 <translation id="5605834417512968703">Şəkil Axtarışı ilə axtarış etmək üçün istədiyinizi seçin və ya Şəkil Axtarışından çıxmaq üçün escape düyməsini basın</translation>
 <translation id="5618818588972826921">Şəkil Axtarışı ilə axtarmaq üçün istənilən mətn və ya şəkli seçin və ya Şəkil Axtarışından çıxmaq üçün escape düyməsini basın</translation>
-<translation id="4814380868372526025">{0,plural, =0{Agent Chrome güncəlləməsi əlçatandır}=1{Agent Chrome güncəlləməsi əlçatandır}other{Agent Chrome güncəlləməsi # gün ərzində əlçatan olub}}</translation>
-<translation id="188722644954983559">Agent Chrome-u bağladıqda sayt datasını cihazdan silin</translation>
+<translation id="8908504550344650717">{0,plural, =0{Shuttle güncəlləməsi əlçatandır}=1{Shuttle güncəlləməsi əlçatandır}other{Shuttle güncəlləməsi # gün ərzində əlçatan olub}}</translation>
+<translation id="1107298128800350481">Shuttle-u bağladıqda sayt datasını cihazdan silin</translation>
 <translation id="5653831366781983928">Chromium'u indi başladın</translation>
 <translation id="5690427481109656848">Google MMC</translation>
-<translation id="1525044488102751845">Agent Chrome'u bu dildə görüntüləyin</translation>
+<translation id="3675878834104730294">Shuttle'u bu dildə görüntüləyin</translation>
 <translation id="569897634095159764">İnternetə qoşulmaq olmur. Proksi serveri identifikasiya tələb edir.</translation>
-<translation id="7750959567789509941">Agent Chrome deaktiv tabların yaddaşını boşaldır. Bu, aktiv tablara və digər tətbiqlərə daha çox kompüter resursu verir və Agent Chrome-u sürətləndirir. Qayıtdığınız zaman deaktiv tablar avtomatik olaraq yenidən aktivləşir. <ph name="BEGIN_LINK" />Yaddaşa Qənaət haqqında ətraflı məlumat<ph name="END_LINK" /></translation>
+<translation id="7168202961287328687">Shuttle deaktiv tabların yaddaşını boşaldır. Bu, aktiv tablara və digər tətbiqlərə daha çox kompüter resursu verir və Shuttle-u sürətləndirir. Qayıtdığınız zaman deaktiv tablar avtomatik olaraq yenidən aktivləşir. <ph name="BEGIN_LINK" />Yaddaşa Qənaət haqqında ətraflı məlumat<ph name="END_LINK" /></translation>
 <translation id="5775198138441669627">Parol ifadəsini unutsanız, yaxud bu ayarı dəyişmək istəsəniz, hesabdakı Chromium datasını <ph name="SETTINGS_LINK" /></translation>
 <translation id="5800158606660203929">Chromium-u fərdiləşdirin və idarə edin. Chromium-u defolt kimi ayarlayın.</translation>
 <translation id="5802618941556161431">Chromium-u defolt brauzer kimi təyin etməklə parollarınızı, əlfəcinlərinizi və tarixçənizi cihazlar arasında mükəmməl şəkildə sinxronlaşdırın.</translation>
 <translation id="5809516625706423866">İnternetə qoşulmaq olmur. HTTP 401 üçün icazə verilməyib. Proksi konfiqurasiyasını yoxlayın.</translation>
-<translation id="2755468387099310604">Agent Chrome-un V8 mühərriki ilə saytları sürətləndirir, lakin Agent Chrome-un hücumlara qarşı müqavimətini bir qədər azaldır. Bu ayar deaktivdir.</translation>
+<translation id="4687670724165839540">Shuttle-un V8 mühərriki ilə saytları sürətləndirir, lakin Shuttle-un hücumlara qarşı müqavimətini bir qədər azaldır. Bu ayar deaktivdir.</translation>
 <translation id="5821520528363214608">Google Hesabınızda Chromium datasından istifadə etmək və datanı yadda saxlamaq üçün Chromium-u güncəlləyin</translation>
 <translation id="5824893331272123205">Bu paneli yükləmək mümkün olmadı, yenidən cəhd edin</translation>
-<translation id="8972968824660717915">Agent Chrome'a xoş gəlmisiniz</translation>
-<translation id="8898055105597601099">Agent Chrome-un ən güclü qorumalarını təmin etmək üçün əlavə funksiyaları aktiv edir</translation>
+<translation id="137189936820997722">Shuttle'a xoş gəlmisiniz</translation>
+<translation id="6407035307321626411">Shuttle-un ən güclü qorumalarını təmin etmək üçün əlavə funksiyaları aktiv edir</translation>
 <translation id="5871205389137001634">Şəkil axtarışından çıxmaq üçün klikləyin</translation>
-<translation id="9158119422063615519">Agent Chrome bu elementlərdə zərərli proqram olduğunu aşkar edib:</translation>
+<translation id="3128663943810469943">Shuttle bu elementlərdə zərərli proqram olduğunu aşkar edib:</translation>
 <translation id="5889361821821684993">Chromium brauzerin ən təhlükəsiz ayarlara malik olub-olmadığını müntəzəm yoxlayır. Nəzərdən keçirilməli məqam olsa, sizə bildirəcəyik.</translation>
 <translation id="5895138241574237353">Yenidən başladın</translation>
 <translation id="5903106910045431592"><ph name="PAGE_TITLE" /> - Şəbəkəyə Giriş</translation>
@@ -444,7 +444,7 @@ Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməy
 <translation id="5953657885167112863">Chromium-u özünüzə uyğunlaşdırın</translation>
 <translation id="5960071705175224773">Ayarlarınız naməlum tətbiq tərəfindən dəyişdirildi</translation>
 <translation id="5977420883993828287">Bərkidildi! Alətlər panelində Kontekstual Tapşırıqlardan yenidən istifadə edin</translation>
-<translation id="1956376169666014494">{COUNT,plural, =1{Agent Chrome 1 dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır.}other{Agent Chrome # dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır.}}</translation>
+<translation id="5340341384223569715">{COUNT,plural, =1{Shuttle 1 dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır.}other{Shuttle # dəqiqə istifadə edilmədikdə təşkilat onu avtomatik bağlayır.}}</translation>
 <translation id="5987687638152509985">Sinxronizasiyanı başlatmaq üçün Chromium'u güncəlləyin</translation>
 <translation id="5990360079535151574">Alətlər panelindəki "Kontekstual tapşırıqlar" düyməsi ilə axtarış edərkən sual vermək üçün Kontekstual tapşırıqları yenidən aça bilərsiniz</translation>
 <translation id="6003112304606738118">Endirilir... <ph name="HOURS" /> saat qalıb</translation>
@@ -454,25 +454,25 @@ Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməy
 <translation id="6058380562449900225">Datanı qorumaq üçün Chromium-un son vaxtlar daxil olmadığınız saytlardan icazələri silməsinə icazə verin. Bildirişlər dayanmır.</translation>
 <translation id="6063093106622310249">Chromium'də açın</translation>
 <translation id="6069027071882229820">Şəkil kimi kopiyalayın</translation>
-<translation id="8654038583091834120"><ph name="EXTENSION_NAME" /> Agent Chrome'a əlavə edildi</translation>
-<translation id="8940723094351907049">Agent Chrome'u fərdiləşdirin və idarə edin. Güncəlləmə əlçatandır.</translation>
-<translation id="334648248941185659">Yanılı • Agent Chrome bu artırmanın mənbəyini doğrulaya bilmir</translation>
+<translation id="3642130578728163190"><ph name="EXTENSION_NAME" /> Shuttle'a əlavə edildi</translation>
+<translation id="2484600148019262399">Shuttle'u fərdiləşdirin və idarə edin. Güncəlləmə əlçatandır.</translation>
+<translation id="5098189861342100628">Yanılı • Shuttle bu artırmanın mənbəyini doğrulaya bilmir</translation>
 <translation id="611228897408671387">Chromium-dakı hesabınız</translation>
-<translation id="1961808482688487456">Agent Chrome alətlər panelində artırmanın giriş sorğularını göstərməsinə icazə verin</translation>
-<translation id="6880945371922378763"><ph name="FILE_NAME" /> təklükəli olduğu üçün Agent Chrome onu blok etdi.</translation>
-<translation id="829957199361894387">Agent Chrome tezliklə bağlanacaq və datanı siləcək</translation>
+<translation id="8603072311189086377">Shuttle alətlər panelində artırmanın giriş sorğularını göstərməsinə icazə verin</translation>
+<translation id="6801818398062031196"><ph name="FILE_NAME" /> təklükəli olduğu üçün Shuttle onu blok etdi.</translation>
+<translation id="4712579756381990057">Shuttle tezliklə bağlanacaq və datanı siləcək</translation>
 <translation id="6145820983052037069">Burada Chromium profilləri arasında keçid edə bilərsiniz</translation>
-<translation id="8333733115616087710">Kukilərə icazə versəniz, əvvəlcədən yükləmə zamanı Agent Chrome onlardan istifadə edə bilər</translation>
+<translation id="4257025918694286900">Kukilərə icazə versəniz, əvvəlcədən yükləmə zamanı Shuttle onlardan istifadə edə bilər</translation>
 <translation id="6165508094623778733">Ətraflı öyrənin</translation>
 <translation id="6173308241973263798">Hesabdakı Chromium datasını silin</translation>
-<translation id="8439223334931595792">Bu fayl təhlükəli ola bilər<ph name="LINE_BREAK" />Parolu təqdim etsəniz, Agent Chrome bu endirməni yoxlaya bilər. Fayl haqqında məlumat Google güvənli baxışa göndərilir, lakin fayl kontenti və parol cihazda qalır.</translation>
+<translation id="8755328651499078855">Bu fayl təhlükəli ola bilər<ph name="LINE_BREAK" />Parolu təqdim etsəniz, Shuttle bu endirməni yoxlaya bilər. Fayl haqqında məlumat Google güvənli baxışa göndərilir, lakin fayl kontenti və parol cihazda qalır.</translation>
 <translation id="6182736845697986886">Yeniləmə serverində daxili xəta səbəbindən quraşdırma alınmadı.</translation>
 <translation id="6183079672144801177"><ph name="TARGET_DEVICE_NAME" /> cihazınızda Chromium'a daxil olduğunuza əmin olun və sonra yenidən göndərin.</translation>
 <translation id="6212496753309875659">Bu kompüterdə Chromium'um daha son versiyası var. Proqram təminatı işləmirsə, Chroimum'u sistemdən silin və yenidən cəhd edin.</translation>
-<translation id="6375381612105819561">{0,plural, =0{Agent Chrome indi yenidən başlayacaq}=1{Agent Chrome 1 saniyəyə yenidən başlayacaq}other{Agent Chrome # saniyəyə yenidən başlayacaq}}</translation>
+<translation id="1515663301924664480">{0,plural, =0{Shuttle indi yenidən başlayacaq}=1{Shuttle 1 saniyəyə yenidən başlayacaq}other{Shuttle # saniyəyə yenidən başlayacaq}}</translation>
 <translation id="6241367896540709610">Chromium faylları endirmək üçün yaddaşa giriş tələb edir</translation>
 <translation id="6245734527075554892">URL'ləri Chromium'da saxlanılan təhlükəli saytların siyahısı ilə yoxlayır</translation>
-<translation id="5070229316792137581">Agent Chrome'u defolt brauzer edin</translation>
+<translation id="4713635402704891510">Shuttle'u defolt brauzer edin</translation>
 <translation id="6248988683584659830">Axtarış ayarları</translation>
 <translation id="6261803579884938625">Telefonunuzdakı Chromium tətbiqi ilə istənilən vaxt, istənilən yerdə Google-un ən yaxşı güvənlik funksiyalarını əldə edin</translation>
 <translation id="6268381023930128611">Chromium'dan çıxılsın?</translation>
@@ -480,13 +480,13 @@ Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməy
 <translation id="6281746429495226318">Chromium profilinizi fərdiləşdirin</translation>
 <translation id="6290827346642914212">Chromium profilinizə ad verin</translation>
 <translation id="6294831894865512704">Artırma Chromium-a daxil olmağınızı istəyir</translation>
-<translation id="1356965940380155951"><ph name="FILE_NAME" /> təklükəli ola bilər, bu səbəbdən Agent Chrome onu blok etdi.</translation>
-<translation id="7321042153033393145">Agent Chrome kameranızı istifadə edir.</translation>
+<translation id="3997120491472930522"><ph name="FILE_NAME" /> təklükəli ola bilər, bu səbəbdən Shuttle onu blok etdi.</translation>
+<translation id="5186109991568427789">Shuttle kameranızı istifadə edir.</translation>
 <translation id="6333502561965082103">Chromium'da digər əməliyyat davam edir. Sonra yenidən cəhd edin.</translation>
 <translation id="6334986366598267305">Chromium'u Google Hesabınız ilə ə paylaşılmış kompüterlərdə istifadə etmək indi daha asandır.</translation>
 <translation id="6347002662287820329">Chromium-u defolt brauzeriniz kimi ayarlamaqla bildiyiniz, sevdiyiniz və etibar etdiyiniz funksiyalara asanlıqla daxil olun.</translation>
-<translation id="6663103136563143835">Agent Chrome qısayolu</translation>
-<translation id="8324836837188781073">Bu fayl adətən endirilmədiyi və təhlükəli ola biləcəyi üçün Agent Chrome endirməni blokladı</translation>
+<translation id="7093968037936297432">Shuttle qısayolu</translation>
+<translation id="7334991367988739135">Bu fayl adətən endirilmədiyi və təhlükəli ola biləcəyi üçün Shuttle endirməni blokladı</translation>
 <translation id="6373523479360886564">Chromium'u silmək istəyirsiniz?</translation>
 <translation id="6375219077595103062">Parol meneceri üçün qısayol əlavə edin</translation>
 <translation id="6388799252195623474">bununla bağlı mənə kömək edin</translation>
@@ -494,31 +494,31 @@ Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməy
 <translation id="6400112897226594999">Kompüter ekranında Chromium loqosu.</translation>
 <translation id="6403826409255603130">Chromium veb səhifələri və tətbiqləri ildırım sürəti ilə işlədən veb brauzerdir. Chromium sürətlidir, stabildir və istifadəyə rahatdır. Chromium ilə internetdən fırıldaqlardan və viruslardan uzaq şəkildə istifadə edin.</translation>
 <translation id="6414624068245092115">Google Hesabında Chromium datasını hər zaman istifadə edə və yadda saxlaya biləcəyinizə əmin olmaq üçün kimliyinizi doğrulayın</translation>
-<translation id="5698692159722140301">Agent Chrome daha sürətli işləyir və JavaScript istifadə edən funksiyalar nəzərdə tutulan kimi işləməlidir (tövsiyə olunur)</translation>
+<translation id="3077581991710361221">Shuttle daha sürətli işləyir və JavaScript istifadə edən funksiyalar nəzərdə tutulan kimi işləməlidir (tövsiyə olunur)</translation>
 <translation id="6436260184216827876">Şəkil Axtarışı əlçatan deyil. Sonra cəhd edin.</translation>
 <translation id="6442900851116057561">ChromiumOS'i yenidən başladın</translation>
-<translation id="1150325299163558144">Tez yüklənməsi üçün Agent Chrome daxil ola biləcəyiniz digər səhifələri əvvəlcədən yükləyir</translation>
+<translation id="6836481692352030024">Tez yüklənməsi üçün Shuttle daxil ola biləcəyiniz digər səhifələri əvvəlcədən yükləyir</translation>
 <translation id="6450948450282634257">İstənilən saytda qiymətləri izləmək və qiymət endikdə xəbərdarlıq əldə etmək üçün telefonunuza Chromium endirin</translation>
-<translation id="2302438614865168038">Sönülü • Agent Chrome bu artırmanın mənbəyini doğrulaya bilməz</translation>
+<translation id="2653849928907685021">Sönülü • Shuttle bu artırmanın mənbəyini doğrulaya bilməz</translation>
 <translation id="6455857529632101747">Chromium profillərinə xoş gəlmisiniz</translation>
 <translation id="6460614424172581323">Növbəti dəfə <ph name="DEVICE_TYPE" /> cihazında Chromium-u açdığınız zaman tab qruplarından istifadə etmək üçün göstəriş görəcəksiniz.</translation>
 <translation id="6466344609055215035">Hesabı Chromium-dan silin</translation>
-<translation id="5526497172610025231">Həmçinin, Agent Chrome açılanda hansı səhifənin göstərildiyini idarə edir.</translation>
+<translation id="4119585981464207648">Həmçinin, Shuttle açılanda hansı səhifənin göstərildiyini idarə edir.</translation>
 <translation id="648319183876919572">Qabaqcıl Güvənli Baxış təhlükəli veb-sayt və endirmələrə qarşı daha yaxşı qoruyur</translation>
 <translation id="6510925080656968729">Chromium'u sistemdən silin</translation>
-<translation id="124295298108005714">Qısayollar Agent Chrome-da açılır</translation>
-<translation id="9177671044583442813">Agent Chrome <ph name="TIMEOUT_DURATION" /> istifadə edilməsə, təşkilat onu bağlayır. Baxış datası silindi. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.</translation>
+<translation id="4635313972402880015">Qısayollar Shuttle-da açılır</translation>
+<translation id="4810254941066760486">Shuttle <ph name="TIMEOUT_DURATION" /> istifadə edilməsə, təşkilat onu bağlayır. Baxış datası silindi. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.</translation>
 <translation id="6542839706527980775">Hər bir profil əlfəcinlər, tarixçələr, parollar və s. kimi öz Chromium məlumatlarını saxlayır</translation>
 <translation id="6556755379298048869">Klaviatura qısayolu ilə axtarın.</translation>
-<translation id="5677032436425073715"><ph name="BEGIN_LINK" />Agent Chrome-un datanı məxfi saxlaması<ph name="END_LINK" /> haqqında ətraflı</translation>
-<translation id="5967753610833950399">Bu ayara edilən dəyişikliklər Agent Chrome yenidən başladıqda tətbiq olunacaq.</translation>
-<translation id="4790842900919490952">Agent Chrome-un əsas menyusunda Artırmalar seçiminə klikləməklə artırmalarınızı idarə edin.</translation>
+<translation id="2636806189032302779"><ph name="BEGIN_LINK" />Shuttle-un datanı məxfi saxlaması<ph name="END_LINK" /> haqqında ətraflı</translation>
+<translation id="5478536825661470867">Bu ayara edilən dəyişikliklər Shuttle yenidən başladıqda tətbiq olunacaq.</translation>
+<translation id="4113260229270901158">Shuttle-un əsas menyusunda Artırmalar seçiminə klikləməklə artırmalarınızı idarə edin.</translation>
 <translation id="656935081669708576">Dəyişməklə parollara başqa Chromium profilindən baxa bilərsiniz</translation>
 <translation id="6569556444379005948">İstənilən vaxt, istənilən yerdə ən yaxşı Sİ alətlərindən yararlanmaq üçün Chromium tətbiqindən istifadə edin</translation>
-<translation id="8124768693572849485">Agent Chrome, yazı səhvlərini düzəltmək üçün mətn sahələrinə yazdığınız mətni Google'a göndərir</translation>
+<translation id="7057131640166361945">Shuttle, yazı səhvlərini düzəltmək üçün mətn sahələrinə yazdığınız mətni Google'a göndərir</translation>
 <translation id="6598877126913850652">Chromium bildiriş ayarlarına keçin</translation>
 <translation id="6600016381025017075">Bu səhifədə istədiyinizi axtarın</translation>
-<translation id="1736130262142947818">Dəyişiklikləriniz gələn dəfə Agent Chrome'u başlatdıqda qüvvəyə minəcək.</translation>
+<translation id="3051968423457057392">Dəyişiklikləriniz gələn dəfə Shuttle'u başlatdıqda qüvvəyə minəcək.</translation>
 <translation id="6637908313088374648">Chromium artıq Windows işə düşdükdə işə salınır. Beləliklə, dərhal nəzər salmağa başlaya bilərsiniz. Bunu ayarlarda söndürə bilərsiniz.</translation>
 <translation id="6648212540664651655">Qaldığınız yerdən davam edin: Chromium tablarınızı son sessiyadan bərpa etdi. Burada deaktiv edə bilərsiniz:</translation>
 <translation id="665732753414869868">Chromium ətrafınızın 3D xəritəsini yaratmaq üçün kameranıza giriş icazəsi tələb edir</translation>
@@ -528,30 +528,30 @@ Bu səhifə gözlənildiyi kimi işləmirsə, optimallaşdırmaya icazə verməy
 <translation id="6691132793308828750">Bu tətbiqin datasını Chromium-dan silin</translation>
 <translation id="6709350901466051922">Chromium bu sayt üçün mikrofon icazəsi tələb edir</translation>
 <translation id="6712881677154121168">Endirmə xətası: <ph name="DOWNLOAD_ERROR" />.</translation>
-<translation id="7755971898820142787">Profiliniz yeni versiya Google Agent Chrome'dan olduğu üçün istifadə edilə bilməz.
+<translation id="2725737003556499783">Profiliniz yeni versiya Google Shuttle'dan olduğu üçün istifadə edilə bilməz.
 
-Bəzi funksiyalar əlçatmaz ola bilər. Xüsusi profil direktoriyası göstərin və ya yeni Agent Chrome versiyası işlədin.</translation>
+Bəzi funksiyalar əlçatmaz ola bilər. Xüsusi profil direktoriyası göstərin və ya yeni Shuttle versiyası işlədin.</translation>
 <translation id="6729124504294600478">Fərdiləşdirmə və digər funksiyaları əldə etmək üçün Chromium-u Veb və Tətbiq fəaliyyəti, habelə əlaqələndirilmiş Google xidmətlərinə daxil edin</translation>
 <translation id="6734291798041940871">Chromium kompüterinizdəki bütün istifadəçilər üçün artıq quraşdırılıb.</translation>
 <translation id="6742093177587589736">Əlfəcinləri və digər məlumatları bütün cihazlarınızda əldə etmək üçün Chromium-a daxil olun. Daxil olduqdan sonra bu əlfəcin Google Hesabınızda yadda saxlanılacaq.</translation>
-<translation id="7821834337023193240">Agent Chrome-un V8 mühərriki ilə saytları sürətləndirir, lakin Agent Chrome-un hücumlara qarşı müqavimətini bir qədər azaldır. Bu ayar aktivdir.</translation>
+<translation id="1073375677278272498">Shuttle-un V8 mühərriki ilə saytları sürətləndirir, lakin Shuttle-un hücumlara qarşı müqavimətini bir qədər azaldır. Bu ayar aktivdir.</translation>
 <translation id="6754665438209053659">{count,plural, =1{Müəyyən Chromium datası Google Hesabınızda yadda saxlanılmayıb. Çıxmazdan əvvəl bir neçə dəqiqə gözləyin. İndi çıxsanız, bu data (1 element) silinəcək.}other{Müəyyən Chromium datası Google Hesabınızda yadda saxlanılmayıb. Çıxmazdan əvvəl bir neçə dəqiqə gözləyin. İndi çıxsanız, bu data ({count} element) silinəcək.}}</translation>
 <translation id="67706546131546258">Chromium bu faylı skan etməyi tövsiyə edir, çünki o, təhlükəli ola bilər.</translation>
 <translation id="6779406956731413166">ChromiumOS əlavə <ph name="BEGIN_LINK_CROS_OSS" />açıq mənbə proqram təminatı ilə<ph name="END_LINK_CROS_OSS" /> mümkün oldu.</translation>
 <translation id="6831043979455480757">Tərcümə et</translation>
 <translation id="6847869444787758381">Chromium parollarınızın oğurlanıb-oğurlanmadığı haqqında Sizə məlumat verir</translation>
 <translation id="684888714667046800">İnternetə qoşulmaq olmur. Qoruyucu divar istifadə edirsinizsə, <ph name="PRODUCT_EXE_NAME" /> icazə verilənlər siyahısında olmalıdır.</translation>
-<translation id="6219638737609534419">Agent Chrome - <ph name="PAGE_TITLE" /></translation>
+<translation id="776553009482398136">Shuttle - <ph name="PAGE_TITLE" /></translation>
 <translation id="6859580922007887573">Davam etmək üçün tab</translation>
 <translation id="6862030660799253820">Bu şəkli Şəkil Axtarışı ilə axtarın</translation>
 <translation id="6869568587896659271">Ünvan panelinin altındakı veb-saytlara asan giriş</translation>
-<translation id="7421523967177993052">Agent Chrome "<ph name="EXTENSION_NAME" />" artırmasında zərərli proqram olduğunu aşkar edib</translation>
+<translation id="5180440422324801473">Shuttle "<ph name="EXTENSION_NAME" />" artırmasında zərərli proqram olduğunu aşkar edib</translation>
 <translation id="6877155553248388166">axtarış sahəsinin aşağı sağ küncü: <ph name="RIGHT" />% sağ, <ph name="BOTTOM" />% aşağı</translation>
 <translation id="6896758677409633944">Kopyalayın</translation>
 <translation id="6898028264630240901">Axtarış edərkən sual vermək üçün Kontekstual tapşırıqları bərkidə bilərsiniz</translation>
 <translation id="6901631050894301805">Chromium-u defolt brauzer kimi ayarlayın və tapşırıqlar panelinə bərkidin</translation>
 <translation id="6909503629704372277">&amp;Chromium profillərini idarə edin</translation>
-<translation id="9199111398679939226">Bu əməliyyatın nəticəsində:
+<translation id="4581248703262892072">Bu əməliyyatın nəticəsində:
           <ph name="LINE_BREAKS" />
             • Başlanğıc səhifəniz, yeni tab səhifəniz, axtarış sisteminiz və bərkidilmiş tablarınız sıfırlanacaq
             <ph name="LINE_BREAK" />
@@ -559,7 +559,7 @@ Bəzi funksiyalar əlçatmaz ola bilər. Xüsusi profil direktoriyası göstəri
             <ph name="LINE_BREAK" />
             • Kukilər və digər müvəqqəti sayt datası silinəcək
             <ph name="LINE_BREAK" />
-            • Agent Chrome qısayolları sıfırlanacaq
+            • Shuttle qısayolları sıfırlanacaq
             <ph name="LINE_BREAKS" />
             Əlfəcinlər, tarixçə və yadda saxlanılmış parollara təsiri olmayacaq.</translation>
 <translation id="6948031725951063910">Chromium-un <ph name="BOOKMARK_LIMIT" /> əlfəcin limitinə çatdınız, ona görə də əlfəcinlərinizin bir hissəsi hələ Google Hesabınızda yadda saxlanılmayıb.
@@ -574,64 +574,64 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="7045244423563602563">Chromium'u Fərdiləşdirin</translation>
 <translation id="7047386856539490735">Bu nəticələr faydalıdır?</translation>
 <translation id="705851970750939768">Chromium'u güncəlləşdirin</translation>
-<translation id="1222890016986172619">Şəklin təsviri faydalı deyilsə, Agent Chrome Sizin üçün təsviri təmin etməyə çalışacaq. Təsvir yaratmaq üçün şəkillər Google'a göndərilir.</translation>
+<translation id="3425455063038300019">Şəklin təsviri faydalı deyilsə, Shuttle Sizin üçün təsviri təmin etməyə çalışacaq. Təsvir yaratmaq üçün şəkillər Google'a göndərilir.</translation>
 <translation id="7074836723476134809"><ph name="DEVICE_TYPE" /> cihazında Chromium tətbiqindən istifadə edərkən Sİ-nin gücündən yararlanın</translation>
 <translation id="7134687062119989071">Telefonunuzdakı Chromium tətbiqi ilə parollarınızı, tablarınızı və daha çoxunu istənilən vaxt, istənilən yerdə əldə edin</translation>
 <translation id="7141270731789036260">Sınaq üçün Chrome-u fərdiləşdirin</translation>
-<translation id="5669948510815930830">İstənilən vaxt mesaj, sənəd və digər tətbiqlərdə keçidlərə kliklədikdə Agent Chrome-dan istifadə edə bilərsiniz</translation>
-<translation id="5576210706466474421"><ph name="EXTENSION_NAME" /> artırmasını Agent Chrome-dan silin</translation>
-<translation id="4588941330171478873">Agent Chrome datası <ph name="TIMEOUT_DURATION" /> istifadə edilməsə, təşkilat onu silir. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.</translation>
+<translation id="2566749447284070075">İstənilən vaxt mesaj, sənəd və digər tətbiqlərdə keçidlərə kliklədikdə Shuttle-dan istifadə edə bilərsiniz</translation>
+<translation id="4717037424104880768"><ph name="EXTENSION_NAME" /> artırmasını Shuttle-dan silin</translation>
+<translation id="5499504683862746062">Shuttle datası <ph name="TIMEOUT_DURATION" /> istifadə edilməsə, təşkilat onu silir. Bura tarixçə, avto doldurma və endirmələr daxil ola bilər.</translation>
 <translation id="718435575166326686">Chromium bu sayt üçün kamera icazəsi tələb edir</translation>
-<translation id="2916059341902838041">Agent Chrome başlamadı. Yenidən sınayın.</translation>
+<translation id="73779270539924806">Shuttle başlamadı. Yenidən sınayın.</translation>
 <translation id="7204669035546236137">Chromium-da Gemini ilə istədiyinizi soruşun</translation>
-<translation id="1716746018761150810">İstənilən vaxt ona tez daxil olmaq üçün Agent Chrome-u Dokda saxlayın</translation>
+<translation id="3909780788712619547">İstənilən vaxt ona tez daxil olmaq üçün Shuttle-u Dokda saxlayın</translation>
 <translation id="7213407614656404070">Mesaj, sənəd və digər tətbiqlərdə keçidlərə kliklədikdə Chromium istifadə edin</translation>
 <translation id="7216228761061470870">Masaüstündə Şəkil axtarışından istifadə etdikdə səhifə başlığı, URL və kontent, o cümlədən PDF-lər serverə göndərilir</translation>
-<translation id="4816956813330284757">Tapşırıq Meneceri - Agent Chrome</translation>
+<translation id="5152543266278054880">Tapşırıq Meneceri - Shuttle</translation>
 <translation id="7227958669698166857"><ph name="EXISTING_USER" /> artıq daxil olub. Baxışı ayrı saxlamaq üçün öz profilinizdə Chromium-a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olun. Bütün cihazlarınızda yadda saxladığınız məlumatları və daha çoxunu da əldə edəcəksiniz.</translation>
 <translation id="7252276985725323153">Dərhal nəzər salmağa başlayın: Chromium artıq Windows işə düşdükdə işə salına bilər.</translation>
 <translation id="7274695763216404502">Bərkidildi! Alətlər panelində yenidən Şəkil Axtarışından istifadə edin</translation>
 <translation id="7288567540154601580">Tab və artırmalar</translation>
-<translation id="3631444715156784168">{NUM_EXTENSIONS,plural, =1{Agent Chrome onu silməyinizi tövsiyə edir}other{Agent Chrome onları silməyinizi tövsiyə edir}}</translation>
-<translation id="2739521415810397215">Sistem audiosunu paylaşmaq üçün Sistem Ayarlarını açın və Agent Chrome-da "Yalnız Sistem Audiosunun Qeydə Alınması"na icazə verin. Sonra Agent Chrome-u yenidən başlatmalı olacaqsınız.</translation>
-<translation id="1945073734373493421">Agent Chrome güncəlləşir</translation>
-<translation id="7323500970718355745">Tərcih faylınız zədələnib və ya yanlışdır.  Agent Chrome ayarlarınızı bərpa edə bilmir.</translation>
+<translation id="7301179260332476710">{NUM_EXTENSIONS,plural, =1{Shuttle onu silməyinizi tövsiyə edir}other{Shuttle onları silməyinizi tövsiyə edir}}</translation>
+<translation id="6738087381969111286">Sistem audiosunu paylaşmaq üçün Sistem Ayarlarını açın və Shuttle-da "Yalnız Sistem Audiosunun Qeydə Alınması"na icazə verin. Sonra Shuttle-u yenidən başlatmalı olacaqsınız.</translation>
+<translation id="882134845922037914">Shuttle güncəlləşir</translation>
+<translation id="5911508944834868675">Tərcih faylınız zədələnib və ya yanlışdır.  Shuttle ayarlarınızı bərpa edə bilmir.</translation>
 <translation id="7324051657739063017">Axtarış edərkən sual vermək üçün Kontekstual tapşırıqları yenidən aça bilərsiniz</translation>
 <translation id="734373864078049451">Veb, əlfəcinlər və Chromium'a aid hər şeyiniz buradadır.</translation>
 <translation id="7347827960336370838">Yalnız parol ifadəsini bilən şəxs şifrələnmiş datanı oxuya bilər. Google parol ifadəsini əldə etmir və ya saxlamır. Parol ifadəsini unutmusunuzsa və ya bu ayarı dəyişmək istəyirsinizsə, <ph name="BEGIN_LINK" />hesabınızdakı Chromium datasını silməlisiniz<ph name="END_LINK" />.</translation>
-<translation id="7994662313190863803">Sistem administratorunun konfiqurasiyasına əsasən Agent Chrome <ph name="TARGET_URL_HOSTNAME" /> ünvanına daxil olmaq üçün <ph name="ALTERNATIVE_BROWSER_NAME" /> tətbiqini aça bilər.</translation>
+<translation id="5213396397254545050">Sistem administratorunun konfiqurasiyasına əsasən Shuttle <ph name="TARGET_URL_HOSTNAME" /> ünvanına daxil olmaq üçün <ph name="ALTERNATIVE_BROWSER_NAME" /> tətbiqini aça bilər.</translation>
 <translation id="7352651011704765696">Xəta oldu</translation>
-<translation id="4438212735766904761">Agent Chrome güncəlləmələrini əldə etmək üçün macOS 13 və ya yeni versiya tələb olunur. Bu kompüter macOS 12 versiyasından istifadə edir.</translation>
+<translation id="7241271939430402377">Shuttle güncəlləmələrini əldə etmək üçün macOS 13 və ya yeni versiya tələb olunur. Bu kompüter macOS 12 versiyasından istifadə edir.</translation>
 <translation id="7376384068949534168">Bu yaxınlarda daxil olmamısınız. Chromium sildi: <ph name="PERMISSION_1" />, <ph name="PERMISSION_2" />.</translation>
 <translation id="73786666777299047">Chrome Veb Mağazanı Açın</translation>
 <translation id="7394275517973019558">Chromium-da Gemini bildiriş sahəsində göstərilsin</translation>
 <translation id="7401687852903179959">Bu videonu Şəkil Axtarışı ilə axtarın</translation>
 <translation id="7407655596887111931">Chromium artıq defolt brauzerinizdir</translation>
-<translation id="3957050361764426740">Qaldığınız yerdən davam edin: Agent Chrome hər dəfə yenidən başladıldıqda tablarınızı bərpa edir. Bunu deaktiv etmək üçün keçin:</translation>
+<translation id="3052711235626610530">Qaldığınız yerdən davam edin: Shuttle hər dəfə yenidən başladıldıqda tablarınızı bərpa edir. Bunu deaktiv etmək üçün keçin:</translation>
 <translation id="7427879960656355200">Parolları Chromium-a import edin</translation>
 <translation id="744815265653811511">1. Aşağıdakı <ph name="BUTTON_LABEL" /> düyməsinə klikləyin
 2. Windows ayarlarında <ph name="BUTTON_2" /> düyməsinə klikləyin
 3. Sürətli giriş üçün Chromium-u tapşırıqlar panelinə bərkitmək məqsədilə Windows bildirişində <ph name="BUTTON_3" /> düyməsinə klikləyin</translation>
-<translation id="4378256924846450484"><ph name="PAGE_TITLE" /> - Agent Chrome Dev</translation>
+<translation id="9197089209084271928"><ph name="PAGE_TITLE" /> - Shuttle Dev</translation>
 <translation id="7450541714075000668">Mətn kopyalandı</translation>
-<translation id="1661210845845599119">Mikrofondan istifadə etmək üçün Agent Chrome-a <ph name="BEGIN_LINK" />sistem ayarlarında<ph name="END_LINK" /> giriş imkanı verin</translation>
+<translation id="313710343255539509">Mikrofondan istifadə etmək üçün Shuttle-a <ph name="BEGIN_LINK" />sistem ayarlarında<ph name="END_LINK" /> giriş imkanı verin</translation>
 <translation id="7461356015007898716">Chromium güncəlləmələrini əldə etmək üçün Windows 10 və ya daha yeni versiya tələb olunur. Bu kompüter Windows 7 istifadə edir.</translation>
-<translation id="7782360127659485548">Agent Chrome yenidən başladılsın?</translation>
+<translation id="3993055863855039235">Shuttle yenidən başladılsın?</translation>
 <translation id="7483335560992089831">Hazırda istifadə olunan Chromium versiyasını quraşdıra bilməzsiniz. Lütfən, Chromium'u qapadın və yenidən cəhd edin.</translation>
 <translation id="7510190804000607802">Xatırlatma: Google-un ən yaxşı xidmətləri cibinizdədir</translation>
-<translation id="4114725046952451715">Saytlar gözlənilən kimi işləyəcək. Agent Chrome-a daxil olsanız, Google Hesabı istisna olmaqla bütün Agent Chrome pəncərələrini bağladıqda əksər saytlardan çıxacaqsınız.</translation>
-<translation id="8460803820751380899">{0,plural, =1{Agent Chrome 1 dəqiqəyə yenidən başlayacaq}other{Agent Chrome # dəqiqəyə yenidən başlayacaq}}</translation>
+<translation id="8341160057232502783">Saytlar gözlənilən kimi işləyəcək. Shuttle-a daxil olsanız, Google Hesabı istisna olmaqla bütün Shuttle pəncərələrini bağladıqda əksər saytlardan çıxacaqsınız.</translation>
+<translation id="6139170930430750545">{0,plural, =1{Shuttle 1 dəqiqəyə yenidən başlayacaq}other{Shuttle # dəqiqəyə yenidən başlayacaq}}</translation>
 <translation id="7565444033145385702">Datanı qorumaq üçün Chromium-un son vaxtlar daxil olmadığınız saytlardan icazələri silməsinə icazə verin.</translation>
-<translation id="7806190892617295204">Dərhal nəzər salmağa başlamaq üçün Agent Chrome-u avtomatik işə salın.</translation>
+<translation id="7445475294019002626">Dərhal nəzər salmağa başlamaq üçün Shuttle-u avtomatik işə salın.</translation>
 <translation id="7583399374488819119"><ph name="COMPANY_NAME" /> Quraşdırıcısı</translation>
-<translation id="4114499337401148821">Agent Chrome kameranızı və mikrofonunuzu işlədir.</translation>
+<translation id="3770734847062637711">Shuttle kameranızı və mikrofonunuzu işlədir.</translation>
 <translation id="7617377681829253106">Chromium daha da keyfiyyətli oldu</translation>
-<translation id="4075526625511660913">Artıq Agent Chrome-da sizin üçün daha çox funksiya əlçatandır</translation>
+<translation id="8871277779820248167">Artıq Shuttle-da sizin üçün daha çox funksiya əlçatandır</translation>
 <translation id="7624307931717240213">Məlumatdan bu xidməti təkmilləşdirmək üçün istifadə edirik. Məxfilik Siyasətinə və Xidmət Şərtlərinə baxın.</translation>
 <translation id="7649070708921625228">Yardım</translation>
 <translation id="7650134251917003571">Chromium tətbiqini əldə edin</translation>
 <translation id="7658239707568436148">Ləğv edin</translation>
-<translation id="5829091955527196771">Agent Chrome defolt brauzeriniz deyil</translation>
+<translation id="8213236740307893655">Shuttle defolt brauzeriniz deyil</translation>
 <translation id="7689606757190482937">Chromium'u cihazlarda sinxronizasiya edin və fərdiləşdirin</translation>
 <translation id="7699779824407626136">Chromium güncəllənməsi</translation>
 <translation id="7700735928747402058">İşiniz Chromium-da təhlükəsiz şəkildə saxlanılır</translation>
@@ -644,16 +644,16 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="7752521946322750699">Chromium-dakı işinizi qorumaq məqsədilə təşkilatınız Chromium-a daxil olduqda müəyyən məlumatlara baxa və ya onları idarə edə biləcək.</translation>
 <translation id="7781047659465034537">Chromium-u defolt kimi ayarlayın və işləmə panelinə bərkidin</translation>
 <translation id="7786760609782648049">Chromium'u sürətli edin</translation>
-<translation id="1092858669153166534"><ph name="PAGE_TITLE" /> - Agent Chrome Canary</translation>
-<translation id="6890902183809417868">İnternet trafikinizə girişi olanların daxil olduğunuz saytları görməsini çətinləşdirin. Agent Chrome saytın IP ünvanını DNS-də (Domen adı sistemi) axtarmaq üçün güvənli bağlantıdan istifadə edir.</translation>
+<translation id="5390209367680424449"><ph name="PAGE_TITLE" /> - Shuttle Canary</translation>
+<translation id="5236799997529789289">İnternet trafikinizə girişi olanların daxil olduğunuz saytları görməsini çətinləşdirin. Shuttle saytın IP ünvanını DNS-də (Domen adı sistemi) axtarmaq üçün güvənli bağlantıdan istifadə edir.</translation>
 <translation id="7810005234485217901">Asan giriş üçün Şəkil Axtarışını bərkidə bilərsiniz</translation>
-<translation id="4343938787674079986">Agent Chrome ilə paylaşılacaq kontenti seçin</translation>
+<translation id="6809035843240398711">Shuttle ilə paylaşılacaq kontenti seçin</translation>
 <translation id="7828947555739565424">Bu hesab ilə Chromium profili artıq bu cihazda mövcuddur</translation>
 <translation id="7845233973568007926">Quraşdırdığınız üçün təşəkkür edirik. <ph name="BUNDLE_NAME" /> istifadə etməzdən əvvəl kompüterinizi yenidən başlatmalısınız.</translation>
-<translation id="6129792107484731038">Defolt axtarış sisteminiz Agent Chrome-dan kənarda dəyişdirildi. Agent Chrome sizi qorumaq üçün onu orijinal defoltuna sıfırladı. <ph name="LEARN_MORE_LINK" /></translation>
+<translation id="2536014991386708485">Defolt axtarış sisteminiz Shuttle-dan kənarda dəyişdirildi. Shuttle sizi qorumaq üçün onu orijinal defoltuna sıfırladı. <ph name="LEARN_MORE_LINK" /></translation>
 <translation id="7853661403199074278">Chromium-un görünüşünü dəyişmək üçün fərdiləşdirin</translation>
-<translation id="5018331886385637870">Ünvan panelinə və ya axtarış xanasına mətn daxil etdiyiniz zaman Agent Chrome sizə daha yaxşı təkliflər təqdim etmək üçün yazdıqlarınızı defolt axtarış sisteminizə göndərir. Bu, Anonim rejimdə deaktivdir.</translation>
-<translation id="473441635289092936">Agent Chrome ən son versiyaya güncəllənə bilmədi. Yeni funksiyaları və təhlükəsizlik həllərini əldən verirsiniz.</translation>
+<translation id="2266811154496778101">Ünvan panelinə və ya axtarış xanasına mətn daxil etdiyiniz zaman Shuttle sizə daha yaxşı təkliflər təqdim etmək üçün yazdıqlarınızı defolt axtarış sisteminizə göndərir. Bu, Anonim rejimdə deaktivdir.</translation>
+<translation id="6065091602420830">Shuttle ən son versiyaya güncəllənə bilmədi. Yeni funksiyaları və təhlükəsizlik həllərini əldən verirsiniz.</translation>
 <translation id="7872446069773932638">Endirilir... <ph name="SECONDS" /> saniyə qalıb</translation>
 <translation id="7873537467422636035">Parol ifadəsini unutmusunuzsa, yaxud bu ayarı dəyişmək istəyirsinizsə, <ph name="BEGIN_LINK" />hesabınızdakı Chromium datasını silin<ph name="END_LINK" /></translation>
 <translation id="7874369989024033742">İstədiyiniz zaman Chromium-da Gemini-ı cəld açın</translation>
@@ -661,17 +661,17 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="7934340546140346950">Chromium mümkün olduqda güvənsiz bağlantıları avtomatik olaraq HTTPS-ə təkmilləşdirir</translation>
 <translation id="7937630085815544518">Chromium'a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olmuşdunuz. Lütfən, yenidən daxil olmaq üçün eyni hesabdan istifadə edin.</translation>
 <translation id="7944602660083060118"><ph name="EXISTING_USER" /> artıq daxil olub. Baxışı ayrı saxlamaq üçün öz profilinizdə Chromium-a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olun. Bütün cihazlarınızda əlfəcinlərinizi və daha çoxunu da əldə edəcəksiniz.</translation>
-<translation id="688313102897865477">Bu Agent Chrome'un ikinci quraşdırmasıdır və defolt brauzer kimi ayarlana bilmir.</translation>
-<translation id="8514782479541580218">Naməlum mənbələrdən olan artırmalar, tətbiqlər və temalar cihazınıza zərər verə bilər. Agent Chrome onları yalnız buradan quraşdırmağı tövsiyə edir: <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /></translation>
+<translation id="7585793177462647372">Bu Shuttle'un ikinci quraşdırmasıdır və defolt brauzer kimi ayarlana bilmir.</translation>
+<translation id="6559029165921633261">Naməlum mənbələrdən olan artırmalar, tətbiqlər və temalar cihazınıza zərər verə bilər. Shuttle onları yalnız buradan quraşdırmağı tövsiyə edir: <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /></translation>
 <translation id="8000759043835159571"><ph name="DEVICE_TYPE" /> cihazında Chromium tətbiqi ilə Google-dan daha çox yararlanın</translation>
 <translation id="8004582292198964060">Brauzer</translation>
 <translation id="8010081455002666927">Avto-aşkarlama</translation>
-<translation id="403216574291780144">Agent Chrome'un giriş imkanı olduqda veb saytlar giriş üçün Sizdən icazə istəyəcək.</translation>
-<translation id="7835197459694498831">İstənilən vaxt tez daxil olmaq üçün Agent Chrome-u tapşırıqlar panelinə bərkidin</translation>
+<translation id="8002328729078921180">Shuttle'un giriş imkanı olduqda veb saytlar giriş üçün Sizdən icazə istəyəcək.</translation>
+<translation id="818329629430342049">İstənilən vaxt tez daxil olmaq üçün Shuttle-u tapşırıqlar panelinə bərkidin</translation>
 <translation id="80471789339884597">Quraşdırdığınız üçün təşəkkür edirik. <ph name="BUNDLE_NAME" /> istifadə etməzdən əvvəl bütün brauzerlərinizi yenidən başlatmalısınız.</translation>
 <translation id="8054112667659782652">Şəkil Axtarışı qısayolunu həmişə göstərin</translation>
 <translation id="8069447462453318634">"Alətlər panelinə bərkidin" seçimini edin</translation>
-<translation id="787536271006179882">Tətbiqlər üçün arxa fonda işləyən Agent Chrome-u deaktiv edin</translation>
+<translation id="3155838504016687695">Tətbiqlər üçün arxa fonda işləyən Shuttle-u deaktiv edin</translation>
 <translation id="80790299200510644">Şəkil axtarışı</translation>
 <translation id="8086881907087796310">Kompüteriniz minimum avadanlıq tələblərinə cavab vermədiyi üçün quraşdırma alınmadı.</translation>
 <translation id="8096472344908884505"><ph name="PAGE_TITLE" /> - Google Sınaq üçün Chrome</translation>
@@ -683,15 +683,15 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="8133124826068723441">ChromiumOS datanızı sinxronizasiya edə bilmədi, çünki sinxronizasiya domeniniz üçün əlçatan deyil.</translation>
 <translation id="813913629614996137">Başladılır...</translation>
 <translation id="8161503455832158203">Klaviatura qısayolu ilə Gemini-ı Chromium-da açın.</translation>
-<translation id="7109772131778940712">Agent Chrome üzrə Əlavə Xidmət Şərtləri</translation>
-<translation id="7759642951398174884">Bu fayl təklükəlidir, bu səbəbdən Agent Chrome onu blok etdi.</translation>
+<translation id="369114052288176160">Shuttle üzrə Əlavə Xidmət Şərtləri</translation>
+<translation id="680378955833427720">Bu fayl təklükəlidir, bu səbəbdən Shuttle onu blok etdi.</translation>
 <translation id="8177472873527554730">Səhifədə kontenti tapmaq olmur</translation>
 <translation id="8200109504272824693">Chromium datasını hesabınızda (<ph name="USER_EMAIL" />) istifadə etmək və yadda saxlamaq üçün parol ifadəsini daxil edin</translation>
 <translation id="820759916613250543">Bu şəkli Şəkil Axtarışı ilə axtarın</translation>
 <translation id="8221491193165283816">Bildirişləri, adətən, bloklayırsınız. Bu saytın sizə bildirişlər göndərməsinə icazə vermək üçün buraya klikləyin.</translation>
-<translation id="5410773870087525304">Kameradan istifadə etmək üçün Agent Chrome-a <ph name="BEGIN_LINK" />sistem ayarlarında<ph name="END_LINK" /> giriş imkanı verin</translation>
-<translation id="1057772683559103555">Agent Chrome bu artırmanın mənbəyini yoxlaya bilmir və artırma güvənsiz ola bilər. Onu Agent Chrome-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
-<translation id="1968416200800224093">Şəklin təsviri faydalı deyilsə, Agent Chrome Sizin üçün təsviri təmin etməyə çalışacaq. Təsvir yaratmaq üçün şəkillər Google'a göndərilir. Bunu istənilən vaxt ayarlardan deaktiv edə bilərsiniz.</translation>
+<translation id="8107647892434846563">Kameradan istifadə etmək üçün Shuttle-a <ph name="BEGIN_LINK" />sistem ayarlarında<ph name="END_LINK" /> giriş imkanı verin</translation>
+<translation id="1786899383568465391">Shuttle bu artırmanın mənbəyini yoxlaya bilmir və artırma güvənsiz ola bilər. Onu Shuttle-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
+<translation id="493819615490030185">Şəklin təsviri faydalı deyilsə, Shuttle Sizin üçün təsviri təmin etməyə çalışacaq. Təsvir yaratmaq üçün şəkillər Google'a göndərilir. Bunu istənilən vaxt ayarlardan deaktiv edə bilərsiniz.</translation>
 <translation id="8254601181414348851">Yeni profildə Chromium-a daxil olursunuz?</translation>
 <translation id="8262224117913639129"><ph name="EXISTING_USER" /> artıq daxil olub. Baxışı ayrı saxlamaq üçün öz profilinizdə Chromium-a <ph name="USER_EMAIL_ADDRESS" /> kimi daxil olun. <ph name="DEVICE" /> hesabından parolları və daha çoxunu da əldə edəcəksiniz.</translation>
 <translation id="8277334259226003205">Chromium-da Gemini bildiriş sahəsində göstərilsin və klaviatura qısayolunu aktivləşdirin</translation>
@@ -700,7 +700,7 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="8296236834352487533">Chromium iOS tətbiqində kamera ilə alış-veriş edin, tərcümə edin və gördüklərinizi müəyyənləşdirin</translation>
 <translation id="8310603974518734211">Chromium-a <ph name="USER_NAME" /> kimi daxil olmaq üçün QR kodu</translation>
 <translation id="8313851650939857356">Başlatma xətası: <ph name="STARTUP_ERROR" />.</translation>
-<translation id="2256229026962116267">Agent Chrome <ph name="TIMEOUT_DURATION" /> istifadə edilməsə, təşkilat onu bağlayır.</translation>
+<translation id="2189465505625523876">Shuttle <ph name="TIMEOUT_DURATION" /> istifadə edilməsə, təşkilat onu bağlayır.</translation>
 <translation id="8321888067342493336">Şəkil kimi saxlayın</translation>
 <translation id="8340674089072921962"><ph name="USER_EMAIL_ADDRESS" /> əvvəl Chromium istifadə edirdi</translation>
 <translation id="8351551329754447960">Chromium-dakı bacarıqları aktivləşdirin</translation>
@@ -710,11 +710,11 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="8367705492654390392">İstədiyinizi soruşun</translation>
 <translation id="8370517070665726704">Müəllif hüquqları <ph name="YEAR" /> Google MMC. Bütün hüquqlar qorunur.</translation>
 <translation id="8372327902843331129">Parolları və s. datanı bütün cihazlarınızda əldə etmək üçün Chromium-a daxil olun. Daxil olduqdan sonra bu parol Google Hesabında yadda saxlanılacaq.</translation>
-<translation id="3962779702290581702">Sonra Agent Chrome-u yenidən başlatmalı olacaqsınız.</translation>
-<translation id="6085013152567092546">Agent Chrome onu silməyinizi tövsiyə edir. <ph name="BEGIN_LINK" />Dəstəklənən artırmalar haqqında ətraflı məlumat əldə edin<ph name="END_LINK" /></translation>
-<translation id="8142784445734351509">Bu artırmanın yayımı tərtibatçı tərəfindən ləğv edildi və təhlükəli ola bilər. Onu Agent Chrome-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
+<translation id="7737586770085807713">Sonra Shuttle-u yenidən başlatmalı olacaqsınız.</translation>
+<translation id="458720374088121514">Shuttle onu silməyinizi tövsiyə edir. <ph name="BEGIN_LINK" />Dəstəklənən artırmalar haqqında ətraflı məlumat əldə edin<ph name="END_LINK" /></translation>
+<translation id="3243699608914041912">Bu artırmanın yayımı tərtibatçı tərəfindən ləğv edildi və təhlükəli ola bilər. Onu Shuttle-dan silin ki, daxil olduğunuz saytlardakı dataya, o cümlədən şəxsi məlumatlara baxa və onları dəyişə bilməsin.</translation>
 <translation id="8416884904046428725">Müəyyən datanın Google Hesabında yadda saxlanılması və bütün cihazlarda istifadə edilməsi üçün Chromium kimliyinizi doğrulamalıdır. İndi çıxsanız, bu data silinəcək.</translation>
-<translation id="7611805576553766531">{0,plural, =1{Agent Chrome'u bir gün ərzində yenidən başladın}other{Agent Chrome'u # gün ərzində yenidən başladın}}</translation>
+<translation id="2803567348225973544">{0,plural, =1{Shuttle'u bir gün ərzində yenidən başladın}other{Shuttle'u # gün ərzində yenidən başladın}}</translation>
 <translation id="8438543370129609977">Şəkil axtarışından istifadə edəndə səhifə başlığı, URL və kontent, o cümlədən PDF sənədləri serverə göndərilir. <ph name="LEARN_MORE" /></translation>
 <translation id="8447525028100794994">Chromium-da Şəkil Axtarışı ilə axtarış haqqında ətraflı məlumat</translation>
 <translation id="8453117565092476964">Quraşdırıcı arxivi zədələnib və ya yanlışdır. Lütfən, Chromium'u yenidən endirin.</translation>
@@ -722,23 +722,23 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="8463672209299734063">İstəyə görə: Diaqnostika və istifadəçi datasını avtomatik Google'a göndərməklə ChromiumOS funksiyalarını təkmilləşdirməyə yardım edin.</translation>
 <translation id="8471947159125090285">Chromium datasını Google Hesabınızda istifadə etmək və yadda saxlamaq üçün kimliyinizi doğrulayın</translation>
 <translation id="8482493977473846331">Chromium-a giriş sorğularını göstərir</translation>
-<translation id="6049002268233195982">Agent Chrome'um vaxtı keçib</translation>
-<translation id="6156435126546305838">Agent Chrome-u defolt brauzer seçdiyiniz üçün təşəkkür edirik!</translation>
+<translation id="4333599663015089415">Shuttle'um vaxtı keçib</translation>
+<translation id="8376091195503089226">Shuttle-u defolt brauzer seçdiyiniz üçün təşəkkür edirik!</translation>
 <translation id="8522801943730206384">Chromium yadda saxlanan parolları yoxlaya bilər</translation>
 <translation id="8525579356836940628">Quraşdırma dayandırılıb</translation>
 <translation id="8545729292258443488"><ph name="DEVICE_TYPE" /> cihazında Chromium tətbiqi ilə parollarınızı, tablarınızı və daha çoxunu istənilən vaxt, istənilən yerdə əldə edin</translation>
 <translation id="8548787790260785208">Chromium parollarınızdan birini ictimai data pozuntusunda aşkar edərsə, xəbərdarlıq alın</translation>
 <translation id="8555465886620020932">Xidmət xətası: <ph name="SERVICE_ERROR" />.</translation>
-<translation id="2713372071612730965">Bəzi Agent Chrome funksiyaları və artırmaları qısayollara malikdir. Onları yenidən aktiv etməyi seçə bilərsiniz.</translation>
+<translation id="3871600948131730253">Bəzi Shuttle funksiyaları və artırmaları qısayollara malikdir. Onları yenidən aktiv etməyi seçə bilərsiniz.</translation>
 <translation id="8556420416730706394">Asan giriş üçün Şəkil Axtarışını bərkidə bilərsiniz; yan panelin yuxarısındakı Bərkitmə düyməsinə klikləyin</translation>
 <translation id="856656450041460113">Dil siyahısını axtarın</translation>
-<translation id="1783040386392706016">Bir neçə təşkilat Agent Chrome-u idarə edir</translation>
-<translation id="7921569471494089882">Müəlliflik Hüququ <ph name="YEAR" /> Agent Chrome Müəllifləri. Bütün hüquqlar qorunur.</translation>
+<translation id="2164758091986776102">Bir neçə təşkilat Shuttle-u idarə edir</translation>
+<translation id="7921569471494089882">Copyright <ph name="YEAR" /> Silkweave. All rights reserved.</translation>
 <translation id="8601359445272098721">Yenilik! "Ekranı tərcümə edin" düyməsini seçməklə həm ekrandakı mətni, həm də təsvirləri tərcümə edə bilərsiniz</translation>
-<translation id="6294059080097269555">Agent Chrome başlayır...</translation>
+<translation id="5197416451456327645">Shuttle başlayır...</translation>
 <translation id="8624541899164515475">Ayarlar, yeni tabda açılır.</translation>
 <translation id="8648201657708811153">Sınaq üçün Google Chrome defolt brauzer ola bilməz.</translation>
-<translation id="5652647471010716562">O, həmçinin Agent Chrome'u başlatdığınız zaman və ya Omnibox'dan axtarış etdiyiniz zaman göstərilən səhifəyə nəzarət edir.</translation>
+<translation id="733927313102300080">O, həmçinin Shuttle'u başlatdığınız zaman və ya Omnibox'dan axtarış etdiyiniz zaman göstərilən səhifəyə nəzarət edir.</translation>
 <translation id="8704119203788522458">Bu, Sizin Chromium'dur</translation>
 <translation id="8712637175834984815">Anladım</translation>
 <translation id="8719993436687031146">Chromium-a daxil olunsun?</translation>
@@ -747,17 +747,17 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="8813277370772331957">Sonra xatırladın</translation>
 <translation id="8816416449795340678">Sürətli icmal əldə etmək və əlavə suallar vermək üçün sənədi Chromium-da Gemini ilə paylaşın</translation>
 <translation id="8818550178040858407">Chromium-a daxil olursunuz?</translation>
-<translation id="4188893721116572726">Agent Chrome-u defolt brauzer edin və tapşırıqlar panelinə bərkidin</translation>
+<translation id="1740477639007879167">Shuttle-u defolt brauzer edin və tapşırıqlar panelinə bərkidin</translation>
 <translation id="8826492472752484139">"Parol meneceri" üzərinə klikləyin</translation>
 <translation id="8833697763442816810">ChromiumOS sistemi</translation>
-<translation id="341256515309503869">Bu dil Agent Chrome-da menyuları, ayarları, xəbərdarlıqları və digər mətnləri göstərmək üçün istifadə olunur</translation>
+<translation id="51810846847651902">Bu dil Shuttle-da menyuları, ayarları, xəbərdarlıqları və digər mətnləri göstərmək üçün istifadə olunur</translation>
 <translation id="8862326446509486874">Sistem səviyyəli quraşdırma üçün uyğun hüquqlarınız yoxdur. Quraşdırıcını yenidən Administrator olaraq işə salmağa cəhd edin.</translation>
 <translation id="8876044221123442390">Chromium profili əlavə edin</translation>
 <translation id="8890569919834781711">ChromiumOS giriş xətası səbəbindən Chromium datasını Google Hesabınızda yadda saxlaya bilmədi</translation>
 <translation id="8891709362986793894">Təşkilatınız Chromium-a daxil olmağınızı tələb edir</translation>
 <translation id="8907580949721785412">Chromium parolları göstərməyə çalışır. buna icazə vermək üçün Windows parolunuzu yazın.</translation>
 <translation id="8932992523185907506">Chromium artıq defolt brauzeriniz deyil. Chromium defolt brauzer edilsin?</translation>
-<translation id="2086624065931944916">Agent Chrome'u güncəlləmək alınmadı</translation>
+<translation id="7727082350762937793">Shuttle'u güncəlləmək alınmadı</translation>
 <translation id="8944232836376404813">Bu əməliyyatın nəticəsində:
           <ph name="LINE_BREAKS" />
             • Başlanğıc səhifəniz, yeni tab səhifəniz, axtarış sisteminiz və bərkidilmiş tablarınız sıfırlanacaq
@@ -768,31 +768,31 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
             <ph name="LINE_BREAKS" />
             Əlfəcinlər, tarixçə və yadda saxlanılmış parollara təsiri olmayacaq.</translation>
 <translation id="8966875421152977384">Chromium sayt qısayolları göstərilsin</translation>
-<translation id="4591081057798655502">Agent Chrome Enterprise loqosu</translation>
+<translation id="1008106080699243847">Shuttle Enterprise loqosu</translation>
 <translation id="8980139959902937527"><ph name="DEVICE_TYPE" /> cihazındakı Chromium tətbiqi ilə Google-un təhlükəsizlik imkanlarından istənilən vaxt, istənilən yerdə istifadə edin</translation>
-<translation id="352721818246741864">Profilinizi açarkən xəta baş verdiyinə görə Agent Chrome-u işə salmaq olmur. Agent Chrome-u yenidən başladın.</translation>
+<translation id="3649746906258419479">Profilinizi açarkən xəta baş verdiyinə görə Shuttle-u işə salmaq olmur. Shuttle-u yenidən başladın.</translation>
 <translation id="8988036198400390003">Chromium profillərini idarə edin</translation>
 <translation id="8993855408334954620">Chromium-da Gemini və açıq tab arasında hərəkət etmək üçün klaviaturadan istifadə edin.</translation>
 <translation id="9018218886431812662">Quraşdırma tamamlandı</translation>
 <translation id="9019929317751753759">Chromium'u təhlükəsiz etmək üçün, <ph name="IDS_EXTENSION_WEB_STORE_TITLE" /> siyahısında olmayan və xəbəriniz olmadan əlavə edilən artırmanı deaktiv etdik.</translation>
 <translation id="9022552996538154597">Chromium'a daxil olun</translation>
 <translation id="9035791714111278917">Mac menyu panelində Chromium ilə axtarış göstərilsin və klaviatura qısayolunu aktivləşdirin</translation>
-<translation id="144293525744948128">Agent Chrome bu endirməni blokladı. Çünki arxiv faylına zərərli proqram gizlədə biləcək digər fayllar daxildir</translation>
+<translation id="3267341748208131224">Shuttle bu endirməni blokladı. Çünki arxiv faylına zərərli proqram gizlədə biləcək digər fayllar daxildir</translation>
 <translation id="9053882453960391422">Parollarınızı, əlfəcinlərinizi və tarixçənizi cihazlar arasında mükəmməl şəkildə sinxronlaşdırın. Defolt brauzerinizi Chromium-a güncəlləməklə bildiyiniz və sevdiyiniz funksiyalara asanlıqla daxil olun. Sürətli giriş üçün Chromium tapşırıqlar panelinə bərkidiləcək.</translation>
 <translation id="9056398481763999048">Telefonunuzdakı Chromium tətbiqi ilə Google-un ən yaxşı Sİ alətlərindən istifadə edin</translation>
 <translation id="9062666675513499497">Digər Google xidmətlərinə daxil olduqda Chromium-a daxil olun</translation>
-<translation id="5989671354018094677">Agent Chrome avtomatik bağlandı</translation>
-<translation id="5288426372256126088">Agent Chrome'un vaxtı keçib</translation>
-<translation id="8599483501705081932">{0,plural, =1{Agent Chrome 1 saata yenidən başlayacaq}other{Agent Chrome # saata yenidən başlayacaq}}</translation>
+<translation id="4265215433857167851">Shuttle avtomatik bağlandı</translation>
+<translation id="7469466263552552140">Shuttle'un vaxtı keçib</translation>
+<translation id="72499647218501325">{0,plural, =1{Shuttle 1 saata yenidən başlayacaq}other{Shuttle # saata yenidən başlayacaq}}</translation>
 <translation id="9106236359747881194">Axtarmaq üçün mətn seçin</translation>
 <translation id="9106612006984859720">Chromium güncəlləmələrini əldə etmək üçün Windows 10 və ya daha yeni versiya tələb olunur. Bu kompüter Windows 8.1 istifadə edir.</translation>
-<translation id="6660967356554387137">Linki Yeni Agent Chrome tabında açın</translation>
+<translation id="3313508441926611846">Linki Yeni Shuttle tabında açın</translation>
 <translation id="911206726377975832">Brauzinq datanız da silinsin?</translation>
 <translation id="9134482777260927479">Ev tapşırığı ilə bağlı yardım</translation>
 <translation id="9148058034647219655">Çıxış</translation>
-<translation id="356554850028684199">Qaldığınız yerdən davam edin: Agent Chrome hər dəfə yenidən başladıldıqda tablarınızı bərpa edə bilər. Bunu aktiv etmək üçün keçin:</translation>
-<translation id="2217675621893057123">Sistem administratoru Agent Chrome'u <ph name="TARGET_URL_HOSTNAME" /> ünvanına daxil olmaq məqsədilə alternativ brauzer açmaq üçün konfiqurasiya edib.</translation>
-<translation id="7637726452490203009">&amp;Agent Chrome'u güncəlləmək üçün yenidən başladın</translation>
+<translation id="373308981796873164">Qaldığınız yerdən davam edin: Shuttle hər dəfə yenidən başladıldıqda tablarınızı bərpa edə bilər. Bunu aktiv etmək üçün keçin:</translation>
+<translation id="4482819741686179260">Sistem administratoru Shuttle'u <ph name="TARGET_URL_HOSTNAME" /> ünvanına daxil olmaq məqsədilə alternativ brauzer açmaq üçün konfiqurasiya edib.</translation>
+<translation id="5239882079227870661">&amp;Shuttle'u güncəlləmək üçün yenidən başladın</translation>
 <translation id="9190841055450128916">Chromium (mDNS-In)</translation>
 <translation id="924957577793602335">Chromium-u fərdiləşdirin</translation>
 <translation id="93478295209880648">Chromium düzgün işləməyə bilər, çünki daha Windows XP və ya Windows Vista'da dəstəklənmir</translation>
@@ -802,7 +802,7 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="967427899662692980">Chromium’un ən güclü güvənlik sistemini əldə edin</translation>
 <translation id="983803489796659991">Yeniləmə serverində tətbiq heş datası olmadığı üçün quraşdırma alınmadı.</translation>
 <translation id="985498048907240953">Hesab olmadan Chromium istifadə edin</translation>
-<translation id="5192139095541169725">Agent Chrome Müəllifləri</translation>
+<translation id="5192139095541169725">Silkweave</translation>
 <translation id="989970834842471429">Şəkil Axtarışı ilə axtarmaq üçün istənilən mətn və ya şəkli seçin</translation>
-<translation id="5834693163377136360">Məkandan istifadə etmək üçün Agent Chrome-a <ph name="BEGIN_LINK" />sistem ayarlarında<ph name="END_LINK" /> giriş imkanı verin</translation>
+<translation id="1699696098551154749">Məkandan istifadə etmək üçün Shuttle-a <ph name="BEGIN_LINK" />sistem ayarlarında<ph name="END_LINK" /> giriş imkanı verin</translation>
 </translationbundle>

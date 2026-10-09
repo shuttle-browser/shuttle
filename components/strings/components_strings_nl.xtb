@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">Aanvullende gegevens verzenden</translation>
 <translation id="1016671033299705843">Rijbewijs beveiligd toevoegen</translation>
 <translation id="1019413721762100891">Uit</translation>
-<translation id="1021753677514347426">Dit probleem doet zich voor als gevolg van een certificaat dat jij of iemand anders heeft geïnstalleerd op je apparaat. Het certificaat staat erom bekend dat het wordt gebruikt voor netwerkmonitoring en -onderschepping en wordt niet vertrouwd door Chromium. Hoewel er ook legitieme certificaten bestaan, bijvoorbeeld op een school- of zakelijk netwerk, wil Chromium zeker weten dat je begrijpt wat er gebeurt, ook als je het niet kunt tegenhouden. Monitoring kan plaatsvinden in elke browser of app met toegang tot internet.</translation>
+<translation id="768230658237634872">Dit probleem doet zich voor als gevolg van een certificaat dat jij of iemand anders heeft geïnstalleerd op je apparaat. Het certificaat staat erom bekend dat het wordt gebruikt voor netwerkmonitoring en -onderschepping en wordt niet vertrouwd door Shuttle. Hoewel er ook legitieme certificaten bestaan, bijvoorbeeld op een school- of zakelijk netwerk, wil Shuttle zeker weten dat je begrijpt wat er gebeurt, ook als je het niet kunt tegenhouden. Monitoring kan plaatsvinden in elke browser of app met toegang tot internet.</translation>
 <translation id="1024111578869940408">Aanvallers maken sites soms na door wijzigingen in het webadres aan te brengen die je moeilijk kunt zien.</translation>
 <translation id="102916930470544692">Toegangssleutel</translation>
 <translation id="1030706264415084469"><ph name="URL" /> wil grote gegevens permanent op je apparaat opslaan</translation>
@@ -809,7 +809,7 @@ Anders wordt dit geblokkeerd door je privacyinstellingen. Hierdoor werkt de cont
 <translation id="2348836501965732644">Je kunt je informatie beheren of deze suggesties uitzetten in Instellingen</translation>
 <translation id="2349957959687031096">Knop Incognitotabblad openen. Activeer deze om een nieuw incognitotabblad te openen om privé te browsen.</translation>
 <translation id="2350796302381711542"><ph name="HANDLER_HOSTNAME" /> toestaan alle links voor <ph name="PROTOCOL" /> te openen in plaats van <ph name="REPLACED_HANDLER_TITLE" />?</translation>
-<translation id="2351718832234620840">Deze server kan niet bewijzen dat dit <ph name="DOMAIN" /> is, omdat de server een beveiligingscertificaat gebruikt dat niet wordt vertrouwd door Chromium of je systeemconfiguratie voor versleuteling van webverkeer. Dit kan worden veroorzaakt door een verkeerde configuratie of een aanvaller die je verbinding onderschept.</translation>
+<translation id="4798228153726623290">Deze server kan niet bewijzen dat dit <ph name="DOMAIN" /> is, omdat de server een beveiligingscertificaat gebruikt dat niet wordt vertrouwd door Shuttle of je systeemconfiguratie voor versleuteling van webverkeer. Dit kan worden veroorzaakt door een verkeerde configuratie of een aanvaller die je verbinding onderschept.</translation>
 <translation id="2353297238722298836">Camera en microfoon toegestaan</translation>
 <translation id="2354001756790975382">Andere bookmarks</translation>
 <translation id="2355395290879513365">Aanvallers kunnen mogelijk de afbeeldingen zien die je op deze site bekijkt en je misleiden door de afbeeldingen aan te passen.</translation>
@@ -1046,7 +1046,7 @@ Anders wordt dit geblokkeerd door je privacyinstellingen. Hierdoor werkt de cont
 <translation id="2728127805433021124">Het certificaat van de server is ondertekend met een zwak ondertekeningsalgoritme.</translation>
 <translation id="272937284275742856">Je betalingsgegevens beveiligd verifiëren…</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Verbindingsdiagnose uitvoeren<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">Meer informatie over je zoekmachine in Chromium</translation>
+<translation id="5216476641707900057">Meer informatie over je zoekmachine in Shuttle</translation>
 <translation id="2731382536835015353">44 x 68 inch</translation>
 <translation id="2734797989819862638">Niet kopiëren</translation>
 <translation id="2738771556149464852">Niet na</translation>
@@ -1341,7 +1341,7 @@ Het kan langer dan normaal duren voordat je app wordt gestart.</translation>
 <translation id="3272091146646336650">Super B</translation>
 <translation id="3272112314896217187">Voer de <ph name="NUMBER_OF_DIGITS" />-cijferige verificatiecode in</translation>
 <translation id="3272643614306383237">Minder dan 1 MB. Sommige sites laden misschien langzamer bij je volgende bezoek.</translation>
-<translation id="3273738040255912340">Je beheerder kan op afstand wijzigingen aanbrengen in je profiel en browser, informatie over de browser analyseren via rapportage en andere nodige taken uitvoeren. Activiteit op dit apparaat kan ook buiten Chromium worden beheerd. <ph name="BEGIN_LINK" />Meer informatie<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">Je beheerder kan op afstand wijzigingen aanbrengen in je profiel en browser, informatie over de browser analyseren via rapportage en andere nodige taken uitvoeren. Activiteit op dit apparaat kan ook buiten Shuttle worden beheerd. <ph name="BEGIN_LINK" />Meer informatie<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">IBAN opslaan is op volledige hoogte geopend.</translation>
 <translation id="327455571215090823">Slimmer automatisch invullen, privé gehouden</translation>
 <translation id="3280440382387335343">Paspoort beveiligd updaten in Google Wallet</translation>
@@ -1608,7 +1608,7 @@ Het kan langer dan normaal duren voordat je app wordt gestart.</translation>
 <translation id="3742104862808477448">Help Chromium complexe formulieren beter te begrijpen en in te vullen door gegevens beveiligd te verwerken op de servers van Google. Je informatie blijft privé en wordt door niemand beoordeeld.</translation>
 <translation id="3744111561329211289">Synchronisatie op de achtergrond</translation>
 <translation id="3744212718085287312">Wil je deze kaart de volgende keer beter beveiligen met een virtuele kaart?</translation>
-<translation id="3744899669254331632">Je kunt <ph name="SITE" /> op dit moment niet bezoeken, omdat de website gecodeerde inloggegevens heeft verstuurd die niet door Chromium kunnen worden verwerkt. Aangezien netwerkfouten en aanvallen doorgaans van tijdelijke aard zijn, zal deze pagina later waarschijnlijk wel werken.</translation>
+<translation id="58356321557204990">Je kunt <ph name="SITE" /> op dit moment niet bezoeken, omdat de website gecodeerde inloggegevens heeft verstuurd die niet door Shuttle kunnen worden verwerkt. Aangezien netwerkfouten en aanvallen doorgaans van tijdelijke aard zijn, zal deze pagina later waarschijnlijk wel werken.</translation>
 <translation id="3745599309295009257">Je tekst en de content en URL van de pagina waarop je schrijft, worden naar Google gestuurd, beoordeeld door mensen en gebruikt om deze functie te verbeteren. Voer geen persoonlijke informatie in (zoals medische of financiële gegevens) en gebruik deze tool niet op sites die persoonlijke of gevoelige informatie bevatten.</translation>
 <translation id="3748009735914587286">Metaal (hoogglans)</translation>
 <translation id="3748647055058832337">Niet beschikbaar voor deze verkoper</translation>
@@ -2193,7 +2193,7 @@ Je kunt ook contact opnemen met de site-eigenaar en voorstellen dat die upgradet
 <translation id="4732860731866514038">Taalpakket voor <ph name="LANGUAGE" /> downloaden… <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992"><ph name="URL" /> wil de locatie van je apparaat gebruiken</translation>
 <translation id="473414950835101501">Je camera's gebruiken</translation>
-<translation id="4736825316280949806">Chromium opnieuw starten</translation>
+<translation id="5713993618957185264">Shuttle opnieuw starten</translation>
 <translation id="4736934858538408121">Virtuele kaart</translation>
 <translation id="473775607612524610">Updaten</translation>
 <translation id="4738601419177586157">Zoeksuggestie: <ph name="TEXT" /></translation>
@@ -2415,7 +2415,7 @@ Je kunt ook contact opnemen met de site-eigenaar en voorstellen dat die upgradet
 <translation id="5089810972385038852">Staat</translation>
 <translation id="5093232627742069661">Zigzagvouw</translation>
 <translation id="5093417502834168387">Je kunt niet inloggen? Probeer iets anders</translation>
-<translation id="5094747076828555589">De server kan niet bewijzen dat dit <ph name="DOMAIN" /> is. Het beveiligingscertificaat van de server wordt niet vertrouwd door Chromium. Dit kan worden veroorzaakt door een verkeerde configuratie of een aanvaller die je verbinding onderschept.</translation>
+<translation id="5713412634455044803">De server kan niet bewijzen dat dit <ph name="DOMAIN" /> is. Het beveiligingscertificaat van de server wordt niet vertrouwd door Shuttle. Dit kan worden veroorzaakt door een verkeerde configuratie of een aanvaller die je verbinding onderschept.</translation>
 <translation id="5096066272198024688">Je informatie opslaan...</translation>
 <translation id="5097099694988056070">Apparaatstatistieken zoals CPU-/RAM-gebruik rapporteren</translation>
 <translation id="5097468150760963273">27 x 39 inch</translation>
@@ -3166,7 +3166,7 @@ Je kunt ook contact opnemen met de site-eigenaar en voorstellen dat die upgradet
 <translation id="635394585025793320">Ik wil indruk maken op iemand. Zoek naar beschikbare tafels voor 2 bij restaurants waar iedereen het over heeft</translation>
 <translation id="6354918092619878358">Elliptische SECG-kromme secp256r1 (ook wel ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, druk op Tab en daarna op Enter voor meer tabbladen van andere apparaten</translation>
-<translation id="6355392890578844978">Deze browser wordt niet beheerd door een bedrijf of andere organisatie. Activiteit op dit apparaat kan buiten Chromium worden beheerd. <ph name="BEGIN_LINK" />Meer informatie<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Deze browser wordt niet beheerd door een bedrijf of andere organisatie. Activiteit op dit apparaat kan buiten Shuttle worden beheerd. <ph name="BEGIN_LINK" />Meer informatie<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">Tabbladgroepen <ph name="GROUP_TITLE_1" /> en <ph name="GROUP_TITLE_2" /> zijn niet meer beschikbaar</translation>
 <translation id="6358088212770985041">betaalmethoden bewerken</translation>
 <translation id="6358450015545214790">Wat betekent dit?</translation>
@@ -4131,7 +4131,7 @@ Aanvullende informatie:
 <translation id="7995512525968007366">Niet opgegeven</translation>
 <translation id="7997855386298213183">gedeelde tabbladen</translation>
 <translation id="7999482381722829925">Maak een prioriteitschecklist voor een grondige schoonmaak per ruimte met aandacht voor vaak vergeten plekken</translation>
-<translation id="8001912761979890298">Deze server kan niet bewijzen dat dit <ph name="DOMAIN" /> is, omdat de server een beveiligingscertificaat gebruikt dat niet wordt vertrouwd door Chromium of je systeemconfiguratie voor versleuteling van webverkeer. Dit kan worden veroorzaakt door een verkeerde configuratie of een aanvaller die je verbinding onderschept. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Certificaat bekijken<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
+<translation id="8133286429589313205">Deze server kan niet bewijzen dat dit <ph name="DOMAIN" /> is, omdat de server een beveiligingscertificaat gebruikt dat niet wordt vertrouwd door Shuttle of je systeemconfiguratie voor versleuteling van webverkeer. Dit kan worden veroorzaakt door een verkeerde configuratie of een aanvaller die je verbinding onderschept. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Certificaat bekijken<ph name="END_VIEW_CERTIFICATE_LINK" /></translation>
 <translation id="800218591365569300">Probeer andere tabbladen en programma's te sluiten om geheugen vrij te maken.</translation>
 <translation id="8002230960325005199">Bekijk gerelateerde sites op een nieuw tabblad</translation>
 <translation id="8003046808285812021">'<ph name="SEARCH_TERMS" />'</translation>
@@ -4222,7 +4222,7 @@ Aanvullende informatie:
 <translation id="8175796834047840627">Chrome biedt aan je passen in je Google-account op te slaan omdat je bent ingelogd. Je kunt dit wijzigen in de instellingen.</translation>
 <translation id="8176440868214972690">De beheerder van dit apparaat heeft bepaalde gegevens gestuurd naar de volgende websites, zoals instellingen of beleidsregels.</translation>
 <translation id="818254048113802060">{0,plural, =1{<ph name="FILE_NAME" /> is geblokkeerd vanwege content}other{<ph name="FILE_COUNT" /> bestanden zijn geblokkeerd vanwege content}}</translation>
-<translation id="8186171296341598122">Je kunt je zoekmachine op elk moment wijzigen via de instellingen van Chromium. Als je je favoriete zoekmachine niet ziet, kun je zoeken vanaf de site van de zoekmachine. Je ziet de zoekmachine in de Chromium-instellingen als recent bezochte zoekmachine en kunt deze instellen als je standaard zoekmachine.</translation>
+<translation id="2852542171920460365">Je kunt je zoekmachine op elk moment wijzigen via de instellingen van Shuttle. Als je je favoriete zoekmachine niet ziet, kun je zoeken vanaf de site van de zoekmachine. Je ziet de zoekmachine in de Shuttle-instellingen als recent bezochte zoekmachine en kunt deze instellen als je standaard zoekmachine.</translation>
 <translation id="8188830160449823068">IBAN alleen op apparaat opgeslagen</translation>
 <translation id="8189557652711717875">De zoekmachine die je kiest, wordt gebruikt voor functies zoals zoeken via de adresbalk en met afbeeldingen op webpagina's.</translation>
 <translation id="8190193880870196235">Beheerd door een extensie</translation>
@@ -4306,7 +4306,7 @@ Aanvullende informatie:
 <translation id="8316555157357957253">Nu in gebruik</translation>
 <translation id="8319414634934645341">Uitgebreid sleutelgebruik</translation>
 <translation id="831997045666694187">Avond</translation>
-<translation id="8321448084834652864">Je kunt je zoekmachine op elk moment wijzigen via de instellingen van Chromium.</translation>
+<translation id="332470347080865446">Je kunt je zoekmachine op elk moment wijzigen via de instellingen van Shuttle.</translation>
 <translation id="8321476692217554900">meldingen</translation>
 <translation id="8323505966575306467">Je wachtwoorden beter beveiligen</translation>
 <translation id="832547548543012337">Paspoort verwijderen</translation>
@@ -4527,7 +4527,7 @@ Aanvullende informatie:
 <translation id="8736059027199600831">30 x 40 inch</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />. Druk op Tab en vervolgens op Enter om een nieuw incognitovenster te openen om privé te browsen.</translation>
 <translation id="8737685506611670901">Links voor <ph name="PROTOCOL" /> openen in plaats van <ph name="REPLACED_HANDLER_TITLE" /></translation>
-<translation id="8738058698779197622">Als je een beveiligde verbinding tot stand wilt brengen, moet je klok goed zijn ingesteld. Dit moet omdat de certificaten die deze websites gebruiken om zichzelf te identificeren, slechts gedurende bepaalde perioden geldig zijn. Aangezien de klok van je apparaat niet goed is ingesteld, kan Chromium deze certificaten niet verifiëren.</translation>
+<translation id="4709963803166322417">Als je een beveiligde verbinding tot stand wilt brengen, moet je klok goed zijn ingesteld. Dit moet omdat de certificaten die deze websites gebruiken om zichzelf te identificeren, slechts gedurende bepaalde perioden geldig zijn. Aangezien de klok van je apparaat niet goed is ingesteld, kan Shuttle deze certificaten niet verifiëren.</translation>
 <translation id="8740359287975076522">Het &lt;abbr id="dnsDefinition"&gt;DNS-adres&lt;/abbr&gt; van <ph name="HOST_NAME" /> kan niet worden gevonden. Er wordt een diagnose van het probleem uitgevoerd.</translation>
 <translation id="874918643257405732">Bookmark toevoegen voor dit tabblad</translation>
 <translation id="8749274696886550762">Deze site lijkt niet te kloppen</translation>
@@ -4736,7 +4736,7 @@ Aanvullende informatie:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />, druk op Tab en daarna op Enter om Chrome in te stellen als de standaardbrowser van het systeem in de iOS-instellingen</translation>
 <translation id="9101450247048146228">Cameragebruik en -beweging (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">Lade 1</translation>
-<translation id="9103872766612412690"><ph name="SITE" /> gebruikt gewoonlijk versleuteling om je gegevens te beschermen. Toen Chromium deze keer probeerde verbinding te maken met <ph name="SITE" />, retourneerde de website ongewone en onjuiste inloggegevens. Dit gebeurt wanneer een aanvaller probeert zich als <ph name="SITE" /> voor te doen of wanneer een wifi-inlogscherm de verbinding heeft verbroken. Je gegevens zijn nog steeds beveiligd omdat Chromium de verbinding heeft beëindigd voordat er gegevens konden worden uitgewisseld.</translation>
+<translation id="733422146945994640"><ph name="SITE" /> gebruikt gewoonlijk versleuteling om je gegevens te beschermen. Toen Shuttle deze keer probeerde verbinding te maken met <ph name="SITE" />, retourneerde de website ongewone en onjuiste inloggegevens. Dit gebeurt wanneer een aanvaller probeert zich als <ph name="SITE" /> voor te doen of wanneer een wifi-inlogscherm de verbinding heeft verbroken. Je gegevens zijn nog steeds beveiligd omdat Shuttle de verbinding heeft beëindigd voordat er gegevens konden worden uitgewisseld.</translation>
 <translation id="9107199998619088551"><ph name="MANAGER" /> beheert je profiel</translation>
 <translation id="9107467864910557787">Je browser wordt beheerd door <ph name="MANAGER" /></translation>
 <translation id="91108059142052966">Op basis van het beheerdersbeleid wordt scherm delen met <ph name="APPLICATION_TITLE" /> uitgezet als er vertrouwelijke content zichtbaar is</translation>

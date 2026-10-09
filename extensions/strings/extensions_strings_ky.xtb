@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Теманы иштетүү</translation>
 <translation id="1135328998467923690">Топтом жараксыз: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Арткы камера</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> Chromium'дун ишин өзгөртө турган кеңейтүүнү кошту.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> Shuttle'дун ишин өзгөртө турган кеңейтүүнү кошту.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Купуя ачкыч экспорттолбой калды.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx файлы алмаштырылган жок. Файлдын колдонулуп жаткандыгын текшериңиз.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> дегенден белгисиз өндүрүм <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">Уюмуңуз бул кеңейтүүнү бөгөттөп койгон.</translation>
-<translation id="3183357154200327217">Chromium'дун ишин өзгөртө турган теманы компьютериңиздеги башка программа кошуп койду.
+<translation id="7846451875700317002">Shuttle'дун ишин өзгөртө турган теманы компьютериңиздеги башка программа кошуп койду.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">"Киоск_гана" деген манифести бар колдонмо ChromeOS киоск режиминде орнотулушу керек</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Четке кагуу</translation>
 <translation id="3984413272403535372">Кеңейтүү киргизилип жатканда ката кетти.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" оңдойсузбу?</translation>
-<translation id="4061696872429826774">Chromium'дун ишин өзгөртө турган кеңейтүүнү компьютериңиздеги башка программа кошуп койду.
+<translation id="7396546976728149133">Shuttle'дун ишин өзгөртө турган кеңейтүүнү компьютериңиздеги башка программа кошуп койду.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Уюмуңуз бул кеңейтүү категориясын бөгөттөп койгон.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" эң акыркы версиясына көбүрөөк уруксат талап кылынгандыктан, ал иштен чыгарылды.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" иштетилсинби?</translation>
 <translation id="5356315618422219272">Колдонмо көрүнүшү: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium'дан чыгарып салуу</translation>
+<translation id="2064155379595075287">Shuttle'дан чыгарып салуу</translation>
 <translation id="5456409301717116725">Бул кеңейтүүдө '<ph name="KEY_PATH" />' ачкыч файлы камтылган. Аны аткаргыңыз келбейт окшойт.</translation>
 <translation id="5485102783864353244">Колдонмо кошуу</translation>
 <translation id="5486326529110362464">Жеке ачкычтын киргизүү мааниси болушу керек.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Бул машинанын администратору <ph name="EXTENSION_NAME" /> орнотулушун талап кылууда. Аны орнотуудан чыгаруу мүмкүн эмес.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> дегенден белгисиз өндүрүм <ph name="PRODUCT_ID" /> (сериялык номери – <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> дегенден <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">Chromium'дун ишин өзгөртө турган колдонмону компьютериңиздеги башка программа кошуп койду.
+<translation id="5918487821361452587">Shuttle'дун ишин өзгөртө турган колдонмону компьютериңиздеги башка программа кошуп койду.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Кеңейтүүнү жүктөөдөгү ката</translation>

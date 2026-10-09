@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Agent Chrome: the password manager is removed. Only the Credential Management
+# Shuttle: the password manager is removed. Only the Credential Management
 # types used by blink mojom traits and content/ (WebAuthn, FedCM) remain.
 static_library("common") {
   sources = [

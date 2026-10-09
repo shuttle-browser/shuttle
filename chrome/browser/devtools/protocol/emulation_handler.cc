@@ -129,7 +129,7 @@ Response EmulationHandler::Disable() {
 }
 
 Response EmulationHandler::SetAutomationOverride(bool enabled) {
-  // Agent Chrome: no "controlled by automated test software" infobar, and
+  // Shuttle: no "controlled by automated test software" infobar, and
   // navigator.webdriver stays false (see Navigator::webdriver()).
   return Response::FallThrough();
 }

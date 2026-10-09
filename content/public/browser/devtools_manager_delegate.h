@@ -188,7 +188,7 @@ class CONTENT_EXPORT DevToolsManagerDelegate {
   // The embedder can use this information to update the UI.
   virtual void SetActiveWebSocketConnections(size_t count);
 
-  // Agent Chrome: handles an HTTP request to /mcp on the remote debugging
+  // Shuttle: handles an HTTP request to /mcp on the remote debugging
   // server (the in-browser MCP server). `host` is the request's Host header
   // (for building CDP URLs), `body` the POSTed JSON-RPC message. `callback`
   // receives the HTTP status, the content type and the body; it may run
@@ -199,7 +199,7 @@ class CONTENT_EXPORT DevToolsManagerDelegate {
                                 const std::string& body,
                                 HttpResponseCallback callback);
 
-  // Agent Chrome: filters the protocol messages of one remote debugging
+  // Shuttle: filters the protocol messages of one remote debugging
   // WebSocket connection in both directions (scoped per-session CDP).
   class ConnectionFilter {
    public:
@@ -215,7 +215,7 @@ class CONTENT_EXPORT DevToolsManagerDelegate {
     // A message from the agent host; forward it with `to_client` or drop it.
     virtual void OnAgentMessage(std::string message) = 0;
   };
-  // Agent Chrome: returns a filter for a new WebSocket connection, or nullptr.
+  // Shuttle: returns a filter for a new WebSocket connection, or nullptr.
   // `session_id` is set for /devtools/session/<session_id> (a browser-level
   // connection; nullptr rejects it), `target_id` for /devtools/page/<target_id>
   // (nullptr leaves it unfiltered).

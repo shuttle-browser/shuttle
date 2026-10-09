@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "build/build_config.h"
 #include "chrome/browser/ui/webui/help/version_updater.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 
@@ -25,6 +26,9 @@ class VersionUpdaterBasic : public VersionUpdater {
                               : DISABLED;
     callback.Run(status, 0, false, false, std::string(), 0, std::u16string());
   }
+#if BUILDFLAG(IS_MAC)
+  void PromoteUpdater() override {}
+#endif
 };
 
 }  // namespace

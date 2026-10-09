@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">තේමාව සබල කරන්න</translation>
 <translation id="1135328998467923690">පැකේජය අවලංගුයි: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">පරිසරයට-මුහුණලා</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> විසින් Chromium ක්‍රියා කරන ආකාරය වෙනස් කළ හැකි දිගුවක් එක් කර ඇත.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> විසින් Shuttle ක්‍රියා කරන ආකාරය වෙනස් කළ හැකි දිගුවක් එක් කර ඇත.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">පුද්ගලික යතුර අපනයනය කළ නොහැකි විය.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ගොනුව යළි පිහිටුවිය නොහැකි විය. මෙම ගොනුව භාවිතයේදැයි පිරික්සන්න.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> වෙතින් නොදන්නා නිෂ්පාදනය <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">මෙම දිගුවට ප්‍රවේශය ඔබේ සංවිධානය විසින් අවහිර කර ඇත.</translation>
-<translation id="3183357154200327217">ඔබේ පරිගණකයේ ඇති වෙනත් වැඩසටහනක් තේමාවක් එක් කර ඇති අතර එයින් Chromium ක්‍රියා කරන ආකරය වෙනස් විය හැක.
+<translation id="7846451875700317002">ඔබේ පරිගණකයේ ඇති වෙනත් වැඩසටහනක් තේමාවක් එක් කර ඇති අතර එයින් Shuttle ක්‍රියා කරන ආකරය වෙනස් විය හැක.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' මැනිෆෙස්ට් උපලක්ෂණය සහිත යෙදුම ChromeOS කියෝස්ක් ප්‍රකාරයේ ස්ථාපනය කළ යුතුය</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">ප්‍රතික්ෂේප කරන්න</translation>
 <translation id="3984413272403535372">දිගුවට ප්‍රවිෂ්ට වීමේදී දෝෂයක් මතුවිය.</translation>
 <translation id="4014432863917027322">අළුත්වැඩියාකරන්නද? "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">ඔබේ පරිගණකයේ ඇති වෙනත් වැඩසටහනක් දිගුවක් එක් කර ඇති අතර එයින් Chromium ක්‍රියා කරන ආකරය වෙනස් විය හැක.
+<translation id="7396546976728149133">ඔබේ පරිගණකයේ ඇති වෙනත් වැඩසටහනක් දිගුවක් එක් කර ඇති අතර එයින් Shuttle ක්‍රියා කරන ආකරය වෙනස් විය හැක.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">මෙම දිගු කාණ්ඩයට ප්‍රවේශය ඔබේ සංවිධානය විසින් අවහිර කර ඇත.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">වැඩි අවශ්‍ය බැවින්  "<ph name="EXTENSION_NAME" />" හි නවතම සංස්කරණය අක්‍රීය කරන ලදී.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" සබල කරන්නද?</translation>
 <translation id="5356315618422219272">යෙදුම්දසුන: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium වෙතින් ඉවත් කරන්න</translation>
+<translation id="2064155379595075287">Shuttle වෙතින් ඉවත් කරන්න</translation>
 <translation id="5456409301717116725">මෙම දිගුවේ මූලික ගොනුව '<ph name="KEY_PATH" />' අඩංගුවේ. ඔබට සමහරවිට එය කිරීමට අවශ්‍ය නැත.</translation>
 <translation id="5485102783864353244">යෙදුම එක් කරන්න</translation>
 <translation id="5486326529110362464">පුද්ගලික යතුරු සඳහා වන ඇතුළු කිරීමේ අගය පැවතිය යුතුය.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">මෙම යන්ත්‍රයේ පාලකයාට <ph name="EXTENSION_NAME" /> ස්ථාපනය කිරීමට අවශ්‍යයි. එය අස්ථාපනය කළ නොහැක.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> වෙතින් නොදන්නා නිෂ්පාදනය <ph name="PRODUCT_ID" /> (අනුක්‍රමික අංකය <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> වෙතින් <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">ඔබේ පරිගණකයේ ඇති වෙනත් වැඩසටහනක් යෙදුමක් එක් කර ඇති අතර එයින් Chromium ක්‍රියා කරන ආකරය වෙනස් විය හැක.
+<translation id="5918487821361452587">ඔබේ පරිගණකයේ ඇති වෙනත් වැඩසටහනක් යෙදුමක් එක් කර ඇති අතර එයින් Shuttle ක්‍රියා කරන ආකරය වෙනස් විය හැක.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">දිගුව ප්‍රවේශනය කිරීමේ දෝෂය</translation>

@@ -1,4 +1,4 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include "content/public/browser/web_ui_controller.h"
 #include "content/public/browser/webui_config.h"
 
-namespace agent_chrome {
+namespace shuttle {
 
 inline constexpr char kChromeUIAgentsHost[] = "agents";
 
@@ -31,6 +31,6 @@ class AgentsUI : public content::WebUIController {
   ~AgentsUI() override;
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
 #endif  // CHROME_BROWSER_UI_WEBUI_AGENTS_AGENTS_UI_H_

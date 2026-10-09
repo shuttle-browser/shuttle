@@ -36,7 +36,7 @@
 #include "url/gurl.h"
 
 bool NewTabUIConfig::IsWebUIEnabled(content::BrowserContext* browser_context) {
-  // Agent Chrome: chrome://newtab/ is never rewritten, so NewTabUI serves the
+  // Shuttle: chrome://newtab/ is never rewritten, so NewTabUI serves the
   // New Tab page. Regular profiles get a blank page.
   return true;
 }

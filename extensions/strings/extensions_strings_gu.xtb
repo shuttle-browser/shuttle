@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">થીમ ચાલુ કરો</translation>
 <translation id="1135328998467923690">પૅકેજ અમાન્ય છે : '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">પાછળનો કૅમેરો</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> દ્વારા કોઈ એક્સ્ટેન્શન ઉમેરવામાં આવ્યું છે, જેને કારણે Chromiumની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> દ્વારા કોઈ એક્સ્ટેન્શન ઉમેરવામાં આવ્યું છે, જેને કારણે Shuttleની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ખાનગી કી નિકાસ કરવામાં નિષ્ફળ.</translation>
@@ -49,7 +49,7 @@
 <translation id="3144135466825225871">crx ફાઇલ બદલવામાં નિષ્ફળ થયું. ફાઇલ ઉપયોગમાં છે કે નહીં તે જોવા માટે તપાસો.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> વિક્રેતાનું અજાણ્યું ઉત્પાદન <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">તમારી સંસ્થા દ્વારા આ એક્સ્ટેન્શનનો ઍક્સેસ બ્લૉક કરવામાં આવ્યો છે.</translation>
-<translation id="3183357154200327217">તમારા કમ્પ્યૂટર પરના અન્ય પ્રોગ્રામ દ્વારા કોઈ થીમ ઉમેરવામાં આવી છે જેનાથી Chromiumની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
+<translation id="7846451875700317002">તમારા કમ્પ્યૂટર પરના અન્ય પ્રોગ્રામ દ્વારા કોઈ થીમ ઉમેરવામાં આવી છે જેનાથી Shuttleની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'Kiosk_only' મેનિફેસ્ટની વિશેષતા ધરાવતી ઍપ, ChromeOS કિઓસ્ક મોડમાં ઇન્સ્ટૉલ કરેલી હોવી આવશ્યક છે</translation>
@@ -65,7 +65,7 @@
 <translation id="3927932062596804919">નકારો</translation>
 <translation id="3984413272403535372">એક્સટેંશન હસ્તાક્ષરિત કરતી વખતે ભૂલ.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" ને સુધારીએ?</translation>
-<translation id="4061696872429826774">તમારા કમ્પ્યૂટર પરના અન્ય પ્રોગ્રામ દ્વારા કોઈ એક્સ્ટેન્શન ઉમેરવામાં આવ્યું છે જેનાથી Chromiumની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
+<translation id="7396546976728149133">તમારા કમ્પ્યૂટર પરના અન્ય પ્રોગ્રામ દ્વારા કોઈ એક્સ્ટેન્શન ઉમેરવામાં આવ્યું છે જેનાથી Shuttleની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">તમારી સંસ્થા દ્વારા એક્સ્ટેન્શનની આ કૅટેગરીનો ઍક્સેસ બ્લૉક કરવામાં આવ્યો છે.</translation>
@@ -88,7 +88,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />"નું સૌથી નવું વર્ઝન બંધ કરવામાં આવ્યું છે, કારણ કે એને વધુ પરવાનગીઓની જરૂર છે.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />"ને ચાલુ કરીએ?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium માંથી દૂર કરો</translation>
+<translation id="2064155379595075287">Shuttle માંથી દૂર કરો</translation>
 <translation id="5456409301717116725">આ એક્સટેન્શનમાં '<ph name="KEY_PATH" />' કી ફાઇલ શામેલ છે. તમે કદાચ એ કરવા માંગતા નથી.</translation>
 <translation id="5485102783864353244">ઍપ્લિકેશન ઉમેરો</translation>
 <translation id="5486326529110362464">ખાનગી કી માટે ઇનપુટ મૂલ્ય અસ્તિત્વમાં હોવું જોઈએ.</translation>
@@ -98,7 +98,7 @@
 <translation id="5972529113578162692">આ મશીનના વ્યવસ્થાપક માટે <ph name="EXTENSION_NAME" /> ઇન્સ્ટોલ કરેલું હોવું જરૂરી છે. તે અનઇન્સ્ટોલ કરી શકાતું નથી.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> વિક્રેતાનું અજાણ્યું ઉત્પાદન <ph name="PRODUCT_ID" /> (શૃંખલા ક્રમાંક <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> વિક્રેતા તરફથી <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">તમારા કમ્પ્યૂટર પરની અન્ય ઍપ દ્વારા કોઈ એક્સ્ટેન્શન ઉમેરવામાં આવ્યું છે જેનાથી Chromiumની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
+<translation id="5918487821361452587">તમારા કમ્પ્યૂટર પરની અન્ય ઍપ દ્વારા કોઈ એક્સ્ટેન્શન ઉમેરવામાં આવ્યું છે જેનાથી Shuttleની કામ કરવાની રીતમાં ફેરફાર થઈ શકે છે.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">એક્સ્ટેન્શન લોડ કરવામાં ભૂલ</translation>

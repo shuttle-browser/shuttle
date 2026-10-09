@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">ଥିମ୍ ସକ୍ଷମ କରନ୍ତୁ</translation>
 <translation id="1135328998467923690">ପ୍ୟାକେଜ୍ ଅବୈଧ ଅଟେ: '<ph name="ERROR_CODE" />'।</translation>
 <translation id="1140871961407805696">ପଛପଟ କ୍ୟାମେରା</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ଏକ ଏକ୍ସଟେନସନ ଯୋଗ କରିଛନ୍ତି ଯାହା Chromium କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ଏକ ଏକ୍ସଟେନସନ ଯୋଗ କରିଛନ୍ତି ଯାହା Shuttle କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">ବ୍ୟକ୍ତିଗତ କୀ ଏକ୍ସପୋର୍ଟ କରିବାରେ ବିଫଳ ହେଲା।</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">crx ଫାଇଲ୍‍କୁ ପ୍ରତିସ୍ଥାପିତ କରିହେଲା ନାହିଁ। ଫାଇଲ୍‍ଟି ବ୍ୟବହାର କରାଯାଉଛି କି ନାହିଁ ତାହା ଯାଞ୍ଚ କରନ୍ତୁ।</translation>
 <translation id="3163201441334626963">ଭେଣ୍ଡର <ph name="VENDOR_ID" />ରୁ ଅଜଣା ପ୍ରଡକ୍ଟ <ph name="PRODUCT_ID" /></translation>
 <translation id="3174723475300476613">ଆପଣଙ୍କ ସଂସ୍ଥା ଦ୍ୱାରା ଏହି ଏକ୍ସଟେନସନକୁ ଆକ୍ସେସ ବ୍ଲକ କରାଯାଇଛି।</translation>
-<translation id="3183357154200327217">ଆପଣଙ୍କ କମ୍ପ୍ୟୁଟରରେ ଥିବା ଅନ୍ୟ ଏକ ପ୍ରୋଗ୍ରାମ ଏକ ଥିମ ଯୋଗ କରିଛି ଯାହା Chromeର କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
+<translation id="7846451875700317002">ଆପଣଙ୍କ କମ୍ପ୍ୟୁଟରରେ ଥିବା ଅନ୍ୟ ଏକ ପ୍ରୋଗ୍ରାମ ଏକ ଥିମ ଯୋଗ କରିଛି ଯାହା Chromeର କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' ମାନିଫେଷ୍ଟ ଆଟ୍ରିବ୍ୟୁଟ ଥିବା ଆପ ChromeOS କିଓସ୍କ ମୋଡରେ ଇନଷ୍ଟଲ କରାଯିବା ଉଚିତ</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">ଅସ୍ଵୀକାର</translation>
 <translation id="3984413272403535372">ଏକ୍ସଟେନ୍‌ସନ୍ ସାଇନ୍‌ କରିବା ସମୟରେ ତ୍ରୁଟି।</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" ଅପ୍‌ଡେଟ୍ କରିବେ?</translation>
-<translation id="4061696872429826774">ଆପଣଙ୍କ କମ୍ପ୍ୟୁଟରରେ ଥିବା ଅନ୍ୟ ଏକ ପ୍ରୋଗ୍ରାମ ଏକ ଏକ୍ସଟେନସନ ଯୋଗ କରିଛି ଯାହା Chromeର କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
+<translation id="7396546976728149133">ଆପଣଙ୍କ କମ୍ପ୍ୟୁଟରରେ ଥିବା ଅନ୍ୟ ଏକ ପ୍ରୋଗ୍ରାମ ଏକ ଏକ୍ସଟେନସନ ଯୋଗ କରିଛି ଯାହା Chromeର କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">ଆପଣଙ୍କ ସଂସ୍ଥା ଦ୍ୱାରା ଏହି ଏକ୍ସଟେନସନ ବର୍ଗକୁ ଆକ୍ସେସ ବ୍ଲକ କରାଯାଇଛି।</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />"ର ନବୀନତମ ସଂସ୍କରଣ ଅକ୍ଷମ କରାଯାଇଛି କାରଣ ଏହା ଅଧିକ ଅନୁମତି ଆବଶ୍ୟକ କରେ।</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />"କୁ ସକ୍ଷମ କରିବେ କି?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromiumରୁ କାଢ଼ି ଦିଅନ୍ତୁ</translation>
+<translation id="2064155379595075287">Shuttleରୁ କାଢ଼ି ଦିଅନ୍ତୁ</translation>
 <translation id="5456409301717116725">ଏହି ଏକ୍ସଟେସନ୍‌ରେ କୀ ଫାଇଲ୍ '<ph name="KEY_PATH" />' ଅନ୍ତର୍ଭୁକ୍ତ ଅଛି। ସମ୍ଭବତଃ ଆପଣ ତାହା କରିବାକୁ ଚାହାଁନ୍ତି ନାହିଁ।</translation>
 <translation id="5485102783864353244">ଆପ୍‌ ଯୋଗ କରନ୍ତୁ</translation>
 <translation id="5486326529110362464">ବ୍ୟକ୍ତିଗତ କୀ ପାଇଁ ଇନ୍‍ପୁଟ୍ ମୂଲ୍ୟ ପୂର୍ବରୁ ରହିବା ଉଚିତ।</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">ଏହି ମେସିନ୍‌ର ବ୍ୟବସ୍ଥାପକ <ph name="EXTENSION_NAME" />ର ଇନ୍‍ଷ୍ଟଲ୍‍ କରିବା ଆବଶ୍ୟକ କରୁଛନ୍ତି। ଏହାକୁ ଅନ୍‍ଇନ୍‍ଷ୍ଟଲ୍‍ କରାଯାଇପାରିବ ନାହିଁ</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> ତରଫରୁ ଅଜଣା ପ୍ରଡକ୍ଟ <ph name="PRODUCT_ID" /> (କ୍ରମିକ ସଂଖ୍ୟା <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> ବିକ୍ରେତାଙ୍କ ତରଫରୁ <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">ଆପଣଙ୍କ କମ୍ପ୍ୟୁଟରରେ ଥିବା ଅନ୍ୟ ଏକ ପ୍ରୋଗ୍ରାମ ଏକ ଆପ ଯୋଗ କରିଛି ଯାହା Chromeର କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
+<translation id="5918487821361452587">ଆପଣଙ୍କ କମ୍ପ୍ୟୁଟରରେ ଥିବା ଅନ୍ୟ ଏକ ପ୍ରୋଗ୍ରାମ ଏକ ଆପ ଯୋଗ କରିଛି ଯାହା Chromeର କାର୍ଯ୍ୟ କରିବାର ଉପାୟକୁ ପରିବର୍ତ୍ତନ କରିପାରେ।
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">ଏକ୍ସଟେନ୍‌ସନ୍ ଲୋଡ୍ ହେବା ସମୟରେ ତ୍ରୁଟି</translation>

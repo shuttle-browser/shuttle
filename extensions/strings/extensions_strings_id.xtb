@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Aktifkan Tema</translation>
 <translation id="1135328998467923690">Paket tidak valid: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Kamera belakang</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> telah menambahkan ekstensi yang dapat mengubah cara kerja Chromium.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> telah menambahkan ekstensi yang dapat mengubah cara kerja Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Gagal mengekspor kunci pribadi.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Gagal mengganti file crx. Cek apakah file sedang digunakan.</translation>
 <translation id="3163201441334626963">Produk <ph name="PRODUCT_ID" /> tak dikenal dari vendor <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Akses ke ekstensi ini diblokir oleh organisasi Anda.</translation>
-<translation id="3183357154200327217">Program lain di komputer Anda menambahkan tema yang dapat mengubah cara kerja Chromium.
+<translation id="7846451875700317002">Program lain di komputer Anda menambahkan tema yang dapat mengubah cara kerja Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplikasi dengan atribut manifes 'kiosk_only' harus diinstal dalam mode kios ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Tolak</translation>
 <translation id="3984413272403535372">Kesalahan ketika menandai ekstensi.</translation>
 <translation id="4014432863917027322">Perbaiki "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">Program lain di komputer Anda menambahkan ekstensi yang dapat mengubah cara kerja Chromium.
+<translation id="7396546976728149133">Program lain di komputer Anda menambahkan ekstensi yang dapat mengubah cara kerja Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Akses ke kategori ekstensi ini diblokir oleh organisasi Anda.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Versi terbaru dari "<ph name="EXTENSION_NAME" />" telah dinonaktifkan karena versi tersebut memerlukan tingkat izin yang lebih tinggi.</translation>
 <translation id="5242724311594467048">Aktifkan "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Hapus dari Chromium</translation>
+<translation id="2064155379595075287">Hapus dari Shuttle</translation>
 <translation id="5456409301717116725">Ekstensi ini termasuk file kunci '<ph name="KEY_PATH" />'. Anda mungkin tidak ingin melakukannya.</translation>
 <translation id="5485102783864353244">Tambahkan aplikasi</translation>
 <translation id="5486326529110362464">Nilai masukan untuk kunci pribadi harus ada.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administrator komputer ini mewajibkan agar <ph name="EXTENSION_NAME" /> dipasang. Ekstensi tersebut tidak dapat di-uninstal.</translation>
 <translation id="6027032947578871493">Produk <ph name="PRODUCT_ID" /> tak dikenal dari <ph name="VENDOR_NAME" /> (nomor seri <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> dari vendor <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Program lain di komputer Anda menambahkan aplikasi yang dapat mengubah cara kerja Chromium.
+<translation id="5918487821361452587">Program lain di komputer Anda menambahkan aplikasi yang dapat mengubah cara kerja Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Terjadi Kesalahan Saat Memuat Ekstensi</translation>

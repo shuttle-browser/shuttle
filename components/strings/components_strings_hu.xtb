@@ -11,7 +11,7 @@
 <translation id="1015730422737071372">További részletek megadása</translation>
 <translation id="1016671033299705843">Vezetői engedély biztonságos hozzáadása</translation>
 <translation id="1019413721762100891">Ki</translation>
-<translation id="1021753677514347426">A probléma oka az Ön vagy valaki más által az eszközre telepített egyik tanúsítvány. Erről a tanúsítványról tudni lehet, hogy hálózati forgalom megfigyelésére és elfogására használják, és a Chromium szerint nem megbízható. Bár a megfigyelésnek létezik néhány jogszerű formája (például iskolai vagy vállalati hálózatokon), a Chromium biztosra szeretne menni abban, hogy Ön ezzel tisztában van – még akkor is, ha Ön nem tud tenni ellene. A megfigyelés az internethez hozzáférő bármely böngészőben vagy alkalmazásban megtörténhet.</translation>
+<translation id="768230658237634872">A probléma oka az Ön vagy valaki más által az eszközre telepített egyik tanúsítvány. Erről a tanúsítványról tudni lehet, hogy hálózati forgalom megfigyelésére és elfogására használják, és a Shuttle szerint nem megbízható. Bár a megfigyelésnek létezik néhány jogszerű formája (például iskolai vagy vállalati hálózatokon), a Shuttle biztosra szeretne menni abban, hogy Ön ezzel tisztában van – még akkor is, ha Ön nem tud tenni ellene. A megfigyelés az internethez hozzáférő bármely böngészőben vagy alkalmazásban megtörténhet.</translation>
 <translation id="1024111578869940408">A támadók néha úgy próbálnak meg webhelyeket utánozni, hogy alig észrevehető változtatásokat végeznek a webhely címében.</translation>
 <translation id="102916930470544692">Azonosítókulcs</translation>
 <translation id="1030706264415084469">A(z) <ph name="URL" /> webhely állandó jelleggel nagy méretű adatokat szeretne tárolni az eszközön</translation>
@@ -809,7 +809,7 @@ Ezt egyéb esetben letiltják az Ön adatvédelmi beállításai. Az engedélyez
 <translation id="2348836501965732644">A Beállításokban kezelheti az adatait, illetve kapcsolhatja ki ezeket a javaslatokat</translation>
 <translation id="2349957959687031096">Inkognitó lap megnyitása gomb. A gombot megnyomva új inkognitó lapot nyithat meg, ahol privát módon böngészhet.</translation>
 <translation id="2350796302381711542">Engedélyezi az összes <ph name="PROTOCOL" /> link megnyitását a(z) <ph name="HANDLER_HOSTNAME" /> számára a(z) <ph name="REPLACED_HANDLER_TITLE" /> helyett?</translation>
-<translation id="2351718832234620840">A szerver nem tudta bizonyítani, hogy valóban a(z) <ph name="DOMAIN" /> domain, mert olyan biztonsági tanúsítványt használ, amelyet a Chromium vagy a rendszerkonfiguráció nem tart megbízhatónak a webes forgalom titkosításához. Ezt okozhatja konfigurációs hiba, vagy az, hogy egy támadó eltérítette az Ön kapcsolatát.</translation>
+<translation id="4798228153726623290">A szerver nem tudta bizonyítani, hogy valóban a(z) <ph name="DOMAIN" /> domain, mert olyan biztonsági tanúsítványt használ, amelyet a Shuttle vagy a rendszerkonfiguráció nem tart megbízhatónak a webes forgalom titkosításához. Ezt okozhatja konfigurációs hiba, vagy az, hogy egy támadó eltérítette az Ön kapcsolatát.</translation>
 <translation id="2353297238722298836">Kamera és mikrofon engedélyezve</translation>
 <translation id="2354001756790975382">További könyvjelzők</translation>
 <translation id="2355395290879513365">A felhasználók esetleg láthatják a webhelyen éppen megtekintett képeit, és a képeket módosítva félrevezethetik Önt.</translation>
@@ -1046,7 +1046,7 @@ Ezt egyéb esetben letiltják az Ön adatvédelmi beállításai. Az engedélyez
 <translation id="2728127805433021124">A szerver tanúsítványa gyenge aláírási algoritmussal van aláírva.</translation>
 <translation id="272937284275742856">Fizetési adatok biztonságos ellenőrzése…</translation>
 <translation id="2730326759066348565"><ph name="BEGIN_LINK" />Kapcsolódási diagnosztika futtatása<ph name="END_LINK" /></translation>
-<translation id="2731220418440848219">További információ a Chromiumban használt keresőmotorról</translation>
+<translation id="5216476641707900057">További információ a Shuttleban használt keresőmotorról</translation>
 <translation id="2731382536835015353">44 × 68 hüvelyk</translation>
 <translation id="2734797989819862638">Nem másolom át</translation>
 <translation id="2738771556149464852">Ezután nem:</translation>
@@ -1342,7 +1342,7 @@ A későbbi fizetési lehetőségek elrejtéséhez lépjen a <ph name="BEGIN_LIN
 <translation id="3272091146646336650">„Super B” méret</translation>
 <translation id="3272112314896217187">Adja meg a kapott <ph name="NUMBER_OF_DIGITS" /> számjegyű ellenőrző kódot</translation>
 <translation id="3272643614306383237">Kevesebb mint 1 MB. Előfordulhat, hogy egyes webhelyek lassabban töltődnek be, amikor legközelebb felkeresi őket.</translation>
-<translation id="3273738040255912340">A rendszergazda távolról módosításokat végezhet az Ön profiljában és böngészőjében, jelentésekkel elemezheti a böngészőadatait, és egyéb szükséges feladatokat is elvégezhet. Az is lehetséges, hogy az eszközön végzett tevékenységeket a Chromiumon kívülről felügyelik. <ph name="BEGIN_LINK" />További információ<ph name="END_LINK" /></translation>
+<translation id="4272590266334452792">A rendszergazda távolról módosításokat végezhet az Ön profiljában és böngészőjében, jelentésekkel elemezheti a böngészőadatait, és egyéb szükséges feladatokat is elvégezhet. Az is lehetséges, hogy az eszközön végzett tevékenységeket a Shuttleon kívülről felügyelik. <ph name="BEGIN_LINK" />További információ<ph name="END_LINK" /></translation>
 <translation id="3273757719652748628">Az IBAN-kód mentése panel teljes magasságban van megnyitva.</translation>
 <translation id="327455571215090823">Okosabb automatikus kitöltés, privát módon</translation>
 <translation id="3280440382387335343">Útlevél biztonságos frissítése a Google Walletben</translation>
@@ -1611,7 +1611,7 @@ A későbbi fizetési lehetőségek elrejtéséhez lépjen a <ph name="BEGIN_LIN
 <translation id="3742104862808477448">Segíthet a Chromiumnak az összetett űrlapok jobb megértésében és kitöltésében az adatainak a Google szerverein való biztonságos feldolgozásával. Adatai bizalmasak maradnak, és senki sem ellenőrzi őket.</translation>
 <translation id="3744111561329211289">Szinkronizálás a háttérben</translation>
 <translation id="3744212718085287312">Szeretné legközelebb növelni a biztonságot egy virtuális kártyával?</translation>
-<translation id="3744899669254331632">Most nem keresheti fel a(z) <ph name="SITE" /> webhelyet, mert az zavaros, a Chromium által nem feldolgozható hitelesítő adatokat küldött. A hálózati hibák és támadások általában ideiglenesek, úgyhogy az oldal később valószínűleg megfelelően fog működni.</translation>
+<translation id="58356321557204990">Most nem keresheti fel a(z) <ph name="SITE" /> webhelyet, mert az zavaros, a Shuttle által nem feldolgozható hitelesítő adatokat küldött. A hálózati hibák és támadások általában ideiglenesek, úgyhogy az oldal később valószínűleg megfelelően fog működni.</translation>
 <translation id="3745599309295009257">A szöveget, valamint annak az oldalnak a tartalmát és URL-jét, amelyen ír, elküldjük a Google-nak, és ember általi felülvizsgálat után felhasználjuk őket a funkció javításához. Ne adjon meg személyes adatokat (például egészségügyi vagy pénzügyi információkat), és ne használja az eszközt olyan webhelyeken, amelyek privát vagy bizalmas információkat tartalmaznak.</translation>
 <translation id="3748009735914587286">Fém (magasfényű)</translation>
 <translation id="3748647055058832337">Ennél a kereskedőnél nem áll rendelkezésre</translation>
@@ -2196,7 +2196,7 @@ A későbbi fizetési lehetőségek elrejtéséhez lépjen a <ph name="BEGIN_LIN
 <translation id="4732860731866514038">A(z) <ph name="LANGUAGE" /> nyelvi csomag letöltése folyamatban van… <ph name="PERCENT" />%</translation>
 <translation id="4733082559415072992">A(z) <ph name="URL" /> az eszköz helyadatait szeretné használni</translation>
 <translation id="473414950835101501">Kamerák használata</translation>
-<translation id="4736825316280949806">Indítsa újra a Chromiumot</translation>
+<translation id="5713993618957185264">Indítsa újra a Shuttleot</translation>
 <translation id="4736934858538408121">Virtuális kártya</translation>
 <translation id="473775607612524610">Frissítés</translation>
 <translation id="4738601419177586157"><ph name="TEXT" /> keresési javaslat</translation>
@@ -2418,7 +2418,7 @@ A későbbi fizetési lehetőségek elrejtéséhez lépjen a <ph name="BEGIN_LIN
 <translation id="5089810972385038852">Állam</translation>
 <translation id="5093232627742069661">Z-hajtás</translation>
 <translation id="5093417502834168387">Gond van a bejelentkezéssel? Próbálkozás máshogy</translation>
-<translation id="5094747076828555589">A szerver nem tudta bizonyítani, hogy valóban a(z) <ph name="DOMAIN" /> domainbe tartozik; biztonsági tanúsítványa a Chromium szerint nem megbízható. Ennek oka lehet konfigurációs hiba, vagy hogy egy támadó eltérítette az Ön kapcsolódását.</translation>
+<translation id="5713412634455044803">A szerver nem tudta bizonyítani, hogy valóban a(z) <ph name="DOMAIN" /> domainbe tartozik; biztonsági tanúsítványa a Shuttle szerint nem megbízható. Ennek oka lehet konfigurációs hiba, vagy hogy egy támadó eltérítette az Ön kapcsolódását.</translation>
 <translation id="5096066272198024688">Adatok mentése…</translation>
 <translation id="5097099694988056070">Eszközstatisztikák, például processzor- és memóriahasználat</translation>
 <translation id="5097468150760963273">27 × 39 hüvelyk</translation>
@@ -3170,7 +3170,7 @@ A későbbi fizetési lehetőségek elrejtéséhez lépjen a <ph name="BEGIN_LIN
 <translation id="635394585025793320">Szeretnék lenyűgözni valakit. Keress szabad asztalokat 2 főre olyan éttermekben, amelyekről most mindenki beszél.</translation>
 <translation id="6354918092619878358">SECG elliptikus görbe secp256r1 (vagyis ANSI X9.62 prime256v1, NIST P-256)</translation>
 <translation id="6355224247005550277"><ph name="CROSS_DEVICE_TAB_FOCUSED_FRIENDLY_MATCH_TEXT" />, nyomja le a Tab, majd az Enter billentyűt a más eszközökről származó további lapok megtekintéséhez</translation>
-<translation id="6355392890578844978">Ezt a böngészőt nem kezeli cég vagy más szervezet. Lehetséges, hogy az eszközön végzett tevékenységeket a Chromiumon kívülről felügyelik. <ph name="BEGIN_LINK" />További információ<ph name="END_LINK" /></translation>
+<translation id="2348087332519756531">Ezt a böngészőt nem kezeli cég vagy más szervezet. Lehetséges, hogy az eszközön végzett tevékenységeket a Shuttleon kívülről felügyelik. <ph name="BEGIN_LINK" />További információ<ph name="END_LINK" /></translation>
 <translation id="6357546827188504216">A(z) „<ph name="GROUP_TITLE_1" />” és a(z) „<ph name="GROUP_TITLE_2" />” lapcsoportok már nem állnak rendelkezésre</translation>
 <translation id="6358088212770985041">szerkeszteni próbálja a fizetési módokat</translation>
 <translation id="6358450015545214790">Mit jelent ez?</translation>
@@ -4135,7 +4135,7 @@ További részletek:
 <translation id="7995512525968007366">Nincs megadva</translation>
 <translation id="7997855386298213183">megosztott lapok</translation>
 <translation id="7999482381722829925">Készíts egy prioritás szerinti, szobáról szobára haladó, alapos takarítási ellenőrző listát, amely a gyakran kihagyott helyekre összpontosít</translation>
-<translation id="8001912761979890298">A szerver nem tudta bizonyítani, hogy valóban a(z) <ph name="DOMAIN" /> domain, mert olyan biztonsági tanúsítványt használ, amelyet a Chromium vagy a rendszerkonfiguráció nem tart megbízhatónak a webes forgalom titkosításához. Ezt okozhatja konfigurációs hiba, vagy az, hogy egy támadó eltérítette az Ön kapcsolatát. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Tanúsítvány megtekintése<ph name="END_VIEW_CERTIFICATE_LINK" />.</translation>
+<translation id="8133286429589313205">A szerver nem tudta bizonyítani, hogy valóban a(z) <ph name="DOMAIN" /> domain, mert olyan biztonsági tanúsítványt használ, amelyet a Shuttle vagy a rendszerkonfiguráció nem tart megbízhatónak a webes forgalom titkosításához. Ezt okozhatja konfigurációs hiba, vagy az, hogy egy támadó eltérítette az Ön kapcsolatát. <ph name="BEGIN_VIEW_CERTIFICATE_LINK" />Tanúsítvány megtekintése<ph name="END_VIEW_CERTIFICATE_LINK" />.</translation>
 <translation id="800218591365569300">Próbáljon meg bezárni más lapokat vagy programokat memória felszabadítása céljából.</translation>
 <translation id="8002230960325005199">A kapcsolódó webhelyek megtekintése új lapon</translation>
 <translation id="8003046808285812021">„<ph name="SEARCH_TERMS" />”</translation>
@@ -4226,7 +4226,7 @@ További részletek:
 <translation id="8175796834047840627">A Chrome felajánlja a kártyák mentését az Ön Google-fiókjába, mert be van jelentkezve. A beállítások között ezt bármikor módosíthatja.</translation>
 <translation id="8176440868214972690">Az eszköz rendszergazdája elküldött bizonyos információkat (pl. a beállításokat és a házirendeket) a következő webhelyeknek.</translation>
 <translation id="818254048113802060">{0,plural, =1{A(z) <ph name="FILE_NAME" /> le van tiltva a tartalma miatt}other{<ph name="FILE_COUNT" /> fájl le van tiltva a tartalmuk miatt}}</translation>
-<translation id="8186171296341598122">Keresőmotorját bármikor módosíthatja a Chromium beállításai között Ha nem látja az Ön által preferált keresőmotort, akkor végezhet egy keresést az adott szolgáltató webhelyén. A Chromium beállításaiban, a nemrég felkeresett keresőmotorok között fogja látni, és beállíthatja alapértelmezettként.</translation>
+<translation id="2852542171920460365">Keresőmotorját bármikor módosíthatja a Shuttle beállításai között Ha nem látja az Ön által preferált keresőmotort, akkor végezhet egy keresést az adott szolgáltató webhelyén. A Shuttle beállításaiban, a nemrég felkeresett keresőmotorok között fogja látni, és beállíthatja alapértelmezettként.</translation>
 <translation id="8188830160449823068">IBAN-szám csak az eszközre mentve</translation>
 <translation id="8189557652711717875">A kiválasztott keresőmotort a rendszer olyan funkciókhoz használja majd, mint amilyen a címsávból és a weboldalakon található képekből történő keresés.</translation>
 <translation id="8190193880870196235">Bővítmény kezeli</translation>
@@ -4310,7 +4310,7 @@ További részletek:
 <translation id="8316555157357957253">Jelenleg használatban</translation>
 <translation id="8319414634934645341">Bővített kulcshasználat</translation>
 <translation id="831997045666694187">Este</translation>
-<translation id="8321448084834652864">Keresőmotorját bármikor módosíthatja a Chromium beállításai között</translation>
+<translation id="332470347080865446">Keresőmotorját bármikor módosíthatja a Shuttle beállításai között</translation>
 <translation id="8321476692217554900">értesítések</translation>
 <translation id="8323505966575306467">Fokozhatja jelszavai védelmét</translation>
 <translation id="832547548543012337">Útlevél törlése</translation>
@@ -4532,7 +4532,7 @@ További részletek:
 <translation id="8736059027199600831">30 × 40 hüvelyk</translation>
 <translation id="8737134861345396036"><ph name="LAUNCH_INCOGNITO_FOCUSED_FRIENDLY_MATCH_TEXT" />, nyomja le a Tab, majd az Enter billentyűt új inkognitó ablak megnyitásához, amelyben privát módon böngészhet</translation>
 <translation id="8737685506611670901"><ph name="PROTOCOL" /> linkek megnyitása a(z) <ph name="REPLACED_HANDLER_TITLE" /> helyett</translation>
-<translation id="8738058698779197622">Biztonságos kapcsolat létrehozásához az órát pontosan be kell állítani. Ez azért szükséges, mert a webhelyek által az azonosításukra használt tanúsítványok csak adott ideig érvényesek. Mivel az eszköz órája nem pontos, a Chromium nem tudja ellenőrizni ezeket a tanúsítványokat.</translation>
+<translation id="4709963803166322417">Biztonságos kapcsolat létrehozásához az órát pontosan be kell állítani. Ez azért szükséges, mert a webhelyek által az azonosításukra használt tanúsítványok csak adott ideig érvényesek. Mivel az eszköz órája nem pontos, a Shuttle nem tudja ellenőrizni ezeket a tanúsítványokat.</translation>
 <translation id="8740359287975076522">A(z) <ph name="HOST_NAME" /> &lt;abbr id="dnsDefinition"&gt;DNS-címe&lt;/abbr&gt; nem található. A probléma diagnosztizálása folyamatban van.</translation>
 <translation id="874918643257405732">Lap hozzáadása a könyvjelzőkhöz</translation>
 <translation id="8749274696886550762">Ez a webhely nem tűnik megfelelőnek</translation>
@@ -4741,7 +4741,7 @@ További részletek:
 <translation id="9096425087209440047"><ph name="SET_CHROME_AS_DEFAULT_BROWSER_FOCUSED_FRIENDLY_MATCH_TEXT" />. Nyomja le a Tab, majd az Enter gombot, ha a Chrome-ot szeretné beállítani a rendszer alapértelmezett böngészőjeként az iOS beállításaiban</translation>
 <translation id="9101450247048146228">Kamera használata és mozgatása (<ph name="CAMERAS_COUNT" />)</translation>
 <translation id="9101630580131696064">1. tálca</translation>
-<translation id="9103872766612412690">A(z) <ph name="SITE" /> webhely rendes esetben titkosítást alkalmaz az Ön adatainak védelme érdekében. Amikor a Chromium most csatlakozni próbált, a(z) <ph name="SITE" /> webhely szokatlan és helytelen hitelesítési adatokat küldött vissza.Ez olyankor fordulhat elő, amikor egy támadó megpróbálja magát kiadni a(z) <ph name="SITE" /> webhelynek, vagy valamilyen Wi-Fi-bejelentkezési képernyő megszakította a kapcsolatot. Adatai továbbra is biztonságban vannak, mivel a Chromium még azt megelőzően megszakította a kapcsolatot, hogy bármiféle adatcserére sor kerülhetett volna.</translation>
+<translation id="733422146945994640">A(z) <ph name="SITE" /> webhely rendes esetben titkosítást alkalmaz az Ön adatainak védelme érdekében. Amikor a Shuttle most csatlakozni próbált, a(z) <ph name="SITE" /> webhely szokatlan és helytelen hitelesítési adatokat küldött vissza.Ez olyankor fordulhat elő, amikor egy támadó megpróbálja magát kiadni a(z) <ph name="SITE" /> webhelynek, vagy valamilyen Wi-Fi-bejelentkezési képernyő megszakította a kapcsolatot. Adatai továbbra is biztonságban vannak, mivel a Shuttle még azt megelőzően megszakította a kapcsolatot, hogy bármiféle adatcserére sor kerülhetett volna.</translation>
 <translation id="9107199998619088551">A(z) <ph name="MANAGER" /> kezeli az Ön profilját</translation>
 <translation id="9107467864910557787">Böngészőjét a(z) <ph name="MANAGER" /> kezeli</translation>
 <translation id="91108059142052966">Rendszergazdai házirend tiltja a(z) <ph name="APPLICATION_TITLE" /> alkalmazással való képernyőmegosztást, ha bizalmas tartalom látható a képernyőn.</translation>

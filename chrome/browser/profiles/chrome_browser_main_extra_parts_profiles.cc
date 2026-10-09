@@ -12,7 +12,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/accessibility/accessibility_labels_service_factory.h"
-#include "chrome/browser/agent_chrome/agent_chrome_service_factory.h"
+#include "chrome/browser/shuttle/shuttle_service_factory.h"
 #include "chrome/browser/accessibility/page_colors_controller_factory.h"
 #include "chrome/browser/actor/actor_keyed_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
@@ -516,7 +516,7 @@ void ChromeBrowserMainExtraPartsProfiles::
   // Common factory registrations (Please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   AcceptLanguagesServiceFactory::GetInstance();
-  agent_chrome::AgentChromeServiceFactory::GetInstance();
+  shuttle::ShuttleServiceFactory::GetInstance();
   AccessibilityLabelsServiceFactory::GetInstance();
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   search_integrity::SearchIntegrityFactory::GetInstance();
@@ -1096,7 +1096,7 @@ void ChromeBrowserMainExtraPartsProfiles::
       GetInstance();
 #endif
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
-  // Agent Chrome: with enable_bound_session_credentials=false nothing else
+  // Shuttle: with enable_bound_session_credentials=false nothing else
   // pulls this factory in, but device-bound sessions still use it.
   UnexportableKeyServiceFactory::GetInstance();
 #endif
@@ -1118,7 +1118,7 @@ void ChromeBrowserMainExtraPartsProfiles::
   WebDataServiceFactory::GetInstance();
   webrtc_event_logging::WebRtcEventLogManagerKeyedServiceFactory::GetInstance();
 
-  // Agent Chrome: these factories used to be registered transitively through
+  // Shuttle: these factories used to be registered transitively through
   // SyncServiceFactory's DependsOn() list, which is gone with the sync stack.
   IdentityManagerFactory::GetInstance();
   gcm::GCMProfileServiceFactory::GetInstance();

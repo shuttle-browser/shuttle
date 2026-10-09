@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Zapnout motiv</translation>
 <translation id="1135328998467923690">Balíček je neplatný: <ph name="ERROR_CODE" />.</translation>
 <translation id="1140871961407805696">Zadní</translation>
-<translation id="1171831736360285680">Partner <ph name="PARTNER_NAME" /> přidal rozšíření, které může změnit fungování prohlížeče Chromium.
+<translation id="6853317349523111347">Partner <ph name="PARTNER_NAME" /> přidal rozšíření, které může změnit fungování prohlížeče Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Export soukromého klíče se nezdařil.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Nepodařilo se nahradit soubor CRX. Zkontrolujte, zda je tento soubor používán.</translation>
 <translation id="3163201441334626963">Neznámý produkt <ph name="PRODUCT_ID" /> od dodavatele <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Přístup k tomuto rozšíření vaše organizace blokuje.</translation>
-<translation id="3183357154200327217">Jiný program na počítači přidal motiv, který může měnit funkce Chromu.
+<translation id="7846451875700317002">Jiný program na počítači přidal motiv, který může měnit funkce Chromu.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">Aplikace s atributem manifestu kiosk_only je třeba nainstalovat v režimu veřejného terminálu systému ChromeOS</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Odmítnout</translation>
 <translation id="3984413272403535372">Při podepisování rozšíření došlo k chybě.</translation>
 <translation id="4014432863917027322">Opravit rozšíření <ph name="EXTENSION_NAME" />?</translation>
-<translation id="4061696872429826774">Jiný program na počítači přidal rozšíření, které může měnit funkce prohlížeče Chromium.
+<translation id="7396546976728149133">Jiný program na počítači přidal rozšíření, které může měnit funkce prohlížeče Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Přístup k této kategorii rozšíření vaše organizace blokuje.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Nejnovější verze rozšíření <ph name="EXTENSION_NAME" /> byla zakázána, protože vyžaduje další oprávnění.</translation>
 <translation id="5242724311594467048">Aktivovat rozšíření <ph name="EXTENSION_NAME" />?</translation>
 <translation id="5356315618422219272">Zobrazení aplikace: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Odstranit z prohlížeče Chromium</translation>
+<translation id="2064155379595075287">Odstranit z prohlížeče Shuttle</translation>
 <translation id="5456409301717116725">Rozšíření obsahuje soubor klíče <ph name="KEY_PATH" />. Tuto akci pravděpodobně provést nechcete.</translation>
 <translation id="5485102783864353244">Přidat aplikaci</translation>
 <translation id="5486326529110362464">Musí existovat vstupní hodnota pro soukromý klíč</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Administrátor tohoto zařízení vyžaduje, aby bylo rozšíření <ph name="EXTENSION_NAME" /> nainstalováno. Toto rozšíření nelze odinstalovat.</translation>
 <translation id="6027032947578871493">Neznámý produkt <ph name="PRODUCT_ID" /> od dodavatele <ph name="VENDOR_NAME" /> (sériové číslo <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> od dodavatele <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">Jiný program na počítači přidal aplikaci, která může měnit funkce prohlížeče Chromium.
+<translation id="5918487821361452587">Jiný program na počítači přidal aplikaci, která může měnit funkce prohlížeče Shuttle.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Při načítání rozšíření došlo k chybě</translation>

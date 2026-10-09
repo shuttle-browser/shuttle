@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">Aktiveer tema</translation>
 <translation id="1135328998467923690">Pakket is ongeldig: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Wys na omgewing (agterste kamera)</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> het ’n uitbreiding bygevoeg wat dalk kan verander hoe Chromium werk.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> het ’n uitbreiding bygevoeg wat dalk kan verander hoe Shuttle werk.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">Kon nie private sleutel uitvoer nie.</translation>
@@ -50,7 +50,7 @@
 <translation id="3144135466825225871">Kon nie crx-lêer vervang nie. Gaan na om te sien of die lêer gebruik word.</translation>
 <translation id="3163201441334626963">Onbekende produk <ph name="PRODUCT_ID" /> vanaf verkoper <ph name="VENDOR_ID" /></translation>
 <translation id="3174723475300476613">Toegang tot hierdie uitbreiding word deur jou organisasie geblokkeer.</translation>
-<translation id="3183357154200327217">’n Ander program op jou rekenaar het ’n tema bygevoeg wat dalk kan verander hoe Chromium werk.
+<translation id="7846451875700317002">’n Ander program op jou rekenaar het ’n tema bygevoeg wat dalk kan verander hoe Shuttle werk.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">App met "net_kiosk"-manifeseienskap moet in Chrome-bedryfstelsel se kioskmodus geïnstalleer word</translation>
@@ -66,7 +66,7 @@
 <translation id="3927932062596804919">Weier</translation>
 <translation id="3984413272403535372">Kon nie 'n uitbreiding onderteken nie.</translation>
 <translation id="4014432863917027322">Herstel "<ph name="EXTENSION_NAME" />"?</translation>
-<translation id="4061696872429826774">’n Ander program op jou rekenaar het ’n uitbreiding bygevoeg wat dalk kan verander hoe Chromium werk.
+<translation id="7396546976728149133">’n Ander program op jou rekenaar het ’n uitbreiding bygevoeg wat dalk kan verander hoe Shuttle werk.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">Toegang tot hierdie uitbreidingkategorie word deur jou organisasie geblokkeer.</translation>
@@ -89,7 +89,7 @@
 <translation id="5185386675596372454">Die nuutste weergawe van "<ph name="EXTENSION_NAME" />" is gedeaktiveer, want dit vereis nog toestemmings.</translation>
 <translation id="5242724311594467048">Aktiveer "<ph name="EXTENSION_NAME" />"?</translation>
 <translation id="5356315618422219272">Programaansig: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Verwyder van Chromium af</translation>
+<translation id="2064155379595075287">Verwyder van Shuttle af</translation>
 <translation id="5456409301717116725">Hierdie uitbreiding sluit die sleutellêer "<ph name="KEY_PATH" />" in. Jy wil dit waarskynlik nie doen nie.</translation>
 <translation id="5485102783864353244">Voeg app by</translation>
 <translation id="5486326529110362464">Invoerwaarde vir private sleutel moet bestaan.</translation>
@@ -99,7 +99,7 @@
 <translation id="5972529113578162692">Die administrateur van hierdie masjien vereis dat <ph name="EXTENSION_NAME" /> geïnstalleer moet wees. Dit kan nie gedeïnstalleer word nie.</translation>
 <translation id="6027032947578871493">Onbekende produk <ph name="PRODUCT_ID" /> vanaf <ph name="VENDOR_NAME" /> (reeksnommer <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="PRODUCT_NAME" /> vanaf verkoper <ph name="VENDOR_ID" /></translation>
-<translation id="6204922163963157461">’n Ander program op jou rekenaar het ’n app bygevoeg wat dalk kan verander hoe Chromium werk.
+<translation id="5918487821361452587">’n Ander program op jou rekenaar het ’n app bygevoeg wat dalk kan verander hoe Shuttle werk.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">Kon nie uitbreiding laai nie</translation>

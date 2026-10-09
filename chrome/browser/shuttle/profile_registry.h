@@ -1,9 +1,9 @@
-// Copyright 2026 The Agent Chrome Authors
+// Copyright 2026 Silkweave
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_AGENT_CHROME_PROFILE_REGISTRY_H_
-#define CHROME_BROWSER_AGENT_CHROME_PROFILE_REGISTRY_H_
+#ifndef CHROME_BROWSER_SHUTTLE_PROFILE_REGISTRY_H_
+#define CHROME_BROWSER_SHUTTLE_PROFILE_REGISTRY_H_
 
 #include <optional>
 #include <set>
@@ -24,7 +24,7 @@ namespace user_prefs {
 class PrefRegistrySyncable;
 }
 
-namespace agent_chrome {
+namespace shuttle {
 
 // Agents (agent profiles): an identity (name, color, avatar) shown on the
 // tab groups of its sessions, plus named, persistent storage (cookies, local
@@ -115,6 +115,6 @@ class ProfileRegistry {
   base::WeakPtrFactory<ProfileRegistry> weak_factory_{this};
 };
 
-}  // namespace agent_chrome
+}  // namespace shuttle
 
-#endif  // CHROME_BROWSER_AGENT_CHROME_PROFILE_REGISTRY_H_
+#endif  // CHROME_BROWSER_SHUTTLE_PROFILE_REGISTRY_H_

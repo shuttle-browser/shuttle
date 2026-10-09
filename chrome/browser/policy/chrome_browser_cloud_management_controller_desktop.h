@@ -73,7 +73,7 @@ class ChromeBrowserCloudManagementControllerDesktop
   std::unique_ptr<ChromeBrowserCloudManagementRegisterWatcher>
       cloud_management_register_watcher_;
 
-  // Agent Chrome: policy invalidations (FCM) were removed; policies refresh by
+  // Shuttle: policy invalidations (FCM) were removed; policies refresh by
   // polling.
   scoped_refptr<network::SharedURLLoaderFactory> gaia_url_loader_factory_;
 

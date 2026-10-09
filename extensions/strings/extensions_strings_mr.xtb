@@ -8,7 +8,7 @@
 <translation id="1076698951459398590">थीम सुरू करा</translation>
 <translation id="1135328998467923690">हे पॅकेज चुकीचे आहे: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">पर्यावरण-समोरील</translation>
-<translation id="1171831736360285680"><ph name="PARTNER_NAME" /> ने असे एक्स्टेंशन जोडले आहे, ज्यामुळे Chromium ची काम करण्याची पद्धत बदलू शकते.
+<translation id="6853317349523111347"><ph name="PARTNER_NAME" /> ने असे एक्स्टेंशन जोडले आहे, ज्यामुळे Shuttle ची काम करण्याची पद्धत बदलू शकते.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="1196338895211115272">खासगी की एक्सपोर्ट करण्यात अयशस्वी.</translation>
@@ -49,7 +49,7 @@
 <translation id="3144135466825225871">crx फाइल पुनर्स्थित करण्यात अयशस्वी. फाइल वापरात आहे किंवा नाही हे पाहण्यासाठी तपासा.</translation>
 <translation id="3163201441334626963"><ph name="VENDOR_ID" /> विक्रेत्याकडील <ph name="PRODUCT_ID" /> अज्ञात उत्पादन</translation>
 <translation id="3174723475300476613">तुमच्या संस्थेने या एक्स्टेंशनचा अ‍ॅक्सेस ब्लॉक केला आहे.</translation>
-<translation id="3183357154200327217">तुमच्या काँप्युटरवरील दुसऱ्या प्रोग्रामने अशी थीम जोडली आहे, ज्यामुळे Chromium ची काम करण्याची पद्धत बदलू शकते.
+<translation id="7846451875700317002">तुमच्या काँप्युटरवरील दुसऱ्या प्रोग्रामने अशी थीम जोडली आहे, ज्यामुळे Shuttle ची काम करण्याची पद्धत बदलू शकते.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="3242289508736283383">'kiosk_only' मॅनिफेस्ट ॲट्रिब्यूट असलेले अ‍ॅप हे ChromeOS कियोस्क मोडमध्ये इंस्टॉल केले जाणे आवश्यक आहे</translation>
@@ -65,7 +65,7 @@
 <translation id="3927932062596804919">नकार द्या</translation>
 <translation id="3984413272403535372">एक्स्टेंशनमध्ये साइन करताना एरर.</translation>
 <translation id="4014432863917027322">"<ph name="EXTENSION_NAME" />" दुरुस्त करायचे?</translation>
-<translation id="4061696872429826774">तुमच्या काँप्युटरवरील दुसऱ्या प्रोग्रामने असे एक्स्टेंशन जोडले आहे, ज्यामुळे Chromium ची काम करण्याची पद्धत बदलू शकते.
+<translation id="7396546976728149133">तुमच्या काँप्युटरवरील दुसऱ्या प्रोग्रामने असे एक्स्टेंशन जोडले आहे, ज्यामुळे Shuttle ची काम करण्याची पद्धत बदलू शकते.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="4094452115117798451">तुमच्या संस्थेने या वर्गवारीच्या एक्स्टेंशनचा अ‍ॅक्सेस ब्लॉक केला आहे.</translation>
@@ -88,7 +88,7 @@
 <translation id="5185386675596372454">"<ph name="EXTENSION_NAME" />" ची नवीनतम आवृत्ती अक्षम केली गेली कारण यासाठी अधिक परवानग्या आवश्यक आहेत.</translation>
 <translation id="5242724311594467048">"<ph name="EXTENSION_NAME" />" सुरू करायचे?</translation>
 <translation id="5356315618422219272">ॲपदृश्य: <ph name="APPVIEW_TAG_NAME" /></translation>
-<translation id="5405650547142096840">Chromium मधून काढा</translation>
+<translation id="2064155379595075287">Shuttle मधून काढा</translation>
 <translation id="5456409301717116725">हे एक्स्टेंशन की फाइल '<ph name="KEY_PATH" />' चा समावेश करतात. तुम्हाला कदाचित ते करणे आवश्यक नाही.</translation>
 <translation id="5485102783864353244">ॲप्लिकेशन जोडा</translation>
 <translation id="5486326529110362464">खासगी की साठी इनपुट मूल्य विद्यमान असणे आवश्यक आहे.</translation>
@@ -98,7 +98,7 @@
 <translation id="5972529113578162692">या मशीनच्या ॲडमिनिस्ट्रेटरलााठी <ph name="EXTENSION_NAME" /> इंस्टॉल करणे आवश्यक आहे. हे अनइंस्टॉल केले जाऊ शकत नाही.</translation>
 <translation id="6027032947578871493"><ph name="VENDOR_NAME" /> कडील <ph name="PRODUCT_ID" /> अज्ञात उत्पादन (सिरीअल नंबर <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="6068932090455285721"><ph name="VENDOR_ID" /> विक्रेत्याकडील <ph name="PRODUCT_NAME" /></translation>
-<translation id="6204922163963157461">तुमच्या काँप्युटरवरील दुसऱ्या प्रोग्रामने असे ॲप जोडले आहे, ज्यामुळे Chromium ची काम करण्याची पद्धत बदलू शकते.
+<translation id="5918487821361452587">तुमच्या काँप्युटरवरील दुसऱ्या प्रोग्रामने असे ॲप जोडले आहे, ज्यामुळे Shuttle ची काम करण्याची पद्धत बदलू शकते.
 
 <ph name="EXTENSION_NAME" /></translation>
 <translation id="6220413761270491930">एक्स्टेंशन लोड करताना एरर</translation>
