@@ -19,7 +19,7 @@ within a few days.
 
 ## Supported versions and updates
 
-Shuttle is a beta. Only the latest release gets fixes. There is **no auto-update yet**: watch
+Only the latest release gets fixes. There is **no auto-update yet**: watch
 [Releases](https://github.com/shuttle-browser/shuttle/releases). Shuttle follows Chromium stable security releases,
 with a delay while we merge and rebuild.
 

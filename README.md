@@ -141,7 +141,7 @@ claude mcp add --transport http shuttle http://shuttle-box:9222/mcp --header "Au
 
 ## Status and limits
 
-Shuttle is a **beta** (v0.1.0, Chromium 154.0.8037.129).
+Shuttle 0.1.0 is the first public release (Chromium 154.0.8037.129).
 
 - No auto-update yet: watch Releases. Security fixes follow Chromium stable releases with a delay.
 - By default the MCP and CDP port listens on localhost only, without authentication: any local process can drive the
