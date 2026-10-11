@@ -177,6 +177,15 @@ def superstring(long, short):
     return long + short
 
 
+kStringMapCcEmpty = '''std::optional<uint16_t> GetPermissionElementMessageId(
+    std::string_view language_code,
+    uint16_t base_message) {
+  return std::nullopt;
+}
+
+}  // namespace blink
+'''
+
 def generate_cpp_mapping(orderings, input_file_path, output_file_path):
     doc = parse(input_file_path)
     messages = doc.getElementsByTagName("message")
@@ -201,6 +210,14 @@ def generate_cpp_mapping(orderings, input_file_path, output_file_path):
             # Add all locales first since iteration order is non-deterministic.
             locales.add(locale)
             message_map.append((locale, base_message, message_name))
+
+        if not message_map:
+            # Shuttle: en-US-only UI (B3) leaves no translations, and
+            # MakeFixedFlatMap cannot deduce the size of an empty list.
+            output_file.write(kStringMapCcPrefix.split(
+                'namespace {')[0])
+            output_file.write(kStringMapCcEmpty)
+            return
 
         langs = ''
         locales = sorted(locales, key=lambda x: (-len(x), x))

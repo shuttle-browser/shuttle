@@ -25,7 +25,6 @@
 
 #if BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/grit/side_panel_shared_code_cache_resources_map.h"
 #include "content/public/common/content_features.h"
 #include "ui/webui/resources/grit/webui_code_cache_resources_map.h"
 #endif  // BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
