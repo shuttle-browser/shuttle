@@ -48,6 +48,8 @@ export interface BrowserProxy {
   closeSession(sessionId: string): Promise<void>;
   openTab(agentId: string, url: string): Promise<void>;
   showTab(targetId: string): Promise<void>;
+  // This browser's MCP endpoint ('' if unknown).
+  getMcpUrl(): Promise<string>;
 }
 
 export class BrowserProxyImpl implements BrowserProxy {
@@ -87,6 +89,10 @@ export class BrowserProxyImpl implements BrowserProxy {
 
   showTab(targetId: string): Promise<void> {
     return sendWithPromise('showTab', targetId);
+  }
+
+  getMcpUrl(): Promise<string> {
+    return sendWithPromise('getMcpUrl');
   }
 
   static getInstance(): BrowserProxy {

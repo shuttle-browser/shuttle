@@ -28,6 +28,16 @@ const AVATAR_MAX_LENGTH = 256 * 1024;
 // How often the page refreshes while visible (agents change things too).
 const REFRESH_MS = 2000;
 
+// Quick start: the user's open/closed choice (otherwise open while there are
+// no agents).
+const QUICK_START_KEY = 'quickStart';
+const DEFAULT_MCP_URL = 'http://127.0.0.1:9222/mcp';
+
+export const EXAMPLE_PROMPT = 'Use the Shuttle browser (MCP server "shuttle"): ' +
+    'create an agent named "Scout", open a session, go to ' +
+    'news.ycombinator.com and list the top 5 stories with their links. ' +
+    'Close the session when you\'re done.';
+
 // Agent id rule of the MCP server (kebab-case, max 64).
 const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -75,6 +85,9 @@ export class AgentsAppElement extends CrLitElement {
       openUrl_: {type: String},
       openError_: {type: String},
       deleteAgent_: {type: Object},
+      mcpUrl_: {type: String},
+      quickStartChoice_: {type: String},
+      copied_: {type: String},
     };
   }
 
@@ -89,6 +102,12 @@ export class AgentsAppElement extends CrLitElement {
   protected accessor openUrl_: string = '';
   protected accessor openError_: string = '';
   protected accessor deleteAgent_: Agent|null = null;
+  protected accessor mcpUrl_: string = DEFAULT_MCP_URL;
+  // 'open', 'closed' or '' (automatic).
+  protected accessor quickStartChoice_: string =
+      window.localStorage.getItem(QUICK_START_KEY) || '';
+  // Which copy button just copied (shows "Copied").
+  protected accessor copied_: string = '';
 
   protected readonly colors = AGENT_COLORS;
   private browserProxy_: BrowserProxy = BrowserProxyImpl.getInstance();
@@ -101,6 +120,11 @@ export class AgentsAppElement extends CrLitElement {
     super.connectedCallback();
     document.addEventListener('visibilitychange', this.onVisibilityChange_);
     this.refresh_();
+    this.browserProxy_.getMcpUrl().then(url => {
+      if (url) {
+        this.mcpUrl_ = url;
+      }
+    });
   }
 
   override disconnectedCallback() {
@@ -149,6 +173,52 @@ export class AgentsAppElement extends CrLitElement {
       this.error_ = String(e);
     }
     await this.refresh_();
+  }
+
+  protected quickStartOpen_(): boolean {
+    if (this.quickStartChoice_) {
+      return this.quickStartChoice_ === 'open';
+    }
+    return this.loaded_ && !this.agents_.length;
+  }
+
+  protected onQuickStartToggleClick_() {
+    this.quickStartChoice_ = this.quickStartOpen_() ? 'closed' : 'open';
+    window.localStorage.setItem(QUICK_START_KEY, this.quickStartChoice_);
+  }
+
+  protected examplePrompt_(): string {
+    return EXAMPLE_PROMPT;
+  }
+
+  protected claudeCommand_(): string {
+    return `claude mcp add --transport http shuttle ${this.mcpUrl_}`;
+  }
+
+  protected codexCommand_(): string {
+    return `codex mcp add shuttle --url ${this.mcpUrl_}`;
+  }
+
+  protected async onCopyClick_(e: Event) {
+    const button = e.currentTarget as HTMLElement;
+    const key = button.dataset['copy']!;
+    const text = ({
+      url: this.mcpUrl_,
+      claude: this.claudeCommand_(),
+      codex: this.codexCommand_(),
+      prompt: EXAMPLE_PROMPT,
+    } as Record<string, string>)[key]!;
+    try {
+      await navigator.clipboard.writeText(text);
+      this.copied_ = key;
+      setTimeout(() => {
+        if (this.copied_ === key) {
+          this.copied_ = '';
+        }
+      }, 1500);
+    } catch (err) {
+      this.error_ = `Copy failed: ${err}`;
+    }
   }
 
   protected visibleAgents_(): Agent[] {

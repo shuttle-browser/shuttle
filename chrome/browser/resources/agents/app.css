@@ -115,6 +115,66 @@ cr-toolbar {
   padding: 12px var(--cr-section-padding);
 }
 
+#quickStart {
+  margin-bottom: 16px;
+}
+
+.quick-start-header {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+  width: 100%;
+}
+
+.quick-start-body {
+  border-top: var(--cr-separator-line);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px var(--cr-section-padding);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-title {
+  font-weight: 500;
+}
+
+.code-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.code-row code {
+  background-color: var(--cr-hover-background-color);
+  border-radius: 4px;
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  user-select: all;
+}
+
+.code-row code.prompt {
+  font-family: inherit;
+  font-size: inherit;
+  user-select: text;
+}
+
+.code-row .copy {
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
 #empty {
   padding: 64px 0;
   text-align: center;

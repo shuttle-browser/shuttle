@@ -136,6 +136,8 @@
 #include "ui/gfx/native_ui_types.h"
 #include "ui/menus/cocoa/menu_controller.h"
 #include "ui/native_theme/native_theme.h"
+#include "chrome/browser/ui/navigator/browser_navigator.h"
+#include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "url/gurl.h"
 
 namespace {
@@ -169,6 +171,17 @@ void BeginHandlingWebAuthenticationSessionRequestWithProfile(
   // If there is no safe profile, |profile| is nullptr, and the session will
   // fail immediately.
   AuthSessionRequest::StartNewAuthSession(request, profile);
+}
+
+// Shuttle: a window the user opens from the Dock (or by launching the app)
+// shows chrome://agents with the quick start, not an empty New Tab.
+void OpenAgentsWindow(Profile* profile) {
+  base::AutoReset<bool> auto_reset_in_run(&g_is_opening_new_window, true);
+  NavigateParams params(profile, GURL("chrome://agents/"),
+                        ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
+  params.disposition = WindowOpenDisposition::NEW_WINDOW;
+  params.window_action = NavigateParams::WindowAction::kShowWindow;
+  Navigate(&params);
 }
 
 // Activates a browser window having the given profile (the last one active) if
@@ -1703,7 +1716,7 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
         if (!profile) {
           return;
         }
-        CreateBrowser(profile);
+        OpenAgentsWindow(profile);
       }),
       app_controller_mac::kIgnoreOnFailure);
 

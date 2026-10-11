@@ -24,11 +24,68 @@ export function getHtml(this: AgentsAppElement) {
         <span>${this.error_}</span>
       </div>` : nothing}
 
+    <div class="card" id="quickStart">
+      <button class="row quick-start-header" id="quickStartToggle"
+          aria-expanded="${this.quickStartOpen_()}"
+          @click="${this.onQuickStartToggleClick_}">
+        <div class="text">
+          <div class="name">Quick start</div>
+          <div class="secondary">Connect your agent to Shuttle over MCP</div>
+        </div>
+        <cr-icon icon="${this.quickStartOpen_() ? 'cr:keyboard-arrow-up' :
+                                                  'cr:keyboard-arrow-down'}">
+        </cr-icon>
+      </button>
+      ${this.quickStartOpen_() ? html`
+        <div class="quick-start-body">
+          <div class="step">
+            <div class="step-title">1. Add Shuttle to your agent</div>
+            <div class="secondary">Claude Code:</div>
+            <div class="code-row">
+              <code id="claudeCommand">${this.claudeCommand_()}</code>
+              <cr-button class="copy" data-copy="claude" @click="${this.onCopyClick_}">
+              ${this.copied_ === 'claude' ? 'Copied' : 'Copy'}
+            </cr-button>
+            </div>
+            <div class="secondary">Codex:</div>
+            <div class="code-row">
+              <code id="codexCommand">${this.codexCommand_()}</code>
+              <cr-button class="copy" data-copy="codex" @click="${this.onCopyClick_}">
+              ${this.copied_ === 'codex' ? 'Copied' : 'Copy'}
+            </cr-button>
+            </div>
+            <div class="secondary">Other MCP clients: add a Streamable HTTP
+                server with this URL.</div>
+            <div class="code-row">
+              <code id="mcpUrl">${this.mcpUrl_}</code>
+              <cr-button class="copy" data-copy="url" @click="${this.onCopyClick_}">
+              ${this.copied_ === 'url' ? 'Copied' : 'Copy'}
+            </cr-button>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-title">2. Ask your agent to use it</div>
+            <div class="secondary">Restart the agent so it loads the server,
+                then try:</div>
+            <div class="code-row">
+              <code id="examplePrompt" class="prompt">${this.examplePrompt_()}</code>
+              <cr-button class="copy" data-copy="prompt" @click="${this.onCopyClick_}">
+              ${this.copied_ === 'prompt' ? 'Copied' : 'Copy'}
+            </cr-button>
+            </div>
+          </div>
+          <div class="step secondary">Keep Shuttle running while your agent
+              works. Its tabs show up in a group with its name and color, and
+              below on this page. Sites it signs in to stay signed in for that
+              agent only.</div>
+        </div>` : nothing}
+    </div>
+
     ${this.loaded_ && !this.agents_.length ? html`
       <div id="empty">
         <div class="empty-title">No agents yet</div>
-        <div class="secondary">Agents connected over MCP create their own
-            with create-agent, or create one with New agent.</div>
+        <div class="secondary">Connect your agent (Quick start above); it
+            creates its own. Or create one with New agent.</div>
       </div>` : nothing}
 
     ${this.loaded_ && this.agents_.length && !this.visibleAgents_().length ?

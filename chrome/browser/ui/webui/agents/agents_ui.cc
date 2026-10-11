@@ -6,16 +6,24 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
+#include "base/path_service.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/task/thread_pool.h"
 #include "base/values.h"
 #include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/shuttle/mcp_tools.h"
 #include "chrome/browser/shuttle/session_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/theme_source.h"
+#include "chrome/common/chrome_paths.h"
 #include "chrome/grit/agents_resources.h"
 #include "chrome/grit/agents_resources_map.h"
 #include "content/public/browser/url_data_source.h"
@@ -32,6 +40,27 @@ namespace shuttle {
 
 namespace {
 
+// The MCP endpoint of this browser, from the port the remote debugging server
+// wrote to DevToolsActivePort (9222 unless taken). Empty if unknown.
+std::string ReadMcpUrl() {
+  base::FilePath user_data;
+  std::string contents;
+  if (!base::PathService::Get(chrome::DIR_USER_DATA, &user_data) ||
+      !base::ReadFileToStringWithMaxSize(
+          user_data.AppendASCII("DevToolsActivePort"), &contents, 4096)) {
+    return std::string();
+  }
+  std::string_view first_line =
+      std::string_view(contents).substr(0, contents.find('\n'));
+  int port = 0;
+  if (!base::StringToInt(base::TrimWhitespaceASCII(first_line, base::TRIM_ALL),
+                         &port) ||
+      port <= 0 || port > 65535) {
+    return std::string();
+  }
+  return "http://127.0.0.1:" + base::NumberToString(port) + "/mcp";
+}
+
 class AgentsHandler : public content::WebUIMessageHandler {
  public:
   AgentsHandler() = default;
@@ -47,6 +76,9 @@ class AgentsHandler : public content::WebUIMessageHandler {
     web_ui()->RegisterMessageCallback(
         "openTab", base::BindRepeating(&AgentsHandler::HandleOpenTab,
                                        base::Unretained(this)));
+    web_ui()->RegisterMessageCallback(
+        "getMcpUrl", base::BindRepeating(&AgentsHandler::HandleGetMcpUrl,
+                                         base::Unretained(this)));
     web_ui()->RegisterMessageCallback(
         "showTab", base::BindRepeating(&AgentsHandler::HandleShowTab,
                                        base::Unretained(this)));
@@ -141,6 +173,22 @@ class AgentsHandler : public content::WebUIMessageHandler {
       return;
     }
     ResolveJavascriptCallback(callback_id, base::Value());
+  }
+
+  // [callbackId]: resolves with the MCP endpoint URL ('' if unknown).
+  void HandleGetMcpUrl(const base::ListValue& args) {
+    AllowJavascript();
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
+        base::BindOnce(&ReadMcpUrl),
+        base::BindOnce(&AgentsHandler::OnMcpUrl, weak_factory_.GetWeakPtr(),
+                       args[0].Clone()));
+  }
+
+  void OnMcpUrl(base::Value callback_id, std::string url) {
+    if (IsJavascriptAllowed()) {
+      ResolveJavascriptCallback(callback_id, base::Value(std::move(url)));
+    }
   }
 
   // [callbackId, targetId]: brings an agent's tab to the front.
