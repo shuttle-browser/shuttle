@@ -1016,6 +1016,8 @@ GpuModeManager* BrowserProcessImpl::gpu_mode_manager() {
 void BrowserProcessImpl::CreateDevToolsProtocolHandler() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if !BUILDFLAG(IS_ANDROID)
+  // Shuttle: Start() may read or create the network-mode access token file.
+  base::ScopedAllowBlocking allow_blocking;
   remote_debugging_server_ = RemoteDebuggingServer::Start();
 #endif
 }

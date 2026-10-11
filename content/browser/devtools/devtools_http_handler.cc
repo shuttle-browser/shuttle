@@ -26,6 +26,7 @@
 #include "base/message_loop/message_pump_type.h"
 #include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/string_view_util.h"
 #include "base/strings/stringprintf.h"
@@ -48,7 +49,9 @@
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/url_constants.h"
+#include "crypto/secure_util.h"
 #include "net/base/io_buffer.h"
+#include "net/base/ip_address.h"
 #include "net/base/net_errors.h"
 #include "net/base/url_util.h"
 #include "net/http/http_request_headers.h"
@@ -128,6 +131,48 @@ bool RequestIsSafeToServe(const net::HttpServerRequestInfo& info) {
   return url.HostIsIPAddress() || net::IsLocalHostname(url.GetHost());
 }
 
+// Shuttle network mode ------------------------------------------------------
+
+bool IsLoopbackPeer(const net::HttpServerRequestInfo& info) {
+  net::IPAddress address = info.peer.address();
+  if (address.IsIPv4MappedIPv6()) {
+    address = net::ConvertIPv4MappedIPv6ToIPv4(address);
+  }
+  return address.IsValid() && address.IsLoopback();
+}
+
+// Removes token=<value> from the path's query and returns the value (empty if
+// absent), so the token never reaches the request handlers (e.g. as the URL of
+// /json/new?<url>).
+std::string TakeTokenParam(std::string& path) {
+  size_t query_position = path.find('?');
+  if (query_position == std::string::npos) {
+    return std::string();
+  }
+  std::string token;
+  std::vector<std::string> kept;
+  for (const std::string& part :
+       base::SplitString(std::string_view(path).substr(query_position + 1),
+                         "&", base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL)) {
+    if (base::StartsWith(part, "token=", base::CompareCase::SENSITIVE)) {
+      token = part.substr(strlen("token="));
+    } else {
+      kept.push_back(part);
+    }
+  }
+  path.resize(query_position);
+  if (!kept.empty()) {
+    path += "?" + base::JoinString(kept, "&");
+  }
+  return token;
+}
+
+bool TokenMatches(std::string_view presented, const std::string& expected) {
+  return presented.size() == expected.size() &&
+         crypto::SecureMemEqual(base::as_byte_span(presented),
+                                base::as_byte_span(expected));
+}
+
 // Returns the (incorrectly named, for historical reasons) WebKit version, in
 // the form "major.minor (@chromium_git_revision)".
 std::string GetWebKitVersion() {
@@ -136,6 +181,10 @@ std::string GetWebKitVersion() {
 
 }  // namespace
 
+std::string DevToolsSocketFactory::GetAccessToken() {
+  return std::string();
+}
+
 // ServerWrapper -------------------------------------------------------------
 // All methods in this class are only called on handler thread.
 class ServerWrapper : net::HttpServer::Delegate {
@@ -143,7 +192,8 @@ class ServerWrapper : net::HttpServer::Delegate {
   ServerWrapper(base::WeakPtr<DevToolsHttpHandler> handler,
                 std::unique_ptr<net::ServerSocket> socket,
                 const base::FilePath& debug_frontend_dir,
-                bool bundles_resources);
+                bool bundles_resources,
+                std::string access_token);
 
   int GetLocalAddress(net::IPEndPoint* address);
 
@@ -171,20 +221,64 @@ class ServerWrapper : net::HttpServer::Delegate {
   void OnWebSocketMessage(int connection_id, std::string data) override;
   void OnClose(int connection_id) override;
 
+  // Shuttle: access control. Returns false (after responding) when the
+  // request must not be served; strips a token=<value> query parameter.
+  bool CheckAccess(int connection_id, net::HttpServerRequestInfo& info);
+
   base::WeakPtr<DevToolsHttpHandler> handler_;
   std::unique_ptr<net::HttpServer> server_;
   base::FilePath debug_frontend_dir_;
   bool bundles_resources_;
+  // Shuttle: network-mode token ("" = localhost only, no token).
+  const std::string access_token_;
 };
 
 ServerWrapper::ServerWrapper(base::WeakPtr<DevToolsHttpHandler> handler,
                              std::unique_ptr<net::ServerSocket> socket,
                              const base::FilePath& debug_frontend_dir,
-                             bool bundles_resources)
+                             bool bundles_resources,
+                             std::string access_token)
     : handler_(handler),
       server_(new net::HttpServer(std::move(socket), this)),
       debug_frontend_dir_(debug_frontend_dir),
-      bundles_resources_(bundles_resources) {}
+      bundles_resources_(bundles_resources),
+      access_token_(std::move(access_token)) {}
+
+bool ServerWrapper::CheckAccess(int connection_id,
+                                net::HttpServerRequestInfo& info) {
+  std::string query_token = TakeTokenParam(info.path);
+  if (!access_token_.empty() && !IsLoopbackPeer(info)) {
+    // Network mode: a remote client is served only with the access token.
+    // The token also replaces the Host check, so LAN and Tailscale host
+    // names work; the Origin checks still keep web pages out.
+    std::string_view presented = query_token;
+    std::string authorization = info.GetHeaderValue("authorization");
+    constexpr std::string_view kBearer = "bearer ";
+    if (presented.empty() && authorization.size() > kBearer.size() &&
+        base::StartsWith(authorization, kBearer,
+                         base::CompareCase::INSENSITIVE_ASCII)) {
+      presented = std::string_view(authorization).substr(kBearer.size());
+    }
+    if (TokenMatches(presented, access_token_)) {
+      return true;
+    }
+    net::HttpServerResponseInfo response(net::HTTP_UNAUTHORIZED);
+    response.AddHeader("WWW-Authenticate", "Bearer");
+    response.SetBody(
+        "Shuttle: this client needs the access token (Authorization: Bearer "
+        "<token> or ?token=<token>).",
+        "text/plain");
+    server_->SendResponse(connection_id, response,
+                          kDevtoolsHttpHandlerTrafficAnnotation);
+    return false;
+  }
+  if (!RequestIsSafeToServe(info)) {
+    Send500(connection_id,
+            "Host header is specified and is not an IP address or localhost.");
+    return false;
+  }
+  return true;
+}
 
 int ServerWrapper::GetLocalAddress(net::IPEndPoint* address) {
   return server_->GetLocalAddress(address);
@@ -282,7 +376,8 @@ void StartServerOnHandlerThread(
   if (server_socket) {
     server_wrapper =
         std::make_unique<ServerWrapper>(handler, std::move(server_socket),
-                                        debug_frontend_dir, bundles_resources);
+                                        debug_frontend_dir, bundles_resources,
+                                        socket_factory->GetAccessToken());
     if (server_wrapper->GetLocalAddress(ip_address.get()) != net::OK)
       ip_address.reset();
   } else {
@@ -490,10 +585,9 @@ static std::string_view GetMimeType(std::string_view filename) {
 }
 
 void ServerWrapper::OnHttpRequest(int connection_id,
-                                  const net::HttpServerRequestInfo& info) {
-  if (!RequestIsSafeToServe(info)) {
-    Send500(connection_id,
-            "Host header is specified and is not an IP address or localhost.");
+                                  const net::HttpServerRequestInfo& request) {
+  net::HttpServerRequestInfo info = request;
+  if (!CheckAccess(connection_id, info)) {
     return;
   }
 
@@ -553,10 +647,9 @@ void ServerWrapper::OnHttpRequest(int connection_id,
 
 void ServerWrapper::OnWebSocketRequest(
     int connection_id,
-    const net::HttpServerRequestInfo& request) {
-  if (!RequestIsSafeToServe(request)) {
-    Send500(connection_id,
-            "Host header is specified and is not an IP address or localhost.");
+    const net::HttpServerRequestInfo& original_request) {
+  net::HttpServerRequestInfo request = original_request;
+  if (!CheckAccess(connection_id, request)) {
     return;
   }
 

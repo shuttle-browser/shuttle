@@ -21,6 +21,7 @@
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "chrome/browser/shuttle/shuttle_service.h"
+#include "chrome/browser/shuttle/network_access.h"
 #include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/shuttle/session_manager.h"
 #include "components/viz/common/frame_sinks/copy_output_result.h"
@@ -51,8 +52,8 @@ std::string HostOrDefault(const ToolContext& context) {
 
 std::string PageWebSocketUrl(const ToolContext& context,
                              const std::string& target_id) {
-  return base::StrCat(
-      {"ws://", HostOrDefault(context), "/devtools/page/", target_id});
+  return WithAccessToken(base::StrCat(
+      {"ws://", HostOrDefault(context), "/devtools/page/", target_id}));
 }
 
 const std::string* GetString(const base::DictValue& args,
@@ -288,8 +289,9 @@ void OpenSession(const ToolContext& context,
   const Session& session = context.service->sessions().Open(*agent);
   base::DictValue result = DescribeSession(context, session);
   // A browser-level CDP connection scoped to the session.
-  result.Set("cdpEndpoint", base::StrCat({"ws://", HostOrDefault(context),
-                                          "/devtools/session/", session.id}));
+  result.Set("cdpEndpoint",
+             WithAccessToken(base::StrCat({"ws://", HostOrDefault(context),
+                                           "/devtools/session/", session.id})));
   std::move(callback).Run(ToolResult::Json(base::Value(std::move(result))));
 }
 

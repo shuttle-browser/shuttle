@@ -26,6 +26,11 @@ class DevToolsSocketFactory {
   // remote debugging, primarily for mobile).
   virtual std::unique_ptr<net::ServerSocket> CreateForTethering(
       std::string* out_name) = 0;
+
+  // Shuttle: network mode. When non-empty, clients that don't connect over
+  // loopback must present this token (Authorization: Bearer <token> or a
+  // token=<token> query parameter). Called once, on the handler thread.
+  virtual std::string GetAccessToken();
   };
 
 }  // namespace content

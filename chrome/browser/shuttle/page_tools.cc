@@ -26,6 +26,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "chrome/browser/shuttle/agent_browser_sidecar.h"
+#include "chrome/browser/shuttle/network_access.h"
 #include "chrome/browser/shuttle/session_manager.h"
 #include "content/public/browser/web_contents.h"
 
@@ -386,8 +387,8 @@ Sidecar* PageToolManager::GetOrCreateSidecar(const std::string& session_id,
   config.socket_dir = dir;
   config.screenshot_dir = dir.Append("shots");
   config.extra_dirs = {states_dir};
-  config.cdp_endpoint =
-      base::StrCat({"ws://", host, "/devtools/session/", session_id});
+  config.cdp_endpoint = WithAccessToken(
+      base::StrCat({"ws://", host, "/devtools/session/", session_id}));
   config.session_id = session_id;
   return sidecars_.emplace(session_id, std::make_unique<Sidecar>(config))
       .first->second.get();

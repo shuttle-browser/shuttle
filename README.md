@@ -117,13 +117,35 @@ const page = browser.contexts()[0].pages()[0];              // the session's tab
 await page.getByRole('link', { name: 'Sign in' }).click();
 ```
 
+## Share one Shuttle across machines
+
+Run Shuttle on a dedicated machine (a Mac mini, a Linux box) and let agents on other machines use it over your LAN or
+Tailscale. Each agent keeps its own logins and tab group in the one browser.
+
+```sh
+# On the Shuttle machine: listen on all interfaces (or one IP, e.g. your Tailscale address)
+open -a Shuttle --args --shuttle-listen=0.0.0.0        # Linux: ./shuttle --shuttle-listen=0.0.0.0
+cat ~/Library/Application\ Support/Shuttle/ShuttleAccessToken   # Linux: ~/.config/shuttle/ShuttleAccessToken
+
+# On any other machine
+claude mcp add --transport http shuttle http://shuttle-box:9222/mcp --header "Authorization: Bearer <token>"
+```
+
+- Network mode is off by default. With `--shuttle-listen`, every client that doesn't connect over loopback needs the
+  access token: `Authorization: Bearer <token>`, or `?token=<token>` for CDP clients that can't set headers.
+- The token is created on first use (`ShuttleAccessToken` in the user data dir, mode 0600). Pass
+  `--shuttle-access-token=<token>` to set your own; delete the file to rotate it.
+- `cdpEndpoint` and `cdpUrl` from the MCP tools already carry the token, so Playwright and agent-browser connect as is.
+- Local clients keep working without a token. Web pages are still rejected by the Origin check.
+- Plain HTTP: use it on networks you trust, or over Tailscale/WireGuard/SSH, which encrypt the traffic.
+
 ## Status and limits
 
 Shuttle is a **beta** (v0.1.0, Chromium 154.0.8037.129).
 
 - No auto-update yet: watch Releases. Security fixes follow Chromium stable releases with a delay.
-- The MCP and CDP port listens on localhost only and has no authentication. Any local process can drive the browser,
-  the same as with `--remote-debugging-port`.
+- By default the MCP and CDP port listens on localhost only, without authentication: any local process can drive the
+  browser, the same as with `--remote-debugging-port`. Network mode (above) requires a token for remote clients.
 - Open codecs only (VP8/VP9/AV1/Opus): H.264-only video won't play, and there is no Widevine DRM.
 - UI in English only.
 

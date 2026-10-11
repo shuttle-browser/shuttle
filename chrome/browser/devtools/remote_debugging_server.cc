@@ -25,6 +25,7 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/features.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/shuttle/network_access.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
@@ -67,12 +68,26 @@ class TCPServerSocketFactory
   explicit TCPServerSocketFactory(uint16_t port)
       : port_(port), last_tethering_port_(kMinTetheringPort) {}
 
+  // Shuttle: network mode (--shuttle-listen) listens on that address instead
+  // of localhost; remote clients then need the access token.
+  std::string GetAccessToken() override { return shuttle::AccessToken(); }
+
   TCPServerSocketFactory(const TCPServerSocketFactory&) = delete;
   TCPServerSocketFactory& operator=(const TCPServerSocketFactory&) = delete;
 
  protected:
   // content::DevToolsSocketFactory.
   std::unique_ptr<net::ServerSocket> CreateForHttpServer() override {
+    if (!shuttle::ListenAddress().empty()) {
+      auto socket =
+          std::make_unique<net::TCPServerSocket>(nullptr, net::NetLogSource());
+      if (socket->ListenWithAddressAndPort(shuttle::ListenAddress(), port_,
+                                           kBackLog) == net::OK) {
+        return socket;
+      }
+      LOG(ERROR) << "Shuttle: cannot listen on " << shuttle::ListenAddress()
+                 << ":" << port_ << "; falling back to localhost.";
+    }
     return CreateLocalHostServerSocket(port_);
   }
   uint16_t port_;
@@ -124,8 +139,20 @@ class TCPServerSocketFactoryWithPortFallback : public TCPServerSocketFactory {
 
   // content::DevToolsSocketFactory.
   std::unique_ptr<net::ServerSocket> CreateForHttpServer() override {
-    std::unique_ptr<net::ServerSocket> socket =
-        CreateSocketOnAddress("127.0.0.1", port_);
+    std::unique_ptr<net::ServerSocket> socket;
+    // Shuttle network mode: the configured address, same port fallback.
+    if (!shuttle::ListenAddress().empty()) {
+      socket = CreateSocketOnAddress(shuttle::ListenAddress().c_str(), port_);
+      if (!socket && port_ != 0) {
+        socket = CreateSocketOnAddress(shuttle::ListenAddress().c_str(), 0);
+      }
+      if (socket) {
+        return socket;
+      }
+      LOG(ERROR) << "Shuttle: cannot listen on " << shuttle::ListenAddress()
+                 << "; falling back to localhost.";
+    }
+    socket = CreateSocketOnAddress("127.0.0.1", port_);
     if (socket) {
       return socket;
     }
@@ -218,6 +245,8 @@ std::unique_ptr<RemoteDebuggingServer> RemoteDebuggingServer::Start() {
     bool result = base::PathService::Get(chrome::DIR_USER_DATA, &output_dir);
     DCHECK(result);
   }
+
+  shuttle::InitNetworkAccess(output_dir);
 
   base::FilePath debug_frontend_dir;
   if (command_line.HasSwitch(::switches::kCustomDevtoolsFrontend)) {

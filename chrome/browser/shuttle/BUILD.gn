@@ -14,11 +14,25 @@ source_set("shuttle") {
   ]
 
   public_deps = [
+    ":network_access",
     "//base",
     "//chrome/browser/profiles:profile",
     "//components/keyed_service/core",
     "//content/public/browser",
     "//ui/gfx",
+  ]
+}
+
+# Network mode (--shuttle-listen) and its access token.
+source_set("network_access") {
+  sources = [
+    "network_access.cc",
+    "network_access.h",
+  ]
+  deps = [
+    "//base",
+    "//crypto",
+    "//net",
   ]
 }
 
