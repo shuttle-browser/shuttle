@@ -31,7 +31,6 @@
 #include "chrome/browser/extensions/api/developer_private/developer_private_event_router.h"
 #include "chrome/browser/extensions/extension_uninstall_dialog.h"
 #include "components/prefs/pref_change_registrar.h"
-#include "extensions/browser/api/file_system/file_system_api.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/common/extension_id.h"

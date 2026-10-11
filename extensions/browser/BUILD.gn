@@ -809,22 +809,6 @@ source_set("browser_sources") {
   # more platform app-specific code into this (and related) blocks.
   if (enable_platform_apps) {
     sources += [
-      "app_window/app_delegate.h",
-      "app_window/app_web_contents_helper.cc",
-      "app_window/app_web_contents_helper.h",
-      "app_window/app_window.cc",
-      "app_window/app_window.h",
-      "app_window/app_window_client.cc",
-      "app_window/app_window_client.h",
-      "app_window/app_window_contents.cc",
-      "app_window/app_window_contents.h",
-      "app_window/app_window_geometry_cache.cc",
-      "app_window/app_window_geometry_cache.h",
-      "app_window/app_window_registry.cc",
-      "app_window/app_window_registry.h",
-      "app_window/native_app_window.h",
-      "app_window/size_constraints.cc",
-      "app_window/size_constraints.h",
     ]
 
     deps += [ "//components/web_modal" ]

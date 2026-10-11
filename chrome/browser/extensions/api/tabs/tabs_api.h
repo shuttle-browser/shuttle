@@ -30,9 +30,6 @@
 #include "ui/base/mojom/window_show_state.mojom-forward.h"
 #include "url/gurl.h"
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/extension_telemetry/tabs_api_signal.h"
-#endif
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -123,15 +120,6 @@ bool GetTabById(int tab_id,
                 int* index_out,
                 std::string* error_out);
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-// Notifies the safe browsing telemetry service of a relevant extension action.
-void NotifyExtensionTelemetry(Profile* profile,
-                              const Extension* extension,
-                              safe_browsing::TabsApiInfo::ApiMethod api_method,
-                              const std::string& current_url,
-                              const std::string& new_url,
-                              const std::optional<StackTrace>& js_callstack);
-#endif
 
 // Gets the WebContents for `tab_id` if it is specified. Otherwise get the
 // WebContents for the active tab in the `function`'s current window.

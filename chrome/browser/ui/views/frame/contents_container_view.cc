@@ -9,7 +9,6 @@
 #include <utility>
 
 #include "base/i18n/rtl.h"
-#include "chrome/browser/actor/ui/actor_overlay_web_view.h"
 #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_overlay_view.h"
 #include "chrome/browser/profiles/profile.h"
@@ -86,14 +85,6 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
 
   contents_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
   contents_scrim_view_->layer()->SetName("ContentsScrimView");
-
-  if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
-      features::kGlicActorUiOverlay.Get()) {
-    auto actor_overlay_web_view =
-        std::make_unique<ActorOverlayWebView>(browser_view->browser());
-    actor_overlay_web_view->SetID(VIEW_ID_ACTOR_OVERLAY);
-    actor_overlay_web_view_ = AddChildView(std::move(actor_overlay_web_view));
-  }
 
   mini_toolbar_ = AddChildView(std::make_unique<MultiContentsViewMiniToolbar>(
       browser_view, contents_view_));
@@ -198,12 +189,6 @@ void ContentsContainerView::SetBorderRoundedCornersFrom(
   contents_view_->SetBackgroundRadii(radii);
   contents_view_->holder()->SetNativeViewCornerRadii(radii);
   contents_scrim_view_->SetRoundedCorners(corner_radii);
-
-  if (actor_overlay_web_view_) {
-    // ActorOverlayWebView should use the same radii as the contents view since
-    // it acts as a full transparent layer directly over the main web content.
-    actor_overlay_web_view_->holder()->SetNativeViewCornerRadii(radii);
-  }
 
 }
 
@@ -410,13 +395,6 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
   layouts.child_layouts.emplace_back(
       data_protection_overlay_view_.get(),
       data_protection_overlay_view_->GetVisible(), full_contents_bounds);
-
-  // Actor Overlay view bounds are the same as the contents view.
-  if (actor_overlay_web_view_) {
-    layouts.child_layouts.emplace_back(
-        actor_overlay_web_view_.get(), actor_overlay_web_view_->GetVisible(),
-        non_devtools_contents_bounds, size_bounds);
-  }
 
   if (mini_toolbar_) {
     // |mini_toolbar_| should be offset in the bottom right corner, overlapping

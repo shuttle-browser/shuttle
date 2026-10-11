@@ -71,7 +71,6 @@ if (enable_extensions) {
     "command_line_private.json",
     "crash_report_private.webidl",
     "enterprise_reporting_private.webidl",
-    "experimental_actor.webidl",
     "image_writer_private.webidl",
     "language_settings_private.webidl",
     "resources_private.idl",

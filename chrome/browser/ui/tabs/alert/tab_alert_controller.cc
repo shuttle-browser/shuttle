@@ -16,7 +16,6 @@
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
 #include "base/notreached.h"
-#include "chrome/browser/actor/ui/actor_ui_tab_controller_interface.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
@@ -100,14 +99,6 @@ TabAlertController::TabAlertController(TabInterface& tab)
               &TabAlertController::OnRecentlyAudibleStateChanged,
               base::Unretained(this)));
 
-  if (auto* actor_ui_tab_controller =
-          actor::ui::ActorUiTabControllerInterface::From(&tab)) {
-    actor_tab_indicator_callback_runner_ =
-        actor_ui_tab_controller->RegisterActorTabIndicatorStateChangedCallback(
-            base::BindRepeating(
-                &TabAlertController::OnActorTabIndicatorStateChanged,
-                base::Unretained(this)));
-  }
 }
 
 TabAlertController::~TabAlertController() = default;
@@ -177,10 +168,9 @@ std::u16string TabAlertController::GetTabAlertStateText(
     case TabAlert::kVrPresentingInHeadset:
       return l10n_util::GetStringUTF16(
           IDS_TOOLTIP_TAB_ALERT_STATE_VR_PRESENTING);
+    // Shuttle: actor states are never set (actor removed); share Glic's text.
     case TabAlert::kActorAccessing:
     case TabAlert::kActorWaitingOnUser:
-      return l10n_util::GetStringUTF16(
-          IDS_TOOLTIP_TAB_ALERT_STATE_ACTOR_ACCESSING);
     case TabAlert::kGlicAccessing:
       return l10n_util::GetStringUTF16(
           IDS_TOOLTIP_TAB_ALERT_STATE_GLIC_ACCESSING);
@@ -226,7 +216,6 @@ int TabAlertController::GetAccessibleAlertStringId(const TabAlert alert_state) {
       return IDS_TAB_AX_LABEL_VR_PRESENTING;
     case TabAlert::kActorAccessing:
     case TabAlert::kActorWaitingOnUser:
-      return IDS_TAB_AX_LABEL_ACTOR_ACCESSING;
     case TabAlert::kGlicAccessing:
       return IDS_TAB_AX_LABEL_GLIC_ACCESSING;
     case TabAlert::kGlicSharing:
@@ -405,25 +394,6 @@ void TabAlertController::OnIsCapturingDisplayChanged(
 void TabAlertController::OnIsContentDisplayedInHeadsetChanged(bool state) {
   ScopedAlertNotifier notifier(this);
   UpdateAlertState(TabAlert::kVrPresentingInHeadset, state);
-}
-
-void TabAlertController::OnActorTabIndicatorStateChanged(
-    actor::ui::TabIndicatorStatus tab_indicator_status) {
-  ScopedAlertNotifier notifier(this);
-  switch (tab_indicator_status) {
-    case actor::ui::TabIndicatorStatus::kNone:
-      UpdateAlertState(TabAlert::kActorWaitingOnUser, false);
-      UpdateAlertState(TabAlert::kActorAccessing, false);
-      break;
-    case actor::ui::TabIndicatorStatus::kDynamic:
-      UpdateAlertState(TabAlert::kActorWaitingOnUser, false);
-      UpdateAlertState(TabAlert::kActorAccessing, true);
-      break;
-    case actor::ui::TabIndicatorStatus::kStatic:
-      UpdateAlertState(TabAlert::kActorWaitingOnUser, true);
-      UpdateAlertState(TabAlert::kActorAccessing, false);
-      break;
-  }
 }
 
 void TabAlertController::OnRecentlyAudibleStateChanged(bool was_audible) {

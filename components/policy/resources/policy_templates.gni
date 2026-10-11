@@ -14,49 +14,12 @@ policy_templates_yaml_dir = "resources/templates"
 
 # Languages we're going to process. Should match the XX-YY of the translated
 # policy_templates_XX-YY.json files, see policy_templates.grd.
-policy_templates_languages = [
-  "de-DE",
-  "en-US",
-  "es-ES",
-  "es-419",
-  "fr-FR",
-  "id-ID",
-  "it-IT",
-  "ja-JP",
-  "ko-KR",
-  "nl-NL",
-  "pt-BR",
-  "ru-RU",
-  "th-TH",
-  "tr-TR",
-  "uk-UA",
-  "vi-VN",
-  "zh-CN",
-  "zh-TW",
-]
+policy_templates_languages = [ "en-US" ]  # Shuttle: en-US only
 
 # Macs use a slightly different naming convention:
 #   - '_' instead of '-'
 #   - 'en' instead of 'en-US'
-mac_policy_templates_languages = [
-  "de_DE",
-  "en",
-  "es_ES",
-  "es_419",
-  "fr_FR",
-  "id_ID",
-  "it_IT",
-  "ja_JP",
-  "ko_KR",
-  "nl_NL",
-  "pt_BR",
-  "ru_RU",
-  "th_TH",
-  "tr_TR",
-  "uk_UA",
-  "zh_CN",
-  "zh_TW",
-]
+mac_policy_templates_languages = [ "en" ]
 
 policy_templates_languages_str = ""
 foreach(lang, policy_templates_languages) {

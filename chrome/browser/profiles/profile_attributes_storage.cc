@@ -21,6 +21,7 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/observer_list.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
@@ -30,7 +31,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
-#include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/branded_strings.h"
@@ -147,15 +147,6 @@ void DeleteBitmap(const base::FilePath& image_path) {
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::MAY_BLOCK);
   base::DeleteFile(image_path);
-}
-
-void RunCallbackIfFileMissing(const base::FilePath& file_path,
-                              base::OnceClosure callback) {
-  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
-                                                base::BlockingType::MAY_BLOCK);
-  if (!base::PathExists(file_path))
-    content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE,
-                                                 std::move(callback));
 }
 
 // Compares two ProfileAttributesEntry using locale-sensitive comparison of
@@ -308,11 +299,6 @@ ProfileAttributesStorage::ProfileAttributesStorage(
     entry->InitializeLastNameToDisplay();
   }
 
-  // If needed, start downloading the high-res avatars and migrate any legacy
-  // profile names.
-  if (!disable_avatar_download_for_testing_)
-    DownloadAvatars();
-
 #if !BUILDFLAG(IS_ANDROID)
   LoadGAIAPictureIfNeeded();
 #endif
@@ -378,7 +364,8 @@ void ProfileAttributesStorage::AddProfile(ProfileAttributesInitParams params) {
           .Set(ProfileAttributesEntry::kIsConsentedPrimaryAccountKey,
                params.is_consented_primary_account)
           .Set(ProfileAttributesEntry::kAvatarIconKey,
-               profiles::GetDefaultAvatarIconUrl(params.icon_index))
+               base::StrCat({"chrome://theme/IDR_PROFILE_AVATAR_",
+                             base::NumberToString(params.icon_index)}))
           // Default value for whether background apps are running is false.
           .Set(ProfileAttributesEntry::kBackgroundAppsKey, false)
           .Set(ProfileAttributesEntry::kSupervisedUserId,
@@ -415,9 +402,6 @@ void ProfileAttributesStorage::AddProfile(ProfileAttributesInitParams params) {
   // after a new profile is added to the storage.
   for (auto& observer : observer_list_)
     observer.OnProfileAdded(params.profile_path);
-
-  if (!disable_avatar_download_for_testing_)
-    DownloadHighResAvatarIfNeeded(params.icon_index, params.profile_path);
 
   NotifyIfProfileNamesHaveChanged();
 }
@@ -715,14 +699,8 @@ bool ProfileAttributesStorage::IsDefaultProfileName(
 }
 
 size_t ProfileAttributesStorage::ChooseAvatarIconIndexForNewProfile() const {
-  absl::flat_hash_set<size_t> used_icon_indices;
-
-  std::vector<ProfileAttributesEntry*> entries =
-      const_cast<ProfileAttributesStorage*>(this)->GetAllProfilesAttributes();
-  for (const ProfileAttributesEntry* entry : entries)
-    used_icon_indices.insert(entry->GetAvatarIconIndex());
-
-  return profiles::GetRandomAvatarIconIndex(used_icon_indices);
+  // Shuttle: there is no profile avatar UI, the index is always 0.
+  return 0;
 }
 
 const gfx::Image* ProfileAttributesStorage::LoadAvatarPictureFromPath(
@@ -973,36 +951,6 @@ void ProfileAttributesStorage::DisableProfileMetricsForTesting() {
 #endif
 }
 
-void ProfileAttributesStorage::DownloadHighResAvatarIfNeeded(
-    size_t icon_index,
-    const base::FilePath& profile_path) {
-#if BUILDFLAG(IS_ANDROID)
-  return;
-#endif
-  DCHECK(!disable_avatar_download_for_testing_);
-
-  // If this is the placeholder avatar, it is already included in the
-  // resources, so it doesn't need to be downloaded (and it will never be
-  // requested from disk by `ProfileAttributesEntry::GetHighResAvatar()`).
-  if (icon_index == profiles::GetPlaceholderAvatarIndex())
-    return;
-
-  const base::FilePath& file_path =
-      profiles::GetPathOfHighResAvatarAtIndex(icon_index);
-  base::OnceClosure callback =
-      base::BindOnce(&ProfileAttributesStorage::DownloadHighResAvatar,
-                     weak_ptr_factory_.GetWeakPtr(), icon_index, profile_path);
-  file_task_runner_->PostTask(
-      FROM_HERE, base::BindOnce(&RunCallbackIfFileMissing, file_path,
-                                std::move(callback)));
-}
-
-void ProfileAttributesStorage::DownloadHighResAvatar(
-    size_t icon_index,
-    const base::FilePath& profile_path) {
-  // Shuttle: high-res avatar downloads were removed (no profile UI).
-}
-
 void ProfileAttributesStorage::SaveAvatarImageAtPath(
     const base::FilePath& profile_path,
     gfx::Image image,
@@ -1040,16 +988,6 @@ ProfileAttributesEntry* ProfileAttributesStorage::InitEntryWithKey(
   new_entry->Initialize(this, path, prefs_);
   new_entry->SetIsOmittedInternal(is_omitted);
   return new_entry;
-}
-
-void ProfileAttributesStorage::DownloadAvatars() {
-#if !BUILDFLAG(IS_ANDROID)
-  std::vector<ProfileAttributesEntry*> entries = GetAllProfilesAttributes();
-  for (ProfileAttributesEntry* entry : entries) {
-    DownloadHighResAvatarIfNeeded(entry->GetAvatarIconIndex(),
-                                  entry->GetPath());
-  }
-#endif
 }
 
 #if !BUILDFLAG(IS_ANDROID)

@@ -26,7 +26,6 @@
 #if BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/grit/side_panel_shared_code_cache_resources_map.h"
-#include "chrome/grit/webui_toolbar_code_cache_resources_map.h"
 #include "content/public/common/content_features.h"
 #include "ui/webui/resources/grit/webui_code_cache_resources_map.h"
 #endif  // BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
@@ -199,15 +198,6 @@ base::flat_map<GURL, int> GetWebUIResourceUrlToCodeCacheMap() {
     // code cache resources here and instead delegate to registered WebUI
     // configs or similar. This may also be unnecessary once these mappings are
     // exposed in renderers at compile-time.
-
-    // chrome://webui_toolbar.top-chrome
-    if (features::IsWebUIToolbarEnabled() ||
-        base::FeatureList::IsEnabled(
-            features::kWebUIToolbarProcessOverheadExperiment)) {
-      AppendWebUIResourceURLToCodeCachePairs(
-          content::kChromeUIScheme, chrome::kChromeUIWebUIToolbarHost,
-          kWebuiToolbarCodeCacheResources, url_to_code_cache_pairs);
-    }
   }
 #endif  // BUILDFLAG(ENABLE_WEBUI_GENERATE_CODE_CACHE)
 

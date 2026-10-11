@@ -41,13 +41,11 @@
 #include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/optimization_guide/proto/models.pb.h"
-#include "components/optimization_guide/public/mojom/model_broker.mojom-shared.h"
 #include "net/nqe/effective_connection_type.h"
 #include "url/gurl.h"
 
 namespace optimization_guide {
 
-class MqlsFeatureMetadata;
 namespace features {
 
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
@@ -125,11 +123,6 @@ BASE_DECLARE_FEATURE(kOnDeviceModelBackgroundDownload);
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const base::FeatureParam<std::string>
     kOnDeviceModelBackgroundDownloadAllowedFeatures;
-
-// Returns whether the feature is allowed to be downloaded in background.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-bool IsOnDeviceModelBackgroundDownloadEnabledForFeature(
-    mojom::OnDeviceFeature feature);
 
 
 // Whether model sessions may be brokered to untrusted processes.
@@ -285,10 +278,6 @@ std::optional<int> OverrideNumThreadsForOptTarget(
 // Whether logging of model quality is enabled.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 bool IsModelQualityLoggingEnabled();
-
-// Whether model quality logging is enabled for a feature.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-bool IsModelQualityLoggingEnabledForFeature(const MqlsFeatureMetadata*);
 
 // Returns whether the `model_version` for `opt_target` is part of emergency
 // killswitch, and this model should be stopped serving immediately.

@@ -59,8 +59,6 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/actor/core/actor_features.h"
-#include "components/actor/public/mojom/actor_types.mojom.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_features.h"
 #include "components/download/public/common/download_interrupt_reasons.h"
@@ -125,12 +123,8 @@
 #include "third_party/blink/public/common/mime_util/mime_util.h"
 #include "ui/android/window_android.h"
 #else
-#include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_task.h"
-#include "chrome/browser/actor/execution_engine.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
-#include "chrome/common/actor.mojom-shared.h"
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -625,54 +619,6 @@ void OnCheckDownloadAllowedFailed(
       FROM_HERE, base::BindOnce(std::move(check_download_allowed_cb), false));
 }
 
-#if !BUILDFLAG(IS_ANDROID)
-actor::ExecutionEngine* GetExecutionEngineForDownloadItem(
-    DownloadItem* download) {
-  content::WebContents* web_contents =
-      content::DownloadItemUtils::GetWebContents(download);
-  if (!web_contents) {
-    return nullptr;
-  }
-
-  actor::ActorKeyedService* actor_service =
-      actor::ActorKeyedService::Get(web_contents->GetBrowserContext());
-  if (!actor_service) {
-    return nullptr;
-  }
-
-  if (const actor::ActorTask* actor_task =
-          actor_service->GetActingActorTaskForWebContents(web_contents)) {
-    return &actor_task->GetExecutionEngine();
-  }
-
-  return nullptr;
-}
-
-void ProcessFilePickerWithExecutionEngine(
-    actor::ExecutionEngine* execution_engine,
-    DownloadTargetDeterminerDelegate::ConfirmationCallback callback,
-    DownloadConfirmationResult result,
-    const ui::SelectedFileInfo& file_info) {
-  actor::mojom::ActionResultCode glic_result;
-  switch (result) {
-    case DownloadConfirmationResult::CONFIRMED:
-    case DownloadConfirmationResult::CONTINUE_WITHOUT_CONFIRMATION:
-      glic_result = actor::mojom::ActionResultCode::kFilePickerConfirmed;
-      break;
-    case DownloadConfirmationResult::FAILED:
-    case DownloadConfirmationResult::CANCELED:
-      glic_result = actor::mojom::ActionResultCode::kFilePickerCancelled;
-      break;
-  }
-
-  if (execution_engine) {
-    execution_engine->set_user_take_over_result(glic_result);
-  }
-
-  std::move(callback).Run(result, file_info);
-}
-#endif
-
 }  // namespace
 
 ChromeDownloadManagerDelegate::ChromeDownloadManagerDelegate(Profile* profile)
@@ -700,17 +646,6 @@ void ChromeDownloadManagerDelegate::SetDownloadManager(DownloadManager* dm) {
   }
 
   download_manager_ = dm;
-
-  // This is only for Incident Reporting, which does not report on downloads on
-  // Android.
-#if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && !BUILDFLAG(IS_ANDROID)
-  safe_browsing::SafeBrowsingService* sb_service =
-      g_browser_process->safe_browsing_service();
-  if (sb_service && !profile_->IsOffTheRecord()) {
-    // Include this download manager in the set monitored by safe browsing.
-    sb_service->AddDownloadManager(dm);
-  }
-#endif
 
   if (download_manager_) {
     download_manager_->AddObserver(this);
@@ -1697,22 +1632,6 @@ void ChromeDownloadManagerDelegate::RequestConfirmation(
         }
       },
       weak_ptr_factory_.GetWeakPtr(), download->GetGuid(), suggested_path);
-
-  if (base::FeatureList::IsEnabled(
-          actor::kGlicDeferDownloadFilePickerToUserTakeover)) {
-    if (actor::ExecutionEngine* execution_engine =
-            GetExecutionEngineForDownloadItem(download)) {
-      DownloadTargetDeterminerDelegate::ConfirmationCallback callback_wrapper =
-          base::BindOnce(&ProcessFilePickerWithExecutionEngine,
-                         execution_engine, std::move(callback));
-
-      execution_engine->UserTakeover(
-          actor::mojom::ActionResultCode::kFilePickerTriggered,
-          base::BindOnce(std::move(trigger_user_takeover),
-                         std::move(callback_wrapper)));
-      return;
-    }
-  }
 
   std::move(trigger_user_takeover)
       .Run(std::move(callback), /*should_cancel=*/false);

@@ -144,7 +144,6 @@ if (enable_printing) {
 
     if (is_android) {
       deps += [
-        "//ui/android",
       ]
     }
 

@@ -29,10 +29,6 @@
 #include "extensions/common/trace_util.h"
 #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
-#endif
 
 using perfetto::protos::pbzero::ChromeTrackEvent;
 
@@ -223,18 +219,6 @@ void ExtensionFrameHost::ReleaseIpcKeepaliveForFrame(
 }
 
 void ExtensionFrameHost::AppWindowReady() {
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  AppWindowRegistry* registry =
-      AppWindowRegistry::Get(web_contents_->GetBrowserContext());
-  if (!registry) {
-    return;
-  }
-  AppWindow* app_window = registry->GetAppWindowForWebContents(web_contents_);
-  if (!app_window) {
-    return;
-  }
-  app_window->AppWindowReady();
-#endif
 }
 
 void ExtensionFrameHost::OpenChannelToExtension(

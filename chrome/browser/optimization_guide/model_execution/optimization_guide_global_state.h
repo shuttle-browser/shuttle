@@ -7,8 +7,6 @@
 
 #include <memory>
 
-#include "base/feature_list.h"
-#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -17,18 +15,9 @@
 #include "components/optimization_guide/core/delivery/prediction_manager.h"
 #include "components/optimization_guide/core/delivery/prediction_model_component_update_listener.h"
 #include "components/optimization_guide/core/delivery/prediction_model_store.h"
-#include "components/optimization_guide/core/model_execution/on_device_capability.h"
 #include "components/optimization_guide/core/optimization_guide_enums.h"
-#include "services/on_device_model/public/cpp/buildflags.h"
-#include "services/on_device_model/public/mojom/on_device_model_service.mojom.h"
-
-#if BUILDFLAG(IS_ANDROID)
-#include "components/optimization_guide/core/model_execution/android/model_broker_android.h"
-#endif  // BUILDFLAG(IS_ANDROID)
 
 namespace optimization_guide {
-
-BASE_DECLARE_FEATURE(kOptimizationGuideManifestBroker);
 
 class OptimizationGuideGlobalFeature;
 class OptimizationGuideGlobalStateTest;
@@ -69,8 +58,6 @@ class OptimizationGuideGlobalState final
   // Retrieves or creates the instance.
   static scoped_refptr<OptimizationGuideGlobalState> CreateOrGet();
 
-  OnDeviceCapability& on_device_capability() { return *on_device_capability_; }
-
   PredictionModelStore& prediction_model_store() {
     return prediction_manager_.prediction_model_store();
   }
@@ -91,18 +78,7 @@ class OptimizationGuideGlobalState final
 
   ~OptimizationGuideGlobalState();
 
-#if BUILDFLAG(USE_ON_DEVICE_MODEL_SERVICE)
-  using LaunchServiceCallback = base::RepeatingCallback<void(
-      mojo::PendingReceiver<on_device_model::mojom::OnDeviceModelService>)>;
-
-  explicit OptimizationGuideGlobalState(
-      LaunchServiceCallback launch_service_callback);
-
-  static scoped_refptr<OptimizationGuideGlobalState> CreateForTesting();
-
-#else
   OptimizationGuideGlobalState();
-#endif  // BUILDFLAG(USE_ON_DEVICE_MODEL_SERVICE)
 
   ChromePredictionManager prediction_manager_;
 
@@ -113,8 +89,6 @@ class OptimizationGuideGlobalState final
           std::make_unique<PredictionModelComponentUpdateListener>(
               prediction_manager_.model_provider(),
               base::BindRepeating(&RegisterPredictionModelComponent));
-
-  std::unique_ptr<OnDeviceCapability> on_device_capability_;
 
   base::WeakPtrFactory<OptimizationGuideGlobalState> weak_ptr_factory_{this};
 };

@@ -11,8 +11,6 @@ build_webui_tests("build") {
   static_files = [ "test_custom_help_bubble.html" ]
 
   cc_test_files = [
-    "../cr_components_browsertest.cc",
-    "../cr_components_interactive_uitest.cc",
   ]
 
   files = [

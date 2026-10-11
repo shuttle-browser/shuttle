@@ -9,7 +9,6 @@
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_OPTIMIZATION_GUIDE_PREFS_H_
 
 #include "base/component_export.h"
-#include "components/optimization_guide/core/model_execution/feature_keys.h"
 
 class PrefRegistrySimple;
 
@@ -30,7 +29,7 @@ extern const char kStoreFilePathsToDelete[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kPreviousOptimizationTypesWithFilter[];
 
-// Value stored in the pref.
+// Value stored in feature opt-in prefs (still used by multistep_filter).
 enum class FeatureOptInState {
   // User has never changed the opt-in state.
   kNotInitialized = 0,
@@ -41,11 +40,6 @@ enum class FeatureOptInState {
   // User has explicitly opted-out of the feature.
   kDisabled = 2
 };
-
-// Returns the name of the pref that stores the user's setting opt-in state for
-// the given `feature`.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-std::string GetSettingEnabledPrefName(UserVisibleFeatureKey feature);
 
 namespace localstate {
 

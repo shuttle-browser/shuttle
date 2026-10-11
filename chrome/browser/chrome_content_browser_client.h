@@ -295,9 +295,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   bool ShouldUrlUseApplicationIsolationLevel(
       content::BrowserContext* browser_context,
       const GURL& url) override;
-#if !BUILDFLAG(IS_ANDROID)
-  bool IsInitialWebUIURL(const GURL& url) override;
-#endif  // !BUILDFLAG(IS_ANDROID)
   bool IsTopChromeWebUIURL(const GURL& url) override;
   bool IsMultiCaptureAllowed(
       content::RenderFrameHost* render_frame_host) override;
@@ -475,13 +472,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
                        bool* no_javascript_access) override;
   content::SpeechRecognitionManagerDelegate*
   CreateSpeechRecognitionManagerDelegate() override;
-  std::unique_ptr<optimization_guide::ModelBrokerClient>
-  CreateModelBrokerClient(content::BrowserContext* browser_context) override;
-  media::mojom::AvailabilityStatus
-  GetOnDeviceSpeechRecognitionAvailabilityStatus(
-      content::BrowserContext* context,
-      const std::string& language,
-      media::mojom::SpeechRecognitionQuality quality) override;
 #if BUILDFLAG(IS_CHROMEOS)
   content::TtsControllerDelegate* GetTtsControllerDelegate() override;
 #endif

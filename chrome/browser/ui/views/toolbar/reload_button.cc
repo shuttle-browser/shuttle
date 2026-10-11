@@ -17,8 +17,6 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/view_ids.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
-#include "chrome/browser/ui/waap/waap_ui_metrics_recorder.h"
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/vector_icons/vector_icons.h"
@@ -57,13 +55,11 @@ static constexpr gfx::Tween::Type kIconAnimationTween =
 
 ReloadButton::ReloadButton(
     Profile* profile,
-    CommandUpdater* command_updater,
-    InitialWebUIWindowMetricsManager* window_metrics_manager)
+    CommandUpdater* command_updater)
     : ToolbarButton(base::BindRepeating(&ReloadButton::ButtonPressed,
                                         base::Unretained(this)),
                     CreateMenuModel(),
                     nullptr),
-      metrics_recorder_(std::make_unique<WaapUIMetricsRecorder>(profile)),
       command_updater_(command_updater),
       reload_icon_(features::IsRoundedIconsEnabled()
                        ? vector_icons::kRefreshIcon
@@ -78,11 +74,7 @@ ReloadButton::ReloadButton(
                            ? kCloseIcon
                            : kNavigateStopTouchOldIcon),
       double_click_timer_delay_(views::GetDoubleClickInterval()),
-      mode_switch_timer_delay_(base::Milliseconds(1350)),
-      window_metrics_manager_(window_metrics_manager) {
-  if (window_metrics_manager_) {
-    window_metrics_manager_->OnReloadButtonCreated();
-  }
+      mode_switch_timer_delay_(base::Milliseconds(1350)) {
   SetVisibleMode(Mode::kReload);
   SetTriggerableEventFlags(ui::EF_LEFT_MOUSE_BUTTON |
                            ui::EF_MIDDLE_MOUSE_BUTTON);
@@ -145,14 +137,6 @@ void ReloadButton::OnMouseExited(const ui::MouseEvent& event) {
   if (!IsMenuShowing()) {
     ChangeMode(intended_mode_, true);
   }
-}
-
-void ReloadButton::PaintButtonContents(gfx::Canvas* canvas) {
-  // This has to be called every time the button is painted for various metrics.
-  GetWidget()->GetCompositor()->RequestSuccessfulPresentationTimeForNextFrame(
-      base::BindOnce(&ReloadButton::OnNextPresentation,
-                     weak_ptr_factory_.GetWeakPtr()));
-  Button::PaintButtonContents(canvas);
 }
 
 void ReloadButton::UpdateCachedTooltipText() {
@@ -322,8 +306,6 @@ void ReloadButton::ButtonPressed(const ui::Event& event) {
 
   ClearPendingMenu();
 
-  metrics_recorder_->OnButtonPressedStart(event);
-
   if (visible_mode_ == Mode::kStop) {
     if (command_updater_) {
       command_updater_->ExecuteCommandWithDisposition(
@@ -359,7 +341,6 @@ void ReloadButton::ButtonPressed(const ui::Event& event) {
     animate_transitions_ = true;
 
     ExecuteBrowserCommand(command, flags);
-    metrics_recorder_->DidExecuteReloadCommand(base::TimeTicks::Now());
     ++testing_reload_count_;
   }
 }
@@ -388,16 +369,6 @@ void ReloadButton::UpdateAccessibleHasPopup() {
     GetViewAccessibility().SetHasPopup(ax::mojom::HasPopup::kMenu);
   } else {
     GetViewAccessibility().SetHasPopup(ax::mojom::HasPopup::kNone);
-  }
-}
-
-void ReloadButton::OnNextPresentation(
-    const viz::FrameTimingDetails& frame_timing_details) {
-  if (window_metrics_manager_) {
-    window_metrics_manager_->OnReloadButtonFirstPaint(
-        frame_timing_details.presentation_feedback.timestamp);
-    window_metrics_manager_->OnReloadButtonFirstContentfulPaint(
-        frame_timing_details.presentation_feedback.timestamp);
   }
 }
 

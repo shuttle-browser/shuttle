@@ -66,10 +66,6 @@ class InspectableViewsFinder {
       bool is_incognito,
       ViewList* result);
 
-  // Returns all inspectable app views for the extension.
-  void GetAppWindowViewsForExtension(const Extension& extension,
-                                     ViewList* result);
-
   raw_ptr<Profile> profile_;
 };
 

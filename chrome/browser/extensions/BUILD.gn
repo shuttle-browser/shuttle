@@ -693,10 +693,6 @@ source_set("extensions") {
       "api/enterprise_reporting_private/enterprise_reporting_private_api.h",
       "api/enterprise_reporting_private/enterprise_reporting_private_event_router.cc",
       "api/enterprise_reporting_private/enterprise_reporting_private_event_router.h",
-      "api/file_system/chrome_file_system_delegate.cc",
-      "api/file_system/chrome_file_system_delegate.h",
-      "api/file_system/file_entry_picker.cc",
-      "api/file_system/file_entry_picker.h",
       "api/image_writer_private/destroy_partitions_operation.cc",
       "api/image_writer_private/destroy_partitions_operation.h",
       "api/image_writer_private/error_constants.cc",
@@ -847,7 +843,6 @@ source_set("extensions") {
       "//chrome/browser/resource_coordinator",
       "//chrome/browser/search_engines",
       "//chrome/browser/themes",
-      "//chrome/browser/ui/apps",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/extensions",
       "//chrome/browser/ui/prefs",
@@ -981,10 +976,6 @@ source_set("extensions") {
       sources += [
         "api/certificate_provider/certificate_provider_api.cc",
         "api/certificate_provider/certificate_provider_api.h",
-        "api/file_system/consent_provider_impl.cc",
-        "api/file_system/consent_provider_impl.h",
-        "api/file_system/request_file_system_notification.cc",
-        "api/file_system/request_file_system_notification.h",
         "api/platform_keys_core/platform_keys_utils.cc",
         "api/platform_keys_core/platform_keys_utils.h",
 
@@ -1104,8 +1095,6 @@ source_set("extensions") {
       sources += [
         "api/file_handlers/non_native_file_system_delegate_chromeos.cc",
         "api/file_handlers/non_native_file_system_delegate_chromeos.h",
-        "api/file_system/chrome_file_system_delegate_ash.cc",
-        "api/file_system/chrome_file_system_delegate_ash.h",
         "api/identity/launch_web_auth_flow_delegate_ash.cc",
         "api/identity/launch_web_auth_flow_delegate_ash.h",
         "api/image_writer_private/operation_chromeos.cc",
@@ -1410,16 +1399,6 @@ source_set("extensions") {
     deps += [ "//chrome/browser/printing" ]
   }
 
-  if (enable_platform_apps) {
-    sources += [
-      "api/tabs/app_base_window.cc",
-      "api/tabs/app_base_window.h",
-      "api/tabs/app_window_controller.cc",
-      "api/tabs/app_window_controller.h",
-      "api/tabs/app_window_helper.cc",
-      "api/tabs/app_window_helper.h",
-    ]
-  }
 
   if (enable_devtools_frontend) {
     deps += [ "//chrome/browser/ui/webui/devtools" ]

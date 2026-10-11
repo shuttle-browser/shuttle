@@ -343,7 +343,6 @@ test("gl_tests") {
 
   if (is_android) {
     libs += [ "android" ]
-    deps += [ "//ui/android:ui_java" ]
     sources += [ "command_buffer/service/shared_image/ahardwarebuffer_image_backing_factory_unittest.cc" ]
   } else if (is_apple) {
     frameworks = [ "IOSurface.framework" ]
@@ -674,7 +673,6 @@ test("gpu_unittests") {
   deps += [ "//third_party/angle:translator" ]
 
   if (is_android) {
-    deps += [ "//ui/android:ui_java" ]
   }
 
   if (use_dawn) {

@@ -18,8 +18,6 @@ source_set("page_action") {
     "page_action_view.h",
     "page_action_view_interface.h",
     "page_action_view_params.h",
-    "webui_page_action_control.h",
-    "webui_page_action_view.h",
   ]
 
   public_deps = [
@@ -34,7 +32,6 @@ source_set("page_action") {
     "//chrome/browser/ui/toolbar",
     "//chrome/browser/ui/toolbar/pinned_toolbar",
     "//chrome/browser/ui/views/location_bar:icon_label_bubble",
-    "//components/browser_apis/ui_controllers/toolbar:mojom",
     "//components/metrics/structured:structured_events",
     "//components/prefs",
     "//components/tabs:impl",
@@ -55,8 +52,6 @@ source_set("impl") {
     "multi_icon_button.h",
     "page_action_container_view.cc",
     "page_action_view.cc",
-    "webui_page_action_control.cc",
-    "webui_page_action_view.cc",
   ]
 
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]

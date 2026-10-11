@@ -15,10 +15,6 @@
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/remote_set.h"
 
-#if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
-#endif
-
 class PrefChangeRegistrar;
 class PrefService;
 
@@ -31,12 +27,7 @@ namespace speech {
 class SpeechRecognitionClientBrowserInterface
     : public KeyedService,
       public media::mojom::SpeechRecognitionClientBrowserInterface,
-      public speech::SodaInstaller::Observer
-#if !BUILDFLAG(IS_CHROMEOS)
-    ,
-      public speech::SpeechRecognitionSmallExpertModelInstaller::Observer
-#endif
-{
+      public speech::SodaInstaller::Observer {
  public:
   explicit SpeechRecognitionClientBrowserInterface(
       content::BrowserContext* context);
@@ -68,11 +59,6 @@ class SpeechRecognitionClientBrowserInterface
   void OnSodaInstallError(
       speech::LanguageCode language_code,
       speech::SodaInstaller::ErrorCode error_code) override {}
-#if !BUILDFLAG(IS_CHROMEOS)
-  void OnSpeechRecognitionSmallExpertModelStateChanged(
-      speech::SpeechRecognitionSmallExpertModelInstaller::
-          SpeechRecognitionSmallExpertModelState state) override;
-#endif
 
  private:
   void OnSpeechRecognitionMaskOffensiveWordsChanged();
@@ -99,12 +85,6 @@ class SpeechRecognitionClientBrowserInterface
   base::ScopedObservation<speech::SodaInstaller,
                           speech::SodaInstaller::Observer>
       soda_installer_observation_{this};
-#if !BUILDFLAG(IS_CHROMEOS)
-  base::ScopedObservation<
-      speech::SpeechRecognitionSmallExpertModelInstaller,
-      speech::SpeechRecognitionSmallExpertModelInstaller::Observer>
-      speech_recognition_small_expert_model_installer_observation_{this};
-#endif
 };
 
 }  // namespace speech

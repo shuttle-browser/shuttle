@@ -15,7 +15,6 @@
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/bluetooth/bluetooth_chooser_context_factory.h"
 #include "chrome/browser/browser_process.h"
@@ -1003,19 +1002,6 @@ bool ChromePermissionsClient::IsSystemDenied(ContentSettingsType type) const {
 bool ChromePermissionsClient::CanPromptSystemPermission(
     ContentSettingsType type) const {
   return system_permission_settings::CanPrompt(type);
-}
-
-bool ChromePermissionsClient::IsActorOperatingOnWebContents(
-    content::WebContents* web_contents) const {
-  auto* actor_service =
-      actor::ActorKeyedService::Get(web_contents->GetBrowserContext());
-  if (!actor_service) {
-    return false;
-  }
-
-  const auto* tab_interface =
-      tabs::TabInterface::MaybeGetFromContents(web_contents);
-  return tab_interface && actor_service->IsActiveOnTab(*tab_interface);
 }
 
 url::Origin ChromePermissionsClient::GetEmbeddingOrigin(

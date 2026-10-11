@@ -304,43 +304,6 @@ BASE_DECLARE_FEATURE(kPageActionsPrioritySelectorProductMessagingController);
 BASE_DECLARE_FEATURE(kPageActionsElevatedToolbar);
 bool IsPageActionsElevatedToolbarEnabled();
 
-#if !BUILDFLAG(IS_ANDROID)
-
-bool IsWebUIReloadButtonEnabled();
-
-bool IsWebUIHomeButtonEnabled();
-
-bool IsWebUIBatterySaverButtonEnabled();
-
-bool IsWebUIBackForwardButtonEnabled();
-
-bool IsWebUIPinnedToolbarActionsEnabled();
-
-bool IsWebUIExtensionsContainerEnabled();
-
-bool IsWebUISplitTabsButtonEnabled();
-
-// Controls whether the WebUI version of the Avatar Button is used.
-BASE_DECLARE_FEATURE(kWebUIAvatarButton);
-bool IsWebUIAvatarButtonEnabled();
-
-// Controls whether the WebUI version of the Media Button is used.
-BASE_DECLARE_FEATURE(kWebUIMediaButton);
-bool IsWebUIMediaButtonEnabled();
-
-bool IsWebUIPerformanceInterventionButtonEnabled();
-
-bool IsWebUIAppMenuButtonEnabled();
-
-bool IsWebUILocationBarEnabled();
-
-// Returns true if any of the toolbar control is being handled by WebUI.
-bool IsWebUIToolbarEnabled();
-
-// Returns true if all toolbar controls are being handled by WebUI.
-bool IsWebUIToolbarFullyEnabled();
-#endif  // !BUILDFLAG(IS_ANDROID)
-
 // Controls whether to show a toast for Chrome non milestone update.
 BASE_DECLARE_FEATURE(kNonMilestoneUpdateToast);
 

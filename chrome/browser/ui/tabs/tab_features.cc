@@ -11,9 +11,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
-#include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_tab_data.h"
-#include "chrome/browser/actor/ui/actor_ui_tab_controller.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
@@ -148,21 +145,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         std::make_unique<permissions::PermissionIndicatorsTabData>(
             tab.GetContents());
 
-    // TODO(crbug.com/433973411): Move this logic to a helper function.
-    if (base::FeatureList::IsEnabled(features::kGlicActor) &&
-        base::FeatureList::IsEnabled(features::kGlicActorUi)) {
-      // The associated tab is passed to CreateInstance twice: for dependency
-      // injection callbacks and as a direct constructor argument.
-      actor_ui_tab_controller_ =
-          GetUserDataFactory().CreateInstance<actor::ui::ActorUiTabController>(
-              tab, tab, actor::ActorKeyedService::Get(profile));
-    }
   }  // IsInNormalWindow() end.
-
-  if (base::FeatureList::IsEnabled(features::kGlicActor)) {
-    actor_tab_data_ =
-        GetUserDataFactory().CreateInstance<actor::ActorTabData>(tab, &tab);
-  }
 
   tab_dialog_manager_ = std::make_unique<TabDialogManager>(&tab);
 

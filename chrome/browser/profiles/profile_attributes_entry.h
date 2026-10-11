@@ -18,7 +18,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "base/values.h"
-#include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "components/signin/public/identity_manager/tribool.h"
 #include "google_apis/gaia/gaia_id.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -27,7 +26,6 @@
 class PrefRegistrySimple;
 class PrefService;
 class ProfileAttributesStorage;
-struct ProfileThemeColors;
 
 inline constexpr int kDefaultSizeForPlaceholderAvatar = 74;
 
@@ -124,24 +122,6 @@ class ProfileAttributesEntry {
   // address used to sign in and the empty string for profiles that aren't
   // signed in to chrome.
   std::u16string GetUserName() const;
-  // Gets the icon used as this profile's avatar. High res icon are downloaded
-  // only if `download_high_res` is true, otherwise a low-res fallback is
-  // returned.
-  // TODO(crbug.com/40138086): Rename |size_for_placeholder_avatar| to |size|
-  // and make this function resize all avatars appropriately. Remove the default
-  // value of |size_for_placeholder_avatar| when all callsites pass some value.
-  // Consider adding a |shape| parameter and get rid of
-  // profiles::GetSizedAvatarIcon().
-  gfx::Image GetAvatarIcon(
-      int size_for_placeholder_avatar = kDefaultSizeForPlaceholderAvatar,
-      bool use_high_res_file = true,
-      const profiles::PlaceholderAvatarIconParams& icon_params = {}) const;
-  // Same as GetAvatarIcon(), but also returns an AvatarIconType indicating
-  // whether the returned image is a placeholder silhouette.
-  std::pair<gfx::Image, AvatarIconType> GetAvatarIconWithType(
-      int size_for_placeholder_avatar = kDefaultSizeForPlaceholderAvatar,
-      bool use_high_res_file = true,
-      const profiles::PlaceholderAvatarIconParams& icon_params = {}) const;
   // Returns true if the profile is currently running any background apps. Note
   // that a return value of false could mean an error in collection or that
   // there are currently no background apps running. However, the action which
@@ -200,12 +180,6 @@ class ProfileAttributesEntry {
   bool IsDasherlessManagement() const;
   // Returns the index of the default icon used by the profile.
   size_t GetAvatarIconIndex() const;
-  // Returns the colors specified by the profile theme, or default colors if no
-  // theme is specified for the profile.
-  ProfileThemeColors GetProfileThemeColors() const;
-  // Returns the colors specified by the profile theme, or empty if no theme is
-  // set for the profile.
-  std::optional<ProfileThemeColors> GetProfileThemeColorsIfSet() const;
   // Returns the metrics bucket this profile should be recorded in.
   // Note: The bucket index is assigned once and remains the same all time. 0 is
   // reserved for the guest profile.
@@ -268,8 +242,6 @@ class ProfileAttributesEntry {
   bool UserAcceptedAccountManagement() const;
   void SetIsUsingDefaultAvatar(bool value);
   void SetAvatarIconIndex(size_t icon_index);
-  // std::nullopt resets colors to default.
-  void SetProfileThemeColors(const std::optional<ProfileThemeColors>& colors);
 
   // Unlike for other string setters, the argument is expected to be UTF8
   // encoded.
@@ -344,15 +316,6 @@ class ProfileAttributesEntry {
   bool ShouldUpdateGAIAPicture(const std::string& image_url_with_size,
                                bool image_is_empty) const;
 
-  // Loads or uses an already loaded high resolution image of the generic
-  // profile avatar.
-  const gfx::Image* GetHighResAvatar() const;
-
-  // Generates the colored placeholder avatar icon for the given |size|.
-  gfx::Image GetPlaceholderAvatarIcon(
-      int size,
-      const profiles::PlaceholderAvatarIconParams& icon_params) const;
-
   // Loads and saves the data to the local state.
   const base::DictValue* GetEntryData() const;
 
@@ -370,9 +333,6 @@ class ProfileAttributesEntry {
   bool GetBool(const char* key) const;
   int GetInteger(const char* key) const;
 
-  // Internal getter that returns one of the profile theme colors or
-  // std::nullopt if the key is not present.
-  std::optional<SkColor> GetProfileThemeColor(const char* key) const;
 
   // Type checking. Only IsDouble is implemented because others do not have
   // callsites.

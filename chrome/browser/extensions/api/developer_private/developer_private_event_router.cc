@@ -37,10 +37,6 @@
 #include "extensions/common/command.h"
 #include "extensions/common/extension_id.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -80,9 +76,6 @@ DeveloperPrivateEventRouter::DeveloperPrivateEventRouter(Profile* profile)
       ExtensionAllowlistFactory::GetForBrowserContext(profile));
   command_service_observation_.Observe(CommandService::Get(profile));
   toolbar_actions_model_observation_.Observe(ToolbarActionsModel::Get(profile));
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  app_window_registry_observation_.Observe(AppWindowRegistry::Get(profile));
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
   pref_change_registrar_.Init(profile->GetPrefs());
   // The unretained is safe, since the PrefChangeRegistrar unregisters the
@@ -351,16 +344,5 @@ void DeveloperPrivateEventRouter::OnToolbarPinnedActionsChanged() {
   }
 }
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-void DeveloperPrivateEventRouter::OnAppWindowAdded(AppWindow* window) {
-  BroadcastItemStateChanged(developer::EventType::kViewRegistered,
-                            window->extension_id());
-}
-
-void DeveloperPrivateEventRouter::OnAppWindowRemoved(AppWindow* window) {
-  BroadcastItemStateChanged(developer::EventType::kViewUnregistered,
-                            window->extension_id());
-}
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 }  // namespace extensions

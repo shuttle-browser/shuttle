@@ -6,7 +6,6 @@
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_FEATURE_REGISTRY_FEATURE_REGISTRATION_H_
 
 #include "base/component_export.h"
-#include "base/feature_list.h"
 
 class PrefRegistrySimple;
 namespace optimization_guide {
@@ -50,29 +49,8 @@ enum class GeminiSettingsPolicyState {
 };
 }  // namespace prefs
 
-namespace features {
-BASE_DECLARE_FEATURE(kActorLoginMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kComposeMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kWallpaperSearchMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kHistorySearchMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kProductSpecificationsMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kFormsClassificationsMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kPasswordChangeSubmissionMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kBlingPrototypingMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kContextualTasksContextMqlsLogging);
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-BASE_DECLARE_FEATURE(kFindsMqlsLogging);
-}  // namespace features
 
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 void RegisterGenAiFeatures(PrefRegistrySimple* registry);
 
 }  // namespace optimization_guide

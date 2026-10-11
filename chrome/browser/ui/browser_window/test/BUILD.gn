@@ -25,11 +25,9 @@ if (is_android) {
       "//chrome/browser/ui/browser_window/public/android:java",
       "//chrome/browser/util:java",
       "//components/browser_ui/desktop_windowing/android:java",
-      "//content/public/android:content_full_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_core_core_java",
       "//third_party/mockito:mockito_java",
-      "//ui/android:ui_no_recycler_view_java",
       "//ui/base/mojom:ui_base_types_java",
     ]
   }
@@ -67,7 +65,6 @@ if (is_android) {
       "//chrome/browser/ui/browser_window/public/android:java",
       "//third_party/jni_zero:jni_zero_java",
       "//third_party/mockito:mockito_java",
-      "//ui/android:ui_no_recycler_view_java",
     ]
     srcjar_deps = [ ":native_unit_test_support_jni" ]
   }

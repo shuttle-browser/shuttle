@@ -10,7 +10,6 @@
 #include <string>
 
 #include "build/build_config.h"
-#include "components/actor/core/task_id.h"
 #include "components/offline_pages/buildflags/buildflags.h"
 #include "components/offline_pages/core/request_header/offline_page_navigation_ui_data.h"
 #include "content/public/browser/navigation_ui_data.h"
@@ -92,8 +91,6 @@ class ChromeNavigationUIData : public content::NavigationUIData {
   }
 #endif
 
-  actor::TaskId actor_task_id() const { return actor_task_id_; }
-
   bool navigation_initiated_from_sync() {
     return navigation_initiated_from_sync_;
   }
@@ -144,10 +141,6 @@ class ChromeNavigationUIData : public content::NavigationUIData {
   // ping-pong issue. They will still be allowed to load locally like a normal
   // navigation.
   bool navigation_initiated_from_sync_ = false;
-
-  // Id of the actor task active during this navigation. Set only if actor was
-  // acting on the tab when the navigation started.
-  actor::TaskId actor_task_id_;
 };
 
 #endif  // CHROME_BROWSER_RENDERER_HOST_CHROME_NAVIGATION_UI_DATA_H_

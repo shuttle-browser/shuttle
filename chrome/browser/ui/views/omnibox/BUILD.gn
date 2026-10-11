@@ -36,7 +36,6 @@ source_set("omnibox") {
     "omnibox_view_views.h",
     "remove_suggestion_bubble.h",
     "rounded_omnibox_results_frame.h",
-    "webui_readonly_omnibox.h",
   ]
 
   public_deps = [
@@ -53,7 +52,6 @@ source_set("omnibox") {
     "//chrome/browser/ui/tabs:tabs_public",
     "//chrome/browser/ui/webui/cr_components/searchbox",
     "//chrome/browser/ui/webui/top_chrome",
-    "//components/browser_apis/ui_controllers/toolbar:mojom_data_model",
     "//components/omnibox/browser",
     "//components/omnibox/common",
     "//components/permissions",
@@ -104,7 +102,6 @@ source_set("impl") {
     "omnibox_view_views.cc",
     "remove_suggestion_bubble.cc",
     "rounded_omnibox_results_frame.cc",
-    "webui_readonly_omnibox.cc",
   ]
 
   deps = [

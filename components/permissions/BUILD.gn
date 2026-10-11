@@ -221,9 +221,6 @@ source_set("permissions") {
       "//components/location/android:location_settings_dialog_enums_java",
       "//components/location/android:settings",
       "//components/messages/android",
-      "//components/permissions/android:core_jni",
-      "//components/permissions/android:jni_headers",
-      "//components/permissions/android:native",
       "//components/prefs",
       "//components/resources:android_resources",
       "//components/security_state/core",
@@ -233,7 +230,6 @@ source_set("permissions") {
       # jni depended on here.
       "//components/webxr/android:features",
       "//third_party/jni_zero",
-      "//ui/android",
     ]
   } else if (is_ios) {
     sources += [

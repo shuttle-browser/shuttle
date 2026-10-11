@@ -253,8 +253,10 @@ void RegisterProfilePrefs(PrefRegistrySimple* registry) {
       prefs::kSafeBrowsingEsbProtegoPingWithTokenLastLogTime, base::Time());
   registry->RegisterTimePref(
       prefs::kSafeBrowsingEsbProtegoPingWithoutTokenLastLogTime, base::Time());
+  // Shuttle: Safe Browsing is off by default (no Google lookups); users and
+  // policy can still turn it on.
   registry->RegisterBooleanPref(
-      prefs::kSafeBrowsingEnabled, true,
+      prefs::kSafeBrowsingEnabled, false,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
   if (base::FeatureList::IsEnabled(kEsbAsASyncedSetting)) {
     registry->RegisterBooleanPref(

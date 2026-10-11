@@ -5,11 +5,18 @@
 #ifndef CHROME_BROWSER_UI_PAGE_ACTION_PAGE_ACTION_TRIGGERS_H_
 #define CHROME_BROWSER_UI_PAGE_ACTION_PAGE_ACTION_TRIGGERS_H_
 
-#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
+#include <cstdint>
+#include <type_traits>
+
 #include "ui/base/class_property.h"
 
 namespace page_actions {
-using PageActionTrigger = ::toolbar_ui_api::mojom::PageActionTrigger;
+// The input modality that causes the page action to trigger.
+enum class PageActionTrigger : int32_t {
+  kMouse = 0,
+  kKeyboard = 1,
+  kGesture = 2,
+};
 
 constexpr std::underlying_type_t<page_actions::PageActionTrigger>
     kInvalidPageActionTrigger = -1;

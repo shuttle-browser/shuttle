@@ -25,8 +25,6 @@
 #include "url/gurl.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -132,10 +130,6 @@ void InspectableViewsFinder::GetViewsForExtensionForProfile(
                               process_manager,
                               is_incognito,
                               result);
-  // Get app window views, if not incognito.
-  if (!is_incognito) {
-    GetAppWindowViewsForExtension(extension, result);
-  }
   // Include a link to start the lazy background page, if applicable.
   bool include_lazy_background = true;
   // Don't include the lazy background page for incognito if the extension isn't
@@ -209,37 +203,6 @@ void InspectableViewsFinder::GetViewsForExtensionProcess(
         /*is_iframe=*/false,
         api::developer_private::ViewType::kExtensionServiceWorkerBackground));
   }
-}
-
-void InspectableViewsFinder::GetAppWindowViewsForExtension(
-    const Extension& extension,
-    ViewList* result) {
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  AppWindowRegistry* registry = AppWindowRegistry::Get(profile_);
-  if (!registry) {
-    return;
-  }
-
-  AppWindowRegistry::AppWindowList windows =
-      registry->GetAppWindowsForApp(extension.id());
-
-  for (const AppWindow* window : windows) {
-    content::WebContents* web_contents = window->web_contents();
-
-    // If the window just opened, there might not be a committed (or visible)
-    // url yet. In this case, use the initial url.
-    GURL url = web_contents->GetLastCommittedURL();
-    if (url.is_empty()) {
-      url = window->initial_url();
-    }
-
-    content::RenderFrameHost* main_frame = web_contents->GetPrimaryMainFrame();
-    result->push_back(
-        ConstructView(url, main_frame->GetProcess()->GetDeprecatedID(),
-                      main_frame->GetRoutingID(), false, false,
-                      ConvertViewType(GetViewType(web_contents))));
-  }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 }
 
 }  // namespace extensions

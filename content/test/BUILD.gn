@@ -664,7 +664,6 @@ static_library("test_support") {
       "//content/shell:android_shell_descriptors",
       "//mojo/public/java/system:native_support",
       "//testing/android/native_test:native_browser_test_support",
-      "//ui/android",
     ]
   } else {
     sources += [
@@ -790,8 +789,6 @@ static_library("test_support") {
     deps += [
       "//components/discardable_memory/service",
       "//media/capture/video/android",
-      "//ui/android",
-      "//ui/android:test_support",
       "//ui/shell_dialogs",
     ]
   }
@@ -957,11 +954,9 @@ if (is_android) {
       "//components/download/internal/common:internal_java",
       "//components/metrics:metrics_java",
       "//components/viz/service:service_java",
-      "//content/public/android:content_java",
       "//content/public/test/android:content_java_test_support",
       "//content/shell/android:content_shell_browsertests_java",
       "//testing/android/native_test:native_browser_test_java",
-      "//ui/android:ui_java",
     ]
   }
 
@@ -1032,9 +1027,7 @@ if (is_android) {
       "$google_play_services_package:google_play_services_basement_java",
       "$google_play_services_package:google_play_services_tasks_java",
       "//base:base_java",
-      "//content/public/android:content_java",
       "//third_party/jni_zero:jni_zero_java",
-      "//ui/android:ui_full_java",
     ]
   }
 }

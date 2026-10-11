@@ -241,7 +241,6 @@ component("printing") {
 
     deps += [
       ":printing_jni_headers",
-      "//ui/android",
     ]
   }
 
@@ -500,7 +499,6 @@ if (is_android) {
       "//build/android:build_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/jni_zero:jni_zero_java",
-      "//ui/android:ui_java",
     ]
     srcjar_deps = [ ":printing_jni_headers" ]
     sources = [

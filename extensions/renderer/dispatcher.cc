@@ -429,12 +429,6 @@ void Dispatcher::DidCreateScriptContext(
 
   bindings_system_->DidCreateScriptContext(context);
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // Inject custom JS into the platform app context.
-  if (IsWithinPlatformApp()) {
-    module_system->Require("platformApp");
-  }
-#endif
 
 #if BUILDFLAG(ENABLE_GUEST_VIEW)
   RequireGuestViewModules(context);

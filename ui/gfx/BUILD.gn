@@ -219,7 +219,6 @@ component("gfx") {
 
     deps += [
       ":gfx_jni_headers",
-      "//ui/android:ui_jar_jni",
     ]
     libs = [
       "android",

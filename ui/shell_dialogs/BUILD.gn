@@ -120,7 +120,6 @@ component("shell_dialogs") {
       "select_file_dialog_android.h",
     ]
     deps += [
-      "//ui/android",
       "//ui/base:select_file_dialog_jni_headers",
     ]
     include_dirs = [ "$root_gen_dir/ui" ]

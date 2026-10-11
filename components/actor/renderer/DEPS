@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/actor/core",
-  "+components/page_content_annotations/core",
-]

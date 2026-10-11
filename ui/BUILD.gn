@@ -11,7 +11,6 @@ if (is_android) {
     shared_libraries = [ "//url:libgurl_robolectric($robolectric_toolchain)" ]
     deps = [
       "//ui/accessibility:ui_accessibility_junit_tests",
-      "//ui/android:ui_android_junit_tests",
       "//ui/edge_to_edge:junit",
     ]
   }

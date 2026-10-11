@@ -5,7 +5,7 @@
 import("../build_webui_tests.gni")
 
 build_webui_tests("build") {
-  cc_test_files = [ "webui_webview_browsertest.cc" ]
+  cc_test_files = []
 
   ts_definitions = [
     "//tools/typescript/definitions/chrome_event.d.ts",

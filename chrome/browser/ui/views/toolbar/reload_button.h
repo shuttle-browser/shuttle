@@ -20,9 +20,7 @@
 #include "ui/views/metadata/view_factory.h"
 
 class CommandUpdater;
-class InitialWebUIWindowMetricsManager;
 class Profile;
-class WaapUIMetricsRecorder;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -38,9 +36,7 @@ class ReloadButton : public ToolbarButton, public ReloadControl {
   METADATA_HEADER(ReloadButton, ToolbarButton)
 
  public:
-  ReloadButton(Profile* profile,
-               CommandUpdater* command_updater,
-               InitialWebUIWindowMetricsManager* window_metrics_manager);
+  ReloadButton(Profile* profile, CommandUpdater* command_updater);
   ReloadButton(const ReloadButton&) = delete;
   ReloadButton& operator=(const ReloadButton&) = delete;
   ~ReloadButton() override;
@@ -60,7 +56,6 @@ class ReloadButton : public ToolbarButton, public ReloadControl {
   void UpdateCachedTooltipText();
 
   // Button:
-  void PaintButtonContents(gfx::Canvas* canvas) override;
 
   // ui::SimpleMenuModel::Delegate:
   bool IsCommandIdChecked(int command_id) const override;
@@ -103,16 +98,11 @@ class ReloadButton : public ToolbarButton, public ReloadControl {
   void OnDoubleClickTimer();
   void OnStopToReloadTimer();
   void UpdateAccessibleHasPopup();
-  void OnNextPresentation(const viz::FrameTimingDetails&);
 
   base::OneShotTimer double_click_timer_;
 
   // Timer to delay switching between reload and stop states.
   base::OneShotTimer mode_switch_timer_;
-
-  // This can't be null. But it may not record anything if the feature is
-  // disabled or if profile is missing.
-  const std::unique_ptr<WaapUIMetricsRecorder> metrics_recorder_;
 
   // This may be NULL when testing.
   raw_ptr<CommandUpdater, DanglingUntriaged> command_updater_;
@@ -146,10 +136,6 @@ class ReloadButton : public ToolbarButton, public ReloadControl {
   // Increments when we would tell the browser to "reload", so
   // test code can tell whether we did so (as there may be no |browser_|).
   int testing_reload_count_ = 0;
-
-  // The initial WebUI metrics manager for the window this button is in.
-  // Not owned and might be null.
-  const raw_ptr<InitialWebUIWindowMetricsManager> window_metrics_manager_;
 
   // Must be the last member.
   base::WeakPtrFactory<ReloadButton> weak_ptr_factory_{this};

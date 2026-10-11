@@ -9,7 +9,6 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "build/build_config.h"
-#include "components/optimization_guide/core/model_execution/feature_keys.h"
 #include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/core/optimization_guide_logger.h"
@@ -48,22 +47,6 @@ optimization_guide::proto::Platform GetPlatform() {
 }  // namespace
 
 namespace optimization_guide {
-
-std::string_view GetStringNameForModelExecutionFeature(
-    std::optional<UserVisibleFeatureKey> feature) {
-  if (!feature) {
-    return GetStringNameForModelExecutionFeature(
-        proto::ModelExecutionFeature::MODEL_EXECUTION_FEATURE_UNSPECIFIED);
-  }
-  return GetStringNameForModelExecutionFeature(
-      ToModelExecutionFeatureProto(*feature));
-}
-
-std::string_view GetStringNameForModelExecutionFeature(
-    ModelBasedCapabilityKey feature) {
-  return GetStringNameForModelExecutionFeature(
-      ToModelExecutionFeatureProto(feature));
-}
 
 std::string_view GetStringNameForModelExecutionFeature(
     proto::ModelExecutionFeature feature) {

@@ -54,7 +54,6 @@ component("menus") {
   }
 
   if (is_android) {
-    public_deps += [ "//ui/android:menu_model_bridge_jni_headers" ]
   }
 }
 

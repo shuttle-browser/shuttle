@@ -37,9 +37,6 @@ inline constexpr char kChromeUIAboutHost[] = "about";
 inline constexpr char kChromeUIAccessibilityHost[] = "accessibility";
 inline constexpr char kChromeUIAccountSettingsURL[] =
     "chrome://settings/account";
-inline constexpr char kChromeUIActorInternalsHost[] = "actor-internals";
-inline constexpr char kChromeUIActorOverlayHost[] = "actor-overlay";
-inline constexpr char kChromeUIActorOverlayURL[] = "chrome://actor-overlay";
 inline constexpr char kChromeUIAddressesPath[] = "/addresses";
 inline constexpr char kChromeUIAppIconHost[] = "app-icon";
 inline constexpr char kChromeUIAppLauncherPageHost[] = "apps";
@@ -182,9 +179,6 @@ inline constexpr char16_t kChromeUIVersionURL16[] = u"chrome://version/";
 inline constexpr char kChromeUIWebRtcLogsHost[] = "webrtc-logs";
 inline constexpr char kChromeUIWebuiGalleryHost[] = "webui-gallery";
 inline constexpr char kChromeUIWebUITestHost[] = "webui-test";
-inline constexpr char kChromeUIWebUIToolbarURL[] =
-    "chrome://webui-toolbar.top-chrome";
-inline constexpr char kChromeUIWebUIToolbarHost[] = "webui-toolbar.top-chrome";
 inline constexpr char kChromeUIWebNNInternalsHost[] = "webnn-internals";
 
 #if BUILDFLAG(IS_ANDROID)

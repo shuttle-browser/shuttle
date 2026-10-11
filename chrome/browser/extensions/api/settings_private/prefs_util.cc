@@ -1157,23 +1157,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[prefs::kCpuPerformanceTierOverride] =
       settings_api::PrefType::kNumber;
 
-  // AI settings.
-  (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
-      optimization_guide::UserVisibleFeatureKey::kCompose)] =
-      settings_api::PrefType::kNumber;
-  (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
-      optimization_guide::UserVisibleFeatureKey::kWallpaperSearch)] =
-      settings_api::PrefType::kNumber;
-  (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
-      optimization_guide::UserVisibleFeatureKey::kHistorySearch)] =
-      settings_api::PrefType::kNumber;
-  (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
-      optimization_guide::UserVisibleFeatureKey::kPasswordChangeSubmission)] =
-      settings_api::PrefType::kNumber;
-  (*s_allowlist)[optimization_guide::prefs::GetSettingEnabledPrefName(
-      optimization_guide::UserVisibleFeatureKey::kContextualCueing)] =
-      settings_api::PrefType::kNumber;
-
   // AI enterprise prefs
   (*s_allowlist)[optimization_guide::prefs::kComposeEnterprisePolicyAllowed] =
       settings_api::PrefType::kNumber;

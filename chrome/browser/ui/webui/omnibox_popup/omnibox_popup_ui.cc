@@ -42,8 +42,7 @@
 bool OmniboxPopupUIConfig::IsWebUIEnabled(
     content::BrowserContext* browser_context) {
   return omnibox::IsWebUIOmniboxFullPopupEnabled() ||
-         omnibox::IsWebUIOmniboxPopupEnabled() ||
-         features::IsWebUILocationBarEnabled();
+         omnibox::IsWebUIOmniboxPopupEnabled();
 }
 
 bool OmniboxPopupUIConfig::ShouldCrashOnJavascriptErrorInDevelopmentBuild()

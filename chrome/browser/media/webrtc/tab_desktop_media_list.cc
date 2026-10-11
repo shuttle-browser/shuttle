@@ -27,8 +27,6 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host_view.h"
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
 
 using content::BrowserThread;
 using content::DesktopMediaID;
@@ -61,15 +59,13 @@ void HandleCapturedBitmap(
 
 TabDesktopMediaList::TabDesktopMediaList(
     WebContents* web_contents,
-    DesktopMediaList::WebContentsFilter includable_web_contents_filter,
-    bool include_chrome_app_windows)
+    DesktopMediaList::WebContentsFilter includable_web_contents_filter)
     : DesktopMediaListBase(kDefaultTabDesktopMediaListUpdatePeriod),
       web_contents_(web_contents
                         ? std::make_optional(web_contents->GetWeakPtr())
                         : std::nullopt),
       includable_web_contents_filter_(
-          std::move(includable_web_contents_filter)),
-      include_chrome_app_windows_(include_chrome_app_windows) {
+          std::move(includable_web_contents_filter)) {
   type_ = DesktopMediaList::Type::kWebContents;
   image_resize_task_runner_ = base::ThreadPool::CreateSequencedTaskRunner(
       {base::MayBlock(), base::TaskPriority::USER_VISIBLE});
@@ -137,16 +133,6 @@ void TabDesktopMediaList::Refresh(bool update_thumbnails) {
       WebContents* contents = tab_strip_model->GetWebContentsAt(i);
       DCHECK(contents);
       contents_list.push_back(contents);
-    }
-  }
-
-  if (include_chrome_app_windows_) {
-    // Find all AppWindows for the given profile.
-    const extensions::AppWindowRegistry::AppWindowList& window_list =
-        extensions::AppWindowRegistry::Get(profile)->app_windows();
-    for (const extensions::AppWindow* app_window : window_list) {
-      if (!app_window->is_hidden())
-        contents_list.push_back(app_window->web_contents());
     }
   }
 

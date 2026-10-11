@@ -10,8 +10,6 @@ import("//extensions/buildflags/buildflags.gni")
 source_set("speech") {
   public = [
     "chrome_speech_recognition_manager_delegate.h",
-    "on_device_speech_recognition_impl.h",
-    "on_device_speech_recognition_util.h",
   ]
 
   public_deps = [
@@ -24,12 +22,10 @@ source_set("speech") {
   if (!is_android) {
     public += [
       "chrome_speech_recognition_service.h",
-      "on_device_live_caption_recognizer.h",
       "speech_recognition_client_browser_interface.h",
       "speech_recognition_client_browser_interface_factory.h",
       "speech_recognition_service.h",
       "speech_recognition_service_factory.h",
-      "speech_recognition_small_expert_model_installer.h",
     ]
 
     public_deps += [
@@ -92,8 +88,6 @@ source_set("impl") {
 
   sources = [
     "chrome_speech_recognition_manager_delegate.cc",
-    "on_device_speech_recognition_impl.cc",
-    "on_device_speech_recognition_util.cc",
   ]
 
   deps = [
@@ -115,11 +109,9 @@ source_set("impl") {
   if (!is_android) {
     sources += [
       "chrome_speech_recognition_service.cc",
-      "on_device_live_caption_recognizer.cc",
       "speech_recognition_client_browser_interface.cc",
       "speech_recognition_client_browser_interface_factory.cc",
       "speech_recognition_service_factory.cc",
-      "speech_recognition_small_expert_model_installer.cc",
     ]
 
     deps += [
@@ -131,7 +123,6 @@ source_set("impl") {
       "//components/keyed_service/core",
       "//components/live_caption:constants",
       "//components/live_caption:utils",
-      "//components/optimization_guide/public/mojom",
       "//components/prefs",
       "//components/soda",
       "//components/soda:constants",

@@ -86,17 +86,9 @@ class AlertIndicatorButton : public views::ImageButton,
   // ResetImages() needs to be called.
   void OnParentTabButtonColorChanged();
 
-  // Sets visibility of animation around alert indicator icon.
-  void UpdateAlertIndicatorAnimation();
-
   // Returns the current TabAlert for testing.
   std::optional<tabs::TabAlert> alert_state_for_testing() const {
     return alert_state_;
-  }
-
-  // For testing purposes.
-  views::AnimatedImageView* GetActorIndicatorSpinnerForTesting() {
-    return actor_indicator_spinner_;
   }
 
  protected:
@@ -138,17 +130,6 @@ class AlertIndicatorButton : public views::ImageButton,
   // parent tab's button color.  Should be called when either of these changes.
   void UpdateIconForAlertState(tabs::TabAlert state);
 
-  // Reloads the spinner and reapplies color and sizing when the theme changes.
-  void UpdateSpinnerTheme();
-
-  // Loads the resources needed for the actor_indicator_spinner, if not already
-  // loaded.
-  void MaybeLoadActorAccessingSpinner();
-
-  // Sets the bounds for the actor_indicator_spinner depending on button
-  // location and size.
-  void SetActorAccessingSpinnerBounds();
-
   const raw_ptr<Delegate> delegate_;
 
   std::optional<tabs::TabAlert> alert_state_;
@@ -166,14 +147,6 @@ class AlertIndicatorButton : public views::ImageButton,
   // `fade_animation_` being properly initialized, in tests, it does not show
   // the correct duration.
   base::TimeDelta fadeout_animation_duration_for_testing_;
-
-  // The view that contains the spinner displayed around ACTOR_ACCESSING alert
-  // icons.
-  raw_ptr<views::AnimatedImageView> actor_indicator_spinner_;
-  // The playback config for the actor_indicator_spinner.
-  std::optional<lottie::Animation::PlaybackConfig> actor_indicator_config_;
-  // The scaled size of the spinner, stored at creation time.
-  std::optional<gfx::Size> actor_spinner_scaled_size_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_TAB_ALERT_INDICATOR_BUTTON_H_

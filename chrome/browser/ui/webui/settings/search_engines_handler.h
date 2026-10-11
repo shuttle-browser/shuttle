@@ -106,8 +106,6 @@ class SearchEnginesHandler : public SettingsPageUIHandler,
   // Returns a dictionary to pass to WebUI representing the given search engine.
   base::DictValue CreateDictionaryForEngine(TemplateURL* template_url);
 
-  // Records the search hijacking heuristic metric if not already recorded.
-  void RecordSearchHijackingHeuristicMetric();
 
   // Records search engine split metrics for split regions on settings load.
   void RecordSearchEngineSplitMetrics(

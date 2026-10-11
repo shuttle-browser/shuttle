@@ -9,13 +9,10 @@
 
 #include "base/metrics/histogram_macros.h"
 #include "build/build_config.h"
-#include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_host/chrome_navigation_ui_data.h"
-#include "components/actor/core/task_id.h"
 #include "components/history/content/browser/history_context_helper.h"
 #include "components/history/core/browser/history_constants.h"
 #include "components/history/core/browser/history_service.h"
@@ -119,32 +116,6 @@ std::optional<history::Opener> GetHistoryOpenerFromWeakWebContents(
     return std::nullopt;
   }
   return GetHistoryOpenerFromWebContents(weak_web_contents.get());
-}
-
-// Returns the TaskId associated with an active actor task on the given
-// `web_contents` or from `chrome_ui_data`.
-//
-// `chrome_ui_data` captures the actor task at navigation start time, but is
-// null for same-document navigations and in tests. In those cases, we fall back
-// to checking the active actor task on `web_contents`.
-//
-// TODO(crbug.com/545069770): Unify actor attribution across navigation types
-// so a fallback is not needed.
-actor::TaskId GetActorTaskId(content::WebContents* web_contents,
-                             const ChromeNavigationUIData* chrome_ui_data) {
-  if (chrome_ui_data) {
-    return chrome_ui_data->actor_task_id();
-  }
-  if (!web_contents) {
-    return actor::TaskId();
-  }
-  auto* actor_service =
-      actor::ActorKeyedService::Get(web_contents->GetBrowserContext());
-  const actor::ActorTask* task =
-      actor_service
-          ? actor_service->GetActingActorTaskForWebContents(web_contents)
-          : nullptr;
-  return task ? task->id() : actor::TaskId();
 }
 
 history::VisitContextAnnotations::BrowserType GetBrowserType(
@@ -325,14 +296,10 @@ history::HistoryAddPageArgs HistoryTabHelper::CreateHistoryAddPageArgs(
           ? history::VisitContextEphemerality::kEphemeral
           : history::VisitContextEphemerality::kNotEphemeral;
 
-  const actor::TaskId actor_task_id =
-      GetActorTaskId(web_contents(), chrome_ui_data);
-
-  // If the visit was initiated by an actor, it should not contribute to the
-  // Most Visited tiles in the NTP. We also don't want to count 404 navigations
+  // We don't want to count 404 navigations
   // as visits when calculating the Most Visited.
   const bool should_consider_for_ntp_most_visited =
-      !actor_task_id && http_response_code != 404 &&
+      http_response_code != 404 &&
       ShouldConsiderForNtpMostVisited(*web_contents(), navigation_handle);
 
   // Reloads do not result in calling TitleWasSet() (which normally sets
@@ -416,21 +383,18 @@ history::HistoryAddPageArgs HistoryTabHelper::CreateHistoryAddPageArgs(
       http_response_code == 404 ? history::VisitResponseCodeCategory::k404
                                 : history::VisitResponseCodeCategory::kNot404;
 
-  // TODO(crbug.com/434976953): Move TaskId to be accessible by
-  // HistoryAddPageArgs, so we can pass actor_task_id() directly without getting
-  // int32 value.
   history::HistoryAddPageArgs add_page_args(
       navigation_handle->GetURL(), timestamp,
       history::ContextIDForWebContents(web_contents()), nav_entry_id,
       navigation_handle->GetNavigationId(), referrer_url,
       navigation_handle->GetRedirectChain(), page_transition, hidden,
-      actor_task_id ? history::SOURCE_ACTOR : history::SOURCE_BROWSED,
+      history::SOURCE_BROWSED,
       response_code_category, navigation_handle->DidReplaceEntry(),
       should_consider_for_ntp_most_visited, visit_context_ephemerality, title,
       top_level_url, frame_url, opener,
       chrome_ui_data == nullptr ? std::nullopt : chrome_ui_data->bookmark_id(),
       app_id_, std::move(context_annotations),
-      actor_task_id ? std::make_optional(actor_task_id.value()) : std::nullopt);
+      std::nullopt);
 
   if (ui::PageTransitionIsMainFrame(page_transition) &&
       virtual_url != navigation_handle->GetURL()) {

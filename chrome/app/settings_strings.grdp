@@ -2619,9 +2619,6 @@
           other {{NUM_COOKIES} cookies}}
     </message>
 
-    <message name="IDS_SETTINGS_CHANGE_PICTURE_PROFILE_PHOTO" desc="The text on the Google profile photo of the user.">
-      Google Profile photo
-    </message>
 
 
 

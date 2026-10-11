@@ -83,7 +83,6 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
-#include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/policy/core/browser/boolean_disabling_policy_handler.h"
@@ -1464,18 +1463,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           key::kDeveloperToolsAvailabilityBlocklist,
           prefs::kDeveloperToolsAvailabilityBlocklist));
 #endif  // BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
-
-  handlers->AddHandler(std::make_unique<IntRangePolicyHandler>(
-      key::kGenAILocalFoundationalModelSettings,
-      optimization_guide::model_execution::prefs::localstate::
-          kGenAILocalFoundationalModelEnterprisePolicySettings,
-      static_cast<int>(
-          optimization_guide::model_execution::prefs::
-              GenAILocalFoundationalModelEnterprisePolicySettings::kAllowed),
-      static_cast<int>(
-          optimization_guide::model_execution::prefs::
-              GenAILocalFoundationalModelEnterprisePolicySettings::kMaxValue),
-      false));
 
   // Policies for all platforms - End
 

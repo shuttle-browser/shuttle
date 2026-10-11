@@ -127,7 +127,6 @@ source_set("impl") {
       "//chrome/browser/ui/browser_window:create_browser_window",
       "//chrome/browser/ui/startup",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/waap:window_metrics_manager",
       "//chrome/browser/ui/webui/tab_strip_internals",
       "//chrome/browser/ui/webui/tab_strip_internals:impl",
       "//chrome/browser/ui/window_feature_controller",

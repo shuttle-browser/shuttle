@@ -46,15 +46,8 @@
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_embedder.h"
 #include "extensions/browser/guest_view/web_view/web_view_guest.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/guest_view/app_view/app_view_guest.h"
-#endif
 #endif
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
-#endif
 
 namespace extensions {
 
@@ -111,18 +104,6 @@ bool ShouldBlockNavigationToPlatformAppResource(
     return false;
   }
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // Navigation within an app window. The app window must belong to the
-  // |platform_app|.
-  if (view_type == mojom::ViewType::kAppWindow) {
-    AppWindowRegistry* registry =
-        AppWindowRegistry::Get(web_contents->GetBrowserContext());
-    DCHECK(registry);
-    AppWindow* app_window = registry->GetAppWindowForWebContents(web_contents);
-    DCHECK(app_window);
-    return app_window->extension_id() != platform_app->id();
-  }
-#endif
 
   DCHECK(view_type == mojom::ViewType::kBackgroundContents ||
          view_type == mojom::ViewType::kComponent ||

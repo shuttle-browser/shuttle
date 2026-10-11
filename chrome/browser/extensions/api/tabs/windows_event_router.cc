@@ -159,12 +159,6 @@ bool WillDispatchWindowFocusedEvent(
 
 WindowsEventRouter::WindowsEventRouter(Profile* profile)
     : profile_(profile),
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-      app_window_helper_(
-          profile_,
-          base::BindRepeating(&WindowsEventRouter::OnActiveWindowChanged,
-                              base::Unretained(this))),
-#endif
       focused_window_id_(extension_misc::kUnknownWindowId) {
   DCHECK(!profile->IsOffTheRecord());
 

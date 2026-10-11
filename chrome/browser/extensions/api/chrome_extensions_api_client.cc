@@ -84,10 +84,6 @@
 
 #endif  // BUILDFLAG(ENABLE_GUEST_VIEW)
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/extensions/api/file_system/chrome_file_system_delegate.h"
-#endif
-
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/extensions/api/file_handlers/non_native_file_system_delegate_chromeos.h"
 #include "chrome/browser/extensions/api/file_system/chrome_file_system_delegate_ash.h"
@@ -439,17 +435,6 @@ MessagingDelegate* ChromeExtensionsAPIClient::GetMessagingDelegate() {
 
 // The APIs that require these methods are not supported on Android.
 #if !BUILDFLAG(IS_ANDROID)
-FileSystemDelegate* ChromeExtensionsAPIClient::GetFileSystemDelegate() {
-  if (!file_system_delegate_) {
-#if BUILDFLAG(IS_CHROMEOS)
-    file_system_delegate_ = std::make_unique<ChromeFileSystemDelegateAsh>();
-#else
-    file_system_delegate_ = std::make_unique<ChromeFileSystemDelegate>();
-#endif
-  }
-  return file_system_delegate_.get();
-}
-
 AutomationInternalApiDelegate*
 ChromeExtensionsAPIClient::GetAutomationInternalApiDelegate() {
   if (!extensions_automation_api_delegate_) {

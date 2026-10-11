@@ -14,8 +14,6 @@
 #include "extensions/buildflags/buildflags.h"
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE) && BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service_factory.h"
 #endif
 
 SerpPageLoadMetricsObserver::SerpPageLoadMetricsObserver() = default;
@@ -76,23 +74,7 @@ SerpPageLoadMetricsObserver::OnCommit(
 }
 
 void SerpPageLoadMetricsObserver::OnFirstContentfulPaintInPage(
-    const page_load_metrics::mojom::PageLoadTiming& timing) {
-  Profile* profile = Profile::FromBrowserContext(
-      GetDelegate().GetWebContents()->GetBrowserContext());
-  if (!profile) {
-    return;
-  }
-
-  // TODO(crbug.com/485331017): Support safe browsing telemetry on desktop
-  // Android.
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE) && BUILDFLAG(ENABLE_EXTENSIONS)
-  safe_browsing::ExtensionTelemetryService* telemetry_service =
-      safe_browsing::ExtensionTelemetryServiceFactory::GetForProfile(profile);
-  if (telemetry_service) {
-    telemetry_service->OnDseSerpLoaded();
-  }
-#endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE) && BUILDFLAG(ENABLE_EXTENSIONS)
-}
+    const page_load_metrics::mojom::PageLoadTiming& timing) {}
 
 page_load_metrics::PageLoadMetricsObserver::ObservePolicy
 SerpPageLoadMetricsObserver::OnHidden(

@@ -358,10 +358,6 @@ inline constexpr char kExtensionContentVerificationEnforce[] = "enforce";
 inline constexpr char kExtensionContentVerificationEnforceStrict[] =
     "enforce_strict";
 
-// Name of the command line flag to allow the experimental actor API.
-inline constexpr char kExtensionExperimentalActor[] =
-    "enable-extension-actor-api";
-
 // Specifies the variation of Zero State extensions toolbar recommendation to
 // show.
 // When a user with zero extensions installed clicks on the extensions puzzle

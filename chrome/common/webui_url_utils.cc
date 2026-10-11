@@ -29,11 +29,7 @@ bool IsTopChromeUntrustedWebUIURL(const GURL& url) {
 }
 
 bool ShouldRefuseBecomingKeyViewForTopChromeWebUI(const GURL& url) {
-  // List of specific Top Chrome hosts that should not accept key view status.
-  if (IsTopChromeWebUIURL(url) &&
-      url.host() == chrome::kChromeUIWebUIToolbarHost) {
-    return true;
-  }
-
+  // The WebUI toolbar was removed from this fork, so no Top Chrome host
+  // refuses key view status.
   return false;
 }

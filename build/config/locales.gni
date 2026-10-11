@@ -22,97 +22,13 @@ declare_args() {
 # - |android_bundle_locales_as_resources| locales formatted for XML output names
 # - |locales_as_apple_outputs| formatted for mac output bundles
 
-pseudolocales = [
-  "ar-XB",
-  "en-XA",
-]
+# Shuttle: the UI ships en-US only (web content locales are unaffected: ICU data
+# stays, agents set Accept-Language/locale via CDP). scripts/prune-locales.py strips
+# the per-locale grit outputs and .xtb translations to match; rerun it after merges.
+pseudolocales = []
 
 # Superset of all locales used in Chrome with platform specific changes noted.
-all_chrome_locales =
-    [
-      "af",
-      "am",
-      "ar",
-      "as",
-      "az",
-      "be",
-      "bg",
-      "bn",
-      "bs",
-      "ca",
-      "cs",
-      "cy",
-      "da",
-      "de",
-      "el",
-      "en-GB",
-      "en-US",
-      "es",
-      "es-419",  # "es-MX" in iOS (Mexico vs Latin America) "es-US" on Android
-      "et",
-      "eu",
-      "fa",
-      "fi",
-      "fil",  # "tl" in .xml but "fil" in TC and .pak
-      "fr",
-      "fr-CA",
-      "gl",
-      "gu",
-      "he",  # "iw" in .xml and TC but "he" in .pak
-      "hi",
-      "hr",
-      "hu",
-      "hy",
-      "id",  # "in" in .xml but "id" in TC and .pak
-      "is",
-      "it",
-      "ja",
-      "ka",
-      "kk",
-      "km",
-      "kn",
-      "ko",
-      "ky",
-      "lo",
-      "lt",
-      "lv",
-      "mk",
-      "ml",
-      "mn",
-      "mr",
-      "ms",
-      "my",
-      "nb",  # "no" in TC but "nb" in .xml and .pak
-      "ne",
-      "nl",
-      "or",
-      "pa",
-      "pl",
-      "pt-BR",  # just "pt" in iOS
-      "pt-PT",
-      "ro",
-      "ru",
-      "si",
-      "sk",
-      "sl",
-      "sq",
-      "sr",
-      "sr-Latn",  # -b+sr+Latn in .xml
-      "sv",
-      "sw",
-      "ta",
-      "te",
-      "th",
-      "tr",
-      "uk",
-      "ur",
-      "uz",
-      "vi",
-      "zh-CN",
-      "zh-HK",
-      "zh-TW",
-      "zu",
-    ] + pseudolocales
+all_chrome_locales = [ "en-US" ]
 
 all_chrome_gender_suffixes = [
   "",  # The "OTHER" gender is the default - we omit it from the filename.
@@ -127,161 +43,27 @@ if (translate_genders) {
   gender_suffixes = [ "" ]
 }
 
-if (is_ios) {
-  # Chrome on iOS uses "es-MX" and "pt" for "es-419" and "pt-BR".
-  all_chrome_locales -= [
-    "es-419",
-    "pt-BR",
-  ]
-  all_chrome_locales += [
-    "es-MX",
-    "pt",
-  ]
-}
-
 # Chrome locales not on Windows, Mac, or Linux.
-# This list is used for all platforms except Android. On Android, this list is
-# modified to exclude locales that are not used on Android, so
-# `platform_pak_locales - extended_locales` works as expected.
-extended_locales = [
-  "as",
-  "az",
-  "be",
-  "bs",
-  "cy",
-  "eu",
-  "fr-CA",
-  "gl",
-  "hy",
-  "is",
-  "ka",
-  "kk",
-  "km",
-  "ky",
-  "lo",
-  "mk",
-  "mn",
-  "my",
-  "ne",
-  "or",
-  "pa",
-  "si",
-  "sq",
-  "sr-Latn",
-  "uz",
-  "zh-HK",
-  "zu",
-]
+extended_locales = []
 
-# Chrome locales not on Android.
-# These locales have not yet been tested yet. Specifically, AOSP has not been
-# translated to Welsh at the time of writing (April 2022):
-# https://cs.android.com/android/platform/superproject/+/master:build/make/target/product/languages_default.mk
-# Due to this, the only way a user could see Welsh strings - assuming they were
-# built - would be to manually switch their "Chrome language" in Chrome's
-# language settings to Welsh, so Welsh usage would probably be very low.
-_non_android_locales = [ "cy" ]
-
-# Setup |platform_pak_locales| for each platform.
 platform_pak_locales = all_chrome_locales
-if (is_android) {
-  platform_pak_locales -= _non_android_locales
-  extended_locales -= _non_android_locales
-} else {
-  platform_pak_locales -= extended_locales
-}
 
-# The base list for all platforms except Android excludes the extended locales.
-# Add or subtract platform specific locales below.
-if (is_chromeos) {
-  platform_pak_locales += [
-    "cy",
-    "eu",
-    "gl",
-    "is",
-    "mn",
-    "zu",
-  ]
-  platform_pak_locales -= [ "ur" ]
-} else if (is_ios) {
-  platform_pak_locales -= [
-    "af",
-    "am",
-    "et",
-    "fil",
-    "lv",
-    "sw",
-  ]
-  platform_pak_locales += [
-    "gl",
-    "or",
-    "pa",
-  ]
-}
-
-# List for Android locale names in .xml exports. Note: needs to stay in sync
-# with |ToAndroidLocaleName| in build/android/gyp/util/resource_utils.py.
 if (is_android) {
-  #  - add r: (e.g. zh-HK -> zh-rHK )
+  # Android resources use the default (unqualified) values for en-US.
   android_bundle_locales_as_resources = []
-  foreach(_locale, platform_pak_locales) {
-    android_bundle_locales_as_resources +=
-        [ string_replace(_locale, "-", "-r") ]
-  }
-
-  #  - remove en-US
-  #  - swap: (he, id, en-419, fil) -> (iw, in, es-rUS, tl)
-  #  - sr-rLatn -> -b+sr+Latn
-  android_bundle_locales_as_resources -= [
-    "en-rUS",
-    "es-r419",
-    "fil",
-    "he",
-    "id",
-    "sr-rLatn",
-  ]
-  android_bundle_locales_as_resources += [
-    "b+sr+Latn",
-    "es-rUS",
-    "in",
-    "iw",
-    "tl",
-  ]
 }
 
-locales_without_pseudolocales = platform_pak_locales - pseudolocales
+locales_without_pseudolocales = platform_pak_locales
 locales_with_pseudolocales = platform_pak_locales
 
-# locales used for typical .xtb files.
-xtb_locales = all_chrome_locales - pseudolocales - [
-                "en-US",
-                "he",
-                "nb",
-              ] +
-              [
-                "iw",
-                "no",
-              ]
-if (is_ios) {
-  xtb_locales -= [
-    "es-MX",
-    "pt",
-  ]
-  xtb_locales += [
-    "es-419",
-    "pt-BR",
-  ]
-}
+# locales used for typical .xtb files (none: en-US is the source language).
+xtb_locales = []
 
 declare_args() {
   # We want to give pseudolocales to everyone except end-users (devs & QA). Note
   # that this only packages the locales in, and doesn't add the ui to enable
   # them.
   enable_pseudolocales = !is_official_build
-}
-
-if (!enable_pseudolocales) {
-  platform_pak_locales -= pseudolocales
 }
 
 if (is_apple) {

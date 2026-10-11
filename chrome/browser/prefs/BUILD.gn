@@ -328,7 +328,6 @@ source_set("impl") {
   } else {
     deps += [
       "//chrome/browser:intranet_redirect_detector",
-      "//chrome/browser/actor/ui",
       "//chrome/browser/device_identity",
       "//chrome/browser/search_engines",
       "//chrome/browser/speech",

@@ -30,9 +30,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/open_search_description_document_handler.mojom.h"
 #include "chrome/common/webui_url_constants.h"
-#include "chrome/renderer/actor/chrome_page_stability_monitor_delegate.h"
-#include "chrome/renderer/actor/journal.h"
-#include "chrome/renderer/actor/tool_executor.h"
 #include "chrome/renderer/benchmarking_bindings.h"
 #include "chrome/renderer/chrome_content_settings_agent_delegate.h"
 #include "chrome/renderer/loadtimes_bindings.h"
@@ -45,7 +42,6 @@
 #include "components/no_state_prefetch/renderer/no_state_prefetch_utils.h"
 #include "components/offline_pages/buildflags/buildflags.h"
 #include "components/optimization_guide/content/renderer/page_text_agent.h"
-#include "components/page_content_annotations/content/renderer/page_stability_monitor.h"
 #include "components/variations/variations_switches.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
 #include "content/public/common/bindings_policy.h"
@@ -185,7 +181,6 @@ ChromeRenderFrameObserver::ChromeRenderFrameObserver(
     web_cache::WebCacheImpl* web_cache_impl)
     : content::RenderFrameObserver(render_frame),
       page_text_agent_(new optimization_guide::PageTextAgent(render_frame)),
-      actor_journal_(std::make_unique<actor::Journal>()),
       web_cache_impl_(web_cache_impl) {
   render_frame->GetAssociatedInterfaceRegistry()
       ->AddInterface<chrome::mojom::ChromeRenderFrame>(base::BindRepeating(
@@ -231,20 +226,6 @@ void ChromeRenderFrameObserver::ReadyToCommitNavigation(
   // event (including tab reload).
   if (render_frame()->IsMainFrame() && web_cache_impl_)
     web_cache_impl_->ExecutePendingClearCache();
-}
-
-void ChromeRenderFrameObserver::DidSetPageLifecycleState(
-    blink::BFCacheStateChange bfcache_change) {
-  if (bfcache_change == blink::BFCacheStateChange::kStoredToBFCache) {
-    // Reset actor state if entering the BFCache
-    page_stability_monitor_.reset();
-    tool_executor_.reset();
-
-    // Flush any remaining log entries which may have been added in the
-    // destructors above. Don't reset the actor journal since it is only created
-    // from the constructor.
-    actor_journal_->SendLogBuffer();
-  }
 }
 
 void ChromeRenderFrameObserver::DidFinishLoad() {
@@ -469,79 +450,6 @@ void ChromeRenderFrameObserver::LoadBlockedPlugins(
 
 void ChromeRenderFrameObserver::SetShouldDeferMediaLoad(bool should_defer) {
   prerender::SetShouldDeferMediaLoad(render_frame(), should_defer);
-}
-
-void ChromeRenderFrameObserver::InitializeTool(
-    actor::mojom::ToolInvocationPtr request,
-    InitializeToolCallback callback) {
-  if (!tool_executor_) {
-    tool_executor_ =
-        std::make_unique<actor::ToolExecutor>(render_frame(), *actor_journal_);
-  }
-
-  actor::mojom::InitializeToolResultPtr result =
-      tool_executor_->InitializeTool(std::move(request));
-  std::move(callback).Run(std::move(result));
-}
-
-void ChromeRenderFrameObserver::ExecuteTool(const actor::TaskId& task_id,
-                                            ExecuteToolCallback callback) {
-  CHECK(tool_executor_) << "ExecuteTool was called before InitializeTool";
-  tool_executor_->ExecuteTool(task_id, std::move(callback));
-}
-
-void ChromeRenderFrameObserver::InvokeTool(
-    actor::mojom::ToolInvocationPtr request,
-    InvokeToolCallback callback) {
-  if (!tool_executor_) {
-    tool_executor_ =
-        std::make_unique<actor::ToolExecutor>(render_frame(), *actor_journal_);
-  }
-
-  tool_executor_->InvokeTool(std::move(request), std::move(callback));
-}
-
-void ChromeRenderFrameObserver::CancelTool(const actor::TaskId& task_id) {
-  if (tool_executor_) {
-    tool_executor_->CancelTool(task_id);
-  }
-}
-
-void ChromeRenderFrameObserver::StartActorJournal(
-    mojo::PendingAssociatedRemote<actor::mojom::JournalClient> client) {
-  actor_journal_->Bind(std::move(client));
-}
-
-void ChromeRenderFrameObserver::GetCrossDocumentScriptToolResult(
-    const base::UnguessableToken& execution_id,
-    GetCrossDocumentScriptToolResultCallback callback) {
-  render_frame()->GetWebFrame()->GetDocument().GetCrossDocumentScriptToolResult(
-      execution_id,
-      base::BindOnce(
-          [](GetCrossDocumentScriptToolResultCallback cb,
-             blink::WebString result) { std::move(cb).Run(result.Utf8()); },
-          std::move(callback)));
-}
-
-void ChromeRenderFrameObserver::CreatePageStabilityMonitor(
-    mojo::PendingReceiver<page_content_annotations::mojom::PageStabilityMonitor>
-        monitor,
-    const actor::TaskId& task_id,
-    bool supports_paint_stability) {
-  page_stability_monitor_ = std::make_unique<
-      page_content_annotations::PageStabilityMonitor>(
-      *render_frame(), supports_paint_stability,
-      std::make_unique<actor::ChromePageStabilityMonitorDelegate>(
-          task_id, *actor_journal_,
-          actor::PageStabilityMonitorDelegate::Thresholds{
-              .timeout_delay = features::kGlicActorPageStabilityTimeout.Get(),
-              .min_wait = features::kGlicActorPageStabilityMinWait.Get(),
-              .initial_paint_timeout =
-                  features::kActorPaintStabilityIntialPaintTimeout.Get(),
-              .subsequent_paint_timeout =
-                  features::kActorPaintStabilitySubsequentPaintTimeout.Get(),
-          }));
-  page_stability_monitor_->Bind(std::move(monitor));
 }
 
 void ChromeRenderFrameObserver::SetClientSidePhishingDetection() {

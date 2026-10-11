@@ -19,7 +19,6 @@
 #include "build/build_config.h"
 #include "cc/base/switches.h"
 #include "components/language_detection/content/common/language_detection.mojom.h"
-#include "components/optimization_guide/public/mojom/model_broker.mojom.h"
 #include "components/viz/host/gpu_client.h"
 #include "components/vrp_flags/buildflags.h"
 #include "content/browser/background_fetch/background_fetch_service_impl.h"
@@ -1474,9 +1473,6 @@ void PopulateBinderMapWithContext(
   map->Add<blink::mojom::OriginTrialStateHost>(
       &OriginTrialStateHostImpl::Create);
   map->Add<blink::mojom::StorageAccessHandle>(&StorageAccessHandle::Create);
-
-  map->Add<optimization_guide::mojom::ModelBroker>(
-      &EmptyBinderForFrame<optimization_guide::mojom::ModelBroker>);
 
   // This should be last to allow overrides of any interface.
   GetContentClient()->browser()->RegisterBrowserInterfaceBindersForFrame(host,

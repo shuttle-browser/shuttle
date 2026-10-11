@@ -602,7 +602,6 @@ template("build_webui") {
         "//chrome/browser/resources/settings",
         "//chrome/browser/resources/settings_shared",
         "//chrome/browser/resources/webapks",
-        "//chrome/browser/resources/webui_toolbar",
         "//components/crash/core/browser/resources",
         "//components/download/resources/download_internals",
         "//components/metrics/debug",

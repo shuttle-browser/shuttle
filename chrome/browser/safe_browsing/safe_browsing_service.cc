@@ -100,7 +100,6 @@
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
 #include "chrome/browser/safe_browsing/hash_realtime_service_factory.h"
-#include "chrome/browser/safe_browsing/incident_reporting/binary_integrity_analyzer.h"
 #endif
 
 using content::BrowserThread;
@@ -352,8 +351,6 @@ void SafeBrowsingServiceImpl::Initialize() {
               g_browser_process->profile_manager()->GetLoadedProfiles().size());
   }
 
-  // Register all the delayed analysis to the incident reporting service.
-  RegisterAllDelayedAnalysis();
 }
 
 void SafeBrowsingServiceImpl::ShutDown() {
@@ -461,16 +458,6 @@ SafeBrowsingServiceImpl::CreatePreferenceValidationDelegate(
   return services_delegate_->CreatePreferenceValidationDelegate(profile);
 }
 
-void SafeBrowsingServiceImpl::RegisterDelayedAnalysisCallback(
-    DelayedAnalysisCallback callback) {
-  services_delegate_->RegisterDelayedAnalysisCallback(std::move(callback));
-}
-
-void SafeBrowsingServiceImpl::AddDownloadManager(
-    content::DownloadManager* download_manager) {
-  services_delegate_->AddDownloadManager(download_manager);
-}
-
 HashRealTimeService* SafeBrowsingServiceImpl::GetHashRealTimeService(
     Profile* profile) {
 #if BUILDFLAG(FULL_SAFE_BROWSING)
@@ -485,12 +472,6 @@ SafeBrowsingUIManager* SafeBrowsingServiceImpl::CreateUIManager() {
       std::make_unique<ChromeSafeBrowsingUIManagerDelegate>(),
       std::make_unique<ChromeSafeBrowsingBlockingPageFactory>(),
       chrome::ChromeUINewTabURLAsGURL());
-}
-
-void SafeBrowsingServiceImpl::RegisterAllDelayedAnalysis() {
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  RegisterBinaryIntegrityAnalysis();
-#endif
 }
 
 V4ProtocolConfig SafeBrowsingServiceImpl::GetV4ProtocolConfig() const {

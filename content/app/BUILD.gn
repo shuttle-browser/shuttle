@@ -34,7 +34,6 @@ if (is_win) {
   content_app_deps += [
     "//content/browser",
     "//content/child",
-    "//content/public/android:content_app_jni",
     "//device/bluetooth",
     "//device/gamepad",
     "//media",
@@ -43,7 +42,6 @@ if (is_win) {
     "//net",
     "//skia",
     "//third_party/cpu_features:ndk_compat",
-    "//ui/android",
     "//ui/events",
     "//ui/shell_dialogs",
   ]

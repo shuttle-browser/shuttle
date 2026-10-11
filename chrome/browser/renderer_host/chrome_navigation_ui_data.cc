@@ -5,11 +5,8 @@
 #include "chrome/browser/renderer_host/chrome_navigation_ui_data.h"
 
 #include "build/build_config.h"
-#include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/chrome_no_state_prefetch_contents_delegate.h"
 #include "chrome/browser/profiles/profile.h"
-#include "components/actor/core/task_id.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_contents.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
@@ -19,19 +16,6 @@
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/common/constants.h"
 #endif
-
-namespace {
-actor::TaskId GetActorTaskId(content::WebContents& web_contents) {
-  if (auto* actor_keyed_service =
-          actor::ActorKeyedService::Get(web_contents.GetBrowserContext())) {
-    if (auto* task = actor_keyed_service->GetActingActorTaskForWebContents(
-            &web_contents)) {
-      return task->id();
-    }
-  }
-  return actor::TaskId();
-}
-}  // namespace
 
 ChromeNavigationUIData::ChromeNavigationUIData() = default;
 
@@ -56,8 +40,6 @@ ChromeNavigationUIData::ChromeNavigationUIData(
   if (no_state_prefetch_contents) {
     is_no_state_prefetching_ = true;
   }
-
-  actor_task_id_ = GetActorTaskId(*web_contents);
 }
 
 ChromeNavigationUIData::~ChromeNavigationUIData() = default;
@@ -87,8 +69,6 @@ ChromeNavigationUIData::CreateForMainFrameNavigation(
           web_contents, tab_id, window_id);
 #endif
 
-  navigation_ui_data->actor_task_id_ = GetActorTaskId(*web_contents);
-
   return navigation_ui_data;
 }
 
@@ -115,7 +95,6 @@ std::unique_ptr<content::NavigationUIData> ChromeNavigationUIData::Clone() {
 #if BUILDFLAG(IS_ANDROID)
   copy->twa_launch_token_ = twa_launch_token_;
 #endif
-  copy->actor_task_id_ = actor_task_id_;
   copy->navigation_initiated_from_sync_ = navigation_initiated_from_sync_;
 
   return std::move(copy);

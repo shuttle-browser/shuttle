@@ -241,7 +241,6 @@ test("media_unittests") {
       "//media/base/android:media_java",
       "//media/base/android:unit_tests",
       "//media/gpu:android_video_decode_accelerator_unittests",
-      "//ui/android:ui_java",
     ]
   }
 

@@ -508,7 +508,6 @@ source_set("profile_util") {
     "profile_attributes_init_params.h",
     "profile_attributes_storage.h",
     "profile_attributes_storage_observer.h",
-    "profile_avatar_icon_util.h",
     "reporting_util.h",
   ]
 
@@ -538,7 +537,6 @@ source_set("profile_util_impl") {
     "profile_attributes_entry.cc",
     "profile_attributes_init_params.cc",
     "profile_attributes_storage.cc",
-    "profile_avatar_icon_util.cc",
     "reporting_util.cc",
   ]
 
@@ -769,7 +767,6 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/search",
       "//chrome/browser/themes",
       "//chrome/browser/ui/global_error",
-      "//chrome/browser/ui/waap",
       "//chrome/browser/ui/webui:theme_colors_source_manager",
       "//chrome/browser/ui/webui:theme_source",
       "//chrome/browser/ui/webui/ntp:ntp_resource_cache",

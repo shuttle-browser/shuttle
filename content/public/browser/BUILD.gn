@@ -676,7 +676,6 @@ source_set("browser_sources") {
     deps += [
       "//cc/slim",
       "//third_party/jni_zero",
-      "//ui/android",
     ]
     sources += [
       "android/additional_navigation_params_android.h",

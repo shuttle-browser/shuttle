@@ -135,7 +135,6 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/browser/zero_suggest_provider.h"
 #include "components/optimization_guide/core/feature_registry/feature_registration.h"
-#include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/performance_manager/public/user_tuning/prefs.h"
 #include "components/permissions/permission_hats_trigger_helper.h"
@@ -246,10 +245,8 @@
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/actor/ui/actor_ui_state_manager_prefs.h"
 #include "chrome/browser/gcm/gcm_product_util.h"
 #include "chrome/browser/intranet_redirect_detector.h"
-#include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
 #include "chrome/browser/task_manager/task_manager_interface.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
@@ -1409,7 +1406,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   network_time::NetworkTimeTracker::RegisterPrefs(registry);
   omnibox::RegisterLocalStatePrefs(registry);
   optimization_guide::prefs::RegisterLocalStatePrefs(registry);
-  optimization_guide::model_execution::prefs::RegisterLocalStatePrefs(registry);
   policy::BrowserPolicyConnector::RegisterPrefs(registry);
   policy::LocalTestPolicyProvider::RegisterLocalStatePrefs(registry);
   policy::ManagementService::RegisterLocalStatePrefs(registry);
@@ -1477,8 +1473,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   performance_manager::user_tuning::prefs::RegisterLocalStatePrefs(registry);
   RegisterBrowserPrefs(registry);
   speech::SodaInstaller::RegisterLocalStatePrefs(registry);
-  speech::SpeechRecognitionSmallExpertModelInstaller::RegisterLocalStatePrefs(
-      registry);
   StartupBrowserCreator::RegisterLocalStatePrefs(registry);
   task_manager::TaskManagerInterface::RegisterPrefs(registry);
   UpgradeDetector::RegisterPrefs(registry);
@@ -1716,7 +1710,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   ntp_tiles::CustomLinksManagerImpl::RegisterProfilePrefs(registry);
   ntp_tiles::MostVisitedSites::RegisterProfilePrefs(registry);
   optimization_guide::prefs::RegisterProfilePrefs(registry);
-  optimization_guide::model_execution::prefs::RegisterProfilePrefs(registry);
+  optimization_guide::RegisterGenAiFeatures(registry);  // GenAI policy prefs
 #if !BUILDFLAG(IS_ANDROID)
   PageColorsController::RegisterProfilePrefs(registry);
 #endif
@@ -2055,8 +2049,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   tabs::RegisterProfilePrefs(registry);
 
   CertificateManagerPageHandler::RegisterProfilePrefs(registry);
-
-  actor::ui::RegisterProfilePrefs(registry);
 
   organizer::RegisterProfilePrefs(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)

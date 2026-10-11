@@ -22,7 +22,6 @@
 #include "chrome/browser/download/download_ui_model.h"
 #include "chrome/browser/download/drag_download_item.h"
 #include "chrome/browser/icon_manager.h"
-#include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/chrome_pages.h"

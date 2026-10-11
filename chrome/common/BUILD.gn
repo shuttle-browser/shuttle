@@ -27,7 +27,6 @@ assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 grit("resources") {
   source = "common_resources.grd"
   inputs = [
-    "apps/platform_apps/api/_api_features.json",
     "controlled_frame/api/_api_features.json",
     "extensions/api/_api_features.json",
   ]
@@ -45,7 +44,6 @@ buildflag_header("buildflags") {
   flags = [
     "CHROME_ENABLE_LOGGING_BY_DEFAULT=$chrome_enable_logging_by_default",
     "CHROME_ROOT_STORE_CERT_MANAGEMENT_UI=$chrome_root_store_cert_management_ui",
-    "SKIP_ANDROID_UNMIGRATED_ACTOR_FILES=$skip_android_unmigrated_actor_files",
     "ENABLE_BACKGROUND_MODE=$enable_background_mode",
     "ENABLE_BACKGROUND_CONTENTS=$enable_background_contents",
     "ENABLE_CHROME_NOTIFICATIONS=$enable_chrome_notifications",
@@ -126,9 +124,6 @@ static_library("common_lib") {
     "//chrome/common/win:eventlog_messages",
   ]
   sources = [
-    "actor/action_result.cc",
-    "actor/action_result.h",
-    "actor/actor_constants.h",
     "chrome_content_client.cc",
     "chrome_content_client.h",
     "chrome_content_client_constants.cc",
@@ -187,7 +182,6 @@ static_library("common_lib") {
     "//chrome/common/platform_runtime",
     "//chrome/common/profiler",
     "//chrome/installer/util:with_no_strings",
-    "//components/actor/core:task_id",
     "//components/client_hints/common",
     "//components/cloud_devices/common",
     "//components/component_updater",
@@ -292,7 +286,6 @@ static_library("common_lib") {
     if (is_win || is_mac || is_linux || is_chromeos) {
       assert(enable_extensions)
       deps += [
-        "//chrome/common/apps/platform_apps",
         "//chrome/common/controlled_frame",
         "//components/app_constants",
       ]
@@ -608,7 +601,6 @@ mojom("mojo_bindings") {
   disable_variants = true
 
   sources = [
-    "actor.mojom",
     "chrome_render_frame.mojom",
     "google_accounts_private_api_extension.mojom",
     "media/webrtc_logging.mojom",
@@ -636,12 +628,7 @@ mojom("mojo_bindings") {
 
   enabled_features = []
 
-  if (skip_android_unmigrated_actor_files) {
-    enabled_features += [ "skip_android_unmigrated_actor_files" ]
-  }
-
   public_deps = [
-    "//components/actor/public/mojom:mojo_bindings",
     "//components/content_settings/common:mojom",
     "//components/content_settings/core/common:mojo_bindings",
     "//components/no_state_prefetch/common:mojo_bindings",
@@ -711,22 +698,6 @@ mojom("glic_enums_mojom") {
   public_deps = [ "//mojo/public/mojom/base" ]
 }
 
-mojom("actor_webui_mojom") {
-  disable_variants = true
-
-  sources = [ "actor_webui.mojom" ]
-
-  webui_module_path = "/"
-
-  generate_legacy_js_bindings = true
-
-  public_deps = [
-    ":glic_enums_mojom",
-    "//mojo/public/mojom/base",
-    "//skia/public/mojom",
-    "//url/mojom:url_mojom_origin",
-  ]
-}
 
 mojom("supervised_user_commands_mojom") {
   sources = [ "supervised_user_commands.mojom" ]

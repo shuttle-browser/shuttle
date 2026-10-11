@@ -8,7 +8,6 @@
 
 #include "build/build_config.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
-#include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/common/chrome_constants.h"
 #include "components/history/core/browser/history_constants.h"
 #include "components/sessions/core/session_constants.h"
@@ -22,13 +21,20 @@
 
 namespace downgrade {
 
+namespace {
+constexpr base::FilePath::CharType kGAIAPictureFileName[] =
+    FILE_PATH_LITERAL("Google Profile Picture.png");
+constexpr base::FilePath::CharType kHighResAvatarFolderName[] =
+    FILE_PATH_LITERAL("Avatars");
+}  // namespace
+
 // Returns a list of items to snapshot that should be directly under the user
 // data  directory.
 std::vector<SnapshotItemDetails> CollectUserDataItems() {
   std::vector<SnapshotItemDetails> user_data_items{
       SnapshotItemDetails(base::FilePath(chrome::kLocalStateFilename),
                           SnapshotItemDetails::ItemType::kFile, 0),
-      SnapshotItemDetails(base::FilePath(profiles::kHighResAvatarFolderName),
+      SnapshotItemDetails(base::FilePath(kHighResAvatarFolderName),
                           SnapshotItemDetails::ItemType::kDirectory, 0)};
 #if BUILDFLAG(IS_WIN)
   user_data_items.emplace_back(base::FilePath(web_app::kLastBrowserFilename),
@@ -75,7 +81,7 @@ std::vector<SnapshotItemDetails> CollectProfileItems() {
                           SnapshotItemDetails::ItemType::kDirectory,
                           chrome_browsing_data_remover::DATA_TYPE_HISTORY),
       // Sign-in state
-      SnapshotItemDetails(base::FilePath(profiles::kGAIAPictureFileName),
+      SnapshotItemDetails(base::FilePath(kGAIAPictureFileName),
                           SnapshotItemDetails::ItemType::kFile, 0),
       // Password / Autofill
       SnapshotItemDetails(

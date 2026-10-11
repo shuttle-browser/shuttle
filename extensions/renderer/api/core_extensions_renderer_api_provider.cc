@@ -51,9 +51,6 @@
 #include "extensions/renderer/api/automation/automation_internal_custom_bindings.h"
 #endif
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/renderer/api/app_window_custom_bindings.h"
-#endif
 
 #if BUILDFLAG(ENABLE_GUEST_VIEW)
 #include "extensions/renderer/guest_view/guest_view_internal_custom_bindings.h"
@@ -104,10 +101,6 @@ void CoreExtensionsRendererAPIProvider::RegisterNativeHandlers(
       std::make_unique<ServiceWorkerNatives>(context));
 
   // Custom bindings.
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  module_system->RegisterNativeHandler(
-      "app_window_natives", std::make_unique<AppWindowCustomBindings>(context));
-#endif
   module_system->RegisterNativeHandler(
       "blob_natives", std::make_unique<BlobNativeHandler>(context));
   module_system->RegisterNativeHandler(
@@ -267,12 +260,6 @@ void CoreExtensionsRendererAPIProvider::PopulateSourceMap(
        IDR_EXTENSIONS_RENDERER_GENERATED_AUTOMATION_AUTOMATION_NODE_JS},
       {"automationTreeCache",
        IDR_EXTENSIONS_RENDERER_GENERATED_AUTOMATION_AUTOMATION_TREE_CACHE_JS},
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-      {"app.runtime",
-       IDR_EXTENSIONS_RENDERER_GENERATED_APP_RUNTIME_CUSTOM_BINDINGS_JS},
-      {"app.window",
-       IDR_EXTENSIONS_RENDERER_GENERATED_APP_WINDOW_CUSTOM_BINDINGS_JS},
-#endif
       {"declarativeWebRequest",
        IDR_EXTENSIONS_RENDERER_GENERATED_DECLARATIVE_WEBREQUEST_CUSTOM_BINDINGS_JS},
       {"contextMenus",
@@ -292,10 +279,6 @@ void CoreExtensionsRendererAPIProvider::PopulateSourceMap(
       {"webViewRequest",
        IDR_EXTENSIONS_RENDERER_GENERATED_GUEST_VIEW_WEB_VIEW_WEB_VIEW_REQUEST_CUSTOM_BINDINGS_JS},
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-      // Platform app sources that are not API-specific..
-      {"platformApp", IDR_EXTENSIONS_RENDERER_GENERATED_PLATFORM_APP_JS},
-#endif
   });
 
   source_map->RegisterSources(kSources);

@@ -10,8 +10,6 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "build/build_config.h"
-#include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -52,19 +50,6 @@ IdentityDialogController::IdentityDialogController(
       optimization_guide_decider_(decider) {
   Profile* profile = Profile::FromBrowserContext(
       rp_web_contents_->GetPrimaryMainFrame()->GetBrowserContext());
-  actor::ActorKeyedService* actor_service =
-      actor::ActorKeyedService::Get(profile);
-  if (actor_service) {
-    actor_task_state_subscription_ = actor_service->AddTaskStateChangedCallback(
-        base::BindRepeating(&IdentityDialogController::OnActorTaskStateChanged,
-                            weak_ptr_factory_.GetWeakPtr()));
-    const actor::ActorTask* acting_task =
-        actor_service->GetActingActorTaskForWebContents(rp_web_contents_);
-    if (acting_task) {
-      acting_task_id_ = acting_task->id();
-    }
-  }
-
   if (!base::FeatureList::IsEnabled(
           segmentation_platform::features::kSegmentationPlatformFedCmUser)) {
     passive_dialog_volume_ = PassiveDialogVolume::kDefault;
@@ -100,49 +85,6 @@ IdentityDialogController::IdentityDialogController(
 }
 
 IdentityDialogController::~IdentityDialogController() = default;
-
-void IdentityDialogController::OnActorTaskStateChanged(actor::ActorTask& task) {
-  const actor::TaskId task_id = task.id();
-  const actor::ActorTask::State state = task.GetState();
-
-  actor::ActorKeyedService* actor_service =
-      actor::ActorKeyedService::Get(rp_web_contents_->GetBrowserContext());
-  CHECK(actor_service);
-  // TODO(b:472336281): this can be simplified once the bug is fixed, but for
-  // not a completed task does not know which tabs it was acting on.
-  if (acting_task_id_ == task_id && actor::ActorTask::IsCompletedState(state)) {
-    UpdateTaskId(actor::TaskId());
-    return;
-  }
-
-  tabs::TabInterface* tab =
-      tabs::TabInterface::MaybeGetFromContents(rp_web_contents_);
-  if (!tab || !task.IsActingOnTab(tab->GetHandle())) {
-    if (acting_task_id_ == task_id) {
-      // The task we thought was acting on this tab is no longer active, so we
-      // clear the task ID.
-      UpdateTaskId(actor::TaskId());
-    }
-    return;
-  }
-  UpdateTaskId(task.IsUnderActorControl() ? task_id : actor::TaskId());
-}
-
-void IdentityDialogController::UpdateTaskId(actor::TaskId task_id) {
-  acting_task_id_ = task_id;
-  if (account_view_) {
-    account_view_->SetCanShowUi(acting_task_id_.is_null());
-    if (acting_task_id_.is_null() && did_invoke_show_ui_) {
-      did_show_ui_ = true;
-    }
-  }
-  // If there is no longer an active task (e.g. user takes over the task) and we
-  // previously invoked active mode UI, dismiss the current API call.
-  if (acting_task_id_.is_null() && rp_mode_ == blink::mojom::RpMode::kActive &&
-      on_dismiss_) {
-    std::move(on_dismiss_).Run(DismissReason::kOther);
-  }
-}
 
 int IdentityDialogController::GetBrandIconMinimumSize(
     blink::mojom::RpMode rp_mode) {
@@ -598,11 +540,6 @@ void IdentityDialogController::SetAccountSelectionViewForTesting(
   account_view_ = std::move(account_view);
 }
 
-void IdentityDialogController::SetActingTaskIdForTesting(
-    actor::TaskId task_id) {
-  UpdateTaskId(task_id);
-}
-
 bool IdentityDialogController::TrySetAccountView() {
   if (account_view_) {
     return true;
@@ -747,7 +684,7 @@ IdentityDialogController::GetFedCmClickthroughRateMetadata() {
 
 
 bool IdentityDialogController::ShouldShowFedCmUi() {
-  return acting_task_id_.is_null();
+  return true;
 }
 
 void IdentityDialogController::DidInvokeShowUi() {

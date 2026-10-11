@@ -112,32 +112,12 @@ grit_strings("components_branded_strings") {
 grit_strings("components_locale_settings") {
   source = "../components_locale_settings.grd"
 
-  _xtb_locales = all_chrome_locales - extended_locales - [
-                   "af",
-                   "en-US",
-                   "en-XA",
-                   "ur",
-                 ]
-  if (is_android) {
-    _xtb_locales -= [ "cy" ]
-  }
-  if (is_ios) {
-    _xtb_locales -= [
-      "es-MX",
-      "pt",
-    ]
-    _xtb_locales += [
-      "es-419",
-      "pt-BR",
-    ]
-  }
+  # Shuttle: en-US only, no translations.
+  _xtb_locales = []
   inputs = process_file_template(
           _xtb_locales,
           [ "components_locale_settings_{{source_name_part}}.xtb" ])
-  _terms_locales = _xtb_locales + [ "en" ] - [
-                     "ar-XB",
-                     "ms",
-                   ]
+  _terms_locales = [ "en" ]
   if (!is_android && !is_ios) {
     if (is_chrome_branded) {
       inputs += process_file_template(

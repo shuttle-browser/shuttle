@@ -14,7 +14,6 @@
 #include "chrome/browser/accessibility/accessibility_labels_service_factory.h"
 #include "chrome/browser/shuttle/shuttle_service_factory.h"
 #include "chrome/browser/accessibility/page_colors_controller_factory.h"
-#include "chrome/browser/actor/actor_keyed_service_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_classifier_factory.h"
 #include "chrome/browser/autocomplete/autocomplete_scoring_model_service_factory.h"
 #include "chrome/browser/autocomplete/document_suggestions_service_factory.h"
@@ -97,8 +96,6 @@
 #include "chrome/browser/notifications/platform_notification_service_factory.h"
 #include "chrome/browser/omnibox/autocomplete_controller_emitter_factory.h"
 #include "chrome/browser/omnibox/geolocation_header_service_factory.h"
-#include "chrome/browser/optimization_guide/model_validator_keyed_service.h"
-#include "chrome/browser/optimization_guide/model_validator_keyed_service_factory.h"
 #include "chrome/browser/optimization_guide/optimization_guide_global_state_holder_keyed_service_factory.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/origin_trials/origin_trials_factory.h"
@@ -263,11 +260,8 @@
 #include "chrome/browser/storage/storage_notification_service_factory.h"
 #include "chrome/browser/ui/browser_manager_service_factory.h"
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
-#include "chrome/browser/ui/waap/initial_webui_profile_service_factory.h"
-#include "chrome/browser/ui/waap/waap_ui_metrics_service_factory.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager_factory.h"
 #include "chrome/browser/usb/usb_connection_tracker_factory.h"
-#include "components/optimization_guide/core/model_execution/model_execution_features.h"
 #include "ui/accessibility/accessibility_features.h"
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -433,7 +427,6 @@
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
 #include "chrome/browser/safe_browsing/advanced_protection_status_manager_factory.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service_factory.h"
 #include "chrome/browser/safe_browsing/hash_realtime_service_factory.h"
 #endif
 
@@ -521,7 +514,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   search_integrity::SearchIntegrityFactory::GetInstance();
 #endif
-  actor::ActorKeyedServiceFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   AndroidSessionDurationsServiceFactory::GetInstance();
 #endif
@@ -870,9 +862,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   // TODO(b/502297163): Implement for Android.
   OneTimePermissionsTrackerFactory::GetInstance();
 #endif
-  if (optimization_guide::ShouldStartModelValidator()) {
-    optimization_guide::ModelValidatorKeyedServiceFactory::GetInstance();
-  }
   OptimizationGuideGlobalStateHolderKeyedServiceFactory::GetInstance();
   OptimizationGuideKeyedServiceFactory::GetInstance();
   OriginKeyedPermissionActionServiceFactory::GetInstance();
@@ -976,9 +965,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   safe_browsing::ChromePingManagerFactory::GetInstance();
   safe_browsing::ClientSideDetectionServiceFactory::GetInstance();
   safe_browsing::CloudBinaryUploadServiceFactory::GetInstance();
-#endif
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  safe_browsing::ExtensionTelemetryServiceFactory::GetInstance();
 #endif
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #endif
@@ -1107,10 +1093,6 @@ void ChromeBrowserMainExtraPartsProfiles::
   UsbConnectionTrackerFactory::GetInstance();
 #endif
   visited_url_ranking::GroupSuggestionsServiceFactory::GetInstance();
-#if !BUILDFLAG(IS_ANDROID)
-  InitialWebUIProfileServiceFactory::GetInstance();
-  WaapUIMetricsServiceFactory::GetInstance();
-#endif
 #if BUILDFLAG(IS_ANDROID)
   WebApkInstallServiceFactory::GetInstance();
 #endif

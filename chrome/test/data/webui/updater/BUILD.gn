@@ -3,7 +3,7 @@ import("../build_webui_tests.gni")
 assert(is_mac || is_win || is_linux)
 
 build_webui_tests("build") {
-  cc_test_files = [ "updater_browsertest.cc" ]
+  cc_test_files = []
 
   # Test files go here
   files = [

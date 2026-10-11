@@ -91,10 +91,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_page_action_controller.h"
 #include "components/tabs/public/tab_interface.h"
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/extension_registry.h"  // nogncheck
-#include "extensions/common/extension.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 #endif  // BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/file_manager/fileapi_util.h"
@@ -3308,19 +3304,6 @@ bool ChromeFileSystemAccessPermissionContext::
     return false;
   }
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // The restore prompt is not displayed when there is a platform app installed,
-  // because there is no valid UI element to display the restore prompt from.
-  const extensions::ExtensionRegistry* registry =
-      extensions::ExtensionRegistry::Get(profile());
-  const extensions::Extension* app =
-      registry ? registry->enabled_extensions().GetExtensionOrAppByURL(
-                     origin.GetURL())
-               : nullptr;
-  if (app && app->is_platform_app()) {
-    return false;
-  }
-#endif
 
   // While this method is called from `RequestPermission`, which implies that
   // a `PermissionGrantImpl` exists - we want to insert the origin into the

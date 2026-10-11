@@ -40,8 +40,6 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/switches.h"
@@ -113,14 +111,6 @@ gfx::NativeWindow FindParentWindowForWebContents(
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents);
   if (browser && browser->GetWindow()) {
     return browser->GetWindow()->GetNativeWindow();
-  }
-
-  const extensions::AppWindowRegistry::AppWindowList& window_list =
-      extensions::AppWindowRegistry::Get(web_contents->GetBrowserContext())
-          ->app_windows();
-  for (extensions::AppWindow* app_window : window_list) {
-    if (app_window->web_contents() == web_contents)
-      return app_window->GetNativeWindow();
   }
 
   return gfx::NativeWindow();

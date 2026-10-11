@@ -30,14 +30,6 @@ test("gcp_unittests") {
     "../extension:app_inventory",
     "../extension:common",
     "../extension:extension_lib",
-    "../gaiacp:common",
-    "../gaiacp:gaia_credential_provider_idl",
-    "../gaiacp:gaiacp_lib",
-    "../gaiacp:mdm_utils",
-    "../gaiacp:policies",
-    "../gaiacp:string_resources",
-    "../gaiacp:util",
-    "../gaiacp:version",
     "../setup:common",
     "//base",
     "//chrome/browser/ui/startup:credential_provider_test_utils",
@@ -58,7 +50,6 @@ test("gcp_unittests") {
   data_deps = [
     "../eventlog:gcp_eventlog_provider",
     "../extension:gcpw_extension",
-    "../gaiacp:gaia1_0",
     "../setup:gcp_setup",
   ]
 

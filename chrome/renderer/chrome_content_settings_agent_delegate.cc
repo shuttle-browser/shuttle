@@ -149,14 +149,7 @@ void ChromeContentSettingsAgentDelegate::DidCommitProvisionalLoad(
 void ChromeContentSettingsAgentDelegate::OnDestruct() {}
 
 bool ChromeContentSettingsAgentDelegate::IsPlatformApp() {
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  blink::WebLocalFrame* frame = render_frame_->GetWebFrame();
-  blink::WebSecurityOrigin origin = frame->GetDocument().GetSecurityOrigin();
-  const extensions::Extension* extension = GetExtension(origin);
-  return extension && extension->is_platform_app();
-#else
   return false;
-#endif
 }
 
 bool ChromeContentSettingsAgentDelegate::IsAllowListedSystemWebApp() {

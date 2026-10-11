@@ -40,10 +40,6 @@
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 
 #if !BUILDFLAG(IS_ANDROID) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/safe_browsing/extension_telemetry/cookies_get_all_signal.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/cookies_get_signal.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service_factory.h"
 #endif
 
 using content::BrowserThread;
@@ -313,9 +309,6 @@ ExtensionFunction::ResponseAction CookiesGetFunction::Run() {
       net::CookiePartitionKeyCollection(std::move(partition_key).value()),
       base::BindOnce(&CookiesGetFunction::GetCookieListCallback, this));
 
-  // Extension telemetry signal intercept
-  NotifyExtensionTelemetry();
-
   // Will finish asynchronously.
   return RespondLater();
 }
@@ -346,25 +339,6 @@ void CookiesGetFunction::GetCookieListCallback(
 
   // The cookie doesn't exist; return null.
   Respond(WithArguments(base::Value()));
-}
-
-void CookiesGetFunction::NotifyExtensionTelemetry() {
-  // TODO(crbug.com/371423073): Support telemetry on Android.
-#if !BUILDFLAG(IS_ANDROID) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  auto* telemetry_service =
-      safe_browsing::ExtensionTelemetryServiceFactory::GetForProfile(
-          Profile::FromBrowserContext(browser_context()));
-
-  if (!telemetry_service || !telemetry_service->enabled()) {
-    return;
-  }
-
-  auto cookies_get_signal = std::make_unique<safe_browsing::CookiesGetSignal>(
-      extension_id(), parsed_args_->details.name,
-      parsed_args_->details.store_id.value_or(std::string()),
-      parsed_args_->details.url, js_callstack().value_or(StackTrace()));
-  telemetry_service->AddSignal(std::move(cookies_get_signal));
-#endif
 }
 
 CookiesGetAllFunction::CookiesGetAllFunction() = default;
@@ -416,9 +390,6 @@ ExtensionFunction::ResponseAction CookiesGetAllFunction::Run() {
         base::BindOnce(&CookiesGetAllFunction::GetCookieListCallback, this));
   }
 
-  // Extension telemetry signal intercept
-  NotifyExtensionTelemetry();
-
   return RespondLater();
 }
 
@@ -455,30 +426,6 @@ void CookiesGetAllFunction::GetCookieListCallback(
     // TODO(devlin): When can |extension()| be null for this function?
     Respond(NoArguments());
   }
-}
-
-void CookiesGetAllFunction::NotifyExtensionTelemetry() {
-  // TODO(crbug.com/371423073): Support telemetry on Android.
-#if !BUILDFLAG(IS_ANDROID) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  auto* telemetry_service =
-      safe_browsing::ExtensionTelemetryServiceFactory::GetForProfile(
-          Profile::FromBrowserContext(browser_context()));
-
-  if (!telemetry_service || !telemetry_service->enabled()) {
-    return;
-  }
-
-  auto cookies_get_all_signal =
-      std::make_unique<safe_browsing::CookiesGetAllSignal>(
-          extension_id(), parsed_args_->details.domain.value_or(std::string()),
-          parsed_args_->details.name.value_or(std::string()),
-          parsed_args_->details.path.value_or(std::string()),
-          parsed_args_->details.secure,
-          parsed_args_->details.store_id.value_or(std::string()),
-          parsed_args_->details.url.value_or(std::string()),
-          parsed_args_->details.session, js_callstack().value_or(StackTrace()));
-  telemetry_service->AddSignal(std::move(cookies_get_all_signal));
-#endif
 }
 
 CookiesSetFunction::CookiesSetFunction()

@@ -46,7 +46,6 @@ component("snapshot") {
   ]
 
   if (is_android) {
-    deps += [ "//ui/android" ]
   }
 
   if (use_aura || is_android) {

@@ -11,7 +11,6 @@
 #include "base/metrics/user_metrics.h"
 #include "base/time/time.h"
 #include "cc/paint/skottie_wrapper.h"
-#include "chrome/browser/actor/resources/grit/actor_browser_resources.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_icon.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
@@ -51,11 +50,6 @@ constexpr auto kAlertIndicatorMinimumHoldDuration = base::Seconds(5);
 // smoothness and media recording/playback performance on low-end hardware.
 constexpr base::TimeDelta kIndicatorFrameInterval =
     base::Milliseconds(50);  // 20 FPS
-
-constexpr float kActorAccessingSpinnerScaleFactor = 0.7f;
-constexpr float kActorAccessingSpinnerTotalFrames = 2007.0;
-constexpr float kActorAccessingSpinnerStartFrame = 0.0;
-constexpr float kActorAccessingSpinnerEndFrame = 180.0;
 
 std::unique_ptr<gfx::MultiAnimation> CreateTabRecordingIndicatorAnimation() {
   // Number of times the throbber fades in and out. After these cycles a final
@@ -148,79 +142,6 @@ AlertIndicatorButton::AlertIndicatorButton(Delegate* delegate)
 }
 
 AlertIndicatorButton::~AlertIndicatorButton() = default;
-
-void AlertIndicatorButton::MaybeLoadActorAccessingSpinner() {
-  if (actor_indicator_spinner_) {
-    return;
-  }
-
-  actor_indicator_spinner_ =
-      AddChildView(std::make_unique<views::AnimatedImageView>());
-  if (!base::FeatureList::IsEnabled(features::kActorUiThemed)) {
-    std::optional<std::vector<uint8_t>> lottie_bytes =
-        ui::ResourceBundle::GetSharedInstance().GetLottieData(
-            IDR_ACTOR_TAB_INDICATOR_SPINNER);
-    CHECK(lottie_bytes);
-    scoped_refptr<cc::SkottieWrapper> skottie =
-        cc::SkottieWrapper::UnsafeCreateSerializable(std::move(*lottie_bytes));
-    auto animation = std::make_unique<lottie::Animation>(skottie);
-
-    // Load necessary frames.
-    const base::TimeDelta total_duration = animation->GetAnimationDuration();
-    base::TimeDelta time_per_frame =
-        total_duration / kActorAccessingSpinnerTotalFrames;
-    base::TimeDelta start_offset =
-        time_per_frame * kActorAccessingSpinnerStartFrame;
-    base::TimeDelta end_offset =
-        time_per_frame * kActorAccessingSpinnerEndFrame;
-    lottie::Animation::CycleBoundaries custom_cycle;
-    custom_cycle.start_offset = start_offset;
-    custom_cycle.end_offset = end_offset;
-    std::vector<lottie::Animation::CycleBoundaries> scheduled_cycles;
-    scheduled_cycles.push_back(custom_cycle);
-    if (base::FeatureList::IsEnabled(
-            features::kGlicActorUiTabIndicatorSpinnerIgnoreReducedMotion)) {
-      actor_indicator_config_.emplace(scheduled_cycles,
-                                      custom_cycle.start_offset, 0,
-                                      lottie::Animation::Style::kLoop,
-                                      /*ignore_reduced_motion=*/true);
-    } else {
-      actor_indicator_config_.emplace(scheduled_cycles,
-                                      custom_cycle.start_offset, 0,
-                                      lottie::Animation::Style::kLoop);
-    }
-
-    // Set all spinner properties.
-    actor_indicator_spinner_->SetPaintToLayer(ui::LAYER_TEXTURED);
-    actor_indicator_spinner_->layer()->SetFillsBoundsOpaquely(false);
-    actor_indicator_spinner_->SetAnimatedImage(std::move(animation));
-    actor_indicator_spinner_->SetVisible(false);
-    actor_spinner_scaled_size_ = gfx::ScaleToCeiledSize(
-        actor_indicator_spinner_->animated_image()->GetOriginalSize(),
-        kActorAccessingSpinnerScaleFactor);
-    actor_indicator_spinner_->SetImageSize(actor_spinner_scaled_size_.value());
-  } else {
-    actor_indicator_spinner_->SetPaintToLayer(ui::LAYER_TEXTURED);
-    actor_indicator_spinner_->layer()->SetFillsBoundsOpaquely(false);
-    actor_indicator_spinner_->SetVisible(false);
-
-    // Load the bytes, apply the color, and set the image.
-    UpdateSpinnerTheme();
-  }
-}
-
-void AlertIndicatorButton::SetActorAccessingSpinnerBounds() {
-  if (!actor_indicator_spinner_ || !actor_spinner_scaled_size_.has_value()) {
-    return;
-  }
-
-  gfx::Size spinner_scaled_size = actor_spinner_scaled_size_.value();
-  const int x = (width() - spinner_scaled_size.width()) / 2;
-  const int y = (height() - spinner_scaled_size.height()) / 2;
-
-  actor_indicator_spinner_->SetBounds(x, y, spinner_scaled_size.width(),
-                                      spinner_scaled_size.height());
-}
 
 void AlertIndicatorButton::TransitionToAlertState(
     std::optional<tabs::TabAlert> next_state) {
@@ -319,62 +240,12 @@ void AlertIndicatorButton::VisibilityChanged(View* starting_from,
   UpdateEnabledForMuteToggle();
 }
 
-void AlertIndicatorButton::UpdateSpinnerTheme() {
-  CHECK(actor_indicator_spinner_);
-  const ui::ColorProvider* color_provider = GetColorProvider();
-  if (!color_provider) {
-    return;
-  }
-  if (!alert_state_.has_value() ||
-      alert_state_.value() != tabs::TabAlert::kActorAccessing) {
-    return;
-  }
-
-  // Load lottie bytes
-  std::optional<std::vector<uint8_t>> lottie_bytes =
-      ui::ResourceBundle::GetSharedInstance().GetLottieData(
-          IDR_ACTOR_AUTO_BROWSE_SPINNER);
-  CHECK(lottie_bytes);
-  scoped_refptr<cc::SkottieWrapper> skottie =
-      cc::SkottieWrapper::UnsafeCreateSerializable(std::move(*lottie_bytes));
-
-  // Set the color
-  const ui::ColorId color_id = tabs::GetAlertIndicatorColor(
-      alert_state_.value(), delegate_->IsApparentlyActive(),
-      GetWidget()->ShouldPaintAsActive());
-
-  cc::SkottieColorMap color_map;
-  color_map[cc::HashSkottieResourceId("ThemeColor")] =
-      color_provider->GetColor(color_id);
-  actor_indicator_spinner_->SetAnimatedImage(
-      std::make_unique<lottie::Animation>(skottie, color_map));
-
-  // Set the size
-  actor_spinner_scaled_size_ = gfx::ScaleToCeiledSize(
-      actor_indicator_spinner_->animated_image()->GetOriginalSize(),
-      kActorAccessingSpinnerScaleFactor);
-  actor_indicator_spinner_->SetImageSize(actor_spinner_scaled_size_.value());
-  SetActorAccessingSpinnerBounds();
-}
-
 void AlertIndicatorButton::OnThemeChanged() {
   ImageButton::OnThemeChanged();
-
-  if (!actor_indicator_spinner_ ||
-      !base::FeatureList::IsEnabled(features::kActorUiThemed)) {
-    return;
-  }
-
-  UpdateSpinnerTheme();
-  // Restart spinner if it is visible.
-  if (actor_indicator_spinner_->GetVisible()) {
-    actor_indicator_spinner_->Play();
-  }
 }
 
 void AlertIndicatorButton::Layout(PassKey) {
   LayoutSuperclass<ImageButton>(this);
-  SetActorAccessingSpinnerBounds();
 }
 
 bool AlertIndicatorButton::DoesIntersectRect(const views::View* target,
@@ -442,25 +313,6 @@ void AlertIndicatorButton::PaintButtonContents(gfx::Canvas* canvas) {
 
 gfx::ImageSkia AlertIndicatorButton::GetImageToPaint() {
   return views::ImageButton::GetImageToPaint();
-}
-
-void AlertIndicatorButton::UpdateAlertIndicatorAnimation() {
-  // Can add different cases for other alert states that require an animation.
-  if (alert_state_.has_value() &&
-      alert_state_.value() == tabs::TabAlert::kActorAccessing) {
-    MaybeLoadActorAccessingSpinner();
-
-    actor_indicator_spinner_->SetVisible(true);
-    if (!base::FeatureList::IsEnabled(features::kActorUiThemed)) {
-      actor_indicator_spinner_->Play(*actor_indicator_config_);
-
-    } else {
-      actor_indicator_spinner_->Play();
-    }
-  } else if (actor_indicator_spinner_) {
-    actor_indicator_spinner_->Stop();
-    actor_indicator_spinner_->SetVisible(false);
-  }
 }
 
 std::unique_ptr<gfx::Animation>

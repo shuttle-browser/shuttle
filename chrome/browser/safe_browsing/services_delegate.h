@@ -10,7 +10,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
-#include "chrome/browser/safe_browsing/incident_reporting/delayed_analysis_callback.h"
 #include "components/safe_browsing/buildflags.h"
 
 class Profile;
@@ -34,7 +33,6 @@ namespace safe_browsing {
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 class DownloadProtectionService;
 #endif
-class IncidentReportingService;
 class SafeBrowsingServiceImpl;
 class SafeBrowsingDatabaseManager;
 struct V4ProtocolConfig;
@@ -56,7 +54,6 @@ class ServicesDelegate {
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
     virtual bool CanCreateDownloadProtectionService() = 0;
 #endif
-    virtual bool CanCreateIncidentReportingService() = 0;
 
     // Caller takes ownership of the returned object. Cannot use std::unique_ptr
     // because services may not be implemented for some build configs.
@@ -64,7 +61,6 @@ class ServicesDelegate {
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
     virtual DownloadProtectionService* CreateDownloadProtectionService() = 0;
 #endif
-    virtual IncidentReportingService* CreateIncidentReportingService() = 0;
   };
 
   // Creates the ServicesDelegate using its's default ServicesCreator.
@@ -99,10 +95,6 @@ class ServicesDelegate {
   // See the SafeBrowsingServiceImpl methods of the same name.
   virtual std::unique_ptr<prefs::mojom::TrackedPreferenceValidationDelegate>
   CreatePreferenceValidationDelegate(Profile* profile) = 0;
-  virtual void RegisterDelayedAnalysisCallback(
-      DelayedAnalysisCallback callback) = 0;
-  virtual void AddDownloadManager(
-      content::DownloadManager* download_manager) = 0;
 
   // Returns nullptr for any service that is not available.
 #if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)

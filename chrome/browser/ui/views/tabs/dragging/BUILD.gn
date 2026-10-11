@@ -72,7 +72,6 @@ source_set("impl") {
     "//chrome/browser/ui/tabs:tab_strip_model_observer",
     "//chrome/browser/ui/views/tabs:tab",
     "//chrome/browser/ui/views/tabs:tab_strip",
-    "//chrome/browser/ui/waap:window_metrics_manager",
     "//chrome/browser/ui/window_feature_controller",
     "//components/tab_groups",
     "//components/tabs:public",

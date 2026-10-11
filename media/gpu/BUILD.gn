@@ -544,7 +544,6 @@ if (is_android) {
       "//mojo/core/embedder",
       "//testing/gtest",
       "//third_party/angle:includes",
-      "//ui/android:ui_java",
       "//ui/base",
       "//ui/gfx",
       "//ui/gfx:test_support",

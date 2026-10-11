@@ -313,7 +313,6 @@ source_set("common_sources") {
   }
 
   if (is_android) {
-    deps += [ "//content/public/android:content_main_dex_jni" ]
   }
 
   if (is_win) {

@@ -8,7 +8,6 @@
 #include "base/feature_list.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "chrome/browser/actor/actor_navigation_throttle.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/custom_handlers/chrome_protocol_handler_navigation_throttle.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
@@ -289,9 +288,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   dev_ui::DevUiLoaderThrottle::MaybeCreateAndAdd(registry);
 #endif  // BUILDFLAG(DFMIFY_DEV_UI)
 
-#elif BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // Redirect some navigations to apps that have registered matching URL
-  // handlers ('url_handlers' in the manifest).
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -502,8 +498,6 @@ void CreateAndAddChromeThrottlesForNavigation(
   BackgroundContentsNavigationThrottle::MaybeCreateAndAdd(registry);
   DevToolsNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-  actor::ActorNavigationThrottle::MaybeCreateAndAdd(registry);
 
   dom_distiller::DistillerPageWebContents::MaybeCreateAndAddNavigationThrottle(
       registry);

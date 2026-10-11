@@ -36,15 +36,6 @@
   E_CPONLY(kColorAppMenuFooterButtonForegroundHovered) \
   E_CPONLY(kColorAppMenuFooterButtonBackgroundHovered) \
   /* Actor UI colors.*/ \
-  E_CPONLY(kColorActorUiHandoffButtonBackground) \
-  E_CPONLY(kColorActorUiHandoffButtonBorder) \
-  E_CPONLY(kColorActorUiHandoffButtonForeground) \
-  E_CPONLY(kColorActorUiOverlayBorder) \
-  E_CPONLY(kColorActorUiOverlayBorderGlow) \
-  E_CPONLY(kColorActorUiScrimStart) \
-  E_CPONLY(kColorActorUiScrimMiddle) \
-  E_CPONLY(kColorActorUiScrimEnd) \
-  E_CPONLY(kColorActorUiMagicCursor) \
   /* Content settings activity indicators popup dialog colors */ \
   E_CPONLY(kColorActivityIndicatorForeground) \
   E_CPONLY(kColorActivityIndicatorSubtitleForeground) \

@@ -74,7 +74,6 @@ if (is_android) {
       "//build/android:build_java",
       "//chrome/browser/util:java",
       "//components/browser_ui/util/android:java",
-      "//content/public/android:content_java",
       "//third_party/android_deps:protobuf_lite_runtime_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_collection_collection_java",
@@ -138,15 +137,12 @@ if (is_android) {
       "//chrome/test/android:chrome_java_integration_test_support",
       "//chrome/test/android:chrome_java_transit",
       "//components/browser_ui/util/android:java",
-      "//content/public/android:content_java",
       "//content/public/test/android:content_java_test_support",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_core_core_java",
       "//third_party/androidx:androidx_test_runner_java",
       "//third_party/hamcrest:hamcrest_java",
       "//third_party/junit",
-      "//ui/android:ui_java",
-      "//ui/android:ui_java_test_support",
     ]
 
     data = [ "//chrome/browser/thumbnail/generator/test/data/android/" ]

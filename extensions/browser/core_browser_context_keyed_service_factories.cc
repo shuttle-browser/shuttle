@@ -40,18 +40,10 @@
 #endif  // !BUILDFLAG(IS_ANDROID)
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window_geometry_cache.h"
-#include "extensions/browser/app_window/app_window_registry.h"
-#endif
 
 namespace extensions {
 
 void EnsureCoreBrowserContextKeyedServiceFactoriesBuilt() {
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  AppWindowGeometryCache::Factory::GetInstance();
-  AppWindowRegistry::Factory::GetInstance();
-#endif
   CrxInstaller::EnsureShutdownNotifierFactoryBuilt();
   DelayedInstallManagerFactory::GetInstance();
   EnsureExtensionURLLoaderFactoryShutdownNotifierFactoryBuilt();

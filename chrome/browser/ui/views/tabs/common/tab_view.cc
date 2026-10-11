@@ -479,7 +479,6 @@ SkPath TabView::GetPath() const {
 
 void TabView::Layout(PassKey) {
   LayoutSuperclass<views::View>(this);
-  alert_indicator_->UpdateAlertIndicatorAnimation();
   if (orientation_ == TabStripOrientation::kHorizontal) {
     icon_->ResizeDiscardIndicatorRadiusForWidth(
         width() - 2 * tab_styling()->tab_style()->GetBottomCornerRadius());

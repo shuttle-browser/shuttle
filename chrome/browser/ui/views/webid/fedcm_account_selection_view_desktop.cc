@@ -13,7 +13,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/utf_string_conversions.h"
-#include "chrome/browser/actor/actor_util.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -50,30 +49,6 @@
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/window/dialog_delegate.h"
-
-namespace {
-
-// We could have a situation where the WebContents with an actor task opens a
-// popup which then triggers the dialog, so we need to check the opener.
-tabs::TabInterface* InitiatingTaskTab(tabs::TabInterface* source_tab) {
-  if (!base::FeatureList::IsEnabled(features::kFedCmEmbedderInitiatedLogin)) {
-    return nullptr;
-  }
-
-  CHECK(source_tab);
-
-  if (actor::HaveActiveTaskForContents(source_tab->GetContents())) {
-    return source_tab;
-  }
-  content::WebContents* opener =
-      source_tab->GetContents()->GetFirstWebContentsInLiveOriginalOpenerChain();
-  if (actor::HaveActiveTaskForContents(opener)) {
-    return tabs::TabInterface::GetFromContents(opener);
-  }
-  return nullptr;
-}
-
-}  // namespace
 
 // static
 int AccountSelectionView::GetBrandIconMinimumSize(
@@ -902,29 +877,6 @@ content::WebContents* FedCmAccountSelectionView::ShowModalDialog(
   // The modal should not be hidden when the pop-up window is displayed for
   // better UX.
   UpdateDialogVisibilityAndPosition();
-
-  if (tabs::TabInterface* initiating_task_tab = InitiatingTaskTab(tab_)) {
-    content::WebContents* initiating_contents =
-        initiating_task_tab->GetContents();
-    // We check `GetDisplayMode` to track both tab and browser fullscreen.
-    bool in_fullscreen =
-        initiating_contents->GetDelegate() &&
-        initiating_contents->GetDelegate()->GetDisplayMode(
-            initiating_contents) == blink::mojom::DisplayMode::kFullscreen;
-    // If the tab is running a background actor task and is not in fullscreen,
-    // withhold the pop-up until the tab is foregrounded. Fullscreen tabs are
-    // not withheld because in that case we'd open a new tab instead of a pop-up
-    // window, so there's no need to withhold.
-    if (actor::IsRunningBackgroundActorTask(*initiating_contents) &&
-        !in_fullscreen) {
-      tab_subscriptions_.push_back(
-          initiating_task_tab->RegisterDidActivate(base::BindRepeating(
-              &FedCmAccountSelectionView::BackgroundTaskTabForegrounded,
-              weak_ptr_factory_.GetWeakPtr())));
-      withheld_popup_state_.emplace(url, std::move(on_shown_async));
-      return nullptr;
-    }
-  }
 
   return ShowPopupWindow(url);
 }

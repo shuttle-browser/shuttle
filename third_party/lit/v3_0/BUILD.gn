@@ -25,7 +25,6 @@ ts_library("build_ts") {
     # and reduce the maintenance burden for the Desktop WebUI team).
 
     "//chrome/browser/resources/access_code_cast:build_ts",
-    "//chrome/browser/resources/actor_overlay:build_ts",
     "//chrome/browser/resources/agents:build_ts",
     "//chrome/browser/resources/browser_switch:build_ts",
     "//chrome/browser/resources/certificate_manager:build_ts",
@@ -61,10 +60,7 @@ ts_library("build_ts") {
     "//chrome/browser/resources/watermark:build_ts",
     "//chrome/browser/resources/webnn_internals:build_ts",
     "//chrome/browser/resources/webui_gallery:build_ts",
-    "//chrome/browser/resources/webui_toolbar:build_ts",
-    "//chrome/browser/resources/webui_toolbar_shared:build_ts",
     "//chrome/test/data/pdf:build_ts",
-    "//chrome/test/data/webui/actor_overlay:build_ts",
     "//chrome/test/data/webui/certificate_manager:build_ts",
     "//chrome/test/data/webui/cr_components:build_ts",
     "//chrome/test/data/webui/cr_components/cr_shortcut_input:build_ts",
@@ -77,7 +73,6 @@ ts_library("build_ts") {
     "//chrome/test/data/webui/history:build_ts",
     "//chrome/test/data/webui/print_preview:build_ts",
     "//chrome/test/data/webui/settings:build_ts",
-    "//chrome/test/data/webui/webui_toolbar:build_ts",
     "//components/download/resources/download_internals:build_ts",
     "//components/neterror/resources:build_ts",
     "//components/policy/resources/webui:build_ts",

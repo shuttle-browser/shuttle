@@ -185,7 +185,6 @@ source_set("impl") {
     ":status_text_builder_utils",
     "//chrome/browser:browser_process",
     "//chrome/browser:primitives",
-    "//chrome/browser/actor",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/content_settings:content_settings_util",
@@ -268,7 +267,6 @@ source_set("impl") {
       "//chrome/browser/ui/android/pdf:pdf_jni_headers",
       "//chrome/browser/ui/android/tab_model",
       "//components/safe_browsing/android:safe_browsing_api_handler",
-      "//ui/android",
     ]
   }
 

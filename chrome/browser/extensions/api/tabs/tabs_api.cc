@@ -87,9 +87,6 @@
 #include "chrome/browser/ash/browser_delegate/browser_delegate.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
-#endif
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -624,31 +621,6 @@ bool GetTabById(int tab_id,
   return false;
 }
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-void NotifyExtensionTelemetry(Profile* profile,
-                              const Extension* extension,
-                              safe_browsing::TabsApiInfo::ApiMethod api_method,
-                              const std::string& current_url,
-                              const std::string& new_url,
-                              const std::optional<StackTrace>& js_callstack) {
-  // Ignore API calls that are not invoked by extensions.
-  if (!extension) {
-    return;
-  }
-
-  auto* extension_telemetry_service =
-      safe_browsing::ExtensionTelemetryService::Get(profile);
-
-  if (!extension_telemetry_service || !extension_telemetry_service->enabled()) {
-    return;
-  }
-
-  auto tabs_api_signal = std::make_unique<safe_browsing::TabsApiSignal>(
-      extension->id(), api_method, current_url, new_url,
-      js_callstack.value_or(StackTrace()));
-  extension_telemetry_service->AddSignal(std::move(tabs_api_signal));
-}
-#endif
 
 content::WebContents* GetTabsAPIDefaultWebContents(ExtensionFunction* function,
                                                    int tab_id,
@@ -2142,13 +2114,6 @@ void TabsCreateFunction::OpenTabInBrowser(BrowserWindowInterface& browser,
 
   content::WebContents* new_contents = result.value();
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  tabs_internal::NotifyExtensionTelemetry(
-      Profile::FromBrowserContext(browser_context()), extension(),
-      safe_browsing::TabsApiInfo::CREATE,
-      /*current_url=*/std::string(), original_url_.value_or(std::string()),
-      js_callstack());
-#endif
 
   if (opener_tab) {
     std::string error;
@@ -2490,21 +2455,10 @@ ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
   // Navigate the tab to a new location if the url is different.
   if (params->update_properties.url) {
     std::string updated_url = *params->update_properties.url;
-    // Get last committed or pending URL.
-    std::string current_url = contents->GetVisibleURL().is_valid()
-                                  ? contents->GetVisibleURL().spec()
-                                  : std::string();
 
     if (!UpdateURL(original_contents, updated_url, tab_id, &error)) {
       return RespondNow(Error(std::move(error)));
     }
-
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-    tabs_internal::NotifyExtensionTelemetry(
-        Profile::FromBrowserContext(browser_context()), extension(),
-        safe_browsing::TabsApiInfo::UPDATE, current_url, updated_url,
-        js_callstack());
-#endif
   }
 
   return RespondNow(GetResult(original_contents));
@@ -3032,16 +2986,6 @@ bool TabsRemoveFunction::RemoveTab(int tab_id, std::string* error) {
     return false;
   }
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  // Get last committed or pending URL.
-  std::string current_url = contents->GetVisibleURL().is_valid()
-                                ? contents->GetVisibleURL().spec()
-                                : std::string();
-  tabs_internal::NotifyExtensionTelemetry(
-      Profile::FromBrowserContext(browser_context()), extension(),
-      safe_browsing::TabsApiInfo::REMOVE, current_url,
-      /*new_url=*/std::string(), js_callstack());
-#endif
 
   // The tab might not immediately close after calling Close() below, so we
   // should wait until WebContentsDestroyed is called before responding.
@@ -3497,16 +3441,6 @@ ExtensionFunction::ResponseAction TabsCaptureVisibleTabFunction::Run() {
     return RespondNow(Error(std::move(error)));
   }
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-  // Get last committed URL.
-  std::string current_url = contents->GetLastCommittedURL().is_valid()
-                                ? contents->GetLastCommittedURL().spec()
-                                : std::string();
-  tabs_internal::NotifyExtensionTelemetry(
-      Profile::FromBrowserContext(browser_context()), extension(),
-      safe_browsing::TabsApiInfo::CAPTURE_VISIBLE_TAB, current_url,
-      /*new_url=*/std::string(), js_callstack());
-#endif
 
   // NOTE: CaptureAsync() may invoke its callback from a background thread,
   // hence the BindPostTask().

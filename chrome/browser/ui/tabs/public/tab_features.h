@@ -59,14 +59,6 @@ class BackToOpenerController;
 }  // namespace back_to_opener
 
 
-namespace actor {
-class ActorTabData;
-}  // namespace actor
-
-namespace actor::ui {
-class ActorUiTabControllerInterface;
-}  // namespace actor::ui
-
 namespace enterprise_data_protection {
 class DataProtectionNavigationController;
 }  // namespace enterprise_data_protection
@@ -269,16 +261,11 @@ class TabFeatures {
 
   std::unique_ptr<QwacWebContentsObserver> qwac_web_contents_observer_;
 
-  std::unique_ptr<actor::ui::ActorUiTabControllerInterface>
-      actor_ui_tab_controller_;
-
   std::unique_ptr<TabCreationMetricsController>
       tab_creation_metrics_controller_;
 
   std::unique_ptr<AskBeforeHttpDialogController>
       ask_before_http_dialog_controller_;
-
-  std::unique_ptr<actor::ActorTabData> actor_tab_data_;
 
   // Manages the sad tab view shown when the tab's main frame has crashed.
   // Null when the WebUI browser is enabled.

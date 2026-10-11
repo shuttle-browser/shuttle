@@ -22,9 +22,6 @@
 #include "chrome/common/controlled_frame/controlled_frame_api_provider.h"
 #endif
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "chrome/common/apps/platform_apps/chrome_apps_api_provider.h"
-#endif
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/common/chromeos/extensions/chromeos_system_extensions_api_provider.h"
@@ -74,10 +71,6 @@ void EnsureExtensionsClientInitialized() {
 
     extensions_client->SetFeatureDelegatedAvailabilityCheckMap(
         CombineAllAvailabilityCheckMaps());
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-    extensions_client->AddAPIProvider(
-        std::make_unique<chrome_apps::ChromeAppsAPIProvider>());
-#endif
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     extensions_client->AddAPIProvider(
         std::make_unique<controlled_frame::ControlledFrameAPIProvider>());

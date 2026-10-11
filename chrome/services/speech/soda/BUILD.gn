@@ -17,7 +17,6 @@ source_set("soda") {
     "soda_client.h",
     "soda_client_impl.cc",
     "soda_client_impl.h",
-    "soda_test_paths.h",
   ]
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]

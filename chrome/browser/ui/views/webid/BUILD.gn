@@ -42,7 +42,6 @@ source_set("webid") {
 
   deps = [
     "//base",
-    "//chrome/browser/actor",
     "//chrome/browser/image_fetcher",
     "//chrome/browser/net",
     "//chrome/browser/ui:browser_element_identifiers",

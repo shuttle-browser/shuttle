@@ -12,16 +12,12 @@
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/speech/speech_recognition_service.h"
-#include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
-#include "components/optimization_guide/core/model_execution/model_broker_client.h"
 #include "components/soda/soda_installer.h"
 #include "media/mojo/mojom/speech_recognition.mojom.h"
 #include "media/mojo/mojom/speech_recognition_service.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/remote.h"
-#include "mojo/public/cpp/bindings/unique_receiver_set.h"
-#include "services/on_device_model/public/mojom/on_device_model.mojom.h"
 
 namespace content {
 class BrowserContext;
@@ -35,8 +31,7 @@ namespace speech {
 class ChromeSpeechRecognitionService
     : public SpeechRecognitionService,
       public media::mojom::SpeechRecognitionContext,
-      public SodaInstaller::Observer,
-      public SpeechRecognitionSmallExpertModelInstaller::Observer {
+      public SodaInstaller::Observer {
  public:
   explicit ChromeSpeechRecognitionService(content::BrowserContext* context);
   ChromeSpeechRecognitionService(const ChromeSpeechRecognitionService&) =
@@ -72,21 +67,12 @@ class ChromeSpeechRecognitionService
       media::mojom::SpeechRecognitionOptionsPtr options,
       bool continuous) override;
 
-  // Closes active recognition sessions and OnDeviceModelService handles.
-  void CloseOnDeviceModelServiceHandles();
-
   // SodaInstaller::Observer:
   void OnSodaInstalled(speech::LanguageCode language_code) override;
   void OnSodaInstallError(speech::LanguageCode language_code,
                           speech::SodaInstaller::ErrorCode error_code) override;
   void OnSodaProgress(speech::LanguageCode language_code,
                       int progress) override;
-
-  // SpeechRecognitionSmallExpertModelInstaller::Observer:
-  void OnSpeechRecognitionSmallExpertModelInstalled() override;
-  void OnSpeechRecognitionSmallExpertModelStateChanged(
-      speech::SpeechRecognitionSmallExpertModelInstaller::
-          SpeechRecognitionSmallExpertModelState state) override;
 
  protected:
   content::BrowserContext* context() { return context_; }
@@ -97,14 +83,6 @@ class ChromeSpeechRecognitionService
 
  private:
   friend class ChromeSpeechRecognitionServiceTest;
-
-  void OnModelClientAvailable(
-      mojo::PendingReceiver<media::mojom::SpeechRecognitionRecognizer> receiver,
-      mojo::PendingRemote<media::mojom::SpeechRecognitionRecognizerClient>
-          client,
-      media::mojom::SpeechRecognitionOptionsPtr options,
-      BindRecognizerCallback callback,
-      base::WeakPtr<optimization_guide::ModelClient> model_client);
 
   void BindSodaRecognizer(
       mojo::PendingReceiver<media::mojom::SpeechRecognitionRecognizer> receiver,
@@ -131,17 +109,8 @@ class ChromeSpeechRecognitionService
   mojo::Remote<media::mojom::SpeechRecognitionContext>
       speech_recognition_context_remote_;
 
-  // ModelBrokerClient and recognizers for on-device model.
-  std::unique_ptr<optimization_guide::ModelBrokerClient> model_broker_client_;
-  mojo::UniqueReceiverSet<media::mojom::SpeechRecognitionRecognizer>
-      on_device_recognizers_;
-
   base::ScopedObservation<SodaInstaller, SodaInstaller::Observer>
       soda_installer_observer_{this};
-
-  base::ScopedObservation<SpeechRecognitionSmallExpertModelInstaller,
-                          SpeechRecognitionSmallExpertModelInstaller::Observer>
-      speech_recognition_small_expert_model_installer_observer_{this};
 
   base::WeakPtrFactory<ChromeSpeechRecognitionService> weak_factory_{this};
 };

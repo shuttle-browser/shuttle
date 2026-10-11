@@ -2773,7 +2773,6 @@ if (is_android) {
       "//components/variations/android:variations_java",
 
       # Provides org.chromium.ui.base.ResourceBundle.
-      "//ui/android:ui_no_recycler_view_java",
     ]
   }
 }

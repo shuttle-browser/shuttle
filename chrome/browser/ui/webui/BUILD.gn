@@ -46,12 +46,10 @@ source_set("configs") {
   deps = [
     ":net_export_ui",
     ":webui",
-    "//chrome/browser/actor/ui:actor_overlay",
     "//chrome/browser/ui/webui/agents",
     "//chrome/browser/ui",
     "//chrome/browser/ui/webui/about",
     "//chrome/browser/ui/webui/accessibility",
-    "//chrome/browser/ui/webui/actor_internals",
     "//chrome/browser/ui/webui/bluetooth_internals",
     "//chrome/browser/ui/webui/chrome_urls",
     "//chrome/browser/ui/webui/components",
@@ -90,7 +88,6 @@ source_set("configs") {
 
   if (!is_android) {
     deps += [
-      "//chrome/browser/actor/ui:actor_overlay_web_view",
       "//chrome/browser/ui/webui/color_pipeline_internals",
       "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/infobar_internals",
@@ -98,7 +95,6 @@ source_set("configs") {
       "//chrome/browser/ui/webui/omnibox_popup",
       "//chrome/browser/ui/webui/page_action_internals",
       "//chrome/browser/ui/webui/webui_js_error",
-      "//chrome/browser/ui/webui/webui_toolbar",
     ]
 
     if (!is_chromeos) {
@@ -661,7 +657,6 @@ if (!is_android) {
       "//chrome/browser/themes",
       "//chrome/browser/ui",
       "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/webui/webui_toolbar:impl",
       "//chrome/common:chrome_features",
       "//content/public/browser",
       "//content/public/common",
@@ -672,8 +667,7 @@ if (!is_android) {
     # webui_toolbar_ui.cc and webui_toolbar_ui_browsertest.cc include
     # theme_colors_source_manager(_factory).h, while this target depends on
     # //chrome/browser/ui (which pulls in webui_toolbar transitively).
-    allow_circular_includes_from =
-        [ "//chrome/browser/ui/webui/webui_toolbar:impl" ]
+    allow_circular_includes_from = []
   }
 
   source_set("webui_load_timer") {

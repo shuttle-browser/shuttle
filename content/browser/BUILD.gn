@@ -170,7 +170,6 @@ source_set("browser") {
     "//components/offline_pages/core/request_header",
     "//components/optimization_guide/core",
     "//components/optimization_guide/core:features",
-    "//components/optimization_guide/public/mojom",
     "//components/payments/content/icon",
     "//components/payments/mojom",
     "//components/performance_manager/scenario_api",
@@ -3314,7 +3313,6 @@ source_set("browser") {
       "//cc/slim",
       "//components/origin_matcher",
       "//components/tracing:graphics_provider",
-      "//content/public/android:browser_jni",
       "//content/public/browser:transfer_input_to_viz_result_enum",
       "//device/gamepad/public/mojom",
       "//gpu/command_buffer/service:gles2",
@@ -3327,8 +3325,6 @@ source_set("browser") {
       "//ui/accessibility:ax_base_android",
       "//ui/accessibility/mojom",
       "//ui/accessibility/mojom:ax_assistant_mojom",
-      "//ui/android",
-      "//ui/android:ui_android_jni_headers",
       "//ui/compositor",
       "//ui/gfx/animation/keyframe",
       "//url",
@@ -3405,8 +3401,6 @@ source_set("browser") {
 
     if (!is_fuchsia) {
       sources += [
-        "speech/on_device_speech_recognition_engine_impl.cc",
-        "speech/on_device_speech_recognition_engine_impl.h",
         "speech/soda_speech_recognition_engine_impl.cc",
         "speech/soda_speech_recognition_engine_impl.h",
       ]

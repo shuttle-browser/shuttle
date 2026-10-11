@@ -32,9 +32,6 @@
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/command.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window_registry.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -52,9 +49,6 @@ class DeveloperPrivateEventRouter : public ExtensionRegistryObserver,
                                     public ExtensionManagement::Observer,
                                     public ExtensionAllowlist::Observer,
                                     public CommandService::Observer,
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-                                    public AppWindowRegistry::Observer,
-#endif  // ENABLE_PLATFORM_APPS
                                     public ToolbarActionsModel::Observer {
  public:
   static api::developer_private::UserSiteSettings ConvertToUserSiteSettings(
@@ -145,11 +139,6 @@ class DeveloperPrivateEventRouter : public ExtensionRegistryObserver,
   void OnExtensionCommandRemoved(const ExtensionId& extension_id,
                                  const std::string& command_name) override;
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // AppWindowRegistry::Observer:
-  void OnAppWindowAdded(AppWindow* window) override;
-  void OnAppWindowRemoved(AppWindow* window) override;
-#endif  // ENABLE_PLATFORM_APPS
 
   // ToolbarActionsModel::Observer:
   void OnToolbarActionAdded(const ToolbarActionsModel::ActionId& id) override {}
@@ -194,10 +183,6 @@ class DeveloperPrivateEventRouter : public ExtensionRegistryObserver,
   base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
       toolbar_actions_model_observation_{this};
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  base::ScopedObservation<AppWindowRegistry, AppWindowRegistry::Observer>
-      app_window_registry_observation_{this};
-#endif  // ENABLE_PLATFORM_APPS
 
   // The set of IDs of the Extensions that have subscribed to DeveloperPrivate
   // events. Since the only consumer of the DeveloperPrivate API is currently

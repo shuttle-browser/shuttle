@@ -19,7 +19,6 @@
 #include "chrome/browser/net_benchmarking.h"
 #include "chrome/browser/predictors/loading_predictor.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_web_request_reporter_impl.h"
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
@@ -171,16 +170,9 @@ void MaybeCreateExtensionWebRequestReporterForRenderer(
     int process_id,
     mojo::PendingReceiver<safe_browsing::mojom::ExtensionWebRequestReporter>
         receiver) {
+  // Shuttle: extension telemetry is removed. Keep the interface registered
+  // (renderers request it) and drop the receiver.
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-
-  content::RenderProcessHost* render_process_host =
-      content::RenderProcessHost::FromID(process_id);
-  if (!render_process_host) {
-    return;
-  }
-
-  safe_browsing::ExtensionWebRequestReporterImpl::Create(render_process_host,
-                                                         std::move(receiver));
 }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 #endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)

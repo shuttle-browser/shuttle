@@ -46,7 +46,6 @@ class ExtensionsToolbarDesktop;
 class HomeButton;
 class ExtensionsToolbarCoordinator;
 class ReloadButton;
-class WebUIToolbarWebView;
 class PinnedToolbarActionsContainer;
 class ToolbarButton;
 class ToolbarController;
@@ -108,8 +107,6 @@ class ToolbarView : public views::AccessiblePaneView,
   // Returns true if the app menu is focused.
   bool GetAppMenuFocused() const;
 
-  WebUIToolbarWebView* GetWebUIToolbarViewForTesting() override;
-
   OverflowButton* overflow_button() { return overflow_button_; }
 
   // Returns true if the view is a descendant of the ToolbarView and should be
@@ -144,21 +141,10 @@ class ToolbarView : public views::AccessiblePaneView,
     return &app_menu_icon_controller_;
   }
 
-  // The ToolbarController may be nullptr. This happens when there is a
-  // WebUIToolbarWebView that is handling all toolbar controls.
   ToolbarController* toolbar_controller() { return toolbar_controller_.get(); }
   const ToolbarController* toolbar_controller() const {
     return toolbar_controller_.get();
   }
-
-  WebUIToolbarWebView* detached_toolbar_webview_for_testing() {
-    return detached_toolbar_webview_.get();
-  }
-
-  // Forwards an early teardown request to any child WebUIToolbarWebView
-  // instances (both embedded and detached) to destroy their hosted
-  // WebContents before browser-side IPC services disconnect.
-  void DestroyWebUIToolbarWebContents();
 
   // LocationBarView::Delegate:
   content::WebContents* GetWebContents() override;
@@ -267,21 +253,18 @@ class ToolbarView : public views::AccessiblePaneView,
   raw_ptr<ToolbarButton> back_ = nullptr;
   raw_ptr<ToolbarButton> forward_ = nullptr;
   raw_ptr<ReloadButton> reload_ = nullptr;
-  raw_ptr<WebUIToolbarWebView> toolbar_webview_ = nullptr;
-  std::unique_ptr<WebUIToolbarWebView> detached_toolbar_webview_;
   raw_ptr<HomeButton> home_ = nullptr;
   raw_ptr<SplitTabsToolbarButton> split_tabs_ = nullptr;
   raw_ptr<LocationBarView> location_bar_view_ = nullptr;
 
-  // An alias for `location_bar_view_` or `toolbar_webview_->GetLocationBar()`.
+  // An alias for `location_bar_view_`.
   raw_ptr<LocationBar> location_bar_ = nullptr;
   raw_ptr<ExtensionsToolbarDesktop> extensions_container_ = nullptr;
   raw_ptr<ToolbarDivider> toolbar_divider_ = nullptr;
   raw_ptr<PinnedToolbarActionsContainer> pinned_toolbar_actions_container_ =
       nullptr;
 
-  // An alias for `pinned_toolbar_actions_container_` or
-  // `toolbar_webview_->GetPinnedActionsContainer()`.
+  // An alias for `pinned_toolbar_actions_container_`.
   raw_ptr<PinnedToolbarActions> pinned_toolbar_actions_ = nullptr;
   raw_ptr<BrowserAppMenuButton> app_menu_button_ = nullptr;
 

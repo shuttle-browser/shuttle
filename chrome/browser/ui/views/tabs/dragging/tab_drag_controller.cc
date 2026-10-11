@@ -46,7 +46,6 @@
 #include "chrome/browser/ui/views/tabs/dragging/window_finder.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
 #include "chrome/browser/ui/views/tabs/tab_slot_view.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/split_tab_data.h"
@@ -113,31 +112,6 @@ namespace {
 // creation and makes it easier to drag tabs out of a restored window that had
 // maximized size.
 constexpr int kMaximizedWindowInset = 10;  // DIPs.
-
-class VisibilityWaiter : public views::WidgetObserver {
- public:
-  explicit VisibilityWaiter(views::Widget* widget) {
-    observation_.Observe(widget);
-  }
-  void Wait() { run_loop_.Run(); }
-
- private:
-  void OnWidgetVisibilityChanged(views::Widget* widget, bool visible) override {
-    if (visible) {
-      run_loop_.Quit();
-    }
-  }
-  void OnWidgetDestroying(views::Widget* widget) override {
-    observation_.Reset();
-    run_loop_.Quit();
-  }
-
-  // Required to cooperatively halt the OS drag session while awaiting
-  // WebUI paint without blocking the UI thread.
-  base::RunLoop run_loop_{base::RunLoop::Type::kNestableTasksAllowed};
-  base::ScopedObservation<views::Widget, views::WidgetObserver> observation_{
-      this};
-};
 
 constexpr char kTabDraggingPresentationTimeHistogram[] =
     "Browser.TabDragging.PresentationTime";
@@ -1773,32 +1747,6 @@ TabDragController::DetachIntoNewBrowserAndRunMoveLoop(
   browser->GetWindow()->Show();
   dragged_widget->SetVisibilityChangedAnimationsEnabled(true);
 
-  // When InitialWebUI is enabled, the asynchronous loading of WebUI might cause
-  // the detached browser window to be momentarily invisible during creation. To
-  // prevent the mouse drag from racing ahead of the window rendering and
-  // dispatching inputs to the wrong target, we wait for the widget to properly
-  // show itself before starting the nested move loop.
-  if (base::FeatureList::IsEnabled(features::kInitialWebUI)) {
-    if (!dragged_widget->IsVisible()) {
-      current_state_ = DragState::kWaitingForWindowToShow;
-      VisibilityWaiter waiter(dragged_widget);
-
-#if BUILDFLAG(IS_LINUX)
-      // VisibilityWaiter runs a kNestableTasksAllowed loop while the user holds
-      // the pointer button, before the move loop's own suppression scope is
-      // established; suppress data drags for its duration as well.
-      auto suppress_data_drag =
-          views::DesktopDragDropClientOzone::ScopedSuppressForWindowMove();
-#endif
-      base::WeakPtr<TabDragController> ref(weak_factory_.GetWeakPtr());
-      waiter.Wait();
-      if (!ref) {
-        return Liveness::kDeleted;
-      }
-      current_state_ = DragState::kDraggingWindow;
-    }
-  }
-
 #if BUILDFLAG(IS_MAC)
   // Set the window origin after making it visible, to avoid child windows (such
   // as the find bar) being misplaced on Mac. See https://crbug.com/403129048
@@ -2717,13 +2665,8 @@ BrowserWindowInterface* TabDragController::CreateBrowserForDrag(
   // the previous window.
   create_params.user_title = std::string();
 
-  base::TimeTicks now = base::TimeTicks::Now();
   BrowserWindowInterface* browser =
       CreateBrowserWindow(std::move(create_params));
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(browser)) {
-    manager->SetWindowCreationInfo(
-        waap::NewWindowCreationSource::kDragToNewWindow, now);
-  }
   is_dragging_new_browser_ = true;
   BrowserView::GetBrowserViewForBrowser(browser)
       ->GetWidget()

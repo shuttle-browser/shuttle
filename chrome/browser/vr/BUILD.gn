@@ -303,7 +303,6 @@ if (enable_vr) {
     if (is_android) {
       deps += [
         "//chrome:chrome_android_core",
-        "//ui/android:ui_java",
       ]
     }
 
@@ -321,7 +320,6 @@ if (enable_vr) {
       "//testing/perf",
     ]
     if (is_android) {
-      deps += [ "//ui/android:ui_java" ]
     }
 
     # Needed for isolate script to execute

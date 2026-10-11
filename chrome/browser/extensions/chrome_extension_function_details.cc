@@ -16,10 +16,6 @@
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/base_window.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
@@ -105,17 +101,6 @@ gfx::NativeWindow ChromeExtensionFunctionDetails::GetNativeWindowForUI() {
     }
   }
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  // Then, check for any app windows that are open.
-  if (function_->extension() && function_->extension()->is_app()) {
-    AppWindow* window =
-        AppWindowRegistry::Get(function_->browser_context())
-            ->GetCurrentAppWindowForApp(function_->extension()->id());
-    if (window) {
-      return window->web_contents()->GetTopLevelNativeWindow();
-    }
-  }
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
   // As a last resort, find a browser.
   std::vector<BrowserWindowInterface*> all_browsers =

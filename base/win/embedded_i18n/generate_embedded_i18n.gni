@@ -52,15 +52,8 @@ import("//build/config/python.gni")
 
 # Locales in |all_chrome_locales| are for pak file format. We need to convert
 # them to the xtb version.
-default_embedded_i18_locales = all_chrome_locales - [
-                                 "en-US",
-                                 "he",
-                                 "nb",
-                               ] +
-                               [
-                                 "iw",
-                                 "no",
-                               ] - pseudolocales
+# Shuttle: en-US only (no xtb translations).
+default_embedded_i18_locales = []
 
 template("generate_embedded_i18n") {
   assert(defined(invoker.grd_files_info),
@@ -126,6 +119,7 @@ template("generate_embedded_i18n") {
       xtb_locales = []
       xtb_locales = grd_file_info[3]
 
+      not_needed([ "resource_path" ])  # Shuttle: no xtb locales
       foreach(locale, xtb_locales) {
         expected_xtb_input = "${resource_path}/${grdfile_name}_${locale}.xtb"
         args += [

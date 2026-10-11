@@ -5,7 +5,7 @@
 import("../build_webui_tests.gni")
 
 build_webui_tests("build") {
-  cc_test_files = [ "metrics_internals_browsertest.cc" ]
+  cc_test_files = []
 
   files = [
     "field_trials_test.ts",

@@ -6,7 +6,6 @@
 
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
-#include "chrome/browser/actor/ui/actor_overlay_ui.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/history_clusters/history_clusters_service_factory.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -26,11 +25,8 @@
 #include "chrome/browser/ui/webui/page_action_internals/page_action_internals_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_ui.h"
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
-#include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_ui.h"
 #include "chrome/common/chrome_features.h"
-#include "components/browser_apis/browser_controls/browser_controls_api.mojom.h"
 #include "components/browser_apis/tab_drag/tab_drag_api.mojom.h"
-#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api.mojom.h"
 #include "components/history_clusters/core/history_clusters_service.h"
 #include "components/multistep_filter/core/features.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
@@ -143,13 +139,6 @@ void PopulateChromeWebUIFrameBindersPartsDesktop(
   RegisterWebUIControllerInterfaceBinder<downloads::mojom::PageHandlerFactory,
                                          DownloadsUI>(map);
 
-  if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
-      features::kGlicActorUiOverlay.Get()) {
-    RegisterWebUIControllerInterfaceBinder<
-        actor::ui::mojom::ActorOverlayPageHandlerFactory,
-        actor::ui::ActorOverlayUI>(map);
-  }
-
   RegisterWebUIControllerInterfaceBinder<history::mojom::PageHandler,
                                          HistoryUI>(map);
 
@@ -216,15 +205,6 @@ void PopulateChromeWebUIFrameInterfaceBrokersTrustedPartsDesktop(
 #endif  // !BUILDFLAG(IS_CHROMEOS)
       .Add<customize_color_scheme_mode::mojom::
                CustomizeColorSchemeModeHandlerFactory>();
-
-  if (features::IsWebUIToolbarEnabled() ||
-      base::FeatureList::IsEnabled(
-          features::kWebUIToolbarProcessOverheadExperiment)) {
-    registry.ForWebUI<WebUIToolbarUI>()
-        .Add<browser_controls_api::mojom::BrowserControlsService>()
-        .Add<toolbar_ui_api::mojom::ToolbarUIService>()
-        .Add<searchbox::mojom::PageHandlerFactory>();
-  }
 
   // TODO(crbug.com/452983498): Migrate all remaining
   // RegisterWebUIControllerInterfaceBinder calls to registry.ForWebUI().Add()

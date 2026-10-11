@@ -39,7 +39,6 @@ group("resources") {
     public_deps += [
       ":app_icon_resources",
       ":dev_ui_paks",
-      "actor_overlay:resources",
       "agents:resources",
       "certificate_manager:resources",
       "content_settings:resources",
@@ -53,8 +52,6 @@ group("resources") {
       "tab_group_home:resources",
       "webnn_internals:resources",
       "webui_gallery:resources",
-      "webui_toolbar:resources",
-      "webui_toolbar_shared:resources",
       "//components/browser_apis/tab_strip/resources",
     ]
     if (is_chrome_branded) {
@@ -158,7 +155,6 @@ group("resources") {
 if (enable_webui_generate_code_cache) {
   group("code_cache_resources") {
     public_deps = [
-      "webui_toolbar:code_cache_resources",
     ]
   }
 }
@@ -283,20 +279,6 @@ if (!is_android) {
     output_dir = "$root_gen_dir/chrome"
   }
 
-  if (is_chromeos) {
-    grit("office_web_app_resources") {
-      source = "office_web_app/resources.grd"
-      inputs = [ "office_web_app/icons/office_192.png" ]
-      defines = chrome_grit_defines
-      outputs = [
-        "grit/office_web_app_resources.h",
-        "grit/office_web_app_resources_map.cc",
-        "grit/office_web_app_resources_map.h",
-        "office_web_app_resources.pak",
-      ]
-      output_dir = "$root_gen_dir/chrome"
-    }
-  }
 
 }
 
@@ -318,7 +300,6 @@ group("dev_ui_resources") {
     "subresource_filter:resources",
     "suggest_internals:resources",
     "usb_internals:resources",
-    "//components/actor/core/internals/resources",
     "//components/download/resources/download_internals:resources",
     "//components/enterprise/connectors/resources",
     "//components/history_clusters/history_clusters_internals/resources",
@@ -392,7 +373,6 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/subresource_filter_internals_resources.pak",
     "$root_gen_dir/chrome/suggest_internals_resources.pak",
     "$root_gen_dir/chrome/usb_internals_resources.pak",
-    "$root_gen_dir/components/actor_internals_resources.pak",
     "$root_gen_dir/components/connectors_internals_resources.pak",
     "$root_gen_dir/components/dev_ui_components_resources.pak",
     "$root_gen_dir/components/download_internals_resources.pak",

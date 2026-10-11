@@ -58,7 +58,6 @@ class SystemNotificationHelper;
 class StartupData;
 
 namespace speech {
-class SpeechRecognitionSmallExpertModelInstaller;
 }  // namespace speech
 
 namespace embedder_support {
@@ -239,8 +238,6 @@ class BrowserProcessImpl : public BrowserProcess,
   UsbSystemTrayIcon* usb_system_tray_icon() override;
   void set_usb_system_tray_icon_for_test(
       std::unique_ptr<UsbSystemTrayIcon> icon) override;
-  speech::SpeechRecognitionSmallExpertModelInstaller*
-  speech_recognition_small_expert_model_installer() override;
 #endif
 
   os_crypt_async::OSCryptAsync* os_crypt_async() override;
@@ -455,9 +452,6 @@ class BrowserProcessImpl : public BrowserProcess,
   // SodaInstallerImpl depends on ComponentUpdateService, so define it here
   // to ensure that SodaInstallerImpl gets destructed first.
   std::unique_ptr<speech::SodaInstaller> soda_installer_impl_;
-
-  std::unique_ptr<speech::SpeechRecognitionSmallExpertModelInstaller>
-      speech_recognition_small_expert_model_installer_;
 #endif
 
   std::unique_ptr<BrowserProcessPlatformPart> platform_part_;

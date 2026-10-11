@@ -497,19 +497,6 @@ void SpellcheckService::StartRecordingMetrics(bool spellcheck_enabled) {
 
 void SpellcheckService::InitForRenderer(content::RenderProcessHost* host) {
   base::ScopedUmaHistogramTimer timer("SpellCheck.Browser.InitForRendererTime");
-  // Skip initialization of the spellcheck service for top chrome and NTP web UI
-  // pages when Initial WebUI feature is enabled for optimizing browser startup.
-  if (host->IsForTopChromeWebUI() &&
-      base::FeatureList::IsEnabled(features::kInitialWebUI) &&
-      features::kInitialWebUIWithoutSpellCheck.Get()) {
-    return;
-  }
-  if (base::FeatureList::IsEnabled(
-          features::kInitialWebUIWithoutSpellCheckForNtp) &&
-      host->GetUserData(search::kIsNTPProcessKey)) {
-    return;
-  }
-
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   content::BrowserContext* context = host->GetBrowserContext();

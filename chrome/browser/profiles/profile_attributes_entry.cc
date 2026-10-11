@@ -10,6 +10,8 @@
 
 #include "base/logging.h"
 #include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -18,7 +20,6 @@
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/signin/signin_util.h"
-#include "chrome/browser/ui/profiles/profile_colors_util.h"
 #include "chrome/common/pref_names.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
 #include "components/prefs/pref_registry_simple.h"
@@ -70,10 +71,6 @@ const char kLastDownloadedGAIAPictureUrlWithSizeKey[] =
 const char kGAIAPictureFileNameKey[] = "gaia_picture_file_name";
 
 // Profile colors info.
-const char kProfileHighlightColorKey[] = "profile_highlight_color";
-const char kDefaultAvatarFillColorKey[] = "default_avatar_fill_color";
-const char kDefaultAvatarStrokeColorKey[] = "default_avatar_stroke_color";
-const char kProfileColorSeedKey[] = "profile_color_seed";
 
 constexpr int kIntegerNotSet = -1;
 // Local state pref to keep track of the next available profile bucket.
@@ -100,7 +97,6 @@ int NextAvailableMetricsBucketIndex() {
 
 }  // namespace
 
-using profiles::PlaceholderAvatarIconParams;
 
 const char ProfileAttributesEntry::kSupervisedUserId[] = "managed_user_id";
 const char ProfileAttributesEntry::kAvatarIconKey[] = "avatar_icon";
@@ -353,66 +349,6 @@ std::u16string ProfileAttributesEntry::GetUserName() const {
   return GetString16(kUserNameKey);
 }
 
-gfx::Image ProfileAttributesEntry::GetAvatarIcon(
-    int size_for_placeholder_avatar,
-    bool use_high_res_file,
-    const PlaceholderAvatarIconParams& icon_params) const {
-  return GetAvatarIconWithType(size_for_placeholder_avatar, use_high_res_file,
-                               icon_params)
-      .first;
-}
-
-std::pair<gfx::Image, AvatarIconType>
-ProfileAttributesEntry::GetAvatarIconWithType(
-    int size_for_placeholder_avatar,
-    bool use_high_res_file,
-    const PlaceholderAvatarIconParams& icon_params) const {
-  if (IsUsingGAIAPicture()) {
-    // The picture may be null if it has not finished downloading yet; in that
-    // case fall through to return the avatar-index-based icon below.
-    if (const gfx::Image* image = GetGAIAPicture()) {
-      return {*image, AvatarIconType::kNonPlaceholder};
-    }
-  }
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-  // TODO(crbug.com/40138086): After launch, remove the treatment of placeholder
-  // avatars from GetHighResAvatar() and from any other places.
-  if (GetAvatarIconIndex() == profiles::GetPlaceholderAvatarIndex()) {
-    return {GetPlaceholderAvatarIcon(size_for_placeholder_avatar, icon_params),
-            AvatarIconType::kPlaceholder};
-  }
-#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Use the high resolution version of the avatar if it exists. Mobile doesn't
-  // need the high resolution version so no need to fetch it.
-  if (use_high_res_file) {
-    if (const gfx::Image* image = GetHighResAvatar()) {
-      return {*image, AvatarIconType::kNonPlaceholder};
-    }
-  }
-#endif
-
-  const int icon_index = GetAvatarIconIndex();
-#if BUILDFLAG(IS_WIN)
-  if (!profiles::IsModernAvatarIconIndex(icon_index)) {
-    // Return the 2x version of the old avatar, defined specifically for
-    // Windows. No special treatment is needed for modern avatars as they
-    // already have high enough resolution.
-    const int win_resource_id =
-        profiles::GetOldDefaultAvatar2xIconResourceIDAtIndex(icon_index);
-    return {ui::ResourceBundle::GetSharedInstance().GetNativeImageNamed(
-                win_resource_id),
-            AvatarIconType::kNonPlaceholder};
-  }
-#endif
-  int resource_id = profiles::GetDefaultAvatarIconResourceIDAtIndex(icon_index);
-  return {
-      ui::ResourceBundle::GetSharedInstance().GetNativeImageNamed(resource_id),
-      AvatarIconType::kNonPlaceholder};
-}
-
 bool ProfileAttributesEntry::GetBackgroundStatus() const {
   return GetBool(kBackgroundAppsKey);
 }
@@ -523,55 +459,8 @@ bool ProfileAttributesEntry::IsDasherlessManagement() const {
 }
 
 size_t ProfileAttributesEntry::GetAvatarIconIndex() const {
-  std::string icon_url = GetString(kAvatarIconKey);
-  size_t icon_index = 0;
-  if (!profiles::IsDefaultAvatarIconUrl(icon_url, &icon_index))
-    DLOG(WARNING) << "Unknown avatar icon: " << icon_url;
-
-  return icon_index;
-}
-
-std::optional<ProfileThemeColors>
-ProfileAttributesEntry::GetProfileThemeColorsIfSet() const {
-  std::optional<SkColor> profile_highlight_color =
-      GetProfileThemeColor(kProfileHighlightColorKey);
-  std::optional<SkColor> default_avatar_fill_color =
-      GetProfileThemeColor(kDefaultAvatarFillColorKey);
-  std::optional<SkColor> default_avatar_stroke_color =
-      GetProfileThemeColor(kDefaultAvatarStrokeColorKey);
-  std::optional<SkColor> profile_color_seed =
-      GetProfileThemeColor(kProfileColorSeedKey);
-
-  DCHECK_EQ(profile_highlight_color.has_value(),
-            default_avatar_stroke_color.has_value());
-  DCHECK_EQ(profile_highlight_color.has_value(),
-            default_avatar_fill_color.has_value());
-
-  if (!profile_highlight_color.has_value()) {
-    return std::nullopt;
-  }
-
-  ProfileThemeColors colors;
-  colors.profile_highlight_color = profile_highlight_color.value();
-  colors.default_avatar_fill_color = default_avatar_fill_color.value();
-  colors.default_avatar_stroke_color = default_avatar_stroke_color.value();
-  colors.profile_color_seed =
-      profile_color_seed.value_or(profile_highlight_color.value());
-
-  return colors;
-}
-
-ProfileThemeColors ProfileAttributesEntry::GetProfileThemeColors() const {
-#if BUILDFLAG(IS_ANDROID)
-  // Profile theme colors shouldn't be queried on Android.
-  NOTREACHED();
-#else
-  std::optional<ProfileThemeColors> theme_colors = GetProfileThemeColorsIfSet();
-  if (theme_colors)
-    return *theme_colors;
-
-  return GetDefaultProfileThemeColors();
-#endif
+  // Shuttle: there is no profile avatar UI, the index is always 0.
+  return 0;
 }
 
 size_t ProfileAttributesEntry::GetMetricsBucketIndex() {
@@ -737,7 +626,7 @@ void ProfileAttributesEntry::SetGAIAPicture(
     // Save the new bitmap to disk.
     new_file_name =
         old_file_name.empty()
-            ? base::FilePath(profiles::kGAIAPictureFileName).MaybeAsASCII()
+            ? "Google Profile Picture.png"
             : old_file_name;
     base::FilePath image_path = profile_path_.AppendASCII(new_file_name);
     profile_attributes_storage_->SaveGAIAImageAtPath(
@@ -798,49 +687,9 @@ void ProfileAttributesEntry::SetIsUsingDefaultAvatar(bool value) {
 }
 
 void ProfileAttributesEntry::SetAvatarIconIndex(size_t icon_index) {
-  std::string default_avatar_icon_url =
-      profiles::GetDefaultAvatarIconUrl(icon_index);
+  std::string default_avatar_icon_url = base::StrCat(
+      {"chrome://theme/IDR_PROFILE_AVATAR_", base::NumberToString(icon_index)});
   if (SetString(kAvatarIconKey, default_avatar_icon_url)) {
-    // On Windows, Taskbar and Desktop icons are refreshed every time
-    // |OnProfileAvatarChanged| notification is fired.
-    // As the current avatar icon is already set to |default_avatar_icon_url|,
-    // it is important to avoid firing |OnProfileAvatarChanged| in this case.
-    // See http://crbug.com/41423540
-    base::FilePath profile_path = GetPath();
-    if (!profile_attributes_storage_->GetDisableAvatarDownloadForTesting()) {
-      profile_attributes_storage_->DownloadHighResAvatarIfNeeded(icon_index,
-                                                                 profile_path);
-    }
-
-    profile_attributes_storage_->NotifyOnProfileAvatarChanged(profile_path);
-  }
-}
-
-void ProfileAttributesEntry::SetProfileThemeColors(
-    const std::optional<ProfileThemeColors>& colors) {
-  bool changed = false;
-  if (colors.has_value()) {
-    changed |=
-        SetInteger(kProfileHighlightColorKey, colors->profile_highlight_color);
-    changed |= SetInteger(kDefaultAvatarFillColorKey,
-                          colors->default_avatar_fill_color);
-    changed |= SetInteger(kDefaultAvatarStrokeColorKey,
-                          colors->default_avatar_stroke_color);
-    changed |= SetInteger(kProfileColorSeedKey, colors->profile_color_seed);
-  } else {
-    changed |= ClearValue(kProfileHighlightColorKey);
-    changed |= ClearValue(kDefaultAvatarFillColorKey);
-    changed |= ClearValue(kDefaultAvatarStrokeColorKey);
-    changed |= ClearValue(kProfileColorSeedKey);
-  }
-
-  if (changed) {
-    profile_attributes_storage_->NotifyProfileThemeColorsChanged(GetPath());
-  }
-
-  // Only notify if the profile uses the placeholder avatar.
-  if (changed &&
-      GetAvatarIconIndex() == profiles::GetPlaceholderAvatarIndex()) {
     profile_attributes_storage_->NotifyOnProfileAvatarChanged(GetPath());
   }
 }
@@ -912,45 +761,6 @@ void ProfileAttributesEntry::SetAuthInfo(const GaiaId& gaia_id,
   profile_attributes_storage_->NotifyProfileAuthInfoChanged(profile_path_);
 }
 
-const gfx::Image* ProfileAttributesEntry::GetHighResAvatar() const {
-  const size_t avatar_index = GetAvatarIconIndex();
-
-  // If this is the placeholder avatar, it is already included in the
-  // resources, so it doesn't need to be downloaded.
-  if (avatar_index == profiles::GetPlaceholderAvatarIndex()) {
-    return &ui::ResourceBundle::GetSharedInstance().GetImageNamed(
-        profiles::GetPlaceholderAvatarIconResourceID());
-  }
-
-  const std::string key =
-      profiles::GetDefaultAvatarIconFileNameAtIndex(avatar_index);
-  const base::FilePath image_path =
-      profiles::GetPathOfHighResAvatarAtIndex(avatar_index);
-  return profile_attributes_storage_->LoadAvatarPictureFromPath(GetPath(), key,
-                                                                image_path);
-}
-
-gfx::Image ProfileAttributesEntry::GetPlaceholderAvatarIcon(
-    int size,
-    const PlaceholderAvatarIconParams& icon_params) const {
-  ProfileThemeColors colors = GetProfileThemeColors();
-
-  // Outline Silhouette Person Icon
-  if (icon_params.visibility_against_background.has_value()) {
-    // If the icon should be visible against the background, it cannot have a
-    // background or padding.
-    CHECK(!icon_params.has_background);
-    CHECK(!icon_params.has_padding);
-    return profiles::GetPlaceholderAvatarIconVisibleAgainstBackground(
-        colors.profile_color_seed, size,
-        icon_params.visibility_against_background.value());
-  }
-
-  return profiles::GetPlaceholderAvatarIconWithColors(
-      colors.default_avatar_fill_color, colors.default_avatar_stroke_color,
-      size, icon_params);
-}
-
 const base::DictValue* ProfileAttributesEntry::GetEntryData() const {
   if (!prefs_) {
     return nullptr;
@@ -996,16 +806,6 @@ int ProfileAttributesEntry::GetInteger(const char* key) const {
   const base::Value* value = GetValue(key);
   if (!value || !value->is_int())
     return kIntegerNotSet;
-  return value->GetInt();
-}
-
-std::optional<SkColor> ProfileAttributesEntry::GetProfileThemeColor(
-    const char* key) const {
-  // Do not use GetInteger(), as it defaults to kIntegerNotSet which is
-  // undistinguishable from a valid color.
-  const base::Value* value = GetValue(key);
-  if (!value || !value->is_int())
-    return std::nullopt;
   return value->GetInt();
 }
 

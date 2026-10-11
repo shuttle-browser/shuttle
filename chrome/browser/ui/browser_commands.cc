@@ -87,7 +87,6 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/browser/upgrade_detector/upgrade_detector.h"
 #include "chrome/common/chrome_features.h"
@@ -775,12 +774,7 @@ BrowserWindowInterface* OpenEmptyWindow(Profile* profile,
                                    true);
   params.should_trigger_session_restore = should_trigger_session_restore;
 
-  base::TimeTicks now = base::TimeTicks::Now();
   BrowserWindowInterface* browser = CreateBrowserWindow(std::move(params));
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(browser)) {
-    manager->SetWindowCreationInfo(
-        waap::NewWindowCreationSource::kBrowserInitiated, now);
-  }
 
   // Startup tabs could be created during browser creation. Add an empty tab
   // only if no tabs are created.
@@ -1360,12 +1354,7 @@ void MoveTabsToNewWindow(BrowserWindowInterface* browser,
     return;
   }
 
-  base::TimeTicks now = base::TimeTicks::Now();
   BrowserWindowInterface* new_browser = CreateNewBrowser(browser, true);
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(new_browser)) {
-    manager->SetWindowCreationInfo(
-        waap::NewWindowCreationSource::kBrowserInitiated, now);
-  }
 
   MoveTabsToWindowImpl(browser, new_browser, tab_indices);
 }

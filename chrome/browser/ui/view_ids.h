@@ -100,7 +100,6 @@ enum ViewID {
   VIEW_ID_READ_ANYTHING_OVERLAY,
 
   // Glic Actor Overlay
-  VIEW_ID_ACTOR_OVERLAY,
 
   // The contents split.
   VIEW_ID_CONTENTS_SPLIT,

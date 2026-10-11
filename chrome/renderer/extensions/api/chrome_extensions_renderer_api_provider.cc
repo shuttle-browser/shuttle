@@ -25,9 +25,6 @@
 #include "pdf/buildflags.h"
 #include "printing/buildflags/buildflags.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "chrome/renderer/extensions/api/app_hooks_delegate.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/renderer/extensions/api/accessibility_private_hooks_delegate.h"
@@ -104,12 +101,6 @@ void ChromeExtensionsRendererAPIProvider::AddBindingsSystemHooks(
   bindings->RegisterHooksDelegate(
       "tabs", std::make_unique<extensions::TabsHooksDelegate>(
                   bindings_system->messaging_service()));
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  bindings->RegisterHooksDelegate(
-      "app", std::make_unique<extensions::AppHooksDelegate>(
-                 dispatcher, bindings->request_handler(),
-                 bindings_system->GetIPCMessageSender()));
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 #if BUILDFLAG(IS_CHROMEOS)
   bindings->RegisterHooksDelegate(
       "accessibilityPrivate",

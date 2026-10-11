@@ -39,7 +39,6 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/actor/ui/actor_overlay_web_view.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/browsing_data_important_sites_util.h"
@@ -56,7 +55,6 @@
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
-#include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/profiles/profiles_state.h"
@@ -180,8 +178,6 @@
 #include "chrome/browser/ui/views/toolbar/reload_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/views/update_recommended_message_box.h"
-#include "chrome/browser/ui/waap/initial_web_ui_manager.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
@@ -799,10 +795,6 @@ BrowserView::BrowserView(BrowserWindowInterface* browser)
       exclusive_access_context_(
           std::make_unique<ExclusiveAccessContextImpl>(*this)),
       browser_(browser) {
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(browser_.get())) {
-    manager->OnBrowserWindowCreated();
-  }
-
   SetShowIcon(::ShouldShowWindowIcon(browser_.get()));
 
   // In forced app mode, all size controls are always disabled. Otherwise, use
@@ -1420,13 +1412,6 @@ void BrowserView::Show() {
     return;
   }
 
-  if (auto* manager = InitialWebUIManager::From(browser())) {
-    if (manager->RequestDeferShow(base::BindOnce(
-            &BrowserView::Show, weak_ptr_factory_.GetWeakPtr()))) {
-      return;
-    }
-  }
-
 #if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_CHROMEOS)
   // The Browser associated with this browser window must become the active
   // browser at the time |Show()| is called. This is the natural behavior under
@@ -1523,13 +1508,6 @@ void BrowserView::Activate() {
     // been closed before the activation is ready, in this case, we don't have
     // to continue.
     return;
-  }
-
-  if (auto* manager = InitialWebUIManager::From(browser())) {
-    if (manager->RequestDeferShow(base::BindOnce(
-            &BrowserView::Activate, weak_ptr_factory_.GetWeakPtr()))) {
-      return;
-    }
   }
 
 #if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_CHROMEOS)
@@ -3468,13 +3446,6 @@ void BrowserView::OnWidgetDestroying(views::Widget* widget) {
   while (browser()->GetTabStripModel()->count()) {
     browser()->GetTabStripModel()->DetachAndDeleteWebContentsAt(0);
   }
-
-  // Also destroy WebUI toolbar WebContents early so that its renderer process
-  // halts script execution and does not try to query browser IPC services
-  // (such as Windows DirectWrite font proxy) after teardown begins.
-  if (toolbar_) {
-    toolbar_->DestroyWebUIToolbarWebContents();
-  }
 }
 
 void BrowserView::OnWidgetActivationChanged(views::Widget* widget,
@@ -5045,12 +5016,7 @@ void BrowserView::UpdateFullscreenAllowedFromPolicy(
 }
 
 void BrowserView::OnFirstPresentation(
-    const viz::FrameTimingDetails& frame_timing_details) {
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(browser_)) {
-    manager->OnBrowserWindowFirstPresentation(
-        frame_timing_details.presentation_feedback.timestamp);
-  }
-}
+    const viz::FrameTimingDetails& frame_timing_details) {}
 
 #if BUILDFLAG(ENTERPRISE_SCREENSHOT_PROTECTION)
 void BrowserView::ApplyScreenshotSettings(bool allow) {

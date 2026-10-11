@@ -367,7 +367,6 @@ source_set("impl") {
       "//chrome/browser/ui/tabs:features",
       "//chrome/browser/ui/tabs:tab_enums",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/waap:manager",
     ]
   }
 

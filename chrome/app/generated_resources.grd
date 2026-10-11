@@ -13,266 +13,20 @@ are declared in tools/grit/grit_args.gni.
     <output filename="grit/generated_resources.h" type="rc_header">
       <emit emit_type='prepend'></emit>
     </output>
-    <output filename="generated_resources_af.pak" type="data_package" lang="af" />
-    <output filename="generated_resources_am.pak" type="data_package" lang="am" />
-    <output filename="generated_resources_ar.pak" type="data_package" lang="ar" />
-    <output filename="generated_resources_as.pak" type="data_package" lang="as" />
-    <output filename="generated_resources_az.pak" type="data_package" lang="az" />
-    <output filename="generated_resources_be.pak" type="data_package" lang="be" />
-    <output filename="generated_resources_bg.pak" type="data_package" lang="bg" />
-    <output filename="generated_resources_bn.pak" type="data_package" lang="bn" />
-    <output filename="generated_resources_bs.pak" type="data_package" lang="bs" />
-    <output filename="generated_resources_ca.pak" type="data_package" lang="ca" />
-    <output filename="generated_resources_cs.pak" type="data_package" lang="cs" />
-    <output filename="generated_resources_cy.pak" type="data_package" lang="cy" />
-    <output filename="generated_resources_da.pak" type="data_package" lang="da" />
-    <output filename="generated_resources_de.pak" type="data_package" lang="de" />
-    <output filename="generated_resources_el.pak" type="data_package" lang="el" />
-    <output filename="generated_resources_en-GB.pak" type="data_package" lang="en-GB" />
     <output filename="generated_resources_en-US.pak" type="data_package" lang="en" />
-    <output filename="generated_resources_es.pak" type="data_package" lang="es" />
-    <output filename="generated_resources_es-419.pak" type="data_package" lang="es-419" />
-    <output filename="generated_resources_et.pak" type="data_package" lang="et" />
-    <output filename="generated_resources_eu.pak" type="data_package" lang="eu" />
-    <output filename="generated_resources_fa.pak" type="data_package" lang="fa" />
-    <output filename="generated_resources_fi.pak" type="data_package" lang="fi" />
-    <output filename="generated_resources_fil.pak" type="data_package" lang="fil" />
-    <output filename="generated_resources_fr-CA.pak" type="data_package" lang="fr-CA" />
-    <output filename="generated_resources_fr.pak" type="data_package" lang="fr" />
-    <output filename="generated_resources_gl.pak" type="data_package" lang="gl" />
-    <output filename="generated_resources_gu.pak" type="data_package" lang="gu" />
-    <output filename="generated_resources_he.pak" type="data_package" lang="he" />
-    <output filename="generated_resources_hi.pak" type="data_package" lang="hi" />
-    <output filename="generated_resources_hr.pak" type="data_package" lang="hr" />
-    <output filename="generated_resources_hu.pak" type="data_package" lang="hu" />
-    <output filename="generated_resources_hy.pak" type="data_package" lang="hy" />
-    <output filename="generated_resources_id.pak" type="data_package" lang="id" />
-    <output filename="generated_resources_is.pak" type="data_package" lang="is" />
-    <output filename="generated_resources_it.pak" type="data_package" lang="it" />
-    <output filename="generated_resources_ja.pak" type="data_package" lang="ja" />
-    <output filename="generated_resources_ka.pak" type="data_package" lang="ka" />
-    <output filename="generated_resources_kk.pak" type="data_package" lang="kk" />
-    <output filename="generated_resources_km.pak" type="data_package" lang="km" />
-    <output filename="generated_resources_kn.pak" type="data_package" lang="kn" />
-    <output filename="generated_resources_ko.pak" type="data_package" lang="ko" />
-    <output filename="generated_resources_ky.pak" type="data_package" lang="ky" />
-    <output filename="generated_resources_lo.pak" type="data_package" lang="lo" />
-    <output filename="generated_resources_lt.pak" type="data_package" lang="lt" />
-    <output filename="generated_resources_lv.pak" type="data_package" lang="lv" />
-    <output filename="generated_resources_mk.pak" type="data_package" lang="mk" />
-    <output filename="generated_resources_ml.pak" type="data_package" lang="ml" />
-    <output filename="generated_resources_mn.pak" type="data_package" lang="mn" />
-    <output filename="generated_resources_mr.pak" type="data_package" lang="mr" />
-    <output filename="generated_resources_ms.pak" type="data_package" lang="ms" />
-    <output filename="generated_resources_my.pak" type="data_package" lang="my" />
-    <output filename="generated_resources_ne.pak" type="data_package" lang="ne" />
-    <output filename="generated_resources_nl.pak" type="data_package" lang="nl" />
     <!-- The translation console uses 'no' for Norwegian Bokmål. It should
          be 'nb'. -->
-    <output filename="generated_resources_nb.pak" type="data_package" lang="no" />
-    <output filename="generated_resources_pa.pak" type="data_package" lang="pa" />
-    <output filename="generated_resources_pl.pak" type="data_package" lang="pl" />
-    <output filename="generated_resources_pt-BR.pak" type="data_package" lang="pt-BR" />
-    <output filename="generated_resources_pt-PT.pak" type="data_package" lang="pt-PT" />
-    <output filename="generated_resources_or.pak" type="data_package" lang="or" />
-    <output filename="generated_resources_ro.pak" type="data_package" lang="ro" />
-    <output filename="generated_resources_ru.pak" type="data_package" lang="ru" />
-    <output filename="generated_resources_si.pak" type="data_package" lang="si" />
-    <output filename="generated_resources_sk.pak" type="data_package" lang="sk" />
-    <output filename="generated_resources_sl.pak" type="data_package" lang="sl" />
-    <output filename="generated_resources_sq.pak" type="data_package" lang="sq" />
-    <output filename="generated_resources_sr-Latn.pak" type="data_package" lang="sr-Latn" />
-    <output filename="generated_resources_sr.pak" type="data_package" lang="sr" />
-    <output filename="generated_resources_sv.pak" type="data_package" lang="sv" />
-    <output filename="generated_resources_sw.pak" type="data_package" lang="sw" />
-    <output filename="generated_resources_ta.pak" type="data_package" lang="ta" />
-    <output filename="generated_resources_te.pak" type="data_package" lang="te" />
-    <output filename="generated_resources_th.pak" type="data_package" lang="th" />
-    <output filename="generated_resources_tr.pak" type="data_package" lang="tr" />
-    <output filename="generated_resources_uk.pak" type="data_package" lang="uk" />
-    <output filename="generated_resources_ur.pak" type="data_package" lang="ur" />
-    <output filename="generated_resources_uz.pak" type="data_package" lang="uz" />
-    <output filename="generated_resources_vi.pak" type="data_package" lang="vi" />
-    <output filename="generated_resources_zh-CN.pak" type="data_package" lang="zh-CN" />
-    <output filename="generated_resources_zh-HK.pak" type="data_package" lang="zh-HK" />
-    <output filename="generated_resources_zh-TW.pak" type="data_package" lang="zh-TW" />
-    <output filename="generated_resources_zu.pak" type="data_package" lang="zu" />
     <!-- Pseudolocales -->
-    <output filename="generated_resources_ar-XB.pak" type="data_package" lang="ar-XB" />
-    <output filename="generated_resources_en-XA.pak" type="data_package" lang="en-XA" />
 
     <!-- On Android, output some strings into Android's xml string format.
          These strings are tagged with formatter_data="android_java" -->
     <if expr="is_android">
-      <output filename="java/res/values-af/generated_resources.xml" lang="af" type="android" context="android_java" />
-      <output filename="java/res/values-am/generated_resources.xml" lang="am" type="android" context="android_java" />
-      <output filename="java/res/values-ar/generated_resources.xml" lang="ar" type="android" context="android_java" />
-      <output filename="java/res/values-as/generated_resources.xml" lang="as" type="android" context="android_java" />
-      <output filename="java/res/values-az/generated_resources.xml" lang="az" type="android" context="android_java" />
-      <output filename="java/res/values-be/generated_resources.xml" lang="be" type="android" context="android_java" />
-      <output filename="java/res/values-bg/generated_resources.xml" lang="bg" type="android" context="android_java" />
-      <output filename="java/res/values-bn/generated_resources.xml" lang="bn" type="android" context="android_java" />
-      <output filename="java/res/values-bs/generated_resources.xml" lang="bs" type="android" context="android_java" />
-      <output filename="java/res/values-ca/generated_resources.xml" lang="ca" type="android" context="android_java" />
-      <output filename="java/res/values-cs/generated_resources.xml" lang="cs" type="android" context="android_java" />
-      <output filename="java/res/values-da/generated_resources.xml" lang="da" type="android" context="android_java" />
-      <output filename="java/res/values-de/generated_resources.xml" lang="de" type="android" context="android_java" />
-      <output filename="java/res/values-el/generated_resources.xml" lang="el" type="android" context="android_java" />
       <output filename="java/res/values/generated_resources.xml" lang="en" type="android" context="android_java" />
-      <output filename="java/res/values-en-rGB/generated_resources.xml" lang="en-GB" type="android" context="android_java" />
-      <output filename="java/res/values-es/generated_resources.xml" lang="es" type="android" context="android_java" />
-      <output filename="java/res/values-es-rUS/generated_resources.xml" lang="es-419" type="android" context="android_java" />
-      <output filename="java/res/values-et/generated_resources.xml" lang="et" type="android" context="android_java" />
-      <output filename="java/res/values-eu/generated_resources.xml" lang="eu" type="android" context="android_java" />
-      <output filename="java/res/values-fa/generated_resources.xml" lang="fa" type="android" context="android_java" />
-      <output filename="java/res/values-fi/generated_resources.xml" lang="fi" type="android" context="android_java" />
-      <output filename="java/res/values-tl/generated_resources.xml" lang="fil" type="android" context="android_java" />
-      <output filename="java/res/values-fr/generated_resources.xml" lang="fr" type="android" context="android_java" />
-      <output filename="java/res/values-fr-rCA/generated_resources.xml" lang="fr-CA" type="android" context="android_java" />
-      <output filename="java/res/values-gl/generated_resources.xml" lang="gl" type="android" context="android_java" />
-      <output filename="java/res/values-gu/generated_resources.xml" lang="gu" type="android" context="android_java" />
-      <output filename="java/res/values-iw/generated_resources.xml" lang="he" type="android" context="android_java" />
-      <output filename="java/res/values-hi/generated_resources.xml" lang="hi" type="android" context="android_java" />
-      <output filename="java/res/values-hr/generated_resources.xml" lang="hr" type="android" context="android_java" />
-      <output filename="java/res/values-hu/generated_resources.xml" lang="hu" type="android" context="android_java" />
-      <output filename="java/res/values-hy/generated_resources.xml" lang="hy" type="android" context="android_java" />
-      <output filename="java/res/values-in/generated_resources.xml" lang="id" type="android" context="android_java" />
-      <output filename="java/res/values-is/generated_resources.xml" lang="is" type="android" context="android_java" />
-      <output filename="java/res/values-it/generated_resources.xml" lang="it" type="android" context="android_java" />
-      <output filename="java/res/values-ja/generated_resources.xml" lang="ja" type="android" context="android_java" />
-      <output filename="java/res/values-ka/generated_resources.xml" lang="ka" type="android" context="android_java" />
-      <output filename="java/res/values-kk/generated_resources.xml" lang="kk" type="android" context="android_java" />
-      <output filename="java/res/values-km/generated_resources.xml" lang="km" type="android" context="android_java" />
-      <output filename="java/res/values-kn/generated_resources.xml" lang="kn" type="android" context="android_java" />
-      <output filename="java/res/values-ko/generated_resources.xml" lang="ko" type="android" context="android_java" />
-      <output filename="java/res/values-ky/generated_resources.xml" lang="ky" type="android" context="android_java" />
-      <output filename="java/res/values-lo/generated_resources.xml" lang="lo" type="android" context="android_java" />
-      <output filename="java/res/values-lt/generated_resources.xml" lang="lt" type="android" context="android_java" />
-      <output filename="java/res/values-lv/generated_resources.xml" lang="lv" type="android" context="android_java" />
-      <output filename="java/res/values-mk/generated_resources.xml" lang="mk" type="android" context="android_java" />
-      <output filename="java/res/values-ml/generated_resources.xml" lang="ml" type="android" context="android_java" />
-      <output filename="java/res/values-mn/generated_resources.xml" lang="mn" type="android" context="android_java" />
-      <output filename="java/res/values-mr/generated_resources.xml" lang="mr" type="android" context="android_java" />
-      <output filename="java/res/values-ms/generated_resources.xml" lang="ms" type="android" context="android_java" />
-      <output filename="java/res/values-my/generated_resources.xml" lang="my" type="android" context="android_java" />
-      <output filename="java/res/values-ne/generated_resources.xml" lang="ne" type="android" context="android_java" />
-      <output filename="java/res/values-nl/generated_resources.xml" lang="nl" type="android" context="android_java" />
-      <output filename="java/res/values-nb/generated_resources.xml" lang="no" type="android" context="android_java" />
-      <output filename="java/res/values-or/generated_resources.xml" lang="or" type="android" context="android_java" />
-      <output filename="java/res/values-pa/generated_resources.xml" lang="pa" type="android" context="android_java" />
-      <output filename="java/res/values-pl/generated_resources.xml" lang="pl" type="android" context="android_java" />
-      <output filename="java/res/values-pt-rBR/generated_resources.xml" lang="pt-BR" type="android" context="android_java" />
-      <output filename="java/res/values-pt-rPT/generated_resources.xml" lang="pt-PT" type="android" context="android_java" />
-      <output filename="java/res/values-ro/generated_resources.xml" lang="ro" type="android" context="android_java" />
-      <output filename="java/res/values-ru/generated_resources.xml" lang="ru" type="android" context="android_java" />
-      <output filename="java/res/values-si/generated_resources.xml" lang="si" type="android" context="android_java" />
-      <output filename="java/res/values-sk/generated_resources.xml" lang="sk" type="android" context="android_java" />
-      <output filename="java/res/values-sl/generated_resources.xml" lang="sl" type="android" context="android_java" />
-      <output filename="java/res/values-sq/generated_resources.xml" lang="sq" type="android" context="android_java" />
-      <output filename="java/res/values-sr/generated_resources.xml" lang="sr" type="android" context="android_java" />
-      <output filename="java/res/values-b+sr+Latn/generated_resources.xml" lang="sr-Latn" type="android" context="android_java" />
-      <output filename="java/res/values-sv/generated_resources.xml" lang="sv" type="android" context="android_java" />
-      <output filename="java/res/values-sw/generated_resources.xml" lang="sw" type="android" context="android_java" />
-      <output filename="java/res/values-ta/generated_resources.xml" lang="ta" type="android" context="android_java" />
-      <output filename="java/res/values-te/generated_resources.xml" lang="te" type="android" context="android_java" />
-      <output filename="java/res/values-th/generated_resources.xml" lang="th" type="android" context="android_java" />
-      <output filename="java/res/values-tr/generated_resources.xml" lang="tr" type="android" context="android_java" />
-      <output filename="java/res/values-uk/generated_resources.xml" lang="uk" type="android" context="android_java" />
-      <output filename="java/res/values-ur/generated_resources.xml" lang="ur" type="android" context="android_java" />
-      <output filename="java/res/values-uz/generated_resources.xml" lang="uz" type="android" context="android_java" />
-      <output filename="java/res/values-vi/generated_resources.xml" lang="vi" type="android" context="android_java" />
-      <output filename="java/res/values-zh-rCN/generated_resources.xml" lang="zh-CN" type="android" context="android_java" />
-      <output filename="java/res/values-zh-rHK/generated_resources.xml" lang="zh-HK" type="android" context="android_java" />
-      <output filename="java/res/values-zh-rTW/generated_resources.xml" lang="zh-TW" type="android" context="android_java" />
-      <output filename="java/res/values-zu/generated_resources.xml" lang="zu" type="android" context="android_java" />
       <!-- Pseudolocales -->
-      <output filename="java/res/values-ar-rXB/generated_resources.xml" lang="ar-XB" type="android" context="android_java" />
-      <output filename="java/res/values-en-rXA/generated_resources.xml" lang="en-XA" type="android" context="android_java" />
     </if>
   </outputs>
   <translations>
-    <file path="resources/generated_resources_af.xtb" lang="af" />
-    <file path="resources/generated_resources_am.xtb" lang="am" />
-    <file path="resources/generated_resources_ar.xtb" lang="ar" />
-    <file path="resources/generated_resources_as.xtb" lang="as" />
-    <file path="resources/generated_resources_az.xtb" lang="az" />
-    <file path="resources/generated_resources_be.xtb" lang="be" />
-    <file path="resources/generated_resources_bg.xtb" lang="bg" />
-    <file path="resources/generated_resources_bn.xtb" lang="bn" />
-    <file path="resources/generated_resources_bs.xtb" lang="bs" />
-    <file path="resources/generated_resources_ca.xtb" lang="ca" />
-    <file path="resources/generated_resources_cs.xtb" lang="cs" />
-    <file path="resources/generated_resources_cy.xtb" lang="cy" />
-    <file path="resources/generated_resources_da.xtb" lang="da" />
-    <file path="resources/generated_resources_de.xtb" lang="de" />
-    <file path="resources/generated_resources_el.xtb" lang="el" />
-    <file path="resources/generated_resources_en-GB.xtb" lang="en-GB" />
-    <file path="resources/generated_resources_es.xtb" lang="es" />
-    <file path="resources/generated_resources_es-419.xtb" lang="es-419" />
-    <file path="resources/generated_resources_et.xtb" lang="et" />
-    <file path="resources/generated_resources_eu.xtb" lang="eu" />
-    <file path="resources/generated_resources_fa.xtb" lang="fa" />
-    <file path="resources/generated_resources_fi.xtb" lang="fi" />
-    <file path="resources/generated_resources_fil.xtb" lang="fil" />
-    <file path="resources/generated_resources_fr.xtb" lang="fr" />
-    <file path="resources/generated_resources_fr-CA.xtb" lang="fr-CA" />
-    <file path="resources/generated_resources_gl.xtb" lang="gl" />
-    <file path="resources/generated_resources_gu.xtb" lang="gu" />
-    <file path="resources/generated_resources_hi.xtb" lang="hi" />
-    <file path="resources/generated_resources_hr.xtb" lang="hr" />
-    <file path="resources/generated_resources_hu.xtb" lang="hu" />
-    <file path="resources/generated_resources_hy.xtb" lang="hy" />
-    <file path="resources/generated_resources_id.xtb" lang="id" />
-    <file path="resources/generated_resources_is.xtb" lang="is" />
-    <file path="resources/generated_resources_it.xtb" lang="it" />
     <!-- The translation console uses 'iw' for Hebrew, but we use 'he'. -->
-    <file path="resources/generated_resources_iw.xtb" lang="he" />
-    <file path="resources/generated_resources_ja.xtb" lang="ja" />
-    <file path="resources/generated_resources_ka.xtb" lang="ka" />
-    <file path="resources/generated_resources_kk.xtb" lang="kk" />
-    <file path="resources/generated_resources_km.xtb" lang="km" />
-    <file path="resources/generated_resources_kn.xtb" lang="kn" />
-    <file path="resources/generated_resources_ko.xtb" lang="ko" />
-    <file path="resources/generated_resources_ky.xtb" lang="ky" />
-    <file path="resources/generated_resources_lo.xtb" lang="lo" />
-    <file path="resources/generated_resources_lt.xtb" lang="lt" />
-    <file path="resources/generated_resources_lv.xtb" lang="lv" />
-    <file path="resources/generated_resources_mk.xtb" lang="mk" />
-    <file path="resources/generated_resources_ml.xtb" lang="ml" />
-    <file path="resources/generated_resources_mn.xtb" lang="mn" />
-    <file path="resources/generated_resources_mr.xtb" lang="mr" />
-    <file path="resources/generated_resources_ms.xtb" lang="ms" />
-    <file path="resources/generated_resources_my.xtb" lang="my" />
-    <file path="resources/generated_resources_ne.xtb" lang="ne" />
-    <file path="resources/generated_resources_nl.xtb" lang="nl" />
-    <file path="resources/generated_resources_no.xtb" lang="no" />
-    <file path="resources/generated_resources_or.xtb" lang="or" />
-    <file path="resources/generated_resources_pa.xtb" lang="pa" />
-    <file path="resources/generated_resources_pl.xtb" lang="pl" />
-    <file path="resources/generated_resources_pt-BR.xtb" lang="pt-BR" />
-    <file path="resources/generated_resources_pt-PT.xtb" lang="pt-PT" />
-    <file path="resources/generated_resources_ro.xtb" lang="ro" />
-    <file path="resources/generated_resources_ru.xtb" lang="ru" />
-    <file path="resources/generated_resources_si.xtb" lang="si" />
-    <file path="resources/generated_resources_sk.xtb" lang="sk" />
-    <file path="resources/generated_resources_sl.xtb" lang="sl" />
-    <file path="resources/generated_resources_sq.xtb" lang="sq" />
-    <file path="resources/generated_resources_sr.xtb" lang="sr" />
-    <file path="resources/generated_resources_sr-Latn.xtb" lang="sr-Latn" />
-    <file path="resources/generated_resources_sv.xtb" lang="sv" />
-    <file path="resources/generated_resources_sw.xtb" lang="sw" />
-    <file path="resources/generated_resources_ta.xtb" lang="ta" />
-    <file path="resources/generated_resources_te.xtb" lang="te" />
-    <file path="resources/generated_resources_th.xtb" lang="th" />
-    <file path="resources/generated_resources_tr.xtb" lang="tr" />
-    <file path="resources/generated_resources_uk.xtb" lang="uk" />
-    <file path="resources/generated_resources_ur.xtb" lang="ur" />
-    <file path="resources/generated_resources_uz.xtb" lang="uz" />
-    <file path="resources/generated_resources_vi.xtb" lang="vi" />
-    <file path="resources/generated_resources_zh-CN.xtb" lang="zh-CN" />
-    <file path="resources/generated_resources_zh-HK.xtb" lang="zh-HK" />
-    <file path="resources/generated_resources_zh-TW.xtb" lang="zh-TW" />
-    <file path="resources/generated_resources_zu.xtb" lang="zu" />
   </translations>
   <release seq="1">
     <!-- IMPORTANT: .grdp files must be in the same directory as this file -->
@@ -280,7 +34,6 @@ are declared in tools/grit/grit_args.gni.
       <!-- Access Code Cast specific strings -->
 
       <!-- Actor specific strings -->
-      <part file="actor_strings.grdp" />
 
       <!-- App Management specific strings -->
 
@@ -4586,16 +4339,6 @@ are declared in tools/grit/grit_args.gni.
 
       </if>
 
-      <!-- Directory access confirmation dialog -->
-      <message name="IDS_EXTENSIONS_DIRECTORY_CONFIRMATION_DIALOG_TITLE" desc="Text of the title of the directory access confirmation dialog.">
-        Confirm Access
-      </message>
-      <message name="IDS_EXTENSIONS_DIRECTORY_CONFIRMATION_DIALOG_MESSAGE_READ_ONLY" desc="Text of the message of the directory access confirmation dialog if the app does not have write access.">
-        The folder you selected contains sensitive files. Are you sure you want to grant "<ph name="APP_NAME">$1<ex>Text</ex></ph>" permanent read access to this folder?
-      </message>
-      <message name="IDS_EXTENSIONS_DIRECTORY_CONFIRMATION_DIALOG_MESSAGE_WRITABLE" desc="Text of the message of the directory access confirmation dialog if the app has write access.">
-        The folder you selected contains sensitive files. Are you sure you want to grant "<ph name="APP_NAME">$1<ex>Text</ex></ph>" permanent write access to this folder?
-      </message>
 
       <!-- Direct Sockets connection dialog -->
 
@@ -5265,12 +5008,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <!-- End App Home WebUI strings. -->
 
 
-      <if expr="is_chromeos">
-        <then>
-        </then>
-        <else>
-        </else>
-      </if>
 
       <!-- Components -->
       <message name="IDS_COMPONENTS_TITLE" desc="Title for the chrome://components page.">
@@ -5622,14 +5359,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </if>
 
       <!-- About box strings -->
-      <if expr="is_win or is_macosx">
-        <message name="IDS_ABOUT_BOX_ERROR_DURING_UPDATE_CHECK" desc="The error label for errors that occurred while checking for updates in the About box.">
-          An error occurred while checking for updates: <ph name="ERROR">$1<ex>Unable to contact Google Update</ex></ph>
-        </message>
-        <message name="IDS_ABOUT_BOX_GOOGLE_UPDATE_ERROR" desc="An error message from Google Update with details.">
-          <ph name="ERROR">$1<ex>An error message from Google Update.</ex></ph> (error code <ph name="ERROR_CODE">$2<ex>7: 0x80000005</ex></ph>).
-        </message>
-      </if>
 
       <!-- Omnibox -->
       <message name="IDS_OMNIBOX_PLACEHOLDER_TEXT" desc="The text displayed in the Omnibox when it is empty and unfocused.">
@@ -5705,12 +5434,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
       <!-- Contextual Search -->
-      <if expr="use_titlecase">
-        <then>
-        </then>
-        <else>
-        </else>
-      </if>
 
       <message name="IDS_GOOGLE_SEARCH_BOX_EMPTY_HINT_MD" desc="The text displayed in the fakebox (on the New Tab page) when it is empty, Google is the default search engine, and the Material Design UI is enabled.">
         Search Google or type a URL
@@ -6375,8 +6098,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
 
         <!-- Import progress popup -->
-        <if expr="is_macosx">
-        </if> <!-- is_macosx -->
       </if> <!-- not is_android -->
 
       <if expr="is_macosx">
@@ -6425,16 +6146,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <!-- Automatic updates -->
 
       <!-- About Chrome View -->
-      <if expr="is_win or is_macosx or is_chromeos">
-        <message name="IDS_UPGRADE_DISABLED_BY_POLICY" desc="Status label: Upgrades disabled by policy">
-          Updates are disabled by your administrator.
-        </message>
-      </if>
-      <if expr="is_win or is_macosx">
-        <message name="IDS_UPGRADE_DISABLED_BY_POLICY_MANUAL" desc="Status label: Manual upgrades disabled by policy, automatic upgrades ok">
-          Automatic updates are enabled. Manual updates are disabled by your administrator.
-        </message>
-      </if>
 
       <!-- Upgrade bubble messages -->
       <message name="IDS_REENABLE_UPDATES" desc="Text for the button the user clicks to re-enable automatic updates.">
@@ -6615,11 +6326,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           =1 {Hand tab to agent}
           other {Hand tabs to agent}}
         </message>
-        <message name="IDS_TAB_CXMENU_ADD_TAB_TO_NEW_GROUP" desc="The label of the tab context menu item for creating a new tab group and adding one or more tabs to it. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
-          {NUM_TABS, plural,
-          =1 {Add tab to new group}
-          other {Add tabs to new group}}
-        </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT" desc="The label of the tab context menu submenu for creating a split view between the selected tab and the active tab.">
           Add tab to new split view
         </message>
@@ -6702,11 +6408,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
           {NUM_TABS, plural,
           =1 {Hand Tab to Agent}
           other {Hand Tabs to Agent}}
-        </message>
-        <message name="IDS_TAB_CXMENU_ADD_TAB_TO_NEW_GROUP" desc="In Title Case: The label of the tab context menu item for creating a new tab group and adding one or more tabs to it. NOTE: If having no explicit # makes the phrasing awkward, feel free to add a # as necessary. [ICU Syntax]">
-          {NUM_TABS, plural,
-          =1 {Add Tab to New Group}
-          other {Add Tabs to New Group}}
         </message>
         <message name="IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT" desc="In Title Case: The label of the tab context menu submenu for creating a split view between the selected tab and the active tab.">
           Add Tab to New Split View
@@ -6873,9 +6574,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New tab in 1 tab} other {New tab in # tabs}}
         </message>
-        <message name="IDS_NEW_TAB_GROUP" desc="The label of a context menu item for creating a new tab group.">
-          New tab group
-        </message>
       </if>
       <if expr="use_titlecase">
         <message name="IDS_NEW_TAB_IN_GROUP" desc="The label of a context menu item for adding a new tab into a group.">
@@ -6886,9 +6584,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_NEW_TAB_IN_GROUP_NO_NAME" desc="The label of a context menu item for adding a new tab into an existing group with no name.">
           {NUM_TABS, plural, =1 {New Tab in 1 Tab} other {New Tab in # Tabs}}
-        </message>
-        <message name="IDS_NEW_TAB_GROUP" desc="The label of a context menu item for creating a new tab group.">
-          New Tab Group
         </message>
       </if>
 
@@ -7350,8 +7045,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <!-- Default Browser related messages -->
 
       <!-- chrome://help -->
-      <if expr="not is_android">
-      </if> <!-- not is_android -->
       <if expr="(not is_android or enable_extensions_core) and not is_chromeos">
         <message name="IDS_HELP_MANAGED_BY_YOUR_PARENT" desc="The text label shown in chrome://settings/help for users subject to parental controls.">
           Your browser is managed by your parent
@@ -7706,20 +7399,6 @@ This can include information about installed software, files, your browser, the 
 
 
 
-      <if expr="not is_chromeos and not is_android">
-
-        <if expr="use_titlecase">
-          <then>
-          </then>
-          <else>
-          </else>
-        </if>
-
-
-
-
-
-      </if>
 
 
       <if expr="not is_chromeos and not is_android">
@@ -8325,12 +8004,6 @@ This can include information about installed software, files, your browser, the 
         </message>
         <message name="IDS_PIN_TARGET_TAB_MAC" desc="In Title Case: The Mac menu item for pinning the selected tab(s).">
           Pin Selected Tab
-        </message>
-        <message name="IDS_GROUP_TAB_MAC" desc="In Title Case: The Mac menu item for adding the selected tab(s) to a new tab group.">
-          Group Tab
-        </message>
-        <message name="IDS_GROUP_TARGET_TAB_MAC" desc="In Title Case: The Mac menu item for adding the selected tab(s) to a new tab group.">
-          Group Selected Tab
         </message>
         <message name="IDS_HELP_MAC" desc="The Mac menu item to show help in the Help menu.">
           <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> Help
@@ -10399,14 +10072,6 @@ This can include information about installed software, files, your browser, the 
     <!-- Input overlay strings -->
 
     <!-- Battery Saver Toolbar strings  -->
-    <if expr="not is_android">
-      <message name="IDS_BATTERY_SAVER_BUTTON_TOOLTIP" desc="The tooltip for the battery saver toolbar button">
-        Energy Saver is on
-      </message>
-      <message name="IDS_BATTERY_SAVER_BUTTON_ACCNAME" desc="The accessibility text for the battery saver toolbar button">
-        Energy Saver is on
-      </message>
-    </if>
     <!-- High Efficiency Chip strings -->
     <!-- Performance hovercard strings -->
     <if expr="not is_android">
@@ -10424,14 +10089,6 @@ This can include information about installed software, files, your browser, the 
       </message>
     </if>
     <!-- Performance Intervention Strings-->
-    <if expr="not is_android">
-      <message name="IDS_PERFORMANCE_INTERVENTION_BUTTON_TOOLTIP" desc="The tooltip for the performance intervention toolbar button">
-        Performance issue alert
-      </message>
-      <message name="IDS_PERFORMANCE_INTERVENTION_BUTTON_ACCNAME" desc="The accessibility text for the performance intervention toolbar button">
-        Performance issue alert
-      </message>
-    </if>
 
     <!-- Toast Strings-->
     <if expr="not is_android">

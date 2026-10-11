@@ -35,12 +35,9 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "components/component_updater/component_updater_service.h"
-#include "components/component_updater/installer_policies/actor_safety_lists_component_installer.h"
 #include "components/component_updater/installer_policies/on_device_head_suggest_component_installer.h"
 #include "components/component_updater/installer_policies/optimization_hints_component_installer.h"
 #include "components/component_updater/installer_policies/safety_tips_component_installer.h"
-#include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
-#include "components/optimization_guide/core/model_execution/model_execution_util.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "device/vr/buildflags/buildflags.h"
@@ -131,7 +128,6 @@ void RegisterComponentsForUpdate() {
   RegisterPrivateVerificationTokensComponentIfEnabled(cus);
   RegisterFirstPartySetsComponent(cus);
   RegisterPrivacySandboxAttestationsComponent(cus);
-  RegisterActorSafetyListsComponent(cus, base::OnceClosure());
   RegisterSSLErrorAssistantComponent(cus);
 
 

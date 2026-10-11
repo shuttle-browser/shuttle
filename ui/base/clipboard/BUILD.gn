@@ -253,7 +253,6 @@ source_set("clipboard_test_support") {
   ]
 
   if (is_android) {
-    deps += [ "//ui/android:ui_javatest_jni_headers" ]
   }
 }
 

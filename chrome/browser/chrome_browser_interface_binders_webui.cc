@@ -9,7 +9,6 @@
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/media/media_engagement_score_details.mojom.h"
 #include "chrome/browser/optimization_guide/optimization_guide_internals_ui.h"
-#include "chrome/browser/ui/webui/actor_internals/actor_internals_ui.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals.mojom.h"
 #include "chrome/browser/ui/webui/bluetooth_internals/bluetooth_internals_ui.h"
 #include "chrome/browser/ui/webui/chrome_urls/chrome_urls_ui.h"
@@ -30,7 +29,6 @@
 #include "chrome/browser/ui/webui/usb_internals/usb_internals.mojom.h"
 #include "chrome/browser/ui/webui/usb_internals/usb_internals_ui.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/actor/public/mojom/actor_internals.mojom.h"
 #include "components/enterprise/connectors/connectors_internals.mojom.h"
 #include "components/history_clusters/history_clusters_internals/webui/history_clusters_internals_ui.h"
 #include "components/policy/core/common/features.h"
@@ -171,9 +169,6 @@ void PopulateChromeWebUIFrameBindersPartsAllPlatforms(
 
   RegisterWebUIControllerInterfaceBinder<::mojom::LocationInternalsHandler,
                                          LocationInternalsUI>(map);
-
-  RegisterWebUIControllerInterfaceBinder<
-      actor_internals::mojom::PageHandlerFactory, ActorInternalsUI>(map);
 
   if (base::FeatureList::IsEnabled(
           policy::features::kPolicyPageMojoMigration)) {

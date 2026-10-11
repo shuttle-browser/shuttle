@@ -22,10 +22,6 @@
 #include "components/soda/soda_installer.h"
 #include "media/base/media_switches.h"
 
-#if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
-#endif
-
 class PrefChangeRegistrar;
 
 namespace speech {
@@ -67,15 +63,6 @@ SpeechRecognitionClientBrowserInterface::
   if (speech::SodaInstaller::GetInstance()) {
     soda_installer_observation_.Observe(speech::SodaInstaller::GetInstance());
   }
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(
-          media::kLiveCaptionSpeechRecognitionSmallExpertModel) &&
-      g_browser_process &&
-      g_browser_process->speech_recognition_small_expert_model_installer()) {
-    speech_recognition_small_expert_model_installer_observation_.Observe(
-        g_browser_process->speech_recognition_small_expert_model_installer());
-  }
-#endif
   MaybeTriggerModelInstall();
 }
 
@@ -113,14 +100,6 @@ void SpeechRecognitionClientBrowserInterface::OnSodaInstalled(
   NotifyLiveCaptionObserversIfNeeded();
 }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-void SpeechRecognitionClientBrowserInterface::
-    OnSpeechRecognitionSmallExpertModelStateChanged(
-        speech::SpeechRecognitionSmallExpertModelInstaller::
-            SpeechRecognitionSmallExpertModelState /*state*/) {
-  NotifyLiveCaptionObserversIfNeeded();
-}
-#endif
 
 void SpeechRecognitionClientBrowserInterface::
     OnLiveCaptionAvailabilityChanged() {
@@ -159,30 +138,6 @@ void SpeechRecognitionClientBrowserInterface::MaybeTriggerModelInstall() {
   const std::string language_name =
       prefs::GetLiveCaptionLanguageCode(profile_prefs_);
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(
-          media::kLiveCaptionSpeechRecognitionSmallExpertModel)) {
-    auto* installer =
-        g_browser_process
-            ? g_browser_process
-                  ->speech_recognition_small_expert_model_installer()
-            : nullptr;
-    if (installer &&
-        !installer->IsSpeechRecognitionSmallExpertModelInstalled() &&
-        !installer->IsSpeechRecognitionSmallExpertModelDownloading() &&
-        installer->GetSpeechRecognitionSmallExpertModelState() !=
-            SpeechRecognitionSmallExpertModelInstaller::
-                SpeechRecognitionSmallExpertModelState::kError &&
-        installer->GetSpeechRecognitionSmallExpertModelState() !=
-            SpeechRecognitionSmallExpertModelInstaller::
-                SpeechRecognitionSmallExpertModelState::
-                    kErrorCorruptPersistent) {
-      Profile* profile = Profile::FromBrowserContext(context_);
-      installer->InstallSpeechRecognitionSmallExpertModel(profile);
-    }
-    return;
-  }
-#endif
   if (speech::SodaInstaller::GetInstance()) {
     speech::SodaInstaller* soda_installer =
         speech::SodaInstaller::GetInstance();
@@ -204,21 +159,9 @@ void SpeechRecognitionClientBrowserInterface::
     return;
   }
 
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(
-          media::kLiveCaptionSpeechRecognitionSmallExpertModel)) {
-    if (!g_browser_process ||
-        !g_browser_process->speech_recognition_small_expert_model_installer()) {
-      return;
-    }
-  } else if (!speech::SodaInstaller::GetInstance()) {
-    return;
-  }
-#else
   if (!speech::SodaInstaller::GetInstance()) {
     return;
   }
-#endif
 
   // Captioning is enabled if either Live Caption or Headless Caption.
   bool enabled = profile_prefs_->GetBoolean(prefs::kLiveCaptionEnabled);
@@ -229,30 +172,10 @@ void SpeechRecognitionClientBrowserInterface::
   const std::string language_name =
       prefs::GetLiveCaptionLanguageCode(profile_prefs_);
   bool is_installed = false;
-#if !BUILDFLAG(IS_CHROMEOS)
-  if (base::FeatureList::IsEnabled(
-          media::kLiveCaptionSpeechRecognitionSmallExpertModel)) {
-    auto* installer =
-        g_browser_process
-            ? g_browser_process
-                  ->speech_recognition_small_expert_model_installer()
-            : nullptr;
-    if (installer &&
-        installer->IsSpeechRecognitionSmallExpertModelInstalled()) {
-      is_installed = true;
-    }
-  } else {
-    if (speech::SodaInstaller::GetInstance()) {
-      is_installed = speech::SodaInstaller::GetInstance()->IsSodaInstalled(
-          speech::GetLanguageCode(language_name));
-    }
-  }
-#else
   if (speech::SodaInstaller::GetInstance()) {
     is_installed = speech::SodaInstaller::GetInstance()->IsSodaInstalled(
         speech::GetLanguageCode(language_name));
   }
-#endif
 
   bool available = is_installed && enabled;
   for (auto& observer : live_caption_availability_observers_) {

@@ -25,7 +25,6 @@
 #include "url/gurl.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
 #endif
 
 SearchboxOmniboxClient::SearchboxOmniboxClient(
@@ -145,15 +144,6 @@ void SearchboxOmniboxClient::OnAutocompleteAccept(
     const std::u16string& text,
     const AutocompleteMatch& match,
     const AutocompleteMatch& alternative_nav_match) {
-#if BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  if (AutocompleteMatch::IsSearchType(match.type)) {
-    if (auto* telemetry_service =
-            safe_browsing::ExtensionTelemetryService::Get(profile_)) {
-      telemetry_service->OnOmniboxSearch(match);
-    }
-  }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-
   web_contents_->OpenURL(
       content::OpenURLParams(destination_url, content::Referrer(), disposition,
                              transition, false),

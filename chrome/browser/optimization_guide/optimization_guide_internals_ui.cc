@@ -18,8 +18,6 @@
 #include "components/grit/optimization_guide_internals_resources.h"
 #include "components/grit/optimization_guide_internals_resources_map.h"
 #include "components/optimization_guide/core/delivery/prediction_manager.h"
-#include "components/optimization_guide/core/model_execution/feature_keys.h"
-#include "components/optimization_guide/core/model_quality/model_quality_util.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
 #include "components/optimization_guide/optimization_guide_internals/webui/optimization_guide_internals.mojom.h"
 #include "components/optimization_guide/optimization_guide_internals/webui/optimization_guide_internals_page_handler_impl.h"
@@ -85,65 +83,14 @@ void OptimizationGuideInternalsUI::RequestDownloadedModelsInfo(
 
 void OptimizationGuideInternalsUI::RequestLoggedModelQualityClientIds(
     RequestLoggedModelQualityClientIdsCallback callback) {
-  PrefService* local_state = g_browser_process->local_state();
-
-  int64_t client_id =
-      local_state->GetInt64(optimization_guide::model_execution::prefs::
-                                localstate::kModelQualityLoggingClientId);
-
-  // If the client id is zero no client id is set, in that case do nothing.
-  if (client_id == 0) {
-    std::move(callback).Run({});
-    return;
-  }
-
-  // Get the client ids for the compose feature for the
-  // past 28 days to show on chrome://optimization-guide-internals.
-  std::vector<optimization_guide_internals::mojom::LoggedClientIdsPtr>
-      logged_client_ids;
-  // Initialize time outside to have it change when generating the client ids
-  // for different days.
-  base::Time now = base::Time::Now();
-  // Loop through past 28 days to generate the client ids for compose
-  // feature.
-  for (int i = 0; i < 28; ++i) {
-    base::Time day_i = now - base::Days(i);
-
-    // Hash the client id with the date so that it changes everyday for the
-    // feature.
-    int64_t client_id_i_compose =
-        optimization_guide::GetHashedModelQualityClientId(
-            optimization_guide::proto::LogAiDataRequest::FeatureCase::kCompose,
-            day_i, client_id);
-
-    logged_client_ids.push_back(
-        optimization_guide_internals::mojom::LoggedClientIds::New(
-            client_id_i_compose));
-  }
-
-  std::move(callback).Run(std::move(logged_client_ids));
+  // Shuttle: model quality logging is removed.
+  std::move(callback).Run({});
 }
 
 void OptimizationGuideInternalsUI::RequestMqlsLogs(
     RequestMqlsLogsCallback callback) {
-  Profile* profile = Profile::FromWebUI(web_ui());
-  auto* service = OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
-  if (!service) {
-    std::move(callback).Run({});
-    return;
-  }
-
-  optimization_guide::ModelQualityLogsUploaderService*
-      model_quality_logs_uploader_service =
-          service->GetModelQualityLogsUploaderService();
-  if (!model_quality_logs_uploader_service) {
-    std::move(callback).Run({});
-    return;
-  }
-
-  std::vector<optimization_guide_internals::mojom::MqlsLogPtr> mqls_logs =
-      model_quality_logs_uploader_service->GetMqlsLogsForWebUI();
-  std::move(callback).Run(std::move(mqls_logs));
+  // Shuttle: model quality logging is removed.
+  std::move(callback).Run({});
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(OptimizationGuideInternalsUI)

@@ -22,7 +22,6 @@
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/ui/toolbar/toolbar_actions_model_factory.h"
-#include "extensions/browser/app_window/app_window_registry.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
@@ -86,7 +85,6 @@ void BrowserContextKeyedAPIFactory<
   DependsOn(CommandService::GetFactoryInstance());
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-  DependsOn(AppWindowRegistry::Factory::GetInstance());
   DependsOn(ToolbarActionsModelFactory::GetInstance());
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 }

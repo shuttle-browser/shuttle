@@ -16,7 +16,6 @@ if (!is_android) {
       "//base",
       "//chrome/browser:file_select_helper",
       "//chrome/browser:repost_form_warning_controller",
-      "//chrome/browser/actor",
       "//chrome/browser/background",
       "//chrome/browser/content_settings",
       "//chrome/browser/content_settings:content_settings_factory",

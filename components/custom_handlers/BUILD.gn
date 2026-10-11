@@ -43,19 +43,3 @@ static_library("custom_handlers") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "simple_protocol_handler_registry_factory.cc",
-    "simple_protocol_handler_registry_factory.h",
-    "test_protocol_handler_registry_delegate.cc",
-    "test_protocol_handler_registry_delegate.h",
-  ]
-  deps = [
-    ":custom_handlers",
-    "//base",
-    "//components/keyed_service/content",
-    "//content/public/browser",
-  ]
-}
-

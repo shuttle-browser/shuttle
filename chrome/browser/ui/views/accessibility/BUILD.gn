@@ -62,7 +62,6 @@ source_set("impl") {
     sources += [ "accessibility_util.cc" ]
     deps += [
       "//chrome/browser/ui:accessibility_util",
-      "//chrome/browser/ui/waap:manager",
     ]
   }
 

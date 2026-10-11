@@ -5,7 +5,6 @@
 #include "chrome/browser/page_load_metrics/observers/captcha_metrics_observer.h"
 
 #include "base/metrics/histogram_functions.h"
-#include "chrome/browser/actor/actor_util.h"
 #include "chrome/browser/page_load_metrics/observers/captcha_provider_manager.h"
 #include "components/page_load_metrics/browser/page_load_metrics_observer.h"
 #include "components/page_load_metrics/common/page_load_metrics.mojom.h"
@@ -28,7 +27,7 @@ bool IsDevToolsAgentAttached(content::WebContents* web_contents) {
 
 CaptchaFrameAgentContext GetCaptchaFrameAgentContext(
     content::WebContents* web_contents) {
-  bool glic_agent_active = actor::HaveActiveTaskForContents(web_contents);
+  bool glic_agent_active = false;
   bool devtools_agent_active = IsDevToolsAgentAttached(web_contents);
   if (glic_agent_active && devtools_agent_active) {
     return CaptchaFrameAgentContext::kMultipleAgentsActiveOnTab;

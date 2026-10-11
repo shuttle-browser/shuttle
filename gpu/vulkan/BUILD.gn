@@ -262,7 +262,6 @@ if (enable_vulkan) {
       ]
 
       if (is_android) {
-        deps += [ "//ui/android:ui_java_test_support" ]
       }
 
       if (use_ozone) {

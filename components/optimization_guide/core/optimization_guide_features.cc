@@ -22,9 +22,6 @@
 #include "base/strings/to_string.h"
 #include "base/system/sys_info.h"
 #include "base/time/time.h"
-#include "components/optimization_guide/core/feature_registry/mqls_feature_registry.h"
-#include "components/optimization_guide/core/model_execution/feature_keys.h"
-#include "components/optimization_guide/core/model_execution/on_device_features.h"
 #include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/proto/common_types.pb.h"
 #include "components/variations/hashing.h"
@@ -141,24 +138,6 @@ const base::FeatureParam<std::string> kPerformanceClassListForImageInput{
 BASE_FEATURE(kOnDeviceModelBackgroundDownload,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::FeatureParam<std::string>
-    kOnDeviceModelBackgroundDownloadAllowedFeatures{
-        &kOnDeviceModelBackgroundDownload, "allowed_features",
-        "PromptApi,WritingAssistanceApi,Summarize"};
-
-bool IsOnDeviceModelBackgroundDownloadEnabledForFeature(
-    mojom::OnDeviceFeature feature) {
-  if (!base::FeatureList::IsEnabled(kOnDeviceModelBackgroundDownload)) {
-    return false;
-  }
-  std::string allowed_features_string =
-      kOnDeviceModelBackgroundDownloadAllowedFeatures.Get();
-  std::vector<std::string_view> allowed_features =
-      base::SplitStringPiece(allowed_features_string, ",",
-                             base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  return std::ranges::contains(allowed_features, GetVariantName(feature));
-}
-
 
 BASE_FEATURE(kBrokerModelSessionsForUntrustedProcesses,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -255,15 +234,6 @@ bool IsOptimizationHintsEnabled() {
 
 bool IsModelQualityLoggingEnabled() {
   return base::FeatureList::IsEnabled(kModelQualityLogging);
-}
-
-bool IsModelQualityLoggingEnabledForFeature(
-    const MqlsFeatureMetadata* metadata) {
-  if (!IsModelQualityLoggingEnabled()) {
-    return false;
-  }
-
-  return metadata->LoggingEnabledViaFieldTrial();
 }
 
 bool IsSRPFetchingEnabled() {

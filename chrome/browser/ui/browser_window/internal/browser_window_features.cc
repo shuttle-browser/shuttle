@@ -12,8 +12,6 @@
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
-#include "chrome/browser/actor/ui/actor_border_view_controller.h"
-#include "chrome/browser/actor/ui/actor_ui_window_controller.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
@@ -92,8 +90,6 @@
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/views/upgrade_notification_controller.h"
-#include "chrome/browser/ui/waap/initial_web_ui_manager.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
@@ -177,12 +173,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // UnloadController must be created first / destroyed last to ensure
   // features are able to register / de-register close callbacks.
   unload_controller_ = std::make_unique<UnloadController>(browser);
-
-  if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
-      features::kGlicActorUiBorderGlow.Get()) {
-    actor_border_view_controller_ =
-        std::make_unique<ActorBorderViewController>(browser);
-  }
 
 
   browser_active_state_manager_ =
@@ -281,14 +271,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
               window_feature_controller_.get(),
               browser->GetUnownedUserDataHost());
 
-  // `InitialWebUIWindowMetricsManager` depends on Browser (for Profile) and
-  // must be initialized before BrowserView creation because it is used by
-  // various views which are created during BrowserView::Init.
-  if (browser->GetType() == BrowserWindowInterface::TYPE_NORMAL) {
-    initial_webui_window_metrics_manager_ =
-        std::make_unique<InitialWebUIWindowMetricsManager>(browser);
-  }
-
 
   // Must be before location_bar_model_.
   location_bar_model_delegate_ =
@@ -378,8 +360,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // instantiated in this block (please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
-
-    initial_web_ui_manager_ = std::make_unique<InitialWebUIManager>(browser);
 
     if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
       organizer_panel_state_controller_ =
@@ -618,22 +598,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
   // instantiated in this block (please keep this list ordered without taking
   // into consideration buildflags, repeating buildflags is ok):
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
-    if (browser_view) {
-      if (base::FeatureList::IsEnabled(features::kGlicActorUi)) {
-        std::vector<std::pair<views::WebView*, ActorOverlayWebView*>>
-            container_overlay_view_pairs;
-        for (auto& contents_container :
-             browser_view->GetContentsContainerViews()) {
-          container_overlay_view_pairs.emplace_back(
-              contents_container->contents_view(),
-              contents_container->actor_overlay_web_view());
-        }
-        actor_ui_window_controller_ =
-            GetUserDataFactory().CreateInstance<ActorUiWindowController>(
-                *browser_, browser_, std::move(container_overlay_view_pairs));
-      }
-    }
-
 
     if (IsChromeLabsEnabled()) {
       chrome_labs_coordinator_ =
@@ -694,9 +658,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   if (chrome_labs_coordinator_) {
     chrome_labs_coordinator_->TearDown();
   }
-  if (actor_ui_window_controller_) {
-    actor_ui_window_controller_->TearDown();
-  }
 
   // Owned-by-all members.
   zoom_bubble_coordinator_.reset();
@@ -742,7 +703,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   // Init (reverse).
 
   // TYPE_NORMAL members.
-  initial_web_ui_manager_.reset();
 
   // Owned-by-all members.
   // Must be before window_feature_controller_ (raw pointer).
@@ -756,7 +716,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
     provider->TearDown();
   }
   browser_animation_controller_.reset();
-  actor_border_view_controller_.reset();
 }
 
 

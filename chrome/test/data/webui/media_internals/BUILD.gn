@@ -6,7 +6,7 @@ import("../build_webui_tests.gni")
 
 build_webui_tests("build") {
   # TODO: Update check to support JS files as well.
-  cc_test_files = [ "media_internals_browsertest.cc" ]
+  cc_test_files = []
 
   files = [
     "integration_test.js",

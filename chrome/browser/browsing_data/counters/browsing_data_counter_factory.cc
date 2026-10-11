@@ -22,9 +22,6 @@
 #include "components/browsing_data/core/pref_names.h"
 #include "extensions/buildflags/buildflags.h"
 
-#if BUILDFLAG(ENABLE_HOSTED_APPS)
-#include "chrome/browser/browsing_data/counters/hosted_apps_counter.h"
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "content/public/browser/host_zoom_map.h"
@@ -70,11 +67,6 @@ BrowsingDataCounterFactory::GetForProfileAndPref(Profile* profile,
         profile->GetPrefs());
   }
 
-#if BUILDFLAG(ENABLE_HOSTED_APPS)
-  if (pref_name == browsing_data::prefs::kDeleteHostedAppsData) {
-    return std::make_unique<HostedAppsCounter>(profile);
-  }
-#endif
 
 #if BUILDFLAG(IS_ANDROID)
   if (pref_name == browsing_data::prefs::kCloseTabs) {

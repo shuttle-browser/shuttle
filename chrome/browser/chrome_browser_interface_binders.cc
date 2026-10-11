@@ -12,7 +12,6 @@
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/accessibility/accessibility_labels_service.h"
 #include "chrome/browser/accessibility/accessibility_labels_service_factory.h"
-#include "chrome/browser/actor/actor_script_tool_receiver.h"
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/dom_distiller/dom_distiller_service_factory.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor.h"
@@ -26,7 +25,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/pwc/pwc_api_binder.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/speech/on_device_speech_recognition_impl.h"
 #include "chrome/browser/ssl/chrome_security_state_util.h"
 #include "chrome/browser/ui/search_engines/search_engine_tab_helper.h"
 #include "chrome/common/buildflags.h"
@@ -42,7 +40,6 @@
 #include "components/live_caption/pref_names.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_contents.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_processor_impl.h"
-#include "components/optimization_guide/public/mojom/model_broker.mojom.h"
 #include "components/performance_manager/embedder/binders.h"
 #include "components/performance_manager/embedder/performance_manager_registry.h"
 #include "components/prefs/pref_service.h"
@@ -352,14 +349,6 @@ void BindMediaFoundationRendererNotifierHandler(
 #endif  // BUILDFLAG(IS_WIN)
 #endif  // BUILDFLAG(ENABLE_SPEECH_SERVICE)
 
-void BindOnDeviceSpeechRecognitionHandler(
-    content::RenderFrameHost* frame_host,
-    mojo::PendingReceiver<media::mojom::OnDeviceSpeechRecognition> receiver) {
-  speech::OnDeviceSpeechRecognitionImpl::GetOrCreateForCurrentDocument(
-      frame_host)
-      ->Bind(std::move(receiver));
-}
-
 #if BUILDFLAG(IS_WIN)
 void BindMediaFoundationPreferences(
     content::RenderFrameHost* frame_host,
@@ -373,18 +362,6 @@ void BindMediaFoundationPreferences(
       std::move(receiver));
 }
 #endif  // BUILDFLAG(IS_WIN)
-
-void BindModelBroker(
-    content::RenderFrameHost* frame_host,
-    mojo::PendingReceiver<optimization_guide::mojom::ModelBroker> receiver) {
-  content::BrowserContext* browser_context = frame_host->GetBrowserContext();
-  Profile* profile = Profile::FromBrowserContext(browser_context);
-  OptimizationGuideKeyedService* optimization_guide_service =
-      OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
-  if (optimization_guide_service) {
-    optimization_guide_service->BindModelBroker(std::move(receiver));
-  }
-}
 
 // The password manager was removed from this fork. This minimal
 // implementation lets navigator.credentials.get({password: true}) and store()
@@ -430,9 +407,6 @@ void PopulateChromeFrameBinders(
   }
   map->Add<image_annotation::mojom::Annotator>(&BindImageAnnotator);
 
-  map->Add<blink::mojom::ScriptToolHost>(
-      &actor::ActorScriptToolReceiver::Create);
-
   map->Add<blink::mojom::AnchorElementMetricsHost>(
       &NavigationPredictor::Create);
 
@@ -456,8 +430,6 @@ void PopulateChromeFrameBinders(
   if (pm_registry) {
     pm_registry->GetBinders().ExposeInterfacesToRenderFrame(map);
   }
-
-  map->Add<optimization_guide::mojom::ModelBroker>(&BindModelBroker);
 
   map->Add<blink::mojom::CredentialManager>(&BindCredentialManager);
 
@@ -506,8 +478,6 @@ void PopulateChromeFrameBinders(
 #endif
 
   map->Add<network_hints::mojom::NetworkHintsHandler>(&BindNetworkHintsHandler);
-  map->Add<media::mojom::OnDeviceSpeechRecognition>(
-      &BindOnDeviceSpeechRecognitionHandler);
 
 #if BUILDFLAG(ENABLE_SPEECH_SERVICE)
   map->Add<media::mojom::SpeechRecognitionContext>(

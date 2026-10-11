@@ -57,7 +57,6 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/top_container_view.h"
-#include "chrome/browser/ui/views/location_bar/webui_location_bar.h"
 #include "chrome/browser/ui/views/page_action/page_action_container_view.h"
 #include "chrome/browser/ui/views/page_action/page_action_view.h"
 #include "chrome/browser/ui/views/page_action/page_action_view_interface.h"
@@ -77,10 +76,7 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_controller.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_divider.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_icon_container_view.h"
-#include "chrome/browser/ui/views/toolbar/webui_back_forward_control.h"
-#include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -248,17 +244,6 @@ ToolbarView::~ToolbarView() {
   }
 }
 
-// Forwards the early teardown request to both the embedded and detached WebUI
-// toolbar web views to stop renderer script execution before IPC disconnection.
-void ToolbarView::DestroyWebUIToolbarWebContents() {
-  if (toolbar_webview_) {
-    toolbar_webview_->DestroyWebContents();
-  }
-  if (detached_toolbar_webview_) {
-    detached_toolbar_webview_->DestroyWebContents();
-  }
-}
-
 void ToolbarView::Init() {
 #if defined(USE_AURA)
   // Avoid generating too many occlusion tracking calculation events before this
@@ -268,20 +253,11 @@ void ToolbarView::Init() {
   aura::WindowOcclusionTracker::ScopedPause pause_occlusion;
 #endif
 
-  std::unique_ptr<LocationBarView> location_bar_view;
-  std::unique_ptr<WebUILocationBar> webui_location_bar;
-  if (features::IsWebUILocationBarEnabled() &&
-      /* TODO(http://crbug.com/470042732): Figure out where we fit in other
-       * modes. When doing this, we have to be careful of floating DevTools ---
-       * that secretly has a hidden toolbar in location mode.*/
-      display_mode_ == DisplayMode::kNormal) {
-    webui_location_bar = std::make_unique<WebUILocationBar>(browser_, this);
-  } else {
-    location_bar_view = std::make_unique<LocationBarView>(
-        browser_, browser_->GetProfile(),
-        chrome::BrowserCommandController::From(browser_), this,
-        display_mode_ != DisplayMode::kNormal);
-  }
+  std::unique_ptr<LocationBarView> location_bar_view =
+      std::make_unique<LocationBarView>(
+          browser_, browser_->GetProfile(),
+          chrome::BrowserCommandController::From(browser_), this,
+          display_mode_ != DisplayMode::kNormal);
 
   // Make sure the toolbar shows by default.
   size_animation_.Reset(1);
@@ -336,58 +312,27 @@ void ToolbarView::Init() {
   std::unique_ptr<ExtensionsToolbarDesktop> extensions_container;
   std::unique_ptr<ToolbarDivider> toolbar_divider;
 
-  if (!features::IsWebUIExtensionsContainerEnabled()) {
-    extensions_container = std::make_unique<ExtensionsToolbarDesktop>(browser_);
-
-    toolbar_divider = std::make_unique<ToolbarDivider>();
-  }
+  extensions_container = std::make_unique<ExtensionsToolbarDesktop>(browser_);
+  toolbar_divider = std::make_unique<ToolbarDivider>();
 
   // Always add children in order from left to right, for accessibility.
-  if (!features::IsWebUIBackForwardButtonEnabled()) {
-    back_ = AddChildView(std::make_unique<BackForwardButton>(
-        BackForwardButton::Direction::kBack,
-        base::BindRepeating(callback, browser_, IDC_BACK), browser_));
-    forward_ = AddChildView(std::make_unique<BackForwardButton>(
-        BackForwardButton::Direction::kForward,
-        base::BindRepeating(callback, browser_, IDC_FORWARD), browser_));
-  }
+  back_ = AddChildView(std::make_unique<BackForwardButton>(
+      BackForwardButton::Direction::kBack,
+      base::BindRepeating(callback, browser_, IDC_BACK), browser_));
+  forward_ = AddChildView(std::make_unique<BackForwardButton>(
+      BackForwardButton::Direction::kForward,
+      base::BindRepeating(callback, browser_, IDC_FORWARD), browser_));
 
-  if (base::FeatureList::IsEnabled(
-          features::kWebUIToolbarProcessOverheadExperiment)) {
-    detached_toolbar_webview_ = std::make_unique<WebUIToolbarWebView>(
-        browser_, chrome::BrowserCommandController::From(browser_),
-        /*location_bar=*/nullptr);
-  } else if (features::IsWebUIToolbarEnabled()) {
-    toolbar_webview_ = AddChildView(std::make_unique<WebUIToolbarWebView>(
-        browser_, chrome::BrowserCommandController::From(browser_),
-        std::move(webui_location_bar)));
-  }
+  reload_ = AddChildView(std::make_unique<ReloadButton>(
+      browser_->GetProfile(), chrome::BrowserCommandController::From(browser_)));
 
-  if (!features::IsWebUIReloadButtonEnabled() ||
-      base::FeatureList::IsEnabled(
-          features::kWebUIToolbarProcessOverheadExperiment)) {
-    reload_ = AddChildView(std::make_unique<ReloadButton>(
-        browser_->GetProfile(),
-        chrome::BrowserCommandController::From(browser_),
-        InitialWebUIWindowMetricsManager::From(browser_)));
-  }
+  home_ = AddChildView(std::make_unique<HomeButton>(
+      browser_, base::BindRepeating(callback, browser_, IDC_HOME)));
 
-  if (!features::IsWebUIHomeButtonEnabled()) {
-    home_ = AddChildView(std::make_unique<HomeButton>(
-        browser_, base::BindRepeating(callback, browser_, IDC_HOME)));
-  }
+  split_tabs_ = AddChildView(std::make_unique<SplitTabsToolbarButton>(browser_));
 
-  if (!features::IsWebUISplitTabsButtonEnabled()) {
-    split_tabs_ =
-        AddChildView(std::make_unique<SplitTabsToolbarButton>(browser_));
-  }
-
-  if (location_bar_view) {
-    location_bar_view_ = AddChildView(std::move(location_bar_view));
-    location_bar_ = location_bar_view_;
-  } else {
-    location_bar_ = toolbar_webview_->GetLocationBar();
-  }
+  location_bar_view_ = AddChildView(std::move(location_bar_view));
+  location_bar_ = location_bar_view_;
 
   if (extensions_container) {
     extensions_container_ = AddChildView(std::move(extensions_container));
@@ -399,13 +344,9 @@ void ToolbarView::Init() {
     toolbar_divider_ = AddChildView(std::move(toolbar_divider));
   }
 
-  if (!features::IsWebUIPinnedToolbarActionsEnabled()) {
-    pinned_toolbar_actions_container_ = AddChildView(
-        std::make_unique<PinnedToolbarActionsContainer>(browser_view_, this));
-    pinned_toolbar_actions_ = pinned_toolbar_actions_container_;
-  } else {
-    pinned_toolbar_actions_ = toolbar_webview_->GetPinnedToolbarActions();
-  }
+  pinned_toolbar_actions_container_ = AddChildView(
+      std::make_unique<PinnedToolbarActionsContainer>(browser_view_, this));
+  pinned_toolbar_actions_ = pinned_toolbar_actions_container_;
 
   if (IsChromeLabsEnabled()) {
     UpdateChromeLabsNewBadgePrefs(browser_->GetProfile());
@@ -417,8 +358,6 @@ void ToolbarView::Init() {
           chrome_labs_prefs::kBrowserLabsEnabledEnterprisePolicy, prefs,
           base::BindRepeating(&ToolbarView::OnChromeLabsPrefChanged,
                               base::Unretained(this)));
-      CHECK(!features::IsWebUIPinnedToolbarActionsEnabled())
-          << "WebUIPinnedToolbarActions does not support ChromeLabs.";
       // Set the visibility for the button based on initial enterprise policy
       // value. Only call OnChromeLabsPrefChanged if there is a change from
       // the initial value.
@@ -428,17 +367,10 @@ void ToolbarView::Init() {
     }
   }
 
-  // Only manage the overflow button when there are at least some views
-  // controls. If there aren't any, the WebUIToolbarWebView will handle all
-  // layout and overflow itself, in Javascript.
-  if (!features::IsWebUIToolbarFullyEnabled()) {
-    overflow_button_ = AddChildView(std::make_unique<OverflowButton>());
-    overflow_button_->SetVisible(false);
-  }
+  overflow_button_ = AddChildView(std::make_unique<OverflowButton>());
+  overflow_button_->SetVisible(false);
 
-  // WebUI app menu button handles these internally, so no need to set these
-  // properties here, and the control is added as part of the WebUI toolbar.
-  if (!features::IsWebUIAppMenuButtonEnabled()) {
+  {
     auto app_menu_button = std::make_unique<BrowserAppMenuButton>(this);
     app_menu_button->SetFlipCanvasOnPaintForRTLUI(true);
     app_menu_button->GetViewAccessibility().SetName(
@@ -456,11 +388,7 @@ void ToolbarView::Init() {
   // the widget (widget found by way of app_menu_button_->GetWidget()).
   app_menu_icon_controller_.UpdateDelegate();
 
-  if (location_bar_view_) {
-    location_bar_view_->Init();
-  } else {
-    toolbar_webview_->GetLocationBar()->Init(toolbar_webview_.get());
-  }
+  location_bar_view_->Init();
 
   show_forward_button_.Init(
       prefs::kShowForwardButton, prefs,
@@ -632,12 +560,6 @@ ToolbarView::GetContentSettingBubbleModelDelegate() {
 
 void ToolbarView::EnabledStateChangedForCommand(int id, bool enabled) {
   DCHECK(display_mode_ == DisplayMode::kNormal);
-
-  if ((id == IDC_BACK || id == IDC_FORWARD) &&
-      features::IsWebUIBackForwardButtonEnabled()) {
-    toolbar_webview_->SetBackForwardEnabled(id, enabled);
-    return;
-  }
 
   const std::array<views::Button*, 4> kButtons{back_, forward_, reload_,
                                                home_};
@@ -874,15 +796,7 @@ void ToolbarView::InitLayout() {
                                  views::MaximumFlexSizeRule::kPreferred));
   }
 
-  if (features::IsWebUIToolbarEnabled() && toolbar_webview_) {
-    // Strip default C++ outer margins from `toolbar_webview_` since WebUI CSS
-    // handles internal toolbar spacing.
-    toolbar_webview_->SetProperty(views::kMarginsKey, gfx::Insets());
-  }
-
-  // If there are any non-WebUI controls, needs to set up the ToolbarController
-  // to handle overflow. Otherwise, the toolbar controller is not needed.
-  if (!features::IsWebUIToolbarFullyEnabled()) {
+  {
     // Order 1 is reserved for the location bar if
     // kOmniboxResizingPrioritization is enabled.
     constexpr int kToolbarFlexOrderStart = 2;
@@ -891,29 +805,10 @@ void ToolbarView::InitLayout() {
     toolbar_controller_ = std::make_unique<ToolbarController>(
         OverflowMenu::GetDefaultResponsiveElements(browser_),
         ToolbarController::GetDefaultOverflowOrder(), kToolbarFlexOrderStart,
-        this, toolbar_webview_.get(), overflow_button_, pinned_toolbar_actions_,
+        this, /*webui_toolbar_controller_delegate=*/nullptr, overflow_button_,
+        pinned_toolbar_actions_,
         PinnedToolbarActionsModel::Get(browser_view_->GetProfile()));
     overflow_button_->set_toolbar_controller(toolbar_controller_.get());
-  }
-
-  if (toolbar_webview_) {
-    if (toolbar_controller_) {
-      toolbar_webview_->SetProperty(
-          views::kFlexBehaviorKey,
-          toolbar_webview_->GetFlexSpecification(
-              toolbar_controller_->webui_toolbar_button_flex_order(),
-              location_bar_flex_order));
-    } else {
-      // If `toolbar_controller_` is nullptr, then the WebUI toolbar is managing
-      // all controls, so don't need to worry about integrating with
-      // ToolbarController's overflow logic, so instead use a more basic
-      // resizing rule. Eventually we'll be the only View in this case, anyways,
-      // and may want to get rid of the FlexLayout entirely.
-      toolbar_webview_->SetProperty(
-          views::kFlexBehaviorKey,
-          views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToMinimum,
-                                   views::MaximumFlexSizeRule::kUnbounded));
-    }
   }
 
   LayoutCommon();
@@ -935,30 +830,6 @@ void ToolbarView::LayoutCommon() {
     SetRefreshMargins(app_menu_button_, expanded);
   }
 
-  const bool is_rtl = base::i18n::IsRTL();
-
-  // Zero out leading or trailing interior margins for WebUI toolbar so that
-  // `toolbar_webview_` spans the full width of the container edge-to-edge.
-  // WebUI handles standard toolbar indentation internally via CSS.
-  // Note: Because `gfx::Insets` operate in physical screen coordinates, we
-  // check `base::i18n::IsRTL()` to invert which physical edge corresponds to
-  // the leading Back/Forward button versus the trailing App Menu button.
-  // TODO(crbug.com/538651978): Once the entire toolbar migrates to 100%
-  // WebUI, simplify these individual feature checks to a single global check.
-  if (features::IsWebUIBackForwardButtonEnabled()) {
-    if (is_rtl) {
-      interior_margin.set_right(0);
-    } else {
-      interior_margin.set_left(0);
-    }
-  }
-  if (features::IsWebUIAppMenuButtonEnabled()) {
-    if (is_rtl) {
-      interior_margin.set_left(0);
-    } else {
-      interior_margin.set_right(0);
-    }
-  }
   layout_manager_->SetInteriorMargin(interior_margin);
 
   // Extend buttons to the window edge if we're either in a maximized or
@@ -972,12 +843,8 @@ void ToolbarView::LayoutCommon() {
       browser_->GetWindow() && (browser_->GetWindow()->IsMaximized() ||
                                 browser_->GetWindow()->IsFullscreen());
 
-  if (features::IsWebUIBackForwardButtonEnabled()) {
-    toolbar_webview_->SetIsMaximizedOrFullscreen(is_maximized_or_fullscreen);
-  } else {
-    const int margin = is_maximized_or_fullscreen ? interior_margin.left() : 0;
-    back_->SetLeadingMargin(margin);
-  }
+  const int margin = is_maximized_or_fullscreen ? interior_margin.left() : 0;
+  back_->SetLeadingMargin(margin);
 
   GetAppMenuControl()->SetIsMaximizedOrFullscreen(is_maximized_or_fullscreen);
 
@@ -998,9 +865,6 @@ void ToolbarView::UpdateTypeAndSeverity(
 }
 
 ExtensionsContainerViews* ToolbarView::GetExtensionsContainerViews() {
-  if (features::IsWebUIExtensionsContainerEnabled()) {
-    return toolbar_webview_->extensions_container_views();
-  }
   return extensions_container_;
 }
 
@@ -1031,13 +895,6 @@ views::BubbleAnchor ToolbarView::GetDefaultExtensionDialogAnchor() {
 
 page_actions::PageActionViewInterface* ToolbarView::GetPageActionViewInterface(
     actions::ActionId action_id) {
-  if (features::IsWebUILocationBarEnabled()) {
-    if (toolbar_webview_ && !location_bar_view_) {
-      return toolbar_webview_->GetLocationBar()->GetPageActionViewInterface(
-          action_id);
-    }
-    return nullptr;
-  }
   page_actions::PageActionPropertiesProvider provider;
   if (!provider.Contains(action_id)) {
     return nullptr;
@@ -1047,16 +904,10 @@ page_actions::PageActionViewInterface* ToolbarView::GetPageActionViewInterface(
 }
 
 AppMenuControl* ToolbarView::GetAppMenuControl() {
-  if (features::IsWebUIAppMenuButtonEnabled() && toolbar_webview_) {
-    return toolbar_webview_->GetAppMenuControl();
-  }
   return app_menu_button_;
 }
 
 const AppMenuControl* ToolbarView::GetAppMenuControl() const {
-  if (features::IsWebUIAppMenuButtonEnabled() && toolbar_webview_) {
-    return toolbar_webview_->GetAppMenuControl();
-  }
   return app_menu_button_;
 }
 
@@ -1080,9 +931,6 @@ gfx::Rect ToolbarView::GetFindBarBoundingBox(int contents_bottom) {
 
 void ToolbarView::FocusToolbar() {
   SetPaneFocus(nullptr);
-  if (toolbar_webview_) {
-    toolbar_webview_->AdjustForToolbarFocus();
-  }
 }
 
 views::AccessiblePaneView* ToolbarView::GetAsAccessiblePaneView() {
@@ -1098,16 +946,10 @@ views::BubbleAnchor ToolbarView::GetBubbleAnchor(
   }
 
   // Otherwise attempt to use the location bar.
-  auto anchor = features::IsWebUILocationBarEnabled()
-                    ? views::BubbleAnchor(location_bar_->GetAnchorOrNull())
-                    : views::BubbleAnchor(location_bar_view_);
-  bool anchor_not_drawn;
+  auto anchor = views::BubbleAnchor(location_bar_view_);
+  bool anchor_not_drawn = false;
   if (views::View* view = anchor.GetIfView()) {
     anchor_not_drawn = !view->IsDrawn();
-  } else {
-    anchor_not_drawn = (features::IsWebUILocationBarEnabled() ||
-                        features::IsWebUIPinnedToolbarActionsEnabled()) &&
-                       anchor.IsNull();
   }
   // In app windows the location bar view may exist but not be drawn. Avoid
   // anchoring bubbles to a non-drawn view (e.g. on Ozone/Wayland) and always
@@ -1144,13 +986,6 @@ ToolbarButton* ToolbarView::GetBackButton() {
 }
 
 ReloadControl* ToolbarView::GetReloadButton() {
-  if (features::IsWebUIReloadButtonEnabled()) {
-    if (toolbar_webview_) {
-      return toolbar_webview_->GetReloadControl();
-    } else {
-      return nullptr;
-    }
-  }
   return reload_;
 }
 
@@ -1160,10 +995,6 @@ ToolbarButton* ToolbarView::GetDownloadButton() {
              ? pinned_toolbar_actions_container_->GetButtonFor(
                    kActionShowDownloads)
              : nullptr;
-}
-
-WebUIToolbarWebView* ToolbarView::GetWebUIToolbarViewForTesting() {
-  return toolbar_webview_;
 }
 
 std::optional<BrowserRootView::DropIndex> ToolbarView::GetDropIndex(
@@ -1237,11 +1068,7 @@ void ToolbarView::OnTouchUiChanged() {
 }
 
 void ToolbarView::SetForwardButtonVisibility(bool visible) {
-  if (features::IsWebUIBackForwardButtonEnabled()) {
-    toolbar_webview_->SetForwardVisible(visible);
-  } else {
-    forward_->SetVisible(visible);
-  }
+  forward_->SetVisible(visible);
 }
 
 gfx::Size ToolbarView::GetBackForwardButtonSize(bool minimum_size) const {

@@ -123,10 +123,9 @@ ConsentState MultistepFilterService::GetConsentState() const {
 }
 
 SettingsState MultistepFilterService::GetSettingsState() const {
-  const optimization_guide::prefs::FeatureOptInState opt_in_state = static_cast<
-      optimization_guide::prefs::FeatureOptInState>(pref_service_->GetInteger(
-      optimization_guide::prefs::GetSettingEnabledPrefName(
-          optimization_guide::UserVisibleFeatureKey::kContextualCueing)));
+  // Shuttle: the per-feature AI opt-in prefs are gone (model execution removed).
+  const optimization_guide::prefs::FeatureOptInState opt_in_state =
+      optimization_guide::prefs::FeatureOptInState::kNotInitialized;
 
   const SuggestionsPolicyState policy_state =
       (pref_service_->GetInteger(

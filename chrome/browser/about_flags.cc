@@ -73,8 +73,6 @@
 #include "chrome/common/chrome_content_client.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
-#include "components/actor/core/actor_features.h"
-#include "components/actor/core/actor_switches.h"
 #include "components/browser_actuator/public/features.h"
 #include "components/browsing_data/core/features.h"
 #include "components/component_updater/component_updater_command_line_config_policy.h"
@@ -112,7 +110,6 @@
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/open_from_clipboard/clipboard_recent_content_features.h"
-#include "components/optimization_guide/core/model_execution/model_execution_features.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/core/optimization_guide_switches.h"
 #include "components/page_content_annotations/core/page_content_annotations_features.h"
@@ -201,7 +198,6 @@
 #include "services/media_session/public/cpp/features.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/network_switches.h"
-#include "services/on_device_model/public/cpp/features.h"
 #include "services/tracing/public/cpp/tracing_features.h"
 #include "services/webnn/public/mojom/features.mojom-features.h"
 #include "skia/rusty_jpeg_feature.h"
@@ -3043,12 +3039,6 @@ const FeatureEntry::FeatureVariation kPdfGlicSummarizeVariations[] = {
      kPdfGlicSummarizeLongButtonText, nullptr}};
 #endif  // BUILDFLAG(ENABLE_PDF)
 
-const FeatureEntry::FeatureParam kGlicActorTransientTasksForceTransient[] = {
-    {"force_transient", "true"}};
-
-const FeatureEntry::FeatureVariation kGlicActorTransientTasksVariations[] = {
-    {"(force transient)", kGlicActorTransientTasksForceTransient, nullptr}};
-
 const FeatureEntry::FeatureParam kGlicButtonPressedStateForceSolidIcon[] = {
     {"glic-button-pressed-force-solid-icon", "true"}};
 
@@ -3316,30 +3306,6 @@ const FeatureEntry::FeatureVariation kNavigationBlurVariations[] = {
 constexpr char kWebiumFlag[] = "webium";
 constexpr char kWebiumFeatures[] =
     "Webium,SurfaceEmbed,ExtensionsMenuAccessControl";
-constexpr char kWebUIToolbarFlag[] = "webui-toolbar";
-constexpr char kWebUIToolbarEnableFeatures[] =
-    "InitialWebUI:high_stream_priority/true,"
-    "WebUIReloadButton:WebUIReloadButtonDeferBrowserViewShow/false/"
-    "WebUIReloadButtonKeepVisibleUntilPaint/true/"
-    "WebUIReloadButtonRestartUnresponsive/true/"
-    "WebUIReloadButtonRestartUnresponsiveRenderersTimeout/5s/"
-    "WebUIReloadButtonPrewarmWebUI/true/"
-    "WebUIReloadButtonPrewarmWebUIPreNavigate/true,"
-    "WebUIToolbar,"
-    "SkipIPCChannelPausingForNonGuests,WebUIInProcessResourceLoadingV2,"
-    "InitialWebUISyncNavStartToCommit,InitialWebUIWithoutExtensions,"
-    "WebUIBundledCodeCache,"
-    "InitialWebUISurfaceSync:deadline_in_frames/12000/"
-    "renderer_commit_delay_ms/100000,"
-    "BypassOutdatedSurfaceActivation,SendGPUChannelEarly";
-constexpr char kWebUIToolbarDisableFeatures[] =
-    "InitialWebUI,WebUIReloadButton,WebUIBackForwardButton,WebUIHomeButton,"
-    "WebUIToolbar,WebUILocationBar,"
-    "WebUISplitTabsButton,SkipIPCChannelPausingForNonGuests,"
-    "WebUIInProcessResourceLoadingV2,InitialWebUISyncNavStartToCommit,"
-    "InitialWebUIWithoutExtensions,WebUIBundledCodeCache,"
-    "InitialWebUISurfaceSync,BypassOutdatedSurfaceActivation,"
-    "SendGPUChannelEarly";
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 
@@ -3753,18 +3719,6 @@ const FeatureEntry::Choice kGemma4Choices[] = {
     {flags_ui::kGenericExperimentChoiceEnabled, switches::kEnableFeatures,
      "OptimizationGuideManifestBroker,"
      "AIApiFoundationalModel:model_version/v4"}};
-
-const FeatureEntry::Choice kSpeculativeDecodingChoices[] = {
-    {flags_ui::kGenericExperimentChoiceDefault, "", ""},
-    {flags_ui::kGenericExperimentChoiceEnabled, switches::kEnableFeatures,
-     "OnDeviceModelSpeculativeDecoding,OptimizationGuideManifestBroker,"
-     "AIApiFoundationalModel:model_version/v4,AIPromptAPIParams"}};
-
-const FeatureEntry::Choice kOnDeviceWebSpeechSmallExpertModelChoices[] = {
-    {flags_ui::kGenericExperimentChoiceDefault, "", ""},
-    {flags_ui::kGenericExperimentChoiceEnabled, switches::kEnableFeatures,
-     "OnDeviceWebSpeech,OnDeviceWebSpeechSmallExpertModel,"
-     "OptimizationGuideManifestBroker"}};
 
 
 
@@ -7647,12 +7601,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 
 
-    {"wallpaper-search-settings-visibility",
-     flag_descriptions::kWallpaperSearchSettingsVisibilityName,
-     flag_descriptions::kWallpaperSearchSettingsVisibilityDescription,
-     kOsDesktop,
-     FEATURE_VALUE_TYPE(optimization_guide::features::internal::
-                            kWallpaperSearchSettingsVisibility)},
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -8747,15 +8695,7 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(
          page_content_annotations::features::kOnDeviceCategoryClassifier)},
 
-    {"on-device-model-speculative-decoding",
-     flag_descriptions::kOnDeviceModelSpeculativeDecodingName,
-     flag_descriptions::kOnDeviceModelSpeculativeDecodingDescription,
-     kOsDesktop, MULTI_VALUE_TYPE(kSpeculativeDecodingChoices)},
 
-    {"web-speech-on-device-small-expert-model",
-     flag_descriptions::kOnDeviceWebSpeechSmallExpertModelName,
-     flag_descriptions::kOnDeviceWebSpeechSmallExpertModelDescription,
-     kOsDesktop, MULTI_VALUE_TYPE(kOnDeviceWebSpeechSmallExpertModelChoices)},
 
     {"css-grid-lanes-layout", flag_descriptions::kCSSGridLanesLayoutName,
      flag_descriptions::kCSSGridLanesLayoutDescription, kOsAll,
@@ -8967,12 +8907,6 @@ const FeatureEntry kFeatureEntries[] = {
     {"glic-z-order-changes", flag_descriptions::kGlicZOrderChangesName,
      flag_descriptions::kGlicZOrderChangesDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(features::kGlicZOrderChanges)},
-    {"glic-actor", flag_descriptions::kGlicActorName,
-     flag_descriptions::kGlicActorDescription, kOsDesktop | kOsAndroid,
-     ENABLE_DISABLE_VALUE_TYPE_AND_VALUE(switches::kEnableFeatures,
-                                         "GlicActor,GlicActorUi",
-                                         switches::kDisableFeatures,
-                                         "GlicActor,GlicActorUi")},
     {"glic-handoff-button-hide-when-modal-ui-shown",
      flag_descriptions::kGlicHandoffButtonHideWhenModalUIShownName,
      flag_descriptions::kGlicHandoffButtonHideWhenModalUIShownDescription,
@@ -9020,58 +8954,14 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(
          features::kGlicExperimentalTriggeringSuppressDoneNotification)},
-    {"glic-actor-cursor", flag_descriptions::kGlicActorCursorName,
-     flag_descriptions::kGlicActorCursorDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kGlicActorUiMagicCursor)},
-    {"glic-actor-script-tools",
-     flag_descriptions::kGlicActorEnableScriptToolsName,
-     flag_descriptions::kGlicActorEnableScriptToolsDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(actor::kGlicActorEnableScriptTools)},
-    {"glic-actor-transient-tasks",
-     flag_descriptions::kGlicActorTransientTasksName,
-     flag_descriptions::kGlicActorTransientTasksDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(actor::kGlicActorTransientTasks,
-                                    kGlicActorTransientTasksVariations,
-                                    "GlicActorTransientTasks")},
-    {"glic-actor-skip-screenshot",
-     flag_descriptions::kGlicActorSkipScreenshotName,
-     flag_descriptions::kGlicActorSkipScreenshotDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(actor::kGlicActorSkipScreenshot)},
 #if BUILDFLAG(IS_ANDROID)
-    {"actor-live-notification", flag_descriptions::kActorLiveNotificationName,
-     flag_descriptions::kActorLiveNotificationDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(chrome::android::kActorLiveNotification)},
-    {"actor-notification-intent-routing",
-     flag_descriptions::kActorNotificationIntentRoutingName,
-     flag_descriptions::kActorNotificationIntentRoutingDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(chrome::android::kActorNotificationIntentRouting)},
     {"glic-background-actuation-tab-group-sync",
      flag_descriptions::kGlicBackgroundActuationTabGroupSyncName,
      flag_descriptions::kGlicBackgroundActuationTabGroupSyncDescription,
      kOsAndroid,
      FEATURE_VALUE_TYPE(chrome::android::kGlicBackgroundActuationTabGroupSync)},
 #endif  // BUILDFLAG(IS_ANDROID)
-    {"actor-observe-screenshot-default",
-     flag_descriptions::kActorObserveScreenshotDefaultName,
-     flag_descriptions::kActorObserveScreenshotDefaultDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(actor::kActorObserveScreenshotDefault)},
-    {"actor-observe-page-content-default",
-     flag_descriptions::kActorObservePageContentDefaultName,
-     flag_descriptions::kActorObservePageContentDefaultDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(actor::kActorObservePageContentDefault)},
-    {"actor-script-tool-skip-screenshot",
-     flag_descriptions::kActorScriptToolSkipScreenshotName,
-     flag_descriptions::kActorScriptToolSkipScreenshotDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(actor::kActorScriptToolSkipScreenshot)},
-    {"actor-script-tool-skip-page-content",
-     flag_descriptions::kActorScriptToolSkipPageContentName,
-     flag_descriptions::kActorScriptToolSkipPageContentDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(actor::kActorScriptToolSkipPageContent)},
 #if BUILDFLAG(IS_ANDROID)
-    {"actor-step-progress-notification",
-     flag_descriptions::kActorStepProgressNotificationName,
-     flag_descriptions::kActorStepProgressNotificationDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(chrome::android::kActorStepProgressNotification)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
     {"glic-print-menu-item", flag_descriptions::kGlicPrintMenuItemName,
@@ -9145,10 +9035,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kGlicSelectionPromptDescription, kOsDesktop,
      MULTI_VALUE_TYPE(kGlicSelectionPromptChoices)},
 
-    {"glic-disable-actor-safety-checks",
-     flag_descriptions::kGlicDisableActorSafetyChecksName,
-     flag_descriptions::kGlicDisableActorSafetyChecksDescription, kOsDesktop,
-     SINGLE_VALUE_TYPE(actor::switches::kDisableActorSafetyChecks)},
 
 #if !BUILDFLAG(IS_ANDROID)
     {"privileged-web-contents", flag_descriptions::kPrivilegedWebContentsName,
@@ -10763,15 +10649,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(features::kPrerenderActivationBeacon)},
 
 #if BUILDFLAG(IS_ANDROID)
-#endif
-
-#if !BUILDFLAG(IS_ANDROID)
-    {kWebUIToolbarFlag, flag_descriptions::kWebUIToolbarName,
-     flag_descriptions::kWebUIToolbarDescription, kOsWin | kOsMac | kOsLinux,
-     ENABLE_DISABLE_VALUE_TYPE_AND_VALUE(switches::kEnableFeatures,
-                                         kWebUIToolbarEnableFeatures,
-                                         switches::kDisableFeatures,
-                                         kWebUIToolbarDisableFeatures)},
 #endif
 
 #if BUILDFLAG(IS_ANDROID)

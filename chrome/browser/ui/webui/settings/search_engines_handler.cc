@@ -23,7 +23,6 @@
 #include "chrome/browser/metrics/profile_metrics_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/search_hijacking_detector.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/search_engines/ui_thread_search_terms_data.h"
 #include "chrome/browser/ui/search_engines/keyword_editor_controller.h"
@@ -144,7 +143,6 @@ void SearchEnginesHandler::OnJavascriptAllowed() {
   scoped_url_service_observation_.Observe(template_url_service);
   list_controller_.Refresh();
 
-  RecordSearchHijackingHeuristicMetric();
 }
 
 void SearchEnginesHandler::OnJavascriptDisallowed() {
@@ -366,34 +364,6 @@ base::DictValue SearchEnginesHandler::CreateDictionaryForEngine(
     }
   }
   return dict;
-}
-
-void SearchEnginesHandler::RecordSearchHijackingHeuristicMetric() {
-  if (has_recorded_hijacking_metric_) {
-    return;
-  }
-
-  // Look for matches in the last 7 days, per the histograms.xml description.
-  auto status =
-      safe_browsing::SearchHijackingDetector::GetRecentHeuristicResult(
-          profile_->GetPrefs(), base::Days(7));
-
-  bool available =
-      (status !=
-       safe_browsing::SearchHijackingDetector::HeuristicResult::kUnknown);
-
-  base::UmaHistogramBoolean(
-      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable",
-      available);
-
-  if (available) {
-    base::UmaHistogramBoolean(
-        "Settings.SearchEngines.SearchHijackingDetector.HeuristicMatch",
-        status ==
-            safe_browsing::SearchHijackingDetector::HeuristicResult::kMatch);
-  }
-
-  has_recorded_hijacking_metric_ = true;
 }
 
 void SearchEnginesHandler::RecordSearchEngineSplitMetrics(

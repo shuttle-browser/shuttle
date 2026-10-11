@@ -10,14 +10,11 @@ source_set("profiles") {
 
   if (!is_android) {
     sources += [
-      "avatar_badge_types.h",
-      "profile_colors_util.h",
     ]
 
     if (is_chrome_branded) {
       sources += [ "//chrome/browser/internal/profiles/profile_view_avatar_decoration_specs_branded.h" ]
     } else {
-      sources += [ "profile_view_avatar_decoration_specs.h" ]
     }
 
     public_deps += [
@@ -54,7 +51,6 @@ source_set("impl") {
 
   if (!is_android) {
     sources += [
-      "profile_colors_util.cc",
     ]
 
     deps += [
@@ -111,7 +107,6 @@ source_set("test_support") {
   public_deps = []
 
   if (!is_android) {
-    sources += [ "profile_ui_test_utils.h" ]
     public_deps += [
       "//base",
       "//url",

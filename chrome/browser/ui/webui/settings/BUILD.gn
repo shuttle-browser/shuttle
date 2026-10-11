@@ -150,7 +150,6 @@ source_set("impl") {
     "//chrome/browser:global_features",
     "//chrome/browser:primitives",
     "//chrome/browser/accessibility",
-    "//chrome/browser/actor",
     "//chrome/browser/bluetooth",
     "//chrome/browser/browsing_data",
     "//chrome/browser/browsing_data:constants",

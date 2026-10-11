@@ -52,7 +52,6 @@ source_set("impl") {
     "//chrome/app/vector_icons",
     "//chrome/browser:browser_process",
     "//chrome/browser:primitives",
-    "//chrome/browser/actor/resources:grit",
     "//chrome/browser/favicon",
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui:ui_features",

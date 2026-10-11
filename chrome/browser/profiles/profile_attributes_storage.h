@@ -163,11 +163,6 @@ class ProfileAttributesStorage {
                              const std::string& key,
                              const base::FilePath& image_path);
 
-  // Checks whether the high res avatar at index |icon_index| exists, and if it
-  // does not, calls |DownloadHighResAvatar|.
-  void DownloadHighResAvatarIfNeeded(size_t icon_index,
-                                     const base::FilePath& profile_path);
-
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
 
@@ -228,11 +223,6 @@ class ProfileAttributesStorage {
   FRIEND_TEST_ALL_PREFIXES(ProfileAttributesStorageTest,
                            MigrateLegacyProfileNamesAndRecomputeIfNeeded);
 
-  // Starts downloading the high res avatar at index |icon_index| for profile
-  // with path |profile_path|.
-  void DownloadHighResAvatar(size_t icon_index,
-                             const base::FilePath& profile_path);
-
   // Saves the avatar |image| at |image_path|. This is used both for the GAIA
   // profile pictures and the ProfileAvatarDownloader that is used to download
   // the high res avatars.
@@ -269,9 +259,6 @@ class ProfileAttributesStorage {
   // indicates whether the profile should be hidden in UI.
   ProfileAttributesEntry* InitEntryWithKey(const std::string& key,
                                            bool is_omitted);
-
-  // Download and high-res avatars used by the profiles.
-  void DownloadAvatars();
 
 #if !BUILDFLAG(IS_ANDROID)
   // Loads GAIA pictures (if any) for all profiles registered in the storage and

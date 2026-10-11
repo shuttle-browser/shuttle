@@ -14,7 +14,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/ui/content_settings/content_setting_bubble_model.h"
 #include "chrome/browser/ui/content_settings/content_setting_bubble_model_delegate.h"
-#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom-shared.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -33,7 +32,38 @@ struct VectorIcon;
 // that are displayed in the location bar.
 class ContentSettingImageModel {
  public:
-  using ImageType = toolbar_ui_api::mojom::ContentSettingImageType;
+  // The specific content setting icon. This enum is UI-specific, unlike
+  // ContentSettingsType: kFramebust has a separate icon from kPopups.
+  enum class ImageType : int32_t {
+    kCookies = 0,
+    kImages = 1,
+    kJavaScript = 2,
+    kPopups = 5,
+    kGeolocation = 6,
+    kMixedScript = 7,
+    kProtocolHandlers = 8,
+    kMediaStream = 9,
+    kAds = 10,
+    kAutomaticDownloads = 11,
+    kMidiSysex = 12,
+    kSound = 13,
+    kFramebust = 14,
+    kSensors = 16,
+    kClipboardReadWrite = 18,
+    kStorageAccess = 19,
+    kNotifications = 21,
+#if BUILDFLAG(IS_CHROMEOS)
+    kSmartCard = 22,
+#endif
+#if BUILDFLAG(IS_WIN)
+    kProtectedMediaIdentifier = 23,
+    kMaxValue = kProtectedMediaIdentifier,
+#elif BUILDFLAG(IS_CHROMEOS)
+    kMaxValue = kSmartCard,
+#else
+    kMaxValue = kNotifications,
+#endif
+  };
 
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCookiesIconElementId);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kImagesIconElementId);

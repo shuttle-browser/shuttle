@@ -67,7 +67,6 @@ source_set("permissions") {
   deps = [
     ":permissions_proto",
     "//chrome/browser:browser_process",
-    "//chrome/browser/actor",
     "//chrome/browser/app_mode",
     "//chrome/browser/background_fetch",
     "//chrome/browser/background_sync",
@@ -149,7 +148,6 @@ source_set("permissions") {
       "//chrome/android:chrome_jni_headers",
       "//components/messages/android",
       "//components/messages/android:feature_flags",
-      "//ui/android",
     ]
 
     if (enable_openxr) {

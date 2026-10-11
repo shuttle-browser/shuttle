@@ -78,7 +78,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/extension_metrics.h"
@@ -513,12 +512,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       std::vector<RestoredTab>& restored_tabs) {
     BrowserWindowInterface* browser = nullptr;
     if (!created_tabbed_browser && always_create_tabbed_browser_) {
-      base::TimeTicks now = base::TimeTicks::Now();
       browser = CreateBrowserWindow(BrowserWindowCreateParams(profile_, false));
-      if (auto* manager = InitialWebUIWindowMetricsManager::From(browser)) {
-        manager->SetWindowCreationInfo(
-            waap::NewWindowCreationSource::kBrowserInitiated, now);
-      }
       if (startup_tabs_.empty()) {
         // No tab browsers were created and no URLs were supplied on the command
         // line. Open the new tab page.
@@ -1237,14 +1231,8 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       }
     }
 
-    base::TimeTicks now = base::TimeTicks::Now();
     BrowserWindowInterface* browser_window =
         CreateBrowserWindow(std::move(params));
-    if (auto* manager =
-            InitialWebUIWindowMetricsManager::From(browser_window)) {
-      manager->SetWindowCreationInfo(
-          waap::NewWindowCreationSource::kSessionRestore, now);
-    }
     g_is_any_session_restored = true;
     return browser_window;
   }

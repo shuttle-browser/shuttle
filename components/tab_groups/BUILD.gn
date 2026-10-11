@@ -63,7 +63,6 @@ if (is_android) {
       "//third_party/androidx:androidx_core_core_java",
       "//third_party/jni_zero:gendeps_java",
       "//third_party/jni_zero:jni_zero_java",
-      "//ui/android:ui_java",
     ]
     srcjar_deps = [
       ":java_enums",

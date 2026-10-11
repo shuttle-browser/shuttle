@@ -83,7 +83,6 @@ if (is_android) {
       "//components/messages/android/test:test_support_java",
       "//components/metrics:metrics_java",
       "//components/payments/mojom:mojom_java",
-      "//content/public/android:content_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/blink/public/common:common_java",
       "//third_party/blink/public/mojom:android_mojo_bindings_java",
@@ -255,7 +254,6 @@ if (is_android) {
 
     sources = [
       "../browser/background_fetch/background_fetch_browsertest_android.cc",
-      "../browser/safe_browsing/android/suspicious_site_browsertest.cc",
       "../renderer/autofill/fake_mojo_password_manager_driver.cc",
       "../renderer/autofill/fake_mojo_password_manager_driver.h",
       "../renderer/autofill/fake_password_generation_driver.cc",
@@ -286,7 +284,6 @@ if (is_android) {
       "//chrome/android:delegate_public_impl_java",
       "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/accessibility/accessibility_prefs:browser_tests",
-      "//chrome/browser/actor:browser_tests",
       "//chrome/browser/background_fetch",
       "//chrome/browser/browsing_data:constants",
       "//chrome/browser/content_settings:content_settings_factory",
@@ -303,7 +300,6 @@ if (is_android) {
       "//chrome/browser/enterprise/signals:android_browsertests",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/history",
-      "//chrome/browser/keyboard_accessory/android",
       "//chrome/browser/lifetime",
       "//chrome/browser/metrics:android_browsertests",
       "//chrome/browser/metrics:test_support",
@@ -323,7 +319,6 @@ if (is_android) {
       "//chrome/browser/profiles",
       "//chrome/browser/profiles:android_browsertests",
       "//chrome/browser/safe_browsing:test_support",
-      "//chrome/browser/safe_browsing/android:test_support_java",
       "//chrome/browser/search_engines",
       "//chrome/browser/segmentation_platform:test_utils",
       "//chrome/browser/site_protection",
@@ -454,7 +449,6 @@ if (is_android) {
     deps += [ "//content/shell:content_shell_lib" ]
 
     # TODO(crbug.com/504739401): Remove this dependency.
-    deps += [ "//chrome/browser/keyboard_accessory/android:impl" ]
 
     data_deps = [ "//testing/buildbot/filters:android_browsertests_filters" ]
 
@@ -663,12 +657,10 @@ if (is_android) {
       "//chrome/browser/tabmodel:java",
       "//components/crash/android:java",
       "//components/module_installer/android:module_installer_java",
-      "//content/public/android:content_java",
       "//content/public/test/android:android_test_message_pump_support_java",
       "//content/shell/android:content_shell_browsertests_java",
       "//testing/android/native_test:native_browser_test_java",
       "//testing/android/native_test:native_test_java",
-      "//ui/android:ui_full_java",
     ]
     sources = [
       "android/browsertests_apk/src/org/chromium/android_browsertests_apk/ChromeBrowserTestsActivity.java",

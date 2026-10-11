@@ -57,7 +57,6 @@
 #elif !BUILDFLAG(IS_FUCHSIA)
 #include "components/soda/constants.h"
 #include "components/soda/soda_util.h"
-#include "content/browser/speech/on_device_speech_recognition_engine_impl.h"
 #include "content/browser/speech/soda_speech_recognition_engine_impl.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -243,13 +242,8 @@ int SpeechRecognitionManagerImpl::GetSessionTrackerCountForTesting(  // IN-TEST
 // static
 bool SpeechRecognitionManagerImpl::IsOptimizationGuideSpeechModel(
     const SpeechRecognitionSessionConfig& config) {
-  const bool use_gemini_nano =
-      base::FeatureList::IsEnabled(media::kOnDeviceWebSpeechGeminiNano) &&
-      config.quality == media::mojom::SpeechRecognitionQuality::kConversation;
-  const bool use_tinygemma =
-      base::FeatureList::IsEnabled(media::kOnDeviceWebSpeechSmallExpertModel) &&
-      config.quality == media::mojom::SpeechRecognitionQuality::kDictation;
-  return use_gemini_nano || use_tinygemma;
+  // Shuttle: the on-device (Gemini Nano / small expert) speech engine is removed.
+  return false;
 }
 
 // static
@@ -753,16 +747,11 @@ int SpeechRecognitionManagerImpl::CreateSession(
 
 #if !BUILDFLAG(IS_FUCHSIA)
   if (UseOnDeviceSpeechRecognition(config)) {
-    if (IsOptimizationGuideSpeechModel(config)) {
-      speech_recognition_engine =
-          std::make_unique<OnDeviceSpeechRecognitionEngine>(config);
-    } else {
-      std::unique_ptr<SodaSpeechRecognitionEngineImpl>
-          soda_speech_recognition_engine =
-              std::make_unique<SodaSpeechRecognitionEngineImpl>(config);
-      if (soda_speech_recognition_engine->Initialize()) {
-        speech_recognition_engine = std::move(soda_speech_recognition_engine);
-      }
+    std::unique_ptr<SodaSpeechRecognitionEngineImpl>
+        soda_speech_recognition_engine =
+            std::make_unique<SodaSpeechRecognitionEngineImpl>(config);
+    if (soda_speech_recognition_engine->Initialize()) {
+      speech_recognition_engine = std::move(soda_speech_recognition_engine);
     }
   }
 #endif  //! BUILDFLAG(IS_FUCHSIA)

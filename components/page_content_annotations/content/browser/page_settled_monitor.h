@@ -20,10 +20,6 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "pdf/buildflags.h"
 
-namespace actor {
-class TestObservationDelayController;
-}  // namespace actor
-
 namespace content {
 class WebContents;
 }  // namespace content
@@ -58,7 +54,6 @@ class PageSettledMonitor : public content::WebContentsObserver {
     kDidTimeout,
     kDone,
   };
-  // LINT.ThenChange(//chrome/browser/actor/tools/observation_delay_controller.h:State)
 
   // Significant points in the process where a delegate can perform additional
   // work before the monitor proceeds.
@@ -141,8 +136,6 @@ class PageSettledMonitor : public content::WebContentsObserver {
   void Wait(content::WebContents* web_contents, ReadyCallback callback);
 
  private:
-  friend class actor::TestObservationDelayController;
-
   // content::WebContentsObserver:
   void DidStopLoading() override;
 

@@ -51,7 +51,6 @@ if (use_blink) {
       "//third_party/blink/public/common",
     ]
     if (is_android) {
-      deps += [ "//ui/android" ]
     }
   }
 }

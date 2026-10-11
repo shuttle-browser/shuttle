@@ -51,7 +51,6 @@ source_set("data_controls") {
       "android_data_controls_dialog_factory.cc",
       "android_data_controls_dialog_factory.h",
     ]
-    deps += [ "//ui/android" ]
   }
 
   if (!is_android) {

@@ -46,7 +46,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser/ui/digital_credentials",
       "//chrome/browser/webid:jni_headers",
-      "//ui/android",
     ]
   } else {
     sources += [ "digital_identity_provider_desktop.cc" ]

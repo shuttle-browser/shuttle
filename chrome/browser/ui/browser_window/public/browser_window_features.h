@@ -31,8 +31,6 @@
 #include "extensions/buildflags/buildflags.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"
 
-class ActorBorderViewController;
-class ActorUiWindowController;
 
 class Browser;
 class BrowserActions;
@@ -72,8 +70,6 @@ class FindBarController;
 class FindBarOwner;
 class FullscreenControlHost;
 class ImmersiveModeController;
-class InitialWebUIManager;
-class InitialWebUIWindowMetricsManager;
 class LocationBar;
 class LocationBarModel;
 class PinnedToolbarActions;
@@ -295,7 +291,6 @@ class BrowserWindowFeatures {
 
   // Members owned by all browser window types.
   std::unique_ptr<UnloadController> unload_controller_;
-  std::unique_ptr<ActorBorderViewController> actor_border_view_controller_;
 
   std::unique_ptr<BrowserActions> browser_actions_;
   std::unique_ptr<BrowserActiveStateManager> browser_active_state_manager_;
@@ -356,9 +351,6 @@ class BrowserWindowFeatures {
 
   std::unique_ptr<FindBarOwner> find_bar_owner_;
   std::unique_ptr<BrowserWindowFullscreenController> fullscreen_controller_;
-  std::unique_ptr<InitialWebUIManager> initial_web_ui_manager_;
-  std::unique_ptr<InitialWebUIWindowMetricsManager>
-      initial_webui_window_metrics_manager_;
 
   // Helper which implements the LiveTabContext interface.
   std::unique_ptr<BrowserLiveTabContext> live_tab_context_;
@@ -398,7 +390,6 @@ class BrowserWindowFeatures {
   std::unique_ptr<ZoomBubbleCoordinator> zoom_bubble_coordinator_;
 
   // Members owned only when a BrowserView is attached.
-  std::unique_ptr<ActorUiWindowController> actor_ui_window_controller_;
   std::unique_ptr<ColorProviderBrowserHelper> color_provider_browser_helper_;
   std::unique_ptr<ContentsBorderController> contents_border_controller_;
   std::unique_ptr<enterprise_data_protection::DataProtectionUIController>

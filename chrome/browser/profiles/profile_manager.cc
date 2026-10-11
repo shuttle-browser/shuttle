@@ -57,7 +57,6 @@
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_init_params.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
-#include "chrome/browser/profiles/profile_avatar_icon_util.h"
 #include "chrome/browser/profiles/profile_destroyer.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/profiles/profile_manager_observer.h"
@@ -129,7 +128,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"  // nogncheck
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"  // nogncheck
 #include "components/live_caption/live_caption_controller.h"
-#include "components/optimization_guide/core/model_execution/model_execution_features.h"
 #else
 #include "chrome/browser/profiles/profile_manager_android.h"
 #include "chrome/browser/signin/signin_manager_android_factory.h"
@@ -791,7 +789,6 @@ void ProfileManager::CreateMultiProfileAsync(
     base::OnceCallback<void(Profile*)> created_callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(!name.empty());
-  DCHECK(profiles::IsDefaultAvatarIconIndex(icon_index));
 
   ProfileManager* profile_manager = g_browser_process->profile_manager();
 
@@ -997,7 +994,7 @@ void ProfileManager::InitProfileUserPrefs(Profile* profile) {
       profile_name = base::UTF16ToUTF8(entry->GetLocalProfileName());
       supervised_user_id = entry->GetSupervisedUserId();
     } else {
-      avatar_index = profiles::GetPlaceholderAvatarIndex();
+      avatar_index = 0;
 #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
       profile_name = base::UTF16ToUTF8(storage.ChooseNameForNewProfile());
 #else
@@ -1744,8 +1741,8 @@ void ProfileManager::AddProfileToStorage(Profile* profile) {
   init_params.profile_name =
       base::UTF8ToUTF16(profile->GetPrefs()->GetString(prefs::kProfileName));
 
-  init_params.icon_index = profiles::GetSanitizedAvatarIndex(
-      profile->GetPrefs()->GetInteger(prefs::kProfileAvatarIndex));
+  // Shuttle: there is no profile avatar UI, the index is always 0.
+  init_params.icon_index = 0;
 
   init_params.supervised_user_id =
       profile->GetPrefs()->GetString(prefs::kSupervisedUserId);

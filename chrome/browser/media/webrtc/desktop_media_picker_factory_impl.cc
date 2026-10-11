@@ -98,11 +98,6 @@ DesktopMediaPickerFactoryImpl::CreateMediaList(
   // We do not use DesktopMediaList on Android.
   return {};
 #else
-  // If we're supposed to include Tabs, but aren't including Windows (either
-  // directly or indirectly), then we need to add Chrome App Windows back in.
-  const bool add_chrome_app_windows =
-      !std::ranges::contains(types, DesktopMediaList::Type::kWindow) &&
-      std::ranges::contains(types, DesktopMediaList::Type::kWebContents);
   // Keep same order as the input |sources| and avoid duplicates.
   std::vector<std::unique_ptr<DesktopMediaList>> source_lists;
   bool have_screen_list = false;
@@ -185,8 +180,7 @@ DesktopMediaPickerFactoryImpl::CreateMediaList(
         // one, the std::move here is safe.
         std::unique_ptr<DesktopMediaList> tab_list =
             std::make_unique<TabDesktopMediaList>(
-                web_contents, std::move(includable_web_contents_filter),
-                add_chrome_app_windows);
+                web_contents, std::move(includable_web_contents_filter));
         have_tab_list = true;
         source_lists.push_back(std::move(tab_list));
         break;

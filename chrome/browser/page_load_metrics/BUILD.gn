@@ -71,7 +71,6 @@ source_set("page_load_metrics") {
 
   if (!is_android) {
     public += [
-      "observers/initial_webui_page_load_metrics_observer.h",
       "observers/non_tab_webui_page_load_metrics_observer.h",
       "observers/top_chrome_webui_metrics_observer.h",
     ]
@@ -129,7 +128,6 @@ source_set("impl") {
 
   deps = [
     "//chrome/browser:after_startup_task_utils",
-    "//chrome/browser/actor",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/engagement",
@@ -165,15 +163,11 @@ source_set("impl") {
 
   if (!is_android) {
     sources += [
-      "observers/initial_webui_page_load_metrics_observer.cc",
       "observers/non_tab_webui_page_load_metrics_observer.cc",
       "observers/top_chrome_webui_metrics_observer.cc",
     ]
     deps += [
       "//chrome/browser/performance_manager/public/user_tuning",
-      "//chrome/browser/ui/waap",
-      "//chrome/browser/ui/waap:waap_utils",
-      "//chrome/browser/ui/waap:window_metrics_manager",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/webui/metrics_reporter",
       "//chrome/browser/ui/webui/omnibox_popup",
@@ -199,7 +193,6 @@ if (is_android) {
 
     deps = [
       "//base:base_java",
-      "//content/public/android:content_java",
       "//third_party/jni_zero:jni_zero_java",
     ]
   }

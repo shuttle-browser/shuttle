@@ -17,8 +17,7 @@ class TabDesktopMediaList : public DesktopMediaListBase {
  public:
   TabDesktopMediaList(
       content::WebContents* web_contents,
-      DesktopMediaList::WebContentsFilter includable_web_contents_filter,
-      bool include_chrome_app_windows);
+      DesktopMediaList::WebContentsFilter includable_web_contents_filter);
 
   TabDesktopMediaList(const TabDesktopMediaList&) = delete;
   TabDesktopMediaList& operator=(const TabDesktopMediaList&) = delete;
@@ -76,7 +75,6 @@ class TabDesktopMediaList : public DesktopMediaListBase {
 
   ImageHashesMap favicon_hashes_;
   const DesktopMediaList::WebContentsFilter includable_web_contents_filter_;
-  const bool include_chrome_app_windows_;
 
   // Task runner used for resizing thumbnail and preview images.
   scoped_refptr<base::SequencedTaskRunner> image_resize_task_runner_;

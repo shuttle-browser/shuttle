@@ -44,7 +44,6 @@ if (!is_android) {
       "//base",
       "//chrome/browser/ui/actions:actions_headers",
       "//chrome/browser/ui/toolbar/pinned_toolbar",
-      "//components/browser_apis/ui_controllers/toolbar:mojom_data_model",
       "//components/tabs:public",
       "//ui/actions:actions_headers",
       "//ui/base",

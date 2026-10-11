@@ -263,7 +263,6 @@ class MultiContentsView
   int GetInactiveIndex() const;
 
   void OnWebContentsFocused(views::WebView*);
-  void OnActorOverlayFocused(views::WebView*);
 
   ViewSizes GetViewSizes(gfx::Rect available_space) const;
 

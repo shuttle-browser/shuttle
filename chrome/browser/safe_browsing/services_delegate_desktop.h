@@ -14,7 +14,6 @@
 namespace safe_browsing {
 
 class DownloadProtectionService;
-class IncidentReportingService;
 class SafeBrowsingDatabaseManager;
 struct V4ProtocolConfig;
 
@@ -41,9 +40,6 @@ class ServicesDelegateDesktop : public ServicesDelegate {
   void RefreshState(bool enable) override;
   std::unique_ptr<prefs::mojom::TrackedPreferenceValidationDelegate>
   CreatePreferenceValidationDelegate(Profile* profile) override;
-  void RegisterDelayedAnalysisCallback(
-      DelayedAnalysisCallback callback) override;
-  void AddDownloadManager(content::DownloadManager* download_manager) override;
   DownloadProtectionService* GetDownloadService() override;
 
   void StartOnUIThread(
@@ -63,10 +59,8 @@ class ServicesDelegateDesktop : public ServicesDelegate {
 
   scoped_refptr<SafeBrowsingDatabaseManager> CreateDatabaseManager();
   DownloadProtectionService* CreateDownloadProtectionService();
-  IncidentReportingService* CreateIncidentReportingService();
 
   std::unique_ptr<DownloadProtectionService> download_service_;
-  std::unique_ptr<IncidentReportingService> incident_service_;
 
   // The database manager that handles the database checking and update logic
   // Accessed on both UI and IO thread.

@@ -11,12 +11,8 @@
 
 #include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
-#include "chrome/common/actor.mojom.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_render_frame.mojom.h"
-#include "chrome/renderer/actor/tool_executor.h"
-#include "components/actor/core/task_id.h"  // nogncheck
-#include "components/page_content_annotations/content/mojom/page_stability.mojom.h"
 #include "components/safe_browsing/buildflags.h"
 #include "content/public/renderer/render_frame_observer.h"
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
@@ -27,20 +23,12 @@
 
 class SkBitmap;
 
-namespace actor {
-class Journal;
-}  // namespace actor
-
 namespace gfx {
 class Size;
 }
 
 namespace optimization_guide {
 class PageTextAgent;
-}
-
-namespace page_content_annotations {
-class PageStabilityMonitor;
 }
 
 namespace safe_browsing {
@@ -92,8 +80,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
       mojo::ScopedInterfaceEndpointHandle* handle) override;
   void ReadyToCommitNavigation(
       blink::WebDocumentLoader* document_loader) override;
-  void DidSetPageLifecycleState(
-      blink::BFCacheStateChange bfcache_change) override;
   void DidFinishLoad() override;
   void DidCreateNewDocument() override;
   void DidCommitProvisionalLoad(ui::PageTransition transition) override;
@@ -123,33 +109,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
   void GetMediaFeedURL(GetMediaFeedURLCallback callback) override;
   void LoadBlockedPlugins(const std::string& identifier) override;
   void SetShouldDeferMediaLoad(bool should_defer) override;
-
-  // TODO(crbug.com/471252374): Move actor mojom methods to its own interface.
-  void InitializeTool(actor::mojom::ToolInvocationPtr request,
-                      InitializeToolCallback callback) override;
-  void ExecuteTool(const actor::TaskId& task_id,
-                   ExecuteToolCallback callback) override;
-  void InvokeTool(actor::mojom::ToolInvocationPtr request,
-                  InvokeToolCallback callback) override;
-  void CancelTool(const actor::TaskId& task_id) override;
-  void StartActorJournal(
-      mojo::PendingAssociatedRemote<actor::mojom::JournalClient> client)
-      override;
-  void GetCrossDocumentScriptToolResult(
-      const base::UnguessableToken& execution_id,
-      GetCrossDocumentScriptToolResultCallback callback) override;
-  // Multiple calls will clobber a PageStabilityMonitor previously created and
-  // it's the caller's responsibility to ensure the monitor is unneeded before
-  // creating a new one.
-  //
-  // `task_id` identifies the ID of the active actor tool.
-  // `supports_paint_stability` indicates whether to include paint stability in
-  // page stability heuristics.
-  void CreatePageStabilityMonitor(
-      mojo::PendingReceiver<
-          page_content_annotations::mojom::PageStabilityMonitor> monitor,
-      const actor::TaskId& task_id,
-      bool supports_paint_stability) override;
 #if BUILDFLAG(ENABLE_PDF)
   void PdfPageCaptured(const std::u16string& contents,
                        const std::string& pdf_lang,
@@ -203,8 +162,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
       phishing_image_embedder_ = nullptr;
 #endif
 
-  std::unique_ptr<actor::Journal> actor_journal_;
-
   // Owned by ChromeContentRendererClient and outlive us.
   raw_ptr<web_cache::WebCacheImpl> web_cache_impl_;
 
@@ -212,10 +169,6 @@ class ChromeRenderFrameObserver : public content::RenderFrameObserver,
   // Save the JavaScript to preload if ExecuteWebUIJavaScript is invoked.
   std::vector<std::u16string> webui_javascript_;
 #endif
-
-  std::unique_ptr<actor::ToolExecutor> tool_executor_;
-  std::unique_ptr<page_content_annotations::PageStabilityMonitor>
-      page_stability_monitor_;
 
   mojo::AssociatedReceiverSet<chrome::mojom::ChromeRenderFrame> receivers_;
 

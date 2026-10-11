@@ -129,7 +129,6 @@
 
 #if BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "base/time/time.h"
-#include "chrome/browser/safe_browsing/extension_telemetry/extension_telemetry_service.h"
 #endif
 
 namespace {
@@ -832,14 +831,6 @@ void ChromeOmniboxClient::OnAutocompleteAccept(
       location_bar_->GetWebContents(), match_type);
 #endif
 
-#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  if (AutocompleteMatch::IsSearchType(match_type)) {
-    if (auto* telemetry_service =
-            safe_browsing::ExtensionTelemetryService::Get(profile_)) {
-      telemetry_service->OnOmniboxSearch(match);
-    }
-  }
-#endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 }
 

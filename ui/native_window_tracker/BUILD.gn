@@ -37,6 +37,5 @@ component("native_window_tracker") {
       "native_window_tracker_android.cc",
       "native_window_tracker_android.h",
     ]
-    deps += [ "//ui/android" ]
   }
 }

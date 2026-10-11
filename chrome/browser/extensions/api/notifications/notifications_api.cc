@@ -51,11 +51,6 @@
 #include "ui/message_center/public/cpp/notifier_id.h"
 #include "url/gurl.h"
 
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
-#include "extensions/browser/app_window/native_app_window.h"
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
 
 using message_center::NotifierId;
 
@@ -183,19 +178,6 @@ bool NotificationBitmapToGfxImage(
 // returns false.
 bool ShouldShowOverCurrentFullscreenWindow(Profile* profile,
                                            const GURL& origin) {
-#if BUILDFLAG(ENABLE_PLATFORM_APPS)
-  DCHECK(profile);
-  ExtensionId extension_id =
-      ExtensionNotificationHandler::GetExtensionId(origin);
-  DCHECK(!extension_id.empty());
-  AppWindowRegistry::AppWindowList windows =
-      AppWindowRegistry::Get(profile)->GetAppWindowsForApp(extension_id);
-  for (AppWindow* window : windows) {
-    if (window->IsFullscreen() && window->GetBaseWindow()->IsActive()) {
-      return true;
-    }
-  }
-#endif  // BUILDFLAG(ENABLE_PLATFORM_APPS)
   return false;
 }
 

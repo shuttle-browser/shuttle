@@ -250,12 +250,8 @@ static_library("safe_browsing") {
     ]
     if (is_android) {
       public += [
-        "android/chrome_safe_browsing_hats_delegate_android.h",
-        "android/client_side_detection_intelligent_scan_delegate_android.h",
       ]
       sources += [
-        "android/chrome_safe_browsing_hats_delegate_android.cc",
-        "android/client_side_detection_intelligent_scan_delegate_android.cc",
       ]
     } else {
       public += [
@@ -334,57 +330,7 @@ static_library("safe_browsing") {
         "download_protection/download_feedback_service.h",
         "download_protection/download_protection_delegate_desktop.h",
         "download_protection/path_sanitizer.h",
-        "extension_telemetry/activity_log_ingester.h",
-        "extension_telemetry/cookies_get_all_signal.h",
-        "extension_telemetry/cookies_get_all_signal_processor.h",
-        "extension_telemetry/cookies_get_signal.h",
-        "extension_telemetry/cookies_get_signal_processor.h",
-        "extension_telemetry/declarative_net_request_action_signal.h",
-        "extension_telemetry/declarative_net_request_action_signal_processor.h",
-        "extension_telemetry/declarative_net_request_signal.h",
-        "extension_telemetry/declarative_net_request_signal_processor.h",
-        "extension_telemetry/dom_access_signal.h",
-        "extension_telemetry/dom_access_signal_processor.h",
-        "extension_telemetry/extension_js_callstacks.h",
-        "extension_telemetry/extension_signal.h",
-        "extension_telemetry/extension_signal_processor.h",
-        "extension_telemetry/extension_signal_util.h",
-        "extension_telemetry/extension_telemetry_config_manager.h",
-        "extension_telemetry/extension_telemetry_file_processor.h",
-        "extension_telemetry/extension_telemetry_persister.h",
-        "extension_telemetry/extension_telemetry_service.h",
-        "extension_telemetry/extension_telemetry_service_factory.h",
-        "extension_telemetry/extension_telemetry_uploader.h",
-        "extension_telemetry/extension_web_request_reporter_impl.h",
-        "extension_telemetry/remote_host_contacted_signal.h",
-        "extension_telemetry/remote_host_contacted_signal_processor.h",
-        "extension_telemetry/script_injection_signal.h",
-        "extension_telemetry/script_injection_signal_processor.h",
-        "extension_telemetry/search_hijacking_detector.h",
-        "extension_telemetry/tabs_api_signal.h",
-        "extension_telemetry/tabs_api_signal_processor.h",
-        "extension_telemetry/tabs_execute_script_signal.h",
-        "extension_telemetry/tabs_execute_script_signal_processor.h",
         "hash_realtime_service_factory.h",
-        "incident_reporting/binary_integrity_analyzer.h",
-        "incident_reporting/binary_integrity_incident.h",
-        "incident_reporting/delayed_analysis_callback.h",
-        "incident_reporting/delayed_callback_runner.h",
-        "incident_reporting/download_metadata_manager.h",
-        "incident_reporting/environment_data_collection.h",
-        "incident_reporting/extension_data_collection.h",
-        "incident_reporting/incident.h",
-        "incident_reporting/incident_handler_util.h",
-        "incident_reporting/incident_receiver.h",
-        "incident_reporting/incident_report_uploader.h",
-        "incident_reporting/incident_report_uploader_impl.h",
-        "incident_reporting/incident_reporting_service.h",
-        "incident_reporting/last_download_finder.h",
-        "incident_reporting/platform_state_store.h",
-        "incident_reporting/preference_validation_delegate.h",
-        "incident_reporting/resource_request_incident.h",
-        "incident_reporting/state_store.h",
-        "incident_reporting/tracked_preference_incident.h",
         "ohttp_key_service_factory.h",
         "services_delegate_desktop.h",
         "suspicious_site_warnings/suspicious_site_ui.h",
@@ -394,77 +340,11 @@ static_library("safe_browsing") {
         "download_protection/download_feedback_service.cc",
         "download_protection/download_protection_delegate_desktop.cc",
         "download_protection/path_sanitizer.cc",
-        "extension_telemetry/activity_log_ingester.cc",
-        "extension_telemetry/cookies_get_all_signal.cc",
-        "extension_telemetry/cookies_get_all_signal_processor.cc",
-        "extension_telemetry/cookies_get_signal.cc",
-        "extension_telemetry/cookies_get_signal_processor.cc",
-        "extension_telemetry/declarative_net_request_action_signal.cc",
-        "extension_telemetry/declarative_net_request_action_signal_processor.cc",
-        "extension_telemetry/declarative_net_request_signal.cc",
-        "extension_telemetry/declarative_net_request_signal_processor.cc",
-        "extension_telemetry/dom_access_signal.cc",
-        "extension_telemetry/dom_access_signal_processor.cc",
-        "extension_telemetry/extension_js_callstacks.cc",
-        "extension_telemetry/extension_signal_util.cc",
-        "extension_telemetry/extension_telemetry_config_manager.cc",
-        "extension_telemetry/extension_telemetry_file_processor.cc",
-        "extension_telemetry/extension_telemetry_persister.cc",
-        "extension_telemetry/extension_telemetry_service.cc",
-        "extension_telemetry/extension_telemetry_service_factory.cc",
-        "extension_telemetry/extension_telemetry_uploader.cc",
-        "extension_telemetry/extension_web_request_reporter_impl.cc",
-        "extension_telemetry/remote_host_contacted_signal.cc",
-        "extension_telemetry/remote_host_contacted_signal_processor.cc",
-        "extension_telemetry/script_injection_signal.cc",
-        "extension_telemetry/script_injection_signal_processor.cc",
-        "extension_telemetry/search_hijacking_detector.cc",
-        "extension_telemetry/tabs_api_signal.cc",
-        "extension_telemetry/tabs_api_signal_processor.cc",
-        "extension_telemetry/tabs_execute_script_signal.cc",
-        "extension_telemetry/tabs_execute_script_signal_processor.cc",
         "hash_realtime_service_factory.cc",
-        "incident_reporting/binary_integrity_analyzer.cc",
-        "incident_reporting/binary_integrity_incident.cc",
-        "incident_reporting/delayed_callback_runner.cc",
-        "incident_reporting/download_metadata_manager.cc",
-        "incident_reporting/environment_data_collection.cc",
-        "incident_reporting/extension_data_collection.cc",
-        "incident_reporting/incident.cc",
-        "incident_reporting/incident_handler_util.cc",
-        "incident_reporting/incident_report_uploader.cc",
-        "incident_reporting/incident_report_uploader_impl.cc",
-        "incident_reporting/incident_reporting_service.cc",
-        "incident_reporting/last_download_finder.cc",
-        "incident_reporting/platform_state_store.cc",
-        "incident_reporting/preference_validation_delegate.cc",
-        "incident_reporting/resource_request_incident.cc",
-        "incident_reporting/state_store.cc",
-        "incident_reporting/tracked_preference_incident.cc",
         "ohttp_key_service_factory.cc",
         "services_delegate_desktop.cc",
       ]
-      if (is_mac) {
-        public += [
-          "incident_reporting/binary_integrity_analyzer_mac.h",
-          "signature_evaluator_mac.h",
-        ]
-        sources += [
-          "incident_reporting/binary_integrity_analyzer_mac.cc",
-          "signature_evaluator_mac.mm",
-        ]
-      } else if (is_win) {
-        public += [
-          "incident_reporting/binary_integrity_analyzer_win.h",
-          "incident_reporting/environment_data_collection_win.h",
-          "incident_reporting/module_integrity_verifier_win.h",
-        ]
-        sources += [
-          "incident_reporting/binary_integrity_analyzer_win.cc",
-          "incident_reporting/environment_data_collection_win.cc",
-          "incident_reporting/module_integrity_verifier_win.cc",
-          "incident_reporting/platform_state_store_win.cc",
-        ]
+      if (is_win) {
         deps += [ "//chrome/browser/install_verification" ]
       }
 
@@ -474,7 +354,6 @@ static_library("safe_browsing") {
         "//build:branding_buildflags",
         "//build:chromeos_buildflags",
         "//chrome/app/vector_icons",
-        "//chrome/browser/safe_browsing/incident_reporting:state_store_data_proto",
         "//chrome/browser/ui/tabs:tab_strip",
         "//chrome/common",
         "//chrome/common/extensions",
@@ -529,25 +408,11 @@ static_library("safe_browsing") {
       }
     } else if (safe_browsing_mode == 2) {
       public += [
-        "android/download_protection_metrics_data.h",
-        "android/notification_content_detection_manager_android.h",
-        "android/password_reuse_controller_android.h",
-        "android/safe_browsing_referring_app_bridge_android.h",
-        "android/safe_browsing_settings_navigation_android.h",
-        "android/services_delegate_android.h",
-        "android/suspicious_site_controller_android.h",
         "download_protection/download_protection_delegate_android.h",
         "download_protection/rate_limiting_key_manager.h",
         "telemetry/android/android_telemetry_service.h",
       ]
       sources += [
-        "android/download_protection_metrics_data.cc",
-        "android/notification_content_detection_manager_android.cc",
-        "android/password_reuse_controller_android.cc",
-        "android/safe_browsing_referring_app_bridge_android.cc",
-        "android/safe_browsing_settings_navigation_android.cc",
-        "android/services_delegate_android.cc",
-        "android/suspicious_site_controller_android.cc",
         "download_protection/download_protection_delegate_android.cc",
         "download_protection/rate_limiting_key_manager.cc",
         "telemetry/android/android_telemetry_service.cc",
@@ -555,7 +420,6 @@ static_library("safe_browsing") {
       deps += [
         "//chrome/android:chrome_jni_headers",
         "//chrome/app/vector_icons",
-        "//chrome/browser/safe_browsing/android",
         "//chrome/browser/ui/android/hats",
         "//chrome/browser/ui/android/tab_model",
         "//components/messages/android",
@@ -565,7 +429,6 @@ static_library("safe_browsing") {
         "//components/safe_browsing/core/browser:suspicious_site_warning_allowlist",
         "//content/public/browser",
         "//google_apis/common:request_util",
-        "//ui/android",
 
         # TODO(crbug.com/41437292): Use //chrome/browser after fixing cyclic
         # dependency.
@@ -631,7 +494,6 @@ static_library("advanced_protection") {
       "advanced_protection_status_manager_android.cc",
       "advanced_protection_status_manager_android.h",
     ]
-    deps += [ "android:jni_headers" ]
   } else {
     sources += [
       "advanced_protection_status_manager_desktop.cc",

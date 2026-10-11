@@ -65,7 +65,6 @@ source_set("browser_dialogs") {
   }
 
   if (is_android) {
-    deps += [ "//ui/android" ]
   }
 }
 

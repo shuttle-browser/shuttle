@@ -16,8 +16,6 @@ source_set("chip") {
     "permission_dashboard_interface.h",
     "permission_dashboard_view.h",
     "permission_prompt_chip_model.h",
-    "webui_permission_chip.h",
-    "webui_permission_dashboard.h",
   ]
 
   public_deps = [
@@ -46,8 +44,6 @@ source_set("impl") {
     "permission_dashboard_controller.cc",
     "permission_dashboard_view.cc",
     "permission_prompt_chip_model.cc",
-    "webui_permission_chip.cc",
-    "webui_permission_dashboard.cc",
   ]
 
   deps = [
