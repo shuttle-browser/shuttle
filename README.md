@@ -27,7 +27,7 @@
 ---
 
 <p align="center">
-  <img src="docs/shuttle/demo.gif" width="860" alt="Three agents (Researcher, Shopper, QA) working in their own tab groups, then chrome://agents">
+  <a href="https://www.shuttlebrowser.com"><img src="docs/shuttle/hero.gif" width="860" alt="Claude Code asks Shuttle to research the Space Shuttle: the Researcher agent opens its own tab group, browses the wiki and answers with sources"></a>
 </p>
 
 ## Why Shuttle
