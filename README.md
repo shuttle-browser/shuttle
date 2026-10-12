@@ -21,7 +21,7 @@
   <a href="https://www.shuttlebrowser.com">Website</a> ·
   <a href="https://www.shuttlebrowser.com/download">Download</a> ·
   <a href="https://www.shuttlebrowser.com/docs">Docs</a> ·
-  <a href="https://github.com/shuttle-browser/shuttle-tools">Build tooling</a>
+  <a href="shuttle/">Build tooling</a>
 </p>
 
 ---
@@ -154,7 +154,7 @@ Shuttle 0.1.0 is the first public release (Chromium 154.0.8037.129).
 Shuttle is Chromium plus a series of fork commits on `main` (`git log agent-chrome..main`): removals, the MCP server
 (`chrome/browser/shuttle/`), agent identity, per-session CDP, and branding. The build configuration, prune scripts,
 smoke tests and the removal log live in
-**[shuttle-browser/shuttle-tools](https://github.com/shuttle-browser/shuttle-tools)**.
+**[`shuttle/`](shuttle/)** in this repo.
 
 ## License
 
