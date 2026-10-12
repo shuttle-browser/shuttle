@@ -424,9 +424,7 @@ std::string SessionManager::SessionOf(content::WebContents* contents) {
 
 // static
 content::WebContents* SessionManager::FindTab(const std::string& target_id) {
-  scoped_refptr<content::DevToolsAgentHost> host =
-      content::DevToolsAgentHost::GetForId(target_id);
-  return host ? host->GetWebContents() : nullptr;
+  return content::DevToolsAgentHost::GetWebContentsForId(target_id);
 }
 
 // static

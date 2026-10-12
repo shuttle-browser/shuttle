@@ -82,6 +82,12 @@ class CONTENT_EXPORT DevToolsAgentHost
   // Returns DevToolsAgentHost with a given |id| or nullptr of it doesn't exist.
   static scoped_refptr<DevToolsAgentHost> GetForId(const std::string& id);
 
+  // Shuttle: the WebContents of the host with |id| (nullptr if none), without
+  // taking a reference. Safe inside DevToolsAgentHostCreated notifications,
+  // where a temporary scoped_refptr would delete a host whose constructor has
+  // not returned yet (worker and tab hosts start with a zero refcount).
+  static WebContents* GetWebContentsForId(const std::string& id);
+
   // Returns DevToolsAgentHost that can be used for inspecting |web_contents|.
   // A new DevToolsAgentHost will be created if it does not exist.
   static scoped_refptr<DevToolsAgentHost> GetOrCreateFor(

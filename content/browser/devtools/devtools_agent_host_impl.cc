@@ -278,6 +278,13 @@ scoped_refptr<DevToolsAgentHost> DevToolsAgentHost::GetForId(
 }
 
 // static
+WebContents* DevToolsAgentHost::GetWebContentsForId(const std::string& id) {
+  auto it = GetDevtoolsInstances().find(id);
+  return it == GetDevtoolsInstances().end() ? nullptr
+                                            : it->second->GetWebContents();
+}
+
+// static
 scoped_refptr<DevToolsAgentHost> DevToolsAgentHost::Forward(
     const std::string& id,
     std::unique_ptr<DevToolsExternalAgentProxyDelegate> delegate) {

@@ -180,9 +180,11 @@ bool SessionCdpFilter::Owns(const std::string& target_id,
       (!opener_id.empty() && visible_.contains(opener_id))) {
     return true;
   }
-  scoped_refptr<content::DevToolsAgentHost> host =
-      content::DevToolsAgentHost::GetForId(target_id);
-  content::WebContents* contents = host ? host->GetWebContents() : nullptr;
+  // Called from Target.targetCreated, which arrives synchronously inside the
+  // new host's constructor: never take a reference here (see
+  // GetWebContentsForId).
+  content::WebContents* contents =
+      content::DevToolsAgentHost::GetWebContentsForId(target_id);
   return contents && SessionManager::SessionOf(contents) == session_id_;
 }
 
