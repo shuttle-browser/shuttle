@@ -128,8 +128,11 @@ BASE_FEATURE(kCryptographyComplianceCnsa, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Delays BEST_EFFORT tasks during startup until tabs are loaded/idle and first
 // paint.
+// Shuttle: enabled. There is no startup window (no visible tab), so without the
+// 5 s visible-tab timeout startup only "completes" at the 3 min failsafe and
+// every BEST_EFFORT task waits that long (e.g. the first delete-agent reply).
 BASE_FEATURE(kImprovedStartupBestEffortDelay,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Sets the timeout until startup is declared "finished" even if not all
 // StartupInProgressRefs have been dropped.
