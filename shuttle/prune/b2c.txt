@@ -1,0 +1,296 @@
+# Batch B2c: password manager, autofill, payments autofill, passkeys/GPM, affiliations,
+# Safe Browsing password-reuse protection, actor login/form-filling/OTP tools.
+# Source: _docs/agent-briefs/b2c-scout-report.md. Kept: credential_manager_types + mojom traits
+# (blink/content), core WebAuthn, components/webdata (shared DB), components/trusted_vault and
+# chrome/browser/trusted_vault (still used by components/sync/service; go with B2d).
+
+# --- core components ---
+remove components/autofill
+remove components/password_manager
+remove components/device_reauth
+remove components/credential_management
+remove components/one_time_tokens
+remove components/sensitive_content
+remove components/affiliations
+remove chrome/browser/affiliations
+remove components/autofill_strings.grdp
+remove components/autofill_payments_strings.grdp
+remove components/password_manager_strings.grdp
+remove components/resources/autofill_scaled_resources.grdp
+remove components/test/data/autofill
+remove components/test/data/password_manager
+keep components/password_manager/core/common/credential_manager_types.cc   # hand-trim BUILD.gn
+keep components/password_manager/core/common/credential_manager_types.h   # hand-trim BUILD.gn
+keep components/password_manager/content/common/credential_manager_mojom_traits.cc   # hand-trim BUILD.gn
+keep components/password_manager/content/common/credential_manager_mojom_traits.h   # hand-trim BUILD.gn
+keep components/password_manager/content/common/BUILD.gn   # hand-trim BUILD.gn
+keep components/password_manager/core/common/BUILD.gn   # hand-trim BUILD.gn
+remove components/component_updater/installer_policies/amount_extraction_heuristic_regexes_component_installer.cc
+remove components/component_updater/installer_policies/amount_extraction_heuristic_regexes_component_installer.h
+remove components/component_updater/installer_policies/amount_extraction_heuristic_regexes_component_installer_unittest.cc
+remove components/browsing_data/core/counters/autofill_counter.cc
+remove components/browsing_data/core/counters/autofill_counter.h
+remove components/browsing_data/core/counters/passwords_counter.cc
+remove components/browsing_data/core/counters/passwords_counter.h
+
+# --- components/webauthn: passkey model, sync bridge, GPM, import, CMTG ---
+remove components/webauthn/core/browser/cmtg_device_key_provider.h
+remove components/webauthn/core/browser/cryptauth_cmtg_device_key_provider.cc
+remove components/webauthn/core/browser/cryptauth_cmtg_device_key_provider.h
+remove components/webauthn/core/browser/cryptauth_cmtg_device_key_provider_unittest.cc
+remove components/webauthn/core/browser/device_authorization/BUILD.gn
+remove components/webauthn/core/browser/device_authorization/DEPS
+remove components/webauthn/core/browser/device_authorization/OWNERS
+remove components/webauthn/core/browser/device_authorization/device_authorization_keys_fetcher_unittest.cc
+remove components/webauthn/core/browser/device_authorization/proto/BUILD.gn
+remove components/webauthn/core/browser/fake_cmtg_device_key_provider.cc
+remove components/webauthn/core/browser/fake_cmtg_device_key_provider.h
+remove components/webauthn/core/browser/gpm_user_verification_policy.cc
+remove components/webauthn/core/browser/gpm_user_verification_policy.h
+remove components/webauthn/core/browser/import/BUILD.gn
+remove components/webauthn/core/browser/import/imported_passkey_checker_unittest.cc
+remove components/webauthn/core/browser/import/passkey_importer_unittest.cc
+remove components/webauthn/core/browser/passkey_change_quota_tracker.cc
+remove components/webauthn/core/browser/passkey_change_quota_tracker.h
+remove components/webauthn/core/browser/passkey_change_quota_tracker_unittest.cc
+remove components/webauthn/core/browser/passkey_data_type_controller.cc
+remove components/webauthn/core/browser/passkey_data_type_controller.h
+remove components/webauthn/core/browser/passkey_model.cc
+remove components/webauthn/core/browser/passkey_model.h
+remove components/webauthn/core/browser/passkey_model_change.cc
+remove components/webauthn/core/browser/passkey_model_change.h
+remove components/webauthn/core/browser/passkey_model_utils.cc
+remove components/webauthn/core/browser/passkey_model_utils.h
+remove components/webauthn/core/browser/passkey_model_utils_unittest.cc
+remove components/webauthn/core/browser/passkey_sync_bridge.cc
+remove components/webauthn/core/browser/passkey_sync_bridge.h
+remove components/webauthn/core/browser/test_passkey_model.cc
+remove components/webauthn/core/browser/test_passkey_model.h
+remove components/webauthn/ios/resources/passkey_controller.ts
+
+# --- chrome/browser ---
+remove chrome/browser/password_manager
+remove chrome/browser/autofill
+remove chrome/browser/ui/autofill
+remove chrome/browser/ui/views/autofill
+remove chrome/browser/ui/passwords
+remove chrome/browser/ui/views/passwords
+remove chrome/browser/device_reauth
+remove chrome/browser/touch_to_fill
+remove chrome/browser/facilitated_payments
+remove chrome/browser/extensions/api/passwords_private
+remove chrome/browser/extensions/api/autofill_private
+remove chrome/common/extensions/api/passwords_private.idl
+remove chrome/common/extensions/api/autofill_private.idl
+remove chrome/browser/ui/feature_first_run/autofill_ai_first_run_dialog.cc
+remove chrome/browser/ui/feature_first_run/autofill_ai_first_run_dialog.h
+remove chrome/browser/ui/views/user_education/autofill_help_bubble_factory.cc
+remove chrome/browser/ui/views/user_education/autofill_help_bubble_factory.h
+remove chrome/browser/ui/cocoa/touchbar/credit_card_autofill_touch_bar_controller.h
+remove chrome/browser/ui/cocoa/touchbar/credit_card_autofill_touch_bar_controller.mm
+remove chrome/browser/ui/cocoa/touchbar/credit_card_autofill_touch_bar_controller_unittest.mm
+remove chrome/browser/ui/cocoa/touchbar/web_textfield_touch_bar_controller.h
+remove chrome/browser/ui/cocoa/touchbar/web_textfield_touch_bar_controller.mm
+remove chrome/browser/devtools/protocol/autofill_handler.cc
+remove chrome/browser/devtools/protocol/autofill_handler.h
+remove chrome/browser/extensions/api/preference/autofill_settings_transformer.cc
+remove chrome/browser/extensions/api/preference/autofill_settings_transformer.h
+remove chrome/browser/extensions/api/preference/autofill_settings_transformer_unittest.cc
+
+# --- webui ---
+remove chrome/browser/ui/webui/password_manager
+remove chrome/browser/ui/webui/autofill_and_password_manager_internals
+remove chrome/browser/ui/webui/autofill_ml_internals
+remove chrome/browser/resources/password_manager
+remove chrome/browser/resources/autofill
+remove chrome/browser/resources/autofill_ml_internals
+remove chrome/browser/resources/automated_password_change
+remove chrome/browser/resources/settings/autofill_page
+remove chrome/browser/ui/webui/settings/password_manager_handler.cc
+remove chrome/browser/ui/webui/settings/password_manager_handler.h
+remove chrome/browser/ui/webui/settings/saved_info_handler.cc
+remove chrome/browser/ui/webui/settings/saved_info_handler.h
+remove chrome/browser/ui/webui/settings/saved_info_handler_test_api.h
+remove chrome/browser/ui/webui/settings/saved_info_handler_unittest.cc
+
+# --- renderer / common ---
+remove chrome/renderer/password_manager
+remove chrome/common/password_manager
+remove chrome/common/importer/importer_autofill_form_data_entry.cc
+remove chrome/common/importer/importer_autofill_form_data_entry.h
+
+# --- webauthn passkey/GPM (chrome) ---
+remove chrome/browser/webauthn/change_pin_controller.cc
+remove chrome/browser/webauthn/change_pin_controller.h
+remove chrome/browser/webauthn/change_pin_controller_impl.cc
+remove chrome/browser/webauthn/change_pin_controller_impl.h
+remove chrome/browser/webauthn/change_pin_controller_impl_browsertest.cc
+remove chrome/browser/webauthn/cmtg_device_key_provider_factory.cc
+remove chrome/browser/webauthn/cmtg_device_key_provider_factory.h
+remove chrome/browser/webauthn/cmtg_key_fetcher.cc
+remove chrome/browser/webauthn/cmtg_key_fetcher.h
+remove chrome/browser/webauthn/cmtg_key_fetcher_unittest.cc
+remove chrome/browser/webauthn/enclave_authenticator_browsertest.cc
+remove chrome/browser/webauthn/enclave_authenticator_browsertest_base.cc
+remove chrome/browser/webauthn/enclave_authenticator_browsertest_base.h
+remove chrome/browser/webauthn/enclave_manager.cc
+remove chrome/browser/webauthn/enclave_manager.h
+remove chrome/browser/webauthn/enclave_manager_factory.cc
+remove chrome/browser/webauthn/enclave_manager_factory.h
+remove chrome/browser/webauthn/enclave_manager_interface.cc
+remove chrome/browser/webauthn/enclave_manager_interface.h
+remove chrome/browser/webauthn/enclave_manager_unittest.cc
+remove chrome/browser/webauthn/fake_magic_arch.cc
+remove chrome/browser/webauthn/fake_magic_arch.h
+remove chrome/browser/webauthn/fake_password_credential_fetcher.cc
+remove chrome/browser/webauthn/fake_password_credential_fetcher.h
+remove chrome/browser/webauthn/fake_recovery_key_store.cc
+remove chrome/browser/webauthn/fake_recovery_key_store.h
+remove chrome/browser/webauthn/fake_security_domain_service.cc
+remove chrome/browser/webauthn/fake_security_domain_service.h
+remove chrome/browser/webauthn/gpm_enclave_controller.cc
+remove chrome/browser/webauthn/gpm_enclave_controller.h
+remove chrome/browser/webauthn/gpm_enclave_transaction.cc
+remove chrome/browser/webauthn/gpm_enclave_transaction.h
+remove chrome/browser/webauthn/mock_enclave_manager.cc
+remove chrome/browser/webauthn/mock_enclave_manager.h
+remove chrome/browser/webauthn/passkey_model_factory.cc
+remove chrome/browser/webauthn/passkey_model_factory.h
+remove chrome/browser/webauthn/passkey_unlock_manager.cc
+remove chrome/browser/webauthn/passkey_unlock_manager.h
+remove chrome/browser/webauthn/passkey_unlock_manager_browsertest.cc
+remove chrome/browser/webauthn/passkey_unlock_manager_factory.cc
+remove chrome/browser/webauthn/passkey_unlock_manager_factory.h
+remove chrome/browser/webauthn/passkey_unlock_manager_unittest.cc
+remove chrome/browser/webauthn/password_credential_fetcher.cc
+remove chrome/browser/webauthn/password_credential_fetcher.h
+remove chrome/browser/webauthn/password_credential_fetcher_unittest.cc
+remove chrome/browser/webauthn/password_credential_ui_controller.cc
+remove chrome/browser/webauthn/password_credential_ui_controller.h
+remove chrome/browser/webauthn/password_credential_ui_controller_unittest.cc
+remove chrome/browser/webauthn/proto/BUILD.gn
+remove chrome/browser/webauthn/proto/enclave_local_state.proto
+remove chrome/browser/ui/webauthn/ambient/ambient_signin_controller.cc
+remove chrome/browser/ui/webauthn/ambient/ambient_signin_controller.h
+remove chrome/browser/ui/webauthn/ambient/ambient_signin_controller_unittest.cc
+remove chrome/browser/ui/webauthn/context_menu_helper.cc
+remove chrome/browser/ui/webauthn/context_menu_helper.h
+remove chrome/browser/ui/webauthn/context_menu_helper_unittest.cc
+remove chrome/browser/ui/webauthn/passkey_deleted_confirmation_controller.cc
+remove chrome/browser/ui/webauthn/passkey_deleted_confirmation_controller.h
+remove chrome/browser/ui/webauthn/passkey_deleted_confirmation_controller_unittest.cc
+remove chrome/browser/ui/webauthn/passkey_not_accepted_bubble_controller.cc
+remove chrome/browser/ui/webauthn/passkey_not_accepted_bubble_controller.h
+remove chrome/browser/ui/webauthn/passkey_not_accepted_bubble_controller_unittest.cc
+remove chrome/browser/ui/webauthn/passkey_saved_confirmation_controller.cc
+remove chrome/browser/ui/webauthn/passkey_saved_confirmation_controller.h
+remove chrome/browser/ui/webauthn/passkey_saved_confirmation_controller_unittest.cc
+remove chrome/browser/ui/webauthn/passkey_updated_confirmation_controller.cc
+remove chrome/browser/ui/webauthn/passkey_updated_confirmation_controller.h
+remove chrome/browser/ui/webauthn/passkey_updated_confirmation_controller_unittest.cc
+remove chrome/browser/ui/webauthn/passkey_upgrade_request_controller.cc
+remove chrome/browser/ui/webauthn/passkey_upgrade_request_controller.h
+remove chrome/browser/ui/views/webauthn/ambient/BUILD.gn
+remove chrome/browser/ui/views/webauthn/ambient/ambient_signin_bubble_view.cc
+remove chrome/browser/ui/views/webauthn/ambient/ambient_signin_bubble_view.h
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_account_info_view.cc
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_account_info_view.h
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_arbitrary_pin_sheet_view.cc
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_arbitrary_pin_sheet_view.h
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_arbitrary_pin_view.cc
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_arbitrary_pin_view.h
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_pin_sheet_view.cc
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_pin_sheet_view.h
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_pin_view.cc
+remove chrome/browser/ui/views/webauthn/authenticator_gpm_pin_view.h
+remove chrome/browser/ui/views/webauthn/passkey_deleted_confirmation_view.cc
+remove chrome/browser/ui/views/webauthn/passkey_deleted_confirmation_view.h
+remove chrome/browser/ui/views/webauthn/passkey_deleted_confirmation_view_unittest.cc
+remove chrome/browser/ui/views/webauthn/passkey_detail_view.cc
+remove chrome/browser/ui/views/webauthn/passkey_detail_view.h
+remove chrome/browser/ui/views/webauthn/passkey_not_accepted_bubble_view.cc
+remove chrome/browser/ui/views/webauthn/passkey_not_accepted_bubble_view.h
+remove chrome/browser/ui/views/webauthn/passkey_not_accepted_bubble_view_unittest.cc
+remove chrome/browser/ui/views/webauthn/passkey_saved_confirmation_view.cc
+remove chrome/browser/ui/views/webauthn/passkey_saved_confirmation_view.h
+remove chrome/browser/ui/views/webauthn/passkey_saved_confirmation_view_unittest.cc
+remove chrome/browser/ui/views/webauthn/passkey_updated_confirmation_view.cc
+remove chrome/browser/ui/views/webauthn/passkey_updated_confirmation_view.h
+remove chrome/browser/ui/views/webauthn/passkey_updated_confirmation_view_unittest.cc
+remove chrome/browser/ui/views/webauthn/passkey_upgrade_bubble_view.cc
+remove chrome/browser/ui/views/webauthn/passkey_upgrade_bubble_view.h
+remove chrome/browser/ui/views/webauthn/passkey_upgrade_bubble_view_unittest.cc
+remove chrome/browser/ui/views/webauthn/pin_textfield.cc
+remove chrome/browser/ui/views/webauthn/pin_textfield.h
+remove chrome/browser/ui/views/webauthn/pin_textfield_unittest.cc
+
+# --- actor login / form filling / OTP tools ---
+remove chrome/browser/actor/autofill_selection_dialog_event_handler.h
+remove chrome/browser/actor/tools/actor_login_flow_verifier.cc
+remove chrome/browser/actor/tools/actor_login_flow_verifier.h
+remove chrome/browser/actor/tools/actor_login_flow_verifier_unittest.cc
+remove chrome/browser/actor/tools/attempt_form_filling_tool.cc
+remove chrome/browser/actor/tools/attempt_form_filling_tool.h
+remove chrome/browser/actor/tools/attempt_form_filling_tool_browsertest.cc
+remove chrome/browser/actor/tools/attempt_form_filling_tool_metrics.cc
+remove chrome/browser/actor/tools/attempt_form_filling_tool_metrics.h
+remove chrome/browser/actor/tools/attempt_form_filling_tool_request.cc
+remove chrome/browser/actor/tools/attempt_form_filling_tool_request.h
+remove chrome/browser/actor/tools/attempt_form_filling_tool_request_unittest.cc
+remove chrome/browser/actor/tools/attempt_login_tool.cc
+remove chrome/browser/actor/tools/attempt_login_tool.h
+remove chrome/browser/actor/tools/attempt_login_tool_browsertest.cc
+remove chrome/browser/actor/tools/attempt_login_tool_request.cc
+remove chrome/browser/actor/tools/attempt_login_tool_request.h
+remove chrome/browser/actor/tools/attempt_login_tool_request_unittest.cc
+remove chrome/browser/actor/tools/attempt_otp_filling_metrics.cc
+remove chrome/browser/actor/tools/attempt_otp_filling_metrics.h
+remove chrome/browser/actor/tools/attempt_otp_filling_tool.cc
+remove chrome/browser/actor/tools/attempt_otp_filling_tool.h
+remove chrome/browser/actor/tools/attempt_otp_filling_tool_browsertest.cc
+remove chrome/browser/actor/tools/attempt_otp_filling_tool_request.cc
+remove chrome/browser/actor/tools/attempt_otp_filling_tool_request.h
+remove chrome/browser/actor/tools/attempt_otp_filling_tool_request_unittest.cc
+remove chrome/browser/actor/tools/attempt_otp_filling_tool_unittest.cc
+
+# --- safe browsing password-reuse protection ---
+remove components/safe_browsing/core/browser/password_protection
+remove components/safe_browsing/content/browser/password_protection
+remove chrome/browser/ui/webui/reset_password
+remove chrome/browser/resources/reset_password
+remove chrome/browser/safe_browsing/chrome_password_protection_service.cc
+remove chrome/browser/safe_browsing/chrome_password_protection_service.h
+remove chrome/browser/safe_browsing/chrome_password_protection_service_browsertest.cc
+remove chrome/browser/safe_browsing/chrome_password_protection_service_factory.cc
+remove chrome/browser/safe_browsing/chrome_password_protection_service_factory.h
+remove chrome/browser/safe_browsing/chrome_password_protection_service_sync_browsertest.cc
+remove chrome/browser/safe_browsing/chrome_password_protection_service_unittest.cc
+remove chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client.cc
+remove chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client.h
+remove chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client_unittest.cc
+remove chrome/browser/safe_browsing/extension_telemetry/password_reuse_signal.cc
+remove chrome/browser/safe_browsing/extension_telemetry/password_reuse_signal.h
+remove chrome/browser/safe_browsing/extension_telemetry/potential_password_theft_signal_processor.cc
+remove chrome/browser/safe_browsing/extension_telemetry/potential_password_theft_signal_processor.h
+remove chrome/browser/safe_browsing/extension_telemetry/potential_password_theft_signal_processor_unittest.cc
+remove chrome/browser/ui/views/safe_browsing/password_reuse_modal_warning_dialog.cc
+remove chrome/browser/ui/views/safe_browsing/password_reuse_modal_warning_dialog.h
+remove chrome/browser/ui/views/safe_browsing/password_reuse_modal_warning_dialog_browsertest.cc
+
+# --- test data ---
+remove chrome/test/data/autofill
+remove chrome/test/data/password
+remove chrome/test/data/fenced_frames/autofill
+remove chrome/test/data/webui/password_manager
+remove chrome/test/data/webui/password_manager_internals
+remove chrome/test/payments
+remove chrome/test/data/webui/settings/autofill_page
+
+# --- data importer (user decision: delete entirely; its Settings UI went in B2a) ---
+remove chrome/browser/importer
+remove chrome/common/importer
+remove chrome/utility/importer
+remove chrome/browser/ui/views/importer
+remove components/user_data_importer
+remove components/test/data/user_data_importer
+remove chrome/test/data/import

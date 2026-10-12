@@ -1,0 +1,19 @@
+{
+  "model": "gpt-image-2.5-flare",
+  "quality": "medium",
+  "size": "1024x1024",
+  "prompt": "macOS Big Sur style app icon (rounded-square squircle, deep graphite background with a subtle top light) for 'Agent Chrome', a web browser built for AI agents. Inside: a circular emblem of three swept, glossy segments around a central disc, structurally inspired by the Chrome browser logo but in electric teal, deep violet and warm amber. The central disc is a dark glass lens with a glowing cyan pupil, like an attentive machine eye. Crisp vector geometry, premium soft depth, centered, no text.",
+  "usage": {
+    "input_tokens": 109,
+    "input_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 109
+    },
+    "output_tokens": 439,
+    "output_tokens_details": {
+      "image_tokens": 439,
+      "text_tokens": 0
+    },
+    "total_tokens": 548
+  }
+}

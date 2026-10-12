@@ -1,0 +1,41 @@
+From 6b0847aa0370adc4adc6fcf627582497f35d34e7 Mon Sep 17 00:00:00 2001
+From: Shuttle Contributors <noreply@shuttlebrowser.com>
+Date: Sun, 4 Oct 2026 14:02:05 +0800
+Subject: [PATCH 1/2] Skip first-run experience and default-browser prompt
+
+The browser process always behaves as if launched with --no-first-run
+--no-default-browser-check (same mechanism as headless mode).
+---
+ chrome/app/chrome_main_delegate.cc | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index b8eeec779c..29a111b041 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -1120,6 +1120,22 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
+ #if !defined(BUILDING_CHROME_RENDERER)
+   const base::CommandLine& command_line =
+       *base::CommandLine::ForCurrentProcess();
++
++  // Agent Chrome: the browser process always behaves as if launched with
++  // --no-first-run --no-default-browser-check. This skips the welcome/first-run
++  // experience, the default-browser prompt, the search engine choice dialog,
++  // What's New and feature promos. Headless mode does the same
++  // (headless_mode_init.cc).
++  if (!command_line.HasSwitch(switches::kProcessType)) {
++    base::CommandLine* mutable_command_line =
++        base::CommandLine::ForCurrentProcess();
++    for (const char* agent_switch :
++         {switches::kNoFirstRun, switches::kNoDefaultBrowserCheck}) {
++      if (!mutable_command_line->HasSwitch(agent_switch)) {
++        mutable_command_line->AppendSwitch(agent_switch);
++      }
++    }
++  }
+ #endif  // !defined(BUILDING_CHROME_RENDERER)
+ 
+   // Only allow disabling web security via the command-line flag if the user has
+-- 
+2.54.0
+

@@ -1,0 +1,24 @@
+# Shuttle: sccache-dist scheduler for Mac -> Linux build host remote compiles.
+# Template: scripts/sccache-dist-host.sh install fills in @USER@, @HOME@ and @IP@ (SHUTTLE_BUILD_HOST_IP).
+# Installed by scripts/sccache-dist-host.sh install. Logs: journalctl -u sccache-dist-scheduler
+[Unit]
+Description=sccache-dist scheduler (Shuttle, @IP@:10600)
+After=network.target
+# The host IP (e.g. a VPN address) comes from Windows (WSL mirrored networking) and may appear late:
+# keep retrying forever instead of giving up after the default start limit.
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+Group=@USER@
+Environment=SCCACHE_NO_DAEMON=1 SCCACHE_LOG=info
+ExecStart=@HOME@/sccache/bin/sccache-dist scheduler --config @HOME@/sccache/conf/scheduler.conf
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

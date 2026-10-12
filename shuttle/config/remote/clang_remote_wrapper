@@ -1,0 +1,8 @@
+#!/bin/sh
+# Shuttle remote-build wrapper (runs on the Linux worker).
+# Siso sends: clang_remote_wrapper <mac clang path> <args...>. The uploaded Mac
+# clang is a Mach-O binary, so run the worker's Linux clang of the same revision
+# instead (AC_LINUX_CLANG_DIR, default /opt/ac-toolchain/llvm/bin).
+dir="${AC_LINUX_CLANG_DIR:-/opt/ac-toolchain/llvm/bin}"
+tool="$(basename "$1")"; shift
+exec "$dir/$tool" "$@"

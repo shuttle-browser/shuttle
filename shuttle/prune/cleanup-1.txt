@@ -1,0 +1,79 @@
+# Cleanup sweep 1 (2026-10-05): leftovers of batches A and B1.
+# Instant/embedded-search stack (dead with the blank NTP), NTP background
+# services, ntp-tiles-internals, the cr_components/search WebUI component,
+# Android-era touch_to_search, orphaned about_sys/support_tool resources.
+# Kept: search.cc basics, chrome/browser/ui/search/omnibox_utils (omnibox,
+# zero-suggest prefetch), components/ntp_tiles (zero-suggest), NTP pref names
+# that theme sync still reads.
+
+# --- Instant / embedded search: browser ---
+remove chrome/browser/search/instant_browsertest_base.cc
+remove chrome/browser/search/instant_browsertest_base.h
+remove chrome/browser/search/instant_service.cc
+remove chrome/browser/search/instant_service.h
+remove chrome/browser/search/instant_service_browsertest.cc
+remove chrome/browser/search/instant_service_factory.cc
+remove chrome/browser/search/instant_service_factory.h
+remove chrome/browser/search/instant_service_observer.cc
+remove chrome/browser/search/instant_service_observer.h
+remove chrome/browser/search/most_visited_iframe_source.cc
+remove chrome/browser/search/most_visited_iframe_source.h
+remove chrome/browser/search/most_visited_iframe_source_unittest.cc
+remove chrome/browser/search/search_engine_base_url_tracker.cc
+remove chrome/browser/search/search_engine_base_url_tracker.h
+remove chrome/browser/search/search_engine_base_url_tracker_browsertest.cc
+remove chrome/browser/search/search_browsertest.cc
+remove chrome/browser/ui/browser_instant_controller.cc
+remove chrome/browser/ui/browser_instant_controller.h
+remove chrome/browser/ui/browser_instant_controller_browsertest.cc
+remove chrome/browser/ui/search/chrome_search_navigation_throttle.cc
+remove chrome/browser/ui/search/chrome_search_navigation_throttle.h
+remove chrome/browser/ui/search/chrome_search_navigation_throttle_unittest.cc
+remove chrome/browser/ui/search/instant_controller.cc
+remove chrome/browser/ui/search/instant_controller.h
+remove chrome/browser/ui/search/instant_extended_interactive_uitest.cc
+remove chrome/browser/ui/search/instant_test_base.cc
+remove chrome/browser/ui/search/instant_test_base.h
+remove chrome/browser/ui/search/ntp_test_utils.cc
+remove chrome/browser/ui/search/ntp_test_utils.h
+remove chrome/browser/ui/search/search_ipc_router.cc
+remove chrome/browser/ui/search/search_ipc_router.h
+remove chrome/browser/ui/search/search_ipc_router_policy_browsertest.cc
+remove chrome/browser/ui/search/search_ipc_router_policy_impl.cc
+remove chrome/browser/ui/search/search_ipc_router_policy_impl.h
+remove chrome/browser/ui/search/search_ipc_router_unittest.cc
+remove chrome/browser/ui/search/search_tab_helper.cc
+remove chrome/browser/ui/search/search_tab_helper.h
+remove chrome/browser/resources/new_tab_page_instant
+
+# --- Instant / embedded search: common + renderer ---
+remove chrome/common/search
+remove chrome/renderer/searchbox
+remove chrome/renderer/instant_restricted_id_cache.h
+remove chrome/renderer/instant_restricted_id_cache_unittest.cc
+
+# --- NTP custom background (Google backdrop collections) ---
+remove chrome/browser/search/background
+remove chrome/browser/search/ntp_custom_background_enabled_policy_handler.cc
+remove chrome/browser/search/ntp_custom_background_enabled_policy_handler.h
+remove chrome/browser/search/ntp_custom_background_enabled_policy_handler_browsertest.cc
+remove components/themes/ntp_background.proto
+remove components/themes/ntp_background_data.cc
+remove components/themes/ntp_background_data.h
+remove components/themes/ntp_background_service.cc
+remove components/themes/ntp_background_service.h
+remove components/themes/ntp_background_service_observer.h
+remove components/themes/ntp_background_service_unittest.cc
+remove components/themes/ntp_custom_background_service_base.cc
+remove components/themes/ntp_custom_background_service_base.h
+remove components/themes/ntp_custom_background_service_base_unittest.cc
+remove components/themes/ntp_custom_background_service_observer.h
+
+# --- WebUI leftovers ---
+remove components/ntp_tiles/webui
+remove ui/webui/resources/cr_components/search
+remove chrome/browser/resources/about_sys
+remove chrome/browser/resources/support_tool
+
+# --- Android-era contextual search ---
+remove components/touch_to_search

@@ -1,0 +1,20 @@
+# Shuttle: sccache-dist build server instance %i (1 -> :10501, 2 -> :10502).
+# Runs as root: the overlay builder needs bubblewrap with mount namespaces. Config
+# @HOME@/sccache/conf/server%i.conf, state /var/lib/sccache-dist/s%i (outside ~ on purpose:
+# bwrap drops root's capabilities and @HOME@ is 0750).
+# Template: scripts/sccache-dist-host.sh install fills in @USER@, @HOME@ and @IP@ (SHUTTLE_BUILD_HOST_IP).
+# Installed by scripts/sccache-dist-host.sh install. Logs: journalctl -u sccache-dist-server@%i
+[Unit]
+Description=sccache-dist build server %i (Shuttle)
+After=network.target sccache-dist-scheduler.service
+StartLimitIntervalSec=0
+
+[Service]
+Environment=SCCACHE_NO_DAEMON=1 SCCACHE_LOG=info
+ExecStartPre=/bin/mkdir -p /var/lib/sccache-dist/s%i/toolchains /var/lib/sccache-dist/s%i/build
+ExecStart=@HOME@/sccache/bin/sccache-dist server --config @HOME@/sccache/conf/server%i.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

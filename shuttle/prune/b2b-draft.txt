@@ -1,0 +1,177 @@
+# Batch B2b (DRAFT): user education / feature engagement, remaining side panel entries,
+# GCM / push messaging / invalidation, on-device AI.
+# Source: _docs/agent-briefs/b2b-scout-report.md. Paths verified with git ls-files on ac/prune-platforms (aaeb882acf).
+# Lines marked `# ASK` need a user decision first (report section 8); default shown is the recommendation.
+
+# === 1. User education + feature engagement (recommendation: delete all, rewrite call sites; no shim) ===
+remove components/user_education
+remove components/feature_engagement
+remove chrome/browser/user_education
+remove chrome/browser/ui/user_education
+remove chrome/browser/ui/views/user_education
+remove chrome/browser/feature_engagement
+remove chrome/browser/ui/webui/user_education
+remove chrome/browser/ui/webui/user_education_internals
+remove chrome/browser/resources/user_education_internals
+remove ui/webui/resources/cr_components/help_bubble
+remove chrome/browser/pdf/pdf_help_bubble_handler_factory.cc
+remove chrome/browser/pdf/pdf_help_bubble_handler_factory.h
+remove chrome/browser/ui/tabs/split_view_iph_controller.cc
+remove chrome/browser/ui/tabs/split_view_iph_controller.h
+remove chrome/browser/ui/tabs/vertical_tab_iph_controller.cc
+remove chrome/browser/ui/tabs/vertical_tab_iph_controller.h
+remove chrome/browser/ui/shared_highlighting/shared_highlighting_promo.cc
+remove chrome/browser/ui/shared_highlighting/shared_highlighting_promo.h
+remove chrome/browser/ui/views/toolbar/toolbar_button_menu_highlighter.cc
+remove chrome/browser/ui/views/toolbar/toolbar_button_menu_highlighter.h
+remove tools/feature_engagement
+remove tools/metrics/histograms/metadata/user_education
+remove tools/metrics/histograms/metadata/feature_engagement
+remove tools/metrics/histograms/metadata/ash_user_education
+remove chrome/browser/ui/webui/extensions_zero_state_promo   # ASK Q3: Web Store promo page for the extensions menu (uses help bubble + IPH)
+remove chrome/browser/resources/extensions_zero_state_promo  # ASK Q3
+keep ui/base/interaction   # ElementTracker, ElementIdentifier, InteractionSequence (explicit user decision)
+keep ui/webui/tracked_element   # WebUI ElementTracker bridge used by the WebUI toolbar; drop only help_bubble_handler members
+keep ui/webui/resources/js/tracked_element
+keep ui/base/models/menu_model.h   # is_new_feature / NewBadge strings are inert ints, no user_education include
+keep ui/views/controls/menu/menu_item_view.h   # same
+
+# === 2. Side panel entries (framework + chrome.sidePanel extension entry stay) ===
+remove chrome/browser/ui/views/side_panel/history
+remove chrome/browser/ui/views/side_panel/history_clusters
+remove chrome/browser/ui/webui/side_panel
+remove chrome/browser/resources/side_panel
+remove chrome/browser/ui/read_anything
+remove chrome/renderer/accessibility/read_anything
+remove chrome/common/read_anything
+remove chrome/common/readaloud
+remove chrome/services/readaloud
+remove chrome/services/reading_mode_metrics
+remove chrome/browser/renderer_context_menu/context_menu_content_type_read_anything.cc
+remove chrome/browser/renderer_context_menu/context_menu_content_type_read_anything.h
+remove chrome/browser/accessibility/phrase_segmentation   # only users: read anything (renderer + untrusted page handler)
+remove chrome/renderer/accessibility/phrase_segmentation
+remove chrome/browser/component_updater/wasm_tts_engine_component_installer.cc
+remove chrome/browser/component_updater/wasm_tts_engine_component_installer.h
+remove chrome/browser/page_info/about_this_site_service_factory.cc   # ASK Q4: About This Site side panel (Google servers)
+remove chrome/browser/page_info/about_this_site_service_factory.h
+remove chrome/browser/page_info/about_this_site_tab_helper.cc
+remove chrome/browser/page_info/about_this_site_tab_helper.h
+remove chrome/browser/ui/page_info/about_this_site_side_panel.h
+remove chrome/browser/ui/views/page_info/about_this_site_side_panel_coordinator.cc
+remove chrome/browser/ui/views/page_info/about_this_site_side_panel_coordinator.h
+remove components/page_info/core/about_this_site_service.cc
+remove components/page_info/core/about_this_site_service.h
+remove components/page_info/core/about_this_site_validation.cc
+remove components/page_info/core/about_this_site_validation.h
+remove components/page_info/core/proto/about_this_site_metadata.proto
+keep chrome/browser/ui/side_panel   # framework: SidePanelUI/Registry/Entry (82 kept includers); only enum entries trimmed
+keep chrome/browser/ui/views/side_panel   # framework views; history/history_clusters subdirs removed above
+keep chrome/browser/extensions/api/side_panel   # chrome.sidePanel API   # ASK Q2
+keep chrome/browser/ui/extensions/extension_side_panel_coordinator.cc   # ASK Q2 (ExtensionSidePanel* files, 7)
+keep chrome/common/extensions/api/side_panel.idl   # ASK Q2
+keep ui/webui/resources/cr_components/history   # chrome://history still uses it
+keep ui/webui/resources/cr_components/history_clusters   # chrome://history journeys; whole history_clusters stack is a follow-up (B2e?)
+keep components/history_clusters   # follow-up, 23 kept chrome/browser includers
+
+# === 3. GCM / push messaging / invalidation (recommendation: full removal) ===
+remove components/gcm_driver
+remove google_apis/gcm
+remove components/fcm
+remove chrome/browser/gcm
+remove chrome/browser/push_messaging
+remove components/push_messaging
+remove chrome/browser/extensions/api/gcm
+remove chrome/browser/extensions/api/instance_id
+remove chrome/common/extensions/api/gcm.json
+remove chrome/common/extensions/api/instance_id.json
+remove chrome/renderer/resources/extensions/gcm_custom_bindings.js
+remove chrome/browser/ui/webui/gcm_internals_ui.cc
+remove chrome/browser/ui/webui/gcm_internals_ui.h
+remove components/invalidation   # ASK Q5 (enterprise policy push); only enterprise code uses it
+remove chrome/browser/invalidation
+remove chrome/browser/policy/cloud/cloud_policy_invalidator.cc   # ASK Q5
+remove chrome/browser/policy/cloud/cloud_policy_invalidator.h
+remove chrome/browser/policy/cloud/policy_invalidator.cc
+remove chrome/browser/policy/cloud/policy_invalidator.h
+remove chrome/browser/policy/cloud/user_cloud_policy_invalidator.cc
+remove chrome/browser/policy/cloud/user_cloud_policy_invalidator.h
+remove chrome/browser/policy/cloud/user_cloud_policy_invalidator_factory.cc
+remove chrome/browser/policy/cloud/user_cloud_policy_invalidator_factory.h
+remove chrome/browser/policy/cloud/extension_install_policy_invalidator.cc
+remove chrome/browser/policy/cloud/extension_install_policy_invalidator.h
+remove chrome/browser/policy/cloud/fm_registration_token_uploader.cc
+remove chrome/browser/policy/cloud/fm_registration_token_uploader.h
+remove chrome/browser/policy/cloud/user_fm_registration_token_uploader.cc
+remove chrome/browser/policy/cloud/user_fm_registration_token_uploader.h
+remove chrome/browser/policy/cloud/user_fm_registration_token_uploader_factory.cc
+remove chrome/browser/policy/cloud/user_fm_registration_token_uploader_factory.h
+remove components/policy/core/common/remote_commands/remote_commands_invalidator.cc   # ASK Q5
+remove components/policy/core/common/remote_commands/remote_commands_invalidator.h
+remove chrome/browser/safe_browsing/notification_telemetry   # depends on PushMessagingServiceImpl (SetSubscribeFromWorkerCallback)
+remove chrome/browser/device_identity/device_identity_provider.cc   # ASK Q5: implements invalidation::IdentityProvider; only CBCM controller uses it
+remove chrome/browser/device_identity/device_identity_provider.h
+remove chrome/browser/enterprise/remote_commands/user_remote_commands_service.cc   # ASK Q5: user remote commands arrive via invalidation
+remove chrome/browser/enterprise/remote_commands/user_remote_commands_service.h
+remove chrome/browser/enterprise/remote_commands/user_remote_commands_service_factory.cc
+remove chrome/browser/enterprise/remote_commands/user_remote_commands_service_factory.h
+remove components/policy/core/browser/remote_commands/user_remote_commands_service_base.cc   # ASK Q5
+remove components/policy/core/browser/remote_commands/user_remote_commands_service_base.h
+remove chrome/browser/policy/cbcm_invalidations_initializer.cc   # ASK Q5
+remove chrome/browser/policy/cbcm_invalidations_initializer.h
+keep content/browser/push_messaging   # content-layer Push API plumbing; PushMessagingService* delegate simply returns nullptr
+keep content/public/browser/push_messaging_service.h
+
+# === 4. On-device AI ===
+# 4a. consumers + browser-side Blink AI API (recommended for B2b)
+remove chrome/browser/ai   # AIManager + Language Model/Writer/Rewriter/Summarizer/Proofreader + AiDataKeyedService
+remove components/on_device_ai
+remove chrome/browser/finds   # ASK Q6: Finds (Gemini-based find) + finds_internals
+remove chrome/browser/ui/webui/chrome_finds_internals
+remove chrome/browser/resources/chrome_finds_internals
+remove chrome/browser/safe_browsing/gemini_antiscam_protection   # ASK Q6
+remove chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_desktop.cc   # ASK Q6
+remove chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_desktop.h
+remove chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_factory.cc
+remove chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_factory.h
+remove chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_util.cc
+remove chrome/browser/safe_browsing/client_side_detection_intelligent_scan_delegate_util.h
+remove chrome/browser/safe_browsing/notification_content_detection   # ASK Q6
+remove components/safe_browsing/content/browser/notification_content_detection   # ASK Q6
+# 4b. orphaned model-execution stack (phase 2, after 4a builds; recommended in same batch only if budget allows)
+remove components/optimization_guide/core/model_execution   # ASK Q7 (106)
+remove components/optimization_guide/core/model_quality   # ASK Q7 (10)
+remove chrome/browser/optimization_guide/model_execution   # ASK Q7 (3)
+remove chrome/browser/optimization_guide/chrome_model_quality_logs_uploader_service.cc   # ASK Q7
+remove chrome/browser/optimization_guide/chrome_model_quality_logs_uploader_service.h
+remove chrome/browser/component_updater/optimization_guide_on_device_model_installer.cc   # ASK Q7
+remove chrome/browser/component_updater/optimization_guide_on_device_model_installer.h
+remove services/on_device_model   # ASK Q7 (82); speech on-device ASR + optimization_guide model_broker.mojom import its public/mojom
+remove components/optimization_guide/public/mojom/model_broker.mojom   # ASK Q7
+remove components/optimization_guide/public/mojom/model_broker_debug.mojom
+remove chrome/browser/speech/on_device_speech_recognition_impl.cc   # ASK Q8: on-device ASR (Gemini Nano audio) + live caption recognizer
+remove chrome/browser/speech/on_device_speech_recognition_impl.h
+remove chrome/browser/speech/on_device_speech_recognition_util.cc
+remove chrome/browser/speech/on_device_speech_recognition_util.h
+remove chrome/browser/speech/on_device_live_caption_recognizer.cc
+remove chrome/browser/speech/on_device_live_caption_recognizer.h
+remove chrome/browser/speech/speech_recognition_small_expert_model_installer.cc
+remove chrome/browser/speech/speech_recognition_small_expert_model_installer.h
+remove content/browser/speech/on_device_speech_recognition_engine_impl.cc
+remove content/browser/speech/on_device_speech_recognition_engine_impl.h
+# keep list
+keep chrome/browser/actor   # must stay buildable; needs OptimizationGuideKeyedService (hints), OG protos + page_content proto provider, page_content_annotations/content (PageContextFetcher)
+keep components/optimization_guide/core/hints
+keep components/optimization_guide/core/delivery
+keep components/optimization_guide/core/inference
+keep components/optimization_guide/core/filters
+keep components/optimization_guide/content
+keep components/optimization_guide/proto   # protos used by actor (actions_data, common_quality_data) and page_content
+keep components/page_content_annotations/content   # actor PageContextFetcher / page_settled_monitor / extraction service
+keep chrome/browser/page_content_annotations
+keep chrome/browser/optimization_guide/optimization_guide_keyed_service.cc   # shrink: drop model execution/ModelBroker members
+keep third_party/blink/public/mojom/ai   # Blink-owned; AIManager mojom must stay while blink/renderer/modules/ai builds. AIPageContent types live elsewhere.
+keep content/browser/ai   # Echo AI fallback: chrome overrides BindAIManager with a no-op so pages see no model
+# follow-ups (not in this batch; reported only)
+keep components/segmentation_platform   # 297 + chrome 16; 44 kept includers (visited_url_ranking dominates)
+keep components/optimization_guide/optimization_guide_internals   # revisit after model_execution removal

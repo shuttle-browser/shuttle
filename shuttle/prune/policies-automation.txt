@@ -1,0 +1,2 @@
+# Fork commit 16: debugging is always on
+RemoteDebuggingAllowed

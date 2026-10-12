@@ -1,0 +1,31 @@
+# Example sccache client config for distributed compiles (sccache-dist).
+# Copy to ~/.shuttle/sccache.toml (or point SCCACHE_CONF at it) and fill in your own values.
+# Never commit the real file: it holds your scheduler auth token.
+#
+# NOTE: sccache does not expand $HOME; write absolute paths.
+# The toolchain archive is built with scripts/sccache-toolchain.sh; see docs/TOOLING.md.
+
+[dist]
+scheduler_url = "http://<build-host>:10600"
+toolchain_cache_size = 2147483648
+cache_dir = "$HOME/chromium/sccache-toolchains"
+# clang -frewrite-includes instead of -E: keeps macros, so macro-context warnings stay suppressed
+rewrite_includes_only = true
+
+[dist.auth]
+type = "token"
+token = "<scheduler client token>"
+
+# One entry per compiler path clang is invoked with (add an entry per out dir; relative
+# "out/<Dir>/../../" paths count as separate entries).
+[[dist.toolchains]]
+type = "path_override"
+compiler_executable = "$HOME/chromium/src/third_party/llvm-build/Release+Asserts/bin/clang"
+archive = "$HOME/.shuttle/sccache/ac-clang-toolchain.tar.gz"
+archive_compiler_executable = "/ac/bin/clang-wrap"
+
+[[dist.toolchains]]
+type = "path_override"
+compiler_executable = "$HOME/chromium/src/third_party/llvm-build/Release+Asserts/bin/clang++"
+archive = "$HOME/.shuttle/sccache/ac-clang-toolchain.tar.gz"
+archive_compiler_executable = "/ac/bin/clang++-wrap"

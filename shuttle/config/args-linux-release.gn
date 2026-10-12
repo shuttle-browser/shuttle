@@ -1,0 +1,7 @@
+# Linux release overrides (appended last by scripts/build-linux.sh release).
+# args-release.gn pins the Mac's arm64; the public Linux build is x86_64.
+target_cpu = "x64"
+# Official x64 Linux defaults to CFI, which requires ThinLTO (off in args-release.gn).
+is_cfi = false
+# chrome/installer/linux (deb/rpm) was pruned; scripts/package-linux.sh makes the tarball.
+enable_linux_installer = false

@@ -1,0 +1,313 @@
+# Feature removal, batch part A (see docs/plans/REMOVAL-CANDIDATES.md).
+# `remove <path>` deletes everything under <path> unconditionally; the build is
+# then fixed by hand (BUILD.gn deps, .grd entries, includers).
+# Deferred on purpose: components/autofill/**/payments + chrome/browser/ui/**/autofill/payments
+# (credit-card autofill is woven into autofill core), content/browser/payments,
+# chrome/browser/performance_manager (core tab/resource mgmt), chrome/browser/actor,
+# services/on_device_model (optimization_guide needs it; goes with the part B stub),
+# components/manta (services/image_annotation, used by content, needs it).
+
+# --- bookmarks ---
+remove components/bookmarks
+remove components/sync_bookmarks
+remove components/power_bookmarks
+remove components/browser_apis/bookmarks
+remove components/undo
+remove chrome/browser/bookmarks
+remove chrome/browser/power_bookmarks
+remove chrome/browser/ui/bookmarks
+remove chrome/browser/ui/cocoa/bookmarks
+remove chrome/browser/ui/views/bookmarks
+remove chrome/browser/ui/views/side_panel/bookmarks
+remove chrome/browser/ui/webui/bookmarks
+remove chrome/browser/ui/webui/side_panel/bookmarks
+remove chrome/browser/resources/bookmarks
+remove chrome/browser/resources/side_panel/bookmarks
+remove chrome/browser/resources/webui_browser/bookmarks
+remove chrome/browser/extensions/api/bookmark_manager_private
+remove chrome/browser/extensions/api/bookmarks
+remove chrome/browser/extensions/api/bookmarks_core
+remove chrome/browser/extensions/bookmarks
+remove chrome/browser/preloading/bookmarkbar_preload
+
+# --- commerce ---
+remove components/commerce
+remove chrome/browser/commerce
+remove chrome/browser/ui/commerce
+remove chrome/browser/ui/views/commerce
+remove chrome/browser/ui/webui/commerce
+remove chrome/browser/resources/side_panel/commerce
+remove chrome/browser/resources/shopping
+remove chrome/browser/resources/settings/autofill_page/shopping
+
+# --- Google AI: glic, contextual tasks, Lens, Compose, on-device stack ---
+remove chrome/browser/glic
+remove chrome/browser/background/glic
+remove chrome/browser/resources/glic
+remove chrome/browser/resources/settings/glic_page
+remove chrome/browser/ui/views/glic
+remove chrome/browser/ui/views/tabs/glic
+remove chrome/browser/extensions/api/glic_private
+remove chrome/browser/sharing/glic_experimental_triggering
+remove components/glic
+remove chrome/browser/contextual_tasks
+remove chrome/browser/resources/contextual_tasks
+remove chrome/browser/ui/views/contextual_tasks
+remove chrome/browser/extensions/api/contextual_tasks_private
+remove components/contextual_tasks
+remove chrome/browser/lens
+remove chrome/browser/ui/lens
+remove chrome/browser/resources/lens
+remove components/lens
+remove chrome/browser/compose
+remove chrome/browser/composeplate
+remove chrome/browser/ui/views/compose
+remove chrome/browser/ui/webui/compose
+remove chrome/browser/resources/compose
+remove components/compose
+remove components/autofill/core/browser/integrators/compose
+remove components/autofill/core/browser/suggestions/compose
+remove services/passage_embeddings
+remove services/screen_ai
+remove chrome/browser/screen_ai
+remove components/on_device_translation
+remove chrome/browser/on_device_translation
+remove chrome/browser/ui/webui/on_device_translation_internals
+remove chrome/browser/resources/on_device_translation_internals
+remove chrome/browser/ui/webui/on_device_internals
+remove chrome/browser/resources/on_device_internals
+
+# --- Tier 1: AI side features ---
+remove chrome/browser/notebooks
+remove components/notebooks
+remove chrome/browser/ui/webui/notebooks_internals
+remove chrome/browser/private_ai
+remove components/private_ai
+remove chrome/browser/ui/webui/private_ai_internals
+remove chrome/browser/personal_context
+remove components/personal_context
+remove chrome/browser/passage_embeddings
+remove components/passage_embeddings
+remove chrome/browser/skills
+remove chrome/browser/ui/webui/skills
+remove chrome/browser/resources/skills
+remove components/skills
+remove chrome/browser/ttc
+remove chrome/browser/history_embeddings
+remove components/history_embeddings
+remove chrome/browser/ui/webui/cr_components/history_embeddings
+remove chrome/browser/image_descriptions
+remove chrome/browser/content_extraction
+remove components/content_extraction
+remove chrome/browser/contextual_cueing
+remove chrome/browser/resources/contextual_cueing
+remove components/contextual_cueing
+remove chrome/browser/companion
+remove chrome/browser/auxiliary_search
+remove chrome/browser/ui/webui/ai_overlay_dialog
+remove chrome/browser/ui/ai_overlay_dialog
+remove chrome/browser/context_hub
+remove chrome/browser/ui/views/context_hub
+remove chrome/browser/ui/webui/context_hub
+remove chrome/browser/resources/context_hub
+remove chrome/browser/ui/webui/organizer_panel
+remove chrome/browser/resources/organizer_panel
+remove chrome/browser/ui/views/search_ai_mode
+remove chrome/browser/resources/search_ai_mode
+remove chrome/browser/indigo
+remove chrome/browser/ui/views/indigo
+remove chrome/browser/resources/indigo
+remove chrome/browser/ui/webui/indigo_internals
+remove chrome/browser/resources/indigo_internals
+remove chrome/browser/dictation
+remove chrome/browser/ui/views/dictation
+
+# --- Tier 1: promos and consumer UX ---
+remove chrome/browser/educational_tip
+remove chrome/browser/tips
+remove chrome/browser/safety_promo
+remove chrome/browser/desktop_to_mobile_promos
+remove chrome/browser/ui/desktop_to_mobile_promos
+remove components/desktop_to_mobile_promos
+remove chrome/browser/magic_stack
+remove chrome/browser/default_browser
+remove chrome/browser/ui/webui/default_browser
+remove chrome/browser/resources/default_browser
+remove chrome/browser/privacy_guide
+remove chrome/browser/quick_delete
+remove chrome/browser/tab_group_suggestion
+remove chrome/browser/image_editor
+remove chrome/browser/readaloud
+remove chrome/browser/record_replay
+remove chrome/browser/ui/record_replay
+remove chrome/browser/ui/views/record_replay
+remove components/record_replay
+remove chrome/browser/share
+remove chrome/browser/sharing_hub
+remove chrome/browser/ui/sharing_hub
+remove chrome/browser/ui/views/sharing_hub
+remove chrome/browser/feed
+remove components/feed
+remove chrome/browser/resources/feed_internals
+remove chrome/browser/data_saver
+remove chrome/browser/ui/webui/whats_new
+remove chrome/browser/resources/whats_new
+remove chrome/browser/ui/webui/tab_search
+remove chrome/browser/resources/tab_search
+remove chrome/browser/safety_hub
+remove chrome/browser/ui/safety_hub
+remove chrome/browser/resources/settings/safety_hub
+remove chrome/browser/ui/performance_controls
+remove chrome/browser/ui/views/performance_controls
+remove chrome/browser/ui/global_media_controls
+remove chrome/browser/ui/views/global_media_controls
+remove components/global_media_controls
+remove chrome/browser/ui/hats
+remove chrome/browser/ui/views/hats
+remove chrome/browser/picture_in_picture/hats
+remove chrome/browser/ui/webui/intro
+remove chrome/browser/resources/intro
+remove chrome/browser/ui/search_engine_choice
+remove chrome/browser/ui/views/search_engine_choice
+remove chrome/browser/ui/webui/search_engine_choice
+remove chrome/browser/resources/search_engine_choice
+
+# --- Tier 1: telemetry and internals ---
+remove chrome/browser/breadcrumbs
+remove components/breadcrumbs
+remove chrome/browser/error_reporting
+remove chrome/browser/crash_upload_list
+remove chrome/browser/diagnostics
+remove chrome/browser/assist_ranker
+remove components/assist_ranker
+remove chrome/browser/complex_tasks
+remove chrome/browser/feedback
+remove chrome/browser/ui/webui/feedback
+remove chrome/browser/resources/feedback
+remove chrome/browser/extensions/api/feedback_private
+remove components/feedback
+remove extensions/browser/api/feedback_private
+
+# --- Tier 1 + ask: sharing, send-tab-to-self, data sharing, collaboration ---
+remove chrome/browser/sharing
+remove chrome/browser/ui/views/sharing
+remove components/sharing_message
+remove chrome/browser/send_tab_to_self
+remove chrome/browser/ui/send_tab_to_self
+remove chrome/browser/ui/views/send_tab_to_self
+remove chrome/browser/resources/send_tab_to_self
+remove components/send_tab_to_self
+remove chrome/browser/data_sharing
+remove chrome/browser/ui/views/data_sharing
+remove chrome/browser/ui/webui/data_sharing
+remove chrome/browser/ui/webui/data_sharing_internals
+remove chrome/browser/resources/data_sharing
+remove components/data_sharing
+remove chrome/browser/collaboration
+remove components/collaboration
+remove chrome/browser/nearby_sharing
+remove components/qr_code_generator
+remove chrome/browser/consent_auditor
+remove components/consent_auditor
+
+# --- Cast / media router ---
+remove chrome/browser/media/router
+remove chrome/browser/ui/media_router
+remove chrome/browser/ui/views/media_router
+remove chrome/browser/ui/webui/media_router
+remove chrome/browser/resources/media_router
+remove chrome/browser/ui/toolbar/cast
+remove components/media_router
+remove components/cast
+remove components/cast_receiver
+remove components/cast_streaming
+
+# --- Drive ---
+remove chrome/browser/save_to_drive
+remove chrome/browser/ui/save_to_drive
+remove chrome/browser/ui/views/drive_picker_host
+remove chrome/browser/ui/webui/drive_picker_host
+remove chrome/browser/resources/drive_picker_host
+
+# --- payments and wallet (Web Payments + wallet; not autofill credit cards) ---
+remove components/payments
+remove chrome/browser/payments
+remove chrome/browser/ui/views/payments
+remove components/wallet
+remove chrome/browser/wallet
+remove chrome/browser/ui/wallet
+remove chrome/browser/resources/wallet
+
+# --- PWAs and apps ---
+remove chrome/browser/web_applications
+remove chrome/browser/ui/web_applications
+remove chrome/browser/ui/views/web_apps
+remove chrome/browser/ui/webui/web_app_internals
+remove chrome/browser/resources/web_app_internals
+remove chrome/browser/webapps
+remove chrome/browser/resources/webapps
+remove components/webapps
+remove components/web_app_resources
+remove chrome/browser/apps
+remove chrome/browser/ui/webui/app_service_internals
+remove chrome/browser/resources/app_service_internals
+remove apps
+remove chrome/app_shim
+
+# --- translate ---
+remove components/translate
+remove chrome/browser/translate
+remove chrome/browser/ui/translate
+remove chrome/browser/ui/views/translate
+remove chrome/browser/ui/webui/translate_internals
+
+# --- WebUI tests and shared components of removed features ---
+remove chrome/test/data/webui/ai_overlay_dialog
+remove chrome/test/data/webui/bookmarks
+remove chrome/test/data/webui/commerce_internals
+remove chrome/test/data/webui/compose
+remove chrome/test/data/webui/contextual_tasks
+remove chrome/test/data/webui/data_sharing
+remove chrome/test/data/webui/default_browser
+remove chrome/test/data/webui/drive_picker
+remove chrome/test/data/webui/feedback
+remove chrome/test/data/webui/glic
+remove chrome/test/data/webui/intro
+remove chrome/test/data/webui/lens
+remove chrome/test/data/webui/media_router
+remove chrome/test/data/webui/notebooks_internals
+remove chrome/test/data/webui/on_device_translation_internals
+remove chrome/test/data/webui/organizer_panel
+remove chrome/test/data/webui/skills
+remove chrome/test/data/webui/tab_search
+remove chrome/test/data/webui/web_app_internals
+remove chrome/test/data/webui/whats_new
+remove chrome/test/data/webui/side_panel/bookmarks
+remove chrome/test/data/webui/side_panel/commerce
+remove chrome/test/data/webui/app_home
+remove chrome/test/data/webui/app_settings
+remove chrome/test/data/webui/cr_components/history_embeddings
+remove ui/webui/resources/cr_components/commerce
+remove ui/webui/resources/cr_components/history_embeddings
+
+# --- app WebUIs (chrome://apps, app settings/management, preinstalled apps) ---
+remove chrome/browser/ui/webui/app_home
+remove chrome/browser/ui/webui/app_settings
+remove chrome/browser/ui/webui/app_management
+remove chrome/browser/resources/app_home
+remove chrome/browser/resources/app_settings
+remove chrome/browser/resources/preinstalled_web_apps
+
+# --- keep: build flags of removed features (guards compile as false) and
+# --- interfaces lower layers (content) still use
+keep components/compose/features.gni
+keep components/compose/BUILD.gn
+keep components/lens/features.gni
+keep components/lens/BUILD.gn
+keep services/screen_ai/buildflags
+keep components/on_device_translation/buildflags
+keep components/payments/mojom
+keep components/payments/content/icon
+# restored during the C++ fixes (still needed): TemplateURLService needs the
+# search engine choice service; chrome/browser/ai needs on_device_ai (both go in part B)
+keep chrome/browser/search_engine_choice

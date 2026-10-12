@@ -1,0 +1,71 @@
+# Prune manifest: platforms and apps Agent Chrome (macOS desktop) never builds.
+# Applied by scripts/prune.py. A file is deleted only if it matches a rule here
+# AND no build config we use reads it (siso inputs + deps log + gn files).
+# Rule types:
+#   dir <path>        everything under <path>
+#   segment <name>    any directory named <name>, anywhere
+#   suffix <name>     files named *_<name>.<ext> or *_<name>_*.<ext>
+#   ext <ext>         files with this extension
+#   keep <path>       never prune under <path> (wins over all rules)
+
+# --- mobile apps and other products ---
+dir ios
+dir android_webview
+dir chrome/android
+dir chrome/browser/android
+dir chrome/browser/ui/android
+dir chromecast
+dir fuchsia_web
+dir components/cronet
+dir clank
+
+# --- ChromeOS ---
+dir chromeos
+dir ash
+dir chrome/browser/ash
+dir chrome/browser/chromeos
+dir chrome/browser/ui/ash
+dir chrome/browser/ui/chromeos
+dir chrome/browser/resources/ash
+dir chrome/browser/resources/chromeos
+dir components/arc
+dir components/exo
+
+# --- Windows / Linux-only products ---
+dir chrome/installer
+dir chrome/elf
+dir chrome/windows_services
+dir chrome/chrome_elevation_service
+dir ui/ozone
+
+# --- platform-named code anywhere ---
+segment android
+segment ios
+segment chromeos
+segment ash
+segment fuchsia
+segment win
+segment linux
+segment lacros
+suffix android
+suffix ios
+suffix chromeos
+suffix ash
+suffix fuchsia
+suffix win
+suffix linux
+suffix lacros
+ext java
+ext kt
+ext aidl
+
+# --- never touch: build system, toolchains, hooks, DEPS-managed code ---
+keep third_party
+keep build
+keep buildtools
+keep tools
+keep testing
+keep v8
+keep native_client_sdk
+# still built today (enable_remoting); drop via GN args first
+keep remoting

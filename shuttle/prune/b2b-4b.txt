@@ -1,0 +1,35 @@
+# Batch B2b phase 4b: orphaned on-device model-execution stack (after phase 1 builds green).
+# 4b. orphaned model-execution stack (phase 2, after 4a builds; recommended in same batch only if budget allows)
+remove components/optimization_guide/core/model_execution   # Q7 (106)
+remove components/optimization_guide/core/model_quality   # Q7 (10)
+# remove chrome/browser/optimization_guide/model_execution   # Q7 (3)
+remove chrome/browser/optimization_guide/chrome_model_quality_logs_uploader_service.cc   # Q7
+remove chrome/browser/optimization_guide/chrome_model_quality_logs_uploader_service.h
+remove chrome/browser/component_updater/optimization_guide_on_device_model_installer.cc   # Q7
+remove chrome/browser/component_updater/optimization_guide_on_device_model_installer.h
+# KEEP (B3): blink/public AI mojoms import services/on_device_model/public; the service is unbuilt (use_on_device_model_service=false)
+# remove services/on_device_model   # Q7 (82); speech on-device ASR + optimization_guide model_broker.mojom import its public/mojom
+remove components/optimization_guide/public/mojom/model_broker.mojom   # Q7
+remove components/optimization_guide/public/mojom/model_broker_debug.mojom
+remove chrome/browser/speech/on_device_speech_recognition_impl.cc   # Q8: on-device ASR (Gemini Nano audio) + live caption recognizer
+remove chrome/browser/speech/on_device_speech_recognition_impl.h
+remove chrome/browser/speech/on_device_speech_recognition_util.cc
+remove chrome/browser/speech/on_device_speech_recognition_util.h
+remove chrome/browser/speech/on_device_live_caption_recognizer.cc
+remove chrome/browser/speech/on_device_live_caption_recognizer.h
+remove chrome/browser/speech/speech_recognition_small_expert_model_installer.cc
+remove chrome/browser/speech/speech_recognition_small_expert_model_installer.h
+remove content/browser/speech/on_device_speech_recognition_engine_impl.cc
+remove content/browser/speech/on_device_speech_recognition_engine_impl.h
+# KEEP (B3): chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.* holds the prediction manager (TFLite models); its on-device parts were cut instead.
+remove components/optimization_guide/core/feature_registry/enterprise_policy_registry.cc
+remove components/optimization_guide/core/feature_registry/enterprise_policy_registry.h
+remove components/optimization_guide/core/feature_registry/mqls_feature_registry.cc
+remove components/optimization_guide/core/feature_registry/mqls_feature_registry.h
+remove components/optimization_guide/core/feature_registry/settings_ui_registry.cc
+remove components/optimization_guide/core/feature_registry/settings_ui_registry.h   # B3: MQLS/settings registries (feature_registration.* kept, stripped to the GenAI prefs)
+remove components/optimization_guide/public/mojom   # B3: emptied (model_broker only)
+remove chrome/browser/optimization_guide/model_validator_keyed_service.h
+remove chrome/browser/optimization_guide/model_validator_keyed_service.cc
+remove chrome/browser/optimization_guide/model_validator_keyed_service_factory.h
+remove chrome/browser/optimization_guide/model_validator_keyed_service_factory.cc   # B3: on-device model validation only

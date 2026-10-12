@@ -1,0 +1,10 @@
+# Team-only notes, handoffs, briefs, credentials, branding work files (never committed; the fork is public)
+_docs/
+node_modules/
+dist/
+__pycache__/
+.DS_Store
+*.pem
+.env
+branding/build/
+branding/concepts/

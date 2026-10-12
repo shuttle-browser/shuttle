@@ -1,0 +1,32 @@
+# Batch B2b phase 2: side panel framework + experimental WebUI browser (2026-10-07).
+# chrome.sidePanel and every side panel entry are already gone (B2b phase 1), so the framework
+# has no content left. Brief: _docs/agent-briefs/b2b-sp-brief.md.
+# Kept on purpose: PDF viewer's own (in-page) side panel, pinned toolbar actions, color ids
+# that kept code still uses, components/surface_embed + content/ surface embed (content-side,
+# separate decision), components/browser_apis/tab_strip (tab_strip_api users).
+
+# --- 1. framework ---
+remove chrome/browser/ui/side_panel
+remove chrome/browser/ui/views/side_panel
+
+# --- 2. framework satellites ---
+remove chrome/browser/extensions/side_panel_helper.cc
+remove chrome/browser/extensions/side_panel_helper.h
+remove chrome/browser/page_info/web_view_side_panel_throttle.cc
+remove chrome/browser/page_info/web_view_side_panel_throttle.h
+remove chrome/browser/ui/views/page_info/web_view_side_panel_view.cc
+remove chrome/browser/ui/views/page_info/web_view_side_panel_view.h
+remove chrome/browser/performance_manager/execution_context_priority/side_panel_loading_voter.cc
+remove chrome/browser/performance_manager/execution_context_priority/side_panel_loading_voter.h
+remove chrome/browser/performance_manager/public/side_panel_loading_policy.h
+remove chrome/browser/performance_manager/side_panel_loading_policy.cc
+remove chrome/browser/ui/views/animations/side_panel_animations.cc
+remove chrome/browser/ui/views/animations/side_panel_animations.h
+remove chrome/browser/ui/color/material_side_panel_color_mixer.cc
+remove chrome/browser/ui/color/material_side_panel_color_mixer.h
+remove chrome/test/data/webui/side_panel
+
+# --- 3. experimental WebUI browser (off by default) ---
+remove chrome/browser/ui/webui_browser
+remove chrome/browser/resources/webui_browser
+remove chrome/renderer/webui_browser

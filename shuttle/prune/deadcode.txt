@@ -1,0 +1,31 @@
+# Prune manifest: whole directories the macOS build never reads.
+# deadtree <root>: under <root>, delete every maximal directory with zero files
+# read by any build config we use (see scripts/prune.py). Directories named like
+# tests (test, testing, test_support, fuzzers, test_data, ...) never anchor a
+# deletion, so test helpers of kept code survive. Re-run after flipping GN args:
+# features that get disabled become dead and are removed.
+deadtree chrome
+deadtree components
+deadtree services
+deadtree ui
+deadtree device
+deadtree extensions
+
+keep chrome/test
+keep chrome/tools
+keep chrome/app/theme
+keep components/test
+keep components/policy/resources
+keep ui/resources
+keep tools
+keep testing
+
+# deadfiles <root>: individual files under <root> that no build config reads,
+# except build metadata (BUILD.gn, .gni, OWNERS, DEPS, docs, .py/.sh scripts)
+# and anything test-named (test, fuzz, mock, fake, stub, benchmark).
+deadfiles chrome
+deadfiles components
+deadfiles services
+deadfiles ui
+deadfiles device
+deadfiles extensions

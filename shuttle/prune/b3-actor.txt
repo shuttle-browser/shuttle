@@ -1,0 +1,20 @@
+# Batch B3: Google actor framework (scout: _docs/agent-briefs/b3-scout-actor.md). Shuttle MCP has no dependency on it.
+remove chrome/browser/actor
+remove components/actor
+remove chrome/common/actor
+remove chrome/renderer/actor
+remove chrome/browser/ui/webui/actor_internals
+remove chrome/browser/resources/actor_overlay
+remove chrome/test/data/webui/actor_overlay
+remove chrome/browser/extensions/api/experimental_actor
+remove chrome/common/extensions/api/experimental_actor.webidl
+remove chrome/common/actor.mojom
+remove chrome/common/actor_webui.mojom
+remove chrome/app/actor_strings.grdp
+remove components/component_updater/installer_policies/actor_safety_lists_component_installer.cc
+remove components/component_updater/installer_policies/actor_safety_lists_component_installer.h
+remove components/origin_gating/core/actor_container_config.cc
+remove components/origin_gating/core/actor_container_config.h
+remove components/origin_gating/core/actor_container_config_slot.cc
+remove components/origin_gating/core/actor_container_config_slot.h
+remove tools/metrics/histograms/metadata/actor

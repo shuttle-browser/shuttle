@@ -1,0 +1,173 @@
+# Feature removal, batch B part 1: AI mode (AIM), composebox/fusebox, contextual
+# search, Omnibox Everywhere, the WebUI NTP (replaced by a blank chrome://newtab
+# served by NewTabUI) and the Customize Chrome side panel.
+# Decided 2026-10-04: Omnibox Everywhere goes (hard-depends on AIM); the shared
+# searchbox.mojom is pruned in the same pass; NTP replaced now; Customize Chrome
+# deleted with the NTP.
+# Kept on purpose: classic omnibox + WebUI popup, components/ntp_tiles +
+# chrome/browser/ntp_tiles (omnibox zero-suggest), chrome/browser/search
+# (InstantService, search.cc), chrome/browser/new_tab_page/{chrome_colors,prefs}
+# (themes, profile colors), cr_components/{theme_color_picker,
+# customize_color_scheme_mode} (Settings), NTP color mixers,
+# components/touch_to_search (not AIM; dead-code batch).
+
+# --- AIM services / eligibility ---
+remove chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle.cc
+remove chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle.h
+remove chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle_unittest.cc
+remove chrome/browser/autocomplete/aim_eligibility_service_factory.cc
+remove chrome/browser/autocomplete/aim_eligibility_service_factory.h
+remove chrome/browser/autocomplete/chrome_aim_eligibility_service.cc
+remove chrome/browser/autocomplete/chrome_aim_eligibility_service.h
+remove chrome/browser/autocomplete/chrome_aim_eligibility_service_browsertest.cc
+remove chrome/browser/search_engines/ai_mode_button_service_factory.cc
+remove chrome/browser/search_engines/ai_mode_button_service_factory.h
+remove chrome/browser/ui/omnibox/ai_mode_page_action_controller.cc
+remove chrome/browser/ui/omnibox/ai_mode_page_action_controller.h
+remove chrome/browser/ui/omnibox/ai_mode_page_action_controller_interactive_uitest.cc
+remove components/omnibox/browser/aim_eligibility_service.cc
+remove components/omnibox/browser/aim_eligibility_service.h
+remove components/omnibox/browser/aim_eligibility_service_features.cc
+remove components/omnibox/browser/aim_eligibility_service_features.h
+remove components/omnibox/browser/aim_eligibility_service_unittest.cc
+remove components/omnibox/browser/mock_aim_eligibility_service.cc
+remove components/omnibox/browser/mock_aim_eligibility_service.h
+remove components/search_engines/ai_mode_button_config.json
+remove components/search_engines/ai_mode_button_config_schema.json
+remove components/search_engines/ai_mode_button_service.cc
+remove components/search_engines/ai_mode_button_service.h
+remove components/search_engines/ai_mode_button_service_unittest.cc
+remove components/search_engines/test_ai_mode_button_service.h
+
+# --- chrome://omnibox AIM debug pages + AIM eligibility component extension ---
+remove chrome/browser/resources/omnibox/aim_eligibility
+remove chrome/browser/resources/omnibox/aim_eligibility_extension
+remove chrome/browser/ui/webui/omnibox/aim_eligibility
+remove chrome/browser/ui/webui/omnibox/aim_eligibility_extension
+
+# --- AIM popup (views + webui) ---
+remove chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.cc
+remove chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h
+remove chrome/browser/ui/views/omnibox/omnibox_aim_popup_webui_content.cc
+remove chrome/browser/ui/views/omnibox/omnibox_aim_popup_webui_content.h
+remove chrome/browser/ui/views/omnibox/omnibox_aim_popup_browsertest.cc
+remove chrome/browser/ui/webui/omnibox_popup/omnibox_popup_aim_handler.cc
+remove chrome/browser/ui/webui/omnibox_popup/omnibox_popup_aim_handler.h
+remove chrome/browser/ui/webui/omnibox_popup/omnibox_popup_aim_handler_unittest.cc
+remove chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup_aim.mojom
+remove chrome/browser/resources/omnibox_popup/omnibox_popup_aim.html
+remove chrome/browser/resources/omnibox_popup/aim_app.css
+remove chrome/browser/resources/omnibox_popup/aim_app.html.ts
+remove chrome/browser/resources/omnibox_popup/aim_app.ts
+remove chrome/browser/resources/omnibox_popup/omnibox_composebox.css
+remove chrome/browser/resources/omnibox_popup/omnibox_composebox.html.ts
+remove chrome/browser/resources/omnibox_popup/omnibox_composebox.ts
+remove chrome/browser/resources/omnibox_popup/omnibox_popup_contextual_entrypoint.css
+remove chrome/browser/resources/omnibox_popup/omnibox_popup_contextual_entrypoint.html.ts
+remove chrome/browser/resources/omnibox_popup/omnibox_popup_contextual_entrypoint.ts
+remove chrome/browser/resources/omnibox_popup/omnibox_popup_contextual_entrypoint_button.html.ts
+remove chrome/browser/resources/omnibox_popup/omnibox_popup_contextual_entrypoint_button.ts
+remove chrome/browser/resources/omnibox_popup/images/create_images.png
+
+# --- composebox / fusebox / contextual search ---
+remove chrome/browser/ui/contextual_search
+remove ui/webui/resources/cr_components/composebox
+remove ui/webui/resources/cr_components/searchbox/searchbox_compose_button.css
+remove ui/webui/resources/cr_components/searchbox/searchbox_compose_button.html.ts
+remove ui/webui/resources/cr_components/searchbox/searchbox_compose_button.ts
+remove chrome/test/data/webui/cr_components/composebox
+remove components/contextual_search
+remove components/omnibox/composebox
+remove components/omnibox/common/composebox_features.cc
+remove components/omnibox/common/composebox_features.h
+remove components/omnibox/browser/fusebox_action.mojom
+remove components/omnibox/browser/fusebox_action_mojo_test_utils.cc
+remove components/omnibox/browser/fusebox_action_mojo_test_utils.h
+remove components/omnibox/browser/fusebox_action_mojo_utils.cc
+remove components/omnibox/browser/fusebox_action_mojo_utils.h
+remove components/omnibox/browser/fusebox_action_mojo_utils_unittest.cc
+remove components/omnibox/browser/fusebox_action_mojom_traits.cc
+remove components/omnibox/browser/fusebox_action_mojom_traits.h
+
+# --- Omnibox Everywhere ---
+remove chrome/browser/ui/omnibox/omnibox_everywhere
+remove chrome/browser/ui/webui/omnibox_everywhere
+remove chrome/browser/resources/omnibox_everywhere
+remove chrome/browser/background/omnibox_everywhere
+remove chrome/test/data/webui/omnibox_everywhere
+remove chrome/browser/ui/omnibox/omnibox_everywhere_service.cc
+remove chrome/browser/ui/omnibox/omnibox_everywhere_service.h
+remove chrome/browser/ui/omnibox/omnibox_everywhere_service_factory.cc
+remove chrome/browser/ui/omnibox/omnibox_everywhere_service_factory.h
+remove chrome/browser/ui/omnibox/omnibox_everywhere_service_unittest.cc
+remove chrome/browser/ui/views/profiles/profile_picker_omnibox_everywhere_flow_controller.cc
+remove chrome/browser/ui/views/profiles/profile_picker_omnibox_everywhere_flow_controller.h
+remove chrome/browser/ui/webui/settings/omnibox_everywhere_settings_handler.cc
+remove chrome/browser/ui/webui/settings/omnibox_everywhere_settings_handler.h
+remove chrome/browser/ui/webui/settings/omnibox_everywhere_settings_handler_unittest.cc
+remove chrome/browser/resources/settings/search_page/omnibox_everywhere_browser_proxy.ts
+remove chrome/browser/resources/settings/search_page/omnibox_everywhere_section.css
+remove chrome/browser/resources/settings/search_page/omnibox_everywhere_section.html.ts
+remove chrome/browser/resources/settings/search_page/omnibox_everywhere_section.ts
+
+# --- WebUI NTP (chrome://new-tab-page), third-party NTP, footer, modules ---
+remove chrome/browser/ui/webui/new_tab_page
+remove chrome/browser/resources/new_tab_page
+remove chrome/test/data/webui/new_tab_page
+remove chrome/browser/ui/webui/new_tab_page_third_party
+remove chrome/browser/resources/new_tab_page_third_party
+remove chrome/browser/ui/webui/new_tab_footer
+remove chrome/browser/resources/new_tab_footer
+remove chrome/test/data/webui/new_tab_footer
+remove chrome/browser/ui/views/new_tab_footer
+remove chrome/browser/resources/new_tab_shared
+remove chrome/test/data/webui/new_tab_shared
+remove chrome/browser/ui/webui/customize_buttons
+remove chrome/browser/new_tab_page/BUILD.gn
+remove chrome/browser/new_tab_page/DEPS
+remove chrome/browser/new_tab_page/README.md
+remove chrome/browser/new_tab_page/new_tab_page_interactive_uitest.cc
+remove chrome/browser/new_tab_page/new_tab_page_realbox_interactive_uitest.cc
+remove chrome/browser/new_tab_page/new_tab_page_util.cc
+remove chrome/browser/new_tab_page/new_tab_page_util.h
+remove chrome/browser/new_tab_page/new_tab_page_util_browsertest.cc
+remove chrome/browser/new_tab_page/feature_promo_helper
+remove chrome/browser/new_tab_page/microsoft_auth
+remove chrome/browser/new_tab_page/modules
+remove chrome/browser/new_tab_page/one_google_bar
+remove chrome/browser/ui/webui/ntp_microsoft_auth
+remove chrome/browser/ui/webui/cr_components/most_visited
+remove ui/webui/resources/cr_components/most_visited
+remove chrome/browser/ui/webui/ntp_tiles_internals_ui.cc
+remove chrome/browser/ui/webui/ntp_tiles_internals_ui.h
+remove chrome/browser/ui/search/most_visited_metrics_logger.cc
+remove chrome/browser/ui/search/most_visited_metrics_logger.h
+remove chrome/browser/ui/search/most_visited_metrics_logger_unittest.cc
+remove chrome/browser/ui/search/new_tab_page_navigation_throttle.cc
+remove chrome/browser/ui/search/new_tab_page_navigation_throttle.h
+remove chrome/browser/ui/search/new_tab_page_navigation_throttle_browsertest.cc
+remove chrome/browser/ui/search/ntp_user_data_logger.cc
+remove chrome/browser/ui/search/ntp_user_data_logger.h
+remove chrome/browser/ui/search/ntp_user_data_logger_unittest.cc
+remove chrome/browser/ui/search/ntp_user_data_types.h
+remove chrome/browser/ui/search/third_party_ntp_browsertest.cc
+remove chrome/browser/ui/search/third_party_ntp_interactive_uitest.cc
+remove chrome/browser/page_load_metrics/observers/new_tab_page_initiated_page_load_metrics_observer.cc
+remove chrome/browser/page_load_metrics/observers/new_tab_page_initiated_page_load_metrics_observer.h
+remove chrome/browser/page_load_metrics/observers/new_tab_page_initiated_page_load_metrics_observer_browsertest.cc
+remove chrome/browser/page_load_metrics/observers/new_tab_page_page_load_metrics_observer.cc
+remove chrome/browser/page_load_metrics/observers/new_tab_page_page_load_metrics_observer.h
+remove chrome/browser/page_load_metrics/observers/new_tab_page_page_load_metrics_observer_browsertest.cc
+remove chrome/browser/preloading/new_tab_page_preload
+remove chrome/browser/ui/views/user_education/browser_ntp_promos.cc
+remove chrome/browser/ui/views/user_education/browser_ntp_promos.h
+remove chrome/browser/ui/views/user_education/browser_ntp_promos_unittest.cc
+remove chrome/browser/ntp_customization
+
+# --- Customize Chrome side panel + NTP backgrounds / wallpaper search ---
+remove chrome/browser/ui/webui/side_panel/customize_chrome
+remove chrome/browser/resources/side_panel/customize_chrome
+remove chrome/test/data/webui/side_panel/customize_chrome
+remove chrome/browser/ui/views/side_panel/customize_chrome
+remove chrome/browser/ui/customize_chrome
+remove chrome/browser/search/background/wallpaper_search

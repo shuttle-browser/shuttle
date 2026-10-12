@@ -1,0 +1,149 @@
+# Batch B2d (DRAFT, scout output): sync stack, sync_preferences, data-type bridges,
+# trusted_vault, OTR profile type, IdentityManager shrink. Source: _docs/agent-briefs/b2d-scout-report.md
+# Verify each path with `git ls-files`; items marked "DECISION" depend on borderline answers.
+
+# --- 1. components/sync + sync_preferences + trusted_vault + browser-side stubs ---
+remove components/sync
+keep components/sync/model/string_ordinal.cc   # used by extensions app sorting; hand-trim model/BUILD.gn
+keep components/sync/model/string_ordinal.h
+keep components/sync/model/BUILD.gn   # hand-trim to a string_ordinal target
+remove components/sync_preferences
+remove components/sync_ui_strings.grdp
+remove components/trusted_vault
+remove chrome/browser/sync
+remove chrome/browser/trusted_vault
+remove chrome/browser/extensions/sync
+remove chrome/common/trusted_vault_encryption_keys_extension.mojom
+remove chrome/renderer/trusted_vault_encryption_keys_extension.cc
+remove chrome/renderer/trusted_vault_encryption_keys_extension.h
+remove chrome/browser/android/webapk/proto
+remove tools/metrics/histograms/metadata/trusted_vault
+
+# --- 3. data-type bridges ---
+remove components/history/core/browser/sync
+remove components/history/core/browser/journeys/journeys_sync_bridge.cc
+remove components/history/core/browser/journeys/journeys_sync_bridge.h
+remove components/history/core/browser/journeys/journeys_sync_metadata_database.cc
+remove components/history/core/browser/journeys/journeys_sync_metadata_database.h
+remove components/account_settings
+remove chrome/browser/account_settings
+remove chrome/browser/security_events
+remove chrome/browser/themes/theme_local_data_batch_uploader.cc
+remove chrome/browser/themes/theme_local_data_batch_uploader.h
+remove chrome/browser/themes/theme_syncable_service.cc
+remove chrome/browser/themes/theme_syncable_service.h
+remove chrome/browser/themes/theme_service_utils.cc
+remove chrome/browser/themes/theme_service_utils.h
+remove components/themes/theme_utils.cc
+remove components/themes/theme_utils.h
+remove chrome/browser/extensions/api/storage/setting_sync_data.cc
+remove chrome/browser/extensions/api/storage/setting_sync_data.h
+remove chrome/browser/extensions/api/storage/settings_sync_processor.cc
+remove chrome/browser/extensions/api/storage/settings_sync_processor.h
+remove chrome/browser/extensions/api/storage/settings_sync_util.cc
+remove chrome/browser/extensions/api/storage/settings_sync_util.h
+remove chrome/browser/extensions/api/storage/sync_storage_backend.cc
+remove chrome/browser/extensions/api/storage/sync_storage_backend.h
+remove chrome/browser/extensions/api/storage/syncable_settings_storage.cc
+remove chrome/browser/extensions/api/storage/syncable_settings_storage.h
+remove chrome/common/extensions/sync_helper.cc
+remove chrome/common/extensions/sync_helper.h
+remove components/browsing_data/core/counters/sync_tracker.cc
+remove components/browsing_data/core/counters/sync_tracker.h
+remove components/safe_browsing/core/browser/safe_browsing_sync_observer.h
+remove components/safe_browsing/core/browser/sync/safe_browsing_sync_observer_impl.cc
+remove components/safe_browsing/core/browser/sync/safe_browsing_sync_observer_impl.h
+remove components/supervised_user/core/browser/family_link_settings_data_type_controller.cc
+remove components/supervised_user/core/browser/family_link_settings_data_type_controller.h
+remove components/desks_storage
+remove chrome/app/vector_icons/sync_error_circle_custom.icon
+# DECISION Q1 (reading list wholesale):
+remove components/reading_list
+remove chrome/browser/reading_list
+remove chrome/browser/extensions/api/reading_list
+remove chrome/browser/ui/webui/side_panel/reading_list
+remove chrome/browser/resources/side_panel/reading_list
+# DECISION Q3 (WebHistoryService, Google-server history):
+remove components/history/core/browser/web_history_service.cc
+remove components/history/core/browser/web_history_service.h
+remove components/history/core/browser/web_history_service_observer.h
+remove chrome/browser/history/web_history_service_factory.cc
+remove chrome/browser/history/web_history_service_factory.h
+remove components/browsing_data/core/history_notice_utils.cc
+remove components/browsing_data/core/history_notice_utils.h
+# DECISION Q4 (tailored security, account-based):
+remove components/safe_browsing/core/browser/tailored_security_service
+remove chrome/browser/safe_browsing/tailored_security
+# unified consent: delete the sync-driven service, keep pref-only helper (surgery)
+remove components/unified_consent/unified_consent_service.cc
+remove components/unified_consent/unified_consent_service.h
+remove chrome/browser/unified_consent
+remove components/unified_consent/unified_consent_metrics.cc
+remove components/unified_consent/unified_consent_metrics.h
+
+# --- 5. OTR profile type ---
+remove chrome/browser/profiles/off_the_record_profile_impl.cc
+remove chrome/browser/profiles/off_the_record_profile_impl.h
+remove chrome/browser/prefs/pref_service_syncable_util.cc
+remove chrome/browser/prefs/pref_service_syncable_util.h
+remove chrome/browser/prefs/chrome_pref_model_associator_client.cc
+remove chrome/browser/prefs/chrome_pref_model_associator_client.h
+remove chrome/browser/prefs/incognito_mode_prefs.cc
+remove chrome/browser/prefs/incognito_mode_prefs.h
+remove chrome/browser/prefs/pref_service_incognito_allowlist.cc
+remove chrome/browser/prefs/pref_service_incognito_allowlist.h
+remove chrome/browser/profiles/chrome_incognito_mode_policy_handler.cc
+remove chrome/browser/profiles/chrome_incognito_mode_policy_handler.h
+remove components/policy/core/browser/url_list/incognito_mode_policy_handler.cc
+remove components/policy/core/browser/url_list/incognito_mode_policy_handler.h
+remove chrome/browser/resources/new_tab_page_incognito_guest
+# NOTE: chrome/browser/profiles/incognito_helpers.* stays as a no-op shim (15 users); see report 4.
+
+# --- 6. IdentityManager shrink ---
+remove components/signin/internal/identity_manager/gaia_cookie_manager_service.cc
+remove components/signin/internal/identity_manager/gaia_cookie_manager_service.h
+remove components/signin/internal/identity_manager/accounts_cookie_mutator_impl.cc
+remove components/signin/internal/identity_manager/accounts_cookie_mutator_impl.h
+remove components/signin/internal/identity_manager/oauth_multilogin_helper.cc
+remove components/signin/internal/identity_manager/oauth_multilogin_helper.h
+remove components/signin/internal/identity_manager/oauth_multilogin_token_fetcher.cc
+remove components/signin/internal/identity_manager/oauth_multilogin_token_fetcher.h
+remove components/signin/internal/identity_manager/oauth_multilogin_token_request.cc
+remove components/signin/internal/identity_manager/oauth_multilogin_token_request.h
+remove components/signin/internal/identity_manager/oauth_multilogin_token_response.cc
+remove components/signin/internal/identity_manager/oauth_multilogin_token_response.h
+remove components/signin/internal/identity_manager/token_binding_helper.cc
+remove components/signin/internal/identity_manager/token_binding_helper.h
+remove components/signin/internal/identity_manager/token_binding_oauth2_access_token_fetcher.cc
+remove components/signin/internal/identity_manager/token_binding_oauth2_access_token_fetcher.h
+remove components/signin/public/identity_manager/accounts_cookie_mutator.cc
+remove components/signin/public/identity_manager/accounts_cookie_mutator.h
+remove components/signin/public/identity_manager/token_binding_info.cc
+remove components/signin/public/identity_manager/token_binding_info.h
+remove components/signin/public/base/binding_key_registration_token_helper.cc
+remove components/signin/public/base/binding_key_registration_token_helper.h
+remove components/signin/public/base/binding_key_registration_token_result.cc
+remove components/signin/public/base/binding_key_registration_token_result.h
+remove components/signin/public/base/bound_session_oauth_multilogin_delegate.h
+remove components/signin/public/base/multilogin_parameters.cc
+remove components/signin/public/base/multilogin_parameters.h
+
+# --- policies (run scripts/prune-policies.py with these names) ---
+# SyncDisabled SyncTypesListDisabled RoamingProfileLocation RoamingProfileSupportEnabled
+# IncognitoEnabled IncognitoModeAvailability IncognitoModeUrlAllowlist IncognitoModeUrlBlocklist
+# MandatoryExtensionsForIncognitoNavigation
+
+# DECISION Q7 (GapisService: Google-account service; only needs GetSyncServiceURL + identity):
+remove components/gapis
+remove chrome/browser/gapis
+
+# --- 14. Guest + system profile removal (user decision Q8) ---
+# No whole files are guest/system-only: the picker, profile menu and guest UI died in B2a, and
+# the guest NTP pages are already listed above (new_tab_page_incognito_guest). Everything else is
+# surgery (section 14 of the report). guest_view / guest_contents are WebView/GuestView: KEEP.
+# Policy YAML to delete via scripts/prune-policies.py (add to the section-8 list):
+#   BrowserGuestModeEnforced    (BrowserGuestModeEnabled has no YAML left; pref only)
+#   BrowserAddPersonEnabled     (DECISION Q13, profile-creation gate; recommended)
+# Grd strings to drop via prune-strings.py once the C++ goes: IDS_NEW_TAB_GUEST_SESSION_*,
+#   IDS_NEW_TAB_ENTERPRISE_GUEST_SESSION_LEARN_MORE_ACCESSIBILITY_TEXT, IDS_PROFILES_GUEST_PROFILE_NAME,
+#   IDS_GUEST_PROFILE_NAME, IDS_ACCESSIBLE_GUEST_WINDOW_TITLE_FORMAT, IDS_ABANDON_DOWNLOAD_DIALOG_GUEST_MESSAGE

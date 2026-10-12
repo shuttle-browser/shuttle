@@ -1,0 +1,7 @@
+# Batch B3: Safe Browsing cuts that are safe in safe_browsing_mode 1 (2026-10-11; SB also defaults off at runtime).
+remove chrome/browser/safe_browsing/extension_telemetry
+remove chrome/browser/safe_browsing/incident_reporting
+remove chrome/browser/safe_browsing/android
+# KEEP (B3): suspicious-site warnings are wired into page info; remove chrome/browser/safe_browsing/suspicious_site_warnings
+remove chrome/browser/safe_browsing/signature_evaluator_mac.h
+remove chrome/browser/safe_browsing/signature_evaluator_mac.mm   # only produced incident reports

@@ -1,0 +1,7 @@
+# Linux-only additions (appended after args-common.gn + args-<kind>.gn by
+# scripts/build-linux.sh). Linux is built on WSL2 Ubuntu, x86_64.
+# Ozone keeps both X11 and Wayland (upstream default; WSLg supports both).
+
+# WebXR/OpenXR: the Mac build never had it; agents don't need it.
+enable_vr = false
+enable_openxr = false

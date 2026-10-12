@@ -1,0 +1,12 @@
+# Batch B2d: sync, roaming, incognito, guest and add-person policies (scripts/prune-policies.py).
+SyncDisabled
+SyncTypesListDisabled
+RoamingProfileLocation
+RoamingProfileSupportEnabled
+IncognitoEnabled
+IncognitoModeAvailability
+IncognitoModeUrlAllowlist
+IncognitoModeUrlBlocklist
+MandatoryExtensionsForIncognitoNavigation
+BrowserGuestModeEnforced
+BrowserAddPersonEnabled

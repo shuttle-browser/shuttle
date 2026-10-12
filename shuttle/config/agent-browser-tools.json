@@ -1,0 +1,444 @@
+{
+  "_comment": "Curated page tools served by the browser's /mcp via the agent-browser sidecar (v0.38.2). scripts/gen-page-tools.mjs expands this into chrome/browser/shuttle/page_tools_data.inc. Every tool gets a required targetId (a leased tab); the session is derived from it. 'ab' = agent-browser tool (without agent_browser_), 'variants' = pick by the first present arg, 'map' = our arg -> its arg, 'fixed' = args always sent, 'special' = handled in C++.",
+  "common": {
+    "targetId": {
+      "type": "string",
+      "description": "Leased tab (allocate-tab)."
+    }
+  },
+  "tools": [
+    {
+      "name": "snapshot",
+      "ab": "snapshot",
+      "description": "Accessibility snapshot with @eN refs for click/fill/etc. Take a fresh one after navigation or page changes.",
+      "props": {
+        "interactive": {
+          "type": "boolean",
+          "description": "Only interactive elements."
+        },
+        "selector": {
+          "type": "string",
+          "description": "Scope to a CSS selector."
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "compact": {
+          "type": "boolean"
+        },
+        "includeUrls": {
+          "type": "boolean",
+          "description": "Show link hrefs."
+        }
+      }
+    },
+    {
+      "name": "click",
+      "ab": "click",
+      "description": "Click an element by @ref or CSS selector.",
+      "props": {
+        "selector": {
+          "type": "string",
+          "description": "@eN or CSS (no Playwright text=/:has-text)."
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
+      "name": "fill",
+      "ab": "fill",
+      "description": "Clear an input and set its text.",
+      "props": {
+        "selector": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector",
+        "text"
+      ]
+    },
+    {
+      "name": "type",
+      "ab": "type",
+      "description": "Type text key by key into an element (appends unless clear).",
+      "props": {
+        "selector": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "clear": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "selector",
+        "text"
+      ]
+    },
+    {
+      "name": "press",
+      "ab": "press",
+      "description": "Press a key or combo (Enter, Tab, Control+a).",
+      "props": {
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ]
+    },
+    {
+      "name": "select",
+      "ab": "select",
+      "description": "Choose option value(s) in a <select>.",
+      "props": {
+        "selector": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "selector",
+        "values"
+      ]
+    },
+    {
+      "name": "check",
+      "ab": "check",
+      "description": "Check a checkbox/radio.",
+      "props": {
+        "selector": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
+      "name": "uncheck",
+      "ab": "uncheck",
+      "description": "Uncheck a checkbox.",
+      "props": {
+        "selector": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
+      "name": "scroll",
+      "ab": "scroll",
+      "description": "Scroll the page or an element.",
+      "props": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "up",
+            "down",
+            "left",
+            "right"
+          ]
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Pixels."
+        },
+        "selector": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "wait-for",
+      "variants": [
+        {
+          "if": "text",
+          "ab": "wait_for_text"
+        },
+        {
+          "if": "selector",
+          "ab": "wait_for_selector"
+        },
+        {
+          "if": "url",
+          "ab": "wait_for_url"
+        },
+        {
+          "if": "load",
+          "ab": "wait_for_load",
+          "map": {
+            "load": "state"
+          }
+        },
+        {
+          "if": "ms",
+          "ab": "wait_ms",
+          "map": {
+            "timeoutMs": ""
+          }
+        }
+      ],
+      "map": {
+        "timeoutMs": "waitTimeoutMs"
+      },
+      "description": "Wait for ONE condition: text appears, visible selector, URL glob, load state, or ms delay.",
+      "props": {
+        "text": {
+          "type": "string"
+        },
+        "selector": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "load": {
+          "type": "string",
+          "enum": [
+            "load",
+            "domcontentloaded",
+            "networkidle"
+          ]
+        },
+        "ms": {
+          "type": "integer"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "Default 25000."
+        }
+      }
+    },
+    {
+      "name": "eval",
+      "ab": "eval",
+      "description": "Run JavaScript in the page; returns the value.",
+      "props": {
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "script"
+      ]
+    },
+    {
+      "name": "get-text",
+      "ab": "get_text",
+      "description": "Text content of an element.",
+      "props": {
+        "selector": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
+      "name": "screenshot",
+      "ab": "screenshot",
+      "description": "Screenshot of the tab, an element or the full page; returns an image.",
+      "props": {
+        "selector": {
+          "type": "string"
+        },
+        "fullPage": {
+          "type": "boolean"
+        },
+        "annotate": {
+          "type": "boolean",
+          "description": "Overlay @eN labels."
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ]
+        }
+      }
+    },
+    {
+      "name": "back",
+      "ab": "back",
+      "description": "History back; returns the URL.",
+      "props": {}
+    },
+    {
+      "name": "forward",
+      "ab": "forward",
+      "description": "History forward; returns the URL.",
+      "props": {}
+    },
+    {
+      "name": "reload",
+      "ab": "reload",
+      "description": "Reload; returns the URL.",
+      "props": {}
+    },
+    {
+      "name": "console",
+      "ab": "console",
+      "description": "Console messages since the last clear.",
+      "props": {
+        "clear": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "name": "errors",
+      "ab": "errors",
+      "description": "Uncaught page errors since the last clear.",
+      "props": {
+        "clear": {
+          "type": "boolean"
+        }
+      }
+    },
+    {
+      "name": "state-save",
+      "ab": "state_save",
+      "special": "state_path",
+      "description": "Save the agent's cookies and storage under a name (kept on disk).",
+      "props": {
+        "name": {
+          "type": "string",
+          "description": "[a-z0-9-], max 64."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    {
+      "name": "state-load",
+      "ab": "state_load",
+      "special": "state_path",
+      "description": "Restore cookies and storage saved with state_save.",
+      "props": {
+        "name": {
+          "type": "string",
+          "description": "[a-z0-9-], max 64."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    {
+      "name": "hover",
+      "ab": "hover",
+      "description": "Hover an element.",
+      "props": {
+        "selector": {
+          "type": "string",
+          "description": "@eN or CSS (no Playwright text=/:has-text)."
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
+      "name": "dblclick",
+      "ab": "dblclick",
+      "description": "Double-click an element.",
+      "props": {
+        "selector": {
+          "type": "string",
+          "description": "@eN or CSS (no Playwright text=/:has-text)."
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    },
+    {
+      "name": "find",
+      "ab": "find",
+      "description": "Find an element by semantic locator and optionally act on it (no snapshot needed; no CSS locator: use click etc. with a selector). For buttons/links prefer locator role + name.",
+      "props": {
+        "locator": {
+          "type": "string",
+          "enum": [
+            "role",
+            "text",
+            "label",
+            "placeholder",
+            "alt",
+            "title",
+            "testid",
+            "first",
+            "last",
+            "nth"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "description": "Role, text, label, selector or test id."
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "click",
+            "fill",
+            "check",
+            "hover",
+            "text"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "For action fill."
+        },
+        "name": {
+          "type": "string",
+          "description": "Accessible name (role)."
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "index": {
+          "type": "integer",
+          "description": "For nth."
+        }
+      },
+      "required": [
+        "locator",
+        "value"
+      ]
+    },
+    {
+      "name": "open",
+      "ab": "open",
+      "description": "Navigate the tab to a URL and wait for load.",
+      "props": {
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  ]
+}

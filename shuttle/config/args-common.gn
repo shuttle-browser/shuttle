@@ -1,0 +1,55 @@
+# GN args shared by all Shuttle builds. scripts/build.sh writes these into
+# out/<Dir>/args.gn (plus the per-kind file) and re-runs gn gen when they change.
+# Decisions: docs/plans/BUILD-OPTIMIZATION.md and docs/plans/DEEP-FORK.md.
+is_debug = false
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+
+# Media: H.264/AAC playback
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+
+# Runtime predictability, telemetry
+disable_fieldtrial_testing_config = true
+enable_reporting = false
+structured_metrics_enabled = false
+structured_metrics_debug_enabled = false
+enable_vrp_flags = false
+
+# Google AI features
+use_on_device_model_service = false  # services/on_device_model stays only for its public mojoms
+build_with_model_execution = false  # B3: on-device/remote model execution removed
+enable_webui_contextual_tasks_composebox = false
+
+# Remoting, casting, local network discovery
+enable_remoting = false
+enable_media_remoting = false
+enable_media_remoting_rpc = false
+enable_service_discovery = false
+enable_mdns = false
+
+# Speech (on-device live caption / SODA)
+# enable_speech_service = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enable_browser_speech_service = false
+
+# Shell extras
+# enable_background_mode = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enable_paint_preview = false
+# enable_captive_portal_detection = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enable_pdf_save_to_drive = false
+enable_pdf_ink2 = false
+choice_screen_in_chrome = false
+enable_bound_session_credentials = false
+
+# Enterprise data-loss prevention
+# enterprise_cloud_content_analysis = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enterprise_local_content_analysis = false
+# enterprise_data_controls = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enterprise_screenshot_protection = false
+# enterprise_watermark = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
+enterprise_telomere_reporting = false
+
+# Chrome Apps (platform/hosted apps): removed (B3, 2026-10-11); normal extensions stay
+enable_platform_apps = false
+enable_hosted_apps = false
