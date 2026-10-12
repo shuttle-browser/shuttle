@@ -7,6 +7,8 @@ SRC = os.path.expanduser(os.environ.get("SHUTTLE_SRC") or os.path.dirname(TOOLS)
 ROOT = os.path.expanduser(os.environ.get("SHUTTLE_ROOT") or os.path.dirname(SRC))
 LOGS = os.path.join(ROOT, "logs")
 RELEASE = os.path.join(ROOT, "release")
+# Dev-config build dir the prune/fix scripts read (siso inputs, gen/, args.gn). out/Dev (local compiles) was dropped
+# 2026-10-13; out/Sccache has the same dev args plus sccache. Override with SHUTTLE_BUILD_DIR.
 
 
 def _load_env():
@@ -25,3 +27,4 @@ def _load_env():
 
 
 _load_env()
+BUILD_DIR = os.environ.get("SHUTTLE_BUILD_DIR", "out/Sccache")

@@ -10,7 +10,7 @@ file list to /tmp/ac-prune-<manifest>.txt.
 
 Safety: a file is deleted only if it matches a manifest rule and isn't read by
 any build config we use. "Used" is the union of:
-  - out/Dev: `siso query inputs chrome`, plus the full deps log
+  - BUILD_DIR (out/Sccache, $SHUTTLE_BUILD_DIR): `siso query inputs chrome`, plus the full deps log
     (`siso query deps`, every header actually included), plus
     build.ninja.d (all loaded gn files);
   - a temporary official-build config (gn only, no deps log).
@@ -18,7 +18,7 @@ Run it after a successful Dev build so the deps log is current. Then rebuild:
 the rebuild should be a no-op.
 """
 import argparse, os, re, shutil, subprocess, sys
-from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS  # noqa: E402
+from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS, BUILD_DIR  # noqa: E402
 
 SRC = _SHUTTLE_SRC
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -185,7 +185,7 @@ def grd_refs(used):
                 pending.append(f)
     # Generated .grd/.grdp files (written at build time) reference sources as
     # ${root_src_dir}/... and aren't declared inputs either.
-    for root, _, files in os.walk(os.path.join(SRC, "out/Dev/gen")):
+    for root, _, files in os.walk(os.path.join(SRC, BUILD_DIR, "gen")):
         for fn in files:
             if fn.endswith((".grd", ".grdp")):
                 text = open(os.path.join(root, fn), errors="replace").read()
@@ -207,8 +207,8 @@ def main():
         used = set()  # remove-only manifests: unconditional, no build analysis needed
         tracked = [t for t in run("git", "ls-files").splitlines() if not t.startswith("shuttle/")]  # not the tooling
         return prune(a, all_rules, tracked, used)
-    print("collecting used files: out/Dev ...", flush=True)
-    used = used_files("out/Dev")
+    print(f"collecting used files: {BUILD_DIR} ...", flush=True)
+    used = used_files(BUILD_DIR)
     print("collecting used files: temporary official config ...", flush=True)
     tmp = "out/PruneCheck"
     try:

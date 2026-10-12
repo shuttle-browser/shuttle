@@ -10,6 +10,10 @@ overridden by env. Machine-local settings live in `~/.shuttle/`: `env` (sourced 
 `fix-gn-refs.py`, `rename-shuttle.py`) skip `shuttle/`; `rebrand.py` only touches its explicit file list.
 Team-only notes go in the git-ignored `_docs/`.
 
+**Mac build dirs (2026-10-13):** `out/Sccache` (dev args + sccache-dist) is the dev build; the local-only `out/Dev` was
+dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.py`, `build-errors.sh`) default to
+`out/Sccache` (`SHUTTLE_BUILD_DIR` overrides). Older notes below that say `out/Dev` mean the dev build; Linux keeps `out/Dev`.
+
 ## Build
 
 - `config/args-common.gn` + `config/args-{dev,release}.gn` are **the** GN args.

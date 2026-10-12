@@ -5,7 +5,7 @@ Policy (sweep 2, user decision): tests are removed wholesale in SCOPE dirs; only
 `chrome` target has to build. Re-run after each upstream merge.
 
 Steps:
-  1. `gn gen out/TestScan --ide=json` with out/Dev's args.
+  1. `gn gen out/TestScan --ide=json` with the dev build dir's args (prune.BUILD_DIR).
   2. Delete set D = testonly targets in SCOPE, minus those (transitively) needed by testonly
      targets outside SCOPE (e.g. blink unit tests use //content/test:test_support).
      The root //BUILD.gn doesn't pin; gn-fix-unresolved.py strips its deps afterwards.
@@ -52,7 +52,7 @@ def in_scope(path):
 
 def load_targets():
     os.makedirs(os.path.join(SRC, SCAN), exist_ok=True)
-    shutil.copy(os.path.join(SRC, "out/Dev/args.gn"), os.path.join(SRC, SCAN, "args.gn"))
+    shutil.copy(os.path.join(SRC, prune.BUILD_DIR, "args.gn"), os.path.join(SRC, SCAN, "args.gn"))
     prune.run("gn", "gen", SCAN, "--ide=json", "--json-file-name=project.json")
     raw = json.load(open(os.path.join(SRC, SCAN, "project.json")))["targets"]
     tgt = {}
@@ -240,7 +240,7 @@ def main():
     print(f"testonly targets in scope: {len(D) + len(pinned)}, pinned by out-of-scope tests: "
           f"{len(pinned)}, to delete: {len(D)}")
     print("collecting files the chrome build uses ...", flush=True)
-    used = prune.used_files("out/Dev")
+    used = prune.used_files(prune.BUILD_DIR)
     used |= prune.grd_refs(used)
     tracked = [t for t in prune.run("git", "ls-files").split("\n") if t and not t.startswith("shuttle/")]
     doom, why = doomed_files(tgt, D, used, tracked)

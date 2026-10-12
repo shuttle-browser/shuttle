@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Loop `gn gen out/Dev`; for each "Unresolved dependencies" pair, delete the dep line from the
+"""Loop `gn gen <BUILD_DIR>` (out/Sccache); for each "Unresolved dependencies" pair, delete the dep line from the
 needing target's BUILD.gn. Stops when gn gen passes or an error is not an unresolved dep.
 Use after prune.py + fix-gn-refs.py. Review `git diff` afterwards."""
 import re,subprocess,os,sys
-from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS  # noqa: E402
+from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS, BUILD_DIR  # noqa: E402
 SRC=_SHUTTLE_SRC
 env=dict(os.environ,PATH=os.environ['PATH']+':'+os.path.expanduser('~/depot_tools'))
 for it in range(15):
-    p=subprocess.run(['gn','gen','out/Dev'],cwd=SRC,env=env,capture_output=True,text=True)
+    p=subprocess.run(['gn','gen',BUILD_DIR],cwd=SRC,env=env,capture_output=True,text=True)
     out=p.stdout+p.stderr
     if p.returncode==0: print('gn gen OK'); break
     pairs=re.findall(r'^//([^:(]*):[^(]+\([^)]*\)\n  needs //([^:(]+):([^(]+)\(',out,re.M)
