@@ -118,6 +118,10 @@ std::vector<base::FilePath> FindPrivateKeyFiles(
 bool CheckForIllegalFilenames(const base::FilePath& extension_path,
                               std::u16string* error);
 
+// Returns the install warning `CheckForIllegalFilenames()` emits when it
+// finds `file`, whose name starts with the reserved "_" prefix.
+std::u16string ReservedFilenameWarning(const base::FilePath& file);
+
 // We need to reserve the names of special Windows filenames, such as
 // "com2.zip."
 // If any files or directories are found to be using a reserved Windows
@@ -131,6 +135,14 @@ bool CheckForWindowsReservedFilenames(const base::FilePath& extension_dir,
 // that the extension directory can be efficiently renamed into place. Returns
 // an empty file path on failure.
 base::FilePath GetInstallTempDir(const base::FilePath& extensions_dir);
+
+// Normalizes `path` into `normalized_path` via `base::NormalizeFilePath`. On
+// Windows, falls back to `base::MakeAbsoluteFilePath` (requiring `path` to
+// exist) when `base::NormalizeFilePath` fails (e.g. on ramdisks that do not
+// support `GetFinalPathNameByHandle`, see crbug.com/442094023, or when a file
+// cannot be opened due to permissions).
+bool NormalizeFilePath(const base::FilePath& path,
+                       base::FilePath* normalized_path);
 
 // Get a relative file path from a chrome-extension:// URL.
 base::FilePath ExtensionURLToRelativeFilePath(const GURL& url);

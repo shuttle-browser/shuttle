@@ -29,6 +29,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/supports_user_data.h"
 #include "base/system/sys_info.h"
+#include "base/task/bind_post_task.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/typed_macros.h"
@@ -39,7 +40,7 @@
 #include "components/input/timeout_monitor.h"
 #include "components/viz/common/features.h"
 #include "content/browser/bad_message.h"
-#include "content/browser/dom_storage/session_storage_namespace_impl.h"
+#include "content/browser/dom_storage/session_storage_namespace_handle_impl.h"
 #include "content/browser/fenced_frame/fenced_frame.h"
 #include "content/browser/global_privacy_control_util.h"
 #include "content/browser/gpu/compositor_util.h"
@@ -537,7 +538,7 @@ bool RenderViewHostImpl::CreateRenderView(
                (!base::FeatureList::IsEnabled(
                     features::kPrerenderMoreCorrectSpeculativeRFHCreation) ||
                 main_rfh->lifecycle_state() ==
-                    RenderFrameHostImpl::LifecycleStateImpl::kSpeculative)) {
+                    RenderFrameHostLifecycleStateImpl::kSpeculative)) {
       // During prerender, the browser may need to create new speculative local
       // main frames. Normally, creating a speculative local main frame is a
       // two step process: the browser first creates a RenderViewHost with a
@@ -670,9 +671,13 @@ void RenderViewHostImpl::PrepareToLeaveBackForwardCache(
     base::OnceClosure done_cb) {
   // We wrap `done_cb` in a default invoke because if this RenderViewHostImpl
   // disappears we still need to call `done_cb` otherwise the navigation
-  // will be blocked indefinitely.
+  // will be blocked indefinitely. We also post a task so that if `done_cb` is
+  // invoked from the destructor of this RenderViewHostImpl (e.g., on an unload
+  // timeout or during shutdown), the BackForwardCache restore does not commit
+  // synchronously in the middle of ~RenderFrameHostImpl / ~RenderViewHostImpl.
   page_lifecycle_state_manager_->SetIsLeavingBackForwardCache(
-      mojo::WrapCallbackWithDefaultInvokeIfNotRun(std::move(done_cb)));
+      mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+          base::BindPostTaskToCurrentDefault(std::move(done_cb))));
 }
 
 void RenderViewHostImpl::LeaveBackForwardCache(

@@ -90,6 +90,15 @@ COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kOpenDownloadInNewTab);
 // Whether to enable "Save As" context menu option.
 COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
     kEnableDownloadSaveAsContextMenu);
+
+// Whether to use the system file dialog for "Save As" downloads on Android.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kEnableDownloadSaveAsSystemFileDialog);
+
+// Whether to retrieve display names for content URI downloads when loading
+// download history.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kRetrieveDisplayNamesForHistoryDownloads);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 // Whether to defer download history loading until first use.

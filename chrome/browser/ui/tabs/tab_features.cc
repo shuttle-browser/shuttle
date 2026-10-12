@@ -24,7 +24,10 @@
 #include "chrome/browser/contextual_cueing/contextual_cueing_web_contents_observer.h"
 #include "chrome/browser/contextual_cueing/features.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
+#include "chrome/browser/enterprise/net/enterprise_proxy_error_service_factory.h"
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
+#include "chrome/browser/geic/geic_enabling.h"
+#include "chrome/browser/geic/geic_side_panel_coordinator.h"
 #include "chrome/browser/glic/host/context/glic_page_features_manager.h"
 #include "chrome/browser/glic/suggestions/contextual_cueing_helper.h"
 #include "chrome/browser/glic/suggestions/glic_cue_tab_state.h"
@@ -123,9 +126,11 @@
 #include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/contextual_tasks/public/features.h"
 #include "components/enterprise/browser/reporting/reporting_features.h"
+#include "components/enterprise/net/content/enterprise_proxy_tab_helper.h"
 #include "components/multistep_filter/core/features.h"
 #include "components/payments/core/features.h"
 #include "components/skills/features.h"
+#include "content/public/browser/navigation_controller.h"
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/contextual_tasks/contextual_tasks_tab_visit_tracker.h"
@@ -343,7 +348,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
     pinned_translate_action_listener_ =
         std::make_unique<PinnedTranslateActionListener>(&tab);
 
-    if (!profile->IsIncognitoProfile()) {
+    if (!profile->IsPrimaryOTRProfileWithRegularParent()) {
       // TODO(crbug.com/40863325): Consider using the in-memory cache instead.
       commerce_ui_tab_helper_ =
           GetUserDataFactory().CreateInstance<commerce::CommerceUiTabHelper>(
@@ -384,7 +389,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
     }
 
     if (base::FeatureList::IsEnabled(commerce::kInStockNotification) &&
-        !profile->IsIncognitoProfile()) {
+        !profile->IsPrimaryOTRProfileWithRegularParent()) {
       in_stock_notification_manager_ =
           GetUserDataFactory()
               .CreateInstance<commerce::InStockNotificationManager>(tab, &tab);
@@ -401,7 +406,10 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           GetUserDataFactory().CreateInstance<glic::SelectionOverlayController>(
               tab, &tab, profile->GetPrefs());
 
-      if (glic::GlicEnabling::IsSelectionPromptEnabledForProfile(profile)) {
+      if (glic::GlicEnabling::IsSelectionPromptEnabledForProfile(profile) ||
+          (base::FeatureList::IsEnabled(
+               features::kGlicTextSelectionContextMenu) &&
+           glic::GlicEnabling::IsEnabledForProfile(profile))) {
         glic_selection_observer_ =
             std::make_unique<glic::GlicSelectionObserver>(tab.GetContents());
       }
@@ -417,6 +425,11 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           GetUserDataFactory()
               .CreateInstance<glic::GlicSidePanelCoordinatorImpl>(
                   tab, &tab, side_panel_registry_.get());
+    }
+    if (geic::IsGeicEnabled(profile)) {
+      geic_side_panel_coordinator_ =
+          GetUserDataFactory().CreateInstance<geic::GeicSidePanelCoordinator>(
+              tab, tab, side_panel_registry_.get());
     }
     // TODO(crbug.com/433973411): Move this logic to a helper function.
     if (base::FeatureList::IsEnabled(features::kGlicActor) &&
@@ -497,6 +510,12 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   data_protection_tab_controller_ = std::make_unique<
       enterprise_data_protection::DataProtectionNavigationController>(&tab);
+
+  enterprise_proxy_tab_helper_ =
+      GetUserDataFactory()
+          .CreateInstance<enterprise_net::EnterpriseProxyTabHelper>(
+              tab, tab, tab.GetContents(),
+              EnterpriseProxyErrorServiceFactory::GetForProfile(profile));
 
   // Create the ReadAnythingController first to ensure it exists before
   // any potential consumers, like the side panel controller.
@@ -888,6 +907,7 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
   }
 
   if (glic_selection_observer_) {
+    glic_selection_observer_.reset();
     glic_selection_observer_ =
         std::make_unique<glic::GlicSelectionObserver>(new_contents);
   }

@@ -20,7 +20,7 @@
 #include "third_party/blink/renderer/platform/graphics/gpu/canvas_utils.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/webgpu_mailbox_texture.h"
-#include "third_party/blink/renderer/platform/graphics/gpu/webgpu_shared_image_wrapper.h"
+#include "third_party/blink/renderer/platform/graphics/gpu/webgpu_shared_image_cache.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 #include "third_party/skia/include/effects/SkColorMatrix.h"
 #include "third_party/skia/modules/skcms/skcms.h"
@@ -398,10 +398,15 @@ std::optional<ExternalTexture> CreateExternalTexture(
   // The recyclable resource's color space is the same as source color space
   // with the YUV to RGB transform stripped out since that's handled by the
   // PaintCanvasVideoRenderer.
-  std::unique_ptr<WebGpuSharedImageWrapperLease> wrapper_lease =
-      device->GetDawnControlClient()->LeaseWebGpuSharedImageWrapper(
+  std::unique_ptr<WebGpuSharedImageLease> lease =
+      device->GetDawnControlClient()->LeaseSharedImage(
           format, natural_size, resource_color_space, kPremul_SkAlphaType);
-  if (!wrapper_lease) {
+  if (!lease) {
+    return {};
+  }
+
+  scoped_refptr<gpu::ClientSharedImage> shared_image = lease->GetSharedImage();
+  if (!shared_image) {
     return {};
   }
 
@@ -409,19 +414,15 @@ std::optional<ExternalTexture> CreateExternalTexture(
       context_provider_wrapper->ContextProvider().RasterContextProvider();
 
   if (use_copy_to_shared_image) {
-    // The size of the shared image wrapper here is the VideoFrame's natural
+    // The size of the shared image here is the VideoFrame's natural
     // size, which is guaranteed to be the same size as its visible rect since
     // `use_copy_to_shared_image` is true. Below we are going to copy the
-    // contents of that visible rect into the shared image wrapper's
+    // contents of that visible rect into the leased
     // SharedImage, completely overwriting the SharedImage.
-    wrapper_lease->WriteToBackingSharedImage(
-        [&](const scoped_refptr<gpu::ClientSharedImage>& client_si,
-            const gpu::SyncToken& begin_sync_token) {
-          // The returned sync token is from the SharedGpuContext.
-          return video_renderer->CopyVideoFrameToSharedImage(
-              raster_context_provider, std::move(media_video_frame), client_si,
-              begin_sync_token, /*use_visible_rect=*/true);
-        });
+    gpu::SyncToken sync_token = video_renderer->CopyVideoFrameToSharedImage(
+        raster_context_provider, std::move(media_video_frame), shared_image,
+        lease->GetSyncToken(), /*use_visible_rect=*/true);
+    lease->WaitSyncToken(sync_token);
   } else {
     // Delegate video transformation to Dawn.
     if (media_video_frame->HasSharedImage()) {
@@ -438,26 +439,26 @@ std::optional<ExternalTexture> CreateExternalTexture(
     media_flags.setBlendMode(SkBlendMode::kSrc);
 
     media::PaintCanvasVideoRenderer::PaintParams params;
-    params.dest_rect = gfx::RectF(wrapper_lease->GetSharedImage()->size());
-    wrapper_lease->DrawToBackingSharedImage([&](cc::PaintCanvas& canvas) {
+    params.dest_rect = gfx::RectF(shared_image->size());
+    lease->DrawToBackingSharedImage([&](cc::PaintCanvas& canvas) {
       video_renderer->Paint(media_video_frame.get(), &canvas, media_flags,
                             params, raster_context_provider);
     });
   }
 
-  scoped_refptr<gpu::ClientSharedImage> shared_image =
-      wrapper_lease->GetSharedImage();
-  if (!shared_image) {
+  // The copy or draw operation above might have encountered GPU context loss,
+  // in which case GetSharedImage() returns null.
+  if (!lease->GetSharedImage()) {
     return {};
   }
 
-  gpu::SyncToken sync_token = wrapper_lease->GetSyncToken();
+  gpu::SyncToken sync_token = lease->GetSyncToken();
 
   scoped_refptr<WebGPUMailboxTexture> mailbox_texture =
       WebGPUMailboxTexture::FromCanvasResource(
           device->GetDawnControlClient(), device->GetHandle(),
           wgpu::TextureUsage::TextureBinding, std::move(shared_image),
-          sync_token, std::move(wrapper_lease));
+          sync_token, std::move(lease));
   if (!mailbox_texture) {
     return {};
   }

@@ -57,7 +57,7 @@ enum ExternalPointerTypeTag : uint16_t {
   kAPIBindingJSUtilUnittestErrorInfoTag,
   kEventEmitterUnittestListenerClosureDataTag,
   kModuleSystemTag,
-  kObjectBackedNativeHandlerHandlerFunctionTag,
+  kGinInternalCallbackHolderBaseTag,
   kProxyResolverV8ContextTag,
   kThreadDebuggerCommonImplTag,
   kViewTransitionTestDataTag,

@@ -106,9 +106,11 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_menu_model.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
@@ -140,14 +142,18 @@
 #include "components/prefs/pref_service.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
+#include "components/sessions/core/session_id.h"
 #include "components/sessions/core/session_types.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
+#include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_collection.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/color_chooser.h"
 #include "content/public/browser/invalidate_type.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/ssl_status.h"
@@ -164,6 +170,7 @@
 #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/font_list.h"
 #include "ui/gfx/text_elider.h"
@@ -398,9 +405,8 @@ bool Browser::IsDeleteScheduled() const {
 }
 
 void Browser::OpenGURL(const GURL& gurl, WindowOpenDisposition disposition) {
-  OpenURL(content::OpenURLParams(gurl, content::Referrer(), disposition,
-                                 ui::PAGE_TRANSITION_LINK,
-                                 /*is_renderer_initiated=*/false),
+  OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+              gurl, disposition, ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
 }
 
@@ -603,7 +609,6 @@ void Browser::OnTabStripModelChanged(TabStripModel* tab_strip_model,
   OnActiveTabChanged(change, selection);
 }
 
-
 void Browser::TabStripEmpty() {
   // Note: even though the tab strip is empty, the call to Close() may not
   // result in closing this Browser. This can happen in the case of closing
@@ -680,7 +685,7 @@ void Browser::OnTabClosing(tabs::TabInterface* tab,
       page_load_metrics::MetricsWebContentsObserver::FromWebContents(contents);
   metrics_observer->WebContentsWillSoonBeDestroyed();
 
-  GetFeatures().exclusive_access_manager()->OnTabClosing(contents);
+  ExclusiveAccessManager::From(this)->OnTabClosing(contents);
 }
 
 void Browser::OnTabDetached(tabs::TabInterface* tab,
@@ -722,7 +727,7 @@ void Browser::RestoreFocusAfterTabModalPopupClose(
 }
 
 void Browser::OnTabDeactivated(WebContents* contents) {
-  GetFeatures().exclusive_access_manager()->OnTabDeactivated(contents);
+  ExclusiveAccessManager::From(this)->OnTabDeactivated(contents);
   SearchTabHelper::FromWebContents(contents)->OnTabDeactivated();
 
   // Save what the user's currently typing, so it can be restored when we
@@ -738,7 +743,7 @@ void Browser::OnActiveTabChanged(const TabStripModelChange& change,
   // even if the tab strip is empty.
   if (change.type() != TabStripModelChange::kReplaced &&
       !tab_strip_model_->closing_all()) {
-    SidePanelUI* side_panel_ui = GetFeatures().side_panel_ui();
+    SidePanelUI* side_panel_ui = SidePanelUI::From(this);
     if (side_panel_ui) {
       side_panel_ui->OnActiveTabChanged(
           selection.old_contents, selection.new_contents,
@@ -795,7 +800,7 @@ void Browser::OnActiveTabChanged(const TabStripModelChange& change,
   window_->OnActiveTabChanged(selection.old_contents, selection.new_contents,
                               index, selection.reason);
 
-  GetFeatures().exclusive_access_manager()->OnTabDetachedFromView(
+  ExclusiveAccessManager::From(this)->OnTabDetachedFromView(
       selection.old_contents);
 
   // If we have any update pending, do it now.
@@ -835,11 +840,9 @@ void Browser::OnActiveTabChanged(const TabStripModelChange& change,
         selection.new_contents);
   }
 
-
   SearchTabHelper::FromWebContents(selection.new_contents)->OnTabActivated();
   did_active_tab_change_callback_list_.Notify(this);
 }
-
 
 void Browser::OnTabReplacedAt(WebContents* old_contents,
                               WebContents* new_contents,
@@ -849,7 +852,7 @@ void Browser::OnTabReplacedAt(WebContents* old_contents,
     did_active_tab_change_callback_list_.Notify(this);
   }
   TabDetachedAtImpl(old_contents, was_active, DetachType::kReplace);
-  GetFeatures().exclusive_access_manager()->OnTabClosing(old_contents);
+  ExclusiveAccessManager::From(this)->OnTabClosing(old_contents);
   OnTabInsertedAt(new_contents, index);
 
   if (!new_contents->GetController().IsInitialBlankNavigation()) {
@@ -898,7 +901,6 @@ void Browser::TabDetachedAtImpl(content::WebContents* contents,
         location_bar->SaveStateToContents(contents);
       }
     }
-
   }
 
   SetAsDelegate(contents, false);

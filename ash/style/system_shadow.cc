@@ -12,7 +12,7 @@
 #include "ui/aura/window_observer.h"
 #include "ui/color/color_provider.h"
 #include "ui/compositor/layer_nine_patch.h"
-#include "ui/compositor_extra/shadow.h"
+#include "ui/decoration/shadow.h"
 #include "ui/views/view.h"
 #include "ui/views/view_observer.h"
 #include "ui/views/view_shadow.h"
@@ -30,7 +30,7 @@ class SystemShadowImpl : public SystemShadow {
  public:
   explicit SystemShadowImpl(SystemShadow::Type type) {
     shadow_.Init(SystemShadow::GetElevationFromType(type));
-    shadow_.SetShadowStyle(gfx::ShadowStyle::kChromeOSSystemUI);
+    shadow_.SetStyle(ui::Shadow::Style::kChromeOSSystemUI);
   }
 
   SystemShadowImpl(const SystemShadowImpl&) = delete;
@@ -56,7 +56,7 @@ class SystemViewShadow : public SystemShadow, public views::ViewObserver {
  public:
   SystemViewShadow(views::View* view, SystemShadow::Type type)
       : view_shadow_(view, SystemShadow::GetElevationFromType(type)) {
-    view_shadow_.shadow()->SetShadowStyle(gfx::ShadowStyle::kChromeOSSystemUI);
+    view_shadow_.shadow()->SetStyle(ui::Shadow::Style::kChromeOSSystemUI);
     view_observation_.Observe(view);
     if (auto* widget = view->GetWidget()) {
       ObserveColorProviderSource(widget);
@@ -195,10 +195,6 @@ ui::Layer* SystemShadow::GetLayer() {
   return shadow()->layer();
 }
 
-ui::LayerNinePatch* SystemShadow::GetNinePatchLayer() {
-  return shadow()->shadow_layer();
-}
-
 void SystemShadow::ObserveColorProviderSource(
     ui::ColorProviderSource* color_provider_source) {
   Observe(color_provider_source);
@@ -215,7 +211,7 @@ const gfx::ShadowValues SystemShadow::GetShadowValuesForTesting() const {
 }
 
 void SystemShadow::UpdateShadowColors(const ui::ColorProvider* color_provider) {
-  shadow()->SetElevationToColorsMap(
+  shadow()->SetColorMap(
       StyleUtil::CreateShadowElevationToColorsMap(color_provider));
 }
 

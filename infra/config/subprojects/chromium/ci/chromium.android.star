@@ -262,7 +262,7 @@ ci.builder(
             "enable_android_secondary_abi",
             "remoteexec",
             "x64",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -313,7 +313,7 @@ ci.builder(
             "enable_android_secondary_abi",
             "remoteexec",
             "x64",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -410,7 +410,7 @@ ci.builder(
             "minimal_symbols",
             "x86",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -793,7 +793,7 @@ ci.builder(
             "minimal_symbols",
             "arm64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
         ],
     ),
     targets = targets.bundle(
@@ -1164,7 +1164,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -2304,7 +2304,7 @@ ci.builder(
             # See crbug.com/507825820
             "strip_debug_info",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -2507,7 +2507,7 @@ ci.builder(
             "x86",
             "strip_debug_info",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -2590,6 +2590,21 @@ ci.builder(
                     dimensions = {
                         # use 8-core to shorten runtime
                         "cores": "8",
+                    },
+                    optional_dimensions = {
+                        # TODO(crrev.com/541675870): Remove x86-64-n4 when migration is done.
+                        # Wait 30 seconds for n4 cpu with cache, wait 30 seconds for n4 cpu
+                        # wait 60 seconds for any bot with a cache.
+                        30: {
+                            "cpu": "x86-64-n4",
+                            "caches": "android_29_google_apis_x86",
+                        },
+                        60: {
+                            "cpu": "x86-64-n4",
+                        },
+                        120: {
+                            "caches": "android_29_google_apis_x86",
+                        },
                     },
                     shards = 75,
                 ),
@@ -2720,7 +2735,7 @@ ci.builder(
             "minimal_symbols",
             "x86",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -2855,7 +2870,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -3025,7 +3040,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -3164,7 +3179,7 @@ ci.builder(
             "remoteexec",
             "minimal_symbols",
             "arm64",
-            "webview_trichrome",
+            "webview_debug_package_name",
         ],
     ),
     targets = targets.bundle(
@@ -3283,7 +3298,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -3524,7 +3539,7 @@ ci.builder(
             "remoteexec",
             "minimal_symbols",
             "arm64",
-            "webview_trichrome",
+            "webview_debug_package_name",
         ],
     ),
     targets = targets.bundle(
@@ -3645,7 +3660,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -4118,7 +4133,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -4185,6 +4200,21 @@ ci.builder(
                 ],
                 ci_only = True,
                 swarming = targets.swarming(
+                    optional_dimensions = {
+                        # TODO(crrev.com/541675870): Remove x86-64-n4 when migration is done.
+                        # Wait 30 seconds for n4 cpu with cache, wait 30 seconds for n4 cpu
+                        # wait 60 seconds for any bot with a cache.
+                        30: {
+                            "cpu": "x86-64-n4",
+                            "caches": "android_36_google_apis_x64",
+                        },
+                        60: {
+                            "cpu": "x86-64-n4",
+                        },
+                        120: {
+                            "caches": "android_36_google_apis_x64",
+                        },
+                    },
                     shards = 40,
                 ),
             ),
@@ -4290,7 +4320,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),
@@ -4358,7 +4388,7 @@ ci.builder(
             "minimal_symbols",
             "x64",
             "android_fastbuild",
-            "webview_trichrome",
+            "webview_debug_package_name",
             "webview_shell",
         ],
     ),

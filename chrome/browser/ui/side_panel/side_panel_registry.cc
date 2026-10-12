@@ -126,10 +126,11 @@ bool SidePanelRegistry::Deregister(const SidePanelEntry::Key& key) {
   // can be removed.
   if (browser_window_interface) {
     if (auto* const side_panel_ui =
-            browser_window_interface->GetFeatures().side_panel_ui()) {
+            SidePanelUI::From(browser_window_interface)) {
       // If the entry with the same key and scope is showing, synchronously
-      // close.
-      if (side_panel_ui->IsSidePanelEntryShowing(key, for_tab)) {
+      // close. A tab-scoped entry only shows for the active tab.
+      if (side_panel_ui->IsSidePanelEntryShowing(key, for_tab) &&
+          (!for_tab || GetTabInterface().IsActivated())) {
         side_panel_ui->Close(SidePanelEntryHideReason::kSidePanelClosed,
                              /*suppress_animations=*/true);
       }

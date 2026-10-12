@@ -425,6 +425,7 @@ ci.builder(
                 ),
             ),
             "browser_tests": targets.mixin(
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     # Move to faster machine types to reduce capacity impact.
                     # TODO(crbug.com/541675870): Can remove this if/when
@@ -447,6 +448,7 @@ ci.builder(
                 isolate_profile_data = False,
             ),
             "interactive_ui_tests": targets.mixin(
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     shards = 9,
                 ),
@@ -457,6 +459,7 @@ ci.builder(
                 ),
             ),
             "sync_integration_tests": targets.mixin(
+                enable_rts_filtering = True,
                 swarming = targets.swarming(
                     shards = 3,
                 ),

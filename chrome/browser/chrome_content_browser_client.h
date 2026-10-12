@@ -1042,6 +1042,8 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::BrowserContext* browser_context,
       const GURL& url) override;
 
+  base::FilePath GetChildProcessPath(int flags) override;
+
   bool AreIsolatedWebAppsEnabled(
       content::BrowserContext* browser_context) override;
 
@@ -1119,7 +1121,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
 
   bool ShouldEnableBtm(content::BrowserContext* browser_context) override;
   void OnBtmServiceCreated(content::BrowserContext* browser_context,
-                           content::BtmService* dips_service) override;
+                           content::BtmService* btm_service) override;
   uint64_t GetBtmRemoveMask() override;
   bool ShouldBtmDeleteInteractionRecords(uint64_t remove_mask) override;
 
@@ -1404,10 +1406,6 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   std::unique_ptr<FetchKeepAliveProcessManager>
       fetch_keepalive_process_manager_;
 #endif
-
-#if BUILDFLAG(IS_MAC)
-  std::string GetChildProcessSuffix(int child_flags) override;
-#endif  // BUILDFLAG(IS_MAC)
 
   // Tracks whether the browser was started in "minimal" mode (as opposed to
   // full browser mode), where most subsystems are not initialized.

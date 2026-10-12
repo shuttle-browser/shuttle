@@ -365,7 +365,7 @@ TEST_F(PasswordGenerationFrameHelperTest, ProcessPasswordRequirements) {
         client_->GetPasswordRequirementsService()->GetSpec(
             origin, FormSignature(form_signature.value() + 1), field_signature);
     EXPECT_EQ(test.expected_spec_for_unknown_signature.max_length(),
-              spec.max_length());
+              spec_for_unknown_signature.max_length());
   }
 }
 
@@ -459,6 +459,19 @@ TEST_F(PasswordGenerationFrameHelperTest, GetPasswordRequirementsSpec) {
           kTestOrigin, PasswordGenerationType::kAutomatic, kTestFormSignature,
           kTestFieldSignature, /*max_length=*/0);
   EXPECT_EQ(computed_spec.max_length(), kShortLength);
+}
+
+// Verify that the fields with manual generation enabled are forgotten after a
+// navigation.
+TEST_F(PasswordGenerationFrameHelperTest,
+       DidNavigateFrameClearsManualGenerationEnabledFields) {
+  constexpr autofill::FieldRendererId kFieldId(1);
+  GetGenerationHelper()->AddManualGenerationEnabledField(kFieldId);
+  ASSERT_TRUE(GetGenerationHelper()->IsManualGenerationEnabledField(kFieldId));
+
+  GetGenerationHelper()->DidNavigateFrame();
+
+  EXPECT_FALSE(GetGenerationHelper()->IsManualGenerationEnabledField(kFieldId));
 }
 
 }  // namespace password_manager

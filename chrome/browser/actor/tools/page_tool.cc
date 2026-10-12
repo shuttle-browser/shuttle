@@ -260,15 +260,6 @@ void PageTool::Validate(ToolCallback callback) {
     return;
   }
 
-  TabInterface* tab = request_->GetTabHandle().Get();
-  if (!tab) {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(std::move(callback),
-                       MakeResult(mojom::ActionResultCode::kTabWentAway)));
-    return;
-  }
-
   RenderFrameHost* frame =
       FindTargetLocalRootFrame(request_->GetTabHandle(), request_->GetTarget());
   if (!frame) {
@@ -279,6 +270,7 @@ void PageTool::Validate(ToolCallback callback) {
     return;
   }
 
+  TabInterface* tab = request_->GetTabHandle().Get();
   const optimization_guide::proto::AnnotatedPageContent* last_observation =
       nullptr;
   if (auto* tab_data = ActorTabData::From(tab)) {
@@ -621,7 +613,7 @@ void PageTool::Invoke(ToolCallback callback) {
                      weak_ptr_factory_.GetWeakPtr()));
 
   timeout_timer_.Start(
-      FROM_HERE, features::kGlicActorPageToolTimeout.Get(),
+      FROM_HERE, kActorPageToolTimeoutParam.Get(),
       base::BindOnce(&PageTool::OnTimeout, weak_ptr_factory_.GetWeakPtr()));
 
   if (base::FeatureList::IsEnabled(kActorSendBrowserSignalForAction)) {

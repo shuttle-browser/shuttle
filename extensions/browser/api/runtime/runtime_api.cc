@@ -38,6 +38,7 @@
 #include "extensions/browser/lazy_context_id.h"
 #include "extensions/browser/lazy_context_task_queue.h"
 #include "extensions/browser/process_manager_factory.h"
+#include "extensions/browser/service_worker/service_worker_task_queue.h"
 #include "extensions/browser/shared_module_service.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/api/runtime.h"
@@ -101,6 +102,16 @@ constexpr char kErrorRequestedTooSoon[] =
     "Restart was requested too soon. It was throttled instead.";
 
 constexpr int kMinDurationBetweenSuccessiveRestartsHours = 3;
+
+// Error messages for the markListenerRegistrationComplete() API.
+constexpr char kListenerRegistrationNotFromWorkerError[] =
+    "runtime.markListenerRegistrationComplete() is only available in the "
+    "service worker.";
+constexpr char kListenerRegistrationNotOptedInError[] =
+    "runtime.markListenerRegistrationComplete() requires the "
+    "\"background.async_listener_registration\" manifest key.";
+constexpr char kListenerRegistrationNotInProgressError[] =
+    "No listener registration is in progress.";
 
 // This is used for unit tests, so that we can test the restartAfterDelay
 // API without a kiosk app.
@@ -322,6 +333,15 @@ void RuntimeAPI::OnExtensionLoaded(content::BrowserContext* browser_context,
       base::BindOnce(&RuntimeEventRouter::DispatchOnInstalledEvent,
                      base::UnsafeDangling(static_cast<void*>(browser_context_)),
                      extension->id(), base::Version(), true));
+}
+
+void RuntimeAPI::OnExtensionEnabled(content::BrowserContext* browser_context,
+                                    const Extension* extension) {
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&RuntimeEventRouter::DispatchOnEnabledEvent,
+                     base::UnsafeDangling(static_cast<void*>(browser_context_)),
+                     extension->id()));
 }
 
 void RuntimeAPI::OnExtensionUninstalled(
@@ -590,6 +610,28 @@ void RuntimeEventRouter::DispatchOnInstalledEvent(
       }
     }
   }
+}
+
+// static
+void RuntimeEventRouter::DispatchOnEnabledEvent(
+    MayBeDangling<void> context_id,
+    const ExtensionId& extension_id) {
+  if (!ExtensionsBrowserClient::Get()->IsValidContext(context_id.get())) {
+    return;
+  }
+  content::BrowserContext* context =
+      reinterpret_cast<content::BrowserContext*>(context_id.get());
+  ExtensionSystem* system = ExtensionSystem::Get(context);
+  if (!system) {
+    return;
+  }
+
+  EventRouter* event_router = EventRouter::Get(context);
+  DCHECK(event_router);
+  auto event = std::make_unique<Event>(events::RUNTIME_ON_ENABLED,
+                                       runtime::OnEnabled::kEventName,
+                                       runtime::OnEnabled::Create());
+  event_router->DispatchEventToExtension(extension_id, std::move(event));
 }
 
 // static
@@ -1038,6 +1080,22 @@ int RuntimeGetContextsFunction::GetWindowId(
       ExtensionsBrowserClient::Get()->CreateRuntimeAPIDelegate(
           browser_context());
   return delegate->GetDeveloperToolsWindowId(&web_contents);
+}
+
+ExtensionFunction::ResponseAction
+RuntimeMarkListenerRegistrationCompleteFunction::Run() {
+  if (!BackgroundInfo::HasAsyncListenerRegistration(extension())) {
+    return RespondNow(Error(kListenerRegistrationNotOptedInError));
+  }
+  if (!is_from_service_worker()) {
+    return RespondNow(Error(kListenerRegistrationNotFromWorkerError));
+  }
+
+  if (!ServiceWorkerTaskQueue::Get(browser_context())
+           ->RendererDidCompleteListenerRegistrationPhase(*worker_id())) {
+    return RespondNow(Error(kListenerRegistrationNotInProgressError));
+  }
+  return RespondNow(NoArguments());
 }
 
 }  // namespace extensions

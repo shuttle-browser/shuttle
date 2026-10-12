@@ -974,11 +974,125 @@ TEST_F(ChromeFileSystemAccessPermissionContextTest,
                 HandleType::kDirectory, UserAction::kOpen),
             SensitiveDirectoryResult::kAbort);
 }
+
+// Verifies that sensitive directories and system paths accessed through APFS
+// firmlink aliases under `/System/Volumes/Data` or internal system volumes
+// under `/System/Volumes` are blocked.
+//
+// On macOS 10.15+, user home folders, `/Applications`, and `/Library` reside on
+// the read-write Data volume mounted at `/System/Volumes/Data`. This test
+// verifies that referencing sensitive targets through the
+// `/System/Volumes/Data` alias spelling fails sensitive entry access checks and
+// returns `kAbort`.
+TEST_F(ChromeFileSystemAccessPermissionContextTest,
+       ConfirmSensitiveEntryAccess_BlockFirmlinkedSystemAndUserPaths) {
+  base::FilePath home_dir = temp_dir_.GetPath().AppendASCII("home");
+  ScopedHomeDirOverride home_override = OverrideHomeDir(home_dir);
+  ResetBlockPath();
+
+  const base::FilePath kDataVolumePrefix(
+      FILE_PATH_LITERAL("/System/Volumes/Data"));
+
+  // Verify that `~/.ssh` and its private keys are blocked when accessed via the
+  // data volume alias.
+  base::FilePath ssh_under_data(FILE_PATH_LITERAL("/System/Volumes/Data") +
+                                home_dir.AppendASCII(".ssh").value());
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(), PathInfo(ssh_under_data),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+  EXPECT_EQ(
+      ConfirmSensitiveEntryAccessSync(
+          permission_context(), PathInfo(ssh_under_data.AppendASCII("id_rsa")),
+          HandleType::kFile, UserAction::kOpen),
+      SensitiveDirectoryResult::kAbort);
+
+  // Verify that `~/Library` and Chrome user data directories are blocked when
+  // accessed via the data volume alias.
+  base::FilePath library_under_data(FILE_PATH_LITERAL("/System/Volumes/Data") +
+                                    home_dir.AppendASCII("Library").value());
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(), PathInfo(library_under_data),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+
+  // Verify that the `/System/Volumes/Data` mount point root itself is blocked.
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(), PathInfo(kDataVolumePrefix),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+
+  // Verify that internal system volumes located under `/System/Volumes` such as
+  // the dynamic virtual memory swap volume and preboot volume are blocked.
+  EXPECT_EQ(
+      ConfirmSensitiveEntryAccessSync(
+          permission_context(), PathInfo(FILE_PATH_LITERAL("/System/Volumes")),
+          HandleType::kDirectory, UserAction::kOpen),
+      SensitiveDirectoryResult::kAbort);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(FILE_PATH_LITERAL("/System/Volumes/VM")),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(FILE_PATH_LITERAL("/System/Volumes/Preboot")),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+}
+
+// Verifies that allowed subdirectories within user home folders (such as
+// `~/Downloads`, `~/Library/CloudStorage`, and `~/Library/Containers`) remain
+// accessible when referenced through `/System/Volumes/Data`.
+//
+// Normalization must preserve descendant exceptions defined under
+// `kDontBlockChildren` so legitimate user workflows succeed regardless of
+// whether the path is referenced via `/` or `/System/Volumes/Data`.
+TEST_F(ChromeFileSystemAccessPermissionContextTest,
+       ConfirmSensitiveEntryAccess_AllowFirmlinkedUserSubdirectories) {
+  base::FilePath home_dir = temp_dir_.GetPath().AppendASCII("home");
+  ScopedHomeDirOverride home_override = OverrideHomeDir(home_dir);
+  ResetBlockPath();
+
+  // Child files and subdirectories inside `~/Downloads` should be permitted.
+  base::FilePath data_downloads(FILE_PATH_LITERAL("/System/Volumes/Data") +
+                                home_dir.AppendASCII("Downloads").value());
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(data_downloads.AppendASCII("report.pdf")),
+                HandleType::kFile, UserAction::kOpen),
+            SensitiveDirectoryResult::kAllowed);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(data_downloads.AppendASCII("subfolder")),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAllowed);
+
+  // External drives mounted under `/Volumes` should remain accessible.
+  base::FilePath external_volume(
+      FILE_PATH_LITERAL("/Volumes/ExternalUSB/Projects/my_code"));
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(), PathInfo(external_volume),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAllowed);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(external_volume.AppendASCII("main.rs")),
+                HandleType::kFile, UserAction::kOpen),
+            SensitiveDirectoryResult::kAllowed);
+}
 #endif  // BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_WIN)
-TEST_F(ChromeFileSystemAccessPermissionContextTest,
+TEST_F(ChromeFileSystemAccessPermissionContextNoSymbolicLinkCheckTest,
        ConfirmSensitiveEntryAccess_UNCPath) {
+  // The synthetic UNC paths tested here do not exist on disk/network;
+  // attempting to normalize them triggers slow Windows network/SMB timeouts on
+  // non-existent hosts before returning the original path unmodified. Testing
+  // with `features::kFileSystemAccessSymbolicLinkCheck` disabled allows
+  // testing the UNC syntax and admin share parsing logic directly in memory
+  // without timeouts. Symbolic link resolution itself is tested separately in
+  // `ChromeFileSystemAccessPermissionContextSymbolicLinkCheckTest`.
   EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
                 permission_context(),
                 PathInfo(FILE_PATH_LITERAL("\\\\server\\share\\foo\\bar")),
@@ -1279,46 +1393,82 @@ TEST_F(ChromeFileSystemAccessPermissionContextNoSymbolicLinkCheckTest,
             SensitiveDirectoryResult::kAllowed);
 }
 
+#endif  // BUILDFLAG(IS_WIN)
+
 // Testing that the */.git/hooks are all blocked.
 TEST_F(ChromeFileSystemAccessPermissionContextTest,
        ConfirmSensitiveEntryAccess_SuffixWriteBlock) {
+#if defined(FILE_PATH_USES_DRIVE_LETTERS)
+  base::FilePath root(FILE_PATH_LITERAL("c:\\"));
+#else
+  base::FilePath root(FILE_PATH_LITERAL("/"));
+#endif
   // Parent folder is not blocked.
   EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
-                permission_context(), PathInfo(FILE_PATH_LITERAL("\\\\.git")),
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL(".git"))),
                 HandleType::kDirectory, UserAction::kSave),
             SensitiveDirectoryResult::kAllowed);
   // .git/hooks is blocked for save.
-  EXPECT_EQ(
-      ConfirmSensitiveEntryAccessSync(
-          permission_context(), PathInfo(FILE_PATH_LITERAL("\\\\.git\\hooks")),
-          HandleType::kDirectory, UserAction::kSave),
-      SensitiveDirectoryResult::kAbort);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL(".git"))
+                             .Append(FILE_PATH_LITERAL("hooks"))),
+                HandleType::kDirectory, UserAction::kSave),
+            SensitiveDirectoryResult::kAbort);
   // .git/hooks is not blocked for read.
-  EXPECT_EQ(
-      ConfirmSensitiveEntryAccessSync(
-          permission_context(), PathInfo(FILE_PATH_LITERAL("\\\\.git\\hooks")),
-          HandleType::kDirectory, UserAction::kOpen),
-      SensitiveDirectoryResult::kAllowed);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL(".git"))
+                             .Append(FILE_PATH_LITERAL("hooks"))),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAllowed);
   // .git/hooks inside another folder is blocked for save.
   EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
                 permission_context(),
-                PathInfo(FILE_PATH_LITERAL("\\\\a\\.git\\hooks")),
+                PathInfo(root.Append(FILE_PATH_LITERAL("a"))
+                             .Append(FILE_PATH_LITERAL(".git"))
+                             .Append(FILE_PATH_LITERAL("hooks"))),
                 HandleType::kDirectory, UserAction::kSave),
             SensitiveDirectoryResult::kAbort);
   // The subfolder under .git/hooks folder is blocked for save.
   EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
                 permission_context(),
-                PathInfo(FILE_PATH_LITERAL("\\\\a\\.git\\hooks\\b")),
+                PathInfo(root.Append(FILE_PATH_LITERAL("a"))
+                             .Append(FILE_PATH_LITERAL(".git"))
+                             .Append(FILE_PATH_LITERAL("hooks"))
+                             .Append(FILE_PATH_LITERAL("b"))),
+                HandleType::kDirectory, UserAction::kSave),
+            SensitiveDirectoryResult::kAbort);
+  // Case variations of .git/hooks are blocked for save.
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL(".GIT"))
+                             .Append(FILE_PATH_LITERAL("hooks"))),
+                HandleType::kDirectory, UserAction::kSave),
+            SensitiveDirectoryResult::kAbort);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL(".git"))
+                             .Append(FILE_PATH_LITERAL("HOOKS"))),
+                HandleType::kDirectory, UserAction::kSave),
+            SensitiveDirectoryResult::kAbort);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL("a"))
+                             .Append(FILE_PATH_LITERAL(".Git"))
+                             .Append(FILE_PATH_LITERAL("Hooks"))
+                             .Append(FILE_PATH_LITERAL("b"))),
                 HandleType::kDirectory, UserAction::kSave),
             SensitiveDirectoryResult::kAbort);
   // Other suffix is allowed.
-  EXPECT_EQ(
-      ConfirmSensitiveEntryAccessSync(
-          permission_context(), PathInfo(FILE_PATH_LITERAL("\\\\.git\\hook")),
-          HandleType::kDirectory, UserAction::kSave),
-      SensitiveDirectoryResult::kAllowed);
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(),
+                PathInfo(root.Append(FILE_PATH_LITERAL(".git"))
+                             .Append(FILE_PATH_LITERAL("hook"))),
+                HandleType::kDirectory, UserAction::kSave),
+            SensitiveDirectoryResult::kAllowed);
 }
-#endif
 
 #if BUILDFLAG(IS_ANDROID)
 TEST_F(ChromeFileSystemAccessPermissionContextTest,
@@ -1438,6 +1588,60 @@ TEST_F(ChromeFileSystemAccessPermissionContextSymbolicLinkCheckTest,
                                       HandleType::kFile, UserAction::kOpen),
       SensitiveDirectoryResult::kAbort);
 }
+
+#if BUILDFLAG(IS_WIN)
+TEST_F(ChromeFileSystemAccessPermissionContextSymbolicLinkCheckTest,
+       ConfirmSensitiveEntryAccess_ResolveSymbolicLinkToLocalUNC) {
+  base::FilePath symlink = temp_dir_.GetPath().AppendASCII("symlink_to_unc");
+  base::FilePath target(FILE_PATH_LITERAL("\\\\localhost\\c$\\Windows"));
+
+  CreateSymbolicLinkResult result =
+      CreateSymbolicLinkForTesting(target, symlink);
+  if (result == CreateSymbolicLinkResult::kUnsupported) {
+    GTEST_SKIP();
+  }
+  ASSERT_EQ(result, CreateSymbolicLinkResult::kSucceeded);
+
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(), PathInfo(symlink), HandleType::kDirectory,
+                UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+}
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_MAC)
+// Verifies that symbolic links resolving into sensitive paths on the data
+// volume (`/System/Volumes/Data`) are caught and blocked by symlink checks.
+TEST_F(ChromeFileSystemAccessPermissionContextSymbolicLinkCheckTest,
+       ConfirmSensitiveEntryAccess_ResolveSymbolicLinkToDataVolume) {
+  // Create a real ~/.ssh directory in the temporary home folder.
+  base::FilePath home_dir = temp_dir_.GetPath().AppendASCII("home");
+  base::FilePath ssh_dir = home_dir.AppendASCII(".ssh");
+  ASSERT_TRUE(base::CreateDirectory(ssh_dir));
+
+  ScopedHomeDirOverride home_override = OverrideHomeDir(home_dir);
+  ResetBlockPath();
+
+  // On macOS, `temp_dir_` (/private/var/...) physically resides on the Data
+  // volume mounted at `/System/Volumes/Data`.
+  base::FilePath absolute_ssh_dir = base::MakeAbsoluteFilePath(ssh_dir);
+  ASSERT_FALSE(absolute_ssh_dir.empty());
+
+  base::FilePath target_data_ssh(FILE_PATH_LITERAL("/System/Volumes/Data") +
+                                 absolute_ssh_dir.value());
+  ASSERT_TRUE(base::PathExists(target_data_ssh));
+
+  base::FilePath symlink_path =
+      temp_dir_.GetPath().AppendASCII("symlink_to_data_ssh");
+  ASSERT_EQ(CreateSymbolicLinkForTesting(target_data_ssh, symlink_path),
+            CreateSymbolicLinkResult::kSucceeded);
+
+  EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                permission_context(), PathInfo(symlink_path),
+                HandleType::kDirectory, UserAction::kOpen),
+            SensitiveDirectoryResult::kAbort);
+}
+#endif  // BUILDFLAG(IS_MAC)
 
 TEST_F(ChromeFileSystemAccessPermissionContextTest,
        ConfirmSensitiveEntryAccess_DangerousFile) {

@@ -59,31 +59,10 @@ public class DownloadCollectionBridge {
 
     private static DownloadDelegate sDownloadDelegate = new DownloadDelegate();
 
-    /**  Class representing the Uri and display name pair for downloads. */
-    protected static class DisplayNameInfo {
-        private final String mUri;
-        private final String mDisplayName;
-
-        public DisplayNameInfo(String uri, String displayName) {
-            mUri = uri;
-            mDisplayName = displayName;
-        }
-
-        @CalledByNative
-        private @JniType("std::string") String getDownloadUri() {
-            return mUri;
-        }
-
-        @CalledByNative
-        private @JniType("std::string") String getDisplayName() {
-            return mDisplayName;
-        }
-    }
-
     /**
-     * Sets the DownloadDelegate to be used for utility methods.
-     * TODO(qinmin): remove this method once we moved all the utility methods into
-     * components/.
+     * Sets the DownloadDelegate to be used for utility methods. TODO(qinmin): remove this method
+     * once we moved all the utility methods into components/.
+     *
      * @param downloadDelegate The new delegate to be used.
      */
     public static void setDownloadDelegate(DownloadDelegate downloadDelegate) {
@@ -281,43 +260,6 @@ public class DownloadCollectionBridge {
     }
 
     /**
-     * Gets the display names for all downloads
-     *
-     * @return an array of download Uri and display name pair.
-     */
-    @CalledByNative
-    private static DisplayNameInfo @Nullable [] getDisplayNamesForDownloads() {
-        ContentResolver resolver = ContextUtils.getApplicationContext().getContentResolver();
-        Cursor cursor = null;
-        try {
-            Uri uri = Downloads.EXTERNAL_CONTENT_URI;
-            cursor =
-                    resolver.query(
-                            MediaStore.setIncludePending(uri),
-                            new String[] {BaseColumns._ID, MediaColumns.DISPLAY_NAME},
-                            null,
-                            null,
-                            null);
-            if (cursor == null || cursor.getCount() == 0) return null;
-            List<DisplayNameInfo> infos = new ArrayList<DisplayNameInfo>();
-            while (cursor.moveToNext()) {
-                String displayName =
-                        cursor.getString(cursor.getColumnIndexOrThrow(MediaColumns.DISPLAY_NAME));
-                Uri downloadUri =
-                        ContentUris.withAppendedId(
-                                uri, cursor.getInt(cursor.getColumnIndexOrThrow(BaseColumns._ID)));
-                infos.add(new DisplayNameInfo(downloadUri.toString(), displayName));
-            }
-            return infos.toArray(new DisplayNameInfo[0]);
-        } catch (Exception e) {
-            Log.e(TAG, "Unable to get display names for downloads.", e);
-        } finally {
-            if (cursor != null) cursor.close();
-        }
-        return null;
-    }
-
-    /**
      * Gets the content URI of the download that has the given file name.
      *
      * @param fileName name of the file.
@@ -456,16 +398,17 @@ public class DownloadCollectionBridge {
         ContentResolver resolver = ContextUtils.getApplicationContext().getContentResolver();
         Cursor cursor = null;
         try {
+            Uri uri = Uri.parse(downloadUri);
+            if (MediaStore.AUTHORITY.equals(uri.getAuthority())) {
+                uri = MediaStore.setIncludePending(uri);
+            }
             cursor =
-                    resolver.query(
-                            Uri.parse(downloadUri),
-                            new String[] {MediaColumns.DISPLAY_NAME},
-                            null,
-                            null,
-                            null);
-            if (cursor == null || cursor.getCount() == 0) return null;
-            if (cursor.moveToNext()) {
-                return cursor.getString(cursor.getColumnIndexOrThrow(MediaColumns.DISPLAY_NAME));
+                    resolver.query(uri, new String[] {MediaColumns.DISPLAY_NAME}, null, null, null);
+            if (cursor != null && cursor.moveToNext()) {
+                int index = cursor.getColumnIndex(MediaColumns.DISPLAY_NAME);
+                if (index != -1) {
+                    return cursor.getString(index);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "Unable to get display name for download.", e);

@@ -32,7 +32,6 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/thread_annotations.h"
 #include "base/trace_event/typed_macros.h"
-#include "build/build_config.h"
 #include "mojo/core/ipcz_driver/envelope.h"
 
 namespace mojo::core {

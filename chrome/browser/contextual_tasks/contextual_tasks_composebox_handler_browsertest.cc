@@ -23,6 +23,7 @@
 #include "base/test/metrics/user_action_tester.h"
 #include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "chrome/browser/contextual_search/contextual_search_service_factory.h"
@@ -31,6 +32,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
+#include "chrome/browser/contextual_tasks/smart_tab_sharing_metrics.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
@@ -39,6 +41,7 @@
 #include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
 #include "chrome/browser/ui/lens/lens_query_flow_router.h"
 #include "chrome/browser/ui/lens/lens_search_controller.h"
+#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/webui/searchbox/searchbox_test_utils.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
@@ -59,6 +62,7 @@
 #include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/sessions/content/session_tab_helper.h"
+#include "components/sessions/core/session_id.h"
 #include "components/tabs/public/mock_tab_interface.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "components/variations/variations_switches.h"
@@ -70,12 +74,15 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
 #include "services/network/test/test_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/lens_server_proto/aim_communication.pb.h"
 #include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -1740,6 +1747,63 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
   EXPECT_CALL(*mock_ui_, PostAimMessage(testing::_))
       .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
   handler_->CreateAndSendQueryMessage(kQuery, /*is_voice_search=*/false);
+  run_loop.Run();
+}
+
+// Regression test for b/567111042: deleting a delayed (auto-suggested) tab must
+// not report an upload status to the page, since the tab was never uploaded
+// and the deletion was initiated by the page itself.
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
+                       DeleteContext_Delayed_DoesNotNotifyPageOfExpiration) {
+  tabs::TabInterface* active_tab =
+      TabListInterface::From(browser())->GetActiveTab();
+  int32_t active_tab_id = active_tab->GetHandle().raw_value();
+  std::optional<base::UnguessableToken> token_opt;
+  base::MockCallback<ContextualSearchboxHandler::AddTabContextCallback>
+      callback;
+  EXPECT_CALL(callback, Run(testing::_)).WillOnce([&](const auto& result) {
+    ASSERT_TRUE(result.has_value());
+    token_opt = result.value();
+  });
+  handler_->AddTabContext(active_tab_id, /*delay_upload=*/true,
+                          searchbox::mojom::TabAttachmentSource::kContextMenu,
+                          callback.Get());
+  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_EQ(handler_->GetNumTabsDelayed(), 1);
+
+  EXPECT_CALL(
+      *handler_,
+      OnContextUploadStatusChanged(
+          *token_opt, testing::_,
+          contextual_search::ContextUploadStatus::kUploadExpired, testing::_))
+      .Times(0);
+  EXPECT_CALL(mock_searchbox_page_, OnContextualInputStatusChanged(
+                                        *token_opt, testing::_, testing::_))
+      .Times(0);
+
+  handler_->DeleteContext(*token_opt, /*from_automatic_chip=*/true);
+  searchbox_page_receiver_.FlushForTesting();
+
+  EXPECT_EQ(handler_->GetNumTabsDelayed(), 0);
+  EXPECT_FALSE(handler_->IsAnyContextUploading());
+}
+
+// Verifies that a genuine upload expiration reported by the context controller
+// is still forwarded to the page.
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
+                       OnContextUploadStatusChanged_ExpiredIsForwardedToPage) {
+  base::UnguessableToken token = base::UnguessableToken::Create();
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_searchbox_page_,
+              OnContextualInputStatusChanged(
+                  token, contextual_search::ContextUploadStatus::kUploadExpired,
+                  testing::_))
+      .WillOnce(base::test::RunClosure(run_loop.QuitClosure()));
+
+  SimulateUploadStatusChanged(
+      token, lens::MimeType::kImage,
+      contextual_search::ContextUploadStatus::kUploadExpired, std::nullopt);
   run_loop.Run();
 }
 
@@ -3862,18 +3926,18 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
   files.emplace_back(file2_path, file2_path);
 
   base::RunLoop run_loop;
-  int file_contexts_added = 0;
+  std::vector<base::UnguessableToken> added_tokens;
   EXPECT_CALL(mock_searchbox_page_, AddFileContext(testing::_, testing::_))
       .Times(2)
       .WillRepeatedly([&](const base::UnguessableToken& token,
                           searchbox::mojom::SelectedFileInfoPtr file_info) {
-        file_contexts_added++;
+        added_tokens.push_back(token);
         if (file_info->file_name == "file1.pdf") {
           EXPECT_EQ(file_info->mime_type, "application/pdf");
         } else if (file_info->file_name == "file2.png") {
           EXPECT_EQ(file_info->mime_type, "image/png");
         }
-        if (file_contexts_added == 2) {
+        if (added_tokens.size() == 2) {
           run_loop.Quit();
         }
       });
@@ -3884,6 +3948,16 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
   run_loop.Run();
 
   EXPECT_EQ(handler_->GetNumContextUploading(), 2);
+
+  // Clean up pending uploads before test teardown to prevent asynchronous tasks
+  // running during fixture destruction.
+  for (const auto& token : added_tokens) {
+    SimulateUploadStatusChanged(
+        token, lens::MimeType::kUnknown,
+        contextual_search::ContextUploadStatus::kUploadSuccessful,
+        std::nullopt);
+  }
+  EXPECT_EQ(handler_->GetNumContextUploading(), 0);
 }
 
 IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
@@ -4204,4 +4278,298 @@ IN_PROC_BROWSER_TEST_F(
           base::Unretained(&input_state_model)));
 
   EXPECT_TRUE(custom_handler->IsSmartTabSharingActive());
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingTest,
+    InitializeInputStateModelPreservesSmartTabSharingWhenPreviousTurnSubmitted) {
+  auto mock_session = std::make_unique<testing::NiceMock<
+      contextual_search::MockContextualSearchSessionHandle>>();
+  contextual_tasks::ThreadTurn turn;
+  turn.query = "sample query";
+  mock_session->AddThreadTurn(turn);
+  mock_ui_->SetSessionHandle(mock_session.get());
+
+  auto input_state_model = std::make_unique<contextual_search::InputStateModel>(
+      *mock_session, omnibox::SearchboxConfig(), GURL(), false, false, false);
+  input_state_model->SetSmartTabSharingActive(true);
+
+  searchbox_page_receiver_.reset();
+  auto custom_handler = std::make_unique<TestContextualTasksComposeboxHandler>(
+      mock_ui_.get(), profile(), web_contents(),
+      mojo::PendingReceiver<composebox::mojom::PageHandler>(),
+      mojo::PendingReceiver<searchbox::mojom::PageHandler>(),
+      searchbox_page_receiver_.BindNewPipeAndPassRemote(),
+      base::BindRepeating(
+          &ContextualTasksUI::GetOrCreateContextualSessionHandle,
+          base::Unretained(mock_ui_.get())),
+      base::BindRepeating(&ContextualTasksUI::ClearContextualSessionHandle,
+                          base::Unretained(mock_ui_.get())),
+      base::BindRepeating(
+          [](std::unique_ptr<contextual_search::InputStateModel>* model) {
+            return std::move(*model);
+          },
+          base::Unretained(&input_state_model)));
+
+  EXPECT_TRUE(custom_handler->IsSmartTabSharingActive());
+  EXPECT_TRUE(mock_session->smart_tab_sharing_active().value_or(false));
+
+  mock_ui_->SetSessionHandle(nullptr);
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingTest,
+    SubmitQueryPreservesSmartTabSharingWhenToggleOffAfterSubmitDisabled) {
+  handler_->SetSmartTabSharingActive(true);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+
+  handler_->SubmitQuery("test query", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+  EXPECT_TRUE(session_handle_->smart_tab_sharing_active().value_or(false));
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerSmartTabSharingTest,
+                       SubmitQueryLogsThreadWithTabsSubmitted) {
+  base::HistogramTester histogram_tester;
+
+  // STS active: ThreadWithTabsSubmitted should record true.
+  handler_->SetSmartTabSharingActive(true);
+  handler_->SubmitQuery("query 1", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.ThreadWithTabsSubmitted", true, 1);
+
+  // STS inactive: ThreadWithTabsSubmitted should record false.
+  handler_->SetSmartTabSharingActive(false);
+  handler_->SubmitQuery("query 2", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.ThreadWithTabsSubmitted", false, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerSmartTabSharingTest,
+                       SubmitQueryLogsOptOutMidThreadFalseWhenMultiTurn) {
+  base::HistogramTester histogram_tester;
+
+  // Single-turn query with STS active: OptOutMidThread is not logged.
+  handler_->SetSmartTabSharingActive(true);
+  handler_->SubmitQuery("first query", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", 0);
+
+  // Multi-turn query with STS still active: OptOutMidThread(false) is logged.
+  contextual_tasks::ThreadTurn turn;
+  turn.query = "first query";
+  session_handle_->AddThreadTurn(turn);
+
+  handler_->SubmitQuery("second query", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", false, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerSmartTabSharingTest,
+                       SetSmartTabSharingActiveFalseLogsOptOutMidThreadTrue) {
+  base::HistogramTester histogram_tester;
+
+  handler_->SetSmartTabSharingActive(true);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked",
+      contextual_tasks::SmartTabSharingToggleState::kToggledOn, 1);
+
+  // Add a previous turn to session handle.
+  contextual_tasks::ThreadTurn turn;
+  turn.query = "first query";
+  session_handle_->AddThreadTurn(turn);
+
+  // Explicitly turn STS off mid-thread.
+  handler_->SetSmartTabSharingActive(false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked",
+      contextual_tasks::SmartTabSharingToggleState::kToggledOff, 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked", 2);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", true, 1);
+}
+
+class ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest
+    : public ContextualTasksComposeboxHandlerTest {
+ public:
+  ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest() {
+    feature_list_sts_.InitWithFeaturesAndParameters(
+        {{contextual_tasks::kContextualTasksContext,
+          {{"ContextualTasksContextSmartTabSharing", "true"},
+           {"ContextualTasksContextToggleOffAfterSubmit", "true"}}},
+         {contextual_tasks::kContextualTasksForceEntryPointEligibility, {}}},
+        {});
+  }
+  ~ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest()
+      override = default;
+
+ private:
+  base::test::ScopedFeatureList feature_list_sts_;
+};
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest,
+    InitializeInputStateModelDeactivatesSmartTabSharingWhenPreviousTurnSubmitted) {
+  base::HistogramTester histogram_tester;
+
+  auto mock_session = std::make_unique<testing::NiceMock<
+      contextual_search::MockContextualSearchSessionHandle>>();
+  contextual_tasks::ThreadTurn turn;
+  turn.query = "sample query";
+  mock_session->AddThreadTurn(turn);
+  mock_ui_->SetSessionHandle(mock_session.get());
+
+  auto input_state_model = std::make_unique<contextual_search::InputStateModel>(
+      *mock_session, omnibox::SearchboxConfig(), GURL(), false, false, false);
+  input_state_model->SetSmartTabSharingActive(true);
+
+  searchbox_page_receiver_.reset();
+  auto custom_handler = std::make_unique<TestContextualTasksComposeboxHandler>(
+      mock_ui_.get(), profile(), web_contents(),
+      mojo::PendingReceiver<composebox::mojom::PageHandler>(),
+      mojo::PendingReceiver<searchbox::mojom::PageHandler>(),
+      searchbox_page_receiver_.BindNewPipeAndPassRemote(),
+      base::BindRepeating(
+          &ContextualTasksUI::GetOrCreateContextualSessionHandle,
+          base::Unretained(mock_ui_.get())),
+      base::BindRepeating(&ContextualTasksUI::ClearContextualSessionHandle,
+                          base::Unretained(mock_ui_.get())),
+      base::BindRepeating(
+          [](std::unique_ptr<contextual_search::InputStateModel>* model) {
+            return std::move(*model);
+          },
+          base::Unretained(&input_state_model)));
+
+  EXPECT_FALSE(custom_handler->IsSmartTabSharingActive());
+  EXPECT_FALSE(mock_session->smart_tab_sharing_active().value_or(true));
+
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", 0);
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked", 0);
+
+  mock_ui_->SetSessionHandle(nullptr);
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest,
+    SubmitQueryDeactivatesSmartTabSharingAfterFirstTurn) {
+  handler_->SetSmartTabSharingActive(true);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+
+  handler_->SubmitQuery("test query", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+  EXPECT_FALSE(session_handle_->smart_tab_sharing_active().value_or(true));
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest,
+    MultiTurnDoesNotTriggerOptOutMidThreadOrMenuClicked) {
+  handler_->SetSmartTabSharingActive(true);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+
+  base::HistogramTester histogram_tester;
+
+  // Submit initial query.
+  handler_->SubmitQuery("query 1", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+  EXPECT_FALSE(session_handle_->smart_tab_sharing_active().value_or(true));
+
+  // Submit follow-up query without re-enabling STS.
+  handler_->SubmitQuery("query 2", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+
+  // Automatic deactivation after submit should not record opt out mid-thread or
+  // menu toggled off.
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", 0);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked",
+      contextual_tasks::SmartTabSharingToggleState::kToggledOff, 0);
+
+  // ThreadWithTabsSubmitted should record true for initial turn and false for
+  // follow-up turn.
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.ThreadWithTabsSubmitted", true, 1);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.ThreadWithTabsSubmitted", false, 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.ThreadWithTabsSubmitted", 2);
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest,
+    ReenablingInMultiTurnDeactivatesAgainWithoutLoggingOptOutMidThread) {
+  handler_->SetSmartTabSharingActive(true);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+
+  // Submit initial query.
+  handler_->SubmitQuery("query 1", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+
+  base::HistogramTester histogram_tester;
+
+  // Manually re-enable STS for the follow-up turn.
+  handler_->SetSmartTabSharingActive(true);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked",
+      contextual_tasks::SmartTabSharingToggleState::kToggledOn, 1);
+
+  // Submit follow-up query with STS re-enabled.
+  handler_->SubmitQuery("query 2", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+
+  // OptOutMidThread should not be recorded when ToggleOffAfterSubmit is
+  // enabled.
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", 0);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked",
+      contextual_tasks::SmartTabSharingToggleState::kToggledOff, 0);
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.ThreadWithTabsSubmitted", true, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerSmartTabSharingToggleOffAfterSubmitTest,
+    ExplicitToggleOffMidThreadDoesNotLogOptOutMidThread) {
+  handler_->SetSmartTabSharingActive(true);
+
+  // Submit initial query.
+  handler_->SubmitQuery("query 1", 0, false, false, false, false,
+                        /*is_voice_search=*/false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+
+  // Re-enable STS.
+  handler_->SetSmartTabSharingActive(true);
+  EXPECT_TRUE(handler_->IsSmartTabSharingActive());
+
+  base::HistogramTester histogram_tester;
+
+  // Explicitly turn STS back off before submitting turn 2.
+  handler_->SetSmartTabSharingActive(false);
+  EXPECT_FALSE(handler_->IsSmartTabSharingActive());
+
+  histogram_tester.ExpectBucketCount(
+      "ContextualSearch.SmartTabSharing.MenuOptionClicked",
+      contextual_tasks::SmartTabSharingToggleState::kToggledOff, 1);
+  // OptOutMidThread should not be logged because ToggleOffAfterSubmit is
+  // enabled.
+  histogram_tester.ExpectTotalCount(
+      "ContextualSearch.SmartTabSharing.OptOutMidThread", 0);
 }

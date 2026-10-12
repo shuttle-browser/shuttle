@@ -42,7 +42,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
-#include "chrome/browser/ui/side_panel/side_panel_ui_provider.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/webui_url_constants.h"
@@ -58,6 +57,7 @@
 #include "components/pdf/common/constants.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/sessions/content/session_tab_helper.h"
+#include "components/sessions/core/session_id.h"
 #include "components/signin/public/identity_manager/account_capabilities.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -599,6 +599,17 @@ void ContextualCueingController::OnAllEligibilityChecksComplete(
     return;
   }
 
+  CueTarget* target = GetTarget(best_type);
+  auto* window = tab_->GetBrowserWindowInterface();
+  if (auto* side_panel_ui = window ? SidePanelUI::From(window) : nullptr;
+      side_panel_ui && side_panel_ui->IsSidePanelShowing() && target &&
+      !target->IsPersistent()) {
+    CUEING_LOG(
+        "Not attempting to show/generate cue because side panel is visible.");
+    RecordContextualCueingDecision(ContextualCueingDecision::kSidePanelShowing);
+    return;
+  }
+
   CUEING_LOG(base::StringPrintf(
       "OnAllEligibilityChecksComplete: winner is '%s' (score %.4f)",
       GetName(best_type), best_score));
@@ -957,12 +968,23 @@ ContextualCueingDecision ContextualCueingController::IsAllowedToShowCue() {
     return ContextualCueingDecision::kInfobarVisible;
   }
 
-  if (auto* side_panel_ui = SidePanelUIProvider::From(window);
+  if (auto* side_panel_ui = SidePanelUI::From(window);
       side_panel_ui && side_panel_ui->IsSidePanelShowing()) {
-    CUEING_LOG(
-        "Not attempting to show/generate cue because side panel is visible.");
-    RecordContextualCueingDecision(ContextualCueingDecision::kSidePanelShowing);
-    return ContextualCueingDecision::kSidePanelShowing;
+    bool bypass_for_target = false;
+    for (const auto& [type, target] : cue_targets_) {
+      if (target && target->IsPersistent()) {
+        bypass_for_target = true;
+        break;
+      }
+    }
+
+    if (!bypass_for_target) {
+      CUEING_LOG(
+          "Not attempting to show/generate cue because side panel is visible.");
+      RecordContextualCueingDecision(
+          ContextualCueingDecision::kSidePanelShowing);
+      return ContextualCueingDecision::kSidePanelShowing;
+    }
   }
 
   if (tab_->IsSplit() && !kShouldShowCueInSplitView.Get()) {
@@ -1317,6 +1339,13 @@ void ContextualCueingController::RecordContextualCueingDecision(
 }
 
 void ContextualCueingController::OnSidePanelShown() {
+  if (active_cue_data_) {
+    CueTarget* target = GetTarget(active_cue_data_->cue_type);
+    if (target && target->IsPersistent()) {
+      HideAnchoredMessage();
+      return;
+    }
+  }
   HideCue();
 }
 
@@ -1385,7 +1414,21 @@ void ContextualCueingController::OnCueInteraction(
       tab_->GetProfile(), cue_id, cue_type, cue, tab_, tabs_to_show,
       background_tabs, interaction_type, cuj);
 
-  HideCue();
+  if (interaction_type == ContextualCueingInteraction::kCueDismissed) {
+    CueTarget* target = GetTarget(cue_type);
+    if (target && target->DowngradesToQuietOnDismiss()) {
+      HideAnchoredMessage();
+    } else {
+      HideCue();
+    }
+  } else {
+    CueTarget* target = GetTarget(cue_type);
+    if (!target || !target->IsPersistent()) {
+      HideCue();
+    } else {
+      HideAnchoredMessage();
+    }
+  }
 
   switch (interaction_type) {
     case ContextualCueingInteraction::kCueDismissed:
@@ -1440,12 +1483,21 @@ void ContextualCueingController::HideCue() {
 #endif
 }
 
+void ContextualCueingController::HideAnchoredMessage() {
+#if !BUILDFLAG(IS_ANDROID)
+  if (page_actions::PageActionController* page_action_controller =
+          tab_->GetTabFeatures()->page_action_controller()) {
+    page_action_controller->HideAnchoredMessage(kActionAnchoredContextualCue);
+  }
+#endif
+}
+
 void ContextualCueingController::ObserveSidePanel() {
   if (side_panel_shown_subscription_) {
     return;
   }
   if (auto* window = tab_->GetBrowserWindowInterface()) {
-    if (auto* side_panel_ui = SidePanelUIProvider::From(window)) {
+    if (auto* side_panel_ui = SidePanelUI::From(window)) {
       side_panel_shown_subscription_ = side_panel_ui->RegisterSidePanelShown(
           base::BindRepeating(&ContextualCueingController::OnSidePanelShown,
                               weak_ptr_factory_.GetWeakPtr()));

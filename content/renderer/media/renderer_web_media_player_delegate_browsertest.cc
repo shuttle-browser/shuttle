@@ -34,8 +34,8 @@ constexpr base::TimeDelta kIdleTimeout = base::Seconds(1);
 class MockWebMediaPlayerDelegateObserver
     : public blink::WebMediaPlayerDelegate::Observer {
  public:
-  MockWebMediaPlayerDelegateObserver() {}
-  ~MockWebMediaPlayerDelegateObserver() {}
+  MockWebMediaPlayerDelegateObserver() = default;
+  ~MockWebMediaPlayerDelegateObserver() = default;
 
   // WebMediaPlayerDelegate::Observer implementation.
   MOCK_METHOD0(OnPageHidden, void());
@@ -47,14 +47,14 @@ class MockWebMediaPlayerDelegateObserver
 
 class RendererWebMediaPlayerDelegateTest : public content::RenderViewTest {
  public:
-  RendererWebMediaPlayerDelegateTest() {}
+  RendererWebMediaPlayerDelegateTest() = default;
 
   RendererWebMediaPlayerDelegateTest(
       const RendererWebMediaPlayerDelegateTest&) = delete;
   RendererWebMediaPlayerDelegateTest& operator=(
       const RendererWebMediaPlayerDelegateTest&) = delete;
 
-  ~RendererWebMediaPlayerDelegateTest() override {}
+  ~RendererWebMediaPlayerDelegateTest() override = default;
 
   void SetUp() override {
     RenderViewTest::SetUp();
@@ -197,6 +197,54 @@ TEST_F(RendererWebMediaPlayerDelegateTest, IdleDelegatesAreSuspended) {
     tick_clock_.Advance(kIdleTimeout + base::Microseconds(1));
     RunLoopOnce();
   }
+}
+
+TEST_F(RendererWebMediaPlayerDelegateTest, DestroyingDelegateOnPageHidden) {
+  const int delegate_id_1 = delegate_manager_->AddObserver(&observer_1_);
+  const int delegate_id_2 = delegate_manager_->AddObserver(&observer_2_);
+
+  int call_count = 0;
+  auto destroy_delegate = [&]() {
+    ++call_count;
+    delegate_manager_->RemoveObserver(delegate_id_1);
+    delegate_manager_->RemoveObserver(delegate_id_2);
+    delegate_manager_.reset();
+  };
+
+  EXPECT_CALL(observer_1_, OnPageHidden())
+      .Times(testing::AtMost(1))
+      .WillRepeatedly(destroy_delegate);
+  EXPECT_CALL(observer_2_, OnPageHidden())
+      .Times(testing::AtMost(1))
+      .WillRepeatedly(destroy_delegate);
+
+  delegate_manager_->OnPageVisibilityChanged(
+      blink::mojom::PageVisibilityState::kHidden);
+  EXPECT_EQ(1, call_count);
+}
+
+TEST_F(RendererWebMediaPlayerDelegateTest, DestroyingDelegateOnPageShown) {
+  const int delegate_id_1 = delegate_manager_->AddObserver(&observer_1_);
+  const int delegate_id_2 = delegate_manager_->AddObserver(&observer_2_);
+
+  int call_count = 0;
+  auto destroy_delegate = [&]() {
+    ++call_count;
+    delegate_manager_->RemoveObserver(delegate_id_1);
+    delegate_manager_->RemoveObserver(delegate_id_2);
+    delegate_manager_.reset();
+  };
+
+  EXPECT_CALL(observer_1_, OnPageShown())
+      .Times(testing::AtMost(1))
+      .WillRepeatedly(destroy_delegate);
+  EXPECT_CALL(observer_2_, OnPageShown())
+      .Times(testing::AtMost(1))
+      .WillRepeatedly(destroy_delegate);
+
+  delegate_manager_->OnPageVisibilityChanged(
+      blink::mojom::PageVisibilityState::kVisible);
+  EXPECT_EQ(1, call_count);
 }
 
 }  // namespace media

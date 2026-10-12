@@ -54,7 +54,7 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
-#include "third_party/blink/renderer/core/frame/local_frame_ukm_aggregator.h"
+#include "third_party/blink/renderer/core/frame/local_frame_metrics_aggregator.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/screen_metrics_emulator.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
@@ -453,7 +453,7 @@ WebPagePopupImpl::WebPagePopupImpl(
 
   // TODO(https://crbug.com/1355751) Initialize `storage_key`.
   frame->Init(/*opener=*/nullptr, DocumentToken(),
-              /*initiator_state_token=*/base::UnguessableToken::Create(),
+              /*initiator_state_token=*/InitiatorStateToken(),
               /*policy_container=*/nullptr, StorageKey(),
               /*document_ukm_source_id=*/ukm::kInvalidSourceId,
               /*creator_base_url=*/NullUrl());
@@ -660,6 +660,10 @@ void WebPagePopupImpl::Update() {
   }
 
   popup_client_->Update(forced_update);
+  if (!widget_base_) {
+    // Something inside Update() closed this popup.
+    return;
+  }
   if (forced_update) {
     SetWindowRect(WindowRectInScreen());
   }
@@ -1064,6 +1068,10 @@ KURL WebPagePopupImpl::GetURLForDebugTrace() {
 void WebPagePopupImpl::WidgetHostDisconnected() {
   Close();
   // Careful, this is now destroyed.
+}
+
+void WebPagePopupImpl::WidgetHostDisconnectedForTesting() {
+  WidgetHostDisconnected();
 }
 
 void WebPagePopupImpl::Close() {

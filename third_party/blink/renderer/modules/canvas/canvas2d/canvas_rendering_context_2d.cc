@@ -121,6 +121,7 @@
 #include "third_party/blink/renderer/platform/graphics/web_graphics_context_3d_provider_util.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
 #include "third_party/blink/renderer/platform/wtf/hash_table.h"
@@ -303,9 +304,7 @@ void CanvasRenderingContext2D::LoseContext(LostContextMode lost_mode) {
   ResetInternal();
   HTMLCanvasElement* const element = canvas();
   if (element != nullptr) [[likely]] {
-    shared_image_provider_ = nullptr;
-    bitmap_provider_ = nullptr;
-    last_recording_ = std::nullopt;
+    ResetResourceProvider();
     element->DiscardResources();
     element->DiscardResourceDispatcher();
 
@@ -380,9 +379,6 @@ bool CanvasRenderingContext2D::WritePixels(const SkImageInfo& orig_info,
     }
   }
 
-  // WritePixels content is not saved in the recording. Calling WritePixels
-  // therefore invalidates the last recording because it's now
-  // missing that information.
   bool result = false;
   if (shared_image_provider_) {
     result =
@@ -391,7 +387,12 @@ bool CanvasRenderingContext2D::WritePixels(const SkImageInfo& orig_info,
     result = bitmap_provider_->WritePixels(orig_info, pixels, row_bytes, x, y);
   }
   if (result) {
+    // WritePixels content is not saved in the recording. Thus, WritePixels()
+    // must invalidate the last recording and ensure that any subsequent
+    // recording is not treated as a full-frame recording, as it would be
+    // missing this pixel data.
     last_recording_ = std::nullopt;
+    set_clear_frame(false);
   }
   return result;
 }
@@ -516,26 +517,41 @@ const MemoryManagedPaintRecorder* CanvasRenderingContext2D::Recorder() const {
   if (!canvas()) {
     return nullptr;
   }
-  if (shared_image_provider_) {
-    return &shared_image_provider_->Recorder();
-  }
-  if (bitmap_provider_) {
-    return &bitmap_provider_->Recorder();
-  }
-  return nullptr;
+  return recorder_.get();
 }
 
 MemoryManagedPaintRecorder* CanvasRenderingContext2D::Recorder() {
   if (!canvas()) {
     return nullptr;
   }
+  return recorder_.get();
+}
+
+std::unique_ptr<MemoryManagedPaintRecorder>
+CanvasRenderingContext2D::ReleaseRecorder() {
+  if (recorder_) {
+    recorder_->SetClient(nullptr);
+  }
+  return std::move(recorder_);
+}
+
+void CanvasRenderingContext2D::SetRecorder(
+    std::unique_ptr<MemoryManagedPaintRecorder> recorder) {
+  if (recorder) {
+    recorder->SetClient(this);
+  }
+  recorder_ = std::move(recorder);
+  if (recorder_ && shared_image_provider_ &&
+      shared_image_provider_->IsGraphite()) {
+    recorder_->DisableLineDrawingAsPaths();
+  }
+}
+
+void CanvasRenderingContext2D::RecordingCleared() {
+  BaseRenderingContext2D::RecordingCleared();
   if (shared_image_provider_) {
-    return &shared_image_provider_->Recorder();
+    shared_image_provider_->RecordingCleared();
   }
-  if (bitmap_provider_) {
-    return &bitmap_provider_->Recorder();
-  }
-  return nullptr;
 }
 
 void CanvasRenderingContext2D::WillDraw(
@@ -562,10 +578,10 @@ void CanvasRenderingContext2D::WillDraw(
 }
 
 void CanvasRenderingContext2D::FlushIfRecordingLimitExceeded() {
+  if (Host()->IsPrinting() && clear_frame()) {
+    return;
+  }
   if (shared_image_provider_) {
-    if (Host()->IsPrinting() && shared_image_provider_->clear_frame()) {
-      return;
-    }
     const MemoryManagedPaintRecorder* recorder = Recorder();
     CHECK(recorder);
     if (recorder->ReleasableOpBytesUsed() >
@@ -575,9 +591,6 @@ void CanvasRenderingContext2D::FlushIfRecordingLimitExceeded() {
       FlushCanvas(FlushReason::kOther);
     }
   } else if (bitmap_provider_) {
-    if (Host()->IsPrinting() && bitmap_provider_->clear_frame()) {
-      return;
-    }
     const MemoryManagedPaintRecorder* recorder = Recorder();
     CHECK(recorder);
     if (recorder->ReleasableOpBytesUsed() >
@@ -615,8 +628,7 @@ void CanvasRenderingContext2D::DidFlushRecording(
 void CanvasRenderingContext2D::OnFlushForImage(
     cc::PaintImage::ContentId content_id) {
   if (shared_image_provider_ && !shared_image_provider_->IsSoftware()) {
-    if (shared_image_provider_->Recorder().getRecordingCanvas().IsCachingImage(
-            content_id)) {
+    if (recorder_->getRecordingCanvas().IsCachingImage(content_id)) {
       FlushCanvas(FlushReason::kOther);
     }
     shared_image_provider_->OnFlushForImage(content_id);
@@ -911,7 +923,12 @@ void CanvasRenderingContext2D::FinalizeFrame(FlushReason reason) {
   HTMLCanvasElement* host = canvas();
   CHECK(host);
 
-  FlushCanvas(reason);
+  if (RuntimeEnabledFeatures::Canvas2dDeferredFlushEnabled() &&
+      IsComposited() && reason == FlushReason::kCanvasPushFrame) {
+    // Flush is deferred to PrepareTransferableResource when composited.
+  } else {
+    FlushCanvas(reason);
+  }
   if (reason == FlushReason::kCanvasPushFrame) {
     if (host->IsDisplayed()) {
       // Make sure the GPU is never more than two animation frames behind.
@@ -1165,9 +1182,7 @@ UniqueFontSelector* CanvasRenderingContext2D::GetFontSelector() const {
 }
 
 void CanvasRenderingContext2D::SizeChanged() {
-  shared_image_provider_ = nullptr;
-  bitmap_provider_ = nullptr;
-  last_recording_ = std::nullopt;
+  ResetResourceProvider();
   did_fail_to_create_resource_provider_ = false;
 }
 
@@ -1179,9 +1194,7 @@ CanvasHibernationHandler* CanvasRenderingContext2D::GetHibernationHandler()
 void CanvasRenderingContext2D::Dispose() {
   FlushForImageListener::Get()->RemoveObserver(this);
   hibernation_handler_ = nullptr;
-  shared_image_provider_ = nullptr;
-  bitmap_provider_ = nullptr;
-  last_recording_ = std::nullopt;
+  ResetResourceProvider();
   CanvasRenderingContext::Dispose();
 }
 
@@ -1246,6 +1259,13 @@ void CanvasRenderingContext2D::CreateProvider() {
     bitmap_provider_ = Canvas2DBitmapProvider::CreateWithClear(
         canvas()->Size(), format, alpha_type, color_space, hdr_metadata,
         canvas());
+  }
+  if (shared_image_provider_ || bitmap_provider_) {
+    recorder_ =
+        std::make_unique<MemoryManagedPaintRecorder>(canvas()->Size(), this);
+    if (shared_image_provider_ && shared_image_provider_->IsGraphite()) {
+      recorder_->DisableLineDrawingAsPaths();
+    }
   }
 }
 
@@ -1350,6 +1370,7 @@ bool CanvasRenderingContext2D::InitializeResourceProvider() {
 void CanvasRenderingContext2D::ResetResourceProvider() {
   auto old_shared = std::move(shared_image_provider_);
   auto old_bitmap = std::move(bitmap_provider_);
+  recorder_.reset();
   last_recording_ = std::nullopt;
   if (canvas()) {
     canvas()->UpdateMemoryUsage();
@@ -1374,12 +1395,7 @@ void CanvasRenderingContext2D::DropAndRecreateExistingResourceProvider() {
   if (!image) {
     return;
   }
-  std::unique_ptr<MemoryManagedPaintRecorder> recorder;
-  if (shared_image_provider_) {
-    recorder = shared_image_provider_->ReleaseRecorder();
-  } else {
-    recorder = bitmap_provider_->ReleaseRecorder();
-  }
+  std::unique_ptr<MemoryManagedPaintRecorder> recorder = ReleaseRecorder();
   canvas()->ResetLayer();
   ResetResourceProvider();
 
@@ -1397,11 +1413,11 @@ void CanvasRenderingContext2D::DropAndRecreateExistingResourceProvider() {
   if (shared_image_provider_) {
     shared_image_provider_->RestoreBackBuffer(
         image->PaintImageForCurrentFrame());
-    shared_image_provider_->SetRecorder(std::move(recorder));
+
   } else {
     bitmap_provider_->RestoreBackBuffer(image->PaintImageForCurrentFrame());
-    bitmap_provider_->SetRecorder(std::move(recorder));
   }
+  SetRecorder(std::move(recorder));
 
   canvas()->UpdateMemoryUsage();
 }
@@ -1467,11 +1483,11 @@ void CanvasRenderingContext2D::WakeUpFromHibernation() {
   builder.set_id(PaintImage::GetNextId());
   if (shared_image_provider_) {
     shared_image_provider_->RestoreBackBuffer(builder.TakePaintImage());
-    shared_image_provider_->SetRecorder(hibernation_handler->ReleaseRecorder());
+
   } else if (bitmap_provider_) {
     bitmap_provider_->RestoreBackBuffer(builder.TakePaintImage());
-    bitmap_provider_->SetRecorder(hibernation_handler->ReleaseRecorder());
   }
+  SetRecorder(hibernation_handler->ReleaseRecorder());
   // The hibernation image is no longer valid, clear it.
   hibernation_handler->Clear();
   DCHECK(!hibernation_handler->IsHibernating());
@@ -1488,6 +1504,12 @@ void CanvasRenderingContext2D::SetCanvas2DResourceProviderForTesting(
   hibernation_handler_ = std::make_unique<CanvasHibernationHandler>(*this);
   ResetResourceProvider();
   shared_image_provider_ = std::move(provider);
+  if (shared_image_provider_) {
+    recorder_ = std::make_unique<MemoryManagedPaintRecorder>(size, this);
+    if (shared_image_provider_->IsGraphite()) {
+      recorder_->DisableLineDrawingAsPaths();
+    }
+  }
 }
 
 void CanvasRenderingContext2D::SetBitmapProviderForTesting(
@@ -1498,6 +1520,9 @@ void CanvasRenderingContext2D::SetBitmapProviderForTesting(
   hibernation_handler_ = std::make_unique<CanvasHibernationHandler>(*this);
   ResetResourceProvider();
   bitmap_provider_ = std::move(provider);
+  if (bitmap_provider_) {
+    recorder_ = std::make_unique<MemoryManagedPaintRecorder>(size, this);
+  }
 }
 
 void CanvasRenderingContext2D::SetCanvas2DResourceProviderForTesting(

@@ -2338,10 +2338,8 @@ StatusOr<BackingStore::RecordIdentifier> BackingStore::Transaction::PutRecord(
   std::string v;
   EncodeVarInt(version, &v);
   // The value must fit inline as larger values would have gotten wrapped.
-  if (value.bits.storage_type() != mojo_base::BigBuffer::StorageType::kBytes) {
-    return base::unexpected(
-        Status::InvalidArgument("Value bits must be inlined"));
-  }
+  CHECK_EQ(value.bits.storage_type(), mojo_base::BigBuffer::StorageType::kBytes)
+      << "Value bits must be inlined";
   v.append(value.bits.begin(), value.bits.end());
 
   s = leveldb_transaction->Put(object_store_data_key, &v);
@@ -4627,7 +4625,7 @@ bool BackingStore::Transaction::WriteNewBlobs(BlobWriteCallback callback) {
                             storage::mojom::WriteBlobToFileResult::kSuccess);
                       },
                       weak_ptr_factory_.GetWeakPtr(),
-                      base::Unretained(&entry),
+                      base::UnsafeDanglingUntriaged(&entry),
                       write_result_callback));
           break;
         }

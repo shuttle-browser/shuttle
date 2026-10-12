@@ -613,6 +613,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
        base::FeatureList::IsEnabled(contextual_cueing::kContextualCueingV2)},
       {"showInlineCueMenuControl",
        base::FeatureList::IsEnabled(features::kGlicSelectionPrompt) &&
+           !features::kGlicSelectionPromptUpdatesOnly.Get() &&
            glic_enablement.ShouldShowSettingsPage()},
       {"showSkillsSettingPage",
        base::FeatureList::IsEnabled(features::kSkillsEnabled)},
@@ -677,9 +678,7 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
 
   html_source->AddString(
       "settingsRefresh2026",
-      base::FeatureList::IsEnabled(features::kSettingsRefresh2026)
-          ? "settings-refresh-2026"
-          : "");
+      features::IsSettingsRefresh2026Enabled() ? "settings-refresh-2026" : "");
 
   personal_context::PersonalContextEligibilityService* eligibility_service =
       PersonalContextEligibilityServiceFactory::GetForProfile(profile);
@@ -696,6 +695,10 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       autofill::MayPerformAtMemoryAction(
           autofill::AtMemoryAction::kAllowCustomizeAtMemoryShortcut,
           autofill_client));
+
+  html_source->AddBoolean("isAtMemoryDoubleCtrlEnabled",
+                          base::FeatureList::IsEnabled(
+                              autofill::features::kAutofillAtMemoryDoubleCtrl));
 
   html_source->AddString(
       "webuiRefresh2026",

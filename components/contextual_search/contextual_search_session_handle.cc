@@ -218,8 +218,12 @@ void ContextualSearchSessionHandle::StartTabContextUploadFlow(
     return;
   }
 
-  if (contextual_input_data &&
-      contextual_input_data->tab_session_id.has_value()) {
+  if (!contextual_input_data) {
+    uploaded_context_tokens_.erase(it);
+    return;
+  }
+
+  if (contextual_input_data->tab_session_id.has_value()) {
     deselected_tabs_urls_.erase(contextual_input_data->tab_session_id.value());
   }
 
@@ -440,6 +444,11 @@ bool ContextualSearchSessionHandle::DeleteFile(
   }
 
   return success;
+}
+
+bool ContextualSearchSessionHandle::RemoveUploadedContextToken(
+    const base::UnguessableToken& file_token) {
+  return std::erase(uploaded_context_tokens_, file_token) > 0;
 }
 
 void ContextualSearchSessionHandle::ClearFiles(bool query_submitted) {
@@ -986,6 +995,14 @@ bool ContextualSearchSessionHandle::AreUrlsEquivalent(
 void ContextualSearchSessionHandle::RemoveDeselectedTab(
     SessionID tab_session_id) {
   deselected_tabs_urls_.erase(tab_session_id);
+}
+
+void ContextualSearchSessionHandle::set_auth_user_index(
+    size_t auth_user_index) {
+  auth_user_index_ = auth_user_index;
+  if (auto* controller = GetController()) {
+    controller->SetAuthUserIndex(auth_user_index);
+  }
 }
 
 }  // namespace contextual_search

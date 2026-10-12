@@ -38,7 +38,6 @@
 #import "ios/chrome/browser/composebox/ui/composebox_input_plate_view_controller_delegate.h"
 #import "ios/chrome/browser/composebox/ui/composebox_ui_config.h"
 #import "ios/chrome/browser/composebox/ui/composebox_ui_input_state.h"
-#import "ios/chrome/browser/composebox/ui/composebox_ui_util.h"
 #import "ios/chrome/browser/drag_and_drop/model/drag_item_util.h"
 #import "ios/chrome/browser/omnibox/ui/omnibox_text_input.h"
 #import "ios/chrome/browser/omnibox/ui/text_field_view_containing.h"
@@ -520,6 +519,27 @@ UIImage* SendButtonImage(BOOL highlighted,
   [_plusButton.contextMenuInteraction dismissMenu];
 }
 
+- (void)updateTheme:(ComposeboxTheme*)theme {
+  _theme = theme;
+  _inputPlateContainerView.backgroundColor = _theme.inputPlateBackgroundColor;
+  CGFloat cornerRadius =
+      _theme.inputPlatePosition == ComposeboxInputPlatePosition::kiPad
+          ? kInputPlateIpadCornerRadius
+          : kInputPlateCornerRadius;
+  _inputPlateContainerView.layer.cornerRadius = cornerRadius;
+  _inputPlateInternalContainerView.layer.cornerRadius = cornerRadius;
+  if (_entrypoint == ComposeboxEntrypoint::kCobrowse) {
+    _editView.minimumHeight = kOmniboxCobrowseMinHeight;
+  } else if (_theme.inputPlatePosition == ComposeboxInputPlatePosition::kiPad) {
+    _editView.minimumHeight = kOmniboxIPadMinHeight;
+  } else {
+    _editView.minimumHeight = kOmniboxMinHeight;
+  }
+  [self updateInputPlateStackViewPadding];
+  [self updateDepthShadowAppearance];
+  [self updateAIMButtonAppearance];
+}
+
 #pragma mark - ComposeboxInputItemCellDelegate
 
 - (void)composeboxInputItemCellDidTapCloseButton:
@@ -913,12 +933,7 @@ UIImage* SendButtonImage(BOOL highlighted,
   ComposeboxInputItem* item =
       [_dataSource itemIdentifierForIndexPath:indexPath];
 
-  if (!item ||
-      item.type == ComposeboxInputItemType::kComposeboxInputItemTypeImage) {
-    return composeboxAttachments::kImageInputItemSize;
-  }
-
-  return composeboxAttachments::kTabFileInputItemSize;
+  return [ComposeboxInputItemView sizeWithItem:item];
 }
 
 #pragma mark - UICollectionViewDelegate
@@ -976,7 +991,6 @@ UIImage* SendButtonImage(BOOL highlighted,
 
 - (UICollectionViewDiffableDataSource<NSString*, ComposeboxInputItem*>*)
     createDataSource {
-  __weak ComposeboxTheme* theme = _theme;
   __weak __typeof(self) weakSelf = self;
   return [[UICollectionViewDiffableDataSource alloc]
       initWithCollectionView:_carouselView
@@ -988,13 +1002,17 @@ UIImage* SendButtonImage(BOOL highlighted,
                           dequeueReusableCellWithReuseIdentifier:
                               kItemCellReuseIdentifier
                                                     forIndexPath:indexPath];
-                  [cell configureWithItem:item theme:theme];
+                  [cell configureWithItem:item theme:[weakSelf currentTheme]];
                   cell.delegate = weakSelf;
                   return cell;
                 }];
 }
 
 #pragma mark - Private helpers
+
+- (ComposeboxTheme*)currentTheme {
+  return _theme;
+}
 
 /// Handles keyboard appearance notifications to adjust layout.
 - (void)keyboardWillShow:(NSNotification*)notification {
@@ -1395,6 +1413,8 @@ UIImage* SendButtonImage(BOOL highlighted,
     [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
     [self performTabAttachmentAnimationIfNeeded];
+  } else if (isLoading) {
+    _pendingTabAttachmentAnimation = YES;
   }
 }
 

@@ -82,8 +82,7 @@ class PasswordAutofillManager : public autofill::AutofillSuggestionDelegate,
   std::variant<autofill::AutofillDriver*, PasswordManagerDriver*>
   GetDriver_DoNotUse() override;
   void OnSuggestionsShown(base::span<const autofill::Suggestion> suggestions,
-                          base::optional_ref<const SuggestionMetadata>
-                              parent_suggestion_metadata) override;
+                          const SuggestionUiMetadata& metadata) override;
   void OnSuggestionsHidden(autofill::SuggestionHidingReason reason) override;
   bool OnFilterChanged(const std::u16string& filter) override;
   bool OnSearchSubmitted(const std::u16string& filter) override;
@@ -121,8 +120,11 @@ class PasswordAutofillManager : public autofill::AutofillSuggestionDelegate,
       base::i18n::TextDirection text_direction,
       bool show_password_suggestions);
 
-  // Called when main frame navigates. Not called for in-page navigations.
-  void DidNavigateMainFrame();
+  // Called when a cross-document navigation commits in the frame of the
+  // driver. Resets the state that belongs to the previous document, including
+  // the suggestions shown by `this` and pending callbacks. Not called for
+  // in-page navigations.
+  void DidNavigateFrame();
 
   PasswordManualFallbackMetricsRecorder&
   GetPasswordManualFallbackMetricsRecorder() {

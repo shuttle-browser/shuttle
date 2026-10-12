@@ -16,11 +16,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import static org.chromium.chrome.browser.preferences.ChromePreferenceKeys.GLIC_AUTO_BROWSE_SETTING_ENABLED;
+import static org.chromium.chrome.browser.preferences.ChromePreferenceKeys.GLIC_MICROPHONE_SETTING_ENABLED;
 import static org.chromium.chrome.browser.preferences.ChromePreferenceKeys.GLIC_PRECISE_LOCATION_SETTING_ENABLED;
 import static org.chromium.chrome.browser.preferences.ChromePreferenceKeys.GLIC_SHARE_CURRENT_TAB_DEFAULT_ACCESS_ENABLED;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 
 import androidx.fragment.app.FragmentManager;
@@ -33,6 +35,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -69,7 +72,7 @@ import org.chromium.ui.base.TestActivity;
     ChromeFeatureList.ANDROID_BOTTOM_BAR,
     ChromeFeatureList.ENABLE_ANDROID_SIDE_PANEL
 })
-@EnableFeatures(ChromeFeatureList.ACTOR_LOGIN_PERMISSIONS_UI)
+@EnableFeatures({ChromeFeatureList.ACTOR_LOGIN_PERMISSIONS_UI, ChromeFeatureList.GLIC_VOICE})
 public class GlicSettingsUnitTest {
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -172,6 +175,24 @@ public class GlicSettingsUnitTest {
         ChromeSwitchPreference locationPref =
                 fragment.findPreference(GlicSettings.PERMISSION_LOCATION);
         assertTrue("Location preference should be visible", locationPref.isVisible());
+    }
+
+    @Test
+    public void testMicrophoneHighlightParam() {
+        Bundle args = new Bundle();
+        args.putString(
+                GlicNavigationUtils.EXTRA_HIGHLIGHT_FIELD,
+                GlicNavigationUtils.FIELD_MICROPHONE_PERMISSION);
+
+        // Verifies launching with highlight parameters does not crash
+        GlicSettings fragment = launchFragment(args);
+
+        // Flush shadow main looper to run the posted scroll/highlight runnables
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+
+        ChromeSwitchPreference microphonePref =
+                fragment.findPreference(GlicSettings.PERMISSION_MICROPHONE);
+        assertTrue("Microphone preference should be visible", microphonePref.isVisible());
     }
 
     @Test
@@ -291,6 +312,88 @@ public class GlicSettingsUnitTest {
     }
 
     @Test
+    public void testMicrophonePermissionInitialState_Enabled() {
+        doTestInitialState(
+                GlicPrefNames.GLIC_MICROPHONE_ENABLED, GlicSettings.PERMISSION_MICROPHONE, true);
+    }
+
+    @Test
+    public void testMicrophonePermissionInitialState_Disabled() {
+        doTestInitialState(
+                GlicPrefNames.GLIC_MICROPHONE_ENABLED, GlicSettings.PERMISSION_MICROPHONE, false);
+    }
+
+    @Test
+    public void testMicrophonePermissionToggle() {
+        doTestToggle(
+                GLIC_MICROPHONE_SETTING_ENABLED,
+                GlicPrefNames.GLIC_MICROPHONE_ENABLED,
+                GlicSettings.PERMISSION_MICROPHONE);
+        assertEquals(1, mUserActionTester.getActionCount("Glic.Settings.Microphone.Enabled"));
+        assertEquals(1, mUserActionTester.getActionCount("Glic.Settings.Microphone.Disabled"));
+    }
+
+    @Test
+    public void testMicrophonePermissionVisible_VoiceEnabled() {
+        GlicSettings fragment = launchFragment();
+        Preference microphonePref = fragment.findPreference(GlicSettings.PERMISSION_MICROPHONE);
+        assertTrue(
+                "Preference permissions_microphone should be visible", microphonePref.isVisible());
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.GLIC_VOICE)
+    public void testMicrophonePermissionHidden_VoiceDisabled() {
+        GlicSettings fragment = launchFragment();
+        Preference microphonePref = fragment.findPreference(GlicSettings.PERMISSION_MICROPHONE);
+        assertFalse(
+                "Preference permissions_microphone should be hidden", microphonePref.isVisible());
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.GLIC_VOICE)
+    public void testMicrophonePermissionNotSetUp_VoiceDisabled() {
+        // With the pref already enabled, the setup path would request RECORD_AUDIO on load. It
+        // must be skipped entirely so the user is not prompted for a hidden toggle.
+        when(mPrefServiceMock.getBoolean(GlicPrefNames.GLIC_MICROPHONE_ENABLED)).thenReturn(true);
+        Shadows.shadowOf(RuntimeEnvironment.getApplication())
+                .denyPermissions(Manifest.permission.RECORD_AUDIO);
+
+        GlicSettings fragment = launchFragment();
+
+        Preference microphonePref = fragment.findPreference(GlicSettings.PERMISSION_MICROPHONE);
+        assertFalse(
+                "Preference permissions_microphone should be hidden", microphonePref.isVisible());
+        // No listener and no shared pref sync means setupSwitchPreference() never ran, so
+        // ensureRecordAudioPermissionGranted() could not have been reached either.
+        assertTrue(
+                "Preference permissions_microphone should have no change listener",
+                microphonePref.getOnPreferenceChangeListener() == null);
+        assertFalse(
+                ChromeSharedPreferences.getInstance()
+                        .readBoolean(GLIC_MICROPHONE_SETTING_ENABLED, false));
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.GLIC_VOICE)
+    public void testSearchIndex_MicrophoneToggleHidden_RemovesEntry() {
+        GlicSettings.SEARCH_INDEX_DATA_PROVIDER.updateDynamicPreferences(
+                RuntimeEnvironment.getApplication(), mSearchIndexDataMock, mProfileMock);
+        verify(mSearchIndexDataMock)
+                .removeEntryForKey(
+                        GlicSettings.class.getName(), GlicSettings.PERMISSION_MICROPHONE);
+    }
+
+    @Test
+    public void testSearchIndex_MicrophoneToggleShown_KeepsEntry() {
+        GlicSettings.SEARCH_INDEX_DATA_PROVIDER.updateDynamicPreferences(
+                RuntimeEnvironment.getApplication(), mSearchIndexDataMock, mProfileMock);
+        verify(mSearchIndexDataMock, never())
+                .removeEntryForKey(
+                        GlicSettings.class.getName(), GlicSettings.PERMISSION_MICROPHONE);
+    }
+
+    @Test
     public void testTabAccessPermissionInitialState_Enabled() {
         doTestInitialState(
                 GlicPrefNames.GLIC_DEFAULT_TAB_CONTEXT_ENABLED,
@@ -351,6 +454,106 @@ public class GlicSettingsUnitTest {
         verify(mGlicKeyedServiceMock).setUserEnabledActuationOnWeb(false);
     }
 
+    @Test
+    public void testSparkAutoBrowseToggle_HiddenByDefault() {
+        // shouldShowExperimentalTriggeringToggle defaults to false in the mock, so the toggle
+        // should not be shown.
+        GlicSettings fragment = launchFragment();
+        Preference preference = fragment.findPreference("glic_permissions_spark_auto_browse");
+        assertFalse(
+                "Spark toggle should be hidden when experimental triggering is not allowed",
+                preference.isVisible());
+    }
+
+    @Test
+    public void testSparkAutoBrowsePermissionInitialState_Enabled() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(true);
+        when(mGlicKeyedServiceMock.getExperimentalTriggeringEnabled()).thenReturn(true);
+        GlicSettings fragment = launchFragment();
+        ChromeSwitchPreference preference =
+                fragment.findPreference("glic_permissions_spark_auto_browse");
+        assertTrue("Spark toggle should be visible when allowed", preference.isVisible());
+        assertTrue(preference.isChecked());
+    }
+
+    @Test
+    public void testSparkAutoBrowsePermissionInitialState_Disabled() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(true);
+        when(mGlicKeyedServiceMock.getExperimentalTriggeringEnabled()).thenReturn(false);
+        GlicSettings fragment = launchFragment();
+        ChromeSwitchPreference preference =
+                fragment.findPreference("glic_permissions_spark_auto_browse");
+        assertFalse(preference.isChecked());
+    }
+
+    @Test
+    public void testSparkAutoBrowsePermissionToggle() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(true);
+        when(mGlicKeyedServiceMock.getExperimentalTriggeringEnabled()).thenReturn(false);
+        GlicSettings fragment = launchFragment();
+        ChromeSwitchPreference preference =
+                fragment.findPreference("glic_permissions_spark_auto_browse");
+
+        // Test toggling on.
+        preference.getOnPreferenceChangeListener().onPreferenceChange(preference, true);
+        verify(mGlicKeyedServiceMock).setExperimentalTriggeringEnabled(true);
+
+        // Test toggling off.
+        preference.getOnPreferenceChangeListener().onPreferenceChange(preference, false);
+        verify(mGlicKeyedServiceMock).setExperimentalTriggeringEnabled(false);
+    }
+
+    @Test
+    public void testSparkAutoBrowseObserver_UpdatesCheckedState() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(true);
+        when(mGlicKeyedServiceMock.getExperimentalTriggeringEnabled()).thenReturn(false);
+        GlicSettings fragment = launchFragment();
+        ChromeSwitchPreference preference =
+                fragment.findPreference("glic_permissions_spark_auto_browse");
+        assertFalse(preference.isChecked());
+
+        ArgumentCaptor<GlicKeyedService.ExperimentalTriggeringObserver> captor =
+                ArgumentCaptor.forClass(GlicKeyedService.ExperimentalTriggeringObserver.class);
+        verify(mGlicKeyedServiceMock).addExperimentalTriggeringObserver(captor.capture());
+
+        // Simulate a native-side change; the toggle should follow.
+        captor.getValue().onExperimentalTriggeringEnabledChanged(true);
+        assertTrue(preference.isChecked());
+    }
+
+    @Test
+    public void testSparkAutoBrowseObserver_RemovedOnDestroy() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(true);
+        GlicSettings fragment = launchFragment();
+
+        ArgumentCaptor<GlicKeyedService.ExperimentalTriggeringObserver> captor =
+                ArgumentCaptor.forClass(GlicKeyedService.ExperimentalTriggeringObserver.class);
+        verify(mGlicKeyedServiceMock).addExperimentalTriggeringObserver(captor.capture());
+
+        mActivityScenarioRule.getScenario().moveToState(State.DESTROYED);
+        verify(mGlicKeyedServiceMock).removeExperimentalTriggeringObserver(captor.getValue());
+    }
+
+    @Test
+    public void testSearchIndex_SparkToggleHidden_RemovesEntry() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(false);
+        GlicSettings.SEARCH_INDEX_DATA_PROVIDER.updateDynamicPreferences(
+                RuntimeEnvironment.getApplication(), mSearchIndexDataMock, mProfileMock);
+        verify(mSearchIndexDataMock)
+                .removeEntryForKey(
+                        GlicSettings.class.getName(), "glic_permissions_spark_auto_browse");
+    }
+
+    @Test
+    public void testSearchIndex_SparkToggleShown_KeepsEntry() {
+        when(mGlicEnablingJniMock.shouldShowExperimentalTriggeringToggle(any())).thenReturn(true);
+        GlicSettings.SEARCH_INDEX_DATA_PROVIDER.updateDynamicPreferences(
+                RuntimeEnvironment.getApplication(), mSearchIndexDataMock, mProfileMock);
+        verify(mSearchIndexDataMock, never())
+                .removeEntryForKey(
+                        GlicSettings.class.getName(), "glic_permissions_spark_auto_browse");
+    }
+
     private void doTestToggle(String sharedPrefKey, String profilePrefKey, String viewId) {
         when(mPrefServiceMock.getBoolean(profilePrefKey)).thenReturn(false);
         GlicSettings fragment = launchFragment();
@@ -396,6 +599,37 @@ public class GlicSettingsUnitTest {
         // Simulate toggle On
         locationPref.getOnPreferenceChangeListener().onPreferenceChange(locationPref, true);
         verify(mPrefServiceMock).setBoolean("glic.geolocation_enabled", true);
+    }
+
+    @Test
+    public void testMicrophoneStartupSync_PermissionDenied() {
+        when(mPrefServiceMock.getBoolean("glic.microphone_enabled")).thenReturn(true);
+        Shadows.shadowOf(RuntimeEnvironment.getApplication())
+                .denyPermissions(Manifest.permission.RECORD_AUDIO);
+
+        GlicSettings fragment = launchFragment();
+
+        // Verifies startup validation does NOT turn it off.
+        verify(mPrefServiceMock, never()).setBoolean("glic.microphone_enabled", false);
+        ChromeSwitchPreference microphonePref = fragment.findPreference("permissions_microphone");
+        assertEquals(true, microphonePref.isChecked());
+    }
+
+    @Test
+    public void testMicrophonePermissionDenied_TurnsToggleOff() {
+        GlicSettings fragment = launchFragment();
+        ChromeSwitchPreference microphonePref = fragment.findPreference("permissions_microphone");
+        microphonePref.getOnPreferenceChangeListener().onPreferenceChange(microphonePref, true);
+        verify(mPrefServiceMock).setBoolean("glic.microphone_enabled", true);
+
+        // The user refuses the OS permission prompt.
+        fragment.onRequestPermissionsResult(
+                GlicSettings.MICROPHONE_PERMISSION_REQUEST_CODE,
+                new String[] {Manifest.permission.RECORD_AUDIO},
+                new int[] {PackageManager.PERMISSION_DENIED});
+
+        verify(mPrefServiceMock).setBoolean("glic.microphone_enabled", false);
+        assertFalse(microphonePref.isChecked());
     }
 
     @Test

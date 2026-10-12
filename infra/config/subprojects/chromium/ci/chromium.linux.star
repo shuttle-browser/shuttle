@@ -713,6 +713,16 @@ ci.thin_tester(
                     # TODO(crbug.com/542347163): Re-enable when the runtime regression is fixed.
                     "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
+                swarming = targets.swarming(
+                    # Move to faster machine types to reduce capacity impact.
+                    # TODO(crbug.com/541675870): Can remove this if/when
+                    # everything's been migrated.
+                    optional_dimensions = {
+                        30: {
+                            "cpu": "x86-64-e4",
+                        },
+                    },
+                ),
             ),
             "sync_integration_tests": targets.mixin(
                 args = [
@@ -736,6 +746,15 @@ ci.thin_tester(
             ),
             "webdriver_wpt_tests": targets.mixin(
                 ci_only = True,
+            ),
+            "webdriver_bidi_e2e_tests": targets.mixin(
+                experiment_percentage = 10,
+                swarming = targets.swarming(
+                    shards = 8,
+                ),
+            ),
+            "webdriver_bidi_unittests": targets.mixin(
+                experiment_percentage = 10,
             ),
         },
     ),

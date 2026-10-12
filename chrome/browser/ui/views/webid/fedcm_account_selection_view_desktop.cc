@@ -41,6 +41,7 @@
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
 #include "third_party/blink/public/mojom/webid/federated_request.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -536,8 +537,12 @@ bool FedCmAccountSelectionView::ShowLoadingDialog(
   state_ = State::LOADING;
   ResetDialogWidgetStateOnAnyShow();
 
-  CreateOrUpdateViewAndWidget(rp_data, base::UTF8ToUTF16(idp_etld_plus_one),
-                              rp_context, rp_mode,
+  std::optional<std::u16string> idp_title =
+      idp_etld_plus_one.empty()
+          ? std::nullopt
+          : std::make_optional(base::UTF8ToUTF16(idp_etld_plus_one));
+
+  CreateOrUpdateViewAndWidget(rp_data, idp_title, rp_context, rp_mode,
                               /*has_modal_support=*/true);
 
   UpdateDialogVisibilityAndPosition();

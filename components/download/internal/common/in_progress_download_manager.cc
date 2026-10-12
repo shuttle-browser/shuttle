@@ -155,15 +155,6 @@ void CreateDownloadHandlerForNavigation(
 }
 
 #if BUILDFLAG(IS_ANDROID)
-void OnDownloadDisplayNamesReturned(
-    DownloadCollectionBridge::GetDisplayNamesCallback callback,
-    const scoped_refptr<base::SingleThreadTaskRunner>& main_task_runner,
-    InProgressDownloadManager::DisplayNames download_names) {
-  main_task_runner->PostTask(
-      FROM_HERE,
-      base::BindOnce(std::move(callback), std::move(download_names)));
-}
-
 void OnPathReserved(
     DownloadTargetCallback callback,
     DownloadDangerType danger_type,
@@ -626,22 +617,25 @@ void InProgressDownloadManager::OnDBInitialized(
     bool success,
     std::unique_ptr<std::vector<DownloadDBEntry>> entries) {
 #if BUILDFLAG(IS_ANDROID)
-  // Retrieve display names for all downloads from media store if needed.
-  if (base::android::android_info::sdk_int() >=
-      base::android::android_info::SDK_VERSION_Q) {
-    DownloadCollectionBridge::GetDisplayNamesCallback callback =
-        base::BindOnce(&InProgressDownloadManager::OnDownloadNamesRetrieved,
-                       weak_factory_.GetWeakPtr(), std::move(entries));
-    GetDownloadTaskRunner()->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            &DownloadCollectionBridge::GetDisplayNamesForDownloads,
-            base::BindOnce(&OnDownloadDisplayNamesReturned, std::move(callback),
-                           base::SingleThreadTaskRunner::GetCurrentDefault())));
-    return;
+  std::vector<base::FilePath> content_uris;
+  if (entries) {
+    for (const auto& entry : *entries) {
+      if (entry.download_info && entry.download_info->in_progress_info) {
+        const base::FilePath& path =
+            entry.download_info->in_progress_info->target_path;
+        if (path.IsContentUri()) {
+          content_uris.push_back(path);
+        }
+      }
+    }
   }
-#endif
+  GetDisplayNamesForDownloads(
+      std::move(content_uris),
+      base::BindOnce(&InProgressDownloadManager::OnDownloadNamesRetrieved,
+                     weak_factory_.GetWeakPtr(), std::move(entries)));
+#else
   OnDownloadNamesRetrieved(std::move(entries), nullptr);
+#endif
 }
 
 void InProgressDownloadManager::OnDownloadNamesRetrieved(

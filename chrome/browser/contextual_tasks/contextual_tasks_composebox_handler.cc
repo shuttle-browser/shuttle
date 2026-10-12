@@ -27,6 +27,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
 #include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
+#include "chrome/browser/contextual_tasks/smart_tab_sharing_metrics.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -59,11 +60,14 @@
 #include "components/tabs/public/tab_handle_factory.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/url_deduplication/url_deduplication_helper.h"
+#include "content/public/browser/navigation_controller.h"
 #include "mojo/public/cpp/base/big_buffer.h"
 #include "net/base/mime_util.h"
 #include "net/base/url_util.h"
 #include "third_party/lens_server_proto/aim_communication.pb.h"
 #include "third_party/lens_server_proto/aim_query.pb.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/skia_util.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 
@@ -394,6 +398,14 @@ void ContextualTasksComposeboxHandler::CreateAndSendQueryMessage(
     const std::string& query,
     bool is_voice_search,
     const std::map<std::string, std::string>& additional_cgi_params) {
+  contextual_tasks::LogThreadWithTabsSubmitted(IsSmartTabSharingActive());
+  if (IsSmartTabSharingActive() &&
+      !contextual_tasks::ShouldToggleOffAfterSubmit()) {
+    auto* session_handle = GetContextualSessionHandle();
+    if (session_handle && !session_handle->previous_turns().empty()) {
+      contextual_tasks::LogOptOutMidThread(false);
+    }
+  }
   base::RecordAction(base::UserMetricsAction(
       "ContextualTasks.Composebox.UserAction.QuerySubmitted"));
   auto* session_handle = GetContextualSessionHandle();
@@ -585,6 +597,11 @@ void ContextualTasksComposeboxHandler::InitializeInputStateModel() {
     ContextualSearchboxHandler::InitializeInputStateModel();
   }
 
+  if (contextual_tasks::ShouldToggleOffAfterSubmit() &&
+      HasSubmittedContextOrTurns()) {
+    DeactivateSmartTabSharing();
+  }
+
   if (base::FeatureList::IsEnabled(omnibox::kContextManagementInComposebox)) {
     std::vector<int32_t> restored_tab_ids =
         web_ui_interface_->GetRestoredTabIds();
@@ -750,6 +767,10 @@ void ContextualTasksComposeboxHandler::ContinueCreateAndSendQueryMessage(
     // If there is an auto-added tab, the user sending the query means the
     // system should upload it.
     UploadSnapshotTabContextIfPresent();
+
+    if (contextual_tasks::ShouldToggleOffAfterSubmit()) {
+      DeactivateSmartTabSharing();
+    }
 
     // Create a client to aim message and send it to the page.
     auto create_client_to_aim_request_info =
@@ -998,8 +1019,21 @@ void ContextualTasksComposeboxHandler::AddTabContext(
 
   pending_context_uploads_.insert(token);
 
-  ContextualSearchboxHandler::ContinueAddTabContext(tab_id, delay_upload, token,
-                                                    std::move(callback));
+  ContextualSearchboxHandler::ContinueAddTabContext(
+      tab_id, delay_upload, token,
+      base::BindOnce(&ContextualTasksComposeboxHandler::ForwardTabContextResult,
+                     weak_factory_.GetWeakPtr(), token, std::move(callback)));
+}
+
+void ContextualTasksComposeboxHandler::ForwardTabContextResult(
+    const base::UnguessableToken& token,
+    AddTabContextCallback callback,
+    base::expected<base::UnguessableToken,
+                   contextual_search::ContextUploadErrorType> result) {
+  if (!result.has_value()) {
+    MarkContextUploadFinished(token);
+  }
+  std::move(callback).Run(std::move(result));
 }
 
 void ContextualTasksComposeboxHandler::ClearFiles(
@@ -1175,9 +1209,12 @@ void ContextualTasksComposeboxHandler::DeleteContext(
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
   if (was_delayed) {
-    OnContextUploadStatusChanged(
-        file_token, lens::MimeType::kUnknown,
-        contextual_search::ContextUploadStatus::kUploadExpired, std::nullopt);
+    // Delayed tabs are never uploaded, and this deletion was initiated by the
+    // WebUI, so there is no upload status to report back to the page. Doing so
+    // would surface a spurious upload error. Only refresh the input state.
+    if (input_state_model()) {
+      input_state_model()->OnContextChanged();
+    }
   }
 
   // Hide the underline for the tab if it was associated with the deleted
@@ -1386,4 +1423,27 @@ void ContextualTasksComposeboxHandler::MaybeSendPendingQuery() {
     }
     pending_query_request_info_.reset();
   }
+}
+
+bool ContextualTasksComposeboxHandler::HasSubmittedContextOrTurns() {
+  auto* session_handle = GetContextualSessionHandle();
+  return session_handle &&
+         (session_handle->has_submitted_context() ||
+          !session_handle->GetSubmittedContextFileInfos().empty() ||
+          !session_handle->previous_turns().empty());
+}
+
+void ContextualTasksComposeboxHandler::DeactivateSmartTabSharing() {
+  smart_tab_sharing_active_for_thread_ = false;
+  if (auto* session_handle = GetContextualSessionHandle()) {
+    session_handle->set_smart_tab_sharing_active(false);
+  }
+  if (input_state_model_) {
+    input_state_model_->SetSmartTabSharingActive(false);
+  }
+#if !BUILDFLAG(IS_ANDROID)
+  if (SearchboxHandler::page_) {
+    SearchboxHandler::page_->UpdateSmartTabSharingActive(false);
+  }
+#endif
 }

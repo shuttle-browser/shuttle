@@ -108,8 +108,6 @@
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/gl_version_info.h"
 #include "ui/gl/gpu_preference.h"
-#include "ui/gl/gpu_switching_manager.h"
-#include "ui/gl/gpu_switching_observer.h"
 #include "ui/gl/gpu_timing.h"
 #include "ui/gl/init/create_gr_gl_interface.h"
 #include "ui/gl/scoped_make_current.h"
@@ -535,9 +533,7 @@ int GLES2Decoder::GetRasterDecoderId() const {
 
 // This class implements GLES2Decoder so we don't have to expose all the GLES2
 // cmd stuff to outside this class.
-class GLES2DecoderImpl : public GLES2Decoder,
-                         public ErrorStateClient,
-                         public ui::GpuSwitchingObserver {
+class GLES2DecoderImpl : public GLES2Decoder, public ErrorStateClient {
  public:
   GLES2DecoderImpl(DecoderClient* client,
                    CommandBufferServiceBase* command_buffer_service,
@@ -681,9 +677,6 @@ class GLES2DecoderImpl : public GLES2Decoder,
                     unsigned format,
                     unsigned type,
                     const gfx::Rect& cleared_rect) override;
-
-  // Implements GpuSwitchingObserver.
-  void OnGpuSwitched() override;
 
   // Bind the framebuffer `fbo` and perform any workarounds needed.
   void BindFramebuffer(unsigned target, uint32_t service_id) const override;
@@ -1691,6 +1684,8 @@ class GLES2DecoderImpl : public GLES2Decoder,
 
   // Wrapper for glGenerateMipmap
   void DoGenerateMipmap(GLenum target);
+  void RecreateMipmapLevelsBeforeGenerate(TextureRef* texture_ref,
+                                          GLenum target);
 
   // Helper for DoGetBooleanv, Floatv, and Intergerv to adjust pname
   // to account for different pname values defined in different extension
@@ -3235,11 +3230,6 @@ gpu::ContextResult GLES2DecoderImpl::Initialize(
   transform_feedback_manager_ = std::make_unique<TransformFeedbackManager>(
       group_->max_transform_feedback_separate_attribs(), needs_emulation);
 
-  // Register this object as a GPU switching observer.
-  if (feature_info_->IsWebGLContext()) {
-    ui::GpuSwitchingManager::GetInstance()->AddObserver(this);
-  }
-
   if (feature_info_->IsWebGL2OrES3Context()) {
     // Verified in ContextGroup.
     DCHECK(feature_info_->IsES3Capable());
@@ -4641,11 +4631,6 @@ void GLES2DecoderImpl::SetLevelInfo(uint32_t client_id,
                                   0 /* border */, format, type, cleared_rect);
 }
 
-void GLES2DecoderImpl::OnGpuSwitched() {
-  // Send OnGpuSwitched notification to renderer process via decoder client.
-  client()->OnGpuSwitched();
-}
-
 void GLES2DecoderImpl::BindFramebuffer(unsigned target,
                                        uint32_t service_id) const {
   if (workarounds().ensure_previous_framebuffer_not_deleted) {
@@ -4814,11 +4799,6 @@ void GLES2DecoderImpl::Destroy(bool have_context) {
   if (gpu_tracer_) {
     gpu_tracer_->Destroy(have_context);
     gpu_tracer_.reset();
-  }
-
-  // Unregister this object as a GPU switching observer.
-  if (feature_info_->IsWebGLContext()) {
-    ui::GpuSwitchingManager::GetInstance()->RemoveObserver(this);
   }
 
   if (group_.get()) {
@@ -5906,6 +5886,10 @@ void GLES2DecoderImpl::InvalidateFramebufferImpl(
   }
 
   bool skip_api_call = false;
+  if (!framebuffer) {
+    // Don't invalidate backbuffer.
+    skip_api_call = true;
+  }
   if (workarounds().dont_invalidate_incomplete_fbos) {
     if (DoCheckFramebufferStatus(target) != GL_FRAMEBUFFER_COMPLETE) {
       skip_api_call = true;
@@ -6057,12 +6041,91 @@ void GLES2DecoderImpl::DoGenerateMipmap(GLenum target) {
     }
   }
 
+  if (workarounds().recreate_mipmap_levels_before_generate &&
+      !tex->IsImmutable()) {
+    RecreateMipmapLevelsBeforeGenerate(texture_ref, target);
+  }
+
   LOCAL_COPY_REAL_GL_ERRORS_TO_WRAPPER("glGenerateMipmap");
   api()->glGenerateMipmapEXTFn(target);
 
   GLenum error = LOCAL_PEEK_GL_ERROR("glGenerateMipmap");
   if (error == GL_NO_ERROR) {
     texture_manager()->MarkMipmapsGenerated(texture_ref);
+  }
+}
+
+void GLES2DecoderImpl::RecreateMipmapLevelsBeforeGenerate(
+    TextureRef* texture_ref,
+    GLenum target) {
+  DCHECK(texture_ref);
+  Texture* tex = texture_ref->texture();
+  DCHECK(tex);
+  DCHECK(!tex->IsImmutable());
+
+  const GLint base_level = tex->base_level();
+  const size_t num_faces = (target == GL_TEXTURE_CUBE_MAP) ? 6 : 1;
+
+  ScopedPixelUnpackState reset_restore(&state_);
+
+  for (size_t face_idx = 0; face_idx < num_faces; ++face_idx) {
+    const GLenum face_target = (target == GL_TEXTURE_CUBE_MAP)
+                                   ? GLES2Util::IndexToGLFaceTarget(face_idx)
+                                   : target;
+    const Texture::LevelInfo* base_info =
+        tex->GetLevelInfo(face_target, base_level);
+    if (!base_info) {
+      continue;
+    }
+
+    const GLenum internal_format = base_info->internal_format;
+    const GLenum format = base_info->format;
+    const GLenum type = base_info->type;
+
+    const GLenum adjusted_internal_format =
+        TextureManager::AdjustTexInternalFormat(feature_info_.get(),
+                                                internal_format, type);
+    const GLenum adjusted_format =
+        TextureManager::AdjustTexFormat(feature_info_.get(), format);
+
+    const GLsizei num_mips = tex->NumMipLevels(face_idx);
+    GLsizei level_width = base_info->width;
+    GLsizei level_height = base_info->height;
+    GLsizei level_depth = base_info->depth;
+
+    for (GLsizei level = base_level + 1; level < base_level + num_mips;
+         ++level) {
+      level_width = std::max(1, level_width >> 1);
+      level_height = std::max(1, level_height >> 1);
+      if (target != GL_TEXTURE_2D_ARRAY) {
+        level_depth = std::max(1, level_depth >> 1);
+      }
+
+      const Texture::LevelInfo* level_info =
+          tex->GetLevelInfo(face_target, level);
+      const bool needs_recreate =
+          !level_info || level_info->width != level_width ||
+          level_info->height != level_height ||
+          level_info->depth != level_depth ||
+          level_info->internal_format != internal_format ||
+          level_info->type != type;
+
+      if (needs_recreate) {
+        if (face_target == GL_TEXTURE_3D ||
+            face_target == GL_TEXTURE_2D_ARRAY) {
+          api()->glTexImage3DFn(face_target, level, adjusted_internal_format,
+                                level_width, level_height, level_depth, 0,
+                                adjusted_format, type, nullptr);
+        } else {
+          api()->glTexImage2DFn(face_target, level, adjusted_internal_format,
+                                level_width, level_height, 0, adjusted_format,
+                                type, nullptr);
+        }
+        texture_manager()->SetLevelInfo(
+            texture_ref, face_target, level, internal_format, level_width,
+            level_height, level_depth, 0, format, type, gfx::Rect());
+      }
+    }
   }
 }
 
@@ -12597,6 +12660,8 @@ bool GLES2DecoderImpl::ClearCompressedTextureLevel(Texture* texture,
   TRACE_EVENT1("gpu", "GLES2DecoderImpl::ClearCompressedTextureLevel",
                "bytes_required", bytes_required);
 
+  bool cleared = true;
+
   api()->glBindBufferFn(GL_PIXEL_UNPACK_BUFFER, 0);
   {
     // Add extra scope to destroy zero and the object it owns right
@@ -12616,6 +12681,14 @@ bool GLES2DecoderImpl::ClearCompressedTextureLevel(Texture* texture,
     ScopedCompressedUnpackStateScrub scrub(&state_);
     api()->glCompressedTexSubImage2DFn(target, level, 0, 0, width, height,
                                        format, zero.size(), zero.data());
+    // Some compressed formats are not supported by CompressedTexSubImage*
+    // in some circumstances. If the driver rejects the call, report the failure
+    // to clear so the caller does not mark it cleared (which would let a draw
+    // sample uninitialized GPU memory).
+    if (LOCAL_PEEK_GL_ERROR("ClearCompressedTextureLevel") != GL_NO_ERROR) {
+      cleared = false;
+    }
+
     if (reset_base_level) {
       api()->glTexParameteriFn(texture->target(), GL_TEXTURE_BASE_LEVEL,
                                texture->base_level());
@@ -12630,7 +12703,7 @@ bool GLES2DecoderImpl::ClearCompressedTextureLevel(Texture* texture,
   if (bound_buffer) {
     api()->glBindBufferFn(GL_PIXEL_UNPACK_BUFFER, bound_buffer->service_id());
   }
-  return true;
+  return cleared;
 }
 
 bool GLES2DecoderImpl::ClearCompressedTextureLevel3D(Texture* texture,
@@ -12657,6 +12730,8 @@ bool GLES2DecoderImpl::ClearCompressedTextureLevel3D(Texture* texture,
   TRACE_EVENT1("gpu", "GLES2DecoderImpl::ClearCompressedTextureLevel3D",
                "bytes_required", bytes_required);
 
+  bool cleared = true;
+
   api()->glBindBufferFn(GL_PIXEL_UNPACK_BUFFER, 0);
   {
     // Add extra scope to destroy zero and the object it owns right
@@ -12676,6 +12751,14 @@ bool GLES2DecoderImpl::ClearCompressedTextureLevel3D(Texture* texture,
     ScopedCompressedUnpackStateScrub scrub(&state_);
     api()->glCompressedTexSubImage3DFn(target, level, 0, 0, 0, width, height,
                                        depth, format, zero.size(), zero.data());
+    // Some compressed formats are not supported by CompressedTexSubImage*
+    // in some circumstances. If the driver rejects the call, report the failure
+    // to clear so the caller does not mark it cleared (which would let a draw
+    // sample uninitialized GPU memory).
+    if (LOCAL_PEEK_GL_ERROR("ClearCompressedTextureLevel3D") != GL_NO_ERROR) {
+      cleared = false;
+    }
+
     if (reset_base_level) {
       api()->glTexParameteriFn(texture->target(), GL_TEXTURE_BASE_LEVEL,
                                texture->base_level());
@@ -12690,7 +12773,7 @@ bool GLES2DecoderImpl::ClearCompressedTextureLevel3D(Texture* texture,
   if (bound_buffer) {
     api()->glBindBufferFn(GL_PIXEL_UNPACK_BUFFER, bound_buffer->service_id());
   }
-  return true;
+  return cleared;
 }
 
 bool GLES2DecoderImpl::IsCompressedTextureFormat(unsigned format) {

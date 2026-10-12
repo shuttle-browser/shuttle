@@ -1634,11 +1634,11 @@ TEST_F(SharedWorkerServiceImplTest, FreezeAndResumeOnBFCache) {
   RenderFrameHostImpl* rfh_impl =
       static_cast<RenderFrameHostImpl*>(render_frame_host);
   rfh_impl->SetLifecycleState(
-      RenderFrameHostImpl::LifecycleStateImpl::kInBackForwardCache);
+      RenderFrameHostLifecycleStateImpl::kInBackForwardCache);
   // The worker is frozen when the frame is in BackForwardCache.
   EXPECT_TRUE(base::test::RunUntil([&]() { return worker.IsFrozen(); }));
 
-  rfh_impl->SetLifecycleState(RenderFrameHostImpl::LifecycleStateImpl::kActive);
+  rfh_impl->SetLifecycleState(RenderFrameHostLifecycleStateImpl::kActive);
   // The worker is resumed when the frame is active.
   EXPECT_TRUE(base::test::RunUntil([&]() { return !worker.IsFrozen(); }));
 }
@@ -1690,7 +1690,7 @@ TEST_F(SharedWorkerServiceImplTest, FreezeAndResumeOnAddClient) {
 
   RenderFrameHostImpl* rfh_impl1 = static_cast<RenderFrameHostImpl*>(rfh1);
   rfh_impl1->SetLifecycleState(
-      RenderFrameHostImpl::LifecycleStateImpl::kInBackForwardCache);
+      RenderFrameHostLifecycleStateImpl::kInBackForwardCache);
   // The worker is frozen when the frame is in BackForwardCache.
   EXPECT_TRUE(base::test::RunUntil([&]() { return worker.IsFrozen(); }));
 
@@ -1737,9 +1737,9 @@ TEST_P(SharedWorkerServiceImplCreationContextTest,
     case ContextTypeTestCase::kMismatchRendererSecure: {
       auto policies = rfh->policy_container_host()->policies().Clone();
       policies.is_web_secure_context = false;
-      rfh->SetPolicyContainerHost(
+      rfh->SetPolicyContainerHostForTesting(
           base::MakeRefCounted<PolicyContainerHost>(std::move(policies)),
-          base::UnguessableToken::Create());
+          blink::InitiatorStateToken());
     }
       renderer_type = blink::mojom::SharedWorkerCreationContextType::kSecure;
       expected_uma_bucket =
@@ -1810,9 +1810,9 @@ TEST_P(SharedWorkerServiceImplCreationContextTest, SpoofingProtection) {
   {
     auto policies = rfh_a->policy_container_host()->policies().Clone();
     policies.is_web_secure_context = false;
-    rfh_a->SetPolicyContainerHost(
+    rfh_a->SetPolicyContainerHostForTesting(
         base::MakeRefCounted<PolicyContainerHost>(std::move(policies)),
-        base::UnguessableToken::Create());
+        blink::InitiatorStateToken());
   }
 
   MockSharedWorkerClient client_a;

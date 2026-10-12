@@ -602,7 +602,8 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
                          const gfx::RectF& src_rect,
                          const gfx::RectF& dst_rect,
                          const SkSamplingOptions&,
-                         const cc::PaintFlags*);
+                         const cc::PaintFlags*,
+                         RespectImageOrientationEnum);
   void ClipInternal(const Path&,
                     const V8CanvasFillRule& winding_rule,
                     cc::UsePaintCache);
@@ -628,9 +629,6 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
 
   template <typename T>
   bool ValidateRectForCanvas(T x, T y, T width, T height);
-
-  template <typename T>
-  void AdjustRectForCanvas(T& x, T& y, T& width, T& height);
 
   bool RectContainsTransformedRect(const gfx::RectF&, const SkIRect&) const;
 
@@ -956,22 +954,6 @@ bool Canvas2DRecorderContext::ValidateRectForCanvas(T x,
                                                     T height) {
   return (std::isfinite(x) && std::isfinite(y) && std::isfinite(width) &&
           std::isfinite(height) && (width || height));
-}
-
-template <typename T>
-void Canvas2DRecorderContext::AdjustRectForCanvas(T& x,
-                                                  T& y,
-                                                  T& width,
-                                                  T& height) {
-  if (width < 0) {
-    width = -width;
-    x -= width;
-  }
-
-  if (height < 0) {
-    height = -height;
-    y -= height;
-  }
 }
 
 ALWAYS_INLINE void Canvas2DRecorderContext::SetTransform(

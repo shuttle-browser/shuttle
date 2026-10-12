@@ -61,7 +61,8 @@ class UI_ANDROID_EXPORT EventForwarder {
                     int64_t time_ns,
                     int32_t android_action,
                     int32_t android_changed_button,
-                    int32_t tool_type);
+                    int32_t tool_type,
+                    bool skip_dip_scale);
 
   void OnDragEvent(JNIEnv* env,
                    int32_t action,
@@ -70,7 +71,7 @@ class UI_ANDROID_EXPORT EventForwarder {
                    float screen_x,
                    float screen_y,
                    const base::android::JavaRef<jobjectArray>& j_mimeTypes,
-                   const base::android::JavaRef<jstring>& j_content,
+                   bool has_files,
                    const base::android::JavaRef<jobjectArray>& j_filenames,
                    const base::android::JavaRef<jstring>& j_text,
                    const base::android::JavaRef<jstring>& j_html,

@@ -13,6 +13,8 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/webid/identity_request_dialog_controller.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 #include "ui/views/border.h"
 #include "ui/views/controls/label.h"
 #include "ui/views/layout/box_layout.h"
@@ -73,9 +75,9 @@ content::WebContents* FedCmModalDialogView::ShowPopupWindow(
       is_fullscreen ? WindowOpenDisposition::NEW_FOREGROUND_TAB
                     : WindowOpenDisposition::NEW_POPUP;
 
-  content::OpenURLParams params(url, content::Referrer(), disposition,
-                                ui::PAGE_TRANSITION_AUTO_TOPLEVEL,
-                                /*is_renderer_initiated=*/false);
+  content::OpenURLParams params =
+      content::OpenURLParams::CreateBrowserInitiated(
+          url, disposition, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
   base::WeakPtr<FedCmModalDialogView> weak_this =
       weak_ptr_factory_.GetWeakPtr();
   content::WebContents* popup_window = delegate->OpenURLFromTab(
