@@ -184,11 +184,6 @@ class MockPasswordManagerDriver : public StubPasswordManagerDriver {
   MOCK_METHOD(bool, CanShowAutofillUi, (), (const override));
   MOCK_METHOD(bool, HasValidURL, (bool), (override));
   MOCK_METHOD(bool, IsRenderFrameHostSupported, (), (override));
-
-  gfx::RectF TransformToRootCoordinates(
-      const gfx::RectF& bounds_in_frame_coordinates) override {
-    return bounds_in_frame_coordinates;  // No transformation in tests.
-  }
 };
 
 class TestPasswordManagerClient : public StubPasswordManagerClient {
@@ -359,8 +354,10 @@ class PasswordAutofillManagerTest : public testing::Test {
                                          MockAutofillClient* autofill_client) {
     password_autofill_manager_ = std::make_unique<PasswordAutofillManager>(
         client->mock_driver(), autofill_client, client);
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
     password_autofill_manager_->SetManualFallbackFlowForTest(
         std::make_unique<NiceMock<MockPasswordSuggestionFlow>>());
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
     favicon::MockFaviconService favicon_service;
     EXPECT_CALL(*client, GetFaviconService())
         .WillOnce(Return(&favicon_service));
@@ -407,10 +404,12 @@ class PasswordAutofillManagerTest : public testing::Test {
     EXPECT_CALL(*authenticator, AuthenticateWithMessage);
   }
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   MockPasswordSuggestionFlow& manual_fallback_flow() {
     return *static_cast<MockPasswordSuggestionFlow*>(
         password_autofill_manager_->manual_fallback_flow());
   }
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
   PasskeyCredential MakeTestPasskeyCredential() {
     return PasskeyCredential(PasskeyCredential::Source::kAndroidPhone,
@@ -2096,6 +2095,29 @@ TEST_F(PasswordAutofillManagerTest, WebAuthnSuggestionsLogMetrics) {
   }
 }
 
+TEST_F(PasswordAutofillManagerTest,
+       ShowingPasskeyQrCodeSuggestionNotifiesCredentialsDelegate) {
+  TestPasswordManagerClient client;
+  NiceMock<MockAutofillClient> autofill_client;
+  InitializePasswordAutofillManager(&client, &autofill_client);
+
+  // A dropdown that does not contain the QR code suggestion is not reported.
+  EXPECT_CALL(*webauthn_credentials_delegate_, OnPasskeyQrCodeSuggestionShown)
+      .Times(0);
+  std::vector<Suggestion> suggestions = {
+      Suggestion(autofill::SuggestionType::kPasswordEntry)};
+  password_autofill_manager_->OnSuggestionsShown(suggestions,
+                                                 /*metadata=*/{});
+  testing::Mock::VerifyAndClearExpectations(
+      webauthn_credentials_delegate_.get());
+
+  // A dropdown that does contain it is reported once, when it is shown.
+  EXPECT_CALL(*webauthn_credentials_delegate_, OnPasskeyQrCodeSuggestionShown);
+  suggestions.emplace_back(autofill::SuggestionType::kWebauthnPasskeyQrCode);
+  password_autofill_manager_->OnSuggestionsShown(suggestions,
+                                                 /*metadata=*/{});
+}
+
 // Test that the AutofillSuggestionAvailability is set according to the popup
 // availability.
 TEST_F(PasswordAutofillManagerTest,
@@ -2148,6 +2170,7 @@ TEST_F(PasswordAutofillManagerTest, NoPreviewSuggestionWithAuthBeforeFilling) {
   testing::Mock::VerifyAndClearExpectations(client.mock_driver());
 }
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 TEST_F(PasswordAutofillManagerTest, ManualFallback_InvokesFlow) {
   base::test::ScopedFeatureList security_checks_feature_list{
       features::kPasswordManualFallbackSecurityChecks};
@@ -2232,6 +2255,7 @@ TEST_F(PasswordAutofillManagerTest, ManualFallback_FlowResetOnNavigation) {
 
   EXPECT_FALSE(password_autofill_manager_->manual_fallback_flow());
 }
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 TEST_F(PasswordAutofillManagerTest,
        WebAuthnCredentialSuggestionsPersistLoadingStateUntilHidePopup) {

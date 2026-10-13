@@ -12,7 +12,7 @@
 #include "base/test/scoped_feature_list.h"
 #endif
 
-#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)) && defined(ARCH_CPU_X86_FAMILY)
+#if defined(ARCH_CPU_X86_FAMILY)
 #include "base/cpu.h"
 #endif
 
@@ -34,7 +34,7 @@ TEST(SodaUtilTest, IsOnDeviceSpeechRecognitionSupported) {
   }
 #elif BUILDFLAG(IS_LINUX)
 #if defined(ARCH_CPU_X86_FAMILY)
-  EXPECT_EQ(IsOnDeviceSpeechRecognitionSupported(), base::CPU().has_sse41());
+  EXPECT_EQ(IsOnDeviceSpeechRecognitionSupported(), base::CPU().has_avx());
 #else
   EXPECT_FALSE(IsOnDeviceSpeechRecognitionSupported());
 #endif
@@ -47,7 +47,11 @@ TEST(SodaUtilTest, IsOnDeviceSpeechRecognitionSupported) {
   EXPECT_FALSE(IsOnDeviceSpeechRecognitionSupported());
 #endif
 #elif BUILDFLAG(IS_WIN)
+#if defined(ARCH_CPU_X86_FAMILY)
+  EXPECT_EQ(IsOnDeviceSpeechRecognitionSupported(), base::CPU().has_avx());
+#else
   EXPECT_TRUE(IsOnDeviceSpeechRecognitionSupported());
+#endif
 #else
   EXPECT_FALSE(IsOnDeviceSpeechRecognitionSupported());
 #endif

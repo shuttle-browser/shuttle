@@ -24,26 +24,10 @@
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/strings/grit/components_strings.h"
 #include "ui/base/accelerators/platform_accelerator_cocoa.h"
+#import "ui/base/cocoa/macos27_sdk.h"
 #include "ui/base/l10n/l10n_util.h"
 #import "ui/base/l10n/l10n_util_mac.h"
 #include "ui/strings/grit/ui_strings.h"
-
-#if !defined(__MAC_27_0)
-
-@interface NSMenuItem (macOS27SDK)
-
-typedef NS_ENUM(NSInteger, NSMenuItemImageVisibility) {
-  NSMenuItemImageVisibilityAutomatic = 0,
-  NSMenuItemImageVisibilityVisible = 1,
-  NSMenuItemImageVisibilityHidden = 2
-} API_AVAILABLE(macos(27.0));
-
-@property NSMenuItemImageVisibility preferredImageVisibility API_AVAILABLE(
-    macos(27.0));
-
-@end
-
-#endif
 
 namespace chrome {
 namespace {
@@ -458,12 +442,11 @@ NSMenuItem* BuildBookmarksMenu(NSApplication* nsapp,
   return item;
 }
 
-
-NSMenuItem* BuildPeopleMenu(NSApplication* nsapp,
-                            id app_delegate,
-                            const std::u16string& product_name,
-                            bool is_pwa,
-                            bool is_rtl) {
+NSMenuItem* BuildProfilesMenu(NSApplication* nsapp,
+                              id app_delegate,
+                              const std::u16string& product_name,
+                              bool is_pwa,
+                              bool is_rtl) {
   // clang-format off
   NSMenuItem* item =
       Item(IDS_PROFILES_MENU_NAME)
@@ -643,7 +626,7 @@ NSMenu* BuildMainMenu(NSApplication* nsapp,
            &BuildViewMenu,
            &BuildHistoryMenu,
            &BuildBookmarksMenu,
-           &BuildPeopleMenu,
+           &BuildProfilesMenu,
            &BuildTabMenu,
            &BuildWindowMenu,
            &BuildHelpMenu,
@@ -745,7 +728,6 @@ NSMenuItem* MenuItemBuilder::Build() const {
     item.image = [NSImage imageWithSystemSymbolName:sf_symbol_name_
                            accessibilityDescription:nil];
     if (@available(macOS 27, *)) {
-      // No, really, please actually show the set image.
       item.preferredImageVisibility = NSMenuItemImageVisibilityVisible;
     }
   }

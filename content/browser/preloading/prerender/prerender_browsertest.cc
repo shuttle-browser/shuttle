@@ -4470,6 +4470,88 @@ IN_PROC_BROWSER_TEST_F(PrerenderTargetHintBrowserTest,
       PrerenderFinalStatus::kTabClosedWithoutUserGesture);
 }
 
+// Test fixture with a ControllableHttpResponse for slow prerender URLs.
+class PrerenderTargetHintSlowResponseBrowserTest
+    : public PrerenderTargetHintBrowserTest {
+ public:
+  void SetUpOnMainThread() override {
+    // Register controllable responses before the server starts.
+    prerender_response_ =
+        std::make_unique<net::test_server::ControllableHttpResponse>(
+            &ssl_server(), "/title2.html");
+    PrerenderTargetHintBrowserTest::SetUpOnMainThread();
+  }
+
+ protected:
+  net::test_server::ControllableHttpResponse& prerender_response() {
+    return *prerender_response_;
+  }
+
+ private:
+  std::unique_ptr<net::test_server::ControllableHttpResponse>
+      prerender_response_;
+};
+
+// Regression test: closing the initiator shell while a new-tab prerender
+// activation is deferred (prerender still loading) must not CHECK-crash in
+// CanNavigationActivateHost when host.initiator_web_contents() is null.
+// When activation is triggered via a target=_blank link click,
+// TakePreCreatedWebContentsForNewTabIfExists detaches the prerender
+// from the initiator's PrerenderHostRegistry. Closing the initiator tab
+// can then no longer cancel the PrerenderHost, leaving it with a null
+// initiator_web_contents WeakPtr.
+IN_PROC_BROWSER_TEST_F(PrerenderTargetHintSlowResponseBrowserTest,
+                       NewTabPrerenderNoCrashOnActivationAfterInitiatorClosed) {
+  const GURL initial_url = GetUrl("/simple_links.html");
+  const GURL prerendering_url = GetUrl("/title2.html");
+
+  ASSERT_TRUE(NavigateToURL(shell(), initial_url));
+  Shell* initiator_shell = shell();
+
+  // Start prerendering title2.html with _blank target hint. The response is
+  // held by ControllableHttpResponse so the prerender stays loading.
+  prerender_helper()->AddPrerendersAsync({prerendering_url},
+                                         /*eagerness=*/std::nullopt, "_blank");
+
+  prerender_response().WaitForRequest();
+
+  // Click the noopener "target=_blank" link to trigger activation.
+  // TakePreCreatedWebContentsForNewTabIfExists detaches the prerender from
+  // the initiator's registry (noopener is required for opener_suppressed).
+  // The activation defers via PrerenderCommitDeferringCondition because the
+  // prerender is still loading.
+  ShellAddedObserver new_shell_observer;
+  EXPECT_TRUE(
+      ExecJs(web_contents(), "clickSameSiteNewWindowWithNoopenerLink();"));
+  Shell* new_shell = new_shell_observer.GetShell();
+  ASSERT_TRUE(new_shell);
+  WebContents* new_wc = new_shell->web_contents();
+
+  // Close only the initiator shell, keeping the new tab's shell alive. The
+  // PrerenderNewTabHandle was already detached, so CancelHost cannot find the
+  // host. The PrerenderHost survives with a null initiator_web_contents
+  // WeakPtr. Wait for full destruction to ensure the WeakPtr is invalidated
+  // before the activation resumes.
+  WebContents* initiator_wc = initiator_shell->web_contents();
+  WebContentsDestroyedWatcher initiator_destroyed_watcher(initiator_wc);
+  initiator_shell->Close();
+  initiator_destroyed_watcher.Wait();
+
+  // Send the prerender response. The deferred activation resumes and calls
+  // CanNavigationActivateHost. Without the fix,
+  // CHECK(host.initiator_web_contents()) crashes. With the fix, the prerender
+  // is cancelled gracefully.
+  TestNavigationObserver activation_observer(new_wc);
+  prerender_response().Send(net::HTTP_OK, "text/html",
+                            "<html><head><title>Title 2</title></head></html>");
+  prerender_response().Done();
+  activation_observer.Wait();
+
+  ExpectFinalStatusForSpeculationRule(PrerenderFinalStatus::kTriggerDestroyed);
+  EXPECT_EQ(new_wc->GetLastCommittedURL(), prerendering_url);
+  EXPECT_TRUE(activation_observer.last_navigation_succeeded());
+}
+
 // Tests that trigger cancellation via BrowsingDataRemover (e.g.,
 // Clear-Site-Data) is handled safely without causing Use-After-Free due to
 // synchronous destruction of the WebContentsImpl during iteration.
@@ -6955,10 +7037,12 @@ IN_PROC_BROWSER_TEST_P(PrerenderTargetAgnosticBrowserTest, SuppressOpenURL) {
       test::PrerenderTestHelper::GetPrerenderedMainFrameHost(
           *prerender_web_contents, host_id);
   EXPECT_EQ(GetRequestCount(prerendering_url), 1);
-  OpenURLParams params(second_url, Referrer(),
-                       prerendered_render_frame_host->GetFrameTreeNodeId(),
-                       WindowOpenDisposition::NEW_WINDOW,
-                       ui::PAGE_TRANSITION_LINK, true);
+  OpenURLParams params = OpenURLParams::CreateRendererInitiated(
+      second_url, WindowOpenDisposition::NEW_WINDOW, ui::PAGE_TRANSITION_LINK,
+      Referrer(),
+      prerendered_render_frame_host->GetCurrentInitiatorNavigationState(),
+      /*started_from_context_menu=*/false,
+      prerendered_render_frame_host->GetFrameTreeNodeId());
   params.initiator_origin =
       prerendered_render_frame_host->GetLastCommittedOrigin();
   params.source_render_process_id =
@@ -11803,73 +11887,6 @@ IN_PROC_BROWSER_TEST_F(PrerenderBackForwardCacheBrowserTest,
   EXPECT_EQ(
       "activated, initial",
       EvalJs(current_frame_host(), "getSessionStorageKeys()").ExtractString());
-}
-
-// Regression test for crbug.com/568719351:
-// Verifies that if a BackForwardCache restore navigation triggers prerender
-// activation checks in NavigationRequest::BeginNavigation(), and cancelling a
-// matching prerender synchronously starts a queued pending prerender whose
-// navigation evicts the BFCached page being restored (synchronously destroying
-// the primary main frame's NavigationRequest), BeginNavigation() does not
-// access `this` after it is destroyed.
-IN_PROC_BROWSER_TEST_F(PrerenderBackForwardCacheBrowserTest,
-                       EvictBackForwardCacheDuringPrerenderActivationCheck) {
-  net::test_server::ControllableHttpResponse response1(
-      embedded_test_server(), "/empty.html?prerender=1");
-  ASSERT_TRUE(embedded_test_server()->Start());
-
-  const GURL initial_url = embedded_test_server()->GetURL("/empty.html");
-  const GURL next_url = embedded_test_server()->GetURL("/empty.html?next");
-  const GURL prerender1_url =
-      embedded_test_server()->GetURL("/empty.html?prerender=1");
-  const GURL prerender2_url =
-      embedded_test_server()->GetURL("/empty.html?prerender2");
-
-  // 1. Navigate to `initial_url` and then `next_url` so `initial_rfh` is
-  // stored in the BackForwardCache.
-  ASSERT_TRUE(NavigateToURL(shell(), initial_url));
-  RenderFrameHostImplWrapper initial_rfh(current_frame_host());
-  ASSERT_TRUE(NavigateToURL(shell(), next_url));
-  ASSERT_TRUE(initial_rfh->IsInBackForwardCache());
-
-  // 2. Trigger `prerender1_url` with a No-Vary-Search hint matching
-  // `initial_url`, and hold its initial navigation in-flight so it remains the
-  // running prerender (`running_prerender_host_id_`). Queue `prerender2_url`
-  // behind it in `pending_prerenders_`.
-  test::PrerenderHostRegistryObserver registry_observer(*web_contents_impl());
-  AddPrerenderAsync(prerender1_url, R"(params=(\\\"prerender\\\"))");
-  response1.WaitForRequest();
-  AddPrerenderAsync(prerender2_url);
-  registry_observer.WaitForTrigger(prerender2_url);
-
-  // 3. When `prerender2_url` starts its initial navigation (triggered
-  // synchronously when `prerender1_url` is cancelled during
-  // `FindPotentialHostToActivate()`), evict `initial_rfh` from BFCache (e.g.
-  // simulating ServiceWorker activation evicting BFCached controllees). This
-  // synchronously calls `RestartBackForwardCachedNavigationAsync()` and
-  // destroys the in-flight BFCache restore `NavigationRequest`.
-  bool evicted_during_prerender2_start = false;
-  base::RunLoop primary_page_changed_loop;
-  testing::NiceMock<MockWebContentsObserver> observer(web_contents());
-  ON_CALL(observer, DidStartNavigation(testing::_))
-      .WillByDefault([&](NavigationHandle* navigation_handle) {
-        if (navigation_handle->GetURL() == prerender2_url &&
-            initial_rfh->IsInBackForwardCache()) {
-          evicted_during_prerender2_start = true;
-          initial_rfh->EvictFromBackForwardCacheWithReason(
-              BackForwardCacheMetrics::NotRestoredReason::
-                  kServiceWorkerVersionActivation);
-        }
-      });
-  ON_CALL(observer, PrimaryPageChanged(testing::_))
-      .WillByDefault([&](Page&) { primary_page_changed_loop.Quit(); });
-
-  // 4. Navigate back to `initial_url`. The BFCache restore navigation is
-  // restarted as a normal navigation and should complete without crashing.
-  shell()->GoBackOrForward(-1);
-  EXPECT_TRUE(evicted_during_prerender2_start);
-  primary_page_changed_loop.Run();
-  EXPECT_EQ(web_contents()->GetLastCommittedURL(), initial_url);
 }
 
 #if !BUILDFLAG(IS_ANDROID)

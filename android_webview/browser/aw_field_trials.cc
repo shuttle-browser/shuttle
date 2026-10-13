@@ -113,9 +113,11 @@ void AwFieldTrials::RegisterFeatureOverrides(base::FeatureList* feature_list) {
   aw_feature_overrides.DisableFeature(
       blink::features::kEnforceNoopenerOnBlobURLNavigation);
 
+#if BUILDFLAG(ENABLE_VALIDATING_COMMAND_DECODER)
   // DISABLED_TEMPORARY: https://crbug.com/40593023
   aw_feature_overrides.DisableFeature(
       ::features::kDefaultPassthroughCommandDecoder);
+#endif
 
   // DISABLED_TEMPORARY: https://crbug.com/1493153. HDR does not support webview
   // yet.
@@ -309,11 +311,6 @@ void AwFieldTrials::RegisterFeatureOverrides(base::FeatureList* feature_list) {
   // DISABLED_INCOMPATIBLE: Sharing ANGLE's Vulkan queue is not supported on
   // WebView.
   aw_feature_overrides.DisableFeature(::features::kVulkanFromANGLE);
-
-  // DISABLED_TEMPORARY: crbug.com/371512561. This feature has not been
-  // experimented with yet on WebView. Disable this feature for WebView only if
-  // webview itself is using GLES.
-  aw_feature_overrides.DisableFeature(::features::kDefaultANGLEVulkan);
 
   // Partitioned :visited links history is not supported on WebView.
   aw_feature_overrides.DisableFeature(

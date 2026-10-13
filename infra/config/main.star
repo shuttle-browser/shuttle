@@ -205,10 +205,7 @@ chromium_luci.configure_builders(
         ),
         os.MAC_DEFAULT: "Mac-26",
         os.MAC_BETA: "Mac-26",
-        os.WINDOWS_DEFAULT: chromium_luci.os_dimension_overrides(
-            default = os.WINDOWS_10,
-            overrides = json.decode(io.read_file("//lib/windows-default.json")),
-        ),
+        os.WINDOWS_DEFAULT: os.WINDOWS_10,
     },
     exempted_from_description_builders = exempted_from_description_builders,
 )
@@ -271,7 +268,6 @@ chromium_luci.configure_targets(
             "linux_gpu_high_tier_ai_wpt_dimensions": True,
             "linux_gpu_high_tier_gemma4_ai_wpt_dimensions": targets.IGNORE_UNUSED,
             "long_skylab_timeout": True,
-            "mac_14_x64": True,
             "mac_default_arm64": True,
             "mac_15_x64": True,
             "mac_toolchain": True,

@@ -165,6 +165,7 @@ try_.builder(
     contact_team_email = "chrome-fuzzing-core@google.com",
     cq_settings = try_.cq_settings(
         on_default_cq = True,
+        reuse_max_commit_distance = 800 if settings.is_main else None,
     ),
     experiments = {
         # crbug/940930
@@ -237,6 +238,7 @@ try_.compilator_builder(
     name = "win-rel-compilator",
     branch_selector = branches.selector.WINDOWS_BRANCHES,
     cores = 32 if settings.is_main else 16,
+    contact_team_email = "chrome-desktop-engprod@google.com",
     # TODO (crbug.com/1245171): Revert when root issue is fixed
     grace_period = 4 * time.minute,
     main_list_view = "try",
@@ -299,7 +301,7 @@ try_.builder(
     ),
     builderless = False,
     cores = 16,
-    os = os.WINDOWS_DEFAULT,
+    os = os.WINDOWS_ANY,
     ssd = True,
     contact_team_email = "chrome-desktop-engprod@google.com",
     cq_settings = try_.cq_settings(
@@ -307,6 +309,7 @@ try_.builder(
         # out builder cache
         cancel_stale = False,
         on_default_cq = True,
+        reuse_max_commit_distance = 800 if settings.is_main else None,
     ),
     experiments = {
         "luci.buildbucket.run_in_turboci": 100,
@@ -469,7 +472,7 @@ try_.builder(
     ),
     builderless = False,
     cores = None,
-    os = os.WINDOWS_DEFAULT,
+    os = os.WINDOWS_ANY,
     contact_team_email = "chrome-desktop-engprod@google.com",
     cq_settings = try_.cq_settings(
         # TODO(crbug.com/40847153) Remove once cancelling doesn't wipe
@@ -498,7 +501,7 @@ try_.builder(
     ),
     builderless = True,
     cores = 16,
-    os = os.WINDOWS_DEFAULT,
+    os = os.WINDOWS_10,
     ssd = True,
     contact_team_email = "chrome-desktop-engprod@google.com",
     # The size of the testing pool is limited.

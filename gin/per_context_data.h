@@ -29,7 +29,7 @@ class GIN_EXPORT PerContextData
                  v8::Local<v8::Context> context);
   PerContextData(const PerContextData&) = delete;
   PerContextData& operator=(const PerContextData&) = delete;
-  ~PerContextData() override = default;
+  ~PerContextData() override;
 
   void Trace(cppgc::Visitor* visitor) const;
   void Detach();

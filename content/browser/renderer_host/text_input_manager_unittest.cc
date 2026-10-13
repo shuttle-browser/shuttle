@@ -5,12 +5,12 @@
 #include "content/browser/renderer_host/text_input_manager.h"
 
 #include "base/command_line.h"
-#include "base/functional/callback.h"
-#include "base/test/bind.h"
 #include "build/build_config.h"
-#include "content/browser/renderer_host/frame_tree.h"
-#include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/renderer_host/render_widget_host_factory.h"
+#include "content/browser/renderer_host/render_widget_host_impl.h"
+#include "content/browser/site_instance_group.h"
+#include "content/browser/site_instance_impl.h"
 #include "content/public/test/navigation_simulator.h"
 #include "content/public/test/test_renderer_host.h"
 #include "content/public/test/test_utils.h"
@@ -24,7 +24,9 @@ namespace content {
 
 class TextInputManagerTest : public RenderViewHostTestHarness {
  public:
-  TextInputManagerTest() = default;
+  TextInputManagerTest() {
+    IsolateAllSitesForTesting(base::CommandLine::ForCurrentProcess());
+  }
   ~TextInputManagerTest() override = default;
 };
 
@@ -230,124 +232,130 @@ TEST_F(TextInputManagerTest, SelectionBoundsChanged_Clamped_DifferentBounds) {
   EXPECT_EQ(region->bounding_box, bounding_box);
 }
 
-// Runs |callback| the first time an observer is told about an update for
-// |target_view|, simulating a nested message loop (e.g. a third-party IME)
-// running arbitrary tasks from inside the notification.
-class ReentrantUpdateObserver : public TextInputManager::Observer {
- public:
-  ReentrantUpdateObserver(RenderWidgetHostViewBase* target_view,
-                          base::OnceClosure callback)
-      : target_view_(target_view), callback_(std::move(callback)) {}
+// Test that an unfocused child frame cannot become the active view.
+TEST_F(TextInputManagerTest, UnfocusedChildFrameCannotBecomeActive) {
+  GURL parent_url("https://a.test/");
+  NavigationSimulator::CreateRendererInitiated(parent_url, main_rfh())
+      ->Commit();
 
-  void OnUpdateTextInputStateCalled(TextInputManager* text_input_manager,
-                                    RenderWidgetHostViewBase* updated_view,
-                                    bool did_update_state) override {
-    if (updated_view != target_view_ || !callback_) {
-      return;
-    }
-    text_input_manager->RemoveObserver(this);
-    std::move(callback_).Run();
-  }
+  auto* child_rfh =
+      content::RenderFrameHostTester::For(main_rfh())->AppendChild("child");
+  GURL child_url("https://b.test/");
+  child_rfh =
+      NavigationSimulator::NavigateAndCommitFromDocument(child_url, child_rfh);
 
- private:
-  raw_ptr<RenderWidgetHostViewBase, DisableDanglingPtrDetection> target_view_;
-  base::OnceClosure callback_;
-};
+  auto* main_view = static_cast<RenderWidgetHostViewBase*>(
+      main_rfh()->GetRenderWidgetHost()->GetView());
+  auto* child_view = static_cast<RenderWidgetHostViewBase*>(
+      child_rfh->GetRenderWidgetHost()->GetView());
 
-class TextInputManagerReentrancyTest : public TextInputManagerTest {
- public:
-  TextInputManagerReentrancyTest() {
-    // Needed so the cross-site child frame gets its own RenderWidgetHostView.
-    IsolateAllSitesForTesting(base::CommandLine::ForCurrentProcess());
-  }
+  TextInputManager* manager = main_view->GetTextInputManager();
+  EXPECT_TRUE(manager);
 
- protected:
-  // Commits a cross-site child frame, and makes the main frame the active
-  // text input view.
-  void SetUpMainAndChild() {
-    NavigationSimulator::CreateRendererInitiated(GURL("https://a.test/"),
-                                                 main_rfh())
-        ->Commit();
-    child_rfh_ = static_cast<RenderFrameHostImpl*>(
-        NavigationSimulator::NavigateAndCommitFromDocument(
-            GURL("https://b.test/"),
-            RenderFrameHostTester::For(main_rfh())->AppendChild("child")));
-    main_view_ = static_cast<RenderWidgetHostViewBase*>(
-        main_rfh()->GetRenderWidgetHost()->GetView());
-    child_view_ = static_cast<RenderWidgetHostViewBase*>(
-        child_rfh_->GetRenderWidgetHost()->GetView());
-    manager_ = main_view_->GetTextInputManager();
-    ASSERT_TRUE(manager_);
-    ASSERT_EQ(manager_, child_view_->GetTextInputManager());
+  // Main frame is focused. Activate text input on main frame.
+  ui::mojom::TextInputState main_state;
+  main_state.type = ui::TEXT_INPUT_TYPE_PASSWORD;
+  manager->UpdateTextInputState(main_view, main_state);
 
-    ui::mojom::TextInputState state;
-    state.type = ui::TEXT_INPUT_TYPE_TEXT;
-    manager_->UpdateTextInputState(main_view_, state);
-    ASSERT_EQ(main_view_, manager_->active_view_for_testing());
+  EXPECT_EQ(main_view, manager->active_view_for_testing());
+  EXPECT_EQ(main_rfh()->GetRenderWidgetHost(), manager->GetActiveWidget());
 
-    // Move focus to the child frame, so that its text input update replaces
-    // the main frame as the active view.
-    child_rfh_->frame_tree_node()->frame_tree().SetFocusedFrame(
-        child_rfh_->frame_tree_node(), nullptr);
-  }
+  // Attempt to activate text input from unfocused child frame.
+  ui::mojom::TextInputState child_state;
+  child_state.type = ui::TEXT_INPUT_TYPE_TEXT;
+  manager->UpdateTextInputState(child_view, child_state);
 
-  void UpdateChildTextInputState() {
-    ui::mojom::TextInputState state;
-    state.type = ui::TEXT_INPUT_TYPE_TEXT;
-    manager_->UpdateTextInputState(child_view_, state);
-  }
-
-  raw_ptr<RenderFrameHostImpl, DisableDanglingPtrDetection> child_rfh_ =
-      nullptr;
-  raw_ptr<RenderWidgetHostViewBase, DisableDanglingPtrDetection> main_view_ =
-      nullptr;
-  raw_ptr<RenderWidgetHostViewBase, DisableDanglingPtrDetection> child_view_ =
-      nullptr;
-  raw_ptr<TextInputManager, DisableDanglingPtrDetection> manager_ = nullptr;
-};
-
-// Regression test for crbug.com/568937999. When a newly focused view replaces
-// the active view, observers are notified that the previously active view lost
-// its text input state. An observer that runs a nested message loop can close
-// the tab, destroying the WebContents and its TextInputManager.
-// UpdateTextInputState() must not touch the destroyed TextInputManager after
-// that notification returns.
-TEST_F(TextInputManagerReentrancyTest,
-       WebContentsDestroyedDuringActiveViewReset) {
-  ASSERT_NO_FATAL_FAILURE(SetUpMainAndChild());
-
-  bool contents_deleted = false;
-  ReentrantUpdateObserver observer(main_view_,
-                                   base::BindLambdaForTesting([&]() {
-                                     DeleteContents();
-                                     contents_deleted = true;
-                                   }));
-  manager_->AddObserver(&observer);
-
-  UpdateChildTextInputState();
-  EXPECT_TRUE(contents_deleted);
+  // Active view and widget must remain unchanged (main frame).
+  EXPECT_EQ(main_view, manager->active_view_for_testing());
+  EXPECT_EQ(main_rfh()->GetRenderWidgetHost(), manager->GetActiveWidget());
 }
 
-// Same as above, but the nested message loop only unregisters the newly
-// focused child view without destroying it (e.g. the view moving to another
-// TextInputManager). The TextInputManager survives, and the still-alive,
-// focused view must not become the active view of a TextInputManager it is no
-// longer registered with.
-TEST_F(TextInputManagerReentrancyTest, ViewUnregisteredDuringActiveViewReset) {
-  ASSERT_NO_FATAL_FAILURE(SetUpMainAndChild());
+// Test that a popup widget's ability to become active depends on whether
+// its creator frame is focused.
+TEST_F(TextInputManagerTest, PopupActiveStateDependsOnCreatorFrameFocus) {
+  GURL parent_url("https://a.test/");
+  NavigationSimulator::CreateRendererInitiated(parent_url, main_rfh())
+      ->Commit();
 
-  bool child_unregistered = false;
-  ReentrantUpdateObserver observer(main_view_,
-                                   base::BindLambdaForTesting([&]() {
-                                     manager_->Unregister(child_view_);
-                                     child_unregistered = true;
-                                   }));
-  manager_->AddObserver(&observer);
+  auto* child_rfh =
+      content::RenderFrameHostTester::For(main_rfh())->AppendChild("child");
+  GURL child_url("https://b.test/");
+  child_rfh =
+      NavigationSimulator::NavigateAndCommitFromDocument(child_url, child_rfh);
 
-  UpdateChildTextInputState();
-  EXPECT_TRUE(child_unregistered);
-  EXPECT_FALSE(manager_->IsRegistered(child_view_));
-  EXPECT_EQ(nullptr, manager_->active_view_for_testing());
+  auto* main_view = static_cast<RenderWidgetHostViewBase*>(
+      main_rfh()->GetRenderWidgetHost()->GetView());
+  TextInputManager* manager = main_view->GetTextInputManager();
+  EXPECT_TRUE(manager);
+
+  RenderFrameHostImpl* main_rfh_impl =
+      static_cast<RenderFrameHostImpl*>(main_rfh());
+  RenderFrameHostImpl* child_rfh_impl =
+      static_cast<RenderFrameHostImpl*>(child_rfh);
+
+  // 1. Create a popup widget view and associate its creator frame with the main
+  // frame (which currently has focus).
+  auto popup_widget = RenderWidgetHostFactory::Create(
+      /*frame_tree=*/nullptr, main_rfh_impl->GetRenderWidgetHost()->delegate(),
+      viz::FrameSinkId(1, 1),
+      main_rfh_impl->GetSiteInstance()->group()->GetSafeRef(),
+      main_rfh()->GetProcess()->GetNextRoutingID(),
+      /*hidden=*/false,
+      /*renderer_initiated_creation=*/false);
+  auto popup_view =
+      std::make_unique<TestRenderWidgetHostView>(popup_widget.get());
+  popup_view->SetWidgetType(WidgetType::kPopup);
+  EXPECT_EQ(manager, popup_view->GetTextInputManager());
+  popup_widget->set_popup_creator_frame_id_for_testing(
+      main_rfh()->GetGlobalId());
+
+  // Since the creator frame (main frame) has focus, popup can become active.
+  ui::mojom::TextInputState popup_state;
+  popup_state.type = ui::TEXT_INPUT_TYPE_TEXT;
+  manager->UpdateTextInputState(popup_view.get(), popup_state);
+
+  EXPECT_EQ(popup_view.get(), manager->active_view_for_testing());
+  EXPECT_EQ(popup_widget.get(), manager->GetActiveWidget());
+
+  // 2. Now create a popup whose creator frame is the unfocused child frame.
+  auto unfocused_popup_widget = RenderWidgetHostFactory::Create(
+      /*frame_tree=*/nullptr, child_rfh_impl->GetRenderWidgetHost()->delegate(),
+      viz::FrameSinkId(2, 2),
+      child_rfh_impl->GetSiteInstance()->group()->GetSafeRef(),
+      child_rfh->GetProcess()->GetNextRoutingID(),
+      /*hidden=*/false,
+      /*renderer_initiated_creation=*/false);
+  auto unfocused_popup_view =
+      std::make_unique<TestRenderWidgetHostView>(unfocused_popup_widget.get());
+  unfocused_popup_view->SetWidgetType(WidgetType::kPopup);
+  EXPECT_EQ(manager, unfocused_popup_view->GetTextInputManager());
+  unfocused_popup_widget->set_popup_creator_frame_id_for_testing(
+      child_rfh->GetGlobalId());
+
+  // Attempt to activate text input from popup of unfocused frame.
+  manager->UpdateTextInputState(unfocused_popup_view.get(), popup_state);
+
+  // Active view and widget must remain the focused popup, not the unfocused
+  // popup.
+  EXPECT_EQ(popup_view.get(), manager->active_view_for_testing());
+  EXPECT_EQ(popup_widget.get(), manager->GetActiveWidget());
+
+  // 3. Also verify a popup with no creator frame cannot become active.
+  auto orphan_popup_widget = RenderWidgetHostFactory::Create(
+      /*frame_tree=*/nullptr, main_rfh_impl->GetRenderWidgetHost()->delegate(),
+      viz::FrameSinkId(3, 3),
+      main_rfh_impl->GetSiteInstance()->group()->GetSafeRef(),
+      main_rfh()->GetProcess()->GetNextRoutingID(),
+      /*hidden=*/false,
+      /*renderer_initiated_creation=*/false);
+  auto orphan_popup_view =
+      std::make_unique<TestRenderWidgetHostView>(orphan_popup_widget.get());
+  orphan_popup_view->SetWidgetType(WidgetType::kPopup);
+  EXPECT_EQ(manager, orphan_popup_view->GetTextInputManager());
+
+  manager->UpdateTextInputState(orphan_popup_view.get(), popup_state);
+  EXPECT_EQ(popup_view.get(), manager->active_view_for_testing());
+  EXPECT_EQ(popup_widget.get(), manager->GetActiveWidget());
 }
 
 }  // namespace content

@@ -4,60 +4,30 @@
 
 #include "gin/function_template.h"
 
-#include "base/observer_list.h"
 #include "base/strings/strcat.h"
-#include "gin/public/gin_embedders.h"
 
 namespace gin::internal {
 
-CallbackHolderBase::DisposeObserver::DisposeObserver(
-    gin::PerIsolateData* per_isolate_data,
-    CallbackHolderBase* holder)
-    : per_isolate_data_(*per_isolate_data), holder_(*holder) {
-  per_isolate_data_->AddDisposeObserver(this);
-}
-CallbackHolderBase::DisposeObserver::~DisposeObserver() {
-  per_isolate_data_->RemoveDisposeObserver(this);
-}
-void CallbackHolderBase::DisposeObserver::OnBeforeDispose(
+CallbackHolderBase::CallbackHolderBase(uintptr_t type_identifier)
+    : type_identifier_(type_identifier) {}
+
+CallbackHolderBase::~CallbackHolderBase() = default;
+
+v8::Local<v8::CppHeapExternal> CallbackHolderBase::GetHandle(
     v8::Isolate* isolate) {
-  holder_->v8_ref_.Reset();
-}
-void CallbackHolderBase::DisposeObserver::OnDisposed() {
-  // The holder contains the observer, so the observer is destroyed here also.
-  delete &holder_.get();
-}
-
-CallbackHolderBase::CallbackHolderBase(v8::Isolate* isolate,
-                                       uintptr_t type_identifier)
-    : type_identifier_(type_identifier),
-      v8_ref_(
-          isolate,
-          v8::External::New(isolate, this, kGinInternalCallbackHolderBaseTag)),
-      dispose_observer_(PerIsolateData::From(isolate), this) {
-  v8_ref_.SetWeak(this, &CallbackHolderBase::FirstWeakCallback,
-                  v8::WeakCallbackType::kParameter);
-}
-
-CallbackHolderBase::~CallbackHolderBase() {
-  DCHECK(v8_ref_.IsEmpty());
-}
-
-v8::Local<v8::External> CallbackHolderBase::GetHandle(v8::Isolate* isolate) {
-  return v8::Local<v8::External>::New(isolate, v8_ref_);
+  return v8::CppHeapExternal::New<CallbackHolderBase>(
+      isolate, this, static_cast<v8::CppHeapPointerTag>(kCallbackHolderBase));
 }
 
 // static
-void CallbackHolderBase::FirstWeakCallback(
-    const v8::WeakCallbackInfo<CallbackHolderBase>& data) {
-  data.GetParameter()->v8_ref_.Reset();
-  data.SetSecondPassCallback(SecondWeakCallback);
-}
-
-// static
-void CallbackHolderBase::SecondWeakCallback(
-    const v8::WeakCallbackInfo<CallbackHolderBase>& data) {
-  delete data.GetParameter();
+CallbackHolderBase* CallbackHolderBase::FromV8(v8::Isolate* isolate,
+                                               v8::Local<v8::Data> data) {
+  if (data.IsEmpty() || !data->IsCppHeapExternal()) {
+    return nullptr;
+  }
+  constexpr auto kTag = static_cast<v8::CppHeapPointerTag>(kCallbackHolderBase);
+  return v8::CppHeapExternal::Cast(*data)->Value<CallbackHolderBase>(
+      isolate, {kTag, kTag});
 }
 
 void ThrowConversionError(Arguments* args,

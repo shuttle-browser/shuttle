@@ -39,6 +39,7 @@ class ExclusiveAccessContext;
 class FindBar;
 class GURL;
 class LocationBar;
+class PinnedToolbarActions;
 class StatusBubble;
 
 namespace autofill {
@@ -263,6 +264,12 @@ class BrowserWindow : public ui::BaseWindow {
   // Returns the AcceleratorProvider for this window, or null if the window
   // does not provide accelerators (notably TestBrowserWindow).
   virtual ui::AcceleratorProvider* GetAcceleratorProvider() = 0;
+
+  // Returns the PinnedToolbarActions for this window, or null if the window
+  // has no pinned toolbar actions, which is the case for non-normal browser
+  // windows (e.g. web apps and popups), windows with a custom tab toolbar, and
+  // window types that have no toolbar at all.
+  virtual PinnedToolbarActions* GetPinnedToolbarActions() = 0;
 
   // Tries to focus the location bar.  Clears the window focus (to avoid
   // inconsistent state) if this fails.

@@ -82,6 +82,10 @@ namespace blocked_content {
 class PopupNavigationDelegate;
 }  // namespace blocked_content
 
+namespace extensions {
+class Extension;
+}  // namespace extensions
+
 namespace content {
 class BrowserContext;
 class BtmService;
@@ -234,7 +238,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       bool is_embedded_origin_secure) override;
   bool ShouldIgnoreSameSiteCookieRestrictionsWhenTopLevel(
       const url::Origin& top_frame_origin,
-      bool is_embedded_origin_secure) override;
+      const GURL& current_url_chain_entry) override;
   std::string GetSiteDisplayNameForCdmProcess(
       content::BrowserContext* browser_context,
       const GURL& site_url) override;
@@ -409,6 +413,10 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       const std::vector<content::GlobalRenderFrameHostId>& render_frames,
       const blink::StorageKey& storage_key) override;
 
+  bool AllowWorkerWriteToClipboard(
+      const url::Origin& origin,
+      content::BrowserContext* browser_context) override;
+
   bool IsPrivacySandboxReportingDestinationAttested(
       content::BrowserContext* browser_context,
       const url::Origin& destination_origin,
@@ -482,6 +490,8 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   content::MediaObserver* GetMediaObserver() override;
   content::FeatureObserverClient* GetFeatureObserverClient() override;
   bool IsPopupBypassAllowed(
+      content::RenderFrameHost* render_frame_host) override;
+  bool IsUnboundedElementAllowed(
       content::RenderFrameHost* render_frame_host) override;
   bool CanCreateWindow(content::RenderFrameHost* opener,
                        const GURL& opener_url,
@@ -862,9 +872,10 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
 
   void StartRtcDiagnosticLogging(
       content::RenderFrameHost& frame_host,
+      const base::Uuid& session_id,
       bool should_upload_on_stop,
       const base::flat_map<std::string, std::string>& metadata,
-      base::OnceCallback<void(const std::string&)> callback) override;
+      base::OnceClosure callback) override;
 
   void FinishRtcDiagnosticLogging(
       content::RenderFrameHost& frame_host,
@@ -967,6 +978,9 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::BrowserContext& browser_context) override;
   void OnFetchKeepAliveRequestDestroyed(
       content::BrowserContext& browser_context) override;
+
+  void SuppressXSLTDeprecationBanner(
+      content::RenderFrameHost* render_frame_host) override;
 
 #if BUILDFLAG(IS_MAC)
   bool SetupEmbedderSandboxParameters(
@@ -1245,6 +1259,13 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   // Used by subclasses (e.g. implemented by downstream embedders) to add
   // their own extra part objects.
   void AddExtraPart(std::unique_ptr<ChromeContentBrowserClientParts> part);
+
+  static void AddChromeSchemeFactories(
+      int render_process_id,
+      content::RenderFrameHost* frame_host,
+      content::WebContents* web_contents,
+      const extensions::Extension* extension,
+      NonNetworkURLLoaderFactoryMap* factories);
 
   // Exposed for tests to perform dependency injection.
   virtual std::unique_ptr<HttpAuthCoordinator> CreateHttpAuthCoordinator();
