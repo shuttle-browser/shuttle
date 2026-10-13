@@ -23,6 +23,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/shell_integration.h"
+#include "chrome/browser/shuttle/switches.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -81,6 +82,12 @@ bool ProfileHasOtherTabbedBrowser(Profile* profile) {
         return !found;
       });
   return found;
+}
+
+// Shuttle: --shuttle-open-agents with no URL arguments opens chrome://agents.
+bool ShouldOpenAgentsPage(const base::CommandLine& command_line) {
+  return command_line.HasSwitch(shuttle::kOpenAgentsSwitch) &&
+         command_line.GetArgs().empty();
 }
 
 bool IsWelcomePageUrl(const GURL& url) {
@@ -148,6 +155,10 @@ StartupTabs StartupTabProviderImpl::GetCommandLineTabs(
     const base::FilePath& cur_dir,
     Profile* profile) const {
   StartupTabs result;
+  if (ShouldOpenAgentsPage(command_line)) {
+    result.emplace_back(GURL("chrome://agents/"));
+    return result;
+  }
 
   for (const auto& arg : command_line.GetArgs()) {
     ParsedCommandLineTabArg parsed_arg =
@@ -169,6 +180,9 @@ StartupTabs StartupTabProviderImpl::GetCommandLineTabs(
 CommandLineTabsPresent StartupTabProviderImpl::HasCommandLineTabs(
     const base::CommandLine& command_line,
     const base::FilePath& cur_dir) const {
+  if (ShouldOpenAgentsPage(command_line)) {
+    return CommandLineTabsPresent::kYes;
+  }
   bool is_unknown = false;
   for (const auto& arg : command_line.GetArgs()) {
     ParsedCommandLineTabArg parsed_arg =

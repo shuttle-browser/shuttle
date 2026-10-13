@@ -23,6 +23,11 @@ source_set("shuttle") {
   ]
 }
 
+# Shuttle command-line switches that live outside chrome_switches.h.
+source_set("switches") {
+  sources = [ "switches.h" ]
+}
+
 # Network mode (--shuttle-listen) and its access token.
 source_set("network_access") {
   sources = [

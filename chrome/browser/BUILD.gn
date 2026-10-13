@@ -1874,6 +1874,7 @@ source_set("browser") {
     "//chrome/browser/accessibility:impl",
     "//chrome/browser/shuttle",
     "//chrome/browser/shuttle:impl",
+    "//chrome/browser/shuttle:switches",
     "//chrome/browser/autocomplete",
     "//chrome/browser/autocomplete:impl",
     "//chrome/browser/background",

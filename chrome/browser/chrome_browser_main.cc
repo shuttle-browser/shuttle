@@ -68,6 +68,7 @@
 #include "chrome/browser/segmentation_platform/chrome_browser_main_extra_parts_segmentation_platform.h"
 #include "chrome/browser/sessions/chrome_serialized_navigation_driver.h"
 #include "chrome/browser/shell_integration.h"
+#include "chrome/browser/shuttle/switches.h"
 #include "chrome/browser/startup_data.h"
 #include "chrome/browser/ui/actions/chrome_actions.h"
 #include "chrome/browser/ui/color/chrome_color_mixers.h"
@@ -987,12 +988,14 @@ int ChromeBrowserMainParts::PreEarlyInitialization() {
 
   // Shuttle starts without a window: the first tab an agent opens (or
   // the user, e.g. via the Dock on macOS) creates it. URLs on the command
-  // line still open a window. Applies to this process's own startup only;
-  // command lines forwarded by a second launch open a window as usual.
+  // line still open a window, and so does --shuttle-open-agents (the Linux
+  // desktop entry: chrome://agents). Applies to this process's own startup
+  // only; command lines forwarded by a second launch open a window as usual.
   {
     base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
     if (command_line->GetArgs().empty() &&
-        !command_line->HasSwitch(switches::kRestoreLastSession)) {
+        !command_line->HasSwitch(switches::kRestoreLastSession) &&
+        !command_line->HasSwitch(shuttle::kOpenAgentsSwitch)) {
       command_line->AppendSwitch(switches::kNoStartupWindow);
     }
   }
