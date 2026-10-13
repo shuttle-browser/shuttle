@@ -166,7 +166,7 @@ Shuttle is not affiliated with Google. Chrome is a trademark of Google LLC.
 <details>
 <summary>About Chromium</summary>
 
-Shuttle is built on [Chromium](https://www.chromium.org/), the open-source project behind Google Chrome. The original
-Chromium README is in [README.chromium.md](README.chromium.md).
+Shuttle is built on [Chromium](https://www.chromium.org/), the open-source project behind Google Chrome. Upstream's
+README: [chromium/src](https://chromium.googlesource.com/chromium/src/+/main/README.md).
 
 </details>
