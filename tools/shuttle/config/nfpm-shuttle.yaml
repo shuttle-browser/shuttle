@@ -18,7 +18,7 @@ version_schema: none
 release: "1"
 section: web
 priority: optional
-maintainer: Silkweave <packages@shuttlebrowser.com>
+maintainer: Silkweave <tobias.strebitzer@gmail.com>
 vendor: Silkweave
 homepage: https://www.shuttlebrowser.com
 license: BSD-3-Clause and others (see /opt/shuttle/about_credits.html)

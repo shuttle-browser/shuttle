@@ -87,7 +87,7 @@ done
 cat > "$STAGE/usr/share/doc/shuttle/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Shuttle
-Upstream-Contact: Silkweave <packages@shuttlebrowser.com>
+Upstream-Contact: Silkweave <tobias.strebitzer@gmail.com>
 Source: https://github.com/shuttle-browser/shuttle
 
 Files: *
