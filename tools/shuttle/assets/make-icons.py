@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build Shuttle icon artwork from the v2 mark (branding/v2/Shuttle.svg, 2026-10-08).
+"""Build Shuttle icon artwork from the v2 mark (assets/v2/Shuttle.svg, 2026-10-08).
 
-Outputs (branding/build/, git-ignored):
+Outputs (assets/build/, git-ignored):
   app-icon.svg          macOS app icon: graphite squircle (Apple grid) + v2 mark + lens and glowing eye
   layers/*.svg          Icon Composer layers (1024 canvas): amber, violet, teal, shine, lens, eye
 Render previews with rsvg-convert. Asset sets (icns, PNGs, Assets.car) come from scripts/rebrand.py.

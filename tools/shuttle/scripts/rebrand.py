@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rebrand the fork as Shuttle (docs/plans/REBRAND.md, _docs/plans/REBRAND-SHUTTLE.md). Idempotent; rerun after upstream merges.
 
-  scripts/rebrand.py assets            render icon/logo assets into branding/build/tree/ (needs rsvg-convert, magick)
+  scripts/rebrand.py assets            render icon/logo assets into assets/build/tree/ (needs rsvg-convert, magick)
   scripts/rebrand.py apply [--apply]   copy assets + text edits into $SHUTTLE_ROOT/src (dry run without --apply),
                                        compile Assets.car + app.icns (macOS, --apply only)
 
@@ -12,7 +12,7 @@ from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS  # noqa: E4
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = _SHUTTLE_SRC
-BR = os.path.join(TOOLS, "branding")
+BR = os.path.join(TOOLS, "assets")
 MARK = os.path.join(BR, "v2", "Shuttle.svg")
 BUILD = os.path.join(BR, "build")
 TREE = os.path.join(BUILD, "tree")

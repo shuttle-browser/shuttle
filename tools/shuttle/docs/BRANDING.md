@@ -14,19 +14,19 @@ Chromium". Details: `docs/plans/REBRAND.md` (mechanics), `scripts/rebrand.py` (p
 
 ## Logo / app icon (v2, locked in 2026-10-08)
 
-- **Mark:** `branding/v2/Shuttle.svg` (+ `Shuttle@4x.png`): flat vector of the a2 mark: three
+- **Mark:** `assets/v2/Shuttle.svg` (+ `Shuttle@4x.png`): flat vector of the a2 mark: three
   swept segments (amber right, violet left, teal top) around an open centre with a cyan ring. Used
   as is for every product-logo surface (about page, Linux icons, `product_logo_*`, small sizes).
-- **macOS app icon:** `branding/make-icons.py` → v2 mark on the graphite squircle (Apple 824/1024
+- **macOS app icon:** `assets/make-icons.py` → v2 mark on the graphite squircle (Apple 824/1024
   grid) with a dark glass lens and glowing cyan pupil in the centre, plus per-element Icon Composer
-  layers (amber, violet, teal, shine, lens, eye) for macOS 26. Output in git-ignored `branding/build/`.
+  layers (amber, violet, teal, shine, lens, eye) for macOS 26. Output in git-ignored `assets/build/`.
 - **Palette (hex):** amber `#FFD24A` → `#FA9D0E` → `#CD4D07`; violet `#9B6BFF` → `#4514D6` → `#1E078E`;
   teal `#3FF5EA` → `#12E7DD` → `#0192A6`; ring/glow `#19D8F5`; pupil `#8BFCFD`; lens `#031E2D` / edge
   `#00131F`; squircle `#1C2430` → `#0B1017`.
 
 ### Original concept (a2)
 
-- **Approved:** `branding/approved/app-icon-a2.png` (concept "a2 aperture squircle", OpenAI
+- **Approved:** `assets/approved/app-icon-a2.png` (concept "a2 aperture squircle", OpenAI
   `gpt-image-2.5-flare`, prompt in `app-icon-a2.json`).
 - Mark: a three-segment swept ring around a central disc (a nod to the Chrome logo's structure,
   never its colours) in a macOS squircle. The centre is a dark glass lens with a glowing cyan pupil:
@@ -51,12 +51,12 @@ here). Never use Google's red / yellow / green / blue together in a ring (tradem
 
 ## Related concepts kept for reference (not approved as separate marks)
 
-`branding/concepts/` (git-ignored, regenerate from `branding/concepts-*.json`): c2 (cursor +
+`_docs/branding/concepts/` (private, regenerate from `_docs/branding/concepts-*.json`): c2 (cursor +
 sparkle, possible agent-control badge), d2 (liquid chrome, possible welcome-page hero), e2 (flat
 small-size variant).
 
 ## Tooling
 
-`node branding/generate.mjs <concepts.json> <outDir> [model] [quality] [size]` — key from the
-git-ignored `.env`; the image API allows 5 requests/min, the script skips existing outputs, so
+`node _docs/branding/generate.mjs <concepts.json> <outDir> [model] [quality] [size]` — key from the
+private `_docs/.env`; the image API allows 5 requests/min, the script skips existing outputs, so
 just rerun after a rate-limit failure.

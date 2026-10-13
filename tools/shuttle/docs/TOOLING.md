@@ -109,7 +109,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 `scripts/package-deb.sh <shuttle-linux-x64.tar.xz> <version> [dest]` builds `shuttle_<v>_amd64.deb` and
 `shuttle-<v>-1.x86_64.rpm` (each with a `.sha256`) from the released tarball. The packages are therefore built from the exact
 bytes users download, and the script checks the tarball's `.sha256` first. It uses nfpm with `config/nfpm-shuttle.yaml`,
-rendered by envsubst; the maintainer scripts are in `branding/linux/deb/{postinst,postrm}` and are shared by deb and rpm.
+rendered by envsubst; the maintainer scripts are in `assets/linux/deb/{postinst,postrm}` and are shared by deb and rpm.
 A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` defaults to the tarball's directory.
 
 - **Needs:** nfpm, installed as the release binary into `~/.local/bin` after checking it against `checksums.txt`

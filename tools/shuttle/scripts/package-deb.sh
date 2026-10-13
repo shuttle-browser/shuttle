@@ -80,7 +80,7 @@ mv "$IN" "$STAGE/opt/shuttle"
 O=$STAGE/opt/shuttle
 mv "$O/chrome-sandbox" "$STAGE/chrome-sandbox"
 rm -f "$O/README-LINUX.txt"   # tarball instructions (deps, ./shuttle) don't apply to the package
-sed 's|@EXEC@|/usr/bin/shuttle|g' "$TOOLS/branding/linux/shuttle.desktop" > "$STAGE/usr/share/applications/shuttle.desktop"
+sed 's|@EXEC@|/usr/bin/shuttle|g' "$TOOLS/assets/linux/shuttle.desktop" > "$STAGE/usr/share/applications/shuttle.desktop"
 for s in 24 48 64 128 256; do
   install -Dm644 "$O/product_logo_$s.png" "$STAGE/usr/share/icons/hicolor/${s}x$s/apps/shuttle.png"
 done
@@ -100,7 +100,7 @@ EOF
 chmod -R u=rwX,go=rX "$STAGE/usr" "$O"
 chmod 644 "$O"/lib*.so*   # shared libraries are not executables (lintian)
 for s in postinst postrm; do
-  sed -e "s|@APT_SOURCE@|$APT_SOURCE|" -e "s|@APT_URL@|$APT_URL|" "$TOOLS/branding/linux/deb/$s" > "$STAGE/$s"
+  sed -e "s|@APT_SOURCE@|$APT_SOURCE|" -e "s|@APT_URL@|$APT_URL|" "$TOOLS/assets/linux/deb/$s" > "$STAGE/$s"
 done
 
 export SHUTTLE_PKG_VERSION=$PKG_VERSION SHUTTLE_CHROMIUM_VERSION=$CHROMIUM_VERSION SHUTTLE_STAGE=$STAGE

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs branding/linux/shuttle.desktop + hicolor icons for the current user (Linux / WSLg), with
+# Installs assets/linux/shuttle.desktop + hicolor icons for the current user (Linux / WSLg), with
 # Exec pointing at a Shuttle build. Usage: linux-install-desktop.sh [out-dir]   (default $SHUTTLE_ROOT/src/out/Dev)
 #                                         linux-install-desktop.sh --uninstall
 # Matches the browser's desktop id (GetDesktopName() = shuttle.desktop, WM_CLASS / Wayland app_id = shuttle).
@@ -17,7 +17,7 @@ for s in $sizes; do
   [ -f "$src/chrome/app/theme/chromium/linux/product_logo_$s.png" ] || { echo "FATAL: icon product_logo_$s.png missing" >&2; exit 2; }
 done
 mkdir -p "$apps"
-sed "s|@EXEC@|$out/shuttle|g" "$tools/branding/linux/shuttle.desktop" > "$apps/shuttle.desktop"
+sed "s|@EXEC@|$out/shuttle|g" "$tools/assets/linux/shuttle.desktop" > "$apps/shuttle.desktop"
 for s in $sizes; do
   install -Dm644 "$src/chrome/app/theme/chromium/linux/product_logo_$s.png" "$icons/${s}x${s}/apps/shuttle.png"
 done

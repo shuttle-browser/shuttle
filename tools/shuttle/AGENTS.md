@@ -19,7 +19,7 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 | `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`), `agent-browser-tools.json` (curated page tools), `sccache.example.toml`, `sccache/systemd/` (build-host unit templates), `remote/` (NativeLink spike) |
 | `scripts/` | Build, prune, fix, rebrand, release and smoke-test scripts (see below and `docs/TOOLING.md`) |
 | `prune/` | Manifests for `scripts/prune.py` (one per removal batch) |
-| `branding/` | Logo and icon sources, icon generation, Linux desktop entry |
+| `assets/` | Logo and icon sources, icon generation, Linux desktop entry |
 | `patches/` | Readable export of early fork commits (the fork's git history is the source of truth) |
 | `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `LINUX.md`, `BRANDING.md`, `plans/` (design notes) |
 

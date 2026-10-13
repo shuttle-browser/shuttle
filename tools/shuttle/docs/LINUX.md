@@ -99,7 +99,7 @@ The Linux binary is `out/Dev/shuttle` (the GN target is still `chrome`; the `lin
 if `shuttle` is missing). WM_CLASS (`shuttle`, `Shuttle`), Wayland app_id `shuttle`, desktop id
 `shuttle.desktop` (`$CHROME_DESKTOP` still overrides), secret service app `shuttle` / KWallet
 "Shuttle Keys", profile `~/.config/shuttle`. `scripts/linux-install-desktop.sh [out-dir|--uninstall]`
-installs a per-user desktop entry (`branding/linux/shuttle.desktop`) plus hicolor icons for
+installs a per-user desktop entry (`assets/linux/shuttle.desktop`) plus hicolor icons for
 WSLg/Linux desktops.
 
 ## Linux smoke tests

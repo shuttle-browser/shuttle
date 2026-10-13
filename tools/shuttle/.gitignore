@@ -6,5 +6,4 @@ __pycache__/
 .DS_Store
 *.pem
 .env
-branding/build/
-branding/concepts/
+assets/build/

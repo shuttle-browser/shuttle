@@ -18,7 +18,7 @@ scripts skip this directory.
 | `config/` | GN args (common, dev, release, Linux), curated page-tool list, sccache client config example, sccache-dist host units |
 | `scripts/` | Build, prune, fix, rebrand, release (macOS signing, DMG) and smoke-test scripts |
 | `prune/` | Manifests consumed by `scripts/prune.py`, one per removal batch |
-| `branding/` | Logo (SVG), icon generation, Linux desktop entry |
+| `assets/` | Logo (SVG), icon generation, Linux desktop entry |
 | `patches/` | Readable export of the first fork commits |
 | `docs/` | Tooling guide and gotchas, removal log, Linux build notes, branding, design plans (`docs/plans/`) |
 

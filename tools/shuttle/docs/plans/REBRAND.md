@@ -43,7 +43,7 @@ Tooling to update in the same commit: `scripts/smoke-cdp.mjs`, `scripts/check-au
 
 ## Assets to prepare before the commit (no build impact)
 
-1. Vector redraw of a2 → `branding/approved/app-icon-a2.svg`; record exact palette hexes in
+1. Vector redraw of a2 → `assets/approved/app-icon-a2.svg`; record exact palette hexes in
    `docs/BRANDING.md`.
 2. From the SVG: Icon Composer `AppIcon.icon` (layers for Liquid Glass) + `Assets.car` (`actool`),
    `app.icns` (`iconutil`), PNG set 16/22-mono/24/32/48/64/128/256/512 (+@2x for 100/200% dirs), name
@@ -63,8 +63,8 @@ Tooling to update in the same commit: `scripts/smoke-cdp.mjs`, `scripts/check-au
 
 ## Status / implementation (2026-10-08)
 
-- `scripts/rebrand.py assets` renders everything from `branding/v2/Shuttle.svg` +
-  `branding/make-icons.py` into `branding/build/tree/` (38 files: product logos, Linux icons, 100/200%
+- `scripts/rebrand.py assets` renders everything from `assets/v2/Shuttle.svg` +
+  `assets/make-icons.py` into `assets/build/tree/` (38 files: product logos, Linux icons, 100/200%
   logos, wordmarks, mono tray icon, legacy `AppIcon.appiconset`, `app.icns`, Icon Composer
   `AppIcon.icon`). `scripts/rebrand.py apply [--apply]` copies them into the fork checkout, compiles
   `Assets.car` with Chromium's `tools/mac/icons/compile_car.py` (Xcode 26 `actool`), applies the
