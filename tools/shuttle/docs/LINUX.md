@@ -11,17 +11,22 @@ removed from the fork.
   disk size, not the real free space: check the Windows host drive (`df -h /mnt/c`).
 - `depot_tools` on `PATH`, and the build dependencies: `build/install-build-deps.sh` from the Chromium
   checkout (works on current Ubuntu releases; add `--unsupported` if it refuses yours).
+- Moving an existing checkout: follow the "Moving the checkout" gotcha in `docs/TOOLING.md` (`siso fs export` per out dir, mv, rewrite paths,
+  `siso fs import`, temporary old→new symlink, `gn gen`, dry run must match) or every out dir rebuilds from scratch.
 - WSL2 only: keep the distro alive during long builds (for example a Windows logon task running
   `wsl.exe -d <distro> --exec sleep infinity`). Never run `wsl --shutdown` from inside WSL.
 
 ## Checkout
 
+The gclient root can live anywhere; the scripts find it two levels above `src/tools/shuttle` (override with
+`SHUTTLE_ROOT`). Our hosts use `~/projects/shuttle-browser` (gclient root: `.gclient`, `src/`, `logs/`, `release/`).
+
 ```sh
-mkdir -p ~/chromium && cd ~/chromium
+mkdir -p ~/projects/shuttle-browser && cd ~/projects/shuttle-browser
 cat > .gclient <<'EOT'
 solutions = [{
   "name": "src",
-  "url": "https://chromium.googlesource.com/chromium/src.git",
+  "url": "git@github.com:shuttle-browser/shuttle.git",
   "managed": False,
   "custom_deps": {},
   "custom_vars": {},
@@ -41,7 +46,7 @@ See the README for the full "build from source" flow.
 
 - `scripts/build-linux.sh [dev|release] [autoninja args]`: GN args are `config/args-common.gn` +
   `config/args-<kind>.gn` + `config/args-linux.gn` (VR/OpenXR off) + `config/args-linux-<kind>.gn` if present. dev builds
-  `chrome`; release builds `chrome chrome_sandbox` in `out/Release`. Logs to `~/chromium/logs/build-<Dir>.log`, which ends
+  `chrome`; release builds `chrome chrome_sandbox` in `out/Release`. Logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, which ends
   with `BUILD EXIT <rc>`. The script unsets `CLAUDECODE`/`AI_AGENT`: with them set, siso runs in agent quiet mode
   (no progress lines) and `build-watch.py` sees nothing.
 - Run long builds detached, e.g. `tmux new-session -d -s build "bash scripts/build-linux.sh dev -j 12 -k 0"`.
@@ -70,7 +75,9 @@ See the README for the full "build from source" flow.
 - Sandbox: Linux uses the user-namespace sandbox (`chrome://sandbox`: "adequately sandboxed"). Ubuntu 23.10+/24.04 block
   unprivileged user namespaces through AppArmor, and Shuttle then fails with "No usable sandbox!". For those systems the
   tarball ships the setuid helper `chrome-sandbox` (`sandbox/linux/suid/*` restored in fork commit 31): run once
-  `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox`. Never recommend `--no-sandbox`.
+  `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox`. Never recommend `--no-sandbox`. The .deb/.rpm
+  install it 4755 root:root (`/opt/shuttle/chrome-sandbox`); check the setuid path with `--disable-namespace-sandbox`
+  (with mode 0755 that aborts with "The SUID sandbox helper binary was found, but is not configured correctly").
 - Compatibility: max `GLIBC_2.25`, no GLIBCXX (libc++ is static).
 - Tarball smoke: extract into a fresh dir and run the extracted binary headless: smoke-cdp, smoke-mcp + `--persist-check`,
   smoke-agents-page, page tools, and `smoke-network.mjs <port> <udd> <lanIp>` with `--shuttle-listen=0.0.0.0`.
@@ -133,7 +140,9 @@ and end with `Browser.close`.
 template is `config/sccache.example.toml`, the toolchain archive comes from
 `scripts/sccache-toolchain.sh`, and the gotchas are in `docs/TOOLING.md`. Running the scheduler and
 build servers (systemd units, `bubblewrap`, firewalling the scheduler port) is up to you: they listen
-without authentication on the network unless you restrict them. Size `-local_jobs` to the build host's
+without authentication on the network unless you restrict them. Our units are templates in
+`config/sccache/systemd/` (`scripts/sccache-dist-host.sh install|status|restart|logs`); the script reads
+`SHUTTLE_BUILD_HOST_IP` (the address the scheduler binds) from `~/.shuttle/env`. Size `-local_jobs` to the build host's
 real core count and RAM; more jobs than it can hold thrash swap on heavy Blink/content files.
 
 ## How the Linux files came back (fork branch `ac/linux`)
@@ -160,5 +169,6 @@ The fork originally pruned Linux along with the other platforms; Linux was resto
 
 ## Later
 
-`.deb`/AppImage packaging (`chrome/installer/linux`, not restored), a windowed X11/Wayland run of the tarball, the setuid
-sandbox path on a real Ubuntu 24.04; the third-party/web-tests prune must keep what Linux reads.
+AppImage/Flatpak (not planned; the .deb/.rpm cover the main distros), the signed apt repo (phase 2), a windowed
+X11/Wayland/WSLg run of the packages (desktop entry, start menu), the setuid sandbox on a real (non-WSL) Ubuntu 24.04
+with AppArmor's userns restriction; the third-party/web-tests prune must keep what Linux reads.

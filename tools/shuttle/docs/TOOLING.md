@@ -350,7 +350,8 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
   `.siso_deps` holds absolute depfile paths from some generators (v8 inspector_protocol → ~155 Blink files
   recompile otherwise). Done this way on 2026-10-13 (`shuttle/src` → `src` one level up): dry runs matched (503 and
   6,174 steps); only 12 Blink gperf actions reran (the relative Xcode gperf path changes with the depth), 4 outputs
-  changed. Build only via the real path: the scripts resolve it (`pwd -P` / `realpath`), so a symlinked cwd is safe for
+  changed. Linux build host, same day (`~/chromium` → `~/projects/shuttle-browser`): dry runs matched (Dev 1 → 1,
+  Release 0 → 1: `about_credits.html` lists `build.ninja` as an input, so any `gn gen` makes it stale). Build only via the real path: the scripts resolve it (`pwd -P` / `realpath`), so a symlinked cwd is safe for
   them, but raw `gn`/`siso` from a symlinked cwd would register a second path. If the state is already lost: the siso "adopt" patch + pre-move explain logs
   (`_docs/siso-adopt/`) brought out/Sccache from 47,948 to ~1,060 steps. sccache's local cache did not help
   (0 hits; it never held a full build).
