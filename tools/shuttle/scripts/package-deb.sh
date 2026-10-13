@@ -7,7 +7,7 @@
 # Env: SHUTTLE_DEB_APT_SOURCE=1  postinst adds the apt repo source once (off by default: only once the repo is live)
 #        SHUTTLE_DEB_APT_KEY=<file>  binary (dearmored) public key shipped as /usr/share/keyrings/shuttle-archive-keyring.gpg
 #        SHUTTLE_DEB_APT_URL=<url>   default https://apt.shuttlebrowser.com
-#      SHUTTLE_NO_RPM=1 skips the .rpm (AC_NO_RPM still honored for now). NFPM=<path> (default: nfpm on PATH, else ~/.local/bin/nfpm).
+#      SHUTTLE_NO_RPM=1 skips the .rpm. NFPM=<path> (default: nfpm on PATH, else ~/.local/bin/nfpm).
 # Layout: /opt/shuttle (tarball tree), /usr/bin/shuttle symlink, desktop file, hicolor icons, /usr/share/doc/shuttle.
 set -euo pipefail
 
@@ -119,7 +119,7 @@ render() {  # $1 = packager; the apt keyring only goes into the .deb
 mkdir -p "$DEST"
 built=()
 for p in deb rpm; do
-  [ $p = rpm ] && [ "${SHUTTLE_NO_RPM:-${AC_NO_RPM:-}}" = 1 ] && continue
+  [ $p = rpm ] && [ "${SHUTTLE_NO_RPM:-}" = 1 ] && continue
   render $p
   case $p in deb) f=shuttle_${PKG_VERSION}_amd64.deb ;; rpm) f=shuttle-${PKG_VERSION}-1.x86_64.rpm ;; esac
   rm -f "$DEST/$f"
