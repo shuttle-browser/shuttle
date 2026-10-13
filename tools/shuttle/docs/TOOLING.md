@@ -346,9 +346,11 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
   log", full rebuild (~48k steps). `.ninja_log` is truncated each run, no help. Before ANY siso run after the move:
   `siso fs export -C out/<Dir> > state.json` per out dir (and back up `.siso_fs_state*`, `.siso_deps`,
   `siso_explain*`), `mv`, rewrite old→new path in the JSON, `siso fs import -C out/<Dir> < state.json`, `gn gen`
-  (Xcode paths like gperf are stored relative, so their `../` depth changes). Keep a temporary old→new symlink:
+  (Xcode paths like gperf are stored relative, so their `../` depth changes). Keep an old→new symlink:
   `.siso_deps` holds absolute depfile paths from some generators (v8 inspector_protocol → ~155 Blink files
-  recompile otherwise). Done this way on 2026-10-13 (`shuttle/src` → `src` one level up): dry runs matched (503 and
+  recompile otherwise). They are not plain text there, and an entry only changes when its action reruns, so neither a
+  0-step dry run nor a real build proves it's gone (the Linux host dropped its symlink after real builds of every out
+  dir and still rebuilt ~220 steps per dir: regenerated inspector headers, mostly unchanged). Keep the symlink until you're ready to pay that rebuild. Done this way on 2026-10-13 (`shuttle/src` → `src` one level up): dry runs matched (503 and
   6,174 steps); only 12 Blink gperf actions reran (the relative Xcode gperf path changes with the depth), 4 outputs
   changed. Linux build host, same day (`~/chromium` → `~/projects/shuttle-browser`): dry runs matched (Dev 1 → 1,
   Release 0 → 1: `about_credits.html` lists `build.ninja` as an input, so any `gn gen` makes it stale). Build only via the real path: the scripts resolve it (`pwd -P` / `realpath`), so a symlinked cwd is safe for

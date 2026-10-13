@@ -58,6 +58,9 @@ log="$SHUTTLE_LOGS/build-$dir.log"
 : > "$log"
 start=$(date +%s)
 set +e
+# macOS script(1) aborts ("tcgetattr/ioctl: Operation not supported on socket") when stdin is a socket, e.g. a build
+# started by an agent harness; /dev/null works.
+[[ -t 0 ]] || exec </dev/null
 script -q -F "$log" nice -n "${NICE:-10}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_TARGET:-chrome}" "${remote_args[@]}" "$@"
 rc=$?
 mins=$(( ($(date +%s) - start) / 60 ))
