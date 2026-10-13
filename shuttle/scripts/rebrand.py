@@ -21,7 +21,7 @@ NAME, NAME_LONG, NAME_LC, COMPANY = "Shuttle", "Shuttle Browser", "shuttle", "Si
 BUNDLE_ID, TEAM_ID, CREATOR = "dev.silkweave.shuttle", "TT5SR2JM9L", "Shtl"
 HOMEPAGE = "https://www.shuttlebrowser.com"
 # Earlier brands: their text counts as "old" too, so `apply` renames an already-branded tree.
-PREV = [dict(NAME="Agent Chrome", NAME_LC="agent-chrome", BUNDLE_ID="example.invalid.agentchrome", CREATOR="AgCr")]
+PREV = []  # dict(NAME=, NAME_LC=, BUNDLE_ID=, CREATOR=) per earlier brand
 THEME = "chrome/app/theme"
 MACDIR = f"{THEME}/chromium/mac"
 

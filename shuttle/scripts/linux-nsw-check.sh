@@ -4,16 +4,16 @@
 # close-session -> 0 pages/windows, process alive; 5. second launch (no args) is forwarded and opens a window;
 # 3. Browser.close -> exit 0, no fatals; 4. launch WITH a URL arg -> window with that page. Steps 4/5 skip headless.
 # Visible windows are counted on X11 only (xwininfo -tree, class shuttle, IsViewable); Wayland: CDP only.
-# Note: chrome://omnibox-popup.top-chrome/ counts as a page target once a window exists. Log /tmp/ac-nsw-<mode>.log.
+# Note: chrome://omnibox-popup.top-chrome/ counts as a page target once a window exists. Log /tmp/sh-nsw-<mode>.log.
 . "$(dirname "$0")/lib/paths.sh"
 G='FATAL|Check failed|DUMP_WILL_BE|Trying to access an unregistered pref|Trying to register KeyedService Factory|DanglingRawPtrDetected'
-mode=${1:-x11}; S=$(cd "$(dirname "$0")" && pwd); log=/tmp/ac-nsw-$mode.log
+mode=${1:-x11}; S=$(cd "$(dirname "$0")" && pwd); log=/tmp/sh-nsw-$mode.log
 cd "$SHUTTLE_SRC" || exit 1
 [ -x out/Dev/shuttle ] || { echo "FATAL: $SHUTTLE_ROOT/src/out/Dev/shuttle missing (Shuttle build required; no fallback to chrome)" >&2; exit 2; }
 echo "commit $(git log -1 --format=%h), shuttle built $(stat -c %y out/Dev/shuttle | cut -c1-19), mode=$mode"
 : > "$log"
 run_chrome() {  # run_chrome [extra args...]: foreground invocation (caller backgrounds if needed)
-  local a=(--user-data-dir=/tmp/ac-profile --no-first-run "$@")
+  local a=(--user-data-dir=/tmp/sh-profile --no-first-run "$@")
   case $mode in
     headless) out/Dev/shuttle --headless "${a[@]}" ;;
     x11) DISPLAY=:0 out/Dev/shuttle --ozone-platform=x11 "${a[@]}" ;;
@@ -21,7 +21,7 @@ run_chrome() {  # run_chrome [extra args...]: foreground invocation (caller back
     *) echo "unknown mode $mode"; exit 2 ;;
   esac >> "$log" 2>&1
 }
-launch() { rm -rf /tmp/ac-profile; run_chrome "$@" & pid=$!
+launch() { rm -rf /tmp/sh-profile; run_chrome "$@" & pid=$!
   for i in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done; sleep 3; }
 pages() { curl -s 127.0.0.1:9222/json/list | python3 -c 'import json,sys;p=[t["url"] for t in json.load(sys.stdin) if t["type"]=="page"];print(len(p),p[:3])' 2>/dev/null || echo "no-cdp"; }
 xwins() {  # viewable top-level X11 windows of chrome (WM_CLASS shuttle)

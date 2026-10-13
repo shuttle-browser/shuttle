@@ -3,7 +3,7 @@
 What each removal batch deleted, how the build was fixed, and what it left behind.
 Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md`.
 
-## Fork commits (`git log agent-chrome..ac/prune-platforms` in ~/chromium/src)
+## Fork commits (`git log chromium..main`)
 
 1. Skip first-run and default-browser prompt (forced in `ChromeMainDelegate::BasicStartupComplete`).
 2. Remove the missing-API-keys infobar.
@@ -36,10 +36,10 @@ Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md
 18. Batch B2b: user education/IPH, side panel (entries, `chrome.sidePanel`, framework), experimental
     WebUI browser, `chrome.gcm`/`instanceID` + invalidation, on-device AI consumers (GCM + Web Push
     kept). Commit `3482a77af5` (squash of `ac/b2b`).
-19. Rebrand as Agent Chrome (Silkweave; the signing team; `<old bundle id>`; logo v2),
+19. First rebrand (interim name, replaced in commit 27; Silkweave; the signing team; `<old bundle id>`; logo v2),
     applied by `scripts/rebrand.py`. Commit `033bb9b90b` (single commit, fast-forwarded). Mac + Linux
     green, smoke clean. Details: `docs/plans/REBRAND.md`.
-20. In-browser MCP server at `POST /mcp` on the CDP port (`chrome/browser/agent_chrome/`, 11 tools:
+20. In-browser MCP server at `POST /mcp` on the CDP port (now `chrome/browser/shuttle/`, 11 tools:
     agent profiles = storage partitions, sessions = tab groups, leased tabs) + new tabs/noopener windows
     keep the opener's storage partition. Commit `007d52a391` (squash of `ac/mcp`). Mac + Linux green,
     `smoke-mcp.mjs` 27/27 + persist-check; the first live MCP test 2026-10-08 passed. Design:
@@ -72,14 +72,14 @@ Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md
     of its agent's group takes it back; `list-agents` summarizes uploaded avatars. Commit `9330681592`
     (squash of `ac/next`'s rest). Mac + Linux green on 23-26's final tree (3-mode smokes clean).
 27. **Rebrand to Shuttle** (2026-10-09: `Shuttle.app`, `dev.silkweave.shuttle`, internal ids `shuttle`,
-    logins reset): `chrome/browser/agent_chrome` → `chrome/browser/shuttle` (namespace, prefs `shuttle.*`,
+    logins reset): own code moved to `chrome/browser/shuttle` (namespace, prefs `shuttle.*`,
     partitions `shuttle-<id>`, MCP `serverInfo` `shuttle`), BRANDING/profile dirs/keychain, all remaining
     "Chromium" UI strings (translations remapped; the credit link keeps "Chromium"), help links →
     shuttlebrowser.com, dark toolbar logo + Settings "About" glyph, Linux binary/WM_CLASS/app_id/desktop
     name `shuttle`, About page without the update-check error (basic updater on macOS). Commit `8b80db862f`
     (squash of `ac/rebrand-shuttle` + `ac/rebrand-shuttle-linux`). Mac green + all smokes; Linux green
     (3 modes + windowed brand checks). Tooling: `scripts/rebrand.py` (parameters + earlier-brand rename),
-    `scripts/rename-shuttle.py` (one-off). Behavior changes: existing agents/logins not migrated (fresh
+    a one-off rename script (since removed). Behavior changes: existing agents/logins not migrated (fresh
     `~/.shuttle/profile`); MCP server key `shuttle` (tools `mcp__shuttle__*`).
     Behavior changes: no window or tab at launch (headless too); a second launch or URL args still open
     a window; on Linux closing the last window no longer quits (Browser.close or kill; accepted).
@@ -98,10 +98,10 @@ Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md
     −2.11M lines). Commit `c97374a5fc` (squash of `ac/prune-b3` + `ac/prune-b3-linux`). Mac release + dev and Linux green, smokes clean.
 
 History rewrite (2026-10-06, for GitHub): the 15 commits were replayed unchanged onto a snapshot
-root commit (`8690039f`); hashes above are the pre-rewrite ones (branch `ac/prune-platforms-orig`).
+root commit (`8690039f`); hashes above are the pre-rewrite ones (pre-rewrite branch, since deleted).
 New hashes: commit 13 = `c96f7470bd`, commit 14 = `72b994abe1`.
 
-Since the rewrite, `main` on `github` is the fork's trunk; local `ac/prune-platforms` tracks it.
+Since the rewrite, `main` on `github` is the fork's trunk; topic branches are `sh/*`.
 
 Tree: 502,677 → 334,159 tracked files at commit 14 (335,244 at commit 13 (before: 371,543). Before B2c: 377,115; before B2a: 379,129; text lines 64.6M → ~48.1M; Chromium's own code
 (excl. vendored third_party, incl. Blink) −31.5%.

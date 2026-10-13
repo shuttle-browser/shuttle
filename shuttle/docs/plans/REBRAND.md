@@ -9,18 +9,17 @@ server (which bakes in profile/user-data paths). One rebuild per platform. Visua
 
 ## Decisions (2026-10-08)
 
-- **Product name: "Agent Chrome"** (the maintainer's call, with the "Chrome" trademark caveat noted).
-  `PRODUCT_FULLNAME`/`PRODUCT_SHORTNAME` = `Agent Chrome` → `Agent Chrome.app`, `Agent Chrome Framework`,
-  `Agent Chrome Helper*`; profile dir `~/Library/Application Support/Agent Chrome`, Linux
-  `~/.config/agent-chrome`, binary `agent-chrome`; keychain item `Agent Chrome Safe Storage`.
+- **Product name:** an interim name (replaced by Shuttle in fork commit 27). `PRODUCT_FULLNAME`/
+  `PRODUCT_SHORTNAME` drive the app, framework and helper names, the profile dir, the Linux binary name
+  and the keychain item (`<name> Safe Storage`).
 - **Company string: "Silkweave"** (`COMPANY_FULLNAME`/`COMPANY_SHORTNAME`, copyright line). It is
   display-only (Info.plist copyright, About page); it does not need to match the signing identity.
 - **Apple signing: Atomic BI team** — `Developer ID Application: Atomic BI PTE LTD`, team ID
   `TT5SR2JM9L` → `MAC_TEAM_ID=TT5SR2JM9L`; bundle ID `<old bundle id>` (matches the team's
   reverse domain). Dev builds stay ad-hoc signed; Developer ID signing + notarization is a release
-  step (later, with `out/Release`). `MAC_CREATOR_CODE`: legacy, set to `AgCr`.
+  step (later, with `out/Release`). `MAC_CREATOR_CODE`: legacy (now `Shtl`).
 
-## Source surfaces (in `~/chromium/src`, unbranded = `branding_path_component = "chromium"`)
+## Source surfaces (in the fork checkout, unbranded = `branding_path_component = "chromium"`)
 
 Edit the `chromium` branding in place (no new branding flavour): fewer GN changes and isolated
 merge conflicts.
@@ -64,23 +63,23 @@ Tooling to update in the same commit: `scripts/smoke-cdp.mjs`, `scripts/check-au
 
 ## Status / implementation (2026-10-08)
 
-- `scripts/rebrand.py assets` renders everything from `branding/v2/AgentChrome.svg` +
+- `scripts/rebrand.py assets` renders everything from `branding/v2/Shuttle.svg` +
   `branding/make-icons.py` into `branding/build/tree/` (38 files: product logos, Linux icons, 100/200%
   logos, wordmarks, mono tray icon, legacy `AppIcon.appiconset`, `app.icns`, Icon Composer
-  `AppIcon.icon`). `scripts/rebrand.py apply [--apply]` copies them into `~/chromium/src`, compiles
+  `AppIcon.icon`). `scripts/rebrand.py apply [--apply]` copies them into the fork checkout, compiles
   `Assets.car` with Chromium's `tools/mac/icons/compile_car.py` (Xcode 26 `actool`), applies the
   text edits above, and rebrands `chromium_strings.grd` + `settings_chromium_strings.grdp` message
-  bodies ("The Chromium Authors" → Silkweave, "Chromium" → Agent Chrome, not ChromiumOS/Updater).
+  bodies ("The Chromium Authors" → Silkweave, "Chromium" → the product name, not ChromiumOS/Updater).
 - **Translations:** grit keys translations by a fingerprint of the English text, so changing it
   orphans them. `rebrand.py` parses the grd with grit before/after, remaps the 219 changed ids in
   all 81 `chromium_strings_*.xtb` files and rebrands the translated text (16,119 translations).
 - Icon Composer layer SVGs must be standalone valid XML (actool's CoreSVG rejects stray tags).
-- **Applied** on fork branch `ac/rebrand` = `033bb9b90b` (pushed to `github`, on top of commit 18):
+- **Applied** on fork branch `ac/rebrand` (since merged) = `033bb9b90b` (pushed to `github`, on top of commit 18):
   Mac `out/Sccache` green (819 steps, ~3 min remote: most outputs restat-skipped), smoke clean,
-  `Agent Chrome.app` / `<old bundle id>`; Dock + app switcher icons reviewed by the maintainer after two
+  `<old name>.app` / `<old bundle id>`; Dock + app switcher icons reviewed by the maintainer after two
   fixes (Icon Composer layers at full-canvas scale 800/1024; document badge `Icon.iconset`).
   Linux (the build host `out/Dev`): green, 4,681 steps, no Linux fixes; smoke clean in headless, WSLg X11
-  and Wayland, push OK; profile dir `~/.config/agent-chrome`, window title and `_NET_WM_ICON` v2.
+  and Wayland, push OK; profile dir `~/.config/<old name>`, window title and `_NET_WM_ICON` v2.
   **Landed as fork commit 19** (`github` `main` = `033bb9b90b`, 2026-10-08).
 - Follow-up (Linux): `WM_CLASS` is still `chromium-browser` (taskbar grouping, `.desktop` matching).
 - Follow-up: the Settings sidebar "About" entry still shows the old Chromium icon.
@@ -89,7 +88,7 @@ Tooling to update in the same commit: `scripts/smoke-cdp.mjs`, `scripts/check-au
   current-channel logo, which is ours).
 - Follow-up: About page shows "An error occurred while checking for updates: 0" (no updater in this
   build): hide/remove the update status UI (and decide on an update story later).
-- Follow-up: Linux binary is still `chrome` (decided name: `agent-chrome`); Developer ID signing +
+- Follow-up: Linux binary is still `chrome` (now `shuttle`, commit 27); Developer ID signing +
   notarization with `out/Release`.
 - Follow-up: 68 hard-coded "Chromium" mentions in other grd/grdp message bodies (omnibox pedals 33,
   omnibox 12, security interstitials 6, …), mostly unbranded `<if>` variants; same remap approach.

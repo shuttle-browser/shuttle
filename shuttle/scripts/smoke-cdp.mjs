@@ -1,6 +1,6 @@
 // CDP smoke test for Shuttle. Usage: node scripts/smoke-cdp.mjs <port>
 // Launch the browser without stealing focus:
-//   open -g -n -a $SHUTTLE_ROOT/src/out/Dev/Chromium.app --args --user-data-dir=/tmp/ac-profile \
+//   open -g -n -a $SHUTTLE_ROOT/src/out/Dev/Chromium.app --args --user-data-dir=/tmp/sh-profile \
 //     --remote-debugging-port=9333 --no-first-run about:blank
 const port = process.argv[2] || 9333;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

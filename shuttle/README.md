@@ -57,7 +57,7 @@ Run the result headless with a fresh profile and smoke-test it:
 
 ```sh
 ../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless \
-  --user-data-dir=/tmp/ac-profile --remote-debugging-port=9222 &     # Linux: out/Dev/shuttle
+  --user-data-dir=/tmp/sh-profile --remote-debugging-port=9222 &     # Linux: out/Dev/shuttle
 node scripts/smoke-cdp.mjs 9222
 node scripts/smoke-mcp.mjs 9222
 ```

@@ -2,16 +2,16 @@
 # Linux MCP smoke (scripts/linux-mcp-smoke.sh [headless|x11|wayland], default headless) for the current out/Dev:
 # fresh profile, scripts/smoke-mcp.mjs, Browser.close + chrome's exit status, relaunch on the SAME profile,
 # smoke-mcp.mjs --persist-check, close again; then the fatal grep (same as linux-smoke.sh).
-# Log: /tmp/ac-mcp-<mode>.log. Judge by both smoke rcs = 0, both shuttle exits = 0, fatals = 0.
+# Log: /tmp/sh-mcp-<mode>.log. Judge by both smoke rcs = 0, both shuttle exits = 0, fatals = 0.
 . "$(dirname "$0")/lib/paths.sh"
 G='FATAL|Check failed|DUMP_WILL_BE|Trying to access an unregistered pref|Trying to register KeyedService Factory|DanglingRawPtrDetected'
-mode=${1:-headless}; H=$(cd "$(dirname "$0")" && pwd); log=/tmp/ac-mcp-$mode.log
+mode=${1:-headless}; H=$(cd "$(dirname "$0")" && pwd); log=/tmp/sh-mcp-$mode.log
 cd "$SHUTTLE_SRC" || exit 1
 [ -x out/Dev/shuttle ] || { echo "FATAL: $SHUTTLE_ROOT/src/out/Dev/shuttle missing (Shuttle build required; no fallback to chrome)" >&2; exit 2; }
 echo "commit $(git log -1 --format=%h), shuttle built $(stat -c %y out/Dev/shuttle | cut -c1-19), mode=$mode"
-rm -rf /tmp/ac-profile
+rm -rf /tmp/sh-profile
 launch() {
-  args=(--user-data-dir=/tmp/ac-profile --no-first-run about:blank)
+  args=(--user-data-dir=/tmp/sh-profile --no-first-run about:blank)
   case $mode in
     headless) out/Dev/shuttle --headless "${args[@]}" >> "$log" 2>&1 & ;;
     x11) DISPLAY=:0 out/Dev/shuttle --ozone-platform=x11 "${args[@]}" >> "$log" 2>&1 & ;;

@@ -23,7 +23,7 @@ agent ── POST http://127.0.0.1:<port>/mcp ──▶ DevToolsHttpHandler (con
                                                ▼
                          ChromeDevToolsManagerDelegate::HandleMcpRequest
                                                ▼
-                    agent_chrome::AgentChromeService (KeyedService, default profile)
+                    shuttle::ShuttleService (KeyedService, default profile)
                      ├─ McpServer         JSON-RPC: initialize, tools/list, tools/call, ping
                      ├─ ProfileRegistry   agent profiles ↔ storage partitions, persisted in prefs
                      └─ SessionManager    sessions ↔ tab groups, tab leases, capture, viewports
@@ -31,7 +31,7 @@ agent ── ws://127.0.0.1:<port>/devtools/page/<targetId> ──▶ normal CDP
 ```
 
 Port: same as CDP (9222, or a free port, see `DevToolsActivePort`). MCP client config:
-`claude mcp add --transport http agent-chrome http://127.0.0.1:9222/mcp`.
+`claude mcp add --transport http shuttle http://127.0.0.1:9222/mcp`.
 
 ## content/ patch (the only one for MCP)
 
@@ -47,7 +47,7 @@ Port: same as CDP (9222, or a free port, see `DevToolsActivePort`). MCP client c
 
 - JSON-RPC 2.0 over POST, `application/json` responses only. No `Mcp-Session-Id` (stateless);
   echoes the client's `protocolVersion` if supported (2025-03-26, 2025-06-18), otherwise the latest.
-- `initialize` → `serverInfo {name: "agent-chrome", version: <chrome version>}`, `capabilities.tools`.
+- `initialize` → `serverInfo {name: "shuttle", version: <chrome version>}`, `capabilities.tools`.
 - `tools/call` errors: tool failures → `isError: true` with a text message; bad JSON-RPC → error object.
 - JSON parsing via `base::JSONReader` and `base::DictValue`; input schemas are hand-written JSON
   literals next to each tool.
@@ -73,9 +73,9 @@ Port: same as CDP (9222, or a free port, see `DevToolsActivePort`). MCP client c
 ## ProfileRegistry
 
 - Profile id → `StoragePartitionConfig::Create(profile, "ac-<id>", "", /*in_memory=*/false)`. One
-  partition domain per agent profile (the spike used one shared domain `agentchrome`), so that
+  partition domain per agent profile (the spike used one shared domain), so that
   `BrowserContext::AsyncObliterateStoragePartition("ac-<id>")` wipes exactly one profile.
-- The list is persisted in a profile pref `agent_chrome.profiles` (dict id → createdAt), because
+- The list is persisted in a profile pref `shuttle.profiles` (dict id → createdAt), because
   on-disk partition directories are hashed and can't be listed back as names.
 - Delete: close the tabs → flush the cookie store → obliterate (its "GC required" path covers a
   partition that is still loaded; it is retried at next launch) → remove the pref entry.
@@ -105,7 +105,7 @@ Port: same as CDP (9222, or a free port, see `DevToolsActivePort`). MCP client c
 
 ## Code layout
 
-`chrome/browser/agent_chrome/`: `agent_chrome_service{,_factory}.{h,cc}`, `mcp_server.{h,cc}`,
+`chrome/browser/shuttle/`: `shuttle_service{,_factory}.{h,cc}`, `mcp_server.{h,cc}`,
 `mcp_tools.{h,cc}`, `profile_registry.{h,cc}`, `session_manager.{h,cc}`, `agent_tab_lease.{h,cc}`,
 `BUILD.gn` (source_set, deps from `//chrome/browser` + `//chrome/browser/ui`), `DEPS`.
 Touches outside: the content/ hook (3 files), `ChromeDevToolsManagerDelegate` (forward to the

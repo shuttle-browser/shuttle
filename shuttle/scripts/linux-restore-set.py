@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute which files to restore from the agent-chrome base for the Linux build.
+"""Compute which files to restore from the chromium base for the Linux build.
 
 Inputs (all paths repo-relative, one per line):
   --missing          files in the base tree but not in the fork (git diff --diff-filter=D base HEAD)

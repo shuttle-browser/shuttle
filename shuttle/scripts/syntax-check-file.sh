@@ -7,10 +7,10 @@
 . "$(dirname "$0")/lib/paths.sh"
 export PATH="$PATH:$HOME/depot_tools"
 cd "$SHUTTLE_SRC/out/Dev"
-DB=/tmp/ac-compdb.tsv   # <src relative to $SHUTTLE_ROOT/src>\t<command>
+DB=/tmp/sh-compdb.tsv   # <src relative to $SHUTTLE_ROOT/src>\t<command>
 SLOTS=${AC_SYNCHECK_SLOTS:-2}
 
-lock_db() { until mkdir /tmp/ac-compdb.lock 2>/dev/null; do sleep 1; done; }
+lock_db() { until mkdir /tmp/sh-compdb.lock 2>/dev/null; do sleep 1; done; }
 if [[ ! -s $DB || build.ninja -nt $DB ]]; then
   lock_db
   if [[ ! -s $DB || build.ninja -nt $DB ]]; then
@@ -20,14 +20,14 @@ for e in json.load(sys.stdin):
     f = os.path.relpath(os.path.normpath(os.path.join(e["directory"], e["file"])), os.environ["SHUTTLE_SRC"])
     print(f + "\t" + e["command"])' > $DB.tmp && mv $DB.tmp $DB
   fi
-  rmdir /tmp/ac-compdb.lock
+  rmdir /tmp/sh-compdb.lock
 fi
 
 slot=""
 acquire() {
   while true; do
     for i in $(seq 1 $SLOTS); do
-      d=/tmp/ac-synchk.slot$i
+      d=/tmp/sh-synchk.slot$i
       if mkdir $d 2>/dev/null; then echo $$ > $d/pid; slot=$d; return; fi
       p=$(cat $d/pid 2>/dev/null); [[ -n $p ]] && ! kill -0 $p 2>/dev/null && rm -rf $d
     done

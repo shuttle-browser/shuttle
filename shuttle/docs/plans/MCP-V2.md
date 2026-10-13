@@ -35,7 +35,7 @@ must lose cross-target access; (2) the proxy must **curate and slim** agent-brow
 **Status 2026-10-08 (fork branch `ac/session-cdp`, `80db4a8192`, pushed; stacked on `ac/agents-page`):** implemented; Mac `out/Sccache` green;
 `scripts/smoke-session-cdp.mjs` 30/30 (raw CDP + Playwright + agent-browser), smoke-mcp, agents-page and
 check-automation green (all headless). Pieces: content hook `DevToolsManagerDelegate::CreateConnectionFilter`
-+ `/devtools/session/<id>` in `devtools_http_handler.cc`; `agent_chrome/session_cdp_filter.{h,cc}`;
++ `/devtools/session/<id>` in `devtools_http_handler.cc`; `shuttle/session_cdp_filter.{h,cc}`;
 viewport via an internal DevTools client (`Emulation.setDeviceMetricsOverride`) owned by the tab lease;
 capture-tab in CSS px cropped to the viewport; upstream crash fix (null view in
 `WebContentsImpl::SetDeviceEmulationSize`, crashed 9222 at 16:59); `*.top-chrome` WebUI reported as type
@@ -46,7 +46,7 @@ auto-attached with `waitForDebuggerOnStart` holds new navigations until it disco
 The maintainer's 9222 instance runs it. Not yet: Linux build (Mac only for now), landing on `main`.
 
 - `open-session` returns `cdpEndpoint = ws://127.0.0.1:<port>/devtools/session/<sessionId>`: a
-  browser-level DevTools session with a filter (in `chrome/browser/agent_chrome/`, hook in
+  browser-level DevTools session with a filter (in `chrome/browser/shuttle/`, hook in
   `ChromeDevToolsManagerDelegate` / content's browser handler):
   - `Target.getTargets` / `setDiscoverTargets` / `setAutoAttach` events: only the session's tabs.
   - `Target.createTarget` → `allocate-tab` (leased, agent storage, agent group).
@@ -70,9 +70,9 @@ check, wait-for, get-text, eval, screenshot, open, state-save (name validation),
 ALL OK (36 tools), smoke-session-cdp all ok. Fixes after the prototype: `Write()` uses `base::WriteFileDescriptor`
 (unsafe-buffer error), **no `AGENT_BROWSER_PIN_TAB`** (pinned, a fresh daemon opens a stray tab of its own; every
 call switches to its `targetId` first anyway). Binary installed with `scripts/fetch-agent-browser.sh <Helpers>`
-(npm download path tested, ad-hoc signed); dev override `AGENT_CHROME_AGENT_BROWSER=<binary>`. Pieces:
+(npm download path tested, ad-hoc signed); dev override `SHUTTLE_AGENT_BROWSER=<binary>`. Pieces:
 `agent_browser_sidecar.{h,cc}` (`Sidecar`), `page_tools.{h,cc}` (`PageToolManager`), `page_tools_data.inc`
-(generated), hooks in `agent_chrome_service.cc` and `session_manager.{h,cc}`; tooling: `config/agent-browser-tools.json`,
+(generated), hooks in `shuttle_service.cc` and `session_manager.{h,cc}`; tooling: `config/agent-browser-tools.json`,
 `scripts/gen-page-tools.mjs`, `scripts/fetch-agent-browser.sh`, `scripts/ab-mcp-client.mjs` (stdio client for
 measurements). Not yet: Linux, release signing, `find`/`hover`/`dblclick` and `state-load` with real cookies untested,
 token benchmark vs v1 + Playwright.
@@ -111,7 +111,7 @@ token benchmark vs v1 + Playwright.
   Snapshot: `- textbox "Name" [ref=e6]`, refs used as `@e6`. Errors: `isError:true`, text like `Unknown ref: e99`,
   `Wait timed out after 25000ms` (default wait 25 s; `wait_for_selector` needs a *visible* element).
   `console` -> `{"messages":[{"type":"log","text":..,"args":[..]}]}`, `errors` -> `{"errors":[]}`.
-- `state_save` writes to any `path` (we map `name` to `<profile>/agent-chrome/states/<agent>/<name>.json`);
+- `state_save` writes to any `path` (we map `name` to `<profile>/shuttle/states/<agent>/<name>.json`);
   output `{"cookies":[],"origins":[]}`. **Not verified with real cookies** (needs an http page).
 - Binary: npm tarball ships `bin/agent-browser-darwin-arm64` (15.6 MB, arm64 only; also x64, linux x64/arm64/musl,
   win32). Apache-2.0, bundled unmodified with LICENSE + NOTICE.
@@ -127,7 +127,7 @@ token benchmark vs v1 + Playwright.
   profile, auth, launch, `path`/`extraArgs`/`human`/`newTab`, downloads/uploads. Definitions live in
   `config/agent-browser-tools.json`; `scripts/gen-page-tools.mjs` compiles them into `page_tools_data.inc`, a C++
   raw string (not a .grd resource: no pak plumbing, parsed once; regenerate and commit with the config).
-- `PageToolManager` (owned by `AgentChromeService`) keeps one `Sidecar` per session, created on the first page-tool
+- `PageToolManager` (owned by `ShuttleService`) keeps one `Sidecar` per session, created on the first page-tool
   call with `--cdp ws://<Host>/devtools/session/<sid>`. Args are whitelisted against the tool's schema and
   mapped (`map`, `fixed`, `special: state_path`); unknown args are an error.
 - The request path was already async (`ToolCallback`/`HttpResponseCallback`, as for `capture-tab`); page tools
@@ -137,7 +137,7 @@ token benchmark vs v1 + Playwright.
   15 s; 20 s for the cold start): on expiry the process is killed and the next call restarts it.
 - `SessionManager::SetSessionClosedCallback` -> `close-session`/agent deletion call `Sidecar::Close` (`close` tool,
   3 s, then kill); `Shutdown()` kills all immediately (daemon idle timeout 60 s as fallback).
-- Binary: `$AGENT_CHROME_AGENT_BROWSER`, else `<app>/Contents/Helpers/agent-browser` (macOS) or next to the
+- Binary: `$SHUTTLE_AGENT_BROWSER`, else `<app>/Contents/Helpers/agent-browser` (macOS) or next to the
   executable (Linux, later). `scripts/fetch-agent-browser.sh <Helpers-dir>` installs the pinned version + LICENSE +
   NOTICE and ad-hoc signs it; release signing with the app is still to do.
 - Server instructions mention the page tools flow; still to measure: tokens per task vs v1 + Playwright.

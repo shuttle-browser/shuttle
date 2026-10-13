@@ -88,7 +88,7 @@ WSLg/Linux desktops.
 
 ## Linux smoke tests
 
-All smokes use a fresh profile (`/tmp/ac-profile`), no debug flags (DevTools is always on at 9222),
+All smokes use a fresh profile (`/tmp/sh-profile`), no debug flags (DevTools is always on at 9222),
 and end with `Browser.close`.
 
 - `scripts/linux-smoke.sh [headless] [x11] [wayland]` (default all three) for the current `out/Dev`:
@@ -102,10 +102,10 @@ and end with `Browser.close`.
   Shutdown crashes only show in the exit status and the log, never in the smoke output.
 - MCP: `scripts/linux-mcp-smoke.sh [headless|x11|wayland]` runs smoke-mcp, restarts on the same
   profile, runs `--persist-check`, and checks exit status and fatals each time (log
-  `/tmp/ac-mcp-<mode>.log`).
+  `/tmp/sh-mcp-<mode>.log`).
 - No startup window: `scripts/linux-nsw-check.sh [x11|wayland|headless]` checks a windowless start,
   the allocate-tab window, keep-alive after close-session, second-launch forwarding, launch with a URL
-  argument, and a clean `Browser.close` (log `/tmp/ac-nsw-<mode>.log`).
+  argument, and a clean `Browser.close` (log `/tmp/sh-nsw-<mode>.log`).
 - Push: `scripts/linux-push-smoke.sh [headless|x11|wayland]` runs `scripts/smoke-push.mjs` (Web Push
   subscribe, 90 s timeout; expect an FCM endpoint after about 30 s).
 - Not covered by WSLg: GTK/portal file dialogs, the dbus appmenu, custom frame and caption buttons

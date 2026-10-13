@@ -18,7 +18,7 @@ Smokes run against a built browser (`out/Dev` of the fork) with a fresh profile,
 `Browser.close`:
 
 ```sh
-../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless --user-data-dir=/tmp/ac-profile \
+../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless --user-data-dir=/tmp/sh-profile \
   --remote-debugging-port=9222 &      # Linux: out/Dev/shuttle
 node scripts/smoke-cdp.mjs 9222
 node scripts/smoke-mcp.mjs 9222

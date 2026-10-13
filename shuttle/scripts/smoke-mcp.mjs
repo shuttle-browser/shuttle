@@ -6,7 +6,7 @@
 //   --persist-check (after a browser restart): checks that cookie, and the agent's identity, then deletes the agent.
 // Launch (no focus stealing):
 //   open -g -n "$SHUTTLE_ROOT/src/out/Sccache/Shuttle.app" --args \
-//     --user-data-dir=/tmp/ac-profile --remote-debugging-port=9333 --use-mock-keychain
+//     --user-data-dir=/tmp/sh-profile --remote-debugging-port=9333 --use-mock-keychain
 import http from 'node:http';
 
 const port = process.argv[2] || 9333;

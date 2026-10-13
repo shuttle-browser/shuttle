@@ -2,7 +2,7 @@
 // Usage: node scripts/check-automation.mjs <port> [userDataDir]
 // Launch the browser first WITHOUT --remote-debugging-port (default 9222) and with
 // --enable-automation, e.g. on macOS:
-//   open -g -n -a $SHUTTLE_ROOT/src/out/Dev/Chromium.app --args --user-data-dir=/tmp/ac-auto \
+//   open -g -n -a $SHUTTLE_ROOT/src/out/Dev/Chromium.app --args --user-data-dir=/tmp/sh-auto \
 //     --no-first-run --enable-automation about:blank
 // Exits non-zero when a check fails. Leaves the browser running (close it with Browser.close).
 import { readFileSync } from 'node:fs';

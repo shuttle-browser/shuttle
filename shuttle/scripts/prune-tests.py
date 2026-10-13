@@ -247,14 +247,14 @@ def main():
     print(f"files to delete: {len(doom)}")
     for r, n in why.most_common():
         print(f"  {n:7}  {r}")
-    open("/tmp/ac-prune-tests.txt", "w").write("\n".join(doom) + "\n")
-    open("/tmp/ac-prune-tests-pinned.txt", "w").write("\n".join(sorted(pinned)) + "\n")
+    open("/tmp/sh-prune-tests.txt", "w").write("\n".join(doom) + "\n")
+    open("/tmp/sh-prune-tests-pinned.txt", "w").write("\n".join(sorted(pinned)) + "\n")
     removed, missing = strip_blocks(D, a.apply, set(tracked))
-    open("/tmp/ac-prune-tests-unmatched-targets.txt", "w").write("\n".join(sorted(missing)) + "\n")
+    open("/tmp/sh-prune-tests-unmatched-targets.txt", "w").write("\n".join(sorted(missing)) + "\n")
     print(f"BUILD.gn blocks removed: {removed}; target labels without a literal block "
-          f"(template-generated etc.): {len(missing)} -> /tmp/ac-prune-tests-unmatched-targets.txt")
+          f"(template-generated etc.): {len(missing)} -> /tmp/sh-prune-tests-unmatched-targets.txt")
     print(f"fuzzer_test blocks removed: {strip_fuzzers(a.apply)}")
-    print("file list: /tmp/ac-prune-tests.txt")
+    print("file list: /tmp/sh-prune-tests.txt")
     if a.apply:
         for i in range(0, len(doom), 2000):
             subprocess.run(["git", "rm", "-q", "-f", "--"] + doom[i:i + 2000], cwd=SRC, check=True)

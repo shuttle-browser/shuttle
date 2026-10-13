@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Network-mode smoke test. Start Shuttle with network mode first, e.g.
-//   Shuttle --headless --remote-debugging-port=9335 --user-data-dir=/tmp/ac-net --shuttle-listen=0.0.0.0
+//   Shuttle --headless --remote-debugging-port=9335 --user-data-dir=/tmp/sh-net --shuttle-listen=0.0.0.0
 // Usage: node scripts/smoke-network.mjs <port> <userDataDir> [lanIp]
 // Checks: loopback works without a token; the LAN address needs the token (header or ?token=), relaxes the Host
 // check for token holders, keeps the Origin check; MCP endpoints carry the token and work over the LAN; the token
@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 
-const [port = '9335', udd = '/tmp/ac-net', lanArg] = process.argv.slice(2)
+const [port = '9335', udd = '/tmp/sh-net', lanArg] = process.argv.slice(2)
 const lan = lanArg || execSync("ipconfig getifaddr en0 2>/dev/null || hostname -I | awk '{print $1}'").toString().trim()
 const tokenFile = path.join(udd, 'ShuttleAccessToken')
 const token = fs.readFileSync(tokenFile, 'utf8').trim()

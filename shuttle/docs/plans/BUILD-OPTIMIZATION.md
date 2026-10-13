@@ -1,10 +1,10 @@
 # Plan: Build and runtime optimization
 
-Status: proposed (2026-10-03). Base: Chromium 154.0.8037.129, branch `agent-chrome`.
+Status: proposed (2026-10-03). Base: Chromium 154.0.8037.129, branch `chromium`.
 
 ## Goal
 
-Make Agent Chrome a lean, fast browser for AI agents: less build time, less idle resource use, and predictable runtime behavior. Do this without breaking web compatibility.
+Make Shuttle a lean, fast browser for AI agents: less build time, less idle resource use, and predictable runtime behavior. Do this without breaking web compatibility.
 
 ## Principles
 

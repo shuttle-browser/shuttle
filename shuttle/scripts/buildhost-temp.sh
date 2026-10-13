@@ -3,7 +3,7 @@
 # (scripts/buildhost-sensors.ps1 via the Windows host's elevated PowerShell; ~1 s per call).
 # No GUI, no web server, no network listener. LibreHardwareMonitor 0.9.6 is installed with
 # winget on the Windows host; its GUI's web server stays OFF (it binds all interfaces without
-# auth), and the firewall rule "Agent Chrome LibreHardwareMonitor 8085 (block inbound)" is a
+# auth), and a firewall rule blocking inbound TCP 8085 is a
 # backstop in case it is ever switched on.
 #   scripts/buildhost-temp.sh          -> pkg=41C core_max=41C pkg_w=16.6W cpu_fan=497rpm ssd=36C
 #   scripts/buildhost-temp.sh --short  -> pkg=41C (for watcher/sampler lines)

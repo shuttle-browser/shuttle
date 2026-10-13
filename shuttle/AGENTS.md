@@ -31,7 +31,7 @@ feature), `docs/plans/BUILD-OPTIMIZATION.md` (GN args rationale), `docs/plans/MC
 
 ## Fork basics
 
-- Fork checkout (`src/` of a gclient checkout): base branch `agent-chrome` = stable Chromium **154.0.8037.129** snapshot; fork work
+- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **154.0.8037.129** snapshot; fork work
   lives on `main`, work in progress on topic branches. Upstream releases are *merged* in, not rebased; afterwards
   rerun the prune and rebrand scripts (see "After an upstream merge").
 - Mac and Linux must both build before a removal batch is committed. Windows is removed (WSL2 runs the Linux build).
@@ -97,7 +97,7 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
 
 ## Rules and top gotchas (full list in `docs/TOOLING.md`)
 
-- Always smoke-test with a fresh `--user-data-dir=/tmp/ac-profile` and end with `Browser.close`. Run smokes
+- Always smoke-test with a fresh `--user-data-dir=/tmp/sh-profile` and end with `Browser.close`. Run smokes
   **`--headless`**: agent tabs create windows that pop in front of whatever the user is doing. Windowed runs only for
   window behavior.
 - Never send keystrokes or AppleScript to the desktop GUI; drive the browser over CDP
@@ -112,4 +112,4 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
 - Keep branded surfaces consistent with `docs/BRANDING.md`.
 - No secrets in tracked files: API keys go in the environment or `_docs/.env`, signing material stays in the keychain.
 - Before pushing the fork (it is public): secret scan of `shuttle/` and the new commits (gitleaks, low priority:
-  `nice -n 19`, `GOMAXPROCS=2`, scoped to `shuttle/` + `agent-chrome..HEAD`, never the full Chromium history).
+  `nice -n 19`, `GOMAXPROCS=2`, scoped to `shuttle/` + `github/main..HEAD`, never the full Chromium history).

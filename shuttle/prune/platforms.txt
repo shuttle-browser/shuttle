@@ -1,4 +1,4 @@
-# Prune manifest: platforms and apps Agent Chrome (macOS desktop) never builds.
+# Prune manifest: platforms and apps Shuttle (macOS desktop) never builds.
 # Applied by scripts/prune.py. A file is deleted only if it matches a rule here
 # AND no build config we use reads it (siso inputs + deps log + gn files).
 # Rule types:

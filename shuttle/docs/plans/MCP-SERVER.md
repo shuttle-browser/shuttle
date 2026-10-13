@@ -1,17 +1,17 @@
 # MCP server and session model
 
 Decided 2026-10-05. Reference for intent: chromatrix (`~/projects/ai/chromatrix`, docs in
-`apps/docs/src/content/docs/{identities,tabs,agents,mcp-tools}.md`). Agent Chrome eventually
+`apps/docs/src/content/docs/{identities,tabs,agents,mcp-tools}.md`). Shuttle eventually
 replaces chromatrix's role but is not combined with it; chromatrix is the reference, not a
 dependency.
 
 ## Goals
 
 - One application: the MCP server runs **inside the browser** (C++, own directory such as
-  `chrome/browser/agent_chrome/`, so upstream merges rarely touch it). No sidecar process.
+  `chrome/browser/shuttle/`, so upstream merges rarely touch it). No sidecar process.
 - MCP's primary job is managing **profiles and tabs**. Agents drive their tabs over CDP
   (Playwright, agent-browser). MCP provisions; CDP browses (same split as chromatrix).
-- Many agents share one Agent Chrome instance.
+- Many agents share one Shuttle instance.
 - **One window.** Everything is a tab; tab groups make sessions visible.
 - Fully agent-controlled: user-facing UI/UX can go (profile picker, profile menu, avatar button,
   multi-profile and guest UI, sign-in).
@@ -54,12 +54,12 @@ dependency.
 
 Throwaway hook: CDP `Target.createTarget` with `browserContextId: "ac:<name>[:cap][:WxH]"` opens
 a normal tab whose `WebContents` uses `SiteInstance::CreateForFixedStoragePartition` with
-`StoragePartitionConfig::Create(profile, "agentchrome", <name>, /*in_memory=*/false)`. Test
+`StoragePartitionConfig::Create(profile, "<domain>", <name>, /*in_memory=*/false)`. Test
 scripts: `spikes/partitions/*.mjs` (`server.mjs` on :8765, browser on CDP :9333).
 
 | Question | Result |
 | --- | --- |
-| Isolation | Cookies and localStorage fully separate between `ac:alpha`, `ac:beta` and the default partition, all tabs in one window. On disk: `Default/Storage/ext/agentchrome/<hash>/`. |
+| Isolation | Cookies and localStorage fully separate between `ac:alpha`, `ac:beta` and the default partition, all tabs in one window. On disk: `Default/Storage/ext/<domain>/<hash>/`. |
 | Navigation in a tab | Stays in the partition (content keeps `IsFixedStoragePartition` across BrowsingInstance swaps). |
 | `window.open` with opener | Inherits (same SiteInstance). No patch needed. |
 | `noopener` / `target=_blank` | **Leaked to the default partition upstream.** Patched in `WebContentsImpl::CreateNewWindow`: a fixed-partition opener creates the new window with `CreateForFixedStoragePartition`. Inherits after patch. |
@@ -85,7 +85,7 @@ resized tabs.
 
 - **Endpoint:** same port as CDP, path `/mcp` (9222 or the port in `DevToolsActivePort`). A small
   hook in `content/browser/devtools/devtools_http_handler.cc` (which 404s unknown paths today)
-  routes `/mcp` to `chrome/browser/agent_chrome/`. Its `net::HttpServer` sends whole responses
+  routes `/mcp` to `chrome/browser/shuttle/`. Its `net::HttpServer` sends whole responses
   only, so MCP over HTTP returns plain JSON responses, with no SSE.
 - **CDP scoping later:** v1 manages profiles, sessions and tabs over MCP. Agents use the shared
   CDP endpoint and attach by targetId, cooperatively. The per-agent scoped CDP endpoint (filtering
@@ -133,7 +133,7 @@ resized tabs.
   - Tab context menu: **"Hand tab to agent ▸"** (agents list; same adoption as drag-in, starts the agent's group in
     that window if needed: `SessionManager::HandTabToAgent`) and **"Take back from agent"** (page reopens in the
     user's storage as an ordinary tab next to it, the agent's tab closes: `TakeBackTab`; routed through
-    `CommandRemoveFromGroup`). The UI reaches the impl only through `AgentChromeService`'s public header
+    `CommandRemoveFromGroup`). The UI reaches the impl only through `ShuttleService`'s public header
     (`ListAgents`, `AgentOfTab`, `AgentOfGroup`, `HandTabToAgent`, `TakeBackTab`, `AvatarOfGroup`).
   - **Agent bubble** (group header bubble): name + color (sync to the agent as before), "New tab for agent",
     "Manage agents" (opens chrome://agents; the old Home button), "Close agent tabs". Gone: ungroup, delete, move
@@ -150,12 +150,12 @@ resized tabs.
     button). Native file dialog not explicitly confirmed yet.
   - Known gaps: dragging a tab out of an agent's group leaves it leased but ungrouped (only "Take back" returns it;
     automating the drag-out risked replacing WebContents mid-drag).
-- **No startup window (2026-10-08):** Agent Chrome starts without a window (no stray New Tab);
+- **No startup window (2026-10-08):** Shuttle starts without a window (no stray New Tab);
   the first agent tab, or the user (Dock click / Cmd-N), creates it. Fork commit 22
   (`00b32091df`): `--no-startup-window` is appended to the process's own command line unless it has URLs or
   `--restore-last-session` (a second launch still opens a window); the remote-debugging keep-alive no
   longer needs a `--remote-debugging-*` switch (not taken for headful macOS, where AppController keeps the
-  app alive and releases on Quit). So the browser keeps running with no windows on all platforms, until `Browser.close` / quit: **accepted on Linux too** (2026-10-08: Agent Chrome is
+  app alive and releases on Quit). So the browser keeps running with no windows on all platforms, until `Browser.close` / quit: **accepted on Linux too** (2026-10-08: Shuttle is
   meant to be controlled via MCP). Smoke scripts create their own targets, unchanged.
 - **Open bug:** an "Aw, Snap!" renderer crash in an agent tab (example.com, 2nd Alice session)
   during a visual test; not reproduced with logging (`--enable-logging=stderr`) on Mac or Linux.
@@ -163,7 +163,7 @@ resized tabs.
   open with no tabs and no visible group (state stays consistent; next `allocate-tab` makes a new
   group). Show idle sessions in `chrome://agents`; consider an idle timeout.
 - **Order:** (1) inheritance patches (branch `ac/mcp`, done) → (2) profile/session service in
-  `chrome/browser/agent_chrome/` → (3) `/mcp` endpoint + tools → (4) scoped CDP → (5) dashboard.
+  `chrome/browser/shuttle/` → (3) `/mcp` endpoint + tools → (4) scoped CDP → (5) dashboard.
 
 ## Effects on pruning
 

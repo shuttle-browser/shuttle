@@ -3,7 +3,7 @@
 Approved 2026-10-06. Keep every branded surface (app icon, logo, welcome / control-center
 tab, agent-control indicators, docs) consistent with this.
 
-## Name and identity (2026-10-09; was "Agent Chrome" until fork commit 27)
+## Name and identity (2026-10-09; fork commit 27 renamed the first brand)
 
 Product **Shuttle** (short: app, Dock, menus, most UI) / **Shuttle Browser** (long: website, DMG, Linux
 `.desktop` Name, README titles); company string **Silkweave**; website `https://www.shuttlebrowser.com`;

@@ -6,7 +6,7 @@ Rule `remove <path>` deletes unconditionally (feature removal; ignores "used").
 Usage: scripts/prune.py [--apply] [manifest ...]   (default: prune/platforms.txt)
 
 Without --apply it's a dry run: it prints counts per rule and writes the full
-file list to /tmp/ac-prune-<manifest>.txt.
+file list to /tmp/sh-prune-<manifest>.txt.
 
 Safety: a file is deleted only if it matches a manifest rule and isn't read by
 any build config we use. "Used" is the union of:
@@ -234,7 +234,7 @@ def prune(a, all_rules, tracked, used):
             doomed.append(f)
             by_rule[r] = by_rule.get(r, 0) + 1
         name = os.path.splitext(os.path.basename(manifest))[0]
-        listing = f"/tmp/ac-prune-{name}.txt"
+        listing = f"/tmp/sh-prune-{name}.txt"
         open(listing, "w").write("\n".join(doomed) + "\n")
         print(f"\n{name}: {len(doomed)} files to delete, {protected} matched but kept (used by the build)")
         for r, n in sorted(by_rule.items(), key=lambda x: -x[1])[:25]:

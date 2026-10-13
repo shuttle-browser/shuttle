@@ -1,11 +1,11 @@
 # Plan: Deep fork (removing what agents don't need)
 
-Status: started 2026-10-04. Decision: Agent Chrome becomes a full fork of Chromium, optimized deeply for agents on macOS. Code that the use case doesn't need is removed physically, not just hidden.
+Status: started 2026-10-04. Decision: Shuttle becomes a full fork of Chromium, optimized deeply for agents on macOS. Code that the use case doesn't need is removed physically, not just hidden.
 
 ## Strategy
 
-- **Fork branch, merge upstream.** The fork lives on long-lived branches in `~/chromium/src` (today: `ac/startup-cleanup`, then `ac/prune-platforms`). Upstream stable tags get **merged** in, not rebased onto. A tag-to-tag rebase of thousands of deletions is impractical; a merge keeps the conflicts local.
-- **Keep the engine close to upstream.** V8, Blink, `content/`, `net/` and `third_party/` stay as unmodified as possible. Security fixes land there, and Agent Chrome visits arbitrary sites, so merging fixes must stay cheap. The deep cuts go into the browser shell (`chrome/`, `components/`).
+- **Fork branch, merge upstream.** The fork lives on long-lived branches in the fork checkout (trunk `main`, topic branches `sh/*`). Upstream stable tags get **merged** in, not rebased onto. A tag-to-tag rebase of thousands of deletions is impractical; a merge keeps the conflicts local.
+- **Keep the engine close to upstream.** V8, Blink, `content/`, `net/` and `third_party/` stay as unmodified as possible. Security fixes land there, and Shuttle visits arbitrary sites, so merging fixes must stay cheap. The deep cuts go into the browser shell (`chrome/`, `components/`).
 - **Two mechanisms:**
   - **Prune manifests** (`prune/*.txt` + `scripts/prune.py`) delete whole areas. A file is deleted only if it matches a rule and no build config we use reads it. "Used" means the siso inputs, the full deps log, or gn's loaded files, for `out/Dev` plus a temporary official config. After an upstream merge, re-run the prune; modify/delete conflicts resolve to the deletion.
   - **Code edits** are normal commits on the fork branch. The `patches/` export is a readable record, not the source of truth.
@@ -13,14 +13,13 @@ Status: started 2026-10-04. Decision: Agent Chrome becomes a full fork of Chromi
 - **Remote (since 2026-10-06):** private `git@github.com:shuttle-browser/shuttle.git` (remote `github`).
   History starts at a snapshot commit: branch `chromium` = one commit with the tree of upstream tag
   154.0.8037.129 (`8690039f`, no upstream ancestry; full history is ~50 GB). `main` = the fork. Locally:
-  `agent-chrome` = snapshot, `ac/prune-platforms` tracks `github/main`; the pre-rewrite history is kept
-  as `agent-chrome-orig` / `ac/prune-platforms-orig`. `origin` stays googlesource (gclient).
+  `chromium` tracks `github/chromium`, `main` tracks `github/main`. `origin` stays googlesource (gclient).
 
 ### Upstream merge workflow (per stable release)
 
 1. `git fetch --depth=1 origin refs/tags/<new>:refs/tags/<new>`; on branch `chromium`, commit a new
    snapshot: `git commit-tree <new>^{tree} -p chromium -m "Chromium <new> (snapshot)"`, move
-   `chromium` (and local `agent-chrome`) to it, push. Diff of snapshots = upstream change.
+   `chromium` to it, push. Diff of snapshots = upstream change.
 2. `git merge chromium` into the fork branch (merge base = previous snapshot). Resolve conflicts:
    modify/delete means `git rm` the file.
 3. Build `out/Dev` (Mac) and Linux, run `scripts/prune.py --apply` + `scripts/prune-tests.py`,
@@ -44,7 +43,7 @@ Lesson learned: `siso query inputs` misses discovered headers. The first attempt
 
 Verification: after the prune, `gn gen` gives an identical `build.ninja`.
 
-Results, as Chromium commits on `ac/prune-platforms`:
+Results, as fork commits on `main`:
 1. **Platforms:** 94,368 files.
 2. **Dead directories:** 20,513 files (`prune/deadcode.txt`, `deadtree` rules). These are whole directories under `chrome`, `components`, `services`, `ui`, `device` and `extensions` that no build reads. Test-named directories are never deleted as a whole. Files that `.grd` files reference, such as `.xtb` translations, are protected because grit doesn't declare them as inputs.
 3. **GN args round:** `config/args-common.gn`. `scripts/build.sh` now writes `args.gn` from `config/` and reruns gn gen when the args change. 32 args are flipped. 11 are blocked by upstream asserts or unconditional deps on Mac and are marked in the file: lens, compose, screen_ai, on-device translation, the speech service, background mode, captive portal, and 4 enterprise DLP args.

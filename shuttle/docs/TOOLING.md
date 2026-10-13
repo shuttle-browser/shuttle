@@ -7,7 +7,7 @@ overridden by env. Machine-local settings live in `~/.shuttle/`: `env` (sourced 
 = ssh alias of the Linux build host, `SHUTTLE_BUILD_HOST_IP` = its sccache-dist scheduler address,
 `SHUTTLE_BUILD_HOST_TOOLS` = this directory on the host relative to `~`), `sccache.toml` (client config, see
 `config/sccache.example.toml`), the toolchain archive and the default profile. Tree-wide scripts (`prune*.py`,
-`fix-gn-refs.py`, `rename-shuttle.py`) skip `shuttle/`; `rebrand.py` only touches its explicit file list.
+`fix-gn-refs.py`) skip `shuttle/`; `rebrand.py` only touches its explicit file list.
 Team-only notes go in the git-ignored `_docs/`.
 
 **Mac build dirs (2026-10-13):** `out/Sccache` (dev args + sccache-dist) is the dev build; the local-only `out/Dev` was
@@ -76,7 +76,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 5. `scripts/scan-webui-imports.py` (3s) for TS imports of deleted files.
 6. C++/TS surgery (parallel agents need explicit file ownership + a shared brief; template:
    `_docs/agent-briefs/b1-surgery-brief.md`), verify each file with `scripts/syntax-check-file.sh`.
-7. One `-k 0` build, fix FAILED steps, GUI smoke test with a fresh `/tmp/ac-profile`, commit.
+7. One `-k 0` build, fix FAILED steps, GUI smoke test with a fresh `/tmp/sh-profile`, commit.
 
 ## Prune and fix scripts
 
@@ -95,7 +95,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - `scripts/syntax-check.sh <failed-output-substring> <src.cc>...`: `-fsyntax-only` with a failed
   step's flags.
 - `scripts/syntax-check-file.sh <src.cc>...`: `-fsyntax-only` with each file's own flags from
-  a cached compile DB (`/tmp/ac-compdb.tsv`, rebuilt from `ninja -t compdb` when `build.ninja`
+  a cached compile DB (`/tmp/sh-compdb.tsv`, rebuilt from `ninja -t compdb` when `build.ninja`
   changes; ~2.5s/file). Load-limited since B2d (4 parallel agents pegged the build Mac): at most
   `AC_SYNCHECK_SLOTS` (default 2) checks machine-wide, at background QoS (`taskpolicy -c
   background`, E-cores) + `nice`. Read-only, safe without a
@@ -203,7 +203,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - **Static include-fix agents over-delete** generated `buildflags.h` includes and headers of
   still-existing classes; check before building.
 - **`deadfiles` vs. GN args:** code behind a disabled arg can be pruned while still called; link
-  errors reveal it; restore with `git checkout agent-chrome -- <files>`.
+  errors reveal it; restore with `git checkout chromium -- <files>`.
 - **Orphaned sources:** deleting a GN target can drop `.cc` files that other code still needs
   (B1: `ChromeColorsFactory` compiled only in the deleted `new_tab_page:impl`). Shows as a link
   error.
@@ -216,7 +216,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   move) and Spotlight (path-based Privacy list: re-add after a move); XProtect scans each new
   binary (~0.5s).
 - Old profiles from pre-batch builds trip migration DCHECKs; always use a fresh
-  `/tmp/ac-profile`.
+  `/tmp/sh-profile`.
 - **Stubbed KeyedService factories (B2a):** a factory's `DependsOn()` calls also *register* the
   factories it depends on. Stub or delete one and those others hit "Trying to register
   KeyedService Factory … after EnsureBrowserContextKeyedServiceFactoriesBuilt" at startup. Diff
@@ -263,7 +263,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - **Page tools / agent-browser sidecar (2026-10-08, `ac/agent-browser`):** `scripts/fetch-agent-browser.sh
   <app>/Contents/Helpers [platform]` installs the pinned agent-browser (npm tarball, version check, LICENSE +
   NOTICE, ad-hoc codesign; `AGENT_BROWSER_SRC=<unpacked package>` skips the download). The browser finds it in
-  `Contents/Helpers/agent-browser`, or `AGENT_CHROME_AGENT_BROWSER=<binary>` for dev runs. Relinking `chrome` keeps
+  `Contents/Helpers/agent-browser`, or `SHUTTLE_AGENT_BROWSER=<binary>` for dev runs. Relinking `chrome` keeps
   the Helpers copy. The page tool list lives in `config/agent-browser-tools.json`; after edits run
   `node scripts/gen-page-tools.mjs` and commit the regenerated fork file `chrome/browser/shuttle/page_tools_data.inc`.
   `scripts/ab-mcp-client.mjs` talks to `agent-browser mcp` over stdio (measurements). smoke-mcp expects
@@ -361,8 +361,8 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
     whether its `DependsOn` targets are registered anywhere else.
   - Replacing a function body with `return {}` can break callers that assume a non-empty
     result (`.front()`): `FluentLanguageModel` crashed Read Anything. Grep the callers.
-  - Capture the browser log with `open -g -n --stdout /tmp/ac-smoke.log --stderr
-    /tmp/ac-smoke.log -a …`. Read Anything is `chrome-untrusted://read-anything-side-panel.top-chrome/`.
+  - Capture the browser log with `open -g -n --stdout /tmp/sh-smoke.log --stderr
+    /tmp/sh-smoke.log -a …`. Read Anything is `chrome-untrusted://read-anything-side-panel.top-chrome/`.
   - `scripts/prune.py` `grd_refs()` protects every file a used `.grd`/`.grdp` references
     (grit reads `.xtb` files and some parts without declaring them as inputs).
 - **Helpers added in B2c:** `scripts/gn-fix-unresolved.py` (gn-gen loop that strips deps on

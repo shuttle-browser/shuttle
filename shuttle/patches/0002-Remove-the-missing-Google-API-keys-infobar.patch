@@ -28,7 +28,7 @@ index 598e361a29..e22911bd22 100644
 -      GoogleApiKeysInfoBarDelegate::Create(infobar_manager);
 -    }
 -  }
-+  // Agent Chrome: no "Google API keys are missing" infobar. The fork ships
++  // Shuttle: no "Google API keys are missing" infobar. The fork ships
 +  // without Google API keys by design.
  
    if (ObsoleteSystem::IsObsoleteNowOrSoon()) {
