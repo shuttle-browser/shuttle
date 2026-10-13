@@ -61,14 +61,28 @@ Shuttle fixes this in the browser itself:
 **macOS** (Apple silicon, signed and notarized): download `Shuttle-<version>-arm64.dmg` from
 [Releases](https://github.com/shuttle-browser/shuttle/releases/latest) and drag Shuttle to Applications.
 
-**Linux** (x64):
+**Linux** (x64): download the package for your distribution from
+[Releases](https://github.com/shuttle-browser/shuttle/releases/latest) and install it (it pulls in the libraries
+Shuttle needs), then run `shuttle`:
 
 ```bash
+sudo apt install ./shuttle_<version>_amd64.deb        # Ubuntu, Debian
+sudo dnf install ./shuttle-<version>-1.x86_64.rpm     # Fedora
+```
+
+Or use the tarball on any distribution (install two libraries first):
+
+```bash
+sudo apt install libnss3 libasound2t64   # Ubuntu 24.04+/Debian 13; 22.04/Debian 12: libasound2; Fedora: dnf install nss alsa-lib
 curl -LO https://github.com/shuttle-browser/shuttle/releases/latest/download/shuttle-linux-x64.tar.xz
 tar xf shuttle-linux-x64.tar.xz && ./shuttle/shuttle
 ```
 
-**Windows**: run the Linux build in WSL2 (WSLg shows its windows on your desktop).
+It's running once it prints `DevTools listening on ws://127.0.0.1:9222/…` (no window until an agent opens a tab).
+Tarball on Ubuntu 23.10+ (not WSL2): see `README-LINUX.txt` in the tarball for the one-time sandbox step.
+
+**Windows**: run the Linux build in WSL2 (WSLg shows its windows on your desktop): the `.deb`, or the tarball with
+the same two libraries.
 
 ## Quick start
 
