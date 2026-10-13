@@ -40,9 +40,9 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
 - **Run long builds where a workerdeck reload can't kill them.** A workerdeck hot reload/restart
   ends every `shell_run` shell ("server_stopped"); it killed two B2d builds. The maintainer avoids reloads
   during builds; Siso resumes where it stopped, so just restart.
-- `scripts/build-remote.sh dev -k 0` (= `AC_REMOTE=1 scripts/build.sh`, 8 remote jobs by default):
+- `scripts/build-remote.sh dev -k 0` (= `SHUTTLE_REMOTE=1 scripts/build.sh`, 8 remote jobs by default):
   C++ compiles go to NativeLink on the build host (`config/remote/`, `use_remoteexec=true`; vars
-  `AC_REAPI_ADDRESS`, `AC_REMOTE_JOBS`, `AC_LOCAL_JOBS`). **Trial dropped 2026-10-06** (~160 vs
+  `SHUTTLE_REAPI_ADDRESS`, `SHUTTLE_REMOTE_JOBS`, `SHUTTLE_LOCAL_JOBS`). **Trial dropped 2026-10-06** (~160 vs
   ~1,320 steps/10 min local; NativeLink stopped, data wiped): see "Remote builds" below.
   Kept for a possible future spike. Switching back to a plain `build.sh dev` regenerates args.gn
   and made Siso re-check ~6k steps (~2k actually rebuilt).
@@ -57,7 +57,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - Mac: `scripts/sccache-toolchain.sh` builds the clang toolchain archive; `~/.shuttle/sccache.toml` from
   `config/sccache.example.toml` (one `path_override` pair per out dir, see the gotcha below);
   `nice -n 10 taskpolicy -c utility scripts/build-sccache.sh -local_jobs=<host threads> -k 0` builds `out/Sccache`
-  (`AC_KIND=release` → `out/Release`).
+  (`SHUTTLE_KIND=release` → `out/Release`).
 - Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/buildmon` on the host (TUI; feed it from the Mac with
   `scripts/buildmon_push.py <Dir>`), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
   (WSL2 hardware sensors through the Windows host).
@@ -97,7 +97,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - `scripts/syntax-check-file.sh <src.cc>...`: `-fsyntax-only` with each file's own flags from
   a cached compile DB (`/tmp/sh-compdb.tsv`, rebuilt from `ninja -t compdb` when `build.ninja`
   changes; ~2.5s/file). Load-limited since B2d (4 parallel agents pegged the build Mac): at most
-  `AC_SYNCHECK_SLOTS` (default 2) checks machine-wide, at background QoS (`taskpolicy -c
+  `SHUTTLE_SYNCHECK_SLOTS` (default 2) checks machine-wide, at background QoS (`taskpolicy -c
   background`, E-cores) + `nice`. Read-only, safe without a
   build running, but generated headers are from the last build (edited `.mojom` = stale).
   To check against edited mojoms, regenerate bindings into a temp dir and add `-I` (B1 agent 2
@@ -164,7 +164,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   and `git grep` uses all cores (200–460% CPU bursts). `$SHUTTLE_ROOT/src` now sets
   `core.fsmonitor=true` (built-in watcher daemon, `git fsmonitor--daemon status`),
   `core.untrackedCache=true` and `grep.threads=4`: `git status` 1.46 s → 0.07 s. Re-apply on a
-  fresh checkout. Syntax checks are separately capped (`AC_SYNCHECK_SLOTS`, default 2).
+  fresh checkout. Syntax checks are separately capped (`SHUTTLE_SYNCHECK_SLOTS`, default 2).
 - **`[unsafe-buffers] file '...' bad test against path '/ac/src/'`** in `out/Sccache` logs:
   harmless. Remote compiles see the sccache-dist path `/ac/src/`, the plugin can't relate it to
   its source root for some third_party/gen files and skips the check (no error).
@@ -295,14 +295,14 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   not supported"; `sccache --show-stats` "Failed distributed compilations"). `out/Release` had none until
   2026-10-10. siso labels sccache compiles `[local]` either way; check the stats.
 - **`-local_jobs` is the real parallelism for sccache builds:** siso sees sccache-wrapped compiles as local
-  actions, so `-local_jobs=N` caps compiles in flight on the build host at N; `-j`/`AC_JOBS` doesn't raise it
+  actions, so `-local_jobs=N` caps compiles in flight on the build host at N; `-j`/`SHUTTLE_JOBS` doesn't raise it
   (2026-10-10: -j 24 with -local_jobs=6 kept the build host at 5-6 compiles, ~35% busy).
 - **Official builds link with export lists** (`chrome/app/app.exports` for the app + helpers,
   `chrome/app/framework.exports` for the framework); dev builds don't use them, so pruning can break only the
   release link. After removals, check both lists for deleted files/symbols (2026-10-11 release failure).
 - **Agent workerdeck shells die with the Claude session:** a long build started via `shell_run` is killed when
   the session ends (no `BUILD EXIT` in the log). Keep the session open or have the maintainer start the shell.
-- **sccache local cache persists** (since 2026-10-10); `AC_SCCACHE_FRESH=1 scripts/build-sccache.sh` wipes it.
+- **sccache local cache persists** (since 2026-10-10); `SHUTTLE_SCCACHE_FRESH=1 scripts/build-sccache.sh` wipes it.
 - **The build host disk:** WSL2's `df /` shows the virtual disk size (~1 TB), not real space. Real free space is the
   Windows host drive: `ssh <build-host> df -h /mnt/c` (the WSL disk image `ext4.vhdx` lives on C:).
 - **MCP server (2026-10-08, `ac/mcp`):** `scripts/launch-shuttle.sh [port] [dir]` starts the

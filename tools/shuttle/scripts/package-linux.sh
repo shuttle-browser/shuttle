@@ -3,7 +3,7 @@
 # Usage (Linux build host): scripts/package-linux.sh [out-dir] [dest-dir]
 #   out-dir:  default $SHUTTLE_ROOT/src/out/Release (non-component build, official)
 #   dest-dir: default $SHUTTLE_ROOT/release/<chrome/VERSION>
-# Env: AC_NO_SIDECAR=1 skips the agent-browser sidecar (page tools then report it as missing).
+# Env: SHUTTLE_NO_SIDECAR=1 skips the agent-browser sidecar (page tools then report it as missing).
 # File list follows upstream chrome/installer/linux/common/installer.py (pruned from the fork).
 set -euo pipefail
 
@@ -50,7 +50,7 @@ CREDITS=$OUT/gen/components/resources/about_credits.html
 cp "$CREDITS" "$PKG/about_credits.html"
 
 # Page-tools sidecar (agent-browser, Apache-2.0): the browser looks for it next to the binary.
-if [ "${AC_NO_SIDECAR:-}" != 1 ]; then
+if [ "${SHUTTLE_NO_SIDECAR:-}" != 1 ]; then
   "$TOOLS/scripts/fetch-agent-browser.sh" "$PKG" linux-x64
 fi
 

@@ -3,12 +3,12 @@
 # with its own compile flags from the current ninja graph. Read-only: safe while no gn gen runs.
 # Generated headers come from the last build, so edited .mojom files show stale bindings.
 # Load control: flags come from a cached compile DB (rebuilt when build.ninja changes), at most
-# $AC_SYNCHECK_SLOTS (default 2) checks run machine-wide at once, at background QoS (E-cores) + nice.
+# $SHUTTLE_SYNCHECK_SLOTS (default 2) checks run machine-wide at once, at background QoS (E-cores) + nice.
 . "$(dirname "$0")/lib/paths.sh"
 export PATH="$PATH:$HOME/depot_tools"
 cd "$SHUTTLE_SRC/out/Dev"
 DB=/tmp/sh-compdb.tsv   # <src relative to $SHUTTLE_ROOT/src>\t<command>
-SLOTS=${AC_SYNCHECK_SLOTS:-2}
+SLOTS=${SHUTTLE_SYNCHECK_SLOTS:-2}
 
 lock_db() { until mkdir /tmp/sh-compdb.lock 2>/dev/null; do sleep 1; done; }
 if [[ ! -s $DB || build.ninja -nt $DB ]]; then

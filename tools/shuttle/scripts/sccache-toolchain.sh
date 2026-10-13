@@ -3,7 +3,7 @@
 #
 # Usage: scripts/sccache-toolchain.sh [chromium_src] [out.tar.gz]
 #   defaults: $SHUTTLE_ROOT/src, ~/sccache/ac-clang-toolchain.tar.gz
-# Env: AC_SDK_VERSION (default 26.5) = Mac SDK version stamped into LC_BUILD_VERSION.
+# Env: SHUTTLE_SDK_VERSION (default 26.5) = Mac SDK version stamped into LC_BUILD_VERSION.
 #
 # The archive is the full sandbox rootfs the build server runs clang in (bwrap overlay):
 #   /ac/llvm/bin/clang{,++}          Chromium's clang (Linux x86_64 host, any target)
@@ -12,20 +12,20 @@
 #   /ac/src/<rel>                    compile-time files Chromium passes by ../../ path
 #   /bin/sh (dash), glibc + libz/libgcc_s, /tmp (1777), /dev, /proc
 # Re-run (and re-send the sha to the Mac) when: clang rolls, the Mac SDK changes, or any
-# file in AC_FILES changes in the fork. Output is deterministic (sorted, fixed mtime/owner).
+# file in TOOLCHAIN_FILES changes in the fork. Output is deterministic (sorted, fixed mtime/owner).
 set -euo pipefail
 . "$(dirname "$0")/lib/paths.sh"
 umask 002   # file modes are part of the archive sha
 S=${1:-$SHUTTLE_SRC}
 OUT=${2:-$HOME/sccache/ac-clang-toolchain.tar.gz}
-SDK=${AC_SDK_VERSION:-26.5}
+SDK=${SHUTTLE_SDK_VERSION:-26.5}
 L=$S/third_party/llvm-build/Release+Asserts
 V=$(ls "$L/lib/clang")
 R=$(mktemp -d)/root
 trap 'rm -rf "$(dirname "$R")"' EXIT
 
 # Non-preprocessor file args found in Chromium compile lines (out/Dev ninja, 2026-10-06).
-AC_FILES=(
+TOOLCHAIN_FILES=(
   build/config/warning_suppression.txt                      # --warning-suppression-mappings=
   build/config/unsafe_buffers_paths.txt                     # unsafe-buffers plugin arg
   build/config/raw_ptr_plugin_config.yaml                   # raw-ptr plugin config-path=
@@ -43,7 +43,7 @@ for lib in $( (ldd "$L"/bin/clang; ldd /bin/dash) | grep -oE '/[^ ]+\.so[^ ]*' |
   case $lib in /lib64/*) cp -L "$lib" "$R"/lib64/ ;; *) cp -L "$lib" "$R"/usr/lib/x86_64-linux-gnu/ ;; esac
 done
 ln -s usr/lib "$R"/lib
-for f in "${AC_FILES[@]}"; do
+for f in "${TOOLCHAIN_FILES[@]}"; do
   mkdir -p "$R/ac/src/$(dirname "$f")"; cp "$S/$f" "$R/ac/src/$f"
 done
 
