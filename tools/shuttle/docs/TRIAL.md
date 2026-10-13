@@ -9,7 +9,7 @@ and agents drive their tabs over the Chrome DevTools Protocol (CDP).
 Shuttle runs on port **9222** (CDP + MCP); start it from the app, or from a checkout with:
 
 ```bash
-src/shuttle/scripts/launch-shuttle.sh
+src/tools/shuttle/scripts/launch-shuttle.sh
 ```
 
 It starts **without a window**; the first tab an agent opens creates one. Check it:

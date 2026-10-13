@@ -1,4 +1,4 @@
-# Shuttle tooling (`src/shuttle/`)
+# Shuttle tooling (`src/tools/shuttle/`)
 
 **Shuttle** is a deep fork of Chromium built for AI agents: everything agents don't need is removed, an MCP server
 is built in, and every agent gets its own identity and persistent storage, visible on its tabs. macOS and Linux.
@@ -39,7 +39,7 @@ mkdir -p ~/chromium && cd ~/chromium
 fetch --nohooks chromium            # Linux: add target_os = ["linux"] to .gclient
 cd src && git checkout 154.0.8037.129
 
-# 2. Add the fork and check out its main branch (brings this tooling along in src/shuttle/)
+# 2. Add the fork and check out its main branch (brings this tooling along in src/tools/shuttle/)
 git remote add github https://github.com/shuttle-browser/shuttle.git
 git fetch github && git checkout -B main github/main
 gclient sync -D
@@ -67,7 +67,7 @@ Release builds (`config/args-release.gn`) are signed and packaged with `scripts/
 
 ## After an upstream Chromium merge
 
-Upstream releases are merged into the fork, not rebased. Afterwards, from `src/shuttle/`:
+Upstream releases are merged into the fork, not rebased. Afterwards, from `src/tools/shuttle/`:
 
 ```sh
 scripts/prune-tests.py --apply      # drop testonly GN targets and their files again

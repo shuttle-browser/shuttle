@@ -3,10 +3,10 @@
 **Shuttle** (Shuttle Browser, by Silkweave) is a deep fork of Chromium specialized for AI agents, for macOS and
 Linux: everything agents don't need is physically removed, an MCP server is built in, and tabs show which agent
 controls them. Website: https://www.shuttlebrowser.com. The browser source is the fork
-(`github.com/shuttle-browser/shuttle`); **this directory (`src/shuttle/`) holds the tooling around it**: GN args,
+(`github.com/shuttle-browser/shuttle`); **this directory (`src/tools/shuttle/`) holds the tooling around it**: GN args,
 build/prune/rebrand/smoke scripts, prune manifests, branding assets, docs. Scripts operate on the fork they live in
 (`scripts/lib/paths.sh`, `scripts/shuttle_paths.py`: `SHUTTLE_SRC` = `src/`, `SHUTTLE_ROOT` = the gclient checkout).
-Nothing here is part of the GN build; tree-wide scripts skip `shuttle/`.
+Nothing here is part of the GN build; tree-wide scripts skip `tools/shuttle/`.
 
 The fork is **public**: no machine names, IPs, user names, absolute home paths or credentials in tracked files.
 Machine-local settings go in `~/.shuttle/env`; team notes, handoffs and briefs in the git-ignored `_docs/` (if it
@@ -111,5 +111,5 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
 - Keep the Mac on power with the lid open during long builds (lid closed on battery stops them).
 - Keep branded surfaces consistent with `docs/BRANDING.md`.
 - No secrets in tracked files: API keys go in the environment or `_docs/.env`, signing material stays in the keychain.
-- Before pushing the fork (it is public): secret scan of `shuttle/` and the new commits (gitleaks, low priority:
-  `nice -n 19`, `GOMAXPROCS=2`, scoped to `shuttle/` + `github/main..HEAD`, never the full Chromium history).
+- Before pushing the fork (it is public): secret scan of `tools/shuttle/` and the new commits (gitleaks, low priority:
+  `nice -n 19`, `GOMAXPROCS=2`, scoped to `tools/shuttle/` + `github/main..HEAD`, never the full Chromium history).

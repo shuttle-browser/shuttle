@@ -86,7 +86,7 @@ def main():
     ap.add_argument("scope", nargs="*")
     a = ap.parse_args()
     files = [f for f in git("ls-files", "--", *(a.scope or ["."])).splitlines()
-             if f.endswith(("BUILD.gn", ".gni")) and not f.startswith("shuttle/") and f not in deleted and os.path.exists(os.path.join(SRC, f))]
+             if f.endswith(("BUILD.gn", ".gni")) and not f.startswith("tools/shuttle/") and f not in deleted and os.path.exists(os.path.join(SRC, f))]
     removed = manual = 0
     for f in files:
         lines = open(os.path.join(SRC, f)).read().split("\n")

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Launch the buildmon TUI (scripts/buildmon.py) with uv; deps are cached by uv, nothing system-wide.
 #   scripts/buildmon                          # on the build host
-#   ssh -t <build-host> <checkout>/src/shuttle/scripts/buildmon   # from the Mac
+#   ssh -t <build-host> <checkout>/src/tools/shuttle/scripts/buildmon   # from the Mac
 UV=$(command -v uv || echo "$HOME/.local/bin/uv")
 exec "$UV" run --quiet --script "$(dirname "$(readlink -f "$0")")/buildmon.py" "$@"

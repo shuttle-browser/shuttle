@@ -18,7 +18,7 @@ import subprocess
 import sys
 from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS  # noqa: E402
 
-SKIP_PREFIXES = ("tools/grit/", "tools/translation/", "shuttle/")  # shuttle/ = this tooling
+SKIP_PREFIXES = ("tools/grit/", "tools/translation/", "tools/shuttle/")  # = this tooling
 
 
 def git_ls(src, *patterns):

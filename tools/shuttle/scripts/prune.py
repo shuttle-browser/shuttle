@@ -205,7 +205,7 @@ def main():
     all_rules = [load_rules(m) for m in a.manifests]
     if all(not any(v for k, v in r.items() if k not in ("remove", "keep")) for r in all_rules):
         used = set()  # remove-only manifests: unconditional, no build analysis needed
-        tracked = [t for t in run("git", "ls-files").splitlines() if not t.startswith("shuttle/")]  # not the tooling
+        tracked = [t for t in run("git", "ls-files").splitlines() if not t.startswith("tools/shuttle/")]  # not the tooling
         return prune(a, all_rules, tracked, used)
     print(f"collecting used files: {BUILD_DIR} ...", flush=True)
     used = used_files(BUILD_DIR)
@@ -217,7 +217,7 @@ def main():
     finally:
         shutil.rmtree(os.path.join(SRC, tmp), ignore_errors=True)
     used |= grd_refs(used)
-    tracked = [t for t in run("git", "ls-files").splitlines() if not t.startswith("shuttle/")]  # not the tooling
+    tracked = [t for t in run("git", "ls-files").splitlines() if not t.startswith("tools/shuttle/")]  # not the tooling
     prune(a, all_rules, tracked, used)
 
 def prune(a, all_rules, tracked, used):

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. The fork (github.com/shuttle-browser/shuttle) holds the browser source and, in `shuttle/`,
+Thanks for helping. The fork (github.com/shuttle-browser/shuttle) holds the browser source and, in `tools/shuttle/`,
 its tooling (build, prune, rebrand and smoke-test scripts, GN args, branding, docs).
 
 ## Issues and pull requests

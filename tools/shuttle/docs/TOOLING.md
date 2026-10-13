@@ -1,13 +1,13 @@
 # Tooling and gotchas
 
-The tooling lives in the fork at `src/shuttle/` (scripts, GN args, prune manifests, docs, branding). The scripts are
+The tooling lives in the fork at `src/tools/shuttle/` (scripts, GN args, prune manifests, docs, branding). The scripts are
 repo-relative: `scripts/lib/paths.sh` (shell) and `scripts/shuttle_paths.py` (Python) resolve `SHUTTLE_SRC` = the fork
 (`src/`) and `SHUTTLE_ROOT` = its parent (the gclient checkout: `logs/`, `release/`, `sccache-cache/`); both can be
 overridden by env. Machine-local settings live in `~/.shuttle/`: `env` (sourced by both resolvers: `SHUTTLE_BUILD_HOST`
 = ssh alias of the Linux build host, `SHUTTLE_BUILD_HOST_IP` = its sccache-dist scheduler address,
 `SHUTTLE_BUILD_HOST_TOOLS` = this directory on the host relative to `~`), `sccache.toml` (client config, see
 `config/sccache.example.toml`), the toolchain archive and the default profile. Tree-wide scripts (`prune*.py`,
-`fix-gn-refs.py`) skip `shuttle/`; `rebrand.py` only touches its explicit file list.
+`fix-gn-refs.py`) skip `tools/shuttle/`; `rebrand.py` only touches its explicit file list.
 Team-only notes go in the git-ignored `_docs/`.
 
 **Mac build dirs (2026-10-13):** `out/Sccache` (dev args + sccache-dist) is the dev build; the local-only `out/Dev` was

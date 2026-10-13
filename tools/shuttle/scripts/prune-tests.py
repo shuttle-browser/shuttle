@@ -242,7 +242,7 @@ def main():
     print("collecting files the chrome build uses ...", flush=True)
     used = prune.used_files(prune.BUILD_DIR)
     used |= prune.grd_refs(used)
-    tracked = [t for t in prune.run("git", "ls-files").split("\n") if t and not t.startswith("shuttle/")]
+    tracked = [t for t in prune.run("git", "ls-files").split("\n") if t and not t.startswith("tools/shuttle/")]
     doom, why = doomed_files(tgt, D, used, tracked)
     print(f"files to delete: {len(doom)}")
     for r, n in why.most_common():

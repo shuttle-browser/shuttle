@@ -82,7 +82,7 @@ def main():
     health_cmd = a.health_cmd
     if health_cmd is None and a.dir == 'Sccache':
         host = os.environ.get('SHUTTLE_BUILD_HOST')  # ssh alias of the sccache-dist host (~/.shuttle/env)
-        tools = os.environ.get('SHUTTLE_BUILD_HOST_TOOLS', 'chromium/src/shuttle')  # tooling dir on the host, from ~
+        tools = os.environ.get('SHUTTLE_BUILD_HOST_TOOLS', 'chromium/src/tools/shuttle')  # tooling dir on the host, from ~
         health_cmd = os.environ.get('SHUTTLE_BUILD_HEALTH_CMD') or (
             f"ssh -o ConnectTimeout=5 {host} '~/{tools}/scripts/sccache-dist-host.sh status'" if host else None)
 

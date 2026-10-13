@@ -6,7 +6,7 @@
 """buildmon: live TUI for the build host's sccache-dist service and system resources.
 
     scripts/buildmon                      # on the build host (wrapper: uv run --script, deps cached by uv)
-    ssh -t <build-host> <checkout>/src/shuttle/scripts/buildmon   # from the Mac
+    ssh -t <build-host> <checkout>/src/tools/shuttle/scripts/buildmon   # from the Mac
 
 Panels: build service (units, scheduler, compiles per minute, per-server split, 60-min history),
 builds (siso [done/total] pushed by scripts/buildmon_push.py from the Mac, plus local
