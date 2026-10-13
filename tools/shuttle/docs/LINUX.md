@@ -62,7 +62,7 @@ See the README for the full "build from source" flow.
 
 ## Release tarball
 
-- `scripts/package-linux.sh [out-dir] [dest-dir]` (defaults `out/Release`, `~/chromium/release/<chrome/VERSION>`) →
+- `scripts/package-linux.sh [out-dir] [dest-dir]` (defaults `out/Release`, `$SHUTTLE_ROOT/release/<chrome/VERSION>`) →
   `shuttle-linux-x64.tar.xz` + `.sha256`, top-level `shuttle/`. The file list follows upstream
   `chrome/installer/linux/common/installer.py`, plus agent-browser (+ LICENSE/NOTICE) via
   `fetch-agent-browser.sh <dir> linux-x64`. Binaries are stripped, xz -9: ~85 MB packed, ~291 MB unpacked.
@@ -76,6 +76,22 @@ See the README for the full "build from source" flow.
   smoke-agents-page, page tools, and `smoke-network.mjs <port> <udd> <lanIp>` with `--shuttle-listen=0.0.0.0`.
 - WSL2 (mirrored networking): Windows clients reach `http://127.0.0.1:9222/json/version` and `/mcp`; a foreign `Origin`
   gets 403. NAT mode not verified.
+- **Packages:** after `scripts/package-linux.sh`, run
+  `scripts/package-deb.sh $SHUTTLE_RELEASE/<dir>/shuttle-linux-x64.tar.xz X $SHUTTLE_RELEASE/<dir>`.
+  This builds `shuttle_X_amd64.deb` and `shuttle-X-1.x86_64.rpm`; details are in TOOLING "Linux packages".
+- **Supported, all tested 2026-10-13:**
+  - Ubuntu 20.04, 22.04 and 24.04;
+  - Debian 11, 12 and 13. Debian 11 is EOL: its security pool 404s on deb.debian.org, so use archive.debian.org;
+  - Fedora 44 (rpm).
+  - The floor is glibc 2.28, set by the agent-browser sidecar.
+- **WSL test distros:**
+  - Create one with `wsl.exe --import <name> C:\…\distros\<name> <rootfs.tar.gz>`. The `distros` directory must exist
+    first.
+  - Minimal images lack sudo and su. On Fedora, install util-linux. Use `-u root` for the install, then `su <user>` to run.
+  - Pass scripts as files on `/mnt/c`, because `$` variables get mangled through `wsl.exe bash -c`. Strip NULs from
+    wsl.exe output (`tr -d '\0'`).
+  - Ports are shared across distros, so never run two browsers on the same port.
+  - `wsl.exe --unregister <name>` afterwards.
 
 ## Binary, WM_CLASS, desktop entry
 

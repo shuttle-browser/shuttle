@@ -1,0 +1,20 @@
+#!/bin/sh
+# Shuttle package postrm (shared by .deb and .rpm; rendered by scripts/package-deb.sh).
+# deb: $1 = remove|purge|upgrade|...; rpm: $1 = 0 (erase) or 1 (upgrade).
+# User data (~/.config/shuttle) is never touched.
+set -e
+
+case "${1:-}" in
+  remove|purge|0)
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database -q /usr/share/applications || true
+    fi
+    ;;
+esac
+
+# Drop the apt source only if the package wrote it (marker line), and only on purge.
+if [ "${1:-}" = purge ] && grep -qs '^# Added by the shuttle package' /etc/apt/sources.list.d/shuttle.list; then
+  rm -f /etc/apt/sources.list.d/shuttle.list
+fi
+
+exit 0

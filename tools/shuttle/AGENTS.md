@@ -92,7 +92,7 @@ targets), `prune-policies.py`, `prune-strings.py`, `prune-locales.py` (en-US-onl
 Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents), `scripts/mcp-call.mjs <port> <tool> '<json>'`,
 `scripts/watch-agents.mjs [port]`, `scripts/launch-shuttle.sh` (interactive run on 9222),
 `scripts/fetch-agent-browser.sh <Helpers-dir>` + `scripts/gen-page-tools.mjs` (page-tool sidecar and generated tool list),
-`scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball),
+`scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball), `scripts/package-deb.sh` (.deb + .rpm from the tarball),
 `scripts/bench-ram.mjs` (RAM benchmark, `docs/plans/RAM-BENCHMARK.md`).
 
 ## Rules and top gotchas (full list in `docs/TOOLING.md`)

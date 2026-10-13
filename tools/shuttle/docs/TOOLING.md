@@ -104,6 +104,71 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   did this in `/tmp/mj`).
 - `scripts/add-include.py <file> <header>` (cwd `$SHUTTLE_ROOT/src`): sorted include insert.
 
+## Linux packages (.deb/.rpm)
+
+`scripts/package-deb.sh <shuttle-linux-x64.tar.xz> <version> [dest]` builds `shuttle_<v>_amd64.deb` and
+`shuttle-<v>-1.x86_64.rpm` (each with a `.sha256`) from the released tarball. The packages are therefore built from the exact
+bytes users download, and the script checks the tarball's `.sha256` first. It uses nfpm with `config/nfpm-shuttle.yaml`,
+rendered by envsubst; the maintainer scripts are in `branding/linux/deb/{postinst,postrm}` and are shared by deb and rpm.
+A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` defaults to the tarball's directory.
+
+- **Needs:** nfpm, installed as the release binary into `~/.local/bin` after checking it against `checksums.txt`
+  (2.48.0). Also dpkg-dev, for the dpkg-shlibdeps cross-check. lintian is optional.
+  Env: `SHUTTLE_NO_RPM=1` (deb only), `NFPM=<path>`.
+- **Version:** use the Shuttle version (`0.1.2`), not the Chromium version, which goes into the description. Test builds
+  use `0.1.2~test1`, because "~" sorts before the release. The deb Version gets nfpm's release suffix (`0.1.2-1`), but the
+  file name doesn't.
+- **Layout:**
+  - `/opt/shuttle/` holds the tarball tree, minus `README-LINUX.txt`. Shared libraries are 0644.
+  - `chrome-sandbox` is 4755 root:root inside the archive, and postinst re-asserts it.
+  - `/usr/bin/shuttle` is a symlink.
+  - `/usr/share/applications/shuttle.desktop` (Exec=/usr/bin/shuttle) and hicolor icons 24/48/64/128/256 named `shuttle.png`.
+  - `/usr/share/doc/shuttle/copyright` (DEP-5).
+  - `/usr/share` files are listed one per entry, so the rpm doesn't claim system directories like
+    `/usr/share/icons/hicolor`.
+  - postrm never touches `~/.config/shuttle`.
+- **Gotcha: Depends/Requires are curated, and only the package *names* are checked automatically.**
+  - dpkg-shlibdeps on a new build host overstates minimum versions:
+    - libc6 >= 2.34 comes from the libdl/libpthread stubs, but the real maximum is GLIBC_2.28 (the agent-browser
+      sidecar; shuttle itself needs 2.25).
+    - libgbm1 >= 21.1 comes from *weak* symbols, but Debian 11 only has 20.3.5.
+    - libxcomposite1 >= 0.4.6 comes from the host's shlibs file.
+  - It also only knows the host's t64 names.
+  - So minimums follow upstream Chrome's expected deps (same sources, same bullseye sysroot), with libc6 >= 2.28, and every
+    renamed package gets a t64 alternative (`libasound2t64 | libasound2`).
+  - The rpm Requires are sonames (`libX.so.N()(64bit)`, `libc.so.6(GLIBC_2.28)(64bit)`, `libnss3.so(NSS_3.39)(64bit)`).
+  - Not listed: the libraries we ship (libEGL, libGLESv2, libvulkan, swiftshader) and the Qt shims' deps. Chrome loads
+    `libqt5/6_shim` only when Qt is installed, so they stay optional.
+  - **Every build cross-checks the lists:**
+    - every package from dpkg-shlibdeps must be in the deb list;
+    - every ELF NEEDED soname not shipped by us must be in the rpm list;
+    - the maximum `GLIBC_` symbol must be <= 2.28.
+  - On a mismatch the build fails with `DEPS: … missing`. After a Chromium merge, add the package (deb, plus a t64
+    alternative if its name ends in t64) and the soname (rpm). Raise libc6/GLIBC only when the maximum `GLIBC_` goes
+    past 2.28.
+- **Recommends:** `libgtk-3-0t64 | libgtk-3-0 | libgtk-4-1`, ca-certificates, fonts-liberation, xdg-utils; the rpm gets
+  the same as weak deps. GTK is dlopened. Headless and agent use runs without it: Debian 12 with `--no-install-recommends`
+  installs 60 packages instead of 233, and smoke-mcp is clean.
+- **apt source** (build switch, off by default):
+  - Enable with `SHUTTLE_DEB_APT_SOURCE=1 SHUTTLE_DEB_APT_KEY=<dearmored .gpg> [SHUTTLE_DEB_APT_URL=…]` (default
+    `https://apt.shuttlebrowser.com`).
+  - The deb then ships the key as `/usr/share/keyrings/shuttle-archive-keyring.gpg`.
+  - On `configure`, postinst writes `/etc/apt/sources.list.d/shuttle.list` with a marker comment,
+    `deb [arch=amd64 signed-by=…] <url> stable main`. It skips this if any apt source already mentions the URL.
+  - Purge removes the list, but only if it still carries the marker.
+  - Enable it only once the repo is live; a source pointing at a dead repo breaks `apt update`.
+  - Once it has shipped, **every later package must ship the key too**. Otherwise an upgrade deletes the keyring the list
+    points at, and `apt update` fails on the signature.
+- **Test, with no Docker:**
+  - Use throwaway WSL distros from minimal Docker Hub images, fetched through the registry API; `wsl --import` each one.
+  - Install as root, then run Shuttle as a normal user.
+  - Run headless smokes (smoke-mcp, smoke-session-cdp) from the build distro on a non-9222 port. WSL distros share one
+    network.
+  - Exercise the setuid path with `--disable-namespace-sandbox`. Negative control: with mode 0755 Shuttle aborts with the
+    FATAL "SUID sandbox helper … not configured correctly".
+  - Then upgrade, remove and purge, and check the profile is kept.
+  - Unregister each distro afterwards.
+
 ## Gotchas
 
 - **No `scoped_refptr` in DevTools target notifications** (2026-10-12): worker and tab `DevToolsAgentHost`s start with a zero

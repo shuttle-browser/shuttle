@@ -1,0 +1,36 @@
+#!/bin/sh
+# Shuttle package postinst (shared by .deb and .rpm; rendered by scripts/package-deb.sh).
+# deb: $1 = configure; rpm: $1 = 1 (install) or 2 (upgrade).
+set -e
+
+# setuid sandbox helper: the package ships it 4755 root:root already; re-assert in case the
+# package manager or an unpacker dropped the bit (it's only used where user namespaces are unavailable).
+if [ -f /opt/shuttle/chrome-sandbox ]; then
+  chown root:root /opt/shuttle/chrome-sandbox
+  chmod 4755 /opt/shuttle/chrome-sandbox
+fi
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+# apt source (build switch SHUTTLE_DEB_APT_SOURCE=1, deb only): add our repo once so GitHub .deb users get
+# updates through apt. Skipped if any apt source already mentions the repo (user's own entry wins).
+APT_SOURCE=@APT_SOURCE@
+APT_URL='@APT_URL@'
+APT_LIST=/etc/apt/sources.list.d/shuttle.list
+APT_KEY=/usr/share/keyrings/shuttle-archive-keyring.gpg
+if [ "$APT_SOURCE" = 1 ] && [ "${1:-}" = configure ] && [ -d /etc/apt/sources.list.d ]; then
+  if ! grep -qsF "$APT_URL" /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; then
+    cat > "$APT_LIST" <<LIST
+# Added by the shuttle package (https://www.shuttlebrowser.com). Edit freely: the package won't re-add it
+# while any apt source mentions $APT_URL. Removed on "apt purge shuttle".
+deb [arch=amd64 signed-by=$APT_KEY] $APT_URL stable main
+LIST
+  fi
+fi
+
+exit 0
