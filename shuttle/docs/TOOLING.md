@@ -283,7 +283,10 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   `siso_explain*`), `mv`, rewrite old→new path in the JSON, `siso fs import -C out/<Dir> < state.json`, `gn gen`
   (Xcode paths like gperf are stored relative, so their `../` depth changes). Keep a temporary old→new symlink:
   `.siso_deps` holds absolute depfile paths from some generators (v8 inspector_protocol → ~155 Blink files
-  recompile otherwise). If the state is already lost: the siso "adopt" patch + pre-move explain logs
+  recompile otherwise). Done this way on 2026-10-13 (`shuttle/src` → `src` one level up): dry runs matched (503 and
+  6,174 steps); only 12 Blink gperf actions reran (the relative Xcode gperf path changes with the depth), 4 outputs
+  changed. Build only via the real path: the scripts resolve it (`pwd -P` / `realpath`), so a symlinked cwd is safe for
+  them, but raw `gn`/`siso` from a symlinked cwd would register a second path. If the state is already lost: the siso "adopt" patch + pre-move explain logs
   (`_docs/siso-adopt/`) brought out/Sccache from 47,948 to ~1,060 steps. sccache's local cache did not help
   (0 hits; it never held a full build).
 - **sccache-dist needs a toolchain entry per build dir:** `~/.shuttle/sccache.toml` `path_override`

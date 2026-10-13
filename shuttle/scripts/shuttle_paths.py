@@ -2,7 +2,7 @@
 so paths are repo-relative: SRC = the fork (src/), ROOT = its parent. Override with SHUTTLE_SRC / SHUTTLE_ROOT."""
 import os
 
-TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 SRC = os.path.expanduser(os.environ.get("SHUTTLE_SRC") or os.path.dirname(TOOLS))
 ROOT = os.path.expanduser(os.environ.get("SHUTTLE_ROOT") or os.path.dirname(SRC))
 LOGS = os.path.join(ROOT, "logs")
