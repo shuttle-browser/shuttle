@@ -149,14 +149,15 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
 - **Recommends:** `libgtk-3-0t64 | libgtk-3-0 | libgtk-4-1`, ca-certificates, fonts-liberation, xdg-utils; the rpm gets
   the same as weak deps. GTK is dlopened. Headless and agent use runs without it: Debian 12 with `--no-install-recommends`
   installs 60 packages instead of 233, and smoke-mcp is clean.
-- **apt source** (build switch, off by default):
-  - Enable with `SHUTTLE_DEB_APT_SOURCE=1 SHUTTLE_DEB_APT_KEY=<dearmored .gpg> [SHUTTLE_DEB_APT_URL=…]` (default
-    `https://apt.shuttlebrowser.com`).
-  - The deb then ships the key as `/usr/share/keyrings/shuttle-archive-keyring.gpg`.
-  - On `configure`, postinst writes `/etc/apt/sources.list.d/shuttle.list` with a marker comment,
-    `deb [arch=amd64 signed-by=…] <url> stable main`. It skips this if any apt source already mentions the URL.
-  - Purge removes the list, but only if it still carries the marker.
-  - Enable it only once the repo is live; a source pointing at a dead repo breaks `apt update`.
+- **Repo source** (build switch, off by default):
+  - Enable with `SHUTTLE_PKG_REPO_SOURCE=1 [SHUTTLE_PKG_REPO_URL=…]` (default `https://pkg.shuttlebrowser.com`). The key
+    comes from `assets/linux/repo/shuttle.asc` (gpg on the build host dearmors it for the deb).
+  - The deb ships it as `/usr/share/keyrings/shuttle-archive-keyring.gpg`, the rpm as `/etc/pki/rpm-gpg/RPM-GPG-KEY-shuttle`.
+  - deb, on `configure`: postinst writes `/etc/apt/sources.list.d/shuttle.list` (marker comment,
+    `deb [arch=amd64 signed-by=…] <url>/apt stable main`). rpm, on install/upgrade: `/etc/yum.repos.d/shuttle.repo`
+    (`<url>/rpm/stable`, `gpgkey=file:///etc/pki/rpm-gpg/…`). Skipped if any source already mentions the URL.
+  - apt purge / rpm erase removes the file, but only if it still carries the marker.
+  - Enable it only once the repo is live; a source pointing at a dead repo breaks `apt update` / `dnf`.
   - Once it has shipped, **every later package must ship the key too**. Otherwise an upgrade deletes the keyring the list
     points at, and `apt update` fails on the signature.
 - **Test, with no Docker:**
@@ -168,6 +169,42 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
     FATAL "SUID sandbox helper … not configured correctly".
   - Then upgrade, remove and purge, and check the profile is kept.
   - Unregister each distro afterwards.
+
+## Package repo (pkg.shuttlebrowser.com)
+
+- **Layout** (R2 bucket `shuttle-packages`, Silkweave account, custom domain `pkg.shuttlebrowser.com`):
+  - apt at `/apt` (suites `stable` + `testing`, component `main`, amd64; one shared `pool/`), dnf at `/rpm/<suite>`
+    (`/rpm/shuttle.repo`, `/rpm/shuttle-testing.repo`).
+  - Key at `/shuttle.asc` (armored, for dnf) and `/shuttle.gpg` (binary, for apt `signed-by`); `/index.html` has the
+    setup lines.
+- **Signing key:** "Shuttle Browser packages <packages@shuttlebrowser.com>", RSA 4096, expires 2031-10-12, fingerprint
+  `81D0827DDC5004E5CCCD674943FDBF62DB5D8304`. The public key is `assets/linux/repo/shuttle.asc`. The private key and its
+  passphrase live only in the maintainer's Mac keyring (backup: Bitwarden). Before expiry, extend it (`gpg --quick-set-expire`),
+  re-export `shuttle.asc` and re-run the publish script with no files, so the metadata and key are re-uploaded.
+- **Publish:** `scripts/publish-packages.sh [--suite stable|testing] [--dry-run] <deb> <rpm>` on the Mac.
+  - It signs the rpm with `rpmsign` (brew `rpm`; v4 RSA/SHA256 header signature) and builds the metadata on
+    `$SHUTTLE_BUILD_HOST` (`apt-ftparchive`, `createrepo_c --general-compress-type=gz`; needs `apt-utils createrepo-c`).
+    Then it signs `InRelease`/`Release.gpg`/`repomd.xml.asc` on the Mac and uploads the changed files with wrangler.
+  - Upload order: packages and hashed metadata, then signatures, then `InRelease`/`repomd.xml` last.
+  - Packages and `repodata/<hash>-*` are cached as immutable; everything else is `no-cache`, so apt never sees a stale
+    `Packages` next to a new `InRelease`.
+  - The master copy is `$SHUTTLE_RELEASE/pkg-repo` (`.state/`: suite lists, rpm input hashes, upload manifest). R2 is
+    the published copy; nothing lists the bucket. Versions are immutable: a file name already published with other bytes
+    is refused.
+  - Release flow: publish to `testing`, install-test, then publish the same files with `--suite stable`.
+  - Needs `SHUTTLE_CF_ACCOUNT` in `~/.shuttle/env`, wrangler logged in (run from `$SHUTTLE_ROOT/shuttle-website`), and
+    `pinentry-mac` as the gpg-agent pinentry (the passphrase dialog; no tty in agent shells).
+- **ssh joins arguments:** `ssh host bash -s -- "$a" "$b c"` sends one command line, so `"$b c"` arrives as two words.
+  Pass lists as separate words and rebuild them on the remote side (`shift; LIST="$*"`).
+- **Installer** (`curl -fsSL https://get.shuttlebrowser.com | bash`): source `assets/install.sh`, copied to the website's
+  `public/install.sh`; the website Worker serves it for the host `get.shuttlebrowser.com`. Copy and deploy the website
+  after every change.
+  - macOS: the DMG named in the latest release's `SHA256SUMS`, checksum-checked, `ditto` into `/Applications` (or
+    `~/Applications`).
+  - Linux: the apt/dnf repo with sudo; otherwise the tarball into `~/.local`.
+  - Test without touching the real install: `SHUTTLE_APPS_DIR=/tmp/x bash assets/install.sh` (Mac),
+    `HOME=/tmp/x SHUTTLE_METHOD=tarball bash install.sh` (Linux); the repo path needs a throwaway distro or VM.
+    `SHUTTLE_CHANNEL=testing` installs from `testing`.
 
 ## Gotchas
 

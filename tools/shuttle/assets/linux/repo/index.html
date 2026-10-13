@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shuttle Browser packages</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1.25rem; color: #1a1a1a; }
+  pre { background: #f4f4f2; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 14px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  h1 { font-size: 1.6rem; } h2 { font-size: 1.2rem; margin-top: 2rem; }
+  @media (prefers-color-scheme: dark) { body { background: #141414; color: #e6e6e6; } pre { background: #222; } a { color: #8ab4f8; } }
+</style>
+</head>
+<body>
+<h1>Shuttle Browser packages</h1>
+<p>Signed package repositories for <a href="https://www.shuttlebrowser.com">Shuttle</a> on Linux (x86_64).
+Updates then come through your package manager.</p>
+
+<h2>Debian / Ubuntu (apt)</h2>
+<pre><code>sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL @URL@/shuttle.gpg | sudo tee /etc/apt/keyrings/shuttle.gpg &gt;/dev/null
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/shuttle.gpg] @URL@/apt stable main" | sudo tee /etc/apt/sources.list.d/shuttle.list
+sudo apt update &amp;&amp; sudo apt install shuttle</code></pre>
+
+<h2>Fedora (dnf)</h2>
+<pre><code>sudo curl -fsSLo /etc/yum.repos.d/shuttle.repo @URL@/rpm/shuttle.repo
+sudo dnf install shuttle</code></pre>
+
+<h2>Signing key</h2>
+<p><a href="@URL@/shuttle.asc">shuttle.asc</a> (armored) or <a href="@URL@/shuttle.gpg">shuttle.gpg</a> (binary).<br>
+Fingerprint: <code>@FPR@</code></p>
+</body>
+</html>

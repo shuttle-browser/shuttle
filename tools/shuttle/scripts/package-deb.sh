@@ -4,9 +4,9 @@
 # Usage (Linux build host): scripts/package-deb.sh <shuttle-linux-x64.tar.xz> <pkg-version> [dest-dir]
 #   pkg-version: Shuttle version, e.g. 0.1.2 (test builds 0.1.2~test1; "~" sorts before the release)
 #   dest-dir:    default: the tarball's directory
-# Env: SHUTTLE_DEB_APT_SOURCE=1  postinst adds the apt repo source once (off by default: only once the repo is live)
-#        SHUTTLE_DEB_APT_KEY=<file>  binary (dearmored) public key shipped as /usr/share/keyrings/shuttle-archive-keyring.gpg
-#        SHUTTLE_DEB_APT_URL=<url>   default https://apt.shuttlebrowser.com
+# Env: SHUTTLE_PKG_REPO_SOURCE=1  postinst adds our package repo once (deb: apt source, rpm: /etc/yum.repos.d file) and
+#        the packages ship the key from assets/linux/repo/shuttle.asc (off by default: only with the repo live)
+#        SHUTTLE_PKG_REPO_URL=<url>  default https://pkg.shuttlebrowser.com
 #      SHUTTLE_NO_RPM=1 skips the .rpm. NFPM=<path> (default: nfpm on PATH, else ~/.local/bin/nfpm).
 # Layout: /opt/shuttle (tarball tree), /usr/bin/shuttle symlink, desktop file, hicolor icons, /usr/share/doc/shuttle.
 set -euo pipefail
@@ -19,10 +19,11 @@ NFPM=${NFPM:-$(command -v nfpm || echo "$HOME/.local/bin/nfpm")}
 [ -x "$NFPM" ] || { echo "FATAL: nfpm not found (install: docs/TOOLING.md)" >&2; exit 2; }
 [[ $PKG_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+([~+][A-Za-z0-9.]+)?$ ]] || { echo "FATAL: bad version '$PKG_VERSION'" >&2; exit 2; }
 
-APT_SOURCE=${SHUTTLE_DEB_APT_SOURCE:-0}
-APT_URL=${SHUTTLE_DEB_APT_URL:-https://apt.shuttlebrowser.com}
-if [ "$APT_SOURCE" = 1 ]; then
-  [ -f "${SHUTTLE_DEB_APT_KEY:-}" ] || { echo "FATAL: SHUTTLE_DEB_APT_SOURCE=1 needs SHUTTLE_DEB_APT_KEY=<dearmored key>" >&2; exit 2; }
+REPO_SOURCE=${SHUTTLE_PKG_REPO_SOURCE:-0}
+REPO_URL=${SHUTTLE_PKG_REPO_URL:-https://pkg.shuttlebrowser.com}
+REPO_KEY=$TOOLS/assets/linux/repo/shuttle.asc
+if [ "$REPO_SOURCE" = 1 ]; then
+  command -v gpg >/dev/null || { echo "FATAL: SHUTTLE_PKG_REPO_SOURCE=1 needs gpg (dearmors the repo key)" >&2; exit 2; }
 fi
 
 # Input check: tarball sha256 next to it must match.
@@ -100,17 +101,20 @@ EOF
 chmod -R u=rwX,go=rX "$STAGE/usr" "$O"
 chmod 644 "$O"/lib*.so*   # shared libraries are not executables (lintian)
 for s in postinst postrm; do
-  sed -e "s|@APT_SOURCE@|$APT_SOURCE|" -e "s|@APT_URL@|$APT_URL|" "$TOOLS/assets/linux/deb/$s" > "$STAGE/$s"
+  sed -e "s|@REPO_SOURCE@|$REPO_SOURCE|" -e "s|@REPO_URL@|$REPO_URL|" "$TOOLS/assets/linux/deb/$s" > "$STAGE/$s"
 done
 
 export SHUTTLE_PKG_VERSION=$PKG_VERSION SHUTTLE_CHROMIUM_VERSION=$CHROMIUM_VERSION SHUTTLE_STAGE=$STAGE
-render() {  # $1 = packager; the apt keyring only goes into the .deb
-  if [ "$1" = deb ] && [ "$APT_SOURCE" = 1 ]; then
-    install -Dm644 "$SHUTTLE_DEB_APT_KEY" "$STAGE/usr/share/keyrings/shuttle-archive-keyring.gpg"
-  else
-    rm -rf "$STAGE/usr/share/keyrings"
+render() {  # $1 = packager; repo key: deb = binary keyring for apt's signed-by, rpm = armored key for dnf's gpgkey
+  rm -rf "$STAGE/usr/share/keyrings" "$STAGE/etc"
+  if [ "$REPO_SOURCE" = 1 ]; then
+    case $1 in
+      deb) mkdir -p "$STAGE/usr/share/keyrings"
+           gpg --dearmor < "$REPO_KEY" > "$STAGE/usr/share/keyrings/shuttle-archive-keyring.gpg" ;;
+      rpm) install -Dm644 "$REPO_KEY" "$STAGE/etc/pki/rpm-gpg/RPM-GPG-KEY-shuttle" ;;
+    esac
   fi
-  SHUTTLE_SHARE_CONTENTS=$(cd "$STAGE" && find usr/share -type f | sort | while read -r f; do
+  SHUTTLE_SHARE_CONTENTS=$(cd "$STAGE" && find usr/share etc -type f 2>/dev/null | sort | while read -r f; do
     printf '  - src: %s\n    dst: /%s\n    file_info:\n      mode: 0644\n' "$STAGE/$f" "$f"; done)
   export SHUTTLE_SHARE_CONTENTS
   envsubst '${SHUTTLE_PKG_VERSION} ${SHUTTLE_CHROMIUM_VERSION} ${SHUTTLE_STAGE} ${SHUTTLE_SHARE_CONTENTS}' < "$CONF" > "$WORK/nfpm-$1.yaml"

@@ -17,19 +17,33 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
 fi
 
-# apt source (build switch SHUTTLE_DEB_APT_SOURCE=1, deb only): add our repo once so GitHub .deb users get
-# updates through apt. Skipped if any apt source already mentions the repo (user's own entry wins).
-APT_SOURCE=@APT_SOURCE@
-APT_URL='@APT_URL@'
-APT_LIST=/etc/apt/sources.list.d/shuttle.list
-APT_KEY=/usr/share/keyrings/shuttle-archive-keyring.gpg
-if [ "$APT_SOURCE" = 1 ] && [ "${1:-}" = configure ] && [ -d /etc/apt/sources.list.d ]; then
-  if ! grep -qsF "$APT_URL" /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; then
-    cat > "$APT_LIST" <<LIST
-# Added by the shuttle package (https://www.shuttlebrowser.com). Edit freely: the package won't re-add it
-# while any apt source mentions $APT_URL. Removed on "apt purge shuttle".
-deb [arch=amd64 signed-by=$APT_KEY] $APT_URL stable main
+# Package repo source (build switch SHUTTLE_PKG_REPO_SOURCE=1): add our repo once, so users who installed the
+# file from GitHub get updates through apt/dnf. Skipped if any source already mentions the repo (the user's entry wins).
+REPO_SOURCE=@REPO_SOURCE@
+REPO_URL='@REPO_URL@'
+MARK='# Added by the shuttle package (https://www.shuttlebrowser.com). Edit freely: the package will not re-add it'
+if [ "$REPO_SOURCE" = 1 ] && [ "${1:-}" = configure ] && [ -d /etc/apt/sources.list.d ]; then
+  if ! grep -qsF "$REPO_URL" /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; then
+    cat > /etc/apt/sources.list.d/shuttle.list <<LIST
+$MARK
+# while any apt source mentions $REPO_URL. Removed on "apt purge shuttle".
+deb [arch=amd64 signed-by=/usr/share/keyrings/shuttle-archive-keyring.gpg] $REPO_URL/apt stable main
 LIST
+  fi
+fi
+if [ "$REPO_SOURCE" = 1 ] && { [ "${1:-}" = 1 ] || [ "${1:-}" = 2 ]; } && [ -d /etc/yum.repos.d ]; then
+  if ! grep -qsF "$REPO_URL" /etc/yum.repos.d/*.repo; then
+    cat > /etc/yum.repos.d/shuttle.repo <<REPO
+$MARK
+# while any repo file mentions $REPO_URL. Removed when the package is erased.
+[shuttle]
+name=Shuttle Browser (stable)
+baseurl=$REPO_URL/rpm/stable
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-shuttle
+REPO
   fi
 fi
 

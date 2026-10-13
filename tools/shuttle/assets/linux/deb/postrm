@@ -12,9 +12,12 @@ case "${1:-}" in
     ;;
 esac
 
-# Drop the apt source only if the package wrote it (marker line), and only on purge.
+# Drop the repo source only if the package wrote it (marker line): apt on purge, rpm on erase (rpm has no purge).
 if [ "${1:-}" = purge ] && grep -qs '^# Added by the shuttle package' /etc/apt/sources.list.d/shuttle.list; then
   rm -f /etc/apt/sources.list.d/shuttle.list
+fi
+if [ "${1:-}" = 0 ] && grep -qs '^# Added by the shuttle package' /etc/yum.repos.d/shuttle.repo; then
+  rm -f /etc/yum.repos.d/shuttle.repo
 fi
 
 exit 0

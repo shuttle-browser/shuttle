@@ -657,3 +657,18 @@ smoke-cdp clean.
 Verified: Mac `out/Release` (7 steps): first delete-agent 1.4 s after launch (was ~180 s), later ones 1-35 ms;
 smoke-mcp ALL OK, smoke-session-cdp all ok, check-automation 7/7, worker UAF repro alive. Linux `out/Dev` (the Linux session):
 first delete 179 s → 4.6 s, smoke-mcp, smoke-session-cdp, smoke-agents-page 14/14, smoke-cdp 48/48, UAF repro alive.
+
+## Fork commit 38 (2026-10-13): Linux menu launch opens chrome://agents
+
+- **38 `963fabcc82`** New switch `--shuttle-open-agents` (`chrome/browser/shuttle/switches.h`, GN target `//chrome/browser/shuttle:switches`,
+  kept out of `chrome_switches.h` so it doesn't rebuild half the tree). With no URL arguments, `StartupTabProviderImpl`
+  treats it as a command-line tab for `chrome://agents/` (chrome:// URLs passed as arguments are rejected by
+  `ValidateLaunchUrlWebUnsafe`, so it can't be a plain argument). `PreEarlyInitialization` doesn't add
+  `--no-startup-window` when it's set. The Linux desktop entry runs `shuttle --shuttle-open-agents %U`.
+  Behavior change: a launch from the Linux app menu (and a menu launch while Shuttle already runs) opens a window with
+  chrome://agents, like a Dock click on macOS. Terminal and agent launches stay windowless; links opened through the
+  desktop entry still open the link only.
+
+Verified: Mac `out/Sccache` (150 steps): fresh profile without the switch has no tabs; with it, `chrome://agents/`; a
+second launch with the switch forwarded to a running browser opens `chrome://agents/`; smoke-cdp clean (known
+`createBrowserContext` / `Autofill.enable` lines). Linux: pending (the Linux session).
