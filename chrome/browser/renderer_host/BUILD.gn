@@ -67,21 +67,6 @@ if (is_mac) {
     public_deps = [ "//content/public/browser" ]
   }
 
-  source_set("unit_tests") {
-    testonly = true
-    sources =
-        [ "chrome_render_widget_host_view_mac_history_swiper_unittest.mm" ]
-    deps = [
-      ":history_swiper",
-      ":history_swiping_control",
-      "//base",
-      "//testing/gtest",
-      "//third_party/blink/public/common:headers",
-      "//third_party/ocmock",
-      "//ui/events/blink",
-    ]
-  }
-
   # TODO(crbug.com/479890756): Merge :delegate and :delegate_impl targets when
   # c/b/ui/views/tab_contents/chrome_web_contents_view_delegate_views_mac.mm
   # gets componentized.

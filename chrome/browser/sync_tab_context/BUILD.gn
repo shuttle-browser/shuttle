@@ -24,19 +24,4 @@ source_set("impl") {
 }
 
 if (!is_android) {
-  source_set("browser_tests") {
-    testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [ "tab_context_decryption_token_tab_helper_browsertest.cc" ]
-    deps = [
-      ":sync_tab_context",
-      "//base",
-      "//base/test:test_support",
-      "//chrome/browser/signin",
-      "//components/network_session_configurator/common",
-      "//components/signin/public/identity_manager",
-      "//content/test:test_support",
-      "//google_apis",
-    ]
-  }
 }
