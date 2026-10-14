@@ -20,6 +20,7 @@
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_util.h"
+#include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/tabs/recent_tabs_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"

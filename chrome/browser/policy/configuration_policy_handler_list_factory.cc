@@ -468,9 +468,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kWebHidBlockedForUrls,
     prefs::kManagedWebHidBlockedForUrls,
     base::Value::Type::LIST },
-  { key::kRemoteDebuggingAllowed,
-    prefs::kDevToolsRemoteDebuggingAllowed,
-    base::Value::Type::BOOLEAN },
 // Policies for all platforms - End
 #if BUILDFLAG(IS_ANDROID)
 #else // !BUILDFLAG(IS_ANDROID)
