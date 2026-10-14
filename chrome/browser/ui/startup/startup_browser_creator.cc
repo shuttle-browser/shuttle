@@ -52,9 +52,11 @@
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/sessions/exit_type_service.h"
+#include "chrome/browser/shuttle/switches.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
@@ -63,6 +65,7 @@
 #include "chrome/browser/ui/startup/startup_browser_creator_impl.h"
 #include "chrome/browser/ui/startup/startup_tab_provider.h"
 #include "chrome/browser/ui/startup/startup_types.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_constants.h"
@@ -80,7 +83,9 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
+#include "content/public/common/url_constants.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/switches.h"
 #include "printing/buildflags/buildflags.h"
@@ -302,6 +307,33 @@ std::optional<bool> MaybeHandleValidateCrx(
   }
   printf("%s\n", message.c_str());
   return false;
+}
+
+
+// Shuttle: --shuttle-open-agents forwarded to a running browser (a Linux menu
+// launch) reuses an open chrome://agents tab of `profile` instead of adding
+// another one. Returns false if there is none.
+bool FocusAgentsTab(Profile* profile) {
+  bool found = false;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [profile, &found](BrowserWindowInterface* browser) {
+        if (browser->GetProfile() != profile ||
+            browser->GetType() != BrowserWindowInterface::TYPE_NORMAL) {
+          return true;
+        }
+        TabStripModel* tabs = browser->GetTabStripModel();
+        for (int i = 0; i < tabs->count(); ++i) {
+          const GURL& url = tabs->GetWebContentsAt(i)->GetLastCommittedURL();
+          if (url.SchemeIs(content::kChromeUIScheme) && url.host() == "agents") {
+            tabs->ActivateTabAt(i);
+            browser->GetWindow()->Activate();
+            found = true;
+            return false;
+          }
+        }
+        return true;
+      });
+  return found;
 }
 
 }  // namespace
@@ -853,6 +885,11 @@ void StartupBrowserCreator::ProcessCommandLineWithProfile(
   if (command_line.HasSwitch(switches::kRefreshPlatformPolicy)) {
     g_browser_process->browser_policy_connector()->RefreshPlatformPolicies();
     // Return early to prevent opening a new browser window.
+    return;
+  }
+
+  if (profile && command_line.HasSwitch(shuttle::kOpenAgentsSwitch) &&
+      command_line.GetArgs().empty() && FocusAgentsTab(profile)) {
     return;
   }
 
