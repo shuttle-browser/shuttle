@@ -205,6 +205,11 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
   - macOS: the DMG named in the latest release's `SHA256SUMS`, checksum-checked, `ditto` into `/Applications` (or
     `~/Applications`).
   - Linux: the apt/dnf repo with sudo; otherwise the tarball into `~/.local`.
+  - At the end: "Start Shuttle now? [Y/n]", read from `/dev/tty` (with `curl | bash` stdin is the script). No terminal
+    (CI, agents) → no prompt, no launch. `SHUTTLE_LAUNCH=ask|yes|no` overrides it. The launch passes
+    `--shuttle-open-agents` (macOS `open -a … --args`, Linux `setsid -f`, stdin `/dev/null`), so it opens chrome://agents;
+    Linux only with `DISPLAY`/`WAYLAND_DISPLAY` and not as root. Test the prompt with `expect`; `script(1)` with piped
+    input sends EOF before the answer arrives.
   - Test without touching the real install: `SHUTTLE_APPS_DIR=/tmp/x bash assets/install.sh` (Mac),
     `HOME=/tmp/x SHUTTLE_METHOD=tarball bash install.sh` (Linux); the repo path needs a throwaway distro or VM.
     `SHUTTLE_CHANNEL=testing` installs from `testing`.
@@ -215,7 +220,11 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
   it fails without output (no zsh), and the old `logs/build-<Dir>.log` then looks like a fresh result. Check the
   `Script started on <date>` line of the log before trusting a step count.
 - **Dry run after a BUILD.gn change reports 0 steps** (2026-10-14): `-n` can't regenerate the ninja files. Run
-  `gn gen out/<dir>` (from the real path) first, then the dry run.
+  `gn gen out/<dir>` (from the real path) first, then the dry run. Read the count from raw
+  `autoninja -C out/<dir> -n --quiet=false chrome`: `build-sccache.sh -n` showed 0 for v0.1.3 where the real
+  number was 158, and in agent shells autoninja adds `--quiet`, which hides the step line. A 0-step dry run on
+  MAGWIN after a `git checkout` reset (mtimes only) still built 13 steps (v0.1.3): treat "0" as unknown, not
+  "nothing to do".
 - **`pkill -f` over ssh kills its own shell** when the pattern appears in the ssh command line (`ssh host 'pkill -f X;
   rm -rf /tmp/X'`). Put the commands in a script file, or use a pattern the command line doesn't contain literally
   (`'user-data-dir=/tmp/sh-pro[f]'`).
