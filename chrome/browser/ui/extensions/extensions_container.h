@@ -50,6 +50,9 @@ class ExtensionsContainer {
   // Whether there are any Extensions registered with the ExtensionsContainer.
   virtual bool HasAnyExtensions() const = 0;
 
+  // Returns the active WebContents associated with this container, or nullptr
+  // if callers should fall back to the browser's active tab.
+  virtual content::WebContents* GetActiveWebContents() const;
 };
 
 #endif  // CHROME_BROWSER_UI_EXTENSIONS_EXTENSIONS_CONTAINER_H_
