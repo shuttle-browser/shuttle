@@ -197,6 +197,7 @@ export class SearchboxMatchElement extends CrLitElement {
   accessor showThumbnail: boolean = false;
   accessor showEllipsis: boolean = false;
   accessor virtualFocusEnabled: boolean = false;
+  accessor resultSequenceId: number = 0;
   private accessor isTopChromeSearchbox_: boolean =
       loadTimeData.getBoolean('isTopChromeSearchbox');
   private accessor isLensSearchbox_: boolean =

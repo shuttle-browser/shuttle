@@ -211,8 +211,7 @@ export const SearchboxSelectionMixin = <
       }
 
       const currentNormalIndex =
-          (from.line >= 0 &&
-           from.state !== SelectionLineState.kFocusedButtonAim) ?
+          from.line >= 0 ?
           selectionsList.findIndex(s => isNormal(s) && s.line === from.line) :
           -1;
       if (step === SelectionStep.kWholeLine && currentNormalIndex >= 0 &&

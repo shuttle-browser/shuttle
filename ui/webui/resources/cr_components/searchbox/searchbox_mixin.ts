@@ -660,15 +660,6 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
      * character to be typed into the input instead.
      */
     handleVirtualFocusSpace(e: KeyboardEvent): boolean {
-      if (this.selection.state === SelectionLineState.kFocusedButtonAim) {
-        this.setSelection({
-          line: this.selection.line,
-          state: SelectionLineState.kNormal,
-          actionIndex: 0,
-        });
-        return false;
-      }
-
       if (this.selection.state === SelectionLineState.kKeywordMode) {
         return false;
       }
