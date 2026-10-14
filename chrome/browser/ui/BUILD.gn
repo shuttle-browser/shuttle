@@ -2254,7 +2254,6 @@ static_library("ui") {
       "//chrome/browser/ui/views:flying_indicator",
       "//chrome/browser/ui/views:global_error_bubble_view",
       "//chrome/browser/ui/views:idle_bubble",
-      "//chrome/browser/ui/views:intent_picker_bubble_view",
       "//chrome/browser/ui/views:javascript_tab_modal_dialog_view_views",
       "//chrome/browser/ui/views:layout_provider_impl",
       "//chrome/browser/ui/views:login_handler_views",

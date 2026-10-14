@@ -1398,40 +1398,6 @@ source_set("session_crashed_bubble_view") {
   ]
 }
 
-source_set("intent_picker_bubble_view") {
-  public = [ "intent_picker_bubble_view.h" ]
-  sources = [ "intent_picker_bubble_view.cc" ]
-  public_deps = [
-    "//base",
-    "//components/apps/link_capturing",
-    "//chrome/browser/ui/views/location_bar",
-    "//ui/base",
-    "//ui/views",
-    "//url",
-  ]
-  deps = [
-    ":layout_provider",
-    "//chrome/app:generated_resources",
-    "//chrome/browser:browser_process",
-    "//chrome/browser/ui/color:color_headers",
-    "//chrome/browser/ui/views/controls",
-    "//chrome/common:chrome_features",
-    "//components/services/app_service",
-    "//components/url_formatter",
-    "//content/public/browser",
-    "//skia",
-    "//ui/accessibility:ax_base",
-    "//ui/base/mojom:ui_base_types",
-    "//ui/color:color_headers",
-    "//ui/events",
-    "//ui/gfx",
-    "//ui/gfx/geometry",
-    "//ui/strings:ui_strings",
-  ]
-  if (is_chromeos) {
-    deps += [ "//ui/chromeos" ]
-  }
-}
 
 source_set("sad_tab_view") {
   public = [ "sad_tab_view.h" ]
