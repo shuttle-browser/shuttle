@@ -888,8 +888,20 @@ void StartupBrowserCreator::ProcessCommandLineWithProfile(
     return;
   }
 
-  if (profile && command_line.HasSwitch(shuttle::kOpenAgentsSwitch) &&
-      command_line.GetArgs().empty() && FocusAgentsTab(profile)) {
+  // Shuttle (Linux): a plain `shuttle` forwarded to the running browser
+  // (terminal or menu) shows chrome://agents instead of a New Tab window; the
+  // process singleton forwards before the second process's own startup logic
+  // runs, so the switch is added here. `--new-window` keeps the stock window.
+  base::CommandLine effective_command_line = command_line;
+#if BUILDFLAG(IS_LINUX)
+  if (effective_command_line.GetArgs().empty() &&
+      !effective_command_line.HasSwitch(switches::kNoStartupWindow) &&
+      !effective_command_line.HasSwitch(switches::kOpenInNewWindow)) {
+    effective_command_line.AppendSwitch(shuttle::kOpenAgentsSwitch);
+  }
+#endif
+  if (profile && effective_command_line.HasSwitch(shuttle::kOpenAgentsSwitch) &&
+      effective_command_line.GetArgs().empty() && FocusAgentsTab(profile)) {
     return;
   }
 
@@ -906,7 +918,7 @@ void StartupBrowserCreator::ProcessCommandLineWithProfile(
 
   StartupBrowserCreator startup_browser_creator;
   startup_browser_creator.ProcessCmdLineImpl(
-      command_line, cur_dir, chrome::startup::IsProcessStartup::kNo,
+      effective_command_line, cur_dir, chrome::startup::IsProcessStartup::kNo,
       {profile, mode}, last_opened_profiles);
 }
 

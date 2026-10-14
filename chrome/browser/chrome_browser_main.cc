@@ -195,6 +195,9 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_LINUX)
+#include <unistd.h>
+
+#include "base/environment.h"
 #include "chrome/browser/first_run/upgrade_util_linux.h"
 #include "chrome/browser/ui/views/chrome_browser_main_extra_parts_views_linux.h"
 #endif
@@ -993,6 +996,24 @@ int ChromeBrowserMainParts::PreEarlyInitialization() {
   // only; command lines forwarded by a second launch open a window as usual.
   {
     base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+#if BUILDFLAG(IS_LINUX)
+    // Linux: a person starting `shuttle` in a terminal on a desktop gets
+    // chrome://agents, like the menu entry. Programs (agents, scripts,
+    // Puppeteer) start it without a terminal on stdin and stay windowless, as
+    // do --headless, --remote-debugging-pipe and an explicit
+    // --no-startup-window.
+    if (command_line->GetArgs().empty() &&
+        !command_line->HasSwitch(switches::kNoStartupWindow) &&
+        !command_line->HasSwitch(switches::kRestoreLastSession) &&
+        !command_line->HasSwitch("headless") &&
+        !command_line->HasSwitch(switches::kRemoteDebuggingPipe) &&
+        isatty(STDIN_FILENO)) {
+      std::unique_ptr<base::Environment> env = base::Environment::Create();
+      if (env->HasVar("DISPLAY") || env->HasVar("WAYLAND_DISPLAY")) {
+        command_line->AppendSwitch(shuttle::kOpenAgentsSwitch);
+      }
+    }
+#endif
     if (command_line->GetArgs().empty() &&
         !command_line->HasSwitch(switches::kRestoreLastSession) &&
         !command_line->HasSwitch(shuttle::kOpenAgentsSwitch)) {

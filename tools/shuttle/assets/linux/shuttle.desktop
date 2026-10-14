@@ -15,4 +15,4 @@ Actions=new-window;
 
 [Desktop Action new-window]
 Name=New Window
-Exec=@EXEC@
+Exec=@EXEC@ --new-window
