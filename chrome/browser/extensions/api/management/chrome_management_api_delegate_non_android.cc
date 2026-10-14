@@ -13,6 +13,7 @@
 #include "extensions/common/api/management.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_id.h"
+#include "ui/base/window_open_disposition.h"
 
 namespace extensions {
 namespace {

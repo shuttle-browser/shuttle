@@ -17,6 +17,7 @@
 #include "components/permissions/permission_uma_util.h"
 #include "components/permissions/permission_util.h"
 #include "content/public/browser/notification_event_dispatcher.h"
+#include "ui/base/window_open_disposition.h"
 #include "ui/message_center/message_center_stats_collector.h"
 
 #if !BUILDFLAG(IS_ANDROID)

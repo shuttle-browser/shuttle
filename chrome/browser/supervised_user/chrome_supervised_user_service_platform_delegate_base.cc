@@ -4,7 +4,9 @@
 
 #include "chrome/browser/supervised_user/chrome_supervised_user_service_platform_delegate_base.h"
 
+#include "base/check_deref.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/metrics/profile_metrics_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/channel_info.h"
 #include "components/variations/service/variations_service.h"

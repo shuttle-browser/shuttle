@@ -75,6 +75,7 @@
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/security_interstitials/core/features.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
 #include "net/base/features.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"

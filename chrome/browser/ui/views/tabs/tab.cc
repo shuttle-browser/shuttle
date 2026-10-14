@@ -54,6 +54,7 @@
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"

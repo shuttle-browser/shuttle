@@ -13,6 +13,7 @@
 #include "chrome/browser/ui/omnibox/clipboard_utils.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
+#include "content/public/browser/navigation_controller.h"
 #include "ui/actions/actions.h"
 
 namespace content {

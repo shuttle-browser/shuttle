@@ -31,6 +31,7 @@
 #include "chrome/browser/ui/views/frame/dbus_appmenu_registrar.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/history/core/browser/top_sites.h"
+#include "components/sessions/core/session_id.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/navigation_entry.h"

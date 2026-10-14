@@ -71,6 +71,7 @@
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/libwebp/src/src/webp/decode.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/gfx/geometry/size_f.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"

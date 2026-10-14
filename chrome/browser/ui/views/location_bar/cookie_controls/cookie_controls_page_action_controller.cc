@@ -20,6 +20,7 @@
 #include "components/content_settings/core/common/cookie_controls_state.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
