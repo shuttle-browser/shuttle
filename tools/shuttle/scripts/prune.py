@@ -193,6 +193,8 @@ def grd_refs(used):
                     extra.add(os.path.normpath(ref))
     deps_text = open(os.path.join(SRC, "DEPS")).read()
     extra |= {m for m in re.findall(r"'src/([^']+\.py)'", deps_text)}  # gclient hooks
+    # CIPD `version_file`s: gclient reads them while parsing DEPS, even when the dep's condition is false (155+).
+    extra |= set(re.findall(r"'version_file':\s*'([^']+)'", deps_text))
 
     return extra
 
