@@ -176,6 +176,7 @@ class OmniboxViewViews
   void SelectAll(bool reversed) override;
   void RevertAll() override;
   void SetFocus(bool is_user_initiated) override;
+  bool is_user_initiated_focus() const { return is_user_initiated_focus_; }
   bool IsImeShowingPopup() const override;
 
   // views::Textfield:
@@ -450,6 +451,11 @@ class OmniboxViewViews
 
   // Whether the user should be notified if the clipboard is restricted.
   bool show_rejection_ui_if_any_ = false;
+
+  // Tracks whether the most recent call to `SetFocus()` was user-initiated.
+  // Used during full WebUI omnibox startup handoff to determine whether to
+  // query zero-prefix suggestions (ZPS).
+  bool is_user_initiated_focus_ = false;
 
   // Keep track of the word that would be selected if URL is unelided between
   // a single and double click. This is an edge case where the elided URL is
