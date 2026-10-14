@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/ozone.gni")
 import("//chrome/common/features.gni")
 import("//components/guest_view/buildflags/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
@@ -33,19 +32,29 @@ if (!is_android) {
 }
 
 if (is_mac) {
-  source_set("test_utils_mac") {
+
 }
 
 if (is_win) {
-  source_set("process_helpers_win") {
+  source_set("process_inspector_win") {
     testonly = true
     sources = [
       "process_inspector_win.cc",
       "process_inspector_win.h",
+    ]
+    deps = [ "//base" ]
+  }
+
+  source_set("process_lineage_win") {
+    testonly = true
+    sources = [
       "process_lineage_win.cc",
       "process_lineage_win.h",
     ]
-    deps = [ "//base" ]
+    deps = [
+      ":process_inspector_win",
+      "//base",
+    ]
   }
 
   source_set("always_on_top_window_killer_win") {
@@ -55,56 +64,21 @@ if (is_win) {
       "always_on_top_window_killer_win.h",
     ]
     deps = [
-      ":process_helpers_win",
+      ":process_lineage_win",
       ":save_desktop_snapshot",
       "//base",
       "//base/test:test_support",
       "//ui/display",
     ]
   }
-}
 
-if (!is_android) {
-  source_set("browser_tests") {
+  source_set("window_contents_as_string_win") {
     testonly = true
-    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
     sources = [
-      "devtools_listener_browsertest.cc",
-      "in_process_browser_test_browsertest.cc",
-      "memory_tracing_browsertest.cc",
-      "save_desktop_snapshot_browsertest.cc",
-      "test_chrome_web_ui_controller_factory_browsertest.cc",
-      "ui_test_utils_browsertest.cc",
-      "web_ui_mocha_browser_test_browsertest.cc",
+      "window_contents_as_string_win.cc",
+      "window_contents_as_string_win.h",
     ]
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
-    deps = [
-      ":chrome_test_utils",
-      ":devtools_coverage",
-      ":in_process_browser_test",
-      ":save_desktop_snapshot",
-      ":test_switches",
-      ":tracing",
-      ":ui_test_utils",
-      ":web_ui_mocha_browser_test",
-      ":web_ui_test_support",
-      "//base",
-      "//chrome/browser:after_startup_task_utils",
-      "//chrome/browser/preloading:test_support",
-      "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/views/toolbar",
-      "//chrome/common",
-      "//content/public/browser",
-      "//content/test:test_support",
-      "//net:test_support",
-      "//testing/gmock",
-      "//testing/gtest",
-      "//url",
-    ]
-    if (use_ozone) {
-      deps += [ "//ui/ozone" ]
-    }
+    deps = [ "//base" ]
   }
 }
 
@@ -151,6 +125,16 @@ if (is_android) {
 }
 
 if (is_chromeos) {
+  source_set("js_test_api") {
+    testonly = true
+    sources = [
+      "ash/js_test_api.cc",
+      "ash/js_test_api.h",
+    ]
+    public_deps = [ "//base" ]
+    deps = [ "//chrome/common" ]
+  }
+
   source_set("browser_process_platform_part_test_api_chromeos") {
     testonly = true
     sources = [
@@ -178,19 +162,36 @@ if (is_chromeos) {
     deps = [ "//ui/aura:test_support" ]
   }
 
+  source_set("web_ui_test_handler") {
+    testonly = true
+    sources = [
+      "ash/web_ui_test_handler.cc",
+      "ash/web_ui_test_handler.h",
+    ]
+    public_deps = [ "//content/public/browser" ]
+    deps = [
+      "//base",
+      "//chrome/common:mojo_bindings",
+      "//content/public/common",
+      "//content/test:test_support",
+      "//mojo/public/cpp/bindings",
+      "//testing/gtest",
+      "//third_party/blink/public/common:headers",
+    ]
+  }
+
   source_set("javascript_browser_test") {
     testonly = true
     sources = [
       "ash/javascript_browser_test.cc",
       "ash/javascript_browser_test.h",
-      "ash/js_test_api.cc",
-      "ash/js_test_api.h",
     ]
     public_deps = [
       ":in_process_browser_test",
       "//base",
     ]
     deps = [
+      ":js_test_api",
       "//chrome/browser/profiles:profile_manager",
       "//chrome/browser/ui",
       "//chrome/common",
@@ -221,12 +222,8 @@ if (is_chromeos) {
   source_set("cros_web_ui_browser_test") {
     testonly = true
     sources = [
-      "ash/mojo_web_ui_browser_test.cc",
-      "ash/mojo_web_ui_browser_test.h",
       "ash/web_ui_browser_test.cc",
       "ash/web_ui_browser_test.h",
-      "ash/web_ui_test_handler.cc",
-      "ash/web_ui_test_handler.h",
     ]
 
     # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
@@ -235,28 +232,25 @@ if (is_chromeos) {
     public_deps = [
       ":devtools_coverage",
       ":javascript_browser_test",
+      ":web_ui_test_handler",
       "//base",
       "//content/public/browser",
     ]
     deps = [
+      ":js_test_api",
+      ":test_chrome_web_ui_controller_factory",
       ":test_switches",
-      ":web_ui_test_support",
+      ":web_ui_test_data_source",
       "//base/test:test_support",
       "//chrome/browser",
       "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/tabs",
       "//chrome/common",
-      "//chrome/common:mojo_bindings",
-      "//chrome/test/data/webui:resources",
-      "//chrome/test/data/webui/chromeos:web_ui_test_bindings",
       "//content/public/common",
       "//content/test:test_support",
-      "//mojo/public/cpp/bindings",
       "//net",
       "//services/network/public/mojom",
-      "//testing/gtest",
-      "//third_party/blink/public/common:headers",
       "//ui/base",
     ]
   }

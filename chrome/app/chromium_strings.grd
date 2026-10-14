@@ -928,7 +928,7 @@ Shuttle is unable to recover your settings.
               other {Your administrator asks that you relaunch Shuttle to apply this update. Your # Incognito windows won't reopen.}}
           </message>
           <message name="IDS_RELAUNCH_RECOMMENDED_SCHEDULED_IDLE_TOAST" desc="Toast notification message shown after scheduling an idle restart." translateable="false">
-            Chromium will restart when you're next idle
+            Shuttle will restart when you're next idle
           </message>
           <message name="IDS_RELAUNCH_REQUIRED_TITLE_DAYS" desc="The title of a dialog that tells users the browser must be relaunched within two or more days.">
             {0, plural,

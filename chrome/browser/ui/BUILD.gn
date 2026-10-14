@@ -173,12 +173,8 @@ if (!is_android) {
     public_deps = [
       ":download_close_type",
       "//base",
-      "//chrome/browser/ui/hats",
       "//chrome/common:buildflags",
-      "//components/apps/link_capturing",
       "//components/content_settings/core/common",
-      "//components/translate/core/browser",
-      "//components/translate/core/common",
       "//ui/base",
       "//ui/base:types",
       "//ui/base/interaction",
@@ -271,8 +267,6 @@ if (!is_android) {
     deps = [
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/web_applications",
-      "//components/saved_tab_groups/public",
       "//ui/base",
     ]
   }
@@ -356,16 +350,12 @@ if (!is_android) {
     deps = [
       ":tab_ui_helper",
       "//base",
-      "//chrome/browser/apps/app_service",
-      "//chrome/browser/glic",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/sessions",
       "//chrome/browser/ui/browser_window",
-      "//chrome/browser/ui/send_tab_to_self",
       "//chrome/browser/ui/tabs:tab_enums",
       "//chrome/browser/ui/tabs:tab_group",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/webui_browser",
       "//chrome/common:buildflags",
       "//components/sessions",
       "//components/tab_groups",
@@ -394,7 +384,6 @@ if (is_mac) {
       "//base",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/exclusive_access",
-      "//chrome/browser/ui/web_applications",
       "//chrome/common:constants",
       "//components/prefs",
       "//components/remote_cocoa/app_shim",
@@ -1980,12 +1969,9 @@ static_library("ui") {
       # profile_picker_feature_promo_controller_impl and
       # profile_picker_widget_impl include profile_picker_view.h which
       # cannot be split out yet.
-      "//chrome/browser/ui/views/profiles:profile_picker_feature_promo_controller_impl",
-      "//chrome/browser/ui/views/profiles:profile_picker_widget_impl",
 
       # TODO(crbug.com/353332589):
       # profile_customization_bubble_sync_controller.cc includes browser_view.h.
-      "//chrome/browser/ui/views/profiles:profile_customization_bubble_sync_controller_impl",
 
       # TODO(crbug.com/364667551): It includes quite a few files from //c/b/ui's
       # subdirectories such as views and webui which are not modularized yet.
@@ -2267,6 +2253,8 @@ static_library("ui") {
       "//chrome/browser/ui/views:find_bar_views",
       "//chrome/browser/ui/views:flying_indicator",
       "//chrome/browser/ui/views:global_error_bubble_view",
+      "//chrome/browser/ui/views:idle_bubble",
+      "//chrome/browser/ui/views:intent_picker_bubble_view",
       "//chrome/browser/ui/views:javascript_tab_modal_dialog_view_views",
       "//chrome/browser/ui/views:layout_provider_impl",
       "//chrome/browser/ui/views:login_handler_views",
@@ -2461,27 +2449,13 @@ static_library("ui") {
       # following header gets componentized:
       # c/b/ui/browser.h
       "//chrome/browser/ui/views/bubble",
-      "//chrome/browser/ui/views/autofill:autofill_field_promo_view_impl_impl",
 
       # popup_impl and popup_view_views_impl include browser_view.h.
-      "//chrome/browser/ui/views/autofill/popup:popup_impl",
-      "//chrome/browser/ui/views/autofill/popup:popup_view_views_impl",
 
       # at_memory_promo_bubble_view_impl includes browser_view.h.
-      "//chrome/browser/ui/views/autofill:at_memory_promo_bubble_view_impl",
-      "//chrome/browser/ui/views/context_hub:save_to_memory_bank_bubble_controller_impl",
       "//chrome/browser/ui/views/frame:contents_capture_border_view_impl",
       "//chrome/browser/ui/views/frame:multi_contents_background_view_impl",
       "//chrome/browser/ui/views/frame:multi_contents_resize_area_impl",
-      "//chrome/browser/ui/views/web_apps:web_app_detailed_install_dialog",
-      "//chrome/browser/ui/views/web_apps:web_app_diy_install_dialog",
-      "//chrome/browser/ui/views/web_apps:web_app_install_dialog_delegate_impl",
-      "//chrome/browser/ui/views/web_apps:web_app_install_flow_dialog_delegate_impl",
-      "//chrome/browser/ui/views/web_apps:web_app_launch_dialog",
-      "//chrome/browser/ui/views/web_apps:web_app_modal_dialog_delegate_impl",
-      "//chrome/browser/ui/views/web_apps:web_app_simple_install_dialog",
-      "//chrome/browser/ui/views/web_apps:web_app_uninstall_dialog_view_impl",
-      "//chrome/browser/ui/views/web_apps:web_app_update_review_dialog_impl",
       "//chrome/browser/ui/views:find_bar_views",
       "//chrome/browser/ui/views:idle_bubble",
       "//chrome/browser/ui/views:session_crashed_bubble_view",
@@ -2563,9 +2537,6 @@ static_library("ui") {
       "//chrome/browser/ui/views/frame:tab_modal_dialog_host_impl",
       "//chrome/browser/ui/views/frame:themed_background_impl",
       "//chrome/browser/ui/views/frame:vertical_tab_strip_background_blur_backdrop",
-      "//chrome/browser/ui/views/web_apps/frame_toolbar:web_app_navigation_button_container_impl",
-      "//chrome/browser/ui/views/web_apps/frame_toolbar:web_app_origin_text_impl",
-      "//chrome/browser/ui/views/web_apps/frame_toolbar:window_controls_overlay_toggle_button_impl",
 
       # TODO(crbug.com/353332589): Remove this circular dependency when the
       # following headers get componentized:
@@ -2940,6 +2911,10 @@ static_library("ui") {
         [ "//chrome/browser/ui/views/extensions:extension_view_views" ]
     deps += [
       "//chrome/browser/ui/views/extensions:extension_action_delegate_desktop",
+      "//chrome/browser/ui/views/extensions:extension_action_delegate_desktop_impl",
+      "//chrome/browser/ui/views/extensions:extension_popup",
+      "//chrome/browser/ui/views/extensions:extension_popup_impl",
+      "//chrome/browser/ui/views/extensions:extension_view_views_impl",
       "//extensions/browser",
       "//ui/base/cursor",
     ]
@@ -2947,6 +2922,10 @@ static_library("ui") {
     # Any circular includes must depend on the target
     # "//chrome/browser:browser_public_dependencies".
     allow_circular_includes_from += [
+      # TODO(crbug.com/353332589): extension_popup.cc includes browser_view.h.
+      "//chrome/browser/ui/views/extensions:extension_popup_impl",
+      "//chrome/browser/ui/views/extensions:extension_view_views_impl",
+
       # TODO(crbug.com/353332589): zero_state_promo_ui.h and page_handler.cc
       # include browser.h and custom_webui_help_bubble_controller.h from
       # //chrome/browser/ui:ui.
@@ -3032,7 +3011,6 @@ static_library("ui") {
   if (toolkit_views) {
     allow_circular_includes_from += [
       "//chrome/browser/ui/views:sad_tab_view",
-      "//chrome/browser/ui/views/autofill:autofill_bubble_handler_impl",
     ]
     if (enable_extensions) {
       allow_circular_includes_from +=

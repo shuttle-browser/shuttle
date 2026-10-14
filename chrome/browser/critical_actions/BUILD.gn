@@ -17,7 +17,6 @@ source_set("critical_actions") {
 
   deps = [
     "//base",
-    "//chrome/browser/glic",
     "//chrome/browser/history",
     "//chrome/common",
     "//components/critical_actions/core/browser",

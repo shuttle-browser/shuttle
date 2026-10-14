@@ -102,7 +102,6 @@ source_set("permissions") {
     "//components/background_sync",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
-    "//components/contextual_tasks/public:feature_list",
     "//components/embedder_support:permissions",
     "//components/google/core/common",
     "//components/infobars/content",

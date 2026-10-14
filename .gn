@@ -103,7 +103,6 @@ no_check_targets = [
   "//chrome/browser/resources/autofill_ml_internals:resources",
   "//chrome/browser/resources/bluetooth_internals:resources",
   "//chrome/browser/resources/bookmarks:resources",
-  "//chrome/browser/resources/browser_actuator_internals:resources",
   "//chrome/browser/resources/browser_switch:resources",
   "//chrome/browser/resources/certificate_manager:resources",
   "//chrome/browser/resources/certificate_viewer:resources",

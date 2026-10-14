@@ -39,7 +39,6 @@ if (is_win || is_mac || is_linux) {
       ":supervised_user",
       "//base",
       "//chrome/browser/ui",
-      "//chrome/test:test_support",
       "//content/test:test_support",
       "//extensions/common",
       "//testing/gtest",

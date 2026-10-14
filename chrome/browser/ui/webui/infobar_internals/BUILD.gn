@@ -85,7 +85,6 @@ source_set("impl") {
   if (is_win || is_mac || is_linux) {
     deps += [
       "//chrome/browser/ui/views/session_restore_infobar",
-      "//chrome/browser/web_applications",
     ]
   }
 

@@ -494,7 +494,6 @@ template("proto_library") {
         } else {
           # Depend directly on the _gen targets so as to not unnecessarily block
           # on compile (by depending on source_set targets).
-          public_deps += [ "${_dep}_gen" ]
         }
       }
     }

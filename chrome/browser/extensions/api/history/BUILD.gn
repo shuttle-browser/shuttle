@@ -31,6 +31,5 @@ source_set("history") {
   ]
 
   if (!is_android) {
-    deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
 }

@@ -87,7 +87,6 @@ source_set("notifications") {
     ]
 
     public_deps += [
-      "//components/actor/core:task_id",
       "//components/keep_alive_registry",
     ]
   }
@@ -255,8 +254,6 @@ source_set("impl") {
 
     deps += [
       "//chrome/app:generated_resources",
-      "//chrome/browser/actor",
-      "//chrome/browser/glic/browser_ui",
       "//chrome/browser/media/webrtc",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/navigator",

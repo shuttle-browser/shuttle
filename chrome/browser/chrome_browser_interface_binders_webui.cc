@@ -5,8 +5,6 @@
 #include "chrome/browser/chrome_browser_interface_binders_webui.h"
 
 #include "build/android_buildflags.h"
-#include "chrome/browser/browser_actuator/internals/browser_actuator_internals.mojom.h"
-#include "chrome/browser/browser_actuator/internals/browser_actuator_internals_ui.h"
 #include "chrome/browser/chrome_browser_interface_binders.h"
 #include "chrome/browser/chrome_browser_interface_binders_webui_parts.h"
 #include "chrome/browser/media/media_engagement_score_details.mojom.h"
@@ -46,8 +44,6 @@
 #include "ui/webui/tracked_element/tracked_element_handler_document_singleton.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui/critical_actions/critical_actions.mojom.h"
-#include "chrome/browser/ui/webui/critical_actions/critical_actions_ui.h"
 #include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"

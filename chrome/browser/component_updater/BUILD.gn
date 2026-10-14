@@ -182,7 +182,6 @@ source_set("impl") {
     sources += [ "aim_eligibility_component_installer.cc" ]
     deps += [
       "//chrome/browser/extensions",
-      "//chrome/browser/resources/omnibox/aim_eligibility_extension:resources",
     ]
   }
 

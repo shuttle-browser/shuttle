@@ -1,3 +1,0 @@
-include_rules = [
-  "+ios/public/provider/chrome/browser/device_attestation",
-]

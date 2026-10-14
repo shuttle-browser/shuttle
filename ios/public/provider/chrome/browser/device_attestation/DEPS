@@ -1,3 +1,0 @@
-include_rules = [
-  "+components/enterprise/device_attestation",
-]

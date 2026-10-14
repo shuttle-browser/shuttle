@@ -8,7 +8,6 @@ source_set("sync_tab_context") {
     "//base",
     "//chrome/browser/profiles:profile",
     "//chrome/common:mojo_bindings",
-    "//components/sync_tab_context",
     "//content/public/browser",
   ]
 }
@@ -18,10 +17,7 @@ source_set("impl") {
   public_deps = [ ":sync_tab_context" ]
   deps = [
     "//chrome/browser/signin",
-    "//chrome/browser/signin:google_accounts_private_api",
-    "//chrome/browser/sync",
     "//components/signin/public/identity_manager",
-    "//components/sync/base",
     "//google_apis",
     "//services/network/public/cpp",
   ]
@@ -37,13 +33,8 @@ if (!is_android) {
       "//base",
       "//base/test:test_support",
       "//chrome/browser/signin",
-      "//chrome/browser/sync",
-      "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/network_session_configurator/common",
       "//components/signin/public/identity_manager",
-      "//components/signin/public/identity_manager:test_support",
-      "//components/sync/base",
       "//content/test:test_support",
       "//google_apis",
     ]
