@@ -192,6 +192,9 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
     the published copy; nothing lists the bucket. Versions are immutable: a file name already published with other bytes
     is refused.
   - Release flow: publish to `testing`, install-test, then publish the same files with `--suite stable`.
+  - dnf (`repo_gpgcheck=1`) asks once to import the key. Without `-y` and with no tty it waits forever, e.g. an
+    unattended `dnf makecache` after installing a package with the repo switch on. The installer pre-imports the key
+    (`rpm --import`). The package can't do that itself: a scriptlet can't run `rpm` (the rpm database is locked).
   - Needs `SHUTTLE_CF_ACCOUNT` in `~/.shuttle/env`, wrangler logged in (run from `$SHUTTLE_ROOT/shuttle-website`), and
     `pinentry-mac` as the gpg-agent pinentry (the passphrase dialog; no tty in agent shells).
 - **ssh joins arguments:** `ssh host bash -s -- "$a" "$b c"` sends one command line, so `"$b c"` arrives as two words.

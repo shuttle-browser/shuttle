@@ -114,7 +114,8 @@ render() {  # $1 = packager; repo key: deb = binary keyring for apt's signed-by,
       rpm) install -Dm644 "$REPO_KEY" "$STAGE/etc/pki/rpm-gpg/RPM-GPG-KEY-shuttle" ;;
     esac
   fi
-  SHUTTLE_SHARE_CONTENTS=$(cd "$STAGE" && find usr/share etc -type f 2>/dev/null | sort | while read -r f; do
+  local roots=(usr/share); [ -d "$STAGE/etc" ] && roots+=(etc)   # etc/ only holds the rpm repo key
+  SHUTTLE_SHARE_CONTENTS=$(cd "$STAGE" && find "${roots[@]}" -type f | sort | while read -r f; do
     printf '  - src: %s\n    dst: /%s\n    file_info:\n      mode: 0644\n' "$STAGE/$f" "$f"; done)
   export SHUTTLE_SHARE_CONTENTS
   envsubst '${SHUTTLE_PKG_VERSION} ${SHUTTLE_CHROMIUM_VERSION} ${SHUTTLE_STAGE} ${SHUTTLE_SHARE_CONTENTS}' < "$CONF" > "$WORK/nfpm-$1.yaml"

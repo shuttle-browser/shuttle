@@ -108,6 +108,8 @@ linux_repo_dnf() {  # $1 = sudo prefix (may be empty), $2 = suite
   [ "$2" = stable ] || name=shuttle-$2.repo
   say "Adding the Shuttle dnf repository ($2)"
   fetch "$REPO_URL/rpm/$name" | $s tee /etc/yum.repos.d/shuttle.repo >/dev/null
+  # Import the key now: with repo_gpgcheck=1, a later unattended `dnf upgrade` without -y would hang at the prompt.
+  $s rpm --import "$REPO_URL/shuttle.asc"
   say "Installing shuttle"
   $s dnf install -y shuttle
 }

@@ -108,25 +108,26 @@ for t in apt-ftparchive createrepo_c; do
   command -v $t >/dev/null || { echo "FATAL: $t missing on $(hostname): sudo apt install apt-utils createrepo-c" >&2; exit 2; }
 done
 for s in $SUITES; do
+  # Every suite gets signed metadata, empty if it has no packages yet: a configured source that 404s breaks
+  # `apt update` / `dnf makecache` for users (installer default and the packages' own source are `stable`).
   rm -rf "apt/dists/$s"
-  if [ -s ".state/apt-$s.list" ]; then
-    t=$(mktemp -d "$HOME/.cache/shuttle-pkg-tmp.XXXXXX"); mkdir -p "$t/pool/main/s/shuttle"
-    while read -r b; do ln "apt/pool/main/s/shuttle/$b" "$t/pool/main/s/shuttle/$b"; done < ".state/apt-$s.list"
-    d=apt/dists/$s/main/binary-amd64; mkdir -p "$d"
-    (cd "$t" && apt-ftparchive packages pool) > "$d/Packages"
-    gzip -9nkf "$d/Packages"
-    rm -rf "$t"
-    o=APT::FTPArchive::Release
-    apt-ftparchive -o $o::Origin=Shuttle -o $o::Label=Shuttle -o $o::Suite=$s -o $o::Codename=$s \
-      -o $o::Architectures=amd64 -o $o::Components=main -o "$o::Description=Shuttle Browser ($s)" \
-      release "apt/dists/$s" > "$HOME/.cache/shuttle-pkg-Release"
-    mv "$HOME/.cache/shuttle-pkg-Release" "apt/dists/$s/Release"
-    echo "apt $s: $(grep -c '^Package:' "$d/Packages") package(s)"
-  fi
-  if ls rpm/"$s"/*.rpm >/dev/null 2>&1; then
-    createrepo_c --quiet --update --general-compress-type=gz "rpm/$s"
-    echo "rpm $s: $(ls rpm/"$s"/*.rpm | wc -l) package(s)"
-  fi
+  t=$(mktemp -d "$HOME/.cache/shuttle-pkg-tmp.XXXXXX"); mkdir -p "$t/pool/main/s/shuttle"
+  [ -f ".state/apt-$s.list" ] && while read -r b; do
+    [ -n "$b" ] && ln "apt/pool/main/s/shuttle/$b" "$t/pool/main/s/shuttle/$b"
+  done < ".state/apt-$s.list"
+  d=apt/dists/$s/main/binary-amd64; mkdir -p "$d"
+  (cd "$t" && apt-ftparchive packages pool) > "$d/Packages"
+  gzip -9nkf "$d/Packages"
+  rm -rf "$t"
+  o=APT::FTPArchive::Release
+  apt-ftparchive -o $o::Origin=Shuttle -o $o::Label=Shuttle -o $o::Suite=$s -o $o::Codename=$s \
+    -o $o::Architectures=amd64 -o $o::Components=main -o "$o::Description=Shuttle Browser ($s)" \
+    release "apt/dists/$s" > "$HOME/.cache/shuttle-pkg-Release"
+  mv "$HOME/.cache/shuttle-pkg-Release" "apt/dists/$s/Release"
+  echo "apt $s: $(grep -c '^Package:' "$d/Packages") package(s)"
+  mkdir -p "rpm/$s"
+  createrepo_c --quiet --update --general-compress-type=gz "rpm/$s"
+  echo "rpm $s: $(find "rpm/$s" -maxdepth 1 -name '*.rpm' | wc -l) package(s)"
 done
 REMOTE
 rsync -a --delete --exclude='*.deb' --exclude='*.rpm' --exclude=/.state "$HOST:$RDIR/" "$R/"

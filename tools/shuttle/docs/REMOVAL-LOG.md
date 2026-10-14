@@ -671,4 +671,15 @@ first delete 179 s → 4.6 s, smoke-mcp, smoke-session-cdp, smoke-agents-page 14
 
 Verified: Mac `out/Sccache` (150 steps): fresh profile without the switch has no tabs; with it, `chrome://agents/`; a
 second launch with the switch forwarded to a running browser opens `chrome://agents/`; smoke-cdp clean (known
-`createBrowserContext` / `Autofill.enable` lines). Linux: pending (the Linux session).
+`createBrowserContext` / `Autofill.enable` lines). Linux `out/Dev` (the Linux session, 3 steps): linux-smoke 48 clean x3,
+linux-nsw-check unchanged in all modes; WSLg x11 + wayland: switch → agents window, switch + URL → URL only.
+
+## Fork commit 39 (2026-10-14): menu relaunch reuses the agents tab
+
+- **39 `76e495c1ef`** `StartupBrowserCreator::ProcessCommandLineWithProfile`: a forwarded `--shuttle-open-agents` launch with no
+  URL arguments activates an open chrome://agents tab of the profile (and its window) and returns. It opens a new one
+  only if there is none. Behavior change: a second Linux menu click no longer adds a duplicate agents tab (found by the
+  Linux session on WSLg).
+
+Verified: Mac `out/Sccache`: launch with the switch → agents; agent tab added; second launch with the switch → still
+one agents tab, focused; second launch with switch + URL → URL only; smoke-cdp 48 clean. Linux: pending (the Linux session).
