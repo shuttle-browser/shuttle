@@ -72,8 +72,9 @@ offer_launch() {  # $@ = command that starts Shuttle in the background
 }
 
 start_linux() {  # $1 = shuttle binary; detached, so it outlives this script and the terminal
-  if have setsid; then setsid -f "$1" >/dev/null 2>&1 </dev/null
-  else nohup "$1" >/dev/null 2>&1 </dev/null & fi
+  # --shuttle-open-agents: open chrome://agents (quick start); without a tty Shuttle would stay windowless.
+  if have setsid; then setsid -f "$1" --shuttle-open-agents >/dev/null 2>&1 </dev/null
+  else nohup "$1" --shuttle-open-agents >/dev/null 2>&1 </dev/null & fi
 }
 
 can_start_linux() {  # a display to open windows on, and not root (Chromium's sandbox refuses root)
@@ -111,7 +112,7 @@ install_macos() {
   say "Installed ${file%-arm64.dmg} to $dest/Shuttle.app"
   echo "    Start it: open -a Shuttle   (or from Launchpad / Applications)"
   echo "    Connect your agent: https://www.shuttlebrowser.com/download#connect"
-  offer_launch open -a "$dest/Shuttle.app"
+  offer_launch open -a "$dest/Shuttle.app" --args --shuttle-open-agents
 }
 
 linux_repo_apt() {  # $1 = sudo prefix (may be empty), $2 = suite

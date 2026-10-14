@@ -66,7 +66,7 @@ curl -fsSL https://get.shuttlebrowser.com | bash
 
 On macOS it installs the signed, notarized app into Applications. On Debian/Ubuntu and Fedora it adds the signed
 package repository at [pkg.shuttlebrowser.com](https://pkg.shuttlebrowser.com), so updates come with
-`apt upgrade` / `dnf upgrade`. Elsewhere it installs the tarball into `~/.local`.
+`apt upgrade` / `dnf upgrade`. Elsewhere it installs the tarball into `~/.local`. At the end it offers to start Shuttle.
 [Read the script](tools/shuttle/assets/install.sh) first if you like.
 
 Manual install:
@@ -95,16 +95,16 @@ Manual install:
   `dnf install nss alsa-lib`), then `tar xf shuttle-linux-x64.tar.xz && ./shuttle/shuttle`. On Ubuntu 23.10+
   (not WSL2), see `README-LINUX.txt` in the tarball for the one-time sandbox step.
 
-Run `shuttle`. It's running once it prints `DevTools listening on ws://127.0.0.1:9222/…` (no window until an agent
-opens a tab).
+Run `shuttle` in a terminal or pick Shuttle in your app menu: it opens `chrome://agents`. Started by a program (no
+terminal), it runs without a window. It's serving once it prints `DevTools listening on ws://127.0.0.1:9222/…`.
 
 **Windows**: run the Linux build in WSL2 (WSLg shows its windows on your desktop): the one-liner above inside your
-WSL distribution.
+WSL distribution. Shuttle then shows up in the Start menu, draws its own window frame and follows Windows dark mode.
 
 ## Quick start
 
 1. Start Shuttle. It serves CDP and MCP on port **9222** (or the next free port, written to `DevToolsActivePort`).
-   No window opens until an agent opens a tab.
+   On macOS, and on Linux when a program starts it, no window opens until an agent opens a tab.
 2. Connect your agent:
 
    ```bash
