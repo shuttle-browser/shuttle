@@ -10,6 +10,7 @@
 # Options (env): SHUTTLE_CHANNEL=stable|testing (Linux repo suite, default stable)
 #                SHUTTLE_METHOD=repo|tarball    (Linux, default: repo when apt/dnf + root/sudo exist)
 #                SHUTTLE_APPS_DIR=<dir>         (macOS, default /Applications)
+#                SHUTTLE_LAUNCH=ask|yes|no      (start Shuttle when done; default ask, no without a terminal)
 # Source: https://github.com/shuttle-browser/shuttle/blob/main/tools/shuttle/assets/install.sh
 #
 # Everything runs inside main(), called on the last line, so a truncated download runs nothing.
@@ -52,6 +53,33 @@ download_verified() {  # $1 = file name in the release, $2 = expected sha256, $3
   [ "$(sha256_of "$3")" = "$2" ] || die "checksum mismatch for $1"
 }
 
+# Offer to start Shuttle. With `curl | bash` stdin is the script, so ask on the terminal; no terminal
+# (CI, ssh -T) means don't start it unless SHUTTLE_LAUNCH=yes.
+offer_launch() {  # $@ = command that starts Shuttle in the background
+  local mode=${SHUTTLE_LAUNCH:-ask} answer=
+  case $mode in
+    no) return 0 ;;
+    yes) ;;
+    ask)
+      { true </dev/tty; } 2>/dev/null || return 0
+      printf '\033[1m==>\033[0m Start Shuttle now? [Y/n] ' >/dev/tty
+      read -r answer </dev/tty || answer=n
+      case $answer in ''|[Yy]*) ;; *) return 0 ;; esac ;;
+    *) die "SHUTTLE_LAUNCH must be ask, yes or no" ;;
+  esac
+  say "Starting Shuttle"
+  "$@"
+}
+
+start_linux() {  # $1 = shuttle binary; detached, so it outlives this script and the terminal
+  if have setsid; then setsid -f "$1" >/dev/null 2>&1 </dev/null
+  else nohup "$1" >/dev/null 2>&1 </dev/null & fi
+}
+
+can_start_linux() {  # a display to open windows on, and not root (Chromium's sandbox refuses root)
+  [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && [ "$(id -u)" != 0 ]
+}
+
 install_macos() {
   local arch
   arch=$(uname -m)
@@ -82,7 +110,8 @@ install_macos() {
 
   say "Installed ${file%-arm64.dmg} to $dest/Shuttle.app"
   echo "    Start it: open -a Shuttle   (or from Launchpad / Applications)"
-  echo "    Connect your agent: https://www.shuttlebrowser.com/docs"
+  echo "    Connect your agent: https://www.shuttlebrowser.com/download#connect"
+  offer_launch open -a "$dest/Shuttle.app"
 }
 
 linux_repo_apt() {  # $1 = sudo prefix (may be empty), $2 = suite
@@ -132,6 +161,7 @@ linux_tarball() {
   case ":$PATH:" in *":$bin:"*) ;; *) echo "    Add $bin to your PATH." ;; esac
   echo "    No updates and no dependency handling with the tarball: see $root/README-LINUX.txt for the"
   echo "    packages Shuttle needs (libnss3, libasound2, ...). The apt/dnf repo is the better path."
+  if can_start_linux; then offer_launch start_linux "$bin/shuttle"; fi
 }
 
 install_linux() {
@@ -154,7 +184,8 @@ install_linux() {
     else die "no apt-get or dnf found (use SHUTTLE_METHOD=tarball)"; fi
     say "Installed $(shuttle --version 2>/dev/null || echo Shuttle)"
     echo "    Start it: shuttle   (no window until an agent opens a tab; the app menu entry opens chrome://agents)"
-    echo "    Updates: through apt/dnf. Connect your agent: https://www.shuttlebrowser.com/docs"
+    echo "    Updates: through apt/dnf. Connect your agent: https://www.shuttlebrowser.com/download#connect"
+    if can_start_linux; then offer_launch start_linux "$(command -v shuttle)"; fi
   else
     linux_tarball
   fi
