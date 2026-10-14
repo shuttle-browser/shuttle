@@ -38,7 +38,6 @@
 #include "components/favicon_base/favicon_types.h"
 #include "components/favicon_base/favicon_usage_data.h"
 #include "components/history/core/browser/history_types.h"
-#include "components/history/core/browser/journeys/journey.h"
 #include "components/history/core/browser/keyword_id.h"
 #include "components/history/core/browser/url_row.h"
 #include "components/keyed_service/core/keyed_service.h"
@@ -688,18 +687,6 @@ class HistoryService : public KeyedService {
       bool include_keywords_and_duplicates,
       base::CancelableTaskTracker* tracker);
 
-  // Journeys ------------------------------------------------------------------
-
-  using GetAllJourneysCallback =
-      base::OnceCallback<void(std::vector<journeys::Journey>)>;
-  // Retrieves all stored journeys with history entries resolved to URLs and
-  // titles. Excludes journeys containing unresolved visits. `callback` is
-  // invoked on the calling sequence with the resulting journeys.
-  // Note: Virtual needed for mocking.
-  virtual base::CancelableTaskTracker::TaskId GetAllJourneys(
-      GetAllJourneysCallback callback,
-      base::CancelableTaskTracker* tracker);
-
   // Observers -----------------------------------------------------------------
 
   // Adds/Removes an Observer.
@@ -783,11 +770,6 @@ class HistoryService : public KeyedService {
   base::SafeRef<HistoryService> AsSafeRef();
 
   base::WeakPtr<HistoryService> AsWeakPtr();
-
-  // For sync codebase only: instantiates a controller delegate to interact with
-  // JourneysSyncBridge. Must be called from the UI thread.
-  std::unique_ptr<syncer::DataTypeControllerDelegate>
-  GetJourneysSyncControllerDelegate();
 
   // Ensures that HistoryBackend::Init has been scheduled. If backend
   // initialization was deferred during startup, this will schedule it

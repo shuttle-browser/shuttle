@@ -125,42 +125,7 @@ struct HistoryEntry {
 
   // Optional debug info about a visit.
   DebugInfo? debug;
-
-  // List of critical actions associated with this visit.
-  array<CriticalAction> critical_actions;
 };
-
-// LINT.IfChange(CriticalActionType)
-enum CriticalActionType {
-  kUnknown = 0,
-  kFormFill = 1,
-  kDownload = 2,
-  kSettingChange = 3,
-  kCredentialAccess = 4,
-  kGooglePasswordManager = 5,
-  kFederatedLogin = 6,
-  kCredentialsOtp = 7,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/critical_actions/enums.xml:CriticalActionType)
-
-// Represents a critical action performed on a visit.
-struct CriticalAction {
-  // Unique identifier for the action.
-  string id;
-
-  // Localized user-facing action label.
-  string label;
-
-  // Tooltip describing the action category.
-  string tooltip;
-
-  // Destination management URL for the action.
-  string linkout_url;
-
-  // Category type of the critical action.
-  CriticalActionType action_type;
-};
-
 
 // Hold info about query as well as array of returned entries.
 struct QueryResult {
@@ -179,14 +144,6 @@ struct RemovalItem {
   // Timestamps of items to be removed.
   array<double> timestamps;
 };
-
-// LINT.IfChange(OpenConversationResult)
-enum OpenConversationResult {
-  kSuccess = 0,
-  kErrorInvalidActionEntry = 1,
-  kErrorInternal = 2,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/critical_actions/enums.xml:OpenConversationResult)
 
 // Browser-side handler for requests from WebUI page.
 interface PageHandler {

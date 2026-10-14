@@ -73,13 +73,11 @@
 #include "chrome/common/chrome_content_client.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
-#include "components/browser_actuator/public/features.h"
 #include "components/browsing_data/core/features.h"
 #include "components/component_updater/component_updater_command_line_config_policy.h"
 #include "components/component_updater/component_updater_switches.h"
 #include "components/compose/buildflags.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/critical_actions/core/browser/features.h"
 #include "components/device_signals/core/common/signals_features.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/dom_distiller/core/dom_distiller_switches.h"
@@ -8873,22 +8871,6 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kGlicHandoffButtonHideWhenModalUIShownDescription,
      kOsDesktop,
      FEATURE_VALUE_TYPE(features::kGlicHandoffButtonHideWhenModalUIShown)},
-    {"browser-actuator", flag_descriptions::kBrowserActuatorName,
-     flag_descriptions::kBrowserActuatorDescription, kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(browser_actuator::kBrowserActuator)},
-    {"browser-actuator-internals",
-     flag_descriptions::kBrowserActuatorInternalsName,
-     flag_descriptions::kBrowserActuatorInternalsDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(browser_actuator::kBrowserActuatorInternals)},
-    {"enable-browser-actuator-for-glic-experimental-triggering",
-     flag_descriptions::kEnableBrowserActuatorForGlicExperimentalTriggeringName,
-     flag_descriptions::
-         kEnableBrowserActuatorForGlicExperimentalTriggeringDescription,
-     kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(
-         browser_actuator::
-             kEnableBrowserActuatorForGlicExperimentalTriggering)},
     {"glic-background-actuation",
      flag_descriptions::kGlicBackgroundActuationName,
      flag_descriptions::kGlicBackgroundActuationDescription,
@@ -10796,11 +10778,6 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(
          chrome::android::kCCTTabSwitcherEnabledForEmbedderExperiment)},
 #endif
-
-    {"critical-action-history", flag_descriptions::kCriticalActionHistoryName,
-     flag_descriptions::kCriticalActionHistoryDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(critical_actions::features::kCriticalActionHistory)},
-
 
     {"universal-opt-out-settings",
      flag_descriptions::kUniversalOptOutSettingsName,

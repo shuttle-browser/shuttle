@@ -85,7 +85,7 @@ export class HistoryFilterChipsElement extends CrLitElement {
     if (this.isUserSelected()) {
       return 'cr:check';
     }
-    return this.isCriticalActionsEnabled_() ? 'cr:person' : 'cr:person-filled';
+    return 'cr:person-filled';
   }
 
   protected getActorVisitsIcon_(): string {
@@ -93,18 +93,11 @@ export class HistoryFilterChipsElement extends CrLitElement {
       return 'cr:check';
     }
     // <if expr="_google_chrome">
-    return this.isCriticalActionsEnabled_() ?
-        'history-internal:arrow-selector-spark' :
-        'history-internal:screensaver-auto';
+    return 'history-internal:screensaver-auto';
     // </if>
     // <if expr="not _google_chrome">
     return '';
     // </if>
-  }
-
-  private isCriticalActionsEnabled_(): boolean {
-    return loadTimeData.valueExists('isCriticalActionsEnabled') &&
-        loadTimeData.getBoolean('isCriticalActionsEnabled');
   }
 
   private fireChange_(userVisits: boolean, actorVisits: boolean) {

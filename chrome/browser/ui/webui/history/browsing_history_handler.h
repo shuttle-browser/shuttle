@@ -34,9 +34,6 @@ namespace content {
 class WebContents;
 }  // namespace content
 
-namespace critical_actions {
-struct CriticalActionEntry;
-}  // namespace critical_actions
 
 // The handler for Javascript messages related to the "history" view.
 class BrowsingHistoryHandler : public history::mojom::PageHandler,
@@ -115,22 +112,10 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
                            ObservingWebHistoryDeletions);
   FRIEND_TEST_ALL_PREFIXES(BrowsingHistoryHandlerTest, MdTruncatesTitles);
 
-  void CriticalActionsFetched(
-      const std::vector<history::BrowsingHistoryService::HistoryEntry>& results,
-      const history::BrowsingHistoryService::QueryResultsInfo&
-          query_results_info,
-      base::ElapsedTimer critical_actions_timer,
-      std::vector<critical_actions::CriticalActionEntry> critical_actions);
-
   void HandleQueryResults(
       const std::vector<history::BrowsingHistoryService::HistoryEntry>& results,
       const history::BrowsingHistoryService::QueryResultsInfo&
-          query_results_info,
-      std::vector<critical_actions::CriticalActionEntry> critical_actions);
-
-  void OnCriticalActionRetrievedForLinkout(
-      OpenCriticalActionConversationCallback callback,
-      std::optional<critical_actions::CriticalActionEntry> entry);
+          query_results_info);
 
   raw_ptr<Profile> profile_;
   raw_ptr<content::WebContents> web_contents_;

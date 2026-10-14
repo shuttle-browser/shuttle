@@ -15,7 +15,6 @@
 #include "chrome/grit/history_resources_map.h"
 #include "chrome/grit/locale_settings.h"
 #include "components/browsing_data/core/features.h"
-#include "components/critical_actions/core/browser/features.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
@@ -79,17 +78,11 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
 
   source->AddLocalizedString(
       "sourceFilterChipActor",
-      base::FeatureList::IsEnabled(
-          critical_actions::features::kCriticalActionHistory)
-          ? IDS_HISTORY_SOURCE_FILTER_CHIP_ACTOR_GEMINI
-          : IDS_HISTORY_SOURCE_FILTER_CHIP_ACTOR);
+      IDS_HISTORY_SOURCE_FILTER_CHIP_ACTOR);
 
   source->AddLocalizedString(
       "actorTaskTooltip",
-      base::FeatureList::IsEnabled(
-          critical_actions::features::kCriticalActionHistory)
-          ? IDS_HISTORY_ACTOR_TASK_TOOLTIP_GEMINI
-          : IDS_HISTORY_ACTOR_TASK_TOOLTIP);
+      IDS_HISTORY_ACTOR_TASK_TOOLTIP);
 
   source->AddString("myActivityGeminiAppsUrl",
                     chrome::kMyActivityGeminiAppsUrl);

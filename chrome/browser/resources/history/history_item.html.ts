@@ -48,10 +48,6 @@ export function getHtml(this: HistoryItemElement) {
                 @contextmenu="${this.onLinkContextmenu_}"
                 aria-describedby="${this.getAriaDescribedByForHeading_()}">
               <div class="website-icon" id="icon"></div>
-              ${this.shouldShowActorIconNextToFavicon_() ? html`
-                <cr-icon id="actor-icon" icon="${this.actorIconClass_()}">
-                </cr-icon>
-              ` : ''}
               <history-searched-label class="website-title"
                   title="${this.item?.title}" search-term="${this.searchTerm}">
               </history-searched-label>
@@ -72,47 +68,8 @@ export function getHtml(this: HistoryItemElement) {
                   title="$i18n{removeBookmark}" aria-hidden="true">
               </cr-icon-button>
             ` : ''}
-            ${this.isExpandable_() ? html`
-              <cr-icon-button id="expand-button"
-                  iron-icon="${this.getExpandIcon_()}"
-                  title="$i18n{geminiKeyBrowsingActionsTitle}"
-                  aria-controls="collapse" focus-row-control
-                  focus-type="expand-button" @click="${this.onExpandClick_}"
-                  aria-expanded="${this.isExpanded_}"
-                  aria-describedby="${this.getAriaDescribedByForActions_()}">
-              </cr-icon-button>
-            ` : ''}
           </div>
         </div>
-        ${this.isExpandable_() ? html`
-          <cr-collapse id="collapse" ?opened="${this.isExpanded_}"
-              @click="${this.onCollapseClick_}">
-            <div id="expanded-container">
-              <div class="critical-actions-title">
-                $i18n{geminiKeyBrowsingActionsTitle}
-              </div>
-              <div class="critical-actions-list" role="list"
-                  aria-label="$i18n{geminiKeyBrowsingActionsTitle}">
-                ${this.getCriticalActions_().map((action, index) => html`
-                  <div class="critical-action-row" role="listitem"
-                      data-index="${index}" focus-row-control
-                      focus-type="critical-action" tabindex="0"
-                      aria-label="${action.label}"
-                      aria-describedby="critical-action-icon-${index}"
-                      @click="${this.onCriticalActionClick_}"
-                      @keydown="${this.onCriticalActionKeydown_}">
-                    <span class="critical-action-label">${action.label}</span>
-                    <cr-icon id="critical-action-icon-${index}"
-                        class="critical-action-button" icon="cr:open-in-new"
-                        role="img" title="${action.tooltip}" aria-label="${
-                            this.getCriticalActionAriaLabel_(action)}">
-                    </cr-icon>
-                  </div>
-                `)}
-              </div>
-            </div>
-          </cr-collapse>
-        ` : ''}
       </div>
       <div role="gridcell" id="options">
         <cr-icon-button id="menuButton" iron-icon="cr:more-vert"

@@ -159,7 +159,7 @@ sql::InitStatus HistoryDatabase::Init(const base::FilePath& history_name) {
   if (!CreateURLTable(false) || !InitVisitTable() ||
       !InitKeywordSearchTermsTable() || !InitDownloadTable() ||
       !InitSegmentTables() || !InitVisitAnnotationsTables() ||
-      !CreateVisitedLinkTable() || !InitJourneysTables()) {
+      !CreateVisitedLinkTable()) {
     return LogInitFailure(InitStep::CREATE_TABLES);
   }
   CreateMainURLIndex();
@@ -444,13 +444,6 @@ bool HistoryDatabase::RecreateAllTablesButURL() {
     return false;
   if (!InitVisitAnnotationsTables())
     return false;
-
-  if (!DropJourneysTables()) {
-    return false;
-  }
-  if (!InitJourneysTables()) {
-    return false;
-  }
 
   return true;
 }

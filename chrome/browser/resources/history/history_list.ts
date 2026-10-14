@@ -11,7 +11,6 @@ import 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import './history_item.js';
 
 import type {HistoryEntry, HistoryQuery, PageCallbackRouter, QueryState} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
-import {OpenConversationResult} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 import type {CrActionMenuElement} from 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import type {CrDialogElement} from 'chrome://resources/cr_elements/cr_dialog/cr_dialog.js';
@@ -510,54 +509,6 @@ export class HistoryListElement extends HistoryListElementBase {
     BrowserProxyImpl.getInstance().handler.removeBookmark(
         this.actionMenuModel_!.item.url);
     this.fire('remove-bookmark-stars', this.actionMenuModel_!.item.url);
-    this.closeMenu_();
-  }
-
-  private isCriticalActionsEnabled_(): boolean {
-    return loadTimeData.getBoolean('isCriticalActionsEnabled');
-  }
-
-  private isChatLinkoutsEnabled_(): boolean {
-    return loadTimeData.valueExists('isCriticalActionsChatLinkoutsEnabled') &&
-        loadTimeData.getBoolean('isCriticalActionsChatLinkoutsEnabled');
-  }
-
-  protected canShowGoToGeminiChat_(): boolean {
-    return this.isCriticalActionsEnabled_() && this.isChatLinkoutsEnabled_() &&
-        !!this.actionMenuModel_?.item.isActorVisit &&
-        (this.actionMenuModel_?.item.criticalActions?.length ?? 0) > 0;
-  }
-
-  protected async onGoToGeminiChatClick_() {
-    BrowserProxyImpl.getInstance().recordAction('EntryMenuGoToGeminiChat');
-    this.recordContextMenuActionsHistogram_(
-        VisitContextMenuAction.GO_TO_GEMINI_CHAT_CLICKED);
-
-    const actionId = this.actionMenuModel_?.item.criticalActions?.[0]?.id;
-    this.closeMenu_();
-
-    if (actionId) {
-      const {result} = await BrowserProxyImpl.getInstance()
-                           .handler.openCriticalActionConversation(actionId);
-      if (result !== OpenConversationResult.kSuccess) {
-        this.$.errorToast.show();
-      }
-    }
-  }
-
-  protected canShowReviewGeminiActivity_(): boolean {
-    return this.isCriticalActionsEnabled_() && !this.isChatLinkoutsEnabled_() &&
-        !!this.actionMenuModel_?.item.isActorVisit;
-  }
-
-  protected onReviewGeminiActivityClick_(e: MouseEvent) {
-    BrowserProxyImpl.getInstance().recordAction(
-        'EntryMenuReviewGeminiActivity');
-    this.recordContextMenuActionsHistogram_(
-        VisitContextMenuAction.REVIEW_GEMINI_ACTIVITY_CLICKED);
-
-    BrowserProxyImpl.getInstance().navigateToUrl(
-        loadTimeData.getString('myActivityGeminiAppsUrl'), '_blank', e);
     this.closeMenu_();
   }
 

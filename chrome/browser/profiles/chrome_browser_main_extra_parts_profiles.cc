@@ -26,7 +26,6 @@
 #include "chrome/browser/background_sync/background_sync_controller_factory.h"
 #include "chrome/browser/bitmap_fetcher/bitmap_fetcher_service_factory.h"
 #include "chrome/browser/bluetooth/bluetooth_chooser_context_factory.h"
-#include "chrome/browser/browser_actuator/browser_actuator_service_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browsing_data/browsing_data_history_observer_service.h"
 #include "chrome/browser/browsing_data/chrome_browsing_data_lifetime_manager_factory.h"
@@ -37,7 +36,6 @@
 #include "chrome/browser/content_index/content_index_provider_factory.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
-#include "chrome/browser/critical_actions/critical_action_factory.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
 #include "chrome/browser/digital_credentials/digital_credentials_keyed_service.h"
 #include "chrome/browser/dom_distiller/dom_distiller_service_factory.h"
@@ -563,7 +561,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 #endif
 #endif
-  browser_actuator::BrowserActuatorServiceFactory::GetInstance();
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   browser_switcher::BrowserSwitcherServiceFactory::GetInstance();
 #endif
@@ -615,7 +612,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if !BUILDFLAG(IS_ANDROID)
   metrics::CriticalUserJourneyServiceFactory::GetInstance();
 #endif  // BUILDFLAG(!IS_ANDROID)
-  critical_actions::CriticalActionFactory::GetInstance();
 #if BUILDFLAG(ENTERPRISE_DATA_CONTROLS)
   data_controls::ChromeRulesServiceFactory::GetInstance();
 #endif

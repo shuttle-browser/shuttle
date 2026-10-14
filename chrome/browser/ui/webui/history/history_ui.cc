@@ -36,7 +36,6 @@
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/history_resources.h"
 #include "chrome/grit/history_resources_map.h"
-#include "components/critical_actions/core/browser/features.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/common/pref_names.h"
@@ -65,12 +64,6 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
 
   HistoryUtil::PopulateCommonSourceForHistory(source, profile);
 
-  const bool is_critical_actions_enabled = base::FeatureList::IsEnabled(
-      critical_actions::features::kCriticalActionHistory);
-  const bool is_critical_actions_chat_linkouts_enabled =
-      is_critical_actions_enabled &&
-      critical_actions::features::kEnableChatLinkouts.Get();
-
   // The history page footer can display messages about other forms of
   // browsing history, linking to Google My Activity (GMA) and/or
   // Gemini Apps Activity (GAA). At most one message is shown, depending on
@@ -86,9 +79,7 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
   source->AddString(
       "sidebarFooterGMAAndGAA",
       l10n_util::GetStringFUTF16(
-          is_critical_actions_enabled
-              ? IDS_HISTORY_OTHER_FORMS_OF_HISTORY_GMA_AND_GAA_CRITICAL_ACTIONS
-              : IDS_HISTORY_OTHER_FORMS_OF_HISTORY_GMA_AND_GAA,
+          IDS_HISTORY_OTHER_FORMS_OF_HISTORY_GMA_AND_GAA,
           chrome::kMyActivityUrlInHistory, chrome::kMyActivityGeminiAppsUrl));
   // Links that are used in the messages above.
   source->AddString("sidebarFooterGMALink", chrome::kMyActivityUrlInHistory);
@@ -99,9 +90,8 @@ content::WebUIDataSource* CreateAndAddHistoryUIHTMLSource(Profile* profile) {
 
   source->AddBoolean("isBrowsingHistoryActorIntegrationM3Enabled",
                      history::IsBrowsingHistoryActorIntegrationM3Enabled());
-  source->AddBoolean("isCriticalActionsEnabled", is_critical_actions_enabled);
-  source->AddBoolean("isCriticalActionsChatLinkoutsEnabled",
-                     is_critical_actions_chat_linkouts_enabled);
+  source->AddBoolean("isCriticalActionsEnabled", false);
+  source->AddBoolean("isCriticalActionsChatLinkoutsEnabled", false);
 
   source->AddString("webuiRefresh2026", features::IsWebuiRefresh2026Enabled()
                                             ? "webui-refresh-2026"

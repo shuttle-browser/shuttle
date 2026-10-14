@@ -16,7 +16,6 @@ _default_allowed_violations = [
   "../../chrome/browser/resources/preinstalled_web_apps/internal/*",
 
   # Internal-only webui resources (but no .grd).
-  "../../chrome/browser/ttc/resources/internal/*",
   "../../chrome/browser/nearby_sharing/internal/*",
 
   # TODO(b/452971335): Audit entries below.
@@ -31,7 +30,6 @@ _default_allowed_violations = [
 
 if (!is_android) {
   _default_allowed_violations += [
-    "../../chrome/browser/indigo/resources/internal/*",
     "../../chrome/browser/resources/downloads/internal/icons.html",
     "../../chrome/browser/resources/history/internal/icons.html",
     "../../chrome/browser/resources/settings/internal/icons.html",

@@ -3352,14 +3352,7 @@ deps = {
   },
 # LINT.ThenChange(/components/cronet/gn2bp/copy.bara.sky)
 
-  'src/agents/internal': {
-    'url': Var('chrome_git') + '/chrome/agents-internal.git' + '@' + Var('agents_internal_revision'),
-    'condition': 'checkout_src_internal or checkout_src_internal_infra',
-  },
-
-  'src/agents/shared': {
-    'url': Var('chromium_git') + '/chromium/agents.git' + '@' + Var('agents_public_revision'),
-  },
+  # Shuttle: src/agents (Chromium's coding-agent prompts and skills) is pruned.
 
   'src/internal/tools/edit_monitor/cipd': {
       'packages': [

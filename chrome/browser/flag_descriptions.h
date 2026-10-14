@@ -333,13 +333,6 @@ inline constexpr char kConnectionAllowlistsDescription[] =
     "Enables a prototype implementation of `Connection-Allowlist` header "
     "parsing and enforcement. See https://github.com/mikewest/anti-exfil/";
 
-inline constexpr char kCriticalActionHistoryName[] =
-    "Critical Actions in History";
-inline constexpr char kCriticalActionHistoryDescription[] =
-    "Surfaces critical actions, such as password fills and file downloads, "
-    "performed during user-initiated AI agent browsing sessions alongside "
-    "page visits on the Chrome History page for transparency and auditing.";
-
 inline constexpr char kCrosSwitcherName[] = "ChromeOS Switcher feature.";
 inline constexpr char kCrosSwitcherDescription[] =
     "Enable/Disable ChromeOS Switcher feature.";
@@ -844,23 +837,6 @@ inline constexpr char kBrowserLaunchMetadataReportingName[] =
 inline constexpr char kBrowserLaunchMetadataReportingDescription[] =
     "Enables the collection and reporting of browser launch-related metadata "
     "for Chrome Enterprise, including CLI switches and launch timestamp";
-
-inline constexpr char kBrowserActuatorName[] = "Browser Actuator";
-inline constexpr char kBrowserActuatorDescription[] =
-    "Enables the Browser Actuator service for remote browser automation.";
-
-inline constexpr char kBrowserActuatorInternalsName[] =
-    "Browser Actuator Internals";
-inline constexpr char kBrowserActuatorInternalsDescription[] =
-    "Enables the chrome://browser-actuator-internals diagnostic dashboard.";
-
-inline constexpr char
-    kEnableBrowserActuatorForGlicExperimentalTriggeringName[] =
-        "Enable Browser Actuator for Glic Experimental Triggering";
-inline constexpr char
-    kEnableBrowserActuatorForGlicExperimentalTriggeringDescription[] =
-        "Enables using the Browser Actuator transport for Glic experimental "
-        "triggering messages.";
 
 inline constexpr char kBorealisBigGlName[] = "Borealis Big GL";
 inline constexpr char kBorealisBigGlDescription[] =

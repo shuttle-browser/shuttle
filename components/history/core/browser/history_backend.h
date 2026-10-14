@@ -1088,10 +1088,6 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // Whether segments data should include foreign history.
   bool can_add_foreign_visits_to_segments_ = false;
 
-  // Sync transport state, cached if SetSyncTransportState() is called before
-  // InitWithCachedParams().
-  std::optional<syncer::SyncService::TransportState> sync_transport_state_;
-
   // Tracks whether Init() has already run.
   bool is_inited_ = false;
 

@@ -37,7 +37,6 @@
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
-#include "components/browser_actuator/public/features.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/metrics/metrics_service.h"
 #include "components/omnibox/common/omnibox_features.h"
@@ -181,11 +180,9 @@ class ChromeOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
   }
 
   signin::OAuthConsumer GetOAuthConsumerForBrowserActuator() const override {
-    CHECK(base::FeatureList::IsEnabled(browser_actuator::kBrowserActuator));
-
+    // Browser actuator is removed in Shuttle: no scopes.
     return signin::OAuthConsumer(
-        signin::oauth_consumer_name::kBrowserActuatorName,
-        {browser_actuator::kBrowserActuatorOAuth2ScopeParam.Get()});
+        signin::oauth_consumer_name::kBrowserActuatorName, {});
   }
 
   signin::OAuthConsumer GetOAuthConsumerForSiteTokenProvider() const override {

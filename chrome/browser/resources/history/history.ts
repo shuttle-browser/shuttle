@@ -4,8 +4,7 @@
 
 import './app.js';
 
-export {CriticalActionType} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
-export type {CriticalAction, HistoryEntry, QueryResult} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+export type {HistoryEntry, QueryResult} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 export {browserProxyFactory as historyClustersBrowserProxyFactory, ClusterAction, PageCallbackRouter, PageHandlerRemote, RelatedSearchAction, VisitAction, VisitType} from 'chrome://resources/cr_components/history_clusters/history_clusters.mojom-webui.js';
 export type {MetricsProxy} from 'chrome://resources/cr_components/history_clusters/metrics_proxy.js';
 export {MetricsProxyImpl} from 'chrome://resources/cr_components/history_clusters/metrics_proxy.js';
