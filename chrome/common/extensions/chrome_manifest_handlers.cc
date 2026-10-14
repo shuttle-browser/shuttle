@@ -8,7 +8,6 @@
 
 #include "build/build_config.h"
 #include "chrome/common/extensions/api/omnibox/omnibox_handler.h"
-#include "chrome/common/extensions/api/side_panel/side_panel_info.h"
 #include "chrome/common/extensions/api/storage/storage_schema_manifest_handler.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "chrome/common/extensions/manifest_handlers/minimum_chrome_version_checker.h"
@@ -32,7 +31,6 @@ void RegisterChromeManifestHandlers(ManifestHandlerRegistry* registry) {
   registry->RegisterHandler(std::make_unique<NativelyConnectableHandler>());
   registry->RegisterHandler(std::make_unique<OmniboxHandler>());
   registry->RegisterHandler(std::make_unique<SettingsOverridesHandler>());
-  registry->RegisterHandler(std::make_unique<SidePanelManifestHandler>());
   registry->RegisterHandler(std::make_unique<StorageSchemaManifestHandler>());
   registry->RegisterHandler(std::make_unique<ThemeHandler>());
 

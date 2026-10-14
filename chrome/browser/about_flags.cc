@@ -867,20 +867,10 @@ const FeatureEntry::FeatureVariation
         {"without holdback", kSearchPrefetchWithoutHoldback, nullptr},
         {"with holdback", kSearchPrefetchWithHoldback, nullptr}};
 
-#if !BUILDFLAG(IS_ANDROID)
-const FeatureEntry::Choice kOmniboxLoomChoices[] = {
-    {flags_ui::kGenericExperimentChoiceDefault, "", ""},
-    {flags_ui::kGenericExperimentChoiceEnabled, switches::kEnableFeatures,
-     "OmniboxEverywhere,IPH_OmniboxEverywhereLensPromo"},
-    {"Enabled without Multiline", switches::kEnableFeatures,
-     "OmniboxEverywhere:Multiline/false,IPH_OmniboxEverywhereLensPromo"},
-    {"Enabled with Profile Picker", switches::kEnableFeatures,
-     "OmniboxEverywhere:ProfilePicker/true,IPH_OmniboxEverywhereLensPromo"},
-    {flags_ui::kGenericExperimentChoiceDisabled, switches::kDisableFeatures,
-     "OmniboxEverywhere,IPH_OmniboxEverywhereLensPromo"},
-};
+const FeatureEntry::FeatureParam kAiOverlayDialog_Mes[] = {{"use_mes", "true"}};
 
-#endif  // !BUILDFLAG(IS_ANDROID)
+const FeatureEntry::FeatureVariation kAiOverlayDialogVariations[] = {
+    {"with MES", kAiOverlayDialog_Mes, nullptr}};
 
 const FeatureEntry::FeatureParam kWebUIOmniboxPopupDebugSxS[] = {
     {"SxS", "true"}};
@@ -7933,8 +7923,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
-     MULTI_VALUE_TYPE(kOmniboxLoomChoices)},
-
     {"webui-omnibox-popup-selection-control",
      flag_descriptions::kWebUIOmniboxPopupSelectionControlName,
      flag_descriptions::kWebUIOmniboxPopupSelectionControlDescription,
@@ -9409,9 +9397,6 @@ const FeatureEntry kFeatureEntries[] = {
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 
-
-#endif
-
 #if !BUILDFLAG(IS_ANDROID)
     {"enable-devtools-deep-link-via-extensibility-api",
      flag_descriptions::kEnableDevtoolsDeepLinkViaExtensibilityApiName,
@@ -10848,10 +10833,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsAndroid,
      FEATURE_VALUE_TYPE(blink::features::kAutoResizeMinimumPageScaleFactor)},
 #endif
-    {"enable-translate-pdf", flag_descriptions::kTranslatePdfName,
-     flag_descriptions::kTranslatePdfDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(translate::kEnableTranslatePdf)},
-
 #if BUILDFLAG(IS_ANDROID)
     {"android-unknown-gamepad-extra-axes",
      flag_descriptions::kAndroidUnknownGamepadExtraAxesName,

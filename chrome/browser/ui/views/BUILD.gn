@@ -1403,6 +1403,7 @@ source_set("intent_picker_bubble_view") {
   sources = [ "intent_picker_bubble_view.cc" ]
   public_deps = [
     "//base",
+    "//components/apps/link_capturing",
     "//chrome/browser/ui/views/location_bar",
     "//ui/base",
     "//ui/views",

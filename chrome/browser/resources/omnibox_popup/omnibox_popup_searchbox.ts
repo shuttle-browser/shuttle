@@ -184,7 +184,6 @@ export class OmniboxPopupSearchboxElement extends
       canShowSecondarySideMediaQueryList.matches;
   accessor hasSecondarySide: boolean = false;
   accessor isLogicallyFocused_: boolean = false;
-  accessor isLensSearchEligible_: boolean = false;
   accessor hasInputSelection_: boolean = false;
   accessor searchboxChromeRefreshTheming: boolean =
       loadTimeData.getBoolean('searchboxCr23Theming');
@@ -198,8 +197,6 @@ export class OmniboxPopupSearchboxElement extends
       loadTimeData.getBoolean('searchboxVoiceSearch');
   protected accessor searchboxLensSearchEnabled_: boolean =
       loadTimeData.getBoolean('searchboxLensSearch');
-  private isComposeboxChipEnabled_: boolean =
-      loadTimeData.getBoolean('composeboxShowChip');
   protected accessor useWebkitSearchIcons_: boolean = false;
   override accessor multiLineEnabled: boolean =
       loadTimeData.getBoolean('searchboxMultiline');
@@ -387,16 +384,6 @@ export class OmniboxPopupSearchboxElement extends
             });
       }
     }
-
-    const changedPrivateProperties =
-        changedProperties as Map<PropertyKey, unknown>;
-    if (changedProperties.has('selectedMatchIndex') ||
-        changedProperties.has('selection') ||
-        changedProperties.has('selectedMatch') ||
-        changedProperties.has('result') ||
-        changedPrivateProperties.has('aimButtonVisible_')) {
-      this.updateAimButtonCollapse_();
-    }
   }
 
   override shouldAppendDotComOnCtrlEnter(): boolean {
@@ -457,17 +444,6 @@ export class OmniboxPopupSearchboxElement extends
   revert() {
     this.clearAutocompleteMatches();
     this.popupPageHandler_.revert(this.currentSequenceNum_);
-  }
-  /**
-   * Determines whether the dropdown should be visible considering contextual
-   * chips because the header "Ask Google about this page" is suppressed when
-   * this chip mode is enabled.
-   * TODO(crbug.com/555355466): Clean up contextual chip visibility logic.
-   */
-  override shouldDropdownBeVisible(): boolean {
-    const hasContextualChips =
-        this.isComposeboxChipEnabled_ && this.isLensSearchEligible_;
-    return this.hasMatches() || hasContextualChips;
   }
   /**
    * Dispatches an autocomplete query to the browser process via Mojo.
@@ -1295,63 +1271,15 @@ export class OmniboxPopupSearchboxElement extends
       return;
     }
 
-    if (e.key === 'Tab') {
-      const isShift = e.shiftKey;
-      const isAimButtonFocused = this.isAiModeVirtualFocused() ||
-          this.shadowRoot?.activeElement === this.$.composeButton;
-      const isInputFocused = this.$.input === this.shadowRoot?.activeElement;
-
-      if (this.dropdownIsVisible) {
-        if (!this.virtualFocusEnabled) {
-          if (!isShift &&
-              this.keywordModeManager.acceptTab(
-                  this.selectedMatch, this.matchIndex)) {
-            e.preventDefault();
-            return;
-          }
-          if (this.acceptInlineAutocomplete(e)) {
-            return;
-          }
-        }
-        super.handleKeyNavigation(e);
+    if (!this.virtualFocusEnabled && e.key === 'Tab' &&
+        this.$.input === this.shadowRoot?.activeElement) {
+      if (!e.shiftKey &&
+          this.keywordModeManager.acceptTab(
+              this.selectedMatch, this.matchIndex)) {
+        e.preventDefault();
         return;
       }
-
-      if (isAimButtonFocused) {
-        e.preventDefault();
-        this.setSelection(kDefaultSelection);
-        if (isShift) {
-          // Shift+Tab from AIM button moves focus back to the omnibox input.
-          this.getInputElement().focus();
-          return;
-        }
-        // If dropdown is closed / no suggestions, advance focus out of the
-        // omnibox.
-        this.popupPageHandler_.advanceFocus(/*reverse=*/ false);
-        return;
-      }
-
-      if (isInputFocused) {
-        if (!isShift) {
-          e.preventDefault();
-          // Forward Tab from input: always focus the AIM button first if
-          // visible.
-          if (this.aimButtonVisible_) {
-            this.$.composeButton.focus();
-            return;
-          }
-
-          // Advance focus out of the omnibox.
-          this.popupPageHandler_.advanceFocus(/*reverse=*/ false);
-          return;
-        }
-
-        // Shift+Tab from input:
-        e.preventDefault();
-
-        // Advance focus backwards out
-        // of the omnibox (e.g. to the Reload button).
-        this.popupPageHandler_.advanceFocus(/*reverse=*/ true);
+      if (this.acceptInlineAutocomplete(e)) {
         return;
       }
     }

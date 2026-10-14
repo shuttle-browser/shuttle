@@ -13,7 +13,6 @@
 #include "chrome/browser/extensions/api/preference/preference_api.h"
 #include "chrome/browser/extensions/api/processes/processes_api.h"
 #include "chrome/browser/extensions/api/sessions/sessions_api.h"
-#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
 #include "chrome/browser/extensions/api/tab_capture/tab_capture_registry.h"
 #include "chrome/browser/extensions/api/tab_groups/tab_groups_event_router_factory.h"
 #include "chrome/browser/extensions/api/tabs/tabs_windows_api.h"
@@ -79,7 +78,6 @@ void EnsureApiBrowserContextKeyedServiceFactoriesBuilt() {
   extensions::PreferenceAPI::GetFactoryInstance();
   extensions::ProcessesAPI::GetFactoryInstance();
   extensions::SessionsAPI::GetFactoryInstance();
-  extensions::SidePanelService::GetFactoryInstance();
   extensions::TabCaptureRegistry::GetFactoryInstance();
   extensions::TabGroupsEventRouterFactory::GetInstance();
   extensions::TabsWindowsAPI::GetFactoryInstance();

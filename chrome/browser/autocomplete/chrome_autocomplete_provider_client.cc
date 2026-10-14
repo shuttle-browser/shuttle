@@ -538,9 +538,6 @@ std::optional<bool> ChromeAutocompleteProviderClient::IsPagePaywalled() const {
   return false;
 }
 
-  return false;
-}
-
 bool ChromeAutocompleteProviderClient::IsGeminiStarterPackEnabled() const {
   return AutocompleteProviderClient::IsGeminiStarterPackEnabled() &&
          profile_->GetPrefs()->GetInteger(

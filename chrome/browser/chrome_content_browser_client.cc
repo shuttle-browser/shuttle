@@ -783,6 +783,10 @@ GURL ReplaceURLHostAndPath(const GURL& url,
   return url.ReplaceComponents(replacements);
 }
 
+bool IsClipboardFocusExemptOrigin(const url::Origin& main_frame_origin) {
+  return content::HasWebUIOrigin(main_frame_origin);
+}
+
 // Handles the rewriting of the new tab page URL based on group policy.
 bool HandleNewTabPageLocationOverride(
     GURL* url,

@@ -59,6 +59,9 @@ extern const base::FeatureParam<bool> kShowLensSearchChip;
 // BrowserView.
 extern const base::FeatureParam<bool> kWebUIOmniboxFullPopupUseBrowserView;
 extern const base::FeatureParam<bool> kWebUIOmniboxFullPopupMultiline;
+// The maximum number of autocomplete result snapshots cached for stale match
+// activation.
+extern const base::FeatureParam<int> kWebUIOmniboxFullPopupSnapshotCacheSize;
 
 // Returns true if `kWebUIOmniboxPopup` is enabled.
 bool IsWebUIOmniboxPopupEnabled();

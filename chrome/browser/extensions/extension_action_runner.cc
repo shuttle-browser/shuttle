@@ -15,7 +15,6 @@
 #include "base/location.h"
 #include "base/notimplemented.h"
 #include "base/task/single_thread_task_runner.h"
-#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
 #include "chrome/browser/extensions/extension_action_dispatcher.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/tab_helper.h"

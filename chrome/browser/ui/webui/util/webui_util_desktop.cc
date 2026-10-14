@@ -17,6 +17,7 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/common/webui_url_utils.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
 #include "ui/native_theme/native_theme.h"

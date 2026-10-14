@@ -274,24 +274,6 @@ bool IsInspectionAllowed(Profile* profile, const GURL& url) {
   }
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (url.SchemeIs(webapps::kIsolatedAppScheme) &&
-      web_app::AreWebAppsEnabled(profile)) {
-    base::expected<web_app::IsolatedWebAppUrlInfo, std::string> url_info =
-        web_app::IsolatedWebAppUrlInfo::Create(url);
-    if (url_info.has_value()) {
-      if (auto* web_app_provider =
-              web_app::WebAppProvider::GetForWebApps(profile)) {
-        if (const web_app::WebApp* web_app =
-                web_app_provider->registrar_unsafe().GetAppById(
-                    url_info->app_id())) {
-          return IsInspectionAllowed(profile, web_app);
-        }
-      }
-    }
-  }
-#endif
-
   policy::DeveloperToolsPolicyChecker* checker =
       policy::DeveloperToolsPolicyCheckerFactory::GetForBrowserContext(profile);
   if (checker) {

@@ -120,7 +120,6 @@
 #include "components/language/content/browser/ulp_language_code_locator/ulp_language_code_locator.h"
 #include "components/language/core/browser/language_prefs.h"
 #include "components/lens/buildflags.h"
-#include "components/lens/lens_overlay_permission_utils.h"
 #include "components/lookalikes/core/lookalike_url_util.h"
 #include "components/media_device_salt/media_device_id_salt.h"
 #include "components/metrics/demographics/user_demographics.h"
@@ -266,7 +265,6 @@
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_DESKTOP_ANDROID)  // nocheck
-#include "chrome/browser/ui/ai_overlay_dialog/ai_overlay_dialog_controller.h"
 #endif
 
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)

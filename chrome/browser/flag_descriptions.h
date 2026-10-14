@@ -759,6 +759,7 @@ inline constexpr char kAutofillGmailOtpPreLaunchMetricsName[] =
     "Enable Gmail OTP Pre-launch Metrics";
 inline constexpr char kAutofillGmailOtpPreLaunchMetricsDescription[] =
     "Enables pre-launch metrics for one-time passwords (OTPs) received in "
+    "Gmail.";
 
 inline constexpr char
     kAutofillEnableOffersInClankKeyboardAccessoryDescription[] =

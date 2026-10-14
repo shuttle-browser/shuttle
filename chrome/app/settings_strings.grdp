@@ -274,6 +274,9 @@
     <message name="IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP" desc="Label for the checkbox which enables or disables drag and drop for split view.">
       Allow split view drag-and-drop on left or right edge of window
     </message>
+    <message name="IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP_HORIZONTAL" desc="Label for the checkbox which enables or disables drag and drop for split view when top/bottom splits is enabled.">
+      Allow split view drag-and-drop on left, right, or bottom edge of window
+    </message>
     <message name="IDS_SETTINGS_HOVER_CARD_TITLE" desc="Title for the section in appearance settings for configuring what gets displayed in tab hovercards.">
       Tab hover preview card
     </message>

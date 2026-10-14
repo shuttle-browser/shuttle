@@ -94,9 +94,6 @@ source_set("component_updater") {
     public += [ "file_type_policies_component_installer.h" ]
   }
 
-  if (enable_extensions_core) {
-    public += [ "aim_eligibility_component_installer.h" ]
-  }
 }
 
 # Implementation target. Only .cc/.mm files.
@@ -176,13 +173,6 @@ source_set("impl") {
   }
   if (safe_browsing_mode != 0) {
     deps += [ "//components/safe_browsing/content/common:file_type_policies" ]
-  }
-
-  if (enable_extensions_core) {
-    sources += [ "aim_eligibility_component_installer.cc" ]
-    deps += [
-      "//chrome/browser/extensions",
-    ]
   }
 
   if (!is_android) {

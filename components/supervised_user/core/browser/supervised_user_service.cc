@@ -136,8 +136,6 @@ void SupervisedUserService::OnFamilyLinkParentalControlsDisabled() {
   remote_web_approvals_manager_.ClearApprovalRequestsCreators();
 }
 
-}
-
 void SupervisedUserService::Shutdown() {
   DCHECK(!did_shutdown_);
   did_shutdown_ = true;

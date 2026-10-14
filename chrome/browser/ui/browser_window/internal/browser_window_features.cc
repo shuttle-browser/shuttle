@@ -67,6 +67,7 @@
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
+#include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/color_provider_browser_helper.h"
 #include "chrome/browser/ui/views/extensions/extension_keybinding_registry_views.h"
@@ -422,8 +423,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
   // BrowserView and WebUIBrowserWindow implementations of the same role are
   // co-located via inline if/else dispatch; dependency exceptions are called
   // out with `// Must be after X.` / `// Must be before X.` comments):
-
-  if (browser_view) {
 
   if (browser_view) {
     browser_focus_controller_ =

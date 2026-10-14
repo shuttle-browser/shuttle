@@ -17,6 +17,7 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/horizontal_tab_strip_metrics.h"
+#include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/grit/generated_resources.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"

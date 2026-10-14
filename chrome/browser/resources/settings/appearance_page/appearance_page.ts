@@ -168,6 +168,7 @@ export class SettingsAppearancePageElement extends
       showResetPinnedActionsButton_: {type: Boolean},
       showCtrlTabMru_: {type: Boolean},
       tabStripUnificationEnabled_: {type: Boolean},
+      splitViewHorizontalEnabled_: {type: Boolean},
     };
   }
 

@@ -372,10 +372,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
 
   // @memory is not part of this build.
 
-  html_source->AddBoolean("isAtMemoryDoubleCtrlEnabled",
-                          base::FeatureList::IsEnabled(
-                              autofill::features::kAutofillAtMemoryDoubleCtrl));
-
   html_source->AddString(
       "webuiRefresh2026",
       features::IsWebuiRefresh2026Enabled() ? "webui-refresh-2026" : "");

@@ -144,11 +144,6 @@ bool IsChromeLabsEnabled() {
   if (chrome::GetChannel() == version_info::Channel::STABLE) {
     return false;
   }
-#if !BUILDFLAG(IS_ANDROID)
-  if (features::IsWebUIPinnedToolbarActionsEnabled()) {
-    return false;
-  }
-#endif
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
           ::switches::kEnableBenchmarking)) {
     return true;

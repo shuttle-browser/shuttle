@@ -828,13 +828,8 @@ bool ExtensionTabUtil::GetSplitById(int split_id,
   }
 
   Profile* profile = Profile::FromBrowserContext(browser_context);
-  Profile* incognito_profile =
-      include_incognito && profile->HasPrimaryOTRProfile()
-          ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
-          : nullptr;
   for (WindowController* target_window : *WindowControllerList::GetInstance()) {
-    if (target_window->profile() != profile &&
-        target_window->profile() != incognito_profile) {
+    if (target_window->profile() != profile) {
       continue;
     }
     BrowserWindowInterface* target_browser =
