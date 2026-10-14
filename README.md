@@ -58,31 +58,48 @@ Shuttle fixes this in the browser itself:
 
 ## Install
 
-**macOS** (Apple silicon, signed and notarized): download `Shuttle-<version>-arm64.dmg` from
-[Releases](https://github.com/shuttle-browser/shuttle/releases/latest) and drag Shuttle to Applications.
-
-**Linux** (x64): download the package for your distribution from
-[Releases](https://github.com/shuttle-browser/shuttle/releases/latest) and install it (it pulls in the libraries
-Shuttle needs), then run `shuttle`:
+**macOS** (Apple silicon) **and Linux** (x64), one line:
 
 ```bash
-sudo apt install ./shuttle_<version>_amd64.deb        # Ubuntu, Debian
-sudo dnf install ./shuttle-<version>-1.x86_64.rpm     # Fedora
+curl -fsSL https://get.shuttlebrowser.com | bash
 ```
 
-Or use the tarball on any distribution (install two libraries first):
+On macOS it installs the signed, notarized app into Applications. On Debian/Ubuntu and Fedora it adds the signed
+package repository at [pkg.shuttlebrowser.com](https://pkg.shuttlebrowser.com), so updates come with
+`apt upgrade` / `dnf upgrade`. Elsewhere it installs the tarball into `~/.local`.
+[Read the script](tools/shuttle/assets/install.sh) first if you like.
 
-```bash
-sudo apt install libnss3 libasound2t64   # Ubuntu 24.04+/Debian 13; 22.04/Debian 12: libasound2; Fedora: dnf install nss alsa-lib
-curl -LO https://github.com/shuttle-browser/shuttle/releases/latest/download/shuttle-linux-x64.tar.xz
-tar xf shuttle-linux-x64.tar.xz && ./shuttle/shuttle
-```
+Manual install:
 
-It's running once it prints `DevTools listening on ws://127.0.0.1:9222/…` (no window until an agent opens a tab).
-Tarball on Ubuntu 23.10+ (not WSL2): see `README-LINUX.txt` in the tarball for the one-time sandbox step.
+- **macOS:** download `Shuttle-<version>-arm64.dmg` from
+  [Releases](https://github.com/shuttle-browser/shuttle/releases/latest) and drag Shuttle to Applications.
+- **Debian / Ubuntu:**
 
-**Windows**: run the Linux build in WSL2 (WSLg shows its windows on your desktop): the `.deb`, or the tarball with
-the same two libraries.
+  ```bash
+  sudo install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://pkg.shuttlebrowser.com/shuttle.gpg | sudo tee /etc/apt/keyrings/shuttle.gpg >/dev/null
+  echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/shuttle.gpg] https://pkg.shuttlebrowser.com/apt stable main" | sudo tee /etc/apt/sources.list.d/shuttle.list
+  sudo apt update && sudo apt install shuttle
+  ```
+
+- **Fedora:**
+
+  ```bash
+  sudo curl -fsSLo /etc/yum.repos.d/shuttle.repo https://pkg.shuttlebrowser.com/rpm/shuttle.repo
+  sudo dnf install shuttle
+  ```
+
+- **Package files** (`.deb`, `.rpm`) and a **tarball** for any distribution are on
+  [Releases](https://github.com/shuttle-browser/shuttle/releases/latest). The tarball needs two libraries first:
+  `sudo apt install libnss3 libasound2t64` (Ubuntu 24.04+/Debian 13; 22.04/Debian 12: `libasound2`; Fedora:
+  `dnf install nss alsa-lib`), then `tar xf shuttle-linux-x64.tar.xz && ./shuttle/shuttle`. On Ubuntu 23.10+
+  (not WSL2), see `README-LINUX.txt` in the tarball for the one-time sandbox step.
+
+Run `shuttle`. It's running once it prints `DevTools listening on ws://127.0.0.1:9222/…` (no window until an agent
+opens a tab).
+
+**Windows**: run the Linux build in WSL2 (WSLg shows its windows on your desktop): the one-liner above inside your
+WSL distribution.
 
 ## Quick start
 

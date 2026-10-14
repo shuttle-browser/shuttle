@@ -211,6 +211,22 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
 
 ## Gotchas
 
+- **Linux host builds use `scripts/build-linux.sh`** (2026-10-14): `build.sh` is the zsh/Mac script; on the Linux host
+  it fails without output (no zsh), and the old `logs/build-<Dir>.log` then looks like a fresh result. Check the
+  `Script started on <date>` line of the log before trusting a step count.
+- **Dry run after a BUILD.gn change reports 0 steps** (2026-10-14): `-n` can't regenerate the ninja files. Run
+  `gn gen out/<dir>` (from the real path) first, then the dry run.
+- **`pkill -f` over ssh kills its own shell** when the pattern appears in the ssh command line (`ssh host 'pkill -f X;
+  rm -rf /tmp/X'`). Put the commands in a script file, or use a pattern the command line doesn't contain literally
+  (`'user-data-dir=/tmp/sh-pro[f]'`).
+- **Call the Linux check scripts with an absolute path**: `linux-smoke.sh` and friends `cd` into `src/`, so a relative
+  `scripts/…` call breaks their `$(dirname "$0")` lookups (smoke-cdp MODULE_NOT_FOUND, 0 clean pages). Non-interactive
+  ssh on the Linux host has no node on PATH: export the nvm bin dir first.
+- **chrome:// URLs are rejected as command-line arguments** (`ValidateLaunchUrlWebUnsafe`, except headless opt-in);
+  inject the tab in `StartupTabProviderImpl` instead (fork commit 38).
+- **`-Wunsafe-buffer-usage`** rejects libc calls like `strtoul` and pointer arithmetic in fork code; use base helpers
+  (`base::HexStringToUInt`, `std::string_view`).
+
 - **No `scoped_refptr` in DevTools target notifications** (2026-10-12): worker and tab `DevToolsAgentHost`s start with a zero
   refcount and call `NotifyCreated()` from their constructor, so `Target.targetCreated` reaches fork code (e.g.
   `SessionCdpFilter`) synchronously inside that constructor. A temporary `GetForId()` ref deletes the half-built host

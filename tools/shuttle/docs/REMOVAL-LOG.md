@@ -683,3 +683,36 @@ linux-nsw-check unchanged in all modes; WSLg x11 + wayland: switch → agents wi
 
 Verified: Mac `out/Sccache`: launch with the switch → agents; agent tab added; second launch with the switch → still
 one agents tab, focused; second launch with switch + URL → URL only; smoke-cdp 48 clean. Linux: pending (the Linux session).
+
+## Fork commits 40-42 (2026-10-14): Linux/WSL desktop behavior
+
+- **40 `46479f1e55`** Linux: a person starting `shuttle` gets chrome://agents. `PreEarlyInitialization` adds
+  `--shuttle-open-agents` when there are no URL arguments, a display (`DISPLAY`/`WAYLAND_DISPLAY`) and a terminal on
+  stdin, and none of `--headless`, `--remote-debugging-pipe`, `--no-startup-window`, `--restore-last-session`. Programs
+  (agents, scripts, Puppeteer) start it without a tty and stay windowless. The process singleton forwards a second
+  launch before that code runs, so `ProcessCommandLineWithProfile` treats a plain forwarded launch as
+  `--shuttle-open-agents` too (reuse/focus the agents tab); `--new-window` keeps the stock window (the desktop entry's
+  "New Window" action now passes it).
+  Behavior change: terminal launch on a desktop → agents window; a second `shuttle` while running → agents tab
+  (was: New Tab window).
+- **41 `b966481b3c`** WSL (kernel release contains "microsoft"): `GetCustomFramePrefDefault()` returns true. WSLg's Weston
+  isn't a window manager Chrome knows, so the X11 default fell back to the system title bar: a light Weston frame that
+  ignores dark mode, with the window as tall as the screen (bottom edge behind the taskbar). `DarkModeManagerLinux`
+  reads the Windows app mode (`reg.exe query HKCU\…\Themes\Personalize /v AppsUseLightTheme`) on the thread pool, at
+  startup and once a minute, and applies it like the portal's color-scheme (WSL has no settings portal). The user's
+  explicit Light/Dark choice still wins.
+  Behavior change (WSL only): Shuttle's own frame by default; follows Windows dark/light mode.
+- **42 `9586a23162`** Linux: `SessionManager` holds a `ScopedKeepAlive` + `ScopedProfileKeepAlive` while any session is open
+  (the profile one keeps the profile, and with it the sessions, from being destroyed with its last window). A
+  `QuitWatcher` (GlobalBrowserCollection observer) drops both once `browser_shutdown::IsTryingToQuit()`, so menu Exit /
+  chrome://quit still quits. macOS unchanged (AppController keeps the app alive; an extra keep-alive blocks Cmd-Q).
+  Behavior change: closing the last window with an agent session open keeps Shuttle (and MCP) running; closing that
+  session then quits it; with no session, closing the last window quits as before.
+
+Verified: Linux `out/Dev` (MAGWIN): tty+display start → agents; no tty → windowless; `--headless` windowless; forwarded
+tty / non-tty launch → reuses the agents tab; `--new-window` → New Tab; windowless start then tty launch → agents.
+WSLg fresh profile: own dark frame, page dark (Windows in dark mode; winshot). Keep-alive: session open + windows
+closed → alive (MCP 200), close-session → exit; session open + chrome://quit → exit; no session + windows closed → exit.
+linux-smoke headless/x11/wayland 48 clean each, exit 0; linux-nsw-check x11+wayland clean; linux-mcp-smoke clean.
+Mac `out/Sccache`: smoke-cdp 48 clean, smoke-mcp ALL OK. One flaky nsw-check x11 run hit a Browser.close hang (137)
+right after a forwarded launch opened the agents window; not reproduced in 4 later runs.

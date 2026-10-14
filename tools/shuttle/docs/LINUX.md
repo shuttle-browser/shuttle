@@ -131,8 +131,15 @@ and end with `Browser.close`.
   argument, and a clean `Browser.close` (log `/tmp/sh-nsw-<mode>.log`).
 - Push: `scripts/linux-push-smoke.sh [headless|x11|wayland]` runs `scripts/smoke-push.mjs` (Web Push
   subscribe, 90 s timeout; expect an FCM endpoint after about 30 s).
-- Not covered by WSLg: GTK/portal file dialogs, the dbus appmenu, custom frame and caption buttons
+- Not covered by WSLg: GTK/portal file dialogs, the dbus appmenu, caption-button themes
   (need a GNOME/KDE session).
+- Desktop behavior (fork commits 40-42, check on WSLg with `winshot` on the WSL box):
+  - A `shuttle` started from a terminal (stdin is a tty) with a display, or from the menu entry, opens chrome://agents;
+    started by a program (no tty) it stays windowless. A second launch focuses the agents tab; `--new-window` opens a
+    stock window.
+  - WSL defaults: Shuttle's own frame (not Weston's light title bar) and the Windows dark/light app mode (`reg.exe`,
+    rechecked every minute). Test with a fresh profile: an explicit choice in chrome://settings/appearance wins.
+  - Closing the last window keeps Shuttle running while an agent session is open; menu Exit always quits.
 
 ## Optional: distributed compiles
 
