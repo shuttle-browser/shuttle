@@ -41,7 +41,7 @@ fpr=$("$GPG" --show-keys --with-colons "$ASSETS/shuttle.asc" | awk -F: '/^fpr/{p
 
 wrangler() {
   if [ -n "${SHUTTLE_WRANGLER:-}" ]; then CLOUDFLARE_ACCOUNT_ID=$SHUTTLE_CF_ACCOUNT $SHUTTLE_WRANGLER "$@"
-  else (cd "$SHUTTLE_ROOT/shuttle-website" && CLOUDFLARE_ACCOUNT_ID=$SHUTTLE_CF_ACCOUNT npx --no-install wrangler "$@"); fi
+  else (cd "$SHUTTLE_ROOT/shuttle-website" && CLOUDFLARE_ACCOUNT_ID=$SHUTTLE_CF_ACCOUNT npx --yes wrangler@4 "$@"); fi
 }
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 sign() { "$GPG" --quiet --yes --local-user "$KEY" --digest-algo SHA512 "$@"; }
