@@ -4,12 +4,23 @@
 
 #include "ui/linux/dark_mode_manager_linux.h"
 
+#include <sys/utsname.h>
+
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <tuple>
 
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
+#include "base/process/launch.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/task/thread_pool.h"
+#include "base/time/time.h"
 #include "components/dbus/thread_linux/dbus_thread_linux.h"
 #include "components/dbus/utils/call_method.h"
 #include "components/dbus/utils/connect_to_signal.h"
@@ -24,6 +35,51 @@
 #include "ui/native_theme/native_theme.h"
 
 namespace ui {
+
+namespace {
+
+// Shuttle: WSL kernels report "...-microsoft-standard-WSL2" as their release.
+bool IsRunningUnderWsl() {
+  struct utsname name;
+  return uname(&name) == 0 &&
+         base::ToLowerASCII(name.release).find("microsoft") !=
+             std::string::npos;
+}
+
+// Reads the Windows "app mode" (Settings > Personalization > Colors) through
+// reg.exe: AppsUseLightTheme 0x0 = dark, 0x1 = light. Blocking; runs on the
+// thread pool. std::nullopt if reg.exe or the value isn't available.
+std::optional<bool> ReadWindowsPreferDark() {
+  for (const char* reg : {"reg.exe", "/mnt/c/Windows/System32/reg.exe"}) {
+    base::CommandLine cmd(base::CommandLine::StringVector{
+        reg, "query",
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\"
+        "Personalize",
+        "/v", "AppsUseLightTheme"});
+    std::string out;
+    if (!base::GetAppOutput(cmd, &out)) {
+      continue;
+    }
+    size_t type = out.find("REG_DWORD");
+    size_t hex = type == std::string::npos ? type : out.find("0x", type);
+    if (hex == std::string::npos) {
+      return std::nullopt;
+    }
+    size_t end = out.find_first_not_of("0123456789abcdefABCDEF", hex + 2);
+    uint32_t value = 0;
+    if (!base::HexStringToUInt(
+            std::string_view(out).substr(hex + 2, end == std::string::npos
+                                                      ? std::string::npos
+                                                      : end - hex - 2),
+            &value)) {
+      return std::nullopt;
+    }
+    return value == 0;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
 
 DarkModeManagerLinux::DarkModeManagerLinux()
     : DarkModeManagerLinux(dbus_thread_linux::GetSharedSessionBus(),
@@ -44,6 +100,33 @@ DarkModeManagerLinux::DarkModeManagerLinux(
   // No seeding is needed: until the portal preference (if any) arrives, the
   // toolkit OsSettingsProviders source the toolkit-derived color scheme for
   // the web NativeTheme.
+
+  if (IsRunningUnderWsl()) {
+    QueryWindowsColorScheme();
+    wsl_color_scheme_timer_.Start(
+        FROM_HERE, base::Minutes(1), this,
+        &DarkModeManagerLinux::QueryWindowsColorScheme);
+  }
+}
+
+void DarkModeManagerLinux::QueryWindowsColorScheme() {
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE,
+      {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
+      base::BindOnce(&ReadWindowsPreferDark),
+      base::BindOnce(&DarkModeManagerLinux::OnWindowsColorScheme,
+                     weak_ptr_factory_.GetWeakPtr()));
+}
+
+void DarkModeManagerLinux::OnWindowsColorScheme(
+    std::optional<bool> prefer_dark) {
+  if (!prefer_dark || prefer_dark == wsl_prefer_dark_) {
+    return;
+  }
+  wsl_prefer_dark_ = prefer_dark;
+  SetColorScheme(*prefer_dark ? NativeTheme::PreferredColorScheme::kDark
+                              : NativeTheme::PreferredColorScheme::kLight);
 }
 
 DarkModeManagerLinux::~DarkModeManagerLinux() = default;

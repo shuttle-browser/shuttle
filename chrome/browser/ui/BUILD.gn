@@ -370,6 +370,7 @@ if (!is_android) {
     public = [ "browser_view_prefs.h" ]
     sources = [ "browser_view_prefs.cc" ]
     deps = [
+      "//base",
       "//chrome/common:constants",
       "//components/pref_registry",
     ]

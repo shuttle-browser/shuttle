@@ -12,10 +12,31 @@
 #include "ui/ozone/public/ozone_platform.h"
 #endif
 
+#if BUILDFLAG(IS_LINUX)
+#include <sys/utsname.h>
+
+#include "base/strings/string_util.h"
+#endif
+
 namespace {
 
 #if BUILDFLAG(IS_LINUX)
+// Shuttle: WSL kernels report "...-microsoft-standard-WSL2" as their release.
+bool IsRunningUnderWsl() {
+  struct utsname name;
+  return uname(&name) == 0 &&
+         base::ToLowerASCII(name.release).find("microsoft") !=
+             std::string::npos;
+}
+
 bool GetCustomFramePrefDefault() {
+  // Shuttle: WSLg's compositor (Weston) isn't a window manager Chrome knows,
+  // so the X11 default falls back to the system title bar: a light Weston
+  // frame that ignores dark mode, and a window as tall as the whole screen.
+  // Shuttle's own frame fits WSLg.
+  if (IsRunningUnderWsl()) {
+    return true;
+  }
 #if BUILDFLAG(IS_OZONE)
   return ui::OzonePlatform::GetInstance()
       ->GetPlatformProperties()

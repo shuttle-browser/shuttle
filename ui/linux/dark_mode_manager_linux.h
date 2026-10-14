@@ -13,6 +13,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/timer/timer.h"
 #include "components/dbus/utils/call_method.h"
 #include "components/dbus/utils/connect_to_signal.h"
 #include "components/dbus/utils/variant.h"
@@ -89,11 +90,19 @@ class DarkModeManagerLinux {
 
   void SetAccentColor(dbus_utils::Variant variant);
 
+  // Shuttle: WSL has no settings portal; follow the Windows app mode instead
+  // (read from the registry through reg.exe, at startup and once a minute).
+  void QueryWindowsColorScheme();
+  void OnWindowsColorScheme(std::optional<bool> prefer_dark);
+
   raw_ptr<const std::vector<raw_ptr<LinuxUiTheme, VectorExperimental>>>
       linux_ui_themes_;
 
   scoped_refptr<dbus::Bus> bus_;
   raw_ptr<dbus::ObjectProxy> settings_proxy_;
+
+  base::RepeatingTimer wsl_color_scheme_timer_;
+  std::optional<bool> wsl_prefer_dark_;
 
   base::WeakPtrFactory<DarkModeManagerLinux> weak_ptr_factory_{this};
 };
