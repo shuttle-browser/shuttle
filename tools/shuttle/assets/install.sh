@@ -27,6 +27,9 @@ trap cleanup EXIT
 
 REPO_URL=https://pkg.shuttlebrowser.com
 RELEASES=https://github.com/shuttle-browser/shuttle/releases/latest/download
+# Release files are fetched through get.shuttlebrowser.com/dl/ (counted, then redirected to $RELEASES); the
+# checksums still come straight from GitHub.
+DL=https://get.shuttlebrowser.com/dl
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -49,7 +52,7 @@ sha256_of() {
 
 download_verified() {  # $1 = file name in the release, $2 = expected sha256, $3 = destination
   say "Downloading $1"
-  fetch -o "$3" "$RELEASES/$1"
+  fetch -o "$3" "$DL/$1?via=installer"
   [ "$(sha256_of "$3")" = "$2" ] || die "checksum mismatch for $1"
 }
 

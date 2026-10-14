@@ -202,6 +202,11 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
 - **Installer** (`curl -fsSL https://get.shuttlebrowser.com | bash`): source `assets/install.sh`, copied to the website's
   `public/install.sh`; the website Worker serves it for the host `get.shuttlebrowser.com`. Copy and deploy the website
   after every change.
+  - Counting (2026-10-14): the Worker logs installer fetches, `/dl/<file>` release downloads (302 to the GitHub
+    release asset; the installer passes `?via=installer`, the site's buttons `?via=site`) and `/INSTALL.md` /
+    `/llms.txt` reads into D1 `shuttle-stats` (no IPs, coarse client class). Checksums still come straight from GitHub.
+    Read with the website's `scripts/stats.sh [days]`. New release file names must match `RELEASE_FILE` in
+    `worker/index.js`, and `SITE.dmg/deb/rpm` in `src/data/site.ts` carry the version.
   - macOS: the DMG named in the latest release's `SHA256SUMS`, checksum-checked, `ditto` into `/Applications` (or
     `~/Applications`).
   - Linux: the apt/dnf repo with sudo; otherwise the tarball into `~/.local`.
