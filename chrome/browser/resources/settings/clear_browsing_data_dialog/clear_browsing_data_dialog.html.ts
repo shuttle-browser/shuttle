@@ -9,8 +9,7 @@ import type {SettingsClearBrowsingDataDialogElement} from './clear_browsing_data
 export function getHtml(this: SettingsClearBrowsingDataDialogElement) {
   return html`<!--_html_template_start_-->
 <cr-dialog id="deleteBrowsingDataDialog" close-text="$i18n{close}"
-    show-on-attach ignore-popstate ignore-enter-key
-    ?hidden="${this.showOtherGoogleDataDialog_}">
+    show-on-attach ignore-popstate ignore-enter-key>
   <div slot="title" class="dialog-title">$i18n{clearBrowsingData}</div>
   <div slot="header">
     <settings-clear-browsing-data-time-picker id="timePicker"
@@ -47,18 +46,8 @@ export function getHtml(this: SettingsClearBrowsingDataDialogElement) {
           role="presentation">
       </cr-icon>
     </cr-button>
-    <cr-link-row id="manageOtherGoogleDataRow"
-        label="${this.computeOtherGoogleDataRowLabel_()}"
-        sub-label="${this.computeOtherGoogleDataRowSubLabel_()}"
-        @click="${this.onManageOtherGoogleDataRowClick_}"
-        role-description="$i18n{subpageArrowRoleDescription}">
-    </cr-link-row>
   </div>
   <div slot="button-container" class="row-aligned">
-<if expr="not is_chromeos">
-    <settings-clear-browsing-data-account-indicator>
-    </settings-clear-browsing-data-account-indicator>
-</if>
     <div id="spinner" class="spinner"
         ?hidden="${!this.isDeletionInProgress_}"></div>
     <cr-button id="cancelButton" class="cancel-button"
@@ -85,10 +74,5 @@ ${this.showHistoryDeletionDialog_ ? html`
   </settings-history-deletion-dialog>
 ` : ''}
 
-${this.showOtherGoogleDataDialog_ ? html`
-  <settings-other-google-data-dialog
-      @cancel="${this.onOtherGoogleDataDialogCancel_}">
-  </settings-other-google-data-dialog>
-` : ''}
 <!--_html_template_end_-->`;
 }

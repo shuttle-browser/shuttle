@@ -348,8 +348,6 @@ export class OmniboxPopupSearchboxElement extends
     }
   }
 
-  }
-
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
 
