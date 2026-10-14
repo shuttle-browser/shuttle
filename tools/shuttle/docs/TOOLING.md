@@ -245,6 +245,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   keeps the dir without `-D`; delete it by hand on each checkout (MAGWIN too).
 - **Don't push to MAGWIN's checked-out branch** (`receive.denyCurrentBranch=ignore`): the ref moves under the
   worktree and `git status` shows the whole diff as staged. Push to `incoming/<branch>` and let SH-MagWin fast-forward.
+- **Upstream reformats can silently undo fork edits** (155: Lit `.html.ts` re-wrapped by clang-format): the merge
+  took upstream's template and the fork's removals came back (history embeddings, synced tabs). After the merge, list
+  files where upstream's change is whitespace/quote-only (token-equal) but the result differs from main by tokens;
+  restore main's version.
 - **Upstream starts using files the fork pruned as unused**: siso aborts before building ("missing and no known rule").
   `scripts/check-ninja-inputs.py` lists them; restore with `git checkout chromium -- <path>`.
 - **New upstream WebUIs need path mappings and Lit visibility** (`tools/typescript/path_mappings.py`,
