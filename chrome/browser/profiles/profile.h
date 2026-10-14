@@ -275,6 +275,10 @@ class Profile : public content::BrowserContext {
   // Returns whether this profile is an Enterprise Isolated Mode session.
   bool IsEnterpriseIsolatedModeProfile() const;
 
+  // Returns true if this is a primary OffTheRecord profile with a regular
+  // parent profile. Shuttle has no OTR profiles: always false.
+  bool IsPrimaryOTRProfileWithRegularParent() const;
+
   bool CanUseDiskWhenOffTheRecord() override;
 
   // Did the user restore the last session? This is set by SessionRestore.

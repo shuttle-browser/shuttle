@@ -272,6 +272,10 @@ bool Profile::IsEnterpriseIsolatedModeProfile() const {
   return false;
 }
 
+bool Profile::IsPrimaryOTRProfileWithRegularParent() const {
+  return false;
+}
+
 bool Profile::CanUseDiskWhenOffTheRecord() {
   return false;
 }

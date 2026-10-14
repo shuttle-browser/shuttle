@@ -5,7 +5,6 @@
 #include "chrome/browser/enterprise/data_protection/data_protection_clipboard_utils_types.h"
 
 #include "base/strings/utf_string_conversions.h"
-#include "chrome/browser/glic/host/guest_util.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/clipboard_types.h"
 #include "content/public/browser/web_contents.h"
@@ -93,8 +92,7 @@ BasicPasteSource CacheBasicPasteSource(
   if (auto* web_contents = source.web_contents()) {
     cached.title = base::UTF16ToUTF8(web_contents->GetTitle());
     cached.page_content_type = web_contents->GetContentsMimeType();
-    cached.gemini_in_chrome =
-        glic::IsGlicGuest(web_contents) || glic::IsGlicWebUI(web_contents);
+    cached.gemini_in_chrome = false;
   }
   return cached;
 }
