@@ -11,7 +11,6 @@ import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import 'chrome://resources/cr_elements/icons.html.js';
 
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
-import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 
 import {BrowserProxyImpl} from './browser_proxy.js';
 import {getCss} from './history_filter_chips.css.js';
