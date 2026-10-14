@@ -475,34 +475,6 @@ source_set("themed_background_impl") {
   ]
 }
 
-source_set("shadow_overlay_view") {
-  public = [ "shadow_overlay_view.h" ]
-  public_deps = [
-    "//base",
-    "//chrome/browser/ui/animation",
-    "//ui/views",
-  ]
-}
-
-source_set("shadow_overlay_view_impl") {
-  sources = [ "shadow_overlay_view.cc" ]
-  public_deps = [
-    ":shadow_overlay_view",
-    "//chrome/browser:browser_public_dependencies",
-  ]
-  deps = [
-    ":shadow",
-    ":themed_background",
-    "//base",
-    "//base:i18n",
-    "//chrome/browser/ui/animation",
-    "//chrome/browser/ui/views/animations",
-    "//skia",
-    "//ui/base/metadata",
-    "//ui/compositor",
-    "//ui/views",
-  ]
-}
 
 if (is_win) {
   source_set("minimize_button_metrics_win") {
