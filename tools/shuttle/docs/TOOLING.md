@@ -238,6 +238,13 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **gclient reads DEPS `version_file`s even when the dep's condition is false**: pruning them breaks `gclient sync`
   (prune.py now keeps them). The location-tags hook fails on DIR_METADATA mixins into pruned dirs and `tast_control`
   reads pruned chromeos/ files: both fixed in the fork (they had failed silently since the ChromeOS prune).
+- **New prunes leave DIR_METADATA mixins dangling** (155: `metadata/browser_actuator/DIR_METADATA` →
+  `components/browser_actuator/COMMON_METADATA`): the location-tags hook fails and gclient skips every later hook.
+  After a prune, grep all DIR_METADATA `mixins:` for paths that no longer exist.
+- **Removed gitlinks stay on disk** (155: upstream `agents/`): gclient says "no longer part of this client" but
+  keeps the dir without `-D`; delete it by hand on each checkout (MAGWIN too).
+- **Don't push to MAGWIN's checked-out branch** (`receive.denyCurrentBranch=ignore`): the ref moves under the
+  worktree and `git status` shows the whole diff as staged. Push to `incoming/<branch>` and let SH-MagWin fast-forward.
 - **Upstream starts using files the fork pruned as unused**: siso aborts before building ("missing and no known rule").
   `scripts/check-ninja-inputs.py` lists them; restore with `git checkout chromium -- <path>`.
 - **New upstream WebUIs need path mappings and Lit visibility** (`tools/typescript/path_mappings.py`,
