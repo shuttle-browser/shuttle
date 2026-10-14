@@ -58,6 +58,9 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   `config/sccache.example.toml` (one `path_override` pair per out dir, see the gotcha below);
   `nice -n 10 taskpolicy -c utility scripts/build-sccache.sh -local_jobs=<host threads> -k 0` builds `out/Sccache`
   (`SHUTTLE_KIND=release` → `out/Release`).
+- **`-local_jobs` is capped by the host's RAM, not its slot count** (2026-10-15): the build host has 12 logical CPUs and
+  23 GB; the two servers advertise 24 slots. content/browser TUs need 1.7-2.6 GB each, so 16+ jobs swap hard (550 MB/s
+  swap-out, near-OOM). Use `-local_jobs=12` alone, `10` while a host build runs alongside.
 - Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/buildmon` on the host (TUI; feed it from the Mac with
   `scripts/buildmon_push.py <Dir>`), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
   (WSL2 hardware sensors through the Windows host).
