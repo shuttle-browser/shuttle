@@ -300,7 +300,9 @@ source_set("impl") {
       "nss_service.cc",
       "nss_service_factory.cc",
     ]
-    deps += [ "//chrome/browser/ui:crypto_module_password_dialog" ]
+    if (use_nss_client_certs) {
+      deps += [ "//chrome/browser/ui:crypto_module_password_dialog" ]
+    }
     if (is_chromeos) {
       sources += [
         "nss_service_chromeos.cc",
@@ -318,11 +320,40 @@ source_set("impl") {
     }
     configs += [ "//build/config/linux/nss" ]
   }
+
+  if (is_android) {
+    deps += [
+      "//components/enterprise/net/content",
+      "//components/tabs:public",
+    ]
+  }
 }
 
 if (is_android) {
   java_cpp_enum("secure_dns_management_mode_generated_enum") {
     sources = [ "secure_dns_config.h" ]
+  }
+
+  source_set("android_browsertests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+    sources = [ "cert_verifier_policy_browsertest.cc" ]
+    deps = [
+      ":net",
+      "//base",
+      "//chrome/browser",
+      "//chrome/browser/interstitials:test_support",
+      "//chrome/browser/policy:test_support",
+      "//chrome/test/base:android_browser_test",
+      "//chrome/test/base:chrome_test_utils",
+      "//components/policy:generated",
+      "//components/policy/core/common",
+      "//components/server_certificate_database",
+      "//content/test:test_support",
+      "//net:test_support",
+      "//testing/gtest",
+    ]
   }
 } else {
 }

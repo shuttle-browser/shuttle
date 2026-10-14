@@ -24,7 +24,8 @@ namespace internal {
 //
 // USE THE APPROPRIATE HELPER:
 // - Use the feature-specific `...FeatureEnabled()` function when you only
-//   need to check the raw feature state (appropriate for lifecycle-sensitive code).
+//   need to check the raw feature state (appropriate for lifecycle-sensitive
+//   code).
 // - Use the profile-based `...Enabled(profile)` function for standard UI
 //   logic, as it handles necessary eligibility and initialization checks.
 //

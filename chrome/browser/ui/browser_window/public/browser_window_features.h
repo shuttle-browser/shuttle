@@ -32,7 +32,6 @@
 #include "ui/base/unowned_user_data/user_data_factory.h"
 
 
-class Browser;
 class BrowserActions;
 class BrowserActiveStateManager;
 class BrowserAnimationController;
@@ -73,7 +72,7 @@ class ImmersiveModeController;
 class LocationBar;
 class LocationBarModel;
 class PinnedToolbarActions;
-class OrganizerPanelStateController;
+class OrganizerPanelController;
 class ScrimViewController;
 class SessionServiceBrowserHelper;
 class TabDragServiceFeature;
@@ -82,7 +81,6 @@ class TabListBridge;
 class TabMenuModelDelegate;
 class TabStripModel;
 class TabStripServiceFeature;
-class ToastController;
 class ToastService;
 class UnloadController;
 class UpgradeNotificationController;
@@ -109,10 +107,6 @@ class OverscrollPrefManager;
 #if BUILDFLAG(ENABLE_EXTENSIONS) && (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC))
 class DefaultSearchExtensionControlledController;
 #endif
-
-namespace actions {
-class ActionItem;
-}  // namespace actions
 
 #if BUILDFLAG(IS_CHROMEOS)
 namespace ash::boca {
@@ -171,9 +165,6 @@ namespace tabs_api {
 class TabStripUIControllerImpl;
 }  // namespace tabs_api
 
-namespace ui {
-class AcceleratorProvider;
-}  // namespace ui
 
 // This class owns the core controllers for features that are scoped to a given
 // browser window on desktop.
@@ -201,7 +192,7 @@ class BrowserWindowFeatures {
 
   // Called exactly once to initialize features that depend on the window object
   // being created.
-  void InitPostWindowConstruction(Browser* browser);
+  void InitPostWindowConstruction(BrowserWindowInterface* browser);
 
   // Called exactly once to initialize features that depend on the view
   // hierarchy in BrowserView.
@@ -210,41 +201,12 @@ class BrowserWindowFeatures {
   // Called exactly once to tear down state that depends on the window object.
   void TearDownPreBrowserWindowDestruction();
 
-  ui::AcceleratorProvider* accelerator_provider() {
-    return accelerator_provider_;
-  }
-
-  chrome::BrowserCommandController* browser_command_controller() const {
-    return browser_command_controller_.get();
-  }
-
-  content_settings::CookieControlsController* cookie_controls_controller() {
-    return cookie_controls_controller_.get();
-  }
-
-  ExclusiveAccessManager* exclusive_access_manager() {
-    return exclusive_access_manager_.get();
-  }
-
-  ExtensionInstalledWatcher* extension_installed_watcher() {
-    return extension_installed_watcher_.get();
-  }
-
-  ExtensionKeybindingRegistryViews* extension_keybinding_registry() {
-    return extension_keybinding_registry_.get();
-  }
-
-
   // Get the FindBarController for this browser window, creating it if it does
   // not yet exist.
   FindBarController* GetFindBarController();
 
-  actions::ActionItem* GetRootActionItem();
-
   // Returns true if a FindBarController exists for this browser window.
   bool HasFindBarController() const;
-
-  sessions::LiveTabContext* live_tab_context();
 
   // Returns the LocationBar for this browser window. Currently delegates to
   // BrowserWindow::GetLocationBar() via downcast, but should eventually become
@@ -266,21 +228,6 @@ class BrowserWindowFeatures {
   PinnedToolbarActions* pinned_toolbar_actions() {
     return pinned_toolbar_actions_;
   }
-
-
-
-
-
-  TabMenuModelDelegate* tab_menu_model_delegate() {
-    return tab_menu_model_delegate_.get();
-  }
-
-  TabStripModel* tab_strip_model() { return tab_strip_model_; }
-
-  // Returns a pointer to the ToastController for the browser window. This can
-  // return nullptr for non-normal browser windows because toasts are not
-  // supported for those cases.
-  ToastController* toast_controller();
 
   static ui::UserDataFactoryWithOwner<BrowserWindowInterface>&
   GetUserDataFactoryForTesting();
@@ -361,8 +308,7 @@ class BrowserWindowFeatures {
   // The model for the toolbar view.
   std::unique_ptr<LocationBarModel> location_bar_model_;
 
-  std::unique_ptr<OrganizerPanelStateController>
-      organizer_panel_state_controller_;
+  std::unique_ptr<OrganizerPanelController> organizer_panel_controller_;
   std::unique_ptr<SessionServiceBrowserHelper> session_service_browser_helper_;
   std::unique_ptr<TabDragServiceFeature> tab_drag_service_feature_;
   std::unique_ptr<TabMenuModelDelegate> tab_menu_model_delegate_;
@@ -443,11 +389,6 @@ class BrowserWindowFeatures {
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
   // Non-owning references.
-  // TODO(webium): Current both BrowserView and WebUIBrowserWindow implement
-  // AcceleratorProvider. Consider eliminating this inheritance and composing
-  // this functionality into its own class.
-  raw_ptr<ui::AcceleratorProvider> accelerator_provider_;
-
   // TODO(crbug.com/423956131): Remove this.
   raw_ptr<BrowserWindowInterface> browser_ = nullptr;
 

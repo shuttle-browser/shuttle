@@ -49,7 +49,8 @@ class HistoryDatabase : public DownloadDatabase,
                         public VisitDatabase,
                         public VisitAnnotationsDatabase,
                         public VisitedLinkDatabase,
-                        public VisitSegmentDatabase {
+                        public VisitSegmentDatabase,
+                        public journeys::JourneysDatabase {
  public:
   // Reasons for initialization to fail. These are logged to UMA. It corresponds
   // to the HistoryInitStep enum in enums.xml.
@@ -255,8 +256,9 @@ class HistoryDatabase : public DownloadDatabase,
  private:
   friend class ::InMemoryURLIndexTest;
 
-  // Overridden from URLDatabase, DownloadDatabase, VisitDatabase, and
-  // VisitSegmentDatabase.
+  // Overridden from URLDatabase, DownloadDatabase, VisitDatabase,
+  // VisitAnnotationsDatabase, VisitedLinkDatabase, VisitSegmentDatabase, and
+  // JourneysDatabase.
   sql::Database& GetDB() override;
 
   // Migration -----------------------------------------------------------------

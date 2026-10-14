@@ -13,6 +13,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
+#include "chrome/browser/enterprise/net/enterprise_proxy_error_service_factory.h"
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_observer.h"
 #include "chrome/browser/multistep_filter/chrome_filter_navigation_observer.h"
@@ -61,6 +62,7 @@
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "components/enterprise/browser/reporting/reporting_features.h"
+#include "components/enterprise/net/content/enterprise_proxy_tab_helper.h"
 #include "components/multistep_filter/core/features.h"
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/metrics/oom/commit_limit_oom_recovery_tracker.h"
@@ -151,6 +153,12 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   data_protection_tab_controller_ = std::make_unique<
       enterprise_data_protection::DataProtectionNavigationController>(&tab);
+
+  enterprise_proxy_tab_helper_ =
+      GetUserDataFactory()
+          .CreateInstance<enterprise_net::EnterpriseProxyTabHelper>(
+              tab, tab, tab.GetContents(),
+              EnterpriseProxyErrorServiceFactory::GetForProfile(profile));
 
   // Create the HttpAuthCacheStatus to start observing resource load
   // completions.

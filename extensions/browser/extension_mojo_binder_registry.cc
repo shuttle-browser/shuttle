@@ -22,12 +22,22 @@
 namespace extensions {
 
 class ExtensionMojoBinderRegistryTest;
+class RendererStartupHelperTest;
+class ServiceWorkerTest;
 
 ExtensionMojoBinderProvider::ExtensionMojoBinderProvider(
     ExtensionId extension_id)
     : extension_id_(std::move(extension_id)) {}
 
 ExtensionMojoBinderProvider::~ExtensionMojoBinderProvider() = default;
+
+bool ExtensionMojoBinderProvider::IsMojoJsEnabledForFrame() const {
+  return false;
+}
+
+bool ExtensionMojoBinderProvider::IsMojoJsEnabledForServiceWorker() const {
+  return false;
+}
 
 ExtensionMojoBinderRegistry::ExtensionMojoBinderRegistry() = default;
 
@@ -40,6 +50,20 @@ ExtensionMojoBinderRegistry::~ExtensionMojoBinderRegistry() = default;
 template <>
 void ExtensionMojoBinderRegistry::RegisterProvider(
     base::PassKey<ExtensionMojoBinderRegistryTest>,
+    std::unique_ptr<ExtensionMojoBinderProvider> provider) {
+  RegisterProviderImpl(std::move(provider));
+}
+
+template <>
+void ExtensionMojoBinderRegistry::RegisterProvider(
+    base::PassKey<RendererStartupHelperTest>,
+    std::unique_ptr<ExtensionMojoBinderProvider> provider) {
+  RegisterProviderImpl(std::move(provider));
+}
+
+template <>
+void ExtensionMojoBinderRegistry::RegisterProvider(
+    base::PassKey<ServiceWorkerTest>,
     std::unique_ptr<ExtensionMojoBinderProvider> provider) {
   RegisterProviderImpl(std::move(provider));
 }
@@ -88,10 +112,18 @@ void ExtensionMojoBinderRegistry::PopulateServiceWorkerBinders(
                                          extension);
 }
 
-bool ExtensionMojoBinderRegistry::IsMojoJsEnabled(
+bool ExtensionMojoBinderRegistry::IsMojoJsEnabledForFrame(
     const Extension& extension) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return GetProviderIfAllowed(extension) != nullptr;
+  ExtensionMojoBinderProvider* provider = GetProviderIfAllowed(extension);
+  return provider && provider->IsMojoJsEnabledForFrame();
+}
+
+bool ExtensionMojoBinderRegistry::IsMojoJsEnabledForServiceWorker(
+    const Extension& extension) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  ExtensionMojoBinderProvider* provider = GetProviderIfAllowed(extension);
+  return provider && provider->IsMojoJsEnabledForServiceWorker();
 }
 
 void ExtensionMojoBinderRegistry::ClearProvidersForTesting() {

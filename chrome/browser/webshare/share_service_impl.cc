@@ -19,9 +19,13 @@
 #include "chrome/browser/bad_message.h"
 #include "chrome/browser/browser_process.h"
 #include "components/safe_browsing/buildflags.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/visibility.h"
+#include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom.h"
+#include "ui/display/types/display_constants.h"
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/webshare/mac/sharing_service_operation.h"
 #endif
@@ -172,6 +176,23 @@ bool ShareServiceImpl::IsDangerousMimeType(std::string_view content_type) {
   return true;
 }
 
+// static
+bool ShareServiceImpl::IsWebContentsForegroundAndVisible(
+    content::WebContents* web_contents) {
+  if (!web_contents) {
+    return false;
+  }
+  if (web_contents->GetVisibility() != content::Visibility::VISIBLE) {
+    return false;
+  }
+  tabs::TabInterface* tab_interface =
+      tabs::TabInterface::MaybeGetFromContents(web_contents);
+  if (tab_interface && !tab_interface->IsActivated()) {
+    return false;
+  }
+  return true;
+}
+
 void ShareServiceImpl::Share(const std::string& title,
                              const std::string& text,
                              const GURL& share_url,
@@ -195,8 +216,8 @@ void ShareServiceImpl::Share(const std::string& title,
 
   content::WebContents* const web_contents =
       content::WebContents::FromRenderFrameHost(&render_frame_host());
-  if (!web_contents) {
-    VLOG(1) << "Cannot share after navigating away";
+  if (!web_contents || !IsWebContentsForegroundAndVisible(web_contents)) {
+    VLOG(1) << "Cannot share if tab is not active and visible";
     std::move(callback).Run(blink::mojom::ShareError::PERMISSION_DENIED);
     return;
   }
@@ -277,10 +298,10 @@ void ShareServiceImpl::RunShareOperation(
   safe_browsing_request_.reset();
 #endif
 
-  content::WebContents* const web_contents =
+  content::WebContents* web_contents =
       content::WebContents::FromRenderFrameHost(&render_frame_host());
-  if (!web_contents) {
-    VLOG(1) << "Cannot share after navigating away";
+  if (!web_contents || !IsWebContentsForegroundAndVisible(web_contents)) {
+    VLOG(1) << "Cannot share if tab is not active and visible";
     std::move(callback).Run(blink::mojom::ShareError::PERMISSION_DENIED);
     return;
   }
@@ -313,9 +334,21 @@ void ShareServiceImpl::RunShareOperation(
          blink::mojom::ShareError result) { std::move(callback).Run(result); },
       std::move(sharing_service_operation), std::move(callback)));
 #elif BUILDFLAG(IS_WIN)
+  base::WeakPtr<ShareServiceImpl> weak_this = weak_factory_.GetWeakPtr();
+  content::WeakDocumentPtr weak_document =
+      render_frame_host().GetWeakDocumentPtr();
   auto blocker = web_contents->ForSecurityDropFullscreen(
       /*display_id=*/display::kInvalidDisplayId);
-  if (!blocker) {
+  if (!weak_this) {
+    return;
+  }
+  content::RenderFrameHost* rfh = weak_document.AsRenderFrameHostIfValid();
+  if (!blocker || !rfh || !rfh->IsActive()) {
+    std::move(callback).Run(blink::mojom::ShareError::PERMISSION_DENIED);
+    return;
+  }
+  web_contents = content::WebContents::FromRenderFrameHost(rfh);
+  if (!web_contents || !IsWebContentsForegroundAndVisible(web_contents)) {
     std::move(callback).Run(blink::mojom::ShareError::PERMISSION_DENIED);
     return;
   }

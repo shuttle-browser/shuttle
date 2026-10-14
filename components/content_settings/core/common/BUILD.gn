@@ -57,6 +57,7 @@ static_library("common") {
 }
 
 mojom("content_settings_types") {
+  generate_blink = true
   generate_java = true
   sources = [ "content_settings_types.mojom" ]
 
@@ -67,6 +68,7 @@ mojom("content_settings_types") {
 }
 
 mojom("content_settings_enums") {
+  generate_blink = true
   generate_java = true
   sources = [ "content_settings_enums.mojom" ]
 
@@ -77,6 +79,7 @@ mojom("content_settings_enums") {
 }
 
 mojom("mojo_bindings") {
+  generate_blink = true
   generate_java = true
   sources = [ "content_settings.mojom" ]
 

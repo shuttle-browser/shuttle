@@ -73,6 +73,7 @@ source_set("impl") {
     "//components/infobars/content",
     "//components/infobars/core",
     "//content/public/browser",
+    "//sandbox/policy",
   ]
 
   if (is_win && is_chrome_branded) {
@@ -84,6 +85,7 @@ source_set("impl") {
   if (is_win || is_mac || is_linux) {
     deps += [
       "//chrome/browser/ui/views/session_restore_infobar",
+      "//chrome/browser/web_applications",
     ]
   }
 

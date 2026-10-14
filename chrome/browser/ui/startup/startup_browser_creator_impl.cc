@@ -25,6 +25,7 @@
 #include "chrome/browser/defaults.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/headless/headless_command_processor.h"
+#include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
@@ -32,7 +33,6 @@
 #include "chrome/browser/profiles/profile_io_data.h"
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
-#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -59,10 +59,13 @@
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_switches.h"
+#include "components/tab_groups/tab_group_id.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/dom_storage_context.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/common/content_switches.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 #include "url/origin.h"
 
 #if BUILDFLAG(IS_LINUX)
@@ -316,7 +319,7 @@ BrowserWindowInterface* StartupBrowserCreatorImpl::OpenTabsInBrowser(
     // when the browser process is shutting down. This can also fail if the
     // passed profile is of a type that is not suitable for browser creation.
     if (GetBrowserWindowCreationStatusForProfile(*profile_) !=
-        Browser::CreationStatus::kOk) {
+        BrowserWindowInterface::CreationStatus::kOk) {
       return nullptr;
     }
     // Startup browsers are not counted as being created by a user_gesture
@@ -369,21 +372,18 @@ BrowserWindowInterface* StartupBrowserCreatorImpl::OpenTabsInBrowser(
       headless::ProcessHeadlessCommands(
           profile_, tab.url,
           base::BindOnce(
-              [](base::WeakPtr<BrowserWindowInterface> browser,
-                 std::unique_ptr<ScopedProfileKeepAlive> profile_keepalive,
+              [](std::unique_ptr<ScopedProfileKeepAlive> profile_keepalive,
                  headless::HeadlessCommandHandler::Result result) {
-                if (browser && browser->GetWindow()) {
 #if BUILDFLAG(IS_MAC)
-                  // On Macs Chrome keeps running after the last browser
-                  // window is closed which is not expected for headless
-                  // command execution, so explicitly allow application
-                  // to terminate after the browser window is closed.
-                  app_controller_mac::AllowApplicationToTerminate();
+                // On Macs Chrome keeps running after the last browser
+                // window is closed which is not expected for headless
+                // command execution, so explicitly allow application
+                // to terminate after the browser window is closed.
+                app_controller_mac::AllowApplicationToTerminate();
 #endif
-                  browser->GetWindow()->Close();
-                }
+                chrome::CloseAllBrowsersAndQuit();
               },
-              browser->GetWeakPtr(), std::move(profile_keepalive)));
+              std::move(profile_keepalive)));
       continue;
     }
     // Active tab overwrites apply only to one tab per launch, and can only
@@ -799,7 +799,7 @@ void StartupBrowserCreatorImpl::MaybeShowNonMilestoneUpdateToast(
       local_state->GetString(prefs::kNonMilestoneUpdateToastVersion);
 
   if (IsNonMilestoneUpdate(last_version_string, current_version_string)) {
-    browser->GetFeatures().toast_controller()->MaybeShowToast(
+    ToastController::From(browser)->MaybeShowToast(
         ToastParams(ToastId::kNonMilestoneUpdate));
   }
   local_state->SetString(prefs::kNonMilestoneUpdateToastVersion,

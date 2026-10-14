@@ -122,6 +122,7 @@ source_set("impl") {
       "//chrome/browser/profiles/keep_alive",
       "//chrome/browser/search",
       "//chrome/browser/ui:browser_init_state",
+      "//chrome/browser/ui:browser_tabrestore",
       "//chrome/browser/ui:session_crashed_bubble",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window:create_browser_window",

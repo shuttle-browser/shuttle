@@ -3,12 +3,14 @@
 # found in the LICENSE file.
 
 static_library("content") {
-  public = [ "enterprise_proxy_navigation_error_data.h" ]
-  sources = [ "enterprise_proxy_navigation_error_data.cc" ]
+  public = [ "enterprise_proxy_tab_helper.h" ]
+  sources = [ "enterprise_proxy_tab_helper.cc" ]
   public_deps = [
     "//base",
     "//components/enterprise/net/core",
+    "//components/tabs:public",
     "//content/public/browser",
+    "//ui/base/unowned_user_data",
     "//url",
   ]
 }

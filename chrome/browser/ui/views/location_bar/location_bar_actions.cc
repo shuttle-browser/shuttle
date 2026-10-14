@@ -8,6 +8,7 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/omnibox/clipboard_utils.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
@@ -53,8 +54,7 @@ void ExecutePasteAndGo(BrowserWindowInterface* browser,
 
 }  // namespace
 
-void RegisterOmniboxActions(
-    BrowserWindowInterface* browser) {
+void RegisterOmniboxActions(BrowserWindowInterface* browser) {
   if (!browser) {
     return;
   }

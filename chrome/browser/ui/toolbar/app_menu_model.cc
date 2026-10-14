@@ -94,6 +94,7 @@
 #include "ui/base/models/menu_separator_types.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/color_palette.h"
@@ -1008,9 +1009,6 @@ void AppMenuModel::Build() {
   if (AddGlobalErrorMenuItems()) {
     AddSeparator(ui::NORMAL_SEPARATOR);
   }
-  // TODO(b/540249284): Temporarily Isolated mode is treated as Incognito. This
-  // should be revisited when deciding on the final integration of Isolated
-  // mode.
   AddItemWithStringIdAndVectorIcon(
       this, IDC_NEW_TAB,
       IDS_NEW_TAB,

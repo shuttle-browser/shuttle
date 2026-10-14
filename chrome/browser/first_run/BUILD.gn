@@ -82,6 +82,10 @@ source_set("impl") {
       sources += [ "first_run_internal_chromeos.cc" ]
     } else {
       sources += [ "upgrade_util.cc" ]
+      deps += [
+        "//chrome/browser:flags",
+        "//chrome/browser/lifetime",
+      ]
     }
 
     if (is_win) {
@@ -93,6 +97,7 @@ source_set("impl") {
         "//chrome/browser:chrome_process_singleton",
         "//chrome/browser/win",
         "//chrome/updater/app/server/win:updater_legacy_idl",
+        "//components/app_launch_prefetch",
       ]
     }
 

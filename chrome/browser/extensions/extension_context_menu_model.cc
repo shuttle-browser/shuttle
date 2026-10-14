@@ -66,7 +66,9 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/models/menu_separator_types.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_id.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -120,8 +122,7 @@ bool IsExtensionForcePinned(const Extension& extension, Profile* profile) {
 // Returns true if the given |extension| is allowed to be inspected based on
 // the Developer Tools Availability in the policy.
 bool IsExtensionInspectionAllowed(const Extension& extension,
-                                  Profile* profile,
-                                  content::WebContents* web_contents) {
+                                  Profile* profile) {
   policy::DeveloperToolsPolicyChecker* checker =
       policy::DeveloperToolsPolicyCheckerFactory::GetForBrowserContext(profile);
   if (checker) {
@@ -286,9 +287,10 @@ void LogToggleVisibility(bool visible) {
 }
 
 void OpenUrl(content::WebContents* web_contents, const GURL& url) {
-  content::OpenURLParams params(
-      url, content::Referrer(), WindowOpenDisposition::NEW_FOREGROUND_TAB,
-      ui::PAGE_TRANSITION_LINK, /*is_renderer_initiated=*/false);
+  content::OpenURLParams params =
+      content::OpenURLParams::CreateBrowserInitiated(
+          url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
+          ui::PAGE_TRANSITION_LINK);
   web_contents->OpenURL(params, /*navigation_handle_callback=*/{});
 }
 
@@ -445,7 +447,7 @@ bool ExtensionContextMenuModel::IsCommandIdEnabled(int command_id) const {
       return web_contents && extension_action_ &&
              extension_action_->HasPopup(
                  sessions::SessionTabHelper::IdForTab(web_contents).id()) &&
-             IsExtensionInspectionAllowed(*extension, profile_, web_contents);
+             IsExtensionInspectionAllowed(*extension, profile_);
     }
     case UNINSTALL:
       // Uninstall is always enabled since it will only be visible when the
@@ -855,8 +857,7 @@ void ExtensionContextMenuModel::InitMenuWithFeature(
   if (delegate_ && !is_component_ && action_info && !action_info->synthesized &&
       profile_->GetPrefs()->GetBoolean(prefs::kExtensionsUIDeveloperMode)) {
     AddSeparator(ui::NORMAL_SEPARATOR);
-    if (IsExtensionInspectionAllowed(*extension, profile_,
-                                     GetActiveWebContents())) {
+    if (IsExtensionInspectionAllowed(*extension, profile_)) {
       AddItemWithStringId(INSPECT_POPUP, IDS_EXTENSION_ACTION_INSPECT_POPUP);
     } else {
       AddItemWithStringIdAndIcon(
@@ -1024,10 +1025,10 @@ void ExtensionContextMenuModel::CreatePageAccessItems(
 }
 
 content::WebContents* ExtensionContextMenuModel::GetActiveWebContents() const {
-  return TabListInterface::From(browser_)->GetActiveTab()->GetContents();
+  tabs::TabInterface* active_tab =
+      TabListInterface::From(browser_)->GetActiveTab();
+  return active_tab ? active_tab->GetContents() : nullptr;
 }
 
-#if !BUILDFLAG(IS_ANDROID)
-#endif
 
 }  // namespace extensions

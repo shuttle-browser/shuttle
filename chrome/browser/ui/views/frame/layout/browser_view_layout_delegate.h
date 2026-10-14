@@ -34,8 +34,10 @@ class BrowserViewLayoutDelegate {
     kFullscreenWithToolbar
   };
 
-  virtual bool ShouldDrawTabStrip() const = 0;
-  virtual bool ShouldDrawVerticalTabStrip() const = 0;
+  // The style of tab strip present, if any.
+  enum class TabStripType { kNone, kVertical, kHorizontal };
+
+  virtual TabStripType GetTabStripType() const = 0;
   virtual bool IsVerticalTabStripCollapsed() const = 0;
   virtual BrowserLayoutParams GetBrowserLayoutParams(
       bool use_browser_bounds) const = 0;
@@ -56,7 +58,6 @@ class BrowserViewLayoutDelegate {
   virtual void MoveWindowForFindBarIfNecessary() const = 0;
   virtual bool ShouldLayoutTabStrip() const = 0;
   virtual int GetExtraInfobarOffset() const = 0;
-  virtual bool IsOrganizerPanelVisible() const = 0;
   virtual base::CallbackListSubscription AddOnGlassModeChangedCallback(
       base::RepeatingCallback<void(bool)> callback,
       bool* current_state_out) = 0;

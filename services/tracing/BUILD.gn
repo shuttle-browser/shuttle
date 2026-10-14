@@ -8,7 +8,6 @@
 
 import("//build/config/compiler/compiler.gni")
 import("//build/config/features.gni")
-import("//services/tracing/public/cpp/stack_sampling/loader_lock_sampling.gni")
 
 if (is_android) {
   import("//build/config/android/rules.gni")
@@ -76,23 +75,6 @@ if (is_android) {
     testonly = true
     deps = [ "//third_party/jni_zero:jni_zero_java" ]
     sources = [ "android/test/src/org/chromium/tracing/UnwindTestHelper.java" ]
-  }
-}
-
-if (enable_loader_lock_sampling) {
-  source_set("loader_lock_sampler_test_strings") {
-    testonly = true
-
-    sources = [
-    ]
-  }
-
-  loadable_module("loader_lock_sampler_test_dll") {
-    testonly = true
-
-    sources = []
-
-    deps = [ ":loader_lock_sampler_test_strings" ]
   }
 }
 

@@ -55,6 +55,7 @@ if (!is_android) {
     sources = []
     dict = "html_in_process_fuzzer.dictionary"
   }
+
   in_process_fuzzer("js_in_process_fuzzer") {
     sources = []
     deps = [
@@ -71,6 +72,7 @@ if (!is_android) {
     ]
     is_fuzzilli_compatible = true
   }
+
   in_process_proto_fuzzer("page_load_in_process_fuzzer") {
     sources = []
     proto_source = "page_load_in_process_fuzzer.proto"
@@ -81,6 +83,7 @@ if (!is_android) {
     ]
     testcase_proto_kind = "test.fuzzing.page_load_fuzzing.FuzzCase"
   }
+
   in_process_proto_fuzzer("speech_synthesis_in_process_fuzzer") {
     sources = []
     proto_source = "speech_synthesis_in_process_fuzzer.proto"

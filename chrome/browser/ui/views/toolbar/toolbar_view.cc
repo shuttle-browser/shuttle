@@ -43,6 +43,7 @@
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/page_action/page_action_properties_provider.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
@@ -528,7 +529,8 @@ void ToolbarView::RecordHitTestMetrics(bool is_caption_area) {
 }
 
 views::Button* ToolbarView::GetChromeLabsButton() const {
-  return ChromeLabsCoordinator::From(browser_)->GetChromeLabsButton();
+  ChromeLabsCoordinator* coordinator = ChromeLabsCoordinator::From(browser_);
+  return coordinator ? coordinator->GetChromeLabsButton() : nullptr;
 }
 
 ExtensionsToolbarButton* ToolbarView::GetExtensionsButton() const {
@@ -742,7 +744,8 @@ void ToolbarView::InitLayout() {
   constexpr int kExtensionsFlexOrder = kOrderOffset + 3;
 
   const views::FlexSpecification location_bar_flex_rule =
-      views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToMinimum,
+      views::FlexSpecification(views::LayoutOrientation::kHorizontal,
+                               views::MinimumFlexSizeRule::kScaleToMinimum,
                                views::MaximumFlexSizeRule::kUnbounded)
           .WithOrder(location_bar_flex_order);
 
@@ -792,7 +795,8 @@ void ToolbarView::InitLayout() {
       base::FeatureList::IsEnabled(features::kToolbarAppMenuLabelResizing)) {
     app_menu_button_->SetProperty(
         views::kFlexBehaviorKey,
-        views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToMinimum,
+        views::FlexSpecification(views::LayoutOrientation::kHorizontal,
+                                 views::MinimumFlexSizeRule::kScaleToMinimum,
                                  views::MaximumFlexSizeRule::kPreferred));
   }
 
@@ -988,7 +992,6 @@ ToolbarButton* ToolbarView::GetBackButton() {
 ReloadControl* ToolbarView::GetReloadButton() {
   return reload_;
 }
-
 
 ToolbarButton* ToolbarView::GetDownloadButton() {
   return pinned_toolbar_actions_container_

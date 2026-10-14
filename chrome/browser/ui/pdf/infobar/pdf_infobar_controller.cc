@@ -51,7 +51,7 @@ namespace pdf::infobar {
 namespace {
 
 // Returns true if `browser` supports being set as default and is a normal,
-// non-incognito, non-guest browser.
+// non-incognito, non-isolated, non-guest browser.
 bool IsAppropriateForInfoBar(BrowserWindowInterface* browser) {
 #if BUILDFLAG(IS_WIN)
   // On Windows, some install modes don't support being set as default.

@@ -710,7 +710,7 @@ source_set("browser_sources") {
 
   public_deps = [
     "//base",
-    "//components/safe_browsing/core/browser/db:v4_protocol_config",
+    "//components/safe_browsing/core/browser/db:sb_protocol_config",
     "//components/url_matcher",
     "//components/url_pattern_index",
     "//components/user_prefs",
@@ -896,6 +896,7 @@ source_set("crx_installer") {
     deps += [ "//components/user_manager" ]
   }
 }
+
 source_set("webstore_installer") {
   sources = [
     "webstore_data_fetcher.cc",

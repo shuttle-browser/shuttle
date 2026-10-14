@@ -58,9 +58,8 @@ class TabScrollButtonContainer : public views::View,
 
  private:
   struct AnimationParams {
-    bool scroll_to_start;
-    int amount_to_scroll;
-    float last_progress = 0;
+    float start_offset;
+    float target_offset;
   };
 
   void BeginScrollAnimation(bool scroll_to_start);

@@ -53,6 +53,7 @@ generate_grd("build_grd") {
     public_deps += [
       "cr_components/app_management:build_grdp",
       "cr_components/color_change_listener:build_grdp",
+      "cr_components/cr_lottie:build_grdp",
       "cr_components/cr_shortcut_input:build_grdp",
       "cr_components/customize_color_scheme_mode:build_grdp",
       "cr_components/history:build_grdp",
@@ -73,6 +74,7 @@ generate_grd("build_grd") {
       "$root_gen_dir/ui/webui/resources/cr_components/color_change_listener/resources.grdp",
       "$root_gen_dir/ui/webui/resources/cr_components/page_image_service/resources.grdp",
       "$target_gen_dir/cr_components/app_management/resources.grdp",
+      "$target_gen_dir/cr_components/cr_lottie/resources.grdp",
       "$target_gen_dir/cr_components/cr_shortcut_input/resources.grdp",
       "$target_gen_dir/cr_components/customize_color_scheme_mode/resources.grdp",
       "$target_gen_dir/cr_components/history_clusters/resources.grdp",

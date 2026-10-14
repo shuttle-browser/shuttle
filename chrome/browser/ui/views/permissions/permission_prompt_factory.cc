@@ -12,6 +12,8 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/location_bar/location_bar_override_data.h"
+#include "chrome/browser/ui/omnibox/omnibox_controller.h"
+#include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -59,7 +61,7 @@ bool IsFullScreenMode(content::WebContents* web_contents) {
   }
 
   LocationBar* location_bar =
-      location_bar::GetLocationBarForWebContents(web_contents);
+      ::location_bar::GetLocationBarForWebContents(web_contents);
 
   return !location_bar || !location_bar->IsDrawn() ||
          location_bar->IsFullscreen();
@@ -79,10 +81,14 @@ bool ShouldIgnorePermissionRequest(
     return false;
   }
 
-  // Suppress permission prompts if the omnibox is being edited or is empty.
+  // Suppress permission prompts if the omnibox is being edited.
   LocationBar* location_bar =
-      location_bar::GetLocationBarForWebContents(web_contents);
-  bool can_display_prompt = !(location_bar && location_bar->IsEditingOrEmpty());
+      ::location_bar::GetLocationBarForWebContents(web_contents);
+  bool can_display_prompt =
+      !(location_bar && location_bar->GetOmniboxController() &&
+        location_bar->GetOmniboxController()
+            ->edit_model()
+            ->user_input_in_progress());
 
   permissions::PermissionUmaUtil::RecordPermissionPromptAttempt(
       delegate->Requests(), can_display_prompt);
@@ -108,7 +114,7 @@ bool ShouldUseChip(permissions::PermissionPrompt::Delegate* delegate) {
 }
 
 bool IsLocationBarDisplayed(content::WebContents* web_contents) {
-  LocationBar* lb = location_bar::GetLocationBarForWebContents(web_contents);
+  LocationBar* lb = ::location_bar::GetLocationBarForWebContents(web_contents);
   return lb && lb->IsDrawn() && !lb->IsFullscreen();
 }
 
@@ -259,7 +265,7 @@ std::unique_ptr<permissions::PermissionPrompt> CreatePermissionPrompt(
 
   if (has_mic_request) {
     if (LocationBar* location_bar =
-            location_bar::GetLocationBarForWebContents(web_contents)) {
+            ::location_bar::GetLocationBarForWebContents(web_contents)) {
       location_bar->SetPermissionPromptShowing(true);
     }
   }
@@ -268,7 +274,7 @@ std::unique_ptr<permissions::PermissionPrompt> CreatePermissionPrompt(
 
   if (!prompt && has_mic_request) {
     if (LocationBar* location_bar =
-            location_bar::GetLocationBarForWebContents(web_contents)) {
+            ::location_bar::GetLocationBarForWebContents(web_contents)) {
       location_bar->SetPermissionPromptShowing(false);
     }
   }

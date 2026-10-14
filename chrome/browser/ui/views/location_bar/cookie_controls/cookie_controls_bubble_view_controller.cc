@@ -39,7 +39,8 @@ namespace {
 
 constexpr int kProgressBarHeight = 3;
 
-constexpr base::TimeDelta kUserBypassUIReloadBubbleTimeout = base::Seconds(5);
+constexpr base::TimeDelta kCookieControlsUIReloadBubbleTimeout =
+    base::Seconds(5);
 
 // Unique identifier within the CookieControlsBubbleView hierarchy.
 constexpr int kFaviconID = 1;
@@ -103,7 +104,7 @@ void CookieControlsBubbleViewController::OnUserClosedContentView() {
       FROM_HERE,
       base::BindOnce(&CookieControlsBubbleViewController::OnReloadingUiTimeout,
                      weak_factory_.GetWeakPtr()),
-      kUserBypassUIReloadBubbleTimeout);
+      kCookieControlsUIReloadBubbleTimeout);
 }
 
 void CookieControlsBubbleViewController::OnFaviconFetched(

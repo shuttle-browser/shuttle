@@ -504,8 +504,9 @@ BindNotificationService(
     GlobalRenderFrameHostId rfh_id,
     RenderProcessHost::NotificationServiceCreatorType creator_type,
     WorkerHost* host) {
-  DCHECK_NE(creator_type,
-            RenderProcessHost::NotificationServiceCreatorType::kServiceWorker);
+  CHECK_NE(creator_type,
+           RenderProcessHost::NotificationServiceCreatorType::kServiceWorker,
+           base::NotFatalUntil::M159);
   return base::BindRepeating(
       [](WorkerHost* host, GlobalRenderFrameHostId rfh_id,
          RenderProcessHost::NotificationServiceCreatorType creator_type,
@@ -524,11 +525,11 @@ base::RepeatingCallback<
     void(const ServiceWorkerVersionBaseInfo&,
          mojo::PendingReceiver<blink::mojom::NotificationService>)>
 BindNotificationService(ServiceWorkerHost* host) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   return base::BindRepeating(
       [](ServiceWorkerHost* host, const ServiceWorkerVersionBaseInfo& info,
          mojo::PendingReceiver<blink::mojom::NotificationService> receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         auto* process_host = static_cast<RenderProcessHostImpl*>(
             RenderProcessHost::FromID(host->worker_process_id()));
 
@@ -633,13 +634,13 @@ base::RepeatingCallback<void(mojo::PendingReceiver<Interface>)>
 BindServiceWorkerReceiver(
     void (RenderProcessHostImpl::*method)(mojo::PendingReceiver<Interface>),
     ServiceWorkerHost* host) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   return base::BindRepeating(
       [](ServiceWorkerHost* host,
          void (RenderProcessHostImpl::*method)(
              mojo::PendingReceiver<Interface>),
          mojo::PendingReceiver<Interface> receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         auto* process_host = static_cast<RenderProcessHostImpl*>(
             RenderProcessHost::FromID(host->worker_process_id()));
         if (!process_host)
@@ -656,14 +657,14 @@ BindServiceWorkerReceiverForOrigin(
     void (RenderProcessHostImpl::*method)(const url::Origin&,
                                           mojo::PendingReceiver<Interface>),
     ServiceWorkerHost* host) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   return base::BindRepeating(
       [](ServiceWorkerHost* host,
          void (RenderProcessHostImpl::*method)(
              const url::Origin&, mojo::PendingReceiver<Interface>),
          const ServiceWorkerVersionBaseInfo& info,
          mojo::PendingReceiver<Interface> receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         auto origin = info.storage_key.origin();
         auto* process_host = static_cast<RenderProcessHostImpl*>(
             RenderProcessHost::FromID(host->worker_process_id()));
@@ -681,14 +682,14 @@ BindServiceWorkerReceiverForStorageKey(
     void (RenderProcessHostImpl::*method)(const blink::StorageKey&,
                                           mojo::PendingReceiver<Interface>),
     ServiceWorkerHost* host) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   return base::BindRepeating(
       [](ServiceWorkerHost* host,
          void (RenderProcessHostImpl::*method)(
              const blink::StorageKey&, mojo::PendingReceiver<Interface>),
          const ServiceWorkerVersionBaseInfo& info,
          mojo::PendingReceiver<Interface> receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         auto* process_host = static_cast<RenderProcessHostImpl*>(
             RenderProcessHost::FromID(host->worker_process_id()));
         if (!process_host)
@@ -704,13 +705,13 @@ base::RepeatingCallback<void(const ServiceWorkerVersionBaseInfo&,
 BindServiceWorkerReceiverForStorageKeyAndBucketContext(
     StorageKeyAndBucketContextMethod<Interface> method,
     ServiceWorkerHost* host) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   return base::BindRepeating(
       [](ServiceWorkerHost* host,
          StorageKeyAndBucketContextMethod<Interface> method,
          const ServiceWorkerVersionBaseInfo& info,
          mojo::PendingReceiver<Interface> receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         auto* process_host = static_cast<RenderProcessHostImpl*>(
             RenderProcessHost::FromID(host->worker_process_id()));
         if (!process_host) {
@@ -839,7 +840,7 @@ void BindRenderFrameHostImpl(RenderFrameHost* host,
 void BindMidiSessionProvider(
     RenderFrameHost* host,
     mojo::PendingReceiver<midi::mojom::MidiSessionProvider> receiver) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
 
   BrowserContext* browser_context = host->GetBrowserContext();
   PermissionController* permission_controller =
@@ -1218,7 +1219,7 @@ void PopulateBinderMapWithContext(
       [](RenderFrameHost* host,
          mojo::PendingReceiver<media::mojom::WebrtcVideoPerfRecorder>
              receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         media::WebrtcVideoPerfRecorder::Create(
             BrowserContextImpl::From(host->GetBrowserContext())
                 ->GetWebrtcVideoPerfHistory(),
@@ -1228,7 +1229,7 @@ void PopulateBinderMapWithContext(
   map->Add<media::mojom::WebrtcVideoPerfHistory>(base::BindRepeating(
       [](RenderFrameHost* host,
          mojo::PendingReceiver<media::mojom::WebrtcVideoPerfHistory> receiver) {
-        DCHECK_CURRENTLY_ON(BrowserThread::UI);
+        CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
         BrowserContextImpl::From(host->GetBrowserContext())
             ->GetWebrtcVideoPerfHistory()
             ->BindReceiver(std::move(receiver));
@@ -1568,10 +1569,8 @@ void PopulateDedicatedWorkerBinders(DedicatedWorkerHost* host,
       &CreateReportingServiceProxyForDedicatedWorker, base::Unretained(host)));
   map->Add<blink::mojom::SerialService>(base::BindRepeating(
       &DedicatedWorkerHost::BindSerialService, base::Unretained(host)));
-#if !BUILDFLAG(IS_ANDROID)
   map->Add<blink::mojom::HidService>(base::BindRepeating(
       &DedicatedWorkerHost::BindHidService, base::Unretained(host)));
-#endif  // !BUILDFLAG(IS_ANDROID)
   map->Add<blink::mojom::BucketManagerHost>(base::BindRepeating(
       &DedicatedWorkerHost::CreateBucketManagerHost, base::Unretained(host)));
   map->Add<blink::mojom::FileSystemAccessManager>(
@@ -1806,13 +1805,13 @@ void PopulateBinderMap(SharedWorkerHost* host, mojo::BinderMap* map) {
 
 // Service workers
 ServiceWorkerVersionInfo GetContextForHost(ServiceWorkerHost* host) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   return host->version()->GetInfo();
 }
 
 void PopulateServiceWorkerBinders(ServiceWorkerHost* host,
                                   mojo::BinderMap* map) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
 
   // Do nothing for interfaces that the renderer might request, but doesn't
   // always expect to be bound.
@@ -1914,7 +1913,7 @@ void PopulateServiceWorkerBinders(ServiceWorkerHost* host,
 void PopulateBinderMapWithContext(
     ServiceWorkerHost* host,
     mojo::BinderMapWithContext<const ServiceWorkerVersionBaseInfo&>* map) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
 
   // static binders
   // Use a task runner if ServiceWorkerHost lives on the IO thread, as
@@ -1976,7 +1975,7 @@ void PopulateBinderMapWithContext(
 }
 
 void PopulateBinderMap(ServiceWorkerHost* host, mojo::BinderMap* map) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   PopulateServiceWorkerBinders(host, map);
 }
 

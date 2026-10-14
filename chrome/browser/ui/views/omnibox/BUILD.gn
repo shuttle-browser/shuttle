@@ -50,6 +50,7 @@ source_set("omnibox") {
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/tabs:tabs_public",
+    "//chrome/browser/ui/views/frame:app_menu_button_observer",
     "//chrome/browser/ui/webui/cr_components/searchbox",
     "//chrome/browser/ui/webui/top_chrome",
     "//components/omnibox/browser",
@@ -148,6 +149,7 @@ source_set("impl") {
     "//content/public/browser",
     "//extensions/common:common_constants",
     "//ui/base:data_exchange",
+    "//ui/content_accelerators",
     "//ui/strings:ui_strings_grit",
   ]
 

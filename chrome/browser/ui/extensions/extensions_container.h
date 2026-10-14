@@ -13,6 +13,10 @@
 class BrowserWindowInterface;
 class ToolbarActionViewModel;
 
+namespace content {
+class WebContents;
+}
+
 // An interface for containers in the toolbar that host extensions.
 //
 // This interface provides a minimal set of APIs that allows non-UI code to

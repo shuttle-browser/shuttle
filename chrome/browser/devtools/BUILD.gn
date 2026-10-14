@@ -53,6 +53,7 @@ if (enable_devtools_frontend) {
 
 _concatenated_protocol_path =
     "$root_gen_dir/chrome/browser/devtools/protocol.json"
+
 action("concatenate_protocols") {
   script = _inspector_protocol + "/concatenate_protocols.py"
 

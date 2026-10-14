@@ -1746,7 +1746,7 @@ void Canvas2DRecorderContext::fillRect(double x,
   }
 
   // clamp to float to avoid float cast overflow when used as SkScalar
-  AdjustRectForCanvas(x, y, width, height);
+  CanvasRenderingContext::AdjustRectForCanvas(x, y, width, height);
   gfx::RectF rect(ClampTo<float>(x), ClampTo<float>(y), ClampTo<float>(width),
                   ClampTo<float>(height));
   Draw<OverdrawOp::kNone>(
@@ -1791,7 +1791,7 @@ void Canvas2DRecorderContext::strokeRect(double x,
   }
 
   // clamp to float to avoid float cast overflow when used as SkScalar
-  AdjustRectForCanvas(x, y, width, height);
+  CanvasRenderingContext::AdjustRectForCanvas(x, y, width, height);
   float fx = ClampTo<float>(x);
   float fy = ClampTo<float>(y);
   float fwidth = ClampTo<float>(width);
@@ -1960,7 +1960,7 @@ void Canvas2DRecorderContext::clearRect(double x,
   cc::PaintFlags clear_flags = GetClearFlags();
 
   // clamp to float to avoid float cast overflow when used as SkScalar
-  AdjustRectForCanvas(x, y, width, height);
+  CanvasRenderingContext::AdjustRectForCanvas(x, y, width, height);
   float fx = ClampTo<float>(x);
   float fy = ClampTo<float>(y);
   float fwidth = ClampTo<float>(width);
@@ -2119,7 +2119,8 @@ void Canvas2DRecorderContext::DrawImageInternal(
     const gfx::RectF& src_rect,
     const gfx::RectF& dst_rect,
     const SkSamplingOptions& sampling,
-    const cc::PaintFlags* flags) {
+    const cc::PaintFlags* flags,
+    RespectImageOrientationEnum respect_orientation) {
   cc::RecordPaintCanvas::DisableFlushCheckScope disable_flush_check_scope(
       static_cast<cc::RecordPaintCanvas*>(c));
   int initial_save_count = c->getSaveCount();
@@ -2163,11 +2164,6 @@ void Canvas2DRecorderContext::DrawImageInternal(
   // the video into the canvas. The fast path is not always faster though (e.g.,
   // when scaling), so sometimes the `image` path may still be used by video.
   if (image) {
-    // We always use the image-orientation property on the canvas element
-    // because the alternative would result in complex rules depending on
-    // the source of the image.
-    RespectImageOrientationEnum respect_orientation =
-        RespectImageOrientationInternal(image_source);
     gfx::RectF corrected_src_rect = src_rect;
     if (respect_orientation == kRespectImageOrientation &&
         !image->HasDefaultOrientation()) {
@@ -2195,8 +2191,7 @@ void Canvas2DRecorderContext::DrawImageInternal(
     VideoFrame* frame = static_cast<VideoFrame*>(image_source);
     auto media_frame = frame->frame();
     bool ignore_transformation =
-        RespectImageOrientationInternal(image_source) ==
-        kDoNotRespectImageOrientation;
+        respect_orientation == kDoNotRespectImageOrientation;
     c->save();
     c->clipRect(gfx::RectFToSkRect(dst_rect));
     c->translate(dst_rect.x(), dst_rect.y());
@@ -2241,8 +2236,8 @@ void Canvas2DRecorderContext::drawImage(CanvasImageSource* image_source,
   }
 
   // clamp to float to avoid float cast overflow when used as SkScalar
-  AdjustRectForCanvas(sx, sy, sw, sh);
-  AdjustRectForCanvas(dx, dy, dw, dh);
+  CanvasRenderingContext::AdjustRectForCanvas(sx, sy, sw, sh);
+  CanvasRenderingContext::AdjustRectForCanvas(dx, dy, dw, dh);
   float fsx = ClampTo<float>(sx);
   float fsy = ClampTo<float>(sy);
   float fsw = ClampTo<float>(sw);
@@ -2306,8 +2301,13 @@ void Canvas2DRecorderContext::drawImage(CanvasImageSource* image_source,
     return;
   }
 
-  gfx::SizeF image_size = image_source->ElementSize(
-      default_object_size, RespectImageOrientationInternal(image_source));
+  // We always use the image-orientation property on the canvas element because
+  // the alternative would result in complex rules depending on the source of
+  // the image.
+  const RespectImageOrientationEnum respect_orientation =
+      RespectImageOrientationInternal(image_source);
+  gfx::SizeF image_size =
+      image_source->ElementSize(default_object_size, respect_orientation);
 
   ClipRectsToImageRect(gfx::RectF(image_size), &src_rect, &dst_rect);
 
@@ -2325,14 +2325,14 @@ void Canvas2DRecorderContext::drawImage(CanvasImageSource* image_source,
 
   Draw<OverdrawOp::kDrawImage>(
       /*draw_func=*/
-      [this, image_source, image, src_rect, dst_rect](
+      [this, image_source, image, src_rect, dst_rect, respect_orientation](
           MemoryManagedPaintCanvas* c, const cc::PaintFlags* flags) {
         SkSamplingOptions sampling =
             cc::PaintFlags::FilterQualityToSkSamplingOptions(
                 flags ? flags->getFilterQuality()
                       : cc::PaintFlags::FilterQuality::kNone);
         DrawImageInternal(c, image_source, image.get(), src_rect, dst_rect,
-                          sampling, flags);
+                          sampling, flags, respect_orientation);
       },
       /*draw_covers_clip_bounds=*/
       [this, dst_rect](const SkIRect& clip_bounds) {
@@ -2382,10 +2382,10 @@ CanvasGradient* Canvas2DRecorderContext::createRadialGradient(
     double r1,
     ExceptionState& exception_state) {
   if (r0 < 0 || r1 < 0) {
-    exception_state.ThrowDOMException(
-        DOMExceptionCode::kIndexSizeError,
-        UNSAFE_TODO(String::Format("The %s provided is less than 0.",
-                                   r0 < 0 ? "r0" : "r1")));
+    exception_state.ThrowDOMException(DOMExceptionCode::kIndexSizeError,
+                                      r0 < 0
+                                          ? "The r0 provided is less than 0."
+                                          : "The r1 provided is less than 0.");
     return nullptr;
   }
 
@@ -2468,15 +2468,12 @@ CanvasPattern* Canvas2DRecorderContext::createPattern(
     case kZeroSizeCanvasSourceImageStatus:
       exception_state.ThrowDOMException(
           DOMExceptionCode::kInvalidStateError,
-          UNSAFE_TODO(String::Format(
-              "The canvas %s is 0.",
-              image_source
-                      ->ElementSize(
-                          default_object_size,
-                          RespectImageOrientationInternal(image_source))
-                      .width()
-                  ? "height"
-                  : "width")));
+          image_source
+                  ->ElementSize(default_object_size,
+                                RespectImageOrientationInternal(image_source))
+                  .width()
+              ? "The canvas height is 0."
+              : "The canvas width is 0.");
       return nullptr;
     case kZeroSizeImageSourceStatus:
       return nullptr;

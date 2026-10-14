@@ -229,6 +229,7 @@
 #include "chrome/browser/auxiliary_search/auxiliary_search_donation_service_factory.h"
 #include "chrome/browser/auxiliary_search/auxiliary_search_provider.h"
 #include "chrome/browser/commerce/merchant_viewer/merchant_viewer_data_manager_factory.h"
+#include "chrome/browser/finds/finds_service_factory.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/media/android/cdm/media_drm_origin_id_manager_factory.h"
 #include "chrome/browser/ntp_customization/ntp_android_background_service_factory.h"
@@ -587,13 +588,8 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
 #if BUILDFLAG(IS_CHROMEOS)
   chromeos::CertificateProviderServiceFactory::GetInstance();
-  if (chromeos::features::IsUploadOfficeToCloudEnabled()) {
-    chromeos::cloud_upload::CloudUploadPrefsWatcherFactory::GetInstance();
-  }
-  if (chromeos::features::IsUploadOfficeToCloudEnabled() &&
-      chromeos::features::IsUploadOfficeToCloudSyncEnabled()) {
-    chromeos::cloud_upload::CloudUploadPromptPrefsHandlerFactory::GetInstance();
-  }
+  chromeos::cloud_upload::CloudUploadPrefsWatcherFactory::GetInstance();
+  chromeos::cloud_upload::CloudUploadPromptPrefsHandlerFactory::GetInstance();
 
 #endif
   ChromePolicyBlocklistServiceFactory::GetInstance();
@@ -610,11 +606,7 @@ void ChromeBrowserMainExtraPartsProfiles::
   multi_capture::MultiCaptureDataServiceFactory::GetInstance();
   multi_capture::MultiCaptureUsageIndicatorServiceFactory::GetInstance();
   multi_capture::MultiCaptureSessionControllerFactory::GetInstance();
-
-  if (chromeos::features::
-          IsMicrosoftOneDriveIntegrationForEnterpriseEnabled()) {
-    chromeos::cloud_storage::OneDrivePrefObserverFactory::GetInstance();
-  }
+  chromeos::cloud_storage::OneDrivePrefObserverFactory::GetInstance();
 #endif
 
 

@@ -170,6 +170,7 @@
 #include "third_party/blink/public/web/web_security_policy.h"
 #include "third_party/blink/public/web/web_view.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/webui/jstemplate_builder.h"
 #include "url/origin.h"
@@ -196,7 +197,7 @@
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-#include "chrome/common/initialize_extensions_client.h"
+#include "chrome/common/scoped_chrome_extensions_client.h"
 #include "chrome/renderer/extensions/api/chrome_extensions_renderer_api_provider.h"
 #include "chrome/renderer/extensions/chrome_extensions_renderer_client.h"
 #include "extensions/common/constants.h"
@@ -349,7 +350,8 @@ ChromeContentRendererClient::ChromeContentRendererClient()
       sampling_profiler::ThreadProfiler::CreateAndStartOnMainThread();
 #endif
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-  EnsureExtensionsClientInitialized();
+  extensions_client_ =
+      std::make_unique<extensions::ScopedChromeExtensionsClient>();
   ChromeExtensionsRendererClient::Create();
 #endif
 }
@@ -756,6 +758,20 @@ bool ChromeContentRendererClient::IsDomStorageDisabled() const {
   // opaque origins). This avoids a renderer kill by the browser process which
   // isn't expecting PDF renderer processes to ever use DOM storage
   // interfaces. See https://crbug.com/357014503.
+  return pdf::IsPdfRenderer();
+#else
+  return false;
+#endif
+}
+
+bool ChromeContentRendererClient::AreDedicatedWorkersDisabled() const {
+#if BUILDFLAG(ENABLE_PDF) && BUILDFLAG(ENABLE_EXTENSIONS)
+  // PDF renderers shouldn't need to create dedicated workers. Note that it's
+  // still possible to attempt to instantiate a Worker in a PDF document's
+  // context via DevTools; returning true here ensures that the constructor
+  // throws a SecurityError DOMException. This avoids a renderer kill by the
+  // browser process which isn't expecting PDF renderer processes to ever create
+  // dedicated workers. See https://crbug.com/553118313.
   return pdf::IsPdfRenderer();
 #else
   return false;

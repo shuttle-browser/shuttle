@@ -259,6 +259,7 @@ class BrowsingHistoryService : public HistoryServiceObserver {
   // HistoryServiceObserver implementation.
   void OnHistoryDeletions(HistoryService* history_service,
                           const DeletionInfo& deletion_info) override;
+  void HistoryServiceBeingDeleted(HistoryService* history_service) override;
 
   // Tracker for search requests to the history service.
   base::CancelableTaskTracker query_task_tracker_;

@@ -10,6 +10,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/time/default_clock.h"
+#include "build/build_config.h"
 #include "chrome/browser/notifications/scheduler/internal/background_task_coordinator.h"
 #include "chrome/browser/notifications/scheduler/internal/display_decider.h"
 #include "chrome/browser/notifications/scheduler/internal/impression_history_tracker.h"
@@ -28,6 +29,10 @@
 #include "chrome/browser/notifications/scheduler/public/notification_scheduler_client_registrar.h"
 #include "components/leveldb_proto/public/proto_database_provider.h"
 #include "components/leveldb_proto/public/shared_proto_database_client_list.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/notifications/scheduler/internal/clients/finds_client.h"
+#endif  // BUILDFLAG(IS_ANDROID)
 
 namespace notifications {
 namespace {

@@ -30,6 +30,8 @@ component("public") {
     "download_file.h",
     "download_file_factory.h",
     "download_file_impl.h",
+    "download_file_utils.cc",
+    "download_file_utils.h",
     "download_interrupt_reason_values.h",
     "download_interrupt_reasons.h",
     "download_interrupt_reasons_utils.h",

@@ -102,6 +102,7 @@ source_set("permissions") {
     "//components/background_sync",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/browser:cookie_settings",
+    "//components/contextual_tasks/public:feature_list",
     "//components/embedder_support:permissions",
     "//components/google/core/common",
     "//components/infobars/content",
@@ -155,6 +156,10 @@ source_set("permissions") {
     }
   }
   allow_circular_includes_from = []
+
+  if (enable_extensions_core) {
+    deps += [ "//extensions/common" ]
+  }
 
   if (enable_extensions) {
     deps += [ "//chrome/browser/clipboard" ]

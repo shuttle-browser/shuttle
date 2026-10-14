@@ -16,6 +16,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/split_tab_util.h"
+#include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/tabs/tab_menu_model.h"
@@ -39,6 +40,7 @@
 #include "chrome/browser/ui/views/tabs/horizontal/horizontal_tab_closing_helper.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_collection_types.h"
 #include "components/tabs/public/tab_context_menu_command.h"
 #include "components/tabs/public/tab_group.h"
@@ -123,6 +125,11 @@ const TabCollectionNode* TabStripCollectionController::GetAdjacentTab(
 std::optional<tab_groups::TabGroupId>
 TabStripCollectionController::GetFocusedGroup() const {
   return model_->GetFocusedGroup();
+}
+
+bool TabStripCollectionController::IsGroupCollapsed(
+    const tab_groups::TabGroupId& group_id) const {
+  return model_->SupportsTabGroups() && model_->IsGroupCollapsed(group_id);
 }
 
 std::optional<SkColor> TabStripCollectionController::GetGroupColor(

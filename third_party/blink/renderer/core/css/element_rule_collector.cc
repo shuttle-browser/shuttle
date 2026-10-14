@@ -823,7 +823,7 @@ DISABLE_CFI_PERF bool ElementRuleCollector::CollectMatchingRulesInternal(
       style_recalc_context_.style_scope_frame, matching_ua_rules_,
       matching_rules_from_no_style_sheet_, style_recalc_context_, mode_);
   Element& element = *context.context.element;
-  const AtomicString& pseudo_id = element.ShadowPseudoId();
+  const AtomicString pseudo_id = element.ShadowPseudoId();
   if (!pseudo_id.empty()) {
     DCHECK(element.IsStyledElement());
     for (const auto bundle : match_request.AllRuleSets()) {
@@ -1435,9 +1435,14 @@ void ElementRuleCollector::DidMatchRule(
       }
 
       if (dynamic_pseudo == kPseudoIdHighlight) {
-        DCHECK(result.custom_highlight_name);
-        result_.AddCustomHighlightName(
-            AtomicString(result.custom_highlight_name));
+        if (result.custom_highlight_name ==
+            CSSSelector::UniversalSelectorAtom().Impl()) {
+          result_.SetHasCustomHighlightUniversalSelector();
+        } else {
+          DCHECK(result.custom_highlight_name);
+          result_.AddCustomHighlightName(
+              AtomicString(result.custom_highlight_name));
+        }
       }
     } else if (dynamic_pseudo == kPseudoIdFirstLine && container_query_set) {
       result_.SetFirstLineDependsOnSizeContainerQueries();

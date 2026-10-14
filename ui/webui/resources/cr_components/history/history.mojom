@@ -180,6 +180,14 @@ struct RemovalItem {
   array<double> timestamps;
 };
 
+// LINT.IfChange(OpenConversationResult)
+enum OpenConversationResult {
+  kSuccess = 0,
+  kErrorInvalidActionEntry = 1,
+  kErrorInternal = 2,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/critical_actions/enums.xml:OpenConversationResult)
+
 // Browser-side handler for requests from WebUI page.
 interface PageHandler {
   // The BrowserProxy singleton calls this when it's first initialized.

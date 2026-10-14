@@ -7,6 +7,7 @@
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/layout_constants.h"
+#include "chrome/common/chrome_features.h"
 #include "components/tabs/public/tab_alert.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/models/image_model.h"

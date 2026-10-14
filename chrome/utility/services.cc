@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "chrome/services/file_util/buildflags.h"
 #include "chrome/services/speech/buildflags/buildflags.h"
 #include "components/paint_preview/buildflags/buildflags.h"
 #include "components/safe_browsing/buildflags.h"
@@ -66,7 +67,7 @@
 
 #if (BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && \
      !BUILDFLAG(IS_ANDROID)) ||                      \
-    BUILDFLAG(IS_CHROMEOS)
+    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(ENABLE_EXTRACTORS)
 #include "chrome/services/file_util/file_util_service.h"  // nogncheck
 #endif
 
@@ -232,7 +233,7 @@ auto RunSpeechRecognitionService(
 
 #if (BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && \
      !BUILDFLAG(IS_ANDROID)) ||                      \
-    BUILDFLAG(IS_CHROMEOS)
+    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(ENABLE_EXTRACTORS)
 auto RunFileUtil(
     mojo::PendingReceiver<chrome::mojom::FileUtilService> receiver) {
   return std::make_unique<FileUtilService>(std::move(receiver));
@@ -421,7 +422,7 @@ void RegisterMainThreadServices(mojo::ServiceFactory& services) {
 
 #if (BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && \
      !BUILDFLAG(IS_ANDROID)) ||                      \
-    BUILDFLAG(IS_CHROMEOS)
+    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(ENABLE_EXTRACTORS)
   services.Add(RunFileUtil);
 #endif
 

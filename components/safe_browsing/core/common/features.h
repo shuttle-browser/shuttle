@@ -307,8 +307,6 @@ extern const base::FeatureParam<int>
 extern const base::FeatureParam<int>
     kExtensionTelemetrySearchHijackingSignalHeuristicThreshold;
 
-// Enables reporting of external app redirects
-BASE_DECLARE_FEATURE(kExternalAppRedirectTelemetry);
 
 // Whether to provide Google Play Protect status in APK telemetry pings
 BASE_DECLARE_FEATURE(kGooglePlayProtectInApkTelemetry);
@@ -445,6 +443,10 @@ BASE_DECLARE_FEATURE(kRelaunchNotificationForAdvancedProtection);
 BASE_DECLARE_FEATURE(kSafeBrowsingDailyPhishingReportsLimit);
 // Specifies the CSD-Phishing daily reports limit for ESB users
 extern const base::FeatureParam<int> kSafeBrowsingDailyPhishingReportsLimitESB;
+
+// Enables automatic cleanup of unrecognized or deprecated Safe Browsing stores
+// and stale hash files on disk during database startup.
+BASE_DECLARE_FEATURE(kSafeBrowsingDeleteUnusedStores);
 
 #if BUILDFLAG(IS_ANDROID)
 // Enables sync checker to check allowlist first on Chrome on Android. This is

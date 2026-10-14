@@ -128,6 +128,10 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
           query_results_info,
       std::vector<critical_actions::CriticalActionEntry> critical_actions);
 
+  void OnCriticalActionRetrievedForLinkout(
+      OpenCriticalActionConversationCallback callback,
+      std::optional<critical_actions::CriticalActionEntry> entry);
+
   raw_ptr<Profile> profile_;
   raw_ptr<content::WebContents> web_contents_;
   // Interface to send information to the web ui page.

@@ -69,6 +69,7 @@ class IPAddressSpaceOverridesPrefsObserver;
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 namespace scheduled_restart {
+class ScheduledRestartBubbleController;
 class ScheduledRestartManager;
 }  // namespace scheduled_restart
 #endif
@@ -185,6 +186,11 @@ class GlobalFeatures {
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  scheduled_restart::ScheduledRestartBubbleController*
+  scheduled_restart_bubble_controller() {
+    return scheduled_restart_bubble_controller_.get();
+  }
+
   scheduled_restart::ScheduledRestartManager* scheduled_restart_manager() {
     return scheduled_restart_manager_.get();
   }
@@ -274,6 +280,8 @@ class GlobalFeatures {
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  std::unique_ptr<scheduled_restart::ScheduledRestartBubbleController>
+      scheduled_restart_bubble_controller_;
   std::unique_ptr<scheduled_restart::ScheduledRestartManager>
       scheduled_restart_manager_;
 #endif

@@ -63,6 +63,7 @@
 #include "chrome/grit/theme_resources.h"
 #include "ui/aura/window.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/gfx/image/icon_standardizer.h"
 #include "ui/gfx/image/image_skia.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 

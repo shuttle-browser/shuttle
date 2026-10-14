@@ -59,6 +59,7 @@ source_set("core") {
 
   deps = [
     "//base",
+    "//base:i18n",
     "//build:blink_buildflags",
     "//components/enterprise",
     "//components/enterprise/buildflags",
@@ -87,6 +88,13 @@ source_set("core") {
     "//ui/gfx/range",
   ]
 
+  if (!is_android) {
+    deps += [
+      "//components/enterprise/device_trust/core",
+      "//components/enterprise/device_trust/core:device_trust_connector_service",
+    ]
+  }
+
   if (use_blink) {
     deps += [ "//components/download/public/common:public" ]
   }
@@ -98,10 +106,6 @@ source_set("core") {
   if (enterprise_data_controls) {
     deps += [ "//components/enterprise/data_controls/core/browser" ]
   }
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 if (enterprise_cloud_content_analysis || is_android) {
@@ -136,7 +140,6 @@ if (enterprise_cloud_content_analysis || is_android) {
       "cloud_content_scanning/multipart_uploader.h",
       "cloud_content_scanning/request_handler_base.cc",
       "cloud_content_scanning/request_handler_base.h",
-      "cloud_content_scanning/resumable_uploader.cc",
       "cloud_content_scanning/resumable_uploader.h",
       "cloud_content_scanning/resumable_uploader_base.cc",
       "cloud_content_scanning/resumable_uploader_base.h",
@@ -182,8 +185,9 @@ if (enterprise_cloud_content_analysis || is_android) {
 
 source_set("constants") {
   sources = [
-    "reporting_constants.cc",
     "reporting_constants.h",
+    "reporting_event_mappings.cc",
+    "reporting_event_mappings.h",
   ]
   deps = [
     "//base",

@@ -1055,6 +1055,10 @@ views::BubbleAnchor ExtensionsToolbarDesktop::GetExtensionsButtonAnchor() {
   return views::BubbleAnchor(GetExtensionsButton());
 }
 
+views::BubbleBorder::Arrow ExtensionsToolbarDesktop::GetPopupArrow() const {
+  return views::BubbleBorder::TOP_RIGHT;
+}
+
 void ExtensionsToolbarDesktop::OnMouseExited(const ui::MouseEvent& event) {
   UpdateHoverCard(nullptr, ToolbarActionHoverCardUpdateType::kHover);
 }

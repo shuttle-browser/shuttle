@@ -75,5 +75,13 @@ source_set("lib") {
     "//ui/gfx/codec",
     "//url",
   ]
+
+  if (is_android) {
+    sources += [
+      "clients/finds_client.cc",
+      "clients/finds_client.h",
+    ]
+    deps += [ "//chrome/browser/finds/core" ]
+  }
 }
 

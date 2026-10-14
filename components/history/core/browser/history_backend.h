@@ -199,6 +199,10 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   // and is deleted.
   static constexpr int kExpireDaysThreshold = 90;
 
+  // The maximum redirect chain depth to traverse before stopping. Prevents
+  // quadratic sql query floods on unbounded client-redirect chains.
+  static constexpr size_t kMaxRedirectChainLength = 30;
+
   // Init must be called to complete object creation. This object can be
   // constructed on any thread, but all other functions including Init() must
   // be called on the history thread.
@@ -218,6 +222,15 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
   HistoryBackend(const HistoryBackend&) = delete;
   HistoryBackend& operator=(const HistoryBackend&) = delete;
 
+  // Sets parameters to be used when Init() is called.
+  void SetInitParams(bool force_fail,
+                     const HistoryDatabaseParams& history_database_params);
+
+  // Initializes the backend using parameters set via SetInitParams(). If
+  // already initialized, this is a no-op.
+  void InitWithCachedParams();
+
+  // Convenience method that sets parameters and initializes the backend.
   // Must be called after creation but before any objects are created. If this
   // fails, all other functions will fail as well. (Since this runs on another
   // thread, we don't bother returning failure.)
@@ -1074,6 +1087,17 @@ class HistoryBackend : public base::RefCountedThreadSafe<HistoryBackend>,
 
   // Whether segments data should include foreign history.
   bool can_add_foreign_visits_to_segments_ = false;
+
+  // Sync transport state, cached if SetSyncTransportState() is called before
+  // InitWithCachedParams().
+  std::optional<syncer::SyncService::TransportState> sync_transport_state_;
+
+  // Tracks whether Init() has already run.
+  bool is_inited_ = false;
+
+  // Stored initialization parameters if Init is deferred.
+  bool force_fail_ = false;
+  std::unique_ptr<HistoryDatabaseParams> history_database_params_;
 };
 
 }  // namespace history

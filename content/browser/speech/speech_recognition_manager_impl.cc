@@ -114,7 +114,7 @@ class FrameSessionTracker
       base::RepeatingCallback<void(int /* session_id */)>;
 
   ~FrameSessionTracker() override {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
 
     for (auto session : sessions_) {
       GetIOThreadTaskRunner({})->PostTask(
@@ -147,7 +147,7 @@ class FrameSessionTracker
   static void CreateObserverForSession(GlobalRenderFrameHostId global_id,
                                        int session_id,
                                        FrameDeletedCallback callback) {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
 
     RenderFrameHost* render_frame_host = RenderFrameHost::FromID(global_id);
     if (!render_frame_host)
@@ -177,7 +177,7 @@ class FrameSessionTracker
 
   static void RemoveObserverForSession(GlobalRenderFrameHostId global_id,
                                        int session_id) {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
 
     RenderFrameHost* render_frame_host = RenderFrameHost::FromID(global_id);
     if (!render_frame_host)
@@ -260,13 +260,13 @@ SpeechRecognitionManagerImpl::SpeechRecognitionManagerImpl(
                     ->browser()
                     ->CreateSpeechRecognitionManagerDelegate()),
       requester_id_(next_requester_id_++) {
-  DCHECK(!g_speech_recognition_manager_impl);
+  CHECK(!g_speech_recognition_manager_impl, base::NotFatalUntil::M159);
   g_speech_recognition_manager_impl = this;
 }
 
 SpeechRecognitionManagerImpl::~SpeechRecognitionManagerImpl() {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  DCHECK(g_speech_recognition_manager_impl);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
+  CHECK(g_speech_recognition_manager_impl, base::NotFatalUntil::M159);
 
   g_speech_recognition_manager_impl = nullptr;
 }
@@ -297,7 +297,7 @@ int SpeechRecognitionManagerImpl::CreateSession(
 }
 
 void SpeechRecognitionManagerImpl::StartSession(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -329,7 +329,7 @@ void SpeechRecognitionManagerImpl::StartSession(int session_id) {
 void SpeechRecognitionManagerImpl::RecognitionAllowedCallback(int session_id,
                                                               bool ask_user,
                                                               bool is_allowed) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
 
   auto iter = sessions_.find(session_id);
   if (iter == sessions_.end())
@@ -372,7 +372,7 @@ void SpeechRecognitionManagerImpl::MediaRequestPermissionCallback(
     int session_id,
     const blink::mojom::StreamDevicesSet& stream_devices_set,
     std::unique_ptr<MediaStreamUIProxy> stream_ui) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
 
   auto iter = sessions_.find(session_id);
   if (iter == sessions_.end())
@@ -382,7 +382,8 @@ void SpeechRecognitionManagerImpl::MediaRequestPermissionCallback(
   // which is only supported in combination with the getAllScreensMedia API.
   // The |stream_devices| vector can be empty e.g. if the permission
   // was denied.
-  DCHECK_LE(stream_devices_set.stream_devices.size(), 1u);
+  CHECK_LE(stream_devices_set.stream_devices.size(), 1u,
+           base::NotFatalUntil::M159);
 
   blink::MediaStreamDevices devices_list =
       blink::ToMediaStreamDevicesList(stream_devices_set);
@@ -403,7 +404,7 @@ void SpeechRecognitionManagerImpl::MediaRequestPermissionCallback(
 }
 
 void SpeechRecognitionManagerImpl::AbortSession(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   auto iter = sessions_.find(session_id);
   if (iter == sessions_.end())
     return;
@@ -417,7 +418,7 @@ void SpeechRecognitionManagerImpl::AbortSession(int session_id) {
 }
 
 void SpeechRecognitionManagerImpl::AbortSessionImpl(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
 
   auto iter = sessions_.find(session_id);
   if (iter == sessions_.end())
@@ -437,7 +438,7 @@ void SpeechRecognitionManagerImpl::AbortSessionImpl(int session_id) {
 }
 
 void SpeechRecognitionManagerImpl::StopAudioCaptureForSession(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
 
   auto iter = sessions_.find(session_id);
   if (iter == sessions_.end())
@@ -478,7 +479,7 @@ void SpeechRecognitionManagerImpl::UpdateRecognitionContextForSession(
 // (if any).
 
 void SpeechRecognitionManagerImpl::OnRecognitionStart(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -498,7 +499,7 @@ void SpeechRecognitionManagerImpl::OnRecognitionStart(int session_id) {
 }
 
 void SpeechRecognitionManagerImpl::OnAudioStart(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -509,7 +510,7 @@ void SpeechRecognitionManagerImpl::OnAudioStart(int session_id) {
 }
 
 void SpeechRecognitionManagerImpl::OnSoundStart(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -520,7 +521,7 @@ void SpeechRecognitionManagerImpl::OnSoundStart(int session_id) {
 }
 
 void SpeechRecognitionManagerImpl::OnSoundEnd(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -531,7 +532,7 @@ void SpeechRecognitionManagerImpl::OnSoundEnd(int session_id) {
 }
 
 void SpeechRecognitionManagerImpl::OnAudioEnd(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -548,7 +549,7 @@ void SpeechRecognitionManagerImpl::OnAudioEnd(int session_id) {
 void SpeechRecognitionManagerImpl::OnRecognitionResults(
     int session_id,
     const std::vector<media::mojom::WebSpeechRecognitionResultPtr>& results) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -561,7 +562,7 @@ void SpeechRecognitionManagerImpl::OnRecognitionResults(
 void SpeechRecognitionManagerImpl::OnRecognitionError(
     int session_id,
     const media::mojom::SpeechRecognitionError& error) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -576,7 +577,7 @@ void SpeechRecognitionManagerImpl::OnRecognitionError(
 
 void SpeechRecognitionManagerImpl::OnAudioLevelsChange(
     int session_id, float volume, float noise_volume) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -594,9 +595,9 @@ int SpeechRecognitionManagerImpl::CreateSession(
         client_remote,
     std::optional<SpeechRecognitionAudioForwarderConfig> audio_forwarder_config,
     bool can_render_frame_use_on_device) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   const int session_id = GetNextSessionID();
-  DCHECK(!SessionExists(session_id));
+  CHECK(!SessionExists(session_id), base::NotFatalUntil::M159);
 
   base::UmaHistogramBoolean(kWebSpeechAudioOnDeviceAvailableHistogram,
                             config.on_device_available);
@@ -815,7 +816,7 @@ int SpeechRecognitionManagerImpl::CreateSession(
 }
 
 void SpeechRecognitionManagerImpl::OnRecognitionEnd(int session_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   if (!SessionExists(session_id))
     return;
 
@@ -846,7 +847,7 @@ bool SpeechRecognitionManagerImpl::UseOnDeviceSpeechRecognition(
 
 void SpeechRecognitionManagerImpl::AbortAllSessionsForRenderFrame(
     GlobalRenderFrameHostId global_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
 
   for (const auto& session_pair : sessions_) {
     Session* session = session_pair.second.get();
@@ -859,7 +860,7 @@ void SpeechRecognitionManagerImpl::AbortAllSessionsForRenderFrame(
 // -----------------------  Core FSM implementation ---------------------------
 void SpeechRecognitionManagerImpl::DispatchEvent(int session_id,
                                                  FSMEvent event) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
 
   // There are some corner cases in which the session might be deleted (due to
   // an EndRecognition event) between a request (e.g. Abort) and its dispatch.
@@ -868,12 +869,12 @@ void SpeechRecognitionManagerImpl::DispatchEvent(int session_id,
 
   Session* session = GetSession(session_id);
   FSMState session_state = GetSessionState(session_id);
-  DCHECK_LE(session_state, SESSION_STATE_MAX_VALUE);
-  DCHECK_LE(event, EVENT_MAX_VALUE);
+  CHECK_LE(session_state, SESSION_STATE_MAX_VALUE, base::NotFatalUntil::M159);
+  CHECK_LE(event, EVENT_MAX_VALUE, base::NotFatalUntil::M159);
 
   // Event dispatching must be sequential, otherwise it will break all the rules
   // and the assumptions of the finite state automata model.
-  DCHECK(!is_dispatching_event_);
+  CHECK(!is_dispatching_event_, base::NotFatalUntil::M159);
   is_dispatching_event_ = true;
   ExecuteTransitionAndGetNextState(session, session_state, event);
   is_dispatching_event_ = false;
@@ -970,9 +971,9 @@ void SpeechRecognitionManagerImpl::SessionStart(const Session& session) {
     device_id = media::AudioDeviceDescription::kDefaultDeviceId;
   } else {
     // From the ask_user=true path, use the selected device.
-    DCHECK_EQ(1u, devices.size());
-    DCHECK_EQ(blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
-              devices.front().type);
+    CHECK_EQ(1u, devices.size(), base::NotFatalUntil::M159);
+    CHECK_EQ(blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
+             devices.front().type, base::NotFatalUntil::M159);
     device_id = devices.front().id;
   }
 
@@ -989,13 +990,13 @@ void SpeechRecognitionManagerImpl::SessionAbort(const Session& session) {
   if (microphone_session_id_ == session.id) {
     microphone_session_id_ = kSessionIDInvalid;
   }
-  DCHECK(session.recognizer.get());
+  CHECK(session.recognizer.get(), base::NotFatalUntil::M159);
   session.recognizer->AbortRecognition();
 }
 
 void SpeechRecognitionManagerImpl::SessionStopAudioCapture(
     const Session& session) {
-  DCHECK(session.recognizer.get());
+  CHECK(session.recognizer.get(), base::NotFatalUntil::M159);
   session.recognizer->StopAudioCapture();
 }
 
@@ -1005,8 +1006,9 @@ void SpeechRecognitionManagerImpl::ResetCapturingSessionId(
 }
 
 void SpeechRecognitionManagerImpl::SessionDelete(Session* session) {
-  DCHECK(session->recognizer.get() == nullptr ||
-         !session->recognizer->IsActive());
+  CHECK(
+      session->recognizer.get() == nullptr || !session->recognizer->IsActive(),
+      base::NotFatalUntil::M159);
   if (microphone_session_id_ == session->id) {
     microphone_session_id_ = kSessionIDInvalid;
   }
@@ -1040,7 +1042,7 @@ bool SpeechRecognitionManagerImpl::SessionExists(int session_id) const {
 
 SpeechRecognitionManagerImpl::Session*
 SpeechRecognitionManagerImpl::GetSession(int session_id) const {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M159);
   auto iter = sessions_.find(session_id);
   CHECK(iter != sessions_.end());
   return iter->second.get();

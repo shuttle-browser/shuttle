@@ -21,6 +21,7 @@
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/storage_partition.h"
@@ -271,7 +272,11 @@ void LoginHandler::ShowLoginPrompt(const GURL& request_url) {
 
 void LoginHandler::BuildViewAndNotify(const std::u16string& authority,
                                       const std::u16string& explanation) {
+  base::WeakPtr<LoginHandler> weak_this = weak_factory_.GetWeakPtr();
   bool success = BuildViewImpl(authority, explanation);
+  if (!weak_this) {
+    return;
+  }
   if (success) {
     NotifyAuthNeeded();
   } else {
@@ -279,8 +284,7 @@ void LoginHandler::BuildViewAndNotify(const std::u16string& authority,
     // view happens synchronously, we dispatch the cancellation to avoid
     // re-entrancy into the calling code.
     content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE,
-        base::BindOnce(&LoginHandler::CancelAuth, weak_factory_.GetWeakPtr(),
-                       /*notify_others=*/false));
+        FROM_HERE, base::BindOnce(&LoginHandler::CancelAuth, weak_this,
+                                  /*notify_others=*/false));
   }
 }

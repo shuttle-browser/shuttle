@@ -9,6 +9,7 @@
 #include <optional>
 #include <vector>
 
+#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
@@ -24,6 +25,7 @@
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/split_tabs_button.h"
+#include "components/apps/link_capturing/intent_picker_info.h"
 #include "components/prefs/pref_member.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -128,6 +130,9 @@ class ToolbarView : public views::AccessiblePaneView,
   ExtensionsToolbarDesktop* extensions_container() const {
     return extensions_container_;
   }
+  ToolbarButton* contextual_tasks_button() const {
+    return contextual_tasks_button_;
+  }
   ToolbarButton* forward_button() const { return forward_; }
   ExtensionsToolbarButton* GetExtensionsButton() const;
   ReloadButton* reload_button() const { return reload_; }
@@ -178,6 +183,11 @@ class ToolbarView : public views::AccessiblePaneView,
   void SetToolbarVisibility(bool visible);
 
  private:
+  FRIEND_TEST_ALL_PREFIXES(ToolbarViewCircularContextualTasksBrowserTest,
+                           CircularButtonRetainsInteriorMarginsAndPosition);
+  FRIEND_TEST_ALL_PREFIXES(ToolbarViewCircularContextualTasksBrowserTest,
+                           LeftSidePanelUsesOriginalLeftButton);
+
   // Forwards view overrides to this class.
   class ContainerView;
 
@@ -193,6 +203,23 @@ class ToolbarView : public views::AccessiblePaneView,
 
   // Logic that must be done on initialization and then on layout.
   void LayoutCommon();
+
+  // Returns whether the app menu control should apply Fitts' law edge padding
+  // to extend to the window border when maximized or fullscreen.
+  bool ShouldAppMenuApplyFittsLaw(bool is_maximized_or_fullscreen) const;
+
+  // Positions `contextual_tasks_button_` in the toolbar hierarchy based on
+  // whether it should dock at the edges or sit as a circular button to the
+  // left of profile (and glic button if visible).
+  void PositionContextualTasksButton();
+
+  // Returns true if the contextual tasks button is visible and positioned at
+  // the leading edge of the toolbar.
+  bool IsLeadingContextualTasksButtonVisible() const;
+
+  // Returns true if the contextual tasks button is visible and positioned at
+  // the trailing edge of the toolbar.
+  bool IsTrailingContextualTasksButtonVisible() const;
 
   // AppMenuIconController::Delegate:
   void UpdateTypeAndSeverity(
@@ -250,6 +277,7 @@ class ToolbarView : public views::AccessiblePaneView,
   // Controls. Most of these can be null, e.g. in popup windows. Only
   // |location_bar_| is guaranteed to exist. These pointers are owned by the
   // view hierarchy.
+  raw_ptr<ToolbarButton> contextual_tasks_button_ = nullptr;
   raw_ptr<ToolbarButton> back_ = nullptr;
   raw_ptr<ToolbarButton> forward_ = nullptr;
   raw_ptr<ReloadButton> reload_ = nullptr;
@@ -311,6 +339,10 @@ class ToolbarView : public views::AccessiblePaneView,
 
   // Subscription for when tab strip mode changes
   base::CallbackListSubscription vertical_tab_subscription_;
+
+  // Subscription for when contextual tasks button position should update.
+  base::CallbackListSubscription
+      contextual_tasks_button_position_subscription_;
 
   bool should_display_vertical_tabs_ = false;
 

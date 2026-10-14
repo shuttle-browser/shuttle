@@ -11,6 +11,8 @@ source_set("browser") {
     "pdf_document_helper.cc",
     "pdf_document_helper.h",
     "pdf_document_helper_client.h",
+    "pdf_first_content_paint_registry.cc",
+    "pdf_first_content_paint_registry.h",
     "pdf_frame_util.cc",
     "pdf_frame_util.h",
   ]

@@ -849,6 +849,9 @@ are declared in tools/grit/grit_args.gni.
 
       <!-- Page menu. Android has separate strings for its menu -->
       <if expr="not is_android">
+        <message name="IDS_APP_MENU_SEARCH_PLACEHOLDER" desc="Placeholder text for the search bar in the app menu.">
+          Search menu, or type an action
+        </message>
         <message name="IDS_APP_MENU_TOOLS_AND_ACTIONS_HEADER" desc="Header title for the Tools and Actions section in the main App Menu">
           Tools and Actions
         </message>
@@ -3470,6 +3473,15 @@ are declared in tools/grit/grit_args.gni.
       <message name="IDS_TAB_SHARING_INFOBAR_SHARING_ANOTHER_TAB_TO_THIS_TAB_LABEL" desc="Text displayed on an infobar when another (non-current) tab is being shared.">
        Sharing <ph name="TAB_NAME">$1<ex>youtube.com</ex></ph> to this tab
       </message>
+      <message name="IDS_TAB_SHARING_INFOBAR_BLOCKED_CURRENT_TAB_LABEL" desc="Text displayed on an infobar when sharing of the current tab is blocked by enterprise policy.">
+       Your organization blocks the screen sharing of this tab
+      </message>
+      <message name="IDS_TAB_SHARING_INFOBAR_BLOCKED_ANOTHER_TAB_LABEL" desc="Text displayed on an infobar when sharing of another (non-current) tab is blocked by enterprise policy.">
+       Your organization blocks the screen sharing of <ph name="TAB_NAME">$1<ex>youtube.com</ex></ph>
+      </message>
+      <message name="IDS_TAB_SHARING_INFOBAR_BLOCKED_ANOTHER_UNTITLED_TAB_LABEL" desc="Text displayed on an infobar when sharing of another (non-current) untitled tab is blocked by enterprise policy.">
+       Your organization blocks the screen sharing of a tab
+      </message>
       <message name="IDS_TAB_SHARING_INFOBAR_SHARE_BUTTON" desc="Text displayed on the button to share current tab.">
        Share this tab instead
       </message>
@@ -3574,6 +3586,9 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_TASK_MANAGER_JAVASCRIPT_MEMORY_ALLOCATED_COLUMN" desc="Task manager JavaScript memory allocated column.  Shows the amount of memory used by JavaScript within a process">
           JavaScript memory
         </message>
+        <message name="IDS_TASK_MANAGER_CPPGC_MEMORY_ALLOCATED_COLUMN" desc="Task manager CppGC memory allocated column.  Shows the amount of memory used by CppGC within a process">
+          CppGC memory
+        </message>
         <message name="IDS_TASK_MANAGER_KEEPALIVE_COUNT_COLUMN" desc="Task manager keepalive count column.  Specific to Chrome extension processes, and only to those which use 'lazy' event pages, this indicates how many activities are making use of the extension, and therefore causing it to be kept alive.">
           Keepalive count
         </message>
@@ -3645,12 +3660,18 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_TASK_MANAGER_JAVASCRIPT_MEMORY_ALLOCATED_COLUMN" desc="Task manager JavaScript memory allocated column.  Shows the amount of memory used by JavaScript within a process">
           JavaScript Memory
         </message>
+        <message name="IDS_TASK_MANAGER_CPPGC_MEMORY_ALLOCATED_COLUMN" desc="Task manager CppGC memory allocated column.  Shows the amount of memory used by CppGC within a process">
+          CppGC Memory
+        </message>
         <message name="IDS_TASK_MANAGER_KEEPALIVE_COUNT_COLUMN" desc="Task manager keepalive count column.  Specific to Chrome extension processes, and only to those which use 'lazy' event pages, this indicates how many activities are making use of the extension, and therefore causing it to be kept alive.">
           Keepalive Count
         </message>
       </if>
-      <message name="IDS_TASK_MANAGER_MEM_CELL_TEXT" desc="The value displayed in the memory usage cells." formatter_data="android_java">
+      <message name="IDS_TASK_MANAGER_MEM_CELL_TEXT" desc="The value displayed in the memory usage cells.">
         <ph name="NUM_KILOBYTES">$1<ex>5,000</ex></ph>K
+      </message>
+      <message name="IDS_TASK_MANAGER_MEM_CELL_MB_TEXT" desc="The value displayed in the memory usage cells in megabytes." formatter_data="android_java">
+        <ph name="NUM_MEGABYTES">%1$s<ex>50</ex></ph> MB
       </message>
       <message name="IDS_TASK_MANAGER_CACHE_SIZE_CELL_TEXT" desc="The value displayed in the cache size cells.">
         <ph name="NUM_KILOBYTES">$1<ex>5,000</ex></ph>K (<ph name="NUM_KILOBYTES_LIVE">$2<ex>5,000</ex></ph>K live)
@@ -4183,6 +4204,9 @@ are declared in tools/grit/grit_args.gni.
         </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_DEVICE_ATTRIBUTES" desc="Permission string for enterprise device attributes permission.">
           See device information, such as its serial number or asset ID
+        </message>
+        <message name="IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_WEBRTC" desc="Permission string for the enterprise WebRTC diagnostics permission.">
+          See which sites you call from and when your camera or microphone is used
         </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_KIOSK_INPUT" desc="Permission string for enterprise kiosk input permission.">
           Change the system keyboard layout
@@ -5589,6 +5613,25 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_READING_LIST_MENU" desc="The title of the Reading List submenu in the App Menu">
         &amp;Reading list
       </message>
+      <message name="IDS_READING_MODE_LINE_FOCUS_IPH_TITLE" desc="Title for the help bubble describing the line focus feature in Reading Mode.">
+        Try line focus
+      </message>
+      <if expr="is_macosx">
+        <message name="IDS_READING_MODE_LINE_FOCUS_IPH_BODY" desc="Text for the help bubble describing how to turn on line focus.">
+          Apply a reading line or window to help with focus. Press ⌥L or go to Settings.
+        </message>
+        <message name="IDS_READING_MODE_LINE_FOCUS_IPH_SCREENREADER" is_accessibility_with_no_ui="true" desc="Accessible text for the help bubble describing how to turn on line focus.">
+          Apply a reading line or window to help with focus. Press ⌥L or go to Settings.
+        </message>
+      </if>
+      <if expr="not is_macosx">
+        <message name="IDS_READING_MODE_LINE_FOCUS_IPH_BODY" desc="Text for the help bubble describing how to turn on line focus.">
+          Apply a reading line or window to help with focus. Press Alt+L or go to Settings.
+        </message>
+        <message name="IDS_READING_MODE_LINE_FOCUS_IPH_SCREENREADER" is_accessibility_with_no_ui="true" desc="Accessible text for the help bubble describing how to turn on line focus.">
+          Apply a reading line or window to help with focus. Press Alt+L or go to Settings.
+        </message>
+      </if>
 
       <message name="IDS_SIDE_PANEL_TOOLBAR_BUTTON_CXMENU_UNPIN" desc="The label of the context menu item for unpinning a side panel toolbar button.">
         Unpin
@@ -5727,11 +5770,17 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_SWITCH_TO_HORIZONTAL_TAB_MAC" desc="In Title Case: The button in context menu that switches to horizontal tab view.">
             Show Tabs Horizontally
           </message>
-          <message name="IDS_COLLAPSE_VERTICAL_TABS" desc="In Title Case: The tooltip for the button in the top container that collapses the vertical tab strip.">
+          <message name="IDS_COLLAPSE_VERTICAL_TABS" desc="In Title Case: The text for the menu item that collapses the vertical tab strip.">
             Collapse Tabs
           </message>
-          <message name="IDS_EXPAND_VERTICAL_TABS" desc="In Title Case: The tooltip for the button in the top container that expands the vertical tab strip.">
+          <message name="IDS_EXPAND_VERTICAL_TABS" desc="In Title Case: The text for the menu item that expands the vertical tab strip.">
             Expand Tabs
+          </message>
+          <message name="IDS_COLLAPSE_VERTICAL_TABS_TOOLTIP" is_accessibility_with_no_ui="true" desc="In Title Case: The tooltip for the button in the top container that collapses the vertical tab strip.">
+            Collapse Tabs (<ph name="KEYBOARD_SHORTCUT">$1<ex>⇧⌘L</ex></ph>)
+          </message>
+          <message name="IDS_EXPAND_VERTICAL_TABS_TOOLTIP" is_accessibility_with_no_ui="true" desc="In Title Case: The tooltip for the button in the top container that expands the vertical tab strip.">
+            Expand Tabs (<ph name="KEYBOARD_SHORTCUT">$1<ex>⇧⌘L</ex></ph>)
           </message>
           <message name="IDS_VERTICAL_TABS_SEND_FEEDBACK" desc="In Title Case: The button in context menu that allows users to send feedback about vertical tabs.">
             Send Feedback About the Tab Strip
@@ -5747,11 +5796,17 @@ Keep your key file in a safe place. You will need it to create new versions of y
           </message>
         </then>
         <else>
-          <message name="IDS_COLLAPSE_VERTICAL_TABS" desc="The tooltip for the button in the top container that collapses the vertical tab strip.">
+          <message name="IDS_COLLAPSE_VERTICAL_TABS" desc="The text for the menu item that collapses the vertical tab strip.">
             Collapse tabs
           </message>
-          <message name="IDS_EXPAND_VERTICAL_TABS" desc="The tooltip for the button in the top container that expands the vertical tab strip.">
+          <message name="IDS_EXPAND_VERTICAL_TABS" desc="The text for the menu item that expands the vertical tab strip.">
             Expand tabs
+          </message>
+          <message name="IDS_COLLAPSE_VERTICAL_TABS_TOOLTIP" is_accessibility_with_no_ui="true" desc="The tooltip for the button in the top container that collapses the vertical tab strip.">
+            Collapse tabs (<ph name="KEYBOARD_SHORTCUT">$1<ex>Ctrl+Shift+L</ex></ph>)
+          </message>
+          <message name="IDS_EXPAND_VERTICAL_TABS_TOOLTIP" is_accessibility_with_no_ui="true" desc="The tooltip for the button in the top container that expands the vertical tab strip.">
+            Expand tabs (<ph name="KEYBOARD_SHORTCUT">$1<ex>Ctrl+Shift+L</ex></ph>)
           </message>
           <message name="IDS_VERTICAL_TABS_SEND_FEEDBACK" desc="The button in context menu that allows users to send feedback about vertical tabs.">
             Send feedback about the tab strip
@@ -5836,6 +5891,8 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_ORGANIZER_PANEL" desc="The name of the organizer panel announced by screenreaders." is_accessibility_with_no_ui="true">
         Organizer
       </message>
+      <message name="IDS_ORGANIZER_PANEL_TAB_GROUPS" desc="The label on the organizer panel list section corresponding to tab groups.">
+        Tab Groups
       <if expr="use_titlecase">
         <message name="IDS_TAB_STRIP_UNPIN_TAB_SEARCH" desc="In Title Case: Name of the tab strip system menu item for unpinning tab search.">
           Unpin Tab Search
@@ -6344,6 +6401,12 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_TAB_CXMENU_REMOVE_TAB_FROM_GROUP" desc="The label of the tab context menu item for removing one or more tabs from the groups that contain them.">
           Take back from agent
         </message>
+        <message name="IDS_TAB_CXMENU_FOCUS_TAB_GROUP" desc="The label of the tab context menu item for focusing the tab group containing the tab.">
+          Focus tab group
+        </message>
+        <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="The label of the tab context menu item for unfocusing the tab group containing the tab.">
+          Unfocus tab group
+        </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 other tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # other tabs}}
         </message>
@@ -6426,6 +6489,12 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_TAB_CXMENU_REMOVE_TAB_FROM_GROUP" desc="In Title Case: The label of the tab context menu item for removing one or more tabs from the groups that contain them.">
           Take Back From Agent
+        </message>
+        <message name="IDS_TAB_CXMENU_FOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for focusing the tab group containing the tab.">
+          Focus Tab Group
+        </message>
+        <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for unfocusing the tab group containing the tab.">
+          Unfocus Tab Group
         </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="In Title Case: The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 Other Tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # Other Tabs}}
@@ -7413,13 +7482,6 @@ This can include information about installed software, files, your browser, the 
         Close
       </message>
 
-
-      <message name="IDS_PLUGIN_CRASHED_PROMPT" desc="Infobar message to notify about a crashed plugin">
-       <ph name="PLUGIN_NAME">$1<ex>Flash</ex></ph> has crashed
-      </message>
-      <message name="IDS_RELOAD_PAGE_WITH_PLUGIN" desc="Infobar button to reload the page where a plugin crashed or disconnected.">
-        Reload
-      </message>
 
       <!-- External Protocol Dialog -->
       <message name="IDS_EXTERNAL_PROTOCOL_TITLE" desc="External Protocol Dialog Title">
@@ -8472,6 +8534,9 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_DESKTOP_MEDIA_PICKER_EMPTY_PREVIEW" desc="Text shown instead of a preview image of a tab when the user hasn't yet selected a tab to screenshare." >
         Select a tab to share
       </message>
+      <message name="IDS_DESKTOP_MEDIA_PICKER_BLOCKED_PREVIEW" desc="Text shown instead of a preview image of a tab when sharing of the selected tab is blocked by enterprise policy.">
+        Blocked by your admin
+      </message>
       <message name="IDS_DESKTOP_MEDIA_PICKER_PREVIEW_ACCESSIBLE_NAME" desc="Name used by screen readers for a preview screenshot of a tab selected for screensharing." >
         Preview of shared tab
       </message>
@@ -9283,6 +9348,18 @@ This can include information about installed software, files, your browser, the 
       </if>
       <message name="IDS_RELAUNCH_REQUIRED_CANCEL_BUTTON" desc="The text in the cancel button that dismisses a dialog telling users the browser must be relaunched.">
         Dismiss
+      </message>
+      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_NOW" desc="Button label to restart immediately." translateable="false">
+        Restart now
+      </message>
+      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_WHEN_IDLE" desc="Button label to restart when idle." translateable="false">
+        Restart when idle
+      </message>
+      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE" desc="The body text for the scheduled restart reminder bubble dialog." translateable="false">
+        Restart now to finish updating, or restart next time you're idle for 5 minutes. Your open tabs and windows will restore. Incognito windows won't reopen.
+      </message>
+      <message name="IDS_APP_MENU_BUTTON_RESTART_SCHEDULED" desc="Short label next to app-menu button when a scheduled restart is pending." translateable="false">
+        Restart scheduled
       </message>
     </if>
 

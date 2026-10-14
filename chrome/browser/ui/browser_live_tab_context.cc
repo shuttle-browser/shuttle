@@ -20,7 +20,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_utils.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_tab_strip_model_delegate.h"
@@ -40,6 +39,7 @@
 #include "components/sessions/content/content_live_tab.h"
 #include "components/sessions/content/content_platform_specific_tab_data.h"
 #include "components/sessions/core/live_tab_context.h"
+#include "components/sessions/core/session_id.h"
 #include "components/sessions/core/session_types.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/split_tabs/split_tab_visual_data.h"
@@ -48,13 +48,13 @@
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_group.h"
 #include "content/public/browser/navigation_controller.h"
-#include "content/public/browser/session_storage_namespace.h"
+#include "content/public/browser/session_storage_namespace_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/window_open_disposition.h"
 
 using content::NavigationController;
-using content::SessionStorageNamespace;
+using content::SessionStorageNamespaceHandle;
 using content::WebContents;
 
 namespace {
@@ -281,7 +281,7 @@ sessions::LiveTab* BrowserLiveTabContext::AddRestoredTab(
     bool select,
     bool is_restoring_group_or_window,
     sessions::tab_restore::Type original_session_type) {
-  SessionStorageNamespace* storage_namespace =
+  SessionStorageNamespaceHandle* storage_namespace =
       tab.platform_data
           ? static_cast<const sessions::ContentPlatformSpecificTabData*>(
                 tab.platform_data.get())
@@ -321,7 +321,7 @@ sessions::LiveTab* BrowserLiveTabContext::ReplaceRestoredTab(
     const sessions::tab_restore::Tab& tab) {
   const sessions::tab_restore::PlatformSpecificTabData* tab_platform_data =
       tab.platform_data.get();
-  SessionStorageNamespace* storage_namespace =
+  SessionStorageNamespaceHandle* storage_namespace =
       tab_platform_data
           ? static_cast<const sessions::ContentPlatformSpecificTabData*>(
                 tab_platform_data)

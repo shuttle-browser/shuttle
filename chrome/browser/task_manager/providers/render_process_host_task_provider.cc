@@ -7,14 +7,10 @@
 #include "base/process/process.h"
 #include "chrome/browser/task_manager/providers/child_process_task.h"
 #include "chrome/common/buildflags.h"
-#include "content/public/browser/browser_child_process_host_iterator.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/child_process_data.h"
 #include "content/public/browser/render_process_host.h"
-#include "content/public/common/process_type.h"
 
 using content::BrowserThread;
-using content::ChildProcessData;
 using content::RenderProcessHost;
 
 namespace task_manager {
@@ -67,13 +63,10 @@ void RenderProcessHostTaskProvider::CreateTask(
 
   // TODO(cburn): plumb out something from RPH so the title can be set here.
   // Create the task and notify the observer.
-  ChildProcessData data(content::PROCESS_TYPE_RENDERER, host->GetID());
-  data.SetProcess(host->GetProcess().Duplicate());
-
   std::unique_ptr<ChildProcessTask>& task =
       tasks_by_rph_id_[render_process_host_id];
   task = std::make_unique<ChildProcessTask>(
-      data, ChildProcessTask::ProcessSubtype::kUnknownRenderProcess);
+      *host, ChildProcessTask::ProcessSubtype::kUnknownRenderProcess);
   NotifyObserverTaskAdded(task.get());
 }
 

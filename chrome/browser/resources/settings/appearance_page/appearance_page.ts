@@ -280,6 +280,8 @@ export class SettingsAppearancePageElement extends
       loadTimeData.getBoolean('showCtrlTabMru');
   protected accessor tabStripUnificationEnabled_: boolean =
       loadTimeData.getBoolean('tabStripUnificationEnabled');
+  protected accessor splitViewHorizontalEnabled_: boolean =
+      loadTimeData.getBoolean('splitViewHorizontalEnabled');
 
   private appearanceBrowserProxy_: AppearanceBrowserProxy =
       AppearanceBrowserProxyImpl.getInstance();

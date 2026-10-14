@@ -14,8 +14,6 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
-#include "base/observer_list.h"
-#include "base/scoped_observation.h"
 #include "build/build_config.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
@@ -28,7 +26,6 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 
 class PrefService;
-class SupervisedUserServiceObserver;
 
 namespace signin {
 class IdentityManager;
@@ -102,9 +99,6 @@ class SupervisedUserService : public KeyedService {
   std::optional<Custodian> GetCustodian() const;
   std::optional<Custodian> GetSecondCustodian() const;
 
-  void AddObserver(SupervisedUserServiceObserver* observer);
-  void RemoveObserver(SupervisedUserServiceObserver* observer);
-
   // ProfileKeyedService override:
   void Shutdown() override;
 
@@ -138,10 +132,6 @@ class SupervisedUserService : public KeyedService {
   // Handler when supervision is disabled. Intentionally idempotent.
   void OnFamilyLinkParentalControlsDisabled();
 
-  // Add or remove all pref handlers related to custodians. The removal method
-  // is intentionally idempotent.
-  void AddCustodianPrefChangeHandlers();
-  void RemoveCustodianPrefChangeHandlers();
 
   const raw_ref<PrefService> user_prefs_;
 
@@ -155,17 +145,12 @@ class SupervisedUserService : public KeyedService {
 
   // Registrar for core prefs that drive this service.
   PrefChangeRegistrar main_pref_change_registrar_;
-  // Registrar for preferences that control custodian data. They're observed
-  // only when the profile is subject to parental controls.
-  PrefChangeRegistrar custodian_pref_change_registrar_;
 
   // True only when |Shutdown()| method has been called.
   bool did_shutdown_ = false;
 
   // Manages remote web approvals.
   RemoteWebApprovalsManager remote_web_approvals_manager_;
-
-  base::ObserverList<SupervisedUserServiceObserver>::Unchecked observer_list_;
 
 #if BUILDFLAG(IS_CHROMEOS)
   bool signout_required_after_supervision_enabled_ = false;

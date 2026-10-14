@@ -50,6 +50,7 @@ class BatteryMetrics;
 class ChromeMetricsServicesManagerClient;
 class DevToolsAutoOpener;
 class GlobalFeatures;
+class IntranetRedirectDetector;
 class RemoteDebuggingServer;
 class PrefRegistrySimple;
 class SecureOriginPrefsObserver;
@@ -70,6 +71,7 @@ class OriginTrialsSettingsStorage;
 
 namespace extensions {
 class ExtensionsBrowserClient;
+class ScopedChromeExtensionsClient;
 }
 
 namespace gcm {
@@ -191,9 +193,7 @@ class BrowserProcessImpl : public BrowserProcess,
       override;
   printing::BackgroundPrintingManager* background_printing_manager() override;
   supervised_user::DeviceParentalControls& device_parental_controls() override;
-#if !BUILDFLAG(IS_ANDROID)
   IntranetRedirectDetector* intranet_redirect_detector() override;
-#endif
   const std::string& GetApplicationLocale() override;
   void SetApplicationLocale(const std::string& actual_locale) override;
   DownloadStatusUpdater* download_status_updater() override;
@@ -346,6 +346,7 @@ class BrowserProcessImpl : public BrowserProcess,
   std::unique_ptr<GpuModeManager> gpu_mode_manager_;
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  std::unique_ptr<extensions::ScopedChromeExtensionsClient> extensions_client_;
   std::unique_ptr<extensions::ExtensionsBrowserClient>
       extensions_browser_client_;
 #endif
@@ -376,9 +377,7 @@ class BrowserProcessImpl : public BrowserProcess,
   std::unique_ptr<NotificationUIManager> notification_ui_manager_;
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
   std::unique_ptr<IntranetRedirectDetector> intranet_redirect_detector_;
-#endif
 
   std::unique_ptr<StatusTray> status_tray_;
 

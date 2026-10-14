@@ -5,10 +5,12 @@
 #ifndef EXTENSIONS_BROWSER_SAFE_BROWSING_DELEGATE_H_
 #define EXTENSIONS_BROWSER_SAFE_BROWSING_DELEGATE_H_
 
+#include <optional>
 #include <string>
 
 #include "extensions/common/api/declarative_net_request.h"
 #include "extensions/common/extension_id.h"
+#include "extensions/common/stack_frame.h"
 
 class GURL;
 

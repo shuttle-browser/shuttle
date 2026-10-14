@@ -84,10 +84,14 @@ export function getHtml(this: ItemElement) {
             -->${this.data.blocklistText}<!-- No whitespace; use :empty in css.
        --></span>
           <span id="unsupported-developer-extension-warning"
-              class="cr-secondary-text"
-              ?hidden="${
+              class="cr-secondary-text" ?hidden="${
                   !this.data.disableReasons.unsupportedDeveloperExtension}">
             $i18n{itemUnsupportedDeveloperMode}
+          </span>
+          <span id="disabled-by-another-extension-warning"
+              class="cr-secondary-text"
+              ?hidden="${!this.isDisabledByAnotherExtension_()}">
+            ${this.getDisabledByExtensionWarningText_()}
           </span>
         </div>
       ` : ''}
@@ -103,9 +107,10 @@ export function getHtml(this: ItemElement) {
       ${this.showAllowlistWarning_() ? html`
         <div id="allowlist-warning">
           <cr-icon class="message-icon"
-              icon="${this.webuiRoundedIconsEnabled_ ?
-                  'extensions-icons:android-security-privacy-alert' :
-                  'extensions-icons:safebrowsing_warning-old'}">
+              icon="${
+                  this.webuiRoundedIconsEnabled_ ?
+                      'extensions-icons:android-security-privacy-alert' :
+                      'extensions-icons:safebrowsing_warning-old'}">
           </cr-icon>
           <span class="cr-secondary-text" aria-describedby="a11yAssociation">
             $i18n{itemAllowlistWarning}

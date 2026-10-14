@@ -71,7 +71,12 @@ optimization_guide::proto::PageContext ToPageContext(
 }
 
 // Returns whether the page content cache is enabled.
-bool IsPageContentCacheEnabled() {
+bool IsPageContentCacheEnabled(os_crypt_async::OSCryptAsync* os_crypt_async,
+                               const base::FilePath& profile_path) {
+  // Should only be hit in testing.
+  if (!os_crypt_async || profile_path.empty()) {
+    return false;
+  }
   return base::FeatureList::IsEnabled(features::kPageContentCache);
 }
 
@@ -138,7 +143,8 @@ RefCountedPDFTextPtr GetPDFTextPtrFromPageContent(PageContent&& content) {
 PageContentExtractionService::PageContentExtractionService(
     os_crypt_async::OSCryptAsync* os_crypt_async,
     const base::FilePath& profile_path)
-    : is_page_content_cache_enabled_(IsPageContentCacheEnabled()),
+    : is_page_content_cache_enabled_(
+          IsPageContentCacheEnabled(os_crypt_async, profile_path)),
       page_content_cache_handler_(
           CreatePageContentCacheHandler(is_page_content_cache_enabled_,
                                         os_crypt_async,

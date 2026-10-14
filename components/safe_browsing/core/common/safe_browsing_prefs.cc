@@ -316,7 +316,6 @@ void RegisterProfilePrefs(PrefRegistrySimple* registry) {
   registry->RegisterBooleanPref(prefs::kSafeBrowsingDeepScanningEnabled, true);
   registry->RegisterBooleanPref(
       prefs::kSafeBrowsingScoutReportingEnabledWhenDeprecated, false);
-  registry->RegisterDictionaryPref(prefs::kExternalAppRedirectTimestamps);
 }
 
 const base::DictValue& GetExtensionTelemetryConfig(const PrefService& prefs) {

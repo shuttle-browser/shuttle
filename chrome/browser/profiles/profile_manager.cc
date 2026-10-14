@@ -149,7 +149,6 @@
 #include "chromeos/ash/components/browser_context_helper/browser_context_types.h"
 #include "chromeos/ash/experiences/arc/arc_prefs.h"
 #include "chromeos/ash/experiences/arc/session/arc_management_transition.h"
-#include "chromeos/constants/chromeos_features.h"
 #include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
 #include "components/user_manager/user_type.h"
@@ -1282,11 +1281,8 @@ void ProfileManager::DoFinalInitForServices(Profile* profile) {
   bool extensions_enabled = true;
 #if BUILDFLAG(IS_CHROMEOS)
   bool are_extensions_allowed_for_profile =
-      ash::IsSigninBrowserContext(profile);
-  if (chromeos::features::IsLockScreenBadgeAuthEnabled()) {
-    are_extensions_allowed_for_profile |=
-        ash::IsLockScreenBrowserContext(profile);
-  }
+      ash::IsSigninBrowserContext(profile) ||
+      ash::IsLockScreenBrowserContext(profile);
 
   if ((!base::CommandLine::ForCurrentProcess()->HasSwitch(
            ash::switches::kDisableLoginScreenApps) &&

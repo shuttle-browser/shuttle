@@ -10,13 +10,13 @@
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/page_action/page_action_observer.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_bubble_coordinator.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/content_settings/browser/ui/cookie_controls_controller.h"
 #include "components/content_settings/core/common/cookie_controls_state.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/tabs/public/tab_interface.h"
@@ -27,16 +27,20 @@
 
 namespace {
 
-void RecordOpenedAction(bool icon_visible, CookieControlsState controls_state) {
-  if (!icon_visible) {
-    base::RecordAction(
-        base::UserMetricsAction("CookieControls.Bubble.UnknownState.Opened"));
-  } else if (controls_state == CookieControlsState::kBlocked3pc) {
-    base::RecordAction(
-        base::UserMetricsAction("CookieControls.Bubble.CookiesBlocked.Opened"));
-  } else {
-    base::RecordAction(
-        base::UserMetricsAction("CookieControls.Bubble.CookiesAllowed.Opened"));
+void RecordOpenedAction(CookieControlsState controls_state) {
+  switch (controls_state) {
+    case CookieControlsState::kHidden:
+      base::RecordAction(
+          base::UserMetricsAction("CookieControls.Bubble.UnknownState.Opened"));
+      break;
+    case CookieControlsState::kBlocked3pc:
+      base::RecordAction(base::UserMetricsAction(
+          "CookieControls.Bubble.CookiesBlocked.Opened"));
+      break;
+    case CookieControlsState::kAllowed3pc:
+      base::RecordAction(base::UserMetricsAction(
+          "CookieControls.Bubble.CookiesAllowed.Opened"));
+      break;
   }
 }
 
@@ -66,7 +70,8 @@ class BubbleDelegateImpl
     }
     return coordinator->ShowBubble(
         toolbar_button_provider, web_contents,
-        bwi->GetFeatures().cookie_controls_controller());
+        content_settings::CookieControlsController::Get(
+            bwi->GetUnownedUserDataHost()));
   }
 
   base::CallbackListSubscription RegisterBubbleClosingCallback(
@@ -83,7 +88,8 @@ class BubbleDelegateImpl
     if (!bwi) {
       return nullptr;
     }
-    return bwi->GetFeatures().cookie_controls_controller();
+    return content_settings::CookieControlsController::Get(
+        bwi->GetUnownedUserDataHost());
   }
 
  private:
@@ -141,9 +147,8 @@ CookieControlsPageActionController* CookieControlsPageActionController::From(
 }
 
 void CookieControlsPageActionController::Init() {
-  // These will get updated naturally.
-  icon_status_.controls_state = CookieControlsState::kHidden;
-  icon_status_.icon_visible = false;
+  // This will get updated naturally.
+  controls_state_ = CookieControlsState::kHidden;
 
   did_activate_subscription_ = tab_->RegisterDidActivate(
       base::BindRepeating(&CookieControlsPageActionController::OnDidActivate,
@@ -215,18 +220,14 @@ void CookieControlsPageActionController::OnWillDiscardContents(
 }
 
 void CookieControlsPageActionController::OnCookieControlsIconStatusChanged(
-    bool icon_visible,
     CookieControlsState controls_state) {
-  icon_status_ = CookieControlsIconStatus{
-      .icon_visible = icon_visible,
-      .controls_state = controls_state,
-  };
+  controls_state_ = controls_state;
 
   UpdateIconVisibility();
 
   page_action_controller_->OverrideImage(
-      kActionShowCookieControls, ui::ImageModel::FromVectorIcon(GetVectorIcon(
-                                     icon_status_.controls_state)));
+      kActionShowCookieControls,
+      ui::ImageModel::FromVectorIcon(GetVectorIcon(controls_state_)));
 
   const std::u16string label = GetLabelForState();
   page_action_controller_->OverrideTooltip(kActionShowCookieControls, label);
@@ -234,7 +235,8 @@ void CookieControlsPageActionController::OnCookieControlsIconStatusChanged(
 }
 
 bool CookieControlsPageActionController::ShouldShowIcon() const {
-  return icon_status_.icon_visible || bubble_delegate_->HasBubble();
+  return controls_state_ != CookieControlsState::kHidden ||
+         bubble_delegate_->HasBubble();
 }
 
 void CookieControlsPageActionController::UpdateIconVisibility() {
@@ -246,8 +248,7 @@ void CookieControlsPageActionController::UpdateIconVisibility() {
 }
 
 std::u16string CookieControlsPageActionController::GetLabelForState() const {
-  return l10n_util::GetStringUTF16(
-      GetLabelForStatus(icon_status_.controls_state));
+  return l10n_util::GetStringUTF16(GetLabelForStatus(controls_state_));
 }
 
 void CookieControlsPageActionController::OnBubbleClosed() {
@@ -258,6 +259,5 @@ void CookieControlsPageActionController::ExecutePageAction(
     ToolbarButtonProvider* toolbar_button_provider) {
   CHECK(ShouldShowIcon());
   bubble_delegate_->ShowBubble(toolbar_button_provider, tab_->GetContents());
-
-  RecordOpenedAction(icon_status_.icon_visible, icon_status_.controls_state);
+  RecordOpenedAction(controls_state_);
 }

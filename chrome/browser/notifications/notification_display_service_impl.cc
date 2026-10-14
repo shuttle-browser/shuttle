@@ -39,6 +39,7 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/notifications/glic_actor_task_notification_handler.h"
 #include "chrome/browser/notifications/muted_notification_handler.h"
 #include "chrome/browser/notifications/screen_capture_notification_blocker.h"
 #endif
@@ -86,6 +87,9 @@ NotificationDisplayServiceImpl::NotificationDisplayServiceImpl(Profile* profile)
 #if !BUILDFLAG(IS_ANDROID)
     AddNotificationHandler(NotificationHandler::Type::ANNOUNCEMENT,
                            std::make_unique<AnnouncementNotificationHandler>());
+    AddNotificationHandler(
+        NotificationHandler::Type::GLIC_ACTOR_TASK,
+        std::make_unique<GlicActorTaskNotificationHandler>());
 
     auto screen_capture_blocker =
         std::make_unique<ScreenCaptureNotificationBlocker>(this);

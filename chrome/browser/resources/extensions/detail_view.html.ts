@@ -39,9 +39,10 @@ this text can be found by Ctrl + F because it isn't hidden. -->
     ${this.showSafetyCheck_ ? html`
       <div id="safetyCheckWarningContainer" class="message-container">
         <cr-icon aria-hidden="true"
-            icon="${this.webuiRoundedIconsEnabled_ ?
-                'extensions-icons:chrome-extension' :
-                'extensions-icons:my_extensions-old'}"
+            icon="${
+                this.webuiRoundedIconsEnabled_ ?
+                    'extensions-icons:chrome-extension' :
+                    'extensions-icons:my_extensions-old'}"
             class="message-icon">
         </cr-icon>
         <div class="message-text">
@@ -188,9 +189,10 @@ this text can be found by Ctrl + F because it isn't hidden. -->
     ${this.showAllowlistWarning_() ? html`
       <div id="allowlist-warning" class="cr-row continuation">
         <cr-icon class="warning-icon"
-            icon="${this.webuiRoundedIconsEnabled_ ?
-                'extensions-icons:android-security-privacy-alert' :
-                'extensions-icons:safebrowsing_warning-old'}">
+            icon="${
+                this.webuiRoundedIconsEnabled_ ?
+                    'extensions-icons:android-security-privacy-alert' :
+                    'extensions-icons:safebrowsing_warning-old'}">
         </cr-icon>
         <span class="cr-secondary-text">
           $i18n{itemAllowlistWarning}

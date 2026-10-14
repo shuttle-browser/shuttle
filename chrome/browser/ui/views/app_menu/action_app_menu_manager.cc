@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/views/app_menu/action_app_menu_manager.h"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -12,79 +13,96 @@
 #include "base/debug/profiler.h"
 #include "base/functional/bind.h"
 #include "base/functional/function_ref.h"
+#include "base/i18n/rtl.h"
 #include "base/memory/raw_ptr.h"
 #include "build/branding_buildflags.h"
+#include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/defaults.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "ui/base/class_property.h"
+#include "ui/base/models/menu_separator_types.h"
+#if BUILDFLAG(IS_CHROMEOS)
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/display/screen.h"
 #endif
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
-#include "chrome/browser/ui/views/app_menu/action_app_menu_zoom_view.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/app_menu/app_menu_zoom_view.h"
 #include "chrome/browser/ui/views/app_menu/recent_tabs_dynamic_menu.h"
+#include "chrome/common/pref_names.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"
 #include "components/vector_icons/vector_icons.h"
+#include "extensions/buildflags/buildflags.h"
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "chrome/browser/extensions/extension_ui_util.h"
+#endif
 #include "ui/actions/action_id.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/models/menu_model.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/menus/simple_menu_model.h"
 
-DEFINE_UI_CLASS_PROPERTY_TYPE(ActionAppMenuManager::DisplayType)
-DEFINE_UI_CLASS_PROPERTY_TYPE(ui::ImageModel*)
-DEFINE_UI_CLASS_PROPERTY_TYPE(base::Uuid*)
-
-DEFINE_UI_CLASS_PROPERTY_KEY(ActionAppMenuManager::DisplayType,
-                             kAppMenuDisplayTypeInternal,
-                             ActionAppMenuManager::DisplayType::kRow)
-
-DEFINE_UI_CLASS_PROPERTY_KEY(ui::ColorId,
-                             kAppMenuContainerColorInternal,
-                             ui::kColorMenuBackground)
-
-DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(std::u16string, kAppMenuTextOverrideInternal)
-DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(ui::ImageModel, kAppMenuIconOverrideInternal)
-DEFINE_OWNED_UI_CLASS_PROPERTY_KEY(base::Uuid,
-                                   kAppMenuSavedTabGroupGuidInternal)
-
-const ui::ClassProperty<ActionAppMenuManager::DisplayType>* const
-    ActionAppMenuManager::kDisplayTypeKey = kAppMenuDisplayTypeInternal;
-
-const ui::ClassProperty<ui::ColorId>* const
-    ActionAppMenuManager::kContainerColorKey = kAppMenuContainerColorInternal;
-
-const ui::ClassProperty<std::u16string*>* const
-    ActionAppMenuManager::kTextOverrideKey = kAppMenuTextOverrideInternal;
-
-const ui::ClassProperty<ui::ImageModel*>* const
-    ActionAppMenuManager::kIconOverrideKey = kAppMenuIconOverrideInternal;
-
 namespace {
+
+#if BUILDFLAG(IS_CHROMEOS)
+bool IsRequestingTabletSite(BrowserWindowInterface* browser) {
+  if (!browser || !browser->GetTabStripModel()) {
+    return false;
+  }
+  content::WebContents* current_tab =
+      browser->GetTabStripModel()->GetActiveWebContents();
+  if (!current_tab) {
+    return false;
+  }
+  content::NavigationEntry* entry =
+      current_tab->GetController().GetLastCommittedEntry();
+  if (!entry) {
+    return false;
+  }
+  return entry->GetIsOverridingUserAgent();
+}
+#endif
+
+bool ArePromotionsEnabled() {
+  PrefService* local_state = g_browser_process->local_state();
+  return local_state && local_state->GetBoolean(prefs::kPromotionsEnabled);
+}
 
 // Builder helper to simplify declaring the action item structure for the app
 // menu.
 class AppMenuBuilder {
  public:
-  using DisplayType = ActionAppMenuManager::DisplayType;
+  using DisplayType = AppMenuActionItem::DisplayType;
 
-  explicit AppMenuBuilder(actions::ActionItem* parent,
-                          std::optional<ui::ColorId> bg_color = std::nullopt,
-                          DisplayType default_display_type = DisplayType::kRow)
+  AppMenuBuilder(actions::ActionItem* parent,
+                 actions::ActionItem* scope,
+                 std::optional<ui::ColorId> bg_color = std::nullopt,
+                 DisplayType default_display_type = DisplayType::kRow)
       : AppMenuBuilder(static_cast<actions::BaseAction*>(parent),
+                       scope,
                        bg_color,
                        default_display_type) {}
-  explicit AppMenuBuilder(actions::BaseAction* parent,
-                          std::optional<ui::ColorId> bg_color = std::nullopt,
-                          DisplayType default_display_type = DisplayType::kRow)
+  AppMenuBuilder(actions::BaseAction* parent,
+                 actions::ActionItem* scope,
+                 std::optional<ui::ColorId> bg_color = std::nullopt,
+                 DisplayType default_display_type = DisplayType::kRow)
       : parent_(parent),
+        scope_(scope),
         bg_color_(bg_color),
         default_display_type_(default_display_type) {}
   AppMenuBuilder(const AppMenuBuilder&) = delete;
@@ -97,8 +115,8 @@ class AppMenuBuilder {
       std::optional<DisplayType> type = std::nullopt,
       std::optional<std::u16string> text_override = std::nullopt,
       std::optional<ui::ImageModel> icon_override = std::nullopt) {
-    auto item = ActionAppMenuManager::CreateIndirectActionItem(
-        id, type.value_or(default_display_type_), bg_color_,
+    auto item = AppMenuActionItem::CreateIndirect(
+        id, scope_, type.value_or(default_display_type_), bg_color_,
         std::move(text_override), std::move(icon_override));
     if (item && parent_) {
       parent_->AddChild(std::move(item));
@@ -106,17 +124,19 @@ class AppMenuBuilder {
     return *this;
   }
 
-  AppMenuBuilder& AddSectionHeader(int string_id) {
-    auto section_item = ActionAppMenuManager::CreateSectionHeaderActionItem(
+  // Adds a header item to the current parent without modifying the parent.
+  AppMenuBuilder& AddHeader(int string_id) {
+    auto header_item = AppMenuActionItem::CreateHeader(
         l10n_util::GetStringUTF16(string_id), bg_color_);
     if (parent_) {
-      parent_ = parent_->AddChild(std::move(section_item));
+      parent_->AddChild(std::move(header_item));
     }
     return *this;
   }
 
-  AppMenuBuilder& AddDivider() {
-    auto item = ActionAppMenuManager::CreateDividerActionItem();
+  AppMenuBuilder& AddDivider(
+      ui::MenuSeparatorType type = ui::NORMAL_SEPARATOR) {
+    auto item = AppMenuActionItem::CreateDivider(type);
     if (parent_) {
       parent_->AddChild(std::move(item));
     }
@@ -127,33 +147,42 @@ class AppMenuBuilder {
   AppMenuBuilder& AddSubmenu(
       actions::ActionId id,
       base::FunctionRef<void(AppMenuBuilder&)> build_submenu,
-      std::optional<DisplayType> type = std::nullopt) {
-    auto item = ActionAppMenuManager::CreateIndirectActionItem(
-        id, type.value_or(default_display_type_), bg_color_);
+      std::optional<DisplayType> type = std::nullopt,
+      std::optional<std::u16string> text_override = std::nullopt) {
+    auto item = AppMenuActionItem::CreateIndirect(
+        id, scope_, type.value_or(default_display_type_), bg_color_,
+        std::move(text_override));
     if (!item || !parent_) {
       return *this;
     }
     auto* item_ptr = parent_->AddChild(std::move(item));
-    AppMenuBuilder sub_builder(item_ptr);
+    AppMenuBuilder sub_builder(item_ptr, scope_);
     build_submenu(sub_builder);
     return *this;
   }
 
-  // Adds a structural section container populated via lambda.
+  // Adds a structural section container, optionally populated via lambda.
   AppMenuBuilder& AddSection(
       DisplayType display_type,
-      base::FunctionRef<void(AppMenuBuilder&)> build_section,
+      std::optional<base::FunctionRef<void(AppMenuBuilder&)>> build_section =
+          std::nullopt,
       std::optional<ui::ColorId> bg_color = std::nullopt) {
-    const std::optional<ui::ColorId> section_bg_color =
-        bg_color.has_value() ? bg_color : bg_color_;
-    auto item = ActionAppMenuManager::CreateSectionActionItem(display_type,
-                                                              section_bg_color);
-    if (!item || !parent_) {
+    if (!parent_) {
       return *this;
     }
+    const std::optional<ui::ColorId> section_bg_color =
+        bg_color.has_value() ? bg_color : bg_color_;
+    auto item = actions::ActionItem::Builder().Build();
+    item->SetProperty(AppMenuActionItem::kDisplayTypeKey, display_type);
+    if (section_bg_color.has_value()) {
+      item->SetProperty(AppMenuActionItem::kContainerColorKey,
+                        section_bg_color.value());
+    }
     auto* item_ptr = parent_->AddChild(std::move(item));
-    AppMenuBuilder section_builder(item_ptr, section_bg_color, display_type);
-    build_section(section_builder);
+    if (build_section.has_value()) {
+      AppMenuBuilder section_builder(item_ptr, scope_, section_bg_color);
+      (*build_section)(section_builder);
+    }
     return *this;
   }
 
@@ -163,13 +192,13 @@ class AppMenuBuilder {
       actions::BaseAction::PopulateChildActions populate_callback,
       std::optional<base::FunctionRef<void(AppMenuBuilder&)>> build_submenu =
           std::nullopt) {
-    auto item = ActionAppMenuManager::CreateIndirectActionItem(
-        id, default_display_type_, bg_color_);
+    auto item = AppMenuActionItem::CreateIndirect(
+        id, scope_, default_display_type_, bg_color_);
     if (!item || !parent_) {
       return *this;
     }
     if (build_submenu.has_value()) {
-      AppMenuBuilder sub_builder(item.get());
+      AppMenuBuilder sub_builder(item.get(), scope_);
       (*build_submenu)(sub_builder);
     }
 
@@ -179,106 +208,23 @@ class AppMenuBuilder {
     return *this;
   }
 
+  // Adds a dynamic section directly into the current parent item via callback.
+  AppMenuBuilder& AddDynamicSection(
+      base::FunctionRef<void(actions::BaseAction*)> build_section) {
+    if (parent_) {
+      build_section(parent_);
+    }
+    return *this;
+  }
+
  private:
   raw_ptr<actions::BaseAction> parent_;
+  raw_ptr<actions::ActionItem> scope_;
   std::optional<ui::ColorId> bg_color_;
   DisplayType default_display_type_ = DisplayType::kRow;
 };
 
 }  // namespace
-
-const ui::ClassProperty<base::Uuid*>* const
-    ActionAppMenuManager::kSavedTabGroupGuidKey =
-        kAppMenuSavedTabGroupGuidInternal;
-
-// Creates the Indirect Action Item which is the basis for the app menu in
-// order to preserve hierarchy in action items
-std::unique_ptr<actions::IndirectActionItem>
-ActionAppMenuManager::CreateIndirectActionItem(
-    actions::ActionId action_id,
-    DisplayType display_type,
-    std::optional<ui::ColorId> container_color,
-    std::optional<std::u16string> text_override,
-    std::optional<ui::ImageModel> icon_override,
-    std::optional<base::Uuid> saved_tab_group_guid) {
-  actions::ActionItem* action =
-      actions::ActionManager::Get().FindAction(action_id);
-  if (!action) {
-    return nullptr;
-  }
-
-  action->SetProperty(kDisplayTypeKey, display_type);
-
-  if (container_color.has_value()) {
-    action->SetProperty(kContainerColorKey, container_color.value());
-  }
-
-  auto item = std::make_unique<actions::IndirectActionItem>(action);
-
-  if (text_override.has_value()) {
-    item->SetProperty(kTextOverrideKey,
-                      std::make_unique<std::u16string>(text_override.value()));
-  }
-
-  if (icon_override.has_value()) {
-    item->SetProperty(kIconOverrideKey,
-                      std::make_unique<ui::ImageModel>(icon_override.value()));
-  }
-
-  if (saved_tab_group_guid.has_value()) {
-    item->SetProperty(kSavedTabGroupGuidKey, std::make_unique<base::Uuid>(
-                                                 saved_tab_group_guid.value()));
-  }
-
-  return item;
-}
-
-// Creates the Action Item for structural sections in the app menu (e.g. block,
-// footer).
-std::unique_ptr<actions::ActionItem>
-ActionAppMenuManager::CreateSectionActionItem(
-    DisplayType display_type,
-    std::optional<ui::ColorId> container_color) {
-  auto section_item = actions::ActionItem::Builder().Build();
-
-  section_item->SetProperty(kDisplayTypeKey, display_type);
-
-  if (container_color.has_value()) {
-    section_item->SetProperty(kContainerColorKey, container_color.value());
-  }
-
-  return section_item;
-}
-
-// Creates the Action Item for the headers of each section in the app menu
-std::unique_ptr<actions::ActionItem>
-ActionAppMenuManager::CreateSectionHeaderActionItem(
-    std::u16string text,
-    std::optional<ui::ColorId> container_color) {
-  auto section_item = actions::ActionItem::Builder().SetText(text).Build();
-
-  section_item->SetProperty(kDisplayTypeKey, DisplayType::kSection);
-
-  if (container_color.has_value()) {
-    section_item->SetProperty(kContainerColorKey, container_color.value());
-  }
-
-  return section_item;
-}
-
-std::unique_ptr<actions::ActionItem>
-ActionAppMenuManager::CreateDividerActionItem() {
-  auto item = actions::ActionItem::Builder().Build();
-  item->SetProperty(kDisplayTypeKey, DisplayType::kDivider);
-  return item;
-}
-
-actions::ActionItem* ActionAppMenuManager::GetAppMenuRoot(
-    BrowserWindowInterface* browser_window_interface) {
-  return actions::ActionManager::Get().FindAction(
-      kActionAppMenuRoot,
-      BrowserActions::From(browser_window_interface)->root_action_item());
-}
 
 ActionAppMenuManager::ActionAppMenuManager(
     BrowserWindowInterface* browser_window_interface)
@@ -289,7 +235,9 @@ ActionAppMenuManager::ActionAppMenuManager(
 ActionAppMenuManager::~ActionAppMenuManager() = default;
 
 actions::ActionItem* ActionAppMenuManager::GetAppMenuRoot() const {
-  return GetAppMenuRoot(browser_window_interface_);
+  return actions::ActionManager::Get().FindAction(
+      kActionAppMenuRoot,
+      BrowserActions::From(browser_window_interface_)->root_action_item());
 }
 
 void ActionAppMenuManager::CreateMenuHierarchy() {
@@ -298,15 +246,26 @@ void ActionAppMenuManager::CreateMenuHierarchy() {
     return;
   }
 
+  AddSearchBarAction(root);
   AddBlockHeaderActions(root);
   AddYourChromeActions(root);
   AddToolsAndActionsActions(root);
   AddFooterActions(root);
 }
 
+void ActionAppMenuManager::AddSearchBarAction(actions::ActionItem* root) {
+  if (base::FeatureList::IsEnabled(features::kChroMenuSearch)) {
+    AppMenuBuilder(
+        root,
+        BrowserActions::From(browser_window_interface_)->root_action_item())
+        .AddSection(DisplayType::kSearch);
+  }
+}
+
 void ActionAppMenuManager::AddBlockHeaderActions(actions::ActionItem* root) {
-  AppMenuBuilder(root).AddSection(
-      DisplayType::kBlock, [](AppMenuBuilder& section) {
+  AppMenuBuilder(
+      root, BrowserActions::From(browser_window_interface_)->root_action_item())
+      .AddSection(DisplayType::kBlock, [](AppMenuBuilder& section) {
         section
             .AddAction(
                 kActionNewTab, DisplayType::kBlock,
@@ -321,100 +280,178 @@ void ActionAppMenuManager::AddBlockHeaderActions(actions::ActionItem* root) {
 }
 
 void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
-  auto builder = AppMenuBuilder(root, kColorAppMenuYourChromeBackground);
-  builder.AddSectionHeader(IDS_APP_MENU_YOUR_CHROME_HEADER);
+  AppMenuBuilder(
+      root, BrowserActions::From(browser_window_interface_)->root_action_item(),
+      kColorAppMenuYourChromeBackground)
+      .AddSection(DisplayType::kSection, [this](AppMenuBuilder& section) {
+        section.AddHeader(IDS_APP_MENU_YOUR_CHROME_HEADER);
 
-  Profile* profile = browser_window_interface_->GetProfile();
+        Profile* profile = browser_window_interface_->GetProfile();
 
-  if (!profile->IsOffTheRecord()) {
-    builder.AddDynamicSubmenu(
-        kActionRecentTabsSubmenu,
-        base::BindRepeating(&RecentTabsDynamicMenu::BuildRecentTabsActions,
-                            recent_tabs_menu_->GetWeakPtr()));
-  }
+        if (!profile->IsOffTheRecord()) {
+          section.AddDynamicSubmenu(
+              kActionRecentTabsSubmenu,
+              base::BindRepeating(
+                  &RecentTabsDynamicMenu::BuildRecentTabsActions,
+                  recent_tabs_menu_->GetWeakPtr()));
+        }
 
-  builder.AddAction(kActionShowDownloads);
+        section.AddAction(kActionShowDownloadsPage);
 
-  builder.AddSubmenu(kActionExtensionsSubmenu, [](AppMenuBuilder& sub) {
-    sub.AddAction(kActionExtensionsSubmenuManageExtensions)
-        .AddAction(kActionExtensionsSubmenuVisitChromeWebStore);
-  });
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+        if (ArePromotionsEnabled() &&
+            base::FeatureList::IsEnabled(
+                features::kExtensionsCollapseMainMenu) &&
+            !extensions::ui_util::HasManageableExtensions(profile)) {
+          section.AddAction(kActionFindExtensions);
+        } else {
+          section.AddSubmenu(kActionExtensionsSubmenu, [](AppMenuBuilder& sub) {
+            sub.AddAction(kActionExtensionsSubmenuManageExtensions)
+                .AddAction(kActionExtensionsSubmenuVisitChromeWebStore);
+          });
+        }
+#endif
 
-  builder.AddAction(kActionClearBrowsingData);
+        section.AddAction(kActionClearBrowsingData);
+      });
 }
 
 void ActionAppMenuManager::AddToolsAndActionsActions(
     actions::ActionItem* root) {
-  AppMenuBuilder builder(root, kColorAppMenuToolsAndActionsBackground);
-  builder.AddSectionHeader(IDS_APP_MENU_TOOLS_AND_ACTIONS_HEADER)
-      .AddSubmenu(
-          kActionZoomSubmenu,
-          [](AppMenuBuilder& sub) {
-            sub.AddAction(kActionZoomMinus)
-                .AddAction(kActionZoomPlus)
-                .AddAction(kActionFullscreen);
-          },
-          DisplayType::kCustom)
-      .AddAction(kActionPrint);
+  AppMenuBuilder(
+      root, BrowserActions::From(browser_window_interface_)->root_action_item(),
+      kColorAppMenuToolsAndActionsBackground)
+      .AddSection(DisplayType::kSection, [this](AppMenuBuilder& section) {
+        section.AddHeader(IDS_APP_MENU_TOOLS_AND_ACTIONS_HEADER)
+            .AddSubmenu(
+                kActionZoomSubmenu,
+                [](AppMenuBuilder& sub) {
+                  sub.AddAction(kActionZoomMinus)
+                      .AddAction(kActionZoomPlus)
+                      .AddAction(kActionFullscreen);
+                },
+                DisplayType::kCustom)
+            .AddDivider(ui::MenuSeparatorType::SPACING_SEPARATOR)
+            .AddAction(kActionPrint);
 
-  Profile* profile = browser_window_interface_->GetProfile();
+        section.AddSubmenu(kActionFindAndEditSubmenu, [](AppMenuBuilder& sub) {
+          sub.AddAction(kActionFind)
+              .AddDivider()
+              .AddAction(actions::kActionCut)
+              .AddAction(actions::kActionCopy)
+              .AddAction(actions::kActionPaste);
+        });
 
-  builder.AddSubmenu(kActionFindAndEditSubmenu, [](AppMenuBuilder& sub) {
-    sub.AddAction(kActionFind)
-        .AddDivider()
-        .AddAction(actions::kActionCut)
-        .AddAction(actions::kActionCopy)
-        .AddAction(actions::kActionPaste);
-  });
+        section.AddSubmenu(
+            kActionSaveAndShareSubmenu,
+            [](AppMenuBuilder& sub) {
+              sub.AddHeader(IDS_SAVE_AND_SHARE_MENU_SAVE)
+                  .AddAction(kActionSavePage)
+                  .AddDivider()
+                  .AddHeader(IDS_SAVE_AND_SHARE_MENU_SHARE)
+                  .AddAction(kActionCopyUrl);
+            },
+            /*type=*/std::nullopt,
+            /*text_override=*/
+            l10n_util::GetStringUTF16(IDS_SAVE_AND_SHARE_MENU));
 
-  builder.AddSubmenu(
-      kActionSaveAndShareSubmenu, [](AppMenuBuilder& sub) {
-        sub.AddAction(kActionSavePage).AddDivider().AddAction(kActionCopyUrl);
-      });
-
-  builder.AddSubmenu(kActionDeveloperSubmenu, [profile](AppMenuBuilder& sub) {
-    sub.AddAction(kActionNameWindow)
-        .AddAction(kActionToggleVerticalTabs);
-
-    sub.AddDivider()
-        .AddAction(kActionPerformance)
-        .AddAction(kActionTaskManagerAppMenu)
-        .AddDivider()
-        .AddAction(kActionDevTools);
-
-    if (base::debug::IsProfilingSupported()) {
-      sub.AddDivider().AddAction(kActionProfilingEnabled);
-    }
-
-    if (IsChromeLabsEnabled()) {
-      UpdateChromeLabsNewBadgePrefs(profile);
-      if (ShouldShowChromeLabsUI(profile) &&
-          profile->GetPrefs()->GetBoolean(
-              chrome_labs_prefs::kBrowserLabsEnabledEnterprisePolicy)) {
-        sub.AddDivider().AddAction(kActionShowChromeLabs);
-      }
-    }
-  });
-}
-
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-void AddHelpSubmenuActions(AppMenuBuilder& sub, BrowserWindowInterface* bwi) {
-  sub.AddAction(kActionAbout);
-  sub.AddAction(kActionHelpPageViaMenu);
-}
+#if BUILDFLAG(IS_CHROMEOS)
+        if (display::Screen::Get()->InTabletMode()) {
+          section.AddAction(
+              kActionToggleRequestTabletSite, /*type=*/std::nullopt,
+              /*text_override=*/
+              l10n_util::GetStringUTF16(IDS_TOGGLE_REQUEST_TABLET_SITE),
+              /*icon_override=*/
+              ui::ImageModel::FromVectorIcon(
+                  IsRequestingTabletSite(browser_window_interface_.get())
+                      ? (features::IsRoundedIconsEnabled()
+                             ? kMobileCheckIcon
+                             : kRequestMobileSiteCheckedOldIcon)
+                      : (features::IsRoundedIconsEnabled()
+                             ? kMobileIcon
+                             : kRequestMobileSiteUncheckedOldIcon),
+                  ui::kColorMenuIcon, ui::SimpleMenuModel::kDefaultIconSize));
+        }
 #endif
 
+        section.AddSubmenu(kActionDeveloperSubmenu, [this](
+                                                        AppMenuBuilder& sub) {
+          sub.AddAction(kActionNameWindow);
+
+          if (auto* controller = tabs::VerticalTabStripStateController::From(
+                  browser_window_interface_.get())) {
+            if (controller->ShouldDisplayVerticalTabs()) {
+              sub.AddAction(
+                  kActionToggleVerticalTabs, /*type=*/std::nullopt,
+                  /*text_override=*/
+                  l10n_util::GetStringUTF16(IDS_SWITCH_TO_HORIZONTAL_TAB),
+                  /*icon_override=*/
+                  ui::ImageModel::FromVectorIcon(
+                      features::IsRoundedIconsEnabled() ? kToolbarIcon
+                                                        : kToolbarOldIcon,
+                      ui::kColorMenuIcon,
+                      ui::SimpleMenuModel::kDefaultIconSize));
+            } else {
+              sub.AddAction(
+                  kActionToggleVerticalTabs, /*type=*/std::nullopt,
+                  /*text_override=*/
+                  l10n_util::GetStringUTF16(IDS_SWITCH_TO_VERTICAL_TAB),
+                  /*icon_override=*/
+                  ui::ImageModel::FromVectorIcon(
+                      base::i18n::IsRTL() ? (features::IsRoundedIconsEnabled()
+                                                 ? kDockToLeftIcon
+                                                 : kDockToRightOldIcon)
+                                          : (features::IsRoundedIconsEnabled()
+                                                 ? kDockToRightIcon
+                                                 : kDockToLeftOldIcon),
+                      ui::kColorMenuIcon,
+                      ui::SimpleMenuModel::kDefaultIconSize));
+            }
+          }
+
+          sub.AddDivider()
+              .AddAction(kActionPerformance)
+              .AddAction(kActionTaskManagerAppMenu);
+
+#if BUILDFLAG(IS_CHROMEOS)
+          sub.AddAction(kActionTakeScreenshot);
+#endif
+
+          sub.AddDivider().AddAction(kActionDevTools);
+
+          if (base::debug::IsProfilingSupported()) {
+            sub.AddDivider().AddAction(kActionProfilingEnabled);
+          }
+
+          Profile* profile = browser_window_interface_->GetProfile();
+          if (IsChromeLabsEnabled()) {
+            UpdateChromeLabsNewBadgePrefs(profile);
+            if (ShouldShowChromeLabsUI(profile) &&
+                profile->GetPrefs()->GetBoolean(
+                    chrome_labs_prefs::kBrowserLabsEnabledEnterprisePolicy)) {
+              sub.AddDivider().AddAction(kActionShowChromeLabs);
+            }
+          }
+        });
+      });
+}
+
 void ActionAppMenuManager::AddFooterActions(actions::ActionItem* root) {
-  AppMenuBuilder(root).AddSection(
-      DisplayType::kFooter,
-      [browser_window_interface =
-           browser_window_interface_.get()](AppMenuBuilder& section) {
+  AppMenuBuilder(
+      root, BrowserActions::From(browser_window_interface_)->root_action_item())
+      .AddSection(DisplayType::kFooter, [](AppMenuBuilder& section) {
         section.AddAction(kActionOptions);
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-        section.AddSubmenu(kActionHelpSubmenu, [browser_window_interface](
-                                                   AppMenuBuilder& sub) {
-          AddHelpSubmenuActions(sub, browser_window_interface);
+        section.AddSubmenu(kActionHelpSubmenu, [](AppMenuBuilder& sub) {
+          sub.AddAction(kActionAbout);
+#if BUILDFLAG(IS_CHROMEOS) && defined(OFFICIAL_BUILD)
+          sub.AddAction(
+              kActionHelpPageViaMenu, /*type=*/std::nullopt,
+              /*text_override=*/l10n_util::GetStringUTF16(IDS_GET_HELP));
+#else
+          sub.AddAction(kActionHelpPageViaMenu);
+#endif
         });
 #else
         section.AddAction(kActionAbout);

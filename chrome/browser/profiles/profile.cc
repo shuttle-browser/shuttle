@@ -53,7 +53,6 @@
 #include "ash/constants/ash_switches.h"
 #include "base/command_line.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_types.h"
-#include "chromeos/constants/chromeos_features.h"
 #include "chromeos/constants/pref_names.h"
 #endif
 

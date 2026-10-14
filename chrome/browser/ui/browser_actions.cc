@@ -29,12 +29,14 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
-#include "chrome/browser/ui/views/app_menu/action_app_menu_manager.h"
+#include "chrome/browser/ui/page_action/page_action_icon_type.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/common/webui_url_constants.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/page_zoom.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/interaction/element_tracker.h"
+#include "ui/base/window_open_disposition.h"
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/global_keyboard_shortcuts_mac.h"
 #include "chrome/browser/ui/browser_commands_mac.h"
@@ -56,14 +58,12 @@
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/actions/chrome_actions.h"
-#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_action_prefs_listener.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_select_file_dialog_controller.h"
 #include "chrome/browser/ui/browser_window.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/bubble_anchor_util.h"
@@ -74,10 +74,9 @@
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
 #include "chrome/browser/ui/search/omnibox_utils.h"
 #include "chrome/browser/ui/singleton_tabs.h"
-#include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
-#include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -222,13 +221,9 @@ void BrowserActions::InitializeBrowserActions() {
       actions::ActionItem::Builder().CopyAddressTo(&root_action_item_).Build());
 
   InitializePageActionIconActions();
-
   InitializeChromeMenuActions();
-
   InitializeToolbarAndMiscActions();
-
   InitializeNavigationActions();
-
   InitializeSubmenuActions();
 
   AddListeners();
@@ -407,7 +402,7 @@ void BrowserActions::InitializeChromeMenuActions() {
             base::BindRepeating(
                 [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                    actions::ActionInvocationContext context) {
-                  auto* controller = OrganizerPanelStateController::From(bwi);
+                  auto* controller = OrganizerPanelController::From(bwi);
                   if (controller) {
                     controller->SetOrganizerVisible(
                         !controller->IsOrganizerPanelVisible());
@@ -483,6 +478,7 @@ void BrowserActions::InitializeChromeMenuActions() {
           IDS_CLEAR_BROWSING_DATA,
           features::IsRoundedIconsEnabled() ? kDeleteIcon
                                             : kTrashCanRefreshOldIcon)
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_CLEAR_BROWSING_DATA))
           .Build());
 
   if (chrome::CanOpenTaskManager()) {
@@ -739,10 +735,6 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
 #if BUILDFLAG(IS_CHROMEOS)
-                // ChromeOS does not use DownloadToolbarUIController (downloads
-                // are managed via the Ash shelf/holding space), so directly
-                // open the downloads WebUI page instead of showing the toolbar
-                // bubble.
                 chrome::ShowDownloads(webui::GetBrowserForOpeningWebUi(bwi));
 #else
                 if (auto* controller = DownloadToolbarUIController::From(bwi)) {
@@ -2199,6 +2191,27 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                   : vector_icons::kHistoryChromeRefreshOldIcon,
               ui::kColorIcon))
           .SetAccelerator(GetAcceleratorForCommandId(IDC_SHOW_HISTORY))
+          .Build());
+
+  root_action_item_->AddChild(
+      actions::ActionItem::Builder(
+          base::BindRepeating(
+              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
+                 actions::ActionInvocationContext context) {
+                chrome::ShowDownloads(webui::GetBrowserForOpeningWebUi(bwi));
+              },
+              bwi))
+          .SetActionId(kActionShowDownloadsPage)
+          .SetText(BrowserActions::GetCleanTitleAndTooltipText(
+              l10n_util::GetStringUTF16(IDS_SHOW_DOWNLOADS)))
+          .SetTooltipText(BrowserActions::GetCleanTitleAndTooltipText(
+              l10n_util::GetStringUTF16(IDS_SHOW_DOWNLOADS)))
+          .SetImage(ui::ImageModel::FromVectorIcon(
+              features::IsRoundedIconsEnabled()
+                  ? kDownloadIcon
+                  : kDownloadToolbarButtonChromeRefreshOldIcon,
+              ui::kColorIcon))
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_SHOW_DOWNLOADS))
           .Build());
 
   root_action_item_->AddChild(

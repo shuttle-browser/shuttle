@@ -25,8 +25,7 @@
 #include "sql/meta_table.h"
 #include "sql/statement.h"
 #include "sql/transaction.h"
-#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
-#include "ui/base/page_transition_types.h"
+#include "url/gurl.h"
 
 #if BUILDFLAG(IS_APPLE)
 #include "base/apple/backup_util.h"
@@ -160,7 +159,7 @@ sql::InitStatus HistoryDatabase::Init(const base::FilePath& history_name) {
   if (!CreateURLTable(false) || !InitVisitTable() ||
       !InitKeywordSearchTermsTable() || !InitDownloadTable() ||
       !InitSegmentTables() || !InitVisitAnnotationsTables() ||
-      !CreateVisitedLinkTable()) {
+      !CreateVisitedLinkTable() || !InitJourneysTables()) {
     return LogInitFailure(InitStep::CREATE_TABLES);
   }
   CreateMainURLIndex();
@@ -445,6 +444,13 @@ bool HistoryDatabase::RecreateAllTablesButURL() {
     return false;
   if (!InitVisitAnnotationsTables())
     return false;
+
+  if (!DropJourneysTables()) {
+    return false;
+  }
+  if (!InitJourneysTables()) {
+    return false;
+  }
 
   return true;
 }

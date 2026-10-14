@@ -61,6 +61,10 @@
 #include "chrome/common/chrome_features.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+#include "chrome/browser/lifetime/scheduled_restart_manager.h"
+#include "chrome/browser/ui/views/scheduled_restart/scheduled_restart_bubble_controller.h"
+#endif
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/startup/startup_launch_manager.h"
 #endif
@@ -153,6 +157,11 @@ void GlobalFeatures::PostBrowserProcessInit() {
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   if (base::FeatureList::IsEnabled(features::kScheduledRestart)) {
     scheduled_restart_manager_ = CreateScheduledRestartManager();
+    scheduled_restart_bubble_controller_ =
+        GetUserDataFactory()
+            .CreateInstance<
+                scheduled_restart::ScheduledRestartBubbleController>(
+                *g_browser_process);
   }
 #endif
 
@@ -227,6 +236,7 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  scheduled_restart_bubble_controller_.reset();
   scheduled_restart_manager_.reset();
 #endif
 

@@ -347,7 +347,7 @@ linux_memory_builder(
                     "--disable-features=WebUIOmniboxPopup,WebUIOmniboxAimPopup",
                 ],
                 swarming = targets.swarming(
-                    shards = 45,
+                    shards = 60,
                 ),
             ),
             "crashpad_tests": targets.remove(
@@ -1549,11 +1549,7 @@ ci.builder(
             target_platform = builder_config.target_platform.IOS,
         ),
         clusterfuzz_archive = builder_config.clusterfuzz_archive(
-            # TODO(https://crbug.com/527836546): Flip `use_archive_path` to True
-            # then remove `archive_name_prefix` and `archive_subdir`.
-            archive_name_prefix = "ios-asan",
             archive_path = "mac-release-ios-asan/ios-asan-mac-release",
-            archive_subdir = "ios-asan",
             gs_acl = "public-read",
             gs_bucket = "chromium-browser-asan",
         ),

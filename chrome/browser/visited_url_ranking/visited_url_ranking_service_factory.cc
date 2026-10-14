@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "base/containers/flat_set.h"
+#include "base/feature_list.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/history/history_service_factory.h"
@@ -172,6 +173,10 @@ VisitedURLRankingServiceFactory::BuildServiceInstanceForBrowserContext(
 
 bool VisitedURLRankingServiceFactory::ServiceIsCreatedWithBrowserContext()
     const {
+  if (base::FeatureList::IsEnabled(::features::kLazyKeyedServiceInstantiation) &&
+      ::features::kLazyKeyedServiceInstantiationVisitedUrlRanking.Get()) {
+    return false;
+  }
   return true;
 }
 

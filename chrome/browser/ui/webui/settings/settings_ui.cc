@@ -368,11 +368,13 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
 
   html_source->AddString(
       "settingsRefresh2026",
-      base::FeatureList::IsEnabled(features::kSettingsRefresh2026)
-          ? "settings-refresh-2026"
-          : "");
+      features::IsSettingsRefresh2026Enabled() ? "settings-refresh-2026" : "");
 
   // @memory is not part of this build.
+
+  html_source->AddBoolean("isAtMemoryDoubleCtrlEnabled",
+                          base::FeatureList::IsEnabled(
+                              autofill::features::kAutofillAtMemoryDoubleCtrl));
 
   html_source->AddString(
       "webuiRefresh2026",

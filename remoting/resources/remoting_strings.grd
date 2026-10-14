@@ -22,7 +22,7 @@
     <!-- Pseudolocales -->
 
     <output filename="remoting/resources/_locales/en/messages.json" lang="en" type="chrome_messages_json"/>
-    <if expr="is_chromeos">
+    <if expr="is_linux or is_chromeos">
       <!-- lang="en-US" will create an empty json file. -->
       <output filename="remoting/resources/_locales/en_US/messages.json" lang="en" type="chrome_messages_json"/>
     </if>

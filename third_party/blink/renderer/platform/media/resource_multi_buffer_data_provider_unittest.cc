@@ -59,13 +59,19 @@ const int kHttpPartialContent = 206;
 
 enum NetworkState { kNone, kLoaded, kLoading };
 
-// Predicate that checks the Accept-Encoding request header.
-static bool CorrectAcceptEncoding(const WebURLRequest& request) {
+static bool HasIdentityAcceptEncoding(const WebURLRequest& request) {
   std::string value = request
                           .HttpHeaderField(WebString::FromUtf8(
                               net::HttpRequestHeaders::kAcceptEncoding))
                           .Utf8();
-  return (value.contains("identity;q=1")) && (value.contains("*;q=0"));
+  return value.contains("identity;q=1") && value.contains("*;q=0");
+}
+
+static bool HasNoAcceptEncoding(const WebURLRequest& request) {
+  return request
+      .HttpHeaderField(
+          WebString::FromUtf8(net::HttpRequestHeaders::kAcceptEncoding))
+      .IsNull();
 }
 
 class ResourceMultiBufferDataProviderTest : public testing::Test {
@@ -212,8 +218,15 @@ class ResourceMultiBufferDataProviderTest : public testing::Test {
   std::unique_ptr<WebAssociatedURLLoader> CreateUrlLoader(
       const WebAssociatedURLLoaderOptions& options) {
     auto url_loader = std::make_unique<NiceMock<MockWebAssociatedURLLoader>>();
-    EXPECT_CALL(*url_loader, LoadAsynchronously(Truly(CorrectAcceptEncoding),
-                                                loader_.get()));
+    EXPECT_CALL(
+        *url_loader,
+        LoadAsynchronously(
+            Truly([this](const WebURLRequest& request) {
+              return expect_identity_accept_encoding_
+                         ? HasIdentityAcceptEncoding(request)
+                         : HasNoAcceptEncoding(request);
+            }),
+            loader_.get()));
     return url_loader;
   }
 
@@ -228,10 +241,23 @@ class ResourceMultiBufferDataProviderTest : public testing::Test {
   // The loader is owned by the UrlData above.
   raw_ptr<ResourceMultiBufferDataProvider> loader_;
 
+  bool expect_identity_accept_encoding_ = false;
+
   std::array<uint8_t, kDataSize> data_;
 };
 
 TEST_F(ResourceMultiBufferDataProviderTest, StartStop) {
+  Initialize(kHttpUrl, 0);
+  Start();
+  StopWhenLoad();
+}
+
+TEST_F(ResourceMultiBufferDataProviderTest,
+       KillSwitchRestoresAcceptEncodingInjection) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(kDeferMediaAcceptEncodingInjection);
+  expect_identity_accept_encoding_ = true;
+
   Initialize(kHttpUrl, 0);
   Start();
   StopWhenLoad();
@@ -353,6 +379,20 @@ TEST_F(ResourceMultiBufferDataProviderTest, InvalidPartialResponse) {
   loader_->DidReceiveResponse(response);
 }
 
+TEST_F(ResourceMultiBufferDataProviderTest, OpaqueRangeNotSatisfiableFails) {
+  Initialize(kHttpUrl, 0);
+  Start();
+
+  EXPECT_CALL(*this, RedirectCallback(scoped_refptr<UrlData>(nullptr)));
+
+  WebURLResponse response(url_);
+  response.SetHttpStatusCode(416);
+  response.SetType(network::mojom::FetchResponseType::kOpaque);
+  loader_->DidReceiveResponse(response);
+  EXPECT_TRUE(url_data_->is_cors_cross_origin());
+  EXPECT_TRUE(url_data_->multibuffer()->map().empty());
+}
+
 TEST_F(ResourceMultiBufferDataProviderTest, TestRedirects) {
   // Test redirect.
   Initialize(kHttpUrl, 0);
@@ -462,6 +502,96 @@ TEST_F(ResourceMultiBufferDataProviderTest, AllowGzip) {
 
   Start();
   StopWhenLoad();
+}
+
+TEST_F(ResourceMultiBufferDataProviderTest,
+       PruneEmptiesUrlDataDuringDidReceiveData) {
+  Initialize(kHttpUrl, 0);
+  url_data_->Use();
+  Start();
+  PartialResponse(0, 100, 1024);
+
+  // Drop the test's reference so `url_index_` holds the sole reference to
+  // `UrlData`. Since there is no active `MultiBufferReader`, `GlobalLRU` max
+  // size is 0 and blocks are unpinned. Receiving a full block will cause
+  // `OnDataProviderEvent` to prune all blocks and invoke `UrlData::OnEmpty()`,
+  // which must not destroy `UrlData` / `MultiBuffer` while still on the stack.
+  ResourceMultiBufferDataProvider* loader = loader_.ExtractAsDangling();
+  url_data_ = nullptr;
+
+  std::string data_str(1, 'a');
+  loader->DidReceiveData(data_str);
+}
+
+TEST_F(ResourceMultiBufferDataProviderTest,
+       RedirectToSameUrlReplacesUrlDataInUrlIndex) {
+  Initialize(kHttpUrl, 0);
+  Start();
+  PartialResponse(0, 100, 1024);
+
+  // Drop the test's reference so `url_index_` holds the sole reference to
+  // `UrlData`.
+  ResourceMultiBufferDataProvider* loader = loader_.ExtractAsDangling();
+  url_data_ = nullptr;
+
+  // Redirect to the same URL with a no-cache response so `url_data_->Valid()`
+  // becomes false. In `DidReceiveResponse()`, `GetByUrl()` creates a new
+  // `UrlData` for the same key and `TryInsert()` replaces the old `UrlData` in
+  // `url_index_`, which must not destroy `url_data_` and `loader` before
+  // `loader` is migrated to the new `UrlData`.
+  WebURLResponse redirect_response(url_);
+  redirect_response.SetHttpHeaderField(WebString::FromUtf8("Cache-Control"),
+                                       WebString::FromUtf8("no-cache"));
+  EXPECT_CALL(*this, RedirectCallback(_))
+      .WillOnce(Invoke(this, &ResourceMultiBufferDataProviderTest::SetUrlData));
+  ASSERT_TRUE(loader->WillFollowRedirect(WebURL(url_), redirect_response));
+
+  WebURLResponse response(url_);
+  response.SetHttpHeaderField(WebString::FromUtf8("Content-Range"),
+                              WebString::FromUtf8("bytes 0-100/1024"));
+  response.SetExpectedContentLength(101);
+  response.SetHttpHeaderField(WebString::FromUtf8("Accept-Ranges"),
+                              WebString::FromUtf8("bytes"));
+  response.SetHttpStatusCode(kHttpPartialContent);
+  loader->DidReceiveResponse(response);
+  EXPECT_TRUE(url_data_);
+}
+
+TEST_F(ResourceMultiBufferDataProviderTest, DestructedUrlIndexStartViaReader) {
+  url_index_ = std::make_unique<UrlIndex>(
+      &fetch_context_, task_environment_.GetMainThreadTaskRunner());
+  url_ = KURL(kHttpUrl);
+  url_data_ =
+      url_index_->GetByUrl(url_, UrlData::CORS_UNSPECIFIED, UrlData::kNormal);
+
+  std::unique_ptr<MultiBufferReader> reader;
+  url_data_->OnRedirect(blink::BindOnce(
+      [](std::unique_ptr<MultiBufferReader>* reader_ptr,
+         const scoped_refptr<UrlData>& destination) {
+        EXPECT_FALSE(destination);
+        reader_ptr->reset();
+      },
+      Unretained(&reader)));
+
+  url_index_.reset();
+
+  // Creating a reader and calling SetPreload() invokes
+  // MultiBufferReader::UpdateInternalState() -> MultiBuffer::AddReader() ->
+  // ResourceMultiBuffer::CreateWriter() ->
+  // ResourceMultiBufferDataProvider::Start(). When `url_index_` is already
+  // destroyed, `Start()` must not synchronously run `url_data_->Fail()` and
+  // destroy `reader` while `AddReader()` and `UpdateInternalState()` are still
+  // on the stack.
+  reader = std::make_unique<MultiBufferReader>(
+      url_data_->multibuffer(), 0, 1024 * 1024,
+      /*is_client_audio_element=*/false, base::DoNothing(),
+      task_environment_.GetMainThreadTaskRunner());
+  reader->SetPinRange(0, 1024 * 1024);
+  reader->SetPreload(kDataSize, kDataSize);
+  ASSERT_TRUE(reader);
+
+  task_environment_.FastForwardUntilNoTasksRemain();
+  EXPECT_FALSE(reader);
 }
 
 }  // namespace blink

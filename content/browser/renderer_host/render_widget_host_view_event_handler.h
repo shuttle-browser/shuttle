@@ -11,6 +11,7 @@
 #include "base/containers/flat_set.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "build/build_config.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/browser/renderer_host/input/mouse_wheel_phase_handler.h"
@@ -122,6 +123,8 @@ class CONTENT_EXPORT RenderWidgetHostViewEventHandler
   // Begin tracking a host window, such as when RenderWidgetHostViewBase is
   // fullscreen.
   void TrackHost(aura::Window* reference_window);
+
+  void ResetHost();
 
   MouseWheelPhaseHandler& mouse_wheel_phase_handler() {
     return mouse_wheel_phase_handler_;
@@ -306,7 +309,7 @@ class CONTENT_EXPORT RenderWidgetHostViewEventHandler
   ui::MotionEventAura pointer_state_;
 
   // The following are not owned. They should outlive |this|
-  const raw_ptr<RenderWidgetHostImpl> host_;
+  raw_ptr<RenderWidgetHostImpl> host_;
   // Should create |this| and own it.
   const raw_ptr<RenderWidgetHostViewBase> host_view_;
   // Optional, used to redirect events to a popup and associated handler.
@@ -318,6 +321,9 @@ class CONTENT_EXPORT RenderWidgetHostViewEventHandler
 
   // Used to identify pointing device that can fire fling events.
   base::flat_set<int> fling_capable_device_ids_;
+
+  base::WeakPtrFactory<RenderWidgetHostViewEventHandler> weak_ptr_factory_{
+      this};
 };
 
 }  // namespace content

@@ -30,6 +30,7 @@
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
+#include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_image.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -179,6 +180,11 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
   bool IsInFocusedGroup() const override {
     const std::optional<tab_groups::TabGroupId> group = tab_->group();
     return group.has_value() && tab_->controller()->GetFocusedGroup() == group;
+  }
+  bool IsGroupCollapsed() const override {
+    const std::optional<tab_groups::TabGroupId> group = tab_->group();
+    return group.has_value() &&
+           tab_->controller()->IsGroupCollapsed(group.value());
   }
   bool IsSplit() const override { return tab_->split().has_value(); }
   std::optional<split_tabs::SplitTabId> GetSplit() const override {

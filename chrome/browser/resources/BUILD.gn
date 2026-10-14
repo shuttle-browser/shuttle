@@ -399,6 +399,7 @@ repack("dev_ui_paks") {
 
   if (is_android) {
     sources += [
+      "$root_gen_dir/chrome/chrome_finds_internals_resources.pak",
       "$root_gen_dir/chrome/feed_internals_resources.pak",
       "$root_gen_dir/chrome/notifications_internals_resources.pak",
       "$root_gen_dir/chrome/webapks_resources.pak",

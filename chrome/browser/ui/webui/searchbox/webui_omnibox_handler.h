@@ -20,8 +20,6 @@
 #include "components/prefs/pref_change_registrar.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "mojo/public/cpp/bindings/receiver.h"
-#include "mojo/public/cpp/bindings/remote.h"
 #include "ui/base/window_open_disposition.h"
 
 class MetricsReporter;
@@ -86,6 +84,8 @@ class WebuiOmniboxHandler : public SearchboxHandler,
       bool shift_key,
       bool via_keyboard) override;
   bool SupportsKeywordMode() const override;
+  void SetPopupSelection(
+      searchbox::mojom::OmniboxPopupSelectionPtr selection) override;
   void OverrideIconPaths(
       const AutocompleteMatch& match,
       searchbox::mojom::AutocompleteMatch* mojom_match) const override;

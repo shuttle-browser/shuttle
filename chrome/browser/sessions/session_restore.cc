@@ -97,12 +97,14 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
-#include "content/public/browser/session_storage_namespace.h"
+#include "content/public/browser/session_storage_namespace_handle.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/extension_set.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_features.h"
@@ -774,6 +776,10 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
 
 #if BUILDFLAG(IS_CHROMEOS)
         aura::Window* browser_window = browser->GetWindow()->GetNativeWindow();
+        CHECK(browser_window)
+            << "WebUI browser is "
+            << (webui_browser::IsWebUIBrowserEnabled() ? "enabled"
+                                                       : "disabled");
         if (occlusion_helper) {
           occlusion_helper->DisableWindowAnimation(browser_window);
         }
@@ -1027,7 +1033,8 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     RecordAppLaunchForTab(browser, tab, selected_index);
 
     // Associate sessionStorage (if any) to the restored tab.
-    scoped_refptr<content::SessionStorageNamespace> session_storage_namespace;
+    scoped_refptr<content::SessionStorageNamespaceHandle>
+        session_storage_namespace;
     if (!tab.session_storage_persistent_id.empty()) {
       session_storage_namespace =
           profile_->GetDefaultStoragePartition()

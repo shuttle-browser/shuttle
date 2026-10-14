@@ -94,17 +94,10 @@ source_set("private_verification_tokens_issuer_config") {
 # ATHM (Anonymous Tokens with Hidden Metadata): Crubit bindings over
 # //third_party/anonymous_tokens:athm and the C++ that calls it.
 if (enable_rust) {
-
   source_set("privacy_pass_athm_batch_request") {
     sources = [
       "privacy_pass_athm_batch_request.cc",
       "privacy_pass_athm_batch_request.h",
-    ]
-    deps = [
-      ":private_verification_tokens_parameters",
-      ":private_verification_tokens_public_key",
-      "//crypto",
-      "//third_party/anonymous_tokens:athm_token_encodings_utils",
     ]
     public_deps = [
       ":private_verification_tokens_issuer_config",

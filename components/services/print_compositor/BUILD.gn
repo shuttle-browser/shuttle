@@ -41,7 +41,11 @@ static_library("print_compositor") {
       "print_watermark.h",
     ]
 
-    deps += [ "//components/enterprise/watermarking" ]
+    deps += [
+      "//components/enterprise/watermarking",
+      "//pdf",
+      "//pdf:pdf_watermark_overlayer",
+    ]
 
     public_deps += [ "//components/enterprise/watermarking/mojom" ]
   }

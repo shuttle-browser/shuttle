@@ -324,6 +324,7 @@ executable("enterprise_companion_test") {
 
 if (is_mac && !is_component_build && enable_dsyms) {
   _symbols_sources = [ "$root_out_dir/$enterprise_companion_product_full_name.app/Contents/MacOS/$enterprise_companion_product_full_name" ]
+
   action("syms") {
     script = "//build/redirect_stdout.py"
     sources = _symbols_sources

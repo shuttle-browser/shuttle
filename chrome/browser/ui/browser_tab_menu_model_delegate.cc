@@ -4,8 +4,6 @@
 
 #include "chrome/browser/ui/browser_tab_menu_model_delegate.h"
 
-#include "chrome/browser/ui/browser.h"
-#include "chrome/browser/ui/browser_tab_strip_model_delegate.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 

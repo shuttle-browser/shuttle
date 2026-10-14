@@ -9,10 +9,8 @@ import type {HistoryToolbarElement} from './history_toolbar.js';
 export function getHtml(this: HistoryToolbarElement) {
   // clang-format off
   return html`<!--_html_template_start_-->
-<cr-toolbar id="mainToolbar"
-    disable-right-content-grow
-    ?has-overlay="${this.itemsSelected_}"
-    page-name="$i18n{title}"
+<cr-toolbar id="mainToolbar" disable-right-content-grow
+    ?has-overlay="${this.itemsSelected_}" page-name="$i18n{title}"
     clear-label="$i18n{clearSearch}"
     search-prompt="$i18n{searchPrompt}"
     ?spinner-active="${this.spinnerActive}"

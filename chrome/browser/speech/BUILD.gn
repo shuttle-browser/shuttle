@@ -51,7 +51,7 @@ source_set("speech") {
       "speech_recognizer.h",
       "speech_recognizer_delegate.h",
       "tts_chromeos.h",
-      "tts_controller_delegate_impl.h",
+      "tts_controller_delegate_chromeos_impl.h",
     ]
 
     public_deps += [
@@ -141,7 +141,7 @@ source_set("impl") {
       "speech_recognition_recognizer_client_impl.cc",
       "speech_recognizer.cc",
       "tts_chromeos.cc",
-      "tts_controller_delegate_impl.cc",
+      "tts_controller_delegate_chromeos_impl.cc",
     ]
 
     deps += [

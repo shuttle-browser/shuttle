@@ -87,6 +87,7 @@
 #include "ui/base/l10n/time_format.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/webui/web_ui_util.h"
+#include "ui/base/window_open_disposition.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/webui/webui_util.h"
 
@@ -406,6 +407,9 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
   html_source->AddBoolean(
       "tabStripUnificationEnabled",
       base::FeatureList::IsEnabled(tabs::kTabStripUnification));
+  html_source->AddBoolean(
+      "splitViewHorizontalEnabled",
+      base::FeatureList::IsEnabled(tabs::kSplitViewHorizontal));
 
 #if BUILDFLAG(IS_LINUX)
   bool show_custom_chrome_frame = ui::OzonePlatform::GetInstance()
@@ -1109,6 +1113,8 @@ void AddPrivacyStrings(content::WebUIDataSource* html_source,
 
   html_source->AddString("doNotTrackLearnMoreURL",
                          chrome::kDoNotTrackLearnMoreURL);
+  html_source->AddString("universalOptOutLearnMoreURL",
+                         chrome::kUniversalOptOutLearnMoreURL);
   html_source->AddString("exceptionsLearnMoreURL",
                          chrome::kContentSettingsExceptionsLearnMoreURL);
   html_source->AddString("enhancedProtectionHelpCenterURL",

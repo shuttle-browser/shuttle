@@ -372,6 +372,8 @@ component("gfx") {
       "harfbuzz_font_skia.h",
       "image/canvas_image_source.cc",
       "image/canvas_image_source.h",
+      "image/icon_standardizer.cc",
+      "image/icon_standardizer.h",
       "image/image_generic.cc",
       "image/image_skia_operations.cc",
       "image/image_skia_operations.h",
@@ -387,8 +389,6 @@ component("gfx") {
       "render_text_harfbuzz.h",
       "scoped_canvas.cc",
       "scoped_canvas.h",
-      "shadow_util.cc",
-      "shadow_util.h",
       "skia_paint_util.cc",
       "skia_paint_util.h",
       "text_utils_skia.cc",
@@ -762,6 +762,7 @@ if (is_ios) {
     testonly = true
     filelist_name = "test/data/codec/unit_tests_bundle_data.filelist"
   }
+
   bundle_data_from_filelist("compositor_tests_bundle_data") {
     testonly = true
     filelist_name = "test/data/compositor/unit_tests_bundle_data.filelist"

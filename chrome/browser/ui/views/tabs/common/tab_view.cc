@@ -20,6 +20,7 @@
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
+#include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
@@ -32,6 +33,7 @@
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
+#include "chrome/browser/ui/views/tabs/common/tab_collection_z_order_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
@@ -39,6 +41,7 @@
 #include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view_horizontal_layout.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view_vertical_layout.h"
+#include "chrome/browser/ui/views/tabs/common/vertical_tab_style_views.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "chrome/browser/ui/views/tabs/tab/alert_indicator_button.h"
 #include "chrome/browser/ui/views/tabs/tab/glow_hover_controller.h"
@@ -47,7 +50,6 @@
 #include "chrome/browser/ui/views/tabs/tab/tab_icon.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_title.h"
 #include "chrome/browser/ui/views/tabs/tab_style_views.h"
-#include "chrome/browser/ui/views/tabs/vertical_tab_style_views.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/grit/generated_resources.h"
@@ -55,6 +57,7 @@
 #include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_collection_types.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkPathBuilder.h"
 #include "third_party/skia/include/core/SkRRect.h"
@@ -64,6 +67,7 @@
 #include "ui/base/models/list_selection_model.h"
 #include "ui/base/theme_provider.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/compositor/clip_recorder.h"
 #include "ui/compositor/layer.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/events/types/event_type.h"
@@ -177,6 +181,17 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
                                  ? tab_view_->collection_node()->GetController()
                                  : nullptr;
     return controller && controller->GetFocusedGroup() == group;
+  }
+
+  bool IsGroupCollapsed() const override {
+    const std::optional<tab_groups::TabGroupId> group = GetGroup();
+    if (!group.has_value()) {
+      return false;
+    }
+    const auto* controller = tab_view_->collection_node()
+                                 ? tab_view_->collection_node()->GetController()
+                                 : nullptr;
+    return controller && controller->IsGroupCollapsed(group.value());
   }
 
   bool IsSplit() const override { return tab_view_->split(); }
@@ -297,8 +312,10 @@ TabView::TabView(TabCollectionNode* collection_node)
       tab_styling_(TabStyleViews::Create(
           std::make_unique<TabStyleViewDelegateImpl>(this),
           orientation_)),
-      icon_(AddChildView(std::make_unique<TabIcon>())),
+      // Title must be below the favicon in the z-order as the title should be
+      // drawn under the favicon during the title animation for horizontal tabs.
       title_(AddChildView(std::make_unique<TabTitle>())),
+      icon_(AddChildView(std::make_unique<TabIcon>())),
       alert_indicator_(
           AddChildView(std::make_unique<AlertIndicatorButton>(this))),
       close_button_(AddChildView(std::make_unique<TabCloseButton>(
@@ -370,6 +387,10 @@ TabView::~TabView() = default;
 
 void TabView::LayoutManager::OnInstalled(views::View* host) {
   CHECK(IsViewClass<class TabView>(host));
+}
+
+TabView& TabView::LayoutManager::TabView() {
+  return static_cast<class TabView&>(*host_view());
 }
 
 const TabView& TabView::LayoutManager::TabView() const {
@@ -449,6 +470,7 @@ void TabView::UpdateHovered(bool hovered) {
   }
 
   UpdateColors();
+  UpdateZOrder();
   InvalidateLayout();
 }
 
@@ -708,6 +730,19 @@ void TabView::OnGestureEvent(ui::GestureEvent* event) {
   }
 }
 
+void TabView::PaintChildren(const views::PaintInfo& info) {
+  ui::ClipRecorder clip_recorder(info.context());
+  // The paint recording scale for tabs is consistent along the x and y axis.
+  const float paint_recording_scale = info.paint_recording_scale_x();
+
+  if (const std::optional<SkPath> clip_path =
+          tab_styling()->GetChildClipPath(paint_recording_scale)) {
+    clip_recorder.ClipPathWithAntiAliasing(clip_path.value());
+  }
+
+  View::PaintChildren(info);
+}
+
 void TabView::OnPaint(gfx::Canvas* canvas) {
   // Split pinned tabs have a merged background that is rendered in
   // `SplitTabView`.
@@ -745,6 +780,8 @@ void TabView::RemovedFromWidget() {
 void TabView::OnFocus() {
   views::View::OnFocus();
 
+  UpdateZOrder();
+
   if (collection_node_ && collection_node_->GetController()) {
     collection_node_->GetController()->TabKeyboardFocusChangedTo(
         GetTabInterface());
@@ -760,6 +797,8 @@ void TabView::OnFocus() {
 
 void TabView::OnBlur() {
   views::View::OnBlur();
+
+  UpdateZOrder();
 
   if (collection_node_ && collection_node_->GetController()) {
     collection_node_->GetController()->TabKeyboardFocusChangedTo(nullptr);
@@ -933,12 +972,13 @@ void TabView::ResetCollectionNode() {
   // background.
   active_ = false;
   selected_ = false;
+  UpdateZOrder();
 
   // Update the callbacks for the buttons so that we don't call anything that
   // needs the node.
   close_button_->SetCallback(base::RepeatingClosure(base::DoNothing()));
 
-  static_cast<TabView::LayoutManager*>(GetLayoutManager())->OnTabClosing();
+  layout_manager()->OnTabClosing();
 }
 
 void TabView::UpdateAccessibleName() {
@@ -986,12 +1026,34 @@ void TabView::OnTabStateChanged() {
   pinned_ = tab->IsPinned();
 
   SetSelection(tab->IsSelected());
-  UpdateTabData(tab);
+  UpdateTabData(tab_data_observer_->tab_data());
 
   UpdateFocusFreezing();
 
   UpdateColors();
+  UpdateZOrder();
   InvalidateLayout();
+}
+
+void TabView::UpdateZOrder() {
+  using ZOrderLevel = TabCollectionZOrderManager::ZOrderLevel;
+  ZOrderLevel target_z = ZOrderLevel::kDefault;
+
+  if (active_) {
+    target_z = ZOrderLevel::kActive;
+  } else if (selected_) {
+    target_z = ZOrderLevel::kSelected;
+  } else if (hovered_ || HasFocus()) {
+    target_z = ZOrderLevel::kHovered;
+  }
+
+  if (GetProperty(kTabZOrderKey) != target_z) {
+    SetProperty(kTabZOrderKey, target_z);
+    if (auto* container =
+            views::AsViewClass<TabCollectionZOrderManager>(parent())) {
+      container->OnChildZOrderChanged(this);
+    }
+  }
 }
 
 void TabView::OnTabDataChanged(TabChangeType change_type,
@@ -1008,7 +1070,10 @@ void TabView::OnTabDataChanged(TabChangeType change_type,
     }
     return;
   }
-  UpdateTabData(GetTabInterface());
+  if (data.should_display_favicon != tab_data_.should_display_favicon) {
+    layout_manager()->OnShouldDisplayFaviconChanged();
+  }
+  UpdateTabData(data);
 }
 
 void TabView::SetSelection(bool selected) {
@@ -1020,9 +1085,11 @@ void TabView::SetSelection(bool selected) {
   GetViewAccessibility().SetIsSelected(selected_);
 }
 
-void TabView::UpdateTabData(const tabs::TabInterface* tab) {
+void TabView::UpdateTabData(const tabs::TabData& data) {
   tabs::TabData old_data = std::move(tab_data_);
-  tab_data_ = tab_data_observer_->tab_data();
+  tab_data_ = data;
+
+  tabs::TabInterface* tab = const_cast<tabs::TabInterface*>(GetTabInterface());
 
   if (tabs::ShouldUpdateAccessibleName(old_data, tab_data_)) {
     UpdateAccessibleName();
@@ -1039,20 +1106,8 @@ void TabView::UpdateTabData(const tabs::TabInterface* tab) {
   SetHoverCardDataFrom(tab_data_);
 }
 
-void TabView::SetDataForTesting(tabs::TabData data) {
-  tabs::TabData old_data = std::move(tab_data_);
-  tab_data_ = std::move(data);
-
-  if (tabs::ShouldUpdateAccessibleName(old_data, tab_data_)) {
-    UpdateAccessibleName();
-  }
-
-  icon_->SetData(tab_data_);
-  icon_->SetAttention(TabIcon::AttentionType::kTabWantsAttentionStatus,
-                      tab_data_.needs_attention);
-  UpdateTitle(tab_data_.title, tab_data_.should_render_loading_title);
-  alert_indicator_->TransitionToAlertState(tab_data_.alert_state);
-  SetHoverCardDataFrom(tab_data_);
+void TabView::SetDataForTesting(const tabs::TabData& data) {
+  OnTabDataChanged(TabChangeType::kAll, data);
 }
 
 void TabView::UpdateTitle(std::u16string title,
@@ -1268,6 +1323,10 @@ TabView::GetFreezingVote(FreezingVoteReason reason) {
       return focus_mode_freezing_vote_;
   }
   NOTREACHED();
+}
+
+TabView::LayoutManager* TabView::layout_manager() {
+  return static_cast<TabView::LayoutManager*>(GetLayoutManager());
 }
 
 BEGIN_METADATA(TabView)

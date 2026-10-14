@@ -409,18 +409,41 @@ HistoryBackend::~HistoryBackend() {
 #endif
 }
 
+void HistoryBackend::SetInitParams(
+    bool force_fail,
+    const HistoryDatabaseParams& history_database_params) {
+  force_fail_ = force_fail;
+  history_database_params_ =
+      std::make_unique<HistoryDatabaseParams>(history_database_params);
+}
+
 void HistoryBackend::Init(
     bool force_fail,
     const HistoryDatabaseParams& history_database_params) {
+  if (is_inited_) {
+    return;
+  }
+  SetInitParams(force_fail, history_database_params);
+  InitWithCachedParams();
+}
+
+void HistoryBackend::InitWithCachedParams() {
+  DCHECK(task_runner_->RunsTasksInCurrentSequence());
+  if (is_inited_) {
+    return;
+  }
+  CHECK(history_database_params_);
+  is_inited_ = true;
+
   TRACE_EVENT0("browser", "HistoryBackend::Init");
 
-  DCHECK(base::PathExists(history_database_params.history_dir))
+  DCHECK(base::PathExists(history_database_params_->history_dir))
       << "History directory does not exist. If you are in a test make sure "
          "that ~TestingProfile() has not been called or that the "
          "ScopedTempDirectory used outlives this task.";
 
-  if (!force_fail) {
-    InitImpl(history_database_params);
+  if (!force_fail_) {
+    InitImpl(*history_database_params_);
   }
   delegate_->DBLoaded();
 
@@ -429,6 +452,8 @@ void HistoryBackend::Init(
     // browser shutdown. Continue it.
     StartDeletingForeignVisits();
   }
+
+  history_database_params_.reset();
 }
 
 void HistoryBackend::SetOnBackendDestroyTask(
@@ -2058,6 +2083,7 @@ std::vector<AnnotatedVisit> HistoryBackend::ToAnnotatedVisitsFromRows(
   VisitSourceMap sources;
   GetVisitsSource(visit_rows, &sources);
 
+  base::flat_map<VisitID, VisitRow> redirect_start_cache;
   std::vector<AnnotatedVisit> annotated_visits;
   for (const auto& visit_row : visit_rows) {
     // Add a result row for this visit, get the URL info from the DB.
@@ -2083,7 +2109,19 @@ std::vector<AnnotatedVisit> HistoryBackend::ToAnnotatedVisitsFromRows(
     VisitID referring_visit_of_redirect_chain_start = 0;
     VisitID opener_visit_of_redirect_chain_start = 0;
     if (compute_redirect_chain_start_properties) {
-      VisitRow redirect_start = GetRedirectChainStart(visit_row);
+      VisitRow redirect_start;
+      auto it = redirect_start_cache.find(visit_row.visit_id);
+      if (it != redirect_start_cache.end()) {
+        redirect_start = it->second;
+      } else {
+        VisitVector redirect_chain = GetRedirectChain(visit_row);
+        if (!redirect_chain.empty()) {
+          redirect_start = redirect_chain.front();
+          for (const auto& chain_visit : redirect_chain) {
+            redirect_start_cache[chain_visit.visit_id] = redirect_start;
+          }
+        }
+      }
       referring_visit_of_redirect_chain_start = redirect_start.referring_visit;
       opener_visit_of_redirect_chain_start = redirect_start.opener_visit;
     }
@@ -2336,7 +2374,8 @@ VisitVector HistoryBackend::GetRedirectChain(VisitRow visit) {
   result.push_back(visit);
   if (db_) {
     base::flat_set<VisitID> visit_set;
-    while (!(visit.transition & ui::PAGE_TRANSITION_CHAIN_START)) {
+    while (!(visit.transition & ui::PAGE_TRANSITION_CHAIN_START) &&
+           result.size() < kMaxRedirectChainLength) {
       visit_set.insert(visit.visit_id);
       // `GetRowForVisit()` should not return false if the DB is correct.
       VisitRow referring_visit;
@@ -2581,8 +2620,13 @@ URLRows HistoryBackend::GetMatchesForHost(const std::u16string& host_name) {
   if (db_ && db_->InitURLEnumeratorForEverything(&iter)) {
     URLRow row;
     std::string host_name_utf8 = base::UTF16ToUTF8(host_name);
+    const bool improved_suffix_matching = base::FeatureList::IsEnabled(
+        kBrowsingHistoryImprovedHostnameSuffixMatching);
     while (iter.GetNextURL(&row)) {
-      if (row.url().is_valid() && row.url().GetHost() == host_name_utf8) {
+      const bool matches_host = improved_suffix_matching
+                                    ? row.url().DomainIs(host_name_utf8)
+                                    : (row.url().GetHost() == host_name_utf8);
+      if (row.url().is_valid() && matches_host) {
         results.push_back(std::move(row));
       }
     }

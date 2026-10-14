@@ -24,7 +24,6 @@
 #include "ash/constants/ash_extension_constants.h"
 #include "ash/keyboard/ui/grit/keyboard_resources.h"
 #include "chrome/browser/ash/input_method/component_extension_ime_manager_delegate_impl.h"
-#include "chromeos/constants/chromeos_features.h"
 #include "ui/file_manager/grit/file_manager_resources.h"
 #endif
 
@@ -63,8 +62,7 @@ bool IsComponentExtensionAllowlisted(const std::string& extension_id) {
   }
 
 #if BUILDFLAG(IS_CHROMEOS)
-  if (chromeos::features::IsUploadOfficeToCloudEnabled() &&
-      extension_id == extension_misc::kODFSExtensionId) {
+  if (extension_id == extension_misc::kODFSExtensionId) {
     return true;
   }
 

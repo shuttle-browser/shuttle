@@ -468,6 +468,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kWebHidBlockedForUrls,
     prefs::kManagedWebHidBlockedForUrls,
     base::Value::Type::LIST },
+  { key::kRemoteDebuggingAllowed,
+    prefs::kDevToolsRemoteDebuggingAllowed,
+    base::Value::Type::BOOLEAN },
 // Policies for all platforms - End
 #if BUILDFLAG(IS_ANDROID)
 #else // !BUILDFLAG(IS_ANDROID)
@@ -1108,6 +1111,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kExtensionDOMActivityLoggingEnabled,
     prefs::kExtensionDOMActivityLoggingEnabled,
     base::Value::Type::BOOLEAN },
+  { key::kExtensionReviewPromptsEnabled,
+    prefs::kExtensionReviewPromptsAllowed,
+    base::Value::Type::BOOLEAN },
 #endif // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -1161,6 +1167,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::LIST },
   { key::kForceForegroundPriorityForAllTabs,
     performance_manager::user_tuning::prefs::kForceForegroundPriorityForAllTabs,
+    base::Value::Type::BOOLEAN },
+  { key::kBackgroundTabFreezingEnabled,
+    performance_manager::user_tuning::prefs::kTabFreezingEnabled,
     base::Value::Type::BOOLEAN },
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   { key::kStrictMimetypeCheckForWorkerScriptsEnabled,

@@ -5,12 +5,16 @@
 #include "chrome/browser/history/chrome_history_client.h"
 
 #include "base/functional/bind.h"
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/history/chrome_history_backend_client.h"
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/profiles/sql_init_error_message_ids.h"
 #include "chrome/browser/ui/profiles/profile_error_dialog.h"
+#include "components/history/core/browser/features.h"
 #include "components/history/core/browser/history_service.h"
 
 ChromeHistoryClient::ChromeHistoryClient() = default;
@@ -18,7 +22,16 @@ ChromeHistoryClient::ChromeHistoryClient() = default;
 ChromeHistoryClient::~ChromeHistoryClient() = default;
 
 void ChromeHistoryClient::OnHistoryServiceCreated(
-    history::HistoryService* history_service) {}
+    history::HistoryService* history_service) {
+  if (base::FeatureList::IsEnabled(history::kDeferHistoryBackendInit)) {
+    // If history backend initialization was deferred during startup, schedule
+    // it once browser startup tasks have completed.
+    AfterStartupTaskUtils::PostTask(
+        FROM_HERE, base::SequencedTaskRunner::GetCurrentDefault(),
+        base::BindOnce(&history::HistoryService::EnsureBackendInitScheduled,
+                       history_service->AsWeakPtr()));
+  }
+}
 
 void ChromeHistoryClient::Shutdown() {}
 

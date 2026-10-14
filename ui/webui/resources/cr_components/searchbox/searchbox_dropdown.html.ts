@@ -32,6 +32,7 @@ ${this.sideTypes_().map(sideType => html`
             role="option"
             aria-describedby="${this.getAriaDescribedByForGroup_(groupId)}"
             .match="${match}" match-index="${this.matchIndex_(match)}"
+            .resultSequenceId="${this.result!.sequenceId}"
             side-type="${sideType}"
             ?selected="${this.isSelected_(match)}"
             ?show-thumbnail="${this.showThumbnail}">

@@ -25,18 +25,10 @@ component("server_certificate_database") {
   deps = [
     "//base",
     "//components/keyed_service/core",
-    "//components/prefs",
     "//net",
     "//sql",
     "//third_party/boringssl",
   ]
   public_deps = [ ":proto" ]
-
-  if (is_chromeos) {
-    sources += [
-      "server_certificate_database_nss_migrator.cc",
-      "server_certificate_database_nss_migrator.h",
-    ]
-  }
 }
 

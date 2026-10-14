@@ -18,7 +18,6 @@ class Profile;
 
 namespace actions {
 class ActionItem;
-class ActionInvocationContext;
 }  // namespace actions
 
 // Actions that a user can take that are scoped to a browser window.

@@ -94,6 +94,7 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   ProviderStateService* GetProviderStateService() const override;
 
   bool IsOffTheRecord() const override;
+  bool IsPrimaryOTRProfileWithRegularParent() const override;
   bool IsIncognitoProfile() const override;
   bool SearchSuggestEnabled() const override;
   bool AllowDeletingBrowserHistory() const override;
@@ -121,7 +122,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   bool IsLensEnabled() const override;
   bool AreLensEntrypointsVisible() const override;
   std::optional<bool> IsPagePaywalled() const override;
-  bool IsOmniboxNextLensSearchChipEnabled() const override;
   bool IsGeminiStarterPackEnabled() const override;
   base::WeakPtr<AutocompleteProviderClient> GetWeakPtr() override;
   bool IsWebUiNtpEnabledForDesktopAndroid() const override;

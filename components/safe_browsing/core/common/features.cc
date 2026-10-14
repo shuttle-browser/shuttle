@@ -168,7 +168,7 @@ const base::FeatureParam<bool> kCsdImageEmbeddingMatchWithIntelligentScan{
 BASE_FEATURE(kClientSideDetectionKillswitch, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kClientSideDetectionLocalResourceCheckFix,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kClientSideDetectionNewObservers,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -326,9 +326,6 @@ constexpr base::FeatureParam<int>
     kExtensionTelemetrySearchHijackingSignalHeuristicThreshold{
         &kExtensionTelemetrySearchHijackingSignal, "HeuristicThreshold", 2};
 
-BASE_FEATURE(kExternalAppRedirectTelemetry,
-             "SafeBrowsingExternalAppRedirectTelemetry",
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGooglePlayProtectInApkTelemetry,
              "SafeBrowsingGooglePlayProtectInApkTelemetry",
@@ -458,6 +455,8 @@ constexpr base::FeatureParam<int> kSafeBrowsingDailyPhishingReportsLimitESB{
     &kSafeBrowsingDailyPhishingReportsLimit,
     /*name=*/"kMaxReportsPerIntervalESB", /*default_value=*/10};
 
+BASE_FEATURE(kSafeBrowsingDeleteUnusedStores, base::FEATURE_ENABLED_BY_DEFAULT);
+
 #if BUILDFLAG(IS_ANDROID)
 BASE_FEATURE(kSafeBrowsingSyncCheckerCheckAllowlist,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -535,6 +534,7 @@ base::ListValue GetFeatureStatusList() {
       &kBundledSecuritySettings,
       &kBundledSecuritySettingsAskBeforeHttp,
       &kClientSideDetectionClipboardCopyApi,
+      &kClientSideDetectionEnabledIos,
       &kClientSideDetectionForcedLlamaRedirectChainKillswitch,
       &kClientSideDetectionImageEmbeddingMatch,
       &kClientSideDetectionKillswitch,
@@ -548,7 +548,6 @@ base::ListValue GetFeatureStatusList() {
       &kEnterprisePasswordReuseUiRefresh,
       &kEsbAsASyncedSetting,
       &kExtensionBlocklistSkipNetworkQuery,
-      &kExternalAppRedirectTelemetry,
       &kHashPrefixRealTimeLookups,
       &kLocalListsUseSBv5,
       &kMigrateEnhancedSbUserToEnhancedBundle,
@@ -573,6 +572,8 @@ base::ListValue GetFeatureStatusList() {
   }
 
   // Manually add experimental features that we want param values for.
+  param_list.Append(kCsdEnforceIos.Get());
+  param_list.Append(kCsdEnforceIos.name);
   param_list.Append(kCsdProactivePasswordProtectionSampleRate.Get());
   param_list.Append(kCsdProactivePasswordProtectionSampleRate.name);
   param_list.Append(kHashPrefixRealTimeLookupsRelayUrl.Get());

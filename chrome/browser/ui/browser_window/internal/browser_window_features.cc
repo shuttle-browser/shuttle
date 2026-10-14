@@ -21,7 +21,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
-#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_command_controller.h"
@@ -51,7 +50,7 @@
 #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/sessions/session_service_browser_helper.h"
-#include "chrome/browser/ui/tabs/organizer/organizer_panel_state_controller.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
 #include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_window_adapter_impl.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/tab_drag_service_feature.h"
@@ -60,9 +59,9 @@
 #include "chrome/browser/ui/tabs/tab_strip_api/controllers/tab_strip_ui_controller_injector_impl.h"
 #include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl/tab_strip_model_injector.h"
 #include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_service_feature.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
-#include "chrome/browser/ui/toasts/toast_controller.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/toasts/toast_service.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -106,7 +105,9 @@
 #include "components/profile_metrics/browser_profile_type.h"
 #include "components/search/ntp_features.h"
 #include "components/search/search.h"
+#include "components/sessions/core/session_id.h"
 #include "content/public/common/content_constants.h"
+#include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension_features.h"
 #include "ui/views/interaction/element_highlighter_views.h"
 
@@ -210,6 +211,8 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
                                                                       *browser);
   browser_animation_controller_->AddAnimationProvider(
       std::make_unique<TabStripAnimations>());
+  browser_animation_controller_->AddAnimationProvider(
+      std::make_unique<OrganizerPanelAnimations>());
 
   browser_elements_ =
       GetUserDataFactory().CreateInstance<BrowserElementsViewsImpl>(*browser,
@@ -244,6 +247,7 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 
   cookie_controls_controller_ =
       std::make_unique<content_settings::CookieControlsController>(
+          browser->GetUnownedUserDataHost(),
           CookieSettingsFactory::GetForProfile(profile),
           profile->IsOffTheRecord() ? CookieSettingsFactory::GetForProfile(
                                           profile->GetOriginalProfile())
@@ -259,7 +263,7 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 #endif
 
   extension_installed_watcher_ =
-      std::make_unique<ExtensionInstalledWatcher>(profile);
+      std::make_unique<ExtensionInstalledWatcher>(browser);
 
   // Must be after window_feature_controller_.
   immersive_mode_controller_ =
@@ -362,9 +366,9 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
 
     if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
-      organizer_panel_state_controller_ =
-          GetUserDataFactory().CreateInstance<OrganizerPanelStateController>(
-              *browser, browser, browser_actions_->root_action_item());
+      organizer_panel_controller_ =
+          GetUserDataFactory().CreateInstance<OrganizerPanelController>(
+              *browser, *browser, browser_actions_->root_action_item());
     }
 
     std::optional<bool> restored_state_collapsed =
@@ -400,7 +404,8 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   embedder_browser_window_features_->Init(browser);
 }
 
-void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
+void BrowserWindowFeatures::InitPostWindowConstruction(
+    BrowserWindowInterface* browser) {
   // Foundational state used throughout this function. Computed/assigned early
   // so the alphabetical sections below can rely on them.
   Profile* const profile = browser_->GetProfile();
@@ -419,10 +424,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
   // out with `// Must be after X.` / `// Must be before X.` comments):
 
   if (browser_view) {
-    // BrowserView is an AcceleratorProvider.
-    accelerator_provider_ = browser_view;
-  }
-
 
   if (browser_view) {
     browser_focus_controller_ =
@@ -527,8 +528,7 @@ void BrowserWindowFeatures::InitPostWindowConstruction(Browser* browser) {
   if (focus_manager) {
     extension_keybinding_registry_ =
         std::make_unique<ExtensionKeybindingRegistryViews>(
-            profile, TabListInterface::From(browser),
-            extensions::ExtensionKeybindingRegistry::ALL_EXTENSIONS,
+            browser, extensions::ExtensionKeybindingRegistry::ALL_EXTENSIONS,
             focus_manager);
   }
 
@@ -697,7 +697,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   browser_ui_controller_.reset();
   browser_select_file_dialog_controller_.reset();
   browser_focus_controller_.reset();
-  accelerator_provider_ = nullptr;
 
   // ---------------------------------------------------------------------------
   // Init (reverse).
@@ -716,19 +715,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
     provider->TearDown();
   }
   browser_animation_controller_.reset();
-}
-
-
-actions::ActionItem* BrowserWindowFeatures::GetRootActionItem() {
-  return browser_actions_ ? browser_actions_->root_action_item() : nullptr;
-}
-
-ToastController* BrowserWindowFeatures::toast_controller() {
-  return browser_ ? ToastController::From(browser_) : nullptr;
-}
-
-sessions::LiveTabContext* BrowserWindowFeatures::live_tab_context() {
-  return live_tab_context_.get();
 }
 
 LocationBar* BrowserWindowFeatures::location_bar() {

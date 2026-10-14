@@ -19,7 +19,7 @@ class BrowserWindowInterface;
 class BrowserViewLayoutDelegate;
 class InfoBarContainerView;
 class MultiContentsView;
-class OrganizerPanelView;
+class OrganizerTrayView;
 class TabStrip;
 class TabStripRegionView;
 class VerticalTabStripRegionView;
@@ -64,7 +64,7 @@ struct BrowserViewLayoutViews {
       vertical_tab_strip_background_blur_backdrop = nullptr;
   raw_ptr<CustomFloatingCorner> vertical_tab_strip_bottom_corner = nullptr;
   raw_ptr<CustomFloatingCorner> vertical_tab_strip_top_corner = nullptr;
-  raw_ptr<OrganizerPanelView> organizer_panel_container = nullptr;
+  raw_ptr<OrganizerTrayView> organizer_tray = nullptr;
   raw_ptr<views::View> toolbar = nullptr;
   raw_ptr<InfoBarContainerView> infobar_container = nullptr;
   raw_ptr<MultiContentsView> multi_contents_view = nullptr;

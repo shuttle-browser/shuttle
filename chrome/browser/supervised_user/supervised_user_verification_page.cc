@@ -19,8 +19,17 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
 #include "google_apis/gaia/gaia_urls.h"
-#include "services/metrics/public/cpp/metrics_utils.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/supervised_user/child_accounts/child_account_service_android.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "ui/android/window_android.h"
+#endif
 
 // static
 bool SupervisedUserVerificationPage::ShouldShowPage(

@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 /**
- * @fileoverview 'settings-languages' handles Chrome's language and input
+ * @fileoverview 'LanguageHelper' handles Chrome's language and input
  * method settings. The 'languages' property, which reflects the current
  * language settings, must not be changed directly. Instead, changes to
  * language settings should be made using the LanguageHelper APIs provided by
@@ -12,9 +12,7 @@
 
 import {assert} from '//resources/js/assert.js';
 import {PromiseResolver} from '//resources/js/promise_resolver.js';
-import {PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 import {PrefService} from '/shared/settings/prefs2/pref_service.js';
-import {PrefServiceObserverMixin} from '/shared/settings/prefs2/pref_service_observer_mixin.js';
 
 import type {LanguagesBrowserProxy} from './languages_browser_proxy.js';
 import {LanguagesBrowserProxyImpl} from './languages_browser_proxy.js';
@@ -43,81 +41,49 @@ interface ModelArgs {
   currentInputMethodId?: string;
 }
 
-
-let instance: LanguageHelper|null = null;
+let instance: LanguageHelperImpl|null = null;
 
 export function getLanguageHelperInstance(): LanguageHelper {
-  assert(instance);
+  if (!instance) {
+    instance = new LanguageHelperImpl();
+  }
   return instance;
 }
 
 /**
- * Singleton element that generates the languages model on start-up and
+ * Singleton class that generates the languages model on start-up and
  * updates it whenever Chrome's pref store and other settings change.
  */
-
-const SettingsLanguagesElementBase = PrefServiceObserverMixin(PolymerElement);
-
-class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
-    LanguageHelper {
-  static get is() {
-    return 'settings-languages';
+export class LanguageHelperImpl extends EventTarget implements LanguageHelper {
+  static resetInstanceForTesting(newInstance: LanguageHelperImpl|null = null) {
+    if (instance) {
+      instance.destroy();
+    }
+    instance = newInstance;
   }
 
-  static get properties() {
-    return {
-      languages: {
-        type: Object,
-        notify: true,
-      },
+  languages: LanguagesModel|undefined;
 
-      intlAcceptLanguagesPref_: Object,
-      intlAppLocalePref_: Object,
-      intlForcedLanguagesPref_: Object,
-      spellcheckBlockedDictionariesPref_: Object,
-      spellcheckDictionariesPref_: Object,
-      spellcheckForcedDictionariesPref_: Object,
-    };
-  }
-
-  static get observers() {
-    return [
-      // <if expr="is_win">
-      'prospectiveUiLanguageChanged_(intlAppLocalePref_, languages)',
-      // </if>
-      'preferredLanguagesPrefChanged_(' +
-          'intlAcceptLanguagesPref_, intlForcedLanguagesPref_, languages)',
-      'spellCheckDictionariesPrefChanged_(' +
-          'spellcheckDictionariesPref_, ' +
-          'spellcheckForcedDictionariesPref_, ' +
-          'spellcheckBlockedDictionariesPref_, languages)',
-      'updateRemovableLanguages_(intlAppLocalePref_, languages.enabled)',
-    ];
-  }
-
-  declare languages: LanguagesModel|undefined;
-
-  declare private intlAcceptLanguagesPref_:
-      chrome.settingsPrivate.PrefObject<string>|undefined;
-  declare private intlAppLocalePref_: chrome.settingsPrivate.PrefObject<string>|
-      undefined;
-  declare private intlForcedLanguagesPref_:
-      chrome.settingsPrivate.PrefObject<string[]>|undefined;
-  declare private spellcheckBlockedDictionariesPref_:
-      chrome.settingsPrivate.PrefObject<string[]>|undefined;
-  declare private spellcheckDictionariesPref_:
-      chrome.settingsPrivate.PrefObject<string[]>|undefined;
-  declare private spellcheckForcedDictionariesPref_:
-      chrome.settingsPrivate.PrefObject<string[]>|undefined;
+  private intlAcceptLanguagesPref_?: chrome.settingsPrivate.PrefObject<string>;
+  private intlAppLocalePref_?: chrome.settingsPrivate.PrefObject<string>;
+  private intlForcedLanguagesPref_?:
+      chrome.settingsPrivate.PrefObject<string[]>;
+  private spellcheckBlockedDictionariesPref_?:
+      chrome.settingsPrivate.PrefObject<string[]>;
+  private spellcheckDictionariesPref_?:
+      chrome.settingsPrivate.PrefObject<string[]>;
+  private spellcheckForcedDictionariesPref_?:
+      chrome.settingsPrivate.PrefObject<string[]>;
 
   private resolver_: PromiseResolver<void> = new PromiseResolver();
   private supportedLanguageMap_:
       Map<string, chrome.languageSettingsPrivate.Language> = new Map();
   private enabledLanguageSet_: Set<string> = new Set();
+  private observerIds_: number[] = [];
 
   // <if expr="is_win">
   /** Prospective UI language when the page was loaded. */
-  private originalProspectiveUILanguage_: string;
+  private originalProspectiveUILanguage_: string = '';
   // </if>
 
   // <if expr="not is_macosx">
@@ -135,22 +101,12 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
 
     this.languageSettingsPrivate_ =
         this.browserProxy_.getLanguageSettingsPrivate();
+
+    this.init_();
   }
 
-  override connectedCallback() {
-    super.connectedCallback();
-
-    assert(!instance);
-    instance = this;
-
-    this.mirrorPrefs({
-      'intl.accept_languages': 'intlAcceptLanguagesPref_',
-      'intl.app_locale': 'intlAppLocalePref_',
-      'intl.forced_languages': 'intlForcedLanguagesPref_',
-      'spellcheck.blocked_dictionaries': 'spellcheckBlockedDictionariesPref_',
-      'spellcheck.dictionaries': 'spellcheckDictionariesPref_',
-      'spellcheck.forced_dictionaries': 'spellcheckForcedDictionariesPref_',
-    });
+  private init_() {
+    this.observePrefs_();
 
     const promises: Array<Promise<void>> = [];
 
@@ -213,12 +169,6 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     // </if>
 
     Promise.all(promises).then(() => {
-      if (!this.isConnected) {
-        // Return early if this element was detached from the DOM before
-        // this async callback executes (can happen during testing).
-        return;
-      }
-
       this.createModel_(args);
 
       // <if expr="not is_macosx">
@@ -234,11 +184,55 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     });
   }
 
-  override disconnectedCallback() {
-    super.disconnectedCallback();
+  private observePref_<T>(
+      key: string,
+      setPref: (pref: chrome.settingsPrivate.PrefObject<T>) => void,
+      onChange: () => void) {
+    this.observerIds_.push(
+        PrefService.getInstance().addObserver<T>(key, pref => {
+          setPref(pref as chrome.settingsPrivate.PrefObject<T>);
+          if (!this.languages) {
+            return;
+          }
+          onChange();
+          this.dispatchLanguagesChanged_();
+        }));
+  }
 
-    instance = null;
-    this.resolver_ = new PromiseResolver();
+  private observePrefs_() {
+    this.observePref_<string>(
+        'intl.accept_languages', pref => this.intlAcceptLanguagesPref_ = pref,
+        () => this.preferredLanguagesPrefChanged_());
+    this.observePref_<string>(
+        'intl.app_locale', pref => this.intlAppLocalePref_ = pref, () => {
+          // <if expr="is_win">
+          this.prospectiveUiLanguageChanged_();
+          // </if>
+          this.updateRemovableLanguages_();
+        });
+    this.observePref_<string[]>(
+        'intl.forced_languages', pref => this.intlForcedLanguagesPref_ = pref,
+        () => this.preferredLanguagesPrefChanged_());
+    this.observePref_<string[]>(
+        'spellcheck.blocked_dictionaries',
+        pref => this.spellcheckBlockedDictionariesPref_ = pref,
+        () => this.spellCheckDictionariesPrefChanged_());
+    this.observePref_<string[]>(
+        'spellcheck.dictionaries',
+        pref => this.spellcheckDictionariesPref_ = pref,
+        () => this.spellCheckDictionariesPrefChanged_());
+    this.observePref_<string[]>(
+        'spellcheck.forced_dictionaries',
+        pref => this.spellcheckForcedDictionariesPref_ = pref,
+        () => this.spellCheckDictionariesPrefChanged_());
+  }
+
+  destroy() {
+    const prefService = PrefService.getInstance();
+    for (const id of this.observerIds_) {
+      prefService.removeObserver(id);
+    }
+    this.observerIds_ = [];
 
     // <if expr="not is_macosx">
     if (this.boundOnSpellcheckDictionariesChanged_) {
@@ -249,6 +243,13 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     // </if>
   }
 
+  private dispatchLanguagesChanged_() {
+    assert(this.languages);
+    this.dispatchEvent(new CustomEvent('languages-changed', {
+      detail: this.languages,
+    }));
+  }
+
   // <if expr="is_win">
   /**
    * Updates the prospective UI language based on the new pref value.
@@ -257,9 +258,8 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     if (this.intlAppLocalePref_ === undefined || this.languages === undefined) {
       return;
     }
-    this.set(
-        'languages.prospectiveUILanguage',
-        this.intlAppLocalePref_.value || this.originalProspectiveUILanguage_);
+    this.languages.prospectiveUILanguage =
+        this.intlAppLocalePref_.value || this.originalProspectiveUILanguage_;
   }
   // </if>
 
@@ -282,7 +282,8 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
       this.enabledLanguageSet_.add(enabledLanguageStates[i].language.code);
     }
 
-    this.set('languages.enabled', enabledLanguageStates);
+    this.languages.enabled = enabledLanguageStates;
+    this.updateRemovableLanguages_();
 
     // <if expr="not is_macosx">
     if (this.boundOnSpellcheckDictionariesChanged_) {
@@ -293,7 +294,10 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
 
     // Update translate target language.
     this.languageSettingsPrivate_.getTranslateTargetLanguage().then(result => {
-      this.set('languages.translateTarget', result);
+      if (this.languages && this.languages.translateTarget !== result) {
+        this.languages.translateTarget = result;
+        this.dispatchLanguagesChanged_();
+      }
     });
   }
 
@@ -315,21 +319,21 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     const spellCheckBlockedSet =
         this.makeSetFromArray_(this.spellcheckBlockedDictionariesPref_.value);
 
-    for (let i = 0; i < this.languages.enabled.length; i++) {
-      const languageState = this.languages.enabled[i];
+    this.languages.enabled = this.languages.enabled.map(languageState => {
       const isUser = spellCheckSet.has(languageState.language.code);
       const isForced = spellCheckForcedSet.has(languageState.language.code);
       const isBlocked = spellCheckBlockedSet.has(languageState.language.code);
-      this.set(
-          `languages.enabled.${i}.spellCheckEnabled`,
-          (isUser && !isBlocked) || isForced);
-      this.set(`languages.enabled.${i}.isManaged`, isForced || isBlocked);
-    }
+      return {
+        ...languageState,
+        spellCheckEnabled: (isUser && !isBlocked) || isForced,
+        isManaged: isForced || isBlocked,
+      };
+    });
 
     const {on: spellCheckOnLanguages, off: spellCheckOffLanguages} =
         this.getSpellCheckLanguages_(this.languages.supported);
-    this.set('languages.spellCheckOnLanguages', spellCheckOnLanguages);
-    this.set('languages.spellCheckOffLanguages', spellCheckOffLanguages);
+    this.languages.spellCheckOnLanguages = spellCheckOnLanguages;
+    this.languages.spellCheckOffLanguages = spellCheckOffLanguages;
   }
 
   /**
@@ -473,8 +477,10 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
       // </if>
     };
 
-    // Initialize the Polymer languages model.
+    // Initialize the languages model.
     this.languages = model;
+    this.updateRemovableLanguages_();
+    this.dispatchLanguagesChanged_();
   }
 
   /**
@@ -560,36 +566,45 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
    */
   private onSpellcheckDictionariesChanged_(
       statuses: chrome.languageSettingsPrivate.SpellcheckDictionaryStatus[]) {
+    assert(this.languages);
     const statusMap = new Map();
     statuses.forEach(status => {
       statusMap.set(status.languageCode, status);
     });
 
-    const collectionNames:
-        Array<'enabled'|'spellCheckOnLanguages'|'spellCheckOffLanguages'> =
-            ['enabled', 'spellCheckOnLanguages', 'spellCheckOffLanguages'];
-    collectionNames.forEach(collectionName => {
-      this.languages![collectionName].forEach((languageState, index) => {
+    const updateStates = <T extends LanguageState|SpellCheckLanguageState>(
+        states: T[]): T[] => {
+      return states.map(languageState => {
         const status = statusMap.get(languageState.language.code);
         if (!status) {
-          return;
+          return languageState;
         }
 
         const previousStatus = languageState.downloadDictionaryStatus;
-        const keyPrefix = `languages.${collectionName}.${index}`;
-        this.set(`${keyPrefix}.downloadDictionaryStatus`, status);
-
-        const failureCountKey = `${keyPrefix}.downloadDictionaryFailureCount`;
+        let downloadDictionaryFailureCount =
+            languageState.downloadDictionaryFailureCount;
         if (status.downloadFailed &&
             !(previousStatus && previousStatus.downloadFailed)) {
-          const failureCount = languageState.downloadDictionaryFailureCount + 1;
-          this.set(failureCountKey, failureCount);
+          downloadDictionaryFailureCount++;
         } else if (
             status.isReady && !(previousStatus && previousStatus.isReady)) {
-          this.set(failureCountKey, 0);
+          downloadDictionaryFailureCount = 0;
         }
+
+        return {
+          ...languageState,
+          downloadDictionaryStatus: status,
+          downloadDictionaryFailureCount,
+        };
       });
-    });
+    };
+
+    this.languages.enabled = updateStates(this.languages.enabled);
+    this.languages.spellCheckOnLanguages =
+        updateStates(this.languages.spellCheckOnLanguages);
+    this.languages.spellCheckOffLanguages =
+        updateStates(this.languages.spellCheckOffLanguages);
+    this.dispatchLanguagesChanged_();
   }
   // </if>
 
@@ -603,12 +618,12 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
       return;
     }
 
-    for (let i = 0; i < this.languages.enabled.length; i++) {
-      const languageState = this.languages.enabled[i];
-      this.set(
-          'languages.enabled.' + i + '.removable',
-          this.canDisableLanguage(languageState));
-    }
+    this.languages.enabled = this.languages.enabled.map(languageState => {
+      return {
+        ...languageState,
+        removable: this.canDisableLanguage(languageState),
+      };
+    });
   }
 
   /**
@@ -802,11 +817,3 @@ class SettingsLanguagesElement extends SettingsLanguagesElementBase implements
     this.languageSettingsPrivate_.retryDownloadDictionary(languageCode);
   }
 }
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'settings-languages': SettingsLanguagesElement;
-  }
-}
-
-customElements.define(SettingsLanguagesElement.is, SettingsLanguagesElement);

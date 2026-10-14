@@ -4,6 +4,7 @@
 
 import("//build/config/chrome_build.gni")
 import("//components/safe_browsing/buildflags.gni")
+import("//extensions/buildflags/buildflags.gni")
 import("//media/media_options.gni")
 import("//net/features.gni")
 import("//third_party/blink/public/public_features.gni")
@@ -92,6 +93,10 @@ source_set("component_updater") {
   if (safe_browsing_mode != 0) {
     public += [ "file_type_policies_component_installer.h" ]
   }
+
+  if (enable_extensions_core) {
+    public += [ "aim_eligibility_component_installer.h" ]
+  }
 }
 
 # Implementation target. Only .cc/.mm files.
@@ -158,6 +163,7 @@ source_set("impl") {
     "//content/public/browser",
     "//content/public/common",
     "//crypto",
+    "//extensions/buildflags",
     "//media",
     "//services/cert_verifier/public/mojom",
     "//services/network/public/cpp",
@@ -170,6 +176,14 @@ source_set("impl") {
   }
   if (safe_browsing_mode != 0) {
     deps += [ "//components/safe_browsing/content/common:file_type_policies" ]
+  }
+
+  if (enable_extensions_core) {
+    sources += [ "aim_eligibility_component_installer.cc" ]
+    deps += [
+      "//chrome/browser/extensions",
+      "//chrome/browser/resources/omnibox/aim_eligibility_extension:resources",
+    ]
   }
 
   if (!is_android) {
@@ -217,6 +231,8 @@ source_set("impl") {
       sources += [ "recovery_improved_component_installer_win.cc" ]
     }
     deps += [
+      "//chrome/browser/enterprise",
+      "//chrome/browser/google",
       "//chrome/elevation_service:public_headers",
       "//chrome/installer/util:with_no_strings",
     ]

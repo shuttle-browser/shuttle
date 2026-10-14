@@ -280,7 +280,7 @@ if (is_android) {
 }
 
 mojom("content_browsertests_mojom") {
-  cpp_only = true
+  generate_legacy_js = false
   sources = [
     "common/main_frame_counter_test.mojom",
     "common/memory_coordinator/memory_coordinator_test.mojom",

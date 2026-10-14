@@ -38,6 +38,7 @@
 #include "chrome/browser/ui/status_bubble.h"
 #include "chrome/browser/ui/tab_helpers.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
+#include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
@@ -50,9 +51,11 @@
 #include "components/prefs/pref_service.h"
 #include "components/split_tabs/split_tab_id.h"
 #include "components/split_tabs/split_tab_visual_data.h"
+#include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/browser_url_handler.h"
+#include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/picture_in_picture_window_controller.h"
 #include "content/public/browser/render_frame_host.h"
@@ -63,6 +66,7 @@
 #include "content/public/browser/storage_partition_config.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/buildflags/buildflags.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
@@ -118,15 +122,18 @@ bool WindowCanOpenTabs(const NavigateParams& params) {
 
 // Finds an existing Browser compatible with |profile|, making a new one if no
 // such Browser is located.
-BrowserWindowInterface* GetOrCreateBrowser(Profile* profile,
-                                           bool user_gesture) {
+BrowserWindowInterface* GetOrCreateBrowser(
+    Profile* profile,
+    bool user_gesture,
+    bool should_trigger_session_restore) {
   BrowserWindowInterface* browser =
       ProfileBrowserCollection::GetForProfile(profile)->FindTabbedBrowser();
 
   if (!browser && GetBrowserWindowCreationStatusForProfile(*profile) ==
                       BrowserWindowInterface::CreationStatus::kOk) {
-    browser =
-        CreateBrowserWindow(BrowserWindowCreateParams(profile, user_gesture));
+    BrowserWindowCreateParams params(profile, user_gesture);
+    params.should_trigger_session_restore = should_trigger_session_restore;
+    browser = CreateBrowserWindow(std::move(params));
   }
   return browser;
 }
@@ -156,6 +163,8 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
     const NavigateParams& params,
     const AdditionalParams& additional_params) {
   Profile* profile = params.initiating_profile;
+  const bool should_trigger_session_restore =
+      params.should_trigger_session_restore;
 
   switch (params.disposition) {
     case WindowOpenDisposition::SWITCH_TO_TAB: {
@@ -172,7 +181,9 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       }
       // Find a compatible window and re-execute this command in it. Otherwise
       // re-run with NEW_WINDOW.
-      return {GetOrCreateBrowser(profile, params.user_gesture), -1};
+      return {GetOrCreateBrowser(profile, params.user_gesture,
+                                 should_trigger_session_restore),
+              -1};
     case WindowOpenDisposition::SINGLETON_TAB: {
       // If we have a browser window, check it first.
       if (params.browser) {
@@ -203,7 +214,9 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
 
       // Find a compatible window and re-execute this command in it. Otherwise
       // re-run with NEW_WINDOW.
-      return {GetOrCreateBrowser(profile, params.user_gesture), -1};
+      return {GetOrCreateBrowser(profile, params.user_gesture,
+                                 should_trigger_session_restore),
+              -1};
     case WindowOpenDisposition::NEW_PICTURE_IN_PICTURE: {
       // The picture in picture window should be part of the opener's web app,
       // if any.
@@ -266,6 +279,8 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
         browser_params.initial_origin_specified = GetOriginSpecified(params);
         browser_params.can_maximize = !additional_params.tab_modal_popup;
         browser_params.can_fullscreen = !additional_params.tab_modal_popup;
+        browser_params.should_trigger_session_restore =
+            should_trigger_session_restore;
         return {CreateBrowserWindow(std::move(browser_params)), -1};
       }
       BrowserWindowCreateParams browser_params =
@@ -273,6 +288,8 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
               app_name, params.trusted_source, params.window_features.bounds,
               profile, params.user_gesture);
       browser_params.initial_origin_specified = GetOriginSpecified(params);
+      browser_params.should_trigger_session_restore =
+          should_trigger_session_restore;
       return {CreateBrowserWindow(std::move(browser_params)), -1};
     }
     case WindowOpenDisposition::NEW_WINDOW: {
@@ -280,8 +297,10 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       BrowserWindowInterface* browser = nullptr;
       if (GetBrowserWindowCreationStatusForProfile(*profile) ==
           BrowserWindowInterface::CreationStatus::kOk) {
-        browser = CreateBrowserWindow(
-            BrowserWindowCreateParams(profile, params.user_gesture));
+        BrowserWindowCreateParams browser_params(profile, params.user_gesture);
+        browser_params.should_trigger_session_restore =
+            should_trigger_session_restore;
+        browser = CreateBrowserWindow(std::move(browser_params));
       }
       return {browser, -1};
     }
@@ -613,10 +632,14 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
       std::optional<blink::mojom::PictureInPictureWindowOptions> pip_options =
           contents_to_navigate_or_insert->GetPictureInPictureOptions();
       if (pip_options.has_value()) {
+        const bool focus_contents =
+            params->window_action ==
+                NavigateParams::WindowAction::kShowWindow &&
+            params->user_gesture;
         PictureInPictureWindowManager::GetInstance()
             ->EnterStandaloneDocumentPictureInPicture(
                 params->source_contents, std::move(params->contents_to_insert),
-                std::move(*pip_options));
+                std::move(*pip_options), focus_contents);
       }
       // If the WebContents doesn't have valid PiP options, don't enter PiP
       // mode and don't create a browser window.

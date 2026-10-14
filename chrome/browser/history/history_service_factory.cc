@@ -22,10 +22,8 @@ std::unique_ptr<KeyedService> BuildHistoryService(
   auto history_service = std::make_unique<history::HistoryService>(
       std::make_unique<ChromeHistoryClient>(),
       std::make_unique<history::ContentVisitDelegate>(context));
-  if (!history_service->Init(history::HistoryDatabaseParamsForPath(
-          context->GetPath(), chrome::GetChannel()))) {
-    return nullptr;
-  }
+  history_service->Init(history::HistoryDatabaseParamsForPath(
+      context->GetPath(), chrome::GetChannel()));
   return history_service;
 }
 

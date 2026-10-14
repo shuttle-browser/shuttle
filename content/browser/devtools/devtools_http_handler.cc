@@ -329,7 +329,7 @@ void ServerWrapper::Close(int connection_id) {
 void TerminateOnUI(std::unique_ptr<base::Thread> thread,
                    std::unique_ptr<ServerWrapper> server_wrapper,
                    std::unique_ptr<DevToolsSocketFactory> socket_factory) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   if (server_wrapper)
     thread->task_runner()->DeleteSoon(FROM_HERE, std::move(server_wrapper));
   if (socket_factory)
@@ -347,7 +347,7 @@ void ServerStartedOnUI(base::WeakPtr<DevToolsHttpHandler> handler,
                        ServerWrapper* server_wrapper,
                        DevToolsSocketFactory* socket_factory,
                        std::unique_ptr<net::IPEndPoint> ip_address) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
   if (handler && thread && server_wrapper) {
     handler->ServerStarted(
         std::move(thread), std::unique_ptr<ServerWrapper>(server_wrapper),
@@ -368,7 +368,8 @@ void StartServerOnHandlerThread(
     const base::FilePath& debug_frontend_dir,
     const std::string& browser_guid,
     bool bundles_resources) {
-  DCHECK(thread->task_runner()->BelongsToCurrentThread());
+  CHECK(thread->task_runner()->BelongsToCurrentThread(),
+        base::NotFatalUntil::M159);
   std::unique_ptr<ServerWrapper> server_wrapper;
   std::unique_ptr<net::ServerSocket> server_socket =
       socket_factory->CreateForHttpServer();
@@ -433,7 +434,7 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
         connection_id_(connection_id),
         agent_host_(agent_host),
         filter_(std::move(filter)) {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
     if (filter_) {
       filter_->Start(
           base::BindRepeating(&DevToolsAgentHostClientImpl::SendToAgent,
@@ -446,7 +447,7 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
   }
 
   ~DevToolsAgentHostClientImpl() override {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
     if (agent_host_)
       agent_host_->DetachClient(this);
   }
@@ -454,8 +455,8 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
   std::string GetTypeForMetrics() override { return "RemoteDebugger"; }
 
   void AgentHostClosed(DevToolsAgentHost* agent_host) override {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
-    DCHECK(agent_host == agent_host_.get());
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
+    CHECK(agent_host == agent_host_.get(), base::NotFatalUntil::M159);
 
     constexpr char kMsg[] =
         "{\"method\":\"Inspector.detached\","
@@ -471,8 +472,8 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
 
   void DispatchProtocolMessage(DevToolsAgentHost* agent_host,
                                base::span<const uint8_t> message) override {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
-    DCHECK(agent_host == agent_host_.get());
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
+    CHECK(agent_host == agent_host_.get(), base::NotFatalUntil::M159);
     std::string text(message.begin(), message.end());
     if (filter_) {
       filter_->OnAgentMessage(std::move(text));
@@ -482,7 +483,7 @@ class DevToolsAgentHostClientImpl : public DevToolsAgentHostClient {
   }
 
   void OnMessage(base::span<const uint8_t> message) {
-    DCHECK_CURRENTLY_ON(BrowserThread::UI);
+    CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M159);
     if (filter_) {
       filter_->OnClientMessage(std::string(message.begin(), message.end()));
       return;

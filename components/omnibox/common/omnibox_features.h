@@ -88,6 +88,7 @@ BASE_DECLARE_FEATURE(kOmniboxFullWebUIEvictOnHide);
 BASE_DECLARE_FEATURE(kOmniboxWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxWebUIPopupHideOnCreation);
+BASE_DECLARE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide);
 BASE_DECLARE_FEATURE(kWebUISearchboxWithoutModelController);
 
 // Omnibox UI - these affect the UI or function of the location bar (not the
@@ -173,6 +174,8 @@ BASE_DECLARE_FEATURE(kOmniboxDebugLogs);
 BASE_DECLARE_FEATURE(kVoiceSearchCoherenceSearchbox);
 extern const base::FeatureParam<bool>
     kVoiceSearchCoherenceSearchboxWithLiveTranscription;
+extern const base::FeatureParam<bool> kVoiceSearchCoherenceRealboxAutoEndpoint;
+extern const base::FeatureParam<bool> kVoiceSearchCoherenceRealboxHelperText;
 
 #if BUILDFLAG(IS_ANDROID)
 BASE_DECLARE_FEATURE(kDiagnostics);

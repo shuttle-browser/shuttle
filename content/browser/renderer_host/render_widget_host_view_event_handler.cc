@@ -131,6 +131,10 @@ void RenderWidgetHostViewEventHandler::SetPopupChild(
   popup_child_event_handler_ = popup_child_event_handler;
 }
 
+void RenderWidgetHostViewEventHandler::ResetHost() {
+  host_ = nullptr;
+}
+
 blink::mojom::PointerLockResult RenderWidgetHostViewEventHandler::LockPointer(
     bool request_unadjusted_movement) {
   aura::Window* root_window = window_->GetRootWindow();
@@ -375,7 +379,11 @@ void RenderWidgetHostViewEventHandler::OnMouseEvent(ui::MouseEvent* event) {
       // Confirm existing composition text on mouse press, to make sure
       // the input caret won't be moved with an ongoing composition text.
       if (event->type() == ui::EventType::kMousePressed) {
+        auto weak_this = weak_ptr_factory_.GetWeakPtr();
         FinishImeCompositionSession();
+        if (!weak_this || !window_ || !host_ || host_view_->destroy_pending()) {
+          return;
+        }
       }
 
       blink::WebMouseEvent mouse_event = ui::MakeWebMouseEvent(*event);
@@ -557,7 +565,11 @@ void RenderWidgetHostViewEventHandler::OnGestureEvent(ui::GestureEvent* event) {
   // Confirm existing composition text on TAP gesture, to make sure the input
   // caret won't be moved with an ongoing composition text.
   if (event->type() == ui::EventType::kGestureTap) {
+    auto weak_this = weak_ptr_factory_.GetWeakPtr();
     FinishImeCompositionSession();
+    if (!weak_this || !window_ || !host_ || host_view_->destroy_pending()) {
+      return;
+    }
   }
 
   blink::WebGestureEvent gesture = ui::MakeWebGestureEvent(*event);
@@ -575,6 +587,9 @@ void RenderWidgetHostViewEventHandler::OnGestureEvent(ui::GestureEvent* event) {
     } else {
       host_->ForwardGestureEvent(fling_cancel);
     }
+  }
+  if (!host_) {
+    return;
   }
 
   if (gesture.GetType() != blink::WebInputEvent::Type::kUndefined) {
@@ -675,8 +690,15 @@ void RenderWidgetHostViewEventHandler::FinishImeCompositionSession() {
   // call to finish composition text should be made through the RWHVA itself
   // otherwise the following call to cancel composition will lead to an extra
   // IPC for finishing the ongoing composition (see https://crbug.com/723024).
+  if (!host_view_ || !host_view_->GetTextInputClient()) {
+    return;
+  }
+  auto weak_this = weak_ptr_factory_.GetWeakPtr();
   host_view_->GetTextInputClient()->ConfirmCompositionText(
       /* keep_selection */ true);
+  if (!weak_this || !window_ || !host_ || host_view_->destroy_pending()) {
+    return;
+  }
   host_view_->ImeCancelComposition();
 }
 
@@ -919,8 +941,9 @@ bool RenderWidgetHostViewEventHandler::ShouldMoveToCenter(
 }
 
 bool RenderWidgetHostViewEventHandler::ShouldRouteEvents() const {
-  if (!host_->delegate())
+  if (!host_->delegate()) {
     return false;
+  }
 
   // Do not route events that are currently targeted to page popups such as
   // <select> element drop-downs, since these cannot contain cross-process

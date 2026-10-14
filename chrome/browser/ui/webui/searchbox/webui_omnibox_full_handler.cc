@@ -36,3 +36,7 @@ WebuiOmniboxFullHandler::WebuiOmniboxFullHandler(
 }
 
 WebuiOmniboxFullHandler::~WebuiOmniboxFullHandler() = default;
+
+bool WebuiOmniboxFullHandler::SupportsKeywordMode() const {
+  return true;
+}

@@ -59,6 +59,7 @@ source_set("impl") {
     "//chrome/browser:chrome_content_browser_client",
     "//chrome/browser:defaults",
     "//chrome/browser:flags",
+    "//chrome/browser:intranet_redirect_detector",
     "//chrome/browser/accessibility",
     "//chrome/browser/accessibility/accessibility_prefs",
     "//chrome/browser/component_updater",
@@ -311,6 +312,7 @@ source_set("impl") {
     deps += [
       "//chrome/browser:font_prewarmer_tab_helper",
       "//chrome/browser/os_crypt",
+      "//chrome/browser/ui:network_profile_bubble",
       "//chrome/browser/webnn",
       "//chrome/browser/win",
       "//components/os_crypt/browser",
@@ -327,7 +329,6 @@ source_set("impl") {
     ]
   } else {
     deps += [
-      "//chrome/browser:intranet_redirect_detector",
       "//chrome/browser/device_identity",
       "//chrome/browser/search_engines",
       "//chrome/browser/speech",
@@ -343,6 +344,10 @@ source_set("impl") {
       "persistent_renderer_prefs_manager.cc",
       "persistent_renderer_prefs_manager_factory.cc",
     ]
+  }
+
+  if (!is_android || is_desktop_android) {
+    deps += [ "//chrome/browser/ui/ai_overlay_dialog" ]
   }
 
   if (enable_extensions) {

@@ -58,7 +58,7 @@
         </else>
       </if>
       <message name="IDS_SETTINGS_COOKIES_BLOCK_THIRD_PARTY_SETTINGS_BLOCK_BULLET_ONE" desc="This text is for a bullet that provides detail about the second setting option. It describes the primary privacy and content impacts of selecting the “Block third-party cookies” option." formatter_data="android_java">
-        Sites can't use third-party cookies to personalize content and ads, and learn about actions you take on other sites, unless you allow related sites to access them
+        Sites can't use third-party cookies to personalize content and ads, and learn about actions you take on other sites
       </message>
       <message name="IDS_SETTINGS_COOKIES_BLOCK_THIRD_PARTY_SETTINGS_BLOCK_BULLET_TWO" desc="This text is for a bullet that provides detail about the second setting option. It describes the extent of how sites can use cookies when the “Block third-party cookies” option is selected." formatter_data="android_java">
         Sites can still use cookies to see browsing activity on their own site

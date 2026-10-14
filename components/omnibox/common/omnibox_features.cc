@@ -191,7 +191,7 @@ BASE_FEATURE(kOmniboxFullWebUIDeferShowUntilVisualStateReady, DISABLED);
 // When enabled, the Omnibox WebUI popup will debounce auto-resize events.
 BASE_FEATURE(kOmniboxWebUIDebounceResize, ENABLED);
 // When enabled, the Omnibox Full WebUI popup will debounce auto-resize events.
-BASE_FEATURE(kOmniboxFullWebUIDebounceResize, ENABLED);
+BASE_FEATURE(kOmniboxFullWebUIDebounceResize, DISABLED);
 // When enabled, height workarounds are applied for the Omnibox WebUI popup.
 BASE_FEATURE(kOmniboxWebUIHeightWorkarounds, ENABLED);
 // When enabled, height workarounds are applied for the Omnibox Full WebUI popup.
@@ -232,6 +232,15 @@ BASE_FEATURE(kOmniboxFullWebUISizeWebViewToPreferredHeight, DISABLED);
 // widget upon creation, preventing pre-warmed child widgets from inheriting
 // parent window visibility and locking compositor frames.
 BASE_FEATURE(kOmniboxWebUIPopupHideOnCreation, DISABLED);
+
+// When enabled, a WebUI omnibox popup destroys its widget when it is hidden
+// and builds a fresh one on the next show, so the new native window has no
+// previous compositor content to present. This is applied to every WebUI popup
+// presenter, including the AI Mode popup, but only takes effect when the full
+// WebUI omnibox is enabled. The WebUI container (and its WebContents) is
+// preserved across the swap, so this does not discard the pre-warmed renderer.
+BASE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide, ENABLED);
+
 // When enabled, the WebUI searchbox will bypass OmniboxController and
 // OmniboxEditModel.
 BASE_FEATURE(kWebUISearchboxWithoutModelController, DISABLED);
@@ -329,7 +338,7 @@ BASE_FEATURE(kReportApplicationLanguageInSearchRequest, ENABLED);
 BASE_FEATURE(kOmniboxAppendInvocationSource, DISABLED);
 
 // Enable asynchronous Omnibox/Suggest view inflation.
-BASE_FEATURE(kOmniboxAsyncViewInflation, DISABLED);
+BASE_FEATURE(kOmniboxAsyncViewInflation, ENABLED);
 
 // Use FusedLocationProvider on Android to fetch device location.
 BASE_FEATURE(kUseFusedLocationProvider, ENABLED);
@@ -346,7 +355,7 @@ BASE_FEATURE(kOmniboxMobileParityUpdateV2, ENABLED);
 BASE_FEATURE(kOmniboxXGeoPermissionGranularity, ENABLED);
 
 // When the first suggestion is a url, the favicon is shown in the status view.
-BASE_FEATURE(kExactMatchFavicons, DISABLED);
+BASE_FEATURE(kExactMatchFavicons, ENABLED);
 
 // The features below allow tuning number of suggestions offered to users in
 // specific contexts. These features are default enabled and are used to control
@@ -411,6 +420,18 @@ const base::FeatureParam<bool>
         &kVoiceSearchCoherenceSearchbox,
         "VoiceSearchCoherenceSearchboxWithLiveTranscription", false};
 
+// Enables 3-second auto-endpointing for NTP Realbox voice search.
+// When enabled, voice search automatically submits after 3 seconds of trailing
+// silence.
+const base::FeatureParam<bool> kVoiceSearchCoherenceRealboxAutoEndpoint{
+    &kVoiceSearchCoherenceSearchbox, "VoiceSearchCoherenceRealboxAutoEndpoint",
+    false};
+
+// Enables helper text (e.g. "Listening...") in NTP Realbox voice search.
+const base::FeatureParam<bool> kVoiceSearchCoherenceRealboxHelperText{
+    &kVoiceSearchCoherenceSearchbox, "VoiceSearchCoherenceRealboxHelperText",
+    false};
+
 #if BUILDFLAG(IS_ANDROID)
 // Accelerates time from cold start to focused Omnibox on low-end devices,
 // prioritizing Omnibox focus and background initialization.
@@ -454,6 +475,9 @@ namespace android {
 static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
   static const base::Feature* const kFeaturesExposedToJava[] = {
       &kDiagnostics,
+      &kComposeboxDriveContextMenuOption,
+      &kComposeboxDriveContextMenuOptionDisclaimer,
+      &kForceDriveDisclaimerAccepted,
       &kForceAndroidRealbox,
       &kOmniboxTouchDownTriggerForPrefetch,
       &kOmniboxPrefetchSelectedSuggestionsOmtAndroid,

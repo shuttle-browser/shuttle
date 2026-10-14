@@ -408,6 +408,12 @@ class TabsCreateSplitFunction : public ExtensionFunction {
   ResponseAction Run() override;
   DECLARE_EXTENSION_FUNCTION("tabs.createSplit", TABS_CREATESPLIT)
 };
+class TabsUnsplitFunction : public ExtensionFunction {
+ private:
+  ~TabsUnsplitFunction() override;
+  ResponseAction Run() override;
+  DECLARE_EXTENSION_FUNCTION("tabs.unsplit", TABS_UNSPLIT)
+};
 class TabsDetectLanguageFunction : public ExtensionFunction {
  private:
   ~TabsDetectLanguageFunction() override = default;

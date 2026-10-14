@@ -212,9 +212,6 @@ class DesktopNativeWidgetTopLevelHandler : public aura::WindowObserver {
     // the Widget::SetBounds function.
     if (top_level_widget_ && window == child_window_) {
       top_level_widget_->SetBounds(window->GetBoundsInScreen());
-    } else if (top_level_widget_ &&
-               window == top_level_widget_->GetNativeView()) {
-      child_window_->SetBounds(gfx::Rect(new_bounds.size()));
     }
   }
 
@@ -384,7 +381,7 @@ void DesktopNativeWidgetAura::OnHostClosed() {
 
   host_->window()->RemovePreTargetHandler(root_window_event_filter_.get());
 
-  host_->RemoveObserver(this);
+  host_observation_.Reset();
   // |drag_drop_client_| holds a raw_ptr on |desktop_window_tree_host_|, so we
   // need to destroy it first.
   drag_drop_client_.reset();
@@ -702,7 +699,7 @@ void DesktopNativeWidgetAura::InitNativeWidget(Widget::InitParams params) {
 
   OnHostResized(host());
 
-  host_->AddObserver(this);
+  host_observation_.Observe(host_.get());
 
   window_parenting_client_ =
       std::make_unique<DesktopNativeWidgetAuraWindowParentingClient>(

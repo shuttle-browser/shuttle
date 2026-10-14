@@ -84,7 +84,10 @@ source_set("impl") {
       "//chrome/browser/ui/android/tab_model:impl",
     ]
   } else {
-    deps += [ "//chrome/browser/ui/browser_window" ]
+    deps += [
+      "//chrome/browser/ui/browser_window",
+      "//components/webapps/isolated_web_apps:scheme",
+    ]
   }
 }
 
@@ -157,6 +160,8 @@ if (is_android) {
       "//third_party/androidx:androidx_test_runner_java",
       "//third_party/junit",
     ]
+  } else {
+    deps += [ "//components/webapps/isolated_web_apps:scheme" ]
   }
 }
 

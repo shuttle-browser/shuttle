@@ -86,6 +86,7 @@
 #include "chrome/browser/ui/webui/webui_gallery/webui_gallery_ui.h"
 #include "chrome/browser/ui/webui/webui_js_error/webui_js_error_ui.h"
 #else  // !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/webui/chrome_finds_internals/chrome_finds_internals_ui.h"
 #include "chrome/browser/ui/webui/feed_internals/feed_internals_ui.h"
 #include "chrome/browser/ui/webui/notifications_internals/notifications_internals_ui.h"
 #include "chrome/browser/ui/webui/webapks/webapks_ui.h"
@@ -103,7 +104,8 @@
 #endif  // BUILDFLAG(ENABLE_PRINT_PREVIEW)
 
 #if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/webui/ash/config/chrome_web_ui_configs_chromeos.h"
+#include "base/check_is_test.h"
+#include "chrome/browser/ui/webui/ash/config/ash_web_ui_config_manager.h"
 #include "chrome/browser/ui/webui/ash/dlp_internals/dlp_internals_ui.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -169,9 +171,19 @@
 
 void RegisterChromeWebUIConfigs() {
   // Don't add calls to `AddWebUIConfig()` for Ash-specific WebUIs here. Add
-  // them in chrome_web_ui_configs_chromeos.cc.
+  // them to `AshWebUIConfigManager::RegisterWebUIConfigs()` in
+  // ash_web_ui_config_manager.cc.
 #if BUILDFLAG(IS_CHROMEOS)
-  ash::RegisterAshChromeWebUIConfigs();
+  if (auto* ash_webui_config_manager =
+          ash::AshWebUIConfigManager::GetInstance()) {
+    ash_webui_config_manager->RegisterWebUIConfigs();
+  } else {
+    // AshWebUIConfigManager is created in
+    // ChromeBrowserMainPartsAsh::PreProfileInit() and is not instantiated in
+    // unit tests by default. Unit tests that require specific WebUIs should
+    // register their configs individually in test fixtures.
+    CHECK_IS_TEST();
+  }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   auto& map = content::WebUIConfigMap::GetInstance();
@@ -228,6 +240,8 @@ void RegisterChromeWebUIConfigs() {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
+  map.AddWebUIConfig(
+      std::make_unique<chrome_finds_internals::ChromeFindsInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<FeedInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<NotificationsInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebApksUIConfig>());
