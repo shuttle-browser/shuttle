@@ -1,0 +1,30 @@
+# Prune manifest: features removed with the Chromium 155 merge (Toby's calls, 2026-10-14).
+# remove-only manifest: scripts/prune.py deletes these unconditionally (no build analysis).
+# Rerun after every upstream merge; references are cut by hand (see REMOVAL-LOG).
+
+# Chrome's own agent actuation service (Shuttle drives the browser through CDP/MCP)
+remove components/browser_actuator
+remove chrome/browser/browser_actuator
+remove chrome/browser/resources/browser_actuator_internals
+
+# glic "critical actions" store, linkout handlers and its internals WebUI
+remove chrome/browser/critical_actions
+remove components/critical_actions
+remove chrome/browser/ui/webui/critical_actions
+remove chrome/browser/resources/critical_actions
+
+# sync-only features (the sync service is gone)
+remove chrome/browser/sync_tab_context
+remove components/sync_tab_context
+remove chrome/renderer/tab_context_decryption_token_extension.cc
+remove chrome/renderer/tab_context_decryption_token_extension.h
+remove chrome/common/tab_context_decryption_token_extension.mojom
+remove components/history/core/browser/journeys
+
+# Google feature dirs new in 155 that land in removed areas
+remove chrome/browser/geic
+remove chrome/browser/ttc
+remove chrome/browser/indigo
+
+# Chromium's coding-agent prompts and skills (not built; avoids confusion with Shuttle's agents)
+remove agents
