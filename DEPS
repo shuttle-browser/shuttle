@@ -5154,6 +5154,8 @@ hooks = [
     # Update chromeos/tast_control.gni
     'name': 'tast_control',
     'pattern': '.',
+    # Shuttle: chromeos/ is pruned; the inputs don't exist outside a ChromeOS checkout.
+    'condition': 'checkout_chromeos',
     'action': ['python3', 'src/build/util/tast_control.py',
                '-o', 'src/chromeos/tast_control.gni',
                '-t', 'src/chromeos/tast_control.gni.template',

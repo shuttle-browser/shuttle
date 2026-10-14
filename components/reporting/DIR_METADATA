@@ -1,4 +1,3 @@
-mixins: "//chromeos/ash/components/policy/COMMON_METADATA"
 monorail: {
   project: "chromium"
   component: "Enterprise"
