@@ -134,6 +134,9 @@ class PageInfoMainView : public views::View,
   // the label depending on the number of visible permissions.
   void UpdateResetButton(const PermissionInfoList& permission_info_list);
 
+  // Handles clicks on the "Extensions" button in the site settings section.
+  void OnSeeExtensionsClicked();
+
   // Creates the warning banner view for suspicious sites.
   [[nodiscard]] std::unique_ptr<views::View> CreateSuspiciousSiteBannerView(
       const IdentityInfo& identity_info);
