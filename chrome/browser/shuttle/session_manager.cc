@@ -14,14 +14,20 @@
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_writer.h"
 #include "base/rand_util.h"
+#include "base/scoped_observation.h"
 #include "base/types/expected_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
+#include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/shuttle/profile_registry.h"
+#include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+#include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
@@ -29,6 +35,8 @@
 #include "chrome/browser/ui/tabs/tab_group_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
+#include "components/keep_alive_registry/keep_alive_types.h"
+#include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/tab_groups/tab_group_color.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "components/tabs/public/tab_group.h"
@@ -207,6 +215,30 @@ std::string NewSessionId() {
 
 }  // namespace
 
+#if BUILDFLAG(IS_LINUX)
+// Drops the session keep-alives when the user quits (menu Exit, chrome://quit):
+// AttemptExit() marks the browser as quitting, then closes every window, and
+// the keep-alives would otherwise keep the process running windowless.
+class SessionManager::QuitWatcher : public BrowserCollectionObserver {
+ public:
+  explicit QuitWatcher(SessionManager* manager) : manager_(manager) {
+    observation_.Observe(GlobalBrowserCollection::GetInstance());
+  }
+  void OnBrowserClosed(BrowserWindowInterface* browser) override {
+    if (browser_shutdown::IsTryingToQuit()) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(&SessionManager::ReleaseKeepAliveForQuit,
+                                    manager_->weak_factory_.GetWeakPtr()));
+    }
+  }
+
+ private:
+  raw_ptr<SessionManager> manager_;
+  base::ScopedObservation<GlobalBrowserCollection, BrowserCollectionObserver>
+      observation_{this};
+};
+#endif  // BUILDFLAG(IS_LINUX)
+
 Session::Session() = default;
 Session::Session(const Session&) = default;
 Session::~Session() = default;
@@ -225,8 +257,36 @@ const Session& SessionManager::Open(const std::string& agent_id) {
   session.id = id;
   session.agent = agent_id;
   session.opened = base::Time::Now();
+#if BUILDFLAG(IS_LINUX)
+  UpdateKeepAlive();
+#endif
   return session;
 }
+
+#if BUILDFLAG(IS_LINUX)
+void SessionManager::ReleaseKeepAliveForQuit() {
+  quit_watcher_.reset();
+  sessions_profile_keep_alive_.reset();
+  sessions_keep_alive_.reset();
+}
+
+void SessionManager::UpdateKeepAlive() {
+  if (browser_shutdown::IsTryingToQuit()) {
+    return;
+  }
+  if (sessions_.empty()) {
+    quit_watcher_.reset();
+    sessions_profile_keep_alive_.reset();
+    sessions_keep_alive_.reset();
+  } else if (!sessions_keep_alive_) {
+    sessions_keep_alive_ = std::make_unique<ScopedKeepAlive>(
+        KeepAliveOrigin::REMOTE_DEBUGGING, KeepAliveRestartOption::DISABLED);
+    sessions_profile_keep_alive_ = std::make_unique<ScopedProfileKeepAlive>(
+        profile_, ProfileKeepAliveOrigin::kRemoteDebugging);
+    quit_watcher_ = std::make_unique<QuitWatcher>(this);
+  }
+}
+#endif
 
 const Session* SessionManager::Get(const std::string& session_id) const {
   auto it = sessions_.find(session_id);
@@ -255,6 +315,10 @@ bool SessionManager::Close(const std::string& session_id) {
   if (session_closed_callback_) {
     session_closed_callback_.Run(session_id);
   }
+#if BUILDFLAG(IS_LINUX)
+  // Last: releasing the keep-alive can start shutdown (no windows left).
+  UpdateKeepAlive();
+#endif
   return true;
 }
 

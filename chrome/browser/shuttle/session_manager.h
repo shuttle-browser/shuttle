@@ -17,12 +17,15 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
+#include "build/build_config.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
 
 class Profile;
+class ScopedKeepAlive;
+class ScopedProfileKeepAlive;
 
 namespace content {
 class WebContents;
@@ -178,6 +181,22 @@ class SessionManager : public TabStripModelObserver {
   raw_ptr<Profile> profile_;
   raw_ptr<ProfileRegistry> registry_;
   std::map<std::string, Session> sessions_;
+#if BUILDFLAG(IS_LINUX)
+  // Keeps the browser running while any session is open, so closing the last
+  // window (Shuttle started from the menu or a terminal) doesn't stop the
+  // server under a working agent. With no session it quits like an app.
+  // macOS keeps running anyway (AppController), and an extra keep-alive there
+  // would block Cmd-Q.
+  // The profile keep-alive stops the profile (and this manager with its
+  // sessions) from being destroyed when its last window closes.
+  // Both are dropped once the user quits (menu Exit): see QuitWatcher.
+  void UpdateKeepAlive();
+  void ReleaseKeepAliveForQuit();
+  class QuitWatcher;
+  std::unique_ptr<QuitWatcher> quit_watcher_;
+  std::unique_ptr<ScopedKeepAlive> sessions_keep_alive_;
+  std::unique_ptr<ScopedProfileKeepAlive> sessions_profile_keep_alive_;
+#endif
   SessionClosedCallback session_closed_callback_;
   // Agent id -> its tab group. Created with the agent's first tab (a tab
   // group can't be empty); gone once its last tab closes.
