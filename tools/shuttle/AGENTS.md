@@ -71,10 +71,17 @@ targets), `prune-policies.py`, `prune-strings.py`, `prune-locales.py` (en-US-onl
 
 ## After an upstream merge
 
-1. `scripts/prune-tests.py --apply`
-2. `scripts/prune-locales.py --apply` (before the rebrand)
-3. `scripts/rebrand.py apply --apply`
-4. rerun manifests whose areas came back (modify/delete conflicts resolve to the deletion), `gn gen`, build, smoke.
+Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges"):
+
+1. Conflicts: modify/delete → `git rm`; `git checkout --conflict=zdiff3 -- <UU files>`, then
+   `scripts/merge-autoresolve.py stats|apply ours-deleted,ours-subset <list>` (fork-only deletions), the rest by
+   sub-agents per area with a shared brief. Keep DEPS `version_file`s (gclient reads them even when unused).
+2. `gclient sync -j 4` from the gclient root (default -j hits googlesource HTTP 429); new clang ⇒ toolchain archive.
+3. Delete upstream additions in directories the fork deleted entirely; judge brand-new dirs; rerun `prune/m155.txt`
+   and other remove-only manifests.
+4. `scripts/prune-locales.py --apply`, `scripts/rebrand.py apply --apply` (keep main's rendered assets if only bytes differ).
+5. `scripts/gn-fix-loop.py` until `gn gen` passes; then `scripts/prune-tests.py --apply`, `fix-gn-refs.py --apply`.
+6. `scripts/check-ninja-inputs.py` (missing inputs on chrome's graph; restore from `chromium`), then a `-k 0` build.
 
 ## Smoke tests
 

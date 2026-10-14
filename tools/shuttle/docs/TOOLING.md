@@ -220,6 +220,31 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
     `curl -fsSL https://get.shuttlebrowser.com | SHUTTLE_CHANNEL=testing bash` installs from `testing`. The variables
     go on the `bash` side: `SHUTTLE_CHANNEL=testing curl … | bash` only sets it for curl and installs `stable`.
 
+## Upstream merges
+
+First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files changed; 12,877 modify/delete +
+453 content conflicts (1,110 hunks); conflicts resolved in ~20 min (script + 4 Sonnet + 1 Opus), `gn gen` green
+~65 min after the merge. Steps: AGENTS.md "After an upstream merge". Gotchas:
+- **Rename detection carries upstream edits onto fork files.** A fork file copied from an upstream file the fork
+  deleted counts as a rename: `resources/agents/BUILD.gn` received upstream's `assert(is_android)`. After the merge,
+  diff every fork-added file (`git diff --no-renames --diff-filter=A <old snapshot> main`) against main.
+- **Clean merge hunks land in the wrong place** when the fork deleted their context: a misplaced `} else {` in a
+  BUILD.gn, a lost `</message>` in generated_resources.grd (grit fails and blocks most of chrome). Parse every
+  changed .grd/.grdp with an XML parser before building.
+- **Auto-resolved "ours-deleted" hunks drop upstream's new lines** (≤5 by default): a few were real deps on targets
+  upstream moved code into (`views:idle_bubble`, `views/extensions:*_impl`). gn's "Label not in deps" and the link
+  show them.
+- **Hunk-level "ours" in test BUILD files splices upstream additions** into nonsense: take main's whole file instead.
+- **gclient reads DEPS `version_file`s even when the dep's condition is false**: pruning them breaks `gclient sync`
+  (prune.py now keeps them). The location-tags hook fails on DIR_METADATA mixins into pruned dirs and `tast_control`
+  reads pruned chromeos/ files: both fixed in the fork (they had failed silently since the ChromeOS prune).
+- **Upstream starts using files the fork pruned as unused**: siso aborts before building ("missing and no known rule").
+  `scripts/check-ninja-inputs.py` lists them; restore with `git checkout chromium -- <path>`.
+- **New upstream WebUIs need path mappings and Lit visibility** (`tools/typescript/path_mappings.py`,
+  `third_party/lit/v3_0/BUILD.gn`), e.g. `cr_components/cr_lottie`.
+- **Gatekeeper flags upstream data** (public CT log keys in `log_list.json`): allow-list with a `rule`, a `pack`
+  entry doesn't cover secret findings.
+
 ## Gotchas
 
 - **Linux host builds use `scripts/build-linux.sh`** (2026-10-14): `build.sh` is the zsh/Mac script; on the Linux host

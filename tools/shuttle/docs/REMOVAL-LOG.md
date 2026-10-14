@@ -716,3 +716,21 @@ closed → alive (MCP 200), close-session → exit; session open + chrome://quit
 linux-smoke headless/x11/wayland 48 clean each, exit 0; linux-nsw-check x11+wayland clean; linux-mcp-smoke clean.
 Mac `out/Sccache`: smoke-cdp 48 clean, smoke-mcp ALL OK. One flaky nsw-check x11 run hit a Browser.close hang (137)
 right after a forwarded launch opened the agents window; not reproduced in 4 later runs.
+
+## Chromium 155 merge (2026-10-14, branch `sh/merge-155`, in progress; numbers when it lands on main)
+
+Base moves from 154.0.8037.129 to **155.0.8059.80** (snapshot `359941b91f` on `chromium`). Merge `09d02349f3`:
+12,877 modify/delete conflicts → deletion, 3 upstream deletions taken, 453 content conflicts keep the fork's removals
+and additions. Follow-ups: `eb103744e8` gclient hooks (dangling DIR_METADATA mixins, `tast_control` only on
+ChromeOS; first fork change to DEPS), `1bad6d0f6b` gn gen (910 upstream additions in fully removed dirs re-pruned,
+dead deps, moved `ui` targets re-added), `86ad29b82d` prune-tests rerun, `009df56910`
+`Profile::IsPrimaryOTRProfileWithRegularParent()` back (always false), `87590c4c62` build round 1 fixes.
+
+Removed with the merge (`172d44b468`, manifest `prune/m155.txt`, Toby's calls): **browser_actuator** (Chrome's own
+agent actuation service; Shuttle uses CDP/MCP), **critical_actions** (glic's critical-action store, linkouts,
+internals WebUI; the history page shows no critical actions or Gemini links), **sync_tab_context** and the tab context
+decryption token extension, **Journeys** (sync-only; history DB stays at version 70, existing DBs keep unused tables),
+upstream's top-level **agents/** (Chromium coding-agent prompts; 2 gitlinks + DEPS entries), leftovers of
+geic/ttc/indigo.
+
+Verified so far: `gn gen out/Sccache` green; Mac round-1 `-k 0` build running. Build, smoke and Linux pending.
