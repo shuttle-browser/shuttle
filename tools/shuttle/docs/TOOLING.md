@@ -212,7 +212,8 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
     input sends EOF before the answer arrives.
   - Test without touching the real install: `SHUTTLE_APPS_DIR=/tmp/x bash assets/install.sh` (Mac),
     `HOME=/tmp/x SHUTTLE_METHOD=tarball bash install.sh` (Linux); the repo path needs a throwaway distro or VM.
-    `SHUTTLE_CHANNEL=testing` installs from `testing`.
+    `curl -fsSL https://get.shuttlebrowser.com | SHUTTLE_CHANNEL=testing bash` installs from `testing`. The variables
+    go on the `bash` side: `SHUTTLE_CHANNEL=testing curl … | bash` only sets it for curl and installs `stable`.
 
 ## Gotchas
 
