@@ -1280,6 +1280,10 @@ bool BrowserView::IsVerticalTabStripCollapsed() const {
   return false;
 }
 
+bool BrowserView::GetEnterpriseIsolatedMode() const {
+  return browser_->GetProfile()->IsEnterpriseIsolatedModeProfile();
+}
+
 bool BrowserView::GetIncognito() const {
   return browser_->GetProfile()->IsIncognitoProfile();
 }
