@@ -85,9 +85,6 @@ content::BrowserContext* ChooseBrowserContextFromStoreId(
   DCHECK(browser_context);
   ExtensionsBrowserClient* client = ExtensionsBrowserClient::Get();
   bool allow_original = !browser_context->IsOffTheRecord();
-  bool allow_incognito =
-      browser_context->IsOffTheRecord() ||
-      (include_incognito && client->HasOffTheRecordContext(browser_context));
   if (store_id == kOriginalProfileStoreId && allow_original) {
     return client->GetOriginalContext(browser_context);
   }
