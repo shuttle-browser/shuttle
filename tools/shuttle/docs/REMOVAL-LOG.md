@@ -717,7 +717,7 @@ linux-smoke headless/x11/wayland 48 clean each, exit 0; linux-nsw-check x11+wayl
 Mac `out/Sccache`: smoke-cdp 48 clean, smoke-mcp ALL OK. One flaky nsw-check x11 run hit a Browser.close hang (137)
 right after a forwarded launch opened the agents window; not reproduced in 4 later runs.
 
-## Chromium 155 merge (2026-10-14, branch `sh/merge-155`, in progress; numbers when it lands on main)
+## Fork commit 43 (2026-10-14..16): Chromium 155 merge (branch `sh/merge-155`, fast-forwarded into main)
 
 Base moves from 154.0.8037.129 to **155.0.8059.80** (snapshot `359941b91f` on `chromium`). Merge `09d02349f3`:
 12,877 modify/delete conflicts → deletion, 3 upstream deletions taken, 453 content conflicts keep the fork's removals
@@ -733,4 +733,10 @@ decryption token extension, **Journeys** (sync-only; history DB stays at version
 upstream's top-level **agents/** (Chromium coding-agent prompts; 2 gitlinks + DEPS entries), leftovers of
 geic/ttc/indigo.
 
-Verified so far: `gn gen out/Sccache` green; Mac round-1 `-k 0` build running. Build, smoke and Linux pending.
+Later fixes on the branch: Mac-only build errors (`a0cd1a86d1`, `062af1f303`: Keystone promotion infobar gone with
+`enable_updater=false`), `07023fcbd3` prune manifests re-run (11 upstream additions in other-platform areas; Linux-built
+files, fcm and files referenced from other-platform branches stay).
+
+Verified: Mac `out/Sccache` smoke-cdp, check-automation ×2, smoke-mcp + persist, agents-page, session-cdp, network all
+green; Mac `out/Release` (official) built (7 h 19 min via sccache-dist), smoke-cdp clean, signed + notarized DMG;
+Linux `out/Dev` (MAGWIN) all smokes green.

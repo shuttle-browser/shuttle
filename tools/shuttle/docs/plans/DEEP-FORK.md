@@ -12,7 +12,8 @@ Status: started 2026-10-04. Decision: Shuttle becomes a full fork of Chromium, o
 - **Tests:** tests of removed code are deleted. Only the `chrome` target is guaranteed to build; we don't run Chromium's own test suites.
 - **Remote (since 2026-10-06):** private `git@github.com:shuttle-browser/shuttle.git` (remote `github`).
   History starts at a snapshot commit: branch `chromium` = one commit with the tree of upstream tag
-  154.0.8037.129 (`8690039f`, no upstream ancestry; full history is ~50 GB). `main` = the fork. Locally:
+  154.0.8037.129 (`8690039f`, no upstream ancestry; full history is ~50 GB), then one snapshot commit per merged
+  stable release (155.0.8059.80 = `359941b91f`, merged 2026-10-16). `main` = the fork. Locally:
   `chromium` tracks `github/chromium`, `main` tracks `github/main`. `origin` stays googlesource (gclient).
 
 ### Upstream merge workflow (per stable release)

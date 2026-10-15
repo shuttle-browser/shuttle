@@ -31,7 +31,7 @@ feature), `docs/plans/BUILD-OPTIMIZATION.md` (GN args rationale), `docs/plans/MC
 
 ## Fork basics
 
-- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **154.0.8037.129** snapshot; fork work
+- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **155.0.8059.80** snapshot (merged 2026-10-16; 154.0.8037.129 before); fork work
   lives on `main`, work in progress on topic branches. Upstream releases are *merged* in, not rebased; afterwards
   rerun the prune and rebrand scripts (see "After an upstream merge").
 - Mac and Linux must both build before a removal batch is committed. Windows is removed (WSL2 runs the Linux build).

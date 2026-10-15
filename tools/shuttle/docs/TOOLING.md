@@ -90,6 +90,9 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   referenced by `.grd` ∪ DEPS hooks ∪ a temporary official config). Resource files (images,
   TS/JS/CSS/HTML, JSON, `.xtb`, `.grd`) are only pruned by `dir`/`remove` rules. Run after a
   successful Dev build so the deps log is current.
+  **"Used" is the Mac build only:** since Linux is back, a full `--apply` of `platforms.txt`/`deadcode.txt` would
+  delete ~3k files Linux builds (ozone, dbus, `*_linux`). Dry-run, intersect with the files you mean to touch (after a
+  merge: `git diff --name-only --diff-filter=A main <branch>`), and turn the safe ones into `remove` rules (155: 59 → 11).
 - `scripts/fix-gn-refs.py [--apply] [scope ...]`: strips dangling references to paths deleted by
   the *staged* change; reports the rest as `FIX`. 4s for the whole tree.
 - `gn check out/Dev --fix` adds direct deps lost with removed `public_deps`. ~1,000 "Source file
