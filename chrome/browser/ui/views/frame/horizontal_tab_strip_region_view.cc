@@ -779,11 +779,6 @@ gfx::Rect HorizontalTabStripRegionViewNew::GetTabStripDraggableBounds() const {
     trailing_reserved_width +=
         reserved_grab_handle_space_->GetPreferredSize().width();
   }
-  if (tab_strip_action_container_ &&
-      tab_strip_action_container_->GetVisible()) {
-    trailing_reserved_width +=
-        tab_strip_action_container_->GetPreferredSize().width();
-  }
   if (new_tab_button_ && new_tab_button_->GetVisible()) {
     trailing_reserved_width += new_tab_button_->GetPreferredSize().width();
   }
