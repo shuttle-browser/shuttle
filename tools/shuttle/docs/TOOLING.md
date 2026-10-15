@@ -266,6 +266,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   upstream) that the merge dropped and whose header exists (33 restored); `Register*Prefs` calls in browser_prefs.cc
   vs the old fork (a lost one = startup crash "unregistered pref", invisible to compile and link); token-level
   check for upstream reformat-only files that undid fork edits; JSON/XML parse of all merge-touched files.
+- **Mac-only code compiles last and only on the Mac**: after Linux was green, the Mac still had 2 errors, an include
+  the merge left only inside `#if BUILDFLAG(IS_CHROMEOS)` while 155 uses it under `IS_MAC`, and a new Mac-only
+  Keystone promotion infobar (fork: `enable_updater=false`). Sweep: includes top-level in upstream but only inside an
+  `#if` block in the merged file.
 - **New upstream WebUIs need path mappings and Lit visibility** (`tools/typescript/path_mappings.py`,
   `third_party/lit/v3_0/BUILD.gn`), e.g. `cr_components/cr_lottie`.
 - **Gatekeeper flags upstream data** (public CT log keys in `log_list.json`): allow-list with a `rule`, a `pack`
