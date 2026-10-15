@@ -28,3 +28,12 @@ remove chrome/browser/indigo
 
 # Chromium's coding-agent prompts and skills (not built; avoids confusion with Shuttle's agents)
 remove agents
+
+# 155 re-run of the old manifests (2026-10-15): upstream additions in other-platform areas, no code references.
+# Linux-built candidates (session_end_listener_linux, wayland_idle_notify, media redirection, ...) and fcm stay.
+remove chrome/browser/enterprise/connectors/device_trust/attestation/android
+remove chromeos/ash/experiences/arc/user_session
+remove chromeos/ash/experiences/arc/privacy_items
+remove components/browser_ui/settings/android/settings_search_testing.md
+remove chrome/updater/win/ui/resources/error_dark.bmp
+remove components/lens/lens_identity_delegation_helper.h
