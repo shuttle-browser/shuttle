@@ -3092,15 +3092,6 @@ const FeatureEntry::FeatureVariation kGlicButtonPressedStateVariations[] = {
      kGlicButtonPressedStateForceSolidIcon, nullptr}};
 
 
-const FeatureEntry::FeatureParam kGlicMarketingAutoOpenAllowlistedUrls[] = {
-    {"allowlisted_urls",
-     "https://www.google.com/chrome/ai-innovations/gemini-in-chrome/,"
-     "https://www.google.com/chrome/campaigns/gic-on-android/"}};
-
-const FeatureEntry::FeatureVariation kGlicMarketingAutoOpenVariations[] = {
-    {"with promotional landing pages allowlist",
-     kGlicMarketingAutoOpenAllowlistedUrls, nullptr}};
-
 const FeatureEntry::FeatureParam kGlicGuestUrlPresetTypeAutopush[] = {
     {"glic-guest-url-preset-type", "0"}};
 const FeatureEntry::FeatureParam kGlicGuestUrlPresetTypeStaging[] = {
