@@ -1270,6 +1270,11 @@ OmniboxPopupSelection ConvertSelection(
       state = OmniboxPopupSelection::LineState::CTRL_ENTER;
       break;
     }
+    case searchbox::mojom::SelectionLineState::kFocusedButtonVoiceSearch:
+    case searchbox::mojom::SelectionLineState::kFocusedButtonLensSearch: {
+      // Handled directly by webui omnibox popup.
+      NOTREACHED();
+    }
   }
   CHECK_NE(state, OmniboxPopupSelection::LineState::LINE_STATE_MAX_VALUE);
   // Special case line for mojom equivalent of kNoMatch; it is represented
