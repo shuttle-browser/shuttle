@@ -1423,6 +1423,7 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
 #else   // BUILDFLAG(IS_ANDROID)
   gcm::RegisterPrefs(registry);
   headless::RegisterPrefs(registry);
+  IntranetRedirectDetector::RegisterPrefs(registry);
   performance_manager::user_tuning::prefs::RegisterLocalStatePrefs(registry);
   RegisterBrowserPrefs(registry);
   speech::SodaInstaller::RegisterLocalStatePrefs(registry);
