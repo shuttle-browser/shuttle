@@ -254,6 +254,18 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   restore main's version.
 - **Upstream starts using files the fork pruned as unused**: siso aborts before building ("missing and no known rule").
   `scripts/check-ninja-inputs.py` lists them; restore with `git checkout chromium -- <path>`.
+- **Restore a "missing input" only if the fork uses it.** check-ninja-inputs lists upstream files a BUILD.gn still
+  references; 155's `shadow_overlay_view` and `intent_picker_bubble_view` were never instantiated by the fork and
+  pulled in pruned side-panel / link-capturing code. Grep for users first; if none, drop the BUILD.gn entry instead.
+- **Agents' BUILD.gn/file edits: run check-ninja-inputs on a scratch out dir**, not just `gn gen` (gn doesn't check
+  that sources exist; a deleted file still listed in BUILD.gn blocked a whole Linux round at schedule time).
+- **Renamed upstream files re-add pruned features**: 155 renamed `file_system.idl` → `.webidl`, so schema.gni got
+  the pruned chrome.fileSystem API back (link error: generated registration without implementation). Compare
+  pruned basenames (fork-old vs now) in list files like `api/schema.gni` after a merge.
+- **Sweeps that paid off in 155** (each replaced several build rounds): includes new in upstream (absent in the old
+  upstream) that the merge dropped and whose header exists (33 restored); `Register*Prefs` calls in browser_prefs.cc
+  vs the old fork (a lost one = startup crash "unregistered pref", invisible to compile and link); token-level
+  check for upstream reformat-only files that undid fork edits; JSON/XML parse of all merge-touched files.
 - **New upstream WebUIs need path mappings and Lit visibility** (`tools/typescript/path_mappings.py`,
   `third_party/lit/v3_0/BUILD.gn`), e.g. `cr_components/cr_lottie`.
 - **Gatekeeper flags upstream data** (public CT log keys in `log_list.json`): allow-list with a `rule`, a `pack`
