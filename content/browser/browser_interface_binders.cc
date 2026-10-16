@@ -141,6 +141,7 @@
 #include "third_party/blink/public/mojom/ai/ai_manager.mojom.h"
 #include "third_party/blink/public/mojom/background_fetch/background_fetch.mojom.h"
 #include "third_party/blink/public/mojom/background_sync/background_sync.mojom.h"
+#include "third_party/blink/public/mojom/badging/badging.mojom.h"
 #include "third_party/blink/public/mojom/blob/blob_url_store.mojom.h"
 #include "third_party/blink/public/mojom/blob/file_backed_blob_factory.mojom.h"
 #include "third_party/blink/public/mojom/bluetooth/web_bluetooth.mojom.h"
@@ -899,6 +900,13 @@ void PopulateBinderMapWithContext(
       &EmptyBinderForFrame<blink::mojom::ScriptToolHost>);
   map->Add<blink::mojom::WebInstallService>(
       &EmptyBinderForFrame<blink::mojom::WebInstallService>);
+  // Shuttle: the embedders of these were removed (chrome/browser/badging,
+  // on-device speech); blink still requests them from page script
+  // (navigator.setAppBadge, SpeechRecognition.available/install).
+  map->Add<blink::mojom::BadgeService>(
+      &EmptyBinderForFrame<blink::mojom::BadgeService>);
+  map->Add<media::mojom::OnDeviceSpeechRecognition>(
+      &EmptyBinderForFrame<media::mojom::OnDeviceSpeechRecognition>);
 
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kExposeInternalsForTesting)) {

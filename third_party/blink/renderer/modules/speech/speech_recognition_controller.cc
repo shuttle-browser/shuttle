@@ -30,6 +30,7 @@
 
 #include "media/mojo/mojom/speech_recognition_recognition_context.mojom-blink.h"
 #include "media/mojo/mojom/speech_recognizer.mojom-blink.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
@@ -129,16 +130,21 @@ void SpeechRecognitionController::AvailableOnDevice(
     media::mojom::blink::SpeechRecognitionQuality quality,
     base::OnceCallback<void(media::mojom::blink::AvailabilityStatus)>
         callback) {
-  GetOnDeviceSpeechRecognition()->Available(languages, quality,
-                                            std::move(callback));
+  // Shuttle: no on-device speech backend; resolve if the pipe closes unrun.
+  GetOnDeviceSpeechRecognition()->Available(
+      languages, quality,
+      mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+          std::move(callback),
+          media::mojom::blink::AvailabilityStatus::kUnavailable));
 }
 
 void SpeechRecognitionController::Install(
     const Vector<String>& languages,
     media::mojom::blink::SpeechRecognitionQuality quality,
     base::OnceCallback<void(bool)> callback) {
-  GetOnDeviceSpeechRecognition()->Install(languages, quality,
-                                          std::move(callback));
+  GetOnDeviceSpeechRecognition()->Install(
+      languages, quality,
+      mojo::WrapCallbackWithDefaultInvokeIfNotRun(std::move(callback), false));
 }
 
 void SpeechRecognitionController::Trace(Visitor* visitor) const {
