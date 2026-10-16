@@ -634,6 +634,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (`git log -1 --format=%cd --date=format-local:%Y%m%d%H%M.%S`). `out/Release` went back to a 5 min build. Don't
   start (and kill) a build before the restore: those runs relinked `protoc` and regenerated headers, so
   `out/Sccache` still needs ~44k steps. Move branches with `git branch -f`.
+  Testing a change on the other host before it's pushed: send it as a patch, `git apply` it there (uncommitted).
+  After the push, `git merge --ff-only` refuses ("local changes would be overwritten") even when the content is
+  identical: `git add` those files first (index = target), then the fast-forward leaves them and their mtimes alone
+  (fork 45 on Linux, 2026-10-17: dry run 0 steps). Never stash or checkout them.
 - **Deleted `.grdp` also lives in the `.grd` itself (B2d):** remove the `<part file=...>` line in
   `components/components_strings.grd` as well as the `.gritdeps` entry.
 - **Checked-in TS API definitions (B2d):** `tools/typescript/definitions/*.d.ts` mirror the
