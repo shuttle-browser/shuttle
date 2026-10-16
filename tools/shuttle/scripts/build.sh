@@ -33,19 +33,6 @@ if [[ "$kind" == sccache || "${SHUTTLE_SCCACHE:-0}" == 1 ]]; then
   want+=$'\n''cc_wrapper = "sccache"'$'\n''use_clang_modules = false'
   export SCCACHE_CONF="${SCCACHE_CONF:-$SHUTTLE_CONF/sccache.toml}"
 fi
-# SHUTTLE_REMOTE=1: compile C++ remotely on a NativeLink build host (Mac only; see docs/TOOLING.md
-# "Remote builds"). Mac-only steps and links stay local. Needs the rewrapper cfg + wrapper
-# from config/remote/ in buildtools/reclient_cfgs/chromium-browser-clang/ (copied below).
-remote_args=()
-if [[ "${SHUTTLE_REMOTE:-0}" == 1 ]]; then
-  want+=$'\n'"use_remoteexec = true"
-  mkdir -p "$SRC/buildtools/reclient_cfgs/chromium-browser-clang"
-  cp "$cfg/remote/rewrapper_mac.cfg" "$cfg/remote/clang_remote_wrapper" \
-     "$SRC/buildtools/reclient_cfgs/chromium-browser-clang/"
-  export SISO_PROJECT=shuttle SISO_REAPI_INSTANCE=main RBE_service_no_security=true
-  remote_args=(-reapi_address="${SHUTTLE_REAPI_ADDRESS:-${SHUTTLE_BUILD_HOST_IP:?set SHUTTLE_BUILD_HOST_IP or SHUTTLE_REAPI_ADDRESS}:50051}" -reapi_instance=main -reapi_insecure
-               -local_jobs="${SHUTTLE_LOCAL_JOBS:-4}" -remote_jobs="${SHUTTLE_REMOTE_JOBS:-12}")
-fi
 cd "$SRC"
 mkdir -p "out/$dir"
 if [[ ! -f "out/$dir/args.gn" || "$(cat "out/$dir/args.gn")" != "$want" ]]; then
@@ -61,7 +48,7 @@ set +e
 # macOS script(1) aborts ("tcgetattr/ioctl: Operation not supported on socket") when stdin is a socket, e.g. a build
 # started by an agent harness; /dev/null works.
 [[ -t 0 ]] || exec </dev/null
-script -q -F "$log" nice -n "${NICE:-10}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_TARGET:-chrome}" "${remote_args[@]}" "$@"
+script -q -F "$log" nice -n "${NICE:-10}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_TARGET:-chrome}" "$@"
 rc=$?
 mins=$(( ($(date +%s) - start) / 60 ))
 echo "BUILD EXIT $rc after ${mins}m" | tee -a "$log"

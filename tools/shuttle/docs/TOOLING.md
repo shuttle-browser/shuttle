@@ -14,6 +14,41 @@ Team-only notes go in the git-ignored `_docs/`.
 dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.py`, `build-errors.sh`) default to
 `out/Sccache` (`SHUTTLE_BUILD_DIR` overrides). Older notes below that say `out/Dev` mean the dev build; Linux keeps `out/Dev`.
 
+## Fork strategy
+
+- **Merge upstream, never rebase.** Branch `chromium` = one snapshot commit per stable tag (no upstream history; the
+  full history is ~50 GB): `git fetch --depth=1 origin refs/tags/<new>:refs/tags/<new>`, then on `chromium`
+  `git commit-tree <new>^{tree} -p chromium -m "Chromium <new> (snapshot)"`, move `chromium` to it. Diff of two
+  snapshots = the upstream change. `main` merges `chromium`; modify/delete conflicts resolve to the deletion.
+  `build/util/lastchange.py` falls back to the newest commit (snapshots have no `Change-Id`): keep that edit.
+- **Keep the engine close to upstream.** V8, Blink, `content/`, `net/`, `third_party/` stay as unmodified as possible
+  (security fixes must merge cheaply; agents browse arbitrary sites). Deep cuts go into the shell (`chrome/`,
+  `components/`); new fork code goes into its own dirs (`chrome/browser/shuttle/`) so merges rarely touch it.
+- **Two mechanisms:** prune manifests (`prune/*.txt` + `scripts/prune.py`) delete whole areas; code edits are normal
+  fork commits. **Remove everything first, then build once** (`-k 0`), with seconds-cheap checks in between
+  (`git grep` for dangling symbols, `gn gen`, `gn check`): building per step recompiles the dependents of edited
+  shared headers again and again. Commits stay per area (merge conflicts stay per area), not each guaranteed to build.
+- **Tests:** tests of removed code are deleted. Only the `chrome` target is guaranteed to build; Chromium's own test
+  suites aren't run. Resources (grit, rollup, TS read undeclared inputs) are deleted only with their feature and
+  `.grd` entries, never by the "unused" analysis.
+- After big prunes do a clean Release build: an incremental build doesn't re-run actions, so a deleted but undeclared
+  action input only shows on a clean build.
+
+## GN args rationale
+
+- **Trim the shell, not the engine; prefer runtime defaults over build-time removal.** Every non-default GN arg is an
+  untested config: keep one only if it helps measurably, and drop an arg that breaks the build rather than patching
+  around it. Args blocked by upstream asserts on Mac are commented in `config/args-common.gn`.
+- **Never turn off:** printing (CDP `Page.printToPDF`), `enable_pdf` (agents read PDFs), extensions (DevTools and
+  extension users), `enable_swiftshader` (software GPU for headless/VMs), supervised users (asserted on).
+- **Rejected:** x86 SIMD flags (arm64), `-O3` for third-party / `-ffp-contract=fast` (no gain on Apple silicon;
+  fp-contract changes float results vs Chrome), Widevine (needs Google's signing).
+- **Privacy Sandbox fully off** (feature defaults, sandbox reported restricted so no consent UI, Topics / Protected
+  Audience / Attribution Reporting / Shared Storage / Private Aggregation off). Kept: CHIPS, storage partitioning, the
+  default third-party-cookie policy (web compat; agents need working SSO).
+- **Release:** official, arm64, open codecs only; no PGO (needs `checkout_pgo_profiles`) and no ThinLTO (its framework
+  link needs more than the Mac's 18 GB). Revisit for 1.0 (~10-15 % speed).
+
 ## Build
 
 - `config/args-common.gn` + `config/args-{dev,release}.gn` are **the** GN args.
@@ -40,12 +75,6 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
 - **Run long builds where a workerdeck reload can't kill them.** A workerdeck hot reload/restart
   ends every `shell_run` shell ("server_stopped"); it killed two B2d builds. The maintainer avoids reloads
   during builds; Siso resumes where it stopped, so just restart.
-- `scripts/build-remote.sh dev -k 0` (= `SHUTTLE_REMOTE=1 scripts/build.sh`, 8 remote jobs by default):
-  C++ compiles go to NativeLink on the build host (`config/remote/`, `use_remoteexec=true`; vars
-  `SHUTTLE_REAPI_ADDRESS`, `SHUTTLE_REMOTE_JOBS`, `SHUTTLE_LOCAL_JOBS`). **Trial dropped 2026-10-06** (~160 vs
-  ~1,320 steps/10 min local; NativeLink stopped, data wiped): see "Remote builds" below.
-  Kept for a possible future spike. Switching back to a plain `build.sh dev` regenerates args.gn
-  and made Siso re-check ~6k steps (~2k actually rebuilt).
 
 ## Remote builds (sccache-dist)
 
@@ -64,8 +93,8 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/buildmon` on the host (TUI; feed it from the Mac with
   `scripts/buildmon_push.py <Dir>`), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
   (WSL2 hardware sensors through the Windows host).
-- NativeLink/REAPI (`scripts/build-remote.sh`, `config/remote/`) was tried first and dropped (much slower); kept for
-  a possible future spike.
+- NativeLink/REAPI (siso remote execution) was tried first and dropped: much slower than sccache-dist here
+  (removed 2026-10-16; in git history before that).
 
 ## Removal workflow (worked for A, B1, sweep 1, B2a, B2c)
 
@@ -225,6 +254,22 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
     `HOME=/tmp/x SHUTTLE_METHOD=tarball bash install.sh` (Linux); the repo path needs a throwaway distro or VM.
     `curl -fsSL https://get.shuttlebrowser.com | SHUTTLE_CHANNEL=testing bash` installs from `testing`. The variables
     go on the `bash` side: `SHUTTLE_CHANNEL=testing curl … | bash` only sets it for curl and installs `stable`.
+
+## Releases
+
+1. `SHUTTLE_KIND=release scripts/build-sccache.sh -local_jobs=12 -k 0` (or `scripts/build.sh release`): official
+   `out/Release`; `gn gen out/Release` + `scripts/check-ninja-inputs.py out/Release` first. After a Chromium bump it is a
+   full rebuild (~7 h via sccache-dist). Smoke it (`smoke-cdp.mjs` against `out/Release`).
+2. `SHUTTLE_SIGN_ID=<Developer ID SHA-1> SHUTTLE_NOTARY_PROFILE=<notarytool profile> scripts/release-mac.sh`: builds the
+   packaging tools, adds the agent-browser sidecar, signs, notarizes + staples app and DMG, verifies with
+   spctl/stapler. Output `$SHUTTLE_ROOT/release/<chromium version>/`; copy the DMG to
+   `release/v<X.Y.Z>/Shuttle-<X.Y.Z>-arm64.dmg`. Identity and notary credentials stay in the keychain.
+3. Linux: `scripts/build-linux.sh release`, `package-linux.sh` (tarball), `package-deb.sh` (.deb + .rpm), Linux
+   smokes and an upgrade test from the previous version (`docs/LINUX.md`).
+4. `release/v<X.Y.Z>/`: `NOTES.md` (Chromium base, changes, downloads table, known limits), `SHA256SUMS`, then
+   `gh release create v<X.Y.Z> -R shuttle-browser/shuttle --target <full SHA> --title "Shuttle <X.Y.Z>" --notes-file
+   NOTES.md --latest <files>` (a short SHA fails with HTTP 422), `scripts/publish-packages.sh` for the apt/dnf repo,
+   then the website's version and download links.
 
 ## Upstream merges
 
@@ -460,7 +505,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   `Contents/Helpers/agent-browser`, or `SHUTTLE_AGENT_BROWSER=<binary>` for dev runs. Relinking `chrome` keeps
   the Helpers copy. The page tool list lives in `config/agent-browser-tools.json`; after edits run
   `node scripts/gen-page-tools.mjs` and commit the regenerated fork file `chrome/browser/shuttle/page_tools_data.inc`.
-  `scripts/ab-mcp-client.mjs` talks to `agent-browser mcp` over stdio (measurements). smoke-mcp expects
+  smoke-mcp expects
   36 tools (12 + 24). Gotchas: `AGENT_BROWSER_PIN_TAB=1` makes a fresh daemon open a stray tab; the daemon
   outlives the MCP process (send `close`, idle timeout as fallback).
 - **zsh in the Bash tool:** `$VAR` holding several words does **not** split (`scripts/x.sh $FILES` passes one

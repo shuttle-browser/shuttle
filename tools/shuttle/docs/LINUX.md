@@ -21,26 +21,9 @@ removed from the fork.
 The gclient root can live anywhere; the scripts find it two levels above `src/tools/shuttle` (override with
 `SHUTTLE_ROOT`). Our hosts use `~/projects/shuttle-browser` (gclient root: `.gclient`, `src/`, `logs/`, `release/`).
 
-```sh
-mkdir -p ~/projects/shuttle-browser && cd ~/projects/shuttle-browser
-cat > .gclient <<'EOT'
-solutions = [{
-  "name": "src",
-  "url": "git@github.com:shuttle-browser/shuttle.git",
-  "managed": False,
-  "custom_deps": {},
-  "custom_vars": {},
-}]
-target_os = ["linux"]
-EOT
-fetch --nohooks chromium   # or: gclient sync, then check out 154.0.8037.129
-cd src && git remote add github git@github.com:shuttle-browser/shuttle.git
-git fetch github && git checkout main
-gclient sync -D            # re-run after DEPS changes
-./build/install-build-deps.sh
-```
+Checkout: README "Build from source" (add `target_os = ["linux"]` to `.gclient`, then
+`src/build/install-build-deps.sh`). Pushing over ssh needs the remote URL `git@github.com:shuttle-browser/shuttle.git`.
 
-See the README for the full "build from source" flow.
 
 ## Build
 

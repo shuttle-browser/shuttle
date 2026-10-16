@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetches the pinned agent-browser release (npm tarball), verifies its version
 # and installs the binary + license into an app bundle's Helpers directory.
-# The browser spawns it as the page-tools sidecar (docs/plans/MCP-V2.md, phase 2).
+# The browser spawns it as the page-tools sidecar (docs/MCP.md "Page tools").
 #
 # Usage: scripts/fetch-agent-browser.sh <Helpers-dir> [platform]
 #   e.g. scripts/fetch-agent-browser.sh "$SHUTTLE_SRC/out/Sccache/Shuttle.app/Contents/Helpers"

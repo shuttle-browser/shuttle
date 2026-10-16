@@ -16,18 +16,16 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 
 | Path | Contents |
 | --- | --- |
-| `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`), `agent-browser-tools.json` (curated page tools), `sccache.example.toml`, `sccache/systemd/` (build-host unit templates), `remote/` (NativeLink spike) |
+| `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`), `agent-browser-tools.json` (curated page tools), `sccache.example.toml`, `sccache/systemd/` (build-host unit templates) |
 | `scripts/` | Build, prune, fix, rebrand, release and smoke-test scripts (see below and `docs/TOOLING.md`) |
 | `prune/` | Manifests for `scripts/prune.py` (one per removal batch) |
 | `assets/` | Logo and icon sources, icon generation, Linux desktop entry |
-| `patches/` | Readable export of early fork commits (the fork's git history is the source of truth) |
-| `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `LINUX.md`, `BRANDING.md`, `plans/` (design notes) |
+| `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `MCP.md`, `LINUX.md`, `BRANDING.md`, `BENCHMARK.md` |
 
-Docs index: `docs/TOOLING.md` (read first), `docs/REMOVAL-LOG.md`, `docs/LINUX.md`, `docs/BRANDING.md`,
-`docs/plans/DEEP-FORK.md` (strategy, upstream merges), `docs/plans/REMOVAL-CANDIDATES.md` (decisions per
-feature), `docs/plans/BUILD-OPTIMIZATION.md` (GN args rationale), `docs/plans/MCP-SERVER.md`, `MCP-V1.md`,
-`MCP-V2.md` (in-browser MCP server design), `docs/plans/REBRAND.md`, `docs/plans/RAM-BENCHMARK.md`, `docs/TRIAL.md`
-(trying Shuttle over MCP).
+Docs index: `docs/TOOLING.md` (read first: fork strategy, GN args rationale, build, merges, releases, gotchas),
+`docs/MCP.md` (in-browser MCP server, agent model, session CDP, page tools), `docs/REMOVAL-LOG.md` (what each fork
+commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (incl. rebrand mechanics),
+`docs/BENCHMARK.md` (RAM benchmark behind the website's numbers).
 
 ## Fork basics
 
@@ -100,7 +98,7 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
 `scripts/watch-agents.mjs [port]`, `scripts/launch-shuttle.sh` (interactive run on 9222),
 `scripts/fetch-agent-browser.sh <Helpers-dir>` + `scripts/gen-page-tools.mjs` (page-tool sidecar and generated tool list),
 `scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball), `scripts/package-deb.sh` (.deb + .rpm from the tarball),
-`scripts/bench-ram.mjs` (RAM benchmark, `docs/plans/RAM-BENCHMARK.md`).
+`scripts/bench-ram.mjs` (RAM benchmark, `docs/BENCHMARK.md`).
 
 ## Rules and top gotchas (full list in `docs/TOOLING.md`)
 

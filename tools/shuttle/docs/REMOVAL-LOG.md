@@ -1,7 +1,13 @@
 # Removal log
 
 What each removal batch deleted, how the build was fixed, and what it left behind.
-Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md`.
+Strategy: `docs/TOOLING.md` "Fork strategy".
+
+**Kept on purpose:** the engine and web-platform backends (WebNN, Web Speech, FedCM, Shape Detection: web compat),
+DevTools/CDP, extensions, printing/PDF, downloads, tracing, themes (too coupled), devices (Bluetooth, HID, USB, serial),
+the GCM driver + Web Push, minimal profiles, tab groups (they are the agents). Safe Browsing is off by default with the
+safe cuts made (incident reporting, extension telemetry, Mac signature evaluator); `safe_browsing_mode=0` is a possible
+later step. Windows/Linux branches inside shared files stay (Linux is a target again; Windows only via WSL2).
 
 ## Fork commits (`git log chromium..main`)
 
@@ -38,12 +44,12 @@ Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md
     kept). Commit `3482a77af5` (squash of `ac/b2b`).
 19. First rebrand (interim name, replaced in commit 27; Silkweave; the signing team; `<old bundle id>`; logo v2),
     applied by `scripts/rebrand.py`. Commit `033bb9b90b` (single commit, fast-forwarded). Mac + Linux
-    green, smoke clean. Details: `docs/plans/REBRAND.md`.
+    green, smoke clean. Details: `docs/BRANDING.md` "Tooling".
 20. In-browser MCP server at `POST /mcp` on the CDP port (now `chrome/browser/shuttle/`, 11 tools:
     agent profiles = storage partitions, sessions = tab groups, leased tabs) + new tabs/noopener windows
     keep the opener's storage partition. Commit `007d52a391` (squash of `ac/mcp`). Mac + Linux green,
     `smoke-mcp.mjs` 27/27 + persist-check; the first live MCP test 2026-10-08 passed. Design:
-    `docs/plans/MCP-V1.md`, `docs/plans/MCP-SERVER.md`.
+    `docs/MCP.md`.
 21. Agent identity: an agent (= profile) has a name, group color and optional avatar; one tab group per
     agent (shared by its sessions), two-way sync with the tab strip (rename/recolor; an emptied title is
     restored); tabs the user drags into an agent's group are adopted (reopened in its storage, leased to
@@ -51,7 +57,7 @@ Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md
     `ac/agent-identity`, 3 commits). Mac + Linux green, smoke-mcp + persist-check, 3-mode smoke clean.
     Behavior changes: MCP tools `*-profile` renamed to `list/create/update/delete-agent` (`update-agent`
     new), `open-session` takes only the agent id; session groups show the agent's name (was
-    `<profile> · <agent>`). Design: `docs/plans/MCP-SERVER.md` "Agent identity".
+    `<profile> · <agent>`). Design: `docs/MCP.md`.
 22. No startup window: `--no-startup-window` is the default for the process's own launch (unless URLs or
     `--restore-last-session`); the first agent tab creates the window. The remote-debugging keep-alive no
     longer needs a `--remote-debugging-*` switch (Linux/headless stay alive without windows); not taken
@@ -63,7 +69,7 @@ Decisions: `docs/plans/REMOVAL-CANDIDATES.md`. Open work: `_docs/NEXT-SESSION.md
 24. Per-session CDP endpoints (`open-session` → `ws://…/devtools/session/<id>`: only the session's tabs and the
     agent's storage; page connections to leased tabs filtered too), agent viewports via device emulation,
     CSS-px capture, `WebContentsImpl::SetDeviceEmulationSize` null-view crash fix. Commit `58b6b928ab`
-    (squash of `ac/session-cdp`). Design: `docs/plans/MCP-V2.md`.
+    (squash of `ac/session-cdp`). Design: `docs/MCP.md`.
 25. Tab groups are agents: no manual groups; "Hand tab to agent" / "Take back from agent"; agent bubble;
     user-facing "group" strings say "agent"; restored tabs come back ungrouped. Commit `01fffd656f` (squash
     of `ac/agent-groups`).
@@ -430,7 +436,7 @@ free port, so read `DevToolsActivePort` instead of assuming 9222.
 ## Batch B2d (fork commit 17, 2026-10-07) — manifests `prune/b2d.txt` + `prune/b2d-policies.txt`
 
 Decisions (B2d scout Q&A): no Google account sync, no incognito, no guest or system
-profile; agents get isolated contexts from storage partitions instead (`docs/plans/MCP-SERVER.md`).
+profile; agents get isolated contexts from storage partitions instead (`docs/MCP.md`).
 `chrome.storage.sync` stays as a local-only area. 4 Sonnet surgery agents (A1 profile core /
 prefs / IdentityManager / wiring, A2 components + non-UI sync consumers, A3 extensions /
 enterprise / OTR-loop services, A4 browser UI / policy / WebUI). 1,554 files changed, −151k lines;

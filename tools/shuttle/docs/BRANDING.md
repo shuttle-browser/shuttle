@@ -10,7 +10,7 @@ Product **Shuttle** (short: app, Dock, menus, most UI) / **Shuttle Browser** (lo
 `Shuttle.app`, bundle ID `dev.silkweave.shuttle`, creator code `Shtl`; signed by the Atomic BI Apple
 developer team (`TT5SR2JM9L`). Internal code ids, prefs, storage and binary: `shuttle`. Keep the
 `Chromium` brand in the UA string and `navigator.userAgentData` (sites key on it); say "built on
-Chromium". Details: `docs/plans/REBRAND.md` (mechanics), `scripts/rebrand.py` (parameters).
+Chromium". Mechanics: "Tooling" below, `scripts/rebrand.py` (parameters).
 
 ## Logo / app icon (v2, locked in 2026-10-08)
 
@@ -56,6 +56,25 @@ sparkle, possible agent-control badge), d2 (liquid chrome, possible welcome-page
 small-size variant).
 
 ## Tooling
+
+`scripts/rebrand.py` (idempotent, rerun after upstream merges) edits the `chromium` branding in place (no new branding
+flavour: fewer GN changes, isolated merge conflicts):
+- `rebrand.py assets` renders the icon set from `assets/v2/Shuttle.svg` + `assets/make-icons.py` into
+  `assets/build/tree/` (product logos, Linux icons, 100/200 % logos, wordmarks, mono tray icon, `app.icns`, Icon
+  Composer `AppIcon.icon`). Icon Composer layer SVGs must be standalone valid XML (actool's CoreSVG rejects stray tags);
+  layers at full-canvas scale.
+- `rebrand.py apply [--apply]` copies them into the tree, compiles `Assets.car` (`tools/mac/icons/compile_car.py`,
+  Xcode 26 `actool`; macOS 26 reads `Assets.car` before `app.icns`) and applies the text edits:
+  `chrome/app/theme/chromium/BRANDING` (product/company names, bundle id `dev.silkweave.shuttle`), profile dirs
+  (`chrome_paths_mac.mm`, `chrome_paths_linux.cc`), keychain/secret-service item names (changing them makes existing
+  encrypted data unreadable), `chromium_strings.grd` + `settings_chromium_strings.grdp` bodies ("Chromium" → Shuttle,
+  "The Chromium Authors" → Silkweave; not ChromiumOS/Updater, keep copyright headers).
+- **Translations:** grit keys translations by a fingerprint of the English text, so a changed string orphans them.
+  `rebrand.py` parses the grd before/after, remaps the changed ids in all `chromium_strings_*.xtb` and rebrands the
+  translated text.
+- Company "Silkweave" is display-only (copyright, About); the Apple signing identity is separate (`release-mac.sh`).
+
+Concept images (private):
 
 `node _docs/branding/generate.mjs <concepts.json> <outDir> [model] [quality] [size]` — key from the
 private `_docs/.env`; the image API allows 5 requests/min, the script skips existing outputs, so

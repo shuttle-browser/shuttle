@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebrand the fork as Shuttle (docs/plans/REBRAND.md, _docs/plans/REBRAND-SHUTTLE.md). Idempotent; rerun after upstream merges.
+"""Rebrand the fork as Shuttle (docs/BRANDING.md "Tooling"). Idempotent; rerun after upstream merges.
 
   scripts/rebrand.py assets            render icon/logo assets into assets/build/tree/ (needs rsvg-convert, magick)
   scripts/rebrand.py apply [--apply]   copy assets + text edits into $SHUTTLE_ROOT/src (dry run without --apply),

@@ -1,6 +1,6 @@
 # GN args shared by all Shuttle builds. scripts/build.sh writes these into
 # out/<Dir>/args.gn (plus the per-kind file) and re-runs gn gen when they change.
-# Decisions: docs/plans/BUILD-OPTIMIZATION.md and docs/plans/DEEP-FORK.md.
+# Decisions: docs/TOOLING.md "GN args rationale" and "Fork strategy".
 is_debug = false
 symbol_level = 0
 blink_symbol_level = 0

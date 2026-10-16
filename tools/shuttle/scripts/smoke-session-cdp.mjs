@@ -1,4 +1,4 @@
-// Smoke test for per-session CDP endpoints (MCP v2 phase 1, docs/plans/MCP-V2.md).
+// Smoke test for per-session CDP endpoints (docs/MCP.md "Per-session CDP endpoint").
 // Usage: node scripts/smoke-session-cdp.mjs [port]   (default 9333; use a fresh test browser)
 //   Raw CDP checks need nothing. Optional: PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core
 //   and AGENT_BROWSER=/path/to/agent-browser add Playwright / agent-browser checks.

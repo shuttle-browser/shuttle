@@ -19,8 +19,7 @@ scripts skip this directory.
 | `scripts/` | Build, prune, fix, rebrand, release (macOS signing, DMG) and smoke-test scripts |
 | `prune/` | Manifests consumed by `scripts/prune.py`, one per removal batch |
 | `assets/` | Logo (SVG), icon generation, Linux desktop entry |
-| `patches/` | Readable export of the first fork commits |
-| `docs/` | Tooling guide and gotchas, removal log, Linux build notes, branding, design plans (`docs/plans/`) |
+| `docs/` | Tooling guide and gotchas, removal log, Linux build notes, branding, MCP server design, RAM benchmark |
 
 ## Requirements
 
@@ -33,31 +32,35 @@ scripts skip this directory.
 ## Build from source
 
 ```sh
-# 1. Check out Chromium 154.0.8037.129 with depot_tools
+# 1. Check out the fork with depot_tools (gclient clones it as src/ and syncs its DEPS)
 export PATH="$PATH:$HOME/depot_tools"
-mkdir -p ~/chromium && cd ~/chromium
-fetch --nohooks chromium            # Linux: add target_os = ["linux"] to .gclient
-cd src && git checkout 154.0.8037.129
+mkdir -p ~/shuttle-browser && cd ~/shuttle-browser
+cat > .gclient <<'EOT'
+solutions = [{
+  "name": "src",
+  "url": "https://github.com/shuttle-browser/shuttle.git",
+  "managed": False,
+  "custom_deps": {},
+  "custom_vars": {},
+}]
+EOT
+# Linux: also add the line  target_os = ["linux"]  to .gclient
+gclient sync -j 4                   # default -j hits googlesource rate limits (HTTP 429); re-run after DEPS changes
+# Linux only: src/build/install-build-deps.sh
 
-# 2. Add the fork and check out its main branch (brings this tooling along in src/tools/shuttle/)
-git remote add github https://github.com/shuttle-browser/shuttle.git
-git fetch github && git checkout -B main github/main
-gclient sync -D
-# Linux only: ./build/install-build-deps.sh
-
-# 3. Build (GN args come from config/, written to out/Dev/args.gn automatically)
-cd shuttle
+# 2. Build (GN args come from config/, written to out/<Dir>/args.gn automatically)
+cd src/tools/shuttle
 scripts/build.sh dev -j 6 -k 0      # Linux: scripts/build-linux.sh dev -j 12 -k 0
 ```
 
-The fork's history starts at a snapshot of the upstream tag, so fetching the fork's `main` replaces the
-upstream history; `gclient sync` still resolves third-party dependencies from `DEPS`.
+The fork's history starts at a snapshot of the upstream release tag (branch `chromium`), so there is no Chromium
+history to download; `gclient sync` resolves third-party dependencies from `DEPS`.
 
 Run the result headless with a fresh profile and smoke-test it:
 
 ```sh
-../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless \
-  --user-data-dir=/tmp/sh-profile --remote-debugging-port=9222 &     # Linux: out/Dev/shuttle
+../../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless \
+  --user-data-dir=/tmp/sh-profile --remote-debugging-port=9222 &     # Linux: ../../out/Dev/shuttle
 node scripts/smoke-cdp.mjs 9222
 node scripts/smoke-mcp.mjs 9222
 ```
@@ -76,7 +79,7 @@ scripts/rebrand.py apply --apply    # re-apply Shuttle branding to the source tr
 ```
 
 Then rerun the manifests for areas that came back (`scripts/prune.py --apply prune/<manifest>.txt`), run
-`gn gen out/Dev`, build, and smoke-test. Strategy: `docs/plans/DEEP-FORK.md`; workflow and gotchas:
+`gn gen out/Dev`, build, and smoke-test. Strategy: `docs/TOOLING.md` "Fork strategy"; workflow and gotchas:
 `docs/TOOLING.md`.
 
 ## Smoke tests
@@ -96,9 +99,8 @@ All smokes use a fresh profile, run headless, and end with `Browser.close`.
 
 ## Documentation
 
-`docs/TOOLING.md` (start here), `docs/REMOVAL-LOG.md`, `docs/LINUX.md`, `docs/BRANDING.md`, `docs/TRIAL.md`, and design
-notes in `docs/plans/` (MCP server v1/v2, deep-fork strategy, removal candidates, build optimization, rebrand, RAM
-benchmark). Coding agents: see `AGENTS.md`. Contributions: `CONTRIBUTING.md`. Security: `../SECURITY.md`.
+`docs/TOOLING.md` (start here), `docs/MCP.md`, `docs/REMOVAL-LOG.md`, `docs/LINUX.md`, `docs/BRANDING.md`,
+`docs/BENCHMARK.md`. Coding agents: see `AGENTS.md`. Contributions: `CONTRIBUTING.md`. Security: `../SECURITY.md`.
 
 ## License
 

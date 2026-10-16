@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Signs, notarizes and packages a Shuttle release DMG from out/Release (_docs/plans/RELEASE.md, "Mac pipeline").
+# Signs, notarizes and packages a Shuttle release DMG from out/Release (docs/TOOLING.md "Releases").
 # Usage: scripts/release-mac.sh [--no-notarize]
 #   Needs: a green `out/Release` build of `chrome` (SHUTTLE_KIND=release scripts/build-sccache.sh ... chrome),
 #   the fork's chrome/installer/mac signing pipeline (fork branch ac/release-signing, merged),

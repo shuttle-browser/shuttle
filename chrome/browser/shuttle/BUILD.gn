@@ -3,7 +3,7 @@
 # found in the LICENSE file.
 
 # The in-browser MCP server (agent profiles, sessions, tabs). Design:
-# docs/plans/MCP-V1.md in the shuttle-tools repo.
+# tools/shuttle/docs/MCP.md.
 
 assert(!is_android)
 

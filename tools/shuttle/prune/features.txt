@@ -1,4 +1,4 @@
-# Feature removal, batch part A (see docs/plans/REMOVAL-CANDIDATES.md).
+# Feature removal, batch part A (decisions: docs/REMOVAL-LOG.md).
 # `remove <path>` deletes everything under <path> unconditionally; the build is
 # then fixed by hand (BUILD.gn deps, .grd entries, includers).
 # Deferred on purpose: components/autofill/**/payments + chrome/browser/ui/**/autofill/payments
