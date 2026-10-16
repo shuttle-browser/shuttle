@@ -763,4 +763,23 @@ Linux `out/Dev` (MAGWIN) all smokes green.
 
 Verified: Mac `out/Release` (5 min, 2 compiles + link): headless fresh profile, `setAppBadge(3)`/`clearAppBadge()`
 resolve, `available()` → unavailable, `install()` → false, tab alive, no crash events; smoke-cdp clean (known
-`createBrowserContext` / `Autofill.enable` lines). Linux: pending (the Linux session).
+`createBrowserContext` / `Autofill.enable` lines). Linux `out/Dev` (`d5c5b7bbec`, 28 steps): `setAppBadge`/
+`clearAppBadge` resolve, `available()` → unavailable, `install()` → false, no renderer kill (localhost +
+reddit.com/notifications); linux-smoke headless/x11/wayland 3×48 clean.
+
+## Fork commit 45 (2026-10-16): agents can't steal focus
+
+- **45** Agents switch tabs with `Page.bringToFront` (the bundled agent-browser does on every tab switch) and
+  `Target.activateTarget` (its unresponsive-tab recovery). Upstream both end in `ActivateContents` → window
+  `Activate()`, which on macOS activates the app: Shuttle jumped in front of the user's work while an agent ran.
+  `SessionCdpFilter` now answers both for agent sessions (session and page endpoints) with success and calls
+  `SessionManager::SelectTab`: the tab becomes active in its strip only if its window isn't the active one (never
+  switches the tab the user is looking at), and the window and app are never activated. Agent tabs render while
+  hidden anyway (capturer count, `session_manager.cc`), so the page stays `visible`. The browser-wide endpoint
+  (`/json/version`) keeps upstream behavior. Ownership check unchanged: `activateTarget` on another session's tab
+  still errors.
+
+Verified: Mac `out/Release` (107 steps, 3 min): headless and windowed (`open -g`), fresh profile: `bringToFront`
+(child session ×3, page endpoint) and `activateTarget` ×3 return `{}`, tab stays visible, foreign tab refused;
+windowed, the frontmost app stayed the editor throughout. Linux `out/Dev` (7 steps): same checks 10/10 headless and
+X11 (WSLg), active window unchanged; linux-smoke 48 clean.

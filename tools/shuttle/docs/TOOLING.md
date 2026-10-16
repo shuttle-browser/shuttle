@@ -150,9 +150,9 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
 - **Needs:** nfpm, installed as the release binary into `~/.local/bin` after checking it against `checksums.txt`
   (2.48.0). Also dpkg-dev, for the dpkg-shlibdeps cross-check. lintian is optional.
   Env: `SHUTTLE_NO_RPM=1` (deb only), `NFPM=<path>`.
-- **Version:** use the Shuttle version (`0.1.2`), not the Chromium version, which goes into the description. Test builds
-  use `0.1.2~test1`, because "~" sorts before the release. The deb Version gets nfpm's release suffix (`0.1.2-1`), but the
-  file name doesn't.
+- **Version:** use the Shuttle version (`155.1.0`, see "Releases" for the scheme), not the full Chromium version, which
+  goes into the description. Test builds use `155.1.0~test1`, because "~" sorts before the release. The deb Version gets
+  nfpm's release suffix (`155.1.0-1`), but the file name doesn't. 155.x sorts above 0.1.x, so upgrades from 0.1.4 work.
 - **Layout:**
   - `/opt/shuttle/` holds the tarball tree, minus `README-LINUX.txt`. Shared libraries are 0644.
   - `chrome-sandbox` is 4755 root:root inside the archive, and postinst re-asserts it.
@@ -256,6 +256,14 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
     go on the `bash` side: `SHUTTLE_CHANNEL=testing curl … | bash` only sets it for curl and installs `stable`.
 
 ## Releases
+
+**Versioning** (from the release after 0.1.4; Toby, 2026-10-16): `<Chromium major>.<minor>.<patch>`, e.g. `155.1.0`.
+The major is the Chromium stable major the release is based on; the minor counts Shuttle feature releases on that
+base and resets to 0 at each upstream merge (the first release on Chromium 156 is `156.0.0`); the patch is for fixes
+and Chromium security patch pickups. 0.1.4 (Chromium 155) counts as 155.0, so the next release is `155.1.0`. The full
+Chromium version (`155.0.8059.80`) goes into the release notes and package descriptions; the Mac app's
+`CFBundleShortVersionString` stays the Chromium version (`chrome/VERSION`). Breaking changes to the MCP/CDP surface
+aren't signaled by the major: call them out in `NOTES.md`. Tags: `v155.1.0`.
 
 1. `SHUTTLE_KIND=release scripts/build-sccache.sh -local_jobs=12 -k 0` (or `scripts/build.sh release`): official
    `out/Release`; `gn gen out/Release` + `scripts/check-ninja-inputs.py out/Release` first. After a Chromium bump it is a

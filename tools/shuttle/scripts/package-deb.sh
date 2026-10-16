@@ -2,7 +2,7 @@
 # Builds shuttle_<ver>_amd64.deb and shuttle-<ver>-1.x86_64.rpm from a released Linux tarball (the exact bytes users get
 # from the tarball, so both formats share one sha-checked input). Uses nfpm + config/nfpm-shuttle.yaml.
 # Usage (Linux build host): scripts/package-deb.sh <shuttle-linux-x64.tar.xz> <pkg-version> [dest-dir]
-#   pkg-version: Shuttle version, e.g. 0.1.2 (test builds 0.1.2~test1; "~" sorts before the release)
+#   pkg-version: Shuttle version, e.g. 155.1.0 (test builds 155.1.0~test1; "~" sorts before the release)
 #   dest-dir:    default: the tarball's directory
 # Env: SHUTTLE_PKG_REPO_SOURCE=1  postinst adds our package repo once (deb: apt source, rpm: /etc/yum.repos.d file) and
 #        the packages ship the key from assets/linux/repo/shuttle.asc (off by default: only with the repo live)
