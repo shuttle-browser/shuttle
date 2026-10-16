@@ -28,7 +28,8 @@ class SessionCdpFilter
  public:
   SessionCdpFilter(base::WeakPtr<SessionManager> manager,
                    std::string session_id,
-                   bool page_connection);
+                   bool page_connection,
+                   std::string page_target_id = std::string());
   SessionCdpFilter(const SessionCdpFilter&) = delete;
   SessionCdpFilter& operator=(const SessionCdpFilter&) = delete;
   ~SessionCdpFilter() override;
@@ -52,6 +53,11 @@ class SessionCdpFilter
                     const std::string* session,
                     const base::DictValue* params);
   void CloseSession(const base::Value& id, const std::string* session);
+  // Page.bringToFront / Target.activateTarget: success without activating
+  // the window or the app (SessionManager::SelectTab).
+  void BringToFront(const base::Value& id,
+                    const std::string* session,
+                    const std::string& target_id);
   void GetCookies(const base::Value& id, const std::string* session);
   void SetCookies(const base::Value& id,
                   const std::string* session,
@@ -74,11 +80,15 @@ class SessionCdpFilter
   // Page connections: the root session is the leased page itself, so targets
   // auto-attached to it (its frames and workers) are its own.
   const bool page_connection_;
+  // Page connections: the leased page's target id.
+  const std::string page_target_id_;
   SendCallback to_agent_;
   SendCallback to_client_;
 
   // Target ids announced to the client.
   std::set<std::string> visible_;
+  // Child sessions attached to own top-level targets: session -> target id.
+  std::map<std::string, std::string> session_targets_;
   // Child sessions auto-attached to foreign targets, being detached.
   std::set<std::string> foreign_sessions_;
   // Client command ids whose responses list targets (Target.getTargets).

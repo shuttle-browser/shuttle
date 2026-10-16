@@ -98,6 +98,11 @@ class SessionManager : public TabStripModelObserver {
   // Activates `contents` in its tab strip and brings its window to the
   // front. Returns false if it isn't in a tab strip.
   static bool ShowTab(content::WebContents* contents);
+  // For agents (CDP Page.bringToFront / Target.activateTarget): activates
+  // `contents` in its tab strip, but only if its window isn't the active one
+  // (that would switch the tab the user is looking at). Never activates the
+  // window or the app, so agents can't steal focus.
+  static void SelectTab(content::WebContents* contents);
 
   // For the user (tab context menu): hands a tab to `agent_id` (joins the
   // agent's tabs, see AdoptTab), starting the agent's tab group in the tab's

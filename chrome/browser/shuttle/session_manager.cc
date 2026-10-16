@@ -405,6 +405,23 @@ bool SessionManager::ShowTab(content::WebContents* contents) {
   return false;
 }
 
+// static
+void SessionManager::SelectTab(content::WebContents* contents) {
+  for (BrowserWindowInterface* browser : GetAllBrowserWindowInterfaces()) {
+    TabStripModel* tab_strip = browser->GetTabStripModel();
+    int index = tab_strip ? tab_strip->GetIndexOfWebContents(contents)
+                          : TabStripModel::kNoTab;
+    if (index == TabStripModel::kNoTab) {
+      continue;
+    }
+    ui::BaseWindow* window = browser->GetWindow();
+    if (index != tab_strip->active_index() && !(window && window->IsActive())) {
+      tab_strip->ActivateTabAt(index);
+    }
+    return;
+  }
+}
+
 std::unique_ptr<content::WebContents> SessionManager::CreateAgentContents(
     const std::string& agent_id,
     const GURL& url,

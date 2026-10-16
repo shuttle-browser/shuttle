@@ -303,7 +303,8 @@ ShuttleService::CreateConnectionFilter(const std::string& session_id,
     return nullptr;
   }
   return std::make_unique<SessionCdpFilter>(sessions_->GetWeakPtr(), owner,
-                                            /*page_connection=*/true);
+                                            /*page_connection=*/true,
+                                            target_id);
 }
 
 }  // namespace shuttle

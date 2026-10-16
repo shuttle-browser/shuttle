@@ -159,10 +159,12 @@ std::unique_ptr<net::CanonicalCookie> CookieFromProtocol(
 
 SessionCdpFilter::SessionCdpFilter(base::WeakPtr<SessionManager> manager,
                                    std::string session_id,
-                                   bool page_connection)
+                                   bool page_connection,
+                                   std::string page_target_id)
     : manager_(std::move(manager)),
       session_id_(std::move(session_id)),
-      page_connection_(page_connection) {}
+      page_connection_(page_connection),
+      page_target_id_(std::move(page_target_id)) {}
 
 SessionCdpFilter::~SessionCdpFilter() = default;
 
@@ -221,6 +223,22 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
                     " is not a tab of this agent session");
       return;
     }
+    if (name == "Target.activateTarget") {
+      BringToFront(*id, session, target_id);
+      return;
+    }
+  } else if (name == "Page.bringToFront") {
+    // Agents switch tabs with it; upstream it activates the window and, on
+    // macOS, the app: Shuttle would jump in front of the user's work.
+    std::string target_id;
+    if (!session) {
+      target_id = page_target_id_;
+    } else if (auto it = session_targets_.find(*session);
+               it != session_targets_.end()) {
+      target_id = it->second;
+    }
+    BringToFront(*id, session, target_id);
+    return;
   } else if (name == "Target.attachToBrowserTarget") {
     SendError(*id, session,
               "Shuttle: an agent session can't attach to the browser");
@@ -366,6 +384,10 @@ void SessionCdpFilter::HandleTargetEvent(const std::string& method,
       if (!parent && !page_connection_) {
         visible_.insert(target_id);
       }
+      if (!parent && !child.empty() &&
+          StringParam(info, "type") == "page") {
+        session_targets_[child] = target_id;
+      }
       to_client_.Run(std::move(raw));
       return;
     }
@@ -384,6 +406,9 @@ void SessionCdpFilter::HandleTargetEvent(const std::string& method,
   if (method == "Target.detachedFromTarget" ||
       method == "Target.receivedMessageFromTarget") {
     std::string child = StringParam(params, "sessionId");
+    if (method == "Target.detachedFromTarget") {
+      session_targets_.erase(child);
+    }
     if (foreign_sessions_.contains(child)) {
       if (method == "Target.detachedFromTarget") {
         foreign_sessions_.erase(child);
@@ -537,6 +562,17 @@ void SessionCdpFilter::ClearCookies(const base::Value& id,
             }
           },
           weak_factory_.GetWeakPtr(), id.Clone(), std::move(session_copy)));
+}
+
+void SessionCdpFilter::BringToFront(const base::Value& id,
+                                    const std::string* session,
+                                    const std::string& target_id) {
+  if (!target_id.empty()) {
+    if (content::WebContents* contents = SessionManager::FindTab(target_id)) {
+      SessionManager::SelectTab(contents);
+    }
+  }
+  SendResult(id, session, base::DictValue());
 }
 
 void SessionCdpFilter::SendResult(const base::Value& id,
