@@ -6,8 +6,12 @@ Please report security issues privately through GitHub:
 **[Report a vulnerability](https://github.com/shuttle-browser/shuttle/security/advisories/new)**
 (Security tab → "Report a vulnerability"). Don't open a public issue.
 
-Include the Shuttle version (`chrome://version`), your OS, steps to reproduce, and the impact. We aim to reply
-within a few days.
+Include the Shuttle version (`chrome://version`), your OS, steps to reproduce, and the impact. We acknowledge
+reports within 3 business days.
+
+Shuttle is built by Atomic BI Pte. Ltd. Security is owned by **Tobias Strebitzer** (Founder & Security Lead, lead
+maintainer): tobias.strebitzer@atomic.bi. Full policy, threat model and safe harbor:
+[shuttlebrowser.com/security](https://www.shuttlebrowser.com/security).
 
 ## Scope
 
