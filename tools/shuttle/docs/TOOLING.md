@@ -264,7 +264,7 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
    packaging tools, adds the agent-browser sidecar, signs, notarizes + staples app and DMG, verifies with
    spctl/stapler. Output `$SHUTTLE_ROOT/release/<chromium version>/`; copy the DMG to
    `release/v<X.Y.Z>/Shuttle-<X.Y.Z>-arm64.dmg`. Identity and notary credentials stay in the keychain.
-3. Linux: `scripts/build-linux.sh release`, `package-linux.sh` (tarball), `package-deb.sh` (.deb + .rpm), Linux
+3. Linux: `scripts/build-linux.sh release`, `package-linux.sh` (tarball), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm), Linux
    smokes and an upgrade test from the previous version (`docs/LINUX.md`).
 4. `release/v<X.Y.Z>/`: `NOTES.md` (Chromium base, changes, downloads table, known limits), `SHA256SUMS`, then
    `gh release create v<X.Y.Z> -R shuttle-browser/shuttle --target <full SHA> --title "Shuttle <X.Y.Z>" --notes-file

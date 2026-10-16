@@ -67,7 +67,9 @@ Checkout: README "Build from source" (add `target_os = ["linux"]` to `.gclient`,
 - WSL2 (mirrored networking): Windows clients reach `http://127.0.0.1:9222/json/version` and `/mcp`; a foreign `Origin`
   gets 403. NAT mode not verified.
 - **Packages:** after `scripts/package-linux.sh`, run
-  `scripts/package-deb.sh $SHUTTLE_RELEASE/<dir>/shuttle-linux-x64.tar.xz X $SHUTTLE_RELEASE/<dir>`.
+  `SHUTTLE_PKG_REPO_SOURCE=1 scripts/package-deb.sh $SHUTTLE_RELEASE/<dir>/shuttle-linux-x64.tar.xz X $SHUTTLE_RELEASE/<dir>`.
+  Release packages need `SHUTTLE_PKG_REPO_SOURCE=1`: without it the deb lacks the repo keyring and an upgrade breaks
+  `apt update` (`NO_PUBKEY`), the rpm lacks key and repo file (caught in the 0.1.4 upgrade test).
   This builds `shuttle_X_amd64.deb` and `shuttle-X-1.x86_64.rpm`; details are in TOOLING "Linux packages".
 - **Supported, all tested 2026-10-13:**
   - Ubuntu 20.04, 22.04 and 24.04;
