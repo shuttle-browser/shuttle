@@ -45,7 +45,8 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 - `config/args-common.gn` + `config/args-{dev,release}.gn` are **the** GN args (Linux adds `args-linux.gn`).
 - `scripts/build.sh [dev|release|sccache] [autoninja args]`: writes the args, runs `gn gen` when they change,
   builds the `chrome` target, logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`.
-  Use `-j 6` on a laptop; add `-k 0` to collect every error in one pass. Never run a second autoninja on the same
+  Throttle with `-local_jobs N` (siso's real cap; `-j` above the core count is ignored); add `-k 0` to collect every
+  error in one pass. Never run a second autoninja on the same
   out dir. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
 - `scripts/build-sccache.sh` (optional): distributed compiles on a Linux build host running sccache-dist
   (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`, monitor
@@ -114,6 +115,11 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
 - Official (release) builds link with export lists and can break where dev builds don't: check
   `chrome/app/app.exports` and `framework.exports` after removals.
 - Keep the Mac on power with the lid open during long builds (lid closed on battery stops them).
+- Never load the Mac to full CPU: it is the maintainer's workstation and a full-load build cuts them off (no input,
+  no messages). Check `sccache --dist-status` first; if the build host is offline, report the step count and ask before
+  compiling locally. Builds always run `nice -n 19 taskpolicy -c background` with `-local_jobs 8` (sccache-dist) or
+  `-local_jobs 4` (local), in a shell the maintainer can watch; stop if the load climbs. Don't kill a build early
+  to read its step count: killed runs leave regenerated outputs (protoc, mojom) that cascade.
 - Keep branded surfaces consistent with `docs/BRANDING.md`.
 - No secrets in tracked files: API keys go in the environment or `_docs/.env`, signing material stays in the keychain.
 - Before pushing the fork (it is public): secret scan of `tools/shuttle/` and the new commits (gitleaks, low priority:

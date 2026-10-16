@@ -746,3 +746,21 @@ files, fcm and files referenced from other-platform branches stay).
 Verified: Mac `out/Sccache` smoke-cdp, check-automation ×2, smoke-mcp + persist, agents-page, session-cdp, network all
 green; Mac `out/Release` (official) built (7 h 19 min via sccache-dist), smoke-cdp clean, signed + notarized DMG;
 Linux `out/Dev` (MAGWIN) all smokes green.
+
+## Fork commit 44 (2026-10-16): no renderer kill on setAppBadge / on-device speech
+
+- **44 `bfd55b20e4`** Empty binders for `blink.mojom.BadgeService` and `media.mojom.OnDeviceSpeechRecognition` in
+  `content/browser/browser_interface_binders.cc` (next to upstream's empty binders, "// Shuttle:" comment). Batch A
+  (`d7b43186e8`) removed `chrome/browser/badging` with its binder and `c97374a5fc` the on-device speech binder, but
+  Blink still exposes `navigator.setAppBadge`/`clearAppBadge` and `SpeechRecognition.available`/`install` to pages.
+  A request with no binder is a bad message (`ReportNoBinderForInterface`), so the browser killed the renderer: a
+  user's reddit.com/notifications tab crashed (minidump: `DumpWithoutCrashing` from `ReceivedBadMessage`). The speech
+  callbacks get `WrapCallbackWithDefaultInvokeIfNotRun` (unavailable / false) in `speech_recognition_controller.cc`,
+  so the promises settle when the empty binder drops the pipe. Headless keeps its own stub `BadgeService` (later
+  `Add` wins). The other removed frame binders (SubApps, ModelBroker, translate, screen_ai, glic/geic) have no
+  page-reachable caller. Behavior change: `setAppBadge` resolves and does nothing; speech `available()` →
+  "unavailable", `install()` → false.
+
+Verified: Mac `out/Release` (5 min, 2 compiles + link): headless fresh profile, `setAppBadge(3)`/`clearAppBadge()`
+resolve, `available()` → unavailable, `install()` → false, tab alive, no crash events; smoke-cdp clean (known
+`createBrowserContext` / `Autofill.enable` lines). Linux: pending (the Linux session).

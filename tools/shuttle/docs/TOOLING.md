@@ -539,6 +539,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **`-local_jobs` is the real parallelism for sccache builds:** siso sees sccache-wrapped compiles as local
   actions, so `-local_jobs=N` caps compiles in flight on the build host at N; `-j`/`SHUTTLE_JOBS` doesn't raise it
   (2026-10-10: -j 24 with -local_jobs=6 kept the build host at 5-6 compiles, ~35% busy).
+  It is also the only Mac-side cap: siso ignores `-j` above the core count ("Ignoring -j 24"), and until 2026-10-16
+  `build.sh` put extra args after the target, where siso never read them. Use `nice -n 19 taskpolicy -c background
+  scripts/build-sccache.sh -local_jobs 8`; unthrottled, a local build loaded the Mac to 58 and cut the maintainer off.
 - **Official builds link with export lists** (`chrome/app/app.exports` for the app + helpers,
   `chrome/app/framework.exports` for the framework); dev builds don't use them, so pruning can break only the
   release link. After removals, check both lists for deleted files/symbols (2026-10-11 release failure).
@@ -617,6 +620,12 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   a new mtime and scheduled ~30k steps instead of ~9k. Fix: `touch -t <old time>` on files whose
   content equals HEAD. Never edit `base/` headers for a batch (A4 did for one friend
   declaration; an overload in the caller avoids it).
+  Same after `git checkout main && git merge --ff-only` from a branch (2026-10-16): 11,284 files of the merge diff
+  got a new mtime, `out/Sccache` scheduled 58k steps. Recovery: files with that mtime minus those changed since the
+  last green build → `touch -t <before the build>`; the rest → `touch -t` their last commit time
+  (`git log -1 --format=%cd --date=format-local:%Y%m%d%H%M.%S`). `out/Release` went back to a 5 min build. Don't
+  start (and kill) a build before the restore: those runs relinked `protoc` and regenerated headers, so
+  `out/Sccache` still needs ~44k steps. Move branches with `git branch -f`.
 - **Deleted `.grdp` also lives in the `.grd` itself (B2d):** remove the `<part file=...>` line in
   `components/components_strings.grd` as well as the `.gritdeps` entry.
 - **Checked-in TS API definitions (B2d):** `tools/typescript/definitions/*.d.ts` mirror the

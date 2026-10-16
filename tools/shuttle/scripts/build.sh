@@ -5,7 +5,8 @@
 # spike; client config ~/.shuttle/sccache.toml, see docs/TOOLING.md and config/sccache.example.toml).
 # Runs in a PTY via `script` so the live status line stays visible, while the
 # raw output is also logged to $SHUTTLE_ROOT/logs/build-<dir>.log (for monitoring).
-# Throttle with e.g. `scripts/build.sh dev -j 6` (parallel jobs); runs under nice (NICE=10 default).
+# Throttle with e.g. `scripts/build.sh dev -local_jobs 6` (siso's real cap); extra args go before the target.
+# Runs under nice (NICE=10 default).
 # GN args come from config/args-common.gn + config/args-<kind>.gn (re-generated on change).
 set -e
 # siso switches to a quiet agent mode under these (no progress lines, build-watch.py stays silent)
@@ -48,7 +49,7 @@ set +e
 # macOS script(1) aborts ("tcgetattr/ioctl: Operation not supported on socket") when stdin is a socket, e.g. a build
 # started by an agent harness; /dev/null works.
 [[ -t 0 ]] || exec </dev/null
-script -q -F "$log" nice -n "${NICE:-10}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_TARGET:-chrome}" "$@"
+script -q -F "$log" nice -n "${NICE:-10}" caffeinate -i autoninja -C "out/$dir" "$@" "${SHUTTLE_TARGET:-chrome}"
 rc=$?
 mins=$(( ($(date +%s) - start) / 60 ))
 echo "BUILD EXIT $rc after ${mins}m" | tee -a "$log"
