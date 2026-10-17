@@ -16,7 +16,7 @@ const front = () => {
   try {
     if (how === 'lsappinfo') return parseFront(sh('lsappinfo info -only name `lsappinfo front`'));
     const id = parseX11Active(sh('xprop -root _NET_ACTIVE_WINDOW'));
-    return /^0x/.test(id) ? parseX11Class(sh(`xprop -id ${id} WM_CLASS`)) : id;
+    return /^0x/.test(id) ? `${id} ${parseX11Class(sh(`xprop -id ${id} WM_CLASS`))}` : id;
   } catch { return '?'; }
 };
 const IDS = ['smoke-focus-a', 'smoke-focus-b'], opened = [];
@@ -56,7 +56,11 @@ if (windowed) {
   await sleep(1000);
   const f2 = how ? front() : '?';
   console.log(`frontmost app: before=${f0} after-allocate=${f1} after-bringToFront=${f2}`);
-  if (how) check(`Shuttle is not the frontmost app after bringToFront (${how})`, f2 !== '?' && !/shuttle/i.test(f2), `${f1} -> ${f2}`);
+  // X11 (WSLg) focuses a newly mapped window, so Shuttle's own window may already be active before the calls: then
+  // the assertion is "bringToFront didn't change the active window" (same X window id), else "Shuttle not in front".
+  if (how === 'xprop' && /shuttle/i.test(f1) && /^0x/.test(f1))
+    check('active X window unchanged by bringToFront (Shuttle was already active)', f2 === f1, `${f1} -> ${f2}`);
+  else if (how) check(`Shuttle is not the frontmost app after bringToFront (${how})`, f2 !== '?' && !/shuttle/i.test(f2), `${f1} -> ${f2}`);
   else skipCheck('Shuttle is not the frontmost app', 'no lsappinfo, and no xprop/DISPLAY');
 }
 await finish();
