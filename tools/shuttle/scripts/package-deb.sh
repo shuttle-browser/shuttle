@@ -29,6 +29,8 @@ fi
 # Input check: tarball sha256 next to it must match.
 if [ -f "$TARBALL.sha256" ]; then
   (cd "$(dirname "$TARBALL")" && sha256sum -c --quiet "$(basename "$TARBALL").sha256") || { echo "FATAL: sha256 mismatch" >&2; exit 2; }
+elif [ "${SHUTTLE_LOCAL_PACKAGE:-0}" != 1 ]; then
+  echo "FATAL: no $TARBALL.sha256 (SHUTTLE_LOCAL_PACKAGE=1 for a local test package)" >&2; exit 2
 else
   echo "warning: no $TARBALL.sha256, input not verified" >&2
 fi
@@ -38,6 +40,16 @@ trap 'rm -rf "$WORK"' EXIT
 tar -C "$WORK" -xf "$TARBALL"
 IN=$WORK/shuttle
 [ -x "$IN/shuttle" ] && [ -f "$IN/chrome-sandbox" ] || { echo "FATAL: $TARBALL has no shuttle/shuttle + chrome-sandbox" >&2; exit 2; }
+if [ "${SHUTTLE_LOCAL_PACKAGE:-0}" != 1 ] && ! grep -q '^tree_clean=yes$' "$IN/BUILD-RECEIPT.txt" 2>/dev/null; then
+  echo "FATAL: $TARBALL has no clean-tree BUILD-RECEIPT.txt (package-linux.sh release mode)" >&2; exit 2
+fi
+# Release mode: the destination manifest must be the one package-linux.sh wrote for exactly this tarball/version.
+MANIFEST=$DEST/MANIFEST.txt
+if [ "${SHUTTLE_LOCAL_PACKAGE:-0}" != 1 ]; then
+  grep -qx "artifact_sha256=$(sha256sum "$TARBALL" | cut -d' ' -f1)" "$MANIFEST" 2>/dev/null ||
+    { echo "FATAL: $MANIFEST is not the manifest of $TARBALL (package into the tarball's release dir)" >&2; exit 2; }
+  grep -qx "shuttle_version=$PKG_VERSION" "$MANIFEST" || { echo "FATAL: $PKG_VERSION is not the manifest's shuttle_version" >&2; exit 2; }
+fi
 CHROMIUM_VERSION=$(sed -n '1s/^Shuttle \([0-9.]*\) .*/\1/p' "$IN/README-LINUX.txt")
 [ -n "$CHROMIUM_VERSION" ] || { echo "FATAL: no Chromium version in README-LINUX.txt" >&2; exit 2; }
 
@@ -106,7 +118,7 @@ done
 
 export SHUTTLE_PKG_VERSION=$PKG_VERSION SHUTTLE_CHROMIUM_VERSION=$CHROMIUM_VERSION SHUTTLE_STAGE=$STAGE
 render() {  # $1 = packager; repo key: deb = binary keyring for apt's signed-by, rpm = armored key for dnf's gpgkey
-  rm -rf "$STAGE/usr/share/keyrings" "$STAGE/etc"
+  rm -rf "${STAGE:?}/usr/share/keyrings" "${STAGE:?}/etc"
   if [ "$REPO_SOURCE" = 1 ]; then
     case $1 in
       deb) mkdir -p "$STAGE/usr/share/keyrings"
@@ -127,9 +139,13 @@ for p in deb rpm; do
   [ $p = rpm ] && [ "${SHUTTLE_NO_RPM:-}" = 1 ] && continue
   render $p
   case $p in deb) f=shuttle_${PKG_VERSION}_amd64.deb ;; rpm) f=shuttle-${PKG_VERSION}-1.x86_64.rpm ;; esac
-  rm -f "$DEST/$f"
+  if [ -e "$DEST/$f" ]; then
+    [ "${SHUTTLE_LOCAL_PACKAGE:-0}" = 1 ] || { echo "FATAL: $DEST/$f exists; versioned packages are never overwritten" >&2; exit 2; }
+    rm -f "$DEST/$f"
+  fi
   "$NFPM" pkg --config "$WORK/nfpm-$p.yaml" --packager $p --target "$DEST/$f" >/dev/null
   (cd "$DEST" && sha256sum "$f" > "$f.sha256")
+  [ "${SHUTTLE_LOCAL_PACKAGE:-0}" = 1 ] || echo "package_$p=$f sha256=$(cut -d' ' -f1 "$DEST/$f.sha256")" >> "$MANIFEST"
   built+=("$DEST/$f")
 done
 

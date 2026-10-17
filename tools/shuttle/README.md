@@ -50,19 +50,16 @@ gclient sync -j 4                   # default -j hits googlesource rate limits (
 
 # 2. Build (GN args come from config/, written to out/<Dir>/args.gn automatically)
 cd src/tools/shuttle
-scripts/build.sh dev -j 6 -k 0      # Linux: scripts/build-linux.sh dev -j 12 -k 0
+scripts/build.sh dev -k 0           # Linux: scripts/build-linux.sh dev -k 0 (caps: -local_jobs, nice 19)
 ```
 
 The fork's history starts at a snapshot of the upstream release tag (branch `chromium`), so there is no Chromium
 history to download; `gclient sync` resolves third-party dependencies from `DEPS`.
 
-Run the result headless with a fresh profile and smoke-test it:
+Smoke-test the result (headless, own temp profile):
 
 ```sh
-../../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless \
-  --user-data-dir=/tmp/sh-profile --remote-debugging-port=9222 &     # Linux: ../../out/Dev/shuttle
-node scripts/smoke-cdp.mjs 9222
-node scripts/smoke-mcp.mjs 9222
+scripts/smoke-all.sh ../../out/Release/Shuttle.app     # Linux: ../../out/Dev/shuttle
 ```
 
 Release builds (`config/args-release.gn`) are signed and packaged with `scripts/release-mac.sh`
@@ -84,18 +81,21 @@ Then rerun the manifests for areas that came back (`scripts/prune.py --apply pru
 
 ## Smoke tests
 
-All smokes use a fresh profile, run headless, and end with `Browser.close`.
+`scripts/smoke-all.sh <binary|Shuttle.app> [--with network,push,automation] [--mode headless|x11|wayland]` launches
+the browser headless with its own temp profile, runs the probes, closes the browser, checks its exit status and log,
+and prints PASS/FAIL/SKIP per probe (exit 0 only if all passed).
 
-| Script | What it checks |
+| Probe | What it checks |
 | --- | --- |
-| `scripts/smoke-cdp.mjs <port>` | WebUI pages load without JS exceptions; browser context |
-| `scripts/check-automation.mjs <port>` | no approval prompt, no automation infobar, `navigator.webdriver` false |
-| `scripts/smoke-mcp.mjs <port> [--persist-check]` | MCP server: agents, identity, isolation, popups, viewport |
-| `scripts/smoke-agents-page.mjs [port]` | `chrome://agents` UI |
-| `scripts/smoke-session-cdp.mjs [port]` | per-session CDP endpoint (Playwright, agent-browser) |
-| `scripts/smoke-push.mjs` | Web Push subscription |
-| `scripts/smoke-network.mjs <port> <udd> [lanIp]` | network mode (`--shuttle-listen`, access token) |
-| `scripts/linux-smoke.sh` and friends | Linux wrappers for headless / X11 / Wayland |
+| `scripts/smoke-cdp.mjs` | WebUI pages load without unexpected JS exceptions; browser context |
+| `scripts/smoke-mcp.mjs --phase1\|--phase2` | MCP server: agents, identity, isolation, popups, viewport; persistence across a restart |
+| `scripts/smoke-session-cdp.mjs` | per-session CDP endpoint (Playwright, agent-browser) |
+| `scripts/smoke-agents-page.mjs` | `chrome://agents` UI |
+| `scripts/smoke-focus.mjs` | agents can't steal focus (bringToFront / activateTarget) |
+| `scripts/smoke-sandbox.mjs` | `chrome://sandbox/` status (Linux) |
+| `scripts/check-automation.mjs` | opt-in: no approval prompt, no automation infobar, `navigator.webdriver` false |
+| `scripts/smoke-push.mjs` | opt-in: Web Push subscription (needs `SHUTTLE_SMOKE_NET=1`) |
+| `scripts/smoke-network.mjs` | opt-in: network mode (`--shuttle-listen`, access token) |
 
 ## Documentation
 

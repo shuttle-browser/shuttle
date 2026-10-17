@@ -11,6 +11,7 @@ deleted (staged deletions vs HEAD), and either:
 Lines consisting of exactly one dead string entry (`"x",`) are deleted with
 --apply. Everything else that mentions a dead path (imports, multi-entry lines,
 $root_gen_dir paths) is reported for manual fixing.
+Exit: 0 = nothing left to fix by hand, 1 = FIX lines reported.
 """
 import argparse, functools, os, re, subprocess, sys
 from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS  # noqa: E402
@@ -127,6 +128,7 @@ def main():
         if a.apply and changed:
             open(os.path.join(SRC, f), "w").write("\n".join(out))
     print(f"\n{removed} dead single-entry lines {'removed' if a.apply else 'found'}, {manual} lines need manual fixes", file=sys.stderr)
+    return 1 if manual else 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

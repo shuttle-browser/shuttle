@@ -1,5 +1,5 @@
 // Smoke test for per-session CDP endpoints (docs/MCP.md "Per-session CDP endpoint").
-// Usage: node scripts/smoke-session-cdp.mjs [port]   (default 9333; use a fresh test browser)
+// Usage: node scripts/smoke-session-cdp.mjs <port>   (run by scripts/smoke-all.sh)
 //   Raw CDP checks need nothing. Optional: PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core
 //   and AGENT_BROWSER=/path/to/agent-browser add Playwright / agent-browser checks.
 // Checks: session endpoint sees only its tabs, foreign attach rejected, auto-attach doesn't
@@ -7,49 +7,14 @@
 // scoped too, viewport on the active tab, CSS-px capture, top-chrome UI is "other",
 // Browser.close ends only the session.
 import { execFileSync } from 'node:child_process';
+import { cdp, rpc, check as chk, cleanup, finish, json, mcp, port, sleep, gone } from './lib/smoke.mjs';
 
-const port = process.argv[2] || 9333;
-const base = `http://127.0.0.1:${port}`;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failures = 0;
-const check = (ok, label, detail = '') => {
-  if (!ok) failures++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` - ${detail}` : ''}`);
-};
-
-async function mcp(name, args = {}) {
-  const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
-  const b = await r.json();
-  if (b.result?.isError) throw new Error(`${name}: ${b.result.content?.[0]?.text}`);
-  return b.result?.structuredContent ?? b.result;
-}
-
-// Minimal CDP client: send() resolves with the message (result or error); events are collected.
-function cdp(url) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
-    let id = 0;
-    const pending = new Map();
-    const events = [];
-    const client = {
-      events,
-      send(method, params = {}, sessionId) {
-        const msg = { id: ++id, method, params };
-        if (sessionId) msg.sessionId = sessionId;
-        ws.send(JSON.stringify(msg));
-        return new Promise((res) => pending.set(msg.id, res));
-      },
-      close: () => ws.close(),
-    };
-    ws.onopen = () => resolve(client);
-    ws.onerror = (e) => reject(new Error(`ws error ${url}: ${e.message || 'failed'}`));
-    ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else events.push(m);
-    };
-  });
-}
+const check = (ok, label, detail) => chk(label, ok, detail);
+const opened = [];
+cleanup(async () => {
+  for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(gone);
+  for (const id of ['smoke-sc-a', 'smoke-sc-b']) await mcp('delete-agent', { id }).catch(gone);
+});
 
 const ids = (infos) => infos.map((t) => t.targetId);
 const evalIn = async (client, sessionId, expression) =>
@@ -67,19 +32,20 @@ function jpegSize(b64) {
 }
 
 // Setup: two agents, one session each, one tab each.
-for (const id of ['smoke-a', 'smoke-b']) {
+for (const id of ['smoke-sc-a', 'smoke-sc-b']) {
   try { await mcp('delete-agent', { id }); } catch {}
   await mcp('create-agent', { id, name: id });
 }
-const sa = await mcp('open-session', { agent: 'smoke-a' });
-const sb = await mcp('open-session', { agent: 'smoke-b' });
+const sa = await mcp('open-session', { agent: 'smoke-sc-a' });
+const sb = await mcp('open-session', { agent: 'smoke-sc-b' });
+opened.push(sa.sessionId, sb.sessionId);
 check(sa.cdpEndpoint?.startsWith(`ws://127.0.0.1:${port}/devtools/session/${sa.sessionId}`), 'open-session returns a session endpoint', sa.cdpEndpoint);
 const ta = await mcp('allocate-tab', { sessionId: sa.sessionId, url: 'data:text/html,<title>A</title>A', width: 390, height: 844 });
 const tb = await mcp('allocate-tab', { sessionId: sb.sessionId, url: 'data:text/html,<title>B</title>B' });
 await sleep(1500);
 
 // Top-chrome UI is not a page.
-const list = await (await fetch(`${base}/json/list`)).json();
+const list = await json('/json/list');
 const topChrome = list.filter((t) => t.url.includes('.top-chrome'));
 check(topChrome.every((t) => t.type !== 'page'), 'top-chrome UI is not type page', topChrome.map((t) => `${t.type} ${t.url}`).join(', '));
 
@@ -126,8 +92,7 @@ await mcp('set-tab-viewport', { targetId: ta.targetId, width: 500, height: 700 }
 await sleep(500);
 const width2 = await evalIn(a, attachA.result?.sessionId, 'innerWidth');
 check(width2 === 500, 'set-tab-viewport applies to the active tab', `innerWidth=${width2}`);
-const shot = await (await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'capture-tab', arguments: { targetId: ta.targetId } } }) })).json();
+const shot = (await rpc('tools/call', { name: 'capture-tab', arguments: { targetId: ta.targetId } })).body;
 const size = jpegSize(shot.result?.content?.[0]?.data ?? '');
 check(size?.width === 500 && size?.height === 700, 'capture-tab is the viewport in CSS px', JSON.stringify(size));
 
@@ -186,10 +151,6 @@ await a.send('Browser.close');
 await sleep(1000);
 const after = (await mcp('list-sessions')).sessions;
 check(!after.some((s) => s.sessionId === sa.sessionId) && after.some((s) => s.sessionId === sb.sessionId), 'Browser.close ends only this session');
-check((await fetch(`${base}/json/version`)).ok, 'browser still running');
+check(!!(await json('/json/version')).Browser, 'browser still running');
 
-a.close(); b.close();
-await mcp('close-session', { sessionId: sb.sessionId });
-for (const id of ['smoke-a', 'smoke-b']) await mcp('delete-agent', { id });
-console.log(failures ? `${failures} FAILED` : 'all ok');
-process.exit(failures ? 1 : 0);
+await finish();

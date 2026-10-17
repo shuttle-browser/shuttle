@@ -3,7 +3,12 @@
 
 Rule `remove <path>` deletes unconditionally (feature removal; ignores "used").
 
-Usage: scripts/prune.py [--apply] [manifest ...]   (default: prune/platforms.txt)
+Usage: scripts/prune.py [--apply [--allow-used-set]] [manifest ...]   (default: prune/platforms.txt)
+
+Gate (maintenance review F4): rules other than `remove` delete what *this machine's* build doesn't read, so on the
+Mac they see Linux-only files as dead. `--apply` therefore refuses them unless `--allow-used-set` is given for a
+reviewed, deliberate run (never during a stable respin); remove-only manifests (explicit reviewed lists) apply as
+before. `--apply` also needs a clean tree (it uses `git rm -f`).
 
 Without --apply it's a dry run: it prints counts per rule and writes the full
 file list to /tmp/sh-prune-<manifest>.txt.
@@ -54,12 +59,15 @@ def current_outputs(out_dir):
                 todo.append(os.path.join(SRC, out_dir, line.split(None, 1)[1].strip()))
     return outs
 
-def used_files(out_dir):
+def used_files(out_dir, deps_log=True):
     used = set()
     for line in run(SISO, "query", "inputs", "-C", out_dir, "chrome").splitlines():
         used.add(os.path.normpath(os.path.join(out_dir, line)))
     # `query inputs` misses many discovered headers; the deps log has them all.
-    if os.path.exists(os.path.join(SRC, out_dir, ".siso_deps")):
+    if deps_log and not os.path.exists(os.path.join(SRC, out_dir, ".siso_deps")):
+        sys.exit(f"{out_dir}/.siso_deps missing: no deps log, the used set would miss every discovered header "
+                 f"(build {out_dir} first)")
+    if deps_log:
         p = subprocess.Popen([SISO, "query", "deps", "-C", out_dir], cwd=SRC, env=ENV,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         live = current_outputs(out_dir)  # skip stale entries of targets no longer built
@@ -70,7 +78,8 @@ def used_files(out_dir):
                     used.add(os.path.normpath(os.path.join(out_dir, line.strip())))
             elif line.strip():
                 keep_entry = line.split(":", 1)[0] in live
-        p.wait()
+        if p.wait():
+            sys.exit(f"siso query deps -C {out_dir} failed (rc {p.returncode})")
     with open(os.path.join(SRC, out_dir, "build.ninja.d")) as f:
         for tok in f.read().split():
             if not tok.endswith(":"):
@@ -201,11 +210,20 @@ def grd_refs(used):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--allow-used-set", action="store_true",
+                    help="allow --apply of rules other than `remove` (deletes what this machine's build doesn't read)")
     ap.add_argument("manifests", nargs="*", default=[os.path.join(REPO, "prune/platforms.txt")])
     a = ap.parse_args()
 
     all_rules = [load_rules(m) for m in a.manifests]
-    if all(not any(v for k, v in r.items() if k not in ("remove", "keep")) for r in all_rules):
+    remove_only = all(not any(v for k, v in r.items() if k not in ("remove", "keep")) for r in all_rules)
+    if a.apply and not remove_only and not a.allow_used_set:
+        sys.exit("refusing --apply: the manifest has rules other than `remove`, which delete files this machine's "
+                 "build doesn't read (Mac-only used set). Convert the dry-run list into a reviewed `remove` "
+                 "manifest, or pass --allow-used-set deliberately.")
+    if a.apply and run("git", "status", "--porcelain", "--untracked-files=no").strip():
+        sys.exit("refusing --apply: uncommitted changes to tracked files (git rm -f would discard them)")
+    if remove_only:
         used = set()  # remove-only manifests: unconditional, no build analysis needed
         tracked = [t for t in run("git", "ls-files").splitlines() if not t.startswith("tools/shuttle/")]  # not the tooling
         return prune(a, all_rules, tracked, used)
@@ -215,7 +233,7 @@ def main():
     tmp = "out/PruneCheck"
     try:
         run("gn", "gen", tmp, "--args=" + official_args())
-        used |= used_files(tmp)
+        used |= used_files(tmp, deps_log=False)
     finally:
         shutil.rmtree(os.path.join(SRC, tmp), ignore_errors=True)
     used |= grd_refs(used)

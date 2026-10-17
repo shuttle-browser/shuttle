@@ -1,24 +1,26 @@
 #!/usr/bin/env node
-// Network-mode smoke test. Start Shuttle with network mode first, e.g.
-//   Shuttle --headless --remote-debugging-port=9335 --user-data-dir=/tmp/sh-net --shuttle-listen=0.0.0.0
+// Network-mode smoke (opt-in: scripts/smoke-all.sh --with network launches a browser with --shuttle-listen=0.0.0.0).
 // Usage: node scripts/smoke-network.mjs <port> <userDataDir> [lanIp]
 // Checks: loopback works without a token; the LAN address needs the token (header or ?token=), relaxes the Host
 // check for token holders, keeps the Origin check; MCP endpoints carry the token and work over the LAN; the token
-// file is 0600. Ends with Browser.close.
+// file is 0600. Fails when no LAN address can be determined.
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
+import { args, check, cleanup, fail, finish, port, sleep } from './lib/smoke.mjs'
 
-const [port = '9335', udd = '/tmp/sh-net', lanArg] = process.argv.slice(2)
-const lan = lanArg || execSync("ipconfig getifaddr en0 2>/dev/null || hostname -I | awk '{print $1}'").toString().trim()
+const [udd, lanArg] = args
+if (!udd) { console.error('usage: smoke-network.mjs <port> <userDataDir> [lanIp]'); process.exit(2) }
+let lan = lanArg
+try { lan ||= execSync("ipconfig getifaddr en0 2>/dev/null || hostname -I | awk '{print $1}'").toString().trim() } catch {}
+if (!lan) await fail('no LAN address (pass lanIp)')
 const tokenFile = path.join(udd, 'ShuttleAccessToken')
+for (let i = 0; i < 30 && !fs.existsSync(tokenFile); i++) await sleep(500)  // a cold first start can take >5 s
 const token = fs.readFileSync(tokenFile, 'utf8').trim()
-let pass = 0, fail = 0
-const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`) }
-const get = async (url, headers = {}) => { try { const r = await fetch(url, { headers }); return { status: r.status, text: await r.text() } } catch (e) { return { status: 0, text: String(e) } } }
+const get = async (url, headers = {}) => { try { const r = await fetch(url, { headers, signal: AbortSignal.timeout(15000) }); return { status: r.status, text: await r.text() } } catch (e) { return { status: 0, text: String(e) } } }
 const mcp = async (base, method, params, headers = {}) => {
-  const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
+  const r = await fetch(`${base}/mcp`, { method: 'POST', signal: AbortSignal.timeout(15000), headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
   return { status: r.status, body: await r.text() }
 }
 const wsOpen = (url, headers) => new Promise((res) => {
@@ -31,7 +33,7 @@ const wsOpen = (url, headers) => new Promise((res) => {
 
 const local = `http://127.0.0.1:${port}`, remote = `http://${lan}:${port}`
 const auth = { authorization: `Bearer ${token}` }
-console.log(`LAN address ${lan}, token ${token.slice(0, 4)}… (${token.length} chars)`)
+console.log(`LAN address ${lan}, token ${token.length} chars`)
 
 const mode = (fs.statSync(tokenFile).mode & 0o777).toString(8)
 check('token file is 0600', mode === '600', mode)
@@ -55,8 +57,10 @@ const call = async (name, args) => {
   const m = JSON.parse(r.body.replace(/^data: /m, '').trim().split('\n').pop())
   return JSON.parse(m.result?.content?.[0]?.text ?? '{}')
 }
-await call('create-agent', { id: 'netsmoke', name: 'Net smoke' })
-const sess = await call('open-session', { agent: 'netsmoke' })
+await call('create-agent', { id: 'smoke-net', name: 'Net smoke' })
+cleanup(() => call('delete-agent', { id: 'smoke-net' }))
+const sess = await call('open-session', { agent: 'smoke-net' })
+cleanup(() => call('close-session', { sessionId: sess.sessionId }))
 const ep = sess.cdpEndpoint ?? ''
 check('cdpEndpoint carries the token', ep.includes(`token=${token}`), ep.replace(token, '<token>'))
 check('cdpEndpoint uses the LAN host', ep.startsWith(`ws://${lan}:${port}/devtools/session/`))
@@ -67,12 +71,4 @@ check('session CDP over LAN without token fails', !(await wsOpen(ep.replace(/[?&
 check('session CDP over LAN with Bearer header', (await wsOpen(ep.replace(/[?&]token=[^&]+/, ''), auth)).ok)
 const snap = await mcp(remote, 'tools/call', { name: 'snapshot', arguments: { targetId: tab.targetId } }, auth)
 check('page tool (agent-browser sidecar) works in network mode', snap.status === 200 && !/isError":true/.test(snap.body), snap.body.slice(0, 120))
-await call('close-session', { sessionId: sess.sessionId })
-await call('delete-agent', { id: 'netsmoke' })
-
-console.log(`\n${pass} passed, ${fail} failed`)
-const v = JSON.parse((await get(`${local}/json/version`)).text)
-const b = new WebSocket(v.webSocketDebuggerUrl)
-b.onopen = () => b.send(JSON.stringify({ id: 1, method: 'Browser.close' }))
-b.onmessage = () => process.exit(fail ? 1 : 0)
-setTimeout(() => process.exit(fail ? 1 : 0), 3000)
+await finish()

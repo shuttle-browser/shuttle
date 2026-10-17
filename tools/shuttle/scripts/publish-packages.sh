@@ -41,7 +41,7 @@ fpr=$("$GPG" --show-keys --with-colons "$ASSETS/shuttle.asc" | awk -F: '/^fpr/{p
 
 wrangler() {
   if [ -n "${SHUTTLE_WRANGLER:-}" ]; then CLOUDFLARE_ACCOUNT_ID=$SHUTTLE_CF_ACCOUNT $SHUTTLE_WRANGLER "$@"
-  else (cd "$SHUTTLE_ROOT/shuttle-website" && CLOUDFLARE_ACCOUNT_ID=$SHUTTLE_CF_ACCOUNT npx --yes wrangler@4 "$@"); fi
+  else (cd "$SHUTTLE_ROOT/shuttle-website" && CLOUDFLARE_ACCOUNT_ID=$SHUTTLE_CF_ACCOUNT npx --yes wrangler@4.151.1 "$@"); fi
 }
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 sign() { "$GPG" --quiet --yes --local-user "$KEY" --digest-algo SHA512 "$@"; }
@@ -56,9 +56,10 @@ touch "$R/.state/uploaded" "$R/.state/rpm-inputs" "$R/.state/apt-stable.list" "$
 # --- 1. Add packages ---
 for f in ${files[@]+"${files[@]}"}; do
   b=$(basename "$f")
-  if [ -f "$f.sha256" ]; then
-    [ "$(sha "$f")" = "$(cut -d' ' -f1 "$f.sha256")" ] || { echo "FATAL: $b does not match $b.sha256" >&2; exit 2; }
-  fi
+  [ -f "$f.sha256" ] || { echo "FATAL: no $b.sha256" >&2; exit 2; }
+  [ "$(sha "$f")" = "$(cut -d' ' -f1 "$f.sha256")" ] || { echo "FATAL: $b does not match $b.sha256" >&2; exit 2; }
+  grep -qxF -e "package_deb=$b sha256=$(sha "$f")" -e "package_rpm=$b sha256=$(sha "$f")" "$(dirname "$f")/MANIFEST.txt" 2>/dev/null ||
+    { echo "FATAL: $b is not in $(dirname "$f")/MANIFEST.txt (package it with package-linux.sh + package-deb.sh)" >&2; exit 2; }
   case $b in
     shuttle_*_amd64.deb)
       dst=$R/apt/pool/main/s/shuttle/$b

@@ -58,6 +58,21 @@ def strip_grd(text, keep):
     return text, removed
 
 
+def grd_problems(text):
+    """XML parse error or <if> blocks whose <then>/<else> pair broke (as strings, comparable old vs new)."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as e:
+        return [f"XML parse error: {str(e).split(':')[0]}"]
+    out = []
+    for el in root.iter("if"):
+        kids = [c.tag for c in el]
+        if ("then" in kids or "else" in kids) and kids != ["then", "else"]:
+            out.append(f"<if expr={el.get('expr')!r}> children {kids}")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -71,6 +86,7 @@ def main():
     edited, total = 0, 0
     remaining_xtb = set()
     dropped_files = set()  # per-language <include> files no grd uses any more
+    pending = {}  # path -> (rel, old text, new text)
     for rel in git_ls(src, "*.grd", "*.grdp"):
         path = os.path.join(src, rel)
         with open(path, encoding="utf-8") as f:
@@ -87,21 +103,23 @@ def main():
         if n:
             edited += 1
             total += n
-            if a.apply:
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(new)
+            pending[path] = (rel, text, new)
     print(f"grd/grdp: {edited} files, {total} locale elements removed")
+    # Validate every edit before anything is written or deleted (dry run too): the new text must parse when the old
+    # one did, and <if> blocks must keep a <then>/<else> pair if they had one.
+    errors = []
+    for path, (rel, old, new) in pending.items():
+        e_new, e_old = grd_problems(new), grd_problems(old)
+        errors += [f"{rel}: {e}" for e in e_new if e not in e_old]
+    if errors:
+        print(f"ERROR: {len(errors)} problems in the edited grd/grdp files; nothing written:", file=sys.stderr)
+        for e in errors[:50]:
+            print("  " + e, file=sys.stderr)
+        return 1
     if a.apply:
-        import xml.etree.ElementTree as ET
-        for rel in git_ls(src, "*.grd", "*.grdp"):
-            try:
-                root = ET.parse(os.path.join(src, rel)).getroot()
-            except ET.ParseError:
-                continue
-            for el in root.iter("if"):
-                kids = [c.tag for c in el]
-                if ("then" in kids or "else" in kids) and kids != ["then", "else"]:
-                    print(f"FIX by hand: {rel}: <if expr={el.get('expr')!r}> children {kids}")
+        for path, (rel, old, new) in pending.items():
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(new)
 
     # 2. xtb files
     xtbs = [p for p in git_ls(src, "*.xtb") if os.path.basename(p) not in remaining_xtb]
@@ -139,6 +157,7 @@ def main():
             print("  " + p)
     if not a.apply:
         print("(dry run; pass --apply)")
+    return 0
 
 
 if __name__ == "__main__":

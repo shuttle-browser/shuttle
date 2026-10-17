@@ -18,7 +18,9 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
 
 - **Merge upstream, never rebase.** Branch `chromium` = one snapshot commit per stable tag (no upstream history; the
   full history is ~50 GB): `git fetch --depth=1 origin refs/tags/<new>:refs/tags/<new>`, then on `chromium`
-  `git commit-tree <new>^{tree} -p chromium -m "Chromium <new> (snapshot)"`, move `chromium` to it. Diff of two
+  `git commit-tree <new>^{tree} -p chromium -m "Chromium <new> (snapshot)" -m "Tree of upstream tag <new> (commit
+  <full upstream SHA>), imported without history. ..."` (the body records tag + upstream SHA: keep that format, it is
+  the traceability link), move `chromium` to it. Diff of two
   snapshots = the upstream change. `main` merges `chromium`; modify/delete conflicts resolve to the deletion.
   `build/util/lastchange.py` falls back to the newest commit (snapshots have no `Change-Id`): keep that edit.
 - **Keep the engine close to upstream.** V8, Blink, `content/`, `net/`, `third_party/` stay as unmodified as possible
@@ -55,11 +57,10 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
   `scripts/build.sh` writes them into `out/<Dir>/args.gn` and re-runs `gn gen` when they
   change. Six args are commented as "blocked": upstream asserts or unconditional deps on Mac,
   so they need source surgery instead.
-- `scripts/build.sh [dev|release] [autoninja args]` runs under `nice` and `caffeinate`, logs to
+- `scripts/build.sh [dev|release|sccache] [autoninja args]` runs under `caffeinate`, logs to
   `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`. Run it in a visible workerdeck
-  shell (`shell_run`). Use `-j 6` on the Mac (2026-10-06 11:00; the build host `-j 12`) unless told otherwise; add `-k 0` to collect all
-  errors in one pass. Incremental B1 rebuild (omnibox headers everywhere) took ~11 min of
-  compile at `-j 12` once the machine was awake.
+  shell (`shell_run`). Caps in code (`scripts/lib/build-common.sh`, shared with `build-linux.sh`): nice 19, `-local_jobs` 8 with sccache-dist / 4 local / 10 on the Linux host unless given (`SHUTTLE_LOCAL_JOBS`), one build per out dir (lock), ≥ 20 GB free (`SHUTTLE_MIN_FREE_GB`); `SHUTTLE_BG=1` adds `taskpolicy -c background`.
+  Add `-k 0` to collect all errors in one pass.
 - `scripts/build-watch.py <Dir> [--step 10] [--stall 10]`: **the** build Monitor (macOS + Linux).
   Every stdout line is a notification, so it stays quiet: progress every `--step` % with rate/ETA
   (skips Siso's inflated first total), the first error of each FAILED step deduped by message,
@@ -68,10 +69,8 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
   `BUILD EXIT` (failure counts by message, sccache remote/local split from
   `$SHUTTLE_ROOT/logs/sccache-stats-Sccache.txt`). Reads only new output unless `--from-start`.
   Arm: Monitor `scripts/build-watch.py Dev` (timeout 30 min; re-arm on expiry).
-  `scripts/build-progress.sh` is the older progress-only version.
   Expires after 30 min; re-arm. siso's step total shifts while it schedules, so early ETAs
   are low. Error details: `out/Dev/siso_output`.
-- `scripts/build-forecast.py Dev`: read-only remaining work by area.
 - **Run long builds where a workerdeck reload can't kill them.** A workerdeck hot reload/restart
   ends every `shell_run` shell ("server_stopped"); it killed two B2d builds. The maintainer avoids reloads
   during builds; Siso resumes where it stopped, so just restart.
@@ -85,13 +84,14 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   Never expose an unauthenticated listener: sccache is guarded by the client token and scheduler-signed server JWTs.
 - Mac: `scripts/sccache-toolchain.sh` builds the clang toolchain archive; `~/.shuttle/sccache.toml` from
   `config/sccache.example.toml` (one `path_override` pair per out dir, see the gotcha below);
-  `nice -n 10 taskpolicy -c utility scripts/build-sccache.sh -local_jobs=<host threads> -k 0` builds `out/Sccache`
-  (`SHUTTLE_KIND=release` → `out/Release`).
+  `scripts/build-sccache.sh -k 0` builds `out/Sccache` (`SHUTTLE_KIND=release` → `out/Release`). It refuses to
+  start when `sccache --dist-status` shows no servers (`SHUTTLE_ALLOW_LOCAL=1` overrides, ask first), starts the
+  shared sccache server if absent and never stops it. Limit: sccache 0.18 has no "never compile locally" switch; if
+  the host drops out mid-build, compiles fall back to the Mac, capped by `-local_jobs`.
 - **`-local_jobs` is capped by the host's RAM, not its slot count** (2026-10-15): the build host has 12 logical CPUs and
   23 GB; the two servers advertise 24 slots. content/browser TUs need 1.7-2.6 GB each, so 16+ jobs swap hard (550 MB/s
   swap-out, near-OOM). Use `-local_jobs=12` alone, `10` while a host build runs alongside.
-- Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/buildmon` on the host (TUI; feed it from the Mac with
-  `scripts/buildmon_push.py <Dir>`), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
+- Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
   (WSL2 hardware sensors through the Windows host).
 - NativeLink/REAPI (siso remote execution) was tried first and dropped: much slower than sccache-dist here
   (removed 2026-10-16; in git history before that).
@@ -108,7 +108,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 5. `scripts/scan-webui-imports.py` (3s) for TS imports of deleted files.
 6. C++/TS surgery (parallel agents need explicit file ownership + a shared brief; template:
    `_docs/agent-briefs/b1-surgery-brief.md`), verify each file with `scripts/syntax-check-file.sh`.
-7. One `-k 0` build, fix FAILED steps, GUI smoke test with a fresh `/tmp/sh-profile`, commit.
+7. One `-k 0` build, fix FAILED steps, smoke test with `scripts/smoke-all.sh` (own temp profile), commit.
 
 ## Prune and fix scripts
 
@@ -127,13 +127,12 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - `gn check out/Dev --fix` adds direct deps lost with removed `public_deps`. ~1,000 "Source file
   not found" errors and a few ChromeOS include errors predate batch A; ignore.
 - `scripts/build-errors.sh <output-substring>`: errors of matching FAILED steps.
-- `scripts/syntax-check.sh <failed-output-substring> <src.cc>...`: `-fsyntax-only` with a failed
-  step's flags.
-- `scripts/syntax-check-file.sh <src.cc>...`: `-fsyntax-only` with each file's own flags from
-  a cached compile DB (`/tmp/sh-compdb.tsv`, rebuilt from `ninja -t compdb` when `build.ninja`
-  changes; ~2.5s/file). Load-limited since B2d (4 parallel agents pegged the build Mac): at most
-  `SHUTTLE_SYNCHECK_SLOTS` (default 2) checks machine-wide, at background QoS (`taskpolicy -c
-  background`, E-cores) + `nice`. Read-only, safe without a
+- `scripts/syntax-check-file.sh [--flags-from <failed-step-substring>] <src.cc>...`: `-fsyntax-only` with each
+  file's own flags from a cached compile DB of `$SHUTTLE_BUILD_DIR` (default `out/Sccache`; `/tmp/sh-compdb<dir>.tsv`,
+  rebuilt from `ninja -t compdb` when `build.ninja` changes; ~2.5s/file), or with a failed step's flags from
+  `siso_output` (`--flags-from`, for files not in the graph). Exit 1 on compiler errors or a file without a command,
+  2 on setup errors. Load-limited since B2d (4 parallel agents pegged the build Mac): at most
+  `SHUTTLE_SYNCHECK_SLOTS` (default 2) checks machine-wide, under `nice`. Read-only, safe without a
   build running, but generated headers are from the last build (edited `.mojom` = stale).
   To check against edited mojoms, regenerate bindings into a temp dir and add `-I` (B1 agent 2
   did this in `/tmp/mj`).
@@ -216,7 +215,8 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
   `81D0827DDC5004E5CCCD674943FDBF62DB5D8304`. The public key is `assets/linux/repo/shuttle.asc`. The private key and its
   passphrase live only in the maintainer's Mac keyring (backup: Bitwarden). Before expiry, extend it (`gpg --quick-set-expire`),
   re-export `shuttle.asc` and re-run the publish script with no files, so the metadata and key are re-uploaded.
-- **Publish:** `scripts/publish-packages.sh [--suite stable|testing] [--dry-run] <deb> <rpm>` on the Mac.
+- **Publish:** `scripts/publish-packages.sh [--suite stable|testing] [--dry-run] <deb> <rpm>` on the Mac (each file needs its
+  `.sha256` and an entry in the `MANIFEST.txt` next to it; wrangler pinned to an exact version).
   - It signs the rpm with `rpmsign` (brew `rpm`; v4 RSA/SHA256 header signature) and builds the metadata on
     `$SHUTTLE_BUILD_HOST` (`apt-ftparchive`, `createrepo_c --general-compress-type=gz`; needs `apt-utils createrepo-c`).
     Then it signs `InRelease`/`Release.gpg`/`repomd.xml.asc` on the Mac and uploads the changed files with wrangler.
@@ -267,12 +267,18 @@ aren't signaled by the major: call them out in `NOTES.md`. Tags: `v155.1.0`.
 
 1. `SHUTTLE_KIND=release scripts/build-sccache.sh -local_jobs=12 -k 0` (or `scripts/build.sh release`): official
    `out/Release`; `gn gen out/Release` + `scripts/check-ninja-inputs.py out/Release` first. After a Chromium bump it is a
-   full rebuild (~7 h via sccache-dist). Smoke it (`smoke-cdp.mjs` against `out/Release`).
-2. `SHUTTLE_SIGN_ID=<Developer ID SHA-1> SHUTTLE_NOTARY_PROFILE=<notarytool profile> scripts/release-mac.sh`: builds the
-   packaging tools, adds the agent-browser sidecar, signs, notarizes + staples app and DMG, verifies with
-   spctl/stapler. Output `$SHUTTLE_ROOT/release/<chromium version>/`; copy the DMG to
-   `release/v<X.Y.Z>/Shuttle-<X.Y.Z>-arm64.dmg`. Identity and notary credentials stay in the keychain.
-3. Linux: `scripts/build-linux.sh release`, `package-linux.sh` (tarball), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm), Linux
+   full rebuild (~7 h via sccache-dist). Build from a clean, committed tree: a successful `chrome` build writes
+   `out/Release/shuttle-build-receipt.txt` (source SHA, clean flag, `chromium` base, args.gn/DEPS/gitlink hashes,
+   clang + depot_tools revisions; `scripts/lib/receipt.sh`) and packaging refuses without a matching one. Smoke it: `scripts/smoke-all.sh out/Release/Shuttle.app`.
+2. `SHUTTLE_VERSION=<X.Y.Z> SHUTTLE_SIGN_ID=<Developer ID SHA-1> SHUTTLE_NOTARY_PROFILE=<notarytool profile>
+   scripts/release-mac.sh`: checks the receipt, builds the packaging tools through `build.sh` (`SHUTTLE_KEEP_ARGS=1`,
+   refuses if that rebuilt chrome), adds the pinned agent-browser sidecar, signs, notarizes + staples app and DMG,
+   verifies with spctl/stapler. Output `$SHUTTLE_ROOT/release/v<X.Y.Z>/mac/` (refused if it exists) with
+   `MANIFEST.txt` (receipt, sidecar + DMG sha256); rename the DMG to `Shuttle-<X.Y.Z>-arm64.dmg` for the release.
+   Identity and notary credentials stay in the keychain. `--no-notarize` signs only (skips Gatekeeper/stapler checks).
+3. Linux: `scripts/build-linux.sh release`, `SHUTTLE_VERSION=<X.Y.Z> package-linux.sh` (tarball + receipt +
+   `release/v<X.Y.Z>/linux/MANIFEST.txt`), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm, hashes appended
+   to the manifest), Linux
    smokes and an upgrade test from the previous version (`docs/LINUX.md`).
 4. `release/v<X.Y.Z>/`: `NOTES.md` (Chromium base, changes, downloads table, known limits), `SHA256SUMS`, then
    `gh release create v<X.Y.Z> -R shuttle-browser/shuttle --target <full SHA> --title "Shuttle <X.Y.Z>" --notes-file
@@ -345,9 +351,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **`pkill -f` over ssh kills its own shell** when the pattern appears in the ssh command line (`ssh host 'pkill -f X;
   rm -rf /tmp/X'`). Put the commands in a script file, or use a pattern the command line doesn't contain literally
   (`'user-data-dir=/tmp/sh-pro[f]'`).
-- **Call the Linux check scripts with an absolute path**: `linux-smoke.sh` and friends `cd` into `src/`, so a relative
-  `scripts/…` call breaks their `$(dirname "$0")` lookups (smoke-cdp MODULE_NOT_FOUND, 0 clean pages). Non-interactive
-  ssh on the Linux host has no node on PATH: export the nvm bin dir first.
+- **Call `linux-nsw-check.sh` with an absolute path**: it `cd`s into `src/`, so a relative `scripts/…` call breaks its
+  `$(dirname "$0")` lookups. Non-interactive ssh on the Linux host has no node on PATH: export the nvm bin dir first
+  (also for `smoke-all.sh`).
 - **chrome:// URLs are rejected as command-line arguments** (`ValidateLaunchUrlWebUnsafe`, except headless opt-in);
   inject the tab in `StartupTabProviderImpl` instead (fork commit 38).
 - **`-Wunsafe-buffer-usage`** rejects libc calls like `strtoul` and pointer arithmetic in fork code; use base helpers
@@ -376,9 +382,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **Unsigned sidecar in `out/Release` gets SIGKILLed** (2026-10-11): `release-mac.sh` strips agent-browser's ad-hoc
   signature so the pipeline can sign it, so page tools fail ("agent-browser exited unexpectedly", exit 137) when you
   smoke the unsigned `out/Release` app. Smoke the signed app from the DMG (or `out/Sccache`) instead.
-- **Network mode smoke** (2026-10-11): `scripts/smoke-network.mjs <port> <udd> [lanIp]` against Shuttle started with
-  `--shuttle-listen=0.0.0.0`. Wait for `<udd>/ShuttleAccessToken` before running it (a cold first start can take >5 s).
-  The default-profile smokes (smoke-mcp etc.) must still pass without the flag.
+- **Network mode smoke** (2026-10-11): `scripts/smoke-all.sh <binary> --with network` launches a second browser with
+  `--shuttle-listen=0.0.0.0` and runs `smoke-network.mjs <port> <udd> [lanIp]` (it waits up to 15 s for
+  `<udd>/ShuttleAccessToken`: a cold first start can take >5 s). The default probes must still pass without the flag.
 
 - **Don't touch low-level shared headers for cosmetic removals** (2026-10-07): deleting two unused
   ids from `ui/color/color_id.h` (B2b side panel phase) recompiled most of Blink, because
@@ -436,7 +442,8 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **Metal Toolchain** for ANGLE: `xcodebuild -downloadComponent MetalToolchain` (done).
 - **GN args:** `enable_nacl` no longer exists; don't set `use_lld=false`; official build needs PGO
   profiles or `chrome_pgo_phase=0`.
-- **Throttling:** never `taskpolicy -c background` (efficiency cores only, ~14× slower).
+- **Throttling:** the build scripts set nice 19 and `-local_jobs`; `taskpolicy -c background` only on request
+  (`SHUTTLE_BG=1`: efficiency cores only, ~14× slower).
 - **Restoring files rewrites mtimes** and forces dependent rebuilds; prefer dry runs.
 - **Full-tree `git grep`:** ~2s over `chrome components ui`; fine sequentially, never several in
   parallel from scouts.
@@ -463,7 +470,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   move) and Spotlight (path-based Privacy list: re-add after a move); XProtect scans each new
   binary (~0.5s).
 - Old profiles from pre-batch builds trip migration DCHECKs; always use a fresh
-  `/tmp/sh-profile`.
+  profile (`smoke-all.sh` makes one per run).
 - **Stubbed KeyedService factories (B2a):** a factory's `DependsOn()` calls also *register* the
   factories it depends on. Stub or delete one and those others hit "Trying to register
   KeyedService Factory … after EnsureBrowserContextKeyedServiceFactoriesBuilt" at startup. Diff
@@ -491,7 +498,8 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   stop inbound to an http.sys (System, PID 4) listener; it stayed reachable over VPN and LAN.
   Prefer no listener, or bind to one address. Always verify exposure from the Mac with `curl`/`nc`.
 - **Smoke test must end with `Browser.close` (B2c):** late KeyedService registrations
-  (`AppSessionServiceFactory`) only fire at shutdown. Grep the browser log for FATAL afterwards.
+  (`AppSessionServiceFactory`) only fire at shutdown. `scripts/smoke-all.sh` owns that: it closes the browser it
+  started, checks its exit status (`close-*` rows) and greps the log (`log-fatals`). Probes never close the browser.
 - **Removed `IDS_*` pass syntax checks (B2c):** `out/Dev/gen/**/grit/*.h` are stale until grit
   reruns. Before the build, grep kept code for the removed grdps' message names.
 - **Don't steal focus:** smoke tests run `--headless` (`"…/Shuttle.app/Contents/MacOS/Shuttle" --headless … &`):
@@ -508,18 +516,21 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   navigations until it **disconnects**, even after `setAutoAttach false` (upstream). Emulation on a tab without a
   view crashed the browser upstream (fixed in `WebContentsImpl::SetDeviceEmulationSize`).
 - **Page tools / agent-browser sidecar (2026-10-08, `ac/agent-browser`):** `scripts/fetch-agent-browser.sh
-  <app>/Contents/Helpers [platform]` installs the pinned agent-browser (npm tarball, version check, LICENSE +
-  NOTICE, ad-hoc codesign; `AGENT_BROWSER_SRC=<unpacked package>` skips the download). The browser finds it in
+  <app>/Contents/Helpers [platform]` installs the pinned agent-browser (npm tarball checked against its pinned sha512,
+  the platform binary against its pinned sha256 before it is copied or run; LICENSE + NOTICE, ad-hoc codesign;
+  `AGENT_BROWSER_SRC=<unpacked package>` skips the download but not the hash check). A version bump means new pins
+  (`npm view agent-browser@<v> dist.integrity`, `shasum -a 256 package/bin/agent-browser-*`). The browser finds it in
   `Contents/Helpers/agent-browser`, or `SHUTTLE_AGENT_BROWSER=<binary>` for dev runs. Relinking `chrome` keeps
   the Helpers copy. The page tool list lives in `config/agent-browser-tools.json`; after edits run
   `node scripts/gen-page-tools.mjs` and commit the regenerated fork file `chrome/browser/shuttle/page_tools_data.inc`.
-  smoke-mcp expects
-  36 tools (12 + 24). Gotchas: `AGENT_BROWSER_PIN_TAB=1` makes a fresh daemon open a stray tab; the daemon
+  smoke-mcp checks a
+  list of required tool names (not a count). Gotchas: `AGENT_BROWSER_PIN_TAB=1` makes a fresh daemon open a stray tab; the daemon
   outlives the MCP process (send `close`, idle timeout as fallback).
 - **zsh in the Bash tool:** `$VAR` holding several words does **not** split (`scripts/x.sh $FILES` passes one
   argument). Pass arguments literally or use `${=VAR}`.
-- **Smoke order:** `smoke-agents-page.mjs` expects a fresh profile; after `smoke-mcp.mjs` in the same profile
-  it fails on leftover agents (not a product bug).
+- **Probes share a profile:** each uses its own agent id prefix (`smoke-`, `smoke-sc-`, `smoke-agents-`,
+  `smoke-focus-`, `smoke-net`) and deletes its agents/sessions/tabs at exit, even on failure; only smoke-mcp
+  `--phase1` leaves `smoke-persist` for `--phase2`.
 - **`build-sccache.sh` needs a PTY** (`script`): run it via `shell_run`; from a plain Bash call it exits 1 after 0
   steps with `tcgetattr ... not supported`.
 - **Moving the checkout loses siso's state unless you rewrite it first** (2026-10-13, `~/chromium` →
@@ -548,8 +559,8 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   actions, so `-local_jobs=N` caps compiles in flight on the build host at N; `-j`/`SHUTTLE_JOBS` doesn't raise it
   (2026-10-10: -j 24 with -local_jobs=6 kept the build host at 5-6 compiles, ~35% busy).
   It is also the only Mac-side cap: siso ignores `-j` above the core count ("Ignoring -j 24"), and until 2026-10-16
-  `build.sh` put extra args after the target, where siso never read them. Use `nice -n 19 taskpolicy -c background
-  scripts/build-sccache.sh -local_jobs 8`; unthrottled, a local build loaded the Mac to 58 and cut the maintainer off.
+  `build.sh` put extra args after the target, where siso never read them. The scripts now always pass one
+  (`-local_jobs 8` for sccache builds); unthrottled, a local build loaded the Mac to 58 and cut the maintainer off.
 - **Official builds link with export lists** (`chrome/app/app.exports` for the app + helpers,
   `chrome/app/framework.exports` for the framework); dev builds don't use them, so pruning can break only the
   release link. After removals, check both lists for deleted files/symbols (2026-10-11 release failure).
@@ -583,7 +594,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     targets outside scope still need (blink, cc, net, headless) stay pinned. It skips `.gitignore`
     files: deleting them un-ignores CIPD test data, which `git add -A` then stages. It also skips
     submodule gitlinks and untracked (CIPD) `BUILD.gn` files. Afterwards run `fix-gn-refs.py`, then
-    `gn-fix-unresolved.py` (it now handles root `//:gn_all` deps), then fix leftovers by hand:
+    `gn-fix-unresolved.py` (since replaced by `gn-fix-loop.py`), then fix leftovers by hand:
     "Assignment had no effect" for unused GN variables, and `get_target_outputs` on removed
     targets (content_shell's Mac bundle).
   - `scripts/prune-policies.py`: upstream marks a deleted policy as `N: ''` in `policies.yaml`.
@@ -598,7 +609,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     then intersect sets in Python.
 - **Linux / two-machine tooling (2026-10-06, details in `docs/LINUX.md`):**
   `scripts/build-linux.sh`, `config/args-linux.gn`, `scripts/linux-read-set.py` (base read set on
-  the Linux host), `scripts/linux-restore-set.py`, `scripts/gn-fix-loads.py`,
+  the Linux host), `scripts/linux-restore-set.py`, `scripts/gn-fix-loop.py`,
   `scripts/restore-includes.py`, `scripts/restore-strings.py`, `fix-gn-refs.py --base REF`.
   `restore-strings.py` wraps each restored message in its base `<if>` stack (an earlier version
   anchored by neighbour and put 43 Linux strings under `is_macosx`); afterwards run
@@ -618,7 +629,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     /tmp/sh-smoke.log -a …`. Read Anything is `chrome-untrusted://read-anything-side-panel.top-chrome/`.
   - `scripts/prune.py` `grd_refs()` protects every file a used `.grd`/`.grdp` references
     (grit reads `.xtb` files and some parts without declaring them as inputs).
-- **Helpers added in B2c:** `scripts/gn-fix-unresolved.py` (gn-gen loop that strips deps on
+- **Helpers added in B2c:** `scripts/gn-fix-unresolved.py` (since replaced by `gn-fix-loop.py`; gn-gen loop that strips deps on
   removed targets; run after `fix-gn-refs.py`), `scripts/delete-classes.py` (remove whole classes
   from a .h/.cc pair, handles split return types and `= default` dtors). Manifest generation for
   big batches: script it from the scout report with `git ls-files` + regex (see `prune/b2c.txt`),

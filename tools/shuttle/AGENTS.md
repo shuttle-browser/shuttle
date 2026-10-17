@@ -19,6 +19,7 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 | `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`), `agent-browser-tools.json` (curated page tools), `sccache.example.toml`, `sccache/systemd/` (build-host unit templates) |
 | `scripts/` | Build, prune, fix, rebrand, release and smoke-test scripts (see below and `docs/TOOLING.md`) |
 | `prune/` | Manifests for `scripts/prune.py` (one per removal batch) |
+| `fixtures/` | Small plain-bash tests for the safety gates in `scripts/`, run by `scripts/check-scripts.sh` |
 | `assets/` | Logo and icon sources, icon generation, Linux desktop entry |
 | `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `MCP.md`, `LINUX.md`, `BRANDING.md`, `BENCHMARK.md` |
 
@@ -36,7 +37,7 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 - Internal code ids, prefs, storage and the Linux binary are named `shuttle`; the MCP server is `shuttle`
   (`.mcp.json` points an MCP client at `http://127.0.0.1:9222/mcp`).
 - DevTools is always on (9222 or a free port, see `DevToolsActivePort`), with no approval dialog, no automation
-  infobar and `navigator.webdriver` false. `scripts/check-automation.mjs` verifies it.
+  infobar and `navigator.webdriver` false. `scripts/check-automation.mjs` verifies it (`smoke-all.sh --with automation`).
 - `depot_tools` is expected at `~/depot_tools` but not necessarily on `PATH`:
   `export PATH="$PATH:$HOME/depot_tools"`.
 
@@ -45,15 +46,15 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 - `config/args-common.gn` + `config/args-{dev,release}.gn` are **the** GN args (Linux adds `args-linux.gn`).
 - `scripts/build.sh [dev|release|sccache] [autoninja args]`: writes the args, runs `gn gen` when they change,
   builds the `chrome` target, logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`.
-  Throttle with `-local_jobs N` (siso's real cap; `-j` above the core count is ignored); add `-k 0` to collect every
-  error in one pass. Never run a second autoninja on the same
-  out dir. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
+  The build scripts enforce the caps themselves (`scripts/lib/build-common.sh`): nice 19, `-local_jobs` 8 with sccache-dist / 4 local / 10 on the Linux host unless given (`SHUTTLE_LOCAL_JOBS`), one build per out dir (lock), ≥ 20 GB free (`SHUTTLE_MIN_FREE_GB`); `SHUTTLE_BG=1` adds `taskpolicy -c background`.
+  `-local_jobs N` is siso's real cap (`-j` above the core count is ignored); add `-k 0` to collect every error in one
+  pass. `SHUTTLE_KEEP_ARGS=1` refuses to change `args.gn`. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
 - `scripts/build-sccache.sh` (optional): distributed compiles on a Linux build host running sccache-dist
-  (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`, monitor
-  `scripts/buildmon` + `scripts/buildmon_push.py`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
+  (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
 - `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
-  `scripts/build-errors.sh`, `scripts/build-forecast.py`, `scripts/build-progress.sh` help while a build runs.
-- `scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release`. Identity and notary profile come from
+  `scripts/build-errors.sh` lists failed steps while a build runs.
+- `SHUTTLE_VERSION=<X.Y.Z> scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release` (needs its
+  clean-tree build receipt; writes `release/v<X.Y.Z>/mac/` + `MANIFEST.txt`). Identity and notary profile come from
   `SHUTTLE_SIGN_ID` and `SHUTTLE_NOTARY_PROFILE`; never commit identities or credentials.
 
 ## Removal workflow
@@ -65,46 +66,59 @@ smoke test, and one commit. Details and every gotcha: `docs/TOOLING.md`.
 
 Prune and fix tools: `prune.py` (manifest-driven deletion; manifests in `prune/`), `prune-tests.py` (testonly GN
 targets), `prune-policies.py`, `prune-strings.py`, `prune-locales.py` (en-US-only UI), `fix-gn-refs.py`,
-`gn-fix-unresolved.py`, `gn-fix-loads.py`, `delete-classes.py`, `scan-webui-imports.py`, `syntax-check-file.sh`,
-`syntax-check.sh`, `add-include.py`, `restore-includes.py`, `restore-strings.py`.
+`gn-fix-loop.py`, `delete-classes.py`, `scan-webui-imports.py`, `syntax-check-file.sh`,
+`add-include.py`, `restore-includes.py`, `restore-strings.py`.
 
 ## After an upstream merge
 
 Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges"):
 
 1. Conflicts: modify/delete → `git rm`; `git checkout --conflict=zdiff3 -- <UU files>`, then
-   `scripts/merge-autoresolve.py stats|apply ours-deleted,ours-subset <list>` (fork-only deletions), the rest by
+   `scripts/merge-autoresolve.py stats|apply ours-deleted,ours-subset <list>` (fork-only deletions; hunks where
+   upstream added lines stay conflicted: `show ours-deleted-new,ours-subset-new` and review them), the rest by
    sub-agents per area with a shared brief. Keep DEPS `version_file`s (gclient reads them even when unused).
 2. `gclient sync -j 4` from the gclient root (default -j hits googlesource HTTP 429); new clang ⇒ toolchain archive.
 3. Delete upstream additions in directories the fork deleted entirely; judge brand-new dirs; rerun `prune/m155.txt`
    and other remove-only manifests.
 4. `scripts/prune-locales.py --apply`, `scripts/rebrand.py apply --apply` (keep main's rendered assets if only bytes differ).
-5. `scripts/gn-fix-loop.py` until `gn gen` passes; then `scripts/prune-tests.py --apply`, `fix-gn-refs.py --apply`.
+5. `scripts/gn-fix-loop.py` (dry run), then `--apply` until `gn gen` passes; then `scripts/prune-tests.py --apply`, `fix-gn-refs.py --apply`.
 6. `scripts/check-ninja-inputs.py` (missing inputs on chrome's graph; restore from `chromium`), then a `-k 0` build.
 
 ## Smoke tests
 
-| Script | Checks |
-| --- | --- |
-| `scripts/smoke-cdp.mjs <port>` | WebUI pages load, no JS exceptions, browser context |
-| `scripts/check-automation.mjs <port> [userDataDir]` | no prompt, no infobar, `navigator.webdriver` false |
-| `scripts/smoke-mcp.mjs <port> [--persist-check]` | MCP server: agents/identity, isolation, popups, viewport |
-| `scripts/smoke-agents-page.mjs [port] [shotDir]` | `chrome://agents` UI (14 checks) |
-| `scripts/smoke-session-cdp.mjs [port]` | per-session CDP endpoint (needs Playwright + agent-browser) |
-| `scripts/smoke-push.mjs` | Web Push subscribe (90 s) |
-| `scripts/smoke-network.mjs <port> <udd> [lanIp]` | network mode (`--shuttle-listen`, access token), 18 checks |
-| `scripts/linux-smoke.sh`, `linux-mcp-smoke.sh`, `linux-nsw-check.sh`, `linux-push-smoke.sh` | Linux variants (`docs/LINUX.md`) |
+`scripts/smoke-all.sh <binary|Shuttle.app> [--with network,push,automation] [--mode headless|x11|wayland]` owns the
+browser: own temp profile, `--remote-debugging-port=0` (port from `DevToolsActivePort`), runs the probes, closes the
+browser, checks its exit status and the log for fatals, removes the temp dir, prints PASS/FAIL/SKIP. Exit 0 all
+passed, 1 a FAIL, 3 something skipped (open, not green). Mac: `nice -n 19 scripts/smoke-all.sh ../../out/Release/Shuttle.app`.
+Not covered yet (deferred to the respin trial, owner SH-Lead): a sidecar page-tool call (needs a signed build; the
+unsigned `out/Release` sidecar is SIGKILLed), the worker-UAF repro (fork 36) and the badge/speech probe (fork 44).
+Probes (`node <probe> <port>`, `scripts/lib/smoke.mjs`): exit 0/1/2 usage/3 skipped, clean up their agents and tabs,
+never close the browser, local pages only (anything needing the internet skips unless `SHUTTLE_SMOKE_NET=1`).
 
-Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents), `scripts/mcp-call.mjs <port> <tool> '<json>'`,
-`scripts/watch-agents.mjs [port]`, `scripts/launch-shuttle.sh` (interactive run on 9222),
+| Probe | Checks |
+| --- | --- |
+| `smoke-cdp.mjs` | WebUI pages load, no JS exceptions/errors outside its `EXPECTED` list, browser context, credentials stub |
+| `smoke-mcp.mjs --phase1\|--phase2` | MCP server: agents/identity, isolation, popups, viewport; phase 2 after a restart: persistence |
+| `smoke-session-cdp.mjs` | per-session CDP endpoint (optional Playwright / agent-browser via `PLAYWRIGHT_CORE`, `AGENT_BROWSER`) |
+| `smoke-agents-page.mjs [shotDir]` | `chrome://agents` UI |
+| `smoke-focus.mjs [windowed]` | fork 45: bringToFront/activateTarget work; `windowed` (manual run, macOS `lsappinfo`): Shuttle not frontmost |
+| `smoke-sandbox.mjs` | `chrome://sandbox/` adequately sandboxed (Linux; not built on macOS) |
+| `smoke-network.mjs <udd> [lanIp]` | opt-in `network`: network mode (`--shuttle-listen`, access token) |
+| `smoke-push.mjs` | opt-in `push`: Web Push subscribe (needs `SHUTTLE_SMOKE_NET=1`, 30-90 s) |
+| `check-automation.mjs [udd]` | opt-in `automation` (own launch, `--enable-automation`): no prompt, no infobar, `navigator.webdriver` false |
+
+`scripts/linux-nsw-check.sh` stays a manual Linux helper (`docs/LINUX.md`).
+
+Helpers: `scripts/test-browser.sh [close]` (manual test browser on 9333 with two agents, mktemp profile), `scripts/mcp-call.mjs <port> <tool> '<json>'`,
+`scripts/launch-shuttle.sh` (interactive run on 9222),
 `scripts/fetch-agent-browser.sh <Helpers-dir>` + `scripts/gen-page-tools.mjs` (page-tool sidecar and generated tool list),
 `scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball), `scripts/package-deb.sh` (.deb + .rpm from the tarball),
 `scripts/bench-ram.mjs` (RAM benchmark, `docs/BENCHMARK.md`).
 
 ## Rules and top gotchas (full list in `docs/TOOLING.md`)
 
-- Always smoke-test with a fresh `--user-data-dir=/tmp/sh-profile` and end with `Browser.close`. Run smokes
-  **`--headless`**: agent tabs create windows that pop in front of whatever the user is doing. Windowed runs only for
+- Smoke-test with `scripts/smoke-all.sh` (it owns the temp profile, the launch and `Browser.close`; probes never
+  close the browser). Run smokes **`--headless`**: agent tabs create windows that pop in front of whatever the user is doing. Windowed runs only for
   window behavior.
 - Never send keystrokes or AppleScript to the desktop GUI; drive the browser over CDP
   (`--remote-debugging-port`, Node's global `WebSocket`) and ask a human for keyboard tests.
@@ -116,10 +130,13 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
   `chrome/app/app.exports` and `framework.exports` after removals.
 - Keep the Mac on power with the lid open during long builds (lid closed on battery stops them).
 - Never load the Mac to full CPU: it is the maintainer's workstation and a full-load build cuts them off (no input,
-  no messages). Check `sccache --dist-status` first; if the build host is offline, report the step count and ask before
-  compiling locally. Builds always run `nice -n 19 taskpolicy -c background` with `-local_jobs 8` (sccache-dist) or
-  `-local_jobs 4` (local), in a shell the maintainer can watch; stop if the load climbs. Don't kill a build early
+  no messages). `build-sccache.sh` refuses to start when the build host has no servers (the build would compile
+  locally); `SHUTTLE_ALLOW_LOCAL=1` only after asking. The scripts set nice 19 + `-local_jobs` (8 dist / 4 local);
+  don't add `taskpolicy -c background` (E-cores only, ~14× slower) unless asked. Run builds in a shell the maintainer
+  can watch; stop if the load climbs. sccache can still fall back to local compiles if the host drops out mid-build. Don't kill a build early
   to read its step count: killed runs leave regenerated outputs (protoc, mojom) that cascade.
+- Run `scripts/check-scripts.sh` before every tooling commit (syntax per interpreter, shellcheck, `fixtures/`). A
+  changed safety gate gets one fixture that fails on the old bug and passes after the fix; no test framework.
 - Keep branded surfaces consistent with `docs/BRANDING.md`.
 - No secrets in tracked files: API keys go in the environment or `_docs/.env`, signing material stays in the keychain.
 - Before pushing the fork (it is public): secret scan of `tools/shuttle/` and the new commits (gitleaks, low priority:
