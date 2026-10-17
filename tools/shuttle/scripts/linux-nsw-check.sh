@@ -5,7 +5,8 @@
 # 3. Browser.close -> exit 0, no fatals; 4. launch WITH a URL arg -> window with that page. Steps 4/5 skip headless.
 # Visible windows are counted on X11 only (xwininfo -tree, class shuttle, IsViewable); Wayland: CDP only.
 # Note: chrome://omnibox-popup.top-chrome/ counts as a page target once a window exists. Log /tmp/sh-nsw-<mode>.log.
-# Manual helper (fixed port 9222, X11/WSLg). Exit 1 if a launch, MCP call or Browser.close step failed or fatals logged.
+# Manual helper (fixed port 9222, X11/WSLg): refuses to start a browser while anything else answers on 9222, so it
+# never drives or closes a browser it didn't launch. Exit 2 if 9222 is taken, 1 if a launch, MCP call or Browser.close step failed or fatals logged.
 . "$(dirname "$0")/lib/paths.sh"
 G='FATAL|Check failed|DUMP_WILL_BE|Trying to access an unregistered pref|Trying to register KeyedService Factory|DanglingRawPtrDetected'
 mode=${1:-x11}; S=$(cd "$(dirname "$0")" && pwd); log=/tmp/sh-nsw-$mode.log
@@ -23,7 +24,10 @@ run_chrome() {  # run_chrome [extra args...]: foreground invocation (caller back
     *) echo "unknown mode $mode"; exit 2 ;;
   esac >> "$log" 2>&1
 }
-launch() { prof=$(mktemp -d "${TMPDIR:-/tmp}/sh-nsw.XXXXXX"); profs+=("$prof"); run_chrome "$@" & pid=$!
+busy() { curl -s -m 2 127.0.0.1:9222/json/version >/dev/null; }
+launch() {
+  if busy; then echo "  FATAL: something already answers on 127.0.0.1:9222 (another browser?): close it first" >&2; exit 2; fi
+  prof=$(mktemp -d "${TMPDIR:-/tmp}/sh-nsw.XXXXXX"); profs+=("$prof"); run_chrome "$@" & pid=$!
   for _ in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && { sleep 3; return; }; sleep 1; done
   echo "  FAIL: no CDP on 9222 after 30 s"; bad=1; }
 pages() { curl -s 127.0.0.1:9222/json/list | python3 -c 'import json,sys;p=[t["url"] for t in json.load(sys.stdin) if t["type"]=="page"];print(len(p),p[:3])' 2>/dev/null || echo "no-cdp"; }
@@ -37,7 +41,7 @@ xwins() {  # viewable top-level X11 windows of chrome (WM_CLASS shuttle)
 alive() { kill -0 $pid 2>/dev/null && echo yes || echo NO; }
 state() { echo "  [$1] alive=$(alive) pages=$(pages) x11_windows=$(xwins)"; }
 M() { node "$S/mcp-call.mjs" 9222 "$@" || { echo "  FAIL: $1" >&2; echo "$1" >> "$fails"; return 1; }; }
-cdpclose() { node -e 'fetch("http://127.0.0.1:9222/json/version").then(r=>r.json()).then(v=>{const ws=new WebSocket(v.webSocketDebuggerUrl);ws.onopen=()=>ws.send(JSON.stringify({id:1,method:"Browser.close"}));ws.onmessage=()=>process.exit(0)})'; }
+cdpclose() { timeout 15 node -e 'fetch("http://127.0.0.1:9222/json/version").then(r=>r.json()).then(v=>{const ws=new WebSocket(v.webSocketDebuggerUrl);ws.onopen=()=>ws.send(JSON.stringify({id:1,method:"Browser.close"}));ws.onmessage=()=>process.exit(0)})'; }
 finish() { cdpclose; ( sleep 60; kill -9 $pid 2>/dev/null ) & k=$!; wait $pid; ec=$?; kill $k 2>/dev/null
   local f; f=$(grep -aciE "$G" "$log"); { [ "$ec" = 0 ] && [ "$f" = 0 ]; } || bad=1
   echo "  [$1] Browser.close -> shuttle exit $ec, fatals=$f, still_listening=$(ss -ltn | grep -c ':9222 ')"; }

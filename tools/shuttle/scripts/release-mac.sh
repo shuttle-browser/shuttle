@@ -32,15 +32,14 @@ major=$(. "$SRC/chrome/VERSION"; echo "$MAJOR")
 [[ -f "$SRC/chrome/installer/mac/sign_chrome.py" ]] || { echo "FATAL: signing pipeline not in the tree" >&2; exit 2; }
 dest="$SHUTTLE_RELEASE/v$ver/mac"
 [[ ! -e "$dest" ]] || { echo "FATAL: $dest exists; never overwritten (pick a new version or move it away)" >&2; exit 2; }
-bin="$OUT/Shuttle.app/Contents/MacOS/Shuttle"
-receipt=$(shuttle_receipt_check "$OUT" "$bin") || exit 2
+receipt=$(shuttle_receipt_check "$OUT" "$OUT/Shuttle.app") || exit 2
 chromium=$(plutil -extract CFBundleShortVersionString raw "$OUT/Shuttle.app/Contents/Info.plist")
 echo "== Shuttle $ver (Chromium $chromium, arm64) -> $dest"
 
 # 1. Packaging dir (signing scripts, entitlements, dmg_tool/hfs_tool), through build.sh with the args unchanged.
 sccache_flag=0; grep -q '^cc_wrapper = "sccache"' "$OUT/args.gn" && sccache_flag=1
 SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 SHUTTLE_SCCACHE=$sccache_flag "$(dirname "$0")/build.sh" release
-shuttle_receipt_check "$OUT" "$bin" >/dev/null || { echo "FATAL: building the packaging target rebuilt chrome" >&2; exit 2; }
+shuttle_receipt_check "$OUT" "$OUT/Shuttle.app" >/dev/null || { echo "FATAL: building the packaging target rebuilt chrome" >&2; exit 2; }
 "$(dirname "$0")/clean-stale-lproj.sh" "$OUT"   # en-US-only UI: drop old locale dirs left in the out dir
 
 # 2. Sidecar into the unsigned app (the pipeline signs it as part 'agent-browser'), pinned hash.

@@ -6,18 +6,31 @@ cd "$SHUTTLE_SRC" || exit 1
 mkdir -p chrome out/R && printf 'MAJOR=155\nMINOR=0\nBUILD=8059\nPATCH=80\n' > chrome/VERSION && echo deps > DEPS
 echo 'is_debug = false' > out/R/args.gn && git add chrome DEPS && git -c user.name=f -c user.email=f@f commit -q -m v
 . "$SCRIPTS/lib/paths.sh"; . "$SCRIPTS/lib/receipt.sh"
-touch out/R/bin; sleep 1
-shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 >/dev/null
-expect 0 shuttle_receipt_check out/R out/R/bin; expect_out "tree_clean=yes"
+mkdir -p out/R/app; touch out/R/bin out/R/app/res; sleep 1
+export SHUTTLE_BUILD_PLAIN=0                                          # dry run / tool flags: no receipt
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin 2>/dev/null
+[[ ! -f out/R/shuttle-build-receipt.txt ]] || { echo "receipt written for a dry run"; failures=$((failures + 1)); }
+export SHUTTLE_BUILD_PLAIN=1
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/missing 2>/dev/null
+[[ ! -f out/R/shuttle-build-receipt.txt ]] || { echo "receipt written without the output"; failures=$((failures + 1)); }
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin >/dev/null
+expect 0 shuttle_receipt_check out/R out/R/bin out/R/app; expect_out "tree_clean=yes"
+expect 2 shuttle_receipt_check out/R out/R/bin out/R/gone                # shipped file missing
+git -c user.name=f -c user.email=f@f commit -q --allow-empty -m later
+expect 2 shuttle_receipt_check out/R out/R/bin; expect_out "differs from the build"   # packaging from another commit
+git reset -q --hard HEAD~1
+sleep 1; touch out/R/app/res
+expect 2 shuttle_receipt_check out/R out/R/bin out/R/app; expect_out "rebuilt after the receipt"  # resource-only rebuild
+touch -t 202001010000 out/R/app/res
 echo 'is_debug = true' > out/R/args.gn
 expect 2 shuttle_receipt_check out/R out/R/bin                       # args changed since the build
 echo 'is_debug = false' > out/R/args.gn; sleep 1; touch out/R/bin
 expect 2 shuttle_receipt_check out/R out/R/bin                       # binary rebuilt outside build.sh
-shuttle_receipt_begin out/R; shuttle_receipt_end out/R 1
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 1 out/R/bin
 [[ ! -f out/R/shuttle-build-receipt.txt ]] || { echo "receipt written for a failed build"; failures=$((failures + 1)); }
-shuttle_receipt_begin out/R; echo x >> DEPS; shuttle_receipt_end out/R 0 2>/dev/null
+shuttle_receipt_begin out/R; echo x >> DEPS; shuttle_receipt_end out/R 0 out/R/bin 2>/dev/null
 [[ ! -f out/R/shuttle-build-receipt.txt ]] || { echo "receipt written though the tree changed mid-build"; failures=$((failures + 1)); }
-shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 >/dev/null
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin >/dev/null
 expect 2 shuttle_receipt_check out/R out/R/bin; expect_out "dirty tree"
 git checkout -q DEPS
 # sidecar: a package whose binary doesn't match the pin is refused before copy/exec

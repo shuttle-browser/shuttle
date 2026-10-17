@@ -26,6 +26,29 @@ cmp -s a/BUILD.gn before.gn || { echo "dry run modified a/BUILD.gn"; failures=$(
 expect 1 python3 "$SCRIPTS/gn-fix-loop.py" out/T --apply; expect_out "which the fork didn't remove"
 want=$(grep -v '^    "//gone:x",$' before.gn)
 [[ $(cat a/BUILD.gn) == "$want" ]] || { echo "unexpected edit:"; diff before.gn a/BUILD.gn; failures=$((failures + 1)); }
+# circular-include repair stays inside the reported target; duplicate target definitions are refused
+cat > a/BUILD.gn <<'GN'
+group("t") {
+  allow_circular_includes_from = [
+    "//gone:x",  # "{" in a comment
+  ]
+}
+group("u") {
+  allow_circular_includes_from = [
+    "//gone:x",
+  ]
+}
+GN
+cp a/BUILD.gn before.gn
+stub gn "grep -q 'gone:x\",  #' a/BUILD.gn && { printf 'ERROR at //a/BUILD.gn:3:5: Label not in deps.\nThe label \"//gone:x$TC\"\n'; exit 1; }; exit 0"
+expect 0 python3 "$SCRIPTS/gn-fix-loop.py" out/T --apply
+want=$(sed '3d' before.gn)
+[[ $(cat a/BUILD.gn) == "$want" ]] || { echo "circular fix touched more than target t:"; diff before.gn a/BUILD.gn; failures=$((failures + 1)); }
+printf 'group("t") {\n  deps = [\n    "//gone:x",\n  ]\n}\nif (is_win) {\n  group("t") {\n  }\n}\n' > a/BUILD.gn
+cp a/BUILD.gn before.gn
+stub gn "grep -q '//gone:x' a/BUILD.gn && { printf 'ERROR Unresolved dependencies.\n//a:t$TC\n  needs //gone:x$TC\n'; exit 1; }; exit 0"
+expect 1 python3 "$SCRIPTS/gn-fix-loop.py" out/T --apply; expect_out "edit by hand"
+cmp -s a/BUILD.gn before.gn || { echo "ambiguous target edited"; failures=$((failures + 1)); }
 git branch -D -q chromium
 expect 2 python3 "$SCRIPTS/gn-fix-loop.py" out/T --apply                  # no base branch
 done_fixture

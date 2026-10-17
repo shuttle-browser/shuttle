@@ -32,7 +32,15 @@ NAME=shuttle-linux-x64
 grep -q 'is_component_build = true' "$OUT/args.gn" && { echo "FATAL: $OUT is a component build" >&2; exit 2; }
 [ ! -e "$DEST/$NAME.tar.xz" ] || { echo "FATAL: $DEST/$NAME.tar.xz exists; never overwritten" >&2; exit 2; }
 if [ "$LOCAL" = 1 ]; then receipt="local_package=yes (no receipt check)"
-else receipt=$(shuttle_receipt_check "$OUT" "$OUT/shuttle") || exit 2; fi
+else
+  shipped=()
+  for f in shuttle chrome_crashpad_handler chrome_sandbox libEGL.so libGLESv2.so libvk_swiftshader.so libvulkan.so.1 \
+           libqt5_shim.so libqt6_shim.so resources.pak icudtl.dat locales chrome_100_percent.pak chrome_200_percent.pak \
+           v8_context_snapshot.bin snapshot_blob.bin gen/components/resources/about_credits.html; do
+    if [ -e "$OUT/$f" ]; then shipped+=("$OUT/$f"); fi
+  done
+  receipt=$(shuttle_receipt_check "$OUT" "${shipped[@]}") || exit 2
+fi
 
 STRIP=$SRC/third_party/llvm-build/Release+Asserts/bin/llvm-strip
 WORK=$(mktemp -d)

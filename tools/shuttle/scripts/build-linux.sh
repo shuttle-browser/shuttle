@@ -29,7 +29,7 @@ files=("$cfg/args-common.gn" "$cfg/args-$kind.gn" "$cfg/args-linux.gn")
 want="$(cat "${files[@]}")"
 cd "$SRC"
 shuttle_build_lock "$SRC/out/$dir" || exit 2
-trap shuttle_build_unlock EXIT INT TERM
+trap shuttle_build_unlock EXIT; trap 'exit 130' INT; trap 'exit 143' TERM  # traps run after the foreground build exits
 shuttle_build_disk "$SRC/out" || exit 2
 mkdir -p "out/$dir"
 if [[ ! -f "out/$dir/args.gn" || "$(cat "out/$dir/args.gn")" != "$want" ]]; then
@@ -48,6 +48,6 @@ shuttle_receipt_begin "$SRC/out/$dir"
 set +e
 script -q -f -e -c "$cmd" "$log"
 rc=$?
-shuttle_receipt_end "$SRC/out/$dir" $rc
+shuttle_receipt_end "$SRC/out/$dir" $rc "$SRC/out/$dir/shuttle"
 echo "BUILD EXIT $rc after $(( ($(date +%s) - start) / 60 ))m" | tee -a "$log"
 exit $rc

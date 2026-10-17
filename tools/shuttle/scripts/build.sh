@@ -47,7 +47,7 @@ shuttle_build_prefix
 cd "$SRC"
 out="$SRC/out/$dir"
 shuttle_build_lock "$out" || exit 2
-trap shuttle_build_unlock EXIT INT TERM
+trap shuttle_build_unlock EXIT; trap 'exit 130' INT; trap 'exit 143' TERM  # traps run after the foreground build exits
 shuttle_build_disk "$SRC/out" || exit 2
 mkdir -p "out/$dir"
 [[ "${SHUTTLE_CLEAN:-0}" == 1 && -f "out/$dir/build.ninja" ]] && gn clean "out/$dir"
@@ -72,7 +72,7 @@ set +e
 echo "build: out/$dir ${SHUTTLE_BUILD_ARGS[*]} ${SHUTTLE_TARGET:-chrome} under ${SHUTTLE_BUILD_PREFIX[*]}"
 script -q -F "$log" "${SHUTTLE_BUILD_PREFIX[@]}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_BUILD_ARGS[@]}" "${SHUTTLE_TARGET:-chrome}"
 rc=$?
-(( receipt )) && shuttle_receipt_end "$out" $rc
+(( receipt )) && shuttle_receipt_end "$out" $rc "$out/Shuttle.app/Contents/MacOS/Shuttle"
 mins=$(( ($(date +%s) - start) / 60 ))
 echo "BUILD EXIT $rc after ${mins}m" | tee -a "$log"
 exit $rc

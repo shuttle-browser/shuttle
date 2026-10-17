@@ -1,42 +1,50 @@
 # Sourced by build.sh / build-linux.sh (write) and release-mac.sh / package-linux.sh (check), after lib/paths.sh.
-# A build receipt says which source/config/toolchain a binary was built from (maintenance review F7). It is written
-# only after a successful `chrome` build and only if HEAD and the tracked tree didn't change while it ran:
-#   shuttle_receipt_begin <out_dir>        drop the old receipt, capture HEAD + clean-tree state
-#   shuttle_receipt_end <out_dir> <rc>     on rc 0 write <out_dir>/shuttle-build-receipt.txt (key=value lines)
-#   shuttle_receipt_check <out_dir> <bin>  for packaging: receipt present, clean tree, args.gn unchanged, binary not
-#                                          newer than the receipt (rebuilt outside build.sh); prints the receipt
-shuttle_receipt_state() {  # HEAD + dirty flag of tracked files
-  echo "$(git -C "$SHUTTLE_SRC" rev-parse HEAD) $([ -z "$(git -C "$SHUTTLE_SRC" status --porcelain --untracked-files=no)" ] && echo yes || echo no)"
-}
+# A build receipt says which source/config/toolchain a binary was built from (maintenance review F7). Written only
+# after a successful plain `chrome` build (no -n or other tool flags: SHUTTLE_BUILD_PLAIN) whose expected output
+# exists, and only if the identity below read cleanly and didn't change while the build ran.
+#   shuttle_receipt_begin <out_dir>                drop the old receipt, capture the identity
+#   shuttle_receipt_end <out_dir> <rc> <output>    on rc 0: write <out_dir>/shuttle-build-receipt.txt
+#   shuttle_receipt_check <out_dir> <file|dir>...  for packaging: receipt present, identity now == receipt (same
+#                                                  clean HEAD, args, DEPS, toolchain: commit before you build), no
+#                                                  shipped file newer than the receipt; prints the receipt
 shuttle_sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
-shuttle_receipt_begin() { rm -f "$1/shuttle-build-receipt.txt"; SHUTTLE_RECEIPT_START=$(shuttle_receipt_state); }
+shuttle_receipt_identity() {  # <out_dir>: key=value lines; returns 1 if anything can't be read
+  local head st gl llvm="$SHUTTLE_SRC/third_party/llvm-build/Release+Asserts/cr_build_revision"
+  head=$(git -C "$SHUTTLE_SRC" rev-parse HEAD) && st=$(git -C "$SHUTTLE_SRC" status --porcelain --untracked-files=no) &&
+    gl=$(git -C "$SHUTTLE_SRC" ls-files -s) && [ -f "$1/args.gn" ] && [ -f "$SHUTTLE_SRC/DEPS" ] &&
+    [ -f "$SHUTTLE_SRC/chrome/VERSION" ] || return 1
+  echo "source_sha=$head"
+  echo "tree_clean=$([ -z "$st" ] && echo yes || echo no)"
+  echo "chromium_base=$(git -C "$SHUTTLE_SRC" rev-parse -q --verify chromium 2>/dev/null || echo none)"
+  echo "chromium_version=$(. "$SHUTTLE_SRC/chrome/VERSION"; echo "$MAJOR.$MINOR.$BUILD.$PATCH")"
+  echo "args_gn_sha256=$(shuttle_sha256 "$1/args.gn")"
+  echo "deps_sha256=$(shuttle_sha256 "$SHUTTLE_SRC/DEPS")"
+  echo "gitlinks_sha256=$(printf '%s\n' "$gl" | awk '$1 == "160000"' | { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; } | cut -d' ' -f1)"
+  echo "clang=$(cat "$llvm" 2>/dev/null || echo unknown)"
+  echo "depot_tools=$(git -C "$HOME/depot_tools" rev-parse HEAD 2>/dev/null || echo unknown)"
+}
+shuttle_receipt_begin() { rm -f "$1/shuttle-build-receipt.txt"; SHUTTLE_RECEIPT_START=$(shuttle_receipt_identity "$1") || SHUTTLE_RECEIPT_START=""; }
 shuttle_receipt_end() {
   [ "$2" = 0 ] || return 0
-  local now; now=$(shuttle_receipt_state)
-  if [ "$now" != "$SHUTTLE_RECEIPT_START" ]; then
-    echo "receipt: HEAD or tracked files changed during the build; no receipt written" >&2; return 0
+  [ "${SHUTTLE_BUILD_PLAIN:-0}" = 1 ] || { echo "receipt: not a plain build (dry run/tool flags): none written" >&2; return 0; }
+  [ -e "$3" ] || { echo "receipt: expected output $3 missing: none written" >&2; return 0; }
+  local now; now=$(shuttle_receipt_identity "$1") || now=""
+  if [ -z "$now" ] || [ -z "$SHUTTLE_RECEIPT_START" ] || [ "$now" != "$SHUTTLE_RECEIPT_START" ]; then
+    echo "receipt: source/config identity unreadable or changed during the build: none written" >&2; return 0
   fi
-  local llvm="$SHUTTLE_SRC/third_party/llvm-build/Release+Asserts/cr_build_revision"
-  {
-    echo "source_sha=${now% *}"
-    echo "tree_clean=${now#* }"
-    echo "chromium_base=$(git -C "$SHUTTLE_SRC" rev-parse -q --verify chromium 2>/dev/null || echo none)"
-    echo "chromium_version=$(. "$SHUTTLE_SRC/chrome/VERSION"; echo "$MAJOR.$MINOR.$BUILD.$PATCH")"
-    echo "args_gn_sha256=$(shuttle_sha256 "$1/args.gn")"
-    echo "deps_sha256=$(shuttle_sha256 "$SHUTTLE_SRC/DEPS")"
-    echo "gitlinks_sha256=$(git -C "$SHUTTLE_SRC" ls-files -s | awk '$1 == "160000"' > "$1/.gitlinks.tmp"; shuttle_sha256 "$1/.gitlinks.tmp"; rm -f "$1/.gitlinks.tmp")"
-    echo "clang=$(cat "$llvm" 2>/dev/null || echo unknown)"
-    echo "depot_tools=$(git -C "$HOME/depot_tools" rev-parse HEAD 2>/dev/null || echo unknown)"
-    echo "host=$(uname -sm | tr ' ' '-')"
-    echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  } > "$1/shuttle-build-receipt.txt"
-  echo "receipt: $1/shuttle-build-receipt.txt (${now% *}, clean=${now#* })"
+  { printf '%s\n' "$now"; echo "host=$(uname -sm | tr ' ' '-')"; echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } \
+    > "$1/shuttle-build-receipt.txt"
+  echo "receipt: $1/shuttle-build-receipt.txt"
 }
 shuttle_receipt_check() {
-  local r="$1/shuttle-build-receipt.txt"
-  [ -f "$r" ] || { echo "FATAL: no build receipt in $1: build it with build.sh / build-linux.sh" >&2; return 2; }
-  grep -qx 'tree_clean=yes' "$r" || { echo "FATAL: $1 was built from a dirty tree ($r)" >&2; return 2; }
-  grep -qx "args_gn_sha256=$(shuttle_sha256 "$1/args.gn")" "$r" || { echo "FATAL: $1/args.gn changed since the build" >&2; return 2; }
-  [ ! "$2" -nt "$r" ] || { echo "FATAL: $2 is newer than its receipt (rebuilt outside build.sh?)" >&2; return 2; }
+  local out=$1 r="$1/shuttle-build-receipt.txt" now newer; shift
+  [ -f "$r" ] || { echo "FATAL: no build receipt in $out: build it with build.sh / build-linux.sh" >&2; return 2; }
+  grep -qx 'tree_clean=yes' "$r" || { echo "FATAL: $out was built from a dirty tree ($r)" >&2; return 2; }
+  now=$(shuttle_receipt_identity "$out") || { echo "FATAL: can't read the current source identity" >&2; return 2; }
+  [ "$now" = "$(grep -v -e '^host=' -e '^built_at=' "$r")" ] ||
+    { echo "FATAL: checkout/config differs from the build ($r): package from the commit you built" >&2; diff <(printf '%s\n' "$now") <(grep -v -e '^host=' -e '^built_at=' "$r") >&2; return 2; }
+  for f; do [ -e "$f" ] || { echo "FATAL: $f missing" >&2; return 2; }; done
+  newer=$(find "$@" -type f -newer "$r" ! -path '*/Contents/Helpers/agent-browser' ! -name 'agent-browser.*' | head -3)
+  [ -z "$newer" ] || { echo "FATAL: rebuilt after the receipt (outside build.sh?): $newer" >&2; return 2; }
   cat "$r"
 }

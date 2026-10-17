@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Loop `gn gen <out>` and strip references to targets the fork pruned, one error at a time.
 
-Handles (only single-string list entries, only for labels/files the fork removed: present on branch `chromium`,
-gone from the working tree; anything else is reported and the loop stops):
+Policy (Toby, 2026-10-17): "removed by the fork" = present on branch `chromium`, gone from the working tree. That
+can't tell a deliberate removal from an accidentally lost file/target, so run the dry run first and review every
+listed edit (and `git diff`) before committing. Handles (only single-string list entries; anything else is
+reported and the loop stops):
   - `Unable to load "<src>/X/BUILD.gn"` / `Can't load input file` at //F:L -> delete line L of F
   - `Unresolved dependencies` //T:t needs //N:n    -> delete //N:n entries inside target t's block in T/BUILD.gn
-  - `Label not in deps` (allow_circular_includes_from) for a target that no longer exists -> delete that label line
+  - `Label not in deps` (allow_circular_includes_from) for a removed target -> delete that label inside the target
+    whose line GN reported
 Without --apply: one pass, prints the planned edit, writes nothing. With --apply: loops until gn gen passes, an error
 it doesn't handle, or a refused edit; prints the files it touched (review `git diff`).
 
@@ -76,16 +79,37 @@ def label_forms(label, here=None):
     return forms
 
 
+def braces(line):
+    """Brace balance of a GN line, ignoring strings and comments."""
+    code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', line).split("#", 1)[0]
+    return code.count("{") - code.count("}")
+
+
+def span(lines, i):
+    depth = 0
+    for j in range(i, len(lines)):
+        depth += braces(lines[j])
+        if depth <= 0:
+            return i, j
+    return None
+
+
 def block(lines, name):
-    """(start, end) line indexes of the target `<kind>("name") {...}`, or None (e.g. template-generated names)."""
+    """(start, end) of the target `<kind>("name") {...}`; None if absent (template-generated name) or defined more
+    than once (conditional duplicates: ambiguous, edit by hand)."""
     head = re.compile(r'^\s*[\w.]+\(\s*"%s"\s*\)\s*\{' % re.escape(name))
-    for i, l in enumerate(lines):
-        if head.match(l):
-            depth = 0
-            for j in range(i, len(lines)):
-                depth += lines[j].count("{") - lines[j].count("}")
-                if depth <= 0:
-                    return i, j
+    hits = [i for i, l in enumerate(lines) if head.match(l)]
+    return span(lines, hits[0]) if len(hits) == 1 else None
+
+
+def enclosing(lines, ln):
+    """(start, end) of the innermost target block `<kind>("...") {` that contains line index ln, or None."""
+    head = re.compile(r'^\s*[\w.]+\(\s*"[^"]+"\s*\)\s*\{')
+    for i in range(ln, -1, -1):
+        if head.match(lines[i]):
+            b = span(lines, i)
+            if b and b[0] <= ln <= b[1]:
+                return b
     return None
 
 
@@ -136,8 +160,11 @@ def plan(text):
         if not pruned_label(lab):
             return [], f"{rel}:{ln}: {lab} wasn't removed by the fork"
         lines = open(os.path.join(SRC, rel)).read().split("\n")
-        idx = [i for i, l in enumerate(lines) if entry_of(l) in label_forms(lab)]
-        return ([(rel, idx, f"circ   {rel} -= {lab}")], None) if idx else ([], f"{lab} not a single entry in {rel}")
+        b = enclosing(lines, ln - 1)
+        if b is None:
+            return [], f"{rel}:{ln} is not inside a literal target block: edit by hand"
+        idx = [i for i in range(b[0], b[1] + 1) if entry_of(lines[i]) in label_forms(lab)]
+        return ([(rel, idx, f"circ   {rel}:{b[0] + 1} -= {lab}")], None) if idx else ([], f"{lab} not a single entry in the target at {rel}:{b[0] + 1}")
     return [], "an error gn-fix-loop doesn't handle"
 
 
