@@ -19,6 +19,7 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 | `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`), `agent-browser-tools.json` (curated page tools), `sccache.example.toml`, `sccache/systemd/` (build-host unit templates) |
 | `scripts/` | Build, prune, fix, rebrand, release and smoke-test scripts (see below and `docs/TOOLING.md`) |
 | `prune/` | Manifests for `scripts/prune.py` (one per removal batch) |
+| `fixtures/` | Small plain-bash tests for the safety gates in `scripts/`, run by `scripts/check-scripts.sh` |
 | `assets/` | Logo and icon sources, icon generation, Linux desktop entry |
 | `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `MCP.md`, `LINUX.md`, `BRANDING.md`, `BENCHMARK.md` |
 
@@ -49,10 +50,9 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   error in one pass. Never run a second autoninja on the same
   out dir. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
 - `scripts/build-sccache.sh` (optional): distributed compiles on a Linux build host running sccache-dist
-  (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`, monitor
-  `scripts/buildmon` + `scripts/buildmon_push.py`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
+  (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
 - `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
-  `scripts/build-errors.sh`, `scripts/build-forecast.py`, `scripts/build-progress.sh` help while a build runs.
+  `scripts/build-errors.sh` lists failed steps while a build runs.
 - `scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release`. Identity and notary profile come from
   `SHUTTLE_SIGN_ID` and `SHUTTLE_NOTARY_PROFILE`; never commit identities or credentials.
 
@@ -66,7 +66,7 @@ smoke test, and one commit. Details and every gotcha: `docs/TOOLING.md`.
 Prune and fix tools: `prune.py` (manifest-driven deletion; manifests in `prune/`), `prune-tests.py` (testonly GN
 targets), `prune-policies.py`, `prune-strings.py`, `prune-locales.py` (en-US-only UI), `fix-gn-refs.py`,
 `gn-fix-unresolved.py`, `gn-fix-loads.py`, `delete-classes.py`, `scan-webui-imports.py`, `syntax-check-file.sh`,
-`syntax-check.sh`, `add-include.py`, `restore-includes.py`, `restore-strings.py`.
+`add-include.py`, `restore-includes.py`, `restore-strings.py`.
 
 ## After an upstream merge
 
@@ -96,7 +96,7 @@ Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges
 | `scripts/linux-smoke.sh`, `linux-mcp-smoke.sh`, `linux-nsw-check.sh`, `linux-push-smoke.sh` | Linux variants (`docs/LINUX.md`) |
 
 Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents), `scripts/mcp-call.mjs <port> <tool> '<json>'`,
-`scripts/watch-agents.mjs [port]`, `scripts/launch-shuttle.sh` (interactive run on 9222),
+`scripts/launch-shuttle.sh` (interactive run on 9222),
 `scripts/fetch-agent-browser.sh <Helpers-dir>` + `scripts/gen-page-tools.mjs` (page-tool sidecar and generated tool list),
 `scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball), `scripts/package-deb.sh` (.deb + .rpm from the tarball),
 `scripts/bench-ram.mjs` (RAM benchmark, `docs/BENCHMARK.md`).
@@ -120,6 +120,8 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
   compiling locally. Builds always run `nice -n 19 taskpolicy -c background` with `-local_jobs 8` (sccache-dist) or
   `-local_jobs 4` (local), in a shell the maintainer can watch; stop if the load climbs. Don't kill a build early
   to read its step count: killed runs leave regenerated outputs (protoc, mojom) that cascade.
+- Run `scripts/check-scripts.sh` before every tooling commit (syntax per interpreter, shellcheck, `fixtures/`). A
+  changed safety gate gets one fixture that fails on the old bug and passes after the fix; no test framework.
 - Keep branded surfaces consistent with `docs/BRANDING.md`.
 - No secrets in tracked files: API keys go in the environment or `_docs/.env`, signing material stays in the keychain.
 - Before pushing the fork (it is public): secret scan of `tools/shuttle/` and the new commits (gitleaks, low priority:

@@ -106,7 +106,7 @@ done
 
 export SHUTTLE_PKG_VERSION=$PKG_VERSION SHUTTLE_CHROMIUM_VERSION=$CHROMIUM_VERSION SHUTTLE_STAGE=$STAGE
 render() {  # $1 = packager; repo key: deb = binary keyring for apt's signed-by, rpm = armored key for dnf's gpgkey
-  rm -rf "$STAGE/usr/share/keyrings" "$STAGE/etc"
+  rm -rf "${STAGE:?}/usr/share/keyrings" "${STAGE:?}/etc"
   if [ "$REPO_SOURCE" = 1 ]; then
     case $1 in
       deb) mkdir -p "$STAGE/usr/share/keyrings"

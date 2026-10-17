@@ -68,10 +68,8 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
   `BUILD EXIT` (failure counts by message, sccache remote/local split from
   `$SHUTTLE_ROOT/logs/sccache-stats-Sccache.txt`). Reads only new output unless `--from-start`.
   Arm: Monitor `scripts/build-watch.py Dev` (timeout 30 min; re-arm on expiry).
-  `scripts/build-progress.sh` is the older progress-only version.
   Expires after 30 min; re-arm. siso's step total shifts while it schedules, so early ETAs
   are low. Error details: `out/Dev/siso_output`.
-- `scripts/build-forecast.py Dev`: read-only remaining work by area.
 - **Run long builds where a workerdeck reload can't kill them.** A workerdeck hot reload/restart
   ends every `shell_run` shell ("server_stopped"); it killed two B2d builds. The maintainer avoids reloads
   during builds; Siso resumes where it stopped, so just restart.
@@ -90,8 +88,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - **`-local_jobs` is capped by the host's RAM, not its slot count** (2026-10-15): the build host has 12 logical CPUs and
   23 GB; the two servers advertise 24 slots. content/browser TUs need 1.7-2.6 GB each, so 16+ jobs swap hard (550 MB/s
   swap-out, near-OOM). Use `-local_jobs=12` alone, `10` while a host build runs alongside.
-- Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/buildmon` on the host (TUI; feed it from the Mac with
-  `scripts/buildmon_push.py <Dir>`), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
+- Watch: `scripts/build-watch.py Sccache` (Mac), `scripts/sccache-dist-watch.sh` (quiet watcher), `scripts/buildhost-temp.sh`
   (WSL2 hardware sensors through the Windows host).
 - NativeLink/REAPI (siso remote execution) was tried first and dropped: much slower than sccache-dist here
   (removed 2026-10-16; in git history before that).
@@ -127,13 +124,12 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 - `gn check out/Dev --fix` adds direct deps lost with removed `public_deps`. ~1,000 "Source file
   not found" errors and a few ChromeOS include errors predate batch A; ignore.
 - `scripts/build-errors.sh <output-substring>`: errors of matching FAILED steps.
-- `scripts/syntax-check.sh <failed-output-substring> <src.cc>...`: `-fsyntax-only` with a failed
-  step's flags.
-- `scripts/syntax-check-file.sh <src.cc>...`: `-fsyntax-only` with each file's own flags from
-  a cached compile DB (`/tmp/sh-compdb.tsv`, rebuilt from `ninja -t compdb` when `build.ninja`
-  changes; ~2.5s/file). Load-limited since B2d (4 parallel agents pegged the build Mac): at most
-  `SHUTTLE_SYNCHECK_SLOTS` (default 2) checks machine-wide, at background QoS (`taskpolicy -c
-  background`, E-cores) + `nice`. Read-only, safe without a
+- `scripts/syntax-check-file.sh [--flags-from <failed-step-substring>] <src.cc>...`: `-fsyntax-only` with each
+  file's own flags from a cached compile DB of `$SHUTTLE_BUILD_DIR` (default `out/Sccache`; `/tmp/sh-compdb<dir>.tsv`,
+  rebuilt from `ninja -t compdb` when `build.ninja` changes; ~2.5s/file), or with a failed step's flags from
+  `siso_output` (`--flags-from`, for files not in the graph). Exit 1 on compiler errors or a file without a command,
+  2 on setup errors. Load-limited since B2d (4 parallel agents pegged the build Mac): at most
+  `SHUTTLE_SYNCHECK_SLOTS` (default 2) checks machine-wide, under `nice`. Read-only, safe without a
   build running, but generated headers are from the last build (edited `.mojom` = stale).
   To check against edited mojoms, regenerate bindings into a temp dir and add `-I` (B1 agent 2
   did this in `/tmp/mj`).

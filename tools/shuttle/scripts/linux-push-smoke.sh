@@ -15,7 +15,7 @@ case $mode in
     out/Dev/shuttle --ozone-platform=wayland "${args[@]}" > /tmp/sh-push-$mode.log 2>&1 & ;;
 esac
 pid=$!
-for i in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done
+for _ in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done
 timeout 180 node "$H/smoke-push.mjs" 9222; echo "[push-$mode] script rc=$?"
 node "$H/cdp-sandbox-close.mjs" 9222 | tail -2
 ( sleep 60; kill -9 $pid 2>/dev/null ) & killer=$!

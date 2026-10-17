@@ -22,7 +22,7 @@ run_chrome() {  # run_chrome [extra args...]: foreground invocation (caller back
   esac >> "$log" 2>&1
 }
 launch() { rm -rf /tmp/sh-profile; run_chrome "$@" & pid=$!
-  for i in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done; sleep 3; }
+  for _ in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done; sleep 3; }
 pages() { curl -s 127.0.0.1:9222/json/list | python3 -c 'import json,sys;p=[t["url"] for t in json.load(sys.stdin) if t["type"]=="page"];print(len(p),p[:3])' 2>/dev/null || echo "no-cdp"; }
 xwins() {  # viewable top-level X11 windows of chrome (WM_CLASS shuttle)
   [ "$mode" = x11 ] || { echo "n/a"; return; }

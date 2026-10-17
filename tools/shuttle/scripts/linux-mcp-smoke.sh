@@ -20,7 +20,7 @@ launch() {
     *) echo "unknown mode $mode"; exit 2 ;;
   esac
   pid=$!
-  for i in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done
+  for _ in $(seq 1 30); do curl -s 127.0.0.1:9222/json/version >/dev/null && break; sleep 1; done
 }
 finish() {
   node "$H/cdp-sandbox-close.mjs" 9222 | tail -1

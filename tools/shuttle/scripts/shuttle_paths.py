@@ -1,14 +1,7 @@
 """Checkout paths for the tooling scripts (mirror of scripts/lib/paths.sh). The tooling lives in the fork at
-src/tools/shuttle/, so paths are repo-relative: SRC = the fork (src/), ROOT = its parent. Override with SHUTTLE_SRC / SHUTTLE_ROOT."""
+src/tools/shuttle/, so paths are repo-relative: SRC = the fork (src/), ROOT = its parent. Override with SHUTTLE_SRC /
+SHUTTLE_ROOT (environment or ~/.shuttle/env, loaded first like paths.sh)."""
 import os
-
-TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-SRC = os.path.expanduser(os.environ.get("SHUTTLE_SRC") or os.path.dirname(os.path.dirname(TOOLS)))
-ROOT = os.path.expanduser(os.environ.get("SHUTTLE_ROOT") or os.path.dirname(SRC))
-LOGS = os.path.join(ROOT, "logs")
-RELEASE = os.path.join(ROOT, "release")
-# Dev-config build dir the prune/fix scripts read (siso inputs, gen/, args.gn). out/Dev (local compiles) was dropped
-# 2026-10-13; out/Sccache has the same dev args plus sccache. Override with SHUTTLE_BUILD_DIR.
 
 
 def _load_env():
@@ -27,4 +20,10 @@ def _load_env():
 
 
 _load_env()
+TOOLS = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+SRC = os.path.expanduser(os.environ.get("SHUTTLE_SRC") or os.path.dirname(os.path.dirname(TOOLS)))
+ROOT = os.path.expanduser(os.environ.get("SHUTTLE_ROOT") or os.path.dirname(SRC))
+LOGS = os.path.join(ROOT, "logs")
+RELEASE = os.path.join(ROOT, "release")
+# Dev-config build dir the prune/fix scripts read (siso inputs, gen/, args.gn): out/Sccache (dev args + sccache).
 BUILD_DIR = os.environ.get("SHUTTLE_BUILD_DIR", "out/Sccache")

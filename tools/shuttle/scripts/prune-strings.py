@@ -12,7 +12,7 @@ removed; a .grdp left without messages is deleted along with its `<part>` line a
 `*.grd.gritdeps`. Translations (.xtb) are left alone; grit ignores unused ones.
 Re-run until it reports 0 (removing a message never frees another, so one pass is normally enough).
 """
-import argparse, os, re, subprocess
+import argparse, os, re, subprocess, sys
 from shuttle_paths import SRC as _SHUTTLE_SRC, LOGS as _SHUTTLE_LOGS  # noqa: E402
 
 SRC = _SHUTTLE_SRC
@@ -25,7 +25,11 @@ EMPTY_IF = re.compile(r'^[ \t]*<if\b[^>]*>\s*</if>[ \t]*\n', re.M)
 
 
 def git(*a):
-    return subprocess.run(["git", *a], cwd=SRC, capture_output=True, text=True).stdout
+    """git stdout; any failure is fatal (a failed grep would make every message look unused). grep rc 1 = no match."""
+    r = subprocess.run(["git", *a], cwd=SRC, capture_output=True, text=True)
+    if r.returncode != 0 and not (a[0] == "grep" and r.returncode == 1 and not r.stderr):
+        sys.exit(f"git {' '.join(a[:3])} ... failed (rc {r.returncode}): {r.stderr.strip()[:300]}")
+    return r.stdout
 
 
 def main():
@@ -35,6 +39,8 @@ def main():
     a = ap.parse_args()
     excl = [":!*.grd", ":!*.grdp", ":!*.xtb", ":!*.xlf", ":!shuttle"]  # shuttle/ = this tooling (docs name IDS_*)
     used = set(git("grep", "-h", "-o", "-w", "-E", "IDS_[A-Z0-9_]+", "--", *USERS, *excl).split())
+    if not used:
+        sys.exit("no IDS_ uses found: refusing (wrong SRC or grep scope?)")
     prefixes = set(re.findall(r"\b(IDS_[A-Z0-9_]*?)_?##", git("grep", "-h", "-E", "IDS_[A-Z0-9_]*##", "--", *USERS, *excl)))
     def is_used(n):
         return n in used or any(n.startswith(p) for p in prefixes)

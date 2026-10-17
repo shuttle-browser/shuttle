@@ -91,12 +91,14 @@ def main():
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(new)
     print(f"grd/grdp: {edited} files, {total} locale elements removed")
+    parse_errors = []
     if a.apply:
         import xml.etree.ElementTree as ET
         for rel in git_ls(src, "*.grd", "*.grdp"):
             try:
                 root = ET.parse(os.path.join(src, rel)).getroot()
-            except ET.ParseError:
+            except ET.ParseError as e:
+                parse_errors.append(f"{rel}: {e}")
                 continue
             for el in root.iter("if"):
                 kids = [c.tag for c in el]
@@ -139,6 +141,12 @@ def main():
             print("  " + p)
     if not a.apply:
         print("(dry run; pass --apply)")
+    if parse_errors:
+        print(f"ERROR: {len(parse_errors)} grd/grdp files don't parse after the edit (fix by hand):", file=sys.stderr)
+        for e in parse_errors:
+            print("  " + e, file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

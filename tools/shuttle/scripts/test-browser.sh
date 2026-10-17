@@ -8,7 +8,7 @@ WS=$(curl -s -m 2 http://127.0.0.1:9333/json/version | python3 -c 'import json,s
 [ "$1" = "close" ] && exit 0
 rm -rf /tmp/sh-profile; : > /tmp/sh-crash.log
 open -g -n --stderr /tmp/sh-crash.log "$SHUTTLE_SRC/out/Sccache/Shuttle.app" --args --user-data-dir=/tmp/sh-profile --remote-debugging-port=9333 --use-mock-keychain --enable-logging=stderr
-for i in $(seq 30); do curl -s -m 1 http://127.0.0.1:9333/json/version >/dev/null && break; sleep 0.5; done
+for _ in $(seq 30); do curl -s -m 1 http://127.0.0.1:9333/json/version >/dev/null && break; sleep 0.5; done
 M() { node "$(dirname "$0")/mcp-call.mjs" 9333 "$@"; }; sid() { python3 -c 'import json,sys;print(json.load(sys.stdin)["sessionId"])'; }
 M create-agent '{"id":"alice","name":"Alice","color":"cyan"}' >/dev/null; M create-agent '{"id":"steve","name":"Steve","color":"blue"}' >/dev/null
 A1=$(M open-session '{"agent":"alice"}' | sid); S1=$(M open-session '{"agent":"steve"}' | sid); A2=$(M open-session '{"agent":"alice"}' | sid)
