@@ -31,4 +31,8 @@ srv=$!; for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -s port.txt ]] && break; sleep 0.2;
 start=$SECONDS; SHUTTLE_SMOKE_DEADLINE_MS=2000 expect 1 node "$SCRIPTS/smoke-mcp.mjs" "$(cat port.txt)" --phase1
 (( SECONDS - start < 15 )) || { echo "probe ignored its deadline"; failures=$((failures + 1)); }
 kill "$srv"
+# focus measurement: empty or unparsable lsappinfo output is "not measurable", never a pass
+out=$(node --input-type=module -e "process.argv[2] = '1'; const { parseFront } = await import('$SCRIPTS/lib/smoke.mjs');
+  console.log([parseFront(''), parseFront('  \\n'), parseFront('garbage'), parseFront('\"LSDisplayName\"=\"Preview\"')].join(','))")
+[[ $out == '?,?,?,Preview' ]] || { echo "parseFront: $out"; failures=$((failures + 1)); }
 done_fixture

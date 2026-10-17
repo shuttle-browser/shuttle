@@ -5,6 +5,8 @@ export SHUTTLE_ROOT="$FIXTURE_TMP"
 cd "$SHUTTLE_SRC" || exit 1
 mkdir -p chrome out/R && printf 'MAJOR=155\nMINOR=0\nBUILD=8059\nPATCH=80\n' > chrome/VERSION && echo deps > DEPS
 echo 'is_debug = false' > out/R/args.gn && git add chrome DEPS && git -c user.name=f -c user.email=f@f commit -q -m v
+mkdir -p "third_party/llvm-build/Release+Asserts" && echo llvmorg-test > "third_party/llvm-build/Release+Asserts/cr_build_revision"
+git init -q "$HOME/depot_tools" && git -C "$HOME/depot_tools" -c user.name=f -c user.email=f@f commit -q --allow-empty -m d
 . "$SCRIPTS/lib/paths.sh"; . "$SCRIPTS/lib/receipt.sh"
 mkdir -p out/R/app; touch out/R/bin out/R/app/res; sleep 1
 export SHUTTLE_BUILD_PLAIN=0                                          # dry run / tool flags: no receipt
@@ -33,6 +35,16 @@ shuttle_receipt_begin out/R; echo x >> DEPS; shuttle_receipt_end out/R 0 out/R/b
 shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin >/dev/null
 expect 2 shuttle_receipt_check out/R out/R/bin; expect_out "dirty tree"
 git checkout -q DEPS
+# identity reads fail closed: a failing hasher, missing toolchain metadata, a failed freshness scan
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin >/dev/null
+( shasum() { return 1; }; sha256sum() { return 1; }; expect 2 shuttle_receipt_check out/R out/R/bin; exit $failures ) || failures=$((failures + 1))
+mv third_party/llvm-build/Release+Asserts/cr_build_revision llvm.bak
+expect 2 shuttle_receipt_check out/R out/R/bin 2>/dev/null
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin 2>/dev/null
+[[ ! -f out/R/shuttle-build-receipt.txt ]] || { echo "receipt written without toolchain metadata"; failures=$((failures + 1)); }
+mv llvm.bak third_party/llvm-build/Release+Asserts/cr_build_revision
+shuttle_receipt_begin out/R; shuttle_receipt_end out/R 0 out/R/bin >/dev/null
+( find() { return 1; }; expect 2 shuttle_receipt_check out/R out/R/bin; exit $failures ) || failures=$((failures + 1))
 # sidecar: a package whose binary doesn't match the pin is refused before copy/exec
 p="$FIXTURE_TMP/pkg"; mkdir -p "$p/bin"; echo '{ "version": "0.38.2" }' > "$p/package.json"; echo lic > "$p/LICENSE"
 printf '#!/bin/sh\necho agent-browser 0.38.2\n' > "$p/bin/agent-browser-linux-x64"; chmod +x "$p/bin/agent-browser-linux-x64"

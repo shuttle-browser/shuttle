@@ -36,15 +36,7 @@ NAME=shuttle-linux-x64
 grep -q 'is_component_build = true' "$OUT/args.gn" && { echo "FATAL: $OUT is a component build" >&2; exit 2; }
 [ ! -e "$DEST/$NAME.tar.xz" ] || { echo "FATAL: $DEST/$NAME.tar.xz exists; never overwritten" >&2; exit 2; }
 if [ "$LOCAL" = 1 ]; then receipt="local_package=yes (no receipt check)"
-else
-  shipped=()
-  for f in shuttle chrome_crashpad_handler chrome_sandbox libEGL.so libGLESv2.so libvk_swiftshader.so libvulkan.so.1 \
-           libqt5_shim.so libqt6_shim.so resources.pak icudtl.dat locales chrome_100_percent.pak chrome_200_percent.pak \
-           v8_context_snapshot.bin snapshot_blob.bin gen/components/resources/about_credits.html; do
-    if [ -e "$OUT/$f" ]; then shipped+=("$OUT/$f"); fi
-  done
-  receipt=$(shuttle_receipt_check "$OUT" "${shipped[@]}") || exit 2
-fi
+else receipt=$(shuttle_receipt_check "$OUT" "$OUT/shuttle") || exit 2; fi  # identity; file freshness below
 
 STRIP=$SRC/third_party/llvm-build/Release+Asserts/bin/llvm-strip
 WORK=$(mktemp -d)
@@ -52,8 +44,9 @@ trap 'rm -rf "$WORK"' EXIT
 PKG=$WORK/shuttle
 mkdir -p "$PKG/locales"
 
-need() { for f; do [ -e "$OUT/$f" ] || { echo "FATAL: $OUT/$f missing" >&2; exit 2; }; cp -a "$OUT/$f" "$PKG/$f"; done; }
-opt() { for f; do if [ -e "$OUT/$f" ]; then cp -a "$OUT/$f" "$PKG/$f"; fi; done; }
+COPIED=()  # every build output that ships: checked against the receipt before the tarball is written
+need() { for f; do [ -e "$OUT/$f" ] || { echo "FATAL: $OUT/$f missing" >&2; exit 2; }; cp -a "$OUT/$f" "$PKG/$f"; COPIED+=("$OUT/$f"); done; }
+opt() { for f; do if [ -e "$OUT/$f" ]; then cp -a "$OUT/$f" "$PKG/$f"; COPIED+=("$OUT/$f"); fi; done; }
 
 # Binaries and shared libraries.
 need shuttle chrome_crashpad_handler
@@ -61,12 +54,12 @@ opt libEGL.so libGLESv2.so libvk_swiftshader.so libvulkan.so.1 vk_swiftshader_ic
     libqt5_shim.so libqt6_shim.so
 # setuid sandbox helper, only used where unprivileged user namespaces are unavailable.
 [ -e "$OUT/chrome_sandbox" ] || { echo "FATAL: $OUT/chrome_sandbox missing (build-linux.sh release builds it)" >&2; exit 2; }
-cp "$OUT/chrome_sandbox" "$PKG/chrome-sandbox"
+cp "$OUT/chrome_sandbox" "$PKG/chrome-sandbox"; COPIED+=("$OUT/chrome_sandbox")
 # Resources.
 need resources.pak icudtl.dat locales/en-US.pak
 opt chrome_100_percent.pak chrome_200_percent.pak theme_resources_100_percent.pak ui_resources_100_percent.pak
 if [ -e "$OUT/v8_context_snapshot.bin" ]; then need v8_context_snapshot.bin; else need snapshot_blob.bin; fi
-for d in PrivacySandboxAttestationsPreloaded MEIPreload; do if [ -d "$OUT/$d" ]; then cp -a "$OUT/$d" "$PKG/"; fi; done
+for d in PrivacySandboxAttestationsPreloaded MEIPreload; do if [ -d "$OUT/$d" ]; then cp -a "$OUT/$d" "$PKG/"; COPIED+=("$OUT/$d"); fi; done
 # Icons (installer/theme in upstream; the fork pruned that target).
 for s in 24 48 64 128 256; do
   cp "$SRC/chrome/app/theme/chromium/linux/product_logo_$s.png" "$PKG/product_logo_$s.png"
@@ -75,7 +68,8 @@ done
 cp "$SRC/LICENSE" "$PKG/LICENSE"
 CREDITS=$OUT/gen/components/resources/about_credits.html
 [ -f "$CREDITS" ] || { echo "FATAL: $CREDITS missing" >&2; exit 2; }
-cp "$CREDITS" "$PKG/about_credits.html"
+cp "$CREDITS" "$PKG/about_credits.html"; COPIED+=("$CREDITS")
+if [ "$LOCAL" != 1 ]; then shuttle_receipt_fresh "$OUT" "${COPIED[@]}" || exit 2; fi
 
 # Page-tools sidecar (agent-browser, Apache-2.0): the browser looks for it next to the binary.
 sidecar=none

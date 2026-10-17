@@ -6,6 +6,8 @@ export const port = process.argv[2];
 export const args = process.argv.slice(3);
 if (!/^\d+$/.test(port ?? '')) { console.error(`usage: node ${process.argv[1]} <port> [args]`); process.exit(2); }
 export const base = `http://127.0.0.1:${port}`;
+// Frontmost app name from `lsappinfo info -only name` ("LSDisplayName"="Terminal"); '?' = not measurable (fails).
+export const parseFront = (out) => out.match(/"(?:LSDisplayName|name)"\s*=\s*"([^"]+)"/)?.[1]?.trim() || '?';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const CALL_MS = 20_000;
 let failed = 0, skipped = 0, ending = false;

@@ -4,11 +4,11 @@
 //   windowed: also assert Shuttle is not the frontmost app (macOS `lsappinfo`; skipped elsewhere). The real focus
 //   check is a separate, explicit windowed run against a visible browser.
 import { execSync } from 'node:child_process';
-import { args, cdp, check, cleanup, finish, mcp, port, skipCheck, sleep, gone } from './lib/smoke.mjs';
+import { args, cdp, check, cleanup, finish, mcp, parseFront, port, skipCheck, sleep, gone } from './lib/smoke.mjs';
 
 const windowed = args[0] === 'windowed';
 const hasLsappinfo = process.platform === 'darwin';
-const front = () => { try { return execSync('lsappinfo info -only name `lsappinfo front`').toString().trim(); } catch { return '?'; } };
+const front = () => { try { return parseFront(execSync('lsappinfo info -only name `lsappinfo front`').toString()); } catch { return '?'; } };
 const IDS = ['smoke-focus-a', 'smoke-focus-b'], opened = [];
 cleanup(async () => {
   for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(gone);

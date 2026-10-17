@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# linux-nsw-check.sh: with something else answering on 9222 it must not launch, call MCP or close anything.
+# linux-nsw-check.sh: talks only to the port in its own profile's DevToolsActivePort; a foreign browser answering on
+# 9222 (or anywhere) is never called; a launch that never becomes ready ends the run without driving anything.
 . "$(dirname "$0")/lib.sh"; fake_src
-mkdir -p "$SHUTTLE_SRC/out/Dev"; L="$FIXTURE_TMP/calls"
-printf '#!/usr/bin/env bash\necho shuttle "$@" >> %q\n' "$L" > "$SHUTTLE_SRC/out/Dev/shuttle"; chmod +x "$SHUTTLE_SRC/out/Dev/shuttle"
-stub curl 'echo "curl $*" >> '"$L"'; echo "{}"; exit 0'      # a foreign browser answers on 9222
+mkdir -p "$SHUTTLE_SRC/out/Dev"; L="$FIXTURE_TMP/calls"; : > "$L"
+cat > "$SHUTTLE_SRC/out/Dev/shuttle" <<EOS
+#!/usr/bin/env bash
+echo "shuttle \$*" >> "$L"
+for a; do [[ \$a == --user-data-dir=* ]] && p=\${a#*=}; done
+[[ \${STUB_PORT:-} ]] && echo "\$STUB_PORT" > "\$p/DevToolsActivePort"
+sleep 2
+EOS
+chmod +x "$SHUTTLE_SRC/out/Dev/shuttle"
+stub curl 'echo "curl $*" >> '"$L"'; echo "{}"; exit 0'           # every port answers, incl. a foreign 9222
 stub node 'echo "node $*" >> '"$L"'; exit 0'
-stub stat 'echo "2026-10-17 00:00:00"'
-expect 2 bash "$SCRIPTS/linux-nsw-check.sh" headless; expect_out "already answers"
-! grep -q -e '^shuttle' -e '^node' "$L" || { echo "drove the foreign browser:"; cat "$L"; failures=$((failures + 1)); }
+stub timeout 'shift; exec "$@"'; stub ss 'exit 0'; stub stat 'echo "2026-10-17 00:00:00"'
+expect 1 bash "$SCRIPTS/linux-nsw-check.sh" headless; expect_out "no CDP endpoint"      # never ready: no port file
+grep -q '^node' "$L" && { echo "drove a browser after a failed launch"; failures=$((failures + 1)); }
+: > "$L"
+STUB_PORT=4242 expect 1 bash "$SCRIPTS/linux-nsw-check.sh" headless                     # fails later (stub MCP), fine
+grep -q '4242' "$L" || { echo "never used its own port"; failures=$((failures + 1)); }
+grep -E '^(curl|node)' "$L" | grep -v 4242 | grep -q . && { echo "called something other than its own port:"; grep -E '^(curl|node)' "$L" | grep -v 4242; failures=$((failures + 1)); }
 done_fixture
