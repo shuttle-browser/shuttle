@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# smoke-all.sh with a stub browser (exits early / writes DevToolsActivePort and serves nothing / hangs): non-zero,
+# no temp dir left, no child left. Probes: usage -> 2, closed port and a silent endpoint -> 1 within the deadline.
+. "$(dirname "$0")/lib.sh"
+export TMPDIR="$FIXTURE_TMP/t" SHUTTLE_SMOKE_READY_S=2; mkdir -p "$TMPDIR"
+B="$FIXTURE_TMP/browser"
+cat > "$B" <<'EOF'
+#!/usr/bin/env bash
+for a; do [[ $a == --user-data-dir=* ]] && p=${a#*=}; done; mkdir -p "$p"
+case $STUB in exit) exit 1 ;; port) echo 1 > "$p/DevToolsActivePort"; exec sleep 7357 ;; hang) exec sleep 7357 ;; esac
+EOF
+chmod +x "$B"
+R="$SCRIPTS/smoke-all.sh"
+expect 2 bash "$R"
+expect 2 bash "$R" "$FIXTURE_TMP/nonexistent"
+expect 2 bash "$R" "$B" --mode bogus
+expect 2 bash "$R" "$B" --with nope
+for s in exit port hang; do
+  STUB=$s expect 1 bash "$R" "$B"; expect_out "launch"
+  [[ -z $(ls -A "$TMPDIR") ]] || { echo "$s: temp dir left: $(ls "$TMPDIR")"; failures=$((failures + 1)); rm -rf "${TMPDIR:?}"/*; }
+  ! pgrep -f "sleep 7357" >/dev/null || { echo "$s: stub browser still running"; failures=$((failures + 1)); pkill -f "sleep 7357"; }
+done
+P="$SCRIPTS/smoke-cdp.mjs"
+expect 2 node "$P"
+SHUTTLE_SMOKE_DEADLINE_MS=5000 expect 1 node "$P" 1
+# a listener that accepts and never answers: the probe deadline must end it
+node -e 'const s = require("http").createServer(() => {}).listen(0, "127.0.0.1", () => console.log(s.address().port))' > port.txt &
+srv=$!; for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -s port.txt ]] && break; sleep 0.2; done
+start=$SECONDS; SHUTTLE_SMOKE_DEADLINE_MS=2000 expect 1 node "$SCRIPTS/smoke-mcp.mjs" "$(cat port.txt)" --phase1
+(( SECONDS - start < 15 )) || { echo "probe ignored its deadline"; failures=$((failures + 1)); }
+kill "$srv"
+done_fixture

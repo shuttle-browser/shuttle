@@ -1,23 +1,15 @@
-// MCP smoke test for Shuttle's in-browser MCP server (POST /mcp on the CDP port).
-// Usage: node scripts/smoke-mcp.mjs <port> [--persist-check]
-//   Default run: protocol, agents (identity), sessions, tab isolation, popup inheritance,
-//   viewport, capture, navigation, origin check, cleanup. Leaves agent
-//   "smoke-persist" with a cookie for a restart check.
-//   --persist-check (after a browser restart): checks that cookie, and the agent's identity, then deletes the agent.
-// Launch (no focus stealing):
-//   open -g -n "$SHUTTLE_ROOT/src/out/Sccache/Shuttle.app" --args \
-//     --user-data-dir=/tmp/sh-profile --remote-debugging-port=9333 --use-mock-keychain
+// MCP smoke for Shuttle's in-browser MCP server (POST /mcp on the CDP port).
+// Usage: node scripts/smoke-mcp.mjs <port> --phase1|--phase2   (run by scripts/smoke-all.sh, which restarts the
+//   browser on the same profile between the phases)
+//   --phase1: protocol, agents (identity), sessions, tab isolation, popup inheritance, viewport, capture, navigation,
+//             origin check, cleanup. Leaves agent "smoke-persist" with a cookie for the restart check.
+//   --phase2: that cookie and the agent's identity survived the restart, then deletes the agent.
 import http from 'node:http';
+import { args, base, cdp, check as chk, cleanup, finish, rpc, sleep } from './lib/smoke.mjs';
 
-const port = process.argv[2] || 9333;
-const persistCheck = process.argv.includes('--persist-check');
-const base = `http://127.0.0.1:${port}`;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let failures = 0;
-const check = (ok, label, detail = '') => {
-  if (!ok) failures++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` - ${detail}` : ''}`);
-};
+const phase = args[0];
+if (!['--phase1', '--phase2'].includes(phase)) { console.error('usage: smoke-mcp.mjs <port> --phase1|--phase2'); process.exit(2); }
+const check = (ok, label, detail) => chk(label, ok, detail);
 
 // Local site: /set?v=X sets cookie v=X; /show shows document.cookie.
 const site = http.createServer((req, res) => {
@@ -29,47 +21,32 @@ const site = http.createServer((req, res) => {
   res.end(`<title>${url.pathname}</title><a id=l href="/show" target="_blank">show</a>`);
 });
 await new Promise((r) => site.listen(0, '127.0.0.1', r));
+cleanup(() => site.close());
 const sitePort = site.address().port;
 const siteUrl = (path) => `http://127.0.0.1:${sitePort}${path}`;
 
-let rpcId = 0;
-async function rpc(method, params, headers = {}) {
-  const r = await fetch(`${base}/mcp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
-    body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, ...(params ? { params } : {}) }),
-  });
-  const text = await r.text();
-  let body = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-  return { status: r.status, body };
-}
+// tool(): result, or {error} for a tool error (several checks expect one); protocol errors throw.
 async function tool(name, args = {}) {
   const { body } = await rpc('tools/call', { name, arguments: args });
-  if (body.error) throw new Error(`${name}: ${body.error.message}`);
-  const res = body.result;
-  if (res.isError) return { error: res.content[0].text };
-  return res.structuredContent ?? res;
+  if (!body?.result) throw new Error(`${name}: ${JSON.stringify(body?.error ?? body).slice(0, 200)}`);
+  if (body.result.isError) return { error: body.result.content[0].text };
+  return body.result.structuredContent ?? body.result;
 }
-
-// Minimal CDP page client.
+const opened = [], agents = phase === '--phase2' ? ['smoke-persist'] : ['smoke-a', 'smoke-b'];  // closed/deleted at exit
+const openSession = async (agent) => { const s = await tool('open-session', { agent }); if (s.sessionId) opened.push(s.sessionId); return s; };
+cleanup(async () => {
+  for (const sessionId of opened) await tool('close-session', { sessionId }).catch(() => {});
+  for (const id of agents) await tool('delete-agent', { id }).catch(() => {});
+});
 async function evalIn(cdpUrl, expression) {
-  const ws = new WebSocket(cdpUrl);
-  await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-  const result = await new Promise((r) => {
-    ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id === 1) r(m); };
-    ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true, userGesture: true } }));
-  });
-  ws.close();
-  return result.result?.result?.value;
+  const c = await cdp(cdpUrl);
+  try {
+    return (await c.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, userGesture: true })).result?.result?.value;
+  } finally { c.close(); }
 }
 
-for (let i = 0; i < 60; i++) {
-  try { await fetch(`${base}/json/version`); break; } catch { await sleep(500); }
-}
-
-if (persistCheck) {
-  const s = await tool('open-session', { agent: 'smoke-persist' });
+if (phase === '--phase2') {
+  const s = await openSession('smoke-persist');
   check(!s.error, 'open-session smoke-persist', s.error);
   const t = await tool('allocate-tab', { sessionId: s.sessionId, url: siteUrl('/show') });
   await sleep(1500);
@@ -80,9 +57,7 @@ if (persistCheck) {
   await tool('close-session', { sessionId: s.sessionId });
   const d = await tool('delete-agent', { id: 'smoke-persist' });
   check(d.deleted, 'delete-agent smoke-persist');
-  site.close();
-  console.log(failures ? `\n${failures} FAILED` : '\nALL OK');
-  process.exit(failures ? 1 : 0);
+  await finish();
 }
 
 // Protocol.
@@ -93,9 +68,11 @@ const note = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Ty
 check(note.status === 202, 'notification -> 202', String(note.status));
 const list = await rpc('tools/list');
 const names = list.body.result.tools.map((t) => t.name);
-// 12 browser tools + 24 agent-browser page tools (config/agent-browser-tools.json).
-check(names.length === 36 && names.includes('allocate-tab') && names.includes('snapshot'),
-      'tools/list', `${names.length}: ${names.join(', ')}`);
+// Browser tools + a few agent-browser page tools (config/agent-browser-tools.json); additions don't break this.
+const REQUIRED = ['create-agent', 'update-agent', 'delete-agent', 'list-agents', 'open-session', 'close-session',
+  'list-sessions', 'allocate-tab', 'release-tab', 'navigate-tab', 'set-tab-viewport', 'capture-tab', 'snapshot', 'click', 'fill'];
+const missing = REQUIRED.filter((n) => !names.includes(n));
+check(missing.length === 0, 'tools/list has the required tools', `${names.length} tools${missing.length ? `, missing ${missing}` : ''}`);
 const get = await fetch(`${base}/mcp`);
 check(get.status === 405, 'GET -> 405', String(get.status));
 const evil = await rpc('tools/list', undefined, { Origin: 'https://evil.example' });
@@ -128,8 +105,8 @@ check(up2.name === 'Smoke B' && up2.avatar === undefined, 'update-agent removes 
 check(!!(await tool('update-agent', { id: 'nope', name: 'X' })).error, 'update-agent unknown id rejected');
 
 // Sessions + isolation.
-const sa = await tool('open-session', { agent: 'smoke-a' });
-const sb = await tool('open-session', { agent: 'smoke-b' });
+const sa = await openSession('smoke-a');
+const sb = await openSession('smoke-b');
 check(!!(await tool('open-session', { agent: 'nope' })).error, 'open-session unknown agent rejected');
 check(sa.sessionId && sb.sessionId && sa.cdpEndpoint, 'open-session x2', `${sa.sessionId} ${sb.sessionId} ${sa.cdpEndpoint}`);
 const ta = await tool('allocate-tab', { sessionId: sa.sessionId, url: siteUrl('/set?v=a') });
@@ -166,7 +143,7 @@ const nav = await tool('navigate-tab', { targetId: tb.targetId, url: siteUrl('/s
 check(nav.committed === true, 'navigate-tab waits for commit', JSON.stringify(nav));
 
 // Persistence prep: cookie in smoke-persist.
-const sp = await tool('open-session', { agent: 'smoke-persist' });
+const sp = await openSession('smoke-persist');
 await tool('allocate-tab', { sessionId: sp.sessionId, url: siteUrl('/set?v=persist') });
 await sleep(1500);
 await tool('close-session', { sessionId: sp.sessionId });
@@ -183,6 +160,4 @@ const left = (await tool('list-agents')).agents.map((p) => p.id);
 check(left.join() === 'smoke-persist', 'list-agents after cleanup', left.join());
 check((await tool('list-sessions')).sessions.length === 0, 'no sessions left');
 
-site.close();
-console.log(failures ? `\n${failures} FAILED` : '\nALL OK (restart the browser, then run with --persist-check)');
-process.exit(failures ? 1 : 0);
+await finish();

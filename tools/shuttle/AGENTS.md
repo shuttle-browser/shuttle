@@ -37,7 +37,7 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 - Internal code ids, prefs, storage and the Linux binary are named `shuttle`; the MCP server is `shuttle`
   (`.mcp.json` points an MCP client at `http://127.0.0.1:9222/mcp`).
 - DevTools is always on (9222 or a free port, see `DevToolsActivePort`), with no approval dialog, no automation
-  infobar and `navigator.webdriver` false. `scripts/check-automation.mjs` verifies it.
+  infobar and `navigator.webdriver` false. `scripts/check-automation.mjs` verifies it (`smoke-all.sh --with automation`).
 - `depot_tools` is expected at `~/depot_tools` but not necessarily on `PATH`:
   `export PATH="$PATH:$HOME/depot_tools"`.
 
@@ -86,18 +86,28 @@ Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges
 
 ## Smoke tests
 
-| Script | Checks |
-| --- | --- |
-| `scripts/smoke-cdp.mjs <port>` | WebUI pages load, no JS exceptions, browser context |
-| `scripts/check-automation.mjs <port> [userDataDir]` | no prompt, no infobar, `navigator.webdriver` false |
-| `scripts/smoke-mcp.mjs <port> [--persist-check]` | MCP server: agents/identity, isolation, popups, viewport |
-| `scripts/smoke-agents-page.mjs [port] [shotDir]` | `chrome://agents` UI (14 checks) |
-| `scripts/smoke-session-cdp.mjs [port]` | per-session CDP endpoint (needs Playwright + agent-browser) |
-| `scripts/smoke-push.mjs` | Web Push subscribe (90 s) |
-| `scripts/smoke-network.mjs <port> <udd> [lanIp]` | network mode (`--shuttle-listen`, access token), 18 checks |
-| `scripts/linux-smoke.sh`, `linux-mcp-smoke.sh`, `linux-nsw-check.sh`, `linux-push-smoke.sh` | Linux variants (`docs/LINUX.md`) |
+`scripts/smoke-all.sh <binary|Shuttle.app> [--with network,push,automation] [--mode headless|x11|wayland]` owns the
+browser: own temp profile, `--remote-debugging-port=0` (port from `DevToolsActivePort`), runs the probes, closes the
+browser, checks its exit status and the log for fatals, removes the temp dir, prints PASS/FAIL/SKIP. Exit 0 all
+passed, 1 a FAIL, 3 something skipped (open, not green). Mac: `nice -n 19 scripts/smoke-all.sh ../../out/Release/Shuttle.app`.
+Probes (`node <probe> <port>`, `scripts/lib/smoke.mjs`): exit 0/1/2 usage/3 skipped, clean up their agents and tabs,
+never close the browser, local pages only (anything needing the internet skips unless `SHUTTLE_SMOKE_NET=1`).
 
-Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents), `scripts/mcp-call.mjs <port> <tool> '<json>'`,
+| Probe | Checks |
+| --- | --- |
+| `smoke-cdp.mjs` | WebUI pages load, no JS exceptions/errors outside its `EXPECTED` list, browser context, credentials stub |
+| `smoke-mcp.mjs --phase1\|--phase2` | MCP server: agents/identity, isolation, popups, viewport; phase 2 after a restart: persistence |
+| `smoke-session-cdp.mjs` | per-session CDP endpoint (optional Playwright / agent-browser via `PLAYWRIGHT_CORE`, `AGENT_BROWSER`) |
+| `smoke-agents-page.mjs [shotDir]` | `chrome://agents` UI |
+| `smoke-focus.mjs [windowed]` | fork 45: bringToFront/activateTarget work; `windowed` (manual run, macOS `lsappinfo`): Shuttle not frontmost |
+| `smoke-sandbox.mjs` | `chrome://sandbox/` adequately sandboxed (Linux; not built on macOS) |
+| `smoke-network.mjs <udd> [lanIp]` | opt-in `network`: network mode (`--shuttle-listen`, access token) |
+| `smoke-push.mjs` | opt-in `push`: Web Push subscribe (needs `SHUTTLE_SMOKE_NET=1`, 30-90 s) |
+| `check-automation.mjs [udd]` | opt-in `automation` (own launch, `--enable-automation`): no prompt, no infobar, `navigator.webdriver` false |
+
+`scripts/linux-nsw-check.sh` stays a manual Linux helper (`docs/LINUX.md`).
+
+Helpers: `scripts/test-browser.sh [close]` (manual test browser on 9333 with two agents, mktemp profile), `scripts/mcp-call.mjs <port> <tool> '<json>'`,
 `scripts/launch-shuttle.sh` (interactive run on 9222),
 `scripts/fetch-agent-browser.sh <Helpers-dir>` + `scripts/gen-page-tools.mjs` (page-tool sidecar and generated tool list),
 `scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball), `scripts/package-deb.sh` (.deb + .rpm from the tarball),
@@ -105,8 +115,8 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
 
 ## Rules and top gotchas (full list in `docs/TOOLING.md`)
 
-- Always smoke-test with a fresh `--user-data-dir=/tmp/sh-profile` and end with `Browser.close`. Run smokes
-  **`--headless`**: agent tabs create windows that pop in front of whatever the user is doing. Windowed runs only for
+- Smoke-test with `scripts/smoke-all.sh` (it owns the temp profile, the launch and `Browser.close`; probes never
+  close the browser). Run smokes **`--headless`**: agent tabs create windows that pop in front of whatever the user is doing. Windowed runs only for
   window behavior.
 - Never send keystrokes or AppleScript to the desktop GUI; drive the browser over CDP
   (`--remote-debugging-port`, Node's global `WebSocket`) and ask a human for keyboard tests.

@@ -14,17 +14,14 @@ its tooling (build, prune, rebrand and smoke-test scripts, GN args, branding, do
 
 ## Running the smokes
 
-Smokes run against a built browser (`out/Dev` of the fork) with a fresh profile, headless, and end with
-`Browser.close`:
+Smokes run against a built browser. `scripts/smoke-all.sh` launches it headless with its own temp profile, runs
+the probes, closes it and prints PASS/FAIL/SKIP per probe:
 
 ```sh
-../out/Dev/Shuttle.app/Contents/MacOS/Shuttle --headless --user-data-dir=/tmp/sh-profile \
-  --remote-debugging-port=9222 &      # Linux: out/Dev/shuttle
-node scripts/smoke-cdp.mjs 9222
-node scripts/smoke-mcp.mjs 9222
+scripts/smoke-all.sh ../../out/Release/Shuttle.app      # Linux: ../../out/Dev/shuttle [--mode x11|wayland]
 ```
 
-See the smoke table in `README.md` and `docs/LINUX.md` for the Linux wrappers (`scripts/linux-smoke.sh`).
+See the smoke table in `README.md`; Linux modes in `docs/LINUX.md`.
 Node 22+ is required (global `WebSocket`).
 
 ## Licensing

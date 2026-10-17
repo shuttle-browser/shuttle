@@ -1,89 +1,88 @@
-// CDP smoke test for Shuttle. Usage: node scripts/smoke-cdp.mjs <port>
-// Launch the browser without stealing focus:
-//   open -g -n -a $SHUTTLE_ROOT/src/out/Dev/Chromium.app --args --user-data-dir=/tmp/sh-profile \
-//     --remote-debugging-port=9333 --no-first-run about:blank
-const port = process.argv[2] || 9333;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// CDP smoke: WebUI pages load without JS exceptions / console errors, browser contexts, credentials stub, form page.
+// Usage: node scripts/smoke-cdp.mjs <port>   (run by scripts/smoke-all.sh; local pages only, no internet)
+// Every exception/error must match EXPECTED; an EXPECTED entry that does not occur fails too (behavior changed).
+import http from 'node:http';
+import { browserWs, cdp, check, cleanup, evaluate, finish, sleep } from './lib/smoke.mjs';
 
-async function browserWs() {
-  for (let i = 0; i < 60; i++) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${port}/json/version`);
-      return (await r.json()).webSocketDebuggerUrl;
-    } catch { await sleep(500); }
-  }
-  throw new Error('no CDP endpoint');
-}
+const EXPECTED = [
+  // OTR profiles are gone since B2d: an error until the MCP service provides partitions; success = OTR path is back.
+  { url: /^Target\.createBrowserContext$/, text: /./ },
+  // Autofill backend removed: the CDP domain is gone.
+  { url: /^Autofill\.enable$/, text: /./ },
+];
+const seen = new Set();
+const judge = (url, issues) => {
+  const bad = issues.filter((text) => {
+    const i = EXPECTED.findIndex((e) => e.url.test(url) && e.text.test(text));
+    if (i >= 0) seen.add(i);
+    return i < 0;
+  });
+  check(url, bad.length === 0, bad.join(' | ').slice(0, 300));
+};
 
-const ws = new WebSocket(await browserWs());
-await new Promise((r) => ws.addEventListener('open', r, { once: true }));
-let id = 0;
-const pending = new Map();
-const events = [];
-ws.addEventListener('message', (e) => {
-  const m = JSON.parse(e.data);
-  if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
-  else events.push(m);
-});
-const send = (method, params = {}, sessionId) => new Promise((res) => {
-  const i = ++id; pending.set(i, res);
-  ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) }));
-});
+const site = http.createServer((q, r) => { r.setHeader('Content-Type', 'text/html'); r.end('<title>local</title>local'); });
+await new Promise((r) => site.listen(0, '127.0.0.1', r));
+cleanup(() => site.close());
+const local = `http://localhost:${site.address().port}/`;  // localhost = secure context (credentials API)
 
+const b = await cdp(await browserWs());
 async function visit(url, { browserContextId, waitMs = 2500, evalExpr } = {}) {
-  const t = await send('Target.createTarget', { url: 'about:blank', background: true, ...(browserContextId ? { browserContextId } : {}) });
-  if (t.error) return { url, error: t.error.message };
+  const t = await b.send('Target.createTarget', { url: 'about:blank', background: true, ...(browserContextId ? { browserContextId } : {}) });
+  if (t.error) return { issues: [`createTarget: ${t.error.message}`] };
   const targetId = t.result.targetId;
-  const a = await send('Target.attachToTarget', { targetId, flatten: true });
-  const sid = a.result.sessionId;
-  await send('Runtime.enable', {}, sid);
-  await send('Log.enable', {}, sid);
-  const start = events.length;
-  await send('Page.navigate', { url }, sid);
+  cleanup(() => b.send('Target.closeTarget', { targetId }).catch(() => {}));
+  const sid = (await b.send('Target.attachToTarget', { targetId, flatten: true })).result?.sessionId;
+  if (!sid) return { issues: ['attachToTarget failed'] };
+  await b.send('Runtime.enable', {}, sid);
+  await b.send('Log.enable', {}, sid);
+  const start = b.events.length;
+  const nav = await b.send('Page.navigate', { url }, sid);
   await sleep(waitMs);
-  const ev = events.slice(start).filter((e) => e.sessionId === sid);
-  const exceptions = ev.filter((e) => e.method === 'Runtime.exceptionThrown')
-    .map((e) => e.params.exceptionDetails.exception?.description?.split('\n')[0] || e.params.exceptionDetails.text);
-  const errors = ev.filter((e) => e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error')
-    .map((e) => e.params.args.map((x) => x.value ?? x.description).join(' ').slice(0, 200));
-  const loc = await send('Runtime.evaluate', { expression: 'location.href + " | " + document.title', returnByValue: true }, sid);
-  let extra;
-  if (evalExpr) extra = (await send('Runtime.evaluate', { expression: evalExpr, returnByValue: true, awaitPromise: true }, sid)).result?.result?.value;
-  await send('Target.closeTarget', { targetId });
-  return { url, at: loc.result?.result?.value, exceptions, errors, extra };
+  const ev = b.events.slice(start).filter((e) => e.sessionId === sid);
+  const issues = [
+    ...(nav.error || nav.result?.errorText ? [`navigate: ${nav.error?.message ?? nav.result.errorText}`] : []),
+    ...ev.filter((e) => e.method === 'Runtime.exceptionThrown')
+      .map((e) => e.params.exceptionDetails.exception?.description?.split('\n')[0] || e.params.exceptionDetails.text),
+    ...ev.filter((e) => e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error')
+      .map((e) => e.params.args.map((x) => x.value ?? x.description).join(' ').slice(0, 200)),
+  ];
+  const at = await evaluate(b, sid, 'location.href');
+  if (/^chrome-error:/.test(at ?? '')) issues.push(`error page (${at})`);
+  const extra = evalExpr ? await evaluate(b, sid, evalExpr) : undefined;
+  await b.send('Target.closeTarget', { targetId });
+  return { issues, extra };
 }
 
-const results = [];
-for (const u of ['chrome://newtab/', 'https://example.com/', 'chrome://settings/',
+// Pages removed by fork commits (sync/signin/profile picker, password manager/autofill, bookmarks, side panel /
+// Read Anything) are not listed: an error page fails the visit.
+for (const u of ['chrome://newtab/', local, 'chrome://settings/',
   'chrome://settings/people', 'chrome://settings/appearance', 'chrome://settings/privacy',
   'chrome://settings/clearBrowserData', 'chrome://history/', 'chrome://history/syncedTabs',
   'chrome://extensions/', 'chrome://downloads/', 'chrome://flags/', 'chrome://version/',
-  'chrome://chrome-urls/', 'chrome://sync-internals/', 'chrome://signin-internals/',
-  'chrome://profile-picker/', 'chrome://settings/autofill', 'chrome://settings/security',
-  'chrome://settings/securityKeys', 'chrome://password-manager/', 'chrome://autofill-internals/',
-  'chrome://password-manager-internals/', 'chrome://reset-password/', 'chrome://safe-browsing/',
+  'chrome://chrome-urls/', 'chrome://settings/autofill', 'chrome://settings/security',
+  'chrome://settings/securityKeys', 'chrome://safe-browsing/',
   // Sweep 2 (dead loadTimeData keys / removed icons crash Dev builds):
   'chrome://settings/content', 'chrome://settings/content/all', 'chrome://settings/cookies',
   'chrome://settings/content/location', 'chrome://settings/content/notifications',
   'chrome://settings/searchEngines', 'chrome://settings/onStartup', 'chrome://settings/downloads',
   'chrome://settings/languages', 'chrome://settings/accessibility', 'chrome://settings/system',
   'chrome://settings/performance', 'chrome://settings/reset', 'chrome://settings/help',
-  'chrome://settings/privacySandbox', 'chrome://history/grouped', 'chrome://bookmarks/',
-  'chrome-untrusted://read-anything-side-panel.top-chrome/',
+  'chrome://settings/privacySandbox', 'chrome://history/grouped',
   'chrome://policy/', 'chrome://management/', 'chrome://components/']) {
-  results.push(await visit(u));
+  judge(u, (await visit(u)).issues);
 }
-// Browser contexts: OTR profiles are gone since B2d, so an error is expected until the MCP
-// service provides partitions; a success would mean the OTR path is back.
-const ctx = await send('Target.createBrowserContext');
-results.push({ url: 'Target.createBrowserContext', at: ctx.error ? 'ERROR ' + ctx.error.message : 'ok ' + ctx.result.browserContextId });
+
+const ctx = await b.send('Target.createBrowserContext');
+judge('Target.createBrowserContext', ctx.error ? [ctx.error.message] : []);
 if (!ctx.error) {
-  results.push(await visit('https://example.com/', { browserContextId: ctx.result.browserContextId,
-    evalExpr: 'document.cookie = "a=1"; document.cookie' }));
-  await send('Target.disposeBrowserContext', { browserContextId: ctx.result.browserContextId });
+  const { browserContextId } = ctx.result;
+  const r = await visit(local, { browserContextId, evalExpr: 'document.cookie = "a=1"; document.cookie' });
+  judge('browser context page', r.issues);
+  await b.send('Target.disposeBrowserContext', { browserContextId });
 }
+
 // Credential Management API must settle (stub), WebAuthn feature detection must not throw.
-results.push(await visit('https://example.com/', { evalExpr: `(async () => {
+const cred = await visit(local, { evalExpr: `(async () => {
   const t = (p) => Promise.race([p.then(v => 'resolved:' + JSON.stringify(v), e => 'rejected:' + e.name),
     new Promise(r => setTimeout(() => r('TIMEOUT'), 3000))]);
   return {
@@ -92,14 +91,19 @@ results.push(await visit('https://example.com/', { evalExpr: `(async () => {
     uvpaa: await t(PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()),
     conditional: await t(PublicKeyCredential.isConditionalMediationAvailable()),
   };
-})()` }));
+})()` });
+judge('credentials page', cred.issues);
+const vals = Object.values(cred.extra ?? {});
+check('credentials API settles', vals.length === 4 && !vals.includes('TIMEOUT'), JSON.stringify(cred.extra));
+
 // Form page: renderer autofill agents are gone; typing into a password field must not crash.
-results.push(await visit('data:text/html,<form><input name=u autocomplete=username><input type=password name=p></form>',
-  { evalExpr: 'document.forms[0].p.focus(); document.forms[0].p.value="x"; "ok"' }));
-const af = await send('Autofill.enable');
-results.push({ url: 'CDP Autofill.enable', at: af.error ? 'ERROR ' + af.error.message : 'ok' });
-// Tab groups: create a group via chrome.tabGroups is not reachable; check tab strip via Browser domain.
-const v = await send('Browser.getVersion');
-results.push({ url: 'Browser.getVersion', at: v.result?.product });
-for (const r of results) console.log(JSON.stringify(r));
-ws.close();
+const form = await visit('data:text/html,<form><input name=u autocomplete=username><input type=password name=p></form>',
+  { evalExpr: 'document.forms[0].p.focus(); document.forms[0].p.value="x"; "ok"' });
+judge('password form page', form.issues);
+check('password form typing', form.extra === 'ok', String(form.extra));
+
+const af = await b.send('Autofill.enable');
+judge('Autofill.enable', af.error ? [af.error.message] : []);
+check('Browser.getVersion', /Shuttle|Chrome/.test((await b.send('Browser.getVersion')).result?.product ?? ''));
+EXPECTED.forEach((e, i) => check(`expected error occurred: ${e.url}`, seen.has(i), seen.has(i) ? '' : 'behavior changed: update EXPECTED'));
+await finish();

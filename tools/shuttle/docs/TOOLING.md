@@ -18,7 +18,9 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
 
 - **Merge upstream, never rebase.** Branch `chromium` = one snapshot commit per stable tag (no upstream history; the
   full history is ~50 GB): `git fetch --depth=1 origin refs/tags/<new>:refs/tags/<new>`, then on `chromium`
-  `git commit-tree <new>^{tree} -p chromium -m "Chromium <new> (snapshot)"`, move `chromium` to it. Diff of two
+  `git commit-tree <new>^{tree} -p chromium -m "Chromium <new> (snapshot)" -m "Tree of upstream tag <new> (commit
+  <full upstream SHA>), imported without history. ..."` (the body records tag + upstream SHA: keep that format, it is
+  the traceability link), move `chromium` to it. Diff of two
   snapshots = the upstream change. `main` merges `chromium`; modify/delete conflicts resolve to the deletion.
   `build/util/lastchange.py` falls back to the newest commit (snapshots have no `Change-Id`): keep that edit.
 - **Keep the engine close to upstream.** V8, Blink, `content/`, `net/`, `third_party/` stay as unmodified as possible
@@ -106,7 +108,7 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
 5. `scripts/scan-webui-imports.py` (3s) for TS imports of deleted files.
 6. C++/TS surgery (parallel agents need explicit file ownership + a shared brief; template:
    `_docs/agent-briefs/b1-surgery-brief.md`), verify each file with `scripts/syntax-check-file.sh`.
-7. One `-k 0` build, fix FAILED steps, GUI smoke test with a fresh `/tmp/sh-profile`, commit.
+7. One `-k 0` build, fix FAILED steps, smoke test with `scripts/smoke-all.sh` (own temp profile), commit.
 
 ## Prune and fix scripts
 
@@ -267,7 +269,7 @@ aren't signaled by the major: call them out in `NOTES.md`. Tags: `v155.1.0`.
    `out/Release`; `gn gen out/Release` + `scripts/check-ninja-inputs.py out/Release` first. After a Chromium bump it is a
    full rebuild (~7 h via sccache-dist). Build from a clean, committed tree: a successful `chrome` build writes
    `out/Release/shuttle-build-receipt.txt` (source SHA, clean flag, `chromium` base, args.gn/DEPS/gitlink hashes,
-   clang + depot_tools revisions; `scripts/lib/receipt.sh`) and packaging refuses without a matching one. Smoke it (`smoke-cdp.mjs` against `out/Release`).
+   clang + depot_tools revisions; `scripts/lib/receipt.sh`) and packaging refuses without a matching one. Smoke it: `scripts/smoke-all.sh out/Release/Shuttle.app`.
 2. `SHUTTLE_VERSION=<X.Y.Z> SHUTTLE_SIGN_ID=<Developer ID SHA-1> SHUTTLE_NOTARY_PROFILE=<notarytool profile>
    scripts/release-mac.sh`: checks the receipt, builds the packaging tools through `build.sh` (`SHUTTLE_KEEP_ARGS=1`,
    refuses if that rebuilt chrome), adds the pinned agent-browser sidecar, signs, notarizes + staples app and DMG,
@@ -349,9 +351,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **`pkill -f` over ssh kills its own shell** when the pattern appears in the ssh command line (`ssh host 'pkill -f X;
   rm -rf /tmp/X'`). Put the commands in a script file, or use a pattern the command line doesn't contain literally
   (`'user-data-dir=/tmp/sh-pro[f]'`).
-- **Call the Linux check scripts with an absolute path**: `linux-smoke.sh` and friends `cd` into `src/`, so a relative
-  `scripts/…` call breaks their `$(dirname "$0")` lookups (smoke-cdp MODULE_NOT_FOUND, 0 clean pages). Non-interactive
-  ssh on the Linux host has no node on PATH: export the nvm bin dir first.
+- **Call `linux-nsw-check.sh` with an absolute path**: it `cd`s into `src/`, so a relative `scripts/…` call breaks its
+  `$(dirname "$0")` lookups. Non-interactive ssh on the Linux host has no node on PATH: export the nvm bin dir first
+  (also for `smoke-all.sh`).
 - **chrome:// URLs are rejected as command-line arguments** (`ValidateLaunchUrlWebUnsafe`, except headless opt-in);
   inject the tab in `StartupTabProviderImpl` instead (fork commit 38).
 - **`-Wunsafe-buffer-usage`** rejects libc calls like `strtoul` and pointer arithmetic in fork code; use base helpers
@@ -380,9 +382,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **Unsigned sidecar in `out/Release` gets SIGKILLed** (2026-10-11): `release-mac.sh` strips agent-browser's ad-hoc
   signature so the pipeline can sign it, so page tools fail ("agent-browser exited unexpectedly", exit 137) when you
   smoke the unsigned `out/Release` app. Smoke the signed app from the DMG (or `out/Sccache`) instead.
-- **Network mode smoke** (2026-10-11): `scripts/smoke-network.mjs <port> <udd> [lanIp]` against Shuttle started with
-  `--shuttle-listen=0.0.0.0`. Wait for `<udd>/ShuttleAccessToken` before running it (a cold first start can take >5 s).
-  The default-profile smokes (smoke-mcp etc.) must still pass without the flag.
+- **Network mode smoke** (2026-10-11): `scripts/smoke-all.sh <binary> --with network` launches a second browser with
+  `--shuttle-listen=0.0.0.0` and runs `smoke-network.mjs <port> <udd> [lanIp]` (it waits up to 15 s for
+  `<udd>/ShuttleAccessToken`: a cold first start can take >5 s). The default probes must still pass without the flag.
 
 - **Don't touch low-level shared headers for cosmetic removals** (2026-10-07): deleting two unused
   ids from `ui/color/color_id.h` (B2b side panel phase) recompiled most of Blink, because
@@ -468,7 +470,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   move) and Spotlight (path-based Privacy list: re-add after a move); XProtect scans each new
   binary (~0.5s).
 - Old profiles from pre-batch builds trip migration DCHECKs; always use a fresh
-  `/tmp/sh-profile`.
+  profile (`smoke-all.sh` makes one per run).
 - **Stubbed KeyedService factories (B2a):** a factory's `DependsOn()` calls also *register* the
   factories it depends on. Stub or delete one and those others hit "Trying to register
   KeyedService Factory … after EnsureBrowserContextKeyedServiceFactoriesBuilt" at startup. Diff
@@ -496,7 +498,8 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   stop inbound to an http.sys (System, PID 4) listener; it stayed reachable over VPN and LAN.
   Prefer no listener, or bind to one address. Always verify exposure from the Mac with `curl`/`nc`.
 - **Smoke test must end with `Browser.close` (B2c):** late KeyedService registrations
-  (`AppSessionServiceFactory`) only fire at shutdown. Grep the browser log for FATAL afterwards.
+  (`AppSessionServiceFactory`) only fire at shutdown. `scripts/smoke-all.sh` owns that: it closes the browser it
+  started, checks its exit status (`close-*` rows) and greps the log (`log-fatals`). Probes never close the browser.
 - **Removed `IDS_*` pass syntax checks (B2c):** `out/Dev/gen/**/grit/*.h` are stale until grit
   reruns. Before the build, grep kept code for the removed grdps' message names.
 - **Don't steal focus:** smoke tests run `--headless` (`"…/Shuttle.app/Contents/MacOS/Shuttle" --headless … &`):
@@ -520,13 +523,14 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   `Contents/Helpers/agent-browser`, or `SHUTTLE_AGENT_BROWSER=<binary>` for dev runs. Relinking `chrome` keeps
   the Helpers copy. The page tool list lives in `config/agent-browser-tools.json`; after edits run
   `node scripts/gen-page-tools.mjs` and commit the regenerated fork file `chrome/browser/shuttle/page_tools_data.inc`.
-  smoke-mcp expects
-  36 tools (12 + 24). Gotchas: `AGENT_BROWSER_PIN_TAB=1` makes a fresh daemon open a stray tab; the daemon
+  smoke-mcp checks a
+  list of required tool names (not a count). Gotchas: `AGENT_BROWSER_PIN_TAB=1` makes a fresh daemon open a stray tab; the daemon
   outlives the MCP process (send `close`, idle timeout as fallback).
 - **zsh in the Bash tool:** `$VAR` holding several words does **not** split (`scripts/x.sh $FILES` passes one
   argument). Pass arguments literally or use `${=VAR}`.
-- **Smoke order:** `smoke-agents-page.mjs` expects a fresh profile; after `smoke-mcp.mjs` in the same profile
-  it fails on leftover agents (not a product bug).
+- **Probes share a profile:** each uses its own agent id prefix (`smoke-`, `smoke-sc-`, `smoke-agents-`,
+  `smoke-focus-`, `smoke-net`) and deletes its agents/sessions/tabs at exit, even on failure; only smoke-mcp
+  `--phase1` leaves `smoke-persist` for `--phase2`.
 - **`build-sccache.sh` needs a PTY** (`script`): run it via `shell_run`; from a plain Bash call it exits 1 after 0
   steps with `tcgetattr ... not supported`.
 - **Moving the checkout loses siso's state unless you rewrite it first** (2026-10-13, `~/chromium` →
