@@ -213,7 +213,8 @@ A lintian pass at the end is advisory. Each run takes about 2 min (xz). `dest` d
   `81D0827DDC5004E5CCCD674943FDBF62DB5D8304`. The public key is `assets/linux/repo/shuttle.asc`. The private key and its
   passphrase live only in the maintainer's Mac keyring (backup: Bitwarden). Before expiry, extend it (`gpg --quick-set-expire`),
   re-export `shuttle.asc` and re-run the publish script with no files, so the metadata and key are re-uploaded.
-- **Publish:** `scripts/publish-packages.sh [--suite stable|testing] [--dry-run] <deb> <rpm>` on the Mac.
+- **Publish:** `scripts/publish-packages.sh [--suite stable|testing] [--dry-run] <deb> <rpm>` on the Mac (each file needs its
+  `.sha256` and an entry in the `MANIFEST.txt` next to it; wrangler pinned to an exact version).
   - It signs the rpm with `rpmsign` (brew `rpm`; v4 RSA/SHA256 header signature) and builds the metadata on
     `$SHUTTLE_BUILD_HOST` (`apt-ftparchive`, `createrepo_c --general-compress-type=gz`; needs `apt-utils createrepo-c`).
     Then it signs `InRelease`/`Release.gpg`/`repomd.xml.asc` on the Mac and uploads the changed files with wrangler.
@@ -264,12 +265,18 @@ aren't signaled by the major: call them out in `NOTES.md`. Tags: `v155.1.0`.
 
 1. `SHUTTLE_KIND=release scripts/build-sccache.sh -local_jobs=12 -k 0` (or `scripts/build.sh release`): official
    `out/Release`; `gn gen out/Release` + `scripts/check-ninja-inputs.py out/Release` first. After a Chromium bump it is a
-   full rebuild (~7 h via sccache-dist). Smoke it (`smoke-cdp.mjs` against `out/Release`).
-2. `SHUTTLE_SIGN_ID=<Developer ID SHA-1> SHUTTLE_NOTARY_PROFILE=<notarytool profile> scripts/release-mac.sh`: builds the
-   packaging tools, adds the agent-browser sidecar, signs, notarizes + staples app and DMG, verifies with
-   spctl/stapler. Output `$SHUTTLE_ROOT/release/<chromium version>/`; copy the DMG to
-   `release/v<X.Y.Z>/Shuttle-<X.Y.Z>-arm64.dmg`. Identity and notary credentials stay in the keychain.
-3. Linux: `scripts/build-linux.sh release`, `package-linux.sh` (tarball), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm), Linux
+   full rebuild (~7 h via sccache-dist). Build from a clean, committed tree: a successful `chrome` build writes
+   `out/Release/shuttle-build-receipt.txt` (source SHA, clean flag, `chromium` base, args.gn/DEPS/gitlink hashes,
+   clang + depot_tools revisions; `scripts/lib/receipt.sh`) and packaging refuses without a matching one. Smoke it (`smoke-cdp.mjs` against `out/Release`).
+2. `SHUTTLE_VERSION=<X.Y.Z> SHUTTLE_SIGN_ID=<Developer ID SHA-1> SHUTTLE_NOTARY_PROFILE=<notarytool profile>
+   scripts/release-mac.sh`: checks the receipt, builds the packaging tools through `build.sh` (`SHUTTLE_KEEP_ARGS=1`,
+   refuses if that rebuilt chrome), adds the pinned agent-browser sidecar, signs, notarizes + staples app and DMG,
+   verifies with spctl/stapler. Output `$SHUTTLE_ROOT/release/v<X.Y.Z>/mac/` (refused if it exists) with
+   `MANIFEST.txt` (receipt, sidecar + DMG sha256); rename the DMG to `Shuttle-<X.Y.Z>-arm64.dmg` for the release.
+   Identity and notary credentials stay in the keychain. `--no-notarize` signs only (skips Gatekeeper/stapler checks).
+3. Linux: `scripts/build-linux.sh release`, `SHUTTLE_VERSION=<X.Y.Z> package-linux.sh` (tarball + receipt +
+   `release/v<X.Y.Z>/linux/MANIFEST.txt`), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm, hashes appended
+   to the manifest), Linux
    smokes and an upgrade test from the previous version (`docs/LINUX.md`).
 4. `release/v<X.Y.Z>/`: `NOTES.md` (Chromium base, changes, downloads table, known limits), `SHA256SUMS`, then
    `gh release create v<X.Y.Z> -R shuttle-browser/shuttle --target <full SHA> --title "Shuttle <X.Y.Z>" --notes-file
@@ -506,8 +513,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   navigations until it **disconnects**, even after `setAutoAttach false` (upstream). Emulation on a tab without a
   view crashed the browser upstream (fixed in `WebContentsImpl::SetDeviceEmulationSize`).
 - **Page tools / agent-browser sidecar (2026-10-08, `ac/agent-browser`):** `scripts/fetch-agent-browser.sh
-  <app>/Contents/Helpers [platform]` installs the pinned agent-browser (npm tarball, version check, LICENSE +
-  NOTICE, ad-hoc codesign; `AGENT_BROWSER_SRC=<unpacked package>` skips the download). The browser finds it in
+  <app>/Contents/Helpers [platform]` installs the pinned agent-browser (npm tarball checked against its pinned sha512,
+  the platform binary against its pinned sha256 before it is copied or run; LICENSE + NOTICE, ad-hoc codesign;
+  `AGENT_BROWSER_SRC=<unpacked package>` skips the download but not the hash check). A version bump means new pins
+  (`npm view agent-browser@<v> dist.integrity`, `shasum -a 256 package/bin/agent-browser-*`). The browser finds it in
   `Contents/Helpers/agent-browser`, or `SHUTTLE_AGENT_BROWSER=<binary>` for dev runs. Relinking `chrome` keeps
   the Helpers copy. The page tool list lives in `config/agent-browser-tools.json`; after edits run
   `node scripts/gen-page-tools.mjs` and commit the regenerated fork file `chrome/browser/shuttle/page_tools_data.inc`.

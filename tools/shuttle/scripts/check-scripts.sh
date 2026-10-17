@@ -16,7 +16,7 @@ if [[ ${1:-} != --fixtures-only ]]; then
       *.py) python3 -c 'import sys; compile(open(sys.argv[1]).read(), sys.argv[1], "exec")' "$f" 2>&1 || bad "$f" ;;
       *.mjs) node --check "$f" 2>&1 || bad "$f" ;;
       *.ps1) echo "unverified (host-only): ${f#"$tools"/}" ;;
-      */lib/paths.sh) { bash -n "$f" && zsh -n "$f"; } 2>&1 || bad "$f"
+      */scripts/lib/*.sh) { bash -n "$f" && zsh -n "$f"; } 2>&1 || bad "$f"
                       [[ -z $sc ]] || "$sc" -S warning -s bash "$f" || bad "$f (shellcheck)" ;;
       *)
         if [[ $first == *zsh* ]]; then zsh -n "$f" 2>&1 || bad "$f"

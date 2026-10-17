@@ -50,8 +50,10 @@ Checkout: README "Build from source" (add `target_os = ["linux"]` to `.gclient`,
 
 ## Release tarball
 
-- `scripts/package-linux.sh [out-dir] [dest-dir]` (defaults `out/Release`, `$SHUTTLE_ROOT/release/<chrome/VERSION>`) →
-  `shuttle-linux-x64.tar.xz` + `.sha256`, top-level `shuttle/`. The file list follows upstream
+- `SHUTTLE_VERSION=<X.Y.Z> scripts/package-linux.sh [out-dir] [dest-dir]` (defaults `out/Release`,
+  `$SHUTTLE_ROOT/release/v<X.Y.Z>/linux`) → `shuttle-linux-x64.tar.xz` + `.sha256` + `MANIFEST.txt`, top-level
+  `shuttle/` with `BUILD-RECEIPT.txt`. Needs the build receipt of a clean-tree `build-linux.sh release`; never
+  overwrites a tarball. `SHUTTLE_LOCAL_PACKAGE=1` = local test package (no receipt, `SHUTTLE_NO_SIDECAR=1` allowed). The file list follows upstream
   `chrome/installer/linux/common/installer.py`, plus agent-browser (+ LICENSE/NOTICE) via
   `fetch-agent-browser.sh <dir> linux-x64`. Binaries are stripped, xz -9: ~85 MB packed, ~291 MB unpacked.
 - Page tools: the browser looks for `agent-browser` next to the binary (`SHUTTLE_AGENT_BROWSER` overrides).
@@ -67,7 +69,8 @@ Checkout: README "Build from source" (add `target_os = ["linux"]` to `.gclient`,
 - WSL2 (mirrored networking): Windows clients reach `http://127.0.0.1:9222/json/version` and `/mcp`; a foreign `Origin`
   gets 403. NAT mode not verified.
 - **Packages:** after `scripts/package-linux.sh`, run
-  `SHUTTLE_PKG_REPO_SOURCE=1 scripts/package-deb.sh $SHUTTLE_RELEASE/<dir>/shuttle-linux-x64.tar.xz X $SHUTTLE_RELEASE/<dir>`.
+  `SHUTTLE_PKG_REPO_SOURCE=1 scripts/package-deb.sh $SHUTTLE_RELEASE/v<X.Y.Z>/linux/shuttle-linux-x64.tar.xz <X.Y.Z>`
+  (refuses a tarball without `.sha256` or receipt unless `SHUTTLE_LOCAL_PACKAGE=1`).
   Release packages need `SHUTTLE_PKG_REPO_SOURCE=1`: without it the deb lacks the repo keyring and an upgrade breaks
   `apt update` (`NO_PUBKEY`), the rpm lacks key and repo file (caught in the 0.1.4 upgrade test).
   This builds `shuttle_X_amd64.deb` and `shuttle-X-1.x86_64.rpm`; details are in TOOLING "Linux packages".

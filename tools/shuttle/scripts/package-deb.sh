@@ -29,6 +29,8 @@ fi
 # Input check: tarball sha256 next to it must match.
 if [ -f "$TARBALL.sha256" ]; then
   (cd "$(dirname "$TARBALL")" && sha256sum -c --quiet "$(basename "$TARBALL").sha256") || { echo "FATAL: sha256 mismatch" >&2; exit 2; }
+elif [ "${SHUTTLE_LOCAL_PACKAGE:-0}" != 1 ]; then
+  echo "FATAL: no $TARBALL.sha256 (SHUTTLE_LOCAL_PACKAGE=1 for a local test package)" >&2; exit 2
 else
   echo "warning: no $TARBALL.sha256, input not verified" >&2
 fi
@@ -38,6 +40,9 @@ trap 'rm -rf "$WORK"' EXIT
 tar -C "$WORK" -xf "$TARBALL"
 IN=$WORK/shuttle
 [ -x "$IN/shuttle" ] && [ -f "$IN/chrome-sandbox" ] || { echo "FATAL: $TARBALL has no shuttle/shuttle + chrome-sandbox" >&2; exit 2; }
+if [ "${SHUTTLE_LOCAL_PACKAGE:-0}" != 1 ] && ! grep -q '^tree_clean=yes$' "$IN/BUILD-RECEIPT.txt" 2>/dev/null; then
+  echo "FATAL: $TARBALL has no clean-tree BUILD-RECEIPT.txt (package-linux.sh release mode)" >&2; exit 2
+fi
 CHROMIUM_VERSION=$(sed -n '1s/^Shuttle \([0-9.]*\) .*/\1/p' "$IN/README-LINUX.txt")
 [ -n "$CHROMIUM_VERSION" ] || { echo "FATAL: no Chromium version in README-LINUX.txt" >&2; exit 2; }
 
@@ -130,6 +135,7 @@ for p in deb rpm; do
   rm -f "$DEST/$f"
   "$NFPM" pkg --config "$WORK/nfpm-$p.yaml" --packager $p --target "$DEST/$f" >/dev/null
   (cd "$DEST" && sha256sum "$f" > "$f.sha256")
+  [ ! -f "$DEST/MANIFEST.txt" ] || echo "package_$p=$f sha256=$(cut -d' ' -f1 "$DEST/$f.sha256")" >> "$DEST/MANIFEST.txt"
   built+=("$DEST/$f")
 done
 

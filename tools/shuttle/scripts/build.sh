@@ -10,10 +10,12 @@
 # local; SHUTTLE_LOCAL_JOBS or `-local_jobs N` override), SHUTTLE_BG=1 adds taskpolicy -c background.
 # GN args come from config/args-common.gn + config/args-<kind>.gn (re-generated on change);
 # SHUTTLE_KEEP_ARGS=1 refuses to change args.gn instead (e.g. a packaging step must not reconfigure a build).
+# A successful `chrome` build writes out/<dir>/shuttle-build-receipt.txt (lib/receipt.sh; packaging requires it).
 # SHUTTLE_CLEAN=1 runs `gn clean` first (full rebuild). `-n` (dry run) still takes the lock and may run gn gen.
 set -e
 . "$(dirname "$0")/lib/paths.sh"
 . "$(dirname "$0")/lib/build-common.sh"
+. "$(dirname "$0")/lib/receipt.sh"
 # siso switches to a quiet agent mode under these (no progress lines, build-watch.py stays silent)
 unset CLAUDECODE AI_AGENT
 export PATH="$PATH:$HOME/depot_tools"
@@ -61,6 +63,8 @@ mkdir -p "$SHUTTLE_LOGS"
 log="$SHUTTLE_LOGS/build-$dir.log"
 : > "$log"
 start=$(date +%s)
+receipt=0; [[ -z "${SHUTTLE_TARGET:-}" || "$SHUTTLE_TARGET" == chrome ]] && receipt=1
+(( receipt )) && shuttle_receipt_begin "$out"
 set +e
 # macOS script(1) aborts ("tcgetattr/ioctl: Operation not supported on socket") when stdin is a socket, e.g. a build
 # started by an agent harness; /dev/null works.
@@ -68,6 +72,7 @@ set +e
 echo "build: out/$dir ${SHUTTLE_BUILD_ARGS[*]} ${SHUTTLE_TARGET:-chrome} under ${SHUTTLE_BUILD_PREFIX[*]}"
 script -q -F "$log" "${SHUTTLE_BUILD_PREFIX[@]}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_BUILD_ARGS[@]}" "${SHUTTLE_TARGET:-chrome}"
 rc=$?
+(( receipt )) && shuttle_receipt_end "$out" $rc
 mins=$(( ($(date +%s) - start) / 60 ))
 echo "BUILD EXIT $rc after ${mins}m" | tee -a "$log"
 exit $rc

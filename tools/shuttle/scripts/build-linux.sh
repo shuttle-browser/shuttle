@@ -6,11 +6,12 @@
 # (+ config/args-linux-<kind>.gn if present: per-kind Linux overrides, e.g. x64 for release).
 # Safety (lib/build-common.sh): lock per out dir, SHUTTLE_MIN_FREE_GB (20) free, nice -n ${NICE:-19}, `-local_jobs`
 # always set (default 10: the host's RAM, not its CPU count, is the limit; SHUTTLE_LOCAL_JOBS or `-local_jobs N`).
-# SHUTTLE_KEEP_ARGS=1 refuses to change args.gn.
+# SHUTTLE_KEEP_ARGS=1 refuses to change args.gn. A successful build writes out/<Dir>/shuttle-build-receipt.txt.
 set -eo pipefail
 # siso switches to a quiet, progress-less log when it sees an AI agent env; build-watch.py needs the progress lines.
 . "$(dirname "$0")/lib/paths.sh"
 . "$(dirname "$0")/lib/build-common.sh"
+. "$(dirname "$0")/lib/receipt.sh"
 unset CLAUDECODE AI_AGENT
 export PATH="$PATH:$HOME/depot_tools"
 SRC="$SHUTTLE_SRC"
@@ -43,8 +44,10 @@ start=$(date +%s)
 # script(1) -c takes one shell string: quote every word so args with spaces/metacharacters survive.
 cmd=$(printf '%q ' "${SHUTTLE_BUILD_PREFIX[@]}" autoninja -C "out/$dir" "${SHUTTLE_BUILD_ARGS[@]}" "${targets[@]}")
 echo "build: $cmd"
+shuttle_receipt_begin "$SRC/out/$dir"
 set +e
 script -q -f -e -c "$cmd" "$log"
 rc=$?
+shuttle_receipt_end "$SRC/out/$dir" $rc
 echo "BUILD EXIT $rc after $(( ($(date +%s) - start) / 60 ))m" | tee -a "$log"
 exit $rc

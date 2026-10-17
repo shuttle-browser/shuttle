@@ -53,7 +53,8 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
 - `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
   `scripts/build-errors.sh` lists failed steps while a build runs.
-- `scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release`. Identity and notary profile come from
+- `SHUTTLE_VERSION=<X.Y.Z> scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release` (needs its
+  clean-tree build receipt; writes `release/v<X.Y.Z>/mac/` + `MANIFEST.txt`). Identity and notary profile come from
   `SHUTTLE_SIGN_ID` and `SHUTTLE_NOTARY_PROFILE`; never commit identities or credentials.
 
 ## Removal workflow
