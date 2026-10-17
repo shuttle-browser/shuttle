@@ -8,14 +8,14 @@ Steps:
   1. `gn gen out/TestScan --ide=json` with the dev build dir's args (prune.BUILD_DIR).
   2. Delete set D = testonly targets in SCOPE, minus those (transitively) needed by testonly
      targets outside SCOPE (e.g. blink unit tests use //content/test:test_support).
-     The root //BUILD.gn doesn't pin; gn-fix-unresolved.py strips its deps afterwards.
+     The root //BUILD.gn doesn't pin; gn-fix-loop.py --apply strips its deps afterwards.
   3. Files: referenced only by D targets, not used by the chrome build (prune.py's "used"),
      and either C++ (.cc/.mm/.h) or under a test-ish path. Resources outside test paths stay
      (grit/TS read undeclared inputs). Test-named C++ files no target references go too.
   4. BUILD.gn: remove the invocation blocks of D targets (`foo("name") { ... }`).
 
 Usage: scripts/prune-tests.py [--apply]
-Then:  git add -A; scripts/fix-gn-refs.py --apply; scripts/gn-fix-unresolved.py
+Then:  git add -A; scripts/fix-gn-refs.py --apply; scripts/gn-fix-loop.py --apply
 """
 import argparse, collections, json, os, re, shutil, subprocess, sys
 
@@ -240,7 +240,11 @@ def main():
     print(f"testonly targets in scope: {len(D) + len(pinned)}, pinned by out-of-scope tests: "
           f"{len(pinned)}, to delete: {len(D)}")
     print("collecting files the chrome build uses ...", flush=True)
-    used = prune.used_files(prune.BUILD_DIR)
+    has_deps = os.path.exists(os.path.join(prune.SRC, prune.BUILD_DIR, ".siso_deps"))
+    if not has_deps:
+        print(f"WARNING: {prune.BUILD_DIR} has no deps log: the used set misses discovered headers; review every "
+              "deletion (LINUX.md: revert changes outside the restore set)", flush=True)
+    used = prune.used_files(prune.BUILD_DIR, deps_log=has_deps)
     used |= prune.grd_refs(used)
     tracked = [t for t in prune.run("git", "ls-files").split("\n") if t and not t.startswith("tools/shuttle/")]
     doom, why = doomed_files(tgt, D, used, tracked)

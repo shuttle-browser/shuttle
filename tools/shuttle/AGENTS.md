@@ -65,7 +65,7 @@ smoke test, and one commit. Details and every gotcha: `docs/TOOLING.md`.
 
 Prune and fix tools: `prune.py` (manifest-driven deletion; manifests in `prune/`), `prune-tests.py` (testonly GN
 targets), `prune-policies.py`, `prune-strings.py`, `prune-locales.py` (en-US-only UI), `fix-gn-refs.py`,
-`gn-fix-unresolved.py`, `gn-fix-loads.py`, `delete-classes.py`, `scan-webui-imports.py`, `syntax-check-file.sh`,
+`gn-fix-loop.py`, `delete-classes.py`, `scan-webui-imports.py`, `syntax-check-file.sh`,
 `add-include.py`, `restore-includes.py`, `restore-strings.py`.
 
 ## After an upstream merge
@@ -73,13 +73,14 @@ targets), `prune-policies.py`, `prune-strings.py`, `prune-locales.py` (en-US-onl
 Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges"):
 
 1. Conflicts: modify/delete → `git rm`; `git checkout --conflict=zdiff3 -- <UU files>`, then
-   `scripts/merge-autoresolve.py stats|apply ours-deleted,ours-subset <list>` (fork-only deletions), the rest by
+   `scripts/merge-autoresolve.py stats|apply ours-deleted,ours-subset <list>` (fork-only deletions; hunks where
+   upstream added lines stay conflicted: `show ours-deleted-new,ours-subset-new` and review them), the rest by
    sub-agents per area with a shared brief. Keep DEPS `version_file`s (gclient reads them even when unused).
 2. `gclient sync -j 4` from the gclient root (default -j hits googlesource HTTP 429); new clang ⇒ toolchain archive.
 3. Delete upstream additions in directories the fork deleted entirely; judge brand-new dirs; rerun `prune/m155.txt`
    and other remove-only manifests.
 4. `scripts/prune-locales.py --apply`, `scripts/rebrand.py apply --apply` (keep main's rendered assets if only bytes differ).
-5. `scripts/gn-fix-loop.py` until `gn gen` passes; then `scripts/prune-tests.py --apply`, `fix-gn-refs.py --apply`.
+5. `scripts/gn-fix-loop.py` (dry run), then `--apply` until `gn gen` passes; then `scripts/prune-tests.py --apply`, `fix-gn-refs.py --apply`.
 6. `scripts/check-ninja-inputs.py` (missing inputs on chrome's graph; restore from `chromium`), then a `-k 0` build.
 
 ## Smoke tests

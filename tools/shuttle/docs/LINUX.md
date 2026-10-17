@@ -147,8 +147,8 @@ The fork originally pruned Linux along with the other platforms; Linux was resto
 2. `scripts/linux-restore-set.py`: missing-in-fork ∩ Linux-read, minus removed features (manifest
    dir/remove rules, gone dirs with feature deletions, same-stem siblings of feature-deleted files);
    then `git checkout <base> --pathspec-from-file=...`.
-3. GN: `scripts/gn-fix-loads.py` (deletes single-entry deps on unloadable dirs, only lines GN
-   evaluates) + `scripts/gn-fix-unresolved.py`. `fix-gn-refs.py --base chromium` exists but on the whole
+3. GN: `scripts/gn-fix-loop.py --apply` (deletes single-entry deps on targets/dirs the fork removed, only lines GN
+   evaluates, only inside the reported target; refuses anything not removed vs `chromium`). `fix-gn-refs.py --base chromium` exists but on the whole
    tree it touches ~11k lines of other-platform branches (merge churn): don't use it there.
 4. Restored BUILD.gn files bring their test targets back: `prune-tests.py --apply`, then **revert every
    change outside the restore set** (on Linux its "used" set lacks a deps log and it would delete

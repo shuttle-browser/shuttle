@@ -579,7 +579,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     targets outside scope still need (blink, cc, net, headless) stay pinned. It skips `.gitignore`
     files: deleting them un-ignores CIPD test data, which `git add -A` then stages. It also skips
     submodule gitlinks and untracked (CIPD) `BUILD.gn` files. Afterwards run `fix-gn-refs.py`, then
-    `gn-fix-unresolved.py` (it now handles root `//:gn_all` deps), then fix leftovers by hand:
+    `gn-fix-unresolved.py` (since replaced by `gn-fix-loop.py`), then fix leftovers by hand:
     "Assignment had no effect" for unused GN variables, and `get_target_outputs` on removed
     targets (content_shell's Mac bundle).
   - `scripts/prune-policies.py`: upstream marks a deleted policy as `N: ''` in `policies.yaml`.
@@ -594,7 +594,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     then intersect sets in Python.
 - **Linux / two-machine tooling (2026-10-06, details in `docs/LINUX.md`):**
   `scripts/build-linux.sh`, `config/args-linux.gn`, `scripts/linux-read-set.py` (base read set on
-  the Linux host), `scripts/linux-restore-set.py`, `scripts/gn-fix-loads.py`,
+  the Linux host), `scripts/linux-restore-set.py`, `scripts/gn-fix-loop.py`,
   `scripts/restore-includes.py`, `scripts/restore-strings.py`, `fix-gn-refs.py --base REF`.
   `restore-strings.py` wraps each restored message in its base `<if>` stack (an earlier version
   anchored by neighbour and put 43 Linux strings under `is_macosx`); afterwards run
@@ -614,7 +614,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     /tmp/sh-smoke.log -a …`. Read Anything is `chrome-untrusted://read-anything-side-panel.top-chrome/`.
   - `scripts/prune.py` `grd_refs()` protects every file a used `.grd`/`.grdp` references
     (grit reads `.xtb` files and some parts without declaring them as inputs).
-- **Helpers added in B2c:** `scripts/gn-fix-unresolved.py` (gn-gen loop that strips deps on
+- **Helpers added in B2c:** `scripts/gn-fix-unresolved.py` (since replaced by `gn-fix-loop.py`; gn-gen loop that strips deps on
   removed targets; run after `fix-gn-refs.py`), `scripts/delete-classes.py` (remove whole classes
   from a .h/.cc pair, handles split return types and `= default` dtors). Manifest generation for
   big batches: script it from the scout report with `git ls-files` + regex (see `prune/b2c.txt`),

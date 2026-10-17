@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Loop `gn gen <out>` and strip references to removed targets, one error kind at a time.
+"""Loop `gn gen <out>` and strip references to targets the fork pruned, one error at a time.
 
-Handles (deleting only single-string list entries, only lines GN actually evaluates):
-  - `Unable to load "<src>/X/BUILD.gn"` at //F:L   -> delete line L of F (a dep on a deleted directory)
-  - `Unresolved dependencies` pairs                -> delete the dep from the needing target's BUILD.gn
-  - `Label not in deps` (allow_circular_includes_from) for a target that no longer exists
-                                                   -> delete that label line in F
-Stops on success, on any other error (printed), or when an iteration changes nothing.
-Successor of gn-fix-loads.py + gn-fix-unresolved.py (used after the 155 merge). Review `git diff` afterwards.
+Handles (only single-string list entries, only for labels/files the fork removed: present on branch `chromium`,
+gone from the working tree; anything else is reported and the loop stops):
+  - `Unable to load "<src>/X/BUILD.gn"` / `Can't load input file` at //F:L -> delete line L of F
+  - `Unresolved dependencies` //T:t needs //N:n    -> delete //N:n entries inside target t's block in T/BUILD.gn
+  - `Label not in deps` (allow_circular_includes_from) for a target that no longer exists -> delete that label line
+Without --apply: one pass, prints the planned edit, writes nothing. With --apply: loops until gn gen passes, an error
+it doesn't handle, or a refused edit; prints the files it touched (review `git diff`).
 
-Usage: scripts/gn-fix-loop.py [out_dir] [--max N]   (default out_dir: BUILD_DIR = out/Sccache)
+Usage: scripts/gn-fix-loop.py [out_dir] [--apply] [--max N]   (default out_dir: BUILD_DIR = out/Sccache)
+Exit: 0 = gn gen OK (or dry-run edit planned), 1 = stopped (error printed), 2 = usage/setup error.
 """
 import os
 import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shuttle_paths import SRC, BUILD_DIR  # noqa: E402
 
 ENV = dict(os.environ, PATH=os.environ["PATH"] + ":" + os.path.expanduser("~/depot_tools"))
@@ -23,88 +25,166 @@ ENTRY = re.compile(r'^\s*("[^"]+")\s*,?\s*(#.*)?$')
 ONELINE = re.compile(r'^(\s*\w+\s*[+-]?=\s*)\[\s*("[^"]+")\s*,?\s*\]\s*$')
 
 
+def git_ok(*a):
+    return subprocess.run(["git", *a], cwd=SRC, capture_output=True).returncode == 0
+
+
+def defines(text, name):
+    return re.search(r'\(\s*"%s"\s*\)' % re.escape(name), text) is not None
+
+
+def split_label(label):
+    d, _, name = label.split("(")[0][2:].partition(":")
+    return d, name or d.rsplit("/", 1)[-1]
+
+
 def target_exists(label):
-    d, _, name = label[2:].partition(":")
-    name = name or d.rsplit("/", 1)[-1]
+    d, name = split_label(label)
     bf = os.path.join(SRC, d, "BUILD.gn")
-    if not os.path.exists(bf):
+    return os.path.exists(bf) and defines(open(bf, errors="replace").read(), name)
+
+
+def pruned_path(rel):
+    """A file the fork removed: on branch `chromium`, not in the working tree."""
+    return not os.path.exists(os.path.join(SRC, rel)) and git_ok("cat-file", "-e", f"chromium:{rel}")
+
+
+def pruned_label(label):
+    """A target the fork removed: defined on `chromium`, not defined now."""
+    d, name = split_label(label)
+    if target_exists(label):
         return False
-    return re.search(r'\(\s*"%s"\s*\)' % re.escape(name), open(bf, errors="replace").read()) is not None
+    r = subprocess.run(["git", "show", f"chromium:{d}/BUILD.gn"], cwd=SRC, capture_output=True, text=True)
+    return r.returncode == 0 and defines(r.stdout, name)
 
 
-def delete_lines(path, pred):
-    lines = open(path).read().split("\n")
-    keep = [l for l in lines if not pred(l)]
-    if len(keep) != len(lines):
-        open(path, "w").write("\n".join(keep))
-    return len(lines) - len(keep)
-
-
-def is_entry(l, forms):
-    m = ENTRY.match(l) or ONELINE.match(l)
-    return bool(m) and m.group(m.lastindex if m.re is ENTRY else 2) in forms if m else False
-
-
-def entry_of(l):
-    m = ENTRY.match(l)
+def entry_of(line):
+    m = ENTRY.match(line)
     if m:
         return m.group(1)
-    m = ONELINE.match(l)
+    m = ONELINE.match(line)
     return m.group(2) if m else None
 
 
+def label_forms(label, here=None):
+    d, name = split_label(label)
+    forms = {f'"//{d}:{name}"'}
+    if d.rsplit("/", 1)[-1] == name:
+        forms.add(f'"//{d}"')
+    if here == d:
+        forms.add(f'":{name}"')
+    return forms
+
+
+def block(lines, name):
+    """(start, end) line indexes of the target `<kind>("name") {...}`, or None (e.g. template-generated names)."""
+    head = re.compile(r'^\s*[\w.]+\(\s*"%s"\s*\)\s*\{' % re.escape(name))
+    for i, l in enumerate(lines):
+        if head.match(l):
+            depth = 0
+            for j in range(i, len(lines)):
+                depth += lines[j].count("{") - lines[j].count("}")
+                if depth <= 0:
+                    return i, j
+    return None
+
+
+def write(path, lines):
+    tmp = path + ".gnfix.tmp"
+    with open(tmp, "w") as f:
+        f.write("\n".join(lines))
+    os.replace(tmp, path)
+
+
+def plan(text):
+    """-> (edits = [(file, [line indexes], description)], refusal message or None)."""
+    m = re.search(r'ERROR at //([^:]+):(\d+):\d+: (Unable to load "([^"]+)"|Can\'t load input file)', text)
+    if m:
+        rel, ln = m.group(1), int(m.group(2))
+        lines = open(os.path.join(SRC, rel)).read().split("\n")
+        if not entry_of(lines[ln - 1]):
+            return [], f"{rel}:{ln} is not a single list entry: {lines[ln - 1].strip()}"
+        missing = m.group(4)
+        if missing is None:  # Can't load input file: the path is in the entry
+            e = entry_of(lines[ln - 1]).strip('"')
+            missing = e[2:] if e.startswith("//") else os.path.normpath(os.path.join(os.path.dirname(rel), e))
+        missing = os.path.relpath(missing, SRC) if os.path.isabs(missing) else missing
+        if not pruned_path(missing):
+            return [], f"{rel}:{ln}: {missing} was not removed by the fork (not on `chromium`, or still present)"
+        return [(rel, [ln - 1], f"load   {rel}:{ln} {lines[ln - 1].strip()}")], None
+    if "Unresolved dependencies" in text:
+        edits = []
+        for tdir, tname, ndir, nname in sorted(set(re.findall(
+                r'^//([^:(]*):([^(]+)\([^)]*\)\n  needs //([^:(]+):([^(]+)\(', text, re.M))):
+            dep = f"//{ndir}:{nname}"
+            if not pruned_label(dep):
+                return [], f"//{tdir}:{tname} needs {dep}, which the fork didn't remove (typo, DEPS, new upstream target?)"
+            rel = os.path.join(tdir, "BUILD.gn")
+            lines = open(os.path.join(SRC, rel)).read().split("\n")
+            b = block(lines, tname)
+            if b is None:
+                return [], f"target {tname!r} not found literally in {rel} (template-generated?): edit by hand"
+            forms = label_forms(dep, tdir)
+            idx = [i for i in range(b[0], b[1] + 1) if entry_of(lines[i]) in forms]
+            if not idx:
+                return [], f"{dep} not a single-entry line inside //{tdir}:{tname}: edit by hand"
+            edits.append((rel, idx, f"unres  //{tdir}:{tname} -= {dep}"))
+        return edits, None if edits else "Unresolved dependencies, but no pair parsed"
+    m = re.search(r'ERROR at //([^:]+):(\d+):\d+: Label not in deps\.[\s\S]*?The label "(//[^"]+)"', text)
+    if m:
+        rel, ln, lab = m.group(1), int(m.group(2)), m.group(3).split("(")[0]
+        if not pruned_label(lab):
+            return [], f"{rel}:{ln}: {lab} wasn't removed by the fork"
+        lines = open(os.path.join(SRC, rel)).read().split("\n")
+        idx = [i for i, l in enumerate(lines) if entry_of(l) in label_forms(lab)]
+        return ([(rel, idx, f"circ   {rel} -= {lab}")], None) if idx else ([], f"{lab} not a single entry in {rel}")
+    return [], "an error gn-fix-loop doesn't handle"
+
+
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    out = args[0] if args else BUILD_DIR
-    mx = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 300
-    total = 0
+    argv = sys.argv[1:]
+    apply = "--apply" in argv
+    try:
+        mx = int(argv[argv.index("--max") + 1]) if "--max" in argv else 300
+    except (IndexError, ValueError):
+        print("usage: gn-fix-loop.py [out_dir] [--apply] [--max N]", file=sys.stderr)
+        return 2
+    pos = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] != "--max")]
+    out = pos[0] if pos else BUILD_DIR
+    if not git_ok("rev-parse", "-q", "--verify", "chromium^{commit}"):
+        print("branch `chromium` (base tree) not found", file=sys.stderr)
+        return 2
+    touched, total = set(), 0
     for it in range(mx):
         p = subprocess.run(["gn", "gen", out], cwd=SRC, env=ENV, capture_output=True, text=True)
         text = p.stdout + p.stderr
         if p.returncode == 0:
             print(f"gn gen OK after {it} iterations, {total} lines removed")
-            return 0
-        changed = 0
-        m = re.search(r'ERROR at //([^:]+):(\d+):\d+: Unable to load "[^"]+/BUILD\.gn"', text)
-        if m:
-            f, ln = os.path.join(SRC, m.group(1)), int(m.group(2))
-            lines = open(f).read().split("\n")
-            if entry_of(lines[ln - 1]):
-                print(f"load   {m.group(1)}:{ln} {lines[ln - 1].strip()}")
-                del lines[ln - 1]
-                open(f, "w").write("\n".join(lines))
-                changed = 1
-        elif "Unresolved dependencies" in text:
-            pairs = set(re.findall(r'^//([^:(]*):[^(]+\([^)]*\)\n  needs //([^:(]+):([^(]+)\(', text, re.M))
-            for tdir, ndir, nname in pairs:
-                bf = os.path.join(SRC, tdir, "BUILD.gn")
-                forms = {f'"//{ndir}:{nname}"'}
-                if ndir.rsplit("/", 1)[-1] == nname:
-                    forms.add(f'"//{ndir}"')
-                if ndir == tdir:
-                    forms.add(f'":{nname}"')
-                n = delete_lines(bf, lambda l: entry_of(l) in forms)
-                if n:
-                    print(f"unres  {tdir}/BUILD.gn -= //{ndir}:{nname}")
-                changed += n
-        else:
-            m = re.search(r'ERROR at //([^:]+):\d+:\d+: Label not in deps\.[\s\S]*?The label "(//[^"]+)"', text)
-            if m and not target_exists(m.group(2).split("(")[0]):
-                lab = m.group(2).split("(")[0]
-                forms = {f'"{lab}"'}
-                d, _, name = lab[2:].partition(":")
-                if name and d.rsplit("/", 1)[-1] == name:
-                    forms.add(f'"//{d}"')
-                changed = delete_lines(os.path.join(SRC, m.group(1)), lambda l: entry_of(l) in forms)
-                if changed:
-                    print(f"circ   {m.group(1)} -= {lab}")
-        if not changed:
-            print(f"--- stopped after {it} iterations, {total} lines removed; gn says:")
+            break
+        edits, refusal = plan(text)
+        if refusal:
+            print(f"--- stopped after {it} iterations, {total} lines removed: {refusal}; gn says:")
             print(text[:4000])
-            return 1
-        total += changed
-    print(f"--- max iterations reached, {total} lines removed")
-    return 1
+            break
+        for rel, idx, desc in edits:
+            print(desc if apply else "would " + desc)
+        if not apply:
+            print("(dry run; pass --apply)")
+            return 0
+        per_file = {}  # all indexes refer to the file before this iteration's edits
+        for rel, idx, _ in edits:
+            per_file.setdefault(rel, set()).update(idx)
+        for rel, idx in per_file.items():
+            path = os.path.join(SRC, rel)
+            lines = open(path).read().split("\n")
+            write(path, [l for i, l in enumerate(lines) if i not in idx])
+            touched.add(rel)
+            total += len(idx)
+    else:
+        print(f"--- max iterations reached, {total} lines removed")
+    if touched:
+        print("touched (review git diff):\n  " + "\n  ".join(sorted(touched)))
+    return 0 if p.returncode == 0 else 1
 
 
 if __name__ == "__main__":
