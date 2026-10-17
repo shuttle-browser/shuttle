@@ -17,23 +17,24 @@ echo "commit $(git log -1 --format=%h), shuttle built $(stat -c %y out/Dev/shutt
 : > "$log"; bad=0; fails=$(mktemp); profs=("$fails")  # $fails: steps failed inside pipelines/subshells
 pid=; port=
 trap '[ -n "$pid" ] && kill -9 "$pid" 2>/dev/null && wait "$pid" 2>/dev/null; rm -rf "${profs[@]}"' EXIT
-run_chrome() {  # run_chrome [extra args...]: foreground invocation (caller backgrounds if needed)
+run_chrome() {  # run_chrome [extra args...]: execs the browser; call it in a subshell, ( run_chrome ... ) [&], so that
+               # a background $! is the browser's own PID
   local a=(--user-data-dir="$prof" --no-first-run "$@")
   case $mode in
-    headless) out/Dev/shuttle --headless "${a[@]}" ;;
-    x11) DISPLAY=:0 out/Dev/shuttle --ozone-platform=x11 "${a[@]}" ;;
-    wayland) XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir WAYLAND_DISPLAY=wayland-0 out/Dev/shuttle --ozone-platform=wayland "${a[@]}" ;;
+    headless) exec out/Dev/shuttle --headless "${a[@]}" ;;
+    x11) DISPLAY=:0 exec out/Dev/shuttle --ozone-platform=x11 "${a[@]}" ;;
+    wayland) XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir WAYLAND_DISPLAY=wayland-0 exec out/Dev/shuttle --ozone-platform=wayland "${a[@]}" ;;
     *) echo "unknown mode $mode"; exit 2 ;;
   esac >> "$log" 2>&1
 }
 launch() {  # own profile + ephemeral port; a launch that isn't ready in 30 s ends the run (its process is killed)
-  prof=$(mktemp -d "${TMPDIR:-/tmp}/sh-nsw.XXXXXX"); profs+=("$prof"); run_chrome --remote-debugging-port=0 "$@" & pid=$!
-  for _ in $(seq 1 30); do
+  prof=$(mktemp -d "${TMPDIR:-/tmp}/sh-nsw.XXXXXX"); profs+=("$prof"); ( run_chrome --remote-debugging-port=0 "$@" ) & pid=$!
+  for _ in $(seq 1 "${SHUTTLE_NSW_READY_S:-30}"); do
     port=$(head -1 "$prof/DevToolsActivePort" 2>/dev/null)
     if [[ $port =~ ^[0-9]+$ ]] && curl -s -m 2 "127.0.0.1:$port/json/version" >/dev/null; then sleep 3; return; fi
     kill -0 "$pid" 2>/dev/null || break; sleep 1
   done
-  echo "  FAIL: our browser has no CDP endpoint after 30 s"; exit 1; }
+  echo "  FAIL: our browser has no CDP endpoint after ${SHUTTLE_NSW_READY_S:-30} s"; exit 1; }
 pages() { curl -s -m 5 "127.0.0.1:$port/json/list" | python3 -c 'import json,sys;p=[t["url"] for t in json.load(sys.stdin) if t["type"]=="page"];print(len(p),p[:3])' 2>/dev/null || echo "no-cdp"; }
 xwins() {  # viewable top-level X11 windows of chrome (WM_CLASS shuttle)
   [ "$mode" = x11 ] || { echo "n/a"; return; }
@@ -59,7 +60,7 @@ M allocate-tab "{\"sessionId\":\"$sid\",\"url\":\"chrome://version\"}" | cut -c1
 M close-session "{\"sessionId\":\"$sid\"}" | cut -c1-120; sleep 3; state after-close-session
 if [ "$mode" != headless ]; then
   echo "== 5. second launch (no args) while running"
-  run_chrome; echo "  second launch exit $?"; sleep 4; state after-second-launch
+  ( run_chrome ); echo "  second launch exit $?"; sleep 4; state after-second-launch
 fi
 echo "== 3. Browser.close"; finish windowless-run
 if [ "$mode" != headless ]; then
