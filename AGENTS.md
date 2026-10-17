@@ -26,8 +26,9 @@ resolve the real path.
 - security: the fork is public: `/dev:gatekeeper` (`gatekeeper --audit` from this directory, our additions only via
   `.claude/gatekeeper.json`) + `gitleaks git --staged` / `--log-opts=github/main..HEAD`, always `GOMAXPROCS=2 nice -n 19
   taskpolicy -c background`, never Chromium's full tree/history
-- push: yes, on the maintainer's go: fork `main` to `github` (SH-Lead only; tooling commits unnumbered `shuttle/: …`, browser
-  changes = numbered fork commits); never commit `build/util/MINIBRANCH`
+- push: work on a branch (`sh/<topic>`), push the branch to `github` and open a PR to `main`; the maintainer reviews
+  and merges every PR (Toby, 2026-10-17). Tooling commits unnumbered `shuttle/: …`, browser changes = numbered fork
+  commits; never commit `build/util/MINIBRANCH`
 - version_bump: no
 - publish: no
 - docs: public `tools/shuttle/docs/` (TOOLING gotchas, REMOVAL-LOG per fork commit, LINUX, plans) + `tools/shuttle/AGENTS.md`;
