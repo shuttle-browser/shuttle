@@ -81,6 +81,7 @@ Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges
 3. Delete upstream additions in directories the fork deleted entirely; judge brand-new dirs; rerun `prune/m155.txt`
    and other remove-only manifests.
 4. `scripts/prune-locales.py --apply`, `scripts/rebrand.py apply --apply` (keep main's rendered assets if only bytes differ).
+   New major: bump `config/mojom-salt.txt` to the new `MAJOR` (release builds refuse a stale salt).
 5. `scripts/gn-fix-loop.py` (dry run), then `--apply` until `gn gen` passes; then `scripts/prune-tests.py --apply`, `fix-gn-refs.py --apply`.
 6. `scripts/check-ninja-inputs.py` (missing inputs on chrome's graph; restore from `chromium`), then a `-k 0` build.
 

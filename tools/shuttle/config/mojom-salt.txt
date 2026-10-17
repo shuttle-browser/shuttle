@@ -1,0 +1,4 @@
+# Salt for Mojo message-ID scrambling in official builds (args-release.gn: mojom_message_id_salt_path).
+# Upstream salts with chrome/VERSION, so every respin regenerates all mojom bindings (~10k steps). Bump MAJOR
+# with each major merge (build.sh/build-linux.sh refuse release builds when it doesn't match chrome/VERSION).
+shuttle MAJOR=155

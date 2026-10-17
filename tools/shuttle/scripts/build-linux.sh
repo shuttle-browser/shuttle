@@ -27,6 +27,7 @@ cfg="$(cd "$(dirname "$0")/.." && pwd)/config"
 files=("$cfg/args-common.gn" "$cfg/args-$kind.gn" "$cfg/args-linux.gn")
 [[ -f "$cfg/args-linux-$kind.gn" ]] && files+=("$cfg/args-linux-$kind.gn")
 want="$(cat "${files[@]}")"
+if [[ "$kind" == release ]]; then shuttle_build_salt "$SRC" "$cfg" || exit 2; fi
 cd "$SRC"
 shuttle_build_lock "$SRC/out/$dir" || exit 2
 trap shuttle_build_unlock EXIT; trap 'exit 130' INT; trap 'exit 143' TERM  # traps run after the foreground build exits
