@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build receipt (lib/receipt.sh), pinned sidecar (fetch-agent-browser.sh), release-mac.sh refusals before signing.
+# requires: zsh
 . "$(dirname "$0")/lib.sh"; fake_src
 export SHUTTLE_ROOT="$FIXTURE_TMP"
 cd "$SHUTTLE_SRC" || exit 1

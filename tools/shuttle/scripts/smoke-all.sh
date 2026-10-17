@@ -80,7 +80,8 @@ probe() {  # probe <name> <seconds> <script> [args...]: probe deadline + hard ti
 }
 
 extra=(); [[ $with == *,push,* ]] && extra=(--vmodule="checkin_request=1,registration_request=1,gcm_*=1,mcs_client=1,push_messaging*=1")
-focus=(); [[ $mode != headless ]] && focus=(windowed)
+# windowed focus check: macOS windowed and X11 only (Wayland has no foreign-window query; xprop sees XWayland only)
+focus=(); [[ $mode == x11 || ($mode != headless && $(uname) == Darwin) ]] && focus=(windowed)
 if launch "$tmp/profile" --remote-debugging-port=0 ${extra[@]+"${extra[@]}"}; then
   probe cdp 300 smoke-cdp.mjs
   probe session-cdp 120 smoke-session-cdp.mjs

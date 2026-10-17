@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # build.sh / build-sccache.sh / build-linux.sh: caps, lock, disk check, args, preflight, quoting, exit status.
+# requires: zsh
 . "$(dirname "$0")/lib.sh"; fake_src
 export SHUTTLE_ROOT="$FIXTURE_TMP"; L="$FIXTURE_TMP/calls"; out="$SHUTTLE_SRC/out"
 stub gn 'echo "gn $*" >> '"$L"

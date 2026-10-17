@@ -8,6 +8,13 @@ if (!/^\d+$/.test(port ?? '')) { console.error(`usage: node ${process.argv[1]} <
 export const base = `http://127.0.0.1:${port}`;
 // Frontmost app name from `lsappinfo info -only name` ("LSDisplayName"="Terminal"); '?' = not measurable (fails).
 export const parseFront = (out) => out.match(/"(?:LSDisplayName|name)"\s*=\s*"([^"]+)"/)?.[1]?.trim() || '?';
+// X11 active window from `xprop -root _NET_ACTIVE_WINDOW` ("... window id # 0x1a00003"): the id, 'none' for 0x0 (no
+// active window), '?' = not measurable. Its class from `xprop -id <id> WM_CLASS` ("= \"shuttle\", \"Shuttle\""): 'shuttle,Shuttle'.
+export const parseX11Active = (out) => {
+  const id = out.match(/window id # (0x[0-9a-f]+)/i)?.[1];
+  return !id ? '?' : /^0x0+$/i.test(id) ? 'none' : id;
+};
+export const parseX11Class = (out) => [...out.matchAll(/"([^"]*)"/g)].map((m) => m[1]).join(',') || '?';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const CALL_MS = 20_000;
 let failed = 0, skipped = 0, ending = false;

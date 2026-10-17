@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # syntax-check-file.sh: a compiler failure or an unknown source must exit non-zero (it used to print and exit 0).
+# requires: zsh
 . "$(dirname "$0")/lib.sh"; fake_src
 export SHUTTLE_BUILD_DIR=out/T SHUTTLE_SYNCHECK_SLOTS=1
 o="$SHUTTLE_SRC/$SHUTTLE_BUILD_DIR"; mkdir -p "$o"; touch "$o/build.ninja"

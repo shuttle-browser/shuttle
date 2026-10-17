@@ -35,4 +35,9 @@ kill "$srv"
 out=$(node --input-type=module -e "process.argv[2] = '1'; const { parseFront } = await import('$SCRIPTS/lib/smoke.mjs');
   console.log([parseFront(''), parseFront('  \\n'), parseFront('garbage'), parseFront('\"LSDisplayName\"=\"Preview\"')].join(','))")
 [[ $out == '?,?,?,Preview' ]] || { echo "parseFront: $out"; failures=$((failures + 1)); }
+# X11 (xprop): no active window = 'none' (Shuttle not in front), garbage = '?' (not measurable), class list parsed
+out=$(node --input-type=module -e "process.argv[2] = '1'; const { parseX11Active: a, parseX11Class: c } = await import('$SCRIPTS/lib/smoke.mjs');
+  console.log([a('_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0'), a('_NET_ACTIVE_WINDOW(WINDOW): window id # 0x1a00003'), a(''),
+    c('WM_CLASS(STRING) = \"shuttle\", \"Shuttle\"'), c('WM_CLASS:  not found.')].join('|'))")
+[[ $out == 'none|0x1a00003|?|shuttle,Shuttle|?' ]] || { echo "parseX11: $out"; failures=$((failures + 1)); }
 done_fixture

@@ -1,20 +1,30 @@
 // Fork 45: Page.bringToFront / Target.activateTarget over session + page CDP succeed (and a foreign tab is refused)
 // without making Shuttle the frontmost app.
 // Usage: node scripts/smoke-focus.mjs <port> [windowed]   (headless in scripts/smoke-all.sh)
-//   windowed: also assert Shuttle is not the frontmost app (macOS `lsappinfo`; skipped elsewhere). The real focus
-//   check is a separate, explicit windowed run against a visible browser.
+//   windowed: also assert Shuttle is not the frontmost app (macOS `lsappinfo`, X11 `xprop`; skipped elsewhere). The
+//   real focus check is a separate, explicit windowed run against a visible browser.
 import { execSync } from 'node:child_process';
-import { args, cdp, check, cleanup, finish, mcp, parseFront, port, skipCheck, sleep, gone } from './lib/smoke.mjs';
+import { args, cdp, check, cleanup, finish, mcp, parseFront, parseX11Active, parseX11Class, port, skipCheck, sleep, gone } from './lib/smoke.mjs';
 
 const windowed = args[0] === 'windowed';
-const hasLsappinfo = process.platform === 'darwin';
-const front = () => { try { return parseFront(execSync('lsappinfo info -only name `lsappinfo front`').toString()); } catch { return '?'; } };
+const sh = (cmd) => execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+const has = (cmd) => { try { sh(`command -v ${cmd}`); return true; } catch { return false; } };
+// lsappinfo on macOS; xprop on X11 (smoke-all.sh --mode x11 exports DISPLAY). '?' = not measurable (fails the check).
+const how = process.platform === 'darwin' ? 'lsappinfo'
+  : process.platform === 'linux' && process.env.DISPLAY && has('xprop') ? 'xprop' : null;
+const front = () => {
+  try {
+    if (how === 'lsappinfo') return parseFront(sh('lsappinfo info -only name `lsappinfo front`'));
+    const id = parseX11Active(sh('xprop -root _NET_ACTIVE_WINDOW'));
+    return /^0x/.test(id) ? parseX11Class(sh(`xprop -id ${id} WM_CLASS`)) : id;
+  } catch { return '?'; }
+};
 const IDS = ['smoke-focus-a', 'smoke-focus-b'], opened = [];
 cleanup(async () => {
   for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(gone);
   for (const id of IDS) await mcp('delete-agent', { id }).catch(gone);
 });
-const f0 = hasLsappinfo ? front() : '?';
+const f0 = how ? front() : '?';
 for (const id of IDS) { await mcp('delete-agent', { id }).catch(() => {}); await mcp('create-agent', { id, name: id }); }
 const sa = await mcp('open-session', { agent: IDS[0] });
 const sb = await mcp('open-session', { agent: IDS[1] });
@@ -25,7 +35,7 @@ const t1 = (await c.send('Target.createTarget', { url: 'data:text/html,<title>on
 const t2 = (await c.send('Target.createTarget', { url: 'data:text/html,<title>two</title>2' })).result?.targetId;
 check('two tabs created over session CDP', t1 && t2);
 await sleep(2000);
-const f1 = hasLsappinfo ? front() : '?';
+const f1 = how ? front() : '?';
 const s1 = (await c.send('Target.attachToTarget', { targetId: t1, flatten: true })).result?.sessionId;
 for (let i = 0; i < 3; i++) {
   const r1 = await c.send('Page.bringToFront', {}, s1);
@@ -44,9 +54,9 @@ check('Page.bringToFront on a page connection', !rp.error, JSON.stringify(rp.err
 p.close();
 if (windowed) {
   await sleep(1000);
-  const f2 = front();
+  const f2 = how ? front() : '?';
   console.log(`frontmost app: before=${f0} after-allocate=${f1} after-bringToFront=${f2}`);
-  if (hasLsappinfo) check('Shuttle is not the frontmost app after bringToFront', f2 !== '?' && !/Shuttle/.test(f2), `${f1} -> ${f2}`);
-  else skipCheck('Shuttle is not the frontmost app', 'no lsappinfo on this platform');
+  if (how) check(`Shuttle is not the frontmost app after bringToFront (${how})`, f2 !== '?' && !/shuttle/i.test(f2), `${f1} -> ${f2}`);
+  else skipCheck('Shuttle is not the frontmost app', 'no lsappinfo, and no xprop/DISPLAY');
 }
 await finish();
