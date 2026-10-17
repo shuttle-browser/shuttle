@@ -46,9 +46,9 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 - `config/args-common.gn` + `config/args-{dev,release}.gn` are **the** GN args (Linux adds `args-linux.gn`).
 - `scripts/build.sh [dev|release|sccache] [autoninja args]`: writes the args, runs `gn gen` when they change,
   builds the `chrome` target, logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`.
-  Throttle with `-local_jobs N` (siso's real cap; `-j` above the core count is ignored); add `-k 0` to collect every
-  error in one pass. Never run a second autoninja on the same
-  out dir. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
+  The build scripts enforce the caps themselves (`scripts/lib/build-common.sh`): nice 19, `-local_jobs` 8 with sccache-dist / 4 local / 10 on the Linux host unless given (`SHUTTLE_LOCAL_JOBS`), one build per out dir (lock), ≥ 20 GB free (`SHUTTLE_MIN_FREE_GB`); `SHUTTLE_BG=1` adds `taskpolicy -c background`.
+  `-local_jobs N` is siso's real cap (`-j` above the core count is ignored); add `-k 0` to collect every error in one
+  pass. `SHUTTLE_KEEP_ARGS=1` refuses to change `args.gn`. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
 - `scripts/build-sccache.sh` (optional): distributed compiles on a Linux build host running sccache-dist
   (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
 - `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
@@ -117,9 +117,10 @@ Helpers: `scripts/test-browser.sh [close]` (test browser on 9333 with two agents
   `chrome/app/app.exports` and `framework.exports` after removals.
 - Keep the Mac on power with the lid open during long builds (lid closed on battery stops them).
 - Never load the Mac to full CPU: it is the maintainer's workstation and a full-load build cuts them off (no input,
-  no messages). Check `sccache --dist-status` first; if the build host is offline, report the step count and ask before
-  compiling locally. Builds always run `nice -n 19 taskpolicy -c background` with `-local_jobs 8` (sccache-dist) or
-  `-local_jobs 4` (local), in a shell the maintainer can watch; stop if the load climbs. Don't kill a build early
+  no messages). `build-sccache.sh` refuses to start when the build host has no servers (the build would compile
+  locally); `SHUTTLE_ALLOW_LOCAL=1` only after asking. The scripts set nice 19 + `-local_jobs` (8 dist / 4 local);
+  don't add `taskpolicy -c background` (E-cores only, ~14× slower) unless asked. Run builds in a shell the maintainer
+  can watch; stop if the load climbs. sccache can still fall back to local compiles if the host drops out mid-build. Don't kill a build early
   to read its step count: killed runs leave regenerated outputs (protoc, mojom) that cascade.
 - Run `scripts/check-scripts.sh` before every tooling commit (syntax per interpreter, shellcheck, `fixtures/`). A
   changed safety gate gets one fixture that fails on the old bug and passes after the fix; no test framework.

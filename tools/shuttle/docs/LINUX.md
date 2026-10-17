@@ -32,7 +32,7 @@ Checkout: README "Build from source" (add `target_os = ["linux"]` to `.gclient`,
   `chrome`; release builds `chrome chrome_sandbox` in `out/Release`. Logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, which ends
   with `BUILD EXIT <rc>`. The script unsets `CLAUDECODE`/`AI_AGENT`: with them set, siso runs in agent quiet mode
   (no progress lines) and `build-watch.py` sees nothing.
-- Run long builds detached, e.g. `tmux new-session -d -s build "bash scripts/build-linux.sh dev -j 12 -k 0"`.
+- Run long builds detached, e.g. `tmux new-session -d -s build "bash scripts/build-linux.sh dev -k 0"` (default `-local_jobs 10`, RAM-bound; nice 19).
   `-k 0` keeps going after failures so one pass collects every error.
 - Progress / errors from the log:
   `tail -c 20000 log | tr '\r' '\n' | grep -oE '\[ *[0-9]+/[0-9]+'`,

@@ -50,7 +50,7 @@ gclient sync -j 4                   # default -j hits googlesource rate limits (
 
 # 2. Build (GN args come from config/, written to out/<Dir>/args.gn automatically)
 cd src/tools/shuttle
-scripts/build.sh dev -j 6 -k 0      # Linux: scripts/build-linux.sh dev -j 12 -k 0
+scripts/build.sh dev -k 0           # Linux: scripts/build-linux.sh dev -k 0 (caps: -local_jobs, nice 19)
 ```
 
 The fork's history starts at a snapshot of the upstream release tag (branch `chromium`), so there is no Chromium

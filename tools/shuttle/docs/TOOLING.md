@@ -55,11 +55,10 @@ dropped. Scripts that read a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.
   `scripts/build.sh` writes them into `out/<Dir>/args.gn` and re-runs `gn gen` when they
   change. Six args are commented as "blocked": upstream asserts or unconditional deps on Mac,
   so they need source surgery instead.
-- `scripts/build.sh [dev|release] [autoninja args]` runs under `nice` and `caffeinate`, logs to
+- `scripts/build.sh [dev|release|sccache] [autoninja args]` runs under `caffeinate`, logs to
   `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`. Run it in a visible workerdeck
-  shell (`shell_run`). Use `-j 6` on the Mac (2026-10-06 11:00; the build host `-j 12`) unless told otherwise; add `-k 0` to collect all
-  errors in one pass. Incremental B1 rebuild (omnibox headers everywhere) took ~11 min of
-  compile at `-j 12` once the machine was awake.
+  shell (`shell_run`). Caps in code (`scripts/lib/build-common.sh`, shared with `build-linux.sh`): nice 19, `-local_jobs` 8 with sccache-dist / 4 local / 10 on the Linux host unless given (`SHUTTLE_LOCAL_JOBS`), one build per out dir (lock), ≥ 20 GB free (`SHUTTLE_MIN_FREE_GB`); `SHUTTLE_BG=1` adds `taskpolicy -c background`.
+  Add `-k 0` to collect all errors in one pass.
 - `scripts/build-watch.py <Dir> [--step 10] [--stall 10]`: **the** build Monitor (macOS + Linux).
   Every stdout line is a notification, so it stays quiet: progress every `--step` % with rate/ETA
   (skips Siso's inflated first total), the first error of each FAILED step deduped by message,
@@ -83,8 +82,10 @@ The default Mac build mode: the Mac preprocesses, a Linux build host compiles, l
   Never expose an unauthenticated listener: sccache is guarded by the client token and scheduler-signed server JWTs.
 - Mac: `scripts/sccache-toolchain.sh` builds the clang toolchain archive; `~/.shuttle/sccache.toml` from
   `config/sccache.example.toml` (one `path_override` pair per out dir, see the gotcha below);
-  `nice -n 10 taskpolicy -c utility scripts/build-sccache.sh -local_jobs=<host threads> -k 0` builds `out/Sccache`
-  (`SHUTTLE_KIND=release` → `out/Release`).
+  `scripts/build-sccache.sh -k 0` builds `out/Sccache` (`SHUTTLE_KIND=release` → `out/Release`). It refuses to
+  start when `sccache --dist-status` shows no servers (`SHUTTLE_ALLOW_LOCAL=1` overrides, ask first), starts the
+  shared sccache server if absent and never stops it. Limit: sccache 0.18 has no "never compile locally" switch; if
+  the host drops out mid-build, compiles fall back to the Mac, capped by `-local_jobs`.
 - **`-local_jobs` is capped by the host's RAM, not its slot count** (2026-10-15): the build host has 12 logical CPUs and
   23 GB; the two servers advertise 24 slots. content/browser TUs need 1.7-2.6 GB each, so 16+ jobs swap hard (550 MB/s
   swap-out, near-OOM). Use `-local_jobs=12` alone, `10` while a host build runs alongside.
@@ -432,7 +433,8 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **Metal Toolchain** for ANGLE: `xcodebuild -downloadComponent MetalToolchain` (done).
 - **GN args:** `enable_nacl` no longer exists; don't set `use_lld=false`; official build needs PGO
   profiles or `chrome_pgo_phase=0`.
-- **Throttling:** never `taskpolicy -c background` (efficiency cores only, ~14× slower).
+- **Throttling:** the build scripts set nice 19 and `-local_jobs`; `taskpolicy -c background` only on request
+  (`SHUTTLE_BG=1`: efficiency cores only, ~14× slower).
 - **Restoring files rewrites mtimes** and forces dependent rebuilds; prefer dry runs.
 - **Full-tree `git grep`:** ~2s over `chrome components ui`; fine sequentially, never several in
   parallel from scouts.
@@ -544,8 +546,8 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   actions, so `-local_jobs=N` caps compiles in flight on the build host at N; `-j`/`SHUTTLE_JOBS` doesn't raise it
   (2026-10-10: -j 24 with -local_jobs=6 kept the build host at 5-6 compiles, ~35% busy).
   It is also the only Mac-side cap: siso ignores `-j` above the core count ("Ignoring -j 24"), and until 2026-10-16
-  `build.sh` put extra args after the target, where siso never read them. Use `nice -n 19 taskpolicy -c background
-  scripts/build-sccache.sh -local_jobs 8`; unthrottled, a local build loaded the Mac to 58 and cut the maintainer off.
+  `build.sh` put extra args after the target, where siso never read them. The scripts now always pass one
+  (`-local_jobs 8` for sccache builds); unthrottled, a local build loaded the Mac to 58 and cut the maintainer off.
 - **Official builds link with export lists** (`chrome/app/app.exports` for the app + helpers,
   `chrome/app/framework.exports` for the framework); dev builds don't use them, so pruning can break only the
   release link. After removals, check both lists for deleted files/symbols (2026-10-11 release failure).

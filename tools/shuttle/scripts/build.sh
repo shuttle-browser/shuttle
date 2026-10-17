@@ -1,16 +1,20 @@
 #!/bin/zsh
 # Usage: scripts/build.sh [release|dev|sccache] [extra autoninja args...]
-# Builds the `chrome` target (override: SHUTTLE_TARGET=base) in $SHUTTLE_ROOT/src/out/<Release|Dev|Sccache>.
-# `sccache` = dev args + cc_wrapper=sccache + use_clang_modules=false in out/Sccache (distcc-style
-# spike; client config ~/.shuttle/sccache.toml, see docs/TOOLING.md and config/sccache.example.toml).
+# Builds the `chrome` target (override: SHUTTLE_TARGET=base) in $SHUTTLE_SRC/out/<Release|Dev|Sccache>.
+# `sccache` = dev args + cc_wrapper=sccache + use_clang_modules=false in out/Sccache (client config
+# ~/.shuttle/sccache.toml, see docs/TOOLING.md and config/sccache.example.toml); run it via build-sccache.sh.
 # Runs in a PTY via `script` so the live status line stays visible, while the
 # raw output is also logged to $SHUTTLE_ROOT/logs/build-<dir>.log (for monitoring).
-# Throttle with e.g. `scripts/build.sh dev -local_jobs 6` (siso's real cap); extra args go before the target.
-# Runs under nice (NICE=10 default).
-# GN args come from config/args-common.gn + config/args-<kind>.gn (re-generated on change).
+# Safety (lib/build-common.sh): one build per out dir (lock taken before args.gn/gn gen/log), at least
+# SHUTTLE_MIN_FREE_GB (20) free, nice -n ${NICE:-19}, `-local_jobs` always set (default 8 with sccache-dist, 4
+# local; SHUTTLE_LOCAL_JOBS or `-local_jobs N` override), SHUTTLE_BG=1 adds taskpolicy -c background.
+# GN args come from config/args-common.gn + config/args-<kind>.gn (re-generated on change);
+# SHUTTLE_KEEP_ARGS=1 refuses to change args.gn instead (e.g. a packaging step must not reconfigure a build).
+# SHUTTLE_CLEAN=1 runs `gn clean` first (full rebuild). `-n` (dry run) still takes the lock and may run gn gen.
 set -e
-# siso switches to a quiet agent mode under these (no progress lines, build-watch.py stays silent)
 . "$(dirname "$0")/lib/paths.sh"
+. "$(dirname "$0")/lib/build-common.sh"
+# siso switches to a quiet agent mode under these (no progress lines, build-watch.py stays silent)
 unset CLAUDECODE AI_AGENT
 export PATH="$PATH:$HOME/depot_tools"
 SRC="$SHUTTLE_SRC"
@@ -20,7 +24,7 @@ case "$kind" in
   release) dir=Release ;;
   dev)     dir=Dev ;;
   sccache) dir=Sccache ;;
-  *) echo "unknown build kind: $kind (use release|dev|sccache)"; exit 2 ;;
+  *) echo "unknown build kind: $kind (use release|dev|sccache)" >&2; exit 2 ;;
 esac
 
 cfg="$(cd "$(dirname "$0")/.." && pwd)/config"
@@ -30,13 +34,25 @@ else
   want="$(cat "$cfg/args-common.gn" "$cfg/args-$kind.gn")"
 fi
 # sccache-dist (build-host compiles): always for `sccache`, opt-in for release with SHUTTLE_SCCACHE=1.
+jobs_default=4
 if [[ "$kind" == sccache || "${SHUTTLE_SCCACHE:-0}" == 1 ]]; then
   want+=$'\n''cc_wrapper = "sccache"'$'\n''use_clang_modules = false'
   export SCCACHE_CONF="${SCCACHE_CONF:-$SHUTTLE_CONF/sccache.toml}"
+  jobs_default=8
 fi
+shuttle_build_args $jobs_default "$@" || exit 2
+shuttle_build_prefix
 cd "$SRC"
+out="$SRC/out/$dir"
+shuttle_build_lock "$out" || exit 2
+trap shuttle_build_unlock EXIT INT TERM
+shuttle_build_disk "$SRC/out" || exit 2
 mkdir -p "out/$dir"
+[[ "${SHUTTLE_CLEAN:-0}" == 1 && -f "out/$dir/build.ninja" ]] && gn clean "out/$dir"
 if [[ ! -f "out/$dir/args.gn" || "$(cat "out/$dir/args.gn")" != "$want" ]]; then
+  if [[ "${SHUTTLE_KEEP_ARGS:-0}" == 1 ]]; then
+    echo "out/$dir/args.gn differs from config/ (SHUTTLE_KEEP_ARGS=1): refusing to reconfigure" >&2; exit 2
+  fi
   print -r -- "$want" > "out/$dir/args.gn"
   gn gen "out/$dir" || exit 1
 fi
@@ -49,7 +65,8 @@ set +e
 # macOS script(1) aborts ("tcgetattr/ioctl: Operation not supported on socket") when stdin is a socket, e.g. a build
 # started by an agent harness; /dev/null works.
 [[ -t 0 ]] || exec </dev/null
-script -q -F "$log" nice -n "${NICE:-10}" caffeinate -i autoninja -C "out/$dir" "$@" "${SHUTTLE_TARGET:-chrome}"
+echo "build: out/$dir ${SHUTTLE_BUILD_ARGS[*]} ${SHUTTLE_TARGET:-chrome} under ${SHUTTLE_BUILD_PREFIX[*]}"
+script -q -F "$log" "${SHUTTLE_BUILD_PREFIX[@]}" caffeinate -i autoninja -C "out/$dir" "${SHUTTLE_BUILD_ARGS[@]}" "${SHUTTLE_TARGET:-chrome}"
 rc=$?
 mins=$(( ($(date +%s) - start) / 60 ))
 echo "BUILD EXIT $rc after ${mins}m" | tee -a "$log"
