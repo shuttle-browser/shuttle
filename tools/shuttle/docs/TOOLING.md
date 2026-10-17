@@ -355,6 +355,10 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   number was 158, and in agent shells autoninja adds `--quiet`, which hides the step line. A 0-step dry run on
   MAGWIN after a `git checkout` reset (mtimes only) still built 13 steps (v0.1.3): treat "0" as unknown, not
   "nothing to do".
+- **A bare `sccache` command starts a default-config server** (2026-10-17): `sccache --dist-status` (or `--show-stats`)
+  without `SCCACHE_CONF=$SHUTTLE_CONF/sccache.toml` auto-starts a server with dist disabled; `build-sccache.sh`'s
+  preflight then refuses (correctly). Always set `SCCACHE_CONF`; if it happened, `sccache --stop-server` when no build
+  uses it, and let the build script start the right one.
 - **`pkill -f` over ssh kills its own shell** when the pattern appears in the ssh command line (`ssh host 'pkill -f X;
   rm -rf /tmp/X'`). Put the commands in a script file, or use a pattern the command line doesn't contain literally
   (`'user-data-dir=/tmp/sh-pro[f]'`).
@@ -652,6 +656,11 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (`git log -1 --format=%cd --date=format-local:%Y%m%d%H%M.%S`). `out/Release` went back to a 5 min build. Don't
   start (and kill) a build before the restore: those runs relinked `protoc` and regenerated headers, so
   `out/Sccache` still needs ~44k steps. Move branches with `git branch -f`.
+  After a PR merge (2026-10-18, both hosts): `git switch main` while local `main` still points at the old commit, then
+  `merge --ff-only`, is the same round-trip (44 files on the Mac, 99 on MAGWIN; `chrome/VERSION` among them). Move
+  the ref first, then switch: `git fetch github && git branch -f main github/main && git switch main`.
+  `touch` times are local time: agent shells on MAGWIN run in UTC, so `touch -d "2026-10-17 12:00"` landed 8 h late
+  and fixed nothing. Give an offset (`touch -d "2026-10-17 12:00 +0800"`) and check with `siso_explain` / a dry run.
   Testing a change on the other host before it's pushed: send it as a patch, `git apply` it there (uncommitted).
   After the push, `git merge --ff-only` refuses ("local changes would be overwritten") even when the content is
   identical: `git add` those files first (index = target), then the fast-forward leaves them and their mtimes alone
