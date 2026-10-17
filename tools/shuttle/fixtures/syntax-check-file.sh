@@ -15,5 +15,4 @@ expect 1 zsh "$SCRIPTS/syntax-check-file.sh" bad.cc; expect_out "error: boom"
 expect 1 zsh "$SCRIPTS/syntax-check-file.sh" missing.cc; expect_out "no command"
 expect 2 zsh "$SCRIPTS/syntax-check-file.sh"
 SHUTTLE_BUILD_DIR=out/Nope expect 2 zsh "$SCRIPTS/syntax-check-file.sh" good.cc
-rm -f /tmp/sh-compdb"${o//\//_}".tsv
 done_fixture

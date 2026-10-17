@@ -18,6 +18,8 @@ export function check(name, ok, detail = '') {
 }
 export const skipCheck = (name, reason) => { skipped++; console.log(`SKIP ${name} - ${reason}`); };
 export const cleanup = (fn) => cleanups.push(fn);
+// For cleanup steps that may find their object already gone: ignore only "Unknown agent/session/tab" (MCP) errors.
+export const gone = (e) => { if (!/^[\w-]+: Unknown (agent|session|or unleased tab)/.test(e?.message ?? '')) throw e; };
 async function end(code, msg) {
   if (ending) process.exit(code || 1);  // a throw/deadline during cleanup: don't recurse
   ending = true;
@@ -25,7 +27,7 @@ async function end(code, msg) {
   const until = Date.now() + 10_000;  // total cleanup budget
   for (const fn of cleanups.reverse()) {
     try { await Promise.race([fn(), sleep(Math.max(0, until - Date.now())).then(() => { throw new Error('timed out'); })]); }
-    catch (e) { console.log(`cleanup: ${e.message}`); }
+    catch (e) { console.log(`FAIL cleanup: ${e.message}`); if (code === 0 || code === 3) code = 1; }
   }
   for (const ws of sockets) ws.close();
   process.exit(code);

@@ -20,10 +20,14 @@ SRC=$SHUTTLE_SRC
 TOOLS=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$(realpath "${1:-$SRC/out/Release}")
 VERSION=$(. "$SRC/chrome/VERSION"; echo "$MAJOR.$MINOR.$BUILD.$PATCH")
+ver=${SHUTTLE_VERSION:-}
+if [ "$LOCAL" != 1 ] || [ -n "$ver" ]; then  # release mode: always a valid Shuttle version, explicit dest or not
+  [[ $ver =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && ${ver%%.*} == "${VERSION%%.*}" ]] ||
+    { echo "FATAL: SHUTTLE_VERSION '$ver' must be ${VERSION%%.*}.<minor>.<patch>" >&2; exit 2; }
+fi
 if [ -n "${2:-}" ]; then DEST=$(realpath -m "$2")
 else
-  ver=${SHUTTLE_VERSION:?set SHUTTLE_VERSION (e.g. 155.1.0) or pass a dest-dir}
-  [[ $ver =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && ${ver%%.*} == "${VERSION%%.*}" ]] || { echo "FATAL: SHUTTLE_VERSION '$ver' must be ${VERSION%%.*}.<minor>.<patch>" >&2; exit 2; }
+  [ -n "$ver" ] || { echo "FATAL: set SHUTTLE_VERSION (e.g. 155.1.0) or pass a dest-dir" >&2; exit 2; }
   DEST=$(realpath -m "$SHUTTLE_RELEASE/v$ver/linux")
 fi
 NAME=shuttle-linux-x64
@@ -113,8 +117,10 @@ EOF
 
 mkdir -p "$DEST"
 TAR=$DEST/$NAME.tar.xz
-tar -C "$WORK" --owner=0 --group=0 --numeric-owner -cf - shuttle | xz -T0 -9 > "$TAR.tmp"
-mv "$TAR.tmp" "$TAR"
+( set -o noclobber; : > "$TAR.tmp" ) 2>/dev/null || { echo "FATAL: $TAR.tmp exists (another run?)" >&2; exit 2; }
+tar -C "$WORK" --owner=0 --group=0 --numeric-owner -cf - shuttle | xz -T0 -9 >> "$TAR.tmp"
+ln "$TAR.tmp" "$TAR" 2>/dev/null || { rm -f "$TAR.tmp"; echo "FATAL: $TAR appeared meanwhile; not overwritten" >&2; exit 2; }
+rm -f "$TAR.tmp"
 (cd "$DEST" && sha256sum "$NAME.tar.xz" > "$NAME.tar.xz.sha256")
 {
   echo "shuttle_version=${ver:-unset}"

@@ -34,9 +34,10 @@ async function tool(name, args = {}) {
 }
 const opened = [], agents = phase === '--phase2' ? ['smoke-persist'] : ['smoke-a', 'smoke-b'];  // closed/deleted at exit
 const openSession = async (agent) => { const s = await tool('open-session', { agent }); if (s.sessionId) opened.push(s.sessionId); return s; };
+const must = (r) => { if (r?.error && !/^Unknown (agent|session)/.test(r.error)) throw new Error(r.error); };
 cleanup(async () => {
-  for (const sessionId of opened) await tool('close-session', { sessionId }).catch(() => {});
-  for (const id of agents) await tool('delete-agent', { id }).catch(() => {});
+  for (const sessionId of opened) must(await tool('close-session', { sessionId }));
+  for (const id of agents) must(await tool('delete-agent', { id }));
 });
 async function evalIn(cdpUrl, expression) {
   const c = await cdp(cdpUrl);

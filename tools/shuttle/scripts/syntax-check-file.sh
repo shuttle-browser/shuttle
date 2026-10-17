@@ -17,7 +17,8 @@ if [[ ${1:-} == --flags-from ]]; then (( $# >= 2 )) || die "--flags-from needs a
 out="$SHUTTLE_SRC/${SHUTTLE_BUILD_DIR:-out/Sccache}"
 cd "$out" 2>/dev/null && [[ -f build.ninja ]] || die "no build.ninja in $out"
 key=${out//\//_}
-DB=/tmp/sh-compdb$key.tsv   # <src relative to $SHUTTLE_SRC>\t<command>
+T=${SHUTTLE_SYNCHECK_TMP:-/tmp}   # compile DB + machine-wide slots
+DB=$T/sh-compdb$key.tsv   # <src relative to $SHUTTLE_SRC>\t<command>
 SLOTS=${SHUTTLE_SYNCHECK_SLOTS:-2}
 
 # mkdir locks with a pid file; a lock whose owner died is taken over.
@@ -48,7 +49,7 @@ for e in json.load(sys.stdin):
 fi
 
 slot=""
-acquire() { while true; do for i in {1..$SLOTS}; do take /tmp/sh-synchk.slot$i && { slot=/tmp/sh-synchk.slot$i; return; }; done; sleep 1; done; }
+acquire() { while true; do for i in {1..$SLOTS}; do take $T/sh-synchk.slot$i && { slot=$T/sh-synchk.slot$i; return; }; done; sleep 1; done; }
 rc=0
 for s in "$@"; do
   if [[ -n $from ]]; then

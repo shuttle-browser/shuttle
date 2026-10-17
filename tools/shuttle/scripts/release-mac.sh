@@ -33,12 +33,17 @@ major=$(. "$SRC/chrome/VERSION"; echo "$MAJOR")
 dest="$SHUTTLE_RELEASE/v$ver/mac"
 [[ ! -e "$dest" ]] || { echo "FATAL: $dest exists; never overwritten (pick a new version or move it away)" >&2; exit 2; }
 receipt=$(shuttle_receipt_check "$OUT" "$OUT/Shuttle.app") || exit 2
+mkdir -p "$(dirname "$dest")" && mkdir "$dest" 2>/dev/null || { echo "FATAL: $dest exists (another run?)" >&2; exit 2; }  # atomic reservation
 chromium=$(plutil -extract CFBundleShortVersionString raw "$OUT/Shuttle.app/Contents/Info.plist")
 echo "== Shuttle $ver (Chromium $chromium, arm64) -> $dest"
 
 # 1. Packaging dir (signing scripts, entitlements, dmg_tool/hfs_tool), through build.sh with the args unchanged.
 sccache_flag=0; grep -q '^cc_wrapper = "sccache"' "$OUT/args.gn" && sccache_flag=1
-SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 SHUTTLE_SCCACHE=$sccache_flag "$(dirname "$0")/build.sh" release
+if (( sccache_flag )); then
+  SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 SHUTTLE_KIND=release "$(dirname "$0")/build-sccache.sh"
+else
+  SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 "$(dirname "$0")/build.sh" release
+fi
 shuttle_receipt_check "$OUT" "$OUT/Shuttle.app" >/dev/null || { echo "FATAL: building the packaging target rebuilt chrome" >&2; exit 2; }
 "$(dirname "$0")/clean-stale-lproj.sh" "$OUT"   # en-US-only UI: drop old locale dirs left in the out dir
 
@@ -49,7 +54,6 @@ sidecar=$("$TOOLS/scripts/fetch-agent-browser.sh" "$OUT/Shuttle.app/Contents/Hel
 codesign --remove-signature "$OUT/Shuttle.app/Contents/Helpers/agent-browser"
 
 # 3. Sign (+ notarize + staple) the app and the DMG.
-mkdir -p "$dest"
 notary_args=()
 [[ "$notarize" == none ]] || notary_args=(--notarize "$notarize" --notary-arg=--keychain-profile "--notary-arg=$SHUTTLE_NOTARY_PROFILE")
 python3 "$OUT/Shuttle Packaging/sign_chrome.py" --input "$OUT" --output "$dest" \

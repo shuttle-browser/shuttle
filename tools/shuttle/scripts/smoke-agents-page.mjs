@@ -5,7 +5,7 @@
 // With screenshotDir: writes agents-dark.png, agents-light.png, agents-dialog.png there.
 import {writeFileSync} from 'node:fs';
 import http from 'node:http';
-import {args, browserWs, cdp, check, cleanup, finish, mcp, sleep} from './lib/smoke.mjs';
+import {args, browserWs, cdp, check, cleanup, finish, mcp, sleep, gone } from './lib/smoke.mjs';
 
 const shotDir = args[0];
 const P = 'smoke-agents-';
@@ -15,10 +15,10 @@ const local = path => `http://127.0.0.1:${site.address().port}${path}`;
 cleanup(() => site.close());
 cleanup(async () => {
   for (const x of (await mcp('list-sessions')).sessions.filter(x => x.agent.startsWith(P))) {
-    await mcp('close-session', {sessionId: x.sessionId}).catch(() => {});
+    await mcp('close-session', {sessionId: x.sessionId}).catch(gone);
   }
   for (const x of (await mcp('list-agents')).agents.filter(x => x.id.startsWith(P))) {
-    await mcp('delete-agent', {id: x.id}).catch(() => {});
+    await mcp('delete-agent', {id: x.id}).catch(gone);
   }
 });
 

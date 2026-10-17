@@ -4,7 +4,9 @@
 set -uo pipefail
 export HOME="$FIXTURE_TMP/home" SHUTTLE_CONF="$FIXTURE_TMP/conf" PATH="$FIXTURE_TMP/bin:$PATH"
 mkdir -p "$HOME" "$SHUTTLE_CONF" "$FIXTURE_TMP/bin"
-unset SHUTTLE_SRC SHUTTLE_ROOT SHUTTLE_BUILD_DIR
+# nothing from the caller's build/release environment leaks into a fixture
+for v in $(compgen -v | grep -E '^(SHUTTLE_|SCCACHE_|AGENT_BROWSER|NICE$|NFPM$|FIX_GN_BASE$|PLAYWRIGHT_CORE$)'); do unset "$v"; done
+export SHUTTLE_SYNCHECK_TMP="$FIXTURE_TMP/synchk"; mkdir -p "$SHUTTLE_SYNCHECK_TMP"
 stub() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$FIXTURE_TMP/bin/$1"; chmod +x "$FIXTURE_TMP/bin/$1"; }
 failures=0
 expect() {  # expect <rc> <cmd...>: run, compare the exit code, keep output in $OUT

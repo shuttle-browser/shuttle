@@ -22,5 +22,10 @@ expect 2 python3 "$M" apply ours-deleted,ours-subset list2
 cmp -s f.txt before.txt || { echo "f.txt was modified despite the parse error"; failures=$((failures + 1)); }
 printf '<<<<<<< ours\nq\n||||||| base\n' > g.txt                      # unterminated
 expect 2 python3 "$M" stats list2
+printf '<<<<<<< ours\nq\n||||||| base\nb\n||||||| base\nc\n=======\nr\n>>>>>>> theirs\n' > g.txt   # duplicate base marker
+expect 2 python3 "$M" stats list2
+# the original Counter bug: fork removed one of two identical lines; theirs reorders -> must not auto-resolve
+{ hunk 'x\ny\n' 'y\nx\ny\n' 'x\ny\ny\n'; } > h.txt; echo h.txt > list3
+expect 0 python3 "$M" stats list3; expect_out "ours-subset-new"
 expect 2 python3 "$M" bogus list
 done_fixture

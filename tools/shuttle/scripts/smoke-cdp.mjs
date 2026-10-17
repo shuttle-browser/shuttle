@@ -6,15 +6,15 @@ import { browserWs, cdp, check, cleanup, evaluate, finish, sleep } from './lib/s
 
 const EXPECTED = [
   // OTR profiles are gone since B2d: an error until the MCP service provides partitions; success = OTR path is back.
-  { url: /^Target\.createBrowserContext$/, text: /./ },
+  { url: /^Target\.createBrowserContext$/, text: /^Failed to create browser context\.$/ },
   // Autofill backend removed: the CDP domain is gone.
-  { url: /^Autofill\.enable$/, text: /./ },
+  { url: /^Autofill\.enable$/, text: /^'Autofill\.enable' wasn't found$/ },
 ];
 const seen = new Set();
 const judge = (url, issues) => {
   const bad = issues.filter((text) => {
     const i = EXPECTED.findIndex((e) => e.url.test(url) && e.text.test(text));
-    if (i >= 0) seen.add(i);
+    if (i >= 0) { seen.add(i); console.log(`     expected: ${url}: ${text.slice(0, 160)}`); }
     return i < 0;
   });
   check(url, bad.length === 0, bad.join(' | ').slice(0, 300));

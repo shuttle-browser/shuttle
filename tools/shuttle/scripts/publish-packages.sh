@@ -58,7 +58,7 @@ for f in ${files[@]+"${files[@]}"}; do
   b=$(basename "$f")
   [ -f "$f.sha256" ] || { echo "FATAL: no $b.sha256" >&2; exit 2; }
   [ "$(sha "$f")" = "$(cut -d' ' -f1 "$f.sha256")" ] || { echo "FATAL: $b does not match $b.sha256" >&2; exit 2; }
-  grep -q "sha256=$(sha "$f")\$" "$(dirname "$f")/MANIFEST.txt" 2>/dev/null ||
+  grep -qxF -e "package_deb=$b sha256=$(sha "$f")" -e "package_rpm=$b sha256=$(sha "$f")" "$(dirname "$f")/MANIFEST.txt" 2>/dev/null ||
     { echo "FATAL: $b is not in $(dirname "$f")/MANIFEST.txt (package it with package-linux.sh + package-deb.sh)" >&2; exit 2; }
   case $b in
     shuttle_*_amd64.deb)

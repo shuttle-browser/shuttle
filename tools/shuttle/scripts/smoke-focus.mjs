@@ -4,15 +4,15 @@
 //   windowed: also assert Shuttle is not the frontmost app (macOS `lsappinfo`; skipped elsewhere). The real focus
 //   check is a separate, explicit windowed run against a visible browser.
 import { execSync } from 'node:child_process';
-import { args, cdp, check, cleanup, finish, mcp, port, skipCheck, sleep } from './lib/smoke.mjs';
+import { args, cdp, check, cleanup, finish, mcp, port, skipCheck, sleep, gone } from './lib/smoke.mjs';
 
 const windowed = args[0] === 'windowed';
 const hasLsappinfo = process.platform === 'darwin';
 const front = () => { try { return execSync('lsappinfo info -only name `lsappinfo front`').toString().trim(); } catch { return '?'; } };
 const IDS = ['smoke-focus-a', 'smoke-focus-b'], opened = [];
 cleanup(async () => {
-  for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(() => {});
-  for (const id of IDS) await mcp('delete-agent', { id }).catch(() => {});
+  for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(gone);
+  for (const id of IDS) await mcp('delete-agent', { id }).catch(gone);
 });
 const f0 = hasLsappinfo ? front() : '?';
 for (const id of IDS) { await mcp('delete-agent', { id }).catch(() => {}); await mcp('create-agent', { id, name: id }); }
@@ -46,7 +46,7 @@ if (windowed) {
   await sleep(1000);
   const f2 = front();
   console.log(`frontmost app: before=${f0} after-allocate=${f1} after-bringToFront=${f2}`);
-  if (hasLsappinfo) check('Shuttle is not the frontmost app after bringToFront', !/Shuttle/.test(f2), `${f1} -> ${f2}`);
+  if (hasLsappinfo) check('Shuttle is not the frontmost app after bringToFront', f2 !== '?' && !/Shuttle/.test(f2), `${f1} -> ${f2}`);
   else skipCheck('Shuttle is not the frontmost app', 'no lsappinfo on this platform');
 }
 await finish();

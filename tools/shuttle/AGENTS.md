@@ -90,6 +90,8 @@ Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges
 browser: own temp profile, `--remote-debugging-port=0` (port from `DevToolsActivePort`), runs the probes, closes the
 browser, checks its exit status and the log for fatals, removes the temp dir, prints PASS/FAIL/SKIP. Exit 0 all
 passed, 1 a FAIL, 3 something skipped (open, not green). Mac: `nice -n 19 scripts/smoke-all.sh ../../out/Release/Shuttle.app`.
+Not covered yet (deferred to the respin trial, owner SH-Lead): a sidecar page-tool call (needs a signed build; the
+unsigned `out/Release` sidecar is SIGKILLed), the worker-UAF repro (fork 36) and the badge/speech probe (fork 44).
 Probes (`node <probe> <port>`, `scripts/lib/smoke.mjs`): exit 0/1/2 usage/3 skipped, clean up their agents and tabs,
 never close the browser, local pages only (anything needing the internet skips unless `SHUTTLE_SMOKE_NET=1`).
 

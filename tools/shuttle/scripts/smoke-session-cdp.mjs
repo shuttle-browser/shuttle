@@ -7,13 +7,13 @@
 // scoped too, viewport on the active tab, CSS-px capture, top-chrome UI is "other",
 // Browser.close ends only the session.
 import { execFileSync } from 'node:child_process';
-import { cdp, rpc, check as chk, cleanup, finish, json, mcp, port, sleep } from './lib/smoke.mjs';
+import { cdp, rpc, check as chk, cleanup, finish, json, mcp, port, sleep, gone } from './lib/smoke.mjs';
 
 const check = (ok, label, detail) => chk(label, ok, detail);
 const opened = [];
 cleanup(async () => {
-  for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(() => {});
-  for (const id of ['smoke-sc-a', 'smoke-sc-b']) await mcp('delete-agent', { id }).catch(() => {});
+  for (const sessionId of opened) await mcp('close-session', { sessionId }).catch(gone);
+  for (const id of ['smoke-sc-a', 'smoke-sc-b']) await mcp('delete-agent', { id }).catch(gone);
 });
 
 const ids = (infos) => infos.map((t) => t.targetId);

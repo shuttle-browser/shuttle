@@ -54,10 +54,14 @@ def parse(text):
                 if ln.startswith(START):
                     raise ParseError(f"line {i + 1}: nested conflict start")
                 if ln.startswith(BASE):
+                    if seen_base or cur is not ours:
+                        raise ParseError(f"line {i + 1}: duplicate or misplaced base marker")
                     seen_base = True
                     cur = base
                 elif ln.rstrip("\r\n") == MID and cur is base:
                     cur = theirs
+                elif ln.rstrip("\r\n") == MID:
+                    raise ParseError(f"line {i + 1}: separator outside the base section")
                 else:
                     cur.append(ln)
                 i += 1

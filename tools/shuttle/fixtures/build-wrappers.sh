@@ -46,6 +46,7 @@ for args in "-n" "-t commands" "-d explain" "-local_jobs 3 -n"; do
   shuttle_build_args 4 $args; [[ $SHUTTLE_BUILD_PLAIN == 0 ]] || { echo "'$args' counted as a plain build"; failures=$((failures + 1)); }
 done
 shuttle_build_args 4 -local_jobs=6 -k 0; [[ $SHUTTLE_BUILD_PLAIN == 1 ]] || { echo "plain build not eligible"; failures=$((failures + 1)); }
+expect 2 zsh "$B" sccache; expect_out "build-sccache.sh"                     # no direct sccache build without preflight
 # build-sccache.sh: no build servers -> refuse before building; never stops the shared server
 stub pgrep 'exit 0'
 stub sccache 'echo "sccache $*" >> '"$L"'; [[ $1 == --dist-status ]] && echo "${DIST:-{\"NotConnected\":[null,\"x\"]}}"; exit 0'

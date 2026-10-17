@@ -36,8 +36,8 @@ if [[ "${SHUTTLE_SCCACHE_LOCAL:-0}" != 1 && "${SHUTTLE_ALLOW_LOCAL:-0}" != 1 ]] 
        "set SHUTTLE_ALLOW_LOCAL=1 (ask the maintainer first)." >&2
   exit 3
 fi
-sccache --zero-stats >/dev/null 2>&1
-"$(dirname "$0")/build.sh" "$kind" "$@"
+sccache --zero-stats >/dev/null 2>&1   # shared server: the stats are approximate when two builds overlap
+SHUTTLE_SCCACHE_PREFLIGHT=1 "$(dirname "$0")/build.sh" "$kind" "$@"
 rc=$?
 sccache --show-stats | tee "$SHUTTLE_LOGS/sccache-stats-Sccache.txt"
 exit $rc

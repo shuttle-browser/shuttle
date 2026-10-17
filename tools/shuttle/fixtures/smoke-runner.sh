@@ -6,11 +6,11 @@ export TMPDIR="$FIXTURE_TMP/t" SHUTTLE_SMOKE_READY_S=2; mkdir -p "$TMPDIR"
 B="$FIXTURE_TMP/browser"
 cat > "$B" <<'EOF'
 #!/usr/bin/env bash
-for a; do [[ $a == --user-data-dir=* ]] && p=${a#*=}; done; mkdir -p "$p"
+for a; do [[ $a == --user-data-dir=* ]] && p=${a#*=}; done; mkdir -p "$p"; echo $$ > "$STUB_PIDS/$$"
 case $STUB in exit) exit 1 ;; port) echo 1 > "$p/DevToolsActivePort"; exec sleep 7357 ;; hang) exec sleep 7357 ;; esac
 EOF
 chmod +x "$B"
-R="$SCRIPTS/smoke-all.sh"
+R="$SCRIPTS/smoke-all.sh"; export STUB_PIDS="$FIXTURE_TMP/pids"; mkdir -p "$STUB_PIDS"
 expect 2 bash "$R"
 expect 2 bash "$R" "$FIXTURE_TMP/nonexistent"
 expect 2 bash "$R" "$B" --mode bogus
@@ -18,7 +18,9 @@ expect 2 bash "$R" "$B" --with nope
 for s in exit port hang; do
   STUB=$s expect 1 bash "$R" "$B"; expect_out "launch"
   [[ -z $(ls -A "$TMPDIR") ]] || { echo "$s: temp dir left: $(ls "$TMPDIR")"; failures=$((failures + 1)); rm -rf "${TMPDIR:?}"/*; }
-  ! pgrep -f "sleep 7357" >/dev/null || { echo "$s: stub browser still running"; failures=$((failures + 1)); pkill -f "sleep 7357"; }
+  for f in "$STUB_PIDS"/*; do [[ -f $f ]] || continue; sp=$(cat "$f"); rm -f "$f"
+    ! kill -0 "$sp" 2>/dev/null || { echo "$s: stub browser $sp still running"; failures=$((failures + 1)); kill -9 "$sp"; }
+  done
 done
 P="$SCRIPTS/smoke-cdp.mjs"
 expect 2 node "$P"

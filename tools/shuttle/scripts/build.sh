@@ -41,6 +41,10 @@ if [[ "$kind" == sccache || "${SHUTTLE_SCCACHE:-0}" == 1 ]]; then
   want+=$'\n''cc_wrapper = "sccache"'$'\n''use_clang_modules = false'
   export SCCACHE_CONF="${SCCACHE_CONF:-$SHUTTLE_CONF/sccache.toml}"
   jobs_default=8
+  if [[ "${SHUTTLE_SCCACHE_PREFLIGHT:-0}" != 1 && "${SHUTTLE_ALLOW_LOCAL:-0}" != 1 ]]; then
+    echo "sccache builds go through scripts/build-sccache.sh (build-host preflight); SHUTTLE_ALLOW_LOCAL=1 skips it" >&2
+    exit 2
+  fi
 fi
 shuttle_build_args $jobs_default "$@" || exit 2
 shuttle_build_prefix
