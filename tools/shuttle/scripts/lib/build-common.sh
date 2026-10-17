@@ -7,6 +7,7 @@
 #                                    -local_jobs (given as `-local_jobs N` or `-local_jobs=N`; else
 #                                    $SHUTTLE_LOCAL_JOBS; else the default); a second or non-numeric value is an error
 #                                    SHUTTLE_BUILD_PLAIN=1 if the args are only -local_jobs / -k (receipt-eligible)
+#   shuttle_build_salt <src> <cfg>   release builds: <cfg>/mojom-salt.txt must name <src>/chrome/VERSION's MAJOR
 #   shuttle_build_prefix             -> SHUTTLE_BUILD_PREFIX: nice -n ${NICE:-19} (+ taskpolicy -c background on
 #                                    macOS when SHUTTLE_BG=1; it pins work to the efficiency cores, ~14x slower)
 # Errors print to stderr and return 2; callers `|| exit 2`.
@@ -58,6 +59,14 @@ shuttle_build_args() {
     shuttle_build_valid_jobs "$jobs" || { shuttle_build_err "bad SHUTTLE_LOCAL_JOBS '$jobs'"; return; }
     SHUTTLE_BUILD_ARGS=(${SHUTTLE_BUILD_ARGS[@]+"${SHUTTLE_BUILD_ARGS[@]}"} -local_jobs "$jobs")
   fi
+}
+
+shuttle_build_salt() {  # the Mojo ID salt is per major (config/mojom-salt.txt); a stale one = same IDs as last major
+  local want have
+  want=$(sed -n 's/^MAJOR=\([0-9][0-9]*\)$/\1/p' "$1/chrome/VERSION" 2>/dev/null)
+  have=$(sed -n 's/^shuttle MAJOR=\([0-9][0-9]*\)$/\1/p' "$2/mojom-salt.txt" 2>/dev/null)
+  [ -n "$want" ] && [ "$want" = "$have" ] && return 0
+  shuttle_build_err "config/mojom-salt.txt has MAJOR=${have:-?}, chrome/VERSION MAJOR=${want:-?}: bump the salt after a major merge"
 }
 
 shuttle_build_prefix() {

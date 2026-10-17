@@ -47,6 +47,7 @@ if [[ "$kind" == sccache || "${SHUTTLE_SCCACHE:-0}" == 1 ]]; then
   fi
 fi
 shuttle_build_args $jobs_default "$@" || exit 2
+if [[ "$kind" == release ]]; then shuttle_build_salt "$SRC" "$cfg" || exit 2; fi
 shuttle_build_prefix
 cd "$SRC"
 out="$SRC/out/$dir"

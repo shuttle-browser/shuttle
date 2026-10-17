@@ -314,6 +314,13 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   took upstream's template and the fork's removals came back (history embeddings, synced tabs). After the merge, list
   files where upstream's change is whitespace/quote-only (token-equal) but the result differs from main by tokens;
   restore main's version.
+- **Mojo message-ID salt is per major, not per release** (respin trial 155.0.8059.85, 2026-10-17): official builds
+  scramble Mojo message IDs with a salt that upstream takes from `chrome/VERSION`, so every respin regenerated all
+  mojom bindings and recompiled their includers (~10k of ~19k steps; a siso dry run showed only 8.9k because it
+  doesn't follow regenerated outputs). `args-release.gn` sets `mojom_message_id_salt_path` to
+  `config/mojom-salt.txt` (`shuttle MAJOR=<n>`): scrambling stays on and differs from Chrome's IDs, and IDs change
+  per major. Bump it with each major merge; `build.sh`/`build-linux.sh` refuse release builds when it doesn't
+  match `chrome/VERSION` (fixture `mojom-salt`).
 - **Upstream starts using files the fork pruned as unused**: siso aborts before building ("missing and no known rule").
   `scripts/check-ninja-inputs.py` lists them; restore with `git checkout chromium -- <path>`.
 - **Restore a "missing input" only if the fork uses it.** check-ninja-inputs lists upstream files a BUILD.gn still

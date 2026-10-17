@@ -7,3 +7,6 @@ use_thin_lto = false
 target_cpu = "arm64"
 proprietary_codecs = false
 ffmpeg_branding = "Chromium"
+# Scrambled Mojo message IDs stay on, salted per Chromium major instead of per release (respins skip the mojom
+# regeneration). Bump config/mojom-salt.txt with each major merge.
+mojom_message_id_salt_path = "//tools/shuttle/config/mojom-salt.txt"
