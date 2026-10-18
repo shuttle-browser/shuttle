@@ -355,6 +355,12 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   number was 158, and in agent shells autoninja adds `--quiet`, which hides the step line. A 0-step dry run on
   MAGWIN after a `git checkout` reset (mtimes only) still built 13 steps (v0.1.3): treat "0" as unknown, not
   "nothing to do".
+  Same after a branch switch that changes `chrome/VERSION` (a GN input): `gn gen` first. An out dir checked only
+  this way can be stale for days (out/Sccache: "0 steps" after the 155.0.8059.85 merge, 15,582 after `gn gen`).
+- **Way back from a respin trial** (2026-10-18): after building the trial in an out dir, switch back with a fresh
+  `chrome/VERSION` mtime and rebuild (~160 steps); `touch -t` to the old mtime would leave the trial's version
+  stamps in an "up to date" out dir. `touch -t` only fits out dirs the trial never built. Rerun
+  `build/util/lastchange.py -o build/util/LASTCHANGE` too (the gclient hook wrote the trial's SHA).
 - **A bare `sccache` command starts a default-config server** (2026-10-17): `sccache --dist-status` (or `--show-stats`)
   without `SCCACHE_CONF=$SHUTTLE_CONF/sccache.toml` auto-starts a server with dist disabled; `build-sccache.sh`'s
   preflight then refuses (correctly). Always set `SCCACHE_CONF`; if it happened, `sccache --stop-server` when no build

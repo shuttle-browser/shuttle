@@ -21,7 +21,7 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 | `prune/` | Manifests for `scripts/prune.py` (one per removal batch) |
 | `fixtures/` | Small plain-bash tests for the safety gates in `scripts/`, run by `scripts/check-scripts.sh` |
 | `assets/` | Logo and icon sources, icon generation, Linux desktop entry |
-| `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `MCP.md`, `LINUX.md`, `BRANDING.md`, `BENCHMARK.md` |
+| `docs/` | `TOOLING.md` (workflow + all gotchas), `REMOVAL-LOG.md` (fork commits and what each removed), `FEATURES.md` (feature ledger: what the fork adds, its upstream touch and probe), `MCP.md`, `LINUX.md`, `BRANDING.md`, `BENCHMARK.md` |
 
 Docs index: `docs/TOOLING.md` (read first: fork strategy, GN args rationale, build, merges, releases, gotchas),
 `docs/MCP.md` (in-browser MCP server, agent model, session CDP, page tools), `docs/REMOVAL-LOG.md` (what each fork
