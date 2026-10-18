@@ -783,3 +783,20 @@ Verified: Mac `out/Release` (107 steps, 3 min): headless and windowed (`open -g`
 (child session ×3, page endpoint) and `activateTarget` ×3 return `{}`, tab stays visible, foreign tab refused;
 windowed, the frontmost app stayed the editor throughout. Linux `out/Dev` (7 steps): same checks 10/10 headless and
 X11 (WSLg), active window unchanged; linux-smoke 48 clean.
+
+## Fork commit 46 (2026-10-18): agents keep session cookies across restarts
+
+- **46** Agent partitions persist and restore session cookies (no Expires/Max-Age) across a browser restart, like
+  the main partition with "Continue where you left off"; upstream turns both off for every non-default partition, so
+  agents lost logins that use session cookies. Hook: `ProfileNetworkContextService::ConfigureNetworkContextParamsInternal`
+  (on-disk branch only) calls `shuttle::ShouldPersistSessionCookies(profile, relative_partition_path)`
+  (`chrome/browser/shuttle/agent_partition.cc`, own `agent_partition` source set, dep added to
+  `chrome/browser/net:impl`). It maps the path back to the agent (`Storage/ext/shuttle-<id>/def`, the layout of
+  `StoragePartitionImplMap::GetStoragePartitionPath`) and reads the agent's pref entry: default on, per-agent opt-out
+  `persist_session_cookies: false` (MCP `persistSessionCookies` on `create-agent`/`update-agent`, shown in
+  `list-agents`; toggle in the `chrome://agents` edit dialog). Read once per partition: a change applies at the next
+  start. In-memory partitions and other partitions keep upstream behavior. Opting out deletes nothing; an opted-out
+  agent's session cookies end with the browser (the cookie store drops them at the next load).
+
+Verified: (pending build) smoke-mcp phase 1/2: session cookie survives the restart in `smoke-persist`, not in
+`smoke-nopersist` (`persistSessionCookies: false`, its persistent cookie survives).

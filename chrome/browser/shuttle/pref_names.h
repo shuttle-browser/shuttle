@@ -8,8 +8,14 @@
 namespace shuttle::prefs {
 
 // Dictionary of agent profiles: id -> {"created": <base::Time as value>,
-// optional "name", "color" (TabGroupColorId as int), "avatar" (URL)}.
+// optional "name", "color" (TabGroupColorId as int), "avatar" (URL),
+// kPersistSessionCookies}.
 inline constexpr char kProfiles[] = "shuttle.profiles";
+
+// Key in a kProfiles entry: false = the agent's session cookies end with the
+// browser (missing = true: persisted and restored like the main partition's
+// with "Continue where you left off").
+inline constexpr char kPersistSessionCookies[] = "persist_session_cookies";
 
 // List of deleted profile ids whose storage still has to be removed from
 // disk (the partition was loaded when the profile was deleted).

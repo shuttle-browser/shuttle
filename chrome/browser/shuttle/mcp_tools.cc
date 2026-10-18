@@ -130,6 +130,7 @@ base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry,
           .Set("id", entry.id)
           .Set("name", entry.name)
           .Set("color", ProfileRegistry::ColorName(entry.color))
+          .Set("persistSessionCookies", entry.persist_session_cookies)
           .Set("createdAt", base::TimeFormatAsIso8601(entry.created));
   if (!avatar_data && base::StartsWith(entry.avatar, "data:")) {
     // Uploaded images run to 256 KB: name the kind and size, not the bytes
@@ -146,8 +147,8 @@ base::DictValue DescribeAgent(const ProfileRegistry::Entry& entry,
   return dict;
 }
 
-// Reads name/color/avatar from `args`. Returns false with `error` set if one
-// is invalid.
+// Reads name/color/avatar/persistSessionCookies from `args`. Returns false
+// with `error` set if one is invalid.
 bool GetIdentity(const base::DictValue& args,
                  ProfileRegistry::Identity* identity,
                  std::string* error) {
@@ -172,6 +173,13 @@ bool GetIdentity(const base::DictValue& args,
       return false;
     }
     identity->avatar = *avatar;
+  }
+  if (const base::Value* persist = args.Find("persistSessionCookies")) {
+    if (!persist->is_bool()) {
+      *error = "persistSessionCookies must be a boolean";
+      return false;
+    }
+    identity->persist_session_cookies = persist->GetBool();
   }
   return true;
 }
@@ -532,14 +540,16 @@ constexpr char kCreateAgentArgs[] = R"({"type":"object","properties":{
   "id":{"type":"string","description":"Agent id: kebab-case slug, max 64 chars."},
   "name":{"type":"string","description":"Friendly name, shown on the agent's tabs (max 64 chars; default: the id)."},
   "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Color of the agent's tabs (default: picked from the id)."},
-  "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."}},
+  "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."},
+  "persistSessionCookies":{"type":"boolean","description":"Keep session cookies (no expiry) across browser restarts, like Chrome's \"Continue where you left off\" (default true). A change applies at the next browser start."}},
   "required":["id"]})";
 
 constexpr char kUpdateAgentArgs[] = R"({"type":"object","properties":{
   "id":{"type":"string"},
   "name":{"type":"string","description":"Friendly name, shown on the agent's tabs (max 64 chars; default: the id)."},
   "color":{"type":"string","enum":["grey","blue","red","yellow","green","pink","purple","cyan","orange"],"description":"Color of the agent's tabs (default: picked from the id)."},
-  "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."}},
+  "avatar":{"type":"string","description":"Optional image: https: or data:image/ URL (max 256 KB); empty removes it."},
+  "persistSessionCookies":{"type":"boolean","description":"Keep session cookies (no expiry) across browser restarts, like Chrome's \"Continue where you left off\" (default true). A change applies at the next browser start."}},
   "required":["id"]})";
 
 constexpr char kOpenSessionArgs[] = R"({"type":"object","properties":{
@@ -580,14 +590,17 @@ constexpr char kListAgentsArgs[] = R"({"type":"object","properties":{
 
 constexpr Tool kTools[] = {
     {"list-agents",
-     "List agents: identity (name, color, avatar), open sessions and tabs.",
+     "List agents: identity (name, color, avatar), persistSessionCookies, "
+     "open sessions and tabs.",
      kListAgentsArgs, &ListAgents},
     {"create-agent",
      "Create an agent: an identity shown on its tabs, and its own "
-     "cookies, logins and storage, kept across restarts.",
+     "cookies, logins and storage, kept across restarts (session cookies "
+     "too, unless persistSessionCookies is false).",
      kCreateAgentArgs, &CreateAgent},
     {"update-agent",
-     "Change an agent's name, color or avatar; its open tabs follow.",
+     "Change an agent's name, color or avatar; its open tabs follow. "
+     "persistSessionCookies applies at the next browser start.",
      kUpdateAgentArgs, &UpdateAgent},
     {"delete-agent",
      "Close the agent's sessions and tabs and wipe its storage.",

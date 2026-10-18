@@ -17,6 +17,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "chrome/browser/shuttle/agent_partition.h"
 #include "chrome/browser/shuttle/pref_names.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -29,7 +30,6 @@ namespace shuttle {
 
 namespace {
 
-constexpr char kDomainPrefix[] = "shuttle-";
 constexpr size_t kMaxIdLength = 64;
 constexpr size_t kMaxNameLength = 64;  // UTF-16 code units.
 // Avatars live in prefs; keep data: URLs small (a 256x256 PNG or JPEG fits).
@@ -73,10 +73,18 @@ void ApplyIdentity(base::DictValue& dict,
       dict.Set(kAvatar, *identity.avatar);
     }
   }
+  if (identity.persist_session_cookies) {
+    // Stored only when off; missing = on.
+    if (*identity.persist_session_cookies) {
+      dict.Remove(prefs::kPersistSessionCookies);
+    } else {
+      dict.Set(prefs::kPersistSessionCookies, false);
+    }
+  }
 }
 
 std::string DomainFor(std::string_view id) {
-  return base::StrCat({kDomainPrefix, id});
+  return base::StrCat({kAgentPartitionDomainPrefix, id});
 }
 
 void FlushPartition(content::StoragePartition* partition) {
@@ -141,10 +149,10 @@ std::string ProfileRegistry::IdForConfig(
   const std::string& domain = config.partition_domain();
   if (config.is_default() || config.in_memory() ||
       !config.partition_name().empty() ||
-      !base::StartsWith(domain, kDomainPrefix)) {
+      !base::StartsWith(domain, kAgentPartitionDomainPrefix)) {
     return std::string();
   }
-  std::string id = domain.substr(sizeof(kDomainPrefix) - 1);
+  std::string id = domain.substr(sizeof(kAgentPartitionDomainPrefix) - 1);
   return IsValidId(id) ? id : std::string();
 }
 
@@ -224,6 +232,8 @@ std::optional<ProfileRegistry::Entry> ProfileRegistry::Get(
     if (const std::string* avatar = dict->FindString(kAvatar)) {
       entry.avatar = *avatar;
     }
+    entry.persist_session_cookies =
+        dict->FindBool(prefs::kPersistSessionCookies).value_or(true);
   }
   return entry;
 }

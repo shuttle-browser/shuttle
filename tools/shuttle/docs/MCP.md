@@ -9,7 +9,7 @@ Many agents share one Shuttle instance. Smoke tests: `scripts/smoke-mcp.mjs`, `s
 
 | Term | Meaning | Chromium mechanism |
 | --- | --- | --- |
-| **Agent** | Identity (id = kebab slug `^[a-z0-9]+(-[a-z0-9]+)*$`, ≤64; name, color, optional avatar) + its own persistent storage (cookies, logins, local storage). Created/updated/deleted over MCP or `chrome://agents`. | One persistent, non-default `StoragePartition` per agent (`StoragePartitionConfig::Create(profile, "ac-<id>", "", false)`) inside the single Chrome profile; list persisted in the pref `shuttle.profiles` (partition dirs are hashed and can't be listed back). |
+| **Agent** | Identity (id = kebab slug `^[a-z0-9]+(-[a-z0-9]+)*$`, ≤64; name, color, optional avatar) + its own persistent storage (cookies, logins, local storage). Created/updated/deleted over MCP or `chrome://agents`. | One persistent, non-default `StoragePartition` per agent (`StoragePartitionConfig::Create(profile, "shuttle-<id>", "", false)`) inside the single Chrome profile; list persisted in the pref `shuttle.profiles` (partition dirs are hashed and can't be listed back). |
 | **Session** | One MCP client working as one agent. | In memory only (agents re-open after a restart; session restore isn't relied on). |
 | **Tab** | Leased to exactly one session. | `WebContents` created with `SiteInstance::CreateForFixedStoragePartition`; lease data in `AgentTabLease` (`WebContentsUserData`). |
 | **Tab group** | The agent's visible identity: one group per agent (all its sessions' tabs), label = name, color = agent color, avatar on the chip. | Upstream tab groups, user-facing strings renamed to "agent"; C++ `TabGroup` ids unchanged for cheap merges. |
@@ -49,6 +49,14 @@ Many agents share one Shuttle instance. Smoke tests: `scripts/smoke-mcp.mjs`, `s
 - **Opened tabs stay in the partition:** popups, `noopener`/`target=_blank` and Cmd/middle-click tabs from a leased tab
   (upstream leaks the last two to the default partition; patched in `WebContentsImpl::CreateNewWindow` and
   `browser_navigator.cc`). They join the same session and group. CDP-triggered popups need `userGesture: true`.
+- **Session cookies persist:** an agent's session cookies (no Expires/Max-Age) survive a browser restart, like
+  Chrome's main partition with "Continue where you left off" (upstream drops them in every non-default partition).
+  Per-agent opt-out: `persistSessionCookies: false` on `create-agent`/`update-agent` (`list-agents` shows it;
+  toggle in the `chrome://agents` edit dialog), stored as `persist_session_cookies` in the agent's `shuttle.profiles`
+  entry (missing = on). A partition's network context is configured once, so a change applies at the next start;
+  opting out deletes nothing (the cookie store drops the agent's session cookies at its next load). Hook:
+  `shuttle::ShouldPersistSessionCookies` (`agent_partition.cc`), called from `ProfileNetworkContextService`; it
+  maps the partition path (`Storage/ext/shuttle-<id>/def`) back to the agent.
 - **Cookie flush** (`FlushCookieStore`) on close-session, agent deletion and `OnClosingAllBrowsers`: cookies set right
   before `Browser.close` were otherwise lost in every partition.
 - Deleting an agent closes its tabs, flushes, then `AsyncObliterateStoragePartition` (a still-loaded partition is
@@ -98,7 +106,8 @@ NOTICE) supplies the page tools, proxied through `/mcp`.
 
 Lit WebUI (`chrome/browser/resources/agents`, `chrome/browser/ui/webui/agents`) from cr elements and cr vars only
 (Chromium Settings look, no custom brand colors). Lists agents with avatar, sessions and tabs (2 s refresh while
-visible); create, edit name/color/avatar (file → center crop 256 px data: URL), delete (storage wiped), end session,
+visible); create, edit name/color/avatar (file → center crop 256 px data: URL) and "Keep session cookies after
+restart", delete (storage wiped), end session,
 focus a tab, "Open tab" (foreground tab in the agent's storage, e.g. to sign in). Calls the MCP tools via
 `chrome.send('callTool')` (allowlisted in `build_webui.gni` `legacy_chrome_send_users`).
 

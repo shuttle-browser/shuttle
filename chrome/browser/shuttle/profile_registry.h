@@ -29,7 +29,7 @@ namespace shuttle {
 // Agents (agent profiles): an identity (name, color, avatar) shown on the
 // tab groups of its sessions, plus named, persistent storage (cookies, local
 // storage, ...). The storage is a fixed StoragePartition of the single Chrome
-// profile, in its own partition domain ("ac-<id>") so that it can be wiped on
+// profile, in its own partition domain ("shuttle-<id>") so that it can be wiped on
 // its own.
 class ProfileRegistry {
  public:
@@ -45,6 +45,10 @@ class ProfileRegistry {
     // https: or data:image/ URL, or "".
     std::string avatar;
     base::Time created;
+    // Session cookies survive a browser restart (persisted and restored).
+    // Read when the partition's network context is configured, so a change
+    // applies at the next start (shuttle::ShouldPersistSessionCookies).
+    bool persist_session_cookies = true;
   };
 
   // Fields to set; unset fields are left as they are.
@@ -57,6 +61,7 @@ class ProfileRegistry {
     std::optional<tab_groups::TabGroupColorId> color;
     // "" removes the avatar.
     std::optional<std::string> avatar;
+    std::optional<bool> persist_session_cookies;
   };
 
   explicit ProfileRegistry(Profile* profile);

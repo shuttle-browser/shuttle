@@ -182,6 +182,7 @@ source_set("impl") {
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
     "//chrome/browser/privacy_sandbox:headers",
     "//chrome/browser/safe_browsing",
+    "//chrome/browser/shuttle:agent_partition",
     "//chrome/browser/ssl",
     "//chrome/browser/task_manager",
     "//chrome/browser/webid",

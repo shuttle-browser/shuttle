@@ -41,6 +41,21 @@ source_set("network_access") {
   ]
 }
 
+# Agent partition helpers the network stack calls (session-cookie
+# persistence); no dependency on the service.
+source_set("agent_partition") {
+  sources = [
+    "agent_partition.cc",
+    "agent_partition.h",
+    "pref_names.h",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//components/prefs",
+  ]
+}
+
 source_set("impl") {
   sources = [
     "agent_browser_sidecar.cc",
@@ -54,7 +69,6 @@ source_set("impl") {
     "page_tools.cc",
     "page_tools.h",
     "page_tools_data.inc",
-    "pref_names.h",
     "profile_registry.cc",
     "profile_registry.h",
     "session_cdp_filter.cc",
@@ -64,6 +78,7 @@ source_set("impl") {
   ]
 
   deps = [
+    ":agent_partition",
     ":shuttle",
     "//base",
     "//base:i18n",
