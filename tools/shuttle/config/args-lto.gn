@@ -1,4 +1,5 @@
-# ThinLTO + PGO for release builds: append with SHUTTLE_GN_EXTRA=config/args-lto.gn scripts/build.sh release.
+# ThinLTO + PGO for official release builds (Toby 2026-10-20): append with SHUTTLE_GN_EXTRA=config/args-lto.gn
+# scripts/build.sh release (Mac) or scripts/build-linux.sh release (Linux).
 # 155.1.1: Speedometer 3.1 +36.8% for ~+9% build time (docs/BENCHMARK.md). Needs checkout_pgo_profiles = True in
 # .gclient custom_vars + gclient runhooks (Chrome + V8 builtins profiles) and the chrome/build/<target>.pgo.txt pin
 # (fork commit 48). ThinLTO's final link peaked at 156 GB RAM: a build host with far more than an 18 GB Mac.

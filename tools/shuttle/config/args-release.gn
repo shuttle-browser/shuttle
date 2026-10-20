@@ -1,6 +1,6 @@
 # Shipping build (2026-10-09): official, arm64, open codecs only (RELEASE.md D2a).
-# PGO + ThinLTO stay off for now: ThinLTO's final link of the framework needs more than this Mac's
-# 18 GB, and PGO profiles need checkout_pgo_profiles in .gclient. Revisit for 1.0 (~10-15% speed).
+# PGO + ThinLTO are off here: official releases append config/args-lto.gn (SHUTTLE_GN_EXTRA, Toby 2026-10-20) on a
+# host with enough RAM (the final link needs far more than an 18 GB Mac). Plain release builds stay valid for testing.
 is_official_build = true
 chrome_pgo_phase = 0
 use_thin_lto = false

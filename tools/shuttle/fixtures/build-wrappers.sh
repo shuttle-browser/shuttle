@@ -53,6 +53,10 @@ printf 'use_thin_lto = true\n' > extra.gn
 SHUTTLE_GN_EXTRA="$PWD/extra.gn" expect 0 zsh "$B" dev
 [[ $(tail -1 "$out/Dev/args.gn") == 'use_thin_lto = true' ]] || { echo "SHUTTLE_GN_EXTRA not appended"; failures=$((failures + 1)); }
 SHUTTLE_GN_EXTRA="$PWD/missing.gn" expect 2 zsh "$B" dev; expect_out "no such file"
+SHUTTLE_OUT_DIR=LinuxExtra SHUTTLE_GN_EXTRA="$PWD/extra.gn" expect 0 bash "$SCRIPTS/build-linux.sh" dev
+[[ $(tail -1 "$out/LinuxExtra/args.gn") == 'use_thin_lto = true' ]] || { echo "SHUTTLE_GN_EXTRA not appended by build-linux.sh"; failures=$((failures + 1)); }
+: > "$L"; SHUTTLE_OUT_DIR=LinuxMissing SHUTTLE_GN_EXTRA="$PWD/missing.gn" expect 2 bash "$SCRIPTS/build-linux.sh" dev; expect_out "no such file"
+[[ ! -e "$out/LinuxMissing" ]] && ! grep -q autoninja "$L" || { echo "build-linux.sh touched out/ for a missing SHUTTLE_GN_EXTRA"; failures=$((failures + 1)); }
 # SHUTTLE_OUT_DIR: other out dir name, same args
 SHUTTLE_OUT_DIR=Other expect 0 zsh "$B" dev
 [[ -f "$out/Other/args.gn" ]] || { echo "SHUTTLE_OUT_DIR ignored by build.sh"; failures=$((failures + 1)); }
