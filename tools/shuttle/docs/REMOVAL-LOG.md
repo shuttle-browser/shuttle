@@ -463,7 +463,7 @@ command/action/side-panel IDs and histogram enums.
 
 How it went: scout → the decisions → manifests → `prune.py` + `prune-policies.py` →
 `fix-gn-refs.py` → 4 agents with disjoint ownership and a shared brief → Linux build first
-(green on `203c0e29b2`), Mac build later (local, after the sccache spike). Fixes after surgery:
+(green on `203c0e29b2`), Mac build later. Fixes after surgery:
 Linux-only build errors (`android_rsa` include, sync pin reason, upgrade detector guest check),
 `url_keyed_anonymized_data_collection.enabled` must stay registered (startup crash), and a
 **shutdown `DanglingRawPtrDetected` trap** (pre-existing since commit 16):
@@ -521,7 +521,7 @@ entries, `kSidePanelInset` case, webui_browser pak line, unused `inSidePanel_` T
 fix: `//chrome/browser/ui/views:find_bar_owner` had been linked only through webui_browser's deps.
 
 Lessons: (1) removing ids from a low-level shared header (S1 deleted 2 entries from
-`ui/color/color_id.h`) rebuilds most of Blink and content/ (~2 h remote); queue such edits with other
+`ui/color/color_id.h`) rebuilds most of Blink and content/ (~2 h); queue such edits with other
 big changes or leave dead ids; (2) a `.grd` string prune regenerates `generated_resources.h` (~5k steps,
 much of it restat-skipped); (3) when deleting a target, check whether it was the only dep path to a
 still-used source_set (link errors show up only at the final link).
@@ -534,7 +534,7 @@ persistent web notifications skip the on-device content check; SB real-time look
 NOT_SUPPORTED intelligent scan; page action chips show immediately (no messaging queue); `BindAIManager`
 drops the receiver (built-in AI APIs unavailable); no `chrome://webui-browser`.
 
-Verified: macOS Dev build green (`out/Sccache`); CDP smoke clean (51 pages, no JS exceptions),
+Verified: macOS Dev build green; CDP smoke clean (51 pages, no JS exceptions),
 `check-automation.mjs` 7/7, push subscribe OK, net-log without GCM/invalidation traffic at startup,
 clean `Browser.close`. Linux (the build host `out/Dev`, no Linux-only fixes): headless / WSLg X11 /
 Wayland smoke clean (48 pages each), push subscribe resolves (~30 s after launch), exit 0. Linux
@@ -594,7 +594,7 @@ Linux targets compile (`ui/ozone` stub input controller/pixmap factory/overlay m
 layout engine, `fake_input_method_context`, `device/bluetooth/{dbus,floss}/fake_*`): restored. `prune-tests.py` now skips
 files an enclosing BUILD.gn still names (its scan only sees the Mac's targets).
 
-Verified: Mac release build (`out/Release`, official) green; Mac Dev (`out/Sccache`) green with the final args; fresh headless
+Verified: Mac release build (`out/Release`, official) green; Mac Dev green with the final args; fresh headless
 profile: smoke-cdp (only the known createBrowserContext / Autofill.enable errors), check-automation 6/6, smoke-mcp ALL OK +
 persist-check, smoke-session-cdp, smoke-agents-page 14/14, `navigator.language` en-US, no FATAL, clean `Browser.close`.
 Linux (the build host `out/Dev`, headless): smoke-cdp 48 clean pages, smoke-mcp + persist-check ALL OK, smoke-agents-page 14/14,
@@ -621,7 +621,7 @@ en-US, no FATAL, clean exit.
   so it never shows in chrome://version). MCP `cdpEndpoint`/`cdpUrl` and the page-tools sidecar endpoint carry `?token=`.
   Behavior change: none without the flag.
 
-Verified: Mac `out/Sccache` + official `out/Release` green; `scripts/smoke-network.mjs` 18/18 on the Dev build and on the
+Verified: Mac Dev + official `out/Release` green; `scripts/smoke-network.mjs` 18/18 on the Dev build and on the
 notarized DMG app; smoke-mcp ALL OK and smoke-cdp clean without the flag. Linux (the build host official, from the tarball):
 smoke-cdp 48 pages, smoke-mcp + persist ALL OK, smoke-agents-page 14/14, page tools, smoke-network 18/18, "adequately
 sandboxed".
@@ -644,7 +644,7 @@ sandboxed".
   `SessionCdpFilter::Owns()` and `SessionManager::FindTab()`. Rule: TOOLING gotcha "No `scoped_refptr` in DevTools
   target notifications". Behavior change: none.
 
-Verified: Mac `out/Sccache` green; repro `/tmp/site-tools/uaf-repro.mjs` no longer crashes; smoke-mcp, smoke-session-cdp,
+Verified: Mac Dev build green; repro `/tmp/site-tools/uaf-repro.mjs` no longer crashes; smoke-mcp, smoke-session-cdp,
 smoke-cdp clean.
 
 ## Fork commit 37 (2026-10-12): no 3-minute startup fence
@@ -675,7 +675,7 @@ first delete 179 s → 4.6 s, smoke-mcp, smoke-session-cdp, smoke-agents-page 14
   chrome://agents, like a Dock click on macOS. Terminal and agent launches stay windowless; links opened through the
   desktop entry still open the link only.
 
-Verified: Mac `out/Sccache` (150 steps): fresh profile without the switch has no tabs; with it, `chrome://agents/`; a
+Verified: Mac Dev build (150 steps): fresh profile without the switch has no tabs; with it, `chrome://agents/`; a
 second launch with the switch forwarded to a running browser opens `chrome://agents/`; smoke-cdp clean (known
 `createBrowserContext` / `Autofill.enable` lines). Linux `out/Dev` (the Linux session, 3 steps): linux-smoke 48 clean x3,
 linux-nsw-check unchanged in all modes; WSLg x11 + wayland: switch → agents window, switch + URL → URL only.
@@ -687,7 +687,7 @@ linux-nsw-check unchanged in all modes; WSLg x11 + wayland: switch → agents wi
   only if there is none. Behavior change: a second Linux menu click no longer adds a duplicate agents tab (found by the
   Linux session on WSLg).
 
-Verified: Mac `out/Sccache`: launch with the switch → agents; agent tab added; second launch with the switch → still
+Verified: Mac Dev build: launch with the switch → agents; agent tab added; second launch with the switch → still
 one agents tab, focused; second launch with switch + URL → URL only; smoke-cdp 48 clean. Linux: pending (the Linux session).
 
 ## Fork commits 40-42 (2026-10-14): Linux/WSL desktop behavior
@@ -720,7 +720,7 @@ tty / non-tty launch → reuses the agents tab; `--new-window` → New Tab; wind
 WSLg fresh profile: own dark frame, page dark (Windows in dark mode; winshot). Keep-alive: session open + windows
 closed → alive (MCP 200), close-session → exit; session open + chrome://quit → exit; no session + windows closed → exit.
 linux-smoke headless/x11/wayland 48 clean each, exit 0; linux-nsw-check x11+wayland clean; linux-mcp-smoke clean.
-Mac `out/Sccache`: smoke-cdp 48 clean, smoke-mcp ALL OK. One flaky nsw-check x11 run hit a Browser.close hang (137)
+Mac Dev build: smoke-cdp 48 clean, smoke-mcp ALL OK. One flaky nsw-check x11 run hit a Browser.close hang (137)
 right after a forwarded launch opened the agents window; not reproduced in 4 later runs.
 
 ## Fork commit 43 (2026-10-14..16): Chromium 155 merge (branch `sh/merge-155`, fast-forwarded into main)
@@ -743,8 +743,8 @@ Later fixes on the branch: Mac-only build errors (`a0cd1a86d1`, `062af1f303`: Ke
 `enable_updater=false`), `07023fcbd3` prune manifests re-run (11 upstream additions in other-platform areas; Linux-built
 files, fcm and files referenced from other-platform branches stay).
 
-Verified: Mac `out/Sccache` smoke-cdp, check-automation ×2, smoke-mcp + persist, agents-page, session-cdp, network all
-green; Mac `out/Release` (official) built (7 h 19 min via sccache-dist), smoke-cdp clean, signed + notarized DMG;
+Verified: Mac Dev build smoke-cdp, check-automation ×2, smoke-mcp + persist, agents-page, session-cdp, network all
+green; Mac `out/Release` (official) built (7 h 19 min), smoke-cdp clean, signed + notarized DMG;
 Linux `out/Dev` (MAGWIN) all smokes green.
 
 ## Fork commit 44 (2026-10-16): no renderer kill on setAppBadge / on-device speech
@@ -783,3 +783,56 @@ Verified: Mac `out/Release` (107 steps, 3 min): headless and windowed (`open -g`
 (child session ×3, page endpoint) and `activateTarget` ×3 return `{}`, tab stays visible, foreign tab refused;
 windowed, the frontmost app stayed the editor throughout. Linux `out/Dev` (7 steps): same checks 10/10 headless and
 X11 (WSLg), active window unchanged; linux-smoke 48 clean.
+
+## Fork commit 46 (2026-10-18): agents keep session cookies across restarts
+
+- **46** Agent partitions persist and restore session cookies (no Expires/Max-Age) across a browser restart, like
+  the main partition with "Continue where you left off"; upstream turns both off for every non-default partition, so
+  agents lost logins that use session cookies. Hook: `ProfileNetworkContextService::ConfigureNetworkContextParamsInternal`
+  (on-disk branch only) calls `shuttle::ShouldPersistSessionCookies(profile, relative_partition_path)`
+  (`chrome/browser/shuttle/agent_partition.cc`, own `agent_partition` source set, dep added to
+  `chrome/browser/net:impl`). It maps the path back to the agent (`Storage/ext/shuttle-<id>/def`, the layout of
+  `StoragePartitionImplMap::GetStoragePartitionPath`) and reads the agent's pref entry: default on, per-agent opt-out
+  `persist_session_cookies: false` (MCP `persistSessionCookies` on `create-agent`/`update-agent`, shown in
+  `list-agents`; toggle in the `chrome://agents` edit dialog). Read once per partition: a change applies at the next
+  start. In-memory partitions and other partitions keep upstream behavior. Opting out deletes nothing; an opted-out
+  agent's session cookies end with the browser (the cookie store drops them at the next load).
+
+Verified: (pending build) smoke-mcp phase 1/2: session cookie survives the restart in `smoke-persist`, not in
+`smoke-nopersist` (`persistSessionCookies: false`, its persistent cookie survives).
+
+## Fork commit 47 (2026-10-18): V8 from github.com/shuttle-browser/v8 (no v8-version.h fanout)
+
+- **47** `v8/include/v8.h` included `v8-version.h`, and nearly every Blink TU includes `v8.h`, so each V8 patch-level
+  bump (most stable respins) recompiled ~6,700 files (155.0.8059.80→.85: 6,728 of 7,834 dirty CXX). The fork now
+  takes V8 from `github.com/shuttle-browser/v8`: branch `upstream` = snapshot commits of upstream V8 (no history,
+  same model as `chromium`), `main` = upstream + one commit that drops that include. Outside V8 only 3 files use the
+  version macros (`V8_VERSION_STRING`: devtools_http_handler.cc, browser_handler.cc, version_ui.cc), all via
+  `v8-version-string.h`, which includes `v8-version.h` itself; V8's `src/utils/version.cc` includes it directly, so
+  code-cache/serializer version checks still invalidate. DEPS: `src/v8` URL + `v8_revision`, and the `v8` gitlink
+  (`git_dependencies = 'SYNC'`). Review: `_docs/reviews/V8-FANOUT-2026-10-18.md` (private).
+- **V8 bump on a respin** (`TOOLING.md` "Upstream merges"): snapshot the new upstream V8 on `upstream`, merge it into
+  `main` of shuttle-browser/v8, point DEPS `v8_revision` + the gitlink at the merge. Existing checkouts: switch the
+  `v8` remote to the new URL before the first `gclient sync` (else gclient moves `v8/` aside and reclones: every V8
+  file gets a new mtime).
+
+Verified 2026-10-19 (clean `out/Release`): a real content edit of `v8/include/v8-version.h` on a settled
+tree rebuilds **16 steps** (50 s; the siso deps log lists 7 objects that read the header), not ~6,700;
+`/json/version` "V8-Version" = 15.5.35.25. Notes: `touch` alone = 0 steps (siso hashes content) and siso `-n`
+reports 0 steps even for real header edits, so measure with a real build (and a fresh edit: siso's local cache
+replays outputs for content it has seen). A first attempt ran 19,570 steps: that build also re-ran gn after
+`.gclient`/PGO pin changes made since the last `gn gen`; a settled tree (no-op build = 0 steps) is required.
+
+## Fork commit 48 (2026-10-20): PGO profile pins back
+
+- **48** `chrome/build/mac-arm.pgo.txt` and `chrome/build/linux.pgo.txt` restored from tag 155.0.8059.87. They were
+  pruned by `88eb6fe43a` ("Prune directories the macOS build never reads"): with `chrome_pgo_phase = 0` nothing reads
+  them. `chrome_pgo_phase = 2` (opt-in `config/args-lto.gn`) reads the pin via `tools/update_pgo_profiles.py`, and V8's
+  `v8_enable_builtins_optimization` follows `chrome_pgo_phase == 2` (`v8/gni/v8.gni`). The profiles themselves come
+  from `checkout_pgo_profiles = True` in `.gclient` `custom_vars` + `gclient runhooks` (Chrome's profile and V8's
+  builtins profiles).
+- **Keep them current:** at each upstream merge take both files from the new upstream tag (`git checkout <tag> --
+  chrome/build/mac-arm.pgo.txt chrome/build/linux.pgo.txt`); a stale pin names a profile for another version.
+
+Verified: official arm64 ThinLTO + PGO build of 155.1.1 (155.0.8059.87): smoke-all 9/9, Speedometer 3.1 +36.8 % vs
+the plain release (`docs/BENCHMARK.md`).

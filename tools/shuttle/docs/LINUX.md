@@ -129,17 +129,6 @@ not already set).
     rechecked every minute). Test with a fresh profile: an explicit choice in chrome://settings/appearance wins.
   - Closing the last window keeps Shuttle running while an agent session is open; menu Exit always quits.
 
-## Optional: distributed compiles
-
-`scripts/build-sccache.sh` can compile on a remote Linux box through sccache-dist; the client config
-template is `config/sccache.example.toml`, the toolchain archive comes from
-`scripts/sccache-toolchain.sh`, and the gotchas are in `docs/TOOLING.md`. Running the scheduler and
-build servers (systemd units, `bubblewrap`, firewalling the scheduler port) is up to you: they listen
-without authentication on the network unless you restrict them. Our units are templates in
-`config/sccache/systemd/` (`scripts/sccache-dist-host.sh install|status|restart|logs`); the script reads
-`SHUTTLE_BUILD_HOST_IP` (the address the scheduler binds) from `~/.shuttle/env`. Size `-local_jobs` to the build host's
-real core count and RAM; more jobs than it can hold thrash swap on heavy Blink/content files.
-
 ## How the Linux files came back (fork branch `ac/linux`)
 
 The fork originally pruned Linux along with the other platforms; Linux was restored from the base tree:

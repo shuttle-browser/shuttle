@@ -9,6 +9,7 @@ import 'chrome://resources/cr_elements/cr_dialog/cr_dialog.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import 'chrome://resources/cr_elements/cr_input/cr_input.js';
+import 'chrome://resources/cr_elements/cr_toggle/cr_toggle.js';
 import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar.js';
 import 'chrome://resources/cr_elements/icons.html.js';
 
@@ -48,6 +49,7 @@ export interface EditState {
   name: string;
   color: string;
   avatar: string;
+  persistSessionCookies: boolean;
 }
 
 export interface AgentsAppElement {
@@ -284,7 +286,14 @@ export class AgentsAppElement extends CrLitElement {
     const used = new Set(this.agents_.map(a => a.color));
     const color = AGENT_COLORS.find(c => c !== 'grey' && !used.has(c)) ||
         AGENT_COLORS[1];
-    this.showEditDialog_({id: '', newId: '', name: '', color, avatar: ''});
+    this.showEditDialog_({
+      id: '',
+      newId: '',
+      name: '',
+      color,
+      avatar: '',
+      persistSessionCookies: true,
+    });
   }
 
   protected onMoreClick_(e: Event) {
@@ -302,6 +311,7 @@ export class AgentsAppElement extends CrLitElement {
         name: agent.name,
         color: agent.color,
         avatar: agent.avatar || '',
+        persistSessionCookies: agent.persistSessionCookies !== false,
       });
     }
   }
@@ -397,6 +407,12 @@ export class AgentsAppElement extends CrLitElement {
     }
   }
 
+  protected onPersistSessionCookiesChange_(e: CustomEvent<boolean>) {
+    if (this.edit_) {
+      this.edit_ = {...this.edit_, persistSessionCookies: e.detail};
+    }
+  }
+
   private slug_(name: string): string {
     return name.toLowerCase()
         .normalize('NFKD')
@@ -426,6 +442,7 @@ export class AgentsAppElement extends CrLitElement {
       name: edit.name.trim(),
       color: edit.color,
       avatar: edit.avatar.trim(),
+      persistSessionCookies: edit.persistSessionCookies,
     };
     try {
       if (edit.id) {

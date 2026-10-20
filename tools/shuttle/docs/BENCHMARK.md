@@ -68,3 +68,25 @@ for Shuttle (its MCP server itself runs inside the browser process). One run eac
 > Three agents, one Wikipedia page each: **1.8 GB** with three chrome-devtools-mcp servers and their Chrome instances,
 > **0.55 GB** with Shuttle. With ten agents: **6.0 GB vs 1.4 GB**. (Measured on macOS, headless, chrome-devtools-mcp
 > 1.10.1 + Chrome 155 vs Shuttle 0.1.1. Script in the repo.)
+
+## ThinLTO + PGO (155.1.1, 2026-10-19)
+
+Script: `scripts/bench-speed.mjs --starts 7 --rounds 3 plain=<app> lto=<app>`. Builds run interleaved (A B A B ...),
+fresh temp profile per launch, headless, one discarded warm-up launch per build. Both builds official arm64
+155.0.8059.87: the plain release vs the release args + `config/args-lto.gn`.
+
+| | Plain release | ThinLTO + PGO | Change |
+| --- | --- | --- | --- |
+| Speedometer 3.1 (headless, mean of 3 rounds) | 36.30 (35.9 / 35.2 / 37.8) | **49.67** (49.3 / 49.6 / 50.1) | **+36.8 %**, no overlap |
+| Cold start → DevTools port (median of 7) | 224 ms | 225 ms | noise |
+| Cold start → first local page (median of 7) | 417 ms | 411 ms | noise |
+| Framework binary | 213.4 MB | 209.9 MB | −1.6 % |
+| Clean build time (same build host) | | | +9 % |
+| smoke-all | 9/9 | 9/9 | |
+
+- Why more than the usual 10-15 %: `chrome_pgo_phase = 2` also switches on V8's builtins PGO
+  (`v8_enable_builtins_optimization`), and Speedometer is JS/DOM heavy.
+- The ThinLTO link peaks at 156 GB RAM: not buildable on an 18 GB Mac.
+- Enable: append `config/args-lto.gn` to the release args (`SHUTTLE_GN_EXTRA=config/args-lto.gn scripts/build.sh
+  release`), set `checkout_pgo_profiles = True` in `.gclient` `custom_vars` + `gclient runhooks`, and keep the PGO
+  profile pins `chrome/build/{mac-arm,linux}.pgo.txt` (fork commit 48, `docs/REMOVAL-LOG.md`).

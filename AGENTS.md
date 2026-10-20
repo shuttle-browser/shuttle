@@ -2,7 +2,7 @@
 
 Shuttle (Shuttle Browser, by Silkweave) is a deep fork of Chromium for AI agents. This directory is the fork
 (`github.com/shuttle-browser/shuttle`), checked out as `src/` of a gclient checkout whose root is the parent directory
-(`.gclient`, `logs/`, `release/`, `sccache-cache/`). gclient requires the name `src`.
+(`.gclient`, `logs/`, `release/`). gclient requires the name `src`.
 
 Read, in order:
 
@@ -20,8 +20,9 @@ resolve the real path.
 
 ## Wrapup Config
 
-- check: Mac `gn gen out/Sccache` passes (from the real path); if fork browser code changed since the last build, a green
-  `out/Sccache` build and the CDP smoke test; Linux state confirmed with the Linux session (green or open errors listed)
+- check: Mac `gn gen` of the dev out dir (`$SHUTTLE_BUILD_DIR`, default `out/Dev`) passes (from the real path); if fork
+  browser code changed since the last build, a green dev build and the CDP smoke test; Linux state confirmed with the
+  Linux session (green or open errors listed)
 - test: skip (unit/browser test targets are pruned)
 - security: the fork is public: `/dev:gatekeeper` (`gatekeeper --audit` from this directory, our additions only via
   `.claude/gatekeeper.json`) + `gitleaks git --staged` / `--log-opts=github/main..HEAD`, always `GOMAXPROCS=2 nice -n 19

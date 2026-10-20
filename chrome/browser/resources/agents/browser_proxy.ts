@@ -13,6 +13,7 @@ export interface Agent {
   name: string;
   color: string;
   avatar?: string;
+  persistSessionCookies: boolean;
   createdAt: string;
   sessions: number;
   tabs: number;
@@ -35,6 +36,7 @@ export interface AgentIdentity {
   name?: string;
   color?: string;
   avatar?: string;
+  persistSessionCookies?: boolean;
 }
 
 // The page runs the same MCP tools agents use (list-agents, create-agent,

@@ -206,6 +206,19 @@ export function getHtml(this: AgentsAppElement) {
         error-message="${this.editError_}"
         @value-changed="${this.onAvatarValueChanged_}">
     </cr-input>
+    <div class="toggle-row">
+      <div class="text">
+        <div id="persistSessionCookiesLabel">Keep session cookies after
+            restart</div>
+        <div class="secondary">Like "Continue where you left off": sites
+            stay signed in. Applies at the next start of Shuttle.</div>
+      </div>
+      <cr-toggle id="persistSessionCookiesToggle"
+          aria-labelledby="persistSessionCookiesLabel"
+          ?checked="${this.edit_?.persistSessionCookies ?? true}"
+          @change="${this.onPersistSessionCookiesChange_}">
+      </cr-toggle>
+    </div>
   </div>
   <div slot="button-container">
     <cr-button class="cancel-button" @click="${this.onEditCancelClick_}">

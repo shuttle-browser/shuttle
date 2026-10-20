@@ -42,6 +42,7 @@
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_settings_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/shuttle/agent_partition.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ssl/sct_reporting_service.h"
 #include "chrome/browser/ssl/sct_reporting_service_factory.h"
@@ -1401,9 +1402,11 @@ void ProfileNetworkContextService::ConfigureNetworkContextParamsInternal(
       network_context_params->persist_session_cookies =
           profile_->ShouldPersistSessionCookies();
     } else {
-      // Copy behavior of ProfileImplIOData::InitializeAppRequestContext.
-      network_context_params->restore_old_session_cookies = false;
-      network_context_params->persist_session_cookies = false;
+      // Shuttle: agent partitions keep session cookies unless opted out.
+      bool persist = shuttle::ShouldPersistSessionCookies(
+          profile_, relative_partition_path);
+      network_context_params->restore_old_session_cookies = persist;
+      network_context_params->persist_session_cookies = persist;
     }
 
     network_context_params->file_paths->transport_security_persister_file_name =

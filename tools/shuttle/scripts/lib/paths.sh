@@ -2,7 +2,7 @@
 # are repo-relative: SHUTTLE_SRC = the fork (src/), SHUTTLE_ROOT = its parent (holds .gclient, logs/, release/).
 # Machine-local settings (build host, signing identity, ...) go in ~/.shuttle/env (sourced if present).
 SHUTTLE_TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd -P)"
-SHUTTLE_CONF="${SHUTTLE_CONF:-$HOME/.shuttle}"   # sccache client config, toolchain archive, env
+SHUTTLE_CONF="${SHUTTLE_CONF:-$HOME/.shuttle}"   # machine-local settings (env)
 [ -f "$SHUTTLE_CONF/env" ] && . "$SHUTTLE_CONF/env"
 SHUTTLE_SRC="${SHUTTLE_SRC:-$(cd "$SHUTTLE_TOOLS/../.." && pwd -P)}"
 SHUTTLE_ROOT="${SHUTTLE_ROOT:-$(cd "$SHUTTLE_SRC/.." && pwd -P)}"

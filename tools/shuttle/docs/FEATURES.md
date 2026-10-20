@@ -32,6 +32,5 @@ Own code lives in `chrome/browser/shuttle/` (MCP server, sessions, agents, page 
 | 40-42 | Linux/WSL desktop: person launch gets `chrome://agents`; WSL own frame + dark mode; keep running while a session is open | 46479f1e55, b966481b3c, 9586a23162 | 9: ui 3, ui/linux dark_mode 2 | manual (Linux) | LINUX.md |
 | 44 | Empty binders for BadgeService / on-device speech (no renderer kill) | bfd55b20e4 | 2: browser_interface_binders.cc, blink 1 | manual (probe open) | REMOVAL-LOG |
 | 45 | Agents can't steal focus (no activation on bringToFront/activateTarget) | 9976b54bf0 | 5 (own code) | smoke-focus | REMOVAL-LOG |
-
-Open (decided, not landed): session-cookie persistence for agent partitions (persist + restore, default on,
-per-agent opt-out; Toby 2026-10-18).
+| 46 | Agents keep session cookies across restarts (persist + restore, default on, per-agent opt-out `persistSessionCookies`) | (pending) | 2: profile_network_context_service.cc, chrome/browser/net/BUILD.gn | smoke-mcp phase1/2 | MCP.md, REMOVAL-LOG |
+| 47 | Build: V8 from github.com/shuttle-browser/v8 (v8.h without v8-version.h: a V8 patch bump no longer recompiles Blink) | (pending) | DEPS (v8 URL + revision), v8 gitlink | dry run after touching v8-version.h | REMOVAL-LOG |

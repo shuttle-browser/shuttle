@@ -6,7 +6,8 @@
 # (+ config/args-linux-<kind>.gn if present: per-kind Linux overrides, e.g. x64 for release).
 # Safety (lib/build-common.sh): lock per out dir, SHUTTLE_MIN_FREE_GB (20) free, nice -n ${NICE:-19}, `-local_jobs`
 # always set (default 10: the host's RAM, not its CPU count, is the limit; SHUTTLE_LOCAL_JOBS or `-local_jobs N`).
-# SHUTTLE_KEEP_ARGS=1 refuses to change args.gn. A successful build writes out/<Dir>/shuttle-build-receipt.txt.
+# SHUTTLE_KEEP_ARGS=1 refuses to change args.gn. SHUTTLE_OUT_DIR=<Dir> overrides the out dir name (e.g. a second
+# release config next to out/Release). A successful build writes out/<Dir>/shuttle-build-receipt.txt.
 set -eo pipefail
 # siso switches to a quiet, progress-less log when it sees an AI agent env; build-watch.py needs the progress lines.
 . "$(dirname "$0")/lib/paths.sh"
@@ -17,8 +18,8 @@ export PATH="$PATH:$HOME/depot_tools"
 SRC="$SHUTTLE_SRC"
 kind="${1:-dev}"; shift || true
 case "$kind" in
-  release) dir=Release; targets=(chrome chrome_sandbox) ;;
-  dev)     dir=Dev; targets=(chrome) ;;
+  release) dir=${SHUTTLE_OUT_DIR:-Release}; targets=(chrome chrome_sandbox) ;;
+  dev)     dir=${SHUTTLE_OUT_DIR:-Dev}; targets=(chrome) ;;
   *) echo "unknown build kind: $kind (use release|dev)" >&2; exit 2 ;;
 esac
 shuttle_build_args 10 "$@" || exit 2

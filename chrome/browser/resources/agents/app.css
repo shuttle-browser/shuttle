@@ -311,6 +311,16 @@ cr-dialog [slot=body] {
   margin-top: -8px;
 }
 
+.toggle-row {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.toggle-row .text > div {
+  white-space: normal;
+}
+
 .field-label {
   color: var(--cr-form-field-label-color);
   font-size: var(--cr-form-field-label-font-size);

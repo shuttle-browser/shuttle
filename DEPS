@@ -345,7 +345,9 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling V8
   # and whatever else without interference from each other.
-  'v8_revision': '712e1808de2d7416f1276d0deb1ee4ac978132b8',
+  # Shuttle: github.com/shuttle-browser/v8 = upstream V8 snapshot + Shuttle's
+  # v8.h patch (no v8-version.h fanout into Blink). Upstream V8 15.5.35.25.
+  'v8_revision': '99585384233c6dc297e17b6e8fbf297586512faf',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling ANGLE
   # and whatever else without interference from each other.
@@ -3342,7 +3344,7 @@ deps = {
   },
 
   'src/v8':
-    Var('chromium_git') + '/v8/v8.git' + '@' +  Var('v8_revision'),
+    'https://github.com/shuttle-browser/v8.git' + '@' +  Var('v8_revision'),
 
 # See checkout_src_internal_infra declaration.
 # LINT.IfChange

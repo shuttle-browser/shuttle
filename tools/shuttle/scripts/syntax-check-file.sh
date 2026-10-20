@@ -1,7 +1,7 @@
 #!/bin/zsh
 # syntax-check-file.sh [--flags-from <failed-step-substring>] <src.cc>...
 # -fsyntax-only each source (path relative to $SHUTTLE_SRC) with its own compile flags from the current ninja graph
-# of $SHUTTLE_BUILD_DIR (default out/Sccache). --flags-from borrows the flags of a FAILED step in siso_output instead
+# of $SHUTTLE_BUILD_DIR (default out/Dev). --flags-from borrows the flags of a FAILED step in siso_output instead
 # (for files not in the graph yet). Read-only: safe while no gn gen runs. Generated headers come from the last build,
 # so edited .mojom files show stale bindings.
 # Load control: flags come from a cached compile DB (rebuilt when build.ninja changes), at most
@@ -14,7 +14,7 @@ die() { print -u2 "syntax-check-file: $*"; exit 2; }
 from=""
 if [[ ${1:-} == --flags-from ]]; then (( $# >= 2 )) || die "--flags-from needs a substring"; from=$2; shift 2; fi
 (( $# )) || die "usage: syntax-check-file.sh [--flags-from <failed-step-substring>] <src.cc>..."
-out="$SHUTTLE_SRC/${SHUTTLE_BUILD_DIR:-out/Sccache}"
+out="$SHUTTLE_SRC/${SHUTTLE_BUILD_DIR:-out/Dev}"
 cd "$out" 2>/dev/null && [[ -f build.ninja ]] || die "no build.ninja in $out"
 key=${out//\//_}
 T=${SHUTTLE_SYNCHECK_TMP:-/tmp}   # compile DB + machine-wide slots

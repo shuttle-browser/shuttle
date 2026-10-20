@@ -16,7 +16,7 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 
 | Path | Contents |
 | --- | --- |
-| `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`), `agent-browser-tools.json` (curated page tools), `sccache.example.toml`, `sccache/systemd/` (build-host unit templates) |
+| `config/` | GN args (`args-common.gn`, `args-{dev,release,linux,linux-release}.gn`, opt-in `args-lto.gn` = ThinLTO + PGO), `agent-browser-tools.json` (curated page tools), `mojom-salt.txt`, `nfpm-shuttle.yaml` |
 | `scripts/` | Build, prune, fix, rebrand, release and smoke-test scripts (see below and `docs/TOOLING.md`) |
 | `prune/` | Manifests for `scripts/prune.py` (one per removal batch) |
 | `fixtures/` | Small plain-bash tests for the safety gates in `scripts/`, run by `scripts/check-scripts.sh` |
@@ -26,7 +26,7 @@ exists, read `_docs/AGENTS-TEAM.md` and your handoff there first).
 Docs index: `docs/TOOLING.md` (read first: fork strategy, GN args rationale, build, merges, releases, gotchas),
 `docs/MCP.md` (in-browser MCP server, agent model, session CDP, page tools), `docs/REMOVAL-LOG.md` (what each fork
 commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (incl. rebrand mechanics),
-`docs/BENCHMARK.md` (RAM benchmark behind the website's numbers).
+`docs/BENCHMARK.md` (RAM benchmark behind the website's numbers, ThinLTO + PGO speed).
 
 ## Fork basics
 
@@ -44,13 +44,18 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 ## Build
 
 - `config/args-common.gn` + `config/args-{dev,release}.gn` are **the** GN args (Linux adds `args-linux.gn`).
-- `scripts/build.sh [dev|release|sccache] [autoninja args]`: writes the args, runs `gn gen` when they change,
-  builds the `chrome` target, logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`.
-  The build scripts enforce the caps themselves (`scripts/lib/build-common.sh`): nice 19, `-local_jobs` 8 with sccache-dist / 4 local / 10 on the Linux host unless given (`SHUTTLE_LOCAL_JOBS`), one build per out dir (lock), ≥ 20 GB free (`SHUTTLE_MIN_FREE_GB`); `SHUTTLE_BG=1` adds `taskpolicy -c background`.
+- `scripts/build.sh [dev|release] [autoninja args]`: writes the args into `out/Dev` / `out/Release`, runs `gn gen` when
+  they change, builds the `chrome` target, logs to `$SHUTTLE_ROOT/logs/build-<Dir>.log`, ends with `BUILD EXIT <rc>`.
+  The build scripts enforce the caps themselves (`scripts/lib/build-common.sh`): nice 19, `-local_jobs` 4 on the Mac /
+  10 on the Linux host unless given (`SHUTTLE_LOCAL_JOBS`), one build per out dir (lock), ≥ 20 GB free
+  (`SHUTTLE_MIN_FREE_GB`); `SHUTTLE_BG=1` adds `taskpolicy -c background`.
   `-local_jobs N` is siso's real cap (`-j` above the core count is ignored); add `-k 0` to collect every error in one
-  pass. `SHUTTLE_KEEP_ARGS=1` refuses to change `args.gn`. `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`).
-- `scripts/build-sccache.sh` (optional): distributed compiles on a Linux build host running sccache-dist
-  (`config/sccache.example.toml`, `scripts/sccache-toolchain.sh`, host side `scripts/sccache-dist-host.sh`; see `docs/TOOLING.md` "Remote builds"). `-local_jobs` is the real cap.
+  pass. `SHUTTLE_KEEP_ARGS=1` refuses to change `args.gn`; `SHUTTLE_OUT_DIR=<Dir>` overrides the out dir name;
+  `SHUTTLE_GN_EXTRA=<file>` appends a GN args file (e.g. `config/args-lto.gn`, needs far more RAM than an 18 GB Mac).
+  `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`; honors `SHUTTLE_OUT_DIR` too).
+  Fix/prune tools read the dev build in `$SHUTTLE_BUILD_DIR` (default `out/Dev`).
+- `scripts/siso-report.py [--cores N] out/<Dir>/siso_metrics*.json`: build-time report (per run, module, step kind,
+  toolchain) in Markdown.
 - `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
   `scripts/build-errors.sh` lists failed steps while a build runs.
 - `SHUTTLE_VERSION=<X.Y.Z> scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release` (needs its
@@ -77,7 +82,7 @@ Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges
    `scripts/merge-autoresolve.py stats|apply ours-deleted,ours-subset <list>` (fork-only deletions; hunks where
    upstream added lines stay conflicted: `show ours-deleted-new,ours-subset-new` and review them), the rest by
    sub-agents per area with a shared brief. Keep DEPS `version_file`s (gclient reads them even when unused).
-2. `gclient sync -j 4` from the gclient root (default -j hits googlesource HTTP 429); new clang ⇒ toolchain archive.
+2. `gclient sync -j 4` from the gclient root (default -j hits googlesource HTTP 429).
 3. Delete upstream additions in directories the fork deleted entirely; judge brand-new dirs; rerun `prune/m155.txt`
    and other remove-only manifests.
 4. `scripts/prune-locales.py --apply`, `scripts/rebrand.py apply --apply` (keep main's rendered assets if only bytes differ).
@@ -114,7 +119,7 @@ Helpers: `scripts/test-browser.sh [close]` (manual test browser on 9333 with two
 `scripts/launch-shuttle.sh` (interactive run on 9222),
 `scripts/fetch-agent-browser.sh <Helpers-dir>` + `scripts/gen-page-tools.mjs` (page-tool sidecar and generated tool list),
 `scripts/linux-install-desktop.sh` (per-user desktop entry), `scripts/package-linux.sh` (Linux tarball), `scripts/package-deb.sh` (.deb + .rpm from the tarball),
-`scripts/bench-ram.mjs` (RAM benchmark, `docs/BENCHMARK.md`).
+`scripts/bench-ram.mjs` (RAM benchmark), `scripts/bench-speed.mjs` (Speedometer 3.1 + cold start A/B of builds; both `docs/BENCHMARK.md`).
 
 ## Rules and top gotchas (full list in `docs/TOOLING.md`)
 
@@ -131,10 +136,9 @@ Helpers: `scripts/test-browser.sh [close]` (manual test browser on 9333 with two
   `chrome/app/app.exports` and `framework.exports` after removals.
 - Keep the Mac on power with the lid open during long builds (lid closed on battery stops them).
 - Never load the Mac to full CPU: it is the maintainer's workstation and a full-load build cuts them off (no input,
-  no messages). `build-sccache.sh` refuses to start when the build host has no servers (the build would compile
-  locally); `SHUTTLE_ALLOW_LOCAL=1` only after asking. The scripts set nice 19 + `-local_jobs` (8 dist / 4 local);
-  don't add `taskpolicy -c background` (E-cores only, ~14× slower) unless asked. Run builds in a shell the maintainer
-  can watch; stop if the load climbs. sccache can still fall back to local compiles if the host drops out mid-build. Don't kill a build early
+  no messages). The scripts set nice 19 + `-local_jobs` (4 on the Mac); don't add `taskpolicy -c background` (E-cores
+  only, ~14× slower) unless asked. Run builds in a shell the maintainer can watch; stop if the load climbs. Don't kill a
+  build early
   to read its step count: killed runs leave regenerated outputs (protoc, mojom) that cascade.
 - Run `scripts/check-scripts.sh` before every tooling commit (syntax per interpreter, shellcheck, `fixtures/`). A
   changed safety gate gets one fixture that fails on the old bug and passes after the fix; no test framework.
