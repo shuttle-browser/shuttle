@@ -15,7 +15,7 @@ file list to /tmp/sh-prune-<manifest>.txt.
 
 Safety: a file is deleted only if it matches a manifest rule and isn't read by
 any build config we use. "Used" is the union of:
-  - BUILD_DIR (out/Sccache, $SHUTTLE_BUILD_DIR): `siso query inputs chrome`, plus the full deps log
+  - BUILD_DIR (out/Dev, $SHUTTLE_BUILD_DIR): `siso query inputs chrome`, plus the full deps log
     (`siso query deps`, every header actually included), plus
     build.ninja.d (all loaded gn files);
   - a temporary official-build config (gn only, no deps log).

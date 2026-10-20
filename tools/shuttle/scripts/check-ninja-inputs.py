@@ -4,7 +4,7 @@
 After an upstream merge, upstream BUILD files can use files the fork pruned as unused ("UP" = the file exists on
 branch `chromium`, restore it with `git checkout chromium -- <path>`).
 
-Usage: scripts/check-ninja-inputs.py [out_dir] [target]   (defaults: BUILD_DIR = out/Sccache, chrome)
+Usage: scripts/check-ninja-inputs.py [out_dir] [target]   (defaults: BUILD_DIR = out/Dev, chrome)
 Run after `gn gen`, from anywhere. Limits: a small hand parser (whitespace-split paths, no `$`-escape or variable
 resolution); it checks source inputs (`../../...`) only, not generated files. Exit: 0 = no missing inputs, 1 = missing inputs listed, 2 = can't check
 (no build.ninja, target not in the graph, branch `chromium` missing).

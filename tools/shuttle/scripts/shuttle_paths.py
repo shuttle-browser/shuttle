@@ -25,5 +25,5 @@ SRC = os.path.expanduser(os.environ.get("SHUTTLE_SRC") or os.path.dirname(os.pat
 ROOT = os.path.expanduser(os.environ.get("SHUTTLE_ROOT") or os.path.dirname(SRC))
 LOGS = os.path.join(ROOT, "logs")
 RELEASE = os.path.join(ROOT, "release")
-# Dev-config build dir the prune/fix scripts read (siso inputs, gen/, args.gn): out/Sccache (dev args + sccache).
-BUILD_DIR = os.environ.get("SHUTTLE_BUILD_DIR", "out/Sccache")
+# Dev-config build dir the prune/fix scripts read (siso inputs, gen/, args.gn): out/Dev (build.sh dev).
+BUILD_DIR = os.environ.get("SHUTTLE_BUILD_DIR", "out/Dev")

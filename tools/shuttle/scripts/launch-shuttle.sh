@@ -10,7 +10,7 @@ set -euo pipefail
 PORT="${1:-9222}"
 DATA_DIR="${2:-$HOME/.shuttle/profile}"
 shift $(( $# > 2 ? 2 : $# )) || true
-APP="${SHUTTLE_APP:-$SHUTTLE_SRC/out/Sccache/Shuttle.app}"
+APP="${SHUTTLE_APP:-$SHUTTLE_SRC/${SHUTTLE_BUILD_DIR:-out/Dev}/Shuttle.app}"
 
 mcp_ping() {
   curl -fsS -X POST "http://127.0.0.1:$PORT/mcp" -H 'Content-Type: application/json' \

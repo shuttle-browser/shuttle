@@ -4,15 +4,13 @@
 Usage: scripts/build-watch.py <Dir> [--step 10] [--stall 10] [--health-every 5]
                               [--health-cmd CMD] [--from-start]
 
-Watches $SHUTTLE_ROOT/logs/build-<Dir>.log (written by scripts/build.sh) and, for
-sccache builds, $SHUTTLE_ROOT/logs/sccache.log. Emits only:
+Watches $SHUTTLE_ROOT/logs/build-<Dir>.log (written by scripts/build.sh). Emits only:
   - progress every --step percent: done/total, rate over the last 15 min, ETA,
     failed-step count;
   - the first error of each FAILED step, deduplicated by message (repeats are
     only counted), max 15 distinct;
-  - each new sccache fallback / remote-failure reason (counted afterwards);
-  - remote health (--health-cmd, default for Dir=Sccache: build-host status via ssh $SHUTTLE_BUILD_HOST)
-    only when it changes or fails;
+  - the output of --health-cmd (optional, e.g. a status check of something the build depends on), only when
+    it changes or fails;
   - "stalled" when the step count hasn't moved for --stall minutes;
   - a final summary on BUILD EXIT (or when the build process disappears).
 Works on macOS and Linux.
@@ -24,7 +22,6 @@ ANSI = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
 PROGRESS = re.compile(r'^\[\s*(\d+)/(\d+)\]')
 LOC = re.compile(r'^[^\s:]+:\d+(:\d+)?:\s*')       # file:line:col prefix
 OBJ = re.compile(r'\S*obj/\S+|\[[^\]]*\.o\]')
-TS = re.compile(r'^\[?\S*\d{4}-\d\d-\d\dT\S+\s*')
 
 def out(msg):
     print(msg, flush=True)
@@ -78,13 +75,7 @@ def main():
     a = ap.parse_args()
     logs = _SHUTTLE_LOGS
     blog = Tail(f'{logs}/build-{a.dir}.log', a.from_start)
-    slog = Tail(f'{logs}/sccache.log', a.from_start) if a.dir == 'Sccache' else None
     health_cmd = a.health_cmd
-    if health_cmd is None and a.dir == 'Sccache':
-        host = os.environ.get('SHUTTLE_BUILD_HOST')  # ssh alias of the sccache-dist host (~/.shuttle/env)
-        tools = os.environ.get('SHUTTLE_BUILD_HOST_TOOLS', 'chromium/src/tools/shuttle')  # tooling dir on the host, from ~
-        health_cmd = os.environ.get('SHUTTLE_BUILD_HEALTH_CMD') or (
-            f"ssh -o ConnectTimeout=5 {host} '~/{tools}/scripts/sccache-dist-host.sh status'" if host else None)
 
     start = time.time()
     samples = []                 # (t, done)
@@ -93,7 +84,6 @@ def main():
     total, done = 0, 0
     failed, errs, errcount = 0, {}, {}   # key -> first message, key -> count
     in_fail, fail_target, fail_found = False, '', False
-    sc_reasons = {}              # sccache fallback/failure reason -> count
     health_last, health_next = None, 0.0
     gone = 0
     exit_line = None
@@ -123,13 +113,7 @@ def main():
                 t = re.search(r'"([^"]+)"', s)
                 fail_target = (t.group(1) if t else s[8:80]).lstrip('./')
                 continue
-            if s.startswith('sccache: Job failed') or 'Could not perform distributed compile' in s:
-                key = norm(s.split('falling back to local:')[-1])
-                sc_reasons[key] = sc_reasons.get(key, 0) + 1
-                if sc_reasons[key] == 1:
-                    out(f'{a.dir} sccache: {key}')
-                continue
-            if in_fail and not fail_found and not s.startswith(('err: exit=', 'sccache:')) \
+            if in_fail and not fail_found and not s.startswith('err: exit=') \
                     and re.search(r'\berror\b[: ]|fatal error|killed by signal', s):
                 fail_err(fail_target, s)
                 continue
@@ -138,15 +122,6 @@ def main():
                 finished = f'{m2.group(3)} steps, {s.split(" Build")[0]}'
             if s.startswith('BUILD EXIT'):
                 exit_line = s
-        if slog:
-            for line in slog.lines():
-                if 'WARN' in line or 'ERROR' in line:
-                    msg = TS.sub('', line)
-                    msg = msg.split('falling back to local:')[-1]
-                    key = norm(re.sub(r'^\s*(WARN|ERROR)\s+\S+\]?\s*', '', msg))
-                    sc_reasons[key] = sc_reasons.get(key, 0) + 1
-                    if sc_reasons[key] == 1 and len(sc_reasons) <= 10:
-                        out(f'{a.dir} sccache: {key}')
 
         now = time.time()
         # progress (Siso's first total is before its up-to-date scan: wait 45 s)
@@ -171,14 +146,12 @@ def main():
                 extra = ''
                 if failed:
                     extra += f', {failed} failed ({len(errcount)} distinct)'
-                if sc_reasons:
-                    extra += f', sccache issues {sum(sc_reasons.values())}'
                 out(f'{a.dir} {pct}% ({d}/{total}) at {time.strftime("%H:%M")}{eta}{extra}')
             if not stalled and not exit_line and now - last_move > a.stall * 60:
                 stalled = True
                 out(f'{a.dir} STALLED: no step finished for {a.stall} min (at {d}/{total})')
 
-        # remote health, only on change
+        # --health-cmd, only on change
         if health_cmd and not exit_line and now >= health_next:
             health_next = now + a.health_every * 60
             try:
@@ -194,26 +167,14 @@ def main():
             hkey = re.sub(r'\d+ in progress', '', h)
             if hkey != health_last:
                 health_last = hkey
-                out(f'{a.dir} remote: {h}')
+                out(f'{a.dir} health: {h}')
 
         if exit_line:
-            time.sleep(5)  # let build-sccache.sh write its stats
             parts = [f'{a.dir} {exit_line}', finished or f'{done}/{total} steps']
             if failed:
                 top = sorted(errcount.items(), key=lambda kv: -kv[1])[:5]
                 parts.append(f'{failed} failed, {len(errcount)} distinct: ' +
                              '; '.join(f'{c}x {k[:90]}' for k, c in top))
-            if sc_reasons:
-                parts.append('sccache issues: ' + '; '.join(f'{c}x {k[:80]}' for k, c in sc_reasons.items()))
-            stats = f'{logs}/sccache-stats-{a.dir}.txt'
-            if os.path.exists(stats) and os.path.getmtime(stats) >= start:
-                txt = open(stats).read()
-                def g(label):
-                    m = re.search(rf'^{label}\s+(\d+)', txt, re.M)
-                    return m.group(1) if m else '?'
-                remote = sum(int(x) for x in re.findall(r'^\s+\S+:\d+\s+(\d+)$', txt, re.M))
-                parts.append(f'sccache: {g("Compile requests executed")} compiles, {remote} remote, '
-                             f'{g("Failed distributed compilations")} dist-failed, {g("Compilation failures")} failed')
             out(' | '.join(parts))
             return 0
 

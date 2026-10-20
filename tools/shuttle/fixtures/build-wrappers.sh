@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh / build-sccache.sh / build-linux.sh: caps, lock, disk check, args, preflight, quoting, exit status.
+# build.sh / build-linux.sh: caps, lock, disk check, args (SHUTTLE_GN_EXTRA, SHUTTLE_OUT_DIR), quoting, exit status.
 # requires: zsh
 . "$(dirname "$0")/lib.sh"; fake_src
 export SHUTTLE_ROOT="$FIXTURE_TMP"; L="$FIXTURE_TMP/calls"; out="$SHUTTLE_SRC/out"
@@ -47,18 +47,17 @@ for args in "-n" "-t commands" "-d explain" "-local_jobs 3 -n"; do
   shuttle_build_args 4 $args; [[ $SHUTTLE_BUILD_PLAIN == 0 ]] || { echo "'$args' counted as a plain build"; failures=$((failures + 1)); }
 done
 shuttle_build_args 4 -local_jobs=6 -k 0; [[ $SHUTTLE_BUILD_PLAIN == 1 ]] || { echo "plain build not eligible"; failures=$((failures + 1)); }
-expect 2 zsh "$B" sccache; expect_out "build-sccache.sh"                     # no direct sccache build without preflight
-# build-sccache.sh: no build servers -> refuse before building; never stops the shared server
-stub pgrep 'exit 0'
-stub sccache 'echo "sccache $*" >> '"$L"'; [[ $1 == --dist-status ]] && echo "${DIST:-{\"NotConnected\":[null,\"x\"]}}"; exit 0'
-: > "$L"
-expect 3 zsh "$SCRIPTS/build-sccache.sh"; expect_out "no build servers"
-grep -q autoninja "$L" && { echo "build ran without servers"; failures=$((failures + 1)); }
-SHUTTLE_ALLOW_LOCAL=1 expect 0 zsh "$SCRIPTS/build-sccache.sh"; expect_out "[-local_jobs] [8]"
-DIST='{"SchedulerStatus":["http://h:10600/",{"num_servers":2,"num_cpus":24,"in_progress":0}]}' expect 0 zsh "$SCRIPTS/build-sccache.sh" -local_jobs 12
-expect_out "[-local_jobs] [12] [chrome]"
-grep -q -- "--stop-server\|--start-server" "$L" && { echo "touched the shared sccache server"; failures=$((failures + 1)); }
-SHUTTLE_SCCACHE_FRESH=1 expect 2 zsh "$SCRIPTS/build-sccache.sh"
+expect 2 zsh "$B" sccache; expect_out "use release|dev"                      # only the two local kinds
+# SHUTTLE_GN_EXTRA: appended last to args.gn; a missing file refuses before touching anything
+printf 'use_thin_lto = true\n' > extra.gn
+SHUTTLE_GN_EXTRA="$PWD/extra.gn" expect 0 zsh "$B" dev
+[[ $(tail -1 "$out/Dev/args.gn") == 'use_thin_lto = true' ]] || { echo "SHUTTLE_GN_EXTRA not appended"; failures=$((failures + 1)); }
+SHUTTLE_GN_EXTRA="$PWD/missing.gn" expect 2 zsh "$B" dev; expect_out "no such file"
+# SHUTTLE_OUT_DIR: other out dir name, same args
+SHUTTLE_OUT_DIR=Other expect 0 zsh "$B" dev
+[[ -f "$out/Other/args.gn" ]] || { echo "SHUTTLE_OUT_DIR ignored by build.sh"; failures=$((failures + 1)); }
+SHUTTLE_OUT_DIR=LinuxOther expect 0 bash "$SCRIPTS/build-linux.sh" dev
+[[ -f "$out/LinuxOther/args.gn" ]] || { echo "SHUTTLE_OUT_DIR ignored by build-linux.sh"; failures=$((failures + 1)); }
 # build-linux.sh: args with spaces survive script -c; child status propagates
 expect 0 bash "$SCRIPTS/build-linux.sh" dev "-o" "a b"; expect_out "[a b] [-local_jobs] [10] [chrome]"
 AUTONINJA_RC=5 expect 5 bash "$SCRIPTS/build-linux.sh" dev

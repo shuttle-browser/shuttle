@@ -1,14 +1,14 @@
 #!/bin/zsh
-# Usage: scripts/build.sh [release|dev|sccache] [extra autoninja args...]
-# Builds the `chrome` target (override: SHUTTLE_TARGET=base) in $SHUTTLE_SRC/out/<Release|Dev|Sccache>.
-# `sccache` = dev args + cc_wrapper=sccache + use_clang_modules=false in out/Sccache (client config
-# ~/.shuttle/sccache.toml, see docs/TOOLING.md and config/sccache.example.toml); run it via build-sccache.sh.
+# Usage: scripts/build.sh [release|dev] [extra autoninja args...]
+# Builds the `chrome` target (override: SHUTTLE_TARGET=base) in $SHUTTLE_SRC/out/<Release|Dev>
+# (SHUTTLE_OUT_DIR=<Dir> overrides the out dir name).
 # Runs in a PTY via `script` so the live status line stays visible, while the
 # raw output is also logged to $SHUTTLE_ROOT/logs/build-<dir>.log (for monitoring).
 # Safety (lib/build-common.sh): one build per out dir (lock taken before args.gn/gn gen/log), at least
-# SHUTTLE_MIN_FREE_GB (20) free, nice -n ${NICE:-19}, `-local_jobs` always set (default 8 with sccache-dist, 4
-# local; SHUTTLE_LOCAL_JOBS or `-local_jobs N` override), SHUTTLE_BG=1 adds taskpolicy -c background.
-# GN args come from config/args-common.gn + config/args-<kind>.gn (re-generated on change);
+# SHUTTLE_MIN_FREE_GB (20) free, nice -n ${NICE:-19}, `-local_jobs` always set (default 4; SHUTTLE_LOCAL_JOBS or
+# `-local_jobs N` override), SHUTTLE_BG=1 adds taskpolicy -c background.
+# GN args come from config/args-common.gn + config/args-<kind>.gn (re-generated on change), plus the file named by
+# SHUTTLE_GN_EXTRA if set (appended last, e.g. config/args-lto.gn on a host with enough RAM, or a compiler wrapper);
 # SHUTTLE_KEEP_ARGS=1 refuses to change args.gn instead (e.g. a packaging step must not reconfigure a build).
 # A successful `chrome` build writes out/<dir>/shuttle-build-receipt.txt (lib/receipt.sh; packaging requires it).
 # SHUTTLE_CLEAN=1 runs `gn clean` first (full rebuild). `-n` (dry run) still takes the lock and may run gn gen.
@@ -23,30 +23,18 @@ SRC="$SHUTTLE_SRC"
 kind="${1:-release}"; shift || true
 
 case "$kind" in
-  release) dir=Release ;;
-  dev)     dir=Dev ;;
-  sccache) dir=Sccache ;;
-  *) echo "unknown build kind: $kind (use release|dev|sccache)" >&2; exit 2 ;;
+  release) dir=${SHUTTLE_OUT_DIR:-Release} ;;
+  dev)     dir=${SHUTTLE_OUT_DIR:-Dev} ;;
+  *) echo "unknown build kind: $kind (use release|dev)" >&2; exit 2 ;;
 esac
 
 cfg="$(cd "$(dirname "$0")/.." && pwd)/config"
-if [[ "$kind" == sccache ]]; then
-  want="$(cat "$cfg/args-common.gn" "$cfg/args-dev.gn")"
-else
-  want="$(cat "$cfg/args-common.gn" "$cfg/args-$kind.gn")"
+want="$(cat "$cfg/args-common.gn" "$cfg/args-$kind.gn")"
+if [[ -n "${SHUTTLE_GN_EXTRA:-}" ]]; then
+  [[ -f "$SHUTTLE_GN_EXTRA" ]] || { echo "SHUTTLE_GN_EXTRA: no such file: $SHUTTLE_GN_EXTRA" >&2; exit 2; }
+  want+=$'\n'"$(cat "$SHUTTLE_GN_EXTRA")"
 fi
-# sccache-dist (build-host compiles): always for `sccache`, opt-in for release with SHUTTLE_SCCACHE=1.
-jobs_default=4
-if [[ "$kind" == sccache || "${SHUTTLE_SCCACHE:-0}" == 1 ]]; then
-  want+=$'\n''cc_wrapper = "sccache"'$'\n''use_clang_modules = false'
-  export SCCACHE_CONF="${SCCACHE_CONF:-$SHUTTLE_CONF/sccache.toml}"
-  jobs_default=8
-  if [[ "${SHUTTLE_SCCACHE_PREFLIGHT:-0}" != 1 && "${SHUTTLE_ALLOW_LOCAL:-0}" != 1 ]]; then
-    echo "sccache builds go through scripts/build-sccache.sh (build-host preflight); SHUTTLE_ALLOW_LOCAL=1 skips it" >&2
-    exit 2
-  fi
-fi
-shuttle_build_args $jobs_default "$@" || exit 2
+shuttle_build_args 4 "$@" || exit 2
 if [[ "$kind" == release ]]; then shuttle_build_salt "$SRC" "$cfg" || exit 2; fi
 shuttle_build_prefix
 cd "$SRC"

@@ -2,7 +2,7 @@
 # Signs, notarizes and packages a Shuttle release DMG from out/Release (docs/TOOLING.md "Releases").
 # Usage: SHUTTLE_VERSION=155.1.0 scripts/release-mac.sh [--no-notarize]
 #   SHUTTLE_VERSION   = the Shuttle version, <Chromium major>.<minor>.<patch> (major must match chrome/VERSION).
-#   Needs: a green `out/Release` build of `chrome` made by build.sh / build-sccache.sh from a clean tree (its build
+#   Needs: a green `out/Release` build of `chrome` made by build.sh from a clean tree (same SHUTTLE_GN_EXTRA, if any; its build
 #   receipt, lib/receipt.sh), the fork's chrome/installer/mac signing pipeline,
 #   SHUTTLE_SIGN_ID   = SHA-1 of the "Developer ID Application: <Org> (<TEAMID>)" identity
 #                       (several identities share that name: `security find-identity -v -p codesigning`),
@@ -38,12 +38,7 @@ chromium=$(plutil -extract CFBundleShortVersionString raw "$OUT/Shuttle.app/Cont
 echo "== Shuttle $ver (Chromium $chromium, arm64) -> $dest"
 
 # 1. Packaging dir (signing scripts, entitlements, dmg_tool/hfs_tool), through build.sh with the args unchanged.
-sccache_flag=0; grep -q '^cc_wrapper = "sccache"' "$OUT/args.gn" && sccache_flag=1
-if (( sccache_flag )); then
-  SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 SHUTTLE_KIND=release "$(dirname "$0")/build-sccache.sh"
-else
-  SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 "$(dirname "$0")/build.sh" release
-fi
+SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 "$(dirname "$0")/build.sh" release
 shuttle_receipt_check "$OUT" "$OUT/Shuttle.app" >/dev/null || { echo "FATAL: building the packaging target rebuilt chrome" >&2; exit 2; }
 "$(dirname "$0")/clean-stale-lproj.sh" "$OUT"   # en-US-only UI: drop old locale dirs left in the out dir
 

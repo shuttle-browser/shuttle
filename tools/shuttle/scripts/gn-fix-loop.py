@@ -12,7 +12,7 @@ reported and the loop stops):
 Without --apply: one pass, prints the planned edit, writes nothing. With --apply: loops until gn gen passes, an error
 it doesn't handle, or a refused edit; prints the files it touched (review `git diff`).
 
-Usage: scripts/gn-fix-loop.py [out_dir] [--apply] [--max N]   (default out_dir: BUILD_DIR = out/Sccache)
+Usage: scripts/gn-fix-loop.py [out_dir] [--apply] [--max N]   (default out_dir: BUILD_DIR = out/Dev)
 Exit: 0 = gn gen OK (or dry-run edit planned), 1 = stopped (error printed), 2 = usage/setup error.
 """
 import os
