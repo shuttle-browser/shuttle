@@ -4,7 +4,7 @@
 # The browser spawns it as the page-tools sidecar (docs/MCP.md "Page tools").
 #
 # Usage: scripts/fetch-agent-browser.sh <Helpers-dir> [platform]
-#   e.g. scripts/fetch-agent-browser.sh "$SHUTTLE_SRC/out/Sccache/Shuttle.app/Contents/Helpers"
+#   e.g. scripts/fetch-agent-browser.sh "$SHUTTLE_SRC/out/Dev/Shuttle.app/Contents/Helpers"
 #   platform: darwin-arm64 (default on Apple Silicon), darwin-x64, linux-x64, linux-arm64
 # Env: AGENT_BROWSER_SRC=<dir of an unpacked npm package> skips the download
 #      (e.g. /tmp/ab-spike/node_modules/agent-browser); its binary must still match the pin.
@@ -49,8 +49,12 @@ if [ -n "${AGENT_BROWSER_SRC:-}" ]; then
   PKG=$AGENT_BROWSER_SRC
 else
   # Fresh empty dir; nothing from the tarball is executed except the binary we verify.
-  (cd "$WORK" && npm pack "agent-browser@$VERSION" --silent >/dev/null)
   TGZ=$WORK/agent-browser-$VERSION.tgz
+  if command -v npm >/dev/null; then
+    (cd "$WORK" && npm pack "agent-browser@$VERSION" --silent >/dev/null)
+  else  # no npm (e.g. a minimal Linux host): the registry tarball directly (same bytes, checked against the same pin below)
+    curl -fsSL -o "$TGZ" "https://registry.npmjs.org/agent-browser/-/agent-browser-$VERSION.tgz"
+  fi
   [ -f "$TGZ" ] || { echo "npm pack produced no $TGZ" >&2; exit 1; }
   GOT="sha512-$(openssl dgst -sha512 -binary "$TGZ" | base64 | tr -d '\n')"
   [ "$GOT" = "$TARBALL_SHA512" ] || { echo "agent-browser tarball integrity mismatch: $GOT" >&2; exit 1; }

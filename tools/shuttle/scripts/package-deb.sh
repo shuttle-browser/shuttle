@@ -7,7 +7,7 @@
 # Env: SHUTTLE_PKG_REPO_SOURCE=1  postinst adds our package repo once (deb: apt source, rpm: /etc/yum.repos.d file) and
 #        the packages ship the key from assets/linux/repo/shuttle.asc (off by default: only with the repo live)
 #        SHUTTLE_PKG_REPO_URL=<url>  default https://pkg.shuttlebrowser.com
-#      SHUTTLE_NO_RPM=1 skips the .rpm. NFPM=<path> (default: nfpm on PATH, else ~/.local/bin/nfpm).
+#      SHUTTLE_NO_RPM=1 skips the .rpm. SHUTTLE_NO_LINTIAN=1 skips the advisory lintian pass (~4 min). NFPM=<path> (default: nfpm on PATH, else ~/.local/bin/nfpm).
 # Layout: /opt/shuttle (tarball tree), /usr/bin/shuttle symlink, desktop file, hicolor icons, /usr/share/doc/shuttle.
 set -euo pipefail
 
@@ -150,6 +150,6 @@ for p in deb rpm; do
 done
 
 for f in "${built[@]}"; do echo "$f: $(du -h "$f" | cut -f1)  $(cut -c1-16 "$f.sha256")…"; done
-if command -v lintian >/dev/null && [ -f "$DEST/shuttle_${PKG_VERSION}_amd64.deb" ]; then
+if [ "${SHUTTLE_NO_LINTIAN:-0}" != 1 ] && command -v lintian >/dev/null && [ -f "$DEST/shuttle_${PKG_VERSION}_amd64.deb" ]; then
   echo "lintian (advisory):"; lintian --no-tag-display-limit "$DEST/shuttle_${PKG_VERSION}_amd64.deb" 2>&1 | sed 's/^/  /' | sort | uniq -c | sort -rn | head -40 || true
 fi
