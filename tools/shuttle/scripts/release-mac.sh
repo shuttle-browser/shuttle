@@ -8,6 +8,9 @@
 #                       (several identities share that name: `security find-identity -v -p codesigning`),
 #   SHUTTLE_NOTARY_PROFILE = notarytool keychain profile (`xcrun notarytool store-credentials <name> ...`).
 #   --no-notarize: sign only (local test); skips the Gatekeeper/stapler checks, which need notarization.
+#   SHUTTLE_RELEASE_PREBUILT=<dir>: sign a prebuilt out dir instead (Shuttle.app + "Shuttle Packaging" + args.gn +
+#   receipt, built on another host from this checkout's clean HEAD). Its receipt must match this checkout except
+#   depot_tools (lib/receipt.sh shuttle_receipt_check_prebuilt); the caller verifies its args.gn. Nothing is built.
 # Output: $SHUTTLE_ROOT/release/v<version>/mac/ (Shuttle-<chromium version>-arm64.dmg + MANIFEST.txt: receipt,
 # sidecar and DMG sha256). Refuses an existing destination. Secrets stay in the keychain; nothing is written to the repo.
 set -e
@@ -17,6 +20,8 @@ export PATH="$PATH:$HOME/depot_tools" SHUTTLE_RELEASE_MODE=1
 unset SHUTTLE_SIDECAR_UNPINNED AGENT_BROWSER_SRC
 SRC="$SHUTTLE_SRC"
 OUT="$SRC/out/Release"
+prebuilt="${SHUTTLE_RELEASE_PREBUILT:-}"
+if [[ -n "$prebuilt" ]]; then OUT=$(cd "$prebuilt" && pwd -P) || { echo "FATAL: SHUTTLE_RELEASE_PREBUILT: no such dir: $prebuilt" >&2; exit 2; }; fi
 TOOLS="$(cd "$(dirname "$0")/.." && pwd)"
 notarize=staple
 [[ "${1:-}" == --no-notarize ]] && notarize=none
@@ -32,14 +37,22 @@ major=$(. "$SRC/chrome/VERSION"; echo "$MAJOR")
 [[ -f "$SRC/chrome/installer/mac/sign_chrome.py" ]] || { echo "FATAL: signing pipeline not in the tree" >&2; exit 2; }
 dest="$SHUTTLE_RELEASE/v$ver/mac"
 [[ ! -e "$dest" ]] || { echo "FATAL: $dest exists; never overwritten (pick a new version or move it away)" >&2; exit 2; }
-receipt=$(shuttle_receipt_check "$OUT" "$OUT/Shuttle.app") || exit 2
+if [[ -n "$prebuilt" ]]; then
+  [[ -f "$OUT/Shuttle Packaging/sign_chrome.py" ]] || { echo "FATAL: $OUT/Shuttle Packaging missing (build chrome/installer/mac with chrome)" >&2; exit 2; }
+  receipt=$(shuttle_receipt_check_prebuilt "$OUT" "$OUT/Shuttle.app" "$OUT/Shuttle Packaging") || exit 2
+else
+  receipt=$(shuttle_receipt_check "$OUT" "$OUT/Shuttle.app") || exit 2
+fi
 mkdir -p "$(dirname "$dest")" && mkdir "$dest" 2>/dev/null || { echo "FATAL: $dest exists (another run?)" >&2; exit 2; }  # atomic reservation
 chromium=$(plutil -extract CFBundleShortVersionString raw "$OUT/Shuttle.app/Contents/Info.plist")
 echo "== Shuttle $ver (Chromium $chromium, arm64) -> $dest"
 
-# 1. Packaging dir (signing scripts, entitlements, dmg_tool/hfs_tool), through build.sh with the args unchanged.
-SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 "$(dirname "$0")/build.sh" release
-shuttle_receipt_check "$OUT" "$OUT/Shuttle.app" >/dev/null || { echo "FATAL: building the packaging target rebuilt chrome" >&2; exit 2; }
+# 1. Packaging dir (signing scripts, entitlements, dmg_tool/hfs_tool), through build.sh with the args unchanged
+#    (a prebuilt out dir brings its own).
+if [[ -z "$prebuilt" ]]; then
+  SHUTTLE_TARGET=chrome/installer/mac SHUTTLE_KEEP_ARGS=1 "$(dirname "$0")/build.sh" release
+  shuttle_receipt_check "$OUT" "$OUT/Shuttle.app" >/dev/null || { echo "FATAL: building the packaging target rebuilt chrome" >&2; exit 2; }
+fi
 "$(dirname "$0")/clean-stale-lproj.sh" "$OUT"   # en-US-only UI: drop old locale dirs left in the out dir
 
 # 2. Sidecar into the unsigned app (the pipeline signs it as part 'agent-browser'), pinned hash.

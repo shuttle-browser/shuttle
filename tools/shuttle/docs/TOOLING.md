@@ -275,6 +275,9 @@ step below runs with `SHUTTLE_GN_EXTRA=config/args-lto.gn`, packaging included (
    verifies with spctl/stapler. Output `$SHUTTLE_ROOT/release/v<X.Y.Z>/mac/` (refused if it exists) with
    `MANIFEST.txt` (receipt, sidecar + DMG sha256); rename the DMG to `Shuttle-<X.Y.Z>-arm64.dmg` for the release.
    Identity and notary credentials stay in the keychain. `--no-notarize` signs only (skips Gatekeeper/stapler checks).
+   `SHUTTLE_RELEASE_PREBUILT=<dir>` signs an out dir built on another host instead (`Shuttle.app`, `Shuttle Packaging/`,
+   `args.gn`, receipt; nothing is built): its receipt must match this checkout's clean HEAD except `depot_tools`, and
+   the caller verifies its `args.gn`.
 3. Linux: `scripts/build-linux.sh release` (same `SHUTTLE_GN_EXTRA`), `SHUTTLE_VERSION=<X.Y.Z> package-linux.sh` (tarball + receipt +
    `release/v<X.Y.Z>/linux/MANIFEST.txt`), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm, hashes appended
    to the manifest), Linux

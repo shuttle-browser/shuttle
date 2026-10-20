@@ -60,4 +60,22 @@ mkdir -p "$FIXTURE_TMP/release/v155.1.0/mac"
 SHUTTLE_VERSION=155.1.0 expect 2 zsh "$SCRIPTS/release-mac.sh"; expect_out "never overwritten"
 rmdir "$FIXTURE_TMP/release/v155.1.0/mac"
 SHUTTLE_VERSION=155.1.0 expect 2 zsh "$SCRIPTS/release-mac.sh"; expect_out "no build receipt"
+# prebuilt out dir (another host): identity must match except depot_tools; packaging dir required; nothing built
+P="$FIXTURE_TMP/pre"; mkdir -p "$P/Shuttle.app" "$P/Shuttle Packaging"; touch "$P/Shuttle Packaging/sign_chrome.py"
+echo 'is_debug = false' > "$P/args.gn"; sleep 1
+shuttle_receipt_begin "$P"; shuttle_receipt_end "$P" 0 "$P/Shuttle.app" >/dev/null
+sed -i.bak 's/^depot_tools=.*/depot_tools=0000other/; s/^host=.*/host=other-host/' "$P/shuttle-build-receipt.txt"; rm -f "$P/shuttle-build-receipt.txt.bak"
+expect 0 shuttle_receipt_check_prebuilt "$P" "$P/Shuttle.app"; expect_out "host=other-host"
+expect 2 shuttle_receipt_check "$P" "$P/Shuttle.app"; expect_out "differs from the build"   # the local check stays strict
+git -c user.name=f -c user.email=f@f commit -q --allow-empty -m other
+expect 2 shuttle_receipt_check_prebuilt "$P" "$P/Shuttle.app"; expect_out "differs from the prebuilt"  # other commit
+git reset -q --hard HEAD~1
+echo 'is_debug = true' > "$P/args.gn"
+expect 2 shuttle_receipt_check_prebuilt "$P" "$P/Shuttle.app"                        # args.gn swapped after the build
+echo 'is_debug = false' > "$P/args.gn"; touch -t 202001010000 "$P/args.gn"
+stub autoninja 'echo AUTONINJA >> '"$FIXTURE_TMP/built"'; exit 9'; stub gn 'exit 0'
+SHUTTLE_RELEASE_PREBUILT="$FIXTURE_TMP/nope" SHUTTLE_VERSION=155.1.0 expect 2 zsh "$SCRIPTS/release-mac.sh"; expect_out "no such dir"
+rm "$P/Shuttle Packaging/sign_chrome.py"
+SHUTTLE_RELEASE_PREBUILT=$P SHUTTLE_VERSION=155.1.0 expect 2 zsh "$SCRIPTS/release-mac.sh"; expect_out "Shuttle Packaging missing"
+[[ ! -e "$FIXTURE_TMP/built" ]] || { echo "release-mac.sh built something for a prebuilt out dir"; failures=$((failures + 1)); }
 done_fixture
