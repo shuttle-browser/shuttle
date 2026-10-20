@@ -52,7 +52,8 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   `-local_jobs N` is siso's real cap (`-j` above the core count is ignored); add `-k 0` to collect every error in one
   pass. `SHUTTLE_KEEP_ARGS=1` refuses to change `args.gn`; `SHUTTLE_OUT_DIR=<Dir>` overrides the out dir name;
   `SHUTTLE_GN_EXTRA=<file>` appends a GN args file (e.g. `config/args-lto.gn`, needs far more RAM than an 18 GB Mac).
-  `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`; honors `SHUTTLE_OUT_DIR` too).
+  `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`; honors `SHUTTLE_OUT_DIR` and `SHUTTLE_GN_EXTRA`
+  too). Official releases append `config/args-lto.gn` (TOOLING "Releases").
   Fix/prune tools read the dev build in `$SHUTTLE_BUILD_DIR` (default `out/Dev`).
 - `scripts/siso-report.py [--cores N] out/<Dir>/siso_metrics*.json`: build-time report (per run, module, step kind,
   toolchain) in Markdown.
@@ -60,7 +61,8 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   `scripts/build-errors.sh` lists failed steps while a build runs.
 - `SHUTTLE_VERSION=<X.Y.Z> scripts/release-mac.sh`: sign, notarize and package a DMG from `out/Release` (needs its
   clean-tree build receipt; writes `release/v<X.Y.Z>/mac/` + `MANIFEST.txt`). Identity and notary profile come from
-  `SHUTTLE_SIGN_ID` and `SHUTTLE_NOTARY_PROFILE`; never commit identities or credentials.
+  `SHUTTLE_SIGN_ID` and `SHUTTLE_NOTARY_PROFILE`; never commit identities or credentials. `SHUTTLE_RELEASE_PREBUILT=<dir>`
+  signs an out dir built on another host from this checkout's clean HEAD instead (receipt checked, nothing built).
 
 ## Removal workflow
 
