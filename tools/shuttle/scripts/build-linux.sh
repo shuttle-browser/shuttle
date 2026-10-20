@@ -3,7 +3,8 @@
 # Linux counterpart of build.sh: builds `chrome` in $SHUTTLE_ROOT/src/out/<Dev|Release>,
 # logs to $SHUTTLE_ROOT/logs/build-<Dir>.log, ends with "BUILD EXIT <rc>".
 # GN args: config/args-common.gn + config/args-<kind>.gn + config/args-linux.gn
-# (+ config/args-linux-<kind>.gn if present: per-kind Linux overrides, e.g. x64 for release).
+# (+ config/args-linux-<kind>.gn if present: per-kind Linux overrides, e.g. x64 for release), plus the file named by
+# SHUTTLE_GN_EXTRA if set (appended last, like build.sh; official releases: config/args-lto.gn).
 # Safety (lib/build-common.sh): lock per out dir, SHUTTLE_MIN_FREE_GB (20) free, nice -n ${NICE:-19}, `-local_jobs`
 # always set (default 10: the host's RAM, not its CPU count, is the limit; SHUTTLE_LOCAL_JOBS or `-local_jobs N`).
 # SHUTTLE_KEEP_ARGS=1 refuses to change args.gn. SHUTTLE_OUT_DIR=<Dir> overrides the out dir name (e.g. a second
@@ -28,6 +29,10 @@ cfg="$(cd "$(dirname "$0")/.." && pwd)/config"
 files=("$cfg/args-common.gn" "$cfg/args-$kind.gn" "$cfg/args-linux.gn")
 [[ -f "$cfg/args-linux-$kind.gn" ]] && files+=("$cfg/args-linux-$kind.gn")
 want="$(cat "${files[@]}")"
+if [[ -n "${SHUTTLE_GN_EXTRA:-}" ]]; then
+  [[ -f "$SHUTTLE_GN_EXTRA" ]] || { echo "SHUTTLE_GN_EXTRA: no such file: $SHUTTLE_GN_EXTRA" >&2; exit 2; }
+  want+=$'\n'"$(cat "$SHUTTLE_GN_EXTRA")"
+fi
 if [[ "$kind" == release ]]; then shuttle_build_salt "$SRC" "$cfg" || exit 2; fi
 cd "$SRC"
 shuttle_build_lock "$SRC/out/$dir" || exit 2

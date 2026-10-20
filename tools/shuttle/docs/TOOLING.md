@@ -260,6 +260,11 @@ Chromium version (`155.0.8059.80`) goes into the release notes and package descr
 `CFBundleShortVersionString` stays the Chromium version (`chrome/VERSION`). Breaking changes to the MCP/CDP surface
 aren't signaled by the major: call them out in `NOTES.md`. Tags: `v155.1.0`.
 
+Official releases are ThinLTO + PGO builds (Toby, 2026-10-20; `docs/BENCHMARK.md` "ThinLTO + PGO"): every build
+step below runs with `SHUTTLE_GN_EXTRA=config/args-lto.gn`, packaging included (the receipt pins `args.gn`). It needs
+`checkout_pgo_profiles = True` in `.gclient` (then `gclient runhooks`) and a host with far more RAM than an 18 GB Mac
+(the final link peaked at 156 GB). Plain `release` builds without it stay fine for testing.
+
 1. `scripts/build.sh release -k 0`: official `out/Release`; `gn gen out/Release` +
    `scripts/check-ninja-inputs.py out/Release` first. After a Chromium bump it is a full rebuild. Build from a clean, committed tree: a successful `chrome` build writes
    `out/Release/shuttle-build-receipt.txt` (source SHA, clean flag, `chromium` base, args.gn/DEPS/gitlink hashes,
@@ -270,7 +275,10 @@ aren't signaled by the major: call them out in `NOTES.md`. Tags: `v155.1.0`.
    verifies with spctl/stapler. Output `$SHUTTLE_ROOT/release/v<X.Y.Z>/mac/` (refused if it exists) with
    `MANIFEST.txt` (receipt, sidecar + DMG sha256); rename the DMG to `Shuttle-<X.Y.Z>-arm64.dmg` for the release.
    Identity and notary credentials stay in the keychain. `--no-notarize` signs only (skips Gatekeeper/stapler checks).
-3. Linux: `scripts/build-linux.sh release`, `SHUTTLE_VERSION=<X.Y.Z> package-linux.sh` (tarball + receipt +
+   `SHUTTLE_RELEASE_PREBUILT=<dir>` signs an out dir built on another host instead (`Shuttle.app`, `Shuttle Packaging/`,
+   `args.gn`, receipt; nothing is built): its receipt must match this checkout's clean HEAD except `depot_tools`, and
+   the caller verifies its `args.gn`.
+3. Linux: `scripts/build-linux.sh release` (same `SHUTTLE_GN_EXTRA`), `SHUTTLE_VERSION=<X.Y.Z> package-linux.sh` (tarball + receipt +
    `release/v<X.Y.Z>/linux/MANIFEST.txt`), `SHUTTLE_PKG_REPO_SOURCE=1 package-deb.sh` (.deb + .rpm, hashes appended
    to the manifest), Linux
    smokes and an upgrade test from the previous version (`docs/LINUX.md`).

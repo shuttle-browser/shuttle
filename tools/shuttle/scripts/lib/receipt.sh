@@ -8,6 +8,10 @@
 #   shuttle_receipt_check <out_dir> <file|dir>...  for packaging: receipt present, identity now == receipt (same
 #                                                  clean HEAD, args, DEPS, toolchain: commit before you build), no
 #                                                  shipped file newer than the receipt; prints the receipt
+#   shuttle_receipt_check_prebuilt <out_dir> <file|dir>...  the same for an out dir built on another host from this
+#                                                  checkout (SHUTTLE_RELEASE_PREBUILT): identity == receipt except
+#                                                  depot_tools (that host's own); args.gn is the shipped out dir's,
+#                                                  which the caller must have verified
 shuttle_sha256() {  # prints a 64-hex digest or fails
   local o
   if command -v sha256sum >/dev/null; then o=$(sha256sum "$1") || return 1; else o=$(shasum -a 256 "$1") || return 1; fi
@@ -50,6 +54,17 @@ shuttle_receipt_check() {
   now=$(shuttle_receipt_identity "$out") || { echo "FATAL: can't read the current source identity" >&2; return 2; }
   [ "$now" = "$(grep -v -e '^host=' -e '^built_at=' "$r")" ] ||
     { echo "FATAL: checkout/config differs from the build ($r): package from the commit you built" >&2; diff <(printf '%s\n' "$now") <(grep -v -e '^host=' -e '^built_at=' "$r") >&2; return 2; }
+  shuttle_receipt_fresh "$out" "$@" || return 2
+  cat "$r"
+}
+shuttle_receipt_check_prebuilt() {
+  local out=$1 r="$1/shuttle-build-receipt.txt" now; shift
+  [ -f "$r" ] || { echo "FATAL: no build receipt in $out" >&2; return 2; }
+  grep -qx 'tree_clean=yes' "$r" || { echo "FATAL: $out was built from a dirty tree ($r)" >&2; return 2; }
+  now=$(shuttle_receipt_identity "$out") || { echo "FATAL: can't read the current source identity" >&2; return 2; }
+  [ "$(printf '%s\n' "$now" | grep -v '^depot_tools=')" = "$(grep -v -e '^host=' -e '^built_at=' -e '^depot_tools=' "$r")" ] ||
+    { echo "FATAL: this checkout differs from the prebuilt build ($r): check out the commit it was built from" >&2
+      diff <(printf '%s\n' "$now" | grep -v '^depot_tools=') <(grep -v -e '^host=' -e '^built_at=' -e '^depot_tools=' "$r") >&2; return 2; }
   shuttle_receipt_fresh "$out" "$@" || return 2
   cat "$r"
 }
