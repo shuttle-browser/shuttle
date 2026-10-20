@@ -15,11 +15,11 @@ scripts skip this directory.
 
 | Path | Contents |
 | --- | --- |
-| `config/` | GN args (common, dev, release, Linux), curated page-tool list, sccache client config example, sccache-dist host units |
+| `config/` | GN args (common, dev, release, Linux, opt-in ThinLTO + PGO), curated page-tool list, Linux package config |
 | `scripts/` | Build, prune, fix, rebrand, release (macOS signing, DMG) and smoke-test scripts |
 | `prune/` | Manifests consumed by `scripts/prune.py`, one per removal batch |
 | `assets/` | Logo (SVG), icon generation, Linux desktop entry |
-| `docs/` | Tooling guide and gotchas, removal log, Linux build notes, branding, MCP server design, RAM benchmark |
+| `docs/` | Tooling guide and gotchas, removal log, Linux build notes, branding, MCP server design, RAM and speed benchmarks |
 
 ## Requirements
 
