@@ -8,6 +8,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/strings/strcat.h"
 #include "components/safe_browsing/core/browser/web_ui/web_ui_info_singleton_event_observer.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 
 namespace safe_browsing {
