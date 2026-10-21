@@ -343,7 +343,7 @@ vars = {
   # and whatever else without interference from each other.
   # Shuttle: github.com/shuttle-browser/v8 = upstream V8 snapshot + Shuttle's
   # v8.h patch (no v8-version.h fanout into Blink). Upstream V8 15.6.75.19.
-  'v8_revision': '94cea9587376c5f11ad0becf025fa25d773d5aa3',
+  'v8_revision': 'e3523d5222ad6c92b6cc52045708955d0e6492c7',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling ANGLE
   # and whatever else without interference from each other.
