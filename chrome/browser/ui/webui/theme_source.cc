@@ -195,6 +195,19 @@ bool ThemeSource::AllowCaching() {
   return false;
 }
 
+bool ThemeSource::ShouldServiceRequest(const GURL& url,
+                                       content::BrowserContext* browser_context,
+                                       int render_process_id) {
+  if (url.SchemeIs(content::kChromeDevToolsScheme)) {
+    // Specifically allow colors.css to be accessible via devtools, but other
+    // theme resources shouldn't be.
+    return url.path() == "/colors.css";
+  }
+  // Shuttle: no chrome-search:// (InstantService removed).
+  return URLDataSource::ShouldServiceRequest(url, browser_context,
+                                             render_process_id);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ThemeSource, private:
 
