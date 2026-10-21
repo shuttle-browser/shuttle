@@ -88,6 +88,7 @@
 #include "chrome/browser/ui/toolbar/chrome_location_bar_model_delegate.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
 #include "chrome/browser/ui/webui/accessibility/accessibility_ui.h"
+#include "chrome/browser/ui/webui/cr_components/theme_color_picker/theme_color_picker_handler.h"
 #include "chrome/browser/ui/webui/flags/flags_ui.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_ui.h"
 #include "chrome/browser/ui/webui/policy/policy_ui.h"
@@ -1746,6 +1747,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   chrome_prefs::RegisterProfilePrefs(registry);
   registry->RegisterIntegerPref(prefs::kContextualTasksNextPanelOpenCount, 0);
   registry->RegisterBooleanPref(prefs::kCtrlTabMru, false);
+  device_signals::RegisterProfilePrefs(registry);
   enterprise::RegisterIdentifiersProfilePrefs(registry);
   enterprise_connectors::RegisterProfilePrefs(registry);
   enterprise_isolated_mode::RegisterProfilePrefs(registry);
@@ -1949,6 +1951,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   lens::prefs::RegisterProfilePrefs(registry);
 #endif
 
+  ThemeColorPickerHandler::RegisterProfilePrefs(registry);
   ThemeService::RegisterProfilePrefs(registry);
   ManagementUI::RegisterProfilePrefs(registry);
 
