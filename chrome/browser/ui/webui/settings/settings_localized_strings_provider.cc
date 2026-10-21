@@ -2583,13 +2583,6 @@ void AddShortcutInputStrings(content::WebUIDataSource* html_source) {
 extern void AddPrivacySandboxStrings(content::WebUIDataSource* html_source,
                                      Profile* profile);
 
-#if !BUILDFLAG(IS_CHROMEOS)
-std::string GetPeopleSignInPromptSecondaryWithAccountForTesting(
-    Profile* profile) {
-  return GetPeopleSignInPromptSecondaryWithAccount(profile);
-}
-#endif  // !BUILDFLAG(IS_CHROMEOS)
-
 void AddLocalizedStrings(content::WebUIDataSource* html_source,
                          Profile* profile,
                          content::WebContents* web_contents) {

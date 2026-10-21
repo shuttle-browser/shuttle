@@ -25,10 +25,6 @@ void AddLocalizedStrings(content::WebUIDataSource* html_source,
                          Profile* profile,
                          content::WebContents* web_contents);
 
-#if !BUILDFLAG(IS_CHROMEOS)
-std::string GetPeopleSignInPromptSecondaryWithAccountForTesting(
-    Profile* profile);
-#endif
 
 }  // namespace settings
 
