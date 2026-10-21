@@ -164,14 +164,14 @@ export function getHtml(this: AgentsAppElement) {
         maxlength="64" placeholder="${this.edit_?.id || 'Research assistant'}"
         @value-changed="${this.onNameValueChanged_}" autofocus>
     </cr-input>
-    ${this.edit_?.id ? nothing : html`
+    ${!this.edit_?.id ? html`
       <cr-input id="idInput" label="Id" .value="${this.edit_?.newId || ''}"
           maxlength="64" placeholder="research-assistant" spellcheck="false"
           ?invalid="${!!this.editError_}" error-message="${this.editError_}"
           @value-changed="${this.onIdValueChanged_}">
       </cr-input>
       <div class="hint">Agents use the id in MCP calls. It can't be changed
-          later.</div>`}
+          later.</div>` : nothing}
     <div class="field-label">Color</div>
     <div class="swatches" role="radiogroup" aria-label="Color">
       ${this.colors.map(color => html`
@@ -184,8 +184,8 @@ export function getHtml(this: AgentsAppElement) {
     <div class="avatar-row">
       <div class="avatar" data-color="${this.edit_?.color || 'grey'}">
         ${this.edit_?.avatar ? html`<img src="${this.edit_.avatar}" alt="">` :
-            (this.edit_?.name || this.edit_?.newId || '?')
-                .slice(0, 1).toUpperCase()}
+            html`${(this.edit_?.name || this.edit_?.newId || '?')
+                .slice(0, 1).toUpperCase()}`}
       </div>
       <cr-button id="avatarChoose" @click="${this.onAvatarChooseClick_}">
         Choose image…
