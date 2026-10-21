@@ -86,6 +86,7 @@ BASE_DECLARE_FEATURE(kOmniboxFullWebUIDetachWebContentsOnHide);
 BASE_DECLARE_FEATURE(kOmniboxWebUIPopupMarkAsHidden);
 BASE_DECLARE_FEATURE(kOmniboxWebUIEvictOnHide);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUIEvictOnHide);
+BASE_DECLARE_FEATURE(kOmniboxFullWebUIShadow);
 BASE_DECLARE_FEATURE(kOmniboxWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxWebUIPopupHideOnCreation);

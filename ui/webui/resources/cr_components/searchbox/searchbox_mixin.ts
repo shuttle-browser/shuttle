@@ -679,8 +679,8 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
 
     private updateInputForSelection_(
         nextSelection: OmniboxPopupSelection, key: string) {
-      if (nextSelection.state === SelectionLineState.kFocusedButtonAim ||
-          nextSelection.line === -1) {
+      // Shuttle: no AIM button; only the input itself is outside the matches.
+      if (nextSelection.line === -1) {
         // The input itself, or a button outside the matches: show the typed
         // text again, without any inline autocompletion.
         this.getInputElement().setInput({
@@ -743,11 +743,6 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     getSelectionA11yLabel(
         match: AutocompleteMatch|null,
         selection: OmniboxPopupSelection): string {
-      if (selection.state === SelectionLineState.kFocusedButtonAim) {
-        const button =
-            this.shadowRoot.querySelector('cr-searchbox-compose-button');
-        return button ? (button.a11yLabel || button.labelText) : '';
-      }
       if (!match || selection.line < 0) {
         return '';
       }
