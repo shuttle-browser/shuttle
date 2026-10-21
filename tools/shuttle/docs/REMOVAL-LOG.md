@@ -836,3 +836,27 @@ replays outputs for content it has seen). A first attempt ran 19,570 steps: that
 
 Verified: official arm64 ThinLTO + PGO build of 155.1.1 (155.0.8059.87): smoke-all 9/9, Speedometer 3.1 +36.8 % vs
 the plain release (`docs/BENCHMARK.md`).
+
+## Fork commit 49 (2026-10-20..): Chromium 156 merge (branch `sh/merge-156`, in progress)
+
+Base moves from 155.0.8059.87 to **156.0.8078.48** (Mac full stable 2026-10-20; Linux stable is .47). Snapshots on
+`chromium`: `35e4fd23c3` (156.0.8078.36, parent the .87 snapshot `e40c7ff1b3`), `2ae8704e14` (156.0.8078.48).
+Merge `d04dfef776` (.36): 14,050 modify/delete conflicts → deletion, 1 upstream deletion taken, 600 content
+conflicts (1,324 hunks after the script) resolved by 6 agents; clean-merged upstream code in kept files that used
+removed features (glic, AIM, ttc, skills, contextual tasks, actor) removed or stubbed. Respin merge `dce7bb6404`
+(.48): 211 modify/delete, 4 content. V8 from shuttle-browser/v8 `94cea95873` (V8 15.6.75.19 + the v8.h patch);
+PGO pins from the .48 tag; `config/mojom-salt.txt` MAJOR=156.
+
+Follow-ups: `8d5d2e0a44` gn gen green (1,319 upstream additions in removed dirs; orphan deps of deleted test targets;
+`components/cbor:cbor` and `components/web_package:mojom_mapped_types` back after the clean merge dropped them; new
+upstream test targets; `ssl_config_overlay` back; theme sync files, `tab_search_bubble_host`, origin_gating
+`task_policy_config` dropped; no side panel pak; `searchbox.mojom` without `show_aim_activity_link`),
+`9a5c055434` prune manifests re-run (+20 new Android/Windows files, dead glic files, history platform handlers),
+`f181f0a548` 14 strings back that kept code uses.
+
+Kept for now, prune decision pending (Toby): `chrome/browser/child_module` + `chrome/common/child_module` (wired
+into GlobalFeatures), `chrome/browser/origin_gating`, ephemeral tab groups, the enterprise proxy error page, the
+Gemini Enterprise settings policy handler, the app-menu notification section, the kWebAuthFlow infobar-internals
+entry; unused upstream dirs `chrome/browser/ttc`, `chrome/browser/selection`, `components/skills`.
+
+Verified so far: Mac `gn gen` green, `check-ninja-inputs` 0 missing. Builds and smokes: pending.

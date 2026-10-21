@@ -345,6 +345,29 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   `third_party/lit/v3_0/BUILD.gn`), e.g. `cr_components/cr_lottie`.
 - **Gatekeeper flags upstream data** (public CT log keys in `log_list.json`): allow-list with a `rule`, a `pack`
   entry doesn't cover secret findings.
+- **156 merge (155.0.8059.87 → 156.0.8078.36/.48, 2026-10-20/21)**: 29,481 upstream files; 14,050 modify/delete +
+  600 content conflicts. `merge-autoresolve.py` no longer drops new upstream lines, so only 28 files resolved by
+  script; 557 files / 1,324 hunks went to 6 agents (4 Sonnet + 2 Opus, ~38 min, ~1.5M tokens) with
+  `scripts/merge-hunks.py` (compact hunk view: ours/theirs as diffs vs base, per-hunk take; ~3.5x fewer tokens than
+  the raw markers). `gn gen` green ~12 min after the hooks. Log: `_docs/upstream/MERGE-156.md` (private).
+- **Agents must check string users in the work tree, not in HEAD**: new upstream code only exists in the work tree.
+  156 group A took the fork's string regions and dropped 16 IDS_ that compiled code uses. Sweep before building:
+  IDS_ names used in built C++ but defined in no .grd/.grdp (match `name\s*=\s*"`: upstream also writes `name =`).
+- **Clean merge hunks of fork-deleted test targets land outside any target**: bare dep strings or `deps = [...]`
+  inside a top-level `if (!is_android) {}` (11 BUILD files in 156). `gn format --dry-run` over every merge-touched
+  .gn/.gni finds all parse errors in one pass (exit 1 = parse error; 2 = only formatting).
+- **The clean merge can drop a live target** that sits next to a fork-deleted `unit_tests` (156:
+  `components/cbor:cbor`, `components/web_package:mojom_mapped_types`). Compare target names in main ∩ upstream
+  with the merged file for every merge-touched BUILD.gn.
+- **prune-tests.py needs `gn gen` green**: new upstream test targets that depend on pruned test support
+  (`//chrome/test:test_support`) stop gn first; remove those blocks by hand, then run prune-tests.
+- **prune.py's used set is the last build's**: right after a merge it is the *previous* major's build, so files the
+  new code starts using look dead (156: b2c's `passkey_detail_view` rule hit a file the fork uses). Run
+  check-ninja-inputs after every prune and restore what it lists.
+- **Respin onto full stable before building**: 156 went stable at .48 while the merge was on .36; the respin merge
+  (snapshot on top, ~15 min incl. V8) had 211 modify/delete + 4 content conflicts. V8 moves with it (new V8
+  snapshot + merge in `v8/`, push `upstream` + a branch to shuttle-browser/v8 before building on another
+  machine: its `gclient sync` fetches V8 from GitHub).
 
 ## Gotchas
 
