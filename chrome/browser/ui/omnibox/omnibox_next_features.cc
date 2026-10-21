@@ -28,14 +28,19 @@ BASE_FEATURE(kWebUIOmniboxPopup, ENABLED);
 // webpage.
 BASE_FEATURE(kWebUIOmniboxSimplification, ENABLED);
 
-}  // namespace internal
-
-// If enabled, disables caret color animation for the WebUI Omnibox popup.
-BASE_FEATURE(kWebUIOmniboxDisableCaretColorAnimation, ENABLED);
 // If enabled, then both the input row and suggestions dropdown (in the Omnibox)
 // will be rendered using the WebUI stack (i.e. the cutout for the location bar
 // will be removed).
 BASE_FEATURE(kWebUIOmniboxFullPopup, DISABLED);
+
+bool IsWebUIOmniboxFullPopupEnabled() {
+  return base::FeatureList::IsEnabled(internal::kWebUIOmniboxFullPopup);
+}
+
+}  // namespace internal
+
+// If enabled, disables caret color animation for the WebUI Omnibox popup.
+BASE_FEATURE(kWebUIOmniboxDisableCaretColorAnimation, ENABLED);
 // Enables the double click mechanism of sending selection set by
 // passing click events through the WebView.
 BASE_FEATURE(kWebUIOmniboxFullPopupDoubleClick, ENABLED);
@@ -62,19 +67,19 @@ bool IsWebUIOmniboxPopupEnabled() {
   return base::FeatureList::IsEnabled(internal::kWebUIOmniboxPopup);
 }
 
-bool IsWebUIOmniboxFullPopupEnabled() {
-  return base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxFullPopup);
-}
-
 bool ShouldUseWebUIOmniboxFullHandler() {
-  return IsWebUIOmniboxFullPopupEnabled() &&
+  return internal::IsWebUIOmniboxFullPopupEnabled() &&
          base::FeatureList::IsEnabled(
              omnibox::kWebUISearchboxWithoutModelController);
 }
 
 bool IsWebUIOmniboxInBrowserViewEnabled() {
-  return base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxFullPopup) &&
+  return internal::IsWebUIOmniboxFullPopupEnabled() &&
          kWebUIOmniboxFullPopupUseBrowserView.Get();
+}
+
+bool ShouldDrawFullPopupShadowInWebUI() {
+  return base::FeatureList::IsEnabled(kOmniboxFullWebUIShadow);
 }
 
 const base::FeatureParam<bool> kShowLensSearchChip(
@@ -82,9 +87,9 @@ const base::FeatureParam<bool> kShowLensSearchChip(
     "Omnibox_ShowLensSearchChip",
     false);
 const base::FeatureParam<bool> kWebUIOmniboxFullPopupUseBrowserView{
-    &kWebUIOmniboxFullPopup, "Omnibox_UseBrowserView", false};
+    &internal::kWebUIOmniboxFullPopup, "Omnibox_UseBrowserView", false};
 const base::FeatureParam<bool> kWebUIOmniboxFullPopupMultiline{
-    &kWebUIOmniboxFullPopup, "Omnibox_Multiline", false};
+    &internal::kWebUIOmniboxFullPopup, "Omnibox_Multiline", false};
 const base::FeatureParam<int> kWebUIOmniboxFullPopupSnapshotCacheSize{
-    &kWebUIOmniboxFullPopup, "Omnibox_SnapshotCacheSize", 10};
+    &internal::kWebUIOmniboxFullPopup, "Omnibox_SnapshotCacheSize", 10};
 }  // namespace omnibox

@@ -43,7 +43,6 @@ group("resources") {
       "certificate_manager:resources",
       "content_settings:resources",
       "downloads:resources",
-      "history:resources",
       "inspect:resources",
       "key_value_pair_viewer_shared:resources",
       "omnibox_popup:resources",
@@ -81,7 +80,6 @@ group("resources") {
     public_deps += [
       "unexportable_keys_internals:resources",
       "//chrome/browser/resources/media/mei_preload:component",
-      "//components/privacy_sandbox/privacy_sandbox_attestations/preload:component",
     ]
   }
 
@@ -139,6 +137,10 @@ group("resources") {
 
   if (enable_webui_certificate_viewer) {
     public_deps += [ "certificate_viewer:resources" ]
+  }
+
+  if (enable_webui_history) {
+    public_deps += [ "history:resources" ]
   }
 
   if (enable_compose) {

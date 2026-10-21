@@ -47,7 +47,8 @@ source_set("impl") {
       "omnibox_utils.cc",
     ]
     deps += [
-        "//chrome/browser/profiles:profile",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/omnibox",

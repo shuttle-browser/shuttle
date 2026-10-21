@@ -36,9 +36,14 @@ class ActionAppMenuManager {
   // Populates the menu action hierarchy under the app menu root.
   void CreateMenuHierarchy();
 
+  // Cleans up the menu action hierarchy and records any menu close
+  // notifications when the menu is closed.
+  void OnMenuClosed();
+
   actions::ActionItem* GetAppMenuRoot() const;
 
  private:
+  void AddNotificationActions(actions::ActionItem* root);
   void AddSearchBarAction(actions::ActionItem* root);
   void AddBlockHeaderActions(actions::ActionItem* root);
   void AddYourChromeActions(actions::ActionItem* root);

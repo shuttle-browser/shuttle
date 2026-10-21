@@ -53,7 +53,7 @@ void HistoryProvider::DeleteMatchFromMatches(const AutocompleteMatch& match) {
   for (auto i(matches_.begin()); i != matches_.end(); ++i) {
     if (i->destination_url == match.destination_url && i->type == match.type) {
       found = true;
-      if (i->type == AutocompleteMatchType::URL_WHAT_YOU_TYPED) {
+      if (i->type == omnibox::AutocompleteMatchType::kUrlWhatYouTyped) {
         // We can't get rid of What-You-Typed matches, but we can make them
         // look like they have no backing data.
         i->deletable = false;

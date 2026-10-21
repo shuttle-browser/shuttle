@@ -171,9 +171,6 @@ class BrowserCommandController : public CommandUpdater,
   // Updates commands when the content's restrictions change.
   void UpdateCommandsForContentRestrictionState();
 
-  // Updates commands for enabling developer tools.
-  void UpdateCommandsForDevTools();
-
 
   // Updates commands that affect file selection dialogs in aggregate,
   // namely the save-page-as state and the open-file state.
@@ -216,6 +213,9 @@ class BrowserCommandController : public CommandUpdater,
 
   void UpdateTabRestoreCommandState();
 
+  // Updates the checked state for the action with id |action_id|.
+  void UpdateCheckedState(actions::ActionId action_id, bool checked);
+
   // Updates commands for find.
   void UpdateCommandsForFind();
 
@@ -237,6 +237,9 @@ class BrowserCommandController : public CommandUpdater,
 
   // Updates commands and actions that depend on tab group focus state.
   void UpdateCommandsForTabGroupFocusChanged();
+
+  // Updates commands and actions for profiling.
+  void UpdateCommandsForProfiling();
 
   void UpdateCommandAndActionEnabled(int command_id,
                                      actions::ActionId action_id,

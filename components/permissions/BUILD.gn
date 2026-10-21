@@ -156,6 +156,7 @@ source_set("permissions") {
     "//components/vector_icons",
     "//components/webrtc:media_stream_device_enumerator",
     "//content/public/browser",
+    "//device/base/public/cpp",
     "//device/bluetooth",
     "//device/bluetooth/public/cpp",
     "//extensions/buildflags",

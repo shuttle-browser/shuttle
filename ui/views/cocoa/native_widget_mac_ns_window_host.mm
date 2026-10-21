@@ -662,6 +662,8 @@ void NativeWidgetMacNSWindowHost::CreateCompositor(
 
   // Create the layer.
   SetLayer(ui::Layer::Create(params.layer_type));
+  layer()->SetName(params.name.empty() ? "NativeWidgetMacNSWindowHost"
+                                       : params.name);
   layer()->set_delegate(this);
   layer()->SetFillsBoundsOpaquely(!translucent);
 
@@ -680,8 +682,9 @@ void NativeWidgetMacNSWindowHost::CreateCompositor(
   // case it will never become visible but we want its compositor to produce
   // frames for screenshooting and screencasting.
   UpdateCompositorProperties();
-  layer()->SetVisible(is_visible_);
-  if (is_visible_ || display::Screen::Get()->IsHeadless()) {
+  layer()->SetVisible(is_visible_ || video_capture_count_ > 0);
+  if (is_visible_ || display::Screen::Get()->IsHeadless() ||
+      video_capture_count_ > 0) {
     compositor_->Unsuspend();
   }
 
@@ -1021,7 +1024,9 @@ bool NativeWidgetMacNSWindowHost::AllowScreenshots() const {
   // https://developer.apple.com/documentation/appkit/nswindow/1419729-sharingtype
   //
   // Using `allow_screenshots_` is a workaround to be able to know the actual
-  // value `SetAllowScreenshots()` was called with.
+  // value `SetAllowScreenshots()` was called with. Note that, as on Windows,
+  // this is the state requested for this window: the window may still be
+  // excluded from capture because one of its ancestors is.
   return allow_screenshots_;
 }
 
@@ -1105,6 +1110,52 @@ void NativeWidgetMacNSWindowHost::OnApplicationHostDestroying(
   OnWindowHasClosed();
 }
 
+base::ScopedClosureRunner
+NativeWidgetMacNSWindowHost::CreateVideoCaptureLock() {
+  ++video_capture_count_;
+  if (video_capture_count_ == 1) {
+    UpdateCompositorVisibility();
+  }
+  return base::ScopedClosureRunner(
+      base::BindOnce(&NativeWidgetMacNSWindowHost::OnVideoCaptureLockDestroyed,
+                     weak_factory_.GetWeakPtr()));
+}
+
+void NativeWidgetMacNSWindowHost::OnVideoCaptureLockDestroyed() {
+  CHECK_GT(video_capture_count_, 0u);
+  --video_capture_count_;
+  if (video_capture_count_ == 0) {
+    UpdateCompositorVisibility();
+  }
+}
+
+void NativeWidgetMacNSWindowHost::UpdateCompositorVisibility() {
+  if (!compositor_) {
+    return;
+  }
+  const bool visible = is_visible_ || video_capture_count_ > 0;
+  const bool was_layer_visible = layer()->visible();
+  layer()->SetVisible(visible);
+  if (visible) {
+    if (base::FeatureList::IsEnabled(
+            views::features::kNotifyCompositorOfWindowVisibilityOnMacOs)) {
+      compositor_->compositor()->SetVisible(true);
+    }
+    compositor_->Unsuspend();
+    if (!was_layer_visible) {
+      layer()->SchedulePaint(layer()->bounds());
+    }
+  } else {
+    if (!display::Screen::Get()->IsHeadless()) {
+      compositor_->Suspend();
+    }
+    if (base::FeatureList::IsEnabled(
+            views::features::kNotifyCompositorOfWindowVisibilityOnMacOs)) {
+      compositor_->compositor()->SetVisible(false);
+    }
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // NativeWidgetMacNSWindowHost,
 // remote_cocoa::mojom::NativeWidgetNSWindowHost:
@@ -1116,23 +1167,7 @@ void NativeWidgetMacNSWindowHost::OnVisibilityChanged(bool window_visible) {
   }
   const bool was_visible_on_screen = IsVisibleOnScreen();
   is_visible_ = window_visible;
-  if (compositor_) {
-    layer()->SetVisible(window_visible);
-    if (window_visible) {
-      if (base::FeatureList::IsEnabled(
-              views::features::kNotifyCompositorOfWindowVisibilityOnMacOs)) {
-        compositor_->compositor()->SetVisible(true);
-      }
-      compositor_->Unsuspend();
-      layer()->SchedulePaint(layer()->bounds());
-    } else {
-      compositor_->Suspend();
-      if (base::FeatureList::IsEnabled(
-              views::features::kNotifyCompositorOfWindowVisibilityOnMacOs)) {
-        compositor_->compositor()->SetVisible(false);
-      }
-    }
-  }
+  UpdateCompositorVisibility();
 
   Widget* widget = GetWidget();
   if (!widget) {
@@ -1165,6 +1200,7 @@ void NativeWidgetMacNSWindowHost::OnSpaceActivationChanged(
 void NativeWidgetMacNSWindowHost::OnWindowNativeThemeChanged() {
   if (base::FeatureList::IsEnabled(::features::kThemeChangeOptimization)) {
     if (Widget* widget = GetWidget()) {
+      widget->ResetLastColorProviderKey();
       widget->ScheduleThemeChanged();
     }
   } else {

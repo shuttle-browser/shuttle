@@ -6,6 +6,7 @@ import("//testing/test.gni")
 
 source_set("core") {
   sources = [
+    "checker_id.h",
     "concepts.h",
     "origin_gating_cache.cc",
     "origin_gating_cache.h",
@@ -13,13 +14,19 @@ source_set("core") {
     "origin_gating_checker.h",
     "origin_gating_configuration.cc",
     "origin_gating_configuration.h",
+    "origin_gating_registration.cc",
+    "origin_gating_registration.h",
+    "origin_gating_service.cc",
+    "origin_gating_service.h",
     "types.cc",
     "types.h",
   ]
 
   deps = [
     "//base",
+    "//components/keyed_service/core",
     "//net",
+    "//third_party/abseil-cpp:absl",
     "//url",
   ]
 }

@@ -75,7 +75,7 @@ export class SettingsPerformancePageElement extends
   }
 
   protected onTabHoverPreviewCardLinkClick_(): void {
-    Router.getInstance().navigateTo(routes.APPEARANCE);
+    Router.getInstance().navigateTo(routes.APPEARANCE, undefined, true);
   }
 
   protected onPerformanceInterventionToggleButtonChange_() {

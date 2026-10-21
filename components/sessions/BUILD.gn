@@ -65,13 +65,11 @@ if (use_blink && !(is_ios && target_platform == "iphoneos")) {
 
     public_deps = [
       ":shared",
-      "//ios/web/public",
       "//ios/web/public/session/proto",
     ]
 
     deps = [
       "//base",
-      "//ios/web/common",
       "//ios/web/public/session",
       "//ios/web/public/session/proto:proto_util",
     ]
@@ -109,6 +107,7 @@ source_set("shared") {
     "core/command_storage_manager.cc",
     "core/command_storage_manager.h",
     "core/command_storage_manager_delegate.h",
+    "core/command_storage_read_status.h",
     "core/live_tab.cc",
     "core/live_tab.h",
     "core/live_tab_context.h",

@@ -10,7 +10,7 @@
 namespace ntp_features {
 
 // If enabled, the EnergyEffect for Realbox will be shown.
-BASE_FEATURE(kEnergyEffect, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kEnergyEffect, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, NTP "realbox" will be themed for CR23. Includes realbox
 // matching omnibox theme and increased realbox shadow.
@@ -30,7 +30,7 @@ BASE_FEATURE(kNtpShortcutsRedesign, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, the bookmark bar may be auto-removed on the NTP and new
 // visibility settings are added.
-BASE_FEATURE(kNtpSimplificationBookmarkBar, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kNtpSimplificationBookmarkBar, base::FEATURE_ENABLED_BY_DEFAULT);
 
 const base::FeatureParam<bool> kNtpRealboxCr23ExpandedStateBgMatchesOmnibox(
     &ntp_features::kRealboxCr23Theming,

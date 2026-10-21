@@ -27,6 +27,7 @@ source_set("ssl") {
     "secure_origin_prefs_observer.h",
     "security_state_event_observer.h",
     "ssl_client_certificate_selector.h",
+    "ssl_config_overlay.h",
     "ssl_config_service_manager.h",
     "ssl_error_controller_client.h",
     "stateful_ssl_host_state_delegate_factory.h",
@@ -36,6 +37,7 @@ source_set("ssl") {
   public_deps = [
     "//base",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/safe_browsing:advanced_protection",
     "//components/captive_portal/core:buildflags",
     "//components/infobars/core",
     "//components/keyed_service/core",
@@ -78,14 +80,7 @@ source_set("ssl") {
       "generated_https_first_mode_pref.h",
       "ssl_client_auth_observer.h",
     ]
-    public_deps += [
-      "//chrome/browser/safe_browsing:advanced_protection",
-      "//ui/views",
-    ]
-  }
-
-  if (is_chromeos) {
-    public += [ "ssl_config_overlay.h" ]
+    public_deps += [ "//ui/views" ]
   }
 }
 
@@ -110,6 +105,7 @@ source_set("impl") {
     "secure_origin_policy_handler.cc",
     "secure_origin_prefs_observer.cc",
     "security_state_event_observer.cc",
+    "ssl_config_overlay.cc",
     "ssl_config_service_manager.cc",
     "ssl_error_controller_client.cc",
     "stateful_ssl_host_state_delegate_factory.cc",
@@ -160,7 +156,6 @@ source_set("impl") {
       "known_interception_disclosure_message_delegate.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/ssl/android:jni_headers",
     ]
   }
@@ -173,15 +168,17 @@ source_set("impl") {
     deps += [
       "//chrome/browser:certificate_viewer",
       "//chrome/browser/extensions",
+      "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/tabs:tab_strip",
     ]
   }
 
   if (is_chromeos) {
-    sources += [ "ssl_config_overlay.cc" ]
     deps += [
       "//chrome/browser/ash/policy/core",
       "//chrome/browser/ash/profiles",
+      "//chrome/browser/ui:settings_window_manager_chromeos",
     ]
   }
 }
@@ -203,6 +200,7 @@ if (is_android) {
       ":ssl",
       "//base",
       "//chrome/test:test_support",
+      "//chrome/test/base:chrome_test_utils",
       "//content/test:test_support",
       "//testing/gtest",
     ]

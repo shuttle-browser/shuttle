@@ -331,8 +331,12 @@ if (is_android && !is_cronet_build) {
     # platform checks.
     android_library("gurl_junit_test_support") {
       testonly = true
-      sources = [ "android/test/java/src/org/chromium/url/JUnitTestGURLs.java" ]
-      deps = [ ":url_java" ]
+      sources = [
+      ]
+      deps = [
+        ":url_java",
+        "//url/mojom:url_mojom_origin_java",
+      ]
     }
 
     android_library("url_java_unit_tests") {

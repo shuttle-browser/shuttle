@@ -51,6 +51,7 @@ source_set("impl") {
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/common:constants",
     "//components/constrained_window",
     "//components/prefs",
@@ -62,6 +63,7 @@ source_set("impl") {
     sources += [ "accessibility_util.cc" ]
     deps += [
       "//chrome/browser/ui:accessibility_util",
+      "//chrome/browser/ui:browser_window_header",
     ]
   }
 
@@ -76,7 +78,6 @@ source_set("impl") {
 }
 
 if (!is_android) {
-
   if (!is_chromeos_device) {
   }
 }

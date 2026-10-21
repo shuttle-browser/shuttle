@@ -3,9 +3,15 @@
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/peerconnection/rtc_encoded_audio_receiver_source_optimizer.h"
+
+#include <utility>
+
+#include "base/memory/scoped_refptr.h"
 #include "base/task/single_thread_task_runner.h"
-#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+#include "third_party/blink/public/platform/task_type.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/wtf/functional.h"
 
 namespace blink {
 
@@ -19,6 +25,13 @@ UnderlyingSourceBase*
 RtcEncodedAudioReceiverSourceOptimizer::PerformInProcessOptimization(
     ScriptState* script_state) {
   ExecutionContext* context = ExecutionContext::From(script_state);
+  if (!context || context->IsContextDestroyed()) {
+    // A source created on a destroyed context would never get
+    // ContextDestroyed(), so the disconnect callback would never run and the
+    // transformer would keep pushing frames to a dead heap. Disconnect now.
+    std::move(disconnect_callback_).Run();
+    return nullptr;
+  }
 
   scoped_refptr<base::SingleThreadTaskRunner> current_runner =
       context->GetTaskRunner(TaskType::kInternalMediaRealTime);

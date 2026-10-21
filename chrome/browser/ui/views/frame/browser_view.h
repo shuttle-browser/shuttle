@@ -21,14 +21,15 @@
 #include "base/timer/timer.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/download_close_type.h"
+#include "chrome/browser/ui/global_error/global_error_observer.h"
 #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
-#include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/contents_container_view.h"
-#include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/frame/layout/browser_view_layout_params.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/vertical_tab_strip_background_blur_backdrop.h"
@@ -36,6 +37,7 @@
 #include "chrome/common/buildflags.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/infobars/core/infobar_container.h"
+#include "components/prefs/pref_change_registrar.h"
 #include "components/viz/common/frame_timing_details.h"
 #include "content/public/browser/desktop_capture_pip_utils.h"
 #include "content/public/browser/page_user_data.h"
@@ -68,9 +70,12 @@ class AccessibilityFocusHighlight;
 class BrowserWindowInterface;
 class BrowserViewLayout;
 class ContentsContainerView;
+class ContentsWebView;
+class CustomFloatingCorner;
 struct DropData;
 class ExclusiveAccessBubbleViews;
 class ExclusiveAccessBubbleViewsContext;
+class GlobalErrorService;
 class InfoBarContainerView;
 class LocationBarView;
 class MultiContentsView;
@@ -104,10 +109,9 @@ enum class Channel;
 
 namespace views {
 class LabelButton;
+class NativeViewHost;
 class WebView;
 }  // namespace views
-
-class CustomFloatingCorner;
 
 ///////////////////////////////////////////////////////////////////////////////
 // BrowserView
@@ -124,6 +128,7 @@ class BrowserView : public BrowserWindow,
                     public views::ClientView,
                     public infobars::InfoBarContainer::Delegate,
                     public ImmersiveModeController::Observer,
+                    public GlobalErrorObserver,
                     public views::FocusChangeListener {
   METADATA_HEADER(BrowserView, views::ClientView)
 
@@ -267,9 +272,7 @@ class BrowserView : public BrowserWindow,
   // Will return the single active contents view. If side by side is enabled,
   // it may make more sense to use GetAllVisibleContentsWebViews() depending on
   // the use case.
-  ContentsWebView* contents_web_view() {
-    return static_cast<ContentsWebView*>(GetContentsView());
-  }
+  ContentsWebView* contents_web_view_for_testing();
 
   ScrimView* window_scrim_view() { return window_scrim_view_; }
 
@@ -456,6 +459,7 @@ class BrowserView : public BrowserWindow,
   bool IsFullscreen() const override;
   LocationBar* GetLocationBar() const override;
   ui::AcceleratorProvider* GetAcceleratorProvider() override;
+  PinnedToolbarActions* GetPinnedToolbarActions() override;
   void SetFocusToLocationBar(bool is_user_initiated) override;
   void UpdateReloadStopState(bool is_loading, bool force) override;
   void UpdateToolbar(content::WebContents* contents) override;
@@ -482,7 +486,7 @@ class BrowserView : public BrowserWindow,
   DownloadBubbleUIController* GetDownloadBubbleUIController() override;
   void ConfirmBrowserCloseWithPendingDownloads(
       int download_count,
-      UnloadController::DownloadCloseType dialog_type,
+      DownloadCloseType dialog_type,
       base::OnceCallback<void(bool)> callback) override;
   void ShowAppMenu() override;
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
@@ -610,6 +614,9 @@ class BrowserView : public BrowserWindow,
 
   // ui::AcceleratorTarget:
   bool AcceleratorPressed(const ui::Accelerator& accelerator) override;
+
+  // GlobalErrorObserver:
+  void OnGlobalErrorsChanged() override;
 
   // ImmersiveModeController::Observer:
   void OnImmersiveFullscreenEntered() override;
@@ -1086,9 +1093,8 @@ class BrowserView : public BrowserWindow,
   base::OnceClosure loading_animation_state_change_closure_;
 
   // Start timestamp for all throbbers. Set when the loading animation
-  // starts. For paint-driven animations (i.e. when `kCompositorLoadingThrobber`
-  // is disabled), this is used for all consecutive tabs (while any are loading)
-  // to keep throbbers in sync.
+  // starts and used for all consecutive tabs (while any are loading) to keep
+  // throbbers in sync.
   base::TimeTicks loading_animation_start_;
 
   views::UnhandledKeyboardEventHandler unhandled_keyboard_event_handler_;
@@ -1125,6 +1131,9 @@ class BrowserView : public BrowserWindow,
 
   base::ScopedObservation<views::Widget, views::WidgetObserver>
       widget_observation_{this};
+
+  base::ScopedObservation<GlobalErrorService, GlobalErrorObserver>
+      global_error_observation_{this};
 
   bool interactive_resize_in_progress_ = false;
 

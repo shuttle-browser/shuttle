@@ -145,7 +145,6 @@ class ChromeEnterpriseRealTimeUrlLookupService
 
   base::WeakPtrFactory<ChromeEnterpriseRealTimeUrlLookupService> weak_factory_{
       this};
-
 };  // class ChromeEnterpriseRealTimeUrlLookupService
 
 }  // namespace safe_browsing

@@ -977,8 +977,6 @@ void SystemNetworkContextManager::ConfigureDefaultNetworkContextParams(
       UpdateCorsExemptHeaders(network_context_params);
 #endif  // BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
 
-  network_context_params->enable_brotli = true;
-
   network_context_params->enable_zstd = true;
 
   network_context_params->user_agent = embedder_support::GetUserAgent();

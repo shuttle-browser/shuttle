@@ -131,8 +131,13 @@ MenuItemView::MenuItemView(MenuDelegate* delegate)
                    delegate) {}
 
 MenuItemView::~MenuItemView() {
-  if (controller_) {
-    NotifyControllerOfDestructionRecursively(this, controller_.get());
+  SetAnchorView(nullptr);
+  // Only the root item holds `controller_`, so walk up to the root to also
+  // cover destruction of a non-root subtree (e.g. via RemoveMenuItem()). This
+  // is safe because each item clears its children's `parent_menu_item_` below,
+  // before those children are destroyed.
+  if (MenuController* controller = GetMenuController()) {
+    NotifyControllerOfDestructionRecursively(this, controller);
   }
   if (submenu_) {
     for (auto* item : submenu_->GetMenuItems()) {
@@ -141,6 +146,22 @@ MenuItemView::~MenuItemView() {
   }
   for (views::View* item : removed_items_) {
     delete item;
+  }
+}
+
+void MenuItemView::SetAnchorView(View* anchor_view) {
+  if (anchor_view_ == anchor_view) {
+    return;
+  }
+  if (anchor_view_) {
+    anchor_view_->ClearProperty(kSubmenuItemKey);
+  }
+  anchor_view_ = anchor_view;
+  if (anchor_view_) {
+    anchor_view_->SetProperty(kSubmenuItemKey, this);
+    anchor_view_->GetViewAccessibility().SetHasPopup(
+        ax::mojom::HasPopup::kMenu);
+    anchor_view_->GetViewAccessibility().SetIsCollapsed();
   }
 }
 
@@ -617,6 +638,16 @@ void MenuItemView::SetSelected(bool selected) {
   }
 
   selected_ = selected;
+  if (anchor_view_) {
+    if (Button* anchor_button = Button::AsButton(anchor_view_)) {
+      anchor_button->SetHotTracked(selected);
+    }
+    if (selected) {
+      anchor_view_->GetViewAccessibility().SetIsExpanded();
+    } else {
+      anchor_view_->GetViewAccessibility().SetIsCollapsed();
+    }
+  }
   UpdateAccessibleSelection();
   UpdateSelectionBasedStateIfChanged(PaintMode::kNormal);
   OnPropertyChanged(&selected_, PropertyEffects::kPaint);
@@ -748,6 +779,14 @@ int MenuItemView::GetContentStart() const {
          ((controller && controller->use_ash_system_ui_layout())
               ? config.touchable_item_horizontal_padding
               : config.item_horizontal_padding);
+}
+
+int MenuItemView::GetTrailingPadding() const {
+  if (GetBorder()) {
+    return GetInsets().right();
+  }
+  return GetItemHorizontalBorder() +
+         MenuConfig::instance().item_horizontal_padding;
 }
 
 MenuController* MenuItemView::GetMenuController() {
@@ -918,7 +957,7 @@ ProposedLayout MenuItemView::CalculateProposedLayout(
 
     if (submenu_arrow_image_view_) {
       const int right_border =
-          submenu->item_horizontal_border() +
+          submenu->trailing_padding() - config.item_horizontal_padding +
           (type_ == Type::kActionableSubMenu
                ? config.actionable_submenu_arrow_to_edge_padding
                : config.arrow_to_edge_padding);
@@ -975,9 +1014,6 @@ bool MenuItemView::IsTraversableByKeyboard() const {
 }
 
 int MenuItemView::GetItemHorizontalBorder() const {
-  if (GetBorder()) {
-    return GetInsets().right() - MenuConfig::instance().item_horizontal_padding;
-  }
   const auto* const controller = GetMenuController();
   const MenuConfig& config = MenuConfig::instance();
   return (controller && controller->use_ash_system_ui_layout())
@@ -1278,7 +1314,8 @@ void MenuItemView::PaintBackground(gfx::Canvas* canvas,
     SkColor color = gfx::kPlaceholderColor;
 
     ui::ColorProvider* color_provider = GetColorProvider();
-    if (type_ == Type::kHighlighted || selected_color_id_.has_value()) {
+    if (type_ == Type::kHighlighted ||
+        (paint_as_selected && selected_color_id_.has_value())) {
       const ui::ColorId color_id = selected_color_id_.value_or(
           paint_as_selected ? ui::kColorMenuItemBackgroundSelected
                             : ui::kColorMenuItemBackgroundHighlighted);
@@ -2031,6 +2068,7 @@ void MenuItemActionViewInterface::ActionItemChangedImpl(
   if (!action_item->GetImage().IsEmpty()) {
     menu_item_view->SetIcon(action_item->GetImage());
   }
+  menu_item_view->RefreshCheckmarkState();
 }
 
 BEGIN_METADATA(MenuItemView)
@@ -2047,4 +2085,8 @@ EmptyMenuMenuItem::EmptyMenuMenuItem(MenuItemView* parent)
 BEGIN_METADATA(EmptyMenuMenuItem)
 END_METADATA
 
+DEFINE_UI_CLASS_PROPERTY_KEY(MenuItemView*, kSubmenuItemKey, nullptr)
+
 }  // namespace views
+
+DEFINE_EXPORTED_UI_CLASS_PROPERTY_TYPE(VIEWS_EXPORT, views::MenuItemView*)

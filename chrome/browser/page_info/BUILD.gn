@@ -20,7 +20,9 @@ source_set("page_info") {
     "//chrome/browser/profiles:profile",
     "//components/optimization_guide/core",
     "//components/page_info/core",
+    "//components/tabs:public",
     "//content/public/browser",
+    "//ui/base/unowned_user_data",
   ]
 
   if (!is_android) {
@@ -53,7 +55,6 @@ source_set("impl") {
 
   if (is_android) {
     sources += [ "about_this_site_controller_android.cc" ]
-    deps += [ "//chrome/android:jni_headers" ]
   } else {
     deps += [ "//components/navigation_interception" ]
   }

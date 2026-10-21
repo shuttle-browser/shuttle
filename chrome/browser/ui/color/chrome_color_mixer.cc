@@ -140,7 +140,8 @@ TabGroupColorParams CreateColorParams(
     SkColor outline_light,
     SkColor bm_dark,
     SkColor bm_light,
-    std::optional<SkColor> alt_fg_light = std::nullopt) {
+    std::optional<SkColor> alt_fg_light = std::nullopt,
+    std::optional<SkColor> alt_outline_light = std::nullopt) {
   if (use_alternate_palette) {
     return {active,
             inactive,
@@ -154,7 +155,7 @@ TabGroupColorParams CreateColorParams(
             alt_fg_dark,
             alt_fg_light.value_or(alt_light),
             alt_dark,
-            alt_light,
+            alt_outline_light.value_or(alt_light),
             alt_chip_dark,
             alt_chip_light};
   } else {
@@ -275,7 +276,8 @@ void AddChromeColorMixer(ui::ColorProvider* provider,
           gfx::kGoogleYellow600, gfx::kGoogleYellow100, gfx::kGoogleGrey800,
           gfx::kGoogleYellow300, gfx::kGoogleYellow600,
           SkColorSetRGB(0x55, 0x4B, 0x30), gfx::kGoogleYellow050,
-          gfx::kTabGroupYellowTextLightMode)};
+          gfx::kTabGroupYellowTextLightMode,
+          gfx::kTabGroupYellowOutlineLightMode)};
 
   for (const auto& params : tab_group_color_params_all) {
     mixer[params.active_frame_id] =
@@ -309,7 +311,7 @@ void AddChromeColorMixer(ui::ColorProvider* provider,
   mixer[kColorAppMenuHighlightPrimary] = {ui::kColorButtonBackgroundProminent};
   mixer[kColorAppMenuExpandedForegroundPrimary] = {
       ui::kColorButtonForegroundProminent};
-  mixer[kColorAppMenuChipBackground] = {ui::kColorSysBaseContainer};
+  mixer[kColorAppMenuChipBackground] = {ui::kColorSysTonalContainer};
   mixer[kColorAppMenuChipBackgroundHovered] = {ui::GetResultingPaintColor(
       ui::kColorSysStateHoverOnSubtle, kColorAppMenuChipBackground)};
   mixer[kColorAppMenuChipForeground] = {ui::kColorSysOnTonalContainer};
@@ -446,6 +448,9 @@ void AddChromeColorMixer(ui::ColorProvider* provider,
   mixer[kColorGlicModalForeground] = {dark_mode
                                           ? SkColorSetRGB(0x30, 0x30, 0x30)
                                           : SkColorSetRGB(0xF2, 0xF2, 0xF2)};
+  mixer[kColorGlicPlaceholderElem] = {dark_mode
+                                          ? SkColorSetRGB(0x33, 0x34, 0x38)
+                                          : SkColorSetRGB(0xEF, 0xF3, 0xFA)};
   // Gradient colors used for underlines on active tabs.
   constexpr color_utils::HSL start{-1.0, -1.0, 0.6};
   constexpr color_utils::HSL end{-1.0, -1.0, 0.4};

@@ -120,9 +120,16 @@ void DisplayLockContext::SetRequestedState(EContentVisibility state) {
   NotifyRenderAffectingStateChanged();
 
   // Since our state changed, check if we need to create a scoped force update
-  // object.
-  element_->GetDocument().GetDisplayLockDocumentState().ForceLockIfNeeded(
-      element_.Get());
+  // object. This is only needed if a lock is requested: there is nothing to
+  // force if we are unlocking. This matters, since DetachLayoutTree() requests
+  // an unlock, and it can be called during slot assignment recalc, where flat
+  // tree traversal (as done by ForceLockIfNeeded()) is not allowed. Such a
+  // traversal could recalc the slot assignment of another shadow root, while
+  // the assigned nodes of the slots being recalculated are not up to date.
+  if (state_ != EContentVisibility::kVisible) {
+    element_->GetDocument().GetDisplayLockDocumentState().ForceLockIfNeeded(
+        element_.Get());
+  }
 }
 
 const ComputedStyle* DisplayLockContext::AdjustElementStyle(
@@ -282,6 +289,23 @@ void DisplayLockContext::Lock() {
     MarkForStyleRecalcIfNeeded();
   }
 
+  // We need to notify the AX cache (if it exists) to update |element_|'s
+  // children in the AX cache.
+  if (AXObjectCache* cache = element_->GetDocument().ExistingAXObjectCache()) {
+    cache->ChildrenChanged(element_);
+  }
+
+  // If we have top layer elements in our subtree, we have to detach their
+  // layout objects, since otherwise they would be hoisted out of our subtree.
+  DetachDescendantTopLayerElements();
+
+  // Schedule ContentVisibilityAutoStateChange event if needed.
+  ScheduleStateChangeEventIfNeeded();
+
+  if (!element_->GetLayoutObject()) {
+    return;
+  }
+
   // TODO(vmpstr): Note when an 'auto' context gets locked, we should clear
   // the ancestor scroll anchors. This is a workaround for a behavior that
   // happens when the user quickly scrolls (e.g. scrollbar scrolls) into an
@@ -299,21 +323,6 @@ void DisplayLockContext::Lock() {
   // is a better way to solve this. In either case, we have to select a new
   // scroll anchor to get out of this behavior.
   element_->NotifyPriorityScrollAnchorStatusChanged();
-
-  // We need to notify the AX cache (if it exists) to update |element_|'s
-  // children in the AX cache.
-  if (AXObjectCache* cache = element_->GetDocument().ExistingAXObjectCache())
-    cache->ChildrenChanged(element_);
-
-  // If we have top layer elements in our subtree, we have to detach their
-  // layout objects, since otherwise they would be hoisted out of our subtree.
-  DetachDescendantTopLayerElements();
-
-  // Schedule ContentVisibilityAutoStateChange event if needed.
-  ScheduleStateChangeEventIfNeeded();
-
-  if (!element_->GetLayoutObject())
-    return;
 
   // If this element is a scroller, then stash its current scroll offset, so
   // that we can restore it when needed.

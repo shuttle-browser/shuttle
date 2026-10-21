@@ -22,8 +22,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/content_settings/mixed_content_settings_tab_helper.h"
 #include "chrome/browser/content_settings/page_specific_content_settings_delegate.h"
-#include "chrome/browser/content_settings/sound_content_setting_observer.h"
-#include "chrome/browser/external_protocol/external_protocol_observer.h"
+#include "chrome/browser/enterprise/connectors/referrer_cache_utils.h"
 #include "chrome/browser/favicon/favicon_utils.h"
 #include "chrome/browser/file_system_access/file_system_access_features.h"
 #include "chrome/browser/file_system_access/file_system_access_permission_request_manager.h"
@@ -35,8 +34,6 @@
 #include "chrome/browser/login_detection/login_detection_tab_helper.h"
 #include "chrome/browser/lookalikes/safety_tip_web_contents_observer.h"
 #include "chrome/browser/media/media_engagement_service.h"
-#include "chrome/browser/metrics/desktop_session_duration/desktop_session_duration_observer.h"
-#include "chrome/browser/navigation_predictor/navigation_predictor_preconnect_client.h"
 #include "chrome/browser/net/net_error_tab_helper.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
@@ -44,29 +41,22 @@
 #include "chrome/browser/page_content_annotations/multi_source_page_context_fetcher.h"
 #include "chrome/browser/page_content_annotations/page_content_annotations_service_factory.h"
 #include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
-#include "chrome/browser/page_info/page_info_features.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/permissions/one_time_permissions_tracker_helper.h"
 #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/predictors/loading_predictor_factory.h"
 #include "chrome/browser/predictors/loading_predictor_tab_helper.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
-#include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/resource_coordinator/tab_helper.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/sessions/session_tab_helper_factory.h"
-#include "chrome/browser/site_protection/site_protection_metrics_observer.h"
 #include "chrome/browser/ssl/chrome_security_blocking_page_factory.h"
 #include "chrome/browser/ssl/https_only_mode_tab_helper.h"
-#include "chrome/browser/storage_access_api/storage_access_api_service_factory.h"
-#include "chrome/browser/storage_access_api/storage_access_api_service_impl.h"
-#include "chrome/browser/storage_access_api/storage_access_api_tab_helper.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_navigation_observer.h"
-#include "chrome/browser/tab_contents/navigation_metrics_recorder.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
@@ -75,8 +65,6 @@
 #include "chrome/browser/ui/search_engines/search_engine_tab_helper.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper.h"
 #include "chrome/browser/ui/tab_dialogs.h"
-#include "chrome/browser/ui/views/tab_sharing/tab_capture_contents_border_helper.h"
-#include "chrome/browser/v8_compile_hints/v8_compile_hints_tab_helper.h"
 #include "chrome/browser/vr/vr_tab_helper.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_features.h"
@@ -88,8 +76,6 @@
 #include "components/client_hints/browser/client_hints_web_contents_observer.h"
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "components/dom_distiller/core/dom_distiller_features.h"
-#include "components/download/content/factory/navigation_monitor_factory.h"
-#include "components/download/content/public/download_navigation_observer.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/history/content/browser/web_contents_top_sites_observer.h"
 #include "components/history/core/browser/top_sites.h"
@@ -136,26 +122,20 @@
 #include "base/android/android_info.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
-#include "chrome/browser/android/oom_intervention/oom_intervention_tab_helper.h"
 #include "chrome/browser/android/persisted_tab_data/language_persisted_tab_data_android.h"
 #include "chrome/browser/android/persisted_tab_data/sensitivity_persisted_tab_data_android.h"
-#include "chrome/browser/android/policy/policy_auditor_bridge.h"
 #include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/android/tab_web_contents_delegate_android.h"
 #include "chrome/browser/banners/android/chrome_app_banner_manager_android.h"
 #include "chrome/browser/content_settings/request_desktop_site_web_contents_observer_android.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
-#include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_tab_helper.h"
-#include "chrome/browser/plugins/plugin_observer_android.h"
 #include "chrome/browser/ui/android/context_menu_helper.h"
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_android.h"
 #include "components/content_capture/common/content_capture_features.h"
-#include "components/page_load_metrics/browser/features.h"
 #include "content/public/common/content_features.h"
 #else
 #include "chrome/browser/ui/javascript_dialogs/javascript_tab_modal_dialog_manager_delegate_desktop.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/uma_browsing_activity_observer.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
@@ -163,21 +143,7 @@
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/boot_times_recorder/boot_times_recorder_tab_helper.h"
-#include "chrome/browser/ash/child_accounts/time_limits/web_time_navigation_observer.h"
-#include "chrome/browser/ash/growth/campaigns_manager_session_tab_helper.h"
-#include "chrome/browser/ash/mahi/web_contents/mahi_tab_helper.h"
-#include "chrome/browser/chromeos/gemini_app/gemini_app_tab_helper.h"
 #include "chrome/browser/chromeos/policy/dlp/dlp_content_tab_helper.h"
-#include "chrome/browser/ui/ash/google_one/google_one_offer_iph_tab_helper.h"
-#include "chromeos/ash/experiences/isolated_web_app/cros_isolated_web_app_enabler.h"
-#endif
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-#endif
-
-#if BUILDFLAG(IS_WIN)
-#include "chrome/browser/font_prewarmer_tab_helper.h"
 #endif
 
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
@@ -193,7 +159,6 @@
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "chrome/browser/extensions/api/web_navigation/web_navigation_tab_observer.h"
-#include "chrome/browser/extensions/navigation_extension_enabler.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "extensions/browser/view_type_utils.h"
 #if !BUILDFLAG(IS_ANDROID)
@@ -201,13 +166,8 @@
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)
-#include "chrome/browser/offline_pages/android/auto_fetch_page_load_watcher.h"
 #include "chrome/browser/offline_pages/offline_page_tab_helper.h"
 #include "chrome/browser/offline_pages/recent_tab_helper.h"
-#endif
-
-#if BUILDFLAG(ENABLE_PLUGINS)
-#include "chrome/browser/plugins/plugin_observer.h"
 #endif
 
 #if BUILDFLAG(ENABLE_PRINTING)
@@ -215,20 +175,12 @@
 #endif
 
 
-#if BUILDFLAG(ENABLE_RLZ)
-#include "chrome/browser/rlz/chrome_rlz_tracker_web_contents_observer.h"
-#endif
-
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/trigger_creator.h"
 #include "components/safe_browsing/content/browser/safe_browsing_tab_observer.h"
 #endif
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "components/signin/public/base/signin_switches.h"
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 using content::WebContents;
 
@@ -300,24 +252,16 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   ChainedBackNavigationTracker::CreateForWebContents(web_contents);
   chrome_browser_net::NetErrorTabHelper::CreateForWebContents(web_contents);
   CreateSubresourceFilterWebContentsHelper(web_contents);
-#if BUILDFLAG(ENABLE_RLZ)
-  ChromeRLZTrackerWebContentsObserver::CreateForWebContentsIfNeeded(
-      web_contents);
-#endif
   client_hints::ClientHintsWebContentsObserver::CreateForWebContents(
       web_contents);
   content_settings::PageSpecificContentSettings::CreateForWebContents(
       web_contents,
       std::make_unique<PageSpecificContentSettingsDelegate>(web_contents));
   CoreTabHelper::CreateForWebContents(web_contents);
-  ExternalProtocolObserver::CreateForWebContents(web_contents);
   favicon::CreateContentFaviconDriverForWebContents(web_contents);
   FileSystemAccessPermissionRequestManager::CreateForWebContents(web_contents);
   FileSystemAccessTabHelper::CreateForWebContents(web_contents);
   FindBarState::ConfigureWebContents(web_contents);
-  download::DownloadNavigationObserver::CreateForWebContents(
-      web_contents,
-      download::NavigationMonitorFactory::GetForKey(profile->GetProfileKey()));
   history::WebContentsTopSitesObserver::CreateForWebContents(
       web_contents, TopSitesFactory::GetForProfile(profile).get());
   if (!profile->IsOffTheRecord()) {
@@ -340,8 +284,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
         metrics_services_manager->GetOnRendererUnresponsiveCb());
   }
   MixedContentSettingsTabHelper::CreateForWebContents(web_contents);
-  NavigationMetricsRecorder::CreateForWebContents(web_contents);
-  NavigationPredictorPreconnectClient::CreateForWebContents(web_contents);
   if (optimization_guide::features::IsOptimizationHintsEnabled()) {
     OptimizationGuideWebContentsObserver::CreateForWebContents(web_contents);
   }
@@ -405,7 +347,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
     predictors::LoadingPredictorTabHelper::CreateForWebContents(web_contents);
   }
   PrefsTabHelper::CreateForWebContents(web_contents);
-  prerender::NoStatePrefetchTabHelper::CreateForWebContents(web_contents);
   RecentlyAudibleHelper::CreateForWebContents(web_contents);
 #if BUILDFLAG(IS_ANDROID)
   RequestDesktopSiteWebContentsObserverAndroid::CreateForWebContents(
@@ -420,10 +361,9 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
       web_contents, HostContentSettingsMapFactory::GetForProfile(profile),
       safe_browsing::SafeBrowsingNavigationObserverManagerFactory::
           GetForBrowserContext(profile),
-      profile->GetPrefs(), g_browser_process->safe_browsing_service());
+      profile->GetPrefs(), g_browser_process->safe_browsing_service(),
+      enterprise_connectors::IsReferrerChainNeededForEnterprise(profile));
 #endif
-  site_protection::SiteProtectionMetricsObserver::CreateForWebContents(
-      web_contents);
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   if (g_browser_process->safe_browsing_service()) {
@@ -453,13 +393,9 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
         prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
             profile));
   }
-  SoundContentSettingObserver::CreateForWebContents(web_contents);
-  StorageAccessAPITabHelper::CreateForWebContents(
-      web_contents, StorageAccessAPIServiceFactory::GetForBrowserContext(
-                        web_contents->GetBrowserContext()));
 #if BUILDFLAG(IS_CHROMEOS)
-  // Do not create for Incognito mode.
-  if (!profile->IsIncognitoProfile()) {
+  // Do not create for Incognito and Isolated  mode.
+  if (!profile->IsPrimaryOTRProfileWithRegularParent()) {
     SupervisedUserNavigationObserver::CreateForWebContents(web_contents);
   }
 #else
@@ -468,12 +404,7 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
     SupervisedUserNavigationObserver::CreateForWebContents(web_contents);
   }
 #endif
-#if !BUILDFLAG(IS_ANDROID)
-  TabCaptureContentsBorderHelper::CreateForWebContents(web_contents);
-#endif  // BUILDFLAG(IS_ANDROID)
   ukm::InitializeSourceUrlRecorderForWebContents(web_contents);
-  v8_compile_hints::V8CompileHintsTabHelper::MaybeCreateForWebContents(
-      web_contents);
   vr::VrTabHelper::CreateForWebContents(web_contents);
   OneTimePermissionsTrackerHelper::CreateForWebContents(web_contents);
 
@@ -493,21 +424,10 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   }
   ContextMenuHelper::CreateForWebContents(web_contents);
 
-  if (base::FeatureList::IsEnabled(
-          page_load_metrics::features::kBeaconLeakageLogging)) {
-    FromGWSNavigationAndKeepAliveRequestTabHelper::CreateForWebContents(
-        web_contents);
-  }
-
   javascript_dialogs::TabModalDialogManager::CreateForWebContents(
       web_contents,
       std::make_unique<JavaScriptTabModalDialogManagerDelegateAndroid>(
           web_contents));
-  if (OomInterventionTabHelper::IsEnabled()) {
-    OomInterventionTabHelper::CreateForWebContents(web_contents);
-  }
-  PolicyAuditorBridge::CreateForWebContents(web_contents);
-  PluginObserverAndroid::CreateForWebContents(web_contents);
   task_manager::WebContentsTags::CreateForTabContents(web_contents);
 
 #else   // BUILDFLAG(IS_ANDROID)
@@ -520,35 +440,16 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
   // observe it on every tab.
   OmniboxTabHelper::CreateForWebContents(web_contents, profile);
   TabDialogs::CreateForWebContents(web_contents);
-  UMABrowsingActivityObserver::TabHelper::CreateForWebContents(web_contents);
   web_modal::WebContentsModalDialogManager::CreateForWebContents(web_contents);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 
 #if BUILDFLAG(IS_CHROMEOS)
-  GoogleOneOfferIphTabHelper::CreateForWebContents(web_contents);
-  // Do not create for Incognito mode.
-  if (!profile->IsOffTheRecord()) {
-    CampaignsManagerSessionTabHelper::CreateForWebContents(web_contents);
-  }
   ash::BootTimesRecorderTabHelper::MaybeCreateForWebContents(web_contents);
 
-  ash::CrosIsolatedWebAppEnabler::CreateForWebContents(web_contents);
-  GeminiAppTabHelper::MaybeCreateForWebContents(web_contents);
-  mahi::MahiTabHelper::MaybeCreateForWebContents(web_contents);
   policy::DlpContentTabHelper::MaybeCreateForWebContents(web_contents);
-  ash::app_time::WebTimeNavigationObserver::MaybeCreateForWebContents(
-      web_contents);
 #endif
 
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  metrics::DesktopSessionDurationObserver::CreateForWebContents(web_contents);
-#endif
-
-#if BUILDFLAG(IS_WIN)
-  FontPrewarmerTabHelper::CreateForWebContents(web_contents);
-#endif
 
   // --- Section 3: Feature tab helpers behind BUILDFLAGs ---
   // NOT for "if enabled"; put those in section 1.
@@ -579,7 +480,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   // These helpers are used on Win/Mac/Linux and also desktop Android.
-  extensions::NavigationExtensionEnabler::CreateForWebContents(web_contents);
   extensions::WebNavigationTabObserver::CreateForWebContents(web_contents);
   extensions::TabHelper::CreateForWebContents(web_contents);
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -587,11 +487,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents,
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)
   offline_pages::OfflinePageTabHelper::CreateForWebContents(web_contents);
   offline_pages::RecentTabHelper::CreateForWebContents(web_contents);
-  offline_pages::AutoFetchPageLoadWatcher::CreateForWebContents(web_contents);
-#endif
-
-#if BUILDFLAG(ENABLE_PLUGINS)
-  PluginObserver::CreateForWebContents(web_contents);
 #endif
 
 #if BUILDFLAG(ENABLE_PRINTING)

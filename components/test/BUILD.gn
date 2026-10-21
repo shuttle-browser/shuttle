@@ -58,6 +58,7 @@ if (is_ios) {
   bundle_data_from_filelist("page_content_annotations_test_bundle_data") {
     testonly = true
     filelist_name =
+        "data/page_content_annotations/unit_tests_bundle_data.filelist"
   }
 
   bundle_data_from_filelist("paint_preview_test_bundle_data") {
@@ -87,6 +88,11 @@ if (is_ios) {
   bundle_data_from_filelist("subresource_filter_test_bundle_data") {
     testonly = true
     filelist_name = "data/subresource_filter/unit_tests_bundle_data.filelist"
+  }
+
+  bundle_data_from_filelist("surface_embed_test_bundle_data") {
+    testonly = true
+    filelist_name = "data/surface_embed/unit_tests_bundle_data.filelist"
   }
 
   bundle_data_from_filelist("url_rewrite_test_bundle_data") {

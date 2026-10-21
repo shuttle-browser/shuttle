@@ -51,7 +51,6 @@ if (is_chromeos) {
       "//chrome/browser/ash/app_mode:test_support",
       "//chrome/browser/ash/app_mode/test:test_support",
       "//chrome/browser/ash/app_mode/web_app",
-      "//chrome/browser/ash/login:test_support",
       "//chrome/browser/ash/login/demo_mode:test_support",
       "//chrome/browser/ash/ownership",
       "//chrome/browser/ash/policy/core:test_support",

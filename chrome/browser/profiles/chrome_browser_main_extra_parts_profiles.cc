@@ -49,9 +49,6 @@
 #include "chrome/browser/enterprise/data_protection/data_protection_url_lookup_service_factory.h"
 #include "chrome/browser/enterprise/identifiers/profile_id_service_factory.h"
 #include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
-#include "chrome/browser/enterprise/net/enterprise_network_auth_service_factory.h"
-#include "chrome/browser/enterprise/net/enterprise_proxy_error_service_factory.h"
-#include "chrome/browser/enterprise/net/enterprise_proxy_service_factory.h"
 #include "chrome/browser/enterprise/reporting/cloud_profile_reporting_service_factory.h"
 #include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_service.h"
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_reporting_controller_factory.h"
@@ -322,10 +319,11 @@
 #include "chrome/browser/policy/cloud/user_policy_signin_service_factory.h"
 #endif
 
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
 #include "chrome/browser/enterprise/connectors/device_trust/device_trust_connector_service_factory.h"
 #include "chrome/browser/enterprise/connectors/device_trust/device_trust_service_factory.h"
+
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
+    BUILDFLAG(IS_WIN)
 #include "chrome/browser/enterprise/network_header_injection/http_header_injection_service_factory.h"  // nogncheck
 #endif
 
@@ -641,11 +639,8 @@ void ChromeBrowserMainExtraPartsProfiles::
   enterprise_connectors::BrowserCrashEventRouterFactory::GetInstance();
 #endif
   enterprise_connectors::ConnectorsServiceFactory::GetInstance();
-#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
   enterprise_connectors::DeviceTrustConnectorServiceFactory::GetInstance();
   enterprise_connectors::DeviceTrustServiceFactory::GetInstance();
-#endif
 #if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) && \
     BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   enterprise_connectors::ExtensionInstallEventRouterFactory::GetInstance();
@@ -685,9 +680,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #endif
   enterprise_isolated_mode::IsolatedModeSettingsServiceFactory::GetInstance();
   enterprise_signals::SignalsAggregatorFactory::GetInstance();
-  EnterpriseNetworkAuthServiceFactory::GetInstance();
-  EnterpriseProxyErrorServiceFactory::GetInstance();
-  EnterpriseProxyServiceFactory::GetInstance();
   enterprise_reporting::CloudProfileReportingServiceFactory::GetInstance();
   enterprise_reporting::LegacyTechServiceFactory::GetInstance();
   enterprise_reporting::SaasUsageReportingControllerFactory::GetInstance();
@@ -865,8 +857,6 @@ void ChromeBrowserMainExtraPartsProfiles::
 #if !BUILDFLAG(IS_ANDROID)
 #endif
 #if BUILDFLAG(IS_ANDROID)
-#endif
-#if !BUILDFLAG(IS_ANDROID)
 #endif
 #if !BUILDFLAG(IS_ANDROID)
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -1051,8 +1041,8 @@ void ChromeBrowserMainExtraPartsProfiles::
   TemplateURLServiceFactory::GetInstance();
 #if !BUILDFLAG(IS_ANDROID)
   ThemeColorsSourceManagerFactory::GetInstance();
-  ThemeServiceFactory::GetInstance();
 #endif
+  ThemeServiceFactory::GetInstance();
 #if BUILDFLAG(IS_ANDROID)
   thin_webview::android::ChromeThinWebViewInitializer::Initialize();
 #endif

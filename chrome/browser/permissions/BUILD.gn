@@ -22,6 +22,8 @@ source_set("permissions") {
     "notifications_engagement_service_factory.h",
     "notifications_permission_revocation_config.cc",
     "notifications_permission_revocation_config.h",
+    "one_time_permissions_condition_tracker.cc",
+    "one_time_permissions_condition_tracker.h",
     "one_time_permissions_tracker.cc",
     "one_time_permissions_tracker.h",
     "one_time_permissions_tracker_factory.cc",
@@ -84,6 +86,7 @@ source_set("permissions") {
     "//chrome/browser/optimization_guide",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/pwc",
     "//chrome/browser/resource_coordinator",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/search_engines",
@@ -145,7 +148,6 @@ source_set("permissions") {
     ]
 
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//components/messages/android",
       "//components/messages/android:feature_flags",
     ]
@@ -160,7 +162,7 @@ source_set("permissions") {
     deps += [ "//extensions/common" ]
   }
 
-  if (enable_extensions) {
+  if (enable_extensions_core) {
     deps += [ "//chrome/browser/clipboard" ]
   }
 

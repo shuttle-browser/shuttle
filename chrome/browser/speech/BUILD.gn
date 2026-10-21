@@ -56,7 +56,6 @@ source_set("speech") {
 
     public_deps += [
       "//chrome/browser/ash/accessibility",
-      "//chromeos/ash/experiences/extensions/api",
       "//chromeos/services/tts/public/mojom",
     ]
   }
@@ -76,6 +75,7 @@ source_set("speech") {
 
   if (is_chromeos && enable_extensions) {
     public += [
+      "extension_api/tts_audio_output_stream_factory.h",
       "extension_api/tts_engine_extension_api_chromeos.h",
       "extension_api/tts_engine_extension_observer_chromeos.h",
       "extension_api/tts_engine_extension_observer_chromeos_factory.h",
@@ -147,7 +147,6 @@ source_set("impl") {
     deps += [
       "//chrome/services/speech:lib",
       "//chromeos/ash/experiences/arc/session",
-      "//chromeos/ash/experiences/extensions/api",
       "//components/keyed_service/content",
       "//components/keyed_service/core",
       "//components/language/core/common",
@@ -173,6 +172,7 @@ source_set("impl") {
 
   if (is_chromeos && enable_extensions) {
     sources += [
+      "extension_api/tts_audio_output_stream_factory.cc",
       "extension_api/tts_engine_extension_api_chromeos.cc",
       "extension_api/tts_engine_extension_observer_chromeos.cc",
       "extension_api/tts_engine_extension_observer_chromeos_factory.cc",

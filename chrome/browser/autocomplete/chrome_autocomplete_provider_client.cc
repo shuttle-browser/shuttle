@@ -41,7 +41,6 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/omnibox/omnibox_pedal_implementations.h"
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
@@ -163,10 +162,18 @@ ChromeAutocompleteProviderClient::ChromeAutocompleteProviderClient(
       storage_partition_(nullptr),
       omnibox_triggered_feature_service_(
           std::make_unique<OmniboxTriggeredFeatureService>()) {
+  OmniboxPedalProfileType profile_type = OmniboxPedalProfileType::kRegular;
+  // Shuttle: no guest sessions.
+  if (profile_->IsPrimaryOTRProfileWithRegularParent()) {
+    profile_type = OmniboxPedalProfileType::kOtrWithRegularParent;
+  }
+
+  // Shuttle: no enterprise isolated mode; always the incognito variant.
+  const OmniboxPedalOtrType otr_type = OmniboxPedalOtrType::kIncognito;
+
   pedal_provider_ = std::make_unique<OmniboxPedalProvider>(
       *this,
-      GetPedalImplementations(profile_->IsIncognitoProfile(),
-                              /*guest=*/false, /*testing=*/false));
+      GetPedalImplementations(profile_type, otr_type, /*testing=*/false));
 }
 
 ChromeAutocompleteProviderClient::~ChromeAutocompleteProviderClient() = default;

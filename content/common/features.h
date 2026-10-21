@@ -69,6 +69,7 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kCachedFirstRectAllowRangeOutsideSelection);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kCancelCompositionWhenWindowLosesFocus);
 #endif  // BUILDFLAG(IS_MAC)
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kCDPScreenshotNewSurface);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kClearPendingUrlOnNonEmptyCompositorFrame);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kCodeCacheDeletionWithoutFilter);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kCopyFromSurfaceAlwaysCallCallback);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kCriticalClientHint);
@@ -228,8 +229,6 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kServiceWorkerBypassFetchHandlerHashStrings);
 CONTENT_EXPORT extern const base::FeatureParam<std::string>
     kServiceWorkerBypassFetchHandlerBypassedHashStrings;
-CONTENT_EXPORT BASE_DECLARE_FEATURE(
-    kServiceWorkerDropHandleForCSPSandboxedWorker);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kServiceWorkerSrcdocSupport);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kServiceWorkerStaticRouterCORPCheck);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kServiceWorkerStaticRouterOpaqueCheck);
@@ -249,8 +248,6 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kServiceWorkerSoftUpdateOnFunctionalEvent);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kServiceWorkerStrictContextValidation);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kSharedWorkerSecureContextDerivationFromBrowser);
-CONTENT_EXPORT BASE_DECLARE_FEATURE(
-    kRestrictSharedWorkerWebSocketCrossSiteCookies);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kSkipEarlyCommitPendingForCrashedFrame);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kSkipRendererCancellationThrottle);
 #if BUILDFLAG(IS_ANDROID)

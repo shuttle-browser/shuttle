@@ -30,6 +30,7 @@ source_set("controls") {
     "//chrome/browser/ui/views:layout_provider",
     "//components/content_settings/core/common",
     "//ui/base",
+    "//ui/menus",
     "//ui/views",
   ]
   deps = [

@@ -96,6 +96,23 @@ inspector_protocol_generate("protocol_generated_sources") {
   outputs = _protocol_generated
 }
 
+source_set("devtools_contents_resizing_strategy") {
+  public = [
+    "devtools_contents_resizing_strategy.h",
+    "devtools_dock_side.h",
+  ]
+  sources = [ "devtools_contents_resizing_strategy.cc" ]
+  public_deps = [
+    "//base",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("devtools_toggle_action") {
+  public = [ "devtools_toggle_action.h" ]
+  sources = [ "devtools_toggle_action.cc" ]
+}
+
 static_library("devtools") {
   # Note: new sources and deps should be generally added in (!is_android) below.
   sources = [
@@ -109,6 +126,7 @@ static_library("devtools") {
   ]
 
   public_deps = [
+    ":devtools_toggle_action",
     "//chrome/browser:browser_public_dependencies",
     "//chrome/browser:primitives",
   ]
@@ -189,8 +207,6 @@ static_library("devtools") {
       "devtools_select_file_dialog.h",
       "devtools_settings.cc",
       "devtools_settings.h",
-      "devtools_toggle_action.cc",
-      "devtools_toggle_action.h",
       "devtools_ui_bindings.cc",
       "devtools_ui_bindings.h",
       "devtools_window.cc",
@@ -225,8 +241,13 @@ static_library("devtools") {
       "//components/viz/host",
       "//ui/shell_dialogs",
     ]
+    public_deps += [ "//chrome/browser/themes" ]
     if (!is_android) {
-      deps += [ "//chrome/browser:certificate_viewer" ]
+      deps += [
+        "//chrome/browser:certificate_viewer",
+        "//chrome/browser/ui:browser_commands",
+        "//chrome/browser/ui:scoped_tabbed_browser_displayer",
+      ]
     }
   }
 
@@ -246,7 +267,6 @@ static_library("devtools") {
     ]
 
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/ui/android/tab_model",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/browser_window:create_browser_window",
@@ -263,12 +283,13 @@ static_library("devtools") {
       "//chrome:strings",
       "//chrome/app/theme:theme_resources",
       "//chrome/browser/infobars",
-      "//chrome/browser/themes",
       "//chrome/browser/ui:tab_modal_confirm_dialog",
       "//chrome/browser/ui/exclusive_access",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/views:layout_provider",
+      "//chrome/browser/ui/views:tab_modal_confirm_dialog_views",
+      "//chrome/browser/ui/views/frame:contents_container_view",
       "//chrome/browser/ui/views/frame:contents_web_view",
       "//chrome/browser/ui/views/frame:scrim_view",
       "//chrome/common",
@@ -383,7 +404,8 @@ static_library("devtools") {
     deps += [
       "//chrome/app:command_ids",
       "//chrome/browser/custom_handlers",
-      "//chrome/browser/first_party_sets",
+      "//chrome/browser/private_verification_tokens",
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/startup",
       "//chrome/browser/ui/views/frame:contents_web_view",
       "//components/constrained_window",
@@ -391,6 +413,7 @@ static_library("devtools") {
       "//components/custom_handlers",
       "//components/origin_gating/core",
       "//components/privacy_sandbox/privacy_sandbox_attestations",
+      "//components/private_verification_tokens/common:private_verification_tokens_database",
       "//components/security_state/content",
       "//components/subresource_filter/content/browser",
       "//components/web_package",
@@ -427,7 +450,6 @@ static_library("devtools") {
     ]
     if (is_chromeos) {
       deps += [
-        "//ash",
         "//chromeos/dbus/constants",
       ]
       sources += [

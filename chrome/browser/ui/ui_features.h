@@ -24,14 +24,11 @@ bool ShouldUseActionsForBrowserCommands();
 
 BASE_DECLARE_FEATURE(kAllowEyeDropperWGCScreenCapture);
 
-// Enables a compositor-driven rotation animation for the tab load throbber.
-BASE_DECLARE_FEATURE(kCompositorLoadingThrobber);
-
-
 BASE_DECLARE_FEATURE(kCtrlTabMru);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 BASE_DECLARE_FEATURE(kDseIntegrity);
+BASE_DECLARE_FEATURE(kFeedbackDisabledDialog);
 BASE_DECLARE_FEATURE(kFewerUpdateConfirmations);
 BASE_DECLARE_FEATURE(kLegacySearchIntegrityCheck);
 #endif
@@ -209,10 +206,6 @@ BASE_DECLARE_FEATURE(kCollapseTabGroupDuringDrag);
 
 #if !BUILDFLAG(IS_ANDROID)
 BASE_DECLARE_FEATURE(kNewTabButtonContextMenu);
-
-BASE_DECLARE_FEATURE(kTabGroupHoverCards);
-bool IsTabGroupHoverCardsEnabled();
-
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 BASE_DECLARE_FEATURE(kTabHoverCardImages);
@@ -324,9 +317,9 @@ bool IsAndroidAnimatedProgressBarInBrowserEnabled();
 #endif  // BUILDFLAG(IS_ANDROID)
 
 BASE_DECLARE_FEATURE(kAiOverlayDialog);
+BASE_DECLARE_FEATURE(kAiOverlayDialogDev);
 BASE_DECLARE_FEATURE_PARAM(std::string, kAiOverlayDialogApiKey);
 BASE_DECLARE_FEATURE_PARAM(std::string, kAiOverlayDialogMockJsonPath);
-BASE_DECLARE_FEATURE_PARAM(bool, kAiOverlayDialogUsesActor);
 BASE_DECLARE_FEATURE_PARAM(bool, kAiOverlayDialogUseMes);
 BASE_DECLARE_FEATURE(kAiOverlayDisableNavigationContext);
 
@@ -336,6 +329,8 @@ bool IsTabGroupsFocusFreezingEnabled();
 
 BASE_DECLARE_FEATURE(kTabGroupRibbon);
 bool IsTabGroupRibbonEnabled();
+
+BASE_DECLARE_FEATURE(kNonGroupFocus);
 
 BASE_DECLARE_FEATURE(kOmniboxResizingPrioritization);
 

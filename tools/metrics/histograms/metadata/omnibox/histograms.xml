@@ -129,15 +129,20 @@ chromium-metrics-reviews@google.com.
   <variant name=".OnSuggest" summary="on-suggest trigger"/>
 </variants>
 
+<!-- LINT.IfChange(FuseboxAttachmentButtonType) -->
+
 <variants name="FuseboxAttachmentButtonType">
   <variant name=".Camera" summary="Camera"/>
   <variant name=".Clipboard" summary="Clipboard"/>
   <variant name=".CurrentTab" summary="Current Tab button"/>
+  <variant name=".DriveFiles" summary="Drive file picker"/>
   <variant name=".Files" summary="File picker"/>
   <variant name=".Gallery" summary="Image picker"/>
   <variant name=".RecentTab" summary="Add Recent Tabs button"/>
   <variant name=".TabPicker" summary="Tab picker"/>
 </variants>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/FuseboxMetrics.java:getStringForAttachmentType) -->
 
 <!-- LINT.IfChange(FuseboxAttachmentFileType) -->
 
@@ -152,6 +157,23 @@ chromium-metrics-reviews@google.com.
 </variants>
 
 <!-- LINT.ThenChange(//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/FuseboxMetrics.java:getHistogramExtensionForMimeType) -->
+
+<!-- LINT.IfChange(FuseboxTabAttachmentSource) -->
+
+<variants name="FuseboxTabAttachmentSource">
+  <variant name="" summary="All tab sources"/>
+  <variant name=".CurrentTab" summary="Current Tab button"/>
+  <variant name=".RecentTab" summary="Add Recent Tabs button"/>
+  <variant name=".SuggestedTab" summary="Suggested tab chip"/>
+  <variant name=".TabPicker" summary="Tab picker"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/fusebox/FuseboxMetrics.java:getStringForAttachmentType) -->
+
+<variants name="FuseboxTabSelectionCount">
+  <variant name=".MultipleTabs" summary="Multiple tabs were selected"/>
+  <variant name=".SingleTab" summary="A single tab was selected"/>
+</variants>
 
 <variants name="KeywordType">
   <variant name="" summary="aggregated across all keyword types"/>
@@ -701,7 +723,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.AimEligibility.EligibilityRequestStatus{RequestSource}"
-    enum="AimEligibilityRequestStatus" expires_after="2027-01-17">
+    enum="AimEligibilityRequestStatus" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -736,7 +758,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.AimEligibility.EligibilityResponseChange.{Feature}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -766,7 +788,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.AimEligibility.EligibilityResponseCode{RequestSource}"
-    enum="HttpResponseCode" expires_after="2027-01-17">
+    enum="HttpResponseCode" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -782,7 +804,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.AimEligibility.EligibilityResponseSource"
-    enum="AimEligibilityResponseSource" expires_after="2027-01-17">
+    enum="AimEligibilityResponseSource" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -801,7 +823,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.AimEligibility.EligibilityResponse{RequestSource}.session_index"
-    units="index" expires_after="2027-01-17">
+    units="index" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -822,7 +844,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.AimEligibility.EligibilityResponse{RequestSource}.{Feature}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -843,7 +865,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.AimEntrypoint.Activated.UserTextPresent.ByPageContext.{OmniboxPageContext}{AimEntrypointParty}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -868,7 +890,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.AimEntrypoint.Activated.UserTextPresent{AimEntrypointParty}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -913,7 +935,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.AimEntrypoint.Activated.ViaKeyboard{AimEntrypointParty}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -957,7 +979,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.AimEntrypoint.Shown{AimEntrypointParty}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -1264,7 +1286,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.CharTypedToRepaintLatency.PaintToPresent" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>manukh@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
@@ -1837,7 +1859,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.EnteredKeywordModeWithInput"
-    enum="OmniboxEnteredKeywordMode2" expires_after="2027-01-17">
+    enum="OmniboxEnteredKeywordMode2" expires_after="2027-03-21">
   <owner>orinj@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -2264,7 +2286,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.HistoryFuzzy.SearchDuration" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>orinj@chromium.org</owner>
   <owner>jdonnelly-team@google.com</owner>
   <improvement direction="LOWER_IS_BETTER"/>
@@ -2342,7 +2364,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.InputToAcceptNonAction" units="microseconds"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>kouhei@google.com</owner>
   <owner>chrome-loading@google.com</owner>
   <improvement direction="LOWER_IS_BETTER"/>
@@ -2399,7 +2421,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.InputType" enum="OmniboxInputType"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -2765,6 +2787,28 @@ Keep consistent with active providers. Doesn't need to include every provider in
       variants="OmniboxAutocompleteUpdateSlice"/>
 </histogram>
 
+<histogram name="Omnibox.MobileFusebox.AccordionExpandedInSession"
+    enum="Boolean" expires_after="2027-10-01">
+  <owner>peterkang@google.com</owner>
+  <owner>chrome-mobile-search@google.com</owner>
+  <summary>
+    Records whether the accordion in the Fusebox popup was expanded at least
+    once during an omnibox session. Recorded when the omnibox session ends only
+    if the accordion was shown to the user.
+  </summary>
+</histogram>
+
+<histogram name="Omnibox.MobileFusebox.AccordionToggled" enum="Boolean"
+    expires_after="2027-10-01">
+  <owner>peterkang@google.com</owner>
+  <owner>chrome-mobile-search@google.com</owner>
+  <summary>
+    Records whether the accordion in the Fusebox popup was expanded (true) or
+    collapsed (false). Recorded when the user clicks the 'More Options' chevron
+    button.
+  </summary>
+</histogram>
+
 <histogram name="Omnibox.MobileFusebox.AiModeActivationSource"
     enum="AiModeActivationSource" expires_after="2027-10-01">
   <owner>pnoland@google.com</owner>
@@ -2911,7 +2955,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.MobileFusebox.AttachmentSizeLimitCheck"
-    enum="FuseboxAttachmentSizeLimitCheck" expires_after="2027-01-10">
+    enum="FuseboxAttachmentSizeLimitCheck" expires_after="2027-03-14">
   <owner>jkoblinsky@google.com</owner>
   <owner>chrome-mobile-search@google.com</owner>
   <summary>
@@ -3177,8 +3221,55 @@ Keep consistent with active providers. Doesn't need to include every provider in
   <token key="AttachmentType" variants="MobileFuseboxPickerAttachmentType"/>
 </histogram>
 
+<histogram
+    name="Omnibox.MobileFusebox.TabAttachment.EffectiveDuration{SelectionCount}"
+    units="ms" expires_after="2027-07-07">
+  <owner>madhavpruthi@google.com</owner>
+  <owner>ckitagawa@chromium.org</owner>
+  <owner>chrome-mobile-search@google.com</owner>
+  <summary>
+    Records the effective duration to prepare and attach a tab to Fusebox from
+    the Tab Picker ({SelectionCount}), excluding user interaction time spent
+    inside the picker. Calculated as on-demand tab load duration in the picker
+    (measured from the load request, including any time queued behind the
+    concurrent load limit; 0 if the tab was already loaded) plus the upload and
+    contextualization duration in Fusebox after picker exit. Recorded when a
+    TabPicker attachment upload completes successfully.
+  </summary>
+  <token key="SelectionCount" variants="FuseboxTabSelectionCount"/>
+</histogram>
+
+<histogram
+    name="Omnibox.MobileFusebox.TabAttachment.StartFailureReason{FuseboxTabAttachmentSource}"
+    enum="FuseboxTabAttachStartFailureReason" expires_after="2027-09-01">
+  <owner>madhavpruthi@google.com</owner>
+  <owner>ckitagawa@chromium.org</owner>
+  <owner>chrome-mobile-search@google.com</owner>
+  <summary>
+    Records why an attempt to attach a tab to Fusebox
+    ({FuseboxTabAttachmentSource}) was rejected before capture or upload
+    started. Each rejected tab records once, so a multi-tab picker selection may
+    record several samples.
+
+    Session unavailable: the Composebox session was not initialized. Attachment
+    limit reached: no attachment slots were left. Fresh content required, tab
+    not live: the tab needed freshly extracted content (e.g. Incognito) but its
+    renderer was not live (e.g. frozen or discarded). Cache unavailable, tab not
+    live: a background tab had neither cached page content nor a live renderer.
+    Upload rejected by native: the native controller did not accept the upload.
+
+    Not recorded for successful starts, retries after an asynchronous failure,
+    tabs that are already attached or were closed, or non-tab attachments.
+    Suggested tabs are attached automatically and only while slots remain, so
+    .SuggestedTab never records Attachment limit reached, and a rejected
+    suggestion may record again on the next suggestion update.
+  </summary>
+  <token key="FuseboxTabAttachmentSource"
+      variants="FuseboxTabAttachmentSource"/>
+</histogram>
+
 <histogram name="Omnibox.MobileFusebox.TabPickerTabsAttached" units="count"
-    expires_after="2027-01-10">
+    expires_after="2027-03-14">
   <owner>ameurhosni@google.com</owner>
   <owner>chrome-mobile-search@google.com</owner>
   <summary>
@@ -3391,7 +3482,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.NonTrivialSuggestions.Precision.ByModel.{ModelMode}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>christianxu@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3406,7 +3497,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.NonTrivialSuggestions.Precision.ByToolType.{ToolMode}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>christianxu@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3422,7 +3513,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.NonTrivialSuggestions.Precision.ByToolType.{ToolMode}.ByModel.{ModelMode}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>christianxu@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3438,7 +3529,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.NonTrivialSuggestions.Recall.ByModel.{ModelMode}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>christianxu@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3583,7 +3674,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.OpenMatchWithKeyboardModifiers"
-    enum="OpenMatchWithKeyboardModifiers" expires_after="2027-01-17">
+    enum="OpenMatchWithKeyboardModifiers" expires_after="2027-03-21">
   <owner>manukh@google.com</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -3625,7 +3716,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
   </summary>
 </histogram>
 
-<histogram name="Omnibox.PaintTime" units="ms" expires_after="2027-01-17">
+<histogram name="Omnibox.PaintTime" units="ms" expires_after="2027-03-21">
   <owner>manukh@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
@@ -3646,7 +3737,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.PedalShown" enum="SuggestionPedalType"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>orinj@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3778,7 +3869,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.ResultToContentReadyOnFirstShow" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mych@chromium.org</owner>
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3794,7 +3885,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.ResultToContentReadyPerShow" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mych@chromium.org</owner>
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3841,7 +3932,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.WebUI.PageRemoteIsBoundOnFirstCall"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -3863,7 +3954,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.WebUI.ResultChangedToRepaintLatency.ToPaint"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <improvement direction="LOWER_IS_BETTER"/>
@@ -3929,7 +4020,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram name="Omnibox.Popup.{WebUIType}.ResultToContentReadyEarlyExitReason"
     enum="OmniboxPopupResultToContentReadyEarlyExitReason"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mych@chromium.org</owner>
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3943,7 +4034,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.{WebUIType}.ResultToContentReadyOnFirstShow"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>mych@chromium.org</owner>
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3957,7 +4048,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.{WebUIType}.ResultToContentReadyPerShow"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -3970,7 +4061,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.{WebUIType}.ShowToPaint.Duration" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3984,7 +4075,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Popup.{WebUIType}.ShowToPaint.Duration.FirstShow"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>ryanakiyama@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -3998,7 +4089,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ProviderTime2.{OmniboxProvider}" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4010,7 +4101,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.QueryTime2{QueryTimeSuffix}" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4166,7 +4257,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Search.OffTheRecord" enum="BooleanOffTheRecord"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>roagarwal@chromium.org</owner>
   <owner>chrome-incognito@google.com</owner>
@@ -4190,7 +4281,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SearchboxStats.Length" units="chars"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4203,7 +4294,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SearchEngineType.PostNavigation"
-    enum="OmniboxSearchEngineType" expires_after="2027-01-17">
+    enum="OmniboxSearchEngineType" expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>wfh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4214,7 +4305,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SearchEngineType{Population}"
-    enum="OmniboxSearchEngineType" expires_after="2027-01-17">
+    enum="OmniboxSearchEngineType" expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4353,7 +4444,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SearchSuggest.Requests"
-    enum="SearchSuggestRequestEvent" expires_after="2027-01-17">
+    enum="SearchSuggestRequestEvent" expires_after="2027-03-21">
   <owner>mpearson@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>cch@chromium.org</owner>
@@ -4380,7 +4471,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestionShown.ClientSummarizedResultType"
-    enum="ClientSummarizedResultType" expires_after="2027-01-17">
+    enum="ClientSummarizedResultType" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4400,7 +4491,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestionShown.ClientSummarizedResultType.ByPageContext.{OmniboxPageContext}"
-    enum="ClientSummarizedResultType" expires_after="2027-01-17">
+    enum="ClientSummarizedResultType" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4432,7 +4523,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestionShown.{OmniboxZeroPrefixState}.ClientSummarizedResultType"
-    enum="ClientSummarizedResultType" expires_after="2027-01-17">
+    enum="ClientSummarizedResultType" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4457,7 +4548,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestionShown.{OmniboxZeroPrefixState}.ClientSummarizedResultType.ByPageContext.{OmniboxPageContext}"
-    enum="ClientSummarizedResultType" expires_after="2027-01-17">
+    enum="ClientSummarizedResultType" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4648,7 +4739,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestionUsed.RichAutocompletion"
-    enum="OmniboxRichAutocompletionType" expires_after="2027-01-17">
+    enum="OmniboxRichAutocompletionType" expires_after="2027-03-21">
   <owner>manukh@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4682,7 +4773,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestionUsed.Search.InputToNavigationStart2"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>spelchat@chromium.org</owner>
   <owner>chrome-brapp-loading@google.com</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4695,7 +4786,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestionUsed.Search.NavigationToFirstContentfulPaint"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4707,7 +4798,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestionUsed.Search.NavigationToLargestContentfulPaint2.1"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>lingqi@chromium.org</owner>
   <owner>chrome-prerendering@google.com</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4764,6 +4855,29 @@ Keep consistent with active providers. Doesn't need to include every provider in
   </summary>
 </histogram>
 
+<histogram name="Omnibox.SuggestionUsed.TruncationOq" enum="Boolean"
+    expires_after="2027-10-01">
+  <owner>jdonnelly@chromium.org</owner>
+  <owner>chrome-desktop-search@google.com</owner>
+  <summary>
+    Records whether or not the &quot;oq&quot; (original query) parameter value
+    of a search URL was truncated. Recorded once per navigation when the user
+    accepts a search suggestion and the kTruncateSearchUrlOq feature is enabled.
+  </summary>
+</histogram>
+
+<histogram name="Omnibox.SuggestionUsed.TruncationQ" enum="Boolean"
+    expires_after="2027-10-01">
+  <owner>jdonnelly@chromium.org</owner>
+  <owner>chrome-desktop-search@google.com</owner>
+  <summary>
+    Records whether or not the &quot;q&quot; (query) parameter value of a search
+    URL was truncated. Recorded once per navigation when the user accepts a
+    search suggestion on a Google search URL and the kTruncateSearchUrlQ feature
+    is enabled.
+  </summary>
+</histogram>
+
 <histogram
     name="Omnibox.SuggestionUsed.URL.Experimental.NavigationToFirstMeaningfulPaint"
     units="ms" expires_after="2027-03-07">
@@ -4777,7 +4891,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestionUsed.URL.InputToNavigationStart2" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>spelchat@chromium.org</owner>
   <owner>chrome-brapp-loading@google.com</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4789,7 +4903,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestionUsed.URL.NavigationToFirstContentfulPaint"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>mpearson@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4812,7 +4926,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestRequest.Failure.GoogleResponseTime" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mpearson@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>cch@chromium.org</owner>
@@ -4824,7 +4938,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestRequest.Success.GoogleResponseTime" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mpearson@chromium.org</owner>
   <owner>jdonnelly@chromium.org</owner>
   <owner>cch@chromium.org</owner>
@@ -4836,7 +4950,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestRequestsSent" enum="RemoteRequestType"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4852,7 +4966,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestRequestsSent.HttpResponseCode.{OmniboxPageContext}{RemoteRequestType}"
-    enum="HttpResponseCode" expires_after="2027-01-17">
+    enum="HttpResponseCode" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4868,7 +4982,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestRequestsSent.HttpResponseCode{RemoteRequestType}"
-    enum="HttpResponseCode" expires_after="2027-01-17">
+    enum="HttpResponseCode" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4882,7 +4996,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestRequestsSent.ResponseTime.{OmniboxPageContext}{RemoteRequestType}{RemoteRequestSuccess}"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -4923,7 +5037,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.SuggestRequestsSent.ResponseTime{RemoteRequestType}{RemoteRequestSuccess}"
-    units="ms" expires_after="2027-01-17">
+    units="ms" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -4968,7 +5082,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.SuggestRequestsSent.{OmniboxPageContext}"
-    enum="RemoteRequestType" expires_after="2027-01-17">
+    enum="RemoteRequestType" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5359,7 +5473,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.URLScoringModelExecuted.ElapsedTime"
-    units="microseconds" expires_after="2027-01-17">
+    units="microseconds" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>yoangela@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -5373,7 +5487,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.URLScoringModelExecuted.Matches" units="counts"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>yoangela@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -5385,7 +5499,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.URLScoringModelExecuted.MLScoreCache.CacheHit"
-    enum="BooleanCacheHit" expires_after="2027-01-17">
+    enum="BooleanCacheHit" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -5400,7 +5514,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.URLScoringModelExecuted.MLScoreCoverage"
-    units="% of matches" expires_after="2027-01-17">
+    units="% of matches" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -5412,7 +5526,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.URLScoringModelExecuted.Preprocess.ValidInputSize"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>manukh@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
@@ -5540,7 +5654,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.Views.PopupFirstPaint" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>tluk@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5589,7 +5703,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.WebUI.AutocompleteResultSequenceIdMatched"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>orinj@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5602,7 +5716,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.WebUI.CharTypedToRepaintLatency.ToPaint" units="ms"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <improvement direction="LOWER_IS_BETTER"/>
@@ -5670,7 +5784,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
   </summary>
 </histogram>
 
-<histogram name="Omnibox.Width" units="DIPs" expires_after="2027-01-17">
+<histogram name="Omnibox.Width" units="DIPs" expires_after="2027-03-21">
   <owner>agale@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
@@ -5681,7 +5795,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.WidthRatioToWindow" units="% of window"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>agale@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <owner>top-chrome-desktop-ui@google.com</owner>
@@ -5704,7 +5818,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggest.Precision" enum="Boolean"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5730,7 +5844,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 
 <histogram
     name="Omnibox.ZeroSuggest.Precision.ByPageContext.{OmniboxPageContext}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5770,7 +5884,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggest.Recall" enum="Boolean"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5792,7 +5906,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggest.Recall.ByPageContext.{OmniboxPageContext}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5829,7 +5943,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggest.Usage" enum="Boolean"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5850,7 +5964,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggest.Usage.ByPageContext.{OmniboxPageContext}"
-    enum="Boolean" expires_after="2027-01-17">
+    enum="Boolean" expires_after="2027-03-21">
   <owner>khalidpeer@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5874,7 +5988,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggestProvider.Eligibility"
-    enum="ZeroSuggestEligibility" expires_after="2027-01-17">
+    enum="ZeroSuggestEligibility" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -5888,7 +6002,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="Omnibox.ZeroSuggestProvider.{ResultType}.{RequestType}"
-    enum="ZeroSuggestRequestEvent" expires_after="2027-01-17">
+    enum="ZeroSuggestRequestEvent" expires_after="2027-03-21">
   <owner>mahmadi@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>
@@ -6138,7 +6252,7 @@ Keep consistent with active providers. Doesn't need to include every provider in
 </histogram>
 
 <histogram name="ShortcutsProvider.DatabaseSize" units="units"
-    expires_after="2027-01-17">
+    expires_after="2027-03-21">
   <owner>jdonnelly@chromium.org</owner>
   <owner>chrome-desktop-search@google.com</owner>
   <summary>

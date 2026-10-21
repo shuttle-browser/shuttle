@@ -68,7 +68,8 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   devtools_web_view_ = AddChildView(std::move(devtools_web_view));
 
   devtools_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
-  devtools_scrim_view_->layer()->SetName("DevtoolsScrimView");
+  devtools_scrim_view_->layer()->SetName(
+      "ContentsContainerView:DevtoolsScrimView");
 
   toast_anchor_view_ = AddChildView(std::make_unique<views::View>());
 
@@ -84,7 +85,8 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
                    enterprise_data_protection::DataProtectionOverlayView>());
 
   contents_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
-  contents_scrim_view_->layer()->SetName("ContentsScrimView");
+  contents_scrim_view_->layer()->SetName(
+      "ContentsContainerView:ContentsScrimView");
 
   mini_toolbar_ = AddChildView(std::make_unique<MultiContentsViewMiniToolbar>(
       browser_view, contents_view_));

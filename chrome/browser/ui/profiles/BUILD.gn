@@ -87,6 +87,7 @@ source_set("impl") {
       ]
 
       deps += [
+        "//chrome/browser/ui:browser_window_header",
         "//chrome/browser/ui:chrome_pages",
 
         # TODO(crbug.com/430804948): This dependency is here because of
@@ -115,4 +116,3 @@ source_set("test_support") {
     }
   }
 }
-

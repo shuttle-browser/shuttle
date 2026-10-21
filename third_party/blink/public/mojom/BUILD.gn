@@ -342,7 +342,9 @@ mojom("mojom_platform") {
     "//services/device/public/mojom",
     "//services/device/public/mojom:generic_sensor",
     "//services/network/public/mojom",
+    "//services/network/public/mojom:mojom_cache_storage_side_data_writer",
     "//services/network/public/mojom:mojom_connection_allowlist",
+    "//services/network/public/mojom:mojom_http_request_headers",
     "//services/network/public/mojom:mojom_integrity_policy",
     "//services/network/public/mojom:mojom_ip_address",
     "//services/network/public/mojom:mojom_permissions_policy",
@@ -387,6 +389,7 @@ mojom("mojom_platform") {
       "//cc/mojom:mojom_browser_controls",
       "//services/media_session/public/mojom",
       "//services/network/public/mojom:cookies_mojom",
+      "//services/network/public/mojom:mojom_cache_storage_side_data_writer",
       "//services/network/public/mojom:mojom_connection_allowlist",
       "//services/network/public/mojom:mojom_content_security_policy",
       "//services/network/public/mojom:mojom_cors_origin_pattern",
@@ -1097,9 +1100,11 @@ mojom("android_mojo_bindings") {
 
     # Direct deps (instead of transitive deps) are necessary for java targets.
     public_deps += [
+      "//services/network/public/mojom:mojom_cache_storage_side_data_writer",
       "//services/network/public/mojom:mojom_connection_allowlist",
       "//services/network/public/mojom:mojom_content_security_policy",
       "//services/network/public/mojom:mojom_cors_origin_pattern",
+      "//services/network/public/mojom:mojom_http_request_headers",
       "//services/network/public/mojom:mojom_integrity_algorithm",
       "//services/network/public/mojom:mojom_integrity_policy",
       "//services/network/public/mojom:mojom_source_location",
@@ -1201,7 +1206,6 @@ mojom("mojom_core") {
     "broadcastchannel/broadcast_channel.mojom",
 
     # Depends on frame_policy.mojom.
-    "fenced_frame/fenced_frame.mojom",
     "navigation/navigation_params.mojom",
 
     # Note that service_worker_object.mojom and service_worker.mojom depend on
@@ -1265,9 +1269,11 @@ mojom("mojom_core") {
     public_deps += [
       "//cc/mojom:mojom_browser_controls",
       "//services/network/public/mojom:cookies_mojom",
+      "//services/network/public/mojom:mojom_cache_storage_side_data_writer",
       "//services/network/public/mojom:mojom_connection_allowlist",
       "//services/network/public/mojom:mojom_content_security_policy",
       "//services/network/public/mojom:mojom_cors_origin_pattern",
+      "//services/network/public/mojom:mojom_http_request_headers",
       "//services/network/public/mojom:mojom_integrity_algorithm",
       "//services/network/public/mojom:mojom_integrity_policy",
       "//services/network/public/mojom:mojom_source_location",

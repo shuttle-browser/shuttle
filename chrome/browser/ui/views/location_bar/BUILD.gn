@@ -61,8 +61,12 @@ source_set("impl") {
     ":icon_label_bubble",
     ":location_bar",
     "//chrome/browser:defaults",
+    "//chrome/browser/ui:browser_command_controller",
+    "//chrome/browser/ui:browser_commands",
+    "//chrome/browser/ui:browser_window_header",
     "//chrome/browser/ui/dialogs",
     "//chrome/browser/ui/select_file_policy",
+    "//chrome/browser/ui/views/frame:browser_view_header",
   ]
 
   if (toolkit_views) {

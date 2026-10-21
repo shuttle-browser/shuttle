@@ -90,10 +90,10 @@ if (use_dbus) {
   # Observes the system color scheme and accent color via the
   # org.freedesktop.portal.Settings D-Bus interface, applying them to
   # NativeTheme.
-  source_set("dark_mode_manager") {
+  source_set("portal_settings") {
     sources = [
-      "dark_mode_manager_linux.cc",
-      "dark_mode_manager_linux.h",
+      "portal_settings_linux.cc",
+      "portal_settings_linux.h",
     ]
     deps = [
       ":linux_ui",

@@ -8,7 +8,6 @@
 
 #include "ash/constants/ash_pref_names.h"
 #include "ash/constants/ash_switches.h"
-#include "base/feature_list.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
@@ -29,7 +28,6 @@
 #include "chrome/browser/ssl/generated_https_first_mode_pref.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/api/settings_private.h"
 #include "chrome/common/pref_names.h"
 #include "components/browsing_data/core/pref_names.h"
@@ -225,8 +223,7 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[::prefs::kCtrlTabMru] = settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kCurrentThemeID] = settings_api::PrefType::kString;
   (*s_allowlist)[::prefs::kPinnedActions] = settings_api::PrefType::kList;
-  (*s_allowlist)[themes::prefs::kPolicyThemeColor] =
-      settings_api::PrefType::kNumber;
+  (*s_allowlist)[themes::kPolicyThemeColor] = settings_api::PrefType::kNumber;
 #if BUILDFLAG(IS_LINUX)
   (*s_allowlist)[::prefs::kSystemTheme] = settings_api::PrefType::kNumber;
 #endif
@@ -285,8 +282,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[drive::prefs::kDriveFsBulkPinningVisible] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[drive::prefs::kDisableDriveOverCellular] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[drive::prefs::kDriveFsEnableMirrorSync] =
       settings_api::PrefType::kBoolean;
 #endif
   (*s_allowlist)[::prefs::kDownloadBubblePartialViewEnabled] =
@@ -362,8 +357,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kString;
   (*s_allowlist)[::content_settings::kThirdPartyCookieBlockingSetting] =
       settings_api::PrefType::kNumber;
-  (*s_allowlist)[::prefs::kPrivacySandboxRelatedWebsiteSetsEnabled] =
-      settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kEnableDoNotTrack] = settings_api::PrefType::kBoolean;
   (*s_allowlist)[universal_optout::prefs::kUniversalOptOutEnabled] =
       settings_api::PrefType::kBoolean;

@@ -248,6 +248,9 @@ if (enable_printing) {
     } else {
       sources += [ "print_view_manager_basic.cc" ]
     }
+    if (!is_android) {
+      deps += [ "//chrome/browser/ui:browser_window_header" ]
+    }
   }
 
   if (!is_android) {

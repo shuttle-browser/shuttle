@@ -286,6 +286,9 @@ class GlobalFeatures {
       scheduled_restart_manager_;
 #endif
 
+#if !BUILDFLAG(IS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)
+
   std::unique_ptr<tabs_api::TabDragSessionManager> tab_drag_session_manager_;
 
   std::unique_ptr<GlassFrameService> glass_frame_service_;

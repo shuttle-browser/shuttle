@@ -176,11 +176,9 @@ source_set("impl") {
     "//chrome/browser/component_updater",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/domain_reliability",
-    "//chrome/browser/first_party_sets",
     "//chrome/browser/policy:path_parser",
     "//chrome/browser/prefs:util",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
-    "//chrome/browser/privacy_sandbox:headers",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/shuttle:agent_partition",
     "//chrome/browser/ssl",
@@ -245,7 +243,6 @@ source_set("impl") {
       "//ash/webui/connectivity_diagnostics",
       "//chrome/browser/ash/certificate_provider",
       "//chrome/browser/ash/kcer",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/net",
       "//chrome/browser/ash/policy/core",
       "//chrome/browser/ash/profiles",
@@ -254,7 +251,6 @@ source_set("impl") {
       "//chrome/browser/profiles:profile_manager",
       "//chrome/browser/ui/ash/network",
       "//chrome/browser/ui/ash/system_web_apps",
-      "//chromeos/ash/components/browser_context_helper",
       "//chromeos/ash/components/network",
       "//chromeos/ash/components/settings",
       "//chromeos/components/kiosk",
@@ -324,7 +320,6 @@ source_set("impl") {
 
   if (is_android) {
     deps += [
-      "//components/enterprise/net/content",
       "//components/tabs:public",
     ]
   }

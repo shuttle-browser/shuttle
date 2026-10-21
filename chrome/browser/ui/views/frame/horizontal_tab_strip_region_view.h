@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_FRAME_HORIZONTAL_TAB_STRIP_REGION_VIEW_H_
 #define CHROME_BROWSER_UI_VIEWS_FRAME_HORIZONTAL_TAB_STRIP_REGION_VIEW_H_
 
+#include <memory>
+
 #include "base/memory/raw_ptr.h"
 #include "build/buildflag.h"
 #include "chrome/browser/ui/tabs/tab_data.h"
@@ -152,7 +154,10 @@ class HorizontalTabStripRegionViewNew : public BaseTabStripRegionView {
   views::View::Views GetChildrenInZOrder() override;
   void Layout(PassKey) override;
 
-  bool HasLeadingButtons() const { return false; }
+  // views::AccessiblePaneView:
+  void ChildPreferredSizeChanged(views::View* child) override;
+
+  bool HasLeadingButtons() const;
 
   // TabStripRegionView:
   gfx::Size GetMinimumSize() const override;
@@ -165,7 +170,9 @@ class HorizontalTabStripRegionViewNew : public BaseTabStripRegionView {
       DropArrow::Direction* direction) override;
 
  private:
-  void OnTabStripViewSet() override;
+  void AddTabStripView(std::unique_ptr<views::View> view) override;
+
+  void UpdateTabStripMargin();
 
   raw_ptr<views::View> reserved_grab_handle_space_ = nullptr;
   raw_ptr<views::Button> new_tab_button_ = nullptr;

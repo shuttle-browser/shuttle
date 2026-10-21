@@ -31,8 +31,8 @@ source_set("picture_in_picture") {
     "//base",
     "//chrome/browser/profiles:profile",
     "//components/safe_browsing/core/browser/db:database_manager",
+    "//components/safe_browsing/core/browser/db:sb_protocol_manager_util",
     "//components/safe_browsing/core/browser/db:util",
-    "//components/safe_browsing/core/browser/db:v4_protocol_manager_util",
     "//content/public/browser",
     "//third_party/blink/public/common",
     "//ui/gfx/geometry",
@@ -128,7 +128,6 @@ source_set("impl") {
       "picture_in_picture_window_manager_bridge.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/ui/android/overlay",
       "//components/strings:components_strings",
     ]
@@ -166,6 +165,7 @@ source_set("impl") {
         [ "auto_picture_in_picture_window_occlusion_helper_web_contents.cc" ]
   }
   if (use_widget_occlusion_helper) {
+    deps += [ "//chrome/browser/ui:browser_window_header" ]
     sources += [ "auto_picture_in_picture_window_occlusion_helper_widget.cc" ]
   }
   if (use_stub_occlusion_helper) {
@@ -177,7 +177,10 @@ source_set("impl") {
   }
 
   if (!is_android) {
-    deps += [ "//chrome/browser/ui:browser_tab_strip_tracker" ]
+    deps += [
+      "//chrome/browser/ui:browser_tab_strip_tracker",
+      "//chrome/browser/ui/views/frame:browser_view_header",
+    ]
   }
 }
 

@@ -89,7 +89,6 @@ source_set("configs") {
   if (!is_android) {
     deps += [
       "//chrome/browser/ui/webui/color_pipeline_internals",
-      "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/infobar_internals",
       "//chrome/browser/ui/webui/inspect",
       "//chrome/browser/ui/webui/omnibox_popup",
@@ -214,6 +213,10 @@ source_set("configs") {
 
   if (enable_webui_ntp) {
   }
+
+  if (enable_webui_history) {
+    deps += [ "//chrome/browser/ui/webui/history" ]
+  }
 }
 
 source_set("webui") {
@@ -314,7 +317,7 @@ source_set("current_channel_logo") {
   ]
 }
 
-if (!is_android || enable_extensions_core) {
+if (!is_android || enable_extensions_core || enable_webui_history) {
   source_set("theme_source") {
     sources = [ "theme_source.cc" ]
     public = [ "theme_source.h" ]
@@ -327,6 +330,7 @@ if (!is_android || enable_extensions_core) {
       "//chrome/app/theme:theme_resources",
       "//chrome/browser:resources_util",
       "//chrome/browser/profiles:profile",
+      "//chrome/browser/themes",
       "//chrome/browser/ui/color:color_headers",
       "//chrome/browser/ui/color:mixers",
       "//chrome/common",
@@ -459,20 +463,23 @@ source_set("chrome_web_ui_controller_factory") {
     "//ui/base:features",
     "//ui/gfx",
     "//ui/gfx/codec",
+    "//ui/webui:buildflags",
   ]
 
   if (is_android) {
     deps += [
-      "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/management",
     ]
   } else {
     deps += [
       "//chrome/browser/ui/webui/downloads",
-      "//chrome/browser/ui/webui/history",
       "//chrome/browser/ui/webui/settings",
       "//ui/web_dialogs",
     ]
+  }
+
+  if (enable_webui_history) {
+    deps += [ "//chrome/browser/ui/webui/history" ]
   }
 
   if (enable_devtools_frontend) {
@@ -657,6 +664,7 @@ if (!is_android) {
       "//chrome/browser/themes",
       "//chrome/browser/ui",
       "//chrome/browser/ui:ui_features",
+      "//chrome/browser/ui/views/frame:browser_view_header",
       "//chrome/common:chrome_features",
       "//content/public/browser",
       "//content/public/common",

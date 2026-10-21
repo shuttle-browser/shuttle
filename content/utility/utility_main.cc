@@ -35,6 +35,7 @@
 #include "content/public/utility/content_utility_client.h"
 #include "content/utility/on_device_model/on_device_model_sandbox_init.h"
 #include "content/utility/utility_thread_impl.h"
+#include "device/vr/buildflags/buildflags.h"
 #include "printing/buildflags/buildflags.h"
 #include "sandbox/policy/mojom/sandbox.mojom.h"
 #include "sandbox/policy/sandbox.h"
@@ -83,6 +84,10 @@
 #endif
 
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_LINUX) && BUILDFLAG(ENABLE_VR)
+#include "content/services/isolated_xr_device/xr_sandbox_hook_linux.h"
+#endif  // BUILDFLAG(IS_LINUX) && BUILDFLAG(ENABLE_VR)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chromeos/ash/services/ime/ime_sandbox_hook.h"

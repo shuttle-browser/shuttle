@@ -18,7 +18,6 @@ rust_static_library("pix_validator_rs_ffi_glue") {
 
   visibility = [
     ":*",
-    "//components/facilitated_payments/core/browser",
   ]
 
   allow_unsafe = true
@@ -31,18 +30,8 @@ static_library("validation") {
   sources = [
     "payment_link_validator.cc",
     "payment_link_validator.h",
-    "pix_code_validator.cc",
-    "pix_code_validator.h",
   ]
 
-  public_deps = [
-    "//components/facilitated_payments/core/mojom:pix_code_validator_mojom",
-    "//url",
-  ]
-
-  deps = [
-    "//base",
-    "//third_party/re2",
-  ]
+  public_deps = [ "//url" ]
 }
 

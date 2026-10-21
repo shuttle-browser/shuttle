@@ -7,6 +7,9 @@ source_set("application_locale_storage") {
     "application_locale_storage.cc",
     "application_locale_storage.h",
   ]
-  deps = [ "//base" ]
+  deps = [
+    "//base",
+    "//base/i18n:language_tag",
+  ]
 }
 

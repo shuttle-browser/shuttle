@@ -246,6 +246,11 @@ bool IsBrowserManaged(Profile* profile) {
   return policy::ManagementServiceFactory::GetForProfile(profile)->IsManaged();
 }
 
+bool IsSecureGatewayDisclosureRequired(Profile* profile) {
+  // Shuttle: no enterprise proxy (secure gateway).
+  return false;
+}
+
 std::string GetDomainFromEmail(std::string_view email) {
   size_t email_separator_pos = email.find('@');
   bool is_email = email_separator_pos != std::string_view::npos &&

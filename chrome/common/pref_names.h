@@ -1134,6 +1134,15 @@ inline constexpr char kDataUrlInSvgUseEnabled[] =
 inline constexpr char kPartitionedBlobUrlUsage[] =
     "profile.content_settings.partitioned_blob_url_usage";
 
+// Boolean indicating that the user dismissed the XSLT deprecation warning
+// banner with the "don't show this again" checkbox checked.
+// TODO(crbug.com/560233256): This pref is temporary, and is only required
+// before XSLT is disabled by default in M158. It can be removed in M158, or
+// whenever XSLT is disabled by default (other than for origin trials and
+// enterprise policy).
+inline constexpr char kXSLTDeprecationBannerSuppressed[] =
+    "profile.xslt_deprecation_banner_suppressed";
+
 // Boolean value indicating if the Reduce Accept-Language feature should be
 // enabled. Defaults to network::features::kReduceAcceptLanguage field trial.
 inline constexpr char kReduceAcceptLanguageEnabled[] =
@@ -1900,17 +1909,6 @@ inline constexpr char kAuthNegotiateDelegateByKdcPolicy[] =
 inline constexpr char kNtlmV2Enabled[] = "auth.ntlm_v2_enabled";
 #endif  // BUILDFLAG(IS_POSIX)
 
-#if BUILDFLAG(IS_CHROMEOS)
-
-// Holds URL patterns that specify origins that will be allowed to call
-// `subApps.{add|remove|list}())` without prior user gesture and that will skip
-// the user dialog authorization.
-inline constexpr char
-    kSubAppsAPIsAllowedWithoutGestureAndAuthorizationForOrigins[] =
-        "profile.isolated_web_app.sub_apps_allowed_without_user_gesture_and_"
-        "authorization";
-#endif  // BUILDFLAG(IS_CHROMEOS)
-
 #if BUILDFLAG(IS_WIN)
 // The integer value of the CloudAPAuthEnabled policy.
 inline constexpr char kCloudApAuthEnabled[] = "auth.cloud_ap_auth.enabled";
@@ -2331,11 +2329,6 @@ inline constexpr char kEchoCheckedOffers[] = "EchoCheckedOffers";
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 // Policy that indicates how to handle animated images.
 inline constexpr char kAnimationPolicy[] = "settings.a11y.animation_policy";
-
-// Boolean pref indicating whether extension DOM activity logging is enabled
-// for enterprise telemetry.
-inline constexpr char kExtensionDOMActivityLoggingEnabled[] =
-    "enterprise_reporting.extension_dom_activity_logging_enabled";
 
 // A list of URLs (for U2F) or domains (for webauthn) that automatically permit
 // direct attestation of a Security Key.

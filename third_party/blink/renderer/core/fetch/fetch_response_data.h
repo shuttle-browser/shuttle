@@ -7,6 +7,8 @@
 
 #include <memory>
 
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "net/http/http_connection_info.h"
 #include "services/network/public/mojom/fetch_api.mojom-blink-forward.h"
@@ -17,6 +19,7 @@
 #include "third_party/blink/renderer/core/fetch/fetch_request_data.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
+#include "third_party/blink/renderer/platform/loader/fetch/url_loader/cached_metadata_handler.h"
 #include "third_party/blink/renderer/platform/network/http_header_set.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
@@ -81,11 +84,14 @@ class CORE_EXPORT FetchResponseData final
   String InternalMIMEType() const;
   base::Time ResponseTime() const { return response_time_; }
   String CacheStorageCacheName() const { return cache_storage_cache_name_; }
+  mojo::PendingRemote<network::mojom::blink::CacheStorageSideDataWriter>
+  TakeCacheStorageSideDataWriter();
   const HTTPHeaderSet& CorsExposedHeaderNames() const {
     return cors_exposed_header_names_;
   }
   bool HasRangeRequested() const { return has_range_requested_; }
   bool RequestIncludeCredentials() const;
+  bool TimingAllowPassed() const;
 
   int64_t GetPadding() const { return padding_; }
   void SetPadding(int64_t padding) { padding_ = padding; }
@@ -93,6 +99,7 @@ class CORE_EXPORT FetchResponseData final
     response_source_ = response_source;
   }
   void SetURLList(const Vector<KURL>&);
+  void SetTimingAllowPassed(bool);
   const Vector<KURL>& UrlList() const { return url_list_; }
   const Vector<KURL>& InternalURLList() const;
 
@@ -109,6 +116,18 @@ class CORE_EXPORT FetchResponseData final
   }
   void SetCacheStorageCacheName(const String& cache_storage_cache_name) {
     cache_storage_cache_name_ = cache_storage_cache_name;
+  }
+  void ShareCacheStorageSideDataWriterHolder(
+      scoped_refptr<CacheStorageSideDataWriterHolder>
+          cache_storage_side_data_writer) {
+    CHECK(cache_storage_side_data_writer);
+    cache_storage_side_data_writer_ = std::move(cache_storage_side_data_writer);
+  }
+  void SetCacheStorageSideDataWriter(
+      mojo::PendingRemote<network::mojom::blink::CacheStorageSideDataWriter>
+          cache_storage_side_data_writer) {
+    cache_storage_side_data_writer_->data =
+        std::move(cache_storage_side_data_writer);
   }
   void SetCorsExposedHeaderNames(const HTTPHeaderSet& header_names) {
     cors_exposed_header_names_ = header_names;
@@ -165,6 +184,9 @@ class CORE_EXPORT FetchResponseData final
   AtomicString request_method_;
   base::Time response_time_;
   String cache_storage_cache_name_;
+  scoped_refptr<CacheStorageSideDataWriterHolder>
+      cache_storage_side_data_writer_ =
+          base::MakeRefCounted<CacheStorageSideDataWriterHolder>();
   HTTPHeaderSet cors_exposed_header_names_;
   net::HttpConnectionInfo connection_info_ = net::HttpConnectionInfo::kUNKNOWN;
   AtomicString alpn_negotiated_protocol_;
@@ -178,6 +200,7 @@ class CORE_EXPORT FetchResponseData final
   // algorithm.
   // See: https://fetch.spec.whatwg.org/#concept-http-network-fetch
   bool request_include_credentials_ : 1;
+  bool timing_allow_passed_ : 1;
 };
 
 }  // namespace blink

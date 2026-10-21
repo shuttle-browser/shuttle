@@ -95,6 +95,7 @@ const char kSessionSyncError[] = "Synced sessions are not available.";
 const char kRestoreInIncognitoError[] =
     "Can not restore sessions in incognito mode.";
 const char kNoLiveTabContextError[] = "Unable to determine live tab context.";
+const char kNoActiveTabError[] = "No active tab.";
 
 #if BUILDFLAG(IS_ANDROID)
 // Must match Java TabWindowManager.WINDOW_INVALID_ID.
@@ -547,7 +548,9 @@ SessionsRestoreFunction::RestoreMostRecentlyClosed(
   }
   std::vector<sessions::LiveTab*> restored_tabs =
       tab_restore_service->RestoreMostRecentEntry(context);
-  DCHECK(restored_tabs.size());
+  if (restored_tabs.empty()) {
+    return RespondNow(Error(kNoActiveTabError));
+  }
 
   sessions::ContentLiveTab* first_tab =
       static_cast<sessions::ContentLiveTab*>(restored_tabs[0]);
@@ -724,17 +727,19 @@ ExtensionFunction::ResponseAction SessionsRestoreFunction::RestoreLocalSession(
   if (!context) {
     return RespondNow(Error(kNoLiveTabContextError));
   }
-  std::vector<sessions::LiveTab*> restored_tabs =
+  std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
       tab_restore_service->RestoreEntryById(
           context, SessionID::FromSerializedValue(session_id.id()),
           WindowOpenDisposition::UNKNOWN);
-  // If the ID is invalid, restored_tabs will be empty.
-  if (restored_tabs.empty()) {
+  if (!restored_tabs.has_value()) {
     return RespondNow(Error(kInvalidSessionIdError, session_id.ToString()));
+  }
+  if (restored_tabs->empty()) {
+    return RespondNow(Error(kNoActiveTabError));
   }
 
   sessions::ContentLiveTab* first_tab =
-      static_cast<sessions::ContentLiveTab*>(restored_tabs[0]);
+      static_cast<sessions::ContentLiveTab*>((*restored_tabs)[0]);
 
   // Retrieve the window through any of the tabs in restored_tabs.
   if (is_window) {

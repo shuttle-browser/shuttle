@@ -125,6 +125,12 @@ static_library("safe_browsing") {
   }
 
   if (!is_android) {
+    deps += [
+      "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_window_header",
+      "//chrome/browser/ui:scoped_tabbed_browser_displayer",
+      "//chrome/browser/ui/views/frame:browser_view_header",
+    ]
     public += [
       "generated_safe_browsing_pref.h",
       "generated_security_settings_bundle_pref.h",
@@ -151,6 +157,28 @@ static_library("safe_browsing") {
     ]
   }
 
+  # Cloud content analysis is also used by enterprise connectors when Safe
+  # Browsing is disabled.
+  if (enterprise_cloud_content_analysis || safe_browsing_mode != 0) {
+    public += [
+      "cloud_content_scanning/cloud_binary_upload_service.h",
+      "cloud_content_scanning/cloud_binary_upload_service_factory.h",
+      "cloud_content_scanning/deep_scanning_utils.h",
+    ]
+    sources += [
+      "cloud_content_scanning/cloud_binary_upload_service.cc",
+      "cloud_content_scanning/cloud_binary_upload_service_factory.cc",
+      "cloud_content_scanning/deep_scanning_utils.cc",
+    ]
+    deps += [
+      ":advanced_protection",
+      "//components/enterprise/connectors/core:cloud_content_scanning",
+      "//components/policy/core/browser",
+      "//components/safe_browsing/core/common:safe_browsing_prefs",
+      "//content/public/browser",
+    ]
+  }
+
   if (safe_browsing_mode != 0) {
     # "Safe Browsing Basic" files used for safe browsing in full mode
     # (safe_browsing=1) and mobile (=2)
@@ -166,9 +194,6 @@ static_library("safe_browsing") {
       "chrome_ui_manager_delegate.h",
       "chrome_user_population_helper.h",
       "client_side_detection_service_factory.h",
-      "cloud_content_scanning/cloud_binary_upload_service.h",
-      "cloud_content_scanning/cloud_binary_upload_service_factory.h",
-      "cloud_content_scanning/deep_scanning_utils.h",
       "cloud_content_scanning/file_analysis_request.h",
       "delayed_warning_navigation_throttle.h",
       "download_protection/check_client_download_request.h",
@@ -212,9 +237,6 @@ static_library("safe_browsing") {
       "chrome_ui_manager_delegate.cc",
       "chrome_user_population_helper.cc",
       "client_side_detection_service_factory.cc",
-      "cloud_content_scanning/cloud_binary_upload_service.cc",
-      "cloud_content_scanning/cloud_binary_upload_service_factory.cc",
-      "cloud_content_scanning/deep_scanning_utils.cc",
       "cloud_content_scanning/file_analysis_request.cc",
       "delayed_warning_navigation_throttle.cc",
       "download_protection/check_client_download_request.cc",
@@ -416,7 +438,6 @@ static_library("safe_browsing") {
         "telemetry/android/android_telemetry_service.cc",
       ]
       deps += [
-        "//chrome/android:chrome_jni_headers",
         "//chrome/app/vector_icons",
         "//chrome/browser/ui/android/hats",
         "//chrome/browser/ui/android/tab_model",

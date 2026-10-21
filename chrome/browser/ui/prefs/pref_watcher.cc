@@ -90,6 +90,7 @@ const char* const kWebPrefsToObserve[] = {
     prefs::kAccessibilityFocusHighlightEnabled,
 #endif
     prefs::kPageColorsBlockList,
+    prefs::kXSLTDeprecationBannerSuppressed,
 };
 
 }  // namespace

@@ -92,6 +92,7 @@ source_set("extensions_menu_entry_view") {
     "//chrome/browser/ui/views/extensions:extensions_views_utils",
     "//ui/base/metadata",
     "//ui/views",
+    "//url",
   ]
   deps = [
     "//chrome/app:generated_resources",
@@ -100,6 +101,7 @@ source_set("extensions_menu_entry_view") {
     "//chrome/browser/ui/views:layout_provider",
     "//ui/base",
     "//ui/color",
+    "//ui/events",
     "//ui/gfx",
     "//ui/strings:ui_strings",
   ]
@@ -205,6 +207,8 @@ source_set("extensions_menu_item_view") {
   ]
 }
 
+  deps = [
+  ]
 source_set("extensions_views_utils") {
   sources = [
     "browser_action_drag_data.cc",
@@ -302,6 +306,7 @@ source_set("extension_view_utils_impl") {
     ":extensions_toolbar_desktop",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/toolbar",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/frame:toolbar_button_provider",
     "//content/public/browser",
   ]
@@ -499,6 +504,7 @@ source_set("extension_install_dialog_view_impl") {
     "//chrome/app/theme:theme_resources",
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui:scoped_tabbed_browser_displayer",
     "//chrome/browser/ui/browser_web_contents_delegate",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/tabs:tab_strip",
@@ -627,10 +633,12 @@ source_set("extension_popup") {
   public = [ "extension_popup.h" ]
   public_deps = [
     ":extension_view_views",
+    ":security_dialog_tracker",
     "//base",
     "//chrome/browser/ui/extensions:extension_popup_types",
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//components/performance_manager",
     "//content/public/browser",
     "//extensions/browser",
     "//ui/base/metadata",
@@ -645,11 +653,12 @@ source_set("extension_popup_impl") {
     "//chrome/browser:browser_public_dependencies",
   ]
   deps = [
-    ":security_dialog_tracker",
     "//base",
     "//chrome/browser/devtools",
     "//chrome/browser/extensions",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//components/javascript_dialogs",
+    "//components/performance_manager",
     "//components/web_modal",
     "//content/public/browser",
     "//ui/base",
@@ -691,6 +700,7 @@ source_set("extensions_toolbar_desktop") {
     ":extensions_toolbar_desktop_view_controller",
     ":extensions_views_utils",
     "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/frame:toolbar_button_provider",
     "//chrome/browser/ui/views/toolbar",
     "//ui/base/dragdrop/mojom",

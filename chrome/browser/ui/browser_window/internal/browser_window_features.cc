@@ -61,7 +61,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_service_feature.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
-#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller_impl.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/toasts/toast_service.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -73,6 +73,7 @@
 #include "chrome/browser/ui/views/extensions/extension_keybinding_registry_views.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/contents_border_controller.h"
+#include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/frame/find_bar_owner_views.h"
 #include "chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/multi_contents_view.h"
@@ -87,7 +88,6 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/toolbar/chrome_labs/chrome_labs_coordinator.h"
-#include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/views/upgrade_notification_controller.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
@@ -116,6 +116,7 @@
 #include "chrome/browser/extensions/extension_browser_window_helper.h"
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#include "chrome/browser/ui/extensions/search_override_stack.h"
 #include "chrome/browser/ui/extensions/settings_overridden_params_providers.h"
 #include "chrome/browser/ui/search_engines/default_search_extension_controlled_controller.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
@@ -266,6 +267,9 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   extension_installed_watcher_ =
       std::make_unique<ExtensionInstalledWatcher>(browser);
 
+  find_bar_controller_ = GetUserDataFactory().CreateInstance<FindBarController>(
+      *browser, *browser, browser_command_controller_.get());
+
   // Must be after window_feature_controller_.
   immersive_mode_controller_ =
       GetUserDataFactory()
@@ -280,8 +284,10 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // Must be before location_bar_model_.
   location_bar_model_delegate_ =
       std::make_unique<BrowserLocationBarModelDelegate>(tab_strip_model_);
-  location_bar_model_ = std::make_unique<LocationBarModelImpl>(
-      location_bar_model_delegate_.get(), content::kMaxURLDisplayChars);
+  location_bar_model_ =
+      GetUserDataFactory().CreateInstance<LocationBarModelImpl>(
+          *browser, browser->GetUnownedUserDataHost(),
+          location_bar_model_delegate_.get(), content::kMaxURLDisplayChars);
 
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -366,12 +372,6 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
   // into consideration buildflags, repeating buildflags is ok):
   if (browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
 
-    if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
-      organizer_panel_controller_ =
-          GetUserDataFactory().CreateInstance<OrganizerPanelController>(
-              *browser, *browser, browser_actions_->root_action_item());
-    }
-
     std::optional<bool> restored_state_collapsed =
         BrowserInitState::From(browser)->is_vertical_tabs_initially_collapsed();
     std::optional<int> restored_state_uncollapsed_width =
@@ -389,12 +389,19 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
 
     vertical_tab_strip_state_controller_ =
         GetUserDataFactory()
-            .CreateInstance<tabs::VerticalTabStripStateController>(
-                *browser, browser, profile->GetPrefs(),
+            .CreateInstance<tabs::VerticalTabStripStateControllerImpl>(
+                *browser, *browser, profile->GetPrefs(),
                 browser_actions_->root_action_item(),
                 SessionServiceFactory::GetForProfile(browser_->GetProfile()),
                 browser_->GetSessionID(), restored_state_collapsed,
                 restored_state_uncollapsed_width);
+
+    // This relies on the vertical tab strip state controller.
+    if (organizer_panel::IsOrganizerPanelFeatureEnabled()) {
+      organizer_panel_controller_ =
+          GetUserDataFactory().CreateInstance<OrganizerPanelController>(
+              *browser, *browser, browser_actions_->root_action_item());
+    }
   }
 
 
@@ -477,6 +484,7 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
           "UnacknowledgedMatchingDseExtensionPresent",
           settings_overridden_params::HasUnacknowledgedMatchingDseExtension(
               browser_->GetProfile()));
+      extensions::RecordDseExtensionStackStateOnce(*browser_->GetProfile());
     }
 
     if (base::FeatureList::IsEnabled(
@@ -605,13 +613,6 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
     }
 
 
-    if (browser_view) {
-      // Get the PinnedToolbarActions for the browser; it might not exist for
-      // browsers with a custom tab toolbar.
-      pinned_toolbar_actions_ =
-          browser_view->toolbar_button_provider()->GetPinnedToolbarActions();
-    }
-
 
     if (browser_view) {
       split_tab_highlight_controller_ =
@@ -653,7 +654,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
 
   // TYPE_NORMAL members.
   split_tab_highlight_controller_.reset();
-  pinned_toolbar_actions_ = nullptr;
   if (chrome_labs_coordinator_) {
     chrome_labs_coordinator_->TearDown();
   }
@@ -705,8 +705,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
   // Owned-by-all members.
   // Must be before window_feature_controller_ (raw pointer).
   immersive_mode_controller_.reset();
-  // TODO(crbug.com/423956131): Update reset order once FindBarController is
-  // deterministically constructed.
   find_bar_controller_.reset();
   extension_installed_watcher_.reset();
   context_highlight_window_feature_.reset();
@@ -714,43 +712,6 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
     provider->TearDown();
   }
   browser_animation_controller_.reset();
-}
-
-LocationBar* BrowserWindowFeatures::location_bar() {
-  // Return nullptr if not initialized. This can happen in tests where
-  // BrowserWindowFeatures is stubbed without being initialized with a browser.
-  if (!browser_) {
-    return nullptr;
-  }
-  return BrowserWindow::FromBrowser(browser_)->GetLocationBar();
-}
-
-const LocationBar* BrowserWindowFeatures::location_bar() const {
-  // Return nullptr if not initialized. This can happen in tests where
-  // BrowserWindowFeatures is stubbed without being initialized with a browser.
-  if (!browser_) {
-    return nullptr;
-  }
-  return BrowserWindow::FromBrowser(browser_)->GetLocationBar();
-}
-
-FindBarController* BrowserWindowFeatures::GetFindBarController() {
-  if (!find_bar_controller_.get()) {
-    CHECK(browser_);
-    find_bar_controller_ = std::make_unique<FindBarController>(
-        BrowserWindow::FromBrowser(browser_)->CreateFindBar(),
-        browser_command_controller_.get());
-    find_bar_controller_->find_bar()->SetFindBarController(
-        find_bar_controller_.get());
-    find_bar_controller_->ChangeWebContents(
-        tab_strip_model_->GetActiveWebContents());
-    find_bar_controller_->find_bar()->MoveWindowIfNecessary();
-  }
-  return find_bar_controller_.get();
-}
-
-bool BrowserWindowFeatures::HasFindBarController() const {
-  return find_bar_controller_.get() != nullptr;
 }
 
 // static

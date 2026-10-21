@@ -19,10 +19,6 @@ namespace policy {
 class PolicyService;
 }
 
-namespace enterprise_net {
-class EnterpriseProxyService;
-}
-
 class ProxyServiceFactory {
  public:
   ProxyServiceFactory() = delete;
@@ -43,8 +39,7 @@ class ProxyServiceFactory {
   CreatePrefProxyConfigTrackerOfProfile(
       PrefService* profile_prefs,
       PrefService* local_state_prefs,
-      policy::PolicyService* policy_service,
-      enterprise_net::EnterpriseProxyService* enterprise_proxy_service);
+      policy::PolicyService* policy_service);
 
   // Creates a PrefProxyConfigTracker that tracks local state only. This tracker
   // should be used for the system request context and the signin screen

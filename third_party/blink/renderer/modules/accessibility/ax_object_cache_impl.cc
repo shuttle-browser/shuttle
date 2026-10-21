@@ -903,6 +903,8 @@ void AXObjectCacheImpl::Dispose() {
   weak_factory_for_serialization_pipeline_.Invalidate();
   weak_factory_for_loc_updates_pipeline_.Invalidate();
 
+  aria_radiogroups_with_changed_membership_.clear();
+
   lifecycle_.AdvanceTo(AXObjectCacheLifecycle::kDisposed);
 }
 
@@ -2179,7 +2181,14 @@ void AXObjectCacheImpl::RemoveSubtreeInternal(
       // **important**: this call must come before the node traversal remove
       // below since that could remove a child which would cause it to not point
       // to its image parent, making it impossible to notify the parent.
-      NotifyParentChildrenChanged(image_ax_object);
+      if (lifecycle_.GetState() ==
+          AXObjectCacheLifecycle::kProcessDeferredUpdates) {
+        if (AXObject* ancestor = InvalidateChildren(image_ax_object)) {
+          ancestor->ChildrenChangedWithCleanLayout();
+        }
+      } else {
+        NotifyParentChildrenChanged(image_ax_object);
+      }
     }
   }
 
@@ -3730,10 +3739,16 @@ bool AXObjectCacheImpl::CommitAXUpdates(Document& document, bool force) {
         mark_all_dirty_ = false;
       }
 
+      // Now that tree updates and aria-owns relations have been processed,
+      // mark all the radios that belong to a radiogroup with a changed children
+      // as dirty.
+      MarkAriaRadioGroupMembersDirty();
+
       CHECK(tree_update_callback_queue_main_.empty());
       CHECK(tree_update_callback_queue_popup_.empty());
       CHECK(nodes_with_pending_children_changed_.empty());
       CHECK(queued_children_changed_ancestors_.empty());
+      CHECK(aria_radiogroups_with_changed_membership_.empty());
 
       {
         lifecycle_.AdvanceTo(AXObjectCacheLifecycle::kFinalizingTree);
@@ -4142,6 +4157,68 @@ HeapVector<Member<AXObject>> AXObjectCacheImpl::GetRadioButtonGroupMembers(
     }
   }
   return members;
+}
+
+HeapVector<Member<AXObject>>
+AXObjectCacheImpl::GetOrComputeAriaRadioButtonGroupMembers(
+    AXObject* radiogroup) {
+  HeapVector<Member<AXObject>> members;
+  if (!radiogroup) {
+    return members;
+  }
+
+  auto it = aria_radio_group_members_.find(radiogroup->AXObjectID());
+  if (it != aria_radio_group_members_.end()) {
+    for (AXID id : it->value) {
+      if (AXObject* obj = ObjectFromAXID(id)) {
+        members.push_back(obj);
+      }
+    }
+    return members;
+  }
+
+  HeapVector<Member<AXObject>> computed =
+      AXNodeObject::CollectAriaRadioButtonsInGroup(radiogroup);
+  Vector<AXID> ids;
+  ids.ReserveInitialCapacity(computed.size());
+  for (auto& member : computed) {
+    ids.push_back(member->AXObjectID());
+  }
+  aria_radio_group_members_.Set(radiogroup->AXObjectID(), std::move(ids));
+  return computed;
+}
+
+void AXObjectCacheImpl::AriaRadioGroupChildrenChanged(AXObject* obj) {
+  // Only record the radiogroup here: its subtree may not be rebuilt yet, and
+  // several children-changed notifications often occur for the same group.
+  // The radios are marked dirty in MarkAriaRadioGroupMembersDirty().
+  AXObject* radiogroup = obj->RoleValue() == ax::mojom::blink::Role::kRadioGroup
+                             ? obj
+                             : AXNodeObject::NearestAriaRadioGroupAncestor(obj);
+  if (radiogroup) {
+    aria_radiogroups_with_changed_membership_.insert(radiogroup->AXObjectID());
+  }
+}
+
+void AXObjectCacheImpl::MarkAriaRadioGroupMembersDirty() {
+  CHECK(lifecycle_.StateAllowsAXObjectsToGainFinalizationNeededBit());
+  // Collecting the radios can update children, which can record more
+  // radiogroups, so process until none remain.
+  while (!aria_radiogroups_with_changed_membership_.empty()) {
+    HashSet<AXID> radiogroup_ids;
+    radiogroup_ids.swap(aria_radiogroups_with_changed_membership_);
+    for (AXID radiogroup_id : radiogroup_ids) {
+      AXObject* radiogroup = ObjectFromAXID(radiogroup_id);
+      if (!radiogroup || radiogroup->IsDetached() ||
+          radiogroup->RoleValue() != ax::mojom::blink::Role::kRadioGroup) {
+        continue;
+      }
+      for (AXObject* radio :
+           AXNodeObject::CollectAriaRadioButtonsInGroup(radiogroup)) {
+        MarkAXObjectDirtyWithCleanLayout(radio);
+      }
+    }
+  }
 }
 
 void AXObjectCacheImpl::ProcessCleanLayoutCallbacks(Document& document) {

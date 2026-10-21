@@ -19,8 +19,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/about_flags.h"
 #include "chrome/browser/buildflags.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
-#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/about/about_ui.h"
 #include "chrome/browser/ui/webui/components/components_ui.h"
@@ -53,18 +51,21 @@
 #include "ui/base/ui_base_features.h"
 #include "ui/gfx/favicon_size.h"
 #include "ui/web_dialogs/web_dialog_ui.h"
+#include "ui/webui/buildflags.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
+#if BUILDFLAG(ENABLE_WEBUI_HISTORY)
+#include "chrome/browser/ui/webui/history/history_ui.h"
+#endif
+
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui/history/history_ui_android.h"
 #else  // BUILDFLAG(IS_ANDROID)
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/types/expected_macros.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
-#include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/management/management_ui.h"
 #include "chrome/browser/ui/webui/settings/settings_utils.h"
 #include "media/base/media_switches.h"
@@ -247,8 +248,6 @@ bool ChromeWebUIControllerFactory::IsWebUIAllowedToMakeNetworkRequests(
   return
       // https://crbug.com/40571286
       origin.host() == chrome::kChromeUISyncConfirmationHost ||
-      // https://crbug.com/41382586
-      origin.host() == chrome::kChromeUIInspectHost ||
       // https://crbug.com/40583261
       origin.host() == chrome::kChromeUIDownloadsHost ||
       // https://crbug.com/376417346
@@ -304,7 +303,12 @@ ChromeWebUIControllerFactory::GetFaviconResourceBytes(
   }
 
   if (page_url.host() == chrome::kChromeUIHistoryHost) {
+#if BUILDFLAG(ENABLE_WEBUI_HISTORY)
     return HistoryUI::GetFaviconResourceBytes(scale_factor);
+#else
+    return ui::ResourceBundle::GetSharedInstance()
+        .LoadDataResourceBytesForScale(IDR_HISTORY_FAVICON, scale_factor);
+#endif
   }
 
   if (page_url.host() == chrome::kChromeUISettingsHost) {

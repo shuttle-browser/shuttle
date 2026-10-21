@@ -984,13 +984,13 @@ std::map<GlobalRequestID, JobStack>& GetInFlightJobStackMap() {
 
 // static
 void DevToolsURLLoaderInterceptor::RegisterJob(InterceptionJob* job) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M160);
   GetInFlightJobStackMap()[job->global_req_id()].push_back(job);
 }
 
 // static
 void DevToolsURLLoaderInterceptor::UnregisterJob(InterceptionJob* job) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M160);
   auto& map = GetInFlightJobStackMap();
   auto it = map.find(job->global_req_id());
   if (it == map.end()) {
@@ -1007,7 +1007,7 @@ void DevToolsURLLoaderInterceptor::HandleAuthRequest(
     GlobalRequestID req_id,
     const net::AuthChallengeInfo& auth_info,
     HandleAuthRequestCallback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M160);
   auto& map = GetInFlightJobStackMap();
   auto it = map.find(req_id);
   if (it != map.end()) {
@@ -1685,8 +1685,7 @@ void InterceptionJob::ProcessSetCookies(const net::HttpResponseHeaders& headers,
       GetContentClient()
           ->browser()
           ->ShouldIgnoreSameSiteCookieRestrictionsWhenTopLevel(
-              top_frame_origin,
-              create_loader_params_->request.url.SchemeIsCryptographic());
+              top_frame_origin, url_chain_.back());
   CHECK_EQ(create_loader_params_->request.url, url_chain_.back(),
            base::NotFatalUntil::M159);
   bool is_main_frame_navigation =
@@ -1860,8 +1859,8 @@ void InterceptionJob::FetchCookies(base::OnceClosure callback) {
   bool should_treat_as_first_party =
       GetContentClient()
           ->browser()
-          ->ShouldIgnoreSameSiteCookieRestrictionsWhenTopLevel(
-              top_frame_origin, request.url.SchemeIsCryptographic());
+          ->ShouldIgnoreSameSiteCookieRestrictionsWhenTopLevel(top_frame_origin,
+                                                               request.url);
   bool is_main_frame_navigation =
       request.trusted_params.has_value() &&
       request.trusted_params->isolation_info.request_type() ==
@@ -2305,7 +2304,7 @@ void InterceptionJob::OnAuthRequest(
   CHECK(pending_auth_callback_.is_null(), base::NotFatalUntil::M159);
   CHECK_EQ(ResolutionState::kNone, waiting_for_resolution_,
            base::NotFatalUntil::M159);
-  DCHECK(CanHandleAuth());
+  CHECK(CanHandleAuth(), base::NotFatalUntil::M160);
 
   state_ = State::kAuthRequired;
   auto request_info = BuildRequestInfo(nullptr);

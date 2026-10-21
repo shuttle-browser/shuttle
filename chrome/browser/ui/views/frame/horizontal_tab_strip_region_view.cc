@@ -65,7 +65,7 @@
 #include "ui/views/view_utils.h"
 
 #if BUILDFLAG(IS_MAC)
-constexpr int kTabStripRegionInternalPaddingMac = 12;
+inline constexpr int kTabStripRegionInternalPaddingMac = 12;
 #endif
 
 namespace {
@@ -679,7 +679,7 @@ HorizontalTabStripRegionViewNew::HorizontalTabStripRegionViewNew(
         browser, TabStripControlButton::kButtonSize.width(),
         TabStripControlButton::kIconSize,
         TabStripControlButton::kButtonSize.width() / 2.0f);
-    new_tab_button->SetPaintTransparentForGlass(true);
+    new_tab_button->SetPaintTransparent(true);
     new_tab_button_ = AddChildView(std::move(new_tab_button));
     new_tab_button_->SetProperty(views::kCrossAxisAlignmentKey,
                                  views::LayoutAlignment::kCenter);
@@ -735,7 +735,18 @@ views::View::Views HorizontalTabStripRegionViewNew::GetChildrenInZOrder() {
   return children;
 }
 
+void HorizontalTabStripRegionViewNew::ChildPreferredSizeChanged(
+    views::View* child) {
+  PreferredSizeChanged();
+}
+
+bool HorizontalTabStripRegionViewNew::HasLeadingButtons() const {
+  // Shuttle: no combo button.
+  return false;
+}
+
 void HorizontalTabStripRegionViewNew::Layout(PassKey) {
+  UpdateTabStripMargin();
   LayoutSuperclass<BaseTabStripRegionView>(this);
 }
 
@@ -874,8 +885,26 @@ gfx::Point HorizontalTabStripRegionViewNew::GetLinkDropArrowPosition(
   return gfx::Point(target_x, target_y);
 }
 
-void HorizontalTabStripRegionViewNew::OnTabStripViewSet() {
-  ReorderChildView(tab_strip_view(), 0);
+void HorizontalTabStripRegionViewNew::AddTabStripView(
+    std::unique_ptr<views::View> view) {
+  view->SetProperty(
+      views::kFlexBehaviorKey,
+      views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToZero,
+                               views::MaximumFlexSizeRule::kPreferred));
+  // Shuttle: no combo button, so the tab strip is always the first child.
+  AddChildViewAt(std::move(view), 0);
+  UpdateTabStripMargin();
+}
+
+void HorizontalTabStripRegionViewNew::UpdateTabStripMargin() {
+  // Shuttle: the combo button and the tab strip action container are removed,
+  // so there are never leading buttons and no extra tab strip margin.
+#if BUILDFLAG(IS_MAC)
+  ClearProperty(views::kInternalPaddingKey);
+#endif
+  if (tab_strip_view()) {
+    tab_strip_view()->ClearProperty(views::kMarginsKey);
+  }
 }
 
 BEGIN_METADATA(HorizontalTabStripRegionViewNew)

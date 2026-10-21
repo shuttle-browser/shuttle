@@ -28,6 +28,7 @@
 #include "ui/views/layout/flex_layout.h"
 #include "ui/views/style/typography.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_utils.h"
 
 namespace {
 
@@ -166,8 +167,11 @@ HoverButton::HoverButton(PressedCallback callback, Params params)
   // present.
   auto label_wrapper = std::make_unique<views::View>();
 
-  title_ = label_wrapper->AddChildView(std::make_unique<views::Label>());
-  title_->SetText(params.title);
+  // Shuttle: no user education, so no "New" badge on the title.
+  {
+    title_ = label_wrapper->AddChildView(
+        std::make_unique<views::Label>(params.title));
+  }
   title_->SetHorizontalAlignment(gfx::HorizontalAlignment::ALIGN_LEFT);
   // Hover the whole button when hovering |title_|. This is OK because |title_|
   // will never have a link in it.
@@ -355,6 +359,9 @@ void HoverButton::UpdateTooltipAndAccessibleName() {
   if (footer_) {
     texts.push_back(footer_->GetText());
   }
+
+  const std::u16string tooltip_text = base::JoinString(texts, u"\n");
+
   if (!additional_accessible_text_.empty()) {
     texts.push_back(additional_accessible_text_);
   }
@@ -364,7 +371,7 @@ void HoverButton::UpdateTooltipAndAccessibleName() {
   // size.
   const bool needs_tooltip =
       label_wrapper_->GetPreferredSize().width() > label_wrapper_->width();
-  SetTooltipText(needs_tooltip ? accessible_name : std::u16string());
+  SetTooltipText(needs_tooltip ? tooltip_text : std::u16string());
   GetViewAccessibility().SetName(accessible_name);
 }
 

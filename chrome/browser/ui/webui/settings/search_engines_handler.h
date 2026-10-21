@@ -20,6 +20,10 @@
 class Profile;
 class TemplateURLService;
 
+namespace search_engines {
+class SearchEngineSettingsDataProvider;
+}
+
 namespace settings {
 
 class SearchEnginesHandler : public SettingsPageUIHandler,
@@ -107,10 +111,6 @@ class SearchEnginesHandler : public SettingsPageUIHandler,
   base::DictValue CreateDictionaryForEngine(TemplateURL* template_url);
 
 
-  // Records search engine split metrics for split regions on settings load.
-  void RecordSearchEngineSplitMetrics(
-      TemplateURL::TemplateURLVectorSpan displayed_engines);
-
   const raw_ptr<Profile> profile_;
 
   KeywordEditorController list_controller_;
@@ -118,8 +118,14 @@ class SearchEnginesHandler : public SettingsPageUIHandler,
   base::ScopedObservation<TemplateURLService, TemplateURLServiceObserver>
       scoped_url_service_observation_{this};
 
+  // Prepares the engine lists shown by this handler and owns the
+  // once-per-page-load settings telemetry.
+  // Note: Object lifetime is how we track the page load / sessions. So do not
+  // recreate it during the handler's lifetime.
+  std::unique_ptr<search_engines::SearchEngineSettingsDataProvider>
+      settings_data_provider_;
+
   bool has_recorded_hijacking_metric_ = false;
-  bool has_recorded_search_engine_split_metrics_ = false;
 };
 
 }  // namespace settings

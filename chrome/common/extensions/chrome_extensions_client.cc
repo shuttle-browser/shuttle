@@ -13,6 +13,7 @@
 #include "base/files/file_path.h"
 #include "base/strings/string_util.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "chrome/common/chrome_resource_request_blocked_reason.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/chrome_extensions_api_provider.h"
@@ -39,6 +40,10 @@
 #include "services/network/public/mojom/cors_origin_pattern.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "url/gurl.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/webui/os_feedback_ui/url_constants.h"
+#endif
 
 namespace extensions {
 
@@ -156,6 +161,12 @@ bool ChromeExtensionsClient::IsScriptableURL(const GURL& url,
     }
     return false;
   }
+  return true;
+}
+
+bool ChromeExtensionsClient::IsCapturableURL(const GURL& url,
+                                             std::string* error) const {
+  // Shuttle: no chrome://feedback WebUI.
   return true;
 }
 

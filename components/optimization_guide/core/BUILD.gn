@@ -82,7 +82,6 @@ component("features") {
     "//components/variations",
     "//google_apis",
     "//net",
-    "//services/preferences/public/cpp",
     "//third_party/metrics_proto",
     "//ui/base",
   ]
@@ -199,6 +198,7 @@ source_set("model_execution") {
     "//components/prefs",
     "//components/update_client",
     "//components/variations/net",
+    "//google_apis",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
   ]
@@ -213,7 +213,6 @@ source_set("model_execution") {
       "//components/streaming_client",
       "//components/variations/net",
       "//components/version_info",
-      "//google_apis",
       "//services/network/public/cpp",
     ]
     deps += [
@@ -240,6 +239,7 @@ source_set("ondevice") {
     "//components/variations/net",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
+    "//services/preferences/public/cpp",
   ]
   if (build_with_model_execution) {
     sources += [
@@ -275,6 +275,7 @@ if (build_with_model_execution) {
     sources = [
     ]
     deps = [
+      ":core_util",
       ":features",
       ":model_execution",
       ":ondevice",
@@ -286,16 +287,6 @@ if (build_with_model_execution) {
       "//components/optimization_guide/proto:optimization_guide_proto",
       "//components/prefs",
       "//components/update_client",
-    ]
-  }
-
-  static_library("manifest_broker_dev_support") {
-    sources = [
-    ]
-    deps = [
-      ":manifest_broker",
-      "//base",
-      "//components/optimization_guide/proto:optimization_guide_proto",
     ]
   }
 

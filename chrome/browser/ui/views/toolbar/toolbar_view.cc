@@ -37,6 +37,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
+#include "chrome/browser/ui/global_error/global_error.h"
 #include "chrome/browser/ui/global_error/global_error_service.h"
 #include "chrome/browser/ui/global_error/global_error_service_factory.h"
 #include "chrome/browser/ui/layout_constants.h"
@@ -46,6 +47,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -85,6 +87,7 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
+#include "components/omnibox/browser/location_bar_model.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/signin/public/base/signin_buildflags.h"
@@ -94,6 +97,7 @@
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkPathBuilder.h"
 #include "ui/accessibility/ax_node_data.h"
+#include "ui/actions/actions.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -158,7 +162,6 @@ auto& GetViewCommandMap() {
   return kViewCommandMap;
 }
 
-constexpr int kBrowserAppMenuRefreshExpandedMargin = 5;
 constexpr int kBrowserAppMenuRefreshCollapsedMargin = 2;
 
 // Returns whether `point` should be treated as part of the caption area in
@@ -196,8 +199,10 @@ bool IsPositionInWindowCaptionForView(const views::View* view,
 void SetRefreshMargins(views::View* button, bool expanded) {
   button->SetProperty(
       views::kMarginsKey,
-      gfx::Insets::VH(0, expanded ? kBrowserAppMenuRefreshExpandedMargin
-                                  : kBrowserAppMenuRefreshCollapsedMargin));
+      gfx::Insets::VH(
+          0, expanded ? GetLayoutConstant(
+                            LayoutConstant::kToolbarButtonRefreshExpandedMargin)
+                      : kBrowserAppMenuRefreshCollapsedMargin));
 }
 
 }  // namespace
@@ -545,11 +550,11 @@ WebContents* ToolbarView::GetWebContents() {
 }
 
 LocationBarModel* ToolbarView::GetLocationBarModel() {
-  return browser_->GetFeatures().location_bar_model();
+  return LocationBarModel::From(browser_.get());
 }
 
 const LocationBarModel* ToolbarView::GetLocationBarModel() const {
-  return browser_->GetFeatures().location_bar_model();
+  return LocationBarModel::From(browser_.get());
 }
 
 ContentSettingBubbleModelDelegate*
@@ -865,6 +870,26 @@ void ToolbarView::UpdateTypeAndSeverity(
   AppMenuControl* app_menu_control = GetAppMenuControl();
   if (app_menu_control) {
     app_menu_control->SetTypeAndSeverity(type_and_severity);
+  }
+  auto* action_item = actions::ActionManager::Get().FindAction(
+      kActionUpgradeDialog, BrowserActions::From(browser_)->root_action_item());
+  CHECK(action_item);
+  action_item->SetVisible(
+      type_and_severity.type ==
+      AppMenuIconController::IconType::kUpgradeNotification);
+  action_item->SetText(AppMenuModel::GetUpgradeDialogTitleText());
+
+  auto* global_error_action_item = actions::ActionManager::Get().FindAction(
+      kActionGlobalError, BrowserActions::From(browser_)->root_action_item());
+  CHECK(global_error_action_item);
+  if (GlobalError* error =
+          GlobalErrorServiceFactory::GetForProfile(browser_->GetProfile())
+              ->GetHighestSeverityGlobalErrorWithAppMenuItem()) {
+    global_error_action_item->SetVisible(true);
+    global_error_action_item->SetText(error->MenuItemLabel());
+    global_error_action_item->SetImage(error->MenuItemIcon());
+  } else {
+    global_error_action_item->SetVisible(false);
   }
 }
 

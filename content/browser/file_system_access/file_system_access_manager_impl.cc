@@ -1050,7 +1050,7 @@ void FileSystemAccessManagerImpl::ResolveDataTransferTokenWithFileType(
   // picker.
   permission_context_->ConfirmSensitiveEntryAccess(
       binding_context.storage_key.origin(), path_info, file_type,
-      UserAction::kDragAndDrop, binding_context.frame_id,
+      AccessTrigger::kDragAndDrop, binding_context.frame_id,
       base::BindOnce(&FileSystemAccessManagerImpl::
                          DidVerifySensitiveDirectoryAccessForDataTransfer,
                      weak_factory_.GetWeakPtr(), binding_context, path_info,
@@ -1078,7 +1078,7 @@ void FileSystemAccessManagerImpl::
   SharedHandleState shared_handle_state =
       GetSharedHandleStateForNonSandboxedPath(
           path_info, binding_context.storage_key, file_type,
-          UserAction::kDragAndDrop);
+          AccessTrigger::kDragAndDrop);
 
   blink::mojom::FileSystemAccessEntryPtr entry;
   if (file_type == HandleType::kDirectory) {
@@ -1165,6 +1165,45 @@ base::FilePath DeserializePath(const std::string& bytes) {
   base::as_writable_byte_span(s).copy_from(
       base::as_byte_span(bytes).first(num_bytes));
   return base::FilePath(s);
+}
+
+bool IsValidRootPath(FileSystemAccessHandleData::DataCase data_case,
+                     const base::FilePath& root_path) {
+  if (root_path.empty() || root_path.ReferencesParent()) {
+    return false;
+  }
+  if (data_case == FileSystemAccessHandleData::kLocal) {
+#if BUILDFLAG(IS_ANDROID)
+    if (root_path.IsContentUri()) {
+      return true;
+    }
+#endif
+    return root_path.IsAbsolute();
+  }
+  return true;
+}
+
+bool IsPlainRelativePath(const base::FilePath& path) {
+  if (path.empty()) {
+    return true;
+  }
+  if (path.IsAbsolute() || path.ReferencesParent()) {
+    return false;
+  }
+  // `FilePath::GetComponents()` drops a leading `.`, so check the prefix first.
+  if (path.value().starts_with(base::FilePath::kCurrentDirectory) &&
+      (path.value().size() == 1 ||
+       base::FilePath::IsSeparator(path.value()[1]))) {
+    return false;
+  }
+  for (const auto& component : path.GetComponents()) {
+    if (component.empty() || component == base::FilePath::kCurrentDirectory ||
+        base::FilePath::IsSeparator(component[0]) ||
+        base::FilePath(component).BaseName().value() != component) {
+      return false;
+    }
+  }
+  return true;
 }
 
 std::string SerializeURLImpl(const storage::FileSystemURL& url,
@@ -1295,8 +1334,21 @@ void FileSystemAccessManagerImpl::DeserializeHandle(
     case FileSystemAccessHandleData::kSandboxed: {
       base::FilePath virtual_path =
           DeserializePath(data.sandboxed().virtual_path());
+      // Reject non-plain relative paths, including `..` and `.` segments.
+      // `ObfuscatedFileUtil` strips `.` via `VirtualPath::GetComponents()`,
+      // while `FileSystemAccessLockManager` preserves `.` via
+      // `FilePath::GetComponents()`, which would alias paths without sharing
+      // locks.
+      if (!IsPlainRelativePath(virtual_path)) {
+        // Drop `token`, and directly return.
+        return;
+      }
       storage::FileSystemURL url = context()->CreateCrackedFileSystemURL(
           storage_key, storage::kFileSystemTypeTemporary, virtual_path);
+      if (!url.is_valid()) {
+        // Drop `token`, and directly return.
+        return;
+      }
       // Apply bucket information.
       auto bucket_callback = base::BindOnce(
           [](storage::FileSystemURL url,
@@ -1339,18 +1391,44 @@ void FileSystemAccessManagerImpl::DeserializeHandle(
 
       base::FilePath root_path = DeserializePath(file_data.root_path());
       base::FilePath relative_path = DeserializePath(file_data.relative_path());
+      if (!IsValidRootPath(data.data_case(), root_path) ||
+          !IsPlainRelativePath(relative_path)) {
+        // Drop `token`, and directly return.
+        return;
+      }
+
+      std::string display_name = !file_data.display_name().empty()
+                                     ? file_data.display_name()
+                                     : root_path.BaseName().AsUTF8Unsafe();
+      // `BaseName()` can be empty on Windows when `root_path` is a bare drive
+      // letter (e.g., `kExternal` with `root_path = L"C:"`), which would fail
+      // the `CHECK` in `PathInfo`.
+      if (display_name.empty()) {
+        // Drop `token`, and directly return.
+        return;
+      }
+
       PathInfo path_info(data.data_case() == FileSystemAccessHandleData::kLocal
                              ? PathType::kLocal
                              : PathType::kExternal,
-                         root_path,
-                         !file_data.display_name().empty()
-                             ? file_data.display_name()
-                             : root_path.BaseName().AsUTF8Unsafe());
+                         root_path, std::move(display_name));
       storage::FileSystemURL root = CreateFileSystemURLFromPath(path_info);
+      if (!root.is_valid()) {
+        // Drop `token`, and directly return.
+        return;
+      }
 
       storage::FileSystemURL child = context()->CreateCrackedFileSystemURL(
           root.storage_key(), root.mount_type(),
           root.virtual_path().Append(relative_path));
+      // `IsPlainRelativePath()` already guarantees containment; `IsParent()` is
+      // kept as an additional consistency check.
+      if (!child.is_valid() ||
+          (!relative_path.empty() &&
+           !root.virtual_path().IsParent(child.virtual_path()))) {
+        // Drop `token`, and directly return.
+        return;
+      }
 
       const bool is_directory =
           data.handle_type() == FileSystemAccessHandleData::kDirectory;
@@ -1363,7 +1441,7 @@ void FileSystemAccessManagerImpl::DeserializeHandle(
           path_info, storage_key,
           (is_directory || !relative_path.empty()) ? HandleType::kDirectory
                                                    : HandleType::kFile,
-          FileSystemAccessPermissionContext::UserAction::kLoadFromStorage);
+          FileSystemAccessPermissionContext::AccessTrigger::kLoadFromStorage);
       CreateTransferTokenImpl(
           child, storage_key, path_info.display_name, handle_state,
           is_directory ? HandleType::kDirectory : HandleType::kFile,
@@ -1371,7 +1449,8 @@ void FileSystemAccessManagerImpl::DeserializeHandle(
       break;
     }
     case FileSystemAccessHandleData::DATA_NOT_SET:
-      NOTREACHED();
+      // Drop `token`, and directly return.
+      return;
   }
 }
 
@@ -1384,14 +1463,14 @@ blink::mojom::FileSystemAccessEntryPtr
 FileSystemAccessManagerImpl::CreateFileEntryFromPath(
     const BindingContext& binding_context,
     const content::PathInfo& file_path_info,
-    UserAction user_action) {
+    AccessTrigger access_trigger) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   storage::FileSystemURL url = CreateFileSystemURLFromPath(file_path_info);
 
   SharedHandleState shared_handle_state =
-      GetSharedHandleStateForNonSandboxedPath(file_path_info,
-                                              binding_context.storage_key,
-                                              HandleType::kFile, user_action);
+      GetSharedHandleStateForNonSandboxedPath(
+          file_path_info, binding_context.storage_key, HandleType::kFile,
+          access_trigger);
 
   return blink::mojom::FileSystemAccessEntry::New(
       blink::mojom::FileSystemAccessHandle::NewFile(
@@ -1404,14 +1483,14 @@ blink::mojom::FileSystemAccessEntryPtr
 FileSystemAccessManagerImpl::CreateDirectoryEntryFromPath(
     const BindingContext& binding_context,
     const content::PathInfo& file_path_info,
-    UserAction user_action) {
+    AccessTrigger access_trigger) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   storage::FileSystemURL url = CreateFileSystemURLFromPath(file_path_info);
 
   SharedHandleState shared_handle_state =
       GetSharedHandleStateForNonSandboxedPath(
           file_path_info, binding_context.storage_key, HandleType::kDirectory,
-          user_action);
+          access_trigger);
 
   return blink::mojom::FileSystemAccessEntry::New(
       blink::mojom::FileSystemAccessHandle::NewDirectory(
@@ -1442,7 +1521,9 @@ FileSystemAccessManagerImpl::CreateDirectoryHandle(
     const storage::FileSystemURL& url,
     const SharedHandleState& handle_state) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  CHECK(url.is_valid(), base::NotFatalUntil::M159);
+  // TODO(crbug.com/569993648): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(url.is_valid());
 
   mojo::PendingRemote<blink::mojom::FileSystemAccessDirectoryHandle> result;
   directory_receivers_.Add(
@@ -1792,8 +1873,8 @@ void FileSystemAccessManagerImpl::ConfirmSensitiveEntryAccessForEntries(
         binding_context.storage_key.origin(), entry,
         is_directory ? HandleType::kDirectory : HandleType::kFile,
         options.type() == ui::SelectFileDialog::SELECT_SAVEAS_FILE
-            ? UserAction::kSave
-            : UserAction::kOpen,
+            ? AccessTrigger::kSave
+            : AccessTrigger::kOpen,
         binding_context.frame_id,
         base::BindOnce(&FileSystemAccessManagerImpl::
                            DidVerifySensitiveDirectoryAccessForIndex,
@@ -1924,7 +2005,7 @@ void FileSystemAccessManagerImpl::OnCheckPathsAgainstEnterprisePolicy(
         GetSharedHandleStateForNonSandboxedPath(
             entries.front(), binding_context.storage_key,
             HandleType::kDirectory,
-            FileSystemAccessPermissionContext::UserAction::kOpen);
+            FileSystemAccessPermissionContext::AccessTrigger::kOpen);
     // Ask for both read and write permission at the same time. The permission
     // context should coalesce these into one prompt.
     if (request_directory_write_access) {
@@ -1971,7 +2052,7 @@ void FileSystemAccessManagerImpl::OnCheckPathsAgainstEnterprisePolicy(
   result_entries.reserve(entries.size());
   for (const auto& entry : entries) {
     result_entries.push_back(
-        CreateFileEntryFromPath(binding_context, entry, UserAction::kOpen));
+        CreateFileEntryFromPath(binding_context, entry, AccessTrigger::kOpen));
   }
 
   std::move(callback).Run(file_system_access_error::Ok(),
@@ -2000,7 +2081,7 @@ void FileSystemAccessManagerImpl::DidCreateAndTruncateSaveFile(
   SharedHandleState shared_handle_state =
       GetSharedHandleStateForNonSandboxedPath(
           entry, binding_context.storage_key, HandleType::kFile,
-          UserAction::kSave);
+          AccessTrigger::kSave);
 
   result_entries.push_back(blink::mojom::FileSystemAccessEntry::New(
       blink::mojom::FileSystemAccessHandle::NewFile(CreateFileHandle(
@@ -2127,14 +2208,29 @@ FileSystemAccessManagerImpl::GetSharedHandleStateForNonSandboxedPath(
     const content::PathInfo& path_info,
     const blink::StorageKey& storage_key,
     HandleType handle_type,
-    FileSystemAccessPermissionContext::UserAction user_action) {
+    FileSystemAccessPermissionContext::AccessTrigger access_trigger) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
   scoped_refptr<FileSystemAccessPermissionGrant> read_grant, write_grant;
-  if (permission_context_) {
+  if (storage_key.IsThirdPartyContext()) {
+    // Non-sandboxed paths in third-party contexts bypass embedder permission
+    // prompts. Drag-and-drop explicitly confers transient read access via user
+    // drop intent, while writes and non-drop reads are strictly denied.
+    if (access_trigger ==
+        FileSystemAccessPermissionContext::AccessTrigger::kDragAndDrop) {
+      read_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
+          PermissionStatus::GRANTED, path_info);
+    } else {
+      read_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
+          PermissionStatus::DENIED, path_info);
+    }
+    write_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(
+        PermissionStatus::DENIED, path_info);
+  } else if (permission_context_) {
     read_grant = permission_context_->GetReadPermissionGrant(
-        storage_key.origin(), path_info, handle_type, user_action);
+        storage_key.origin(), path_info, handle_type, access_trigger);
     write_grant = permission_context_->GetWritePermissionGrant(
-        storage_key.origin(), path_info, handle_type, user_action);
+        storage_key.origin(), path_info, handle_type, access_trigger);
   } else {
     // Auto-deny all write grants if no permission context is available, unless
     // Experimental Web Platform features are enabled.
@@ -2146,14 +2242,15 @@ FileSystemAccessManagerImpl::GetSharedHandleStateForNonSandboxedPath(
             ? PermissionStatus::GRANTED
             : PermissionStatus::DENIED,
         path_info);
-    switch (user_action) {
-      case FileSystemAccessPermissionContext::UserAction::kNone:
-      case FileSystemAccessPermissionContext::UserAction::kLoadFromStorage:
+    switch (access_trigger) {
+      case FileSystemAccessPermissionContext::AccessTrigger::kProgrammaticRead:
+      case FileSystemAccessPermissionContext::AccessTrigger::kProgrammaticWrite:
+      case FileSystemAccessPermissionContext::AccessTrigger::kLoadFromStorage:
         read_grant = write_grant;
         break;
-      case FileSystemAccessPermissionContext::UserAction::kOpen:
-      case FileSystemAccessPermissionContext::UserAction::kSave:
-      case FileSystemAccessPermissionContext::UserAction::kDragAndDrop:
+      case FileSystemAccessPermissionContext::AccessTrigger::kOpen:
+      case FileSystemAccessPermissionContext::AccessTrigger::kSave:
+      case FileSystemAccessPermissionContext::AccessTrigger::kDragAndDrop:
         // Grant read permission even without a permission_context_, as the
         // picker itself is enough UI to assume user intent.
         read_grant = base::MakeRefCounted<FixedFileSystemAccessPermissionGrant>(

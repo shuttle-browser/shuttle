@@ -62,6 +62,7 @@ source_set("content") {
   if (enable_pdf) {
     deps += [
       "//components/pdf/browser",
+      "//mojo/public/cpp/bindings",
       "//pdf/mojom",
     ]
   }

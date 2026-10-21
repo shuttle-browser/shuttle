@@ -399,23 +399,22 @@ void ChromeContentRendererClient::RenderThreadStarted() {
       thread->GetIOTaskRunner(), std::move(module_event_sink));
 #endif
 
-  browser_interface_broker_ =
-      blink::Platform::Current()->GetBrowserInterfaceBroker();
-
-  chrome_observer_ = std::make_unique<ChromeRenderThreadObserver>();
-  web_cache_impl_ = std::make_unique<web_cache::WebCacheImpl>();
-
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
   if (request_header_integrity::RequestHeaderIntegrityURLLoaderThrottle::
           IsFeatureEnabled()) {
     mojo::PendingRemote<request_header_integrity::mojom::ChromeCompanero>
         remote;
-    browser_interface_broker_->GetInterface(
-        remote.InitWithNewPipeAndPassReceiver());
+    thread->BindHostReceiver(remote.InitWithNewPipeAndPassReceiver());
     request_header_integrity::ChromeCompaneroLoader::GetInstance()
         .SetMojoRemote(std::move(remote));
   }
 #endif
+
+  browser_interface_broker_ =
+      blink::Platform::Current()->GetBrowserInterfaceBroker();
+
+  chrome_observer_ = std::make_unique<ChromeRenderThreadObserver>();
+  web_cache_impl_ = std::make_unique<web_cache::WebCacheImpl>();
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   auto* extensions_renderer_client =
@@ -1112,6 +1111,22 @@ bool ChromeContentRendererClient::AllowPopup() {
 #else
   return false;
 #endif
+}
+
+bool ChromeContentRendererClient::IsUnboundedElementAllowed(
+    content::RenderFrame* render_frame) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  if (render_frame && render_frame->GetWebFrame()) {
+    const blink::WebSecurityOrigin origin =
+        render_frame->GetWebFrame()->GetSecurityOrigin();
+    if (!origin.IsNull() &&
+        origin.Protocol().Equals(extensions::kExtensionScheme) &&
+        origin.Host().Equals(extension_misc::kContextualTasksExtensionId)) {
+      return true;
+    }
+  }
+#endif
+  return false;
 }
 
 bool ChromeContentRendererClient::ShouldNotifyServiceWorkerOnWebSocketActivity(

@@ -44,7 +44,6 @@ try_.builder(
             "release_try_builder",
             "remoteexec",
             "no_symbols",
-            "devtools_do_typecheck",
             "chrome_for_testing",
             "chrome_with_codecs",
             "linux",
@@ -52,10 +51,28 @@ try_.builder(
         ],
     ),
     os = os.LINUX_DEFAULT,
+    ssd = True,
     contact_team_email = "browser-automation-staff@google.com",
     cq_settings = try_.cq_settings(
         location_filters = _LOCATION_FILTER,
     ),
+    siso_remote_linking = True,
+)
+
+try_.builder(
+    name = "linux-arm64-rel-cft",
+    mirrors = [
+        "ci/linux-arm64-rel-cft",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/linux-arm64-rel-cft",
+            "release_try_builder",
+        ],
+    ),
+    os = os.LINUX_DEFAULT,
+    ssd = True,
+    contact_team_email = "browser-automation-staff@google.com",
     siso_remote_linking = True,
 )
 

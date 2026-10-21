@@ -23,12 +23,15 @@
 #include "base/timer/elapsed_timer.h"
 #include "base/values.h"
 #include "chrome/browser/history/profile_based_browsing_history_driver.h"
-#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"  // nogncheck
+#endif
 
 namespace content {
 class WebContents;
@@ -137,6 +140,11 @@ class BrowsingHistoryHandler : public history::mojom::PageHandler,
   // Timer tracking elapsed time from when a history query is sent until
   // results are processed.
   std::optional<base::ElapsedTimer> query_timer_;
+
+  // The hostname suffix from the current query. Used as `results_info->term`
+  // for host-only queries where `search_text` is empty, as the frontend
+  // requires a non-empty term to detect search mode.
+  std::string query_hostname_suffix_;
 
   std::queue<RemoveVisitsCallback> remove_visits_callbacks_;
 

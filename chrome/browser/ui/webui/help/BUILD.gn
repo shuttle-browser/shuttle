@@ -73,7 +73,6 @@ if (!is_android) {
       deps = [
         ":help",
         "//base/test:test_support",
-        "//chrome/browser/ash/login/users:test_support",
         "//chrome/browser/ash/settings:test_support",
         "//chromeos/ash/components/dbus/shill",
         "//chromeos/ash/components/dbus/update_engine",

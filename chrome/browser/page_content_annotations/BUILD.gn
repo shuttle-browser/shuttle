@@ -125,7 +125,6 @@ if (is_android) {
   android_library("java") {
     visibility = [
       ":*",
-      "//chrome/android:chrome_java",
     ]
     srcjar_deps = [ ":service_jni_headers" ]
     sources = [ "android/java/src/org/chromium/chrome/browser/page_content_annotations/PageContentExtractionService.java" ]
@@ -173,6 +172,7 @@ if (is_android) {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/ui/android/tab_model",
       "//chrome/test:test_support",
+      "//chrome/test/base:chrome_test_utils",
       "//components/optimization_guide/proto:optimization_guide_proto",
       "//components/page_content_annotations/content",
       "//components/page_content_annotations/core",

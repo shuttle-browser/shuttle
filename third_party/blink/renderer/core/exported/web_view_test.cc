@@ -1530,7 +1530,7 @@ TEST_F(WebViewTest, AutoResizePreservesTransitionAcrossRemeasurement) {
   // The size container query marks document style as layout-dependent, causing
   // MenuListSelectType's style update to upgrade to layout. Autosize then
   // recalculates #target before its pending transition update is applied.
-  select->DefaultEventHandler(*Event::Create(event_type_names::kChange));
+  select->DispatchEvent(*Event::Create(event_type_names::kChange));
 
   EXPECT_EQ(200, client.GetTestData().Width());
   EXPECT_EQ(1u, target->getAnimations().size());
@@ -4222,7 +4222,7 @@ TEST_F(WebViewTest, LongPressLink) {
                         WebInputEvent::kNoModifiers,
                         WebInputEvent::GetStaticTimeStampForTests(),
                         WebGestureDevice::kTouchscreen);
-  event.SetPositionInWidget(gfx::PointF(500, 300));
+  event.SetPositionInWidget(gfx::PointF(499, 299));
 
   EXPECT_EQ(WebInputEventResult::kHandledSystem,
             web_view->MainFrameWidget()->HandleInputEvent(

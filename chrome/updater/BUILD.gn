@@ -23,7 +23,7 @@ if (is_win) {
 
 group("updater") {
   if (is_win) {
-    deps = [ "//chrome/updater/win" ]
+    deps = []
   }
   if (is_mac) {
     deps = [ "//chrome/updater/mac" ]
@@ -400,7 +400,6 @@ if (is_win || is_mac || is_linux) {
       configs -= [ "//build/config/win:winver" ]
       configs += [
         "//chrome/updater/app/server/win:winver",
-        "//chrome/updater/win:wrl_strict",
       ]
 
       libs = [
@@ -677,7 +676,6 @@ if (is_win || is_mac || is_linux) {
       configs -= [ "//build/config/win:winver" ]
       configs += [
         "//chrome/updater/app/server/win:winver",
-        "//chrome/updater/win:wrl_strict",
       ]
 
       defines = [ "SECURITY_WIN32" ]

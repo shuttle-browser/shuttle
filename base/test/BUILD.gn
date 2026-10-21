@@ -581,7 +581,6 @@ if (is_android) {
       "android/java/src/org/chromium/base/MainReturnCodeResult.java",
       "android/java/src/org/chromium/base/MultiprocessTestClientLauncher.java",
       "android/javatests/src/org/chromium/base/test/task/ThreadPoolTestHelpers.java",
-      "android/javatests/src/org/chromium/base/test/util/UrlUtils.java",
     ]
   }
 
@@ -630,7 +629,6 @@ if (is_android) {
     testonly = true
     import_include = [
       "android/java/src",
-      "//base/android/java/src",
     ]
     sources = [
       "android/java/src/org/chromium/base/ITestCallback.aidl",
@@ -654,8 +652,6 @@ if (is_android) {
   android_library("leak_canary_java") {
     testonly = true
     sources = [
-      "android/javatests/src/org/chromium/base/test/util/CommonLeaks.java",
-      "android/javatests/src/org/chromium/base/test/util/LeakCanaryChecker.java",
     ]
     deps = [
       ":leak_canary_test_resources",

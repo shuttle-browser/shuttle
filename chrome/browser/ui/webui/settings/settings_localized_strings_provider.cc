@@ -30,6 +30,7 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
@@ -64,6 +65,7 @@
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/search/ntp_features.h"
 #include "components/signin/public/base/signin_buildflags.h"
+#include "components/signin/public/base/signin_switches.h"
 #include "components/strings/grit/components_branded_strings.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/subresource_filter/core/browser/subresource_filter_features.h"
@@ -269,6 +271,10 @@ void AddAboutStrings(content::WebUIDataSource* html_source, Profile* profile) {
 #if BUILDFLAG(IS_MAC)
       {"aboutLearnMoreUpdating", IDS_SETTINGS_ABOUT_PAGE_LEARN_MORE_UPDATING},
 #endif
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING) || \
+    BUILDFLAG(GOOGLE_CHROME_FOR_TESTING_BRANDING)
+      {"aboutProductTos", IDS_ABOUT_TERMS_OF_SERVICE},
+#endif
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
@@ -310,8 +316,6 @@ void AddAboutStrings(content::WebUIDataSource* html_source, Profile* profile) {
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING) || \
     BUILDFLAG(GOOGLE_CHROME_FOR_TESTING_BRANDING)
   html_source->AddString("aboutTermsURL", chrome::kChromeUITermsURL);
-  html_source->AddLocalizedString("aboutProductTos",
-                                  IDS_ABOUT_TERMS_OF_SERVICE);
 #endif
 }
 
@@ -1312,7 +1316,6 @@ void AddSearchEnginesStrings(content::WebUIDataSource* html_source) {
       {"searchEnginesExtension", IDS_SETTINGS_SEARCH_ENGINES_EXTENSION_ENGINES},
       {"searchEnginesExtensionExplanation",
        IDS_SETTINGS_SEARCH_ENGINES_EXTENSION_ENGINES_EXPLANATION},
-      {"searchEnginesSearch", IDS_SETTINGS_SEARCH_ENGINES_SEARCH},
       {"searchEnginesName", IDS_SETTINGS_SEARCH_ENGINES_NAME},
       {"searchEnginesShortcut", IDS_SETTINGS_SEARCH_ENGINES_SHORTCUT},
       {"searchEnginesQueryURL", IDS_SETTINGS_SEARCH_ENGINES_QUERY_URL},
@@ -1346,6 +1349,10 @@ void AddSearchEnginesStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_SEARCH_ENGINES_EDIT_SEARCH_ENGINE_BUTTON_ARIA_LABEL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
+  html_source->AddLocalizedString("searchEnginesSearch",
+                                  features::IsSettingsRefresh2026Enabled()
+                                      ? IDS_SETTINGS_SEARCH_ENGINES_SEARCH_V2
+                                      : IDS_SETTINGS_SEARCH_ENGINES_SEARCH);
 }
 
 void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
@@ -1392,10 +1399,6 @@ void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_THIRD_PARTY_COOKIES_PAGE_BLOCK_RADIO_LABEL},
       {"thirdPartyCookiesPageDescription",
        IDS_SETTINGS_THIRD_PARTY_COOKIES_PAGE_DESCRIPTION},
-      {"cookiePageRwsLabel",
-       IDS_SETTINGS_COOKIES_RELATED_WEBSITE_SETS_TOGGLE_LABEL},
-      {"cookiePageRwsSubLabel",
-       IDS_SETTINGS_COOKIES_RELATED_WEBSITE_SETS_TOGGLE_SUB_LABEL},
       {"cookiePageAllSitesLink", IDS_SETTINGS_COOKIES_ALL_SITES_LINK},
       {"trackingProtectionAdvancedLabel",
        IDS_SETTINGS_TRACKING_PROTECTION_ADVANCED_LABEL},
@@ -1430,8 +1433,6 @@ void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
       {"siteSettingsAllSites", IDS_SETTINGS_SITE_SETTINGS_ALL_SITES},
       {"siteSettingsAllSitesDescription",
        IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_DESCRIPTION},
-      {"siteSettingsAllSitesFilter",
-       IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_FILTER},
       {"siteSettingsAllSitesSearch",
        IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_SEARCH},
       {"siteSettingsAllSitesSort", IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_SORT},
@@ -2220,6 +2221,11 @@ void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_SITE_SETTINGS_LOOPBACK_NETWORK_BLOCKED_EXCEPTIONS},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
+  html_source->AddLocalizedString(
+      "siteSettingsAllSitesFilter",
+      features::IsSettingsRefresh2026Enabled()
+          ? IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_FILTER_V2
+          : IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_FILTER);
 
   // These ones cannot be constexpr because we need to check base::FeatureList.
   static webui::LocalizedString kSensorsLocalizedStrings[] = {
@@ -2367,11 +2373,10 @@ void AddSiteDataPageStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_ADD_SITE_TO_BLOCK_LIST_LABEL},
       {"siteDataPageAddSiteContextMenuLabel",
        IDS_SETTINGS_ADD_SITE_CONTEXT_MENU_LABEL},
+      {"siteDataPageClearOnExitRadioSubLabel",
+       IDS_SETTINGS_SITE_DATA_PAGE_CLEAR_ON_EXIT_WITH_EXCEPTION_RADIO_SUBLABEL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
-  html_source->AddLocalizedString(
-      "siteDataPageClearOnExitRadioSubLabel",
-      IDS_SETTINGS_SITE_DATA_PAGE_CLEAR_ON_EXIT_WITH_EXCEPTION_RADIO_SUBLABEL);
 }
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -2492,6 +2497,8 @@ void AddSecurityKeysStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_SECURITY_KEYS_CREDENTIAL_DISPLAYNAME_LABEL},
       {"securityKeysCredentialManagementLabel",
        IDS_SETTINGS_SECURITY_KEYS_CREDENTIAL_MANAGEMENT_LABEL},
+      {"securityKeysCredentialManagementNoCredentials",
+       IDS_SETTINGS_SECURITY_KEYS_CREDENTIAL_MANAGEMENT_NO_CREDENTIALS},
       {"securityKeysCredentialManagementConfirmDeleteCredential",
        IDS_SETTINGS_SECURITY_KEYS_CREDENTIAL_MANAGEMENT_CONFIRM_DELETE_CREDENTIAL},
       {"securityKeysInputTooLong",

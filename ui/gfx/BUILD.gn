@@ -83,6 +83,7 @@ component("gfx") {
     "delegated_ink_metadata.h",
     "delegated_ink_point.cc",
     "delegated_ink_point.h",
+    "draggable_region.h",
     "extension_set.cc",
     "extension_set.h",
     "favicon_size.cc",
@@ -98,6 +99,7 @@ component("gfx") {
     "font_render_params.h",
     "font_util.cc",
     "font_util.h",
+    "frame_data.cc",
     "frame_data.h",
     "gpu_extra_info.cc",
     "gpu_extra_info.h",
@@ -435,8 +437,6 @@ component("color_space") {
     "hdr_metadata.h",
     "hdr_static_metadata.cc",
     "hdr_static_metadata.h",
-    "icc_profile.cc",
-    "icc_profile.h",
     "skia_color_space_util.cc",
     "skia_color_space_util.h",
   ]
@@ -651,6 +651,8 @@ source_set("memory_buffer_sources") {
       "mac/mtl_shared_event_fence.mm",
     ]
 
+    deps += [ "//skia:skcms" ]
+
     public_deps += [
       "//components/viz/common/resources:shared_image_format",
       "//ui/gfx:color_space",
@@ -700,8 +702,6 @@ static_library("test_support") {
     "image/image_unittest_util.h",
     "test/font_fallback_test_data.cc",
     "test/font_fallback_test_data.h",
-    "test/icc_profiles.cc",
-    "test/icc_profiles.h",
     "test/scoped_default_font_description.h",
     "test/sk_color_eq.cc",
     "test/sk_color_eq.h",

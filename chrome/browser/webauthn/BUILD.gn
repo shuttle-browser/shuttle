@@ -89,7 +89,6 @@ source_set("impl") {
       "android/credential_sorter_android.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/gcm",
       "//chrome/browser/net",
       "//chrome/browser/webauthn/android:jni_headers",
@@ -118,7 +117,9 @@ source_set("impl") {
       "//chrome/app/vector_icons",
       "//chrome/browser/net",
       "//chrome/browser/profiles",
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:chrome_pages",
+      "//chrome/browser/ui:singleton_tabs",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/webauthn",
@@ -149,7 +150,6 @@ source_set("impl") {
 
   if (is_chromeos) {
     deps += [
-      "//ash",
       "//chromeos/components/webauthn",
     ]
   }

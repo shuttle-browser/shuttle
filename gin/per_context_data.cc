@@ -27,6 +27,8 @@ PerContextData::PerContextData(ContextHolder* context_holder,
       static_cast<v8::CppHeapPointerTag>(gin::kGinPerContextData));
 }
 
+PerContextData::~PerContextData() = default;
+
 void PerContextData::Detach() {
   ClearAllUserData();
   CHECK(context_holder_ != nullptr);

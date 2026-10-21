@@ -5,12 +5,16 @@
 #include "third_party/blink/renderer/core/fetch/fetch_response_data.h"
 
 #include "base/test/scoped_feature_list.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "services/network/public/cpp/features.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_response.mojom-blink.h"
 #include "third_party/blink/renderer/core/fetch/fetch_header_list.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
@@ -34,6 +38,9 @@ class FetchResponseDataTest : public testing::Test {
     EXPECT_EQ("bar", response.headers.at("bar"));
     EXPECT_EQ("no-cache", response.headers.at("cache-control"));
   }
+
+ protected:
+  test::TaskEnvironment task_environment_;
 };
 
 TEST_F(FetchResponseDataTest, HeaderList) {
@@ -297,6 +304,107 @@ TEST_F(FetchResponseDataTest, AuthChallengeInfo) {
   ASSERT_TRUE(fetch_api_response->auth_challenge_info.has_value());
   EXPECT_TRUE(fetch_api_response->auth_challenge_info->is_proxy);
   EXPECT_EQ("foobar", fetch_api_response->auth_challenge_info->challenge);
+}
+
+TEST_F(FetchResponseDataTest, TimingAllowPassed) {
+  FetchResponseData* response_data = CreateInternalResponse();
+  EXPECT_TRUE(response_data->TimingAllowPassed());
+
+  mojom::blink::FetchAPIResponsePtr fetch_api_response =
+      response_data->PopulateFetchAPIResponse(KURL());
+  EXPECT_TRUE(fetch_api_response->timing_allow_passed);
+
+  response_data->SetTimingAllowPassed(false);
+  EXPECT_FALSE(response_data->TimingAllowPassed());
+
+  fetch_api_response = response_data->PopulateFetchAPIResponse(KURL());
+  EXPECT_FALSE(fetch_api_response->timing_allow_passed);
+
+  // Filtered response should inherit TimingAllowPassed from internal response.
+  FetchResponseData* cors_response_data =
+      response_data->CreateCorsFilteredResponse(HTTPHeaderSet());
+  EXPECT_FALSE(cors_response_data->TimingAllowPassed());
+  fetch_api_response = cors_response_data->PopulateFetchAPIResponse(KURL());
+  EXPECT_FALSE(fetch_api_response->timing_allow_passed);
+
+  // Cloned response should preserve TimingAllowPassed.
+  DummyExceptionStateForTesting exception_state;
+  FetchResponseData* cloned_response_data =
+      response_data->Clone(nullptr, exception_state);
+  EXPECT_FALSE(exception_state.HadException());
+  EXPECT_FALSE(cloned_response_data->TimingAllowPassed());
+  fetch_api_response =
+      cloned_response_data->PopulateFetchAPIResponse(KURL());
+  EXPECT_FALSE(fetch_api_response->timing_allow_passed);
+}
+
+namespace {
+
+class TestCacheStorageSideDataWriter
+    : public network::mojom::blink::CacheStorageSideDataWriter {
+ public:
+  mojo::PendingRemote<network::mojom::blink::CacheStorageSideDataWriter>
+  BindNewPipeAndPassRemote() {
+    return receiver_.BindNewPipeAndPassRemote();
+  }
+
+  void FlushForTesting() { receiver_.FlushForTesting(); }
+  size_t write_count() const { return write_count_; }
+
+  // network::mojom::blink::CacheStorageSideDataWriter:
+  void WriteSideData(mojo_base::BigBuffer data) override { ++write_count_; }
+
+ private:
+  size_t write_count_ = 0;
+  mojo::Receiver<network::mojom::blink::CacheStorageSideDataWriter> receiver_{
+      this};
+};
+
+}  // namespace
+
+TEST_F(FetchResponseDataTest, CacheStorageSideDataWriterPreservedOnClone) {
+  TestCacheStorageSideDataWriter test_writer;
+  FetchResponseData* internal_response = CreateInternalResponse();
+  internal_response->SetResponseSource(
+      network::mojom::FetchResponseSource::kCacheStorage);
+  internal_response->SetCacheStorageSideDataWriter(
+      test_writer.BindNewPipeAndPassRemote());
+  FetchResponseData* basic_response_data =
+      internal_response->CreateBasicFilteredResponse();
+
+  DummyExceptionStateForTesting exception_state;
+  FetchResponseData* cloned_response_data =
+      basic_response_data->Clone(nullptr, exception_state);
+  ASSERT_FALSE(exception_state.HadException());
+
+  // PopulateFetchAPIResponse should not consume or populate the writer.
+  mojom::blink::FetchAPIResponsePtr populated_original =
+      basic_response_data->PopulateFetchAPIResponse(KURL());
+  mojom::blink::FetchAPIResponsePtr populated_clone =
+      cloned_response_data->PopulateFetchAPIResponse(KURL());
+  EXPECT_FALSE(populated_original->cache_storage_side_data_writer.is_valid());
+  EXPECT_FALSE(populated_clone->cache_storage_side_data_writer.is_valid());
+
+  // Both the original and cloned response share the ref-counted PendingRemote
+  // holder, and TakeCacheStorageSideDataWriter() moves the underlying
+  // PendingRemote out of the shared holder. Once taken from the clone, neither
+  // the clone nor the original response has a valid PendingRemote anymore.
+  mojo::PendingRemote<network::mojom::blink::CacheStorageSideDataWriter>
+      clone_writer = cloned_response_data->TakeCacheStorageSideDataWriter();
+  ASSERT_TRUE(clone_writer.is_valid());
+  EXPECT_FALSE(
+      cloned_response_data->TakeCacheStorageSideDataWriter().is_valid());
+  EXPECT_FALSE(
+      basic_response_data->TakeCacheStorageSideDataWriter().is_valid());
+
+  mojo::Remote<network::mojom::blink::CacheStorageSideDataWriter> remote(
+      std::move(clone_writer));
+
+  constexpr uint8_t kData[] = {1, 2, 3};
+  remote->WriteSideData(mojo_base::BigBuffer(kData));
+  remote.FlushForTesting();
+  test_writer.FlushForTesting();
+  EXPECT_EQ(1u, test_writer.write_count());
 }
 
 }  // namespace blink

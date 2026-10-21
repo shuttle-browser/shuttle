@@ -71,7 +71,6 @@ source_set("impl") {
       "android/first_run_prefs.cc",
       "android/first_run_utils.cc",
     ]
-    deps += [ "//chrome/android:chrome_jni_headers" ]
   } else {
     sources += [
       "first_run.cc",

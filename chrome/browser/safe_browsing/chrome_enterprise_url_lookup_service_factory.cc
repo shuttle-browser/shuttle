@@ -81,6 +81,7 @@ ChromeEnterpriseRealTimeUrlLookupServiceFactory::
               // TODO(crbug.com/41488885): Check if this service is needed for
               // Ash Internals.
               .WithAshInternals(ProfileSelection::kOriginalOnly)
+              .WithIsolatedMode(ProfileSelection::kOwnInstance)
               .Build()) {
   DependsOn(VerdictCacheManagerFactory::GetInstance());
   DependsOn(enterprise_connectors::ConnectorsServiceFactory::GetInstance());
@@ -96,6 +97,12 @@ std::unique_ptr<KeyedService> ChromeEnterpriseRealTimeUrlLookupServiceFactory::
     return nullptr;
   }
   Profile* profile = Profile::FromBrowserContext(context);
+  Profile* original_profile = profile;
+  // original_profile is used in Isolated mode when primary account is needed,
+  // since there is no information about primary account in OTR profile.
+  if (profile->IsEnterpriseIsolatedModeProfile()) {
+    original_profile = profile->GetOriginalProfile();
+  }
 
   base::RepeatingCallback<network::mojom::NetworkContext*()>
       network_context_getter = base::BindRepeating(
@@ -110,14 +117,15 @@ std::unique_ptr<KeyedService> ChromeEnterpriseRealTimeUrlLookupServiceFactory::
       VerdictCacheManagerFactory::GetForProfile(profile),
       base::BindRepeating(&safe_browsing::GetUserPopulationForProfile, profile),
       std::make_unique<SafeBrowsingPrimaryAccountTokenFetcher>(
-          IdentityManagerFactory::GetForProfile(profile)),
+          IdentityManagerFactory::GetForProfile(original_profile)),
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(
           profile),
       SafeBrowsingNavigationObserverManagerFactory::GetForBrowserContext(
           profile),
       profile->GetPrefs(),
       /*webui_delegate=*/WebUIContentInfoSingleton::GetInstance(),
-      IdentityManagerFactory::GetForProfile(profile),
+      // This is used to get signin status of the original profile.
+      IdentityManagerFactory::GetForProfile(original_profile),
       policy::ManagementServiceFactory::GetForProfile(profile),
       profile->IsOffTheRecord(),
       base::BindRepeating(&GetProfileEmail, profile),

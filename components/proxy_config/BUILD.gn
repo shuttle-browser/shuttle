@@ -22,7 +22,6 @@ component("proxy_config") {
 
   deps = [
     "//base",
-    "//components/enterprise/net/core",
     "//components/policy:generated",
     "//components/policy/core/browser",
     "//components/policy/core/common",

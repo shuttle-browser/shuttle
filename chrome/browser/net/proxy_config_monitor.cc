@@ -20,9 +20,6 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 
-#if BUILDFLAG(ENTERPRISE_PROXY)
-#include "chrome/browser/enterprise/net/enterprise_proxy_service_factory.h"
-#endif  // BUILDFLAG(ENTERPRISE_PROXY)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/profiles/profile_helper.h"
@@ -54,16 +51,10 @@ ProxyConfigMonitor::ProxyConfigMonitor(Profile* profile) {
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   if (!pref_proxy_config_tracker_) {
-    enterprise_net::EnterpriseProxyService* enterprise_proxy_service = nullptr;
-#if BUILDFLAG(ENTERPRISE_PROXY)
-    enterprise_proxy_service =
-        EnterpriseProxyServiceFactory::GetForProfile(profile);
-#endif  // BUILDFLAG(ENTERPRISE_PROXY)
     pref_proxy_config_tracker_ =
         ProxyServiceFactory::CreatePrefProxyConfigTrackerOfProfile(
             profile->GetPrefs(), g_browser_process->local_state(),
-            profile->GetProfilePolicyConnector()->policy_service(),
-            enterprise_proxy_service);
+            profile->GetProfilePolicyConnector()->policy_service());
   }
 
   proxy_config_service_ = ProxyServiceFactory::CreateProxyConfigService(

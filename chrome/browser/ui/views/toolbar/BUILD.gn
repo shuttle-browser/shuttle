@@ -10,7 +10,6 @@ import("//ui/webui/webui_features.gni")
 source_set("toolbar") {
   public = [
     "app_menu.h",
-    "app_menu_control.h",
     "back_forward_button.h",
     "browser_app_menu_button.h",
     "chrome_labs/chrome_labs_bubble_view.h",
@@ -32,7 +31,6 @@ source_set("toolbar") {
     "toolbar_action_hover_card_bubble_view.h",
     "toolbar_action_hover_card_controller.h",
     "toolbar_action_view.h",
-    "toolbar_button.h",
     "toolbar_chip_button.h",
     "toolbar_controller.h",
     "toolbar_divider.h",
@@ -42,10 +40,13 @@ source_set("toolbar") {
   ]
 
   public_deps = [
+    ":app_menu_control",
+    ":toolbar_button",
     "//base",
     "//build:buildflag_header_h",
     "//chrome/browser:command_updater_impl",
     "//chrome/browser/lifetime",
+    "//chrome/browser/ui:browser_command_controller",
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
@@ -57,7 +58,8 @@ source_set("toolbar") {
     "//chrome/browser/ui/toolbar/pinned_toolbar",
     "//chrome/browser/ui/views",
     "//chrome/browser/ui/views/app_menu",
-    "//chrome/browser/ui/views/frame",
+    "//chrome/browser/ui/views/frame:app_menu_button",
+    "//chrome/browser/ui/views/frame:browser_root_view",
     "//chrome/browser/ui/views/frame:toolbar_button_provider",
     "//chrome/browser/ui/views/location_bar",
     "//chrome/browser/ui/views/tabs/hovercard:hovercard_helpers",
@@ -82,6 +84,45 @@ source_set("toolbar") {
   if (is_chromeos) {
     public_deps += [ "//chromeos/ash/experiences/arc/intent_helper" ]
   }
+}
+
+# Interface for controlling the app menu, which may be implemented by a Views
+# button or a WebUI-based control.
+source_set("app_menu_control") {
+  public = [ "app_menu_control.h" ]
+
+  public_deps = [
+    "//chrome/browser/ui/toolbar",
+    "//ui/views",
+  ]
+}
+
+# The ToolbarButton base class and the interfaces it implements. This is a leaf
+# so that buttons defined outside this directory (e.g.
+# //chrome/browser/ui/views/frame:app_menu_button) can derive from them without
+# depending on :toolbar, which would be circular because :toolbar's own
+# browser_app_menu_button.h derives from AppMenuButton.
+source_set("toolbar_button") {
+  public = [
+    "toolbar_button.h",
+    "toolbar_button_menu_highlighter.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/lifetime",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views",
+    "//ui/base",
+    "//ui/base:features",
+    "//ui/base/interaction",
+    "//ui/base/metadata",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx",
+    "//ui/gfx/animation",
+    "//ui/gfx/geometry",
+    "//ui/views",
+  ]
 }
 
 source_set("impl") {
@@ -150,8 +191,12 @@ source_set("impl") {
     "//chrome/browser/signin",
     "//chrome/browser/themes",
     "//chrome/browser/ui:browser_actions",
+    "//chrome/browser/ui:browser_command_controller",
+    "//chrome/browser/ui:browser_commands",
     "//chrome/browser/ui:browser_content_setting_bubble_model_delegate",
+    "//chrome/browser/ui:browser_window_header",
     "//chrome/browser/ui:layout_constants",
+    "//chrome/browser/ui:singleton_tabs",
     "//chrome/browser/ui:toolbar_controller_util",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui:view_ids",
@@ -175,8 +220,11 @@ source_set("impl") {
     "//chrome/browser/ui/views/extensions:extensions_toolbar_coordinator",
     "//chrome/browser/ui/views/extensions:extensions_views_utils",
     "//chrome/browser/ui/views/frame:app_menu_button_observer",
+    "//chrome/browser/ui/views/frame:browser_frame_view",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/frame:custom_corners_background",
     "//chrome/browser/ui/views/frame:toolbar_button_provider",
+    "//chrome/browser/ui/views/frame:top_container_view",
     "//chrome/browser/ui/views/interaction",
     "//chrome/browser/ui/views/page_action",
     "//chrome/browser/ui/views/tabs:base",
@@ -244,6 +292,8 @@ if (!is_android) {
 }
 
 if (!is_android && !is_chromeos_device) {
+    if (is_chromeos) {
+    }
 }
 
 if (toolkit_views) {

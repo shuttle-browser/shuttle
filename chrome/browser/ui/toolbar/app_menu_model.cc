@@ -184,20 +184,6 @@ void AddSubMenuWithStringIdAndVectorIcon(ui::SimpleMenuModel* model,
                                      ui::SimpleMenuModel::kDefaultIconSize));
 }
 
-// Conditionally return the update app menu item title based on upgrade detector
-// state.
-std::u16string GetUpgradeDialogTitleText() {
-  if (UpgradeDetector::GetInstance()->is_outdated_install() ||
-      UpgradeDetector::GetInstance()->is_outdated_install_no_au()) {
-    return l10n_util::GetStringUTF16(IDS_UPGRADE_BUBBLE_MENU_ITEM);
-  }
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING) && \
-    (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX))
-  return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE_ALT);
-#else
-  return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE);
-#endif
-}
 
 class FindAndEditSubMenuModel : public ui::SimpleMenuModel {
  public:
@@ -448,6 +434,32 @@ AlertMenuItem AppMenuModel::GetAlertItemForRunningTutorial(
     return AlertMenuItem::kNone;
   }
   return AlertMenuItem::kNone;
+}
+
+// static
+std::u16string AppMenuModel::GetUpgradeDialogTitleText() {
+  if (UpgradeDetector::GetInstance()->is_outdated_install() ||
+      UpgradeDetector::GetInstance()->is_outdated_install_no_au()) {
+    return l10n_util::GetStringUTF16(IDS_UPGRADE_BUBBLE_MENU_ITEM);
+  }
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING) && \
+    (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX))
+  return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE_ALT);
+#else
+  return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE);
+#endif
+}
+
+// static
+std::u16string AppMenuModel::GetUpgradeDialogSubstringText() {
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING) && \
+    (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX))
+  if (!UpgradeDetector::GetInstance()->is_outdated_install() &&
+      !UpgradeDetector::GetInstance()->is_outdated_install_no_au()) {
+    return l10n_util::GetStringUTF16(IDS_RELAUNCH_TO_UPDATE_ALT_MINOR_TEXT);
+  }
+#endif
+  return std::u16string();
 }
 
 AppMenuModel::AppMenuModel(ui::AcceleratorProvider* provider,

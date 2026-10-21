@@ -49,7 +49,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/devtools_policy_dialog.h"
 #include "chrome/browser/devtools/devtools_window.h"
-#include "chrome/browser/devtools/features.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/multistep_filter/ui/filter_ui_controller.h"
 #include "chrome/browser/platform_util.h"
@@ -73,6 +72,10 @@
 #include "chrome/browser/ui/bubble_anchor_util.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
+#include "chrome/browser/ui/global_error/global_error.h"
+#include "chrome/browser/ui/global_error/global_error_service.h"
+#include "chrome/browser/ui/global_error/global_error_service_factory.h"
+#include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_triggers.h"
 #include "chrome/browser/ui/page_info/page_info_dialog.h"
@@ -82,6 +85,7 @@
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -112,6 +116,7 @@
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
+#include "components/profile_metrics/browser_profile_type.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/signin_metrics.h"
@@ -122,7 +127,6 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/page_navigator.h"
-#include "content/public/common/profiling.h"
 #include "extensions/common/extension_urls.h"
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ui/ash/multi_user/multi_user_context_menu.h"
@@ -341,6 +345,13 @@ void BrowserActions::InitializeChromeMenuActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
+                if (context.GetProperty(chrome::kActionInvocationSourceKey) ==
+                    chrome::ActionInvocationSource::kAppMenu) {
+                  tabs::RecordVerticalTabStripModeChanged(
+                      !tabs::VerticalTabStripStateController::From(bwi)
+                           ->ShouldDisplayVerticalTabs(),
+                      tabs::VerticalTabStripEntryPoint::kAppMenu);
+                }
                 chrome::ToggleVerticalTabs(bwi);
               },
               bwi))
@@ -510,6 +521,8 @@ void BrowserActions::InitializeChromeMenuActions() {
             kActionTaskManagerAppMenu, IDS_TASK_MANAGER, IDS_TASK_MANAGER,
             vector_icons::kTableChartIcon,
             /*is_pinnable=*/false)
+            .SetAccelerator(
+                GetAcceleratorForCommandId(IDC_TASK_MANAGER_SHORTCUT))
             .Build());
     root_action_item_->AddChild(
         ChromeMenuAction(
@@ -557,6 +570,8 @@ void BrowserActions::InitializeChromeMenuActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
+                // Shuttle: no side panel, so no open-trigger to tell the
+                // pinned toolbar button apart; keep the pre-156 attribution.
                 chrome::ToggleDevToolsWindow(
                     bwi, DevToolsToggleAction::Show(),
                     DevToolsOpenedByAction::kPinnedToolbarButton);
@@ -565,6 +580,7 @@ void BrowserActions::InitializeChromeMenuActions() {
           kActionDevTools, IDS_DEV_TOOLS, IDS_DEV_TOOLS,
           features::IsRoundedIconsEnabled() ? kCodeIcon
                                             : kDeveloperToolsOldIcon)
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_DEV_TOOLS))
           .Build());
 
   root_action_item_->AddChild(
@@ -629,10 +645,12 @@ void BrowserActions::InitializeChromeMenuActions() {
 
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
-          base::BindRepeating([](actions::ActionItem* item,
-                                 actions::ActionInvocationContext context) {
-            content::Profiling::Toggle();
-          }))
+          base::BindRepeating(
+              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
+                 actions::ActionInvocationContext context) {
+                chrome::ExecuteCommand(bwi, IDC_PROFILING_ENABLED);
+              },
+              bwi))
           .SetActionId(kActionProfilingEnabled)
           .SetText(l10n_util::GetStringUTF16(IDS_PROFILING_ENABLED))
           .SetTooltipText(l10n_util::GetStringUTF16(IDS_PROFILING_ENABLED))
@@ -890,7 +908,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
             base::BindRepeating(
                 [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                    actions::ActionInvocationContext context) {
-                  chrome::UnfocusTabGroup(
+                  chrome::ExitFocusMode(
                       bwi, TabGroupFocusExitReason::kTabStripButton);
                 },
                 bwi))
@@ -1142,6 +1160,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               bwi))
           .SetActionId(kActionFullscreen)
           .SetTooltipText(l10n_util::GetStringUTF16(IDS_ACCNAME_FULLSCREEN))
+          .SetAccessibleName(l10n_util::GetStringUTF16(IDS_ACCNAME_FULLSCREEN))
           .SetImage(ui::ImageModel::FromVectorIcon(
               features::IsRoundedIconsEnabled() ? kFullscreenIcon
                                                 : kFullscreenRefreshOldIcon))
@@ -1151,9 +1170,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
       actions::ActionItem::Builder(
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                chrome::AttemptUserExit();
-              },
+                 actions::ActionInvocationContext context) { chrome::Exit(); },
               bwi))
           .SetActionId(kActionExit)
           .SetText(BrowserActions::GetCleanTitleAndTooltipText(
@@ -1610,6 +1627,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               },
               bwi))
           .SetActionId(kActionCreateNewTabGroup)
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_CREATE_NEW_TAB_GROUP))
           .Build());
 
   root_action_item_->AddChild(
@@ -1908,9 +1926,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                 if (!web_contents) {
                   return;
                 }
-                if (base::FeatureList::IsEnabled(
-                        features::kDevToolsShowPolicyDialog) &&
-                    !DevToolsWindow::AllowDevToolsFor(bwi->GetProfile(),
+                if (!DevToolsWindow::AllowDevToolsFor(bwi->GetProfile(),
                                                       web_contents)) {
 #if !BUILDFLAG(IS_ANDROID)
                   DevToolsPolicyDialog::Show(web_contents);
@@ -2079,6 +2095,13 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
+                if (context.GetProperty(chrome::kActionInvocationSourceKey) ==
+                    chrome::ActionInvocationSource::kAppMenu) {
+                  base::UmaHistogramEnumeration(
+                      "Settings.OpenSettingsFromMenu.PerProfileType",
+                      profile_metrics::GetBrowserProfileType(
+                          bwi->GetProfile()));
+                }
                 chrome::ShowSettings(bwi);
               },
               bwi))
@@ -2202,6 +2225,13 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
+                if (context.GetProperty(chrome::kActionInvocationSourceKey) ==
+                    chrome::ActionInvocationSource::kAppMenu) {
+                  base::UmaHistogramEnumeration(
+                      "Download.OpenDownloadsFromMenu.PerProfileType",
+                      profile_metrics::GetBrowserProfileType(
+                          bwi->GetProfile()));
+                }
                 chrome::ShowDownloads(webui::GetBrowserForOpeningWebUi(bwi));
               },
               bwi))
@@ -2296,10 +2326,12 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               bwi),
           kActionSafetyHubManageExtensions, IDS_MANAGE_EXTENSIONS,
           IDS_MANAGE_EXTENSIONS,
-          features::IsRoundedIconsEnabled()
-              ? vector_icons::kChromeExtensionIcon
-              : vector_icons::kExtensionChromeRefreshOldIcon,
+          features::IsRoundedIconsEnabled() ? kSecurityIcon : kSecurityOldIcon,
           /*is_pinnable=*/false)
+          .SetImage(ui::ImageModel::FromVectorIcon(
+              features::IsRoundedIconsEnabled() ? kSecurityIcon
+                                                : kSecurityOldIcon,
+              ui::kColorMenuIconOnEmphasizedBackground))
           .Build());
   root_action_item_->AddChild(
       ChromeMenuAction(
@@ -2327,6 +2359,10 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           IDS_SETTINGS_SAFETY_HUB,
           features::IsRoundedIconsEnabled() ? kSecurityIcon : kSecurityOldIcon,
           /*is_pinnable=*/false)
+          .SetImage(ui::ImageModel::FromVectorIcon(
+              features::IsRoundedIconsEnabled() ? kSecurityIcon
+                                                : kSecurityOldIcon,
+              ui::kColorMenuIconOnEmphasizedBackground))
           .Build());
   if (base::FeatureList::IsEnabled(features::kEnterpriseReleaseNotes)) {
     root_action_item_->AddChild(
@@ -2353,6 +2389,32 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               },
               bwi))
           .SetActionId(kActionUpgradeDialog)
+          .SetText(AppMenuModel::GetUpgradeDialogTitleText())
+          .SetImage(ui::ImageModel::FromVectorIcon(
+              features::IsRoundedIconsEnabled()
+                  ? kRocketLaunchIcon
+                  : kBrowserToolsUpdateChromeRefreshOldIcon,
+              ui::kColorMenuIconOnEmphasizedBackground))
+          .SetVisible(false)
+          .Build());
+
+  root_action_item_->AddChild(
+      actions::ActionItem::Builder(
+          base::BindRepeating(
+              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
+                 actions::ActionInvocationContext context) {
+                if (auto* service = GlobalErrorServiceFactory::GetForProfile(
+                        bwi->GetProfile())) {
+                  if (GlobalError* error =
+                          service
+                              ->GetHighestSeverityGlobalErrorWithAppMenuItem()) {
+                    error->ExecuteMenuItem(bwi);
+                  }
+                }
+              },
+              bwi))
+          .SetActionId(kActionGlobalError)
+          .SetVisible(false)
           .Build());
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -2395,9 +2457,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
                 if (!web_contents) {
                   return;
                 }
-                if (base::FeatureList::IsEnabled(
-                        features::kDevToolsShowPolicyDialog) &&
-                    !DevToolsWindow::AllowDevToolsFor(bwi->GetProfile(),
+                if (!DevToolsWindow::AllowDevToolsFor(bwi->GetProfile(),
                                                       web_contents)) {
                   DevToolsPolicyDialog::Show(web_contents);
                 } else {

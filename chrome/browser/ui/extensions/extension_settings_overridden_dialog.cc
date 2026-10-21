@@ -16,6 +16,7 @@
 #include "base/types/to_address.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/extensions/extensions_overrides/simple_overrides.h"
+#include "chrome/browser/ui/extensions/search_override_stack.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_features.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -212,6 +213,12 @@ void ExtensionSettingsOverriddenDialog::OnDialogWillBeShown() {
   if (!params_.unlimited_shows) {
     MarkShownFor(*profile_, params_.controlling_extension_id);
   }
+  // Extension state lives on the original profile; so does the dedupe.
+  if (params_.search_override_stack) {
+    extensions::RecordSearchOverrideStackMetricsOnce(
+        *profile_->GetOriginalProfile(), params_.controlling_extension_id,
+        *params_.search_override_stack);
+  }
 }
 
 void ExtensionSettingsOverriddenDialog::HandleDialogResult(
@@ -245,6 +252,10 @@ void ExtensionSettingsOverriddenDialog::HandleDialogResult(
   }
 
   base::UmaHistogramEnumeration(params_.dialog_result_histogram_name, result);
+  if (params_.search_override_stack) {
+    extensions::RecordSearchOverrideStackDialogResult(
+        *params_.search_override_stack, result);
+  }
 
   if (dialog_result_callback_) {
     CHECK(base::FeatureList::IsEnabled(

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Settings-specific strings (included from generated_resources.grd). -->
 <grit-part>
+  <message name="IDS_SETTINGS_OPENS_IN_NEW_TAB" desc="ARIA (accessibility) label describing a link which opens in a new tab.">
+    Opens in new tab
+  </message>
   <if expr="not is_android">
     <!-- Shared across multiple pages -->
     <message name="IDS_SETTINGS_CONTINUE" desc="Label for 'Continue' buttons.">
@@ -14,9 +17,6 @@
     </message>
     <message name="IDS_SETTINGS_MORE_ACTIONS_BUTTON_ARIA_LABEL" desc="Aria (accessibility) label for a button that shows a menu with more actions when clicked or tapped">
       More actions for <ph name="BUTTON_TITLE">$1</ph>
-    </message>
-    <message name="IDS_SETTINGS_OPENS_IN_NEW_TAB" desc="ARIA (accessibility) label describing a link which opens in a new tab.">
-      Opens in new tab
     </message>
     <message name="IDS_SETTINGS_SEND_FEEDBACK_ROLE_DESCRIPTION" desc="Accessibility role description for the send feedback button at the top right of a settings section. Spoken by screen readers when focusing the button but not visually rendered.">
       Send feedback button
@@ -1282,6 +1282,9 @@
     <message name="IDS_SETTINGS_SEARCH_ENGINES_SEARCH" desc="Label for a text input placeholder allowing the user to search/filter the displayed search engines">
       Filter sites on page
     </message>
+    <message name="IDS_SETTINGS_SEARCH_ENGINES_SEARCH_V2" desc="Label for a text input placeholder allowing the user to search/filter the displayed search engines">
+      Filter sites
+    </message>
     <message name="IDS_SETTINGS_SEARCH_ENGINES_SUBTITLE_FOR_POLICY" desc="Subtitle for a dialog that allows editing/viewing an existing search engine that is created by policy.">
       This setting is managed by your administrator
     </message>
@@ -1406,6 +1409,9 @@
     </message>
     <message name="IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_FILTER" desc="Placeholder text for the search text box that allows the user to filter the All Sites list with their search query.">
       Filter sites on page
+    </message>
+    <message name="IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_FILTER_V2" desc="Placeholder text for the search text box that allows the user to filter the All Sites list with their search query.">
+      Filter sites
     </message>
     <message name="IDS_SETTINGS_SITE_SETTINGS_ALL_SITES_SEARCH" desc="Placeholder text for the filter text box that allows the user to filter the All Sites list with their search query.">
       Search
@@ -2144,12 +2150,6 @@
     </message>
     <message name="IDS_SETTINGS_THIRD_PARTY_COOKIES_PAGE_BLOCK_RADIO_LABEL" desc="3 of 3 options the user has to configure cookies. See the cookies page for context: chrome://settings/cookies">
       Block third-party cookies
-    </message>
-    <message name="IDS_SETTINGS_COOKIES_RELATED_WEBSITE_SETS_TOGGLE_LABEL" desc="Label for the toggle that allows the user to control related website sets enabled sharing between related sites">
-      Allow related sites to see your activity in the group
-    </message>
-    <message name="IDS_SETTINGS_COOKIES_RELATED_WEBSITE_SETS_TOGGLE_SUB_LABEL" desc="Sub-label for the toggle that allows the user to control related website sets enabled sharing between related sites">
-      A company can define a group of sites that can use cookies to share your activity in the group. This is off in Incognito.
     </message>
     <message name="IDS_SETTINGS_COOKIES_ALL_SITES_LINK" desc="Label for the link row which takes the user to the page listing all sites with storage and permissions">
       See all site data and permissions

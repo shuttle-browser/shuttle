@@ -242,7 +242,6 @@ group("gn_all") {
       }
     } else {
       deps += [
-        "//ios:all",
         "//third_party/crashpad/crashpad:crashpad_tests",
       ]
     }
@@ -307,6 +306,8 @@ group("gn_all") {
     if (!is_android && !is_ios && !is_fuchsia) {
       deps += [
       ]
+      if (!is_castos) {
+      }
     }
 
     if (use_ozone) {
@@ -364,18 +365,15 @@ group("gn_all") {
         "//net:net_perftests",
         "//url:url_unittests",
       ]
+      if (is_java_debug && !incremental_install) {
+      }
 
       if (!is_cast_android) {
         deps += [
-          "//android_webview:empty_group",
           "//android_webview/test",
           "//android_webview/tools/automated_ui_tests:webview_ui_test_app_test_apk",
           "//android_webview/tools/captured_sites_tests:captured_sites_test_app",
           "//android_webview/tools/system_webview_shell",
-          "//chrome/android:chrome_junit_tests",
-          "//chrome/android:chrome_public_apk",
-          "//chrome/android:chrome_public_test_apk",
-          "//chrome/android:chrome_public_unit_test_apk",
           "//content/shell/android:content_shell_test_apk",
         ]
         if (defined(android_app_secondary_abi)) {
@@ -404,15 +402,11 @@ group("gn_all") {
 
     if (is_chromeos) {
       deps += [
-        "//ash:ash_unittests",
         "//ash/keyboard/ui:keyboard_unittests",
         "//ash/webui:ash_webui_unittests",
         "//chrome/browser/ash/child_accounts/time_limit_consistency_test:usage_time_limit_unittests",
         "//chrome/browser/metrics/perf:profile_provider_unittest",
-        "//chromeos:chromeos_unittests",
         "//chromeos/ash/components/proximity_auth:proximity_auth_unittests",
-        "//chromeos/ash/experiences:ash_components_unittests",
-        "//chromeos/components:chromeos_components_unittests",
         "//components/exo/wayland:wayland_client_compatibility_tests",
         "//components/session_manager/core",
         "//third_party/shell-encryption:shell_encryption_unittests",
@@ -583,9 +577,6 @@ group("gn_all") {
         "//components/zucchini",
         "//net:quic_client",
         "//net:quic_server",
-        "//sandbox/win:sbox_integration_tests",
-        "//sandbox/win:sbox_unittests",
-        "//sandbox/win:sbox_validation_tests",
         "//testing/gtest:gtest_main",
 
         # The following two are accessibility API debugging tools.
@@ -626,12 +617,10 @@ group("gn_all") {
     }
 
     if (is_cast_android || is_castos || (is_fuchsia && enable_cast_receiver)) {
-      deps += [ "//chromecast:cast_test_lists" ]
     }
 
     if (is_cast_android || is_castos) {
       deps += [
-        "//chromecast:cast_shell",
         "//chromecast/cast_core:core_runtime_simple",
       ]
     }
@@ -829,7 +818,6 @@ if (is_android && !is_cronet_build) {
   # targets.
   group("traffic_annotation_auditor_dependencies") {
     deps = [
-      "//chrome/android:chrome_public_apk",
       "//tools/traffic_annotation:annotations_xml",
     ]
   }
@@ -867,7 +855,6 @@ if (is_win) {
       "//chrome/enterprise_companion:enterprise_companion_zip",
       "//chrome/installer/gcapi",
       "//chrome/installer/mini_installer",
-      "//chrome/updater/win:updater_zip",
       "//components/policy:pack_policy_templates",
       "//components/zucchini",
       "//components/zucchini:zucchini64",

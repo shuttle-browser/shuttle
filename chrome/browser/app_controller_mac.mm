@@ -1742,7 +1742,9 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
   _menuState->UpdateCommandEnabled(IDC_MANAGE_EXTENSIONS, true);
   _menuState->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_MENU, true);
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  _menuState->UpdateCommandEnabled(IDC_FEEDBACK, true);
+  _menuState->UpdateCommandEnabled(
+      IDC_FEEDBACK,
+      !base::FeatureList::IsEnabled(features::kFeedbackDisabledDialog));
 #endif
   _menuState->UpdateCommandEnabled(IDC_TASK_MANAGER_MAIN_MENU, true);
   _menuState->UpdateCommandEnabled(IDC_EXIT, true);
@@ -2238,12 +2240,18 @@ class AppControllerProfileObserver : public ProfileAttributesStorage::Observer,
 
 - (void)setLastProfileForTesting:(Profile*)profile {
   _lastProfile = profile;
+  if (!profile) {
+    _lastActiveBrowser.reset();
+    return;
+  }
   ProfileBrowserCollection* collection =
       ProfileBrowserCollection::GetForProfile(profile);
   if (!collection) {
+    _lastActiveBrowser.reset();
     return;
   }
-  _lastActiveBrowser = collection->GetLastActiveBrowser()->GetWeakPtr();
+  BrowserWindowInterface* browser = collection->GetLastActiveBrowser();
+  _lastActiveBrowser = browser ? browser->GetWeakPtr() : nullptr;
 }
 
 @end  // @implementation AppController

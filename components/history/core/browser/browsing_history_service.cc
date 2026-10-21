@@ -18,6 +18,7 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/default_clock.h"
 #include "base/time/time.h"
@@ -279,21 +280,22 @@ void BrowsingHistoryService::RemoveVisits(
   expire_list.reserve(items.size());
 
   for (const BrowsingHistoryService::HistoryEntry& entry : items) {
-    ExpireHistoryArgs* expire_args = nullptr;
 
+    ExpireHistoryArgs expire_args;
     for (const auto& [url, timestamps] : entry.all_timestamps) {
-      // Add every timestamp for every similar or duplicated visit.
+      expire_args.urls.insert(url);
+
+      // Include every timestamp for every similar or duplicated visit.
       for (base::Time timestamp : timestamps) {
-        if (!expire_args) {
-          expire_list.resize(expire_list.size() + 1);
-          expire_args = &expire_list.back();
-          expire_args->SetTimeRangeForOneDay(timestamp);
-          expire_args->urls.insert(url);
+        if (expire_args.begin_time.is_null()) {
+          expire_args.SetTimeRangeForOneDay(timestamp);
         }
       }
     }
 
-    expire_args->restrict_app_id = entry.app_id;
+    expire_args.restrict_app_id = entry.app_id;
+
+    expire_list.push_back(std::move(expire_args));
   }
 
   if (local_history_) {
@@ -645,11 +647,8 @@ void BrowsingHistoryService::ReturnResultsToDriver(
     scoped_refptr<QueryHistoryState> state) {
   std::vector<HistoryEntry> results;
   bool has_remote_results = !state->remote_results.empty();
-  bool group_visits = false;
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-  group_visits =
+  bool group_visits =
       base::FeatureList::IsEnabled(kBrowsingHistorySimilarVisitsGrouping);
-#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
   if (group_visits) {
     results = GroupSimilarVisits(state.get());
