@@ -906,6 +906,9 @@ void ExtensionInfoGenerator::FillExtensionInfo(const Extension& extension,
             .spec();
   }
 
+  info.can_show_review_prompt =
+      ui_util::ShouldShowReviewPrompt(extension, *profile);
+
   // The icon. This section must come last as it moves `info`.
   ExtensionResource icon = IconsInfo::GetIconResource(
       &extension, extension_misc::EXTENSION_ICON_MEDIUM,
