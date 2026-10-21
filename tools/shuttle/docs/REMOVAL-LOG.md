@@ -855,8 +855,9 @@ upstream test targets; `ssl_config_overlay` back; theme sync files, `tab_search_
 `f181f0a548` 14 strings back that kept code uses.
 
 Kept for now, prune decision pending (Toby): `chrome/browser/child_module` + `chrome/common/child_module` (wired
-into GlobalFeatures), `chrome/browser/origin_gating`, ephemeral tab groups, the enterprise proxy error page, the
-Gemini Enterprise settings policy handler, the app-menu notification section, the kWebAuthFlow infobar-internals
-entry; unused upstream dirs `chrome/browser/ttc`, `chrome/browser/selection`, `components/skills`.
+into GlobalFeatures), `chrome/browser/origin_gating` (unreferenced), ephemeral tab groups, the enterprise proxy error
+page, the app-menu notification section, the kWebAuthFlow infobar-internals entry. Removed while fixing the builds:
+the Gemini Enterprise settings policy handler (needed the pruned glic) and the unbuilt settings `geic_page`;
+`chrome/browser/ttc`, `chrome/browser/selection`, `components/skills` are already gone.
 
 Verified (2026-10-21): macOS arm64 release build + `smoke-all --with network,automation` 13/13 PASS (DevTools theming identical to 155); Linux x64 release build + package + headless `smoke-all` (incl. sandbox) PASS. Fixes after the first builds: see the `156 merge:` commits (dropped includes, `Register*Prefs`, `#endif`s, removed-feature uses, `saveGuestChoiceText`).
