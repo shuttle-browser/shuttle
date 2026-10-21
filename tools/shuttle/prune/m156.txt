@@ -1,0 +1,16 @@
+# Prune manifest: features removed with the Chromium 156 merge (Toby's calls, 2026-10-21).
+# remove-only manifest: scripts/prune.py deletes these unconditionally (no build analysis).
+# Rerun after every upstream merge; references are cut by hand (see REMOVAL-LOG fork 49).
+
+# "Dynamic patching": Google-staged patched renderer binaries the browser would launch instead of its own
+remove chrome/browser/child_module
+remove chrome/common/child_module
+
+# Upstream's navigation-gating service for Gemini agent features (DevTools gating keeps components/origin_gating)
+remove chrome/browser/origin_gating
+
+# Enterprise Proxy: policy-driven managed proxy, its auth/provisioning services and error page
+# (args-common.gn: enterprise_proxy = false; guarded upstream blocks stay inert)
+remove chrome/browser/enterprise/net
+remove components/enterprise/net
+remove components/resources/enterprise_proxy_error_page_resources.grdp

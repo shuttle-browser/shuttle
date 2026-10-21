@@ -854,9 +854,14 @@ upstream test targets; `ssl_config_overlay` back; theme sync files, `tab_search_
 `9a5c055434` prune manifests re-run (+20 new Android/Windows files, dead glic files, history platform handlers),
 `f181f0a548` 14 strings back that kept code uses.
 
-Kept for now, prune decision pending (Toby): `chrome/browser/child_module` + `chrome/common/child_module` (wired
-into GlobalFeatures), `chrome/browser/origin_gating` (unreferenced), ephemeral tab groups, the enterprise proxy error
-page, the app-menu notification section, the kWebAuthFlow infobar-internals entry. Removed while fixing the builds:
+Pruned (Toby, 2026-10-21; `prune/m156.txt`): `child_module` (dynamic patching: Google-staged patched renderer
+binaries; GlobalFeatures member, browser-client switch and renderer path cut, `GetChildProcessPath` back to 155's
+form), `chrome/browser/origin_gating` (unreferenced), Enterprise Proxy (`enterprise_proxy = false` in
+`args-common.gn`; `chrome/browser/enterprise/net` + `components/enterprise/net` + the error-page resources and 6
+strings removed; unguarded uses cut in profile factories, tab features, HTTP auth coordinator, browser client, proxy
+service factory/config monitor, managed browser utils; upstream's `#if BUILDFLAG(ENTERPRISE_PROXY)` blocks stay,
+inert). Kept (Toby): ephemeral tab groups (tab focus mode), the app-menu notification section (update/global
+error/default-browser rows), the kWebAuthFlow infobar-internals entry. Removed while fixing the builds:
 the Gemini Enterprise settings policy handler (needed the pruned glic) and the unbuilt settings `geic_page`;
 `chrome/browser/ttc`, `chrome/browser/selection`, `components/skills` are already gone.
 

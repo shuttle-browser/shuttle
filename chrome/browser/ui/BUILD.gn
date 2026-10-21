@@ -1456,7 +1456,6 @@ static_library("ui") {
     "//components/dom_distiller/content/browser",
     "//components/download/content/factory",
     "//components/embedder_support:user_agent",
-    "//components/enterprise/net/content",
     "//components/facilitated_payments/core/features",
     "//components/history/content/browser",
     "//components/history_clusters/core",

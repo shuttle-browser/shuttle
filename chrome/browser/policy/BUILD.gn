@@ -434,7 +434,6 @@ source_set("impl") {
     "//components/embedder_support:user_agent",
     "//components/enterprise/browser/data_region",
     "//components/enterprise/buildflags",
-    "//components/enterprise/net",
     "//components/enterprise/network_header_injection/core:policy",
     "//components/history/core/common",
     "//components/history_clusters/core",

@@ -114,7 +114,6 @@
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/enterprise/connectors/core/connectors_prefs.h"
 #include "components/enterprise/isolated_mode/prefs.h"
-#include "components/enterprise/net/core/prefs.h"
 #include "components/enterprise/network_header_injection/core/network_header_injection_prefs.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/image_fetcher/core/cache/image_cache.h"

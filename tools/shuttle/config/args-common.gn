@@ -49,6 +49,7 @@ enterprise_local_content_analysis = false
 enterprise_screenshot_protection = false
 # enterprise_watermark = false  # blocked: upstream asserts/unconditional deps on Mac; needs source surgery
 enterprise_telomere_reporting = false
+enterprise_proxy = false  # m156 prune: policy-driven managed proxy + its error page
 
 # Chrome Apps (platform/hosted apps): removed (B3, 2026-10-11); normal extensions stay
 enable_platform_apps = false

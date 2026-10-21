@@ -72,7 +72,6 @@
 #include "components/enterprise/data_controls/core/browser/prefs.h"
 #include "components/enterprise/device_trust/prefs.h"
 #include "components/enterprise/isolated_mode/prefs.h"
-#include "components/enterprise/net/core/prefs.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
 #include "components/language/core/browser/pref_names.h"

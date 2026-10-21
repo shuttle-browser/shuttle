@@ -15,7 +15,6 @@ dev_ui_components_resources.grd.
     <includes>
       <part file="about_ui_resources.grdp" />
       <part file="dom_distiller_resources.grdp" />
-      <part file="enterprise_proxy_error_page_resources.grdp" />
       <part file="neterror_resources.grdp" />
       <part file="ntp_tiles_resources.grdp" />
       <part file="printing_resources.grdp" />

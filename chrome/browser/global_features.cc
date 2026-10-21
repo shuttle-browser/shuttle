@@ -34,8 +34,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 // This causes a gn error on Android builds, because gn does not understand
 // buildflags, so we include it only on platforms where it is used.
-#include "chrome/browser/child_module/child_module_manager.h"  // nogncheck
-#include "chrome/browser/child_module/features.h"              // nogncheck
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_session_desktop_injector.h"
 #endif
@@ -221,13 +219,6 @@ void GlobalFeatures::Init() {
 }
 
 void GlobalFeatures::PreMainMessageLoopRun() {
-#if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(child_module::features::kDynamicPatching)) {
-    child_module_manager_ =
-        std::make_unique<child_module::ChildModuleManager>();
-  }
-#endif
-
 #if BUILDFLAG(IS_MAC)
   if (features::IsGlassFrameEnabled()) {
     glass_frame_service_ =
@@ -239,7 +230,6 @@ void GlobalFeatures::PreMainMessageLoopRun() {
 
 void GlobalFeatures::PostMainMessageLoopRun() {
 #if !BUILDFLAG(IS_ANDROID)
-  child_module_manager_.reset();
   smart_restart_manager_.reset();
   smart_restart_metrics_observer_.reset();
   profile_launch_observer_.reset();

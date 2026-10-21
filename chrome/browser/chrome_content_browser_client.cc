@@ -71,7 +71,6 @@
 #include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
 #include "chrome/browser/btm/btm_browser_signin_detector.h"
 #include "chrome/browser/btm/stateful_bounce_counter.h"
-#include "chrome/browser/child_module/child_module_manager.h"
 #include "chrome/browser/child_process_host_flags.h"
 #include "chrome/browser/chrome_browser_main.h"
 #include "chrome/browser/chrome_content_browser_client_binder_policies.h"
@@ -87,7 +86,6 @@
 #include "chrome/browser/download/chrome_download_manager_delegate.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
-#include "chrome/browser/enterprise/net/proxy_error_utils.h"
 #include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_service.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
@@ -2518,16 +2516,6 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
     if (!login_profile.empty()) {
       command_line->AppendSwitchASCII(ash::switches::kLoginProfile,
                                       login_profile);
-    }
-#endif
-
-#if BUILDFLAG(IS_WIN)
-    if (auto* child_module_manager =
-            g_browser_process->GetFeatures()->child_module_manager()) {
-      if (auto patch_version = child_module_manager->GetLatestVersion()) {
-        command_line->AppendSwitchASCII(switches::kChildModuleVersion,
-                                        patch_version->GetString());
-      }
     }
 #endif
 
@@ -7711,12 +7699,6 @@ ChromeContentBrowserClient::GetAlternativeErrorPageOverrideInfo(
     content::RenderFrameHost* render_frame_host,
     content::BrowserContext* browser_context,
     int32_t error_code) {
-  if (auto enterprise_error_info =
-          enterprise_net::GetEnterpriseProxyErrorPageInfo(navigation_handle,
-                                                          browser_context)) {
-    return enterprise_error_info;
-  }
-
 #if BUILDFLAG(IS_CHROMEOS)
   using PortalState = chromeos::network_config::mojom::PortalState;
   auto portal_state = ash::network_health::NetworkHealthManager::GetInstance()
@@ -7814,36 +7796,21 @@ bool ChromeContentBrowserClient::
 }
 
 base::FilePath ChromeContentBrowserClient::GetChildProcessPath(int flags) {
-  // TODO(crbug.com/558598893): Support launching patched renderer binaries on
-  // macOS.
-#if BUILDFLAG(IS_LINUX)
+  // Shuttle: no dynamically patched renderer binaries (child_module removed).
+#if BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY) && BUILDFLAG(IS_LINUX)
   if (flags & content::ChildProcessHost::CHILD_RENDERER) {
     // TODO(crbug.com/552312254): Dedicated zygote for separate renderer
     // binary is not yet supported. Until supported, launching
     // chrome_renderer requires --no-zygote.
-    const bool no_zygote =
-        base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kNoZygote);
-    if (no_zygote) {
-      if (auto* child_module_manager =
-              g_browser_process->GetFeatures()->child_module_manager()) {
-        if (auto patch_version = child_module_manager->GetLatestVersion()) {
-          // TODO(crbug.com/558598893): If a dynamic patch updates preloaded
-          // assets (such as v8_context_snapshot.bin), resolve them from the
-          // patched module directory instead of the browser's DIR_ASSETS.
-          return child_module_manager->GetRendererBinaryPath(*patch_version);
-        }
-      }
-    }
-#if BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY)
-    CHECK(no_zygote)
+    CHECK(
+        base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kNoZygote))
         << "--no-zygote is required when running separate renderer binary";
     base::FilePath child_path;
     if (base::PathService::Get(base::DIR_EXE, &child_path)) {
       return child_path.Append(chrome::kRendererProcessExecutableName);
     }
-#endif  // BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY)
   }
-#endif  // BUILDFLAG(IS_LINUX)
+#endif  // BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY) && BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(IS_MAC)
   if (flags ==

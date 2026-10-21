@@ -33,7 +33,6 @@ source_set("impl") {
     ":login",
     "//chrome/browser/preloading/prefetch/no_state_prefetch",
     "//chrome/browser/tab_contents",
-    "//components/enterprise/net/content",
     "//components/no_state_prefetch/browser",
     "//components/strings:components_strings",
     "//components/tabs:public",
