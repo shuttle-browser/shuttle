@@ -119,6 +119,10 @@
 #include "ui/wm/core/scoped_animation_disabler.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+#if defined(USE_AURA)
+#include "ui/aura/window_occlusion_tracker.h"
+#endif
+
 using content::NavigationController;
 using content::RenderWidgetHost;
 using content::WebContents;
