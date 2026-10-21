@@ -100,7 +100,6 @@ class VerticalTabStripStateControllerImpl
 
   void OnDidBecomeActive(BrowserWindowInterface* browser);
 
-  void MaybeShowExpandOnHoverIPH();
   // `new_enabled` represents the updated state of whether vertical tabs is
   // enabled that will be used once fullscreen mode is exited.
   void MaybeShowDelayedToast(bool new_enabled);
@@ -130,9 +129,6 @@ class VerticalTabStripStateControllerImpl
 
   bool is_expand_on_hover_enabled_ = false;
   bool is_resizing_ = false;
-
-  base::OneShotTimer expand_on_hover_iph_startup_timer_;
-  base::OneShotTimer expand_on_hover_iph_collapse_timer_;
 };
 
 }  // namespace tabs

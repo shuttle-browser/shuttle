@@ -26,11 +26,9 @@
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
 #include "chrome/browser/ui/toasts/toast_controller.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/prefs/pref_notifier_impl.h"
 #include "components/prefs/pref_service.h"
 #include "components/sessions/core/session_id.h"
@@ -109,16 +107,6 @@ VerticalTabStripStateControllerImpl::VerticalTabStripStateControllerImpl(
       browser_collection_observation_.Observe(
           GlobalBrowserCollection::GetInstance());
     }
-  }
-
-  // Wait before attempting to show the expand on hover IPH on startup. This is
-  // an anti-pattern and is generally discouraged for snooze promos.
-  if (base::SequencedTaskRunner::HasCurrentDefault()) {
-    expand_on_hover_iph_collapse_timer_.Start(
-        FROM_HERE, base::Minutes(10),
-        base::BindOnce(
-            &VerticalTabStripStateControllerImpl::MaybeShowExpandOnHoverIPH,
-            base::Unretained(this)));
   }
 }
 
@@ -203,16 +191,6 @@ void VerticalTabStripStateControllerImpl::RequestCollapse(bool collapse) {
 
   if (delegate_->IsCollapsing()) {
     NotifyCollapseChanged();
-  }
-
-  // Wait a short duration before attempting to show the expand on hover IPH
-  // after collapsing.
-  if (base::SequencedTaskRunner::HasCurrentDefault()) {
-    expand_on_hover_iph_startup_timer_.Start(
-        FROM_HERE, base::Seconds(3),
-        base::BindOnce(
-            &VerticalTabStripStateControllerImpl::MaybeShowExpandOnHoverIPH,
-            base::Unretained(this)));
   }
 }
 
@@ -402,18 +380,6 @@ void VerticalTabStripStateControllerImpl::OnBrowserCreated(
     browser_collection_observation_.Reset();
     UpdateSessionService();
     UpdatePrefService();
-  }
-}
-
-void VerticalTabStripStateControllerImpl::MaybeShowExpandOnHoverIPH() {
-  if (tabs::IsVerticalTabsExpandOnHoverFeatureEnabled() &&
-      ShouldDisplayVerticalTabs() &&
-      GetCollapseState() != VerticalTabStripCollapseState::kExpanded &&
-      pref_service_->FindPreference(prefs::kVerticalTabsExpandOnHoverEnabled)
-          ->IsDefaultValue()) {
-    BrowserUserEducationInterface::From(&*browser_window_)
-        ->MaybeShowFeaturePromo(
-            feature_engagement::kIPHVerticalTabsExpandOnHoverFeature);
   }
 }
 
