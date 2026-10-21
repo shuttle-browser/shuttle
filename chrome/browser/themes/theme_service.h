@@ -272,6 +272,7 @@ class ThemeService : public KeyedService,
 
   // Don't create "Cached Theme.pak" in the extension directory, for testing.
   static void DisableThemePackForTesting();
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
  protected:
   // Set a custom default theme instead of the normal default theme.
@@ -425,6 +426,10 @@ class ThemeService : public KeyedService,
   bool should_suppress_theme_updates_ = false;
 
   base::ObserverList<ThemeServiceObserver> observers_;
+
+  BrowserThemeProvider original_theme_provider_;
+  BrowserThemeProvider incognito_theme_provider_;
+  BrowserThemeProvider default_theme_provider_;
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   class ThemeObserver;

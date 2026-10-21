@@ -97,6 +97,7 @@ ThemeServiceFactory::ThemeServiceFactory()
   DependsOn(extensions::ExtensionRegistryFactory::GetInstance());
   DependsOn(extensions::ExtensionPrefsFactory::GetInstance());
   DependsOn(extensions::ChromeExtensionSystemFactory::GetInstance());
+#endif
 }
 
 ThemeServiceFactory::~ThemeServiceFactory() = default;

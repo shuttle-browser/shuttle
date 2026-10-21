@@ -624,6 +624,7 @@ void ThemeService::RemoveUnusedThemes() {
         i, extensions::UNINSTALL_REASON_ORPHANED_THEME, nullptr);
   }
 }
+#endif
 
 const ui::ThemeProvider& ThemeService::GetDefaultThemeProvider() const {
   return default_theme_provider_;
@@ -1309,3 +1310,4 @@ bool ThemeService::DisableExtension(const std::string& extension_id) {
   return false;
 }
 
+#endif
