@@ -1107,17 +1107,7 @@ base::expected<GURL, std::string> ExtensionTabUtil::PrepareURLForNavigation(
   // long enough that we can keep this as fail-closed until there's a reason to
   // change it.
 
-  // Don't let the extension navigate directly to chrome://feedback. Feedback is
-  // more of a native surface that shouldn't be accessible to (or triggerable
-  // by) extensions.
-  if (extension && url.SchemeIs(content::kChromeUIScheme) &&
-      (url.host() == chrome::kChromeUIFeedbackHost
-#if BUILDFLAG(IS_CHROMEOS)
-       || url.host() == ash::kChromeUIOSFeedbackHost
-#endif
-       )) {
-    return base::unexpected(kCannotNavigateToInternalPage);
-  }
+  // Shuttle: no chrome://feedback WebUI, nothing to block here.
 
   // Don't let the extension navigate directly to file scheme pages, unless
   // they have file access.

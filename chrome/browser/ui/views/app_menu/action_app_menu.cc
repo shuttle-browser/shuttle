@@ -11,8 +11,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/managed_ui.h"
-#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/app_menu/action_app_menu_manager.h"
@@ -128,9 +126,6 @@ actions::ActionInvocationContext BuildActionInvocationContext(
                    chrome::ActionInvocationSource::kAppMenu)
       .SetProperty(AppMenuActionItem::kActionParamKey,
                    base_action->GetProperty(AppMenuActionItem::kActionParamKey))
-      .SetProperty(kSidePanelOpenTriggerKey,
-                   static_cast<std::underlying_type_t<SidePanelOpenTrigger>>(
-                       SidePanelOpenTrigger::kAppMenu))
       .Build();
 }
 

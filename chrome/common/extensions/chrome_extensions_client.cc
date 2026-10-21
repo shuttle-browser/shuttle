@@ -166,20 +166,7 @@ bool ChromeExtensionsClient::IsScriptableURL(const GURL& url,
 
 bool ChromeExtensionsClient::IsCapturableURL(const GURL& url,
                                              std::string* error) const {
-  // Feedback is more of a native surface that shouldn't be accessible to (or
-  // triggerable by) extensions.
-  // See also https://crbug.com/477664550.
-  if (url.SchemeIs(content::kChromeUIScheme) &&
-      (url.host() == chrome::kChromeUIFeedbackHost
-#if BUILDFLAG(IS_CHROMEOS)
-       || url.host() == ash::kChromeUIOSFeedbackHost
-#endif
-       )) {
-    if (error) {
-      *error = manifest_errors::kCannotAccessChromeUrl;
-    }
-    return false;
-  }
+  // Shuttle: no chrome://feedback WebUI.
   return true;
 }
 

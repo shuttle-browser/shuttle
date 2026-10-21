@@ -119,10 +119,6 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
     case kActionShowBookmarkBar:
       RecordAction(MENU_ACTION_SHOW_BOOKMARK_BAR, "ShowBookmarkBar");
       break;
-    case kActionSidePanelShowBookmarks:
-      RecordAction(MENU_ACTION_SHOW_BOOKMARK_SIDE_PANEL,
-                   "ShowBookmarkSidePanel");
-      break;
     case kActionShowBookmarkManager:
       RecordAction(MENU_ACTION_SHOW_BOOKMARK_MANAGER, "ShowBookmarkMgr");
       break;
@@ -249,18 +245,6 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
     case kActionShowChromeLabs:
       RecordAction(MENU_ACTION_SHOW_CHROME_LABS, "ShowChromeLabs");
       break;
-    case kActionSidePanelShowHistoryCluster:
-      RecordAction(MENU_ACTION_SHOW_HISTORY_CLUSTER_SIDE_PANEL,
-                   "ShowHistoryClustersSidePanel");
-      break;
-    case kActionShowReadingModeSidePanel:
-      RecordAction(MENU_ACTION_SHOW_READING_MODE_SIDE_PANEL,
-                   "ShowReadingModeSidePanel");
-      break;
-    case kActionSidePanelShowCustomizeChrome:
-      RecordAction(MENU_ACTION_SHOW_CUSTOMIZE_CHROME_SIDE_PANEL,
-                   "ShowCustomizeChromeSidePanel");
-      break;
 
     // Zoom menu: ZoomMinus and ZoomPlus keep the menu open, so only log
     // MENU_ACTION_ZOOM_* if no action has been recorded yet.
@@ -369,9 +353,6 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
     case kActionReadingListMenuAddTab:
       RecordAction(MENU_ACTION_READING_LIST_ADD_TAB, "ReadingListAddTab");
       break;
-    case kActionSidePanelShowReadingList:
-      RecordAction(MENU_ACTION_READING_LIST_SHOW_UI, "ReadingListShowUi");
-      break;
 
     // Password autofill submenu.
     case kActionShowPasswordManager:
@@ -446,7 +427,6 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
     case kActionSharingHubScreenshot:
     case kActionShowManagementPage:
     case kActionShowSyncPassphraseDialog:
-    case kActionSidePanelShowTabsFromOtherDevices:
     case kActionTabSearch:
     case kActionTakeScreenshot:
     case kActionToggleVerticalTabs:

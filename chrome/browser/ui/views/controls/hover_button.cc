@@ -11,7 +11,6 @@
 #include "base/strings/string_util.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/views/controls/hover_button_controller.h"
-#include "components/user_education/views/new_badge_label.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
@@ -168,19 +167,8 @@ HoverButton::HoverButton(PressedCallback callback, Params params)
   // present.
   auto label_wrapper = std::make_unique<views::View>();
 
-  if (params.display_new_badge) {
-    auto badge_label =
-        std::make_unique<user_education::NewBadgeLabel>(params.title);
-    badge_label->SetDisplayNewBadge(params.display_new_badge);
-    // The badge is the last element in the row, so no trailing padding is
-    // needed.
-    badge_label->SetPadAfterNewBadge(false);
-    title_ = label_wrapper->AddChildView(std::move(badge_label));
-    // The badge is surfaced via this button's accessible name (see
-    // `UpdateTooltipAndAccessibleName()`); don't let the label announce it a
-    // second time.
-    title_->GetViewAccessibility().SetIsIgnored(true);
-  } else {
+  // Shuttle: no user education, so no "New" badge on the title.
+  {
     title_ = label_wrapper->AddChildView(
         std::make_unique<views::Label>(params.title));
   }
@@ -374,13 +362,6 @@ void HoverButton::UpdateTooltipAndAccessibleName() {
 
   const std::u16string tooltip_text = base::JoinString(texts, u"\n");
 
-  std::u16string badge_description;
-  if (auto* badge_label =
-          views::AsViewClass<user_education::NewBadgeLabel>(title_);
-      badge_label && badge_label->GetDisplayNewBadge()) {
-    badge_description = badge_label->GetAccessibleDescription();
-    texts.push_back(badge_description);
-  }
   if (!additional_accessible_text_.empty()) {
     texts.push_back(additional_accessible_text_);
   }

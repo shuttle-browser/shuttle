@@ -461,10 +461,6 @@ void ToolbarView::Update(WebContents* tab) {
     location_bar_->Update(tab);
   }
 
-  if (custom_tab_bar_) {
-    custom_tab_bar_->UpdateContents();
-  }
-
   if (extensions_container_) {
     extensions_container_->UpdateAllIcons();
   }
@@ -480,8 +476,7 @@ void ToolbarView::Update(WebContents* tab) {
 }
 
 bool ToolbarView::UpdateSecurityState() {
-  if ((location_bar_ && location_bar_->HasSecurityStateChanged()) ||
-      (custom_tab_bar_ && custom_tab_bar_->HasSecurityStateChanged())) {
+  if (location_bar_ && location_bar_->HasSecurityStateChanged()) {
     Update(nullptr);
     return true;
   }

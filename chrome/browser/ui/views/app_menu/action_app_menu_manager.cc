@@ -330,8 +330,7 @@ void ActionAppMenuManager::AddNotificationActions(actions::ActionItem* root) {
       BrowserActions::From(browser_window_interface_)->root_action_item();
   AppMenuBuilder(root, browser_window_interface_,
                  ui::kColorAppMenuUpgradeRowBackground)
-      .AddSection(DisplayType::kSection, [this,
-                                          scope](AppMenuBuilder& section) {
+      .AddSection(DisplayType::kSection, [scope](AppMenuBuilder& section) {
         bool has_notification = false;
 
         // Helper for adding a notification if its action is visible, with an
