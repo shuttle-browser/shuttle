@@ -10914,6 +10914,21 @@ This can include information about installed software, files, your browser, the 
           View S&amp;ource
         </message>
       </if>
-  </messages>
+            <message name="IDS_CONTENT_CONTEXT_COPYLINKTOTEXT_V2" desc="The name of the Copy Link to Highlight command in the content area context menu when text is selected.">
+            Copy link to "<ph name="SELECTION">$1<ex>selected text</ex></ph>"
+          </message>
+      <message name="IDS_ACCESSIBLE_ISOLATED_WINDOW_TITLE_FORMAT" desc="The format for the accessible title of an Isolated mode window">
+        <ph name="WINDOW_TITLE">$1</ph> (Isolated)
+      </message>
+      <message name="IDS_TAB_GROUP_HEADER_EPHEMERAL_TAB_COUNT" desc="The title shown on the tab group header for an ephemeral tab group indicating the number of tabs in the group. [ICU Syntax]">
+        {NUM_TABS, plural, =1 {1 Tab} other {# Tabs}}
+      </message>
+      <message name="IDS_TAB_GROUP_HEADER_CXMENU_CONVERT_TO_GROUP" desc="Title shown at top of the tab group editor bubble when in non group focus mode.">
+        Add Tabs to New Group
+      </message>
+      <message name="IDS_TAB_GROUP_HEADER_CXMENU_CREATE_GROUP" desc="The label for create button in the tab group editor bubble when creating a permanent tab group from an ephemeral one.">
+        Create
+      </message>
+</messages>
 </release>
 </grit>
