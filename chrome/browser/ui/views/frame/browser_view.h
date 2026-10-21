@@ -37,6 +37,7 @@
 #include "chrome/common/buildflags.h"
 #include "components/enterprise/buildflags/buildflags.h"
 #include "components/infobars/core/infobar_container.h"
+#include "components/prefs/pref_change_registrar.h"
 #include "components/viz/common/frame_timing_details.h"
 #include "content/public/browser/desktop_capture_pip_utils.h"
 #include "content/public/browser/page_user_data.h"
