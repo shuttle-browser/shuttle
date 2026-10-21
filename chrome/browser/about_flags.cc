@@ -6018,11 +6018,6 @@ const FeatureEntry kFeatureEntries[] = {
                                     kNtpNextVariations,
                                     "NtpNextFeatures")},
 
-    {"ntp-enable-instant-api-android",
-     flag_descriptions::kNtpEnableInstantApiAndroidName,
-     flag_descriptions::kNtpEnableInstantApiAndroidDescription, kOsAndroid,
-     FEATURE_VALUE_TYPE(ntp_features::kNtpEnableInstantApiAndroid)},
-
 #if !BUILDFLAG(IS_ANDROID)
     {"chrome-dark-neutrals-26", flag_descriptions::kChromeDarkNeutrals26Name,
      flag_descriptions::kChromeDarkNeutrals26Description, kOsDesktop,
@@ -8577,13 +8572,6 @@ const FeatureEntry kFeatureEntries[] = {
 #if !BUILDFLAG(IS_ANDROID)
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-
-    {"optimization-guide-enable-dogfood-logging",
-     flag_descriptions::kOptimizationGuideEnableDogfoodLoggingName,
-     flag_descriptions::kOptimizationGuideEnableDogfoodLoggingDescription,
-     kOsAll,
-     SINGLE_VALUE_TYPE(
-         optimization_guide::kEnableModelQualityDogfoodLoggingSwitch)},
 
 #if BUILDFLAG(IS_CHROMEOS)
     {"conch", flag_descriptions::kConchName,
