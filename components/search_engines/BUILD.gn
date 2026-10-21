@@ -29,6 +29,8 @@ static_library("search_engines") {
     "search_engine_choice/search_engine_choice_service.h",
     "search_engine_choice/search_engine_choice_utils.cc",
     "search_engine_choice/search_engine_choice_utils.h",
+    "search_engine_settings_data_provider.cc",
+    "search_engine_settings_data_provider.h",
     "search_engine_split_metrics.cc",
     "search_engine_split_metrics.h",
     "search_host_to_urls_map.cc",
@@ -84,7 +86,6 @@ static_library("search_engines") {
     "//components/database_utils",
     "//components/infobars/core",
     "//components/metrics",
-    "//components/metrics/private_metrics",
     "//components/omnibox/common",
     "//components/policy:generated",
     "//components/policy/core/browser",
@@ -179,6 +180,7 @@ if (is_android) {
   java_cpp_enum("search_engine_enums_java") {
     sources = [
       "choice_made_location.h",
+      "search_engine_settings_data_provider.h",
       "search_engine_type.h",
       "template_url_starter_pack_data.h",
     ]

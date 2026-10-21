@@ -200,7 +200,8 @@ void CreateAndShowNewWindowWithContents(
     std::unique_ptr<content::WebContents> contents,
     BrowserWindowInterface* original_browser) {
   BrowserWindowInterface* new_browser = nullptr;
-  DCHECK(original_browser->GetType() != BrowserWindowInterface::TYPE_APP_POPUP);
+  CHECK_NE(original_browser->GetType(), BrowserWindowInterface::TYPE_APP_POPUP);
+  CHECK_NE(original_browser->GetType(), BrowserWindowInterface::TYPE_DEVTOOLS);
   if (original_browser->GetType() == BrowserWindowInterface::TYPE_APP) {
     const bool is_trusted_source =
         WindowFeatureController::From(original_browser)->IsTrustedSource();
@@ -231,6 +232,9 @@ void CreateAndShowNewWindowWithContents(
 content::WebContents* DuplicateTabAt(BrowserWindowInterface* browser,
                                      int index,
                                      int dst_index) {
+  if (!chrome::CanDuplicateTabAt(browser, index)) {
+    return nullptr;
+  }
   content::WebContents* contents =
       browser->GetTabStripModel()->GetWebContentsAt(index);
   CHECK(contents);
@@ -290,7 +294,7 @@ void MaybePreserveFocusedGroupInTarget(
   const int group_tab_count =
       target_model->group_model()->GetTabGroup(*focused_group)->tab_count();
   if (non_pinned_count == group_tab_count) {
-    target_model->SetFocusedGroup(*focused_group);
+    target_model->EnterFocusMode(*focused_group);
   }
 }
 
@@ -454,40 +458,40 @@ bool IsTabSelectable(
   return true;
 }
 
-bool FocusAdjacentTabGroupInFocusMode(TabStripModel* tab_strip_model,
+void FocusAdjacentTabGroupInFocusMode(TabStripModel* tab_strip_model,
                                       bool next) {
-  std::optional<tab_groups::TabGroupId> current_focused_group =
-      tab_strip_model->GetFocusedGroup();
-  if (!current_focused_group.has_value()) {
-    return false;
+  tab_groups::TabGroupId current_focused_group =
+      tab_strip_model->GetFocusedGroup().value();
+
+  if (tab_strip_model->IsEphemeralTabGroup(current_focused_group)) {
+    return;
   }
 
   TabGroupModel* group_model = tab_strip_model->group_model();
   if (!group_model) {
-    return false;
+    return;
   }
 
   std::vector<tab_groups::TabGroupId> groups_in_order =
       group_model->ListTabGroups();
   if (groups_in_order.empty()) {
-    return false;
+    return;
   }
 
   std::ranges::sort(groups_in_order, {}, [&](const tab_groups::TabGroupId& id) {
     return group_model->GetTabGroup(id)->ListTabs().start();
   });
 
-  auto it = std::ranges::find(groups_in_order, *current_focused_group);
+  auto it = std::ranges::find(groups_in_order, current_focused_group);
   if (it == groups_in_order.end()) {
-    return false;
+    return;
   }
 
   size_t current_index = std::distance(groups_in_order.begin(), it);
   size_t target_index = next ? (current_index + 1) % groups_in_order.size()
                              : (current_index + groups_in_order.size() - 1) %
                                    groups_in_order.size();
-  tab_strip_model->SetFocusedGroup(groups_in_order[target_index]);
-  return true;
+  tab_strip_model->EnterFocusMode(groups_in_order[target_index]);
 }
 
 }  // namespace
@@ -1404,7 +1408,9 @@ void DuplicateSplit(BrowserWindowInterface* browser,
 }
 
 bool CanDuplicateTabAt(const BrowserWindowInterface* browser, int index) {
-  if (browser->GetType() == BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE) {
+  if (browser->GetType() == BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE ||
+      browser->GetType() == BrowserWindowInterface::TYPE_APP_POPUP ||
+      browser->GetType() == BrowserWindowInterface::TYPE_DEVTOOLS) {
     return false;
   }
   WebContents* contents = browser->GetTabStripModel()->GetWebContentsAt(index);
@@ -1491,7 +1497,8 @@ void FocusNextTabGroup(BrowserWindowInterface* browser) {
     return;
   }
 
-  if (FocusAdjacentTabGroupInFocusMode(tab_strip_model, /*next=*/true)) {
+  if (tab_strip_model->GetFocusedGroup().has_value()) {
+    FocusAdjacentTabGroupInFocusMode(tab_strip_model, /*next=*/true);
     return;
   }
 
@@ -1520,7 +1527,8 @@ void FocusPreviousTabGroup(BrowserWindowInterface* browser) {
     return;
   }
 
-  if (FocusAdjacentTabGroupInFocusMode(tab_strip_model, /*next=*/false)) {
+  if (tab_strip_model->GetFocusedGroup().has_value()) {
+    FocusAdjacentTabGroupInFocusMode(tab_strip_model, /*next=*/false);
     return;
   }
 
@@ -1585,11 +1593,10 @@ void AddNewTabToRecentGroup(BrowserWindowInterface* browser) {
   AddTabAt(browser, GURL(), -1, true, group_id);
 }
 
-void UnfocusTabGroup(BrowserWindowInterface* browser,
-                     TabGroupFocusExitReason exit_reason) {
+void ExitFocusMode(BrowserWindowInterface* browser,
+                   TabGroupFocusExitReason exit_reason) {
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
-    base::UmaHistogramEnumeration("TabGroups.Focus.ExitReason", exit_reason);
-    browser->GetTabStripModel()->SetFocusedGroup(std::nullopt);
+    browser->GetTabStripModel()->ExitFocusMode(exit_reason);
   }
 }
 
@@ -1785,8 +1792,7 @@ void FindPrevious(BrowserWindowInterface* browser) {
 void FindInPage(BrowserWindowInterface* browser,
                 bool find_next,
                 bool forward_direction) {
-  browser->GetFeatures().GetFindBarController()->Show(find_next,
-                                                      forward_direction);
+  FindBarController::From(browser)->Show(find_next, forward_direction);
 }
 
 void ToggleTabSearchPin(BrowserWindowInterface* browser) {
@@ -1847,7 +1853,7 @@ bool CanCloseFind(BrowserWindowInterface* browser) {
 }
 
 void CloseFind(BrowserWindowInterface* browser) {
-  browser->GetFeatures().GetFindBarController()->EndFindSession(
+  FindBarController::From(browser)->EndFindSession(
       find_in_page::SelectionAction::kKeep, find_in_page::ResultAction::kKeep);
 }
 
@@ -2082,10 +2088,6 @@ bool CanViewSource(BrowserWindowInterface* browser) {
   WebContents* web_contents =
       browser->GetTabStripModel()->GetActiveWebContents();
 
-  // Disallow ViewSource if DevTools are disabled.
-  if (!DevToolsWindow::AllowDevToolsFor(browser->GetProfile(), web_contents)) {
-    return false;
-  }
   return web_contents->GetController().CanViewSource();
 }
 

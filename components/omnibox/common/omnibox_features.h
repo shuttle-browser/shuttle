@@ -75,6 +75,7 @@ inline constexpr base::FeatureParam<int>
         &kOmniboxFullWebUIDeferShowUntilVisualStateReady,
         "omnibox_full_webui_defer_show_until_visual_state_ready_timeout_ms",
         250};
+BASE_DECLARE_FEATURE(kOmniboxAimDeferShowUntilVisualStateReadyWithFullWebUI);
 BASE_DECLARE_FEATURE(kOmniboxWebUIDebounceResize);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUIDebounceResize);
 BASE_DECLARE_FEATURE(kOmniboxWebUIHeightWorkarounds);
@@ -89,6 +90,8 @@ BASE_DECLARE_FEATURE(kOmniboxWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUISizeWebViewToPreferredHeight);
 BASE_DECLARE_FEATURE(kOmniboxWebUIPopupHideOnCreation);
 BASE_DECLARE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide);
+BASE_DECLARE_FEATURE(kOmniboxAimDestroyWidgetOnHide);
+BASE_DECLARE_FEATURE(kOmniboxWebUIDestroyWidgetOnHide);
 BASE_DECLARE_FEATURE(kWebUISearchboxWithoutModelController);
 
 // Omnibox UI - these affect the UI or function of the location bar (not the
@@ -96,6 +99,9 @@ BASE_DECLARE_FEATURE(kWebUISearchboxWithoutModelController);
 BASE_DECLARE_FEATURE(kOmniboxMultimodalInput);
 BASE_DECLARE_FEATURE(kOmniboxDebounceKeyboardVisibility);
 BASE_DECLARE_FEATURE(kOmniboxDisableTabsForCanvas);
+
+// Enables popup variations (e.g. accordion menu) for mobile Fusebox.
+BASE_DECLARE_FEATURE(kOmniboxFuseboxPopupVariations);
 
 // Navigation experiments.
 BASE_DECLARE_FEATURE(kDefaultTypedNavigationsToHttps);
@@ -137,6 +143,12 @@ BASE_DECLARE_FEATURE(kStarterPackIPH);
 BASE_DECLARE_FEATURE(kAblateSearchProviderWarmup);
 BASE_DECLARE_FEATURE(kReportApplicationLanguageInSearchRequest);
 BASE_DECLARE_FEATURE(kOmniboxAppendInvocationSource);
+BASE_DECLARE_FEATURE(kTruncateSearchUrlOq);
+inline constexpr base::FeatureParam<int> kTruncateSearchUrlOqLength{
+    &kTruncateSearchUrlOq, "truncate_search_url_oq_length", 2048};
+BASE_DECLARE_FEATURE(kTruncateSearchUrlQ);
+inline constexpr base::FeatureParam<int> kTruncateSearchUrlQLength{
+    &kTruncateSearchUrlQ, "truncate_search_url_q_length", 2048};
 
 BASE_DECLARE_FEATURE(kOmniboxAsyncViewInflation);
 BASE_DECLARE_FEATURE(kUseFusedLocationProvider);

@@ -15,7 +15,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/buildflags.h"
-#include "chrome/browser/component_updater/app_provisioning_component_installer.h"
 #include "chrome/browser/component_updater/captcha_provider_component_installer.h"
 #include "chrome/browser/component_updater/chrome_origin_trials_component_installer.h"
 #include "chrome/browser/component_updater/crl_set_component_installer.h"
@@ -97,6 +96,7 @@ void DeleteOldComponents(const base::FilePath& user_data_dir) {
                "Fingerprinting Protection Filter"),    // Remove in M156+
            FILE_PATH_LITERAL("PlusAddressBlocklist"),  // Remove in M158+
 #if BUILDFLAG(IS_CHROMEOS)
+           FILE_PATH_LITERAL("AppProvisioning"),
            // TODO(crbug.com/380780352): Remove these after the stepping stone.
            FILE_PATH_LITERAL("lacros-dogfood-canary"),
            FILE_PATH_LITERAL("lacros-dogfood-dev"),
@@ -153,7 +153,6 @@ void RegisterComponentsForUpdate() {
 
 #if BUILDFLAG(IS_CHROMEOS)
   RegisterSmartDimComponent(cus);
-  RegisterAppProvisioningComponent(cus);
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(USE_MINIKIN_HYPHENATION) && !BUILDFLAG(IS_ANDROID)

@@ -1,6 +1,7 @@
 {
   "allow": [
     { "path": "components/certificate_transparency/data/log_list.json", "rule": "generic-api-key", "reason": "upstream Chromium data: public Certificate Transparency log keys, not secrets; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
+    { "path": "third_party/blink/web_tests/external/wpt/fedcm/support/delegation-issuance.py", "rule": "generic-api-key", "reason": "upstream Chromium WPT fixture (156): RFC 4122 example UUID, not a secret; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
     { "path": "third_party/blink/perf_tests/speedometer21/resources/flightjs-example-app/components/es5-shim/**", "pack": true, "reason": "upstream Chromium package, never published by Shuttle; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
     { "path": "third_party/material_web_components/**", "pack": true, "reason": "upstream Chromium package, never published by Shuttle; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
     { "path": "third_party/mediapipe/src/**", "pack": true, "reason": "upstream Chromium package, never published by Shuttle; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },

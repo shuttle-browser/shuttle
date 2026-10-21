@@ -2,16 +2,21 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//ui/webui/webui_features.gni")
+
+assert(!is_android || enable_webui_ntp)
+
 source_set("customize_color_scheme_mode") {
   sources = [ "customize_color_scheme_mode_handler.cc" ]
   public = [ "customize_color_scheme_mode_handler.h" ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+  public_deps = [
+    "//chrome/browser:browser_public_dependencies",
+    "//mojo/public/cpp/bindings",
+    "//ui/webui/resources/cr_components/customize_color_scheme_mode:mojom",
+  ]
   deps = [
     "//base",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/themes",
-    "//mojo/public/cpp/bindings",
-    "//ui/webui/resources/cr_components/customize_color_scheme_mode:mojom",
   ]
 }
-

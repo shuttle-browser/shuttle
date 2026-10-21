@@ -17,6 +17,7 @@
 #include "extensions/browser/permissions_manager.h"
 #include "extensions/buildflags/buildflags.h"
 #include "ui/gfx/vector_icon_types.h"
+#include "url/origin.h"
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -114,6 +115,7 @@ class ExtensionsToolbarViewModel
 
     std::vector<extensions::ExtensionId> extension_ids;
     std::u16string tooltip_text;
+    url::Origin origin;
   };
 
   ExtensionsToolbarViewModel(Delegate* delegate,
@@ -180,10 +182,12 @@ class ExtensionsToolbarViewModel
   void ExecuteUserAction(const ToolbarActionsModel::ActionId& action_id,
                          ToolbarActionViewModel::InvocationSource source);
 
-  // Grants site access to the given `extension_ids` for the `web_contents`.
+  // Grants site access to the given `extension_ids` for the `web_contents` on
+  // `expected_origin`.
   void GrantSiteAccess(
       content::WebContents* web_contents,
-      const std::vector<extensions::ExtensionId>& extension_ids);
+      const std::vector<extensions::ExtensionId>& extension_ids,
+      const url::Origin& expected_origin);
 
   // Returns RequestAccessButtonParams which contain information to be used in
   // the button's tooltip.

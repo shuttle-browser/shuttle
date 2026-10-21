@@ -597,7 +597,8 @@ class ExtensionsBrowserClient {
                                             const GURL& url);
 
   // Returns the ProtocolHandlerRegistry instance associated with the user
-  // profile.
+  // profile, or null if the embedder has none; extension protocol_handlers
+  // are then ignored.
   virtual custom_handlers::ProtocolHandlerRegistry* GetProtocolHandlerRegistry(
       content::BrowserContext* context);
 
@@ -719,6 +720,10 @@ class ExtensionsBrowserClient {
   // is found.
   virtual gfx::NativeWindow GetNativeWindowForFunction(
       ExtensionFunction& function);
+
+  // Returns true if lazy keyed service instantiation is enabled for extension
+  // services.
+  virtual bool IsLazyKeyedServiceInstantiationEnabled() const;
 
  protected:
   std::unique_ptr<ExtensionAssetsManager> assets_manager_;

@@ -22,6 +22,8 @@ static_library("core") {
 
   if (enterprise_proxy) {
     public += [
+      "auth_scope_metadata.h",
+      "enterprise_network_auth_service.h",
       "enterprise_proxy_error_data.h",
       "enterprise_proxy_error_service.h",
       "enterprise_proxy_service.h",
@@ -34,6 +36,7 @@ static_library("core") {
       "utils.h",
     ]
     sources += [
+      "auth_scope_metadata.cc",
       "enterprise_network_auth_service.cc",
       "enterprise_proxy_error_data.cc",
       "enterprise_proxy_error_service.cc",
@@ -52,8 +55,11 @@ static_library("core") {
       "//components/language/core/browser",
       "//components/policy/core/common",
       "//components/signin/public/identity_manager",
+      "//components/strings:components_strings",
       "//net",
       "//services/network/public/cpp",
+      "//ui/base",
+      "//url",
     ]
   }
 }

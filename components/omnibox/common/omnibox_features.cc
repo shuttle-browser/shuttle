@@ -195,7 +195,7 @@ BASE_FEATURE(kOmniboxFullWebUIDebounceResize, DISABLED);
 // When enabled, height workarounds are applied for the Omnibox WebUI popup.
 BASE_FEATURE(kOmniboxWebUIHeightWorkarounds, ENABLED);
 // When enabled, height workarounds are applied for the Omnibox Full WebUI popup.
-BASE_FEATURE(kOmniboxFullWebUIHeightWorkarounds, ENABLED);
+BASE_FEATURE(kOmniboxFullWebUIHeightWorkarounds, DISABLED);
 // If enabled, stabilizes the popup showing behavior on startup by forcing
 // layout with a 1px height and hiding it initially to avoid visual artifacts.
 BASE_FEATURE(kOmniboxWebUIPopupStabilizeStartupShow, ENABLED);
@@ -216,7 +216,15 @@ BASE_FEATURE(kOmniboxWebUIEvictOnHide, DISABLED);
 
 // When enabled, the Omnibox Full WebUI popup will evict its saved compositor
 // frame when hidden.
-BASE_FEATURE(kOmniboxFullWebUIEvictOnHide, DISABLED);
+BASE_FEATURE(kOmniboxFullWebUIEvictOnHide, ENABLED);
+
+// When enabled, the AIM WebUI popup's drop shadow is painted by the page
+// rather than by the Views frame. Only takes effect when both the AIM
+// popup and the full WebUI popup are enabled.
+BASE_FEATURE(kOmniboxAimWebUIShadow, ENABLED);
+
+// Same as `kOmniboxAimWebUIShadow`, but for the full WebUI popup.
+BASE_FEATURE(kOmniboxFullWebUIShadow, ENABLED);
 
 // When enabled, sizes the Classic WebUI popup child WebView bounds directly to
 // its preferred height in RoundedOmniboxResultsFrame and eliminates transient
@@ -240,6 +248,10 @@ BASE_FEATURE(kOmniboxWebUIPopupHideOnCreation, DISABLED);
 // WebUI omnibox is enabled. The WebUI container (and its WebContents) is
 // preserved across the swap, so this does not discard the pre-warmed renderer.
 BASE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide, ENABLED);
+// Per-popup counterparts of `kOmniboxFullWebUIDestroyWidgetOnHide` that
+// take effect regardless of whether the full WebUI omnibox is enabled.
+BASE_FEATURE(kOmniboxAimDestroyWidgetOnHide, ENABLED);
+BASE_FEATURE(kOmniboxWebUIDestroyWidgetOnHide, DISABLED);
 
 // When enabled, the WebUI searchbox will bypass OmniboxController and
 // OmniboxEditModel.
@@ -336,6 +348,14 @@ BASE_FEATURE(kReportApplicationLanguageInSearchRequest, ENABLED);
 
 // When enabled, appends the invocation source parameter to search URLs.
 BASE_FEATURE(kOmniboxAppendInvocationSource, DISABLED);
+
+// When enabled, truncates the length of the value attached to the "oq" URL
+// parameter of search URLs.
+BASE_FEATURE(kTruncateSearchUrlOq, DISABLED);
+
+// When enabled, truncates the length of the value attached to the "q" URL
+// parameter of search URLs.
+BASE_FEATURE(kTruncateSearchUrlQ, DISABLED);
 
 // Enable asynchronous Omnibox/Suggest view inflation.
 BASE_FEATURE(kOmniboxAsyncViewInflation, ENABLED);
@@ -493,8 +513,10 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kInlineLocationSignaling,
       &kOmniboxSiteSearch,
       &kOmniboxMultimodalInput,
+      &kOmniboxFuseboxPopupVariations,
       &kServeJavaCachedZeroSuggest,
       &kAIMSuppressVerbatimMatch,
+      &kAim3pEntrypoint,
       &kResetSuggestionsScroll,
       &kExactMatchFavicons,
       &kStarterPackExpansion,

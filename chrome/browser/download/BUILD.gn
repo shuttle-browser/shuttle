@@ -285,7 +285,9 @@ source_set("impl") {
     deps += [
       "//chrome/browser/image_decoder",
       "//chrome/browser/policy:path_parser",
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:chrome_pages",
+      "//chrome/browser/ui:scoped_tabbed_browser_displayer",
       "//chrome/browser/ui/views/download",
       "//chrome/browser/ui/window_feature_controller",
       "//chrome/common:chrome_features",

@@ -4,6 +4,7 @@
 
 import("//build/config/features.gni")
 import("//chrome/common/features.gni")
+import("//components/safe_browsing/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
 
 if (is_android) {
@@ -92,21 +93,14 @@ source_set("notifications") {
 
   if (is_chromeos) {
     public += [
-      "arc_application_notifier_controller.h",
       "chrome_ash_message_center_client.h",
-      "extension_notifier_controller.h",
       "notification_platform_bridge_chromeos.h",
       "notification_platform_bridge_delegate.h",
-      "notifier_controller.h",
-      "notifier_dataset.h",
       "passphrase_textfield.h",
-      "web_page_notifier_controller.h",
     ]
 
     public_deps += [
-      "//ash/public/cpp",
       "//components/app_icon_loader",
-      "//components/services/app_service/public/cpp:app_types",
       "//ui/views",
     ]
   }
@@ -253,7 +247,9 @@ source_set("impl") {
     deps += [
       "//chrome/app:generated_resources",
       "//chrome/browser/media/webrtc",
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:chrome_pages",
+      "//chrome/browser/ui:scoped_tabbed_browser_displayer",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/tabs:tab_strip",
     ]
@@ -264,13 +260,9 @@ source_set("impl") {
 
   if (is_chromeos) {
     sources += [
-      "arc_application_notifier_controller.cc",
       "chrome_ash_message_center_client.cc",
-      "extension_notifier_controller.cc",
       "notification_platform_bridge_chromeos.cc",
-      "notifier_dataset.cc",
       "passphrase_textfield.cc",
-      "web_page_notifier_controller.cc",
     ]
 
     deps += [
@@ -279,7 +271,6 @@ source_set("impl") {
       "//chrome/browser/extensions/api/notifications",
       "//chrome/browser/favicon",
       "//chrome/browser/ui/ash/multi_user",
-      "//chromeos/ash/components/browser_context_helper",
       "//ui/message_center",
     ]
   }
@@ -411,7 +402,6 @@ if (is_android) {
       "//components/browser_ui/settings/android:java",
       "//components/browser_ui/site_settings/android:java",
       "//components/browser_ui/widget/android:java",
-      "//components/content_settings/android:content_settings_enums_java",
       "//components/url_formatter/android:url_formatter_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_core_core_java",

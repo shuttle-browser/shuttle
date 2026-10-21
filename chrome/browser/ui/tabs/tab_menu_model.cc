@@ -41,6 +41,7 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/tabs/public/tab_context_menu_command.h"
+#include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/vector_icons/vector_icons.h"
 #include "content/public/browser/context_menu_params.h"
@@ -115,7 +116,7 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kArrangeSplitTabsMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kSwapSplitTabsMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kAddNewTabAdjacentMenuItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kDuplicateMenuItem);
-DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kFocusTabGroupMenuItem);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(TabMenuModel, kFocusSelectionMenuItem);
 
 TabMenuModel::TabMenuModel(ui::SimpleMenuModel::Delegate* delegate,
                            TabMenuModelDelegate* tab_menu_model_delegate,
@@ -233,16 +234,21 @@ void TabMenuModel::Build(int index) {
     SetElementIdentifierAt(GetItemCount() - 1, kArrangeSplitTabsMenuItem);
   }
 
-  if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing) &&
-      tab_strip_->SupportsTabGroups()) {
-    std::optional<tab_groups::TabGroupId> group_id =
-        tab_strip_->GetTabGroupForTab(index);
-    if (group_id.has_value()) {
-      const bool is_focused = tab_strip_->GetFocusedGroup() == group_id;
+  if (tab_strip_->SupportsTabGroups() &&
+      base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
+    if (std::optional<tab_groups::TabGroupId> group =
+            tab_strip_->GetCommonGroupForIndices(indices)) {
+      const bool is_focused = tab_strip_->GetFocusedGroup() == group;
       AddItemWithStringId(TabStripModel::CommandToggleFocusGroup,
                           is_focused ? IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP
                                      : IDS_TAB_CXMENU_FOCUS_TAB_GROUP);
-      SetElementIdentifierAt(GetItemCount() - 1, kFocusTabGroupMenuItem);
+      SetElementIdentifierAt(GetItemCount() - 1, kFocusSelectionMenuItem);
+    } else if (base::FeatureList::IsEnabled(features::kNonGroupFocus) &&
+               tab_strip_->AreAllUngrouped(indices)) {
+      AddItem(TabStripModel::CommandToggleFocusGroup,
+              l10n_util::GetPluralStringFUTF16(IDS_TAB_CXMENU_FOCUS_TABS,
+                                               num_tabs));
+      SetElementIdentifierAt(GetItemCount() - 1, kFocusSelectionMenuItem);
     }
   }
 

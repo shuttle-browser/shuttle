@@ -192,6 +192,11 @@
         Internal debugging pages are currently disabled.
       </message>
 
+      <!-- NTP Tiles -->
+      <message name="IDS_NTP_TILES_AI_MODE_TITLE" desc="Title for the virtual AI Mode shortcut tile shown on the New Tab Page.">
+        AI Mode
+      </message>
+
       <!-- Desktop-to-Mobile Promo Notifications (Unbranded) -->
     </messages>
   </release>

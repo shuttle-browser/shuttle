@@ -548,9 +548,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kDefaultSearchProviderContextMenuAccessAllowed,
     prefs::kDefaultSearchProviderContextMenuAccessAllowed,
     base::Value::Type::BOOLEAN },
-  { key::kDefaultDirectSocketsPrivateNetworkAccessSetting,
-    prefs::kManagedDefaultDirectSocketsPrivateNetworkAccessSetting,
-    base::Value::Type::INTEGER },
   { key::kDefaultDirectSocketsSetting,
     prefs::kManagedDefaultDirectSocketsSetting,
     base::Value::Type::INTEGER },
@@ -562,12 +559,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::LIST },
   { key::kDirectSocketsBlockedForUrls,
     prefs::kManagedDirectSocketsBlockedForUrls,
-    base::Value::Type::LIST },
-  { key::kDirectSocketsPrivateNetworkAccessAllowedForUrls,
-    prefs::kManagedDirectSocketsPrivateNetworkAccessAllowedForUrls,
-    base::Value::Type::LIST },
-  { key::kDirectSocketsPrivateNetworkAccessBlockedForUrls,
-    prefs::kManagedDirectSocketsPrivateNetworkAccessBlockedForUrls,
     base::Value::Type::LIST },
   { key::kSubAppsWithoutPromptsAllowedForOrigins,
     prefs::kManagedSubAppsWithoutPromptsAllowedForOrigins,
@@ -781,9 +772,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kAdditionalDnsQueryTypesEnabled,
     prefs::kAdditionalDnsQueryTypesEnabled,
     base::Value::Type::BOOLEAN },
-  { key::kSafeBrowsingExtendedReportingEnabled,
-    prefs::kSafeBrowsingScoutReportingEnabled,
-    base::Value::Type::BOOLEAN },
   { key::kForceGoogleSafeSearch,
     policy_prefs::kForceGoogleSafeSearch,
     base::Value::Type::BOOLEAN },
@@ -952,6 +940,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::LIST },
 
 #if !BUILDFLAG(IS_CHROMEOS)
+  { key::kAllowFileSelectionDialogs,
+    prefs::kAllowFileSelectionDialogs,
+    base::Value::Type::BOOLEAN },
   { key::kChromeVariations,
     variations::prefs::kVariationsRestrictionsByPolicy,
     base::Value::Type::INTEGER },
@@ -1030,9 +1021,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kExternalProtocolDialogShowAlwaysOpenCheckbox,
     prefs::kExternalProtocolDialogShowAlwaysOpenCheckbox,
     base::Value::Type::BOOLEAN },
-  { key::kAllowFileSelectionDialogs,
-    prefs::kAllowFileSelectionDialogs,
-    base::Value::Type::BOOLEAN },
   { key::kDiskCacheSize,
     prefs::kDiskCacheSize,
     base::Value::Type::INTEGER },
@@ -1106,7 +1094,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   { key::kExtensionDOMActivityLoggingEnabled,
-    prefs::kExtensionDOMActivityLoggingEnabled,
+    enterprise_reporting::kExtensionDOMActivityLoggingEnabled,
     base::Value::Type::BOOLEAN },
   { key::kExtensionReviewPromptsEnabled,
     prefs::kExtensionReviewPromptsAllowed,
@@ -1435,6 +1423,13 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(
       std::make_unique<
           enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
+          key::kOnFileAttachedEnterpriseConnector,
+          enterprise_connectors::kOnFileAttachedPref,
+          enterprise_connectors::kOnFileAttachedScopePref, chrome_schema));
+
+  handlers->AddHandler(
+      std::make_unique<
+          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
           key::kOnFileDownloadedEnterpriseConnector,
           enterprise_connectors::kOnFileDownloadedPref,
           enterprise_connectors::kOnFileDownloadedScopePref, chrome_schema));
@@ -1591,12 +1586,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           key::kOnDataCopiedEnterpriseConnector,
           enterprise_connectors::kOnDataCopiedPref,
           enterprise_connectors::kOnDataCopiedScopePref, chrome_schema));
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
-          key::kOnFileAttachedEnterpriseConnector,
-          enterprise_connectors::kOnFileAttachedPref,
-          enterprise_connectors::kOnFileAttachedScopePref, chrome_schema));
   handlers->AddHandler(
       std::make_unique<
           enterprise_connectors::EnterpriseConnectorsPolicyHandler>(
@@ -1887,9 +1876,12 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           extensions::pref_names::kNativeMessagingBlocklist, true));
   handlers->AddHandler(
       std::make_unique<AutoLaunchProtocolsPolicyHandler>(chrome_schema));
-  handlers->AddHandler(std::make_unique<FileSelectionDialogsPolicyHandler>());
 
 #endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+
+#if !BUILDFLAG(IS_CHROMEOS)
+  handlers->AddHandler(std::make_unique<FileSelectionDialogsPolicyHandler>());
+#endif
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   handlers->AddHandler(
       std::make_unique<extensions::ExtensionSettingsPolicyHandler>(
@@ -1998,9 +1990,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   gen_ai_default_policies.emplace_back(key::kVoiceTypingSettings,
                                        prefs::kVoiceTypingSettings);
 #endif
-  gen_ai_default_policies.emplace_back(
-      key::kFindAndFillWithGeminiSettings,
-      optimization_guide::prefs::kFindAndFillWithGeminiSettings);
   handlers->AddHandler(std::make_unique<GenAiDefaultSettingsPolicyHandler>(
       std::move(gen_ai_default_policies)));
 

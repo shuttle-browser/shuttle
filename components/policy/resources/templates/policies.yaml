@@ -1301,9 +1301,9 @@ policies:
   1300: ''
   1301: ''
   1302: EnterpriseProfileBadgeToolbarSettings
-  1303: DefaultDirectSocketsPrivateNetworkAccessSetting
-  1304: DirectSocketsPrivateNetworkAccessAllowedForUrls
-  1305: DirectSocketsPrivateNetworkAccessBlockedForUrls
+  1303: ''
+  1304: ''
+  1305: ''
   1306: ''
   1307: ''
   1308: EnterpriseSearchAggregatorSettings
@@ -1472,7 +1472,7 @@ policies:
   1471: UpdateOnZeroWindowEnabled
   1472: BackForwardCacheForWebSocketsAllowed
   1473: GeminiChromeFileUploadSettings
-  1474: FindAndFillWithGeminiSettings
+  1474: AutofillGenAiSettings
   1475: OnNetworkRequestEnterpriseConnector
   1476: EnterprisePublishedSkills
   1477: OnDataCopiedEnterpriseConnector
@@ -1484,6 +1484,10 @@ policies:
   1483: ExtensionReviewPromptsEnabled
   1484: BackgroundTabFreezingEnabled
   1485: ShowInputOptionsInShelfEnabled
+  1486: AdminInstalledChromeAppsForceAllowed
+  1487: DeviceMaxUserProfiles
+  1488: ""
+  1489: LaunchOnStartupEnabled
 
 atomic_groups:
   1: Homepage

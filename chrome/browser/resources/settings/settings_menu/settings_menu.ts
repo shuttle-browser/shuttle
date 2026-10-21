@@ -68,6 +68,12 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
 
   static get properties() {
     return {
+      collapsed: {
+        type: Boolean,
+        value: false,
+        reflectToAttribute: true,
+      },
+
       /**
        * Dictionary defining page visibility.
        */
@@ -78,6 +84,7 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     };
   }
 
+  declare collapsed: boolean;
   declare private pageVisibility_?: PageVisibility;
   private metricsBrowserProxy_: MetricsBrowserProxy =
       MetricsBrowserProxyImpl.getInstance();

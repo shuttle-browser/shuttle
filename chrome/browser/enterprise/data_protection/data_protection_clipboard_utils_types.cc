@@ -86,6 +86,15 @@ BasicPasteSource CacheBasicPasteSource(
     const content::ClipboardEndpoint& source) {
   BasicPasteSource cached;
   cached.data_transfer_endpoint = source.data_transfer_endpoint();
+  if (!cached.data_transfer_endpoint && source.render_frame_host()) {
+    cached.data_transfer_endpoint = ui::DataTransferEndpoint(
+        GetUrlFromRenderFrameHost(source.render_frame_host()),
+        {
+            .off_the_record = source.render_frame_host()
+                                  ->GetBrowserContext()
+                                  ->IsOffTheRecord(),
+        });
+  }
   if (source.browser_context()) {
     cached.browser_context = source.browser_context()->GetWeakPtr();
   }

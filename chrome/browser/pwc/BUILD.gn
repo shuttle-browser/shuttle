@@ -4,16 +4,8 @@
 
 import("//mojo/public/tools/bindings/mojom.gni")
 
-mojom("features") {
-  sources = [ "pwc_features.mojom" ]
-}
-
 mojom("mojo_bindings") {
   sources = [ "pwc.mojom" ]
-
-  # For the [RuntimeFeature] reference to
-  # pwc.mojom.features.kPrivilegedWebContents.
-  public_deps = [ ":features" ]
 }
 
 source_set("pwc") {
@@ -22,6 +14,7 @@ source_set("pwc") {
     "pwc_api_binder.h",
     "pwc_component_policy.h",
     "pwc_navigation_throttle.h",
+    "pwc_permission_delegate.h",
   ]
 
   sources = [
@@ -34,6 +27,7 @@ source_set("pwc") {
   public_deps = [
     ":mojo_bindings",
     "//base",
+    "//components/content_settings/core/common:content_settings_types",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
     "//third_party/blink/public/mojom:mojom_platform_headers",
@@ -42,7 +36,6 @@ source_set("pwc") {
   ]
 
   deps = [
-    ":features",
     "//chrome/browser:bad_message",
     "//components/back_forward_cache",
   ]

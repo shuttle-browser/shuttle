@@ -145,8 +145,7 @@ const base::FeatureParam<DevToolsFreestylerUserTier>
         &devtools_freestyler_user_tier_options};
 
 // Whether the DevTools AI Code Completion for Styles pane is enabled.
-BASE_FEATURE(kDevToolsAiCodeCompletionStyles,
-             base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE(kDevToolsAiCodeCompletionStyles, base::FEATURE_ENABLED_BY_DEFAULT);
 const base::FeatureParam<std::string> kDevToolsAiCodeCompletionStylesModelId{
     &kDevToolsAiCodeCompletionStyles, "aida_model_id",
     /*default_value=*/""};
@@ -207,11 +206,6 @@ BASE_FEATURE(kDevToolsEnableDurableMessages, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kDevToolsAcceptDebuggingConnections,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Whether the policy dialog should be shown instead of greying out the
-// Developer Tools toggle.
-// TODO(crbug.com/442892562): Remove this flag once the feature is launched.
-BASE_FEATURE(kDevToolsShowPolicyDialog, base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kDevToolsAiAssistanceContextSelectionAgent,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -269,4 +263,8 @@ BASE_FEATURE(kDevToolsTargetLevelEvaluation, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Whether backend linking for network requests is enabled.
 BASE_FEATURE(kDevToolsNetworkBackendLinking, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Whether the Natural Language Interface feature enabled.
+BASE_FEATURE(kDevToolsAiNaturalLanguageInterface,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 }  // namespace features

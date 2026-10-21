@@ -51,6 +51,7 @@ source_set("impl") {
     "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/themes",
     "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/interaction",
     "//chrome/browser/ui/page_info",
     "//chrome/browser/ui/views:content_setting_bubble_contents",
     "//chrome/browser/ui/views/location_bar",

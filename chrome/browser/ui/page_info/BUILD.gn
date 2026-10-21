@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//components/safe_browsing/buildflags.gni")
+
 assert(is_win || is_mac || is_linux || is_chromeos || is_android)
 
 source_set("page_info") {
@@ -57,7 +59,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser:certificate_viewer",
       "//chrome/browser/extensions",
-      "//chrome/browser/safe_browsing/suspicious_site_warnings",
       "//chrome/browser/smart_card",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/browser_web_contents_delegate",
@@ -67,6 +68,14 @@ source_set("impl") {
       deps += [ "//chrome/browser/ash/floating_sso" ]
     }
   }
+
+  if (safe_browsing_mode != 0) {
+    deps += [ "//components/safe_browsing/core/browser:suspicious_site_warning_allowlist" ]
+    if (!is_android) {
+      deps += [ "//chrome/browser/safe_browsing/suspicious_site_warnings" ]
+    }
+  }
+
   deps += [
     ":page_info",
     "//base",
@@ -96,11 +105,11 @@ source_set("impl") {
     "//components/page_info/core",
     "//components/permissions",
     "//components/prefs",
-    "//components/safe_browsing/core/browser:suspicious_site_warning_allowlist",
     "//components/security_interstitials/content:security_interstitial_page",
     "//components/security_state/content",
     "//components/strings:components_strings",
     "//components/subresource_filter/content/browser",
+    "//components/tabs:public",
     "//components/vector_icons",
     "//content/public/common",
     "//net",

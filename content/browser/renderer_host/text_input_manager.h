@@ -12,7 +12,6 @@
 
 #include "base/i18n/rtl.h"
 #include "base/memory/raw_ptr.h"
-#include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "content/common/content_export.h"
 #include "third_party/blink/public/mojom/page/widget.mojom-forward.h"
@@ -285,6 +284,11 @@ class CONTENT_EXPORT TextInputManager {
   // Returns true if |view| is already registered.
   bool IsRegistered(RenderWidgetHostViewBase* view) const;
 
+  // Returns true if |view| is currently the focused view. For popup widgets,
+  // popups do not hold frame focus directly, so this check is performed
+  // against the focus state of the frame that created the popup.
+  bool IsViewFocused(RenderWidgetHostViewBase* view) const;
+
   // Add and remove observers for notifications regarding updates in the
   // TextInputState. Clients must be sure to remove themselves before they go
   // away.
@@ -331,8 +335,6 @@ class CONTENT_EXPORT TextInputManager {
   // TextInputManager::Observer reentrantly issues further notifications upon
   // `OnUpdateTextInputStateCalled()` (e.g. `SelectionBoundsChange()`).
   base::ReentrantObserverList<Observer>::Unchecked observer_list_;
-
-  base::WeakPtrFactory<TextInputManager> weak_ptr_factory_{this};
 };
 }
 

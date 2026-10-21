@@ -76,6 +76,7 @@ source_set("impl") {
     "//chrome/browser/lifetime",
     "//chrome/browser/ui/views:chrome_constrained_window_views_client",
     "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/common:constants",
     "//components/prefs",
     "//components/strings:components_strings_grit",

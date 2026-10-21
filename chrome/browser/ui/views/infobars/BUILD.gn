@@ -46,6 +46,7 @@ source_set("impl") {
     "//chrome/browser/ui:view_ids",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//components/infobars/core",
     "//components/strings:components_strings_grit",
     "//ui/accessibility:ax_base",

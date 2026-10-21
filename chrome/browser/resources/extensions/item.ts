@@ -26,7 +26,7 @@ import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import {getCss} from './item.css.js';
 import {getHtml} from './item.html.js';
 import {ItemMixin} from './item_mixin.js';
-import {canShowOpenReviewPageLink, computeInspectableViewLabel, createDummyExtensionInfo, EnableControl, getEnableControl, getEnableToggleAriaLabel, getItemSource, getItemSourceString, isEnabled, sortViews, SourceType, userCanChangeEnablement} from './item_util.js';
+import {computeInspectableViewLabel, createDummyExtensionInfo, EnableControl, getEnableControl, getEnableToggleAriaLabel, getItemSource, getItemSourceString, isEnabled, sortViews, SourceType, userCanChangeEnablement} from './item_util.js';
 import {navigation, Page} from './navigation_helper.js';
 
 export interface ItemDelegate {
@@ -454,8 +454,10 @@ export class ExtensionsItemElement extends ExtensionsItemElementBase {
   }
 
   protected showOpenReviewPageLink_(): boolean {
-    return canShowOpenReviewPageLink(this.data) && this.showDescription_() &&
-        !this.showRepairButton_() && !this.showReloadButton_();
+    // `canShowReviewPrompt` covers eligibility. `showDescription_()` adds the
+    // warning conditions C++ doesn't track (MV2 deprecation, runtime warnings,
+    // allowlist); don't invite a review while any of them is showing.
+    return this.data.canShowReviewPrompt && this.showDescription_();
   }
 
   protected getDisabledByExtensionWarningText_(): string {

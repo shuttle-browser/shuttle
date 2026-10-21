@@ -127,6 +127,14 @@ void DefaultChipSelector::RequestAnchoredMessageHide(
 
 void DefaultChipSelector::OnTabActiveChanged(bool is_tab_active) {}
 
+void DefaultChipSelector::DowngradeQueuedAnchoredMessageRequests() {
+  while (anchored_message_queue_.size() > 1) {
+    actions::ActionId page_action_id = anchored_message_queue_.back();
+    anchored_message_queue_.pop_back();
+    RequestChipShow(page_action_id, {});
+  }
+}
+
 struct PriorityChipSelector::PendingAnchoredMessage {
   actions::ActionId page_action_id;
   AnchoredMessageConfig config;
@@ -400,6 +408,16 @@ void PriorityChipSelector::CancelPendingAnchoredMessage() {
   if (active_chips_.empty() && !active_anchored_message_) {
     active_priority_.reset();
   }
+}
+
+void PriorityChipSelector::DowngradeQueuedAnchoredMessageRequests() {
+  if (!pending_anchored_message_) {
+    return;
+  }
+  auto page_action_id = pending_anchored_message_->page_action_id;
+  auto priority = pending_anchored_message_->config.priority;
+  CancelPendingAnchoredMessage();
+  ShowChip(page_action_id, {.priority = priority});
 }
 
 }  // namespace internal

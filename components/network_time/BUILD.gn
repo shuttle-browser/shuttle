@@ -15,9 +15,9 @@ static_library("network_time") {
     "//components/client_update_protocol",
     "//components/network_time/time_tracker",
     "//components/prefs",
-    "//components/variations",
     "//net",
     "//services/network/public/cpp",
+    "//url",
   ]
 }
 

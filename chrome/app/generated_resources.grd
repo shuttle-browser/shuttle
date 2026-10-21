@@ -332,7 +332,7 @@ are declared in tools/grit/grit_args.gni.
             &amp;Print...
           </message>
           <message name="IDS_CONTENT_CONTEXT_PRINT_SELECTION" desc="The name of the Print command in the content area context menu when there is a text selection.">
-            &amp;Print “<ph name="SELECTION">$1<ex>selected text</ex></ph>”
+            &amp;Print text selection...
           </message>
           <message name="IDS_CONTENT_CONTEXT_VIEWPAGESOURCE" desc="The name of the View Page Source command in the content area context menu">
             &amp;View page source
@@ -501,9 +501,6 @@ are declared in tools/grit/grit_args.gni.
           <message name="IDS_CONTENT_CONTEXT_COPY" desc="The name of the Copy command in the content area context menu">
             &amp;Copy
           </message>
-          <message name="IDS_CONTENT_CONTEXT_COPY_SELECTION" desc="The name of the Copy command with selection in the content area context menu">
-            &amp;Copy “<ph name="SELECTION">$1<ex>text</ex></ph>”
-          </message>
           <message name="IDS_CONTENT_CONTEXT_PASTE" desc="The name of the Paste command in the content area context menu" meaning="'Paste' menu command in sentence case">
             &amp;Paste
           </message>
@@ -572,7 +569,7 @@ are declared in tools/grit/grit_args.gni.
             &amp;Print...
           </message>
           <message name="IDS_CONTENT_CONTEXT_PRINT_SELECTION" desc="In Title Case: The name of the Print command in the content area context menu when there is a text selection.">
-            &amp;Print “<ph name="SELECTION">$1<ex>selected text</ex></ph>”
+            &amp;Print Text Selection...
           </message>
           <message name="IDS_CONTENT_CONTEXT_VIEWPAGESOURCE" desc="In Title Case: The name of the View Page Source command in the content area context menu">
             &amp;View Page Source
@@ -740,9 +737,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
           <message name="IDS_CONTENT_CONTEXT_COPY" desc="In Title Case: The name of the Copy command in the content area context menu">
             &amp;Copy
-          </message>
-          <message name="IDS_CONTENT_CONTEXT_COPY_SELECTION" desc="The name of the Copy command with selection in the content area context menu">
-            &amp;Copy “<ph name="SELECTION">$1<ex>text</ex></ph>”
           </message>
           <!-- Paste and Match Style / Paste as Plain Text -->
           <if expr="is_macosx">
@@ -1604,6 +1598,12 @@ are declared in tools/grit/grit_args.gni.
 
       <message name="IDS_EMAIL_VERIFIED" desc="Toast message to notify the user when their email is automatically verified by the browser.">
         <ph name="ISSUER">$1<ex>google.com</ex></ph> verified your email
+      </message>
+      <message name="IDS_EMAIL_VERIFICATION_LOADING" desc="Accessibility announcement and toast message to notify the user that background email verification is in progress." formatter_data="android_java">
+        Verifying email
+      </message>
+      <message name="IDS_EMAIL_VERIFICATION_ERROR" desc="Toast message to notify the user when background email verification failed.">
+        Couldn't verify your email
       </message>
 
 
@@ -5891,6 +5891,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_ORGANIZER_PANEL" desc="The name of the organizer panel announced by screenreaders." is_accessibility_with_no_ui="true">
         Organizer
       </message>
+      <message name="IDS_ORGANIZER_PANEL_NO_RESULTS" desc="Text shown in an organizer panel list section when a search yields no matching items.">
+        No results
+      </message>
       <message name="IDS_ORGANIZER_PANEL_TAB_GROUPS" desc="The label on the organizer panel list section corresponding to tab groups.">
         Tab Groups
       </message>
@@ -6408,6 +6411,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="The label of the tab context menu item for unfocusing the tab group containing the tab.">
           Unfocus tab group
         </message>
+        <message name="IDS_TAB_CXMENU_FOCUS_TABS" desc="The label of the tab context menu item for focusing one or more tabs. [ICU Syntax]">
+          {NUM_TABS, plural, =1 {Focus tab} other {Focus # tabs}}
+        </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 other tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # other tabs}}
         </message>
@@ -6496,6 +6502,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for unfocusing the tab group containing the tab.">
           Unfocus Tab Group
+        </message>
+        <message name="IDS_TAB_CXMENU_FOCUS_TABS" desc="In Title Case: The label of the tab context menu item for focusing one or more tabs. [ICU Syntax]">
+          {NUM_TABS, plural, =1 {Focus Tab} other {Focus # Tabs}}
         </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="In Title Case: The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 Other Tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # Other Tabs}}
@@ -7655,6 +7664,11 @@ This can include information about installed software, files, your browser, the 
 
 
       <!-- Translate Bubble -->
+
+      <!-- TTC -->
+      <message name="IDS_TTC_ENTRYPOINT_LABEL" desc="The text label of the TTC menu item" translateable="false">
+        TTC
+      </message>
 
       <!-- Web and message center notifications -->
       <message name="IDS_NOTIFICATION_BUTTON_SETTINGS" desc="Short button label to go to the notification settings panel">
@@ -9413,8 +9427,8 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_WEBAUTHN_TRANSPORT_WINDOWS_HELLO" desc="Menu item text. The user selects this to use Windows Hello. Windows Hello is a Microsoft brand and should be translated the same as it is in Windows. If you edit the language code in https://support.microsoft.com/en-us/windows/learn-about-windows-hello-and-set-it-up-dae28983-8242-bb2a-d3d1-87c9d265a5f0 you can see how Microsoft translates it in several languages. (It is often left untranslated.)">
         Windows Hello
       </message>
-      <message name="IDS_WEBAUTHN_TRANSPORT_ICLOUD_KEYCHAIN" desc="Menu item text. The user selects this to use iCloud Keychain. iCloud Keychain is an Apple brand and should be translated the same as it is in Apple devices. If you edit the language code in https://support.apple.com/es-es/HT204085 you can see how Apple translates it in several languages. ('Keychain' is usually localized.)">
-        iCloud Keychain
+      <message name="IDS_WEBAUTHN_TRANSPORT_ICLOUD_KEYCHAIN" desc="Menu item text. The user selects this to use Apple Passwords. Apple Passwords is an Apple brand and should be translated the same as it is in Apple devices. If you edit the language code in https://support.apple.com/es-es/104955 you can see how Apple translates it in several languages. ('Passwords' is usually localized.)">
+        Apple Passwords
       </message>
       <message name="IDS_WEBAUTHN_TRANSPORT_EXTERNAL_SECURITY_KEY" desc="Menu item text. The user selects this to use a security key (an external physical device for user authentication).">
         Use an external security key
@@ -9660,8 +9674,8 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_WEBAUTHN_SOURCE_CHROME_PROFILE" desc="The subtitle shown in a button that lets the user select a passkey to sign in, indicating that the passkey resides in the user's Chrome Profile.">
         Your Chrome profile
       </message>
-      <message name="IDS_WEBAUTHN_SOURCE_ICLOUD_KEYCHAIN" desc="The subtitle shown in a button that lets the user select a passkey to sign in, indicating that the passkey resides in the user's iCloud Keychain.">
-        iCloud Keychain
+      <message name="IDS_WEBAUTHN_SOURCE_ICLOUD_KEYCHAIN" desc="The subtitle shown in a button that lets the user select a passkey to sign in, indicating that the passkey resides in Apple Passwords. Apple Passwords is an Apple brand and should be translated the same as it is in Apple devices. If you edit the language code in https://support.apple.com/es-es/104955 you can see how Apple translates it in several languages. ('Passwords' is usually localized.)">
+        Apple Passwords
       </message>
       <message name="IDS_WEBAUTHN_SOURCE_WINDOWS_HELLO" desc="The subtitle shown in a button that lets the user select a passkey to sign in, indicating that the passkey resides in Windows Hello.">
         Windows Hello
@@ -9697,7 +9711,7 @@ This can include information about installed software, files, your browser, the 
         Insert and touch your security key to use it for <ph name="APP_NAME">$1<ex>example.com</ex></ph>
       </message>
 
-      <message name="IDS_WEBAUTHN_SAVE_ANOTHER_WAY" desc="Text link that appears on a button to save the passkey another way. For example, in their iCloud Keychain account or by using Windows Hello.">
+      <message name="IDS_WEBAUTHN_SAVE_ANOTHER_WAY" desc="Text link that appears on a button to save the passkey another way. For example, in Apple Passwords or by using Windows Hello.">
         Save another way
       </message>
       <message name="IDS_WEBAUTHN_SHOW_PIN" desc="The tooltip of a button that is used to show the PIN.">
@@ -9781,6 +9795,31 @@ This can include information about installed software, files, your browser, the 
 
 
 
+
+    <!-- Isolated Delete Browsing Data dialog bubble. -->
+    <message name="IDS_ISOLATED_CLEAR_BROWSING_DATA_DIALOG_PRIMARY_TEXT" desc="The primary text of the delete browsing data dialog which is shown in Isolated Mode when a user invokes a delete browsing data action in Isolated Mode. The text describes how Isolated Mode users can delete the browsing data by closing all Isolated Mode windows.">
+      To delete data, close all Isolated windows
+    </message>
+    <message name="IDS_ISOLATED_CLEAR_BROWSING_DATA_DIALOG_SECONDARY_TEXT" desc="The secondary text of the clear browsing data dialog which is shown in Isolated Mode when a user invokes a clear browsing data action in Isolated Mode. The text describes how the clear browsing data action affects only the Isolated Mode windows.">
+      This only affects Isolated windows
+    </message>
+    <message name="IDS_ISOLATED_CLEAR_BROWSING_DATA_DIALOG_CLOSE_WINDOWS_BUTTON" desc="The text of the button offering to close all Isolated windows in the dialog.">
+      Close windows
+    </message>
+
+    <!-- Isolated History Disclaimer dialog bubble. -->
+    <message name="IDS_ISOLATED_HISTORY_BUBBLE_PRIMARY_TEXT" desc="Header in bubble view that states visited sites aren't saved in Isolated mode.">
+      Sites you visit aren’t saved in Isolated
+    </message>
+    <message name="IDS_ISOLATED_HISTORY_BUBBLE_SECONDARY_TEXT" desc="Description in bubble view that states closing all Isolated tabs is necessary to delete Isolated browsing history from the device.">
+      To delete Isolated browsing history from your device, close all Isolated tabs
+    </message>
+    <message name="IDS_ISOLATED_HISTORY_BUBBLE_CLOSE_ISOLATED_BUTTON_TEXT" desc="Text of button in bubble view for calling to the close all Isolated tabs action.">
+      Close Isolated
+    </message>
+    <message name="IDS_ISOLATED_HISTORY_BUBBLE_CANCEL_BUTTON_TEXT" desc="Text of button in bubble view for calling to the close the bubble action.">
+      Got it
+    </message>
 
     <message name="IDS_NOTIFICATION_DEFAULT_HELPFUL_BUTTON_TEXT" desc="Text body for the helpful button in notifications sent from notification scheduler.">
       Helpful

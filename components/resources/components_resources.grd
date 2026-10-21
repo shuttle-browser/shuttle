@@ -18,7 +18,6 @@ dev_ui_components_resources.grd.
       <part file="enterprise_proxy_error_page_resources.grdp" />
       <part file="neterror_resources.grdp" />
       <part file="ntp_tiles_resources.grdp" />
-      <part file="pdf_resources.grdp" />
       <part file="printing_resources.grdp" />
       <part file="safe_browsing_resources.grdp" />
       <part file="security_interstitials_resources.grdp" />

@@ -79,10 +79,7 @@ chromium_luci.configure_builders(
         ),
         os.MAC_DEFAULT: "Mac-26",
         os.MAC_BETA: "Mac-26",
-        os.WINDOWS_DEFAULT: chromium_luci.os_dimension_overrides(
-            default = os.WINDOWS_10,
-            overrides = json.decode(io.read_file("//lib/windows-default.json")),
-        ),
+        os.WINDOWS_DEFAULT: os.WINDOWS_10,
     },
     exempted_from_description_builders = exempted_from_description_builders,
 )

@@ -59,7 +59,7 @@ bool IsAccessibilityTextFormattingEnabled() {
 }
 
 BASE_FEATURE(kAccessibilityHandleOccludingViews,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 bool IsAccessibilityHandleOccludingViewsEnabled() {
   return base::FeatureList::IsEnabled(
       ::features::kAccessibilityHandleOccludingViews);
@@ -244,25 +244,13 @@ bool IsExperimentalAccessibilityDictationContextCheckingEnabled() {
       ::features::kExperimentalAccessibilityDictationContextChecking);
 }
 
-BASE_FEATURE(kAccessibilityMouseKeys, base::FEATURE_ENABLED_BY_DEFAULT);
-bool IsAccessibilityMouseKeysEnabled() {
-  return base::FeatureList::IsEnabled(::features::kAccessibilityMouseKeys);
-}
-
-BASE_FEATURE(kAccessibilityInvertedMouseCursor,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-bool IsAccessibilityInvertedMouseCursorEnabled() {
-  return base::FeatureList::IsEnabled(
-      ::features::kAccessibilityInvertedMouseCursor);
-}
-
 BASE_FEATURE(kAccessibilityShakeToLocate, base::FEATURE_DISABLED_BY_DEFAULT);
 bool IsAccessibilityShakeToLocateEnabled() {
   return base::FeatureList::IsEnabled(::features::kAccessibilityShakeToLocate);
 }
 
 BASE_FEATURE(kAccessibilityManifestV3ChromeVox,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 bool IsAccessibilityManifestV3EnabledForChromeVox() {
   return base::FeatureList::IsEnabled(
       ::features::kAccessibilityManifestV3ChromeVox);

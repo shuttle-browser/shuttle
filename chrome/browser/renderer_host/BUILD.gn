@@ -79,6 +79,7 @@ if (is_mac) {
       "//base",
       "//chrome/browser/devtools",
       "//chrome/browser/ui",
+      "//chrome/browser/ui:browser_commands",
       "//components/spellcheck/browser",
     ]
   }

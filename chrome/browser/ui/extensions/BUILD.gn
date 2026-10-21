@@ -52,6 +52,7 @@ source_set("extensions") {
     "extensions_toolbar_view_model.h",
     "icon_with_badge_image_source.h",
     "reload_page_dialog_controller.h",
+    "search_override_stack.h",
     "settings_api_bubble_helpers.h",
     "settings_overridden_dialog.h",
     "settings_overridden_dialog_controller.h",
@@ -161,6 +162,7 @@ source_set("impl") {
     "extensions_toolbar_view_model.cc",
     "icon_with_badge_image_source.cc",
     "reload_page_dialog_controller.cc",
+    "search_override_stack.cc",
     "settings_api_bubble_helpers.cc",
     "settings_overridden_dialog.cc",
     "settings_overridden_dialog_controller.cc",
@@ -203,6 +205,10 @@ source_set("impl") {
       "//chrome/app:generated_resources",
       "//chrome/browser/prefs",
       "//chrome/browser/themes",
+      "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_window_header",
+      "//chrome/browser/ui:scoped_tabbed_browser_displayer",
+      "//chrome/browser/ui:singleton_tabs",
       "//chrome/browser/ui/navigator",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/views/toolbar",
@@ -274,5 +280,9 @@ source_set("impl") {
     ]
   }
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  if (!is_android) {
+    deps += [ "//chrome/browser/ui/views/frame:browser_view_header" ]
+  }
 }
 

@@ -79,26 +79,30 @@
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/animation/ink_drop.h"
 #include "ui/views/border.h"
+#include "ui/views/bubble/bubble_dialog_delegate_view.h"
+#include "ui/views/bubble/bubble_frame_view.h"
 #include "ui/views/controls/button/button.h"
 #include "ui/views/controls/button/label_button.h"
+#include "ui/views/controls/button/md_text_button.h"
 #include "ui/views/controls/image_view.h"
 #include "ui/views/controls/label.h"
 #include "ui/views/controls/separator.h"
 #include "ui/views/controls/styled_label.h"
 #include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/layout/box_layout.h"
 #include "ui/views/layout/flex_layout.h"
 #include "ui/views/layout/flex_layout_types.h"
 #include "ui/views/layout/layout_types.h"
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
 #include "ui/views/view_utils.h"
+#include "ui/views/widget/widget.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/ash_element_identifiers.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/strings/grit/ui_strings.h"
-#include "ui/views/widget/widget.h"
 #endif
 
 #if BUILDFLAG(IS_OZONE)
@@ -111,8 +115,6 @@ namespace {
 constexpr int kSeparatorPadding = 8;
 // The width of the tab group editor bubble.
 constexpr int kDialogWidth = 240;
-// The default size of icons that are displayed in the tab group editor bubble.
-static constexpr int kDefaultIconSize = 20;
 
 int GetHorizontalSpacing() {
   return ChromeLayoutProvider::Get()->GetDistanceMetric(
@@ -133,17 +135,28 @@ gfx::Insets GetControlInsets() {
              : gfx::Insets::VH(vertical_spacing, horizontal_spacing);
 }
 
+gfx::Insets GetMenuItemInsets() {
+  const int horizontal_spacing = GetHorizontalSpacing();
+  constexpr int kMenuItemVerticalPadding = 6;
+  const int vertical_padding = ui::TouchUiController::Get()->touch_ui()
+                                   ? 5 * GetVerticalSpacing() / 4
+                                   : kMenuItemVerticalPadding;
+
+  return gfx::Insets::VH(vertical_padding, horizontal_spacing);
+}
+
 std::unique_ptr<views::LabelButton> CreateMenuItem(
     int button_id,
     const std::u16string& name,
     views::Button::PressedCallback callback,
     const ui::ImageModel& icon = ui::ImageModel(),
     const std::u16string& accelerator_text = std::u16string()) {
-  const gfx::Insets control_insets = GetControlInsets();
+  const gfx::Insets menu_item_insets = GetMenuItemInsets();
   auto button = CreateBubbleMenuItem(button_id, name, std::move(callback), icon,
                                      accelerator_text);
-  button->SetBorder(views::CreateEmptyBorder(control_insets));
+  button->SetBorder(views::CreateEmptyBorder(menu_item_insets));
   button->SetLabelStyle(views::style::STYLE_BODY_3_EMPHASIS);
+  button->SetMinSize(gfx::Size(0, 32));
 
   return button;
 }
@@ -292,7 +305,7 @@ void TabGroupEditorBubbleView::AddedToWidget() {
     const gfx::VectorIcon* icon = vector_icon_model.vector_icon();
 
     const ui::ImageModel saved_tab_group_line_image_model =
-        ui::ImageModel::FromVectorIcon(*icon, icon_color);
+        ui::ImageModel::FromVectorIcon(*icon, icon_color, kDefaultIconSize);
     save_group_icon_->SetImage(saved_tab_group_line_image_model);
   }
 }
@@ -399,7 +412,17 @@ void TabGroupEditorBubbleView::OnTabGroupChanged(const TabGroupChange& change) {
   }
 }
 
+void TabGroupEditorBubbleView::OnDisplayTabletStateChanged(
+    display::TabletState state) {
+  if (views::Widget* const widget = GetWidget()) {
+    widget->CloseWithReason(views::Widget::ClosedReason::kUnspecified);
+  }
+}
+
 void TabGroupEditorBubbleView::UpdateGroup() {
+  if (IsEphemeralTabGroup()) {
+    return;
+  }
   const std::optional<int> selected_element =
       color_selector_->GetSelectedElement();
   TabGroup* const tab_group =
@@ -448,12 +471,34 @@ bool TabGroupEditorBubbleView::IsGroupShared() const {
   return false;
 }
 
+bool TabGroupEditorBubbleView::IsEphemeralTabGroup() const {
+  return browser_ && browser_->GetTabStripModel() &&
+         browser_->GetTabStripModel()->IsEphemeralTabGroup(group_);
+}
+
 bool TabGroupEditorBubbleView::ShouldShowSavedFooter() const {
   return false;
 }
 
 bool TabGroupEditorBubbleView::OwnsGroup() const {
   return true;
+}
+
+void TabGroupEditorBubbleView::OnEphemeralGroupPromoted() {
+  browser_->GetTabStripModel()->PromoteEphemeralTabGroup(group_);
+  UpdateGroup();
+  OnBubbleClose();
+  if (GetWidget()) {
+    GetWidget()->CloseWithReason(
+        views::Widget::ClosedReason::kAcceptButtonClicked);
+  }
+}
+
+void TabGroupEditorBubbleView::CancelEphemeralGroup() {
+  if (GetWidget()) {
+    GetWidget()->CloseWithReason(
+        views::Widget::ClosedReason::kCancelButtonClicked);
+  }
 }
 
 void TabGroupEditorBubbleView::RebuildMenuContents() {
@@ -474,9 +519,17 @@ void TabGroupEditorBubbleView::RebuildMenuContents() {
 
   RemoveAllChildViews();
 
+  if (IsEphemeralTabGroup()) {
+    AddChildView(BuildEphemeralGroupTitle());
+  }
+
   title_field_ = AddChildView(title_field ? std::move(title_field)
                                           : BuildTitleField(title_at_opening_));
   color_selector_ = AddChildView(BuildColorPicker());
+  if (IsEphemeralTabGroup()) {
+    AddChildView(BuildEphemeralGroupButtons());
+    return;
+  }
   AddChildView(BuildSeparator());
 
   // Shuttle: a tab group is an agent. Name and color edit the agent
@@ -530,6 +583,61 @@ std::unique_ptr<ColorPickerView> TabGroupEditorBubbleView::BuildColorPicker() {
   return color_selector;
 }
 
+std::unique_ptr<views::Label>
+TabGroupEditorBubbleView::BuildEphemeralGroupTitle() {
+  auto title_label = std::make_unique<views::Label>(
+      l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_CONVERT_TO_GROUP),
+      views::style::CONTEXT_LABEL, views::style::STYLE_HEADLINE_5);
+  title_label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+
+  const gfx::Insets control_insets = GetControlInsets();
+  title_label->SetProperty(
+      views::kMarginsKey,
+      gfx::Insets::TLBR(control_insets.top(), control_insets.left(), 0,
+                        control_insets.right()));
+
+  return title_label;
+}
+
+std::unique_ptr<views::View>
+TabGroupEditorBubbleView::BuildEphemeralGroupButtons() {
+  auto button_row = std::make_unique<views::View>();
+  const int button_spacing = ChromeLayoutProvider::Get()->GetDistanceMetric(
+      views::DISTANCE_RELATED_BUTTON_HORIZONTAL);
+  button_row->SetLayoutManager(std::make_unique<views::FlexLayout>())
+      ->SetOrientation(views::LayoutOrientation::kHorizontal)
+      .SetDefault(
+          views::kFlexBehaviorKey,
+          views::FlexSpecification(views::MinimumFlexSizeRule::kScaleToZero,
+                                   views::MaximumFlexSizeRule::kUnbounded)
+              .WithWeight(1));
+
+  const gfx::Insets control_insets = GetControlInsets();
+  button_row->SetProperty(
+      views::kMarginsKey,
+      gfx::Insets::TLBR(control_insets.top(), control_insets.left(), 0,
+                        control_insets.right()));
+
+  auto cancel_button = std::make_unique<views::MdTextButton>(
+      base::BindRepeating(&TabGroupEditorBubbleView::CancelEphemeralGroup,
+                          base::Unretained(this)),
+      l10n_util::GetStringUTF16(IDS_CANCEL));
+  cancel_button->SetProperty(views::kMarginsKey,
+                             gfx::Insets::TLBR(0, 0, 0, button_spacing / 2));
+
+  auto create_button = std::make_unique<views::MdTextButton>(
+      base::BindRepeating(&TabGroupEditorBubbleView::OnEphemeralGroupPromoted,
+                          base::Unretained(this)),
+      l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_CREATE_GROUP));
+  create_button->SetStyle(ui::ButtonStyle::kProminent);
+  create_button->SetProperty(views::kMarginsKey,
+                             gfx::Insets::TLBR(0, button_spacing / 2, 0, 0));
+
+  button_row->AddChildView(std::move(cancel_button));
+  button_row->AddChildView(std::move(create_button));
+  return button_row;
+}
+
 std::unique_ptr<views::LabelButton>
 TabGroupEditorBubbleView::BuildNewTabInGroupButton() {
   std::unique_ptr<views::LabelButton> menu_item = CreateMenuItem(
@@ -569,7 +677,8 @@ TabGroupEditorBubbleView::BuildUngroupButton() {
                           base::Unretained(this)),
       ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
                                          ? kUngroupIcon
-                                         : kUngroupRefreshOldIcon));
+                                         : kUngroupRefreshOldIcon,
+                                     ui::kColorMenuIcon, kDefaultIconSize));
 }
 
 std::unique_ptr<views::LabelButton>
@@ -677,8 +786,10 @@ TabGroupEditorBubbleView::BuildUnfocusGroupButton() {
       l10n_util::GetStringUTF16(IDS_TAB_GROUP_HEADER_CXMENU_UNFOCUS_GROUP),
       base::BindRepeating(&TabGroupEditorBubbleView::UnfocusGroupPressed,
                           base::Unretained(this)),
-      ui::ImageModel::FromVectorIcon(kZoomOutMapOldIcon, ui::kColorMenuIcon,
-                                     kDefaultIconSize));
+      ui::ImageModel::FromVectorIcon(features::IsRoundedIconsEnabled()
+                                         ? kZoomOutMapIcon
+                                         : kZoomOutMapOldIcon,
+                                     ui::kColorMenuIcon, kDefaultIconSize));
 
   menu_item->SetProperty(views::kElementIdentifierKey,
                          kTabGroupEditorBubbleUnfocusGroupButtonId);
@@ -754,15 +865,13 @@ void TabGroupEditorBubbleView::FocusGroupPressed() {
   base::UmaHistogramEnumeration("TabGroups.Focus.EntryPoint",
                                 TabGroupFocusEntryPoint::kEditorBubble);
   TabStripModel* const model = browser_->GetTabStripModel();
-  model->SetFocusedGroup(group_);
+  model->EnterFocusMode(group_);
   GetWidget()->Close();
 }
 
 void TabGroupEditorBubbleView::UnfocusGroupPressed() {
-  base::UmaHistogramEnumeration("TabGroups.Focus.ExitReason",
-                                TabGroupFocusExitReason::kEditorBubble);
   TabStripModel* const model = browser_->GetTabStripModel();
-  model->SetFocusedGroup(std::nullopt);
+  model->ExitFocusMode(TabGroupFocusExitReason::kEditorBubble);
   GetWidget()->Close();
 }
 
@@ -774,6 +883,9 @@ bool TabGroupEditorBubbleView::CanMoveGroupToNewWindow() {
 }
 
 void TabGroupEditorBubbleView::OnBubbleClose() {
+  if (IsEphemeralTabGroup()) {
+    return;
+  }
   if (title_at_opening_ != title_field_->GetText()) {
     base::RecordAction(
         base::UserMetricsAction("TabGroups_TabGroupBubble_NameChanged"));
@@ -892,8 +1004,12 @@ bool TabGroupEditorBubbleView::TitleFieldController::HandleKeyEvent(
       return true;
     }
     if (key_code == ui::VKEY_RETURN) {
-      parent_->GetWidget()->CloseWithReason(
-          views::Widget::ClosedReason::kUnspecified);
+      if (parent_->IsEphemeralTabGroup()) {
+        parent_->OnEphemeralGroupPromoted();
+      } else {
+        parent_->GetWidget()->CloseWithReason(
+            views::Widget::ClosedReason::kUnspecified);
+      }
       return true;
     }
   }

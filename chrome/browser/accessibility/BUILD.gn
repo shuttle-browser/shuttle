@@ -95,6 +95,7 @@ source_set("impl") {
       "//chrome/browser/extensions",
       "//chrome/browser/ui",
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/views/frame:browser_view_header",
       "//components/live_caption:live_translate",
     ]
   }
@@ -155,6 +156,7 @@ source_set("impl") {
       "//chrome/browser/ash/accessibility",
       "//chrome/browser/ash/arc/accessibility",
       "//chrome/browser/extensions",
+      "//chrome/browser/ui:settings_window_manager_chromeos",
       "//components/infobars/content",
     ]
   }
@@ -189,6 +191,7 @@ if (is_win) {
       "//chrome/browser/accessibility/live_caption:test_support",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/views",
+      "//chrome/browser/ui/views/frame:browser_view_header",
       "//components/live_caption:constants",
       "//components/soda",
       "//components/soda:constants",

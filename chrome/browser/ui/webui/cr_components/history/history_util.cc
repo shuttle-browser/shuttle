@@ -48,6 +48,8 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"foundSearchResults", IDS_HISTORY_FOUND_SEARCH_RESULTS},
       {"goToGeminiChat", IDS_HISTORY_GO_TO_GEMINI_CHAT},
       {"goToGeminiChatError", IDS_HISTORY_GO_TO_GEMINI_CHAT_ERROR},
+      {"historyClustersTabLabel", IDS_HISTORY_CLUSTERS_BY_GROUP_TAB_LABEL},
+      {"historyListTabLabel", IDS_HISTORY_CLUSTERS_BY_DATE_TAB_LABEL},
       {"historyMenuButton", IDS_HISTORY_HISTORY_MENU_DESCRIPTION},
       {"historyMenuItem", IDS_HISTORY_HISTORY_MENU_ITEM},
       {"itemsSelected", IDS_HISTORY_ITEMS_SELECTED},

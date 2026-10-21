@@ -23,6 +23,7 @@ source_set("impl") {
   deps = [
     ":renderer_context_menu",
     "//chrome/app:command_ids",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/common:non_code_constants",
     "//components/lens:buildflags",
     "//components/renderer_context_menu",

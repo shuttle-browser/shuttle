@@ -17,6 +17,9 @@ BASE_DECLARE_FEATURE(kViewDownloadedFileJourney);
 BASE_DECLARE_FEATURE(kViewDownloadedFileFromAppMenuJourney);
 BASE_DECLARE_FEATURE(kPinExtensionJourney);
 BASE_DECLARE_FEATURE(kSettingsGlowupJourneys);
+BASE_DECLARE_FEATURE(kCustomizeChromeJourney);
+BASE_DECLARE_FEATURE(kReadAnythingJourney);
+BASE_DECLARE_FEATURE(kTabSearchJourney);
 
 }  // namespace metrics
 

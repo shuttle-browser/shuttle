@@ -17,6 +17,7 @@ source_set("pdf") {
     "//chrome/browser/ui/tab_contents",
     "//chrome/common",
     "//components/pdf/browser",
+    "//components/pdf/common:constants",
     "//components/tabs:public",
     "//extensions/browser",
     "//extensions/browser/mime_handler",

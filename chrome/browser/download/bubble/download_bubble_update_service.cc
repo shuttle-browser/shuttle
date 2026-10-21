@@ -1176,6 +1176,11 @@ void DownloadBubbleUpdateService::StartInitializeOfflineItemsCache() {
     return;
   }
   offline_items_initializing_ = true;
+  if (DownloadCoreService* service =
+          DownloadCoreServiceFactory::GetForBrowserContext(profile_)) {
+    service->InitializeHistory(
+        DownloadCoreService::DownloadHistoryLoadTrigger::kDownloadBubble);
+  }
   offline_items_collection::OfflineContentProvider* provider =
       OfflineContentAggregatorFactory::GetForKey(profile_->GetProfileKey());
   provider->GetAllItems(

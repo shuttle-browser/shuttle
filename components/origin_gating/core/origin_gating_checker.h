@@ -22,6 +22,14 @@
 
 namespace origin_gating {
 
+// Evaluates origin gating decisions for navigations and page actions against a
+// configured pipeline of predicates and embedder delegate callbacks.
+//
+// NOTE: When configured with cache predicates (`kCacheWithUserConfirmation` or
+// `kCacheWithoutUserConfirmation`), this is a stateful object that caches
+// approved origins across evaluations. Its registration should therefore be
+// scoped to a single logical "task" rather than shared globally across
+// unrelated tasks.
 class OriginGatingChecker {
  public:
   // Pure virtual interface for embedder-specific checks.
@@ -41,14 +49,11 @@ class OriginGatingChecker {
 
     using DoesOriginRequireUserConfirmationCallback =
         base::OnceCallback<void(bool)>;
-    // Evaluates whether the given destination URL requires confirmation from
-    // the user when navigating from the source URL. Invokes the callback with
-    // the result.
+    // Evaluates whether the given event requires confirmation from the user.
+    // Invokes the callback with the result.
     virtual void DoesOriginRequireUserConfirmation(
         GatingDecisionContext* context,
-        GateableEvent event,
-        const GURL& source,
-        const GURL& destination,
+        const GateableEvent& event,
         DoesOriginRequireUserConfirmationCallback callback) const = 0;
 
     struct DecisionWithMetadata {
@@ -70,15 +75,16 @@ class OriginGatingChecker {
     // Defers the final decision from the OriginGatingChecker to the delegate.
     virtual void OnNoVerdict(
         GatingDecisionContext* context,
-        GateableEvent event,
-        const GURL& source,
-        const GURL& destination,
+        const GateableEvent& event,
         bool requires_user_confirmation,
         base::OnceCallback<void(NoVerdictResult)> callback) = 0;
   };
 
-  // The delegate must outlive this OriginGatingChecker instance.
-  OriginGatingChecker(Delegate& delegate, OriginGatingConfiguration config);
+  // TODO(http://b/545563794): Make this constructor take a
+  // `base::PassKey<OriginGatingService>` once
+  // DevToolsNavigationGatingRuleManager is migrated to a KeyedService.
+  OriginGatingChecker(base::WeakPtr<Delegate> delegate,
+                      OriginGatingConfiguration config);
   ~OriginGatingChecker();
 
   OriginGatingChecker(const OriginGatingChecker&) = delete;
@@ -89,17 +95,22 @@ class OriginGatingChecker {
   // sequence.
   void ComputeGatingDecision(std::unique_ptr<GatingDecisionContext> context,
                              GateableEvent event,
-                             const GURL& source,
-                             const GURL& destination,
                              GatingDecisionCallback callback);
 
-  // Exposes mutation methods to manage allowed origins in the cache.
+  // Exposes mutation methods to manage allowed origins in the cache. No-op if
+  // `config_` does not include any predicates that consult the cache.
   void AllowNavigationTo(url::Origin origin, bool is_user_confirmed) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    if (!config_.uses_cache()) {
+      return;
+    }
     cache_.AllowNavigationTo(std::move(origin), is_user_confirmed);
   }
   void AllowNavigationTo(const absl::flat_hash_set<url::Origin>& origins) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    if (!config_.uses_cache()) {
+      return;
+    }
     cache_.AllowNavigationTo(origins);
   }
 
@@ -110,9 +121,7 @@ class OriginGatingChecker {
   // to avoid needless recomputations.
   struct DelegateInputs {
     GateableEvent event;
-    GURL source;
-    url::Origin source_origin;
-    GURL destination;
+    std::optional<url::Origin> source_origin;
     url::Origin destination_origin;
     std::optional<bool> requires_user_confirmation;
   };
@@ -188,7 +197,7 @@ class OriginGatingChecker {
       VALID_CONTEXT_REQUIRED(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);
-  const raw_ref<Delegate> delegate_ GUARDED_BY_CONTEXT(sequence_checker_);
+  const base::WeakPtr<Delegate> delegate_ GUARDED_BY_CONTEXT(sequence_checker_);
   OriginGatingConfiguration config_ GUARDED_BY_CONTEXT(sequence_checker_);
   OriginGatingCache cache_ GUARDED_BY_CONTEXT(sequence_checker_);
   base::WeakPtrFactory<OriginGatingChecker> weak_ptr_factory_

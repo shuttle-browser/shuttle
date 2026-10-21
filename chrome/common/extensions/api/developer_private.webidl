@@ -255,6 +255,7 @@ dictionary ExtensionInfo {
   required boolean showAccessRequestsInToolbar;
   boolean pinnedToToolbar;
   required boolean isAffectedByMV2Deprecation;
+  required boolean canShowReviewPrompt;
 };
 
 dictionary ProfileInfo {

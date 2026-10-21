@@ -71,6 +71,7 @@ source_set("searchbox") {
     ]
     public_deps += [ "//chrome/browser/ui/webui/top_chrome" ]
     deps += [
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:tab_ui_helper",
       "//chrome/browser/ui/search",
       "//chrome/browser/ui/tabs:tab_strip",
@@ -83,6 +84,8 @@ source_set("searchbox") {
 
 # TODO(b/502297163): Enable tests.
 if (!is_android) {
+      deps += [
+      ]
 }
 
 # interactive_ui_tests as a whole never builds for is_android

@@ -12,6 +12,7 @@ source_set("organizer") {
 
   public_deps = [
     "//base",
+    "//chrome/browser/ui/views/tabs/organizer:organizer_panel_host",
     "//extensions/buildflags",
     "//ui/base/unowned_user_data",
   ]
@@ -38,6 +39,7 @@ source_set("impl") {
     "//chrome/browser/ui/actions:actions_headers",
     "//chrome/browser/ui/actions:actions_util",
     "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs",
     "//chrome/browser/ui/tabs:features",
     "//chrome/browser/ui/views/tabs/organizer",
     "//chrome/common:constants",
@@ -45,5 +47,9 @@ source_set("impl") {
     "//components/prefs",
     "//ui/views",
   ]
+
+  if (enable_extensions) {
+    deps += [ "//extensions/browser" ]
+  }
 }
 

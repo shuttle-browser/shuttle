@@ -115,7 +115,6 @@
 #include "chrome/browser/ash/boot_times_recorder/boot_times_recorder.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "components/app_restore/window_properties.h"
-#include "ui/aura/window_occlusion_tracker.h"
 #include "ui/compositor/layer.h"
 #include "ui/wm/core/scoped_animation_disabler.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -957,6 +956,18 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     const int selected_tab_index = std::clamp(
         window.selected_tab_index, 0, static_cast<int>(window.tabs.size() - 1));
 
+#if defined(USE_AURA)
+    // Each restored tab's WebContents window is parented to the browser's
+    // root window as the tab is inserted (BrowserView::OnTabStripModelChanged),
+    // and aura::Window::AddChild() recomputes occlusion for every tracked
+    // window under that root when it finishes. With many tabs this makes the
+    // loop below quadratic. Pause occlusion tracking for the whole loop so it
+    // is recomputed once, after all of this window's tabs have been added.
+    // Nothing here depends on intermediate occlusion states: background tabs
+    // are created hidden and the selected tab starts visible.
+    aura::WindowOcclusionTracker::ScopedPause pause_occlusion_tracking;
+#endif
+
     // Capture all the splits and all tabs to split.
     std::map<split_tabs::SplitTabId, std::vector<tabs::TabInterface*>>
         tabs_by_split_id;
@@ -1125,14 +1136,14 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     }
     if (browser->GetTabStripModel()->group_model()->ContainsTabGroup(
             *initial_group)) {
-      browser->GetTabStripModel()->SetFocusedGroup(*initial_group);
+      browser->GetTabStripModel()->EnterFocusMode(*initial_group);
       return;
     }
     auto it = new_group_ids.find(*initial_group);
     if (it != new_group_ids.end() &&
         browser->GetTabStripModel()->group_model()->ContainsTabGroup(
             it->second)) {
-      browser->GetTabStripModel()->SetFocusedGroup(it->second);
+      browser->GetTabStripModel()->EnterFocusMode(it->second);
     }
   }
 

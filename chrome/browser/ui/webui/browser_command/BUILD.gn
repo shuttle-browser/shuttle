@@ -19,6 +19,7 @@ source_set("browser_command") {
     "//chrome/browser:command_updater_impl",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search",
+    "//chrome/browser/ui:browser_commands",
     "//chrome/browser/ui:chrome_pages",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/navigator",

@@ -35,6 +35,7 @@ source_set("picture_in_picture") {
     "//base",
     "//components/web_modal",
     "//content/public/browser",
+    "//extensions/buildflags",
     "//third_party/blink/public/common:headers",
     "//ui/gfx",
     "//ui/gfx/geometry",
@@ -63,7 +64,6 @@ source_set("picture_in_picture") {
     "//components/strings:components_strings",
     "//components/url_formatter",
     "//components/vector_icons",
-    "//extensions/buildflags",
     "//media",
     "//ui/base",
     "//ui/base/metadata",
@@ -74,7 +74,12 @@ source_set("picture_in_picture") {
   ]
 
   if (enable_extensions_core) {
+    public += [ "document_pip_base_window.h" ]
+    sources += [ "document_pip_base_window.cc" ]
+    public_deps += [ "//components/sessions" ]
     deps += [
+      "//chrome/browser/extensions",
+      "//components/zoom",
       "//extensions/browser",
       "//extensions/common",
     ]
@@ -86,4 +91,5 @@ source_set("picture_in_picture") {
     deps += [ "//components/remote_cocoa/common:mojo" ]
   }
 }
+
 

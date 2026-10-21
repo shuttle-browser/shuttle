@@ -103,6 +103,7 @@ source_set("misc") {
     "//chrome/browser/ssl",
     "//chrome/browser/storage",
     "//chrome/browser/subscription_eligibility",
+    "//chrome/browser/themes",
     "//chrome/browser/transition_manager",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/browser_window",
@@ -163,7 +164,6 @@ source_set("misc") {
   } else {
     deps += [
       "//chrome/browser/accessibility/tree_fixing:prefs",
-      "//chrome/browser/themes",
       "//chrome/browser/ui/dialogs:browser_dialogs",
     ]
   }
@@ -457,6 +457,7 @@ source_set("profile_manager_impl") {
       "profile_window.cc",
     ]
     deps += [
+      "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/dialogs:browser_dialogs",
       "//chrome/browser/ui/profiles",
@@ -669,6 +670,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/notifications",
     "//chrome/browser/omnibox",
     "//chrome/browser/optimization_guide",
+    "//chrome/browser/origin_gating",
     "//chrome/browser/origin_trials",
     "//chrome/browser/page_content_annotations",
     "//chrome/browser/page_content_annotations:extraction_service",
@@ -710,6 +712,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/subresource_filter",
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/supervised_user",
+    "//chrome/browser/themes",
     "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/find_bar",
@@ -762,7 +765,8 @@ source_set("profiles_extra_parts_impl") {
       "//chrome/browser/metrics/critical_user_journeys",
       "//chrome/browser/profile_resetter",
       "//chrome/browser/search",
-      "//chrome/browser/themes",
+      "//chrome/browser/search_engine_choice",
+      "//chrome/browser/ui:browser_manager_service",
       "//chrome/browser/ui/global_error",
       "//chrome/browser/ui/webui:theme_colors_source_manager",
       "//chrome/browser/ui/webui:theme_source",

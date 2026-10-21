@@ -88,7 +88,10 @@ source_set("impl") {
 
   if (!is_android) {
     sources += [ "restore_on_startup_policy_handler.cc" ]
-    deps += [ "//chrome/browser/prefs:util" ]
+    deps += [
+      "//chrome/browser/prefs:util",
+      "//chrome/browser/ui:browser_window_header",
+    ]
   }
 
   if (enable_session_service) {
@@ -122,6 +125,7 @@ source_set("impl") {
       "//chrome/browser/profiles/keep_alive",
       "//chrome/browser/search",
       "//chrome/browser/ui:browser_init_state",
+      "//chrome/browser/ui:browser_manager_service",
       "//chrome/browser/ui:browser_tabrestore",
       "//chrome/browser/ui:session_crashed_bubble",
       "//chrome/browser/ui:ui_features",

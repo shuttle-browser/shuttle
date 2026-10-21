@@ -307,6 +307,9 @@ group("gn_all") {
     if (!is_android && !is_ios && !is_fuchsia) {
       deps += [
       ]
+      if (!is_castos) {
+        deps += [ "//tools/pgo:generate_profile" ]
+      }
     }
 
     if (use_ozone) {
@@ -364,6 +367,9 @@ group("gn_all") {
         "//net:net_perftests",
         "//url:url_unittests",
       ]
+      if (is_java_debug && !incremental_install) {
+        deps += [ "//chrome/android/javatests:check_settings_enums" ]
+      }
 
       if (!is_cast_android) {
         deps += [

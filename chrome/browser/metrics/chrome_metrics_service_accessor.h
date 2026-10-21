@@ -42,10 +42,6 @@ namespace subscription_eligibility {
 class SubscriptionEligibilityMetricsProvider;
 }  // namespace subscription_eligibility
 
-namespace supervised_user {
-class MetricsServiceAccessorDelegateImpl;
-}
-
 class ChromeDomainReliabilityDelegate;
 namespace domain_reliability {
 class TestDomainReliabilityServiceDelegate;
@@ -176,7 +172,6 @@ class ChromeMetricsServiceAccessor : public metrics::MetricsServiceAccessor {
   friend class BrowserProcessImpl;
   friend class GlobalFeatures;
   friend class subscription_eligibility::SubscriptionEligibilityMetricsProvider;
-  friend class supervised_user::MetricsServiceAccessorDelegateImpl;
   friend class OptimizationGuideKeyedService;
   friend class optimization_guide::ChromeOnDeviceModelServiceController;
   friend class WebUITabStripFieldTrial;

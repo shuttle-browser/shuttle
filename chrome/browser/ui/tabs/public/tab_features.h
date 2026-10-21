@@ -32,27 +32,42 @@
 #include "base/callback_list.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/buildflags.h"
+#include "content/public/common/buildflags.h"
+#include "extensions/buildflags/buildflags.h"
+#include "rlz/buildflags/buildflags.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"
 
 class AskBeforeHttpDialogController;
 class CommitLimitOOMRecoveryTracker;
 class ConnectionHelpTabHelper;
 class CookieControlsPageActionController;
+class ExternalProtocolObserver;
 class FileSystemAccessPageActionController;
 class FocusTabAfterNavigationHelper;
+class FontPrewarmerTabHelper;
 class FramebustBlockTabHelper;
 
 class FormInteractionTabHelper;
 class FromGWSNavigationAndKeepAliveRequestObserver;
 class HttpAuthCacheStatus;
 class JsOptimizationsPageActionController;
+class NavigationMetricsRecorder;
+class NavigationPredictorPreconnectClient;
 class Profile;
 class QwacWebContentsObserver;
 class SadTabHelper;
 class SecurityStateEventObserver;
+class SoundContentSettingObserver;
+class StorageAccessAPITabHelper;
+class TabCaptureContentsBorderHelper;
 class TabUIHelper;
 class ThumbnailTabHelper;
+class UMABrowsingActivityTabHelper;
 class ZeroSuggestPrefetchTabHelper;
+
+namespace site_protection {
+class SiteProtectionMetricsObserver;
+}  // namespace site_protection
 
 namespace back_to_opener {
 class BackToOpenerController;
@@ -75,7 +90,14 @@ namespace content {
 class WebContents;
 }  // namespace content
 
+namespace download {
+class DownloadNavigationObserver;
+}  // namespace download
+
 namespace extensions {
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+class NavigationExtensionEnabler;
+#endif
 }  // namespace extensions
 
 namespace zoom {
@@ -86,9 +108,31 @@ namespace permissions {
 class PermissionIndicatorsTabData;
 }  // namespace permissions
 
+namespace prerender {
+class NoStatePrefetchTabHelper;
+}  // namespace prerender
+
+namespace v8_compile_hints {
+class V8CompileHintsTabHelper;
+}  // namespace v8_compile_hints
+
 namespace page_actions {
 class PageActionController;
 }  // namespace page_actions
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+namespace metrics {
+class DesktopSessionDurationObserver;
+}  // namespace metrics
+#endif
+
+#if BUILDFLAG(ENABLE_RLZ)
+class ChromeRLZTrackerWebContentsObserver;
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+class PluginObserver;
+#endif
 
 namespace multistep_filter {
 class ChromeFilterNavigationObserver;
@@ -284,6 +328,11 @@ class TabFeatures {
   std::unique_ptr<tabs::PageContextEligibilityHelper>
       page_context_eligibility_helper_;
 
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  std::unique_ptr<metrics::DesktopSessionDurationObserver>
+      desktop_session_duration_observer_;
+#endif
+
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_CHROMEOS)
   std::unique_ptr<enterprise_reporting::SaasUsageNavigationObserver>
@@ -293,6 +342,21 @@ class TabFeatures {
 #if BUILDFLAG(IS_WIN)
   std::unique_ptr<CommitLimitOOMRecoveryTracker>
       commit_limit_oom_recovery_tracker_;
+  std::unique_ptr<FontPrewarmerTabHelper> font_prewarmer_tab_helper_;
+#endif
+
+#if BUILDFLAG(ENABLE_RLZ)
+  std::unique_ptr<ChromeRLZTrackerWebContentsObserver>
+      chrome_rlz_tracker_web_contents_observer_;
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+  std::unique_ptr<PluginObserver> plugin_observer_;
+#endif
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  std::unique_ptr<extensions::NavigationExtensionEnabler>
+      navigation_extension_enabler_;
 #endif
 
   std::unique_ptr<multistep_filter::FilterUiController> filter_ui_controller_;
@@ -308,6 +372,36 @@ class TabFeatures {
   // Maintains the thumbnail shown in e.g. tab hover cards. Null when no
   // feature that needs thumbnails is enabled.
   std::unique_ptr<ThumbnailTabHelper> thumbnail_tab_helper_;
+
+
+  std::unique_ptr<UMABrowsingActivityTabHelper>
+      uma_browsing_activity_tab_helper_;
+
+  std::unique_ptr<TabCaptureContentsBorderHelper>
+      tab_capture_contents_border_helper_;
+
+  std::unique_ptr<v8_compile_hints::V8CompileHintsTabHelper>
+      v8_compile_hints_tab_helper_;
+
+  std::unique_ptr<StorageAccessAPITabHelper> storage_access_api_tab_helper_;
+
+  std::unique_ptr<ExternalProtocolObserver> external_protocol_observer_;
+
+  std::unique_ptr<prerender::NoStatePrefetchTabHelper>
+      no_state_prefetch_tab_helper_;
+
+  std::unique_ptr<NavigationPredictorPreconnectClient>
+      navigation_predictor_preconnect_client_;
+
+  std::unique_ptr<NavigationMetricsRecorder> navigation_metrics_recorder_;
+
+  std::unique_ptr<site_protection::SiteProtectionMetricsObserver>
+      site_protection_metrics_observer_;
+
+  std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
+
+  std::unique_ptr<download::DownloadNavigationObserver>
+      download_navigation_observer_;
 
   // Must be the last member.
   base::WeakPtrFactory<TabFeatures> weak_factory_{this};

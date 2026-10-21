@@ -454,13 +454,15 @@ static_library("browser") {
     public_deps += [
       "//components/keyed_service/content",
       "//components/permissions",
-      "//content/public/browser",
       "//services/device/public/mojom",
     ]
     sources += [
       "geolocation_header_service.cc",
       "geolocation_header_service.h",
     ]
+  }
+  if (use_blink) {
+    public_deps += [ "//content/public/browser" ]
   }
 
   if ((!is_android || enable_vr) && !is_ios) {
@@ -509,6 +511,7 @@ static_library("location_bar") {
     "autocomplete_input.cc",
     "autocomplete_input.h",
     "autocomplete_scheme_classifier.h",
+    "location_bar_model.cc",
     "location_bar_model.h",
     "location_bar_model_delegate.cc",
     "location_bar_model_delegate.h",
@@ -523,6 +526,7 @@ static_library("location_bar") {
     "//components/omnibox/common",
     "//components/security_state/core",
     "//third_party/metrics_proto",
+    "//ui/base/unowned_user_data",
     "//url",
   ]
   deps = [
@@ -653,12 +657,10 @@ if (is_android) {
       "//components/cached_flags:java",
       "//components/omnibox/common:features_java",
       "//components/search_engines/android:java",
-      "//components/security_state/core:security_state_enums_java",
       "//third_party/android_deps:protobuf_lite_runtime_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_collection_collection_java",
       "//third_party/androidx:androidx_core_core_java",
-      "//third_party/androidx:androidx_interpolator_interpolator_java",
       "//third_party/jni_zero:jni_zero_java",
       "//third_party/metrics_proto:metrics_proto_java",
       "//url:gurl_java",
@@ -694,7 +696,6 @@ if (is_android) {
       "//base:base_junit_test_support",
       "//components/browser_ui/settings/android:java",
       "//components/browser_ui/styles/android:java_resources",
-      "//components/cached_flags:java",
       "//components/omnibox/common:features_java",
       "//components/security_state/core:security_state_enums_java",
       "//third_party/android_deps:protobuf_lite_runtime_java",

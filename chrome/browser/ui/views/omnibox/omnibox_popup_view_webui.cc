@@ -74,7 +74,7 @@ void OmniboxPopupViewWebUI::UpdatePopupAppearance() {
       !controller()->autocomplete_controller()->result().empty();
   const bool should_be_visible =
       (has_results ||
-       (base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxFullPopup) &&
+       (presenter_->delegate().is_full_webui_omnibox() &&
         controller()->edit_model()->has_focus())) &&
       !omnibox_view_->IsImeShowingPopup();
 

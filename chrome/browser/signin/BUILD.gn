@@ -258,6 +258,7 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser/ui:chrome_pages",
+      "//chrome/browser/ui:scoped_tabbed_browser_displayer",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/navigator",
       "//device/bluetooth",

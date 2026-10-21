@@ -44,7 +44,6 @@
 #include "ui/webui/tracked_element/tracked_element_handler_document_singleton.h"
 
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/webnn_internals/webnn_internals.mojom.h"
@@ -117,7 +116,6 @@ void BindTrackedElementHandlerRestricted(
 
   const bool is_allowed =
 #if !BUILDFLAG(IS_ANDROID)
-      controller->GetAs<HistoryUI>() ||
 #endif  // !BUILDFLAG(IS_ANDROID)
       false;
 

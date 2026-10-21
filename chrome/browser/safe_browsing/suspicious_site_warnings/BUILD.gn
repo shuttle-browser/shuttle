@@ -2,6 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//components/safe_browsing/buildflags.gni")
+
+assert(safe_browsing_mode != 0)
+
 source_set("suspicious_site_warnings") {
   sources = [
     "suspicious_site_controller_desktop.cc",

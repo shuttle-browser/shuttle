@@ -255,6 +255,7 @@ declare global {
         safetyCheckWarningReason: SafetyCheckWarningReason;
         pinnedToToolbar?: boolean;
         isAffectedByMV2Deprecation: boolean;
+        canShowReviewPrompt: boolean;
       }
 
       export interface ProfileInfo {

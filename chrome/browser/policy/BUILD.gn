@@ -272,6 +272,10 @@ source_set("policy") {
     ]
   }
 
+  if (is_win || is_mac || is_linux || is_chromeos) {
+    public += [ "gemini_enterprise_settings_policy_handler.h" ]
+  }
+
   if (!is_android) {
     public += [
       "device_account_initializer.h",
@@ -284,7 +288,6 @@ source_set("policy") {
         "chrome_browser_cloud_management_controller_desktop.h",
         "client_data_delegate_desktop.h",
         "cloud/user_policy_signin_service.h",
-        "file_selection_dialogs_policy_handler.h",
       ]
     }
   }
@@ -309,6 +312,7 @@ source_set("policy") {
       "browser_signin_policy_handler.h",
       "cloud/user_policy_signin_service_factory.h",
       "cloud/user_policy_signin_service_util.h",
+      "file_selection_dialogs_policy_handler.h",
     ]
   }
 
@@ -532,6 +536,11 @@ source_set("impl") {
     ]
   }
 
+  if (is_win || is_mac || is_linux || is_chromeos) {
+    sources += [ "gemini_enterprise_settings_policy_handler.cc" ]
+    deps += [ "//chrome/browser/glic/gemini_enterprise:url_allowlist" ]
+  }
+
   if (!is_android) {
     sources += [
       "device_account_initializer.cc",
@@ -551,7 +560,6 @@ source_set("impl") {
         "chrome_browser_cloud_management_register_watcher.h",
         "client_data_delegate_desktop.cc",
         "cloud/user_policy_signin_service.cc",
-        "file_selection_dialogs_policy_handler.cc",
       ]
       deps += [
         "//chrome/browser/enterprise:browser_launch_reporting",
@@ -622,6 +630,7 @@ source_set("impl") {
       "browser_signin_policy_handler.cc",
       "cloud/user_policy_signin_service_factory.cc",
       "cloud/user_policy_signin_service_util.cc",
+      "file_selection_dialogs_policy_handler.cc",
     ]
   }
 

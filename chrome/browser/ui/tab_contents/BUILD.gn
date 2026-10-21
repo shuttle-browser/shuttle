@@ -77,6 +77,7 @@ source_set("impl") {
     deps += [ "//chrome/browser/ui/android/tab_contents" ]
   } else {
     deps += [
+      "//chrome/browser/ui:browser_command_controller",
     ]
   }
   if (enable_extensions) {

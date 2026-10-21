@@ -12,24 +12,33 @@
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/content_settings/sound_content_setting_observer.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
 #include "chrome/browser/enterprise/net/enterprise_proxy_error_service_factory.h"
 #include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
+#include "chrome/browser/external_protocol/external_protocol_observer.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_observer.h"
 #include "chrome/browser/multistep_filter/chrome_filter_navigation_observer.h"
 #include "chrome/browser/multistep_filter/ui/filter_ui_controller.h"
+#include "chrome/browser/navigation_predictor/navigation_predictor_preconnect_client.h"
 #include "chrome/browser/net/http_auth_cache_status.h"
 #include "chrome/browser/net/qwac_web_contents_observer.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
+#include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_tab_helper.h"
 #include "chrome/browser/preloading/prefetch/zero_suggest_prefetch/zero_suggest_prefetch_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/site_protection/site_protection_metrics_observer.h"
 #include "chrome/browser/ssl/ask_before_http_dialog_controller.h"
 #include "chrome/browser/ssl/connection_help_tab_helper.h"
 #include "chrome/browser/ssl/security_state_event_observer.h"
+#include "chrome/browser/storage_access_api/storage_access_api_service_factory.h"
+#include "chrome/browser/storage_access_api/storage_access_api_service_impl.h"
+#include "chrome/browser/storage_access_api/storage_access_api_tab_helper.h"
 #include "chrome/browser/tab_contents/form_interaction_tab_helper.h"
+#include "chrome/browser/tab_contents/navigation_metrics_recorder.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
@@ -56,19 +65,28 @@
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/uma_browsing_activity_observer.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_page_action_controller.h"
 #include "chrome/browser/ui/views/js_optimization/js_optimizations_page_action_controller.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_page_action_controller.h"
+#include "chrome/browser/ui/views/tab_sharing/tab_capture_contents_border_helper.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
+#include "components/download/content/factory/navigation_monitor_factory.h"
+#include "components/download/content/public/download_navigation_observer.h"
 #include "components/enterprise/browser/reporting/reporting_features.h"
 #include "components/enterprise/net/content/enterprise_proxy_tab_helper.h"
 #include "components/multistep_filter/core/features.h"
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+#include "chrome/browser/metrics/desktop_session_duration/desktop_session_duration_observer.h"
+#endif
+
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/metrics/oom/commit_limit_oom_recovery_tracker.h"
 #endif
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_attachment_tracker.h"
+#include "chrome/browser/v8_compile_hints/v8_compile_hints_tab_helper.h"
 #include "chrome/common/chrome_features.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/permissions/permission_indicators_tab_data.h"
@@ -79,6 +97,22 @@
 #include "net/base/features.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "chrome/browser/font_prewarmer_tab_helper.h"
+#endif
+
+#if BUILDFLAG(ENABLE_RLZ)
+#include "chrome/browser/rlz/chrome_rlz_tracker_web_contents_observer.h"
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+#include "chrome/browser/plugins/plugin_observer.h"
+#endif
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "chrome/browser/extensions/navigation_extension_enabler.h"
+#endif
 
 namespace tabs {
 
@@ -209,6 +243,11 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   task_manager::WebContentsTags::CreateForTabContents(tab.GetContents());
 
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  desktop_session_duration_observer_ =
+      metrics::DesktopSessionDurationObserver::MaybeCreate(tab.GetContents());
+#endif
+
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
   inactive_window_mouse_event_controller_ =
@@ -221,6 +260,8 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   commit_limit_oom_recovery_tracker_ =
       GetUserDataFactory().CreateInstance<CommitLimitOOMRecoveryTracker>(tab,
                                                                          tab);
+  font_prewarmer_tab_helper_ =
+      std::make_unique<FontPrewarmerTabHelper>(tab.GetContents());
 #endif
 
   if (base::FeatureList::IsEnabled(net::features::kVerifyQWACs)) {
@@ -271,6 +312,61 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   }
 #endif
 
+
+  uma_browsing_activity_tab_helper_ =
+      std::make_unique<UMABrowsingActivityTabHelper>(tab.GetContents());
+
+#if BUILDFLAG(ENABLE_RLZ)
+  chrome_rlz_tracker_web_contents_observer_ =
+      ChromeRLZTrackerWebContentsObserver::MaybeCreate(tab.GetContents());
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+  plugin_observer_ = GetUserDataFactory().CreateInstance<PluginObserver>(
+      tab, tab, tab.GetContents());
+#endif
+
+  tab_capture_contents_border_helper_ =
+      GetUserDataFactory().CreateInstance<TabCaptureContentsBorderHelper>(tab,
+                                                                          tab);
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  navigation_extension_enabler_ =
+      std::make_unique<extensions::NavigationExtensionEnabler>(
+          tab.GetContents());
+#endif
+
+  v8_compile_hints_tab_helper_ =
+      v8_compile_hints::V8CompileHintsTabHelper::MaybeCreate(tab.GetContents());
+
+  storage_access_api_tab_helper_ = std::make_unique<StorageAccessAPITabHelper>(
+      tab.GetContents(),
+      StorageAccessAPIServiceFactory::GetForBrowserContext(profile));
+
+  external_protocol_observer_ =
+      std::make_unique<ExternalProtocolObserver>(tab.GetContents());
+
+  no_state_prefetch_tab_helper_ =
+      std::make_unique<prerender::NoStatePrefetchTabHelper>(tab.GetContents());
+
+  navigation_predictor_preconnect_client_ =
+      std::make_unique<NavigationPredictorPreconnectClient>(tab.GetContents());
+
+  navigation_metrics_recorder_ =
+      std::make_unique<NavigationMetricsRecorder>(tab.GetContents());
+
+  site_protection_metrics_observer_ =
+      std::make_unique<site_protection::SiteProtectionMetricsObserver>(
+          tab.GetContents());
+
+  sound_content_setting_observer_ =
+      GetUserDataFactory().CreateInstance<SoundContentSettingObserver>(
+          tab, tab, tab.GetContents());
+
+  download_navigation_observer_ =
+      std::make_unique<download::DownloadNavigationObserver>(
+          tab.GetContents(), download::NavigationMonitorFactory::GetForKey(
+                                 profile->GetProfileKey()));
 }
 
 TabUIHelper* TabFeatures::SetTabUIHelperForTesting(
@@ -283,6 +379,8 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
                                       content::WebContents* old_contents,
                                       content::WebContents* new_contents) {
   DCHECK_EQ(old_contents, tab->GetContents());
+
+  Profile* profile = tab->GetBrowserWindowInterface()->GetProfile();
 
   focus_tab_after_navigation_helper_ =
       std::make_unique<FocusTabAfterNavigationHelper>(new_contents);
@@ -343,6 +441,69 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
         std::make_unique<permissions::PermissionIndicatorsTabData>(
             new_contents);
   }
+
+  uma_browsing_activity_tab_helper_ =
+      std::make_unique<UMABrowsingActivityTabHelper>(new_contents);
+
+#if BUILDFLAG(IS_WIN)
+  font_prewarmer_tab_helper_ =
+      std::make_unique<FontPrewarmerTabHelper>(new_contents);
+#endif
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  desktop_session_duration_observer_ =
+      metrics::DesktopSessionDurationObserver::MaybeCreate(new_contents);
+#endif
+
+#if BUILDFLAG(ENABLE_RLZ)
+  chrome_rlz_tracker_web_contents_observer_ =
+      ChromeRLZTrackerWebContentsObserver::MaybeCreate(new_contents);
+#endif
+
+#if BUILDFLAG(ENABLE_PLUGINS)
+  plugin_observer_.reset();
+  plugin_observer_ = GetUserDataFactory().CreateInstance<PluginObserver>(
+      *tab, *tab, new_contents);
+#endif
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  navigation_extension_enabler_ =
+      std::make_unique<extensions::NavigationExtensionEnabler>(new_contents);
+#endif
+
+  v8_compile_hints_tab_helper_ =
+      v8_compile_hints::V8CompileHintsTabHelper::MaybeCreate(new_contents);
+
+  storage_access_api_tab_helper_ = std::make_unique<StorageAccessAPITabHelper>(
+      new_contents,
+      StorageAccessAPIServiceFactory::GetForBrowserContext(profile));
+
+  external_protocol_observer_ =
+      std::make_unique<ExternalProtocolObserver>(new_contents);
+
+  no_state_prefetch_tab_helper_ =
+      std::make_unique<prerender::NoStatePrefetchTabHelper>(new_contents);
+
+  navigation_predictor_preconnect_client_.reset();
+  navigation_predictor_preconnect_client_ =
+      std::make_unique<NavigationPredictorPreconnectClient>(new_contents);
+
+  navigation_metrics_recorder_ =
+      std::make_unique<NavigationMetricsRecorder>(new_contents);
+
+  site_protection_metrics_observer_ =
+      std::make_unique<site_protection::SiteProtectionMetricsObserver>(
+          new_contents);
+
+  sound_content_setting_observer_.reset();
+  sound_content_setting_observer_ =
+      GetUserDataFactory().CreateInstance<SoundContentSettingObserver>(
+          *tab, *tab, new_contents);
+
+  download_navigation_observer_ =
+      std::make_unique<download::DownloadNavigationObserver>(
+          new_contents, download::NavigationMonitorFactory::GetForKey(
+                            profile->GetProfileKey()));
 }
 
 TabAlertController* TabFeatures::SetTabAlertControllerForTesting(

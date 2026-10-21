@@ -126,7 +126,9 @@ source_set("impl") {
     "//chrome/browser/ui/page_action:icon_type",
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/browser/ui/views:theme_copying_widget",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/frame:contents_web_view",
+    "//chrome/browser/ui/views/frame:top_container_view",
     "//chrome/browser/ui/views/location_bar",
     "//chrome/browser/ui/views/page_action",
     "//chrome/browser/ui/views/tab_contents",
@@ -159,6 +161,33 @@ source_set("impl") {
   # them via browser_public_dependencies; the reverse edge is the
   # allow_circular_includes_from entry on //chrome/browser/ui:ui.
   public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  if (is_mac) {
+    deps += [ ":native_widget_mac" ]
+  }
+
+  if (is_chromeos) {
+    deps += [
+      "//ui/aura",
+      "//ui/wm",
+      "//ui/wm/public",
+    ]
+  }
+}
+
+if (is_mac) {
+  source_set("native_widget_mac") {
+    sources = [
+      "omnibox_popup_native_widget_mac.h",
+      "omnibox_popup_native_widget_mac.mm",
+    ]
+    public_deps = [ "//components/remote_cocoa/app_shim" ]
+    deps = [
+      "//components/remote_cocoa/common:mojo",
+      "//ui/base",
+      "//ui/views",
+    ]
+  }
 }
 
 if (!is_chromeos_device) {

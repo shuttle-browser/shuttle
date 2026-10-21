@@ -145,6 +145,11 @@ template("chrome_extra_paks") {
       ]
     }
 
+    # side_panel/shared is not NTP-specific; see chrome/browser/resources.
+    if (!is_android || enable_webui_ntp) {
+      sources += [ "$root_gen_dir/chrome/side_panel_shared_resources.pak" ]
+    }
+
     deps = [
       "//base/tracing/protos:chrome_track_event_resources",
       "//chrome/app/theme:chrome_unscaled_resources",
@@ -188,7 +193,6 @@ template("chrome_extra_paks") {
         "$root_gen_dir/chrome/certificate_manager_resources.pak",
         "$root_gen_dir/chrome/dev_ui_resources.pak",
         "$root_gen_dir/chrome/downloads_resources.pak",
-        "$root_gen_dir/chrome/history_resources.pak",
         "$root_gen_dir/chrome/inspect_resources.pak",
         "$root_gen_dir/chrome/key_value_pair_viewer_shared_resources.pak",
         "$root_gen_dir/chrome/omnibox_popup_resources.pak",
@@ -296,7 +300,6 @@ template("chrome_extra_paks") {
         "$root_gen_dir/chrome/kerberos_resources.pak",
         "$root_gen_dir/chrome/launcher_internals_resources.pak",
         "$root_gen_dir/chrome/lock_screen_reauth_resources.pak",
-        "$root_gen_dir/chrome/manage_mirrorsync_resources.pak",
         "$root_gen_dir/chrome/multidevice_internals_resources.pak",
         "$root_gen_dir/chrome/multidevice_setup_resources.pak",
         "$root_gen_dir/chrome/nearby_internals_resources.pak",
@@ -457,6 +460,11 @@ template("chrome_extra_paks") {
     if (enable_webui_certificate_viewer) {
       sources += [ "$root_gen_dir/chrome/certificate_viewer_resources.pak" ]
       deps += [ "//chrome/browser/resources/certificate_viewer:resources" ]
+    }
+
+    if (enable_webui_history) {
+      sources += [ "$root_gen_dir/chrome/history_resources.pak" ]
+      deps += [ "//chrome/browser/resources/history:resources" ]
     }
 
     if (enable_compose) {

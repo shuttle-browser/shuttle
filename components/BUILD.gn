@@ -124,8 +124,6 @@ if (is_android) {
     deps = [
       ":components_browsertests_resources",
       "//base:base_java",
-      "//base:base_java_test_support",
-      "//content/public/test/android:content_java_test_support",
       "//content/shell/android:content_shell_browsertests_java",
       "//testing/android/native_test:native_browser_test_java",
     ]
@@ -168,6 +166,7 @@ if (is_android) {
       "//components/browser_ui/media/android:junit",
       "//components/browser_ui/photo_picker/android:junit",
       "//components/browser_ui/settings/android:junit",
+      "//components/browser_ui/styles/android:junit",
       "//components/browser_ui/util/android:junit",
       "//components/browser_ui/webshare/android:junit",
       "//components/browser_ui/widget/android:junit",

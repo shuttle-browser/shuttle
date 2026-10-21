@@ -32,6 +32,7 @@ NamedPropertyInterceptor* WrappableBase::GetNamedPropertyInterceptor() {
 
 void WrappableBase::Trace(cppgc::Visitor* visitor) const {
   visitor->Trace(wrapper_);
+  v8::Object::Wrappable::Trace(visitor);
 }
 
 const v8::Object::WrapperTypeInfo* WrappableBase::GetWrapperTypeInfo() const {
@@ -44,7 +45,6 @@ v8::MaybeLocal<v8::Object> WrappableBase::GetWrapper(v8::Isolate* isolate) {
   }
 
   const WrapperInfo* info = wrapper_info();
-
   PerIsolateData* data = PerIsolateData::From(isolate);
   v8::Local<v8::ObjectTemplate> templ = data->GetObjectTemplate(info);
   if (templ.IsEmpty()) {

@@ -8,5 +8,8 @@ specific_include_rules = {
   ],
   "page_handler.*": [
     "+components/printing/browser/print_to_pdf",
+  ],
+  "storage_handler\\.cc": [
+    "+components/private_verification_tokens/common",
   ]
 }

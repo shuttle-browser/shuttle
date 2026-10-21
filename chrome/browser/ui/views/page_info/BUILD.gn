@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//components/safe_browsing/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
 
 source_set("page_info") {
@@ -64,7 +65,6 @@ source_set("impl") {
     "safety_tip_page_info_bubble_view.cc",
     "security_information_view.cc",
     "star_rating_view.cc",
-    "suspicious_site_bubble_view.cc",
   ]
 
   deps = [
@@ -76,7 +76,7 @@ source_set("impl") {
     "//chrome/browser/file_system_access",
     "//chrome/browser/page_info",
     "//chrome/browser/safe_browsing",
-    "//chrome/browser/safe_browsing/suspicious_site_warnings",
+    "//chrome/browser/ui:browser_window_header",
     "//chrome/browser/ui:chrome_pages",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/browser_web_contents_delegate",
@@ -87,13 +87,13 @@ source_set("impl") {
     "//chrome/browser/ui/views/accessibility",
     "//chrome/browser/ui/views/controls",
     "//chrome/browser/ui/views/file_system_access",
+    "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/vr",
     "//components/content_settings/browser/ui",
     "//components/dom_distiller/core",
     "//components/omnibox/browser:vector_icons",
     "//components/page_info/core",
     "//components/privacy_sandbox:features",
-    "//components/safe_browsing/core/browser:suspicious_site_warning_allowlist",
     "//components/strings:components_branded_strings_grit",
     "//components/strings:components_strings_grit",
     "//components/strings:privacy_sandbox_strings_grit",
@@ -108,5 +108,12 @@ source_set("impl") {
   if (enable_extensions_core) {
     deps += [ "//chrome/browser/extensions" ]
   }
-}
 
+  if (safe_browsing_mode != 0) {
+    sources += [ "suspicious_site_bubble_view.cc" ]
+    deps += [
+      "//chrome/browser/safe_browsing/suspicious_site_warnings",
+      "//components/safe_browsing/core/browser:suspicious_site_warning_allowlist",
+    ]
+  }
+}

@@ -38,6 +38,7 @@ class ChipSelector {
       const AnchoredMessageConfig& config) = 0;
   virtual void RequestAnchoredMessageHide(actions::ActionId page_action_id) = 0;
   virtual void OnTabActiveChanged(bool is_tab_active) = 0;
+  virtual void DowngradeQueuedAnchoredMessageRequests() = 0;
 };
 
 // CreateChipSelector returns the appropriate implementation of the
@@ -82,6 +83,7 @@ class DefaultChipSelector : public ChipSelector {
                                   const AnchoredMessageConfig& config) override;
   void RequestAnchoredMessageHide(actions::ActionId page_action_id) override;
   void OnTabActiveChanged(bool is_tab_active) override;
+  void DowngradeQueuedAnchoredMessageRequests() override;
 
  private:
   const base::RepeatingCallback<void(actions::ActionId,
@@ -131,6 +133,7 @@ class PriorityChipSelector : public ChipSelector {
                                   const AnchoredMessageConfig& config) override;
   void RequestAnchoredMessageHide(actions::ActionId page_action_id) override;
   void OnTabActiveChanged(bool is_tab_active) override;
+  void DowngradeQueuedAnchoredMessageRequests() override;
 
  private:
   struct PendingAnchoredMessage;

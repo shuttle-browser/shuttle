@@ -28,9 +28,21 @@ source_set("internal") {
   ]
 
   if (is_android) {
+    # On Android, this target shouldn't be used by anything outside this
+    # directory, except //c/b/ui, which is the C++ "glue" that links the
+    # implementation into libchrome.so.
+    #
+    # Browser window features should depend on the public targets in
+    # //c/b/ui/browser_window.
+    visibility = [
+      ":*",
+      "//chrome/browser/ui",
+    ]
     sources += [
       "android/android_base_window.cc",
+      "android/android_base_window.h",
       "android/android_browser_window.cc",
+      "android/android_browser_window.h",
       "android/android_browser_window_enumerator.cc",
       "android/android_browser_window_enumerator.h",
       "android/browser_window_interface_iterator_android.cc",
@@ -66,8 +78,11 @@ source_set("internal") {
       "//chrome/browser/devtools",
       "//chrome/browser/prefs",
       "//chrome/browser/ui:browser_actions",
+      "//chrome/browser/ui:browser_command_controller",
       "//chrome/browser/ui:browser_content_setting_bubble_model_delegate",
+      "//chrome/browser/ui:browser_header",
       "//chrome/browser/ui:browser_init_state",
+      "//chrome/browser/ui:browser_manager_service",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/animation",
       "//chrome/browser/ui/browser_active_state_manager",
@@ -99,6 +114,7 @@ source_set("internal") {
       "//chrome/browser/ui/views/download",
       "//chrome/browser/ui/views/frame:contents_border_controller",
       "//chrome/browser/ui/views/frame:find_bar_owner_views",
+      "//chrome/browser/ui/views/frame:multi_contents_view",
       "//chrome/browser/ui/views/fullscreen_control",
       "//chrome/browser/ui/views/interaction:impl",
       "//chrome/browser/ui/views/location_bar:impl",
@@ -170,6 +186,8 @@ source_set("internal") {
     deps += [
       "//chrome/browser/ui:browser_location_bar_model_delegate",
       "//chrome/browser/ui:browser_select_file_dialog_controller",
+      "//chrome/browser/ui:browser_window_header",
+      "//chrome/browser/ui/views/frame:browser_view_header",
     ]
   }
 }
@@ -208,7 +226,6 @@ if (is_android) {
     ]
     deps = [
       "//base:base_java",
-      "//base:flagged_apis_java",
       "//base:log_java",
       "//base:tasks_java",
       "//base:time_utils_java",
@@ -232,6 +249,7 @@ if (is_android) {
   }
 
   generate_jni("jni") {
+    visibility = [ ":*" ]
     sources = [
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/AndroidBaseWindow.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/AndroidBrowserWindow.java",
@@ -259,7 +277,6 @@ if (is_android) {
       "//base:base_java_test_support",
       "//base:base_java_test_support_uncommon",
       "//base:base_junit_test_support",
-      "//base:flagged_apis_java",
       "//base:tasks_java",
       "//base:time_utils_java",
       "//build/android:build_java",
@@ -285,8 +302,8 @@ if (is_android) {
     sources = [ "android/java/src/org/chromium/chrome/browser/ui/browser_window/ChromeAndroidTaskIntegrationTest.java" ]
     deps = [
       ":java",
+      "//base:base_java",
       "//base:base_java_test_support",
-      "//base:flagged_apis_java",
       "//base/test:public_transit_java",
       "//chrome/android:chrome_test_java",
       "//chrome/android/javatests:chrome_test_java_helper",
@@ -294,9 +311,11 @@ if (is_android) {
       "//chrome/browser/profiles/android:java",
       "//chrome/browser/tabmodel:java",
       "//chrome/browser/ui/browser_window/public/android:java",
+      "//chrome/browser/util:java",
       "//chrome/test/android:chrome_java_integration_test_support",
       "//chrome/test/android:chrome_java_test_support_common",
       "//chrome/test/android:chrome_java_transit",
+      "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_test_runner_java",
       "//third_party/hamcrest:hamcrest_core_java",
       "//third_party/hamcrest:hamcrest_library_java",
@@ -317,6 +336,7 @@ if (is_android) {
       "android/create_browser_window_android_browsertest.cc",
     ]
     deps = [
+      ":internal",
       "//base",
       "//chrome/browser",
       "//chrome/browser/flags:flags_android",

@@ -114,6 +114,8 @@ source_set("impl") {
   } else {
     sources += [ "tab_matcher_desktop.cc" ]
     deps += [
+      "//chrome/browser/ui:browser_command_controller",
+      "//chrome/browser/ui:browser_commands",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tabs:tab_strip",
     ]

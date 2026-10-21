@@ -180,6 +180,11 @@ class CableLinkingEventHandler : public ProfileObserver {
   raw_ptr<Profile> profile_;
 };
 
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+constexpr char kHybridPasskeyEngagementHistogram[] =
+    "Signin.HybridPasskey.InlineQrEngagement";
+#endif
+
 }  // namespace
 
 // static
@@ -211,7 +216,7 @@ void ChromeAuthenticatorRequestDelegate::RegisterProfilePrefs(
           // is stored in preferences, which aren't available at this time while
           // we're still registering them. Thus we assume that they are not.
           /*is_active_profile_authenticator_user=*/false,
-          IsICloudDriveEnabled(),
+          IsICloudKeychainConfiguredForPasskeys(),
           /*request_is_for_google_com=*/false, /*preference=*/std::nullopt));
 #endif
 }
@@ -343,6 +348,12 @@ void ChromeAuthenticatorRequestDelegate::OnTransactionSuccessful(
   if (request_source != RequestSource::kWebAuthentication) {
     return;
   }
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  MaybeRecordHybridPasskeyOutcome(
+      authenticator_type == device::AuthenticatorType::kPhone
+          ? HybridPasskeyOutcome::kSuccess
+          : HybridPasskeyOutcome::kOtherAuthenticatorUsed);
+#endif
 #if BUILDFLAG(IS_MAC)
   if (authenticator_type == device::AuthenticatorType::kTouchID) {
     base::Time::Exploded exploded;
@@ -364,6 +375,26 @@ void ChromeAuthenticatorRequestDelegate::OnTransactionSuccessful(
     webauthn::user_actions::RecordWindowsHelloSuccess();
   }
 #endif  // BUILDFLAG(IS_MAC)
+}
+
+void ChromeAuthenticatorRequestDelegate::OnTransactionFailed(
+    std::optional<device::AuthenticatorType> authenticator_type,
+    InterestingFailureReason reason) {
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  // Other authenticators keep running after a hybrid event is received. A
+  // failure from one of them (e.g. a security key tapped after scanning the QR
+  // code) ends the request, so it is recorded as `kOtherAuthenticatorUsed`
+  // rather than mapped from `reason`. Failures from the phone, or not
+  // attributable to any authenticator (e.g. a timeout), are mapped from
+  // `reason`.
+  if (!authenticator_type ||
+      *authenticator_type == device::AuthenticatorType::kPhone) {
+    MaybeRecordHybridPasskeyOutcome(reason);
+  } else {
+    MaybeRecordHybridPasskeyOutcome(
+        HybridPasskeyOutcome::kOtherAuthenticatorUsed);
+  }
+#endif
 }
 
 void ChromeAuthenticatorRequestDelegate::RegisterActionCallbacks(
@@ -614,6 +645,13 @@ void ChromeAuthenticatorRequestDelegate::OnRetryUserVerification(int attempts) {
 
 void ChromeAuthenticatorRequestDelegate::OnStartOver() {
   DCHECK(start_over_callback_);
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  // If the request is restarted within the same delegate, record the
+  // outcome for the prior attempt before resetting for the new attempt.
+  MaybeRecordHybridPasskeyOutcome(
+      HybridPasskeyTerminationReason::kUserCancelled);
+  MaybeRecordHybridPasskeyEngagement();
+#endif
   dialog_model_->generation++;
   if (g_observer) {
     g_observer->PreStartOver();
@@ -627,6 +665,10 @@ void ChromeAuthenticatorRequestDelegate::OnModelDestroyed(
 }
 
 void ChromeAuthenticatorRequestDelegate::OnCancelRequest() {
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  MaybeRecordHybridPasskeyOutcome(
+      HybridPasskeyTerminationReason::kUserCancelled);
+#endif
   // |cancel_callback_| must be invoked at most once as invocation of
   // |cancel_callback_| will destroy |this|.
   DCHECK(cancel_callback_);
@@ -734,6 +776,9 @@ void ChromeAuthenticatorRequestDelegate::ShowUI(TransportAvailabilityInfo tai) {
 
 void ChromeAuthenticatorRequestDelegate::OnCableEvent(
     device::cablev2::Event event) {
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  SetHybridPasskeyStageFromCableEvent(event);
+#endif
   if (event == device::cablev2::Event::kReady) {
     cable_device_ready_ = true;
   }
@@ -846,7 +891,7 @@ bool ChromeAuthenticatorRequestDelegate::IsActiveProfileAuthenticatorUser(
 bool ChromeAuthenticatorRequestDelegate::ShouldCreateInICloudKeychain(
     RequestSource request_source,
     bool is_active_profile_authenticator_user,
-    bool has_icloud_drive_enabled,
+    bool is_icloud_keychain_configured,
     bool request_is_for_google_com,
     std::optional<bool> preference) {
   // Secure Payment Confirmation and credit-card autofill continue to use
@@ -857,26 +902,15 @@ bool ChromeAuthenticatorRequestDelegate::ShouldCreateInICloudKeychain(
   if (preference.has_value()) {
     return *preference;
   }
-  const base::Feature* feature;
-  if (request_is_for_google_com) {
-    feature = &device::kWebAuthnICloudKeychainForGoogle;
-  } else {
-    if (is_active_profile_authenticator_user) {
-      if (has_icloud_drive_enabled) {
-        feature = &device::kWebAuthnICloudKeychainForActiveWithDrive;
-      } else {
-        feature = &device::kWebAuthnICloudKeychainForActiveWithoutDrive;
-      }
-    } else {
-      if (has_icloud_drive_enabled) {
-        feature = &device::kWebAuthnICloudKeychainForInactiveWithDrive;
-      } else {
-        feature = &device::kWebAuthnICloudKeychainForInactiveWithoutDrive;
-      }
-    }
+  // Requests for google.com and users with iCloud Keychain configured have
+  // defaulted to iCloud Keychain since M118.
+  if (request_is_for_google_com || is_icloud_keychain_configured) {
+    return true;
   }
-
-  return base::FeatureList::IsEnabled(*feature);
+  return base::FeatureList::IsEnabled(
+      is_active_profile_authenticator_user
+          ? device::kWebAuthnICloudKeychainForActiveWithoutDrive
+          : device::kWebAuthnICloudKeychainForInactiveWithoutDrive);
 }
 
 void ChromeAuthenticatorRequestDelegate::ConfigureNSWindow(
@@ -909,16 +943,18 @@ void ChromeAuthenticatorRequestDelegate::ConfigureICloudKeychain(
     RequestSource request_source,
     const std::string& rp_id) {
   const PrefService* prefs = profile()->GetPrefs();
-  const bool is_icloud_drive_enabled = IsICloudDriveEnabled();
+  const bool is_icloud_keychain_configured =
+      IsICloudKeychainConfiguredForPasskeys();
   const bool is_active_profile_authenticator_user =
       IsActiveProfileAuthenticatorUser(prefs);
   dialog_controller_->set_allow_icloud_keychain(
       request_source == RequestSource::kWebAuthentication);
-  dialog_controller_->set_has_icloud_drive_enabled(is_icloud_drive_enabled);
+  dialog_controller_->set_is_icloud_keychain_configured(
+      is_icloud_keychain_configured);
   dialog_controller_->set_should_create_in_icloud_keychain(
       ShouldCreateInICloudKeychain(
           request_source, is_active_profile_authenticator_user,
-          is_icloud_drive_enabled, rp_id == "google.com",
+          is_icloud_keychain_configured, rp_id == "google.com",
           GetICloudKeychainPref(prefs)));
 }
 
@@ -938,3 +974,109 @@ void ChromeAuthenticatorRequestDelegate::UpdateModelForTransportAvailability(
   dialog_model_->is_off_the_record = GetBrowserContext()->IsOffTheRecord();
   dialog_model_->platform_has_biometrics = tai.platform_has_biometrics;
 }
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+void ChromeAuthenticatorRequestDelegate::SetHybridPasskeyStageFromCableEvent(
+    device::cablev2::Event event) {
+  switch (event) {
+    case device::cablev2::Event::kBLEAdvertReceived:
+      hybrid_passkey_stage_ = HybridPasskeySessionStage::kBLEAdvertReceived;
+      break;
+    case device::cablev2::Event::kPhoneConnected:
+      hybrid_passkey_stage_ = HybridPasskeySessionStage::kPhoneConnected;
+      break;
+    case device::cablev2::Event::kReady:
+      hybrid_passkey_stage_ = HybridPasskeySessionStage::kPhoneReady;
+      break;
+  }
+  // Tracked separately because recording an outcome resets
+  // `hybrid_passkey_stage_`.
+  hybrid_passkey_scanned_ = true;
+}
+
+void ChromeAuthenticatorRequestDelegate::MaybeRecordHybridPasskeyOutcome(
+    HybridPasskeyTerminationReason termination_reason) {
+  if (!hybrid_passkey_stage_.has_value()) {
+    return;
+  }
+  const bool is_user_cancel =
+      termination_reason == HybridPasskeyTerminationReason::kUserCancelled;
+  HybridPasskeyOutcome outcome;
+  switch (*hybrid_passkey_stage_) {
+    case HybridPasskeySessionStage::kPhoneReady:
+      outcome = is_user_cancel
+                    ? HybridPasskeyOutcome::kCancelledWhileWaitingForPhone
+                    : HybridPasskeyOutcome::kFailedWhileWaitingForPhone;
+      break;
+    case HybridPasskeySessionStage::kPhoneConnected:
+      outcome = is_user_cancel
+                    ? HybridPasskeyOutcome::kCancelledAfterPhoneConnected
+                    : HybridPasskeyOutcome::kFailedAfterPhoneConnected;
+      break;
+    case HybridPasskeySessionStage::kBLEAdvertReceived:
+      outcome = is_user_cancel
+                    ? HybridPasskeyOutcome::kCancelledAfterBleAdvertReceived
+                    : HybridPasskeyOutcome::kFailedAfterBleAdvertReceived;
+      break;
+  }
+  MaybeRecordHybridPasskeyOutcome(outcome);
+}
+
+void ChromeAuthenticatorRequestDelegate::MaybeRecordHybridPasskeyOutcome(
+    InterestingFailureReason reason) {
+  if (!hybrid_passkey_stage_.has_value()) {
+    return;
+  }
+  switch (reason) {
+    case InterestingFailureReason::kKeyNotRegistered:
+    case InterestingFailureReason::kNoPasskeys:
+    case InterestingFailureReason::kUserConsentDenied:
+      MaybeRecordHybridPasskeyOutcome(
+          HybridPasskeyOutcome::kCancelledOrNoPasskeysOnPhone);
+      return;
+    case InterestingFailureReason::kHybridTransportError:
+      MaybeRecordHybridPasskeyOutcome(
+          HybridPasskeyOutcome::kHybridTransportError);
+      return;
+    case InterestingFailureReason::kTimeout:
+      MaybeRecordHybridPasskeyOutcome(HybridPasskeyOutcome::kFailedTimeout);
+      return;
+    default:
+      break;
+  }
+  MaybeRecordHybridPasskeyOutcome(
+      HybridPasskeyTerminationReason::kOtherFailure);
+}
+
+void ChromeAuthenticatorRequestDelegate::MaybeRecordHybridPasskeyOutcome(
+    HybridPasskeyOutcome outcome) {
+  if (!hybrid_passkey_stage_.has_value()) {
+    return;
+  }
+  hybrid_passkey_stage_.reset();
+  if (!is_chrome_signin_request_) {
+    return;
+  }
+  base::UmaHistogramEnumeration("Signin.HybridPasskey.Outcome", outcome);
+}
+
+void ChromeAuthenticatorRequestDelegate::
+    OnHybridPasskeyQrCodeShownInAutofill() {
+  hybrid_passkey_qr_shown_ = true;
+}
+
+void ChromeAuthenticatorRequestDelegate::MaybeRecordHybridPasskeyEngagement() {
+  // Consume the state so that the sample cannot be emitted twice for the same
+  // attempt, e.g. by `OnStartOver()` and then by the destructor, and so that a
+  // scan never carries over into the next attempt.
+  const bool qr_shown = std::exchange(hybrid_passkey_qr_shown_, false);
+  const bool scanned = std::exchange(hybrid_passkey_scanned_, false);
+  if (!qr_shown || !is_chrome_signin_request_) {
+    return;
+  }
+  base::UmaHistogramEnumeration(kHybridPasskeyEngagementHistogram,
+                                scanned
+                                    ? HybridPasskeyEngagement::kScanDetected
+                                    : HybridPasskeyEngagement::kNoScanDetected);
+}
+#endif

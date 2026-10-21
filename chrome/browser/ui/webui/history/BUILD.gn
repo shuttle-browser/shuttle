@@ -2,6 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//ui/webui/webui_features.gni")
+
+assert(enable_webui_history)
+
 source_set("history") {
   deps = [ "//chrome/browser/ui/tabs:tab_strip" ]
 
