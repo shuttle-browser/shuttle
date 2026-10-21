@@ -95,9 +95,7 @@ source_set("onc") {
       "//extensions/browser",
       "//net",
     ]
-    allow_circular_includes_from = [
-      "//chrome/browser/ash/policy/core",
-    ]
+    allow_circular_includes_from = [ "//chrome/browser/ash/policy/core" ]
   }
 }
 
@@ -270,10 +268,6 @@ source_set("policy") {
     ]
   }
 
-  if (is_win || is_mac || is_linux || is_chromeos) {
-    public += [ "gemini_enterprise_settings_policy_handler.h" ]
-  }
-
   if (!is_android) {
     public += [
       "device_account_initializer.h",
@@ -327,8 +321,7 @@ source_set("policy") {
   }
 
   if (is_linux || is_win || is_mac) {
-    public += [
-    ]
+    public += []
   }
 
   if (is_linux || is_chromeos) {
@@ -336,8 +329,7 @@ source_set("policy") {
   }
 
   if (is_win || is_linux || is_chromeos) {
-    public += [
-    ]
+    public += []
   }
 
   if (enable_printing) {
@@ -533,10 +525,6 @@ source_set("impl") {
     ]
   }
 
-  if (is_win || is_mac || is_linux || is_chromeos) {
-    sources += [ "gemini_enterprise_settings_policy_handler.cc" ]
-  }
-
   if (!is_android) {
     sources += [
       "device_account_initializer.cc",
@@ -664,8 +652,7 @@ source_set("impl") {
   }
 
   if (is_linux || is_win || is_mac) {
-    sources += [
-    ]
+    sources += []
     deps += [
       "//chrome/browser/browser_switcher",
       "//components/themes:policy",
@@ -677,8 +664,7 @@ source_set("impl") {
   }
 
   if (is_win || is_linux || is_chromeos) {
-    sources += [
-    ]
+    sources += []
   }
 
   if (enable_printing) {
