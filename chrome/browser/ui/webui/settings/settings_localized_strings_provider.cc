@@ -1273,6 +1273,9 @@ void AddSearchStrings(content::WebUIDataSource* html_source, Profile* profile) {
       regional_capabilities->IsInEeaCountry()
           ? IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE
           : IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_NON_EEA);
+
+  html_source->AddLocalizedString(
+      "saveGuestChoiceText", IDS_SEARCH_ENGINE_CHOICE_GUEST_SESSION_CHECKBOX);
 }
 
 void AddSearchEnginesStrings(content::WebUIDataSource* html_source) {
