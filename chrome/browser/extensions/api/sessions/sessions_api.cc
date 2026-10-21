@@ -95,6 +95,7 @@ const char kSessionSyncError[] = "Synced sessions are not available.";
 const char kRestoreInIncognitoError[] =
     "Can not restore sessions in incognito mode.";
 const char kNoLiveTabContextError[] = "Unable to determine live tab context.";
+const char kNoActiveTabError[] = "No active tab.";
 
 #if BUILDFLAG(IS_ANDROID)
 // Must match Java TabWindowManager.WINDOW_INVALID_ID.

@@ -651,7 +651,7 @@ std::u16string GetAccessibilityLabelForSelection(
   std::u16string additional_message;
   // This switch statement should be updated when new selection types are added.
   static_assert(static_cast<int>(OmniboxPopupSelection::LineState::kMaxValue) ==
-                8);
+                7);
   switch (selection.state) {
     case OmniboxPopupSelection::LineState::kNormal: {
       int available_actions_count = 0;
@@ -793,7 +793,7 @@ std::u16string GetAccessibilityLabelForFollowingIphSuggestion(
       // Iff the next selection (the next time the user presses tab) is the
       // remove suggestion button for the IPH row, also append its a11y label.
       auto next_selection = selection.GetNextSelection(
-          input, result, template_url_service, aim_button_visible,
+          input, result, template_url_service,
           OmniboxPopupSelection::Direction::kForward,
           OmniboxPopupSelection::Step::kStateOrLine);
       if (next_selection.line == next_line &&

@@ -906,7 +906,6 @@ void HorizontalTabStripRegionViewNew::UpdateTabStripMargin() {
     tab_strip_view()->ClearProperty(views::kMarginsKey);
   }
 }
-}
 
 BEGIN_METADATA(HorizontalTabStripRegionViewNew)
 END_METADATA
