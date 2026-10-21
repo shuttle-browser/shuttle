@@ -859,4 +859,4 @@ into GlobalFeatures), `chrome/browser/origin_gating`, ephemeral tab groups, the 
 Gemini Enterprise settings policy handler, the app-menu notification section, the kWebAuthFlow infobar-internals
 entry; unused upstream dirs `chrome/browser/ttc`, `chrome/browser/selection`, `components/skills`.
 
-Verified so far: Mac `gn gen` green, `check-ninja-inputs` 0 missing. Builds and smokes: pending.
+Verified (2026-10-21): macOS arm64 release build + `smoke-all --with network,automation` 13/13 PASS (DevTools theming identical to 155); Linux x64 release build + package + headless `smoke-all` (incl. sandbox) PASS. Fixes after the first builds: see the `156 merge:` commits (dropped includes, `Register*Prefs`, `#endif`s, removed-feature uses, `saveGuestChoiceText`).
