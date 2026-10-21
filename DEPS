@@ -337,13 +337,13 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling Skia
   # and whatever else without interference from each other.
-  'skia_revision': '95ee33d7ec7791ab9c071675710a14fe6408ae4f',
+  'skia_revision': '886e42fda11610a56dd1b22e8697e27f9d1e34f2',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling V8
   # and whatever else without interference from each other.
   # Shuttle: github.com/shuttle-browser/v8 = upstream V8 snapshot + Shuttle's
-  # v8.h patch (no v8-version.h fanout into Blink). Upstream V8 15.6.75.16.
-  'v8_revision': '40051d97ce014f51d35f6b9e19b83932ca8adf11',
+  # v8.h patch (no v8-version.h fanout into Blink). Upstream V8 15.6.75.19.
+  'v8_revision': '94cea9587376c5f11ad0becf025fa25d773d5aa3',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling ANGLE
   # and whatever else without interference from each other.
@@ -355,7 +355,7 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling PDFium
   # and whatever else without interference from each other.
-  'pdfium_revision': 'bdbf2370351cc700ee409d8626ee062b5eab0038',
+  'pdfium_revision': '2f22dfe030ded6a7666aeea4899d400bd2e338a4',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling BoringSSL
   # and whatever else without interference from each other.
@@ -419,7 +419,7 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling devtools-frontend
   # and whatever else without interference from each other.
-  'devtools_frontend_revision': '7faa7f9641216eeed0f5e2edb0cb4f0880f0b651',
+  'devtools_frontend_revision': 'bf69d041b0ad1f74730204a73bff29f3ef1d4ead',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling libprotobuf-mutator
   # and whatever else without interference from each other.
@@ -443,7 +443,7 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling feed
   # and whatever else without interference from each other.
-  'dawn_revision': '0a2c7df818e285d6db0f085135139cda04cee8bb',
+  'dawn_revision': '1da41e55bb915dd03f61028fad64a99ee1786d48',
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling feed
   # and whatever else without interference from each other.
@@ -1766,7 +1766,7 @@ deps = {
 
   'src/clank': {
     'url': Var('chrome_git') + '/clank/internal/apps.git' + '@' +
-    '8613856ddd0ad338abd921a230a7958788053eeb',
+    '36d38dc0e68bc9ba70a586872f192e07457dc076',
     'condition': 'checkout_android and checkout_src_internal',
   },
 
@@ -3289,7 +3289,7 @@ deps = {
     Var('chromium_git') + '/webpagereplay.git' + '@' + Var('webpagereplay_revision'),
 
   'src/third_party/webrtc':
-    Var('webrtc_git') + '/src.git' + '@' + '3987dfb7b952b5c86cb7d93370d48416a81d6397',
+    Var('webrtc_git') + '/src.git' + '@' + 'ce13eaa8e5750b09c46b088a35d74bdadbac25dc',
 
   # Wuffs' canonical repository is at github.com/google/wuffs, but we use
   # Skia's mirror of Wuffs, the same as in upstream Skia's DEPS file.
@@ -3799,7 +3799,7 @@ deps = {
   },
 
   'src/chrome/services/speech/internal': {
-      'url': Var('chrome_git') + '/chromeos/speech.git' + '@' + 'f91ccbafcc61e509b1f4727ed05cb03b952531a9',
+      'url': Var('chrome_git') + '/chromeos/speech.git' + '@' + '5517dd8896bf2d66fc8e98986dbc314913fa6574',
       'condition': 'checkout_chromeos and checkout_src_internal',
    },
 
