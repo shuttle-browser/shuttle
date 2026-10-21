@@ -521,7 +521,6 @@ source_set("impl") {
       "util/data_protection_bridge.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/enterprise/util:jni_headers",
       "//chrome/browser/ui/android/tab_model",
       "//components/enterprise/browser/reporting/android:jni_headers",

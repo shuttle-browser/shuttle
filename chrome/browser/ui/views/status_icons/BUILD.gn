@@ -62,7 +62,6 @@ source_set("status_icons") {
       "//ui/gfx",
     ]
     deps += [
-      "//ash",
       "//ash/constants",
       "//base",
     ]

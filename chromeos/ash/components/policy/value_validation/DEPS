@@ -1,5 +1,0 @@
-include_rules = [
-  "+chromeos/components/onc",
-  "+components/onc",
-  "+components/policy",
-]

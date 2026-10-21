@@ -388,7 +388,6 @@ target(link_target_type, "renderer") {
 
   if (is_chromeos) {
     deps += [
-      "//chromeos:chromeos_export",
       "//chromeos/system",
     ]
   }

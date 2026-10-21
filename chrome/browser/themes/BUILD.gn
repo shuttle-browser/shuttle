@@ -71,18 +71,13 @@ source_set("themes") {
   if (enable_extensions) {
     public += [
       "browser_theme_pack.h",
-      "theme_local_data_batch_uploader.h",
-      "theme_syncable_service.h",
     ]
     sources += [
       "browser_theme_pack.cc",
-      "theme_local_data_batch_uploader.cc",
-      "theme_syncable_service.cc",
     ]
     public_deps += [ "//components/sync/model" ]
     deps += [
       "//components/crx_file",
-      "//components/sync/protocol",
     ]
   }
   if (is_win) {

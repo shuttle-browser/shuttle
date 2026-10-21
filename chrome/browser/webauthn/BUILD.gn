@@ -89,7 +89,6 @@ source_set("impl") {
       "android/credential_sorter_android.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/gcm",
       "//chrome/browser/net",
       "//chrome/browser/webauthn/android:jni_headers",
@@ -151,7 +150,6 @@ source_set("impl") {
 
   if (is_chromeos) {
     deps += [
-      "//ash",
       "//chromeos/components/webauthn",
     ]
   }

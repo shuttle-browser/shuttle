@@ -112,4 +112,3 @@ source_set("webauthn") {
   }
 }
 
-    "//chrome/browser/ui:browser_window_header",

@@ -55,7 +55,6 @@ source_set("impl") {
 
   if (is_android) {
     sources += [ "about_this_site_controller_android.cc" ]
-    deps += [ "//chrome/android:jni_headers" ]
   } else {
     deps += [ "//components/navigation_interception" ]
   }

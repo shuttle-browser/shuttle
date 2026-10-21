@@ -65,13 +65,11 @@ if (use_blink && !(is_ios && target_platform == "iphoneos")) {
 
     public_deps = [
       ":shared",
-      "//ios/web/public",
       "//ios/web/public/session/proto",
     ]
 
     deps = [
       "//base",
-      "//ios/web/common",
       "//ios/web/public/session",
       "//ios/web/public/session/proto:proto_util",
     ]

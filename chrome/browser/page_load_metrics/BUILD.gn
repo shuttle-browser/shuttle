@@ -177,7 +177,6 @@ source_set("impl") {
 
   if (is_chromeos) {
     sources += [ "observers/ash_session_restore_page_load_metrics_observer.cc" ]
-    deps += [ "//ash" ]
   }
 
   if (enable_extensions_core) {

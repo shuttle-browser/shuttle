@@ -46,7 +46,6 @@ source_set("impl") {
       "//chrome/browser/ash/borealis",
       "//chrome/browser/ash/crostini",
       "//chrome/browser/ash/customization",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/demo_mode",
       "//chromeos/ash/components/system",
       "//components/component_updater/ash",
@@ -62,7 +61,6 @@ if (is_chromeos) {
     deps = [
       ":about",
       "//base",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/demo_mode",
       "//chrome/browser/ui/ash/login:test_support",
       "//chrome/browser/ui/webui/ash/login",

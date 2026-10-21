@@ -171,7 +171,6 @@ source_set("impl") {
       ":extension_parent_approval_jni_headers",
       ":supervised_user_service_platform_delegate_jni_headers",
       ":website_parent_approval_jni_headers",
-      "//chrome/android:chrome_jni_headers",
       "//components/favicon/core",
       "//components/supervised_user/core/browser/android",
     ]
@@ -302,9 +301,7 @@ if (is_android) {
       "//build/android:build_java",
       "//chrome/browser/profiles/android:java",
       "//chrome/browser/signin/services/android:java",
-      "//chrome/browser/ui/android/strings:ui_strings_grd",
       "//components/browser_ui/bottomsheet/android:java",
-      "//components/browser_ui/widget/android:java",
       "//components/signin/public/android:java",
       "//components/url_formatter/android:url_formatter_java",
       "//google_apis/gaia/android:java",
@@ -349,7 +346,6 @@ if (is_android) {
       "//build/android:build_java",
       "//chrome/browser/profiles/android:java",
       "//chrome/browser/signin/services/android:java",
-      "//chrome/browser/ui/android/strings:ui_strings_grd",
       "//components/signin/public/android:java",
       "//third_party/androidx:androidx_appcompat_appcompat_java",
       "//third_party/jni_zero:jni_zero_java",
@@ -368,7 +364,6 @@ if (is_android) {
   android_library("supervised_user_service_platform_delegate_java") {
     deps = [
       "//base:base_java",
-      "//chrome/browser/tabmodel:java",
       "//third_party/jni_zero:jni_zero_java",
     ]
 
@@ -415,7 +410,6 @@ if (is_android) {
     deps = [
       ":test_support_jni_headers",
       "//build/android:build_java",
-      "//chrome/android:chrome_java",
       "//chrome/browser/profiles/android:java",
       "//components/browser_ui/bottomsheet/android/test:java",
       "//content/public/test/android:content_java_test_support",
@@ -440,7 +434,6 @@ if (is_android) {
       "//base:base_java",
       "//base:base_java_test_support",
       "//base/test:public_transit_java",
-      "//chrome/android:chrome_java",
       "//chrome/browser/flags:java",
       "//chrome/browser/profiles/android:java",
       "//chrome/browser/signin/services/android:java",
@@ -449,13 +442,9 @@ if (is_android) {
       "//chrome/browser/supervised_user:parent_auth_delegate_provider_java",
       "//chrome/browser/supervised_user:supervised_user_metrics_java",
       "//chrome/browser/supervised_user:website_parent_approval_java",
-      "//chrome/browser/tabmodel:java",
       "//chrome/browser/ui/android/appmenu:java",
       "//chrome/browser/ui/android/appmenu/test:test_support_java",
       "//chrome/browser/ui/android/multiwindow:java",
-      "//chrome/test/android:chrome_java_integration_test_support",
-      "//chrome/test/android:chrome_java_transit",
-      "//chrome/test/android:pagecontroller_utils_java",
       "//components/browser_ui/bottomsheet/android:java",
       "//components/browser_ui/bottomsheet/android:manager_java",
       "//components/browser_ui/bottomsheet/android/test:java",
@@ -488,7 +477,6 @@ if (is_android) {
       "//base:base_java",
       "//base:base_java_test_support",
       "//base:base_junit_test_support",
-      "//chrome/android:chrome_java",
       "//third_party/android_deps:robolectric_all_java",
       "//third_party/junit",
       "//url:gurl_java",

@@ -613,7 +613,6 @@ source_set("extensions") {
       "system_display/display_info_provider_android.h",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/ui/android/tab_model",
     ]
 
@@ -629,7 +628,6 @@ source_set("extensions") {
       # pack_extension_job.cc, developer_private_functions.cc and
       # extension_context_menu_model.cc include headers from android extension
       # bridges under IS_ANDROID.
-      deps += [ "//chrome/browser/ui/android/extensions:public" ]
     }
   } else {
     sources += [
@@ -1154,7 +1152,6 @@ source_set("extensions") {
     ]
 
     deps += [
-      "//ash",
       "//ash/constants",
       "//ash/keyboard/ui:resources_grit_grit",
       "//ash/public/cpp",
@@ -1198,7 +1195,6 @@ source_set("extensions") {
       "//chrome/browser/ash/guest_os",
       "//chrome/browser/ash/guest_os/public",
       "//chrome/browser/ash/input_method",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/app_mode",
       "//chrome/browser/ash/login/demo_mode",
       "//chrome/browser/ash/login/quick_unlock",
@@ -1363,7 +1359,6 @@ source_set("extensions") {
       "//chrome/browser/ash/file_manager",
       "//chrome/browser/ash/file_system_provider",
       "//chrome/browser/ash/input_method",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/app_mode",
       "//chrome/browser/ash/net",
       "//chrome/browser/ash/policy/core",

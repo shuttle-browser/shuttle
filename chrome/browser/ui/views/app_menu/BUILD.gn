@@ -32,7 +32,6 @@ source_set("app_menu") {
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/fuzzy_search",
-    "//chrome/browser/ui/safety_hub",
     "//chrome/browser/ui/tabs:tab_model",
     "//chrome/browser/ui/views",
     "//components/favicon_base",
@@ -89,12 +88,10 @@ source_set("impl") {
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/actions",
     "//chrome/browser/ui/actions:actions_headers",
-    "//chrome/browser/ui/bookmarks",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/tabs:tab_group",
     "//chrome/browser/ui/toolbar/chrome_labs",
-    "//chrome/browser/ui/user_education",
     "//chrome/browser/ui/views",
     "//chrome/browser/ui/views/controls",
     "//chrome/browser/ui/views/toolbar",
@@ -141,7 +138,4 @@ source_set("impl") {
 
 if (toolkit_views) {
 
-      "//chrome/browser/ui/fuzzy_search",
-      "//chrome/browser/ui/navigator",
-      "//ui/views:test_support",
 }

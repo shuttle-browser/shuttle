@@ -84,8 +84,6 @@ source_set("searchbox") {
 
 # TODO(b/502297163): Enable tests.
 if (!is_android) {
-      deps += [
-      ]
 }
 
 # interactive_ui_tests as a whole never builds for is_android

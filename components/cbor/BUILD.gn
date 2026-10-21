@@ -56,3 +56,18 @@ source_set("cbor_rust_impl") {
   }
 }
 
+component("cbor") {
+  sources = [
+    "diagnostic_writer.cc",
+    "values.cc",
+  ]
+
+  defines = [ "CBOR_IMPLEMENTATION" ]
+
+  public_deps = [
+    ":buildflags",
+    ":cbor_headers",
+    "//base",
+  ]
+  deps = [ ":cbor_rust_impl" ]
+}

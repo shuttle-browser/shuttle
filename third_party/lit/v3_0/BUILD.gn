@@ -24,7 +24,6 @@ ts_library("build_ts") {
     # dependency to CrOS-only UIs (to reduce coupling between Desktop and CrOS
     # and reduce the maintenance burden for the Desktop WebUI team).
 
-    "//chrome/browser/resources/access_code_cast:build_ts",
     "//chrome/browser/resources/agents:build_ts",
     "//chrome/browser/resources/browser_switch:build_ts",
     "//chrome/browser/resources/certificate_manager:build_ts",

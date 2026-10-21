@@ -197,7 +197,6 @@ source_set("impl") {
 
   if (is_chromeos) {
     deps += [
-      "//ash",
       "//chrome/browser/ash/account_manager",
       "//chrome/browser/ash/app_list",
       "//chrome/browser/ash/app_list/arc",
@@ -225,7 +224,6 @@ source_set("impl") {
       "//chrome/browser/ash/floating_workspace:utils",
       "//chrome/browser/ash/guest_os",
       "//chrome/browser/ash/kerberos",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/demo_mode",
       "//chrome/browser/ash/login/quick_unlock",
       "//chrome/browser/ash/login/reporting",
@@ -283,7 +281,6 @@ source_set("impl") {
       "//chromeos/ash/components/demo_mode",
       "//chromeos/ash/components/local_search_service",
       "//chromeos/ash/components/network",
-      "//chromeos/ash/components/policy",
       "//chromeos/ash/components/quickoffice",
       "//chromeos/ash/components/report",
       "//chromeos/ash/components/scheduler_config",

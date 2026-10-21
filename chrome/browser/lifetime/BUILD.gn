@@ -139,7 +139,6 @@ source_set("impl") {
       "//ui/views",
     ]
     if (is_chromeos) {
-      deps += [ "//ash" ]
     }
   }
 

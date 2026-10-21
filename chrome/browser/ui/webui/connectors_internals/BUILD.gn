@@ -51,4 +51,3 @@ source_set("connectors_internals") {
   }
 }
 
-    "//chrome/browser/enterprise/connectors/device_trust:features",

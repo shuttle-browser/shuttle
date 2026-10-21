@@ -23,18 +23,3 @@ source_set("child_module") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "child_module_manager_unittest.cc" ]
-
-  deps = [
-    ":child_module",
-    "//base",
-    "//base/test:test_support",
-    "//chrome/common:constants",
-    "//chrome/common/child_module",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

@@ -623,7 +623,6 @@ if (is_android) {
     deps = [
       ":java_resources",
       "//chrome/browser/flags:java",
-      "//components/browser_ui/styles/android:java_resources",
       "//components/security_state/core:security_state_enums_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/jni_zero:jni_zero_java",
@@ -651,12 +650,8 @@ if (is_android) {
       ":java_resources",
       "//base:base_java",
       "//build/android:build_java",
-      "//components/browser_ui/settings/android:java",
-      "//components/browser_ui/styles/android:java_resources",
-      "//components/browser_ui/widget/android:java",
       "//components/cached_flags:java",
       "//components/omnibox/common:features_java",
-      "//components/search_engines/android:java",
       "//third_party/android_deps:protobuf_lite_runtime_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_collection_collection_java",
@@ -694,8 +689,6 @@ if (is_android) {
       "//base:base_java",
       "//base:base_java_test_support",
       "//base:base_junit_test_support",
-      "//components/browser_ui/settings/android:java",
-      "//components/browser_ui/styles/android:java_resources",
       "//components/omnibox/common:features_java",
       "//components/security_state/core:security_state_enums_java",
       "//third_party/android_deps:protobuf_lite_runtime_java",
@@ -716,7 +709,6 @@ if (is_android) {
     ]
     deps = [
       "//components/omnibox/browser:browser_java",
-      "//components/search_engines/android:java",
       "//third_party/android_deps:protobuf_lite_runtime_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_collection_collection_java",

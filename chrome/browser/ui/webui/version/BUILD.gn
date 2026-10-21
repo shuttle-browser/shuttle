@@ -47,7 +47,6 @@ source_set("version") {
   }
 
   if (is_android) {
-    deps += [ "//chrome/browser/ui/android" ]
   }
 
   # version_ui.cc includes theme_source.h (under #if BUILDFLAG(IS_ANDROID)); the

@@ -152,7 +152,6 @@ source_set("impl") {
 
     if (is_chromeos) {
       deps += [
-        "//ash",
         "//chrome/browser/ash/boot_times_recorder",
         "//chrome/browser/ash/crostini",
         "//chrome/browser/ash/profiles",

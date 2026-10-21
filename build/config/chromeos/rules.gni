@@ -496,7 +496,7 @@ template("cros_test_wrapper_script_test") {
       executable_args += invoker.args
     }
 
-    data_deps = [ "//chromeos:cros_test_wrapper" ]
+    data_deps = []
     if (defined(invoker.data_deps)) {
       data_deps += invoker.data_deps
     }
@@ -529,7 +529,6 @@ template("tast_test") {
 
   _data_deps = [
     "//:chromiumos_preflight_minimal",  # Builds the browser.
-    "//chromeos:cros_chrome_deploy",  # Adds additional browser run-time deps.
 
     # Tools used to symbolize Chrome crash dumps.
     # TODO(crbug.com/40160552): Remove these if/when all tests pick them up by

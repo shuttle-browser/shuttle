@@ -15,14 +15,3 @@ source_set("child_module") {
   deps = [ "//chrome/common:constants" ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "child_module_helper_unittest.cc" ]
-
-  deps = [
-    ":child_module",
-    "//base",
-    "//chrome/common:constants",
-    "//testing/gtest",
-  ]
-}

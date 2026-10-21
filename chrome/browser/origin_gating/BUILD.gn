@@ -17,18 +17,3 @@ source_set("origin_gating") {
     "//content/public/browser",
   ]
 }
-
-source_set("unit_tests") {
-  testonly = true
-
-  sources = [ "origin_gating_service_factory_unittest.cc" ]
-
-  deps = [
-    ":origin_gating",
-    "//base",
-    "//chrome/test:test_support",
-    "//components/origin_gating/core",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

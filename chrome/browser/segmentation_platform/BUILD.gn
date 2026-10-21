@@ -33,8 +33,6 @@ if (is_android) {
       "//chrome/browser/flags:java",
       "//chrome/browser/profiles/android:java",
       "//chrome/browser/segmentation_platform:factory_java",
-      "//chrome/test/android:chrome_java_integration_test_support",
-      "//chrome/test/android:chrome_java_transit",
       "//components/segmentation_platform/public:public_java",
       "//third_party/androidx:androidx_test_runner_java",
       "//third_party/hamcrest:hamcrest_core_java",
@@ -122,11 +120,9 @@ source_set("impl") {
     deps += [
       ":client_util_jni_headers",
       ":jni_headers",
-      "//chrome/android:jni_headers",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/ui",
       "//chrome/browser/ui/android/tab_model",
-      "//chrome/browser/ui/android/toolbar",
       "//components/segmentation_platform/embedder/home_modules:constants",
     ]
   } else {

@@ -24,18 +24,3 @@ rust_static_library("web_package_rust") {
   }
 }
 
-rust_static_library("web_package_rust_unittests") {
-  testonly = true
-  is_gtest_unittests = true
-  crate_root = "web_package_rust_unittests.rs"
-  sources = [
-    "http_unittest.rs",
-    "parser_unittest.rs",
-    crate_root,
-  ]
-  deps = [
-    ":web_package_rust",
-    "//components/cbor/rust:cbor",
-    "//testing/rust_gtest_interop",
-  ]
-}

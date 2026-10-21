@@ -113,7 +113,6 @@ source_set("toolbar_button") {
     "//chrome/browser/lifetime",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/views",
-    "//components/user_education/common",
     "//ui/base",
     "//ui/base:features",
     "//ui/base/interaction",
@@ -290,11 +289,6 @@ source_set("impl") {
 
 if (!is_android) {
 
-      "//chrome/browser/ui:browser_command_controller",
-      "//chrome/browser/ui:browser_commands",
-      "//chrome/browser/ui:browser_window_header",
-      "//chrome/browser/ui/views/frame:browser_view_header",
-      "//chrome/browser/ui/views/frame:top_container_view",
 }
 
 if (!is_android && !is_chromeos_device) {

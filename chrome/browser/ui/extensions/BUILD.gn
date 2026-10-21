@@ -228,7 +228,6 @@ source_set("impl") {
       "extension_install_ui_android.cc",
     ]
     deps += [
-      "//chrome/browser/ui/android/extensions",
       "//chrome/browser/ui/android/tab_model",
       "//extensions/common",
     ]

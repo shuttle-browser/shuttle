@@ -127,7 +127,6 @@ static_library("search_engines") {
       "android/template_url_service_android.h",
     ]
 
-    deps += [ "//components/search_engines/android:jni_headers" ]
   }
 
   deps += [

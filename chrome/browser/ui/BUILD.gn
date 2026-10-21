@@ -233,7 +233,6 @@ if (!is_android) {
       "//chrome/browser/resources/omnibox_popup:resources_grit",
       "//chrome/browser/search_engines",
       "//chrome/browser/spellchecker",
-      "//chrome/browser/ttc/core",
       "//chrome/browser/ui:accelerator_table",
       "//chrome/browser/ui:browser_action_prefs_listener",
       "//chrome/browser/ui:browser_element_identifiers",
@@ -631,7 +630,6 @@ if (!is_android) {
     if (is_win || is_mac || is_linux) {
       deps += [
         "//chrome/browser/ui/shortcuts",
-        "//chrome/browser/ui/startup/default_browser_prompt",
       ]
     }
   }
@@ -741,7 +739,6 @@ if (!is_android) {
       "//components/find_in_page",
       "//components/infobars/core",
       "//components/language_detection/core",
-      "//components/lens",
       "//components/lens:buildflags",
       "//components/omnibox/browser",
       "//components/page_info/core",
@@ -752,10 +749,7 @@ if (!is_android) {
       "//components/sessions",
       "//components/tab_groups",
       "//components/tabs:public",
-      "//components/translate/core/browser",
-      "//components/user_education/common",
       "//components/web_modal",
-      "//components/webapps/browser",
       "//components/zoom",
       "//content/public/browser",
       "//content/public/common",
@@ -1076,10 +1070,6 @@ source_set("tab_helpers_impl") {
     "//chrome/browser:buildflags",
     "//chrome/browser:chained_back_navigation_tracker",
     "//chrome/browser:chrome_content_browser_client",
-    "//chrome/browser/bookmarks",
-    "//chrome/browser/breadcrumbs",
-    "//chrome/browser/commerce",
-    "//chrome/browser/complex_tasks",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/enterprise",
@@ -1087,7 +1077,6 @@ source_set("tab_helpers_impl") {
     "//chrome/browser/file_system_access",
     "//chrome/browser/history",
     "//chrome/browser/history_clusters",
-    "//chrome/browser/history_embeddings",
     "//chrome/browser/image_fetcher",
     "//chrome/browser/login_detection",
     "//chrome/browser/lookalikes",
@@ -1099,7 +1088,6 @@ source_set("tab_helpers_impl") {
     "//chrome/browser/page_content_annotations:fetcher",
     "//chrome/browser/page_info",
     "//chrome/browser/page_load_metrics",
-    "//chrome/browser/password_manager",
     "//chrome/browser/permissions",
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/predictors",
@@ -1114,16 +1102,10 @@ source_set("tab_helpers_impl") {
     "//chrome/browser/storage_access_api",
     "//chrome/browser/subresource_filter",
     "//chrome/browser/supervised_user",
-    "//chrome/browser/sync",
-    "//chrome/browser/sync_tab_context",
     "//chrome/browser/task_manager",
-    "//chrome/browser/translate",
-    "//chrome/browser/trusted_vault",
-    "//chrome/browser/ui/autofill",
     "//chrome/browser/ui/find_bar",
     "//chrome/browser/ui/javascript_dialogs",
     "//chrome/browser/ui/prefs",
-    "//chrome/browser/ui/safety_hub",
     "//chrome/browser/ui/search_engines",
     "//chrome/browser/ui/tab_contents",
     "//chrome/browser/v8_compile_hints",
@@ -1135,7 +1117,6 @@ source_set("tab_helpers_impl") {
     "//components/blocked_content",
     "//components/captive_portal/core:buildflags",
     "//components/client_hints/browser",
-    "//components/commerce/content/browser",
     "//components/compose:buildflags",
     "//components/content_capture/common",
     "//components/content_settings/browser",
@@ -1156,7 +1137,6 @@ source_set("tab_helpers_impl") {
     "//components/page_content_annotations/content",
     "//components/page_content_annotations/core",
     "//components/page_info/core",
-    "//components/password_manager/core/browser",
     "//components/performance_manager",
     "//components/permissions",
     "//components/permissions:permissions_common",
@@ -1169,7 +1149,6 @@ source_set("tab_helpers_impl") {
     "//components/tabs:public",
     "//components/tracing:tracing_config",
     "//components/ukm/content",
-    "//components/webapps/browser",
     "//components/zoom",
     "//content/public/browser",
     "//content/public/common:buildflags",
@@ -1182,19 +1161,14 @@ source_set("tab_helpers_impl") {
 
   if (is_android) {
     deps += [
-      "//chrome/browser/android",
       "//chrome/browser/banners",
       "//chrome/browser/facilitated_payments",
       "//chrome/browser/plugins",
-      "//chrome/browser/ui/android:context_menu_helper",
       "//components/sensitive_content",
       "//content/public/common",
     ]
   } else {
     deps += [
-      "//chrome/browser/ui/bookmarks",
-      "//chrome/browser/ui/passwords",
-      "//chrome/browser/ui/read_anything",
       "//chrome/browser/ui/search",
       "//components/image_fetcher/core",
       "//components/omnibox/browser",
@@ -1228,7 +1202,6 @@ source_set("tab_helpers_impl") {
       "//extensions/common:mojom",
     ]
     if (!is_android) {
-      deps += [ "//chrome/browser/web_applications" ]
     }
   }
 
@@ -1268,7 +1241,6 @@ if (!is_android) {
       ":browser_window_deleter",
       "//base",
       "//chrome/browser/tab_contents",
-      "//chrome/browser/ui/bookmarks",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/browser_window:create_browser_window",
       "//chrome/browser/ui/navigator",
@@ -1918,7 +1890,6 @@ static_library("ui") {
   if (is_android) {
     deps += [
       ":screen_capture_notification_ui_stub",
-      "//chrome/android:jni_headers",
       "//chrome/browser/ui/android/hats",
       "//chrome/browser/ui/android/hats:impl",
       "//chrome/browser/ui/android/tab_model",
@@ -1942,8 +1913,6 @@ static_library("ui") {
     ]
 
     deps += [
-      "//chrome/browser/ui/android",
-      "//chrome/browser/ui/android:context_menu_helper",
     ]
   } else {
     # !is_android
@@ -2272,7 +2241,6 @@ static_library("ui") {
       "//chrome/browser/ui/webui/searchbox",
     ]
     public_deps += [
-      "//chrome/browser/ui/webui/new_tab_page",
     ]
     allow_circular_includes_from += [
       # search:impl includes headers from //chrome/browser/ui (e.g.
@@ -2311,7 +2279,6 @@ static_library("ui") {
 
     deps += [
       ":browser_commands_chromeos",
-      "//ash",
       "//ash/keyboard/ui",
       "//ash/public/cpp",
       "//ash/style",
@@ -2359,7 +2326,6 @@ static_library("ui") {
       "//chrome/browser/ash/boca/on_task",
       "//chrome/browser/ash/boot_times_recorder",
       "//chrome/browser/ash/borealis",
-      "//chrome/browser/ash/browser_delegate:impl",
       "//chrome/browser/ash/bruschetta",
       "//chrome/browser/ash/cert_provisioning",
       "//chrome/browser/ash/certificate_provider",
@@ -2375,7 +2341,6 @@ static_library("ui") {
       "//chrome/browser/ash/input_method",
       "//chrome/browser/ash/kcer",
       "//chrome/browser/ash/kerberos",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/enrollment",
       "//chrome/browser/ash/login/lock/online_reauth",
       "//chrome/browser/ash/login/quick_unlock",
@@ -2523,7 +2488,6 @@ static_library("ui") {
       "//chrome/browser/ash/app_list",
       "//chrome/browser/ash/arc/session",
       "//chrome/browser/ash/boca/on_task",
-      "//chrome/browser/ash/browser_delegate:impl",
       "//chrome/browser/ash/login/users/avatar",
       "//chrome/browser/ash/notifications",
       "//chrome/browser/ash/sync",
@@ -2901,7 +2865,6 @@ static_library("ui") {
       "//chrome/browser/ui/views:ssl_client_certificate_selector",
       "//chrome/browser/ui/views:status_bubble",
       "//chrome/browser/ui/views:tab_icon_view",
-      "//chrome/browser/ui/views:tab_search_bubble_host",
       "//chrome/browser/ui/views:task_manager_search_bar_view",
       "//chrome/browser/ui/views:task_manager_view",
       "//chrome/browser/ui/views:theme_copying_widget",
@@ -3126,8 +3089,6 @@ static_library("ui") {
       "//chrome/browser/ui/views:idle_bubble",
       "//chrome/browser/ui/views:session_crashed_bubble_view",
 
-      # tab_search_bubble_host.cc includes browser_view.h.
-      "//chrome/browser/ui/views:tab_search_bubble_host",
 
       # TODO(crbug.com/353332589): Remove this circular dependency when the
       # following header gets componentized:
@@ -4271,7 +4232,7 @@ if (is_chromeos) {
     public = [ "browser_commands_chromeos.h" ]
     sources = [ "browser_commands_chromeos.cc" ]
     public_deps = [ "//base" ]
-    deps = [ "//ash" ]
+    deps = []
   }
 
   source_set("platform_keys_certificate_selector_chromeos") {

@@ -18,10 +18,6 @@ source_set("core") {
     "origin_gating_registration.h",
     "origin_gating_service.cc",
     "origin_gating_service.h",
-    "task_policy_config.cc",
-    "task_policy_config.h",
-    "task_policy_config_slot.cc",
-    "task_policy_config_slot.h",
     "types.cc",
     "types.h",
   ]

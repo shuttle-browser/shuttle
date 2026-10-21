@@ -2543,7 +2543,6 @@ source_set("browser") {
       "smart_card/smart_card_service.h",
     ]
     deps += [
-      "//chromeos/components/firewall_hole",
       "//chromeos/services/machine_learning/public/cpp",
       "//chromeos/services/machine_learning/public/mojom",
       "//components/value_store",
@@ -2593,8 +2592,6 @@ source_set("browser") {
     ]
 
     deps += [
-      "//chromecast:chromecast_buildflags",
-      "//chromecast/tracing:system_tracer",
     ]
 
     defines += [ "CAST_TRACING_AGENT=1" ]

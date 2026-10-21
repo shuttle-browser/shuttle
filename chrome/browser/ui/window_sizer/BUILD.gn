@@ -70,8 +70,6 @@ if (is_chromeos) {
     sources = [ "window_sizer_chromeos_uitest.cc" ]
 
     deps = [
-      "//ash",
-      "//ash:test_support",
       "//base",
       "//chrome/browser/ui",
       "//chrome/browser/ui:browser_window_header",

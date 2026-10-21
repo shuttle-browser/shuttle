@@ -1,4 +1,0 @@
-AXWebArea
-++AXRadioGroup
-++++AXRadioButton AXLinkedUIElements=[:3, :4] AXTitle='Huey' AXValue=0
-++++AXRadioButton AXLinkedUIElements=[:3, :4] AXTitle='Dewey' AXValue=0

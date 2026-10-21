@@ -84,7 +84,6 @@ source_set("media") {
       "chromeos_login_and_lock_media_access_handler.h",
       "platform_verification_chromeos.h",
     ]
-    public_deps += [ "//ash" ]
   }
 
   if (!is_android) {
@@ -104,10 +103,6 @@ source_set("media") {
 
   if (is_android) {
     public += [
-      "android/cdm/media_drm_origin_id_manager.h",
-      "android/cdm/media_drm_origin_id_manager_factory.h",
-      "android/cdm/media_drm_storage_factory.h",
-      "android/router/chrome_media_router_client.h",
     ]
     public_deps += [
       "//media",
@@ -250,13 +245,8 @@ source_set("impl") {
 
   if (is_android) {
     sources += [
-      "android/cdm/media_drm_origin_id_manager.cc",
-      "android/cdm/media_drm_origin_id_manager_factory.cc",
-      "android/cdm/media_drm_storage_factory.cc",
-      "android/router/chrome_media_router_client.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/net",
       "//components/cdm/browser",
       "//third_party/widevine/cdm:headers",

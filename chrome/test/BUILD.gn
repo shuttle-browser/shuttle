@@ -74,9 +74,7 @@ if (is_android) {
       ":payment_test_support_jni_headers_java",
       ":test_support_jni_headers_java",
       "//base:base_java",
-      "//chrome/android:chrome_all_java",
       "//chrome/browser/profiles/android:java",
-      "//chrome/browser/tabmodel:java",
       "//chrome/browser/tabwindow:java",
       "//chrome/browser/ui/android/hats/test:test_support_java",
       "//components/messages/android/test:test_support_java",
@@ -215,9 +213,6 @@ if (is_chromeos && is_chromeos_device) {
 
     deps += [
       # Gather tests from other build files:
-      "//chrome/browser/ash:integration_tests",
-      "//chrome/browser/ui/ash:integration_tests",
-      "//chrome/browser/ui/webui/ash:integration_tests",
     ]
 
     data_deps = [
@@ -279,15 +274,11 @@ if (is_android) {
       ":test_support_ui_android",
       "//base",
       "//chrome:chrome_android_core",
-      "//chrome/android:chrome_jni_headers",
-      "//chrome/android:delegate_public_impl_java",
       "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/accessibility/accessibility_prefs:browser_tests",
       "//chrome/browser/background_fetch",
       "//chrome/browser/browsing_data:constants",
       "//chrome/browser/content_settings:content_settings_factory",
-      "//chrome/browser/context_sharing/tab_bottom_sheet/android:browser_tests",
-      "//chrome/browser/context_sharing/tab_bottom_sheet/android:test_support_java",
       "//chrome/browser/engagement",
       "//chrome/browser/engagement:android_browsertests",
       "//chrome/browser/enterprise/data_controls",
@@ -326,7 +317,6 @@ if (is_android) {
       "//chrome/browser/ssl:cert_verifier_test_support",
       "//chrome/browser/supervised_user:android_browser_tests",
       "//chrome/browser/ui:ui_features",
-      "//chrome/browser/ui/android/autofill:browser_tests",
       "//chrome/browser/ui/android/hats:browser_tests",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/browser_window:create_browser_window",
@@ -345,7 +335,6 @@ if (is_android) {
       "//components/back_forward_cache",
       "//components/background_task_scheduler",
       "//components/blocked_content",
-      "//components/browser_ui/widget/android:java",
       "//components/browsing_data/content",
       "//components/browsing_data/content:test_support",
       "//components/browsing_data/core",
@@ -465,7 +454,6 @@ if (is_android) {
     # BrowserWindowInterface.
     if (is_desktop_android) {
       deps += [
-        "//chrome/browser/ui/android:browser_tests",
         "//chrome/browser/ui/browser_window:browser_tests",
         "//chrome/browser/ui/browser_window/internal:android_browsertests",
         "//chrome/browser/ui/browser_window/test:android_browser_test_support",
@@ -638,7 +626,6 @@ if (is_android) {
 
     # These are assets rules so we can just depend on them.
     deps += [
-      "//chrome/android:chrome_apk_pak_assets",
       "//gin:v8_snapshot_assets",
       "//third_party/icu:icu_assets",
     ]
@@ -650,9 +637,6 @@ if (is_android) {
       "//base:base_java",
       "//base:base_java_test_support",
       "//build/android/gtest_apk:native_test_instrumentation_test_runner_java",
-      "//chrome/android:base_module_java",
-      "//chrome/android:chrome_all_java",
-      "//chrome/browser/tabmodel:java",
       "//components/crash/android:java",
       "//components/module_installer/android:module_installer_java",
       "//content/public/test/android:android_test_message_pump_support_java",
@@ -1012,11 +996,7 @@ if (is_android) {
     deps = [
       "//base:base_java",
       "//base:log_java",
-      "//chrome/android:chrome_all_java",
       "//chrome/browser/profiles/android:java",
-      "//chrome/browser/tabmodel:java",
-      "//chrome/test/android:chrome_java_integration_test_support",
-      "//chrome/test/android:live_signin_test_util_java",
       "//components/gcm_driver/instance_id/android:instance_id_driver_test_support_java",
       "//components/signin/public/android:java",
       "//components/signin/public/android:signin_java_test_support",

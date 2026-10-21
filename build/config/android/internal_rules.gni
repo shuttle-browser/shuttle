@@ -85,8 +85,6 @@ java_library_patterns = [
   "*:*_junit_*",
 
   # TODO(agrieve): Rename to glue_java
-  "//android_webview/glue",
-  "//android_webview/glue:glue",
 ]
 
 # These identify all non-leaf targets that have .build_config.json files. This

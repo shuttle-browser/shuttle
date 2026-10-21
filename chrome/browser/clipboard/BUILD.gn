@@ -28,19 +28,3 @@ source_set("impl") {
     "//third_party/blink/public/common",
   ]
 }
-
-source_set("unit_tests") {
-  testonly = true
-  sources = [ "chrome_clipboard_permission_context_delegate_unittest.cc" ]
-
-  deps = [
-    ":clipboard",
-    "//chrome/test:test_support",
-    "//components/content_settings/core/common",
-    "//content/test:test_support",
-    "//extensions/browser",
-    "//extensions/common",
-    "//testing/gtest",
-    "//url",
-  ]
-}

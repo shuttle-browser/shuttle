@@ -321,7 +321,6 @@ source_set("common_sources") {
   }
 
   if (is_win) {
-    deps += [ "//sandbox/win:common" ]
   }
 
   if (is_chromeos) {

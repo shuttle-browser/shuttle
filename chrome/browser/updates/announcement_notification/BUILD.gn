@@ -64,7 +64,6 @@ source_set("impl") {
   if (is_android) {
     sources += [ "announcement_notification_delegate_android.cc" ]
 
-    deps += [ "//chrome/android:chrome_jni_headers" ]
   } else {
     sources += [
       "announcement_notification_delegate.cc",

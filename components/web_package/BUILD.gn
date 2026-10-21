@@ -121,3 +121,19 @@ source_set("mojom_mapped_types_rust_impl") {
   ]
 }
 
+
+source_set("mojom_mapped_types") {
+  visibility = [ "./*" ]
+  sources = [
+    "signed_web_bundles/ecdsa_p256_public_key.cc",
+    "signed_web_bundles/ed25519_public_key.cc",
+    "signed_web_bundles/integrity_block_attributes.cc",
+  ]
+  public_deps = [
+    ":mojom_mapped_types_headers",
+    "//base",
+    "//crypto",
+    "//mojo/public/cpp/bindings",
+  ]
+  deps = [ ":mojom_mapped_types_rust_impl" ]
+}

@@ -50,7 +50,6 @@ if (enable_desktop_android_extensions) {
       ":omnibox",
       "//base",
       "//base/test:test_support",
-      "//chrome/browser/android",
       "//chrome/browser/autocomplete",
       "//chrome/browser/extensions",
       "//chrome/browser/omnibox",

@@ -246,7 +246,6 @@ if (is_android) {
   android_library("internal_java") {
     visibility = [
       ":javatests",
-      "//chrome/android:chrome_all_java",
     ]
     srcjar_deps = [ ":jni_headers" ]
     sources = [

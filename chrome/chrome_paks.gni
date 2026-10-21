@@ -145,11 +145,6 @@ template("chrome_extra_paks") {
       ]
     }
 
-    # side_panel/shared is not NTP-specific; see chrome/browser/resources.
-    if (!is_android || enable_webui_ntp) {
-      sources += [ "$root_gen_dir/chrome/side_panel_shared_resources.pak" ]
-    }
-
     deps = [
       "//base/tracing/protos:chrome_track_event_resources",
       "//chrome/app/theme:chrome_unscaled_resources",
@@ -388,7 +383,6 @@ template("chrome_extra_paks") {
         "//chrome/common/chromeos/extensions:resources",
         "//chromeos/ash/components/emoji:resources",
         "//chromeos/ash/experiences/arc/input_overlay/resources",
-        "//chromeos/ash/experiences/extensions:resources",
         "//chromeos/ash/experiences/guest_os/borealis/motd/resources",
         "//chromeos/ash/resources",
         "//ui/chromeos/styles:cros_styles_resources",

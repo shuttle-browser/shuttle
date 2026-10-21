@@ -148,7 +148,6 @@ source_set("permissions") {
     ]
 
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//components/messages/android",
       "//components/messages/android:feature_flags",
     ]

@@ -5101,8 +5101,6 @@ if (is_android) {
 
   generate_jni("process_launcher_jni") {
     sources = [
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessService.java",
-      "android/java/src/org/chromium/base/process_launcher/ScopedServiceBindingBatch.java",
     ]
   }
 
@@ -5176,26 +5174,6 @@ if (is_android) {
       "//third_party/jni_zero:jni_zero_java",
     ]
     sources = [
-      "android/java/src/org/chromium/base/process_launcher/BindService.java",
-      "android/java/src/org/chromium/base/process_launcher/BindingRequestQueueImpl.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildConnectionAllocator.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessConnection.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessConnectionState.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessConstants.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessLauncher.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessService.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildProcessServiceDelegate.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildServiceConnection.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildServiceConnectionController.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildServiceConnectionDelegate.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildServiceConnectionFactory.java",
-      "android/java/src/org/chromium/base/process_launcher/ChildServiceConnectionImpl.java",
-      "android/java/src/org/chromium/base/process_launcher/LegacyChildServiceConnectionController.java",
-      "android/java/src/org/chromium/base/process_launcher/RebindServiceConnection.java",
-      "android/java/src/org/chromium/base/process_launcher/RebindingChildServiceConnectionController.java",
-      "android/java/src/org/chromium/base/process_launcher/ScopedServiceBindingBatch.java",
-      "android/java/src/org/chromium/base/process_launcher/ScopedServiceBindingBatchDuration.java",
-      "android/java/src/org/chromium/base/process_launcher/ScopedServiceBindingBatchImpl.java",
     ]
   }
 
@@ -5466,8 +5444,6 @@ if (is_android) {
 
   generate_jni("memory_coordinator_jni") {
     sources = [
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerRegistration.java",
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerTraits.java",
     ]
   }
 
@@ -5477,11 +5453,6 @@ if (is_android) {
       ":memory_coordinator_jni",
     ]
     sources = [
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumer.java",
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerRegistration.java",
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerTraits.java",
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryLimit.java",
-      "android/java/src/org/chromium/base/memory_coordinator/PassiveMemoryConsumer.java",
     ]
     deps = [
       ":lifetime_java",
@@ -6033,10 +6004,6 @@ if (is_android) {
   android_aidl("process_launcher_aidl") {
     import_include = [ "android/java/src" ]
     sources = [
-      "android/java/src/org/chromium/base/process_launcher/IChildProcessArgs.aidl",
-      "android/java/src/org/chromium/base/process_launcher/IChildProcessService.aidl",
-      "android/java/src/org/chromium/base/process_launcher/IFileDescriptorInfo.aidl",
-      "android/java/src/org/chromium/base/process_launcher/IParentProcess.aidl",
     ]
     cpp_root_names = [
       "ChildProcessArgs",
@@ -6120,7 +6087,6 @@ if (is_android) {
   android_library("base_java_url_utils_for_test") {
     testonly = true
     sources = [
-      "test/android/javatests/src/org/chromium/base/test/util/UrlUtils.java",
     ]
 
     deps = [
@@ -6186,66 +6152,10 @@ if (is_android) {
       "test/android/javatests/src/org/chromium/base/test/params/ParameterizedRunnerDelegateCommon.java",
       "test/android/javatests/src/org/chromium/base/test/params/ParameterizedRunnerDelegateFactory.java",
       "test/android/javatests/src/org/chromium/base/test/params/SkipCommandLineParameterization.java",
-      "test/android/javatests/src/org/chromium/base/test/util/AdvancedMockContext.java",
-      "test/android/javatests/src/org/chromium/base/test/util/AndroidSdkLevelSkipCheck.java",
-      "test/android/javatests/src/org/chromium/base/test/util/AnnotationProcessingUtils.java",
-      "test/android/javatests/src/org/chromium/base/test/util/AnnotationRule.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ApplicationContextWrapper.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ApplicationTestUtils.java",
-      "test/android/javatests/src/org/chromium/base/test/util/BaseRestrictions.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Batch.java",
-      "test/android/javatests/src/org/chromium/base/test/util/CallbackHelper.java",
-      "test/android/javatests/src/org/chromium/base/test/util/CommandLineFlags.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Criteria.java",
-      "test/android/javatests/src/org/chromium/base/test/util/CriteriaHelper.java",
-      "test/android/javatests/src/org/chromium/base/test/util/CriteriaNotSatisfiedException.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DestroyableHolder.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DisableIf.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DisableIfSkipCheck.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DisableLeakChecks.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DisabledTest.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DoNotBatch.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DoNotRevive.java",
-      "test/android/javatests/src/org/chromium/base/test/util/DumpThreadsOnFailureRule.java",
-      "test/android/javatests/src/org/chromium/base/test/util/EnableLeakChecks.java",
-      "test/android/javatests/src/org/chromium/base/test/util/EnormousTest.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Feature.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Features.java",
-      "test/android/javatests/src/org/chromium/base/test/util/FieldTrials.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ForgivingClickAction.java",
-      "test/android/javatests/src/org/chromium/base/test/util/HistogramWatcher.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ImportantFormFactors.java",
-      "test/android/javatests/src/org/chromium/base/test/util/InMemorySharedPreferences.java",
-      "test/android/javatests/src/org/chromium/base/test/util/InMemorySharedPreferencesContext.java",
-      "test/android/javatests/src/org/chromium/base/test/util/IntegrationTest.java",
-      "test/android/javatests/src/org/chromium/base/test/util/KeyUtils.java",
-      "test/android/javatests/src/org/chromium/base/test/util/LooperUtils.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Manual.java",
-      "test/android/javatests/src/org/chromium/base/test/util/MaxAndroidSdkLevel.java",
-      "test/android/javatests/src/org/chromium/base/test/util/MinAndroidSdkLevel.java",
-      "test/android/javatests/src/org/chromium/base/test/util/MockitoResetter.java",
-      "test/android/javatests/src/org/chromium/base/test/util/PayloadCallbackHelper.java",
-      "test/android/javatests/src/org/chromium/base/test/util/RawFailureHandler.java",
-      "test/android/javatests/src/org/chromium/base/test/util/RequiresRestart.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ResetSharedPrefsRule.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Restriction.java",
-      "test/android/javatests/src/org/chromium/base/test/util/RestrictionSkipCheck.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ScalableTimeout.java",
-      "test/android/javatests/src/org/chromium/base/test/util/SkipCheck.java",
-      "test/android/javatests/src/org/chromium/base/test/util/TestAnimations.java",
-      "test/android/javatests/src/org/chromium/base/test/util/TestFileUtil.java",
-      "test/android/javatests/src/org/chromium/base/test/util/TestLocale.java",
-      "test/android/javatests/src/org/chromium/base/test/util/TestThreadUtils.java",
-      "test/android/javatests/src/org/chromium/base/test/util/TimeoutTimer.java",
-      "test/android/javatests/src/org/chromium/base/test/util/UserActionTester.java",
-      "test/android/javatests/src/org/chromium/base/test/util/VeryLongPressAction.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ViewActionOnDescendant.java",
-      "test/android/javatests/src/org/chromium/base/test/util/ViewPrinter.java",
     ]
     if (is_cronet_for_aosp_build) {
       sources += [ "//components/cronet/android/platform-only/org/chromium/base/test/util/PackageManagerWrapper.java" ]
     } else {
-      sources += [ "test/android/javatests/src/org/chromium/base/test/util/PackageManagerWrapper.java" ]
     }
     if (!is_cronet_build) {
       sources += [ "test/android/javatests/src/org/chromium/base/test/BaseActivityTestRule.java" ]
@@ -6281,9 +6191,6 @@ if (is_android) {
       "test/android/javatests/src/org/chromium/base/test/SetUpTestRule.java",
       "test/android/javatests/src/org/chromium/base/test/task/SchedulerTestHelpers.java",
       "test/android/javatests/src/org/chromium/base/test/task/ThreadPoolTestHelpers.java",
-      "test/android/javatests/src/org/chromium/base/test/util/CloseableOnMainThread.java",
-      "test/android/javatests/src/org/chromium/base/test/util/InstrumentationUtils.java",
-      "test/android/javatests/src/org/chromium/base/test/util/Matchers.java",
     ]
   }
 
@@ -6377,9 +6284,6 @@ if (is_android) {
       "android/junit/src/org/chromium/base/lifetime/LifetimeAssertUnitTest.java",
       "android/junit/src/org/chromium/base/memory/MemoryPressureMonitorTest.java",
       "android/junit/src/org/chromium/base/memory/MemoryPurgeManagerTest.java",
-      "android/junit/src/org/chromium/base/memory_coordinator/MemoryConsumerRegistrationTest.java",
-      "android/junit/src/org/chromium/base/memory_coordinator/MemoryConsumerTraitsTest.java",
-      "android/junit/src/org/chromium/base/memory_coordinator/MemoryLimitTest.java",
       "android/junit/src/org/chromium/base/metrics/CachingUmaRecorderTest.java",
       "android/junit/src/org/chromium/base/process_launcher/ChildConnectionAllocatorTest.java",
       "android/junit/src/org/chromium/base/process_launcher/ChildProcessConnectionTest.java",

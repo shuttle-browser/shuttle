@@ -227,7 +227,6 @@ source_set("impl") {
 
     deps += [
       ":jni_headers",
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/notifications/chime/android",
       "//chrome/browser/notifications/scheduler/public",
@@ -391,7 +390,6 @@ if (is_android) {
       ":java_resources",
       "//base:base_java",
       "//build/android:build_java",
-      "//chrome/android:base_module_java",
       "//chrome/browser/flags:java",
       "//chrome/browser/lifetime/android:java",
       "//chrome/browser/preferences:java",
@@ -399,9 +397,7 @@ if (is_android) {
       "//components/browser_ui/bottomsheet/android:java",
       "//components/browser_ui/notifications/android:java",
       "//components/browser_ui/notifications/android:utils_java",
-      "//components/browser_ui/settings/android:java",
       "//components/browser_ui/site_settings/android:java",
-      "//components/browser_ui/widget/android:java",
       "//components/url_formatter/android:url_formatter_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_core_core_java",
@@ -458,8 +454,6 @@ if (is_android) {
       "//chrome/browser/flags:java",
       "//chrome/browser/lifetime/android:java",
       "//chrome/browser/preferences:java",
-      "//chrome/browser/ui/android/signin:java_resources",
-      "//chrome/test/android:chrome_java_unit_test_support",
       "//components/browser_ui/bottomsheet/android:java",
       "//components/browser_ui/notifications/android:java",
       "//components/browser_ui/notifications/android:utils_java",
@@ -490,10 +484,8 @@ if (is_android) {
       "//base:base_java_test_support",
       "//chrome/browser/flags:java",
       "//chrome/browser/preferences:java",
-      "//chrome/test/android:chrome_java_integration_test_support",
       "//components/browser_ui/notifications/android:java",
       "//components/browser_ui/util/android:java",
-      "//components/browser_ui/widget/android:java",
       "//content/public/test/android:content_java_test_support",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_test_core_java",
@@ -519,10 +511,8 @@ if (is_android) {
       "//base:base_java_test_support",
       "//chrome/browser/flags:java",
       "//chrome/browser/preferences:java",
-      "//chrome/test/android:chrome_java_integration_test_support",
       "//components/browser_ui/notifications/android:java",
       "//components/browser_ui/util/android:java",
-      "//components/browser_ui/widget/android:java",
       "//content/public/test/android:content_java_test_support",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_test_core_java",
@@ -547,9 +537,6 @@ if (is_android) {
     ]
 
     deps = [
-      "//chrome/browser/ui/android/strings:ui_strings_grd",
-      "//components/browser_ui/styles/android:java_resources",
-      "//components/browser_ui/widget/android:java_resources",
     ]
   }
 }

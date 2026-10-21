@@ -71,7 +71,6 @@ source_set("onc") {
       "//base",
       "//chrome/browser:browser_process",
       "//chrome/browser:browser_process_platform_part",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/session",
       "//chrome/browser/ash/policy/core",
       "//chrome/browser/ash/profiles",
@@ -97,7 +96,6 @@ source_set("onc") {
       "//net",
     ]
     allow_circular_includes_from = [
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/policy/core",
     ]
   }
@@ -529,7 +527,6 @@ source_set("impl") {
     deps += [
       "//chrome/browser/policy/android",
       "//chrome/browser/policy/android:jni_headers",
-      "//chrome/browser/ui/android",
       "//chrome/browser/ui/android/tab_model",
       "//components/enterprise/device_trust",
       "//components/performance_manager",
@@ -538,7 +535,6 @@ source_set("impl") {
 
   if (is_win || is_mac || is_linux || is_chromeos) {
     sources += [ "gemini_enterprise_settings_policy_handler.cc" ]
-    deps += [ "//chrome/browser/glic/gemini_enterprise:url_allowlist" ]
   }
 
   if (!is_android) {
@@ -594,7 +590,6 @@ source_set("impl") {
       "//chrome/browser/ash/bruschetta",
       "//chrome/browser/ash/cert_provisioning",
       "//chrome/browser/ash/crostini",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/users/avatar",
       "//chrome/browser/ash/platform_keys/key_permissions",
       "//chrome/browser/ash/policy/core",

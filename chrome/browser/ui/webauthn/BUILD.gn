@@ -89,5 +89,4 @@ source_set("impl") {
 
 if (!is_android) {
 
-      "//chrome/browser/ui:browser_window_header",
 }

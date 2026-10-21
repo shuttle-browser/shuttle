@@ -161,7 +161,6 @@ component("policy") {
     ]
     deps += [
       ":win_hook_util",
-      "//sandbox/win:sandbox",
     ]
   }
   if (is_fuchsia) {
@@ -251,7 +250,6 @@ source_set("tests") {
     ]
     deps += [
       ":sandbox_test_utils",
-      "//sandbox/win:sandbox",
     ]
     data = [
       "//base/test/data/pe_image/pe_image_test_32.dll",
@@ -270,8 +268,6 @@ source_set("integration_tests") {
       ":sandbox_test_utils",
       "//base",
       "//base/test:test_support",
-      "//sandbox/win:sandbox",
-      "//sandbox/win:test_support",
       "//testing/gtest",
     ]
   }
@@ -289,7 +285,6 @@ source_set("sandbox_test_utils") {
     deps = [
       ":policy",
       "//base/test:test_support",
-      "//sandbox/win:sandbox",
       "//testing/gtest",
     ]
   }

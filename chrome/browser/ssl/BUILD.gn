@@ -156,7 +156,6 @@ source_set("impl") {
       "known_interception_disclosure_message_delegate.cc",
     ]
     deps += [
-      "//chrome/android:chrome_jni_headers",
       "//chrome/browser/ssl/android:jni_headers",
     ]
   }

@@ -105,7 +105,6 @@ source_set("extensions") {
     deps += [
       "//ash/constants",
       "//ash/webui/os_feedback_ui:url_constants",
-      "//chromeos/ash/experiences/extensions/common",
     ]
   }
 }

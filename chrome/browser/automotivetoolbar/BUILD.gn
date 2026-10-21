@@ -14,13 +14,9 @@ android_library("java") {
     "//chrome/browser/back_press/android:java",
     "//chrome/browser/flags:java",
     "//chrome/browser/fullscreen/android:java",
-    "//chrome/browser/tab:java",
     "//components/browser_ui/util/android:java",
-    "//components/browser_ui/widget/android:java",
-    "//components/browser_ui/widget/android:java_resources",
     "//third_party/androidx:androidx_activity_activity_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
     "//third_party/androidx:androidx_appcompat_appcompat_java",
-    "//ui/android:ui_no_recycler_view_java",
   ]
 }

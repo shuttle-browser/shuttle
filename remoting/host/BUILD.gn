@@ -740,7 +740,6 @@ static_library("common") {
       "keyboard_layout_monitor_chromeos.cc",
     ]
     deps += [
-      "//ash",
       "//media/mojo/common",
       "//remoting/host/chromeos",
       "//remoting/host/chromeos:features",
@@ -1076,8 +1075,6 @@ source_set("unit_tests") {
       "it2me/it2me_confirmation_dialog_chromeos_unittest.cc",
     ]
     deps += [
-      "//ash:test_support",
-      "//chromeos/ash/components:test_support",
       "//components/user_manager:test_support",
       "//media:test_support",
       "//remoting/host/chromeos",

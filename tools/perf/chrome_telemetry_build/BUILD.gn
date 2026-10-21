@@ -84,8 +84,6 @@ group("telemetry_chrome_test") {
   if (is_chromeos && is_chromeos_device) {
     data_deps += [
       "//:chromiumos_preflight",
-      "//chromeos:cros_chrome_deploy",
-      "//chromeos:cros_test_wrapper",
     ]
   }
 
@@ -116,7 +114,6 @@ if (is_android) {
 
     data_deps = [
       ":telemetry_chrome_test",
-      "//chrome/android:chrome_public_apk",
     ]
   }
 
@@ -146,7 +143,6 @@ if (is_android) {
 
     data_deps = [
       ":telemetry_chrome_test",
-      "//chrome/android:chrome_public_bundle",
     ]
   }
 

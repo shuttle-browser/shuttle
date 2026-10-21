@@ -263,14 +263,7 @@ source_set("webrtc") {
     if (is_android) {
       sources += [
         # This avoids header circular dependencies with //c/b/media.
-        "../android/desktop_media_picker_android.cc",
-        "../android/desktop_media_picker_android.h",
-        "../android/media_capture_picker_manager_bridge.cc",
-        "../android/media_capture_picker_manager_bridge.h",
-        "../android/tab_sharing_ui_android.cc",
-        "../android/tab_sharing_ui_android.h",
       ]
-      deps += [ "//chrome/android:chrome_jni_headers" ]
     }
 
     if (is_win) {
@@ -318,7 +311,6 @@ source_set("webrtc") {
       "window_icon_util_chromeos.cc",
     ]
     deps += [
-      "//ash",
       "//ash/public/cpp",
       "//chrome/browser/ash/arc/screen_capture",
       "//chrome/browser/ash/notifications",

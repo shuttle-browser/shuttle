@@ -57,7 +57,6 @@ if (is_android) {
     deps = [
       ":java_resources",
       "//base:features_java",
-      "//components/browser_ui/styles/android:java",
       "//third_party/android_deps:material_design_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/androidx:androidx_core_core_java",

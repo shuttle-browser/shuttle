@@ -100,7 +100,6 @@ if (is_android) {
   # TODO(crbug.com/404270786): Scope down internal_java visibility.
   android_library("internal_java") {
     visibility = [
-      "//chrome/android:chrome_all_java",
       "//components:*",
     ]
     srcjar_deps = [ ":jni_headers" ]

@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/origin_gating/core",
-  # keep-sorted end
-]

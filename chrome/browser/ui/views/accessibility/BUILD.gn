@@ -78,10 +78,6 @@ source_set("impl") {
 }
 
 if (!is_android) {
-    deps = [
-      ":accessibility",
-    ]
-
   if (!is_chromeos_device) {
   }
 }

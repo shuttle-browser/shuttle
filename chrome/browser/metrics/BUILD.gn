@@ -416,9 +416,7 @@ source_set("impl") {
     deps += [
       "//chrome/browser/ash/arc",
       "//chrome/browser/ash/arc/vmm",
-      "//chrome/browser/ash/login",
       "//chrome/browser/ash/login/demo_mode",
-      "//chrome/browser/ash/login/users",
       "//chrome/browser/ash/multidevice_setup",
       "//chrome/browser/ash/printing",
       "//chrome/browser/ash/profiles",

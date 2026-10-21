@@ -218,7 +218,6 @@ static_library("utility") {
   }
 
   if (enable_media_remoting_redirection) {
-    deps += [ "//chrome/services/redirection:redirection_service" ]
   }
 
   if (is_android || enable_extensions) {

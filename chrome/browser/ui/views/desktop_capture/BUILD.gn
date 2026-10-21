@@ -105,4 +105,3 @@ source_set("impl") {
   }
 }
 
-    "//chrome/browser/ui:browser_window_header",

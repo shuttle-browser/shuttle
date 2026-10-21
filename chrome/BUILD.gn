@@ -113,7 +113,6 @@ group("assert_no_deps") {
   deps = []
 
   if (is_android) {
-    deps += [ "//chrome/android:chrome_public_apk" ]
   } else {
     deps += [ ":chrome" ]
   }
@@ -459,7 +458,6 @@ if (is_win) {
       "//content/public/app",
       "//crypto",
       "//net:net_resources",
-      "//sandbox/win:sandbox",
       "//third_party/cld_3/src/src:cld_3",
       "//third_party/wtl",
       "//ui/views",
@@ -2086,7 +2084,6 @@ if (enable_separate_renderer_binary) {
           ":chrome_renderer_dll_version",
           "//chrome/chrome_elf",
           "//chrome/install_static:secondary_module",
-          "//sandbox/win:sandbox",
         ]
       }
     }

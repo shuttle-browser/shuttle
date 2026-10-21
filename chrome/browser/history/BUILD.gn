@@ -99,12 +99,6 @@ if (is_android) {
   android_library("java") {
     srcjar_deps = [ ":jni_headers" ]
     sources = [
-      "java/src/org/chromium/chrome/browser/history/FilterSheetContent.java",
-      "java/src/org/chromium/chrome/browser/history/FilterSheetCoordinator.java",
-      "java/src/org/chromium/chrome/browser/history/FilterSheetMediator.java",
-      "java/src/org/chromium/chrome/browser/history/FilterSheetProperties.java",
-      "java/src/org/chromium/chrome/browser/history/FilterSheetViewBinder.java",
-      "java/src/org/chromium/chrome/browser/history/HistoryTabHelper.java",
     ]
 
     deps = [
@@ -119,8 +113,7 @@ if (is_android) {
   }
 
   generate_jni("jni_headers") {
-    sources =
-        [ "java/src/org/chromium/chrome/browser/history/HistoryTabHelper.java" ]
+    sources = []
   }
 
   android_resources("java_resources") {
@@ -129,22 +122,19 @@ if (is_android) {
       "java/res/layout/filter_sheet_header.xml",
     ]
     deps = [
-      "//chrome/browser/ui/android/strings:ui_strings_grd",
-      "//components/browser_ui/widget/android:java_resources",
     ]
   }
 
   robolectric_library("junit") {
     resources_package = "org.chromium.chrome.browser.history"
 
-    sources = [ "java/src/org/chromium/chrome/browser/history/FilterSheetCoordinatorTest.java" ]
+    sources = []
 
     deps = [
       ":java",
       ":java_resources",
       "//base:base_java",
       "//base:base_junit_test_support",
-      "//chrome/android:chrome_app_java_resources",
       "//components/browser_ui/bottomsheet/android:java",
       "//components/browser_ui/theme/android:java_resources",
       "//third_party/androidx:androidx_test_core_java",

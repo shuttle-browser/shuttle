@@ -510,7 +510,6 @@ shared_library("remoting_core") {
     "//remoting/host/native_messaging",
     "//remoting/host/setup",
     "//remoting/protocol",
-    "//sandbox/win:sandbox",  # Should always use Windows version
     "//services/network:network_service",
     "//services/network/public/cpp",
     "//services/network/public/mojom",

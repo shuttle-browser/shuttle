@@ -64,7 +64,7 @@ source_set("signin") {
       "//components/signin/public/base:signin_deep_link",
       "//components/signin/public/browser",
     ]
-    deps = [ "//chrome/android:jni_headers" ]
+    deps = []
   }
 
   if (!is_android) {
@@ -245,7 +245,6 @@ source_set("impl") {
       "signin_ui_delegate_impl_android.cc",
     ]
     deps += [
-      "//chrome/android:jni_headers",
       "//chrome/browser/browsing_data:constants",
       "//chrome/browser/signin/services/android:jni_headers",
       "//components/signin/public/android:jni_headers",
