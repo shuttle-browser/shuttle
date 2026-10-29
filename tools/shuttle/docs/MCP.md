@@ -49,6 +49,9 @@ Many agents share one Shuttle instance. Smoke tests: `scripts/smoke-mcp.mjs`, `s
 - **Opened tabs stay in the partition:** popups, `noopener`/`target=_blank` and Cmd/middle-click tabs from a leased tab
   (upstream leaks the last two to the default partition; patched in `WebContentsImpl::CreateNewWindow` and
   `browser_navigator.cc`). They join the same session and group. CDP-triggered popups need `userGesture: true`.
+- **Blank tabs stay in the partition:** a tab allocated without `url`, and `about:blank` along the way, stay in the
+  agent's storage (upstream gives a site-less SiteInstance the default partition; patched in `SiteInstanceImpl`,
+  fork commit 50). Probe: `scripts/smoke-isolation.mjs`.
 - **Session cookies persist:** an agent's session cookies (no Expires/Max-Age) survive a browser restart, like
   Chrome's main partition with "Continue where you left off" (upstream drops them in every non-default partition).
   Per-agent opt-out: `persistSessionCookies: false` on `create-agent`/`update-agent` (`list-agents` shows it;
