@@ -105,11 +105,28 @@ class SiteInstanceImpl::DefaultSiteInstanceState {
   std::set<GURL> default_site_url_set_;
 };
 
+// static
+SiteInfo SiteInstanceImpl::UnassignedSiteInfo(
+    BrowsingInstance* browsing_instance) {
+  BrowserContext* browser_context =
+      browsing_instance->isolation_context().browser_context();
+  // Shuttle: a SiteInstance without a site yet (about:blank) in a fixed
+  // StoragePartition (agent tabs) must report that partition, not the
+  // default one: navigations derive the next SiteInstance's partition from
+  // it, and the tab would move to the default partition for good.
+  if (browsing_instance->is_fixed_storage_partition() &&
+      browsing_instance->storage_partition_config_.has_value()) {
+    return SiteInfo(browser_context,
+                    browsing_instance->storage_partition_config_.value());
+  }
+  return SiteInfo(browser_context);
+}
+
 SiteInstanceImpl::SiteInstanceImpl(BrowsingInstance* browsing_instance)
     : id_(g_site_instance_id_generator.GenerateNextId()),
       browsing_instance_(browsing_instance),
       can_associate_with_spare_process_(true),
-      site_info_(browsing_instance->isolation_context().browser_context()),
+      site_info_(UnassignedSiteInfo(browsing_instance)),
       has_site_(false),
       process_reuse_policy_(ProcessReusePolicy::kDefault),
       is_for_service_worker_(false),
@@ -165,6 +182,14 @@ scoped_refptr<SiteInstanceImpl> SiteInstanceImpl::CreateForUrlInfo(
                            url_info.web_exposed_isolation_info.value_or(
                                WebExposedIsolationInfo::CreateNonIsolated()),
                            is_guest, is_fenced, is_fixed_storage_partition));
+  // Shuttle: a fixed StoragePartition binds the BrowsingInstance from the
+  // start, not only once a SiteInstance gets a site: a first SiteInstance
+  // without a site (about:blank) and the ones its navigations create then
+  // stay in it (see UnassignedSiteInfo()).
+  if (is_fixed_storage_partition &&
+      url_info.storage_partition_config.has_value()) {
+    instance->storage_partition_config_ = url_info.storage_partition_config;
+  }
 
   // Note: The |allow_default_instance| value used here MUST match the value
   // used in DoesSiteForURLMatch().
