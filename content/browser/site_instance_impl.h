@@ -538,6 +538,9 @@ class CONTENT_EXPORT SiteInstanceImpl final : public SiteInstance {
   // directly; clients should use Create() or GetRelatedSiteInstance() instead.
   explicit SiteInstanceImpl(BrowsingInstance* browsing_instance);
 
+  // Shuttle: the SiteInfo of a SiteInstance without a site yet.
+  static SiteInfo UnassignedSiteInfo(BrowsingInstance* browsing_instance);
+
   ~SiteInstanceImpl() override;
 
   // Returns true when |this| has a SiteInstanceGroup.

@@ -459,11 +459,16 @@ SiteInfo::SiteInfo(const SiteInfo& rhs) = default;
 SiteInfo::~SiteInfo() = default;
 
 SiteInfo::SiteInfo(BrowserContext* browser_context)
+    : SiteInfo(browser_context,
+               StoragePartitionConfig::CreateDefault(browser_context)) {}
+
+SiteInfo::SiteInfo(BrowserContext* browser_context,
+                   const StoragePartitionConfig& storage_partition_config)
     : SiteInfo(AgentClusterKey(),
                /*site_url=*/GURL(),
                /*is_sandboxed*/ false,
                UrlInfo::kInvalidUniqueSandboxId,
-               StoragePartitionConfig::CreateDefault(browser_context),
+               storage_partition_config,
                WebExposedIsolationInfo::CreateNonIsolated(),
                WebExposedIsolationLevel::kNotIsolated,
                /*is_guest=*/false,

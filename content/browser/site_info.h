@@ -189,6 +189,12 @@ class CONTENT_EXPORT SiteInfo : public SecurityPrincipal {
   // |browser_context|.
   explicit SiteInfo(BrowserContext* browser_context);
 
+  // Shuttle: like SiteInfo(BrowserContext*), but in `storage_partition_config`
+  // instead of the default partition. Unassigned SiteInstances of a
+  // BrowsingInstance with a fixed StoragePartition use it.
+  SiteInfo(BrowserContext* browser_context,
+           const StoragePartitionConfig& storage_partition_config);
+
   // The SiteInfo constructor should take in all values needed for comparing two
   // SiteInfos, to help ensure all creation sites are updated accordingly when
   // new values are added. The private function MakeSecurityPrincipalKey()

@@ -866,3 +866,18 @@ the Gemini Enterprise settings policy handler (needed the pruned glic) and the u
 `chrome/browser/ttc`, `chrome/browser/selection`, `components/skills` are already gone.
 
 Verified (2026-10-21): macOS arm64 release build + `smoke-all --with network,automation` 13/13 PASS (DevTools theming identical to 155); Linux x64 release build + package + headless `smoke-all` (incl. sandbox) PASS. Fixes after the first builds: see the `156 merge:` commits (dropped includes, `Register*Prefs`, `#endif`s, removed-feature uses, `saveGuestChoiceText`).
+
+## Fork commit 50 (2026-10-29): agent tabs keep their storage across blank pages
+
+- **50** A tab allocated without a url (blank) or navigated through `about:blank` left the agent's StoragePartition
+  for the default one: a SiteInstance without a site got `SiteInfo(BrowserContext*)` (default partition), and the
+  next navigation derived its SiteInstance's partition from it. Agents then shared cookies/localStorage with each
+  other and with the profile. Fix in `content/browser`: `SiteInstanceImpl::CreateForUrlInfo` binds the
+  BrowsingInstance to a fixed StoragePartition from the start (not only once a SiteInstance gets a site), and
+  `SiteInstanceImpl::UnassignedSiteInfo` gives site-less SiteInstances of such a BrowsingInstance that partition
+  (new `SiteInfo(BrowserContext*, const StoragePartitionConfig&)`). Upstream touch: `site_info.{h,cc}`,
+  `site_instance_impl.{h,cc}`.
+- Probe: `scripts/smoke-isolation.mjs` (in `smoke-all.sh`): blank-start agents see only their own storage, an
+  `about:blank` hop keeps it.
+
+Verified: macOS dev build, `smoke-all` 10/10 PASS (incl. isolation); the probe fails on 156.0.0 (2 of 4 checks).

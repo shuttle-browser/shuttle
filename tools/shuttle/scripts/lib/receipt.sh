@@ -3,7 +3,8 @@
 # after a successful plain `chrome` build (no -n or other tool flags: SHUTTLE_BUILD_PLAIN) whose expected output
 # exists, and only if the identity below read cleanly and didn't change while the build ran.
 #   shuttle_receipt_begin <out_dir>                drop the old receipt, capture the identity
-#   shuttle_receipt_end <out_dir> <rc> <output>    on rc 0: write <out_dir>/shuttle-build-receipt.txt
+#   shuttle_receipt_end <out_dir> <rc> <output>    on rc 0: write <out_dir>/shuttle-build-receipt.txt (+ a copy,
+#                                                  shuttle-last-green.txt, for build-common's shuttle_build_stale)
 #   shuttle_receipt_fresh <out_dir> <file|dir>...  just the "no shipped file newer than the receipt" part
 #   shuttle_receipt_check <out_dir> <file|dir>...  for packaging: receipt present, identity now == receipt (same
 #                                                  clean HEAD, args, DEPS, toolchain: commit before you build), no
@@ -45,6 +46,7 @@ shuttle_receipt_end() {
   fi
   { printf '%s\n' "$now"; echo "host=$(uname -sm | tr ' ' '-')"; echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } \
     > "$1/shuttle-build-receipt.txt"
+  cp "$1/shuttle-build-receipt.txt" "$1/shuttle-last-green.txt"  # survives the next build's begin (staleness guard)
   echo "receipt: $1/shuttle-build-receipt.txt"
 }
 shuttle_receipt_check() {
