@@ -23,6 +23,7 @@ case "$kind" in
   dev)     dir=${SHUTTLE_OUT_DIR:-Dev}; targets=(chrome) ;;
   *) echo "unknown build kind: $kind (use release|dev)" >&2; exit 2 ;;
 esac
+shuttle_build_devdir "$kind" || exit 2
 shuttle_build_args 10 "$@" || exit 2
 shuttle_build_prefix
 cfg="$(cd "$(dirname "$0")/.." && pwd)/config"
@@ -38,6 +39,7 @@ cd "$SRC"
 shuttle_build_lock "$SRC/out/$dir" || exit 2
 trap shuttle_build_unlock EXIT; trap 'exit 130' INT; trap 'exit 143' TERM  # traps run after the foreground build exits
 shuttle_build_disk "$SRC/out" || exit 2
+shuttle_build_stale "$SRC" "$SRC/out/$dir" || exit 2
 mkdir -p "out/$dir"
 if [[ ! -f "out/$dir/args.gn" || "$(cat "out/$dir/args.gn")" != "$want" ]]; then
   [[ "${SHUTTLE_KEEP_ARGS:-0}" != 1 ]] || { echo "out/$dir/args.gn differs (SHUTTLE_KEEP_ARGS=1)" >&2; exit 2; }

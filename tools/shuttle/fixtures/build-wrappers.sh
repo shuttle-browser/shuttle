@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh / build-linux.sh: caps, lock, disk check, args (SHUTTLE_GN_EXTRA, SHUTTLE_OUT_DIR), quoting, exit status.
+# build.sh / build-linux.sh: caps, lock, disk check, dev out dir, staleness, args (SHUTTLE_GN_EXTRA, SHUTTLE_OUT_DIR), quoting, exit status.
 # requires: zsh
 . "$(dirname "$0")/lib.sh"; fake_src
 export SHUTTLE_ROOT="$FIXTURE_TMP"; L="$FIXTURE_TMP/calls"; out="$SHUTTLE_SRC/out"
@@ -65,4 +65,28 @@ SHUTTLE_OUT_DIR=LinuxOther expect 0 bash "$SCRIPTS/build-linux.sh" dev
 # build-linux.sh: args with spaces survive script -c; child status propagates
 expect 0 bash "$SCRIPTS/build-linux.sh" dev "-o" "a b"; expect_out "[a b] [-local_jobs] [10] [chrome]"
 AUTONINJA_RC=5 expect 5 bash "$SCRIPTS/build-linux.sh" dev
+# dev out dir: SHUTTLE_BUILD_DIR naming another dev build refuses a plain `build.sh dev` (would build out/Dev)
+: > "$L"; SHUTTLE_BUILD_DIR=out/Sccache expect 2 zsh "$B" dev; expect_out "SHUTTLE_BUILD_DIR=out/Sccache"
+! grep -q autoninja "$L" || { echo "autoninja ran despite the SHUTTLE_BUILD_DIR mismatch"; failures=$((failures + 1)); }
+SHUTTLE_BUILD_DIR=out/Sccache expect 2 bash "$SCRIPTS/build-linux.sh" dev
+SHUTTLE_BUILD_DIR=out/Sccache SHUTTLE_OUT_DIR=Dev expect 0 zsh "$B" dev
+SHUTTLE_BUILD_DIR=out/Dev expect 0 zsh "$B" dev
+# staleness: last green on another Chromium version, or too many changed files, refuses unless SHUTTLE_ALLOW_FULL=1
+mkdir -p "$SHUTTLE_SRC/chrome"; printf 'MAJOR=156\nMINOR=0\nBUILD=8078\nPATCH=48\n' > "$SHUTTLE_SRC/chrome/VERSION"
+head=$(git -C "$SHUTTLE_SRC" rev-parse HEAD)
+printf 'source_sha=%s\nchromium_version=155.0.8059.87\n' "$head" > "$out/Dev/shuttle-last-green.txt"
+: > "$L"; expect 2 zsh "$B" dev; expect_out "last green on Chromium 155.0.8059.87"
+! grep -q autoninja "$L" || { echo "autoninja ran for a stale out dir"; failures=$((failures + 1)); }
+expect 2 bash "$SCRIPTS/build-linux.sh" dev; expect_out "SHUTTLE_ALLOW_FULL"
+SHUTTLE_ALLOW_FULL=1 expect 0 zsh "$B" dev
+SHUTTLE_CLEAN=1 expect 0 zsh "$B" dev
+printf 'source_sha=%s\nchromium_version=156.0.8078.48\n' "$head" > "$out/Dev/shuttle-last-green.txt"
+expect 0 zsh "$B" dev
+touch "$SHUTTLE_SRC/f1" "$SHUTTLE_SRC/f2" "$SHUTTLE_SRC/f3"
+git -C "$SHUTTLE_SRC" add f1 f2 f3 && git -C "$SHUTTLE_SRC" -c user.name=f -c user.email=f@f commit -q -m three
+SHUTTLE_STALE_FILES=2 expect 2 zsh "$B" dev; expect_out "3 files changed since"
+SHUTTLE_STALE_FILES=3 expect 0 zsh "$B" dev
+rm "$out/Dev/shuttle-last-green.txt"
+printf 'source_sha=%s\nchromium_version=155.0.8059.87\n' "$head" > "$out/Dev/shuttle-build-receipt.txt"  # fallback
+expect 2 zsh "$B" dev; expect_out "last green on Chromium 155"
 done_fixture

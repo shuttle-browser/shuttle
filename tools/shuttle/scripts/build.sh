@@ -11,6 +11,8 @@
 # SHUTTLE_GN_EXTRA if set (appended last, e.g. config/args-lto.gn on a host with enough RAM, or a compiler wrapper);
 # SHUTTLE_KEEP_ARGS=1 refuses to change args.gn instead (e.g. a packaging step must not reconfigure a build).
 # A successful `chrome` build writes out/<dir>/shuttle-build-receipt.txt (lib/receipt.sh; packaging requires it).
+# Refuses a dev build of out/Dev when SHUTTLE_BUILD_DIR names another dev out dir, and a near-full rebuild of an out
+# dir last green on another Chromium version or > 3000 files ago (SHUTTLE_ALLOW_FULL=1; lib/build-common.sh).
 # SHUTTLE_CLEAN=1 runs `gn clean` first (full rebuild). `-n` (dry run) still takes the lock and may run gn gen.
 set -e
 . "$(dirname "$0")/lib/paths.sh"
@@ -27,6 +29,7 @@ case "$kind" in
   dev)     dir=${SHUTTLE_OUT_DIR:-Dev} ;;
   *) echo "unknown build kind: $kind (use release|dev)" >&2; exit 2 ;;
 esac
+shuttle_build_devdir "$kind" || exit 2
 
 cfg="$(cd "$(dirname "$0")/.." && pwd)/config"
 want="$(cat "$cfg/args-common.gn" "$cfg/args-$kind.gn")"
@@ -42,6 +45,7 @@ out="$SRC/out/$dir"
 shuttle_build_lock "$out" || exit 2
 trap shuttle_build_unlock EXIT; trap 'exit 130' INT; trap 'exit 143' TERM  # traps run after the foreground build exits
 shuttle_build_disk "$SRC/out" || exit 2
+shuttle_build_stale "$SRC" "$SRC/out/$dir" || exit 2
 mkdir -p "out/$dir"
 [[ "${SHUTTLE_CLEAN:-0}" == 1 && -f "out/$dir/build.ninja" ]] && gn clean "out/$dir"
 if [[ ! -f "out/$dir/args.gn" || "$(cat "out/$dir/args.gn")" != "$want" ]]; then

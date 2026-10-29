@@ -30,7 +30,7 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 
 ## Fork basics
 
-- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **155.0.8059.80** snapshot (merged 2026-10-16; 154.0.8037.129 before); fork work
+- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **156.0.8078.48** snapshot (merged 2026-10-21; 155.0.8059.87 before); fork work
   lives on `main`, work in progress on topic branches. Upstream releases are *merged* in, not rebased; afterwards
   rerun the prune and rebrand scripts (see "After an upstream merge").
 - Mac and Linux must both build before a removal batch is committed. Windows is removed (WSL2 runs the Linux build).
@@ -55,6 +55,12 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
   `scripts/build-linux.sh` is the Linux counterpart (`docs/LINUX.md`; honors `SHUTTLE_OUT_DIR` and `SHUTTLE_GN_EXTRA`
   too). Official releases append `config/args-lto.gn` (TOOLING "Releases").
   Fix/prune tools read the dev build in `$SHUTTLE_BUILD_DIR` (default `out/Dev`).
+- Guards (`lib/build-common.sh`): `build.sh dev` / `build-linux.sh dev` without `SHUTTLE_OUT_DIR` refuse when
+  `SHUTTLE_BUILD_DIR` names another dev out dir (they would build `out/Dev`; use that dir's wrapper, e.g.
+  `build-sccache.sh`). Every build refuses a near-full rebuild: the out dir was last green
+  (`shuttle-last-green.txt`, written with the receipt) on another Chromium version, or more than
+  `SHUTTLE_STALE_FILES` (3000) files changed since. `SHUTTLE_ALLOW_FULL=1` goes ahead (ask the maintainer: hours).
+  Not caught: a checkout that only touched mtimes (see "After an upstream merge", step 7).
 - `scripts/siso-report.py [--cores N] out/<Dir>/siso_metrics*.json`: build-time report (per run, module, step kind,
   toolchain) in Markdown.
 - `scripts/build-watch.py <Dir>`: quiet build monitor (progress, first errors, stall detection).
@@ -95,6 +101,10 @@ Worked for 154 → 155 (first merge, 2026-10-14; log in TOOLING "Upstream merges
    targets), live targets the clean merge dropped (main ∩ upstream target names), new upstream test targets by hand.
 6. `scripts/check-ninja-inputs.py` (missing inputs on chrome's graph; restore from `chromium` only if used), the
    undefined-IDS_ and reformat sweeps (TOOLING "Upstream merges"), then a `-k 0` build.
+7. Once the merge is green and on `main`: move `main` with `git checkout -B main github/main` (checking out the old
+   `main` and then fast-forwarding gives every file the merge touched a new mtime), then refresh the local dev build
+   right away (`SHUTTLE_ALLOW_FULL=1`, overnight, the maintainer's go). Otherwise the next small fix pays for the whole
+   rebuild (156: ~62k steps, the dev build was still on 155 a week after the merge).
 
 ## Smoke tests
 

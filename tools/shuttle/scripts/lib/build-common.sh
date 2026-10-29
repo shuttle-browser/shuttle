@@ -8,6 +8,12 @@
 #                                    $SHUTTLE_LOCAL_JOBS; else the default); a second or non-numeric value is an error
 #                                    SHUTTLE_BUILD_PLAIN=1 if the args are only -local_jobs / -k (receipt-eligible)
 #   shuttle_build_salt <src> <cfg>   release builds: <cfg>/mojom-salt.txt must name <src>/chrome/VERSION's MAJOR
+#   shuttle_build_devdir <kind>      dev builds without SHUTTLE_OUT_DIR build out/Dev: refuse when SHUTTLE_BUILD_DIR
+#                                    names another dev out dir (this machine's dev build lives there, e.g. out/Sccache)
+#   shuttle_build_stale <src> <out_dir>  refuse a near-full rebuild: the out dir's last green build
+#                                    (shuttle-last-green.txt, else the receipt) was on another Chromium version, or
+#                                    more than SHUTTLE_STALE_FILES (3000) files changed since (`git diff`, worktree
+#                                    included); SHUTTLE_ALLOW_FULL=1 (or SHUTTLE_CLEAN=1) goes ahead. No marker = no check.
 #   shuttle_build_prefix             -> SHUTTLE_BUILD_PREFIX: nice -n ${NICE:-19} (+ taskpolicy -c background on
 #                                    macOS when SHUTTLE_BG=1; it pins work to the efficiency cores, ~14x slower)
 # Errors print to stderr and return 2; callers `|| exit 2`.
@@ -33,6 +39,30 @@ shuttle_build_disk() {
   free=$(df -Pk "$1" | awk 'NR==2 {print int($4 / 1048576)}')
   [ -n "$free" ] || { shuttle_build_err "can't read free space of $1"; return; }
   [ "$free" -ge "$min" ] || shuttle_build_err "only ${free} GB free on $1 (need ${min}; SHUTTLE_MIN_FREE_GB)"
+}
+
+shuttle_build_devdir() {
+  [ "$1" = dev ] && [ -z "${SHUTTLE_OUT_DIR:-}" ] && [ -n "${SHUTTLE_BUILD_DIR:-}" ] || return 0
+  case "${SHUTTLE_BUILD_DIR%/}" in out/Dev|Dev) return 0 ;; esac
+  shuttle_build_err "SHUTTLE_BUILD_DIR=$SHUTTLE_BUILD_DIR is this machine's dev build, but this would build out/Dev:" \
+    "use the wrapper that builds $SHUTTLE_BUILD_DIR (e.g. build-sccache.sh), or SHUTTLE_OUT_DIR=Dev for out/Dev"
+}
+
+shuttle_build_stale() {
+  local src=$1 out=$2 m ver now sha n max=${SHUTTLE_STALE_FILES:-3000} hint
+  [ "${SHUTTLE_ALLOW_FULL:-0}" = 1 ] || [ "${SHUTTLE_CLEAN:-0}" = 1 ] && return 0
+  m="$out/shuttle-last-green.txt"; [ -f "$m" ] || m="$out/shuttle-build-receipt.txt"
+  [ -f "$m" ] || return 0
+  ver=$(sed -n 's/^chromium_version=//p' "$m"); sha=$(sed -n 's/^source_sha=//p' "$m")
+  now=$(. "$src/chrome/VERSION" 2>/dev/null && echo "$MAJOR.$MINOR.$BUILD.$PATCH") || now=""
+  hint="a near-full rebuild (hours). SHUTTLE_ALLOW_FULL=1 goes ahead (ask the maintainer first)"
+  if [ -n "$ver" ] && [ -n "$now" ] && [ "$ver" != "$now" ]; then
+    shuttle_build_err "$out was last green on Chromium $ver, the checkout is $now: $hint"; return
+  fi
+  if [ -n "$sha" ] && git -C "$src" cat-file -e "$sha^{commit}" 2>/dev/null; then
+    n=$(git -C "$src" diff --name-only "$sha" | wc -l | tr -d ' ')
+    [ "$n" -le "$max" ] || shuttle_build_err "$out was last green at $(echo "$sha" | cut -c1-10), $n files changed since: $hint"
+  fi
 }
 
 shuttle_build_valid_jobs() { case "$1" in ''|*[!0-9]*|0) return 1 ;; esac; }
