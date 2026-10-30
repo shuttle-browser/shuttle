@@ -3,6 +3,9 @@
 # requires: zsh
 . "$(dirname "$0")/lib.sh"; fake_src
 export SHUTTLE_ROOT="$FIXTURE_TMP"; L="$FIXTURE_TMP/calls"; out="$SHUTTLE_SRC/out"
+# the disk check is tested on its own (SHUTTLE_MIN_FREE_GB=999999 below); a small temp fs (WSL /tmp tmpfs) must not
+# trip it in every other case
+export SHUTTLE_MIN_FREE_GB=0
 stub gn 'echo "gn $*" >> '"$L"
 stub caffeinate 'shift; exec "$@"'
 stub script 'if [[ $1 == -q && $2 == -F ]]; then shift 3; exec "$@"; fi; [[ $4 == -c ]] && exec bash -c "$5"; exit 99'

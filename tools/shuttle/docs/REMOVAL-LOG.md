@@ -881,6 +881,8 @@ Verified (2026-10-21): macOS arm64 release build + `smoke-all --with network,aut
   `about:blank` hop keeps it.
 
 Verified: macOS dev build, `smoke-all` 10/10 PASS (incl. isolation); the probe fails on 156.0.0 (2 of 4 checks).
+Review: SH-Review adversarial review (after the merge, 2026-10-30), `_docs/reviews/REVIEW-fork50-agent-blank-isolation.md`:
+no defects; coverage gaps noted (default-tab control, subframe/popup/error-page cases in the probe).
 
 ## Fork commits 51-52 (2026-10-30): group collapse works; agent tabs don't launch external apps
 
@@ -898,3 +900,5 @@ Verified: macOS dev build, `smoke-all` 10/10 PASS (incl. isolation); the probe f
 Verified: macOS dev build, `smoke-all` 10/10 PASS; 51 by hand (header click collapses and expands two agent
 groups); 52 via the browser log (`--vmodule=*/chrome_content_browser_client.cc=1`): an unregistered scheme in an
 agent tab logs the block and the page stays, in a normal tab Chrome's handler runs.
+Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork51-52-collapse-external-protocol.md`: no
+defects; the `google-chrome://` path runs before the agent-tab guard; no automated external-protocol probe yet.
