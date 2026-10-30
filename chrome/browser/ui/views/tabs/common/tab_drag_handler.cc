@@ -201,6 +201,18 @@ void TabDragHandlerImpl::InitializeDrag(
     TabCollectionNode& node,
     const ui::ListSelectionModel& original_selection_model,
     const ui::LocatedEvent& event) {
+  // Shuttle: the home tab isn't dragged (it stays at index 0 of its window).
+  if (node.type() == TabCollectionNode::Type::TAB) {
+    const int home = tab_strip_model_->GetShuttleHomeTabIndex();
+    const tabs::TabInterface* source_tab =
+        std::get<tabs::ConstDanglingUntriagedTabInterface>(node.GetNodeData());
+    if (home != TabStripModel::kNoTab &&
+        (tab_strip_model_->GetIndexOfTab(source_tab) == home ||
+         tab_strip_model_->IsTabSelected(home))) {
+      return;
+    }
+  }
+
   ResetDragState();
   drag_controller_ = std::make_unique<TabDragController>();
 

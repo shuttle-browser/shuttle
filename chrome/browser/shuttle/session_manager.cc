@@ -21,6 +21,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/shuttle/home_tab_manager.h"
 #include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
@@ -244,7 +245,9 @@ Session::Session(const Session&) = default;
 Session::~Session() = default;
 
 SessionManager::SessionManager(Profile* profile, ProfileRegistry* registry)
-    : profile_(profile), registry_(registry) {}
+    : profile_(profile),
+      registry_(registry),
+      home_tabs_(std::make_unique<HomeTabManager>(profile)) {}
 
 SessionManager::~SessionManager() = default;
 
@@ -358,7 +361,11 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
   params.contents_to_insert = std::move(new_contents);
   params.disposition = WindowOpenDisposition::NEW_BACKGROUND_TAB;
   params.window_action = NavigateParams::WindowAction::kShowWindowInactive;
-  Navigate(&params);
+  {
+    // A window this opens is the agent's: it closes with the agent's tabs.
+    base::AutoReset<bool> agent_tab = home_tabs_->OpeningAgentTab();
+    Navigate(&params);
+  }
   if (!FindInTabStrips(contents).tab_strip) {
     return base::unexpected("Could not open a tab");
   }

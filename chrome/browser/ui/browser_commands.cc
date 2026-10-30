@@ -1144,6 +1144,13 @@ void CloseTab(BrowserWindowInterface* browser) {
     return;
   }
 
+  // Shuttle: Cmd+W on the home tab alone does nothing (no pinned-tab toast);
+  // with other tabs selected, those close.
+  if (!browser->GetTabStripModel()->IsTabClosable(active_tab) &&
+      browser->GetTabStripModel()->selection_model().size() == 1) {
+    return;
+  }
+
   // If the selection model consists of only the indices of a single split tab,
   // decide if just the active tab in the split is closed instead of all tabs in
   // the split.
@@ -1334,6 +1341,11 @@ void MoveActiveTabToNewWindow(BrowserWindowInterface* browser) {
 
 bool CanMoveTabsToNewWindow(BrowserWindowInterface* browser,
                             const std::vector<int>& tab_indices) {
+  // Shuttle: the home tab stays in its window.
+  const int home = browser->GetTabStripModel()->GetShuttleHomeTabIndex();
+  if (home != TabStripModel::kNoTab && std::ranges::contains(tab_indices, home)) {
+    return false;
+  }
   return browser->GetTabStripModel()->count() >
          static_cast<int>(tab_indices.size());
 }
@@ -1444,6 +1456,10 @@ void NewSplitTab(BrowserWindowInterface* browser,
                  split_tabs::SplitTabCreatedSource source) {
   TabStripModel* const tab_strip_model = browser->GetTabStripModel();
   const int active_index = tab_strip_model->active_index();
+  // Shuttle: the home tab is never split.
+  if (active_index == tab_strip_model->GetShuttleHomeTabIndex()) {
+    return;
+  }
   // In Incognito or Enterprise Isolated modes, we can't show the regular Split
   // View NTP so default to the regular NTP which renders special content.
   const GURL new_tab_url =
