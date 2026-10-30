@@ -53,6 +53,7 @@ source_set("agent_partition") {
     "//base",
     "//chrome/browser/profiles:profile",
     "//components/prefs",
+    "//content/public/browser",
   ]
 }
 

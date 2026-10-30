@@ -9,6 +9,10 @@
 
 class Profile;
 
+namespace content {
+class WebContents;
+}
+
 namespace base {
 class FilePath;
 }
@@ -33,6 +37,10 @@ std::string AgentIdForPartitionPath(
 // network context is configured: a change applies at the next start.
 bool ShouldPersistSessionCookies(Profile* profile,
                                  const base::FilePath& relative_partition_path);
+
+// Whether `contents` shows an agent tab: its storage partition is an agent
+// partition ("shuttle-<id>"). Doesn't check that the agent exists.
+bool IsAgentWebContents(content::WebContents* contents);
 
 }  // namespace shuttle
 

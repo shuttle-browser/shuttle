@@ -162,6 +162,7 @@
 #include "chrome/browser/serial/chrome_serial_delegate.h"
 #include "chrome/browser/service_worker/service_worker_prewarm.h"
 #include "chrome/browser/service_worker/service_worker_synthetic_response.h"
+#include "chrome/browser/shuttle/agent_partition.h"
 #include "chrome/browser/site_protection/site_familiarity_process_selection_deferring_condition.h"
 #include "chrome/browser/site_protection/site_familiarity_process_selection_user_data.h"
 #include "chrome/browser/site_protection/site_familiarity_utils.h"
@@ -6428,6 +6429,16 @@ bool ChromeContentBrowserClient::HandleExternalProtocol(
     const net::IsolationInfo& isolation_info,
     mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory) {
   CHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
+
+  // Shuttle: agent tabs never launch external apps. Chrome's "Open app?"
+  // prompt would block the tab (it swallowed every later click), and agents
+  // can't answer it. "Handled" without a launch: the navigation is aborted
+  // without an error page, like after a launch.
+  if (shuttle::IsAgentWebContents(web_contents_getter.Run())) {
+    VLOG(1) << "Shuttle: external protocol blocked in an agent tab: "
+            << url.scheme();
+    return true;
+  }
 
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN)
