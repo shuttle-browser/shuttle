@@ -953,6 +953,7 @@ P2 findings, all fixed in the commit:
 - F2: split creation bypassed the context-menu guard (keyboard command, extensions `tabs.split`, tab-strip service
   `ReplaceTabInSplit`; the link drop could hit a duplicate-index CHECK if the home tab showed another page).
 - F3: the drag retry gave up after 30 s.
+Re-review of the fixed commit: F1-F3 fixed for the reported paths.
 The renderer context-menu "open link in split view" path needs a link in the home tab's page; `chrome://agents`
 has none, and fork 54 keeps the tab on it.
 
@@ -990,5 +991,7 @@ Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork54-
 P2 findings, both fixed in the commit:
 - an active ordinary `chrome://agents` tab won the URL match;
 - per-tab group closing could pick an opener outside the group.
+Re-review of the fixed commit: both findings fixed, no further blocker. If a tab's beforeunload cancels the group
+close, the home tab stays selected (focus moves when the close starts).
 Known limits: the bounce leaves a history entry; an ordinary `chrome://agents` copy can still be made with CDP
 `Page.navigate` on a normal tab (the switch ignores it).
