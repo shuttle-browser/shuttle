@@ -384,6 +384,9 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **`smoke-all` launch FAIL on a fresh dev build** (2026-10-29): the first launch of a freshly built component build
+  on a loaded Mac can take longer than the 30 s startup deadline (`browser not ready`, empty log). Rerun with
+  `SHUTTLE_SMOKE_READY_S=120`; it is not a regression unless the log shows a crash.
 - **Linux host builds use `scripts/build-linux.sh`** (2026-10-14): `build.sh` is the zsh/Mac script; on the Linux host
   it fails without output (no zsh), and the old `logs/build-<Dir>.log` then looks like a fresh result. Check the
   `Script started on <date>` line of the log before trusting a step count.

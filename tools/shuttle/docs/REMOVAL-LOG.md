@@ -881,3 +881,24 @@ Verified (2026-10-21): macOS arm64 release build + `smoke-all --with network,aut
   `about:blank` hop keeps it.
 
 Verified: macOS dev build, `smoke-all` 10/10 PASS (incl. isolation); the probe fails on 156.0.0 (2 of 4 checks).
+Review: SH-Review adversarial review (after the merge, 2026-10-30), `_docs/reviews/REVIEW-fork50-agent-blank-isolation.md`:
+no defects; coverage gaps noted (default-tab control, subframe/popup/error-page cases in the probe).
+
+## Fork commits 51-52 (2026-10-30): group collapse works; agent tabs don't launch external apps
+
+- **51** Clicking an agent's group header collapsed the group and re-expanded it at once (only the tab switch was
+  visible): collapsing is a visuals change, `SessionManager::OnTabGroupChanged` took it for a rename/recolor and
+  posted `RefreshGroups`, which re-applied name + color with the default `is_collapsed = false`. Now collapse-only
+  changes are ignored, and `RefreshGroups` keeps the group's collapsed state. Own code (`session_manager.cc`).
+- **52** A link to an external app (e.g. `atomicbi://`) in an agent tab raised Chrome's "Open app?" prompt, which
+  agents can't answer and which swallowed every later real click in the tab. `ChromeContentBrowserClient::
+  HandleExternalProtocol` now returns "handled" without a launch for agent tabs (`shuttle::IsAgentWebContents`,
+  `agent_partition.cc`: the main frame's storage partition is an agent partition): the navigation is aborted
+  without an error page, `VLOG(1)` logs the scheme. Normal tabs keep Chrome's prompt. Upstream touch:
+  `chrome_content_browser_client.cc`, `chrome/browser/BUILD.gn` (dep on `shuttle:agent_partition`).
+
+Verified: macOS dev build, `smoke-all` 10/10 PASS; 51 by hand (header click collapses and expands two agent
+groups); 52 via the browser log (`--vmodule=*/chrome_content_browser_client.cc=1`): an unregistered scheme in an
+agent tab logs the block and the page stays, in a normal tab Chrome's handler runs.
+Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork51-52-collapse-external-protocol.md`: no
+defects; the `google-chrome://` path runs before the agent-tab guard; no automated external-protocol probe yet.

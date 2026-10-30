@@ -577,8 +577,11 @@ void SessionManager::RefreshGroups(const std::string& agent_id) {
   if (!tab_strip) {
     return;
   }
-  tab_groups::TabGroupVisualData visuals(base::UTF8ToUTF16(agent->name),
-                                         agent->color);
+  // Keep the group's collapsed state: it lives in the same visual data, and
+  // the default (expanded) would undo every collapse.
+  tab_groups::TabGroupVisualData visuals(
+      base::UTF8ToUTF16(agent->name), agent->color,
+      tab_strip->IsGroupCollapsed(group->second));
   // Also unchanged visuals: the avatar may have changed, and this repaints
   // the group's header.
   base::AutoReset<bool> applying(&applying_visuals_, true);
@@ -592,6 +595,12 @@ void SessionManager::OnTabGroupChanged(const TabGroupChange& change) {
   std::string agent_id = AgentOfGroup(change.group);
   const TabGroupChange::VisualsChange* visuals = change.GetVisualsChange();
   if (agent_id.empty() || !visuals || !visuals->new_visuals) {
+    return;
+  }
+  // Collapsing or expanding the group changes no identity.
+  if (visuals->old_visuals &&
+      visuals->old_visuals->title() == visuals->new_visuals->title() &&
+      visuals->old_visuals->color() == visuals->new_visuals->color()) {
     return;
   }
   std::optional<ProfileRegistry::Entry> agent = registry_->Get(agent_id);

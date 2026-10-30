@@ -52,6 +52,8 @@ Many agents share one Shuttle instance. Smoke tests: `scripts/smoke-mcp.mjs`, `s
 - **Blank tabs stay in the partition:** a tab allocated without `url`, and `about:blank` along the way, stay in the
   agent's storage (upstream gives a site-less SiteInstance the default partition; patched in `SiteInstanceImpl`,
   fork commit 50). Probe: `scripts/smoke-isolation.mjs`.
+- **No external apps:** links to external apps (`mailto:`, `atomicbi://`, ...) in agent tabs are dropped silently:
+  no "Open app?" prompt (it blocked the tab's clicks), no error page (fork commit 52). Normal tabs keep Chrome's prompt.
 - **Session cookies persist:** an agent's session cookies (no Expires/Max-Age) survive a browser restart, like
   Chrome's main partition with "Continue where you left off" (upstream drops them in every non-default partition).
   Per-agent opt-out: `persistSessionCookies: false` on `create-agent`/`update-agent` (`list-agents` shows it;

@@ -12,6 +12,10 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/shuttle/pref_names.h"
 #include "components/prefs/pref_service.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/browser/storage_partition_config.h"
+#include "content/public/browser/web_contents.h"
 
 namespace shuttle {
 
@@ -52,6 +56,18 @@ bool ShouldPersistSessionCookies(
   const base::DictValue* dict = agent->GetIfDict();
   return !dict ||
          dict->FindBool(prefs::kPersistSessionCookies).value_or(true);
+}
+
+bool IsAgentWebContents(content::WebContents* contents) {
+  if (!contents) {
+    return false;
+  }
+  const content::StoragePartitionConfig& config =
+      contents->GetPrimaryMainFrame()->GetStoragePartition()->GetConfig();
+  return !config.is_default() && !config.in_memory() &&
+         config.partition_name().empty() &&
+         base::StartsWith(config.partition_domain(),
+                          kAgentPartitionDomainPrefix);
 }
 
 }  // namespace shuttle

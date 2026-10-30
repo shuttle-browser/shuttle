@@ -1889,6 +1889,7 @@ source_set("browser") {
     "//chrome:extra_resources",
     "//chrome/browser/accessibility:impl",
     "//chrome/browser/shuttle",
+    "//chrome/browser/shuttle:agent_partition",
     "//chrome/browser/shuttle:impl",
     "//chrome/browser/shuttle:switches",
     "//chrome/browser/autocomplete",
