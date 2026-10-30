@@ -126,7 +126,9 @@ a dev build (`prune.py`, `prune-tests.py`, `gn-fix-*.py`, `build-errors.sh`, `sy
   file's own flags from a cached compile DB of `$SHUTTLE_BUILD_DIR` (default `out/Dev`; `/tmp/sh-compdb<dir>.tsv`,
   rebuilt from `ninja -t compdb` when `build.ninja` changes; ~2.5s/file), or with a failed step's flags from
   `siso_output` (`--flags-from`, for files not in the graph). Exit 1 on compiler errors or a file without a command,
-  2 on setup errors. Load-limited since B2d (4 parallel agents pegged the build Mac): at most
+  2 on setup errors. It drops a `cc_wrapper` (`sccache`/`ccache`) from the command: with `out/Sccache`, calling
+  sccache started an idle server without the dist config, and `build-sccache.sh` then refused ("no build servers
+  reachable") until that server was stopped (2026-10-30). Load-limited since B2d (4 parallel agents pegged the build Mac): at most
   `SHUTTLE_SYNCHECK_SLOTS` (default 2) checks machine-wide, under `nice`. Read-only, safe without a
   build running, but generated headers are from the last build (edited `.mojom` = stale).
   To check against edited mojoms, regenerate bindings into a temp dir and add `-I` (B1 agent 2

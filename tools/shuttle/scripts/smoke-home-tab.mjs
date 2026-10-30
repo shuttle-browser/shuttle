@@ -3,6 +3,9 @@
 //   2. The browser-wide endpoint can't close it: Target.closeTarget, Page.close and /json/close leave it alive.
 //   3. Releasing the agent's last tab closes the window the agent opened (home tab included); a window it joined stays.
 //   4. A window opened from the browser endpoint (not an agent's) keeps its home tab when its last other tab closes.
+//   5. Opening chrome://agents again adds no second agents tab (fork 54: switches to the home tab).
+//   6. CDP Page.navigate away from the home tab is sent back to chrome://agents (fork 54).
+// Group focus on collapse/close (fork 54) needs the tab strip UI: manual check.
 // --after-restart (second launch on the same profile): no window holds more than one chrome://agents tab.
 // Tab strip details (index 0, pinned look, Cmd+W, drag) aren't visible over CDP: manual check, REMOVAL-LOG fork 53.
 import { args, browserWs, cdp, check, cleanup, evaluate, finish, gone, json, mcp, sleep } from './lib/smoke.mjs';
@@ -89,4 +92,20 @@ await browser.send('Target.closeTarget', { targetId: blank });
 await sleep(1500);
 check('window keeps its home tab after its last other tab closes',
   !!userHomes?.[0] && await alive(userHomes[0].targetId));
+
+// 5. Fork 54: opening chrome://agents switches to the home tab instead of adding a copy.
+const userHome = userHomes?.[0];
+if (userHome) {
+  await browser.send('Target.createTarget', { url: 'chrome://agents/' });
+  await sleep(1500);
+  const after = (await homesByWindow()).get(userWindow) ?? [];
+  check('chrome://agents opens no second agents tab in the window', after.length === 1,
+    JSON.stringify(after.map((t) => t.url)));
+
+  // 6. Fork 54: a navigation that bypasses Navigate() (CDP Page.navigate) is sent back to chrome://agents.
+  const a2 = await browser.send('Target.attachToTarget', { targetId: userHome.targetId, flatten: true });
+  await browser.send('Page.navigate', { url: 'about:blank#away' }, a2.result?.sessionId);
+  const back = await waitFor(async () => (await targets()).find((t) => t.targetId === userHome.targetId && isAgents(t)), 5000);
+  check('home tab returns to chrome://agents after Page.navigate', !!back);
+}
 await finish();
