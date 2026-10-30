@@ -961,21 +961,34 @@ has none, and fork 54 keeps the tab on it.
 - **54** Three changes:
   - `NavigateImpl` (browser_navigator.cc) handles navigations involving a window with a home tab. NEW_WINDOW,
     popups and off-the-record are left alone.
-    - A navigation to `chrome://agents` becomes SINGLETON_TAB / IGNORE_AND_NAVIGATE: it switches to the home tab
-      and carries over path and ref. With no target window, the most recently active window with a home tab is
-      used.
+    - A navigation to `chrome://agents` switches to the window's marked home tab and loads the requested path or
+      ref there. Chrome's SINGLETON_TAB URL match isn't used: it starts at the active tab, so an ordinary
+      `chrome://agents` tab could win. With no target window, the most recently active window with a home tab is
+      used. Navigations from agent tabs (`shuttle::IsAgentWebContents`) are left alone, so an agent never switches
+      the user's active tab.
     - CURRENT_TAB and NEW_SPLIT_VIEW navigations from the home tab to other URLs (omnibox, link drop) open a new
       foreground tab.
     - A navigation that bypasses `Navigate()` (CDP `Page.navigate` from the browser-wide endpoint) is sent back to
       `chrome://agents` by the home-tab marker, now a WebContentsObserver (`home_tab.cc`).
   - Focus on collapse: `TabStripModel::GetNextExpandedActiveTab(group)` returns the home tab.
-  - Focus on close: `DetermineNewSelectedIndex` picks the home tab when the closing block takes the rest of a tab
-    group with it (group close, the group's last tab, or an agent's session closing).
-  - Upstream touch: `browser_navigator.cc`, `ui/navigator/BUILD.gn` (dep on `//chrome/browser/shuttle`),
-    `tab_strip_model.cc`.
-- Probe: `smoke-home-tab.mjs` steps 5-6 (no second agents tab after `Target.createTarget chrome://agents/`;
-  `Page.navigate` away is undone).
+  - Focus on close:
+    - `CloseAllTabsInGroup` activates the home tab before the group's tabs close. They close one by one, so the
+      next-tab rule only sees one at a time and could pick an opener outside the group.
+    - `SessionManager::Close` does the same when the active tab belongs to the closing session.
+    - `DetermineNewSelectedIndex` picks the home tab when the closing block takes the rest of a group (its last
+      tab).
+  - Upstream touch: `browser_navigator.cc`, `ui/navigator/BUILD.gn` (deps on `//chrome/browser/shuttle` and
+    `:agent_partition`), `tab_strip_model.cc`.
+- Probe: `smoke-home-tab.mjs` steps 5-6:
+  - `Target.createTarget chrome://agents/` adds no second agents tab;
+  - with an ordinary `chrome://agents` copy active, it returns the home tab's target;
+  - `Page.navigate` away is undone.
 
 Verified: macOS dev build, `smoke-all` 12/12 PASS. Group focus on collapse/close needs the tab-strip UI: manual
 check by Toby (not done yet).
-Review: pending (SH-Review).
+Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork54-home-tab-nav.md`: request changes, two
+P2 findings, both fixed in the commit:
+- an active ordinary `chrome://agents` tab won the URL match;
+- per-tab group closing could pick an opener outside the group.
+Known limits: the bounce leaves a history entry; an ordinary `chrome://agents` copy can still be made with CDP
+`Page.navigate` on a normal tab (the switch ignores it).
