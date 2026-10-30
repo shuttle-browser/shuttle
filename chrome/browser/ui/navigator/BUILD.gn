@@ -81,6 +81,8 @@ source_set("impl") {
     ]
 
     deps += [
+      "//chrome/browser/shuttle",
+      "//chrome/browser/shuttle:agent_partition",
       "//chrome/browser/ui:browser_init_state",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:singleton_tabs",

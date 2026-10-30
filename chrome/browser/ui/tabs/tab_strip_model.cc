@@ -1298,6 +1298,16 @@ void TabStripModel::CloseAllTabsInGroup(const tab_groups::TabGroupId& group) {
     return;
   }
 
+  // Shuttle: closing the active tab's group focuses the home tab. Done before
+  // the close (and outside its ReentrancyCheck): the group's tabs close one
+  // by one, and the next-tab rule would see only one of them at a time.
+  if (const int home = GetShuttleHomeTabIndex();
+      home != kNoTab && active_index() != kNoTab &&
+      group_model_->GetTabGroup(group)->ListTabs().Contains(
+          gfx::Range(active_index(), active_index() + 1))) {
+    ActivateTabAt(home);
+  }
+
   // The ReentrancyCheck must follow AddTabAt because adding a fallback tab
   // re-enters TabStripModel to insert the new WebContents before the group is
   // closed.
@@ -3628,6 +3638,10 @@ std::optional<int> TabStripModel::GetNextExpandedActiveTab(
 std::optional<int> TabStripModel::GetNextExpandedActiveTab(
     tab_groups::TabGroupId collapsing_group) const {
   CHECK(group_model()->ContainsTabGroup(collapsing_group));
+  // Shuttle: collapsing the active tab's group focuses the home tab.
+  if (const int home = GetShuttleHomeTabIndex(); home != kNoTab) {
+    return home;
+  }
   gfx::Range group_tab_indices =
       group_model()->GetTabGroup(collapsing_group)->ListTabs();
   return GetNextExpandedActiveTab(group_tab_indices, [](int) { return true; });
@@ -5799,6 +5813,21 @@ std::optional<int> TabStripModel::DetermineNewSelectedIndex(
 
   const gfx::Range block_tabs =
       gfx::Range(start_index, start_index + block_size);
+
+  // Shuttle: when the closing block takes the rest of a tab group with it
+  // (closing the group, or its last tab), the home tab gets focus.
+  if (const int home = GetShuttleHomeTabIndex();
+      home != kNoTab && !block_tabs.Contains(gfx::Range(home, home + 1))) {
+    const std::optional<tab_groups::TabGroupId> group =
+        GetTabGroupForTab(start_index);
+    if (group && group_model() && group_model()->ContainsTabGroup(*group)) {
+      const gfx::Range group_tabs =
+          group_model()->GetTabGroup(*group)->ListTabs();
+      if (block_tabs.Contains(group_tabs)) {
+        return GetTabIndexAfterClosing(home, block_tabs);
+      }
+    }
+  }
 
   // Applies the ranked preferences in order, considering only the tabs that the
   // caller deems selectable. `focused_group` restricts the candidates to the

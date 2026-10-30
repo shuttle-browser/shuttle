@@ -27,8 +27,11 @@
 #include "chrome/browser/tab_contents/tab_util.h"
 #include "chrome/browser/ui/browser_init_state.h"
 #include "chrome/browser/ui/browser_ui_controller/browser_ui_controller.h"
+#include "chrome/browser/shuttle/agent_partition.h"
+#include "chrome/browser/shuttle/home_tab.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
@@ -599,6 +602,61 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   if (!params->source_contents && params->browser) {
     params->source_contents =
         params->browser->GetTabStripModel()->GetActiveWebContents();
+  }
+
+  // Shuttle: the window's home tab (chrome/browser/shuttle/home_tab.h) is the
+  // only chrome://agents tab: opening chrome://agents switches to it (the
+  // marked tab, not any tab with that URL), and a navigation away from it
+  // opens a new tab instead. Agent tabs keep Chrome's behavior: they must not
+  // switch the user's active tab.
+  if (!params->contents_to_insert && !params->switch_to_singleton_tab &&
+      !(params->source_contents &&
+        shuttle::IsAgentWebContents(params->source_contents)) &&
+      params->disposition != WindowOpenDisposition::NEW_WINDOW &&
+      params->disposition != WindowOpenDisposition::NEW_POPUP &&
+      params->disposition != WindowOpenDisposition::OFF_THE_RECORD) {
+    BrowserWindowInterface* home_browser = params->browser;
+    if (!home_browser && shuttle::IsAgentsURL(params->url)) {
+      ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+          [&](BrowserWindowInterface* browser) {
+            if (browser->GetProfile() == params->initiating_profile &&
+                browser->GetType() == BrowserWindowInterface::TYPE_NORMAL &&
+                browser->GetTabStripModel()->GetShuttleHomeTabIndex() !=
+                    TabStripModel::kNoTab) {
+              home_browser = browser;
+              return false;
+            }
+            return true;
+          });
+    }
+    if (home_browser &&
+        home_browser->GetType() == BrowserWindowInterface::TYPE_NORMAL &&
+        home_browser->GetTabStripModel()->GetShuttleHomeTabIndex() !=
+            TabStripModel::kNoTab) {
+      if (shuttle::IsAgentsURL(params->url)) {
+        TabStripModel* const strip = home_browser->GetTabStripModel();
+        const int home = strip->GetShuttleHomeTabIndex();
+        WebContents* const home_contents = strip->GetWebContentsAt(home);
+        base::WeakPtr<content::NavigationHandle> handle;
+        if (home_contents->GetLastCommittedURL() != params->url) {
+          handle = home_contents->GetController().LoadURLWithParams(
+              LoadURLParamsFromNavigateParams(home_contents, params));
+        }
+        strip->ActivateTabAt(home);
+        if (params->window_action ==
+            NavigateParams::WindowAction::kShowWindow) {
+          home_browser->GetWindow()->Activate();
+        }
+        params->browser = home_browser;
+        params->navigated_or_inserted_contents = home_contents;
+        return handle;
+      } else if ((params->disposition == WindowOpenDisposition::CURRENT_TAB ||
+                  params->disposition ==
+                      WindowOpenDisposition::NEW_SPLIT_VIEW) &&
+                 shuttle::IsHomeTab(params->source_contents)) {
+        params->disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+      }
+    }
   }
 
   WebContents* contents_to_navigate_or_insert =

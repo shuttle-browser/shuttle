@@ -310,7 +310,20 @@ bool SessionManager::Close(const std::string& session_id) {
     return false;
   }
   std::string agent_id = it->second.agent;
-  for (content::WebContents* contents : TabsOf(session_id)) {
+  std::vector<content::WebContents*> tabs = TabsOf(session_id);
+  // The user's active tab is one of the session's: the home tab gets focus
+  // (the tabs close one by one; the next-tab rule would pick a sibling).
+  for (content::WebContents* contents : tabs) {
+    TabLocation location = FindInTabStrips(contents);
+    if (location.tab_strip &&
+        location.tab_strip->active_index() == location.index) {
+      const int home = location.tab_strip->GetShuttleHomeTabIndex();
+      if (home != TabStripModel::kNoTab) {
+        location.tab_strip->ActivateTabAt(home);
+      }
+    }
+  }
+  for (content::WebContents* contents : tabs) {
     ReleaseTab(contents);
   }
   sessions_.erase(session_id);
