@@ -1,6 +1,7 @@
 // Pinned home tab (fork commit 53): node scripts/smoke-home-tab.mjs <port> [--after-restart] (run by scripts/smoke-all.sh).
 //   1. An agent tab opens a window: the window gets exactly one chrome://agents home tab.
-//   2. The browser-wide endpoint can't close it: Target.closeTarget, Page.close and /json/close leave it alive.
+//   2. The browser-wide endpoint can't close it: Target.closeTarget, Page.close and /json/close leave it alive; the
+//      first two reply an error (fork 55).
 //   3. Releasing the agent's last tab closes the window the agent opened (home tab included); a window it joined stays.
 //   4. A window opened from the browser endpoint (not an agent's) keeps its home tab when its last other tab closes.
 //   5. Opening chrome://agents again adds no second agents tab and lands on the home tab, even next to an active
@@ -63,12 +64,14 @@ check('home tab is live', await waitFor(() => alive(home.targetId)));
 // 2. The browser endpoint can't close it.
 const closeReply = await browser.send('Target.closeTarget', { targetId: home.targetId });
 await sleep(1000);
-// Chromium's close is fire-and-forget: the reply says success even though the tab strip refuses (CDP close guard: fork 55).
-console.log(`note Target.closeTarget reply: ${JSON.stringify(closeReply.error ?? closeReply.result)}`);
+// Fork 55: the reply is an error, not Chromium's fire-and-forget success.
+check('Target.closeTarget on the home tab replies an error', !!closeReply.error,
+  JSON.stringify(closeReply.error ?? closeReply.result));
 check('home tab alive after Target.closeTarget', await alive(home.targetId));
 const att = await browser.send('Target.attachToTarget', { targetId: home.targetId, flatten: true });
-await browser.send('Page.close', {}, att.result?.sessionId);
+const pageClose = await browser.send('Page.close', {}, att.result?.sessionId);
 await sleep(1000);
+check('Page.close on the home tab replies an error', !!pageClose.error, JSON.stringify(pageClose.result));
 check('home tab alive after Page.close', await alive(home.targetId));
 await json(`/json/close/${home.targetId}`).catch(() => {});
 await sleep(1000);
@@ -112,7 +115,10 @@ if (userHome) {
   const switched = (await browser.send('Target.createTarget', { url: 'chrome://agents/#again' })).result?.targetId;
   check('chrome://agents switches to the home tab, not an ordinary copy', switched === userHome.targetId,
     `${switched} vs home ${userHome.targetId}`);
-  await browser.send('Target.closeTarget', { targetId: copy });
+  // Other targets fall through to Chromium's close (fork 55 guards only the home tab).
+  const copyClose = await browser.send('Target.closeTarget', { targetId: copy });
+  check('Target.closeTarget still closes an ordinary tab',
+    !copyClose.error && await waitFor(async () => !(await alive(copy)), 5000), JSON.stringify(copyClose.error));
 
   // 6. Fork 54: a navigation that bypasses Navigate() (CDP Page.navigate) is sent back to chrome://agents.
   const a2 = await browser.send('Target.attachToTarget', { targetId: userHome.targetId, flatten: true });

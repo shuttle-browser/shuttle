@@ -946,7 +946,7 @@ defects; the `google-chrome://` path runs before the agent-tab guard; no automat
 Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. home-tab, home-tab-restart). The agent-window close was
 checked by a standalone probe run on a fresh browser; inside `smoke-all` the browser already has a window, so the
 probe checks the joined-window case. CDP `Target.closeTarget` still replies `success: true` (Chromium's close is
-fire-and-forget) while the tab stays (fork 55: a CDP close guard).
+fire-and-forget) while the tab stays (fixed in fork 55: it now replies an error).
 Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork53-home-tab.md`: request changes, three
 P2 findings, all fixed in the commit:
 - F1: the vertical/common tab-strip drag could detach the home tab into another window.
@@ -986,7 +986,7 @@ has none, and fork 54 keeps the tab on it.
   - `Page.navigate` away is undone.
 
 Verified: macOS dev build, `smoke-all` 12/12 PASS. Group focus on collapse/close needs the tab-strip UI: manual
-check by Toby (not done yet).
+check by Toby (2026-11-02: works; drag, unpin, close and Cmd+W on the home tab do nothing).
 Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork54-home-tab-nav.md`: request changes, two
 P2 findings, both fixed in the commit:
 - an active ordinary `chrome://agents` tab won the URL match;
@@ -995,3 +995,25 @@ Re-review of the fixed commit: both findings fixed, no further blocker. If a tab
 close, the home tab stays selected (focus moves when the close starts).
 Known limits: the bounce leaves a history entry; an ordinary `chrome://agents` copy can still be made with CDP
 `Page.navigate` on a normal tab (the switch ignores it).
+
+## Fork commit 55 (2026-11-02): CDP close of the home tab replies an error; Shuttle icon on chrome://agents
+
+- **55** Two changes, no `content/` code:
+  - CDP close guard. `Target.closeTarget` and `Page.close` on the home tab used to reply `success: true` while
+    the tab strip kept the tab (Chromium's close is fire-and-forget), so a CDP client (Playwright, Puppeteer)
+    thought it was gone.
+    - Chrome's own DevTools handlers now take both commands (`inspector_protocol_config.json`):
+      `TargetHandler::CloseTarget` and `PageHandler::Close`.
+    - For the home tab (`shuttle::IsHomeTab`) they reply the error "The home tab closes only with its window".
+    - Every other target falls through (`Response::FallThrough()`) to content's handler, which runs as before.
+    - `/json/close` (HTTP, in content) still answers "Target is closing"; the tab stays.
+  - Icon: `ChromeWebUIControllerFactory::GetFaviconResourceBytes` returns `IDR_PRODUCT_LOGO_16` (the Shuttle mark)
+    for `chrome://agents`. The page had no icon. The factory path gives the icon without a load and also serves
+    history and tab search.
+  - Upstream touch: `devtools/inspector_protocol_config.json`, `devtools/protocol/{target,page}_handler.{h,cc}`,
+    `ui/webui/chrome_web_ui_controller_factory.cc`, `ui/webui/BUILD.gn` (dep on `//chrome/browser/shuttle`).
+- Probe: `smoke-home-tab.mjs` step 2 expects the error from `Target.closeTarget` and `Page.close`; step 5b checks
+  that `Target.closeTarget` still closes an ordinary tab (the fall-through).
+
+Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. the three new checks).
+
