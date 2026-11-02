@@ -1026,4 +1026,6 @@ fixed in the commit:
 No close-dispatch defect: SH-Review traced browser, page, tab, flattened and untrusted auto-attach sessions, OOPIF and
 worker targets; every reply is single, and ordinary closes reach content unchanged. Noted, not a defect: an
 untrusted client naming an inaccessible home target gets the home-tab error instead of "not allowed".
+Re-review of the fixed commit: P2 resolved (`IDR_PRODUCT_LOGO_32` has no Linux override; its 1x file is a real
+32 px PNG), no further finding. Desktop registers only 1x/2x resource scales; a future 3x would need its own asset.
 
