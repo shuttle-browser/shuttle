@@ -11,6 +11,7 @@
 #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
 #include "chrome/browser/devtools/devtools_browser_context_manager.h"
 #include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/shuttle/home_tab.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
@@ -261,4 +262,15 @@ protocol::Response TargetHandler::CreateTarget(
                          ->GetId();
   }
   return protocol::Response::Success();
+}
+
+protocol::Response TargetHandler::CloseTarget(const std::string& target_id,
+                                              bool* out_success) {
+  scoped_refptr<content::DevToolsAgentHost> host =
+      content::DevToolsAgentHost::GetForId(target_id);
+  if (host && shuttle::IsHomeTab(host->GetWebContents())) {
+    return protocol::Response::ServerError(
+        "The home tab closes only with its window");
+  }
+  return protocol::Response::FallThrough();
 }

@@ -472,6 +472,7 @@ source_set("chrome_web_ui_controller_factory") {
     ]
   } else {
     deps += [
+      "//chrome/browser/shuttle",
       "//chrome/browser/ui/webui/downloads",
       "//chrome/browser/ui/webui/settings",
       "//ui/web_dialogs",

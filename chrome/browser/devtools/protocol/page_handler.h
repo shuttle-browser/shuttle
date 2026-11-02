@@ -43,6 +43,8 @@ class PageHandler : public protocol::Page::Backend {
   protocol::Response SetAdBlockingEnabled(bool enabled) override;
   protocol::Response SetRPHRegistrationMode(
       const protocol::String& mode) override;
+  // Shuttle: refuses the home tab, see TargetHandler::CloseTarget.
+  protocol::Response Close() override;
   void PrintToPDF(std::optional<bool> landscape,
                   std::optional<bool> display_header_footer,
                   std::optional<bool> print_background,

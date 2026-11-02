@@ -1,11 +1,13 @@
 // Pinned home tab (fork commit 53): node scripts/smoke-home-tab.mjs <port> [--after-restart] (run by scripts/smoke-all.sh).
 //   1. An agent tab opens a window: the window gets exactly one chrome://agents home tab.
-//   2. The browser-wide endpoint can't close it: Target.closeTarget, Page.close and /json/close leave it alive.
+//   2. The browser-wide endpoint can't close it: Target.closeTarget, Page.close and /json/close leave it alive; the
+//      first two reply an error (fork 55).
 //   3. Releasing the agent's last tab closes the window the agent opened (home tab included); a window it joined stays.
 //   4. A window opened from the browser endpoint (not an agent's) keeps its home tab when its last other tab closes.
 //   5. Opening chrome://agents again adds no second agents tab and lands on the home tab, even next to an active
 //      ordinary chrome://agents tab (fork 54).
 //   6. CDP Page.navigate away from the home tab is sent back to chrome://agents (fork 54).
+//   7. chrome://agents has the Shuttle icon at the right pixel size per scale (fork 55).
 // Group focus on collapse/close (fork 54) needs the tab strip UI: manual check.
 // --after-restart (second launch on the same profile): no window holds more than one chrome://agents tab.
 // Tab strip details (index 0, pinned look, Cmd+W, drag) aren't visible over CDP: manual check, REMOVAL-LOG fork 53.
@@ -63,12 +65,17 @@ check('home tab is live', await waitFor(() => alive(home.targetId)));
 // 2. The browser endpoint can't close it.
 const closeReply = await browser.send('Target.closeTarget', { targetId: home.targetId });
 await sleep(1000);
-// Chromium's close is fire-and-forget: the reply says success even though the tab strip refuses (CDP close guard: fork 55).
-console.log(`note Target.closeTarget reply: ${JSON.stringify(closeReply.error ?? closeReply.result)}`);
+// Fork 55: the reply is an error, not Chromium's fire-and-forget success.
+const HOME_CLOSE_ERROR = 'The home tab closes only with its window';
+check('Target.closeTarget on the home tab replies the home-tab error', closeReply.error?.message === HOME_CLOSE_ERROR,
+  JSON.stringify(closeReply.error ?? closeReply.result));
 check('home tab alive after Target.closeTarget', await alive(home.targetId));
 const att = await browser.send('Target.attachToTarget', { targetId: home.targetId, flatten: true });
-await browser.send('Page.close', {}, att.result?.sessionId);
+check('attach to the home tab', !!att.result?.sessionId, JSON.stringify(att.error));
+const pageClose = await browser.send('Page.close', {}, att.result?.sessionId);
 await sleep(1000);
+check('Page.close on the home tab replies the home-tab error', pageClose.error?.message === HOME_CLOSE_ERROR,
+  JSON.stringify(pageClose.error ?? pageClose.result));
 check('home tab alive after Page.close', await alive(home.targetId));
 await json(`/json/close/${home.targetId}`).catch(() => {});
 await sleep(1000);
@@ -112,7 +119,10 @@ if (userHome) {
   const switched = (await browser.send('Target.createTarget', { url: 'chrome://agents/#again' })).result?.targetId;
   check('chrome://agents switches to the home tab, not an ordinary copy', switched === userHome.targetId,
     `${switched} vs home ${userHome.targetId}`);
-  await browser.send('Target.closeTarget', { targetId: copy });
+  // Other targets fall through to Chromium's close (fork 55 guards only the home tab).
+  const copyClose = await browser.send('Target.closeTarget', { targetId: copy });
+  check('Target.closeTarget still closes an ordinary tab',
+    !copyClose.error && await waitFor(async () => !(await alive(copy)), 5000), JSON.stringify(copyClose.error));
 
   // 6. Fork 54: a navigation that bypasses Navigate() (CDP Page.navigate) is sent back to chrome://agents.
   const a2 = await browser.send('Target.attachToTarget', { targetId: userHome.targetId, flatten: true });
@@ -120,4 +130,16 @@ if (userHome) {
   const back = await waitFor(async () => (await targets()).find((t) => t.targetId === userHome.targetId && isAgents(t)), 5000);
   check('home tab returns to chrome://agents after Page.navigate', !!back);
 }
+
+// 7. Fork 55: chrome://agents has the Shuttle icon, and each scale's bytes have the real size (16 px per scale; the
+// favicon service trusts the advertised size, so a 16 px PNG served for 2x would render at half size).
+const iconTab = (await browser.send('Target.createTarget', { url: 'about:blank', background: true })).result?.targetId;
+const ia = await browser.send('Target.attachToTarget', { targetId: iconTab, flatten: true });
+for (const [scale, px] of [['1x', 16], ['2x', 32]]) {
+  await browser.send('Page.navigate', { url: `chrome://favicon2/?size=16&scaleFactor=${scale}&allowGoogleServerFallback=0&pageUrl=chrome%3A%2F%2Fagents%2F` }, ia.result?.sessionId);
+  await sleep(800);
+  const w = await evaluate(browser, ia.result?.sessionId, 'document.images[0]?.naturalWidth ?? 0');
+  check(`chrome://agents favicon ${scale} is ${px} px`, w === px, `naturalWidth ${w}`);
+}
+await browser.send('Target.closeTarget', { targetId: iconTab });
 await finish();

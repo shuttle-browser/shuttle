@@ -64,6 +64,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/types/expected_macros.h"
+#include "chrome/browser/shuttle/home_tab.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
 #include "chrome/browser/ui/webui/management/management_ui.h"
@@ -331,6 +332,18 @@ ChromeWebUIControllerFactory::GetFaviconResourceBytes(
 
   if (page_url.host() == chrome::kChromeUIManagementHost) {
     return ManagementUI::GetFaviconResourceBytes(scale_factor);
+  }
+
+  // Shuttle: chrome://agents (the home tab) shows the Shuttle logo. Raw bytes
+  // must have the advertised size (16 px per scale), and Linux has no 2x
+  // product_logo_16 (its 200% pack entry is the 16 px file plus a scale
+  // marker), so 2x loads the 32 px logo's 1x file instead.
+  if (shuttle::IsAgentsURL(page_url)) {
+    return ui::ResourceBundle::GetSharedInstance()
+        .LoadDataResourceBytesForScale(scale_factor >= ui::k200Percent
+                                           ? IDR_PRODUCT_LOGO_32
+                                           : IDR_PRODUCT_LOGO_16,
+                                       ui::k100Percent);
   }
 
 #endif  // !BUILDFLAG(IS_ANDROID)

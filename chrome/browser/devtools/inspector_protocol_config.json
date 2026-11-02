@@ -12,7 +12,7 @@
             },
             {
                 "domain": "Page",
-                "include": [ "enable", "disable", "setAdBlockingEnabled", "printToPDF", "setRPHRegistrationMode" ],
+                "include": [ "enable", "disable", "setAdBlockingEnabled", "printToPDF", "setRPHRegistrationMode", "close" ],
                 "include_events": [],
                 "async": [ "printToPDF" ]
             },
@@ -23,7 +23,7 @@
             },
             {
                 "domain": "Target",
-                "include": [ "setRemoteLocations", "createTarget" ],
+                "include": [ "setRemoteLocations", "createTarget", "closeTarget" ],
                 "include_events": []
             },
             {
