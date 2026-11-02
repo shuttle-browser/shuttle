@@ -7,6 +7,7 @@
 //   5. Opening chrome://agents again adds no second agents tab and lands on the home tab, even next to an active
 //      ordinary chrome://agents tab (fork 54).
 //   6. CDP Page.navigate away from the home tab is sent back to chrome://agents (fork 54).
+//   7. chrome://agents has the Shuttle icon at the right pixel size per scale (fork 55).
 // Group focus on collapse/close (fork 54) needs the tab strip UI: manual check.
 // --after-restart (second launch on the same profile): no window holds more than one chrome://agents tab.
 // Tab strip details (index 0, pinned look, Cmd+W, drag) aren't visible over CDP: manual check, REMOVAL-LOG fork 53.
@@ -65,13 +66,16 @@ check('home tab is live', await waitFor(() => alive(home.targetId)));
 const closeReply = await browser.send('Target.closeTarget', { targetId: home.targetId });
 await sleep(1000);
 // Fork 55: the reply is an error, not Chromium's fire-and-forget success.
-check('Target.closeTarget on the home tab replies an error', !!closeReply.error,
+const HOME_CLOSE_ERROR = 'The home tab closes only with its window';
+check('Target.closeTarget on the home tab replies the home-tab error', closeReply.error?.message === HOME_CLOSE_ERROR,
   JSON.stringify(closeReply.error ?? closeReply.result));
 check('home tab alive after Target.closeTarget', await alive(home.targetId));
 const att = await browser.send('Target.attachToTarget', { targetId: home.targetId, flatten: true });
+check('attach to the home tab', !!att.result?.sessionId, JSON.stringify(att.error));
 const pageClose = await browser.send('Page.close', {}, att.result?.sessionId);
 await sleep(1000);
-check('Page.close on the home tab replies an error', !!pageClose.error, JSON.stringify(pageClose.result));
+check('Page.close on the home tab replies the home-tab error', pageClose.error?.message === HOME_CLOSE_ERROR,
+  JSON.stringify(pageClose.error ?? pageClose.result));
 check('home tab alive after Page.close', await alive(home.targetId));
 await json(`/json/close/${home.targetId}`).catch(() => {});
 await sleep(1000);
@@ -126,4 +130,16 @@ if (userHome) {
   const back = await waitFor(async () => (await targets()).find((t) => t.targetId === userHome.targetId && isAgents(t)), 5000);
   check('home tab returns to chrome://agents after Page.navigate', !!back);
 }
+
+// 7. Fork 55: chrome://agents has the Shuttle icon, and each scale's bytes have the real size (16 px per scale; the
+// favicon service trusts the advertised size, so a 16 px PNG served for 2x would render at half size).
+const iconTab = (await browser.send('Target.createTarget', { url: 'about:blank', background: true })).result?.targetId;
+const ia = await browser.send('Target.attachToTarget', { targetId: iconTab, flatten: true });
+for (const [scale, px] of [['1x', 16], ['2x', 32]]) {
+  await browser.send('Page.navigate', { url: `chrome://favicon2/?size=16&scaleFactor=${scale}&allowGoogleServerFallback=0&pageUrl=chrome%3A%2F%2Fagents%2F` }, ia.result?.sessionId);
+  await sleep(800);
+  const w = await evaluate(browser, ia.result?.sessionId, 'document.images[0]?.naturalWidth ?? 0');
+  check(`chrome://agents favicon ${scale} is ${px} px`, w === px, `naturalWidth ${w}`);
+}
+await browser.send('Target.closeTarget', { targetId: iconTab });
 await finish();

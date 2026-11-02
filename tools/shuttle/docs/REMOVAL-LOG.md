@@ -1007,13 +1007,23 @@ Known limits: the bounce leaves a history entry; an ordinary `chrome://agents` c
     - For the home tab (`shuttle::IsHomeTab`) they reply the error "The home tab closes only with its window".
     - Every other target falls through (`Response::FallThrough()`) to content's handler, which runs as before.
     - `/json/close` (HTTP, in content) still answers "Target is closing"; the tab stays.
-  - Icon: `ChromeWebUIControllerFactory::GetFaviconResourceBytes` returns `IDR_PRODUCT_LOGO_16` (the Shuttle mark)
-    for `chrome://agents`. The page had no icon. The factory path gives the icon without a load and also serves
-    history and tab search.
+  - Icon: `ChromeWebUIControllerFactory::GetFaviconResourceBytes` returns the Shuttle mark for `chrome://agents`:
+    1x `IDR_PRODUCT_LOGO_16`, 2x the 1x file of `IDR_PRODUCT_LOGO_32` (a real 32 px PNG on every platform). The page
+    had no icon. The factory path gives the icon without a load and also serves history and tab search.
   - Upstream touch: `devtools/inspector_protocol_config.json`, `devtools/protocol/{target,page}_handler.{h,cc}`,
     `ui/webui/chrome_web_ui_controller_factory.cc`, `ui/webui/BUILD.gn` (dep on `//chrome/browser/shuttle`).
-- Probe: `smoke-home-tab.mjs` step 2 expects the error from `Target.closeTarget` and `Page.close`; step 5b checks
-  that `Target.closeTarget` still closes an ordinary tab (the fall-through).
+- Probe: `smoke-home-tab.mjs`:
+  - step 2 expects the exact home-tab error from `Target.closeTarget` and `Page.close`;
+  - step 5b checks that `Target.closeTarget` still closes an ordinary tab (the fall-through);
+  - step 7 checks the icon's pixel size per scale via `chrome://favicon2` (16 px at 1x, 32 px at 2x).
 
-Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. the three new checks).
+Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. the new checks).
+Review: SH-Review adversarial review (2026-11-02), `_docs/reviews/REVIEW-fork55-home-tab-cdp-close-icon.md`: one P2,
+fixed in the commit:
+- Linux has no 2x `product_logo_16`. Its 200% pack entry is the 16 px file plus a GRIT scale marker, which the
+  raw-bytes path doesn't apply, so the 2x favicon was a 16 px PNG advertised as 32 px. 2x now loads
+  `IDR_PRODUCT_LOGO_32` at 100%.
+No close-dispatch defect: SH-Review traced browser, page, tab, flattened and untrusted auto-attach sessions, OOPIF and
+worker targets; every reply is single, and ordinary closes reach content unchanged. Noted, not a defect: an
+untrusted client naming an inaccessible home target gets the home-tab error instead of "not allowed".
 
