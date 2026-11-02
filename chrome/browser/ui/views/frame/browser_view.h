@@ -611,8 +611,6 @@ class BrowserView : public BrowserWindow,
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHostFor(
       content::WebContents* web_contents) override;
   void ShowAvatarBubbleFromAvatarButton(bool is_source_accelerator) override;
-  void MaybeShowProfileSwitchIPH() override;
-  void MaybeShowSupervisedUserProfileSignInIPH() override;
   void ShowHatsDialog(
       const std::string& site_id,
       const std::optional<std::string>& hats_histogram_name,
@@ -646,6 +644,7 @@ class BrowserView : public BrowserWindow,
       const TabStripSelectionChange& selection) override;
   void OnTabChangedAt(tabs::TabInterface* tab,
                       TabChangeType change_type) override;
+  void OnTabBlockedStateChanged(tabs::TabInterface* tab) override;
   void OnSplitTabChanged(const SplitTabChange& change) override;
   void TabStripEmpty() override;
   void WillCloseAllTabs(TabStripModel* tab_strip_model) override;
@@ -900,10 +899,6 @@ class BrowserView : public BrowserWindow,
   void CreateJumpList();
 #endif
 
-  // Helper method, returns if we should show the IPHs anchored on the avatar
-  // toolbar.
-  bool ShouldShowAvatarToolbarIPH();
-
   // Returns the frame view.
   BrowserFrameView* GetFrameView();
   const BrowserFrameView* GetFrameView() const;
@@ -1034,10 +1029,6 @@ class BrowserView : public BrowserWindow,
   // side panel. Should be called when the IPH backend is initialized or
   // whenever the touch mode changes.
   void MaybeShowReadingListInSidePanelIPH();
-
-  // Attempts showing the IPH promo listing benefits for signed-in users
-  // after the sync-to-signin migration.
-  void MaybeShowSignInBenefitsIPH();
 
   void UpdateWindowControlsOverlayEnabled();
   void RefreshWindowControlsOverlayAfterFullscreenTransition();
@@ -1386,8 +1377,8 @@ class BrowserView : public BrowserWindow,
   class PipExclusionObserverImpl;
   std::unique_ptr<PipExclusionObserverImpl> pip_exclusion_observer_;
 #endif
-  std::optional<content::PermissionController::SubscriptionId>
-      window_management_subscription_id_;
+  std::unique_ptr<content::PermissionController::PermissionSubscription>
+      window_management_subscription_;
 
   std::optional<bool> resizable_from_web_api_;
 

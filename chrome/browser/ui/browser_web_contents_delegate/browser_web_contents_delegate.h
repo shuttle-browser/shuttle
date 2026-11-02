@@ -63,8 +63,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
                           bool user_gesture,
                           bool last_unlocked_by_target) override;
   void LostPointerLock() override;
-  bool IsWaitingForPointerLockPrompt(
-      content::WebContents* web_contents) override;
   bool AllowKeyboardLockForInnerContents(
       content::WebContents* web_contents) override;
   void RequestKeyboardLock(content::WebContents* web_contents,
@@ -232,12 +230,6 @@ class BrowserWebContentsDelegate : public content::WebContentsDelegate {
                                  const std::string& protocol,
                                  const GURL& url,
                                  bool user_gesture) override;
-  void FindReply(content::WebContents* web_contents,
-                 int request_id,
-                 int number_of_matches,
-                 const gfx::Rect& selection_rect,
-                 int active_match_ordinal,
-                 bool final_update) override;
   void RequestMediaAccessPermission(
       content::WebContents* web_contents,
       const content::MediaStreamRequest& request,

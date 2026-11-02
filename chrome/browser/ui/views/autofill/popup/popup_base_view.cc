@@ -440,8 +440,7 @@ void PopupBaseView::NotifyAXSelection(views::View& selected_view) {
        "PopupSeparatorView", "PopupWarningView", "PopupBaseView",
        "PasswordGenerationPopupViewViews::GeneratedPasswordBox", "PopupRowView",
        "PopupRowWithButtonView", "PopupRowContentView", "MdTextButton",
-       "PopupBnplFootnoteView", "PopupAtMemoryAiDisclosureView",
-       "PopupNoticeView"});
+       "PopupBnplFootnoteView", "PopupFooterWithLinkView", "PopupNoticeView"});
   DCHECK(kDerivedClasses.contains(selected_view.GetClassName()))
       << "If you add a new derived class from AutofillPopupRowView, add it "
          "here and to onSelection(evt) in "
@@ -661,11 +660,8 @@ bool PopupBaseView::OverlapsWithAnotherPrompt(
     return true;
   }
 
-  if (base::FeatureList::IsEnabled(
-          features::kAutofillPopupCheckHtmlFormPopupOverlap)) {
-    if (BoundsOverlapWithHtmlFormPopup(popup_bounds, web_contents)) {
-      return true;
-    }
+  if (BoundsOverlapWithHtmlFormPopup(popup_bounds, web_contents)) {
+    return true;
   }
 
   return false;
