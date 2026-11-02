@@ -44,6 +44,11 @@ class TargetHandler : public protocol::Target::Backend {
       std::optional<bool> hidden,
       std::optional<bool> focus,
       std::string* out_target_id) override;
+  // Shuttle: refuses the home tab (it closes only with its window), so the
+  // reply isn't a false success; other targets fall through to content's
+  // handler.
+  protocol::Response CloseTarget(const std::string& target_id,
+                                 bool* out_success) override;
 
  private:
   RemoteLocations remote_locations_;

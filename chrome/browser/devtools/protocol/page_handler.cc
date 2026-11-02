@@ -9,6 +9,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
+#include "chrome/browser/shuttle/home_tab.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/subresource_filter/content/browser/devtools_interaction_tracker.h"
 
@@ -72,6 +73,14 @@ protocol::Response PageHandler::Disable() {
   ToggleAdBlocking(false /* enable */);
   // Do not mark the command as handled. Let it fall through instead, so that
   // the handler in content gets a chance to process the command.
+  return protocol::Response::FallThrough();
+}
+
+protocol::Response PageHandler::Close() {
+  if (shuttle::IsHomeTab(web_contents_.get())) {
+    return protocol::Response::ServerError(
+        "The home tab closes only with its window");
+  }
   return protocol::Response::FallThrough();
 }
 
