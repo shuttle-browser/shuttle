@@ -1899,9 +1899,11 @@ void BrowserCommandController::UpdateCommandsForTabStripStateChanged() {
                                          CanCloseOtherTabs(browser_));
   command_updater_->UpdateCommandEnabled(IDC_MOVE_TAB_TO_NEW_WINDOW,
                                          CanMoveActiveTabToNewWindow(browser_));
+  // Shuttle: not from the home tab (it is never split).
   command_updater_->UpdateCommandEnabled(
       IDC_NEW_SPLIT_TAB,
-      browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL);
+      browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL &&
+          tab_index != browser_->tab_strip_model()->GetShuttleHomeTabIndex());
   command_updater_->UpdateCommandEnabled(IDC_GROUP_UNGROUPED_TABS,
                                          CanGroupAllUngroupedTabs(browser_));
 }

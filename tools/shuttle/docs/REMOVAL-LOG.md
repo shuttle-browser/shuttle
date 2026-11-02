@@ -902,3 +902,96 @@ groups); 52 via the browser log (`--vmodule=*/chrome_content_browser_client.cc=1
 agent tab logs the block and the page stays, in a normal tab Chrome's handler runs.
 Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork51-52-collapse-external-protocol.md`: no
 defects; the `google-chrome://` path runs before the agent-tab guard; no automated external-protocol probe yet.
+
+## Fork commit 53 (2026-10-30): pinned home tab
+
+- **53** Every normal window of the Shuttle profile gets a home tab: `chrome://agents`, pinned at index 0. Design
+  and Toby's decisions: `_docs/design-home-tab.md` (private).
+  - Own code: `chrome/browser/shuttle/home_tab.{h,cc}` (WebContentsUserData marker, `IsHomeTab`) and
+    `home_tab_manager.{h,cc}` (owned by `SessionManager`).
+  - The manager watches the window collection and each window's tab strip. After the window's first tab it adds
+    the home tab, or adopts a `chrome://agents` tab the window opened with (`--shuttle-open-agents`).
+  - A window an agent's `AllocateTab` opened closes once only its home tab is left. Windows the user opened stay.
+  - Updates are coalesced per window. While a tab drag holds the strip (`IsTabStripEditable()` false) they retry
+    every 250 ms until the drag ends or the window is gone.
+  - Adoption skips grouped and split tabs.
+  - Guards, all in `TabStripModel` unless noted:
+    - `IsTabClosable` is false for the home tab except during `CloseAllTabs()` (window close or quit). This covers
+      the close button, Cmd+W, context-menu and group close, `window.close` and `Browser::CloseContents`, so also
+      CDP `Target.closeTarget` / `Page.close` / `/json/close`.
+    - `BrowserTabStripModelDelegate::CloseTab` refuses before the view starts its close animation.
+    - Cmd+W on the home tab alone is a no-op (no pinned-tab toast).
+    - It can't be unpinned (`SetTabPinnedImpl`) or moved (`MoveWebContentsAt`, `MoveSelectedTabsTo`). Other pinned
+      tabs stay to its right (`ConstrainInsertionIndex` / `ConstrainMoveIndex`).
+    - Its context menu disables close, duplicate, pin, group, split and move-to-window. `CanMoveTabsToNewWindow`
+      also refuses it.
+    - No drag that contains it: `TabStrip::MaybeStartDrag` (horizontal) and `TabDragHandlerImpl::InitializeDrag`
+      (vertical/common tab strip). macOS has no per-tab detach veto, so the guard sits where the drag starts.
+    - Never split:
+      - `chrome::NewSplitTab` returns, and `IDC_NEW_SPLIT_TAB` is disabled while it is active.
+      - `BrowserTabStripModelDelegate::NewSplitTab`, `TabListBridge::CreateSplit` (extensions `tabs` API) and
+        `TabStripModel::UpdateTabInSplit` refuse it.
+  - Restore: `ShouldTrackURLForRestore` drops `chrome://agents` (session service and TabRestore), and
+    `PinnedTabCodec` skips it. Restored windows get a fresh home tab.
+  - Upstream touch: `tab_strip_model.{h,cc}`, `browser_tab_strip_model_delegate.cc`, `browser_commands.cc`,
+    `browser_command_controller.cc`, `views/tabs/tab_strip.cc`, `views/tabs/common/tab_drag_handler.cc`,
+    `tab_list_bridge.cc`, `pinned_tab_codec.cc`, `sessions/session_common_utils.cc`.
+- Probe: `scripts/smoke-home-tab.mjs` (in `smoke-all.sh`, plus `--after-restart` on the second launch):
+  - one home tab per window;
+  - the browser endpoint's three close methods leave it alive;
+  - an agent window closes with the agent's last tab;
+  - a user window keeps its home tab;
+  - no duplicates after a restart.
+
+Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. home-tab, home-tab-restart). The agent-window close was
+checked by a standalone probe run on a fresh browser; inside `smoke-all` the browser already has a window, so the
+probe checks the joined-window case. CDP `Target.closeTarget` still replies `success: true` (Chromium's close is
+fire-and-forget) while the tab stays (fork 55: a CDP close guard).
+Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork53-home-tab.md`: request changes, three
+P2 findings, all fixed in the commit:
+- F1: the vertical/common tab-strip drag could detach the home tab into another window.
+- F2: split creation bypassed the context-menu guard (keyboard command, extensions `tabs.split`, tab-strip service
+  `ReplaceTabInSplit`; the link drop could hit a duplicate-index CHECK if the home tab showed another page).
+- F3: the drag retry gave up after 30 s.
+Re-review of the fixed commit: F1-F3 fixed for the reported paths.
+The renderer context-menu "open link in split view" path needs a link in the home tab's page; `chrome://agents`
+has none, and fork 54 keeps the tab on it.
+
+## Fork commit 54 (2026-10-30): home tab is the only chrome://agents tab, gets group focus
+
+- **54** Three changes:
+  - `NavigateImpl` (browser_navigator.cc) handles navigations involving a window with a home tab. NEW_WINDOW,
+    popups and off-the-record are left alone.
+    - A navigation to `chrome://agents` switches to the window's marked home tab and loads the requested path or
+      ref there. Chrome's SINGLETON_TAB URL match isn't used: it starts at the active tab, so an ordinary
+      `chrome://agents` tab could win. With no target window, the most recently active window with a home tab is
+      used. Navigations from agent tabs (`shuttle::IsAgentWebContents`) are left alone, so an agent never switches
+      the user's active tab.
+    - CURRENT_TAB and NEW_SPLIT_VIEW navigations from the home tab to other URLs (omnibox, link drop) open a new
+      foreground tab.
+    - A navigation that bypasses `Navigate()` (CDP `Page.navigate` from the browser-wide endpoint) is sent back to
+      `chrome://agents` by the home-tab marker, now a WebContentsObserver (`home_tab.cc`).
+  - Focus on collapse: `TabStripModel::GetNextExpandedActiveTab(group)` returns the home tab.
+  - Focus on close:
+    - `CloseAllTabsInGroup` activates the home tab before the group's tabs close. They close one by one, so the
+      next-tab rule only sees one at a time and could pick an opener outside the group.
+    - `SessionManager::Close` does the same when the active tab belongs to the closing session.
+    - `DetermineNewSelectedIndex` picks the home tab when the closing block takes the rest of a group (its last
+      tab).
+  - Upstream touch: `browser_navigator.cc`, `ui/navigator/BUILD.gn` (deps on `//chrome/browser/shuttle` and
+    `:agent_partition`), `tab_strip_model.cc`.
+- Probe: `smoke-home-tab.mjs` steps 5-6:
+  - `Target.createTarget chrome://agents/` adds no second agents tab;
+  - with an ordinary `chrome://agents` copy active, it returns the home tab's target;
+  - `Page.navigate` away is undone.
+
+Verified: macOS dev build, `smoke-all` 12/12 PASS. Group focus on collapse/close needs the tab-strip UI: manual
+check by Toby (not done yet).
+Review: SH-Review adversarial review (2026-10-30), `_docs/reviews/REVIEW-fork54-home-tab-nav.md`: request changes, two
+P2 findings, both fixed in the commit:
+- an active ordinary `chrome://agents` tab won the URL match;
+- per-tab group closing could pick an opener outside the group.
+Re-review of the fixed commit: both findings fixed, no further blocker. If a tab's beforeunload cancels the group
+close, the home tab stays selected (focus moves when the close starts).
+Known limits: the bounce leaves a history entry; an ordinary `chrome://agents` copy can still be made with CDP
+`Page.navigate` on a normal tab (the switch ignores it).

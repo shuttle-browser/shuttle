@@ -9,6 +9,7 @@ assert(!is_android)
 
 source_set("shuttle") {
   public = [
+    "home_tab.h",
     "shuttle_service.h",
     "shuttle_service_factory.h",
   ]
@@ -65,6 +66,9 @@ source_set("impl") {
     "shuttle_service_factory.cc",
     "avatar_cache.cc",
     "avatar_cache.h",
+    "home_tab.cc",
+    "home_tab_manager.cc",
+    "home_tab_manager.h",
     "mcp_tools.cc",
     "mcp_tools.h",
     "page_tools.cc",

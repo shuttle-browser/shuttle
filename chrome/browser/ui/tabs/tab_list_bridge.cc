@@ -388,6 +388,11 @@ std::optional<split_tabs::SplitTabId> TabListBridge::CreateSplit(
         << "Trying to add a non-existent tab to a split.";
     tab_indices.push_back(index);
   }
+  // Shuttle: the home tab is never split.
+  if (std::ranges::contains(tab_indices,
+                            tab_strip_->GetShuttleHomeTabIndex())) {
+    return std::nullopt;
+  }
   return tab_strip_->AddToNewSplit(
       // TODO(https://crbug.com/545736199): Update visual data to support either
       // vertical or horizontal splits layout.

@@ -12,9 +12,12 @@
 #include "url/gurl.h"
 
 bool ShouldTrackURLForRestore(const GURL& url) {
+  // Shuttle: chrome://agents isn't restored; every window gets a fresh home
+  // tab (chrome/browser/shuttle/home_tab.h).
   return url.is_valid() && !(url.SchemeIs(content::kChromeUIScheme) &&
                              (url.host() == chrome::kChromeUIQuitHost ||
-                              url.host() == chrome::kChromeUIRestartHost));
+                              url.host() == chrome::kChromeUIRestartHost ||
+                              url.host() == "agents"));
 }
 
 int GetNavigationIndexToSelect(const sessions::SessionTab& tab) {

@@ -557,6 +557,10 @@ class TabStripModel {
   // pinned tabs.
   int IndexOfFirstNonPinnedTab() const;
 
+  // Shuttle: index of the window's home tab (chrome/browser/shuttle/
+  // home_tab.h), or kNoTab.
+  int GetShuttleHomeTabIndex() const;
+
   // Extends the selection from the anchor to `index`.
   void ExtendSelectionTo(int index);
 
@@ -1491,6 +1495,10 @@ class TabStripModel {
 
   // True if all tabs are currently being closed via CloseAllTabs.
   bool closing_all_ = false;
+
+  // Shuttle: set during CloseAllTabs() (the window closes), the only time the
+  // home tab may close.
+  bool closing_window_ = false;
 
   // This must be kept in sync with `contents_data_`.
   tabs::TabStripModelSelectionState selection_model_;

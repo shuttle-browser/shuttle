@@ -123,6 +123,7 @@ never close the browser, local pages only (anything needing the internet skips u
 | `smoke-mcp.mjs --phase1\|--phase2` | MCP server: agents/identity, isolation, popups, viewport; phase 2 after a restart: persistence |
 | `smoke-session-cdp.mjs` | per-session CDP endpoint (optional Playwright / agent-browser via `PLAYWRIGHT_CORE`, `AGENT_BROWSER`) |
 | `smoke-agents-page.mjs [shotDir]` | `chrome://agents` UI |
+| `smoke-home-tab.mjs [--after-restart]` | fork 53: one pinned `chrome://agents` home tab per window, CDP can't close it, agent windows close with their last tab; runs first in `smoke-all` |
 | `smoke-focus.mjs [windowed]` | fork 45: bringToFront/activateTarget work; `windowed` (manual run, macOS `lsappinfo`): Shuttle not frontmost |
 | `smoke-sandbox.mjs` | `chrome://sandbox/` adequately sandboxed (Linux; not built on macOS) |
 | `smoke-network.mjs <udd> [lanIp]` | opt-in `network`: network mode (`--shuttle-listen`, access token) |

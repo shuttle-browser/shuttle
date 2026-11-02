@@ -328,6 +328,15 @@ void BrowserTabStripModelDelegate::NewSplitTab(
     std::vector<int> indices,
     split_tabs::SplitTabLayout layout,
     split_tabs::SplitTabCreatedSource source) {
+  // Shuttle: the home tab is never split (a single index pairs with the
+  // active tab).
+  TabStripModel* model = browser_->GetTabStripModel();
+  const int home = model->GetShuttleHomeTabIndex();
+  if (home != TabStripModel::kNoTab &&
+      (std::ranges::contains(indices, home) ||
+       (indices.size() == 1u && model->active_index() == home))) {
+    return;
+  }
   if (indices.empty()) {
     chrome::NewSplitTab(browser_, layout, source);
   } else {
@@ -361,6 +370,11 @@ void BrowserTabStripModelDelegate::CloseTab(
   }
   int tab_index = maybe_tab_index.value();
 
+  // Shuttle: refuse before the tab strip view starts closing the tab (the
+  // home tab closes only with its window).
+  if (!model->IsTabClosable(tab_interface)) {
+    return;
+  }
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Tabs cannot be closed when the app is in locked fullscreen, which is

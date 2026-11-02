@@ -20,6 +20,7 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
 
 using content::NavigationEntry;
 
@@ -47,7 +48,9 @@ void EncodePinnedTabs(BrowserWindowInterface* browser,
     content::WebContents* web_contents = tab->GetContents();
     NavigationEntry* entry =
         web_contents->GetController().GetLastCommittedEntry();
-    if (entry) {
+    // Shuttle: the home tab (chrome://agents) comes back on its own.
+    if (entry && !(entry->GetURL().SchemeIs(content::kChromeUIScheme) &&
+                   entry->GetURL().host() == "agents")) {
       serialized_tabs.Append(EncodeTab(entry->GetURL()));
     }
   }

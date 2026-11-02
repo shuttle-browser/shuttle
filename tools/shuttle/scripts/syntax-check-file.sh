@@ -59,6 +59,9 @@ for s in "$@"; do
     if [[ -z $cmd ]]; then print "== $s: no command (not in build graph?)"; rc=1; continue; fi
     c=$(print -r -- "$cmd" | sed -E "s# -MMD -MF [^ ]+##; s# -o [^ ]+# -fsyntax-only#; s# -c # #")
   fi
+  # Drop a cc_wrapper (sccache in out/Sccache): a syntax check needs no cache, and calling sccache would start a
+  # server without the build's dist config, which build-sccache.sh then refuses ("no build servers reachable").
+  c=$(print -r -- "$c" | sed -E 's#^[^ ]*(sccache|ccache) ##')
   acquire; held+=($slot)
   print "== $s"
   log=$(eval "nice -n 15 $c" 2>&1); crc=$?

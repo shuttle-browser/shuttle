@@ -83,6 +83,7 @@ extra=(); [[ $with == *,push,* ]] && extra=(--vmodule="checkin_request=1,registr
 # windowed focus check: macOS windowed and X11 only (Wayland has no foreign-window query; xprop sees XWayland only)
 focus=(); [[ $mode == x11 || ($mode != headless && $(uname) == Darwin) ]] && focus=(windowed)
 if launch "$tmp/profile" --remote-debugging-port=0 ${extra[@]+"${extra[@]}"}; then
+  probe home-tab 60 smoke-home-tab.mjs  # first: needs a browser without windows (agent-opened window closes)
   probe cdp 300 smoke-cdp.mjs
   probe session-cdp 120 smoke-session-cdp.mjs
   probe agents-page 120 smoke-agents-page.mjs
@@ -93,7 +94,8 @@ if launch "$tmp/profile" --remote-debugging-port=0 ${extra[@]+"${extra[@]}"}; th
   probe mcp-phase1 120 smoke-mcp.mjs --phase1; p1=$?
   closed run1
   if [[ $p1 != 0 ]]; then note mcp-phase2 "SKIP (phase 1 failed)"
-  elif launch "$tmp/profile" --remote-debugging-port=0; then probe mcp-phase2 60 smoke-mcp.mjs --phase2; closed run2
+  elif launch "$tmp/profile" --remote-debugging-port=0; then
+    probe mcp-phase2 60 smoke-mcp.mjs --phase2; probe home-tab-restart 30 smoke-home-tab.mjs --after-restart; closed run2
   else note relaunch FAIL; stop; fi
 else note launch FAIL; stop; fi
 if [[ $with == *,network,* ]]; then

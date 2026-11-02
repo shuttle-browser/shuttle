@@ -21,6 +21,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/shuttle/home_tab_manager.h"
 #include "chrome/browser/shuttle/profile_registry.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
@@ -244,7 +245,9 @@ Session::Session(const Session&) = default;
 Session::~Session() = default;
 
 SessionManager::SessionManager(Profile* profile, ProfileRegistry* registry)
-    : profile_(profile), registry_(registry) {}
+    : profile_(profile),
+      registry_(registry),
+      home_tabs_(std::make_unique<HomeTabManager>(profile)) {}
 
 SessionManager::~SessionManager() = default;
 
@@ -307,7 +310,20 @@ bool SessionManager::Close(const std::string& session_id) {
     return false;
   }
   std::string agent_id = it->second.agent;
-  for (content::WebContents* contents : TabsOf(session_id)) {
+  std::vector<content::WebContents*> tabs = TabsOf(session_id);
+  // The user's active tab is one of the session's: the home tab gets focus
+  // (the tabs close one by one; the next-tab rule would pick a sibling).
+  for (content::WebContents* contents : tabs) {
+    TabLocation location = FindInTabStrips(contents);
+    if (location.tab_strip &&
+        location.tab_strip->active_index() == location.index) {
+      const int home = location.tab_strip->GetShuttleHomeTabIndex();
+      if (home != TabStripModel::kNoTab) {
+        location.tab_strip->ActivateTabAt(home);
+      }
+    }
+  }
+  for (content::WebContents* contents : tabs) {
     ReleaseTab(contents);
   }
   sessions_.erase(session_id);
@@ -358,7 +374,11 @@ base::expected<content::WebContents*, std::string> SessionManager::AllocateTab(
   params.contents_to_insert = std::move(new_contents);
   params.disposition = WindowOpenDisposition::NEW_BACKGROUND_TAB;
   params.window_action = NavigateParams::WindowAction::kShowWindowInactive;
-  Navigate(&params);
+  {
+    // A window this opens is the agent's: it closes with the agent's tabs.
+    base::AutoReset<bool> agent_tab = home_tabs_->OpeningAgentTab();
+    Navigate(&params);
+  }
   if (!FindInTabStrips(contents).tab_strip) {
     return base::unexpected("Could not open a tab");
   }

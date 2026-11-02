@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/auto_reset.h"
 #include "base/check.h"
 #include "base/check_op.h"
 #include "base/containers/flat_map.h"
@@ -40,6 +41,7 @@
 #include "base/types/pass_key.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/shuttle/home_tab.h"
 #include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/extensions/tab_helper.h"
@@ -1033,6 +1035,10 @@ int TabStripModel::MoveWebContentsAt(int index,
   CHECK(ContainsIndex(index));
   const bool pinned = IsTabPinned(index);
 
+  // Shuttle: the home tab doesn't move.
+  if (index == GetShuttleHomeTabIndex()) {
+    return index;
+  }
   to_position = ConstrainMoveIndex(to_position, pinned);
 
   if (index == to_position) {
@@ -1055,6 +1061,10 @@ int TabStripModel::MoveWebContentsAt(
 
   CHECK(ContainsIndex(index));
 
+  // Shuttle: the home tab doesn't move.
+  if (index == GetShuttleHomeTabIndex()) {
+    return index;
+  }
   bool pinned = IsTabPinned(index);
   to_position = ConstrainMoveIndex(to_position, pinned);
   MoveTabToIndexImpl(index, to_position, group, pinned, select_after_move);
@@ -1066,13 +1076,20 @@ void TabStripModel::MoveSelectedTabsTo(
     std::optional<tab_groups::TabGroupId> into_group) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
 
+  // Shuttle: a selection with the home tab doesn't move; other pinned tabs
+  // stay right of it.
+  const int home_index = GetShuttleHomeTabIndex();
+  if (home_index != kNoTab && IsTabSelected(home_index)) {
+    return;
+  }
   const int pinned_tab_count = IndexOfFirstNonPinnedTab();
   const std::vector<int> pinned_selected_indices = GetSelectedPinnedTabs();
   const std::vector<int> unpinned_selected_indices = GetSelectedUnpinnedTabs();
 
   const int last_pinned_index =
       std::clamp(index + static_cast<int>(pinned_selected_indices.size()) - 1,
-                 static_cast<int>(pinned_selected_indices.size()) - 1,
+                 static_cast<int>(pinned_selected_indices.size()) - 1 +
+                     (home_index + 1),
                  pinned_tab_count - 1);
 
   MoveTabsToIndexImpl(
@@ -1250,6 +1267,7 @@ void TabStripModel::CloseAllTabs() {
   // specific condition when CloseWebContentsAt causes a flurry of
   // Close/Detach/Select notifications to be sent.
   closing_all_ = true;
+  base::AutoReset<bool> closing_window(&closing_window_, true);
   std::vector<content::WebContents*> closing_tabs;
   closing_tabs.reserve(count());
   for (std::vector<tabs::TabInterface*> tabs =
@@ -1278,6 +1296,16 @@ void TabStripModel::CloseAllTabsInGroup(const tab_groups::TabGroupId& group) {
 
   if (!group_model_ || !group_model_->ContainsTabGroup(group)) {
     return;
+  }
+
+  // Shuttle: closing the active tab's group focuses the home tab. Done before
+  // the close (and outside its ReentrancyCheck): the group's tabs close one
+  // by one, and the next-tab rule would see only one of them at a time.
+  if (const int home = GetShuttleHomeTabIndex();
+      home != kNoTab && active_index() != kNoTab &&
+      group_model_->GetTabGroup(group)->ListTabs().Contains(
+          gfx::Range(active_index(), active_index() + 1))) {
+    ActivateTabAt(home);
   }
 
   // The ReentrancyCheck must follow AddTabAt because adding a fallback tab
@@ -1911,6 +1939,10 @@ void TabStripModel::UpdateTabInSplit(tabs::TabInterface* split_tab,
                                      SplitUpdateType update_type) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
 
+  // Shuttle: the home tab is never split.
+  if (update_index == GetShuttleHomeTabIndex()) {
+    return;
+  }
   tabs::TabInterface* update_tab = GetTabAtIndex(update_index);
 
   // Show the deletion dialog if the group is being deleted. In `kSwap` case the
@@ -2600,6 +2632,31 @@ bool TabStripModel::IsContextMenuCommandEnabled(
   // sense since this context menu must target a tab.
   if (!ContainsIndex(context_index)) {
     return false;
+  }
+
+  // Shuttle: the home tab can't be closed, unpinned, grouped, split,
+  // duplicated or moved to another window.
+  const int home_index = GetShuttleHomeTabIndex();
+  if (home_index != kNoTab &&
+      std::ranges::contains(GetIndicesForCommand(context_index), home_index)) {
+    switch (command_id) {
+      case CommandCloseTab:
+      case CommandDuplicate:
+      case CommandTogglePinned:
+      case CommandToggleGrouped:
+      case CommandAddToNewGroup:
+      case CommandAddToNewGroupFromMenuItem:
+      case CommandAddToExistingGroup:
+      case CommandAddToSplit:
+      case CommandSwapWithActiveSplit:
+      case CommandArrangeSplit:
+      case CommandToggleFocusGroup:
+      case CommandMoveToExistingWindow:
+      case CommandMoveTabsToNewWindow:
+        return false;
+      default:
+        break;
+    }
   }
 
   switch (command_id) {
@@ -3581,6 +3638,10 @@ std::optional<int> TabStripModel::GetNextExpandedActiveTab(
 std::optional<int> TabStripModel::GetNextExpandedActiveTab(
     tab_groups::TabGroupId collapsing_group) const {
   CHECK(group_model()->ContainsTabGroup(collapsing_group));
+  // Shuttle: collapsing the active tab's group focuses the home tab.
+  if (const int home = GetShuttleHomeTabIndex(); home != kNoTab) {
+    return home;
+  }
   gfx::Range group_tab_indices =
       group_model()->GetTabGroup(collapsing_group)->ListTabs();
   return GetNextExpandedActiveTab(group_tab_indices, [](int) { return true; });
@@ -3619,13 +3680,19 @@ bool TabStripModel::ShouldRunUnloadListenerBeforeClosing(
 }
 
 int TabStripModel::ConstrainInsertionIndex(int index, bool pinned_tab) const {
-  return pinned_tab ? std::clamp(index, 0, IndexOfFirstNonPinnedTab())
+  // Shuttle: pinned tabs stay right of the home tab.
+  const int first_pinned = GetShuttleHomeTabIndex() + 1;
+  return pinned_tab ? std::clamp(index, first_pinned, IndexOfFirstNonPinnedTab())
                     : std::clamp(index, IndexOfFirstNonPinnedTab(), count());
 }
 
 int TabStripModel::ConstrainMoveIndex(int index, bool pinned_tab) const {
+  // Shuttle: pinned tabs stay right of the home tab.
+  const int first_pinned =
+      std::min(GetShuttleHomeTabIndex() + 1, IndexOfFirstNonPinnedTab() - 1);
   return pinned_tab
-             ? std::clamp(index, 0, IndexOfFirstNonPinnedTab() - 1)
+             ? std::clamp(index, std::max(first_pinned, 0),
+                          IndexOfFirstNonPinnedTab() - 1)
              : std::clamp(index, IndexOfFirstNonPinnedTab(), count() - 1);
 }
 
@@ -5377,6 +5444,10 @@ void TabStripModel::SetTabsPinned(std::vector<int> indices, bool pinned) {
 }
 
 int TabStripModel::SetTabPinnedImpl(int index, bool pinned) {
+  // Shuttle: the home tab stays pinned.
+  if (!pinned && index == GetShuttleHomeTabIndex()) {
+    return index;
+  }
   if (pinned && selection_model_.focused_group().has_value()) {
     had_pinned_tabs_in_focus_session_ = true;
   }
@@ -5648,7 +5719,18 @@ void TabStripModel::OnActiveTabChanged(
 }
 
 bool TabStripModel::IsTabClosable(const tabs::TabInterface* tab) const {
-  return true;
+  // Shuttle: the home tab closes only with its window.
+  return !tab || closing_window_ || !shuttle::IsHomeTab(tab->GetContents());
+}
+
+int TabStripModel::GetShuttleHomeTabIndex() const {
+  const int pinned_count = IndexOfFirstNonPinnedTab();
+  for (int i = 0; i < pinned_count; ++i) {
+    if (shuttle::IsHomeTab(GetWebContentsAt(i))) {
+      return i;
+    }
+  }
+  return kNoTab;
 }
 
 int TabStripModel::DetermineInsertionIndex(ui::PageTransition transition,
@@ -5731,6 +5813,21 @@ std::optional<int> TabStripModel::DetermineNewSelectedIndex(
 
   const gfx::Range block_tabs =
       gfx::Range(start_index, start_index + block_size);
+
+  // Shuttle: when the closing block takes the rest of a tab group with it
+  // (closing the group, or its last tab), the home tab gets focus.
+  if (const int home = GetShuttleHomeTabIndex();
+      home != kNoTab && !block_tabs.Contains(gfx::Range(home, home + 1))) {
+    const std::optional<tab_groups::TabGroupId> group =
+        GetTabGroupForTab(start_index);
+    if (group && group_model() && group_model()->ContainsTabGroup(*group)) {
+      const gfx::Range group_tabs =
+          group_model()->GetTabGroup(*group)->ListTabs();
+      if (block_tabs.Contains(group_tabs)) {
+        return GetTabIndexAfterClosing(home, block_tabs);
+      }
+    }
+  }
 
   // Applies the ranked preferences in order, considering only the tabs that the
   // caller deems selectable. `focused_group` restricts the candidates to the

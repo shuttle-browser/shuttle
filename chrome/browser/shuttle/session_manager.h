@@ -37,6 +37,7 @@ class CookieManager;
 
 namespace shuttle {
 
+class HomeTabManager;
 class ProfileRegistry;
 
 // A session is one run of an agent (an agent profile). Its tabs are leased
@@ -185,6 +186,8 @@ class SessionManager : public TabStripModelObserver {
 
   raw_ptr<Profile> profile_;
   raw_ptr<ProfileRegistry> registry_;
+  // Home tabs of the profile's windows; knows which windows agents opened.
+  std::unique_ptr<HomeTabManager> home_tabs_;
   std::map<std::string, Session> sessions_;
 #if BUILDFLAG(IS_LINUX)
   // Keeps the browser running while any session is open, so closing the last

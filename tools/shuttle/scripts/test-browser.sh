@@ -1,10 +1,10 @@
 #!/bin/bash
 # Relaunches the test browser on 9333 (fresh mktemp profile, log <profile>/shuttle.log via --enable-logging=stderr)
 # with agents alice (2 sessions) + steve, one tab each. Manual helper; hits the internet. App: $SHUTTLE_APP or
-# out/Release/Shuttle.app. Closes a Shuttle already on 9333 (MCP answers); refuses when another process owns 9333.
+# $SHUTTLE_BUILD_DIR (default out/Sccache)/Shuttle.app. Closes a Shuttle already on 9333 (MCP answers); refuses when another process owns 9333.
 # Usage: scripts/test-browser.sh [close]
 . "$(dirname "$0")/lib/paths.sh"
-APP="${SHUTTLE_APP:-$SHUTTLE_SRC/out/Release/Shuttle.app}"
+APP="${SHUTTLE_APP:-$SHUTTLE_SRC/${SHUTTLE_BUILD_DIR:-out/Sccache}/Shuttle.app}"
 if ! curl -fsS -m 2 -X POST http://127.0.0.1:9333/mcp -H 'Content-Type: application/json' \
     -d '{"jsonrpc":"2.0","id":1,"method":"ping"}' >/dev/null 2>&1 && lsof -nP -iTCP:9333 -sTCP:LISTEN >/dev/null 2>&1; then
   echo "Port 9333 is taken by another process (not Shuttle): refusing." >&2; lsof -nP -iTCP:9333 -sTCP:LISTEN >&2; exit 1

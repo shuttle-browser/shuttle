@@ -318,6 +318,21 @@ class TabStrip::TabDragContextImpl : public TabDragContext,
       }
     }
 
+    // Shuttle: the home tab isn't dragged (it stays at index 0 of its
+    // window).
+    if (BrowserWindowInterface* browser =
+            tab_strip_->controller_->GetBrowserWindowInterface()) {
+      const int home =
+          browser->GetTabStripModel()->GetShuttleHomeTabIndex();
+      for (const TabSlotView* view : dragging_views) {
+        if (home != TabStripModel::kNoTab &&
+            view->GetTabSlotViewType() == TabSlotView::ViewType::kTab &&
+            tab_strip_->GetModelIndexOf(view) == home) {
+          return;
+        }
+      }
+    }
+
     CHECK(!dragging_views.empty())
         << "Dragging views cannot be empty during drag initialization.";
     CHECK(std::ranges::contains(dragging_views, source))
