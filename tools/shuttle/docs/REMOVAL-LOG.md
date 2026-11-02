@@ -1017,7 +1017,7 @@ Known limits: the bounce leaves a history entry; an ordinary `chrome://agents` c
   - step 5b checks that `Target.closeTarget` still closes an ordinary tab (the fall-through);
   - step 7 checks the icon's pixel size per scale via `chrome://favicon2` (16 px at 1x, 32 px at 2x).
 
-Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. the new checks).
+Verified: macOS dev build, `smoke-all` 12/12 PASS (incl. the new checks); Toby saw the Shuttle icon on the home tab.
 Review: SH-Review adversarial review (2026-11-02), `_docs/reviews/REVIEW-fork55-home-tab-cdp-close-icon.md`: one P2,
 fixed in the commit:
 - Linux has no 2x `product_logo_16`. Its 200% pack entry is the 16 px file plus a GRIT scale marker, which the
