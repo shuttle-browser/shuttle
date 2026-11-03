@@ -98,6 +98,10 @@ if launch "$tmp/profile" --remote-debugging-port=0 ${extra[@]+"${extra[@]}"}; th
     probe mcp-phase2 60 smoke-mcp.mjs --phase2; probe home-tab-restart 30 smoke-home-tab.mjs --after-restart; closed run2
   else note relaunch FAIL; stop; fi
 else note launch FAIL; stop; fi
+# Tab/session guards: own launch with a short idle timeout (it would close the other probes' sessions).
+if launch "$tmp/guards" --remote-debugging-port=0 --shuttle-session-idle-timeout=8s; then
+  probe tab-guards 180 smoke-tab-guards.mjs "--$mode"; closed guards
+else note launch-guards FAIL; stop; fi
 if [[ $with == *,network,* ]]; then
   if launch "$tmp/net" --remote-debugging-port=0 --shuttle-listen=0.0.0.0; then
     probe network 60 smoke-network.mjs "$tmp/net"; closed network
