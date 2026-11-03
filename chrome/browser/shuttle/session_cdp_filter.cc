@@ -7,6 +7,7 @@
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "base/barrier_closure.h"
 #include "base/functional/bind.h"
@@ -166,7 +167,19 @@ SessionCdpFilter::SessionCdpFilter(base::WeakPtr<SessionManager> manager,
       page_connection_(page_connection),
       page_target_id_(std::move(page_target_id)) {}
 
-SessionCdpFilter::~SessionCdpFilter() = default;
+SessionCdpFilter::~SessionCdpFilter() {
+  // The connection ended: tabs it created die with it (allocate-tab tabs and
+  // popups stay with the session). Posted: the connection may be closing
+  // from inside an agent host's notification.
+  if (!manager_ || created_.empty()) {
+    return;
+  }
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&SessionManager::CloseCreatedTabs, manager_, session_id_,
+                     std::vector<std::string>(created_.begin(),
+                                              created_.end())));
+}
 
 void SessionCdpFilter::Start(SendCallback to_agent, SendCallback to_client) {
   to_agent_ = std::move(to_agent);
@@ -191,6 +204,9 @@ bool SessionCdpFilter::Owns(const std::string& target_id,
 }
 
 void SessionCdpFilter::OnClientMessage(std::string message) {
+  if (manager_) {
+    manager_->Touch(session_id_);
+  }
   std::optional<base::DictValue> dict =
       base::JSONReader::ReadDict(message, base::JSON_PARSE_RFC);
   const std::string* method = dict ? dict->FindString("method") : nullptr;
@@ -367,6 +383,9 @@ void SessionCdpFilter::HandleTargetEvent(const std::string& method,
   }
   if (method == "Target.targetDestroyed" || method == "Target.targetCrashed") {
     std::string id = StringParam(params, "targetId");
+    if (method == "Target.targetDestroyed") {
+      created_.erase(id);
+    }
     if (visible_.contains(id)) {
       if (method == "Target.targetDestroyed") {
         visible_.erase(id);
@@ -450,6 +469,12 @@ void SessionCdpFilter::CreateTarget(const base::Value& id,
   }
   std::string target_id = SessionManager::TargetIdOf(*tab);
   visible_.insert(target_id);
+  // Without target discovery no targetDestroyed arrives: drop closed tabs
+  // here, so the set tracks live tabs, not every tab ever created.
+  std::erase_if(created_, [](const std::string& created) {
+    return !SessionManager::FindTab(created);
+  });
+  created_.insert(target_id);
   SendResult(id, session, base::DictValue().Set("targetId", target_id));
 }
 

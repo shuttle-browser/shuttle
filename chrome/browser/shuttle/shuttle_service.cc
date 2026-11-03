@@ -11,6 +11,7 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/strings/strcat.h"
@@ -202,6 +203,23 @@ void ShuttleService::HandleMcpRequest(const std::string& host,
       params ? params->FindDict("arguments") : nullptr;
   base::DictValue empty_arguments;
   ToolContext context{this, host};
+  if (const std::string working =
+          arguments ? TouchSessionOf(*arguments) : std::string();
+      !working.empty()) {
+    // The call keeps its session from idling out until it answers (or its
+    // callback is dropped).
+    sessions_->BeginWork(working);
+    callback = base::BindOnce(
+        [](base::ScopedClosureRunner end_work, HttpResponseCallback callback,
+           int status, std::string content_type, std::string body) {
+          end_work.RunAndReset();
+          std::move(callback).Run(status, std::move(content_type),
+                                  std::move(body));
+        },
+        base::ScopedClosureRunner(base::BindOnce(
+            &SessionManager::EndWork, sessions_->GetWeakPtr(), working)),
+        std::move(callback));
+  }
   const Tool* tool = nullptr;
   if (name) {
     for (const Tool& candidate : GetTools()) {
@@ -268,6 +286,24 @@ gfx::ImageSkia ShuttleService::AvatarOfGroup(
     const tab_groups::TabGroupId& group) {
   std::string agent_id = sessions_->AgentOfGroup(group);
   return agent_id.empty() ? gfx::ImageSkia() : avatars_->Get(agent_id);
+}
+
+std::string ShuttleService::TouchSessionOf(
+    const base::DictValue& arguments) {
+  std::string working;
+  if (const std::string* target_id = arguments.FindString("targetId")) {
+    if (content::WebContents* contents = SessionManager::FindTab(*target_id)) {
+      working = SessionManager::SessionOf(contents);
+      sessions_->Touch(working);
+    }
+  }
+  if (const std::string* session_id = arguments.FindString("sessionId")) {
+    sessions_->Touch(*session_id);
+    if (sessions_->Get(*session_id)) {
+      working = *session_id;
+    }
+  }
+  return working;
 }
 
 void ShuttleService::HandTabToAgent(content::WebContents* contents,
