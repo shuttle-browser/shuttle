@@ -76,7 +76,6 @@ source_set("mixers") {
   if (is_win) {
     sources += [ "win/native_chrome_color_mixer_win.cc" ]
     deps += [
-      "//chrome/browser/win",
       "//ui/base",
       "//ui/color:accent_color_observer",
       "//ui/native_theme",

@@ -324,8 +324,6 @@ build_webui("build") {
 
   if (is_mac) {
     ts_files += [
-      "autofill_page/passwords/passkey_edit_dialog.html.ts",
-      "autofill_page/passwords/passkey_edit_dialog.ts",
     ]
   }
 

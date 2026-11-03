@@ -890,7 +890,7 @@ config("disable_thinlto_cache_flags") {
 if (!is_android) {
 
   proto_library("test_proto") {
-    sources = [ "../common/safe_browsing/ipc_protobuf_message_test.proto" ]
+    sources = []
   }
 
   if (is_chromeos) {

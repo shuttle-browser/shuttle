@@ -7,14 +7,6 @@ static_library("fcm") {
     "fcm_activity.cc",
     "fcm_activity.h",
     "fcm_app_handler.h",
-    "fcm_driver.cc",
-    "fcm_driver.h",
-    "fcm_message.cc",
-    "fcm_message.h",
-    "fcm_service.cc",
-    "fcm_service.h",
-    "features.cc",
-    "features.h",
   ]
 
   public_deps = [

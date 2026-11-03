@@ -753,7 +753,6 @@ source_set("browser_view") {
   if (is_win) {
     deps += [
       "//chrome/browser/taskbar",
-      "//chrome/browser/win:jumplist",
       "//ui/native_theme",
     ]
   }
@@ -1461,7 +1460,6 @@ if (is_win) {
       "//chrome/browser/ui:view_ids",
       "//chrome/browser/ui/frame",
       "//chrome/browser/ui/views/frame:browser_view_header",
-      "//chrome/browser/win",
       "//ui/strings:ui_strings",
     ]
   }

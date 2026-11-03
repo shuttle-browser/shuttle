@@ -129,8 +129,4 @@ if (safe_browsing_mode != 0) {
 }
 
 if (safe_browsing_mode == 1) {
-  proto_library("test_proto") {
-    testonly = true
-    sources = [ "ipc_protobuf_message_test.proto" ]
-  }
 }

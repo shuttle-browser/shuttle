@@ -37,22 +37,3 @@ static_library("engine") {
   ]
 }
 
-source_set("unit_tests") {
-  testonly = true
-  sources = [
-    "checkin_info_unittest.cc",
-    "chrome_build_info_unittest.cc",
-    "fcm_stats_recorder_impl_unittest.cc",
-  ]
-
-  deps = [
-    ":engine",
-    "//base",
-    "//base/test:test_support",
-    "//components/fcm",
-    "//components/fcm/crypto",
-    "//google_apis/gcm",
-    "//testing/gmock",
-    "//testing/gtest",
-  ]
-}

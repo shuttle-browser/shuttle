@@ -284,7 +284,6 @@ source_set("impl") {
 
   if (is_win) {
     sources += [ "settings_utils_win.cc" ]
-    deps += [ "//chrome/browser/win" ]
   }
 
   if (is_linux) {

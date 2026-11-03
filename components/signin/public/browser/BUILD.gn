@@ -8,8 +8,6 @@ if (is_android) {
 
 source_set("browser") {
   sources = [
-    "web_signin_tracker.cc",
-    "web_signin_tracker.h",
   ]
 
   deps = [

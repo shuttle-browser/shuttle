@@ -194,7 +194,6 @@ source_set("misc") {
     ]
     deps += [
       "//chrome/browser/policy:path_parser",
-      "//chrome/browser/win",
     ]
   } else {
   }
@@ -834,7 +833,6 @@ source_set("profiles_extra_parts_impl") {
   if (is_win) {
     deps += [
       "//chrome/browser/ui/search_promotion",
-      "//chrome/browser/win:jumplist",
     ]
   }
 

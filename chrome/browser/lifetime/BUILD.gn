@@ -143,7 +143,6 @@ source_set("impl") {
 
   if (is_win) {
     deps += [
-      "//chrome/browser/win",
       "//components/app_launch_prefetch",
     ]
   }

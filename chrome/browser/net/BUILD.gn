@@ -276,7 +276,6 @@ source_set("impl") {
       "service_providers_win.cc",
     ]
     deps += [
-      "//chrome/browser/win",
       "//ui/gfx",
       "//ui/shell_dialogs",
       "//ui/views",

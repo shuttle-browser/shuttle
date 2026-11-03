@@ -56,7 +56,6 @@ mojom_component("mojom") {
 
   if (is_win || is_apple) {
     sources += [
-      "webnn_compiler_service.mojom",
       "webnn_model_loader.mojom",
     ]
   }

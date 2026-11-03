@@ -22,7 +22,6 @@ source_set("search") {
     ]
     if (!is_android) {
       sources += [
-        "instant_controller.h",
         "omnibox_utils.h",
       ]
     }
@@ -61,7 +60,6 @@ source_set("impl") {
     ]
     if (!is_android) {
       sources += [
-        "instant_controller.cc",
         "omnibox_utils.cc",
       ]
       deps += [

@@ -253,8 +253,6 @@ component("webnn_service") {
 
   if (is_win || is_apple) {
     sources += [
-      "webnn_compiler_service_impl.cc",
-      "webnn_compiler_service_impl.h",
     ]
   }
 

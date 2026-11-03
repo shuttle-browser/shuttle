@@ -32,19 +32,6 @@ source_set("enterprise_shortcuts_pref_names") {
   sources = [ "enterprise/enterprise_shortcuts_pref_names.h" ]
 }
 
-# Lets tests outside of //components/ntp_tiles set up custom links and
-# enterprise shortcuts state (e.g. simulate the enterprise shortcuts policy) by
-# writing the prefs directly.
-# TODO(b/570754939): Replace the raw pref names with test helpers that own the
-# pref format once CustomLinksStore and EnterpriseShortcutsStore are private.
-group("test_support") {
-  testonly = true
-  public_deps = [
-    ":custom_links_pref_names",
-    ":enterprise_shortcuts_pref_names",
-  ]
-}
-
 static_library("ntp_tiles") {
   sources = [
     "constants.cc",

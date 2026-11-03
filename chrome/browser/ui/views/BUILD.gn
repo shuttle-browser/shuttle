@@ -735,7 +735,6 @@ source_set("tab_icon_view") {
     "//ui/gfx",
   ]
   if (is_win) {
-    deps += [ "//chrome/browser/win" ]
   }
 }
 
@@ -1159,7 +1158,6 @@ source_set("chrome_views_delegate") {
     sources += [ "chrome_views_delegate_win.cc" ]
     deps += [
       "//chrome/browser/ui/views:native_widget_factory",
-      "//chrome/browser/win",
     ]
   }
   if (is_chromeos) {
