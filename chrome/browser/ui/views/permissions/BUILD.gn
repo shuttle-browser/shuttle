@@ -20,7 +20,6 @@ if (toolkit_views) {
 
   source_set("permissions") {
     public = [
-      "ambient_login_permission_bubble_view.h",
       "embedded_permission_prompt.h",
       "embedded_permission_prompt_ask_view.h",
       "embedded_permission_prompt_base_view.h",
@@ -87,7 +86,6 @@ if (toolkit_views) {
   # the public :permissions target.
   source_set("impl") {
     sources = [
-      "ambient_login_permission_bubble_view.cc",
       "chooser_bubble_ui.cc",
       "embedded_permission_prompt.cc",
       "embedded_permission_prompt_ask_view.cc",

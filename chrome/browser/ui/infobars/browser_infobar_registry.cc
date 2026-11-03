@@ -447,40 +447,6 @@ void RegisterInfoBars() {
   }
 
   if (IsInfoBarMigrated(
-          InfoBarDelegate::DEV_TOOLS_REMOTE_DEBUGGING_INFOBAR_DELEGATE)) {
-    auto spec =
-        InfoBarSpec::Builder(
-            InfoBarDelegate::DEV_TOOLS_REMOTE_DEBUGGING_INFOBAR_DELEGATE)
-            .SetMessageText(
-                l10n_util::GetStringUTF16(IDS_CONTROLLED_BY_AUTOMATION))
-            .SetScope(InfoBarScope::kGlobal)
-            .SetExpireOnNavigation(false)
-            .AddOkButton(
-                l10n_util::GetStringUTF16(
-                    IDS_DEV_TOOLS_CONNECTION_DIALOG_DISABLE_TEXT),
-                base::BindRepeating([](content::WebContents*) {
-                  // Post so the infobar closes before the new tab activates.
-                  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-                      FROM_HERE, base::BindOnce([] {
-                        BrowserWindowInterface* browser =
-                            GlobalBrowserCollection::GetInstance()
-                                ->GetLastActiveBrowser();
-                        if (!browser) {
-                          return;
-                        }
-                        NavigateParams params(
-                            browser, GURL("chrome://inspect#remote-debugging"),
-                            ui::PAGE_TRANSITION_LINK);
-                        params.disposition =
-                            WindowOpenDisposition::NEW_FOREGROUND_TAB;
-                        Navigate(&params);
-                      }));
-                }))
-            .Build();
-    browser_infobar_manager->Register(std::move(spec));
-  }
-
-  if (IsInfoBarMigrated(
           InfoBarDelegate::OSCRYPTASYNC_AVAILABILITY_INFOBAR_DELEGATE)) {
     auto spec =
         InfoBarSpec::Builder(
@@ -525,26 +491,6 @@ void RegisterInfoBars() {
     browser_infobar_manager->Register(std::move(spec));
   }
 
-  if (IsInfoBarMigrated(
-          InfoBarDelegate::WEB_APP_BLOCKED_MIGRATION_INFOBAR_DELEGATE)) {
-    auto spec =
-        InfoBarSpec::Builder(
-            InfoBarDelegate::WEB_APP_BLOCKED_MIGRATION_INFOBAR_DELEGATE)
-            .SetMessageText(l10n_util::GetStringUTF16(
-                IDS_WEB_APP_BLOCKED_MIGRATION_MESSAGE))
-            .SetIcon(features::IsRoundedIconsEnabled()
-                         ? vector_icons::kSettingsFilledIcon
-                         : vector_icons::kSettingsOldIcon)
-            .SetLinkText(l10n_util::GetStringUTF16(IDS_LEARN_MORE))
-            .SetLinkNavigationUrl(GURL(
-                "https://support.google.com/chrome/a/?p=pwa_origin_migration"))
-            .SetScope(InfoBarScope::kTab)
-            .SetExpireOnNavigation(false)
-            .AddOkButton(l10n_util::GetStringUTF16(IDS_APP_OK),
-                         base::DoNothing())
-            .Build();
-    browser_infobar_manager->Register(std::move(spec));
-  }
 }
 
 void RegisterPreProfileInitInfoBars() {

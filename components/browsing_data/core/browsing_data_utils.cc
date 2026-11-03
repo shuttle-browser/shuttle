@@ -190,15 +190,6 @@ std::u16string GetCounterTextFromResult(
                                             count);
   }
 
-  if (pref_name == prefs::kDeleteSkills) {
-    const BrowsingDataCounter::SyncResult* skills_result =
-        static_cast<const BrowsingDataCounter::SyncResult*>(result);
-    return l10n_util::GetPluralStringFUTF16(skills_result->is_sync_enabled()
-                                                ? IDS_DEL_SKILLS_COUNTER_SYNCED
-                                                : IDS_DEL_SKILLS_COUNTER,
-                                            skills_result->Value());
-  }
-
   if (pref_name == prefs::kDeleteBrowsingHistory) {
     // History counter.
     return CreateHistoryCounterString(

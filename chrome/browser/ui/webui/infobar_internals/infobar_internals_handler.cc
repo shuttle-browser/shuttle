@@ -20,7 +20,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/devtools/devtools_infobar_delegate.h"
-#include "chrome/browser/devtools/devtools_remote_server_infobar_delegate.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/global_confirm_info_bar.h"
 #include "chrome/browser/devtools/process_sharing_infobar.h"
@@ -275,11 +274,6 @@ void InfoBarInternalsHandler::GetInfoBars(GetInfoBarsCallback callback) {
             "The DevTools infobar is used to confirm that the user wants to "
             "allow DevTools to be used. This trigger shows the infobar.");
 
-  add_entry(InfoBarType::kDevToolsRemoteDebugging, "DevTools Remote Debugging",
-            "The DevTools Remote Debugging infobar globally warns users that "
-            "a remote CDP client is connected to the browser. This trigger "
-            "shows the infobar.",
-            InfoBarAction::kShowGlobally);
 
   add_entry(InfoBarType::kDevToolsSharedProcess, "DevTools Shared Process",
             "The DevTools shared process infobar warns that the inspected tab "
@@ -488,21 +482,9 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
               web_contents));
       return true;
     }
-    case InfoBarType::kDevToolsRemoteDebugging: {
-      if (infobars::IsInfoBarMigrated(
-              infobars::InfoBarDelegate::
-                  DEV_TOOLS_REMOTE_DEBUGGING_INFOBAR_DELEGATE)) {
-        if (!browser_infobar_manager) {
-          return false;
-        }
-        return browser_infobar_manager->ShowGlobally(
-            infobars::InfoBarDelegate::
-                DEV_TOOLS_REMOTE_DEBUGGING_INFOBAR_DELEGATE);
-      }
-      GlobalConfirmInfoBar::Show(
-          std::make_unique<DevToolsRemoteServerInfobarDelegate>());
-      return true;
-    }
+    case InfoBarType::kDevToolsRemoteDebugging:
+      // Shuttle: no "controlled by automation" infobar (always-on CDP).
+      return false;
     case InfoBarType::kDevToolsSharedProcess: {
       auto* infobar_manager =
           infobars::ContentInfoBarManager::FromWebContents(web_contents);
