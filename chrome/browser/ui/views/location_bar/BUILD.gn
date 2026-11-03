@@ -89,8 +89,6 @@ source_set("impl") {
       "zoom_bubble_view.cc",
     ]
 
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
     deps += [
       "//chrome/app:generated_resources",
       "//chrome/app/vector_icons",
@@ -104,6 +102,7 @@ source_set("impl") {
       "//chrome/browser/signin",
       "//chrome/browser/themes",
       "//chrome/browser/ui:browser_actions",
+      "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:bubble_anchor_util",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui:view_ids",

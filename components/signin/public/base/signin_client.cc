@@ -28,3 +28,8 @@ network::mojom::DeviceBoundSessionManager*
 SigninClient::GetDeviceBoundSessionManager() const {
   return nullptr;
 }
+
+bool SigninClient::IsAccountSignedInOnOtherProfile(
+    const GaiaId& gaia_id) const {
+  return false;
+}

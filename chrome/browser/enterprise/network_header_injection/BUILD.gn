@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//extensions/buildflags/buildflags.gni")
+
 static_library("network_header_injection") {
   public = [
     "http_header_injection_client.h",
@@ -27,6 +29,7 @@ static_library("network_header_injection") {
   ]
 
   deps = [
+    "//components/enterprise/isolated_mode",
     "//components/enterprise/network_header_injection/core",
     "//components/keyed_service/core",
     "//components/prefs",

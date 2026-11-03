@@ -95,6 +95,7 @@
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_paths.h"
+#include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -121,6 +122,7 @@
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/content/browser/safe_browsing_service_interface.h"
+#include "components/search/search.h"
 #include "components/sessions/core/session_id_generator.h"
 #include "components/signin/core/browser/active_primary_accounts_metrics_recorder.h"
 #include "components/subresource_filter/content/browser/ruleset_service.h"
@@ -155,6 +157,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/unowned_user_data/unowned_user_data_host.h"
+#include "ui/webui/buildflags.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "base/win/windows_version.h"
@@ -1361,7 +1364,10 @@ BrowserProcessImpl::component_updater() {
       component_updater::MakeChromeComponentUpdaterConfigurator(
           base::CommandLine::ForCurrentProcess(),
           g_browser_process->local_state()),
-      std::move(scheduler), brand);
+      std::move(scheduler), brand,
+      /*update_checks_disabled=*/
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableComponentUpdate));
 
   return component_updater_.get();
 }

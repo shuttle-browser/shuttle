@@ -21,10 +21,7 @@ static_library("safe_browsing") {
     "url_checker_delegate_impl.cc",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   public_deps = [
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/metrics",
     "//chrome/browser/notifications",
   ]
@@ -333,6 +330,7 @@ static_library("safe_browsing") {
       "//components/signin/public/identity_manager",
       "//components/site_engagement/content",
       "//components/site_engagement/core/mojom:mojo_bindings",
+      "//components/tabs:public",
       "//components/unified_consent",
       "//components/url_matcher",
       "//components/variations/service",
@@ -463,8 +461,6 @@ source_set("verdict_cache_manager_factory") {
     "verdict_cache_manager_factory.h",
   ]
 
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
   deps = [
     "//chrome/browser:browser_process",
     "//chrome/browser/content_settings:content_settings_factory",
@@ -491,8 +487,6 @@ static_library("advanced_protection") {
     "application_advanced_protection_status_detector.cc",
     "application_advanced_protection_status_detector.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     "//chrome/browser:browser_process",
@@ -526,8 +520,6 @@ source_set("metrics_collector") {
     "safe_browsing_metrics_collector_factory.cc",
     "safe_browsing_metrics_collector_factory.h",
   ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     "//chrome/browser:browser_process",

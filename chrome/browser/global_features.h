@@ -86,6 +86,9 @@ class TabDragSessionManager;
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
 namespace request_header_integrity {
 class ChromeCompaneroHost;
+#if !BUILDFLAG(IS_ANDROID)
+class PlatformRuntimeHost;
+#endif
 }
 #endif
 
@@ -204,6 +207,12 @@ class GlobalFeatures {
   request_header_integrity::ChromeCompaneroHost* chrome_companero_host() {
     return chrome_companero_host_.get();
   }
+
+#if !BUILDFLAG(IS_ANDROID)
+  request_header_integrity::PlatformRuntimeHost* platform_runtime_host() {
+    return platform_runtime_host_.get();
+  }
+#endif
 #endif
 
  protected:
@@ -224,6 +233,10 @@ class GlobalFeatures {
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
   virtual std::unique_ptr<request_header_integrity::ChromeCompaneroHost>
   CreateChromeCompaneroHost();
+#if !BUILDFLAG(IS_ANDROID)
+  virtual std::unique_ptr<request_header_integrity::PlatformRuntimeHost>
+  CreatePlatformRuntimeHost();
+#endif
 #endif
 
  private:
@@ -296,6 +309,10 @@ class GlobalFeatures {
 #if BUILDFLAG(ENABLE_REQUEST_HEADER_INTEGRITY)
   std::unique_ptr<request_header_integrity::ChromeCompaneroHost>
       chrome_companero_host_;
+#if !BUILDFLAG(IS_ANDROID)
+  std::unique_ptr<request_header_integrity::PlatformRuntimeHost>
+      platform_runtime_host_;
+#endif
 #endif
 };
 

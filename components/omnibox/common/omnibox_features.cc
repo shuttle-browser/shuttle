@@ -107,6 +107,10 @@ BASE_FEATURE(kZeroSuggestPrefetchingOnSRP, enable_if(!IS_ANDROID));
 // Web (i.e. non-NTP and non-SRP URLs).
 BASE_FEATURE(kZeroSuggestPrefetchingOnWeb, DISABLED);
 
+// Enables triggering zero-suggest prefetch when a page finishes loading on
+// Android, aligning with Desktop's page-load and tab-switch behavior.
+BASE_FEATURE(kZeroSuggestPrefetchOnPageLoadAndTabSwitch, DISABLED);
+
 // Features to provide head and tail non personalized search suggestion from
 // compact on device models. More specifically, feature name with suffix
 // Incognito / NonIncognito  will only controls behaviors under incognito /
@@ -237,6 +241,11 @@ BASE_FEATURE(kOmniboxFullWebUISizeWebViewToPreferredHeight, DISABLED);
 // parent window visibility and locking compositor frames.
 BASE_FEATURE(kOmniboxWebUIPopupHideOnCreation, DISABLED);
 
+// When enabled, a WebUI omnibox popup presenter creates its native widget on
+// the first `Show()` instead of when the popup is created with the browser
+// window. The WebContents is still created and loaded up front. Kill switch.
+BASE_FEATURE(kOmniboxWebUIPopupCreateWidgetOnShow, ENABLED);
+
 // When enabled, a WebUI omnibox popup destroys its widget when it is hidden
 // and builds a fresh one on the next show, so the new native window has no
 // previous compositor content to present. This is applied to every WebUI popup
@@ -248,6 +257,12 @@ BASE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide, ENABLED);
 // take effect regardless of whether the full WebUI omnibox is enabled.
 BASE_FEATURE(kOmniboxAimDestroyWidgetOnHide, ENABLED);
 BASE_FEATURE(kOmniboxWebUIDestroyWidgetOnHide, DISABLED);
+
+// When enabled, a location bar creates its AI Mode popup (and the WebContents
+// behind it) only once the profile is eligible for it, instead of at window
+// creation. Ineligible profiles never show the popup, so this saves one
+// WebUI document per window. Kill switch.
+BASE_FEATURE(kOmniboxAimPopupRequireEligibility, ENABLED);
 
 // When enabled, the WebUI searchbox will bypass OmniboxController and
 // OmniboxEditModel.
@@ -491,16 +506,11 @@ namespace android {
 static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
   static const base::Feature* const kFeaturesExposedToJava[] = {
       &kDiagnostics,
-      &kComposeboxDriveContextMenuOption,
-      &kComposeboxDriveContextMenuOptionDisclaimer,
-      &kForceDriveDisclaimerAccepted,
       &kForceAndroidRealbox,
       &kOmniboxTouchDownTriggerForPrefetch,
       &kOmniboxPrefetchSelectedSuggestionsOmtAndroid,
-      &kOmniboxAsyncViewInflation,
       &kRichAutocompletion,
       &kUrlBarWithoutLigatures,
-      &kUseFusedLocationProvider,
       &kJumpStartOmnibox,
       &kPostDelayedTaskFocusTab,
       &kOmniboxMobileParityUpdateV2,
@@ -510,6 +520,11 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kOmniboxSiteSearch,
       &kOmniboxMultimodalInput,
       &kOmniboxFuseboxPopupVariations,
+      &kOmniboxFuseboxUserEdModelSubtitles,
+      &kOmniboxFuseboxUserEdPlusButtonIph,
+      &kOmniboxFuseboxUserEdTabPickerIph,
+      &kOmniboxFuseboxUserEdFakeboxAnimation,
+      &kOmniboxFuseboxUserEdGuidedTour,
       &kServeJavaCachedZeroSuggest,
       &kAIMSuppressVerbatimMatch,
       &kAim3pEntrypoint,
@@ -520,7 +535,8 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kOmniboxDebounceKeyboardVisibility,
       &kOmniboxDisableTabsForCanvas,
       &kOmniboxSessionlessVoiceSearch,
-      &kSuppressStatusIconDuringHttpNavigation};
+      &kSuppressStatusIconDuringHttpNavigation,
+      &kZeroSuggestPrefetchOnPageLoadAndTabSwitch};
   static base::NoDestructor<base::android::FeatureMap> kFeatureMap(
       kFeaturesExposedToJava);
   return reinterpret_cast<int64_t>(kFeatureMap.get());

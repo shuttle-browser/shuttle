@@ -55,9 +55,6 @@ source_set("impl") {
       "//components/search_engines",
     ]
   }
-
-  # Standard for impl targets.
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
 if (!is_android) {

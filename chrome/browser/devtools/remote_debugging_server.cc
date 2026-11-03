@@ -191,7 +191,7 @@ RemoteDebuggingServer::RemoteDebuggingServer() = default;
 RemoteDebuggingServer::~RemoteDebuggingServer() {
   // Ensure Profile is alive, because the whole DevTools subsystem
   // accesses it during shutdown.
-  DCHECK(g_browser_process->profile_manager());
+  CHECK(g_browser_process->profile_manager(), base::NotFatalUntil::M161);
   StopServer();
 }
 
@@ -243,7 +243,7 @@ std::unique_ptr<RemoteDebuggingServer> RemoteDebuggingServer::Start() {
   base::FilePath output_dir;
   {
     bool result = base::PathService::Get(chrome::DIR_USER_DATA, &output_dir);
-    DCHECK(result);
+    CHECK(result, base::NotFatalUntil::M161);
   }
 
   shuttle::InitNetworkAccess(output_dir);

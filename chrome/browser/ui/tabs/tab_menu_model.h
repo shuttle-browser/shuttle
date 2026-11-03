@@ -93,6 +93,7 @@ class TabMenuModel : public ui::SimpleMenuModel {
   std::unique_ptr<ui::SimpleMenuModel> swap_with_split_submenu_;
   std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
   std::unique_ptr<ui::SimpleMenuModel> arrange_split_view_submenu_;
+  std::unique_ptr<ui::SimpleMenuModel> split_mute_submenu_;
 
   // `tab_strip_` needs to outlive this class.
   raw_ptr<TabStripModel> tab_strip_;

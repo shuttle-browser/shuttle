@@ -43,18 +43,21 @@ source_set("impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser/accessibility",
     "//chrome/browser/extensions",
-    "//chrome/browser/ui",
     "//chrome/browser/ui/browser_window",
     "//components/live_caption",
     "//components/live_caption:constants",
     "//components/live_caption:live_translate",
+    "//components/on_device_translation/buildflags",
     "//components/pref_registry",
     "//components/soda",
     "//ui/accessibility",
   ]
 
   if (is_chromeos) {
-    deps += [ "//chrome/browser/ash/accessibility" ]
+    deps += [
+      "//chrome/browser/ash/accessibility",
+      "//chrome/browser/ash/profiles",
+    ]
   }
 
   if (is_win) {

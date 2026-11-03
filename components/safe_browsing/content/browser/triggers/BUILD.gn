@@ -87,6 +87,8 @@ source_set("suspicious_site_trigger") {
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
+  public_deps = [ "//ui/base/unowned_user_data" ]
+
   deps = [
     ":trigger_throttler",
     ":triggers",
@@ -96,6 +98,7 @@ source_set("suspicious_site_trigger") {
     "//components/safe_browsing/content/browser",
     "//components/safe_browsing/core/browser:referrer_chain_provider",
     "//components/safe_browsing/core/common",
+    "//components/tabs:public",
     "//content/public/browser",
     "//net",
   ]

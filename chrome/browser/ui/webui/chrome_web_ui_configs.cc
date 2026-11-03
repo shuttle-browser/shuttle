@@ -32,7 +32,7 @@
 #include "chrome/browser/ui/webui/metrics_internals/metrics_internals_ui.h"
 #include "chrome/browser/ui/webui/net_export_ui.h"
 #include "chrome/browser/ui/webui/net_internals/net_internals_ui.h"
-#include "chrome/browser/ui/webui/omnibox/omnibox_ui.h"
+#include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals_ui.h"
 #include "chrome/browser/ui/webui/policy/policy_ui.h"
 #include "chrome/browser/ui/webui/predictors/predictors_ui.h"
 #include "chrome/browser/ui/webui/regional_capabilities_internals/regional_capabilities_internals_ui.h"
@@ -51,6 +51,10 @@
 #include "printing/buildflags/buildflags.h"
 #include "ui/webui/buildflags.h"
 
+#if BUILDFLAG(ENABLE_WEBUI_HISTORY)
+#include "chrome/browser/ui/webui/history/history_ui.h"
+#endif  // BUILDFLAG(ENABLE_WEBUI_HISTORY)
+
 #if BUILDFLAG(ENABLE_WEBUI_NTP)
 #endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
 
@@ -68,7 +72,6 @@
 #endif
 #include "chrome/browser/ui/webui/color_pipeline_internals/color_pipeline_internals_ui.h"
 #include "chrome/browser/ui/webui/downloads/downloads_ui.h"
-#include "chrome/browser/ui/webui/history/history_ui.h"
 #include "chrome/browser/ui/webui/infobar_internals/infobar_internals_ui.h"
 #include "chrome/browser/ui/webui/inspect/inspect_ui.h"
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
@@ -91,6 +94,10 @@
 #include "chrome/browser/ui/webui/notifications_internals/notifications_internals_ui.h"
 #include "chrome/browser/ui/webui/webapks/webapks_ui.h"
 #endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(ENABLE_WEBUI_TABSTRIP_NTB)
+#include "chrome/browser/ui/webui/tabstrip_ntb/tabstrip_ntb_ui.h"  // nogncheck
+#endif  // BUILDFLAG(ENABLE_WEBUI_TABSTRIP_NTB)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "chrome/browser/ui/webui/extensions/extensions_ui.h"
@@ -215,7 +222,7 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<MetricsInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<NetExportUIConfig>());
   map.AddWebUIConfig(std::make_unique<NetInternalsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<OmniboxUIConfig>());
+  map.AddWebUIConfig(std::make_unique<OmniboxInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<OptimizationGuideInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<PolicyUIConfig>());
   map.AddWebUIConfig(std::make_unique<PredictorsUIConfig>());
@@ -239,6 +246,10 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<CertificateViewerUIConfig>());
 #endif
 
+#if BUILDFLAG(ENABLE_WEBUI_HISTORY)
+  map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
+#endif  // BUILDFLAG(ENABLE_WEBUI_HISTORY)
+
 #if BUILDFLAG(IS_ANDROID)
   map.AddWebUIConfig(
       std::make_unique<chrome_finds_internals::ChromeFindsInternalsUIConfig>());
@@ -253,7 +264,6 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<shuttle::AgentsUIConfig>());
   map.AddWebUIConfig(std::make_unique<ColorPipelineInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<DownloadsUIConfig>());
-  map.AddWebUIConfig(std::make_unique<HistoryUIConfig>());
   map.AddWebUIConfig(std::make_unique<InfobarInternalsUIConfig>());
   map.AddWebUIConfig(std::make_unique<InspectUIConfig>());
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
@@ -275,6 +285,10 @@ void RegisterChromeWebUIConfigs() {
   map.AddWebUIConfig(std::make_unique<WebuiGalleryUIConfig>());
   map.AddWebUIConfig(std::make_unique<WebUIJsErrorUIConfig>());
 #endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(ENABLE_WEBUI_TABSTRIP_NTB)
+  map.AddWebUIConfig(std::make_unique<tabstrip_ntb::TabStripNtbUIConfig>());
+#endif  // BUILDFLAG(ENABLE_WEBUI_TABSTRIP_NTB)
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OPENBSD)
   map.AddWebUIConfig(std::make_unique<LinuxProxyConfigUI>());

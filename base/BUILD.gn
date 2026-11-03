@@ -426,8 +426,6 @@ component("base") {
     "macros/is_empty.h",
     "macros/remove_parens.h",
     "macros/uniquify.h",
-    "memory/advanced_memory_safety_checks.cc",
-    "memory/advanced_memory_safety_checks.h",
     "memory/aligned_memory.cc",
     "memory/aligned_memory.h",
     "memory/asan_interface.h",
@@ -466,6 +464,8 @@ component("base") {
     "memory/safe_ref_traits.h",
     "memory/safety_checks.cc",
     "memory/safety_checks.h",
+    "memory/sanitized_object.cc",
+    "memory/sanitized_object.h",
     "memory/scoped_policy.h",
     "memory/scoped_refptr.h",
     "memory/self_deleting.h",
@@ -924,6 +924,7 @@ component("base") {
     "threading/hang_watcher.h",
     "threading/platform_thread.cc",
     "threading/platform_thread.h",
+    "threading/platform_thread_internal.h",
     "threading/platform_thread_metrics.cc",
     "threading/platform_thread_metrics.h",
     "threading/platform_thread_ref.cc",
@@ -2065,6 +2066,7 @@ component("base") {
       "win/wmi.h",
       "win/wrapped_window_proc.cc",
       "win/wrapped_window_proc.h",
+      "win/wrl_module.h",
     ]
 
     deps += [ "//base/win:base_win_buildflags" ]
@@ -2604,6 +2606,9 @@ component("base") {
 
   if (is_win) {
     sources += [
+      # Depends on trace_event/trace_logging_minimal_win.h below.
+      "allocator/etw_allocation_observer_win.cc",
+      "allocator/etw_allocation_observer_win.h",
       "trace_event/etw_interceptor_win.cc",
       "trace_event/etw_interceptor_win.h",
       "trace_event/trace_logging_minimal_win.cc",
@@ -4497,6 +4502,7 @@ test("base_unittests") {
       "android/application_status_listener_unittest.cc",
       "android/child_process_unittest.cc",
       "android/content_uri_utils_unittest.cc",
+      "android/input_hint_checker_unittest.cc",
       "android/java_handler_thread_unittest.cc",
       "android/jni_android_unittest.cc",
       "android/jni_array_unittest.cc",
@@ -4794,7 +4800,10 @@ test("base_unittests") {
   }
 
   if (is_win) {
-    sources += [ "trace_event/trace_logging_minimal_win_unittest.cc" ]
+    sources += [
+      "allocator/etw_allocation_observer_win_unittest.cc",
+      "trace_event/trace_logging_minimal_win_unittest.cc",
+    ]
   }
 
   deps += [
@@ -5163,7 +5172,6 @@ if (is_android) {
     deps = [
       ":base_java",
       ":build_info_java",
-      ":flagged_apis_java",
       "//base/version_info/android:version_constants_java",
       "//third_party/android_deps:com_google_code_findbugs_jsr305_java",
       "//third_party/android_deps:com_google_errorprone_error_prone_annotations_java",
@@ -5481,7 +5489,6 @@ if (is_android) {
       "android/java/src/org/chromium/base/memory/MemoryInfoBridge.java",
       "android/java/src/org/chromium/base/memory/MemoryPressureCallback.java",
       "android/java/src/org/chromium/base/memory/MemoryPressureMonitor.java",
-      "android/java/src/org/chromium/base/memory/MemoryPressureUma.java",
       "android/java/src/org/chromium/base/memory/MemoryPurgeManager.java",
       "android/java/src/org/chromium/base/memory/SelfFreezeCallback.java",
     ]
@@ -5949,20 +5956,14 @@ if (is_android) {
       ":promise_java",
       ":service_loader_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
-      "//third_party/androidx:androidx_core_core_java",
     ]
     sources = [
       "android/java/src/org/chromium/base/AconfigFlaggedApiDelegate.java",
-      "android/java/src/org/chromium/base/BindingRequestQueue.java",
       "android/java/src/org/chromium/base/PasswordEchoSettingDelegate.java",
       "android/java/src/org/chromium/base/SelectionActionMenuClientWrapper.java",
       "android/java/src/org/chromium/base/hid/HidDevice.java",
       "android/java/src/org/chromium/base/hid/HidDeviceListener.java",
       "android/java/src/org/chromium/base/hid/HidManager.java",
-      "android/java/src/org/chromium/base/serial/SerialManager.java",
-      "android/java/src/org/chromium/base/serial/SerialPort.java",
-      "android/java/src/org/chromium/base/serial/SerialPortListener.java",
-      "android/java/src/org/chromium/base/serial/SerialPortResponse.java",
     ]
   }
 
@@ -6255,6 +6256,7 @@ if (is_android) {
       "android/junit/src/org/chromium/base/CollectionUtilTest.java",
       "android/junit/src/org/chromium/base/CommandLineTest.java",
       "android/junit/src/org/chromium/base/ContentUriUtilsUnitTest.java",
+      "android/junit/src/org/chromium/base/ContextUtilsUnitTest.java",
       "android/junit/src/org/chromium/base/DeviceInfoUnitTest.java",
       "android/junit/src/org/chromium/base/DiscardableReferencePoolTest.java",
       "android/junit/src/org/chromium/base/FeatureOverridesUnitTest.java",
@@ -6399,8 +6401,10 @@ if (is_android) {
 
   generate_jni("base_unittest_support_jni") {
     testonly = true
-    sources =
-        [ "test/android/java/src/org/chromium/base/JniAndroidTestUtils.java" ]
+    sources = [
+      "test/android/java/src/org/chromium/base/InputHintCheckerTestUtil.java",
+      "test/android/java/src/org/chromium/base/JniAndroidTestUtils.java",
+    ]
   }
 
   # Used by gtests and not by robolectric / instrumentation tests.
@@ -6417,6 +6421,7 @@ if (is_android) {
 
     sources = [
       "test/android/java/src/org/chromium/base/ContentUriTestUtils.java",
+      "test/android/java/src/org/chromium/base/InputHintCheckerTestUtil.java",
       "test/android/java/src/org/chromium/base/JavaHandlerThreadHelpers.java",
       "test/android/java/src/org/chromium/base/JniAndroidTestUtils.java",
     ]

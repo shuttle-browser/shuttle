@@ -14,10 +14,15 @@ source_set("browser") {
   ]
   deps = [
     "//base",
+    "//components/device_event_log",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
     "//components/webauthn:features",
     "//crypto",
+    "//google_apis",
     "//net",
     "//services/network/public/cpp",
+    "//services/network/public/mojom",
     "//third_party/blink/public/common",
     "//url",
   ]
@@ -62,10 +67,14 @@ static_library("test_support") {
     "webauthn_test_utils.cc",
     "webauthn_test_utils.h",
   ]
+  public_deps = [ "//net" ]
   deps = [
     ":browser",
     "//base",
+    "//base:i18n",
     "//content/public/browser",
+    "//services/network/public/cpp",
     "//testing/gmock",
+    "//url",
   ]
 }

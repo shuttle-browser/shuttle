@@ -20,6 +20,7 @@ if (toolkit_views) {
 
   source_set("permissions") {
     public = [
+      "ambient_login_permission_bubble_view.h",
       "embedded_permission_prompt.h",
       "embedded_permission_prompt_ask_view.h",
       "embedded_permission_prompt_base_view.h",
@@ -86,6 +87,7 @@ if (toolkit_views) {
   # the public :permissions target.
   source_set("impl") {
     sources = [
+      "ambient_login_permission_bubble_view.cc",
       "chooser_bubble_ui.cc",
       "embedded_permission_prompt.cc",
       "embedded_permission_prompt_ask_view.cc",
@@ -129,11 +131,13 @@ if (toolkit_views) {
       "//chrome/browser/ui/dialogs",
       "//chrome/browser/ui/exclusive_access",
       "//chrome/browser/ui/omnibox",
+      "//chrome/browser/ui/passwords",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/views:bubble_anchor_util_views",
       "//chrome/browser/ui/views:device_chooser_content_view",
       "//chrome/browser/ui/views:layout_provider",
       "//chrome/browser/ui/views:title_origin_label",
+      "//chrome/browser/ui/views/controls",
       "//chrome/browser/ui/views/extensions:extensions_container_views",
       "//chrome/browser/ui/views/frame:browser_view_header",
       "//chrome/browser/ui/views/frame:contents_web_view",
@@ -144,9 +148,11 @@ if (toolkit_views) {
       "//chrome/browser/ui/views/permissions:permission_prompt_observer",
       "//chrome/browser/ui/views/picture_in_picture",
       "//chrome/browser/ui/views/tabs/common",
+      "//chrome/browser/ui/webauthn",
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/window_metadata",
       "//chrome/common",
+      "//components/vector_icons",
       "//content/public/browser",
       "//ui/base",
       "//ui/views",

@@ -7,7 +7,17 @@ import("//testing/test.gni")
 source_set("core") {
   sources = [
     "checker_id.h",
+    "client_tool.cc",
+    "client_tool.h",
     "concepts.h",
+    "decision.h",
+    "decision_attribution.cc",
+    "decision_attribution.h",
+    "decision_source.cc",
+    "decision_source.h",
+    "gateable_event.cc",
+    "gateable_event.h",
+    "gating_decision.h",
     "origin_gating_cache.cc",
     "origin_gating_cache.h",
     "origin_gating_checker.cc",
@@ -18,8 +28,6 @@ source_set("core") {
     "origin_gating_registration.h",
     "origin_gating_service.cc",
     "origin_gating_service.h",
-    "types.cc",
-    "types.h",
   ]
 
   deps = [

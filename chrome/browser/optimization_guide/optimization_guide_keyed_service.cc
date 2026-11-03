@@ -55,7 +55,6 @@
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/core/optimization_guide_logger.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
-#include "components/optimization_guide/core/optimization_guide_switches.h"
 #include "components/optimization_guide/core/optimization_guide_util.h"
 #include "components/optimization_guide/optimization_guide_buildflags.h"
 #include "components/optimization_guide/proto/hints.pb.h"
@@ -123,14 +122,14 @@ void OptimizationGuideKeyedService::SetIsOfficialBuildForTesting(
 OptimizationGuideKeyedService::OptimizationGuideKeyedService(
     content::BrowserContext* browser_context)
     : browser_context_(browser_context) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (browser_context_) {  // Null in MockOptimizationGuideKeyedService.
     Initialize();
   }
 }
 
 OptimizationGuideKeyedService::~OptimizationGuideKeyedService() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -146,7 +145,7 @@ OptimizationGuideKeyedService::GetJavaObject() {
 #endif
 
 void OptimizationGuideKeyedService::Initialize() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   Profile* profile = Profile::FromBrowserContext(browser_context_);
 
@@ -210,7 +209,7 @@ void OptimizationGuideKeyedService::Initialize() {
   }
 
   optimization_guide_logger_ = OptimizationGuideLogger::GetInstance();
-  DCHECK(optimization_guide_logger_);
+  CHECK(optimization_guide_logger_, base::NotFatalUntil::M161);
   hints_manager_ = std::make_unique<optimization_guide::ChromeHintsManager>(
       profile, profile->GetPrefs(), hint_store, top_host_provider_.get(),
       tab_url_provider_.get(), url_loader_factory,
@@ -239,7 +238,7 @@ OptimizationGuideKeyedService::GetHintsManager() {
 
 void OptimizationGuideKeyedService::OnNavigationStartOrRedirect(
     OptimizationGuideNavigationData* navigation_data) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   base::flat_set<optimization_guide::proto::OptimizationType>
       registered_optimization_types =
@@ -257,7 +256,7 @@ void OptimizationGuideKeyedService::OnNavigationStartOrRedirect(
 
 void OptimizationGuideKeyedService::OnNavigationFinish(
     const std::vector<GURL>& navigation_redirect_chain) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   hints_manager_->OnNavigationFinish(navigation_redirect_chain);
 }
@@ -289,7 +288,7 @@ OptimizationGuideKeyedService::CanApplyOptimization(
     const GURL& url,
     optimization_guide::proto::OptimizationType optimization_type,
     optimization_guide::OptimizationMetadata* optimization_metadata) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   optimization_guide::OptimizationTypeDecision optimization_type_decision =
       hints_manager_->CanApplyOptimization(url, optimization_type,
@@ -321,9 +320,10 @@ void OptimizationGuideKeyedService::CanApplyOptimizationOnDemand(
         callback,
     std::optional<optimization_guide::proto::RequestContextMetadata>
         request_context_metadata) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(request_context !=
-         optimization_guide::proto::RequestContext::CONTEXT_UNSPECIFIED);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK(request_context !=
+            optimization_guide::proto::RequestContext::CONTEXT_UNSPECIFIED,
+        base::NotFatalUntil::M161);
 
   hints_manager_->CanApplyOptimizationOnDemand(urls, optimization_types,
                                                request_context, callback,
@@ -332,7 +332,8 @@ void OptimizationGuideKeyedService::CanApplyOptimizationOnDemand(
 
 void OptimizationGuideKeyedService::OnProfileInitializationComplete(
     Profile* profile) {
-  DCHECK(profile_observation_.IsObservingSource(profile));
+  CHECK(profile_observation_.IsObservingSource(profile),
+        base::NotFatalUntil::M161);
   profile_observation_.Reset();
 }
 

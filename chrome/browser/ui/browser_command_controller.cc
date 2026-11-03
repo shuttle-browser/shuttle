@@ -57,7 +57,6 @@
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
-#include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
@@ -1143,13 +1142,11 @@ void BrowserCommandController::TabGroupedStateChanged(
   UpdateCommandsForTabStripStateChanged();
 }
 
-void BrowserCommandController::OnTabChangedAt(tabs::TabInterface* tab,
-                                              TabChangeType change_type) {
-  if (change_type == TabChangeType::kBlockedOnly) {
-    PrintingStateChanged();
-    FullscreenStateChanged();
-    UpdateCommandsForFind();
-  }
+void BrowserCommandController::OnTabBlockedStateChanged(
+    tabs::TabInterface* tab) {
+  PrintingStateChanged();
+  FullscreenStateChanged();
+  UpdateCommandsForFind();
 }
 
 void BrowserCommandController::OnTabPinnedStateChanged(tabs::TabInterface* tab,
@@ -1915,14 +1912,12 @@ void BrowserCommandController::UpdateCommandsForTabGroupFocusChanged() {
   }
 
   if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
-    const bool is_focused =
-        browser_->tab_strip_model()->GetFocusedGroup().has_value();
     if (auto* const action = FindAction(kActionUnfocusTabGroup, browser_)) {
-      action->SetVisible(is_focused);
+      action->SetVisible(false);
     }
     if (auto* const action =
             FindAction(kActionToggleCollapseVertical, browser_)) {
-      action->SetVisible(!is_focused);
+      action->SetVisible(true);
     }
   }
 }

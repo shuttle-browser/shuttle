@@ -20,7 +20,6 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics_action.h"
-#include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/process/current_process.h"
 #include "base/profiler/thread_group_profiler.h"
@@ -173,6 +172,7 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/webui/jstemplate_builder.h"
+#include "ui/webui/buildflags.h"
 #include "url/origin.h"
 #include "v8/include/v8-isolate.h"
 
@@ -185,7 +185,6 @@
 #include "chrome/renderer/sandbox_status_extension_android.h"
 #include "chrome/renderer/wallet/boarding_pass_extractor.h"
 #else
-#include "components/search/ntp_features.h"  // nogncheck
 #endif
 
 #if BUILDFLAG(ENABLE_SPEECH_SERVICE)
@@ -432,8 +431,6 @@ void ChromeContentRendererClient::RenderThreadStarted() {
 
   extensions_renderer_client->RenderThreadStarted();
   WebSecurityPolicy::RegisterURLSchemeAsExtension(
-      WebString::FromAscii(extensions::kExtensionScheme));
-  WebSecurityPolicy::RegisterURLSchemeAsCodeCacheWithHashing(
       WebString::FromAscii(extensions::kExtensionScheme));
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
@@ -1341,6 +1338,10 @@ void ChromeContentRendererClient::
 #if !BUILDFLAG(IS_ANDROID)
     blink::WebRuntimeFeatures::EnableWebHIDOnServiceWorkers(true);
 #endif  // !BUILDFLAG(IS_ANDROID)
+    if (base::FeatureList::IsEnabled(
+            blink::features::kClipboardOnExtensionServiceWorker)) {
+      blink::WebRuntimeFeatures::EnableClipboardOnExtensionServiceWorker(true);
+    }
     blink::WebRuntimeFeatures::EnableAIPromptAPIForWorkers(true);
     blink::WebRuntimeFeatures::EnableAIPromptAPILegacyIdentifiers(true);
     blink::WebRuntimeFeatures::EnableAIPromptAPILegacyParams(true);
@@ -1513,11 +1514,13 @@ void ChromeContentRendererClient::AppendContentSecurityPolicy(
 
   // Append a minimum CSP to ensure the extension can't relax the default
   // applied CSP through means like Service Worker.
-  const std::string* default_csp = extensions::CSPInfo::GetMinimumCSPToAppend(
-      *extension, gurl.GetPath(),
-      /*is_service_worker=*/content::WorkerThread::GetCurrentId() != 0);
-  if (!default_csp)
+  std::optional<std::string_view> default_csp =
+      extensions::CSPInfo::GetMinimumCSPToAppend(
+          *extension, gurl.GetPath(),
+          /*is_service_worker=*/content::WorkerThread::GetCurrentId() != 0);
+  if (!default_csp) {
     return;
+  }
 
   csp->push_back({blink::WebString::FromUtf8(*default_csp),
                   network::mojom::ContentSecurityPolicyType::kEnforce,

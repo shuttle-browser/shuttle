@@ -21,11 +21,14 @@
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
+#include "chrome/browser/ui/webui/omnibox_popup/full_webui_omnibox_layout_helper.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
 #include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_full_handler.h"
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_handler.h"
+#include "chrome/browser/ui/webui/theme_colors_source_manager.h"
+#include "chrome/browser/ui/webui/theme_colors_source_manager_factory.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
@@ -37,7 +40,6 @@
 #include "net/base/url_util.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/webui/webui_util.h"
 
@@ -69,13 +71,16 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
        .session_allows_drag_and_drop = session_allows_drag_and_drop}));
 
   source->AddBoolean("isTopChromeSearchbox", true);
-  source->AddBoolean("isTouchUi", ui::TouchUiController::Get()->touch_ui());
+  FullWebUIOmniboxLayoutHelper::PopulateLoadTimeData(source);
   source->AddString("searchboxDefaultIcon",
                     GetDefaultSearchProviderIcon(
                         TemplateURLServiceFactory::GetForProfile(profile_)));
   source->AddBoolean(
       "omniboxPopupDebugEnabled",
       base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxPopupDebug));
+  source->AddBoolean("omniboxDogfoodFeedbackEnabled",
+                     omnibox::internal::IsWebUIOmniboxFullPopupEnabled() &&
+                         omnibox::kWebUIOmniboxFullPopupDogfoodFeedback.Get());
   source->AddBoolean("webuiOmniboxPopupSelectionControlEnabled",
                      base::FeatureList::IsEnabled(
                          omnibox::kWebUIOmniboxPopupSelectionControl));
@@ -105,6 +110,8 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   int default_resource = IDR_OMNIBOX_POPUP_OMNIBOX_POPUP_HTML;
   if (omnibox::internal::IsWebUIOmniboxFullPopupEnabled()) {
     default_resource = IDR_OMNIBOX_POPUP_OMNIBOX_POPUP_FULL_HTML;
+    // Shuttle: the WebUI toolbar (and its layout_constants_v<N>.css helper) is
+    // removed.
   }
   webui::SetupWebUIDataSource(source, kOmniboxPopupResources, default_resource);
   webui::EnableTrustedTypesCSP(source);
@@ -122,6 +129,22 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
 OmniboxPopupUI::~OmniboxPopupUI() = default;
 
 WEB_UI_CONTROLLER_TYPE_IMPL(OmniboxPopupUI)
+
+// The popup's chrome://theme/colors.css and layout_constants_v0.css are
+// render-blocking stylesheets in <head>. Serve them from the renderer without
+// a browser round-trip, like the WebUI toolbar's.
+void OmniboxPopupUI::PopulateLocalResourceLoaderConfig(
+    blink::mojom::LocalResourceLoaderConfig* config,
+    const url::Origin& requesting_origin) {
+  auto* theme_colors_manager =
+      ThemeColorsSourceManagerFactory::GetForProfile(profile_);
+  // Without a manager the stylesheet is still fetched over the network.
+  if (!theme_colors_manager) {
+    return;
+  }
+  theme_colors_manager->PopulateLocalResourceLoaderConfig(
+      config, requesting_origin, web_ui()->GetWebContents());
+}
 
 void OmniboxPopupUI::BindInterface(
     content::RenderFrameHost* host,

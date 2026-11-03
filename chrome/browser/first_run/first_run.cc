@@ -300,7 +300,7 @@ ProcessInitialPreferencesResult ProcessInitialPreferences(
     const base::FilePath& user_data_dir,
     std::unique_ptr<installer::InitialPreferences> initial_prefs,
     MasterPrefs* out_prefs) {
-  DCHECK(!user_data_dir.empty());
+  CHECK(!user_data_dir.empty(), base::NotFatalUntil::M161);
 
   if (initial_prefs.get()) {
     // Don't show EULA when running in headless mode since this would

@@ -16,11 +16,11 @@ source_set("management") {
     "management_ui_constants.h",
     "management_ui_handler.h",
   ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     "//base",
     "//chrome/app:generated_resources",
     "//chrome/app/theme:theme_resources",
+    "//chrome/browser:browser_features",
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_process_platform_part",
     "//chrome/browser/enterprise",
@@ -54,6 +54,7 @@ source_set("management") {
   if (!is_android) {
     deps += [
       "//chrome/browser/device_api",
+      "//chrome/browser/ui/webui:theme_source",
     ]
   }
 
@@ -90,10 +91,7 @@ source_set("management") {
     ]
   }
   if (enable_extensions_core) {
-    deps += [
-      "//chrome/browser/extensions",
-      "//chrome/browser/ui/webui:theme_source",
-    ]
+    deps += [ "//chrome/browser/extensions" ]
   }
 }
 

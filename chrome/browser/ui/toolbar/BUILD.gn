@@ -46,6 +46,7 @@ source_set("toolbar") {
     sources += [
       "app_menu_icon_controller.h",
       "app_menu_model.h",
+      "avatar_toolbar_iph_controller.h",
       "back_forward_menu_model.h",
       "toolbar_pref_names.cc",
       "toolbar_pref_names.h",
@@ -64,6 +65,7 @@ source_set("toolbar") {
       "//ui/base:types",
       "//ui/base/interaction",
       "//ui/base/mojom:ui_base_types",
+      "//ui/base/unowned_user_data",
       "//ui/menus",
     ]
     deps += [
@@ -103,6 +105,7 @@ source_set("impl") {
     sources += [
       "app_menu_icon_controller.cc",
       "app_menu_model.cc",
+      "avatar_toolbar_iph_controller.cc",
       "back_forward_menu_model.cc",
     ]
 
@@ -129,6 +132,7 @@ source_set("impl") {
       "//chrome/browser/search",
       "//chrome/browser/signin",
       "//chrome/browser/themes",
+      "//chrome/browser/ui:browser_actions",
       "//chrome/browser/ui:browser_commands",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:layout_constants",
@@ -143,8 +147,10 @@ source_set("impl") {
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/tabs/back_to_opener",
       "//chrome/browser/ui/toolbar/chrome_labs",
+      "//chrome/browser/ui/views/frame:toolbar_button_provider",
       "//chrome/browser/ui/views/tabs/common",
       "//chrome/browser/ui/views/tabs/vertical",
+      "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/upgrade_detector",
       "//chrome/common",
       "//chrome/common:channel_info",
@@ -201,10 +207,12 @@ source_set("impl") {
       "//chrome/browser/extensions",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/extensions",
+      "//chrome/common:constants",
+      "//content/public/browser",
+      "//extensions/common",
     ]
   }
 
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
 source_set("test_support") {

@@ -301,10 +301,6 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<GlicActorEnterprisePrefDefault>(
     kGlicActorEnterprisePrefDefault);
 
-// Exempts the user from ActorPolicyChecker.
-COMPONENT_EXPORT(CHROME_FEATURES)
-extern const base::FeatureParam<bool> kGlicActorPolicyControlExemption;
-
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(
     kGlicActorWorkspaceExemptFromTierCheckRegressionFixKillswitch);
@@ -369,6 +365,8 @@ extern const base::FeatureParam<base::TimeDelta> kGlicActorMoveBeforeClickDelay;
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kGlicCountryFiltering);
 COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE(kGlicMinorCountryFiltering);
+COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kGlicUseSessionCountryForFiltering);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kGlicLocaleFiltering);
@@ -432,9 +430,6 @@ extern const base::FeatureParam<std::string> kGlicDefaultHotkey;
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kGlicURLConfig);
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<std::string> kGlicGuestURL;
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kGlicContextualCueBubble);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kGlicUserStatusCheck);
@@ -579,9 +574,6 @@ BASE_DECLARE_FEATURE(kGlicDefaultContextPinOnBind);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kGlicUnloadOnClose);
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kGlicBindPinnedUnboundTab);
 
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kGlicExplicitBackgroundColor);
@@ -988,6 +980,12 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE_PARAM(bool,
                            kLazyKeyedServiceInstantiationOptimizationGuide);
 COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kLazyKeyedServiceInstantiationOptimizationGuideModels);
+COMPONENT_EXPORT(CHROME_FEATURES)
+bool IsLazyOptimizationGuideModelsEnabled();
+COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE_PARAM(bool, kLazyKeyedServiceInstantiationExtensions);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE_PARAM(bool, kLazyKeyedServiceInstantiationExtensionsApi);
@@ -1003,6 +1001,16 @@ BASE_DECLARE_FEATURE_PARAM(bool, kLazyKeyedServiceInstantiationSharesheet);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE_PARAM(bool,
                            kLazyKeyedServiceInstantiationStorageNotification);
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kLazyKeyedServiceInstantiationExtensionsSocketsAndUsb);
+#if BUILDFLAG(IS_CHROMEOS)
+COMPONENT_EXPORT(CHROME_FEATURES)
+BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kLazyKeyedServiceInstantiationExtensionsChromeOSResources);
+#endif
 
 COMPONENT_EXPORT(CHROME_FEATURES) BASE_DECLARE_FEATURE(kNativeNotifications);
 
@@ -1071,13 +1079,6 @@ BASE_DECLARE_FEATURE(kSafetyHubDisruptiveNotificationRevocation);
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<int>
     kSafetyHubDisruptiveNotificationRevocationExperimentVersion;
-
-// Whether the disruptive notification revocation will be performed as a shadow
-// run (without actually revoking permissions). Used to collect metrics and
-// evaluate the conditions for autorevocation.
-COMPONENT_EXPORT(CHROME_FEATURES)
-extern const base::FeatureParam<bool>
-    kSafetyHubDisruptiveNotificationRevocationShadowRun;
 
 // The minimum number of average daily notifications over last 7 days for a
 // website to classify for disruptive notification revocation. Used in a
@@ -1334,9 +1335,6 @@ COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kWebAppInstallDialog);
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kWebAppInstallDialogWinPin);
-
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kWebAppHandleAppMigrationViaSync);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 COMPONENT_EXPORT(CHROME_FEATURES)
@@ -1350,13 +1348,6 @@ BASE_DECLARE_FEATURE(kWebium);
 // components.
 COMPONENT_EXPORT(CHROME_FEATURES)
 BASE_DECLARE_FEATURE(kWebUIReloadButton);
-// When `kWebUIToolbarProcessOverheadExperiment` is enabled, the
-// WebUIToolbar will always be initialized and never added into the view
-// hierarchy. i.e. it overrides other WebUIToolbar checks.
-// TODO(crbug.com/503575910): remove this flag and all the related checking
-// logic once we have collected enough data from the experiment.
-COMPONENT_EXPORT(CHROME_FEATURES)
-BASE_DECLARE_FEATURE(kWebUIToolbarProcessOverheadExperiment);
 COMPONENT_EXPORT(CHROME_FEATURES)
 extern const base::FeatureParam<int> kWebUIReloadButtonMaxCrashRecoveryTimes;
 COMPONENT_EXPORT(CHROME_FEATURES)

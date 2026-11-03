@@ -120,15 +120,13 @@ static_library("devtools") {
     "chrome_devtools_session_base.h",
   ]
 
-  configs += [
-    "//build/config/compiler:wexit_time_destructors",
-    "//build/config:precompiled_headers",
-  ]
+  configs += [ "//build/config:precompiled_headers" ]
 
   public_deps = [
     ":devtools_toggle_action",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser:primitives",
+    "//content/public/browser",
+    "//content/public/common:buildflags",
   ]
 
   deps = [
@@ -158,6 +156,7 @@ static_library("devtools") {
     # Similar bandaid as the above. Since we cannot depend on
     # //chrome/browser:browser, we include indirect dependencies here.
     ":protocol_generated_sources",
+    "//chrome/browser/policy",
     "//chrome/browser/profiles:profile_manager",
     "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/ui/navigator",
@@ -246,6 +245,7 @@ static_library("devtools") {
       deps += [
         "//chrome/browser:certificate_viewer",
         "//chrome/browser/ui:browser_commands",
+        "//chrome/browser/ui:browser_tabstrip",
         "//chrome/browser/ui:scoped_tabbed_browser_displayer",
       ]
     }
@@ -272,13 +272,24 @@ static_library("devtools") {
       "//chrome/browser/ui/browser_window:create_browser_window",
       "//ui/base",
     ]
+    if (enable_printing) {
+      sources += [
+        "protocol/page_handler.cc",
+        "protocol/page_handler.h",
+        "protocol/page_handler_android.cc",
+      ]
+      deps += [
+        "//chrome/browser/printing",
+        "//components/printing/browser/headless",
+        "//components/printing/browser/print_to_pdf",
+      ]
+    }
   } else {
     public_deps += [
       "//chrome/browser/ui:browser_tab_strip",
       "//chrome/browser/ui/tabs:tab_strip_model_observer",
     ]
     deps += [
-      "//chrome:extra_resources",
       "//chrome:resources",
       "//chrome:strings",
       "//chrome/app/theme:theme_resources",
@@ -404,6 +415,7 @@ static_library("devtools") {
     deps += [
       "//chrome/app:command_ids",
       "//chrome/browser/custom_handlers",
+      "//chrome/browser/origin_gating",
       "//chrome/browser/private_verification_tokens",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/startup",
@@ -425,6 +437,10 @@ static_library("devtools") {
     sources += [
       "devtools_navigation_gating_rule_manager.cc",
       "devtools_navigation_gating_rule_manager.h",
+      "devtools_navigation_gating_service.cc",
+      "devtools_navigation_gating_service.h",
+      "devtools_navigation_gating_service_factory.cc",
+      "devtools_navigation_gating_service_factory.h",
       "devtools_navigation_throttle.cc",
       "devtools_navigation_throttle.h",
       "protocol/ads_handler.cc",

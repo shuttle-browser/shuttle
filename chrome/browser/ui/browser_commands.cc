@@ -8,6 +8,7 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <ranges>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -15,7 +16,6 @@
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "base/command_line.h"
-#include "base/containers/adapters.h"
 #include "base/feature_list.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/scoped_refptr.h"
@@ -144,6 +144,8 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/events/keycodes/keyboard_codes.h"
+#include "ui/views/focus/focus_manager.h"
+#include "ui/views/views_features.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -726,9 +728,10 @@ int GetContentRestrictions(const BrowserWindowInterface* browser) {
   WebContents* const current_tab =
       browser->GetTabStripModel()->GetActiveWebContents();
   if (current_tab) {
-    CoreTabHelper* core_tab_helper =
-        CoreTabHelper::FromWebContents(current_tab);
-    content_restrictions = core_tab_helper->content_restrictions();
+    if (CoreTabHelper* core_tab_helper =
+            CoreTabHelper::FromWebContents(current_tab)) {
+      content_restrictions = core_tab_helper->content_restrictions();
+    }
     NavigationEntry* last_committed_entry =
         current_tab->GetController().GetLastCommittedEntry();
     if (!content::IsSavableURL(last_committed_entry->GetURL())) {
@@ -1290,7 +1293,7 @@ void SelectLastTab(BrowserWindowInterface* browser,
   TabStripModel* model = browser->GetTabStripModel();
   std::optional<tab_groups::TabGroupId> focused_group =
       model->GetFocusedGroup();
-  for (tabs::TabInterface* tab : base::Reversed(*model)) {
+  for (tabs::TabInterface* tab : std::views::reverse(*model)) {
     if (!IsTabSelectable(model, tab, focused_group)) {
       continue;
     }
@@ -1737,8 +1740,8 @@ bool CanSavePage(const BrowserWindowInterface* browser) {
 
 void Print(BrowserWindowInterface* browser) {
 #if BUILDFLAG(ENABLE_PRINTING)
-  auto* const web_contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
+  auto* const web_contents = printing::GetWebContentsToPrint(
+      browser->GetTabStripModel()->GetActiveTab());
 
   printing::StartPrint(web_contents,
 #if BUILDFLAG(IS_CHROMEOS)
@@ -1773,8 +1776,8 @@ bool CanPrint(BrowserWindowInterface* browser) {
 
 #if BUILDFLAG(ENABLE_PRINTING)
 void BasicPrint(BrowserWindowInterface* browser) {
-  printing::StartBasicPrint(
-      browser->GetTabStripModel()->GetActiveWebContents());
+  printing::StartBasicPrint(printing::GetWebContentsToPrint(
+      browser->GetTabStripModel()->GetActiveTab()));
 }
 
 bool CanBasicPrint(BrowserWindowInterface* browser) {
@@ -1878,25 +1881,70 @@ void Zoom(BrowserWindowInterface* browser, content::PageZoom zoom) {
                        zoom);
 }
 
+namespace {
+
+// Keyboard focus commands (e.g. cmd+L) can run while a child window of the
+// browser window, such as a tab-modal dialog, is key. On Mac, moving focus to a
+// view in the browser window doesn't change the key window, so keystrokes would
+// keep going to the child window rather than to the newly focused browser UI.
+// Make the browser window key in that case. Mouse clicks don't need this, since
+// AppKit makes the clicked window key.
+//
+// This must be called after focus has moved. Otherwise, if the web contents is
+// still first responder, making the browser window key would hand key status
+// straight back to the tab-modal dialog (see ChromeRenderWidgetHostViewMac
+// Delegate's -windowDidBecomeKey).
+void ActivateWindowAfterFocusCommand(BrowserWindowInterface* browser) {
+#if BUILDFLAG(IS_MAC)
+  // With kMacActivateWidgetOnFocusRequest, focusing a View in an inactive
+  // widget already activates it (see
+  // views::FocusManager::SetFocusedViewWithReason()).
+  // TODO(crbug.com/40486728): Remove this function once
+  // kMacActivateWidgetOnFocusRequest is removed.
+  if (base::FeatureList::IsEnabled(
+          views::features::kMacActivateWidgetOnFocusRequest)) {
+    return;
+  }
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+  if (!browser_view || browser_view->IsActive()) {
+    return;
+  }
+  // Pane focus commands can move focus into a separate widget, such as a toast
+  // or a help bubble, which is then key. Only make the browser window key if
+  // focus landed in it.
+  views::FocusManager* focus_manager = browser_view->GetFocusManager();
+  if (!focus_manager || !focus_manager->GetFocusedView()) {
+    return;
+  }
+  browser_view->Activate();
+#endif
+}
+
+}  // namespace
+
 void FocusToolbar(BrowserWindowInterface* browser) {
   base::RecordAction(UserMetricsAction("FocusToolbar"));
   BrowserWindow::FromBrowser(browser)->FocusToolbar();
+  ActivateWindowAfterFocusCommand(browser);
 }
 
 void FocusLocationBar(BrowserWindowInterface* browser) {
   base::RecordAction(UserMetricsAction("FocusLocation"));
   BrowserWindow::FromBrowser(browser)->SetFocusToLocationBar(true);
+  ActivateWindowAfterFocusCommand(browser);
 }
 
 void FocusSearch(BrowserWindowInterface* browser) {
   // TODO(beng): replace this with FocusLocationBar
   base::RecordAction(UserMetricsAction("FocusSearch"));
   BrowserWindow::FromBrowser(browser)->GetLocationBar()->FocusSearch();
+  ActivateWindowAfterFocusCommand(browser);
 }
 
 void FocusAppMenu(BrowserWindowInterface* browser) {
   base::RecordAction(UserMetricsAction("FocusAppMenu"));
   BrowserWindow::FromBrowser(browser)->FocusAppMenu();
+  ActivateWindowAfterFocusCommand(browser);
 }
 
 void FocusInactivePopupForAccessibility(BrowserWindowInterface* browser) {
@@ -1907,11 +1955,13 @@ void FocusInactivePopupForAccessibility(BrowserWindowInterface* browser) {
 void FocusNextPane(BrowserWindowInterface* browser) {
   base::RecordAction(UserMetricsAction("FocusNextPane"));
   BrowserFocusController::From(browser)->RotatePaneFocus(true);
+  ActivateWindowAfterFocusCommand(browser);
 }
 
 void FocusPreviousPane(BrowserWindowInterface* browser) {
   base::RecordAction(UserMetricsAction("FocusPreviousPane"));
   BrowserFocusController::From(browser)->RotatePaneFocus(false);
+  ActivateWindowAfterFocusCommand(browser);
 }
 
 void FocusWebContentsPane(BrowserWindowInterface* browser) {

@@ -13,9 +13,6 @@ source_set("dmg_common") {
   visibility = [
     ":*",
     "//chrome/utility/safe_browsing:*",
-
-    # Unit tests directly use some of the utilities in this target.
-    "//chrome/test:unit_tests",
   ]
 
   sources = [

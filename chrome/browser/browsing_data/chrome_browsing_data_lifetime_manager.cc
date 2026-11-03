@@ -96,7 +96,8 @@ class BrowsingDataRemoverObserver
           browsing_data::prefs::kClearBrowsingDataOnExitDeletionPending);
     }
     // The profile and browser should not be shutting down yet.
-    DCHECK(!keep_browser_alive_ || !profile_->ShutdownStarted());
+    CHECK(!keep_browser_alive_ || !profile_->ShutdownStarted(),
+          base::NotFatalUntil::M161);
     delete this;
   }
 
@@ -215,7 +216,7 @@ std::vector<ScheduledRemovalSettings> ConvertToScheduledRemovalSettings(
         setting.GetDict().FindList(browsing_data::policy_fields::kDataTypes);
     const auto time_to_live_in_hours = setting.GetDict().FindInt(
         browsing_data::policy_fields::kTimeToLiveInHours);
-    DCHECK(data_types);
+    CHECK(data_types, base::NotFatalUntil::M161);
     scheduled_removals_settings.push_back({GetRemoveMask(*data_types),
                                            GetOriginTypeMask(*data_types),
                                            *time_to_live_in_hours});
@@ -315,7 +316,7 @@ void ChromeBrowsingDataLifetimeManager::ClearBrowsingDataForOnExitPolicy(
     // data is deleted and the profile is destroyed.
 #if DCHECK_IS_ON()
     if (browser_shutdown::HasShutdownStarted())
-      DCHECK(keep_browser_alive);
+      CHECK(keep_browser_alive, base::NotFatalUntil::M161);
 #endif
     remover->RemoveAndReply(base::Time(), base::Time::Max(),
                             GetRemoveMask(data_types),

@@ -365,7 +365,7 @@ group("gn_all") {
         "//net:net_perftests",
         "//url:url_unittests",
       ]
-      if (is_java_debug && !incremental_install) {
+      if (is_java_debug) {
       }
 
       if (!is_cast_android) {

@@ -906,7 +906,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
       ukm::SourceId document_ukm_source_id,
       std::unique_ptr<base::UnguessableToken> sandbox_origin_token = nullptr);
 
-  void OnPreloadingHeuristicsModelDone(const GURL& url, float score) override;
 
   // Update this frame's state at the appropriate time when a navigation
   // commits. This is called by Navigator::DidNavigate as a helper, in the
@@ -1551,7 +1550,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void DiscardFrame(base::OnceClosure on_discarded_cb);
 
   // BEGIN IPC REVIEW BOUNDARY: to enforce security review for IPC, these
-  // methods are defined in render_frame_host_impl_interface_bindings.cc.
+  // methods are defined in render_frame_host_impl_interface_binders.cc.
 
   // Similar to the public `CreateMessageFilterForAssociatedReceiver()` but
   // allows a specific message handling policy to be specified.
@@ -1567,6 +1566,72 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Tears down the browser-side state relating to the Mojo connection between
   // this instance and its associated render frame.
   void TearDownMojoConnection();
+
+  // Binds the receiver end of the `AssociatedInterfaceProvider` interface. This
+  // is called whenever we generate a remote/receiver pair for this interface
+  // and the remote end gets passed to the renderer.
+  void BindAssociatedInterfaceProviderReceiver(
+      mojo::PendingAssociatedReceiver<
+          blink::mojom::AssociatedInterfaceProvider>);
+
+  // Binds the receiver end of the DomOperationControllerHost interface through
+  // which services provided by this RenderFrameHost are exposed to the
+  // corresponding RenderFrame. The caller is responsible for plumbing the
+  // client end to the renderer process.
+  void BindDomOperationControllerHostReceiver(
+      mojo::PendingAssociatedReceiver<mojom::DomAutomationControllerHost>
+          receiver);
+
+  // Binds a DevToolsAgent interface for debugging.
+  void BindDevToolsAgent(
+      mojo::PendingAssociatedRemote<blink::mojom::DevToolsAgentHost> host,
+      mojo::PendingAssociatedReceiver<blink::mojom::DevToolsAgent> receiver);
+
+  void BindNonAssociatedLocalFrameHost(
+      mojo::PendingReceiver<blink::mojom::NonAssociatedLocalFrameHost>
+          receiver);
+
+  void BindMediaInterfaceFactoryReceiver(
+      mojo::PendingReceiver<media::mojom::InterfaceFactory> receiver);
+
+  void BindKeySystemSupportReceiver(
+      mojo::PendingReceiver<media::mojom::KeySystemSupport> receiver);
+
+  void BindVideoEncoderMetricsProviderReceiver(
+      mojo::PendingReceiver<media::mojom::VideoEncoderMetricsProvider>
+          receiver);
+
+#if BUILDFLAG(IS_ANDROID) || (BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_IOS_TVOS))
+  void BindNFCReceiver(mojo::PendingReceiver<device::mojom::NFC> receiver);
+#endif
+
+  void BindModelContextHost(
+      mojo::PendingReceiver<blink::mojom::ModelContextHost> receiver);
+
+  void BindInputInjectorReceiver(
+      mojo::PendingReceiver<mojom::InputInjector> receiver);
+
+  void BindDigitalIdentityRequestReceiver(
+      mojo::PendingReceiver<blink::mojom::DigitalIdentityRequest> receiver);
+
+  void BindFederatedRequestServiceReceiver(
+      mojo::PendingReceiver<blink::mojom::FederatedRequestService> receiver);
+
+  void BindReportingObserver(
+      mojo::PendingReceiver<blink::mojom::ReportingObserver>
+          reporting_observer_receiver);
+
+  void BindPeerConnectionTrackerHost(
+      mojo::PendingReceiver<blink::mojom::PeerConnectionTrackerHost> receiver);
+
+  // Binds the receiver end of the FileBackedBlobFactory interface. The
+  // FileBackedBlobFactory implementation follows the lifetime of a document in
+  // the browser process and it is responsible for registering file backed blobs
+  // capturing the URL from which they are accessed. FileBackedBlobFactory is a
+  // navigation-associated interface.
+  void BindFileBackedBlobFactory(
+      mojo::PendingAssociatedReceiver<blink::mojom::FileBackedBlobFactory>
+          receiver);
 
   // END IPC REVIEW BOUNDARY
 
@@ -1623,11 +1688,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
     return focused_editable_level_ == EditableLevel::kRichlyEditable;
   }
 
-  // Binds a DevToolsAgent interface for debugging.
-  void BindDevToolsAgent(
-      mojo::PendingAssociatedRemote<blink::mojom::DevToolsAgentHost> host,
-      mojo::PendingAssociatedReceiver<blink::mojom::DevToolsAgent> receiver);
-
 #if BUILDFLAG(IS_ANDROID)
   base::android::ScopedJavaLocalRef<jobject> GetJavaRenderFrameHost() override;
   service_manager::InterfaceProvider* GetJavaInterfaces() override;
@@ -1661,21 +1721,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
       mojo::PendingReceiver<blink::mojom::BrowserInterfaceBroker>);
   bool ResetBrowserInterfaceBrokerReceiverForTesting();
 
-  // Binds the receiver end of the `AssociatedInterfaceProvider` interface. This
-  // is called whenever we generate a remote/receiver pair for this interface
-  // and the remote end gets passed to the renderer.
-  void BindAssociatedInterfaceProviderReceiver(
-      mojo::PendingAssociatedReceiver<
-          blink::mojom::AssociatedInterfaceProvider>);
-
-  // Binds the receiver end of the DomOperationControllerHost interface through
-  // which services provided by this RenderFrameHost are exposed to the
-  // corresponding RenderFrame. The caller is responsible for plumbing the
-  // client end to the renderer process.
-  void BindDomOperationControllerHostReceiver(
-      mojo::PendingAssociatedReceiver<mojom::DomAutomationControllerHost>
-          receiver);
-
   // Expose Mojo receivers to tests for use with
   // `mojo::test::ScopedSwapImplForTesting`.
   mojo::AssociatedReceiver<blink::mojom::BackForwardCacheControllerHost>&
@@ -1699,7 +1744,9 @@ class CONTENT_EXPORT RenderFrameHostImpl
     CHECK(broker_holder_);
     return broker_holder_->broker_receiver();
   }
-  bool has_broker_holder_for_testing() { return broker_holder_.has_value(); }
+  bool has_broker_holder_for_testing() const {
+    return broker_holder_.has_value();
+  }
   const blink::mojom::LocalResourceLoaderConfigPtr&
   local_resource_loader_config_for_testing() const {
     return local_resource_loader_config_;
@@ -1794,6 +1841,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void RemoveServiceWorkerClient(const std::string& uuid);
   // Returns the last committed ServiceWorkerClient of this frame.
   base::WeakPtr<ServiceWorkerClient> GetLastCommittedServiceWorkerClient();
+
+  // Activates the transient popup delegation token when a Service Worker
+  // delegates the popup capability to this window client.
+  void AllowPopupThroughCapabilityDelegation();
 
   // Request a new NavigationClient interface from the renderer and returns the
   // ownership of the mojo::AssociatedRemote. This is intended for use by the
@@ -1935,8 +1986,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   void BindSerialService(
       mojo::PendingReceiver<blink::mojom::SerialService> receiver);
-  void BindModelContextHost(
-      mojo::PendingReceiver<blink::mojom::ModelContextHost> receiver);
 
 #if BUILDFLAG(IS_CHROMEOS)
   void GetSmartCardService(
@@ -2007,10 +2056,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
       const net::NetworkIsolationKey& nik,
       const blink::StorageKey& storage_key);
 
-#if BUILDFLAG(IS_ANDROID) || (BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_IOS_TVOS))
-  void BindNFCReceiver(mojo::PendingReceiver<device::mojom::NFC> receiver);
-#endif
-
   // Binds a `CacheStorage` object for the default bucket.
   void BindCacheStorage(
       mojo::PendingReceiver<blink::mojom::CacheStorage> receiver);
@@ -2021,17 +2066,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void BindBlobUrlStoreReceiver(
       mojo::PendingReceiver<blink::mojom::BlobURLStore> receiver);
 
-  void BindInputInjectorReceiver(
-      mojo::PendingReceiver<mojom::InputInjector> receiver);
-
   void BindWebOTPServiceReceiver(
       mojo::PendingReceiver<blink::mojom::WebOTPService> receiver);
-
-  void BindDigitalIdentityRequestReceiver(
-      mojo::PendingReceiver<blink::mojom::DigitalIdentityRequest> receiver);
-
-  void BindFederatedRequestServiceReceiver(
-      mojo::PendingReceiver<blink::mojom::FederatedRequestService> receiver);
 
   void BindRestrictedCookieManager(
       mojo::PendingReceiver<network::mojom::RestrictedCookieManager> receiver);
@@ -2040,10 +2076,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
       const net::IsolationInfo& isolation_info,
       const url::Origin& origin,
       net::CookieSettingOverrides cookie_setting_overrides);
-
-  void BindReportingObserver(
-      mojo::PendingReceiver<blink::mojom::ReportingObserver>
-          reporting_observer_receiver);
 
   // Requires the following preconditions, reporting a bad message otherwise.
   //
@@ -2065,18 +2097,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void CreateWebSocketConnector(
       mojo::PendingReceiver<blink::mojom::WebSocketConnector> receiver);
 
-  void BindMediaInterfaceFactoryReceiver(
-      mojo::PendingReceiver<media::mojom::InterfaceFactory> receiver);
-
-  void BindKeySystemSupportReceiver(
-      mojo::PendingReceiver<media::mojom::KeySystemSupport> receiver);
-
   void BindMediaMetricsProviderReceiver(
       mojo::PendingReceiver<media::mojom::MediaMetricsProvider> receiver);
-
-  void BindVideoEncoderMetricsProviderReceiver(
-      mojo::PendingReceiver<media::mojom::VideoEncoderMetricsProvider>
-          receiver);
 
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING)
   void BindMediaRemoterFactoryReceiver(
@@ -2096,10 +2118,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   void BindRenderAccessibilityHost(
       mojo::PendingReceiver<blink::mojom::RenderAccessibilityHost> receiver);
-
-  void BindNonAssociatedLocalFrameHost(
-      mojo::PendingReceiver<blink::mojom::NonAssociatedLocalFrameHost>
-          receiver);
 
   void CreateOriginTrialStateHost(
       mojo::PendingReceiver<blink::mojom::OriginTrialStateHost> receiver);
@@ -2740,8 +2758,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void OnDidRunContentWithCertificateErrors();
 
   PeerConnectionTrackerHost& GetPeerConnectionTrackerHost();
-  void BindPeerConnectionTrackerHost(
-      mojo::PendingReceiver<blink::mojom::PeerConnectionTrackerHost> receiver);
+
   void EnableWebRtcEventLogOutput(int lid, int output_period_ms) override;
   void DisableWebRtcEventLogOutput(int lid) override;
   void EnableWebRtcDataChannelLogOutput(int lid) override;
@@ -2812,10 +2829,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Return the frame immediately preceding this RenderFrameHost in its parent's
   // children, or nullptr if there is no such node.
   FrameTreeNode* PreviousSibling() const;
-
-  // Return the frame immediately following this RenderFrameHost in its parent's
-  // children, or nullptr if there is no such node.
-  FrameTreeNode* NextSibling() const;
 
   // Sets the |last_committed_origin_|, |isolation_info_|,
   // |permissions_policy_|, and the RuntimeFeatureStateDocumentData of |this|
@@ -3049,15 +3062,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Returns if the RenderFrameHostImpl is loaded with the "Cache-Control:
   // no-store" header.
   bool LoadedWithCacheControlNoStoreHeader();
-
-  // Binds the receiver end of the FileBackedBlobFactory interface. The
-  // FileBackedBlobFactory implementation follows the lifetime of a document in
-  // the browser process and it is responsible for registering file backed blobs
-  // capturing the URL from which they are accessed. FileBackedBlobFactory is a
-  // navigation-associated interface.
-  void BindFileBackedBlobFactory(
-      mojo::PendingAssociatedReceiver<blink::mojom::FileBackedBlobFactory>
-          receiver);
 
   // Determine if a focus change coming from the renderer was allowed to happen.
   // This only checks focus calls that crosses a fenced frame boundary. It will
@@ -3429,8 +3433,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   class SubresourceLoaderFactoriesConfig;
 
   void CreateBrokerHolder();
-
-  FrameTreeNode* GetSibling(int relative_offset) const;
 
   FrameTreeNode* FindAndVerifyChildInternal(
       RenderFrameHostOrProxy child_frame_or_proxy,
@@ -4926,6 +4928,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // and AssociatedInterfaceRegistry before invoking their binders.
   // Currently, it is non-null pointer only if this RenderFrameHost is being
   // prerendered.
+  //
+  // NOTE: `mojo_binder_policy_applier_` must be declared before
+  // `broker_holder_` so that it outlives `BrowserInterfaceBrokerImpl`, whose
+  // destructor calls `DropDeferredBinders()` on `mojo_binder_policy_applier_`.
   std::unique_ptr<MojoBinderPolicyApplier> mojo_binder_policy_applier_;
 
   // IPC-friendly token that represents this host.
@@ -5308,6 +5314,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Manages a transient affordance for this frame to request fullscreen.
   blink::DelegatedCapabilityRequestToken fullscreen_request_token_;
 
+  // Manages a transient affordance for this frame to open a popup via
+  // capability delegation.
+  blink::DelegatedCapabilityRequestToken popup_delegation_token_;
+
   // The user activation state of this document.  See |UserActivationState| for
   // details on how this state is maintained.
   blink::UserActivationState user_activation_state_;
@@ -5424,6 +5434,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
     BrowserInterfaceBrokerImpl<RenderFrameHostImpl, RenderFrameHost*> broker_;
     mojo::Receiver<blink::mojom::BrowserInterfaceBroker> broker_receiver_;
   };
+  // Must be declared after `mojo_binder_policy_applier_` so that `broker_` is
+  // destroyed before `mojo_binder_policy_applier_`.
   std::optional<BrokerHolder> broker_holder_;
 
   // The listener should be moved from the `NavigationRequest` when committing

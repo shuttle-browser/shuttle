@@ -44,7 +44,7 @@ ts_library("build_ts") {
     "//chrome/browser/resources/key_value_pair_viewer_shared:build_ts",
     "//chrome/browser/resources/management:build_ts",
     "//chrome/browser/resources/multistep_filter_internals:build_ts",
-    "//chrome/browser/resources/omnibox/logging:build_ts",
+    "//chrome/browser/resources/omnibox_internals/logging:build_ts",
     "//chrome/browser/resources/omnibox_popup:build_ts",
     "//chrome/browser/resources/page_action_internals:build_ts",
     "//chrome/browser/resources/pdf:build_ts",

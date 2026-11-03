@@ -63,6 +63,8 @@ source_set("extensions") {
     "activity_log/fullstream_ui_policy.h",
     "api/chrome_extensions_api_client.cc",
     "api/chrome_extensions_api_client.h",
+    "api/cookies/chrome_cookies_api_delegate.cc",
+    "api/cookies/chrome_cookies_api_delegate.h",
     "api/declarative_content/chrome_content_rules_registry.cc",
     "api/declarative_content/chrome_content_rules_registry.h",
     "api/declarative_content/content_action.cc",
@@ -153,8 +155,12 @@ source_set("extensions") {
     "api/tabs/tabs_constants.h",
     "api/tabs/tabs_event_router.cc",
     "api/tabs/tabs_event_router.h",
+    "api/tabs/tabs_util.cc",
+    "api/tabs/tabs_util.h",
     "api/tabs/tabs_windows_api.cc",
     "api/tabs/tabs_windows_api.h",
+    "api/tabs/windows_api.cc",
+    "api/tabs/windows_api.h",
     "api/tabs/windows_event_router.cc",
     "api/tabs/windows_event_router.h",
     "api/tabs/windows_util.cc",
@@ -178,6 +184,8 @@ source_set("extensions") {
     "chrome_app_icon_service.h",
     "chrome_app_icon_service_factory.cc",
     "chrome_app_icon_service_factory.h",
+    "chrome_browser_context_lifetime_tracker.cc",
+    "chrome_browser_context_lifetime_tracker.h",
     "chrome_component_extension_resource_manager.cc",
     "chrome_component_extension_resource_manager.h",
     "chrome_content_browser_client_extensions_part.cc",
@@ -413,10 +421,7 @@ source_set("extensions") {
     "window_controller_list.h",
     "window_controller_list_observer.h",
   ]
-  configs += [
-    "//build/config:precompiled_headers",
-    "//build/config/compiler:wexit_time_destructors",
-  ]
+  configs += [ "//build/config:precompiled_headers" ]
   allow_circular_includes_from = [
     # enterprise headers include extension_management.h.
     "//chrome/browser/enterprise",
@@ -471,6 +476,7 @@ source_set("extensions") {
     "//chrome/browser/infobars",
     "//chrome/browser/lifetime:termination_notification",
     "//chrome/browser/net",
+    "//chrome/browser/plugins",
     "//chrome/browser/prefetch",
     "//chrome/browser/prefs",
     "//chrome/browser/prefs:util",
@@ -489,6 +495,7 @@ source_set("extensions") {
     "//chrome/browser/sessions",
     "//chrome/browser/signin",
     "//chrome/browser/ssl",
+    "//chrome/browser/subresource_filter",
     "//chrome/browser/tab_list",
     "//chrome/browser/ui:accelerator_utils_headers",
     "//chrome/browser/ui:browser_element_identifiers",
@@ -541,6 +548,7 @@ source_set("extensions") {
     "//components/safe_browsing/core/common/proto:crx_info_proto",
     "//components/services/patch/content",
     "//components/services/unzip/content",
+    "//components/signin/public/browser",
     "//components/spellcheck/browser",
     "//components/supervised_user/core/browser",
     "//components/tabs:public",
@@ -556,6 +564,7 @@ source_set("extensions") {
     "//extensions/browser:keepalive",
     "//extensions/browser:webstore_installer",
     "//extensions/browser/api/content_settings",
+    "//extensions/browser/api/cookies",
     "//extensions/browser/api/storage:settings_namespace",
     "//extensions/browser/api/storage:settings_observer",
     "//extensions/browser/api/system_display:display_info_provider",
@@ -613,7 +622,11 @@ source_set("extensions") {
       "system_display/display_info_provider_android.h",
     ]
     deps += [
+      "//chrome/browser/content_settings",
+      "//chrome/browser/page_load_metrics",
       "//chrome/browser/ui/android/tab_model",
+      "//components/content_settings/browser",
+      "//components/optimization_guide/core:features",
     ]
 
     if (enable_desktop_android_extensions) {
@@ -644,6 +657,7 @@ source_set("extensions") {
     deps += [
       "//chrome/browser/ui:browser_commands",
       "//chrome/browser/ui:browser_init_state",
+      "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:scoped_tabbed_browser_displayer",
       "//chrome/browser/ui:singleton_tabs",
@@ -808,7 +822,6 @@ source_set("extensions") {
     # have the same dependencies. Once browser_extensions is untangled from
     # browser, then we can clean up these dependencies.
     public_deps += [
-      "//chrome/browser:browser_public_dependencies",
       "//chrome/browser/extensions/api:api_registration",
       "//chrome/browser/task_manager",
       "//chrome/browser/ui:browser_tab_strip",
@@ -822,13 +835,13 @@ source_set("extensions") {
       "//components/safe_browsing/core/common/proto:realtimeapi_proto",
       "//content/public/browser",
       "//mojo/public/cpp/bindings",
+      "//ui/base/unowned_user_data",
     ]
     deps += [
       "//build:branding_buildflags",
       "//build:chromeos_buildflags",
       "//build/config/chromebox_for_meetings:buildflags",
       "//build/config/linux/dbus:buildflags",
-      "//chrome:extra_resources",
       "//chrome:resources",
       "//chrome:strings",
       "//chrome/app/resources:platform_locale_settings",
@@ -1196,7 +1209,6 @@ source_set("extensions") {
       "//chrome/browser/ash/guest_os/public",
       "//chrome/browser/ash/input_method",
       "//chrome/browser/ash/login/app_mode",
-      "//chrome/browser/ash/login/demo_mode",
       "//chrome/browser/ash/login/quick_unlock",
       "//chrome/browser/ash/login/session",
       "//chrome/browser/ash/net",
@@ -1422,6 +1434,7 @@ source_set("chrome_extensions_browser_client") {
     "//chrome/browser/external_protocol",
     "//chrome/browser/image_fetcher",
     "//chrome/browser/media/webrtc",
+    "//chrome/browser/net",
     "//chrome/browser/prefetch",
     "//chrome/browser/profiles:profile_manager",
     "//chrome/browser/profiles/keep_alive",
@@ -1429,7 +1442,7 @@ source_set("chrome_extensions_browser_client") {
     "//chrome/browser/safe_browsing:metrics_collector",
     "//chrome/browser/search_engines",
     "//chrome/browser/task_manager",
-    "//chrome/browser/ui",
+    "//chrome/browser/ui:simple_message_box_headers",
     "//chrome/browser/ui/extensions",
     "//chrome/browser/ui/webui:chrome_web_ui_controller_factory",
     "//chrome/browser/usb",
@@ -1470,6 +1483,7 @@ source_set("chrome_extensions_browser_client") {
 
   if (is_chromeos) {
     deps += [
+      "//chrome/browser/ash/login/demo_mode",
       "//chrome/browser/ash/profiles",
       "//chrome/browser/chromeos/policy/dlp",
       "//chromeos/ash/components/demo_mode",

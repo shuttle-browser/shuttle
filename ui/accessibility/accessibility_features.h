@@ -47,11 +47,6 @@ namespace features {
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityPdfOcrForSelectToSpeak);
 AX_BASE_EXPORT bool IsAccessibilityPdfOcrForSelectToSpeakEnabled();
 
-// A replacement algorithm for AbstractInlineTextBox + InlineCursor for
-// AXInlineTextBox creation.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityBlockFlowIterator);
-AX_BASE_EXPORT bool IsAccessibilityBlockFlowIteratorEnabled();
-
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(
     kAccessibilityPruneRedundantInlineConnectivity);
 AX_BASE_EXPORT bool IsAccessibilityPruneRedundantInlineConnectivityEnabled();
@@ -229,6 +224,10 @@ AX_BASE_EXPORT bool IsAccessibilityChromeVoxJapaneseBrailleEnabled();
 // Controls whether Google TTS automatically attempts to reconnect.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityGoogleTtsAutomaticReconnect);
 AX_BASE_EXPORT bool IsAccessibilityGoogleTtsAutomaticReconnectEnabled();
+
+// Controls whether the ChromeOS Hover Text accessibility feature is available.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityHoverText);
+AX_BASE_EXPORT bool IsAccessibilityHoverTextEnabled();
 
 #endif  // BUILDFLAG(IS_CHROMEOS)
 

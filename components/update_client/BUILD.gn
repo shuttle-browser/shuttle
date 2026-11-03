@@ -201,6 +201,8 @@ static_library("update_client") {
     sources += [
       "background_downloader_win.cc",
       "background_downloader_win.h",
+      "delivery_optimization_downloader_win.cc",
+      "delivery_optimization_downloader_win.h",
     ]
   }
 }

@@ -68,12 +68,9 @@ component("features") {
     "optimization_guide_features.h",
     "optimization_guide_prefs.cc",
     "optimization_guide_prefs.h",
-    "optimization_guide_switches.cc",
-    "optimization_guide_switches.h",
   ]
   public_deps = [
     "//base",
-    "//ui/accessibility",
   ]
   deps = [
     "//components/optimization_guide:machine_learning_tflite_buildflags",
@@ -121,6 +118,8 @@ source_set("hints") {
     "hints/optimization_guide_store.h",
     "hints/optimization_metadata.cc",
     "hints/optimization_metadata.h",
+    "hints/prefs.cc",
+    "hints/prefs.h",
     "hints/push_notification_manager.cc",
     "hints/push_notification_manager.h",
     "hints/store_update_data.cc",
@@ -144,7 +143,6 @@ source_set("hints") {
     "//services/metrics/public/cpp:ukm_builders",
     "//third_party/re2",
   ]
-  visibility = [ ":*" ]
 }
 
 source_set("core_util") {
@@ -354,6 +352,8 @@ static_library("prediction") {
     "delivery/prediction_model_override.h",
     "delivery/prediction_model_store.cc",
     "delivery/prediction_model_store.h",
+    "delivery/prefs.cc",
+    "delivery/prefs.h",
     "delivery/profile_download_service_tracker.h",
   ]
   public_deps = [ "//components/download/public/background_service:public" ]
@@ -393,20 +393,10 @@ source_set("page_content") {
 if (is_ios) {
   source_set("eg_test_support+eg2") {
     testonly = true
-    sources = [
-      "optimization_guide_enums.h",
-      "optimization_guide_switches.cc",
-      "optimization_guide_switches.h",
-    ]
+    sources = [ "optimization_guide_enums.h" ]
     public_deps = [
       ":core_util",
       ":hints_test_support",
-    ]
-    deps = [
-      "//base",
-      "//components/optimization_guide/proto:optimization_guide_proto",
-      "//google_apis",
-      "//url",
     ]
   }
 }

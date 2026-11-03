@@ -8,26 +8,14 @@
 #ifndef COMPONENTS_OPTIMIZATION_GUIDE_CORE_OPTIMIZATION_GUIDE_PREFS_H_
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_OPTIMIZATION_GUIDE_PREFS_H_
 
+#include <string>
+
 #include "base/component_export.h"
 
 class PrefRegistrySimple;
 
 namespace optimization_guide {
 namespace prefs {
-
-// User profile prefs.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kHintsFetcherLastFetchAttempt[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kHintsFetcherHostsSuccessfullyFetched[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPendingHintsProcessingVersion[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPreviouslyRegisteredOptimizationTypes[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kStoreFilePathsToDelete[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPreviousOptimizationTypesWithFilter[];
 
 // Value stored in feature opt-in prefs (still used by multistep_filter).
 enum class FeatureOptInState {
@@ -41,29 +29,9 @@ enum class FeatureOptInState {
   kDisabled = 2
 };
 
-namespace localstate {
-
-// Local state prefs.
+// Registers the setting opt-in state prefs.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kModelLastFetchAttempt[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kModelLastFetchSuccess[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kModelStoreMetadata[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kModelCacheKeyMapping[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kStoreFilePathsToDelete[];
-
-}  // namespace localstate
-
-// Registers the optimization guide's prefs.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-void RegisterProfilePrefs(PrefRegistrySimple* registry);
-
-// Registers the local state prefs.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-void RegisterLocalStatePrefs(PrefRegistrySimple* registry);
+void RegisterSettingsEnabledPrefs(PrefRegistrySimple* registry);
 
 }  // namespace prefs
 }  // namespace optimization_guide

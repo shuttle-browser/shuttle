@@ -97,7 +97,7 @@ std::string CreateScopedIdentifier(const ExtensionId& extension_id,
 std::string StripScopeFromIdentifier(const ExtensionId& extension_id,
                                      const std::string& scoped_id) {
   size_t index_of_separator = extension_id.length() + 1;
-  DCHECK_LT(index_of_separator, scoped_id.length());
+  CHECK_LT(index_of_separator, scoped_id.length(), base::NotFatalUntil::M161);
 
   return scoped_id.substr(index_of_separator);
 }

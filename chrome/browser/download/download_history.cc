@@ -222,7 +222,7 @@ ShouldUpdateHistoryResult ShouldUpdateHistory(
 // the result into |file_path_count|.
 void CountFilePathOccurences(const std::vector<history::DownloadRow>& rows,
                              std::map<std::string, int>* file_path_count) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   if (!base::FeatureList::IsEnabled(
           download::features::kDeleteOverwrittenDownloads)) {
@@ -243,7 +243,7 @@ void CountFilePathOccurences(const std::vector<history::DownloadRow>& rows,
 // the number of times the same target file path appears in |file_path_count|.
 bool ShouldSkipLoadingDownload(const history::DownloadRow& row,
                                std::map<std::string, int>* file_path_count) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   if (!base::FeatureList::IsEnabled(
           download::features::kDeleteOverwrittenDownloads)) {
@@ -308,7 +308,7 @@ DownloadHistory::DownloadHistory(content::DownloadManager* manager,
       history_(std::move(history)),
       loading_id_(download::DownloadItem::kInvalidId),
       initial_history_query_complete_(false) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   download::SimpleDownloadManager::DownloadVector items;
   notifier_.GetManager()->GetAllDownloads(&items);
   for (download::DownloadItem* item : items) {
@@ -319,14 +319,14 @@ DownloadHistory::DownloadHistory(content::DownloadManager* manager,
 }
 
 DownloadHistory::~DownloadHistory() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   for (Observer& observer : observers_)
     observer.OnDownloadHistoryDestroyed();
   observers_.Clear();
 }
 
 void DownloadHistory::AddObserver(DownloadHistory::Observer* observer) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   observers_.AddObserver(observer);
 
   if (initial_history_query_complete_)
@@ -334,12 +334,12 @@ void DownloadHistory::AddObserver(DownloadHistory::Observer* observer) {
 }
 
 void DownloadHistory::RemoveObserver(DownloadHistory::Observer* observer) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   observers_.RemoveObserver(observer);
 }
 
 void DownloadHistory::QueryCallback(std::vector<history::DownloadRow> rows) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   // ManagerGoingDown() may have happened before the history loaded.
   if (!notifier_.GetManager())
     return;
@@ -365,7 +365,7 @@ void DownloadHistory::QueryCallback(std::vector<history::DownloadRow> rows) {
 #if BUILDFLAG(IS_ANDROID)
 void DownloadHistory::RetrieveDisplayNamesAndLoadHistoryDownloads(
     std::vector<history::DownloadRow> rows) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!notifier_.GetManager()) {
     return;
   }
@@ -388,13 +388,19 @@ void DownloadHistory::LoadHistoryDownloads(
 void DownloadHistory::LoadHistoryDownloads(
     const std::vector<history::DownloadRow>& rows) {
 #endif
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   if (!notifier_.GetManager()) {
     return;
   }
 
   std::map<std::string, int> file_name_count;
   CountFilePathOccurences(rows, &file_name_count);
+
+  // Number of downloads loaded, in total and started in the last 30/90 days.
+  const base::Time now = base::Time::Now();
+  int num_loaded = 0;
+  int num_loaded_last_30_days = 0;
+  int num_loaded_last_90_days = 0;
 
   for (const history::DownloadRow& row : rows) {
     if (ShouldSkipLoadingDownload(row, &file_name_count)) {
@@ -457,7 +463,16 @@ void DownloadHistory::LoadHistoryDownloads(
       ScheduleRemoveDownload(row.id);
       continue;
     }
-    DCHECK_EQ(download::DownloadItem::kInvalidId, loading_id_);
+    CHECK_EQ(download::DownloadItem::kInvalidId, loading_id_,
+             base::NotFatalUntil::M161);
+
+    ++num_loaded;
+    if (now - row.start_time <= base::Days(30)) {
+      ++num_loaded_last_30_days;
+    }
+    if (now - row.start_time <= base::Days(90)) {
+      ++num_loaded_last_90_days;
+    }
 
     // The download might have been in the terminal state without informing
     // history DB. If this is the case, populate the new state back to history
@@ -485,8 +500,9 @@ void DownloadHistory::LoadHistoryDownloads(
       item->UpdateObservers();
     }
 
-    DCHECK_EQ(DownloadHistoryData::PERSISTED,
-              DownloadHistoryData::Get(item)->state());
+    CHECK_EQ(DownloadHistoryData::PERSISTED,
+             DownloadHistoryData::Get(item)->state(),
+             base::NotFatalUntil::M161);
   }
 
   // Indicate that the history db is initialized.
@@ -498,6 +514,14 @@ void DownloadHistory::LoadHistoryDownloads(
                                 base::Milliseconds(1), base::Minutes(1), 50);
   base::UmaHistogramCounts100000("Download.History.DownloadCount",
                                  base::saturated_cast<int>(rows.size()));
+  base::UmaHistogramCounts100000("Download.History.DownloadCount.PostRemoval",
+                                 num_loaded);
+  base::UmaHistogramCounts100000(
+      "Download.History.DownloadCount.PostRemoval.Last30Days",
+      num_loaded_last_30_days);
+  base::UmaHistogramCounts100000(
+      "Download.History.DownloadCount.PostRemoval.Last90Days",
+      num_loaded_last_90_days);
 
   initial_history_query_complete_ = true;
   for (Observer& observer : observers_) {
@@ -506,7 +530,7 @@ void DownloadHistory::LoadHistoryDownloads(
 }
 
 void DownloadHistory::MaybeAddToHistory(download::DownloadItem* item) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   if (!NeedToUpdateDownloadHistory(item))
     return;
@@ -586,7 +610,7 @@ void DownloadHistory::ItemAdded(uint32_t download_id,
 
 void DownloadHistory::OnDownloadCreated(content::DownloadManager* manager,
                                         download::DownloadItem* item) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   // All downloads should pass through OnDownloadCreated exactly once.
   CHECK(!DownloadHistoryData::Get(item));
@@ -602,7 +626,7 @@ void DownloadHistory::OnDownloadCreated(content::DownloadManager* manager,
 
 void DownloadHistory::OnDownloadUpdated(content::DownloadManager* manager,
                                         download::DownloadItem* item) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   DownloadHistoryData* data = DownloadHistoryData::Get(item);
   if (data->state() == DownloadHistoryData::NOT_PERSISTED) {
     MaybeAddToHistory(item);
@@ -641,7 +665,7 @@ void DownloadHistory::OnDownloadOpened(content::DownloadManager* manager,
 
 void DownloadHistory::OnDownloadRemoved(content::DownloadManager* manager,
                                         download::DownloadItem* item) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   DownloadHistoryData* data = DownloadHistoryData::Get(item);
   if (data->state() != DownloadHistoryData::PERSISTED) {
@@ -658,7 +682,7 @@ void DownloadHistory::OnDownloadRemoved(content::DownloadManager* manager,
 }
 
 void DownloadHistory::ScheduleRemoveDownload(uint32_t download_id) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
 
   // For database efficiency, batch removals together if they happen all at
   // once.
@@ -671,7 +695,7 @@ void DownloadHistory::ScheduleRemoveDownload(uint32_t download_id) {
 }
 
 void DownloadHistory::RemoveDownloadsBatch() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
   IdSet remove_ids;
   removing_ids_.swap(remove_ids);
   history_->RemoveDownloads(remove_ids);

@@ -18,7 +18,6 @@ source_set("omnibox") {
     "omnibox_view.h",
   ]
   sources = []
-  deps = []
   public_deps = [
     "//base",
     "//chrome/browser/profiles:profile",
@@ -29,6 +28,7 @@ source_set("omnibox") {
     public += [
       "alternate_nav_infobar_delegate.h",
       "chrome_omnibox_client.h",
+      "chrome_omnibox_navigation_observer.h",
       "clipboard_utils.h",
       "omnibox_popup_view.h",
       "omnibox_tab_helper.h",
@@ -37,6 +37,7 @@ source_set("omnibox") {
     public_deps += [
       "//base",
       "//chrome/browser/bitmap_fetcher",
+      "//chrome/browser/omnibox",
       "//chrome/browser/page_content_annotations:extraction_service",
       "//chrome/browser/ui/color:color_headers",
       "//chrome/browser/ui/page_action",
@@ -76,12 +77,12 @@ source_set("impl") {
     "omnibox_popup_state_manager.cc",
     "omnibox_view.cc",
   ]
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     ":omnibox",
     "//base",
     "//build:branding_buildflags",
     "//chrome/app/vector_icons",
+    "//chrome/browser:browser_process",
     "//chrome/browser:file_select_helper",
     "//chrome/browser:shell_integration",
     "//chrome/browser/autocomplete",
@@ -107,17 +108,20 @@ source_set("impl") {
     "//components/page_load_metrics/browser",
     "//components/prefs",
     "//components/profile_metrics",
+    "//components/resources:components_scaled_resources",
     "//components/search",
     "//components/search_engines",
     "//components/sessions",
     "//components/strings:components_strings",
     "//components/strings:components_strings_grit",
     "//components/vector_icons",
+    "//ui/accessibility",
   ]
   if (!is_android) {
     sources += [
       "alternate_nav_infobar_delegate.cc",
       "chrome_omnibox_client.cc",
+      "chrome_omnibox_navigation_observer.cc",
       "clipboard_utils.cc",
       "omnibox_popup_view.cc",
       "omnibox_tab_helper.cc",
@@ -125,7 +129,6 @@ source_set("impl") {
     deps += [
       "//chrome/app:command_ids",
       "//chrome/app/vector_icons",
-      "//chrome/browser:browser_process",
       "//chrome/browser:global_features",
       "//chrome/browser:intranet_redirect_detector",
       "//chrome/browser:primitives",
@@ -145,6 +148,7 @@ source_set("impl") {
       "//chrome/browser/ui:tab_ui_helper",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/browser_window:create_browser_window",
       "//chrome/browser/ui/extensions/",
       "//chrome/browser/ui/location_bar",
       "//chrome/browser/ui/navigator",

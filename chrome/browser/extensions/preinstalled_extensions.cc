@@ -101,7 +101,7 @@ void Provider::InitProfileState() {
   preinstalled_extensions_enabled_ =
       IsLocaleSupported() && profile_->GetPrefs()->GetString(
                                  prefs::kPreinstalledExtensions) == "install";
-  DCHECK(!perform_new_installation_);
+  CHECK(!perform_new_installation_, base::NotFatalUntil::M161);
 
   InstallState state =
       static_cast<InstallState>(profile_->GetPrefs()->GetInteger(
@@ -163,7 +163,7 @@ Provider::Provider(Profile* profile,
                                        download_location,
                                        creation_flags),
       profile_(profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
   // See SetPrefs() below.
   CHECK_EQ(download_location, ManifestLocation::kInternal);
   set_auto_acknowledge(true);
@@ -183,7 +183,7 @@ void Provider::VisitRegisteredExtension() {
 }
 
 void Provider::SetPrefs(base::DictValue prefs) {
-  DCHECK(preinstalled_extensions_enabled_);
+  CHECK(preinstalled_extensions_enabled_, base::NotFatalUntil::M161);
 
   // Load a hard-coded list of external extensions. These are not component
   // extensions; they are installed from the webstore and don't get access to

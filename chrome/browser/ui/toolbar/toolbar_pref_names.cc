@@ -34,8 +34,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterBooleanPref(
       prefs::kPinnedCastMigrationComplete, false,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
-  registry->RegisterBooleanPref(prefs::kTabsFromOtherDevicesAutoPinnedMigration,
-                                false);
 }
 
 }  // namespace toolbar

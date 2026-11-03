@@ -18,9 +18,11 @@ source_set("search_engines") {
     "//components/favicon/core",
     "//components/find_in_page",
     "//components/search_engines",
+    "//components/tabs:public",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
     "//ui/base",
+    "//ui/base/unowned_user_data",
     "//ui/gfx",
   ]
 

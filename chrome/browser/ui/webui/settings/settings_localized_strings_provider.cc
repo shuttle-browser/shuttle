@@ -38,7 +38,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/webui/management/management_ui.h"
 #include "chrome/browser/ui/webui/policy_indicator_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
@@ -401,8 +400,6 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
       base::FeatureList::IsEnabled(features::kTabHoverCardImages));
   html_source->AddBoolean("showGlassEffectEnabled",
                           features::IsGlassFrameEnabled());
-  html_source->AddBoolean("showVerticalTabsExpandOnHoverEnabled",
-                          tabs::IsVerticalTabsExpandOnHoverFeatureEnabled());
   html_source->AddBoolean("showOrganizerPanelEnabled",
                           organizer_panel::IsOrganizerPanelFeatureEnabled());
   // Shuttle: saved tab groups are removed.
@@ -434,6 +431,7 @@ void AddClearBrowsingDataStrings(content::WebUIDataSource* html_source,
       {"clearCache", IDS_SETTINGS_CLEAR_CACHE},
       {"clearCookies", IDS_SETTINGS_CLEAR_COOKIES},
       {"clearHostedAppData", IDS_SETTINGS_CLEAR_HOSTED_APP_DATA},
+      {"clearSkills", IDS_SETTINGS_CLEAR_SKILLS},
       {"clearPeriod15Min", IDS_SETTINGS_CLEAR_PERIOD_15_MIN},
       {"clearPeriod15Minutes", IDS_SETTINGS_CLEAR_PERIOD_15_MINUTES},
       {"clearPeriodHour", IDS_SETTINGS_CLEAR_PERIOD_HOUR},
@@ -456,6 +454,10 @@ void AddClearBrowsingDataStrings(content::WebUIDataSource* html_source,
                          l10n_util::GetStringFUTF16(
                              IDS_CLEAR_BROWSING_DATA_HISTORY_NOTICE,
                              chrome::kMyActivityUrlInClearBrowsingDataNotice));
+
+  html_source->AddBoolean(
+      "showDeleteSkillsDataType",
+      skills::SkillsServiceFactory::GetForProfile(profile) != nullptr);
 
   html_source->AddLocalizedStrings(kLocalizedStrings);
 }

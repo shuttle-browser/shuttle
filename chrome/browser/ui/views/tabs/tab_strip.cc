@@ -1354,6 +1354,8 @@ void TabStrip::AddTabsAt(const std::vector<AddTabData>& tabs_data) {
   if (profile) {
     if (profile->IsIncognitoProfile()) {
       base::UmaHistogramCounts100("Tab.Count.Incognito", GetTabCount());
+    } else if (profile->IsEnterpriseIsolatedModeProfile()) {
+      base::UmaHistogramCounts100("Tab.Count.Isolated", GetTabCount());
     }
   }
 

@@ -26,9 +26,26 @@ proto_library("hybrid_encryption_key_proto") {
   ]
 }
 
+# Internal per-account signin prefs plumbing: the pref keys, the registry of
+# per-account prefs, and the generic accessor. Only for use by `SigninPrefs`
+# and its tests.
 source_set("signin_prefs_internal") {
-  visibility = [ ":base" ]
-  sources = [ "signin_prefs_keys.h" ]
+  visibility = [
+    ":base",
+    ":unit_tests",
+  ]
+  sources = [
+    "signin_prefs_accessor.cc",
+    "signin_prefs_accessor.h",
+    "signin_prefs_keys.h",
+    "signin_prefs_registry.cc",
+    "signin_prefs_registry.h",
+  ]
+  public_deps = [ "//base" ]
+  deps = [
+    "//components/prefs",
+    "//google_apis",
+  ]
 }
 
 static_library("base") {
@@ -37,8 +54,6 @@ static_library("base") {
     "avatar_icon_util.cc",
     "avatar_icon_util.h",
     "consent_level.h",
-    "device_id_helper.cc",
-    "device_id_helper.h",
     "gaia_id_hash.cc",
     "gaia_id_hash.h",
     "hybrid_encryption_key.cc",
@@ -61,6 +76,7 @@ static_library("base") {
     "wait_for_network_callback_helper.cc",
     "wait_for_network_callback_helper.h",
   ]
+
   deps = [
     ":signin_prefs_internal",
     "//components/metrics",
@@ -69,11 +85,13 @@ static_library("base") {
     # TODO(crbug.com/478783796): Remove once kWalletApiPrivatePassesEnabled
     # launches.
     "//crypto",
+    "//net",
     "//third_party/boringssl",
     "//third_party/icu:icui18n",
     "//third_party/re2",
   ]
   public_deps = [
+    ":device_id_helper",
     ":hybrid_encryption_key_proto",
     ":signin_buildflags",
     ":signin_switches",

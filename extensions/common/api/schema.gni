@@ -10,6 +10,7 @@ import("//extensions/buildflags/buildflags.gni")
 # TODO(https://crbug.com/356905053): Continue moving more here.
 extensions_api_schema_files_ = [
   "alarms.webidl",
+  "cookies.json",
   "declarative_net_request.webidl",
   "dns.webidl",
   "events.json",
@@ -70,7 +71,6 @@ if (enable_guest_view) {
 # APIs that are not currently supported on the experimental desktop-android.
 if (enable_extensions) {
   extensions_api_schema_files_ += [
-    "audio.webidl",
     "automation_internal.webidl",
     "cec_private.webidl",
     "clipboard.webidl",
@@ -98,6 +98,7 @@ if (enable_extensions) {
   if (is_chromeos) {
     extensions_api_schema_files_ += [
       "app_view_guest_internal.json",
+      "audio.webidl",
       "bluetooth_low_energy.webidl",
       "bluetooth_private.webidl",
       "bluetooth_socket.webidl",

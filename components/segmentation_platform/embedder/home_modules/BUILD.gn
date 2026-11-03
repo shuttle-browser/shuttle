@@ -36,8 +36,14 @@ static_library("home_modules") {
       "home_modules_card_registry_ios.h",
       "lens_ephemeral_module.cc",
       "lens_ephemeral_module.h",
+      "ntp_customization_ephemeral_module.cc",
+      "ntp_customization_ephemeral_module.h",
+      "ntp_theme_ephemeral_module.cc",
+      "ntp_theme_ephemeral_module.h",
       "save_passwords_ephemeral_module.cc",
       "save_passwords_ephemeral_module.h",
+      "tips_notifications_ephemeral_module.cc",
+      "tips_notifications_ephemeral_module.h",
     ]
   }
 

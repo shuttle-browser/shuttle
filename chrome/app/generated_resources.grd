@@ -807,6 +807,10 @@ are declared in tools/grit/grit_args.gni.
       </if>
 
       <if expr="not use_titlecase">
+        <!-- TODO(481979475): remove non translateable flag  -->
+        <message name="IDS_CONTENT_CONTEXT_AUTOFILL_FALLBACK_AT_MEMORY" desc="Main action pattern for enhanced autofill. It functions as a concise command in the content area context menu explaining that Chrome will locate relevant information and insert it into a form." translateable="false">
+          Find and fill
+        </message>
         <message name="IDS_CONTENT_CONTEXT_PLUGIN_RUN" desc="The name of the Run command on the blocked plugin context menu">
           Run this plugin
         </message>
@@ -815,6 +819,10 @@ are declared in tools/grit/grit_args.gni.
         </message>
       </if>
       <if expr="use_titlecase">
+        <!-- TODO(481979475): remove non translateable flag  -->
+        <message name="IDS_CONTENT_CONTEXT_AUTOFILL_FALLBACK_AT_MEMORY" desc="In Title Case: Main action pattern for enhanced autofill. It functions as a concise command in the content area context menu explaining that Chrome will locate relevant information and insert it into a form." translateable="false">
+          Find and Fill
+        </message>
         <message name="IDS_CONTENT_CONTEXT_PLUGIN_RUN" desc="In Title Case: The name of the Run command on the blocked plugin context menu">
           Run This Plugin
         </message>
@@ -846,10 +854,27 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_APP_MENU_SEARCH_PLACEHOLDER" desc="Placeholder text for the search bar in the app menu.">
           Search menu, or type an action
         </message>
+        <message name="IDS_APP_MENU_SEARCH_BOOKMARKS_HEADER" desc="Section header for bookmark matches in the App Menu search results.">
+          Bookmarks
+        </message>
+        <message name="IDS_APP_MENU_SEARCH_RECENT_TABS_HEADER" desc="Section header for recent tabs matches in the App Menu search results.">
+          Recent history
+        </message>
+        <message name="IDS_APP_MENU_SEARCH_TAB_GROUPS_HEADER" desc="Section header for tab group matches in the App Menu search results.">
+          Tab groups
+        </message>
         <message name="IDS_APP_MENU_TOOLS_AND_ACTIONS_HEADER" desc="Header title for the Tools and Actions section in the main App Menu">
           Tools and Actions
         </message>
-        <if expr="not use_titlecase">
+        <message name="IDS_APP_MENU_BLOCK_INCOGNITO" desc="Label with a keyboard mnemonic for the Incognito block button in the main App Menu">
+          &amp;Incognito
+        </message>
+        <message name="IDS_APP_MENU_BLOCK_ISOLATED" desc="Label with a keyboard mnemonic for the Isolated block button in the main App Menu, shown instead of Incognito for enterprise isolated mode">
+          &amp;Isolated
+        </message>
+        <message name="IDS_APP_MENU_BLOCK_TOOLTIP" desc="Tooltip for an App Menu button that includes its label and keyboard shortcut.">
+          <ph name="TOOLTIP_TEXT">$1<ex>New tab</ex></ph> (<ph name="KEYBOARD_SHORTCUT">$2<ex>Ctrl+T</ex></ph>)
+        </message>
         <if expr="is_win or is_macosx or is_linux">
           <message name="IDS_RELAUNCH_TO_UPDATE_ALT" desc="Alternate text label of the relaunch to update Chrome menu item">
             Relaunch to update
@@ -858,6 +883,7 @@ are declared in tools/grit/grit_args.gni.
             Your tabs will reopen
           </message>
         </if>
+        <if expr="not use_titlecase">
           <message name="IDS_SHOW_AS_TAB" desc="The text label for the Show As tab menu item">
             &amp;Show as tab
           </message>
@@ -914,17 +940,6 @@ are declared in tools/grit/grit_args.gni.
           </message>
         </if>
         <if expr="use_titlecase">
-
-
-
-          <if expr="is_win or is_macosx or is_linux">
-              <message name="IDS_RELAUNCH_TO_UPDATE_ALT" desc="In Title Case: Alternate text label of the relaunch to update Chrome menu item">
-                Relaunch to Update
-              </message>
-            <message name="IDS_RELAUNCH_TO_UPDATE_ALT_MINOR_TEXT" desc="In Title Case: Minor text for the alternate text label of the relaunch to update Chrome menu item">
-              Your tabs will reopen
-            </message>
-          </if>
           <message name="IDS_SHOW_AS_TAB" desc="In Title Case: The text label for the Show As tab menu item">
             &amp;Show As Tab
           </message>
@@ -3794,6 +3809,9 @@ are declared in tools/grit/grit_args.gni.
       <message name="IDS_TASK_MANAGER_OMNIBOX" desc="A row in the task manager for the WebUI Omnibox.">
         Omnibox
       </message>
+      <message name="IDS_TASK_MANAGER_WEBUI_TOOLBAR" desc="A row in the task manager for the WebUI Toolbar.">
+        Toolbar
+      </message>
       <message name="IDS_UTILITY_PROCESS_FILE_UTILITY_NAME" desc="The name of the utility process used for various Chrome specific file operations.">
           Chrome File Utilities
       </message>
@@ -3896,8 +3914,8 @@ are declared in tools/grit/grit_args.gni.
         Details
       </message>
 
-      <message name="IDS_EXTENSION_PROMPT_GRANT_PERMISSIONS_CHECKBOX" desc="Label next to the checkbox in the extension or app installation prompt, which indicates if a user wants to grant access to all requested sites.">
-        Grant access to all requested sites.
+      <message name="IDS_EXTENSION_PROMPT_ALLOW_SITE_ACCESS_TITLE" desc="Title of the section in the extension or app installation prompt that allows the user to choose site access permissions.">
+        Allow site access
       </message>
 
       <message name="IDS_EXTENSION_PERMISSION_LINE" desc="Template for item in list of privileges that an extension or app has">
@@ -4198,6 +4216,9 @@ are declared in tools/grit/grit_args.gni.
         </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_NEW_TAB_PAGE_OVERRIDE" desc="Permission string for extensions that override the new tab page.">
           Replace the page you see when opening a new tab
+        </message>
+        <message name="IDS_EXTENSION_PROMPT_WARNING_MIME_TYPES_HANDLER_PDF" desc="Permission string for extensions that register themselves as the handler that opens PDF files.">
+          Read and display PDF files
         </message>
         <message name="IDS_EXTENSION_PROMPT_WARNING_TRANSIENT_BACKGROUND" desc="Permission string for transient background permission.">
           Run in the background when requested by a cooperating native application
@@ -4700,11 +4721,11 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_EXTENSION_WEB_STORE_TITLE_SHORT" desc="Shortened version of text for the Chrome Web Store">
         Web Store
       </message>
-      <message name="IDS_EXTENSIONS_SHOW_DETAILS" desc="Tooltip for the button next to an extension that shows more details">
-        Show Details
+      <message name="IDS_EXTENSIONS_SHOW_ALL" desc="Text for the link next to an extension permission that shows all details">
+        Show all
       </message>
-      <message name="IDS_EXTENSIONS_HIDE_DETAILS" desc="Tooltip for the button next to an extension that hides details">
-        Hide Details
+      <message name="IDS_EXTENSIONS_SHOW_LESS" desc="Text for the link next to an extension permission that hides extra details">
+        Show less
       </message>
 
       <!-- Global error messages for extensions -->
@@ -5894,8 +5915,29 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_ORGANIZER_PANEL_NO_RESULTS" desc="Text shown in an organizer panel list section when a search yields no matching items.">
         No results
       </message>
+      <message name="IDS_ORGANIZER_PANEL_NO_RECENTLY_CLOSED_TABS" desc="Text shown in the recently closed tabs section of the organizer panel when there are no recently closed tabs.">
+        No recently closed tabs
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_SHOW_ALL" desc="The label for the menu item in an organizer panel list section header that shows all items in the section.">
+        Show all
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_SHOW_SOME" desc="The label for the menu item in an organizer panel list section header that limits the section to showing a few items.">
+        Show some
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_SPLIT_VIEW" desc="The title for a split view item in an organizer panel list section.">
+        Split View
+      </message>
       <message name="IDS_ORGANIZER_PANEL_TAB_GROUPS" desc="The label on the organizer panel list section corresponding to tab groups.">
         Tab Groups
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_CREATE_TAB_GROUP" desc="The label on the organizer panel item to create a tab group.">
+        Create tab group
+      </message>
+      <message name="IDS_ORGANIZER_PANEL_CROSS_DEVICE_TABS" desc="The label on the organizer panel list section corresponding to tabs on other devices.">
+        Tabs on other devices
+      </message>
+      <message name="IDS_TAB_STRIP_BUTTON_TOOLTIP" desc="The tooltip for the tab strip button.">
+        Tab strip
       </message>
       <if expr="use_titlecase">
         <message name="IDS_TAB_STRIP_UNPIN_TAB_SEARCH" desc="In Title Case: Name of the tab strip system menu item for unpinning tab search.">
@@ -6406,13 +6448,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Take back from agent
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TAB_GROUP" desc="The label of the tab context menu item for focusing the tab group containing the tab.">
-          Focus tab group
+          Focus on tab group
         </message>
         <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="The label of the tab context menu item for unfocusing the tab group containing the tab.">
           Unfocus tab group
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TABS" desc="The label of the tab context menu item for focusing one or more tabs. [ICU Syntax]">
-          {NUM_TABS, plural, =1 {Focus tab} other {Focus # tabs}}
+          {NUM_TABS, plural, =1 {Focus on tab} other {Focus on tabs}}
+        </message>
+        <message name="IDS_TAB_CXMENU_UNFOCUS_TABS" desc="The label of the tab context menu item for unfocusing one or more tabs. [ICU Syntax]">
+          {NUM_TABS, plural, =1 {Unfocus tab} other {Unfocus tabs}}
         </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 other tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # other tabs}}
@@ -6498,13 +6543,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
           Take Back From Agent
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for focusing the tab group containing the tab.">
-          Focus Tab Group
+          Focus on Tab Group
         </message>
         <message name="IDS_TAB_CXMENU_UNFOCUS_TAB_GROUP" desc="In Title Case: The label of the tab context menu item for unfocusing the tab group containing the tab.">
           Unfocus Tab Group
         </message>
         <message name="IDS_TAB_CXMENU_FOCUS_TABS" desc="In Title Case: The label of the tab context menu item for focusing one or more tabs. [ICU Syntax]">
-          {NUM_TABS, plural, =1 {Focus Tab} other {Focus # Tabs}}
+          {NUM_TABS, plural, =1 {Focus on Tab} other {Focus on Tabs}}
+        </message>
+        <message name="IDS_TAB_CXMENU_UNFOCUS_TABS" desc="In Title Case: The label of the tab context menu item for unfocusing one or more tabs. [ICU Syntax]">
+          {NUM_TABS, plural, =1 {Unfocus Tab} other {Unfocus Tabs}}
         </message>
         <message name="IDS_TAB_CXMENU_PLACEHOLDER_GROUP_TITLE" desc="In Title Case: The descriptive placeholder title of a group used when the user has not explicitly named a group. The plural value refers to the number of tabs in the group other than the one explicitly named. [ICU Syntax]">
           {NUM_OTHER_TABS, plural, =0 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>"} =1 {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and 1 Other Tab} other {"<ph name="TAB_TITLE">$1<ex>Google News</ex></ph>" and # Other Tabs}}
@@ -6547,6 +6595,30 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_SPLIT_TAB_CLOSE_BOTTOM_VIEW" desc="The label for a menu item that closes the bottom view in the active split.">
           Close bottom view
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_LEFT_SITE" desc="The label for a menu item that mutes the site shown in the left view of the split.">
+          Mute left site
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_RIGHT_SITE" desc="The label for a menu item that mutes the site shown in the right view of the split.">
+          Mute right site
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_TOP_SITE" desc="The label for a menu item that mutes the site shown in the top view of the split.">
+          Mute top site
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_BOTTOM_SITE" desc="The label for a menu item that mutes the site shown in the bottom view of the split.">
+          Mute bottom site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_LEFT_SITE" desc="The label for a menu item that unmutes the site shown in the left view of the split.">
+          Unmute left site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_RIGHT_SITE" desc="The label for a menu item that unmutes the site shown in the right view of the split.">
+          Unmute right site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_TOP_SITE" desc="The label for a menu item that unmutes the site shown in the top view of the split.">
+          Unmute top site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_BOTTOM_SITE" desc="The label for a menu item that unmutes the site shown in the bottom view of the split.">
+          Unmute bottom site
         </message>
         <message name="IDS_SPLIT_TAB_SEPARATE_VIEWS" desc="The label for a menu item that unsplits the split tab when clicked.">
           Separate views
@@ -6594,6 +6666,30 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_SPLIT_TAB_CLOSE_BOTTOM_VIEW" desc="In title case: the label for a menu item that closes the bottom view in the active split.">
           Close Bottom View
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_LEFT_SITE" desc="In title case: the label for a menu item that mutes the site shown in the left view of the split.">
+          Mute Left Site
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_RIGHT_SITE" desc="In title case: the label for a menu item that mutes the site shown in the right view of the split.">
+          Mute Right Site
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_TOP_SITE" desc="In title case: the label for a menu item that mutes the site shown in the top view of the split.">
+          Mute Top Site
+        </message>
+        <message name="IDS_SPLIT_TAB_MUTE_BOTTOM_SITE" desc="In title case: the label for a menu item that mutes the site shown in the bottom view of the split.">
+          Mute Bottom Site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_LEFT_SITE" desc="In title case: the label for a menu item that unmutes the site shown in the left view of the split.">
+          Unmute Left Site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_RIGHT_SITE" desc="In title case: the label for a menu item that unmutes the site shown in the right view of the split.">
+          Unmute Right Site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_TOP_SITE" desc="In title case: the label for a menu item that unmutes the site shown in the top view of the split.">
+          Unmute Top Site
+        </message>
+        <message name="IDS_SPLIT_TAB_UNMUTE_BOTTOM_SITE" desc="In title case: the label for a menu item that unmutes the site shown in the bottom view of the split.">
+          Unmute Bottom Site
         </message>
         <message name="IDS_SPLIT_TAB_SEPARATE_VIEWS" desc="In title case: the label for a menu item that unsplits the split tab when clicked.">
           Separate Views
@@ -6700,10 +6796,13 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Ungroup
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_FOCUS_GROUP" desc="The label for focus group in the tab group editor bubble.">
-        Focus group
+        Focus on Tab Group
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_UNFOCUS_GROUP" desc="The label for unfocus group in the tab group editor bubble.">
-        Unfocus group
+        Unfocus Tab Group
+      </message>
+      <message name="IDS_TAB_GROUP_HEADER_UNFOCUS_BUTTON" desc="The label for the unfocus button header attached to a focused tab group.">
+        Unfocus
       </message>
       <message name="IDS_TAB_GROUP_HEADER_CXMENU_CLOSE_GROUP" desc="The label of the tab group header context menu item for closing all tabs in the current group.">
         Close agent tabs
@@ -7666,7 +7765,7 @@ This can include information about installed software, files, your browser, the 
       <!-- Translate Bubble -->
 
       <!-- TTC -->
-      <message name="IDS_TTC_ENTRYPOINT_LABEL" desc="The text label of the TTC menu item" translateable="false">
+      <message name="IDS_TTC_ENTRYPOINT_LABEL" desc="Text label of the TTC menu item." translateable="false" formatter_data="android_java">
         TTC
       </message>
 
@@ -8642,6 +8741,9 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_TOOLTIP_TAB_ALERT_STATE_VR_PRESENTING" desc="Extra tool tip text, when the tab is presenting VR content to a headset." formatter_data="android_java">
         This tab is presenting VR content to a headset
       </message>
+      <message name="IDS_TOOLTIP_TAB_ALERT_STATE_AI_MODE_SHARING" desc="Extra tool tip text, when the tab's context is being shared with AI Mode." formatter_data="android_java" translateable="false">
+        You're sharing this tab with AI Mode
+      </message>
 
       <!-- Tab accessibility labels -->
       <message name="IDS_TAB_AX_LABEL_MEDIA_RECORDING_FORMAT" is_accessibility_with_no_ui="true" desc="Accessibility label text, when the tab is recording media. Example: 'Google Hangouts - Camera and microphone recording'">
@@ -8693,6 +8795,9 @@ This can include information about installed software, files, your browser, the 
         <ph name="WINDOW_TITLE">
           $1<ex>A VR-enabled website</ex>
         </ph> - VR presenting to headset
+      </message>
+      <message name="IDS_TAB_AX_LABEL_AI_MODE_SHARING" is_accessibility_with_no_ui="true" desc="Accessibility label text, when the tab is sharing data with AI Mode. Example: 'Wikipedia - You're sharing this tab with AI Mode'" translateable="false">
+        <ph name="WINDOW_TITLE">$1<ex>Wikipedia</ex></ph> - You're sharing this tab with AI Mode
       </message>
       <message name="IDS_TAB_AX_LABEL_SPLIT_TAB_LEFT_VIEW_FORMAT" desc="Accessibility label text for a tab, when it is the left tab of a split view. Example: 'Google Search - Left view'">
         <ph name="WINDOW_TITLE">$1<ex>Google Search</ex></ph> - Left view
@@ -9364,17 +9469,23 @@ This can include information about installed software, files, your browser, the 
       <message name="IDS_RELAUNCH_REQUIRED_CANCEL_BUTTON" desc="The text in the cancel button that dismisses a dialog telling users the browser must be relaunched.">
         Dismiss
       </message>
-      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_NOW" desc="Button label to restart immediately." translateable="false">
-        Restart now
+      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_NOW" desc="Button label to relaunch immediately.">
+        Relaunch now
       </message>
-      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_WHEN_IDLE" desc="Button label to restart when idle." translateable="false">
-        Restart when idle
+      <message name="IDS_RELAUNCH_RECOMMENDED_RESTART_WHEN_IDLE" desc="Button label to schedule an update when the user steps away.">
+        Update when I step away
       </message>
-      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE" desc="The body text for the scheduled restart reminder bubble dialog." translateable="false">
-        Restart now to finish updating, or restart next time you're idle for 5 minutes. Your open tabs and windows will restore. Incognito windows won't reopen.
+      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE_IMPORTANT_UPDATE" desc="Emphasized phrase inside the first body paragraph of the scheduled restart reminder bubble dialog.">
+        important security update
       </message>
-      <message name="IDS_APP_MENU_BUTTON_RESTART_SCHEDULED" desc="Short label next to app-menu button when a scheduled restart is pending." translateable="false">
-        Restart scheduled
+      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE_IDLE_DURATION" desc="Emphasized idle duration inside the first body paragraph of the scheduled restart reminder bubble dialog.">
+        5 minutes
+      </message>
+      <message name="IDS_RELAUNCH_RECOMMENDED_BODY_SCHEDULE_TABS_REOPEN" desc="The second body paragraph for the scheduled restart reminder bubble dialog.">
+        All of your open tabs and windows will reopen automatically.
+      </message>
+      <message name="IDS_APP_MENU_BUTTON_RESTART_SCHEDULED" desc="Short label next to app-menu button when a scheduled update is pending.">
+        Update scheduled
       </message>
     </if>
 
@@ -9722,6 +9833,9 @@ This can include information about installed software, files, your browser, the 
       </message>
 
       <!-- WebAuthn passkey / password selector UIs -->
+      <message name="IDS_AMBIENT_LOGIN_TITLE" desc="The title of a prompt that tells the user to choose an account to sign in with.">
+        Choose your account
+      </message>
       <message name="IDS_WEBAUTHN_SIGN_IN_TO_WEBSITE_DIALOG_TITLE" desc="The title of a bubble that displays passkeys or passwords for signing in to a given site.">
         Sign in to <ph name="RP_ID">$1<ex>webauthn.io</ex></ph>
       </message>

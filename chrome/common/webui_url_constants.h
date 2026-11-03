@@ -127,7 +127,9 @@ inline constexpr char kChromeUINetInternalsHost[] = "net-internals";
 inline constexpr char kChromeUINewTabHost[] = "newtab";
 inline constexpr char kChromeUINewTabURL[] = "chrome://newtab/";
 const GURL& ChromeUINewTabURLAsGURL();
-inline constexpr char kChromeUIOmniboxHost[] = "omnibox";
+inline constexpr char kChromeUIOmniboxInternalsHost[] = "omnibox-internals";
+inline constexpr char kChromeUIOmniboxInternalsURL[] =
+    "chrome://omnibox-internals/";
 inline constexpr char kChromeUIOmniboxPopupHost[] = "omnibox-popup.top-chrome";
 inline constexpr char kChromeUIOmniboxPopupURL[] =
     "chrome://omnibox-popup.top-chrome/";

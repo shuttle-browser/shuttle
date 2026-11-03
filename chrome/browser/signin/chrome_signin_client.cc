@@ -18,6 +18,7 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/values.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/browser_process.h"
@@ -193,6 +194,15 @@ class ChromeOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
   }
 };
 
+void ClearPrefsForOtrProfile(PrefService* prefs) {
+  prefs->SetBoolean(prefs::kSigninAllowed, false);
+  prefs->SetString(prefs::kGaiaCookieLastListAccountsBinaryData, "");
+  prefs->SetString(prefs::kGoogleServicesAccountId, "");
+  prefs->SetBoolean(prefs::kGoogleServicesConsentedToSync, false);
+  prefs->SetString(prefs::kGoogleServicesSigninScopedDeviceId, "");
+  prefs->SetList(prefs::kAccountInfo, base::ListValue());
+}
+
 }  // namespace
 
 ChromeSigninClient::ChromeSigninClient(Profile* profile)
@@ -207,6 +217,12 @@ ChromeSigninClient::ChromeSigninClient(Profile* profile)
       profile_(profile),
       oauth_consumer_registry_(
           std::make_unique<ChromeOAuthConsumerRegistry>()) {
+  if (profile_->IsOffTheRecord()) {
+    // Off-the-record (e.g. Isolated Mode) profiles start with an empty cookie
+    // jar and no accounts signed in to the browser or the content area,
+    // so do not inherit the parent profile's prefs.
+    ClearPrefsForOtrProfile(profile_->GetPrefs());
+  }
 }
 
 ChromeSigninClient::~ChromeSigninClient() = default;
@@ -376,6 +392,23 @@ void ChromeSigninClient::OnPrimaryAccountChanged(
 signin::OAuthConsumer ChromeSigninClient::GetOAuthConsumerFromId(
     signin::OAuthConsumerId oauth_consumer_id) const {
   return oauth_consumer_registry_->GetOAuthConsumerFromId(oauth_consumer_id);
+}
+
+bool ChromeSigninClient::IsAccountSignedInOnOtherProfile(
+    const GaiaId& gaia_id) const {
+  if (gaia_id.empty() || !g_browser_process ||
+      !g_browser_process->profile_manager()) {
+    return false;
+  }
+  std::vector<ProfileAttributesEntry*> entries =
+      g_browser_process->profile_manager()
+          ->GetProfileAttributesStorage()
+          .GetAllProfilesAttributes();
+  return std::ranges::any_of(
+      entries, [this, &gaia_id](const ProfileAttributesEntry* entry) {
+        return !entry->IsOmitted() && entry->GetPath() != profile_->GetPath() &&
+               entry->GetGAIAId() == gaia_id;
+      });
 }
 
 SigninClient::SignoutDecision ChromeSigninClient::GetSignoutDecision(

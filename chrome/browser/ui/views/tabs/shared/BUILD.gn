@@ -46,6 +46,7 @@ source_set("impl") {
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/tabs",
+    "//chrome/browser/ui/tabs/organizer",
     "//chrome/browser/ui/toolbar/pinned_toolbar",
     "//chrome/browser/ui/views/frame",
     "//chrome/browser/ui/views/frame:browser_view_header",
@@ -59,7 +60,5 @@ source_set("impl") {
     "//ui/menus",
     "//ui/views",
   ]
-
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 

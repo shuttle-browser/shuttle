@@ -202,7 +202,8 @@ void SetIsIncognitoEnabled(const std::string& extension_id,
     if (extension->location() == mojom::ManifestLocation::kComponent) {
       // This shouldn't be called for component extensions.
       // If we are here, make sure the we aren't trying to change the value.
-      DCHECK_EQ(enabled, IsIncognitoEnabled(extension_id, context));
+      CHECK_EQ(enabled, IsIncognitoEnabled(extension_id, context),
+               base::NotFatalUntil::M161);
       return;
     }
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -255,7 +256,7 @@ void SetAllowFileAccess(const std::string& extension_id,
 }
 
 base::DictValue GetExtensionInfo(const Extension* extension) {
-  DCHECK(extension);
+  CHECK(extension, base::NotFatalUntil::M161);
   base::DictValue dict;
 
   dict.Set("id", extension->id());

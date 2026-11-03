@@ -15,6 +15,7 @@ source_set("webauthn") {
   ]
   sources = [ "webauthn_pref_names.cc" ]
   public_deps = [
+    "//components/webauthn:features",
     "//content/public/browser",
     "//device/fido",
   ]
@@ -60,7 +61,10 @@ source_set("webauthn") {
   }
 
   if (is_mac) {
-    public += [ "chrome_authenticator_request_delegate_mac.h" ]
+    public += [
+      "chrome_authenticator_request_delegate_mac.h",
+      "icloud_recovery.h",
+    ]
   }
 }
 
@@ -70,10 +74,7 @@ source_set("impl") {
     "webauthn_switches.cc",
   ]
 
-  public_deps = [
-    ":webauthn",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":webauthn" ]
 
   deps = [
     "//base",
@@ -141,7 +142,10 @@ source_set("impl") {
   }
 
   if (is_mac) {
-    sources += [ "chrome_authenticator_request_delegate_mac.mm" ]
+    sources += [
+      "chrome_authenticator_request_delegate_mac.mm",
+      "icloud_recovery.cc",
+    ]
   }
 
   if (is_win) {
@@ -174,10 +178,7 @@ if (is_android) {
       "android/webauthn_request_delegate_android.cc",
     ]
 
-    public_deps = [
-      ":webauthn_request_delegate_android",
-      "//chrome/browser:browser_public_dependencies",
-    ]
+    public_deps = [ ":webauthn_request_delegate_android" ]
 
     deps = [
       ":webauthn",

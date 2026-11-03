@@ -32,6 +32,7 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/security_principal.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/webui/buildflags.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -54,8 +55,14 @@ bool IsNTPOrRelatedURL(const GURL& url, Profile* profile) {
 
 bool IsNTPURL(const GURL& url) {
 #if BUILDFLAG(IS_ANDROID)
-  return (url.SchemeIs(chrome::kChromeNativeScheme) &&
-          url.host() == chrome::kChromeUINewTabHost);
+  if (IsWebUiNtpEnabledForDesktopAndroid()) {
+    if (MatchesOrigin(url, chrome::ChromeUINewTabPageURLAsGURL()) ||
+        MatchesOrigin(url, GURL(chrome::kChromeUINewTabPageThirdPartyURL))) {
+      return true;
+    }
+  }
+  return url.SchemeIs(chrome::kChromeNativeScheme) &&
+         url.host() == chrome::kChromeUINewTabHost;
 #else
   return url.SchemeIs(content::kChromeUIScheme) &&
          url.host() == chrome::kChromeUINewTabHost;

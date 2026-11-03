@@ -5,6 +5,7 @@
 #include "chrome/browser/net/profile_network_context_service.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -37,6 +38,7 @@
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/domain_reliability/service_factory.h"
+#include "chrome/browser/net/disk_cache_dir_util.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/shuttle/agent_partition.h"
@@ -199,7 +201,7 @@ const char kHttpCacheFinchExperimentGroups[] =
 std::vector<std::string> TranslateStringArray(const base::ListValue& list) {
   std::vector<std::string> strings;
   for (const base::Value& value : list) {
-    DCHECK(value.is_string());
+    CHECK(value.is_string(), base::NotFatalUntil::M161);
     strings.push_back(value.GetString());
   }
   return strings;
@@ -1129,6 +1131,13 @@ void ProfileNetworkContextService::FlushCachedClientCertIfNeeded(
       });
 }
 
+std::optional<bool> ProfileNetworkContextService::IsProxyConfigured() const {
+  if (!proxy_config_monitor_) {
+    return std::nullopt;
+  }
+  return proxy_config_monitor_->IsProxyConfigured();
+}
+
 void ProfileNetworkContextService::FlushProxyConfigMonitorForTesting() {
   proxy_config_monitor_->FlushForTesting();  // IN-TEST
 }
@@ -1323,8 +1332,8 @@ void ProfileNetworkContextService::ConfigureNetworkContextParamsInternal(
     // Configure the HTTP cache path and size.
     base::FilePath base_cache_path;
     chrome::GetUserCacheDirectory(path, &base_cache_path);
-    base::FilePath disk_cache_dir =
-        local_state->GetFilePath(prefs::kDiskCacheDir);
+    const base::FilePath disk_cache_dir =
+        chrome_browser_net::GetDiskCacheDir(local_state);
     if (!disk_cache_dir.empty()) {
       base_cache_path = disk_cache_dir.Append(base_cache_path.BaseName());
     }

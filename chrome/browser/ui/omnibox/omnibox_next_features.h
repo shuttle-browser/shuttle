@@ -37,8 +37,14 @@ BASE_DECLARE_FEATURE(kWebUIOmniboxPopup);
 // feature flag is fully rolled out.
 BASE_DECLARE_FEATURE(kWebUIOmniboxSimplification);
 BASE_DECLARE_FEATURE(kWebUIOmniboxFullPopup);
+// Safety guard on `kWebUIOmniboxFullPopup`. When enabled, the full WebUI
+// omnibox popup is not used if a screen reader is detected at startup.
+BASE_DECLARE_FEATURE(kDisableFullWebuiOmniboxForScreenreaderUsers);
 
-// Returns true if `kWebUIOmniboxFullPopup` is enabled.
+// Returns true if `kWebUIOmniboxFullPopup` is enabled, and it has not been
+// suppressed by `kDisableFullWebuiOmniboxForScreenreaderUsers` because a screen
+// reader was active the first time this was queried (i.e. at startup). The
+// screen reader state is latched on first query for the rest of the session.
 // UI and model callers must instead query:
 // - `OmniboxPopupPresenterDelegate::is_full_webui_omnibox()`
 // - `OmniboxView::IsFullWebUIOmnibox()`
@@ -66,6 +72,9 @@ extern const base::FeatureParam<bool> kShowLensSearchChip;
 // BrowserView.
 extern const base::FeatureParam<bool> kWebUIOmniboxFullPopupUseBrowserView;
 extern const base::FeatureParam<bool> kWebUIOmniboxFullPopupMultiline;
+// If enabled, the Full WebUI Omnibox shows a button in the input that opens a
+// form to file dogfood feedback.
+extern const base::FeatureParam<bool> kWebUIOmniboxFullPopupDogfoodFeedback;
 // The maximum number of autocomplete result snapshots cached for stale match
 // activation.
 extern const base::FeatureParam<int> kWebUIOmniboxFullPopupSnapshotCacheSize;

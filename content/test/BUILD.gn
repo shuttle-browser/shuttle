@@ -20,6 +20,7 @@ import("//mojo/public/tools/bindings/mojom.gni")
 import("//net/features.gni")
 import("//printing/buildflags/buildflags.gni")
 import("//services/device/public/cpp/compute_pressure/buildflags.gni")
+import("//services/network/public/cpp/features.gni")
 import("//services/screen_ai/buildflags/features.gni")
 import("//testing/test.gni")
 import("//third_party/blink/public/public_features.gni")
@@ -748,6 +749,8 @@ static_library("test_support") {
       "../public/test/system_media_controls_bridge_test_utils.cc",
       "../public/test/system_media_controls_bridge_test_utils.h",
       "../public/test/text_input_test_utils_mac.mm",
+      "run_inside_nsapplication_run_mac.h",
+      "run_inside_nsapplication_run_mac.mm",
     ]
     deps += [
       "//ui/base/mojom",

@@ -31,6 +31,7 @@
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "base/threading/thread_restrictions.h"
+#include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
@@ -604,16 +605,19 @@ void StartupBrowserCreator::ClearLaunchedProfilesForTesting() {
 // static
 void StartupBrowserCreator::RegisterLocalStatePrefs(
     PrefRegistrySimple* registry) {
-  registry->RegisterBooleanPref(prefs::kPromotionsEnabled, true);
 #if !BUILDFLAG(IS_CHROMEOS)
   registry->RegisterBooleanPref(prefs::kCommandLineFlagSecurityWarningsEnabled,
                                 true);
 #endif
   registry->RegisterBooleanPref(prefs::kSuppressUnsupportedOSWarning, false);
   registry->RegisterBooleanPref(prefs::kWasRestarted, false);
+#if !BUILDFLAG(IS_CHROMEOS)
+  registry->RegisterDictionaryPref(prefs::kPreSmartRestartProfileCounts);
+#endif
 
 #if BUILDFLAG(IS_WIN)
   registry->RegisterStringPref(prefs::kShortcutMigrationVersion, std::string());
+  registry->RegisterTimePref(prefs::kShortcutMigrationTime, base::Time());
 #endif
 }
 

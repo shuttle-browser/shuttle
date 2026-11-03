@@ -594,7 +594,7 @@ template("build_webui") {
         "//chrome/browser/resources/management",
         "//chrome/browser/resources/media",
         "//chrome/browser/resources/memory_internals",
-        "//chrome/browser/resources/omnibox",
+        "//chrome/browser/resources/omnibox_internals",
         "//chrome/browser/resources/predictors",
         "//chrome/browser/resources/print_preview",
         "//chrome/browser/resources/sandbox_internals",

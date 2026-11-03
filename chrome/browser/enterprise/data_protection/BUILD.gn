@@ -4,6 +4,7 @@
 
 import("//components/enterprise/buildflags/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
+import("//printing/buildflags/buildflags.gni")
 import("//ui/base/ui_features.gni")
 
 # This library wraps //ui/views and can only be built where views is available.

@@ -313,6 +313,9 @@ bool SafeBrowsingServiceImpl::IsUserEligibleForESBPromo(Profile* profile) {
          SafeBrowsingState::STANDARD_PROTECTION;
 }
 
+SafeBrowsingServiceImpl::ProfileState::ProfileState() = default;
+SafeBrowsingServiceImpl::ProfileState::~ProfileState() = default;
+
 SafeBrowsingServiceImpl::SafeBrowsingServiceImpl()
     : services_delegate_(ServicesDelegate::Create(this)),
       estimated_extended_reporting_by_prefs_(SBER_LEVEL_OFF),
@@ -366,10 +369,7 @@ void SafeBrowsingServiceImpl::ShutDown() {
 
   // Delete the PrefChangeRegistrars, whose dtors also unregister |this| as an
   // observer of the preferences.
-  prefs_map_.clear();
-  user_population_prefs_.clear();
-  min_allowed_time_for_referrer_chains_.clear();
-  bundled_settings_pref_change_handlers_map_.clear();
+  profile_states_.clear();
 
   Stop(true);
 
@@ -510,7 +510,8 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
 
   // Start following the safe browsing preference on |pref_service|.
   PrefService* pref_service = profile->GetPrefs();
-  DCHECK(prefs_map_.find(pref_service) == prefs_map_.end());
+  ProfileState& profile_state = profile_states_[profile];
+  DCHECK(!profile_state.prefs_registrar);
   std::unique_ptr<PrefChangeRegistrar> registrar =
       std::make_unique<PrefChangeRegistrar>();
   registrar->Init(pref_service);
@@ -535,7 +536,7 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
       base::BindRepeating(
           &SafeBrowsingServiceImpl::UpdateMinAllowedTimeForReferrerChains,
           base::Unretained(this), profile));
-  prefs_map_[pref_service] = std::move(registrar);
+  profile_state.prefs_registrar = std::move(registrar);
   RefreshState();
   UpdateMinAllowedTimeForReferrerChains(profile);
 
@@ -558,7 +559,8 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
       unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled,
       base::BindRepeating(&ClearCachedUserPopulation, profile,
                           NoCachedPopulationReason::kChangeMbbPref));
-  user_population_prefs_[pref_service] = std::move(user_population_registrar);
+  profile_state.user_population_prefs_registrar =
+      std::move(user_population_registrar);
 
   // Record the current pref state for standard protection.
   UMA_HISTOGRAM_BOOLEAN(kSafeBrowsingEnabledHistogramName,
@@ -598,7 +600,7 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
   }
 
   // Create pref change handler for each profile.
-  bundled_settings_pref_change_handlers_map_[profile] =
+  profile_state.bundled_settings_pref_change_handler =
       std::make_unique<SecuritySettingsBundlePrefChangeHandler>(profile);
 
   SafeBrowsingMetricsCollectorFactory::GetForProfile(profile)->StartLogging();
@@ -645,12 +647,8 @@ void SafeBrowsingServiceImpl::OnProfileWillBeDestroyed(Profile* profile) {
   services_delegate_->RemoveTelemetryService(profile);
   services_delegate_->OnProfileWillBeDestroyed(profile);
 
-  PrefService* pref_service = profile->GetPrefs();
-  DCHECK(pref_service);
-  prefs_map_.erase(pref_service);
-  bundled_settings_pref_change_handlers_map_.erase(profile);
-  user_population_prefs_.erase(pref_service);
-  min_allowed_time_for_referrer_chains_.erase(profile);
+  DCHECK(profile->GetPrefs());
+  profile_states_.erase(profile);
 }
 
 void SafeBrowsingServiceImpl::CreateServicesForProfile(Profile* profile) {
@@ -671,9 +669,11 @@ void SafeBrowsingServiceImpl::EnhancedProtectionPrefChange(Profile* profile) {
 
 void SafeBrowsingServiceImpl::SecuritySettingsBundlePrefChange(
     Profile* profile) {
-  auto it = bundled_settings_pref_change_handlers_map_.find(profile);
-  if (it != bundled_settings_pref_change_handlers_map_.end()) {
-    it->second->MaybeShowEnhancedBundleSettingChangeNotification();
+  auto it = profile_states_.find(profile);
+  if (it != profile_states_.end() &&
+      it->second.bundled_settings_pref_change_handler) {
+    it->second.bundled_settings_pref_change_handler
+        ->MaybeShowEnhancedBundleSettingChangeNotification();
   }
 }
 
@@ -681,8 +681,8 @@ void SafeBrowsingServiceImpl::UpdateMinAllowedTimeForReferrerChains(
     Profile* profile) {
   bool enabled = RealTimePolicyEngine::HasPrefPermissionsToPerformFullURLLookup(
       profile->GetPrefs());
-  std::optional<base::Time> url_lookup_enabled_timestamp =
-      min_allowed_time_for_referrer_chains_[profile];
+  std::optional<base::Time>& url_lookup_enabled_timestamp =
+      profile_states_[profile].min_allowed_time_for_referrer_chains;
   bool previously_enabled = url_lookup_enabled_timestamp.has_value();
   // Only update the timestamp if the prefs are enabling full URL lookups.
   if (enabled && !previously_enabled) {
@@ -692,19 +692,18 @@ void SafeBrowsingServiceImpl::UpdateMinAllowedTimeForReferrerChains(
   if (!enabled) {
     url_lookup_enabled_timestamp = std::nullopt;
   }
-  min_allowed_time_for_referrer_chains_[profile] = url_lookup_enabled_timestamp;
 }
 
 base::Time SafeBrowsingServiceImpl::GetMinAllowedTimestampForReferrerChains(
     Profile* profile) {
-  auto it = min_allowed_time_for_referrer_chains_.find(profile);
-  if (it == min_allowed_time_for_referrer_chains_.end() ||
-      it->second == std::nullopt) {
+  auto it = profile_states_.find(profile);
+  if (it == profile_states_.end() ||
+      !it->second.min_allowed_time_for_referrer_chains.has_value()) {
     // If this method gets called when the map value indicates no referrer
     // chains are allowed, return the max time.
     return base::Time::Max();
   }
-  return *it->second;
+  return *it->second.min_allowed_time_for_referrer_chains;
 }
 
 void SafeBrowsingServiceImpl::RefreshState() {
@@ -713,12 +712,16 @@ void SafeBrowsingServiceImpl::RefreshState() {
   // Check if any profile requires the service to be active.
   enabled_by_prefs_ = false;
   estimated_extended_reporting_by_prefs_ = SBER_LEVEL_OFF;
-  for (const auto& pref : prefs_map_) {
-    if (IsSafeBrowsingEnabled(*pref.first)) {
+  for (const auto& [profile, state] : profile_states_) {
+    if (!state.prefs_registrar) {
+      continue;
+    }
+    PrefService* prefs = profile->GetPrefs();
+    if (IsSafeBrowsingEnabled(*prefs)) {
       enabled_by_prefs_ = true;
 
       ExtendedReportingLevel erl =
-          safe_browsing::GetExtendedReportingLevel(*pref.first);
+          safe_browsing::GetExtendedReportingLevel(*prefs);
       if (erl != SBER_LEVEL_OFF) {
         estimated_extended_reporting_by_prefs_ = erl;
       }

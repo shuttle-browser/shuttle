@@ -6,15 +6,16 @@
 #define CHROME_BROWSER_DEVTOOLS_PROTOCOL_PAGE_HANDLER_H_
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "base/memory/weak_ptr.h"
+#include "build/build_config.h"
 #include "chrome/browser/devtools/protocol/page.h"
 #include "content/public/browser/devtools_agent_host.h"
-#include "content/public/browser/web_contents_observer.h"
 #include "printing/buildflags/buildflags.h"
 
 #if BUILDFLAG(ENABLE_PRINTING)
-#include "components/printing/browser/headless/headless_print_manager.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_result.h"
 #endif  // BUILDFLAG(ENABLE_PRINTING)
 
@@ -34,7 +35,9 @@ class PageHandler : public protocol::Page::Backend {
 
   ~PageHandler() override;
 
+#if !BUILDFLAG(IS_ANDROID)
   void ToggleAdBlocking(bool enabled);
+#endif  // !BUILDFLAG(IS_ANDROID)
 
   // Page::Backend:
   protocol::Response Enable(
@@ -75,8 +78,10 @@ class PageHandler : public protocol::Page::Backend {
   scoped_refptr<content::DevToolsAgentHost> agent_host_;
   base::WeakPtr<content::WebContents> web_contents_;
 
+#if !BUILDFLAG(IS_ANDROID)
   bool enabled_ = false;
   const bool is_trusted_;
+#endif  // !BUILDFLAG(IS_ANDROID)
 
   base::WeakPtrFactory<PageHandler> weak_ptr_factory_{this};
 };

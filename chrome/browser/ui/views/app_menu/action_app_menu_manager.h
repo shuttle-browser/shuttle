@@ -10,11 +10,14 @@
 #include <string>
 
 #include "base/memory/raw_ptr.h"
+#include "base/timer/elapsed_timer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_action_item.h"
+#include "chrome/browser/ui/views/app_menu/app_menu_drag_and_drop_delegate.h"
 #include "ui/actions/action_id.h"
 #include "ui/actions/actions.h"
 #include "ui/base/class_property.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/models/menu_separator_types.h"
 #include "ui/color/color_id.h"
@@ -27,8 +30,8 @@ class ActionAppMenuManager {
  public:
   using DisplayType = AppMenuActionItem::DisplayType;
 
-  explicit ActionAppMenuManager(
-      BrowserWindowInterface* browser_window_interface);
+  ActionAppMenuManager(BrowserWindowInterface* browser_window_interface,
+                       AppMenuDragAndDropDelegate::Host* drag_and_drop_host);
   ActionAppMenuManager(const ActionAppMenuManager&) = delete;
   ActionAppMenuManager& operator=(const ActionAppMenuManager&) = delete;
   ~ActionAppMenuManager();
@@ -42,7 +45,10 @@ class ActionAppMenuManager {
 
   actions::ActionItem* GetAppMenuRoot() const;
 
+  void SetTimerForTesting(base::ElapsedTimer timer);
+
  private:
+  void AddBrowserActions(actions::ActionItem* root);
   void AddNotificationActions(actions::ActionItem* root);
   void AddSearchBarAction(actions::ActionItem* root);
   void AddBlockHeaderActions(actions::ActionItem* root);
@@ -52,6 +58,10 @@ class ActionAppMenuManager {
 
   raw_ptr<BrowserWindowInterface> browser_window_interface_;
   std::unique_ptr<RecentTabsDynamicMenu> recent_tabs_menu_;
+  base::ElapsedTimer app_menu_timer_;
+  // Shuttle: no IPH/user education, so nothing is ever highlighted; kept so
+  // AppMenuBuilder matches upstream.
+  ui::ElementIdentifier highlighted_menu_identifier_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_APP_MENU_ACTION_APP_MENU_MANAGER_H_

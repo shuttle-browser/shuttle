@@ -29,7 +29,6 @@ build_webui("build") {
     "privacy_page/security/fingerprint_progress_arc.ts",
     "privacy_page/security/secure_dns.ts",
     "privacy_page/security/secure_dns_input.ts",
-    "privacy_page/security/secure_dns_v2.ts",
     "privacy_page/security/security_keys_bio_enroll_dialog.ts",
     "privacy_page/security/security_keys_credential_management_dialog.ts",
     "privacy_page/security/security_keys_pin_field.ts",
@@ -37,8 +36,6 @@ build_webui("build") {
     "privacy_page/security/security_keys_set_pin_dialog.ts",
     "privacy_page/security/security_keys_subpage.ts",
     "privacy_page/security/security_page.ts",
-    "privacy_page/security/security_page_feature_row.ts",
-    "privacy_page/security/security_page_v2.ts",
     "settings_main/settings_main.ts",
     "settings_menu/settings_menu.ts",
     "settings_ui/settings_ui.ts",
@@ -117,12 +114,6 @@ build_webui("build") {
 
   if (is_chromeos) {
     web_component_files += [ "site_settings/smart_card_readers_page.ts" ]
-  }
-
-  if (is_mac) {
-  }
-
-  if (is_win || is_mac) {
   }
 
   # -----------------web_component_files end ----------------------------------
@@ -219,7 +210,6 @@ build_webui("build") {
     "privacy_page/do_not_track_toggle.ts",
     "privacy_page/security/safe_browsing_types.ts",
     "privacy_page/security/security_keys_browser_proxy.ts",
-    "relaunch_mixin.ts",
     "relaunch_mixin_lit.ts",
     "reset_page/reset_browser_proxy.ts",
     "reset_page/reset_page.html.ts",
@@ -230,7 +220,6 @@ build_webui("build") {
     "reset_page/reset_profile_dialog.ts",
     "route.ts",
     "router.ts",
-    "scrollable_mixin.ts",
     "search_metrics_recorder.ts",
     "search_page/extension_controlled_message.html.ts",
     "search_page/extension_controlled_message.ts",
@@ -273,6 +262,7 @@ build_webui("build") {
     "site_settings/constants.ts",
     "site_settings/site_settings_browser_proxy.ts",
     "site_settings/site_settings_mixin.ts",
+    "site_settings/site_settings_mixin_lit.ts",
     "site_settings/site_settings_util.ts",
     "site_settings/website_usage_browser_proxy.ts",
     "time.ts",
@@ -332,6 +322,13 @@ build_webui("build") {
     ]
   }
 
+  if (is_mac) {
+    ts_files += [
+      "autofill_page/passwords/passkey_edit_dialog.html.ts",
+      "autofill_page/passwords/passkey_edit_dialog.ts",
+    ]
+  }
+
   if (is_win || is_mac) {
   }
 
@@ -363,6 +360,7 @@ build_webui("build") {
     "clear_browsing_data_dialog/clear_browsing_data_dialog.css",
     "clear_browsing_data_dialog/clear_browsing_data_time_picker.css",
     "controls/controlled_button.css",
+    "controls/controlled_radio_button.css",
     "controls/settings_dropdown_menu.css",
     "controls/settings_slider.css",
     "downloads_page/downloads_page.css",
@@ -381,13 +379,18 @@ build_webui("build") {
     "performance_page/tab_discard/exception_entry.css",
     "performance_page/tab_discard/exception_list.css",
     "performance_page/tab_discard/exception_tabbed_add_dialog.css",
+    "privacy_page/cookies_page.css",
     "privacy_page/do_not_track_toggle.css",
     "privacy_page/personalization_options.css",
+    "privacy_page/security/fingerprint_progress_arc.css",
+    "privacy_page/security/secure_dns.css",
+    "privacy_page/security/secure_dns_input.css",
     "privacy_page/security/security_keys_bio_enroll_dialog.css",
     "privacy_page/security/security_keys_credential_management_dialog.css",
     "privacy_page/security/security_keys_pin_field.css",
     "privacy_page/security/security_keys_reset_dialog.css",
     "privacy_page/security/security_keys_set_pin_dialog.css",
+    "privacy_page/security/security_page.css",
     "reset_page/reset_profile_banner.css",
     "reset_page/reset_profile_dialog.css",
     "search_page/extension_controlled_message.css",
@@ -404,9 +407,15 @@ build_webui("build") {
     "search_page/search_page.css",
     "search_page/search_page_index.css",
     "search_page/site_shortcuts_page.css",
+    "settings_menu/settings_menu.css",
     "settings_page/settings_section.css",
     "settings_page/settings_subpage.css",
+    "settings_ui/settings_ui.css",
+    "site_settings/add_site_dialog.css",
+    "site_settings/category_setting_exceptions.css",
     "site_settings/clear_storage_dialog_shared.css",
+    "site_settings/media_picker.css",
+    "site_settings/settings_category_default_radio_group.css",
     "site_settings/site_settings_shared.css",
     "site_settings/site_settings_shared_lit.css",
     "system_page/system_page.css",

@@ -49,6 +49,7 @@ source_set("impl") {
     "//chrome/browser/search_engines",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/page_info",
+    "//chrome/common:chrome_features",
     "//components/page_info/core",
     "//components/variations/service",
   ]
@@ -58,7 +59,5 @@ source_set("impl") {
   } else {
     deps += [ "//components/navigation_interception" ]
   }
-
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 

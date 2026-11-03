@@ -76,6 +76,7 @@ component("gtk") {
     "//ui/linux:linux_ui_factory",
   ]
   public = [
+    "gtk_color_mixers.h",
     "gtk_compat.h",
     "gtk_types.h",
     "gtk_ui_factory.h",

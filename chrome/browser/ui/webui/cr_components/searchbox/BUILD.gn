@@ -41,7 +41,6 @@ source_set("searchbox_impl") {
   deps = [
     ":searchbox",
     "//chrome/browser:browser_process",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/autocomplete",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/omnibox",
@@ -63,10 +62,13 @@ source_set("searchbox_impl") {
     "//components/favicon/core",
     "//components/google/core/common",
     "//components/lens:buildflags",
+    "//components/omnibox/browser:suggest_template_info_mojo_utils",
     "//components/omnibox/browser:vector_icons",
     "//components/search",
+    "//components/security_state/core",
     "//components/sessions",
     "//components/vector_icons",
+    "//net",
   ]
   if (!is_android) {
     deps += [

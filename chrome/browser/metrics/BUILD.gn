@@ -262,14 +262,12 @@ source_set("impl") {
     "variations/google_groups_manager_factory.cc",
   ]
 
-  public_deps = [
-    ":metrics",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":metrics" ]
 
   deps = [
     "//build/config/compiler:compiler_buildflags",
     "//chrome/browser:browser_process_platform_part",
+    "//chrome/browser:buildflags",
     "//chrome/browser:chrome_browser_main",
     "//chrome/browser:flags",
     "//chrome/browser/content_settings:content_settings_factory",
@@ -284,6 +282,7 @@ source_set("impl") {
     "//chrome/browser/page_load_metrics",
     "//chrome/browser/performance_manager",
     "//chrome/browser/prefs",
+    "//chrome/browser/regional_capabilities",
     "//chrome/browser/resource_coordinator",
     "//chrome/browser/resource_coordinator:mojo_bindings",
     "//chrome/browser/resource_coordinator:utils",
@@ -425,6 +424,7 @@ source_set("impl") {
       "//chrome/browser/ui/webui/ash/settings/services/metrics",
       "//chromeos/ash/components/browser_context_helper",
       "//chromeos/ash/components/demo_mode",
+      "//chromeos/ash/components/signin:identity_manager_provider",
       "//chromeos/ash/components/system",
       "//chromeos/ash/services/cros_healthd/public/cpp",
       "//chromeos/ash/services/multidevice_setup/public/cpp",

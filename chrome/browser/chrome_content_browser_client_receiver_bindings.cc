@@ -15,6 +15,7 @@
 #include "chrome/browser/chrome_content_browser_client.h"
 #include "chrome/browser/chrome_content_browser_client_parts.h"
 #include "chrome/browser/content_settings/content_settings_manager_delegate.h"
+#include "chrome/browser/facilitated_payments/facilitated_payments_driver_binder.h"
 #include "chrome/browser/headless/headless_mode_util.h"
 #include "chrome/browser/net/net_error_tab_helper.h"
 #include "chrome/browser/net_benchmarking.h"
@@ -25,6 +26,8 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/request_header_integrity/buildflags.h"
 #include "components/content_capture/browser/onscreen_content_provider.h"
+#include "components/facilitated_payments/core/features/features.h"
+#include "components/facilitated_payments/core/mojom/facilitated_payments_agent.mojom.h"
 #include "components/metrics/call_stacks/call_stack_profile_collector.h"
 #include "components/offline_pages/buildflags/buildflags.h"
 #include "components/page_load_metrics/browser/metrics_web_contents_observer.h"
@@ -52,6 +55,7 @@
 #include "printing/buildflags/buildflags.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 #include "third_party/widevine/cdm/buildflags.h"
+#include "ui/webui/buildflags.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/plugins/plugin_observer_android.h"
@@ -122,6 +126,10 @@
 
 #if BUILDFLAG(ENABLE_OFFLINE_PAGES)
 #include "chrome/browser/offline_pages/offline_page_tab_helper.h"
+#endif
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+#include "chrome/browser/ui/search/search_tab_helper.h"
 #endif
 
 namespace {
@@ -200,12 +208,18 @@ void ChromeContentBrowserClient::ExposeInterfacesToRenderer(
         base::BindRepeating(
             &NetBenchmarking::Create,
             loading_predictor ? loading_predictor->GetWeakPtr() : nullptr,
-            render_process_host->GetDeprecatedID()),
+            render_process_host->GetID()),
         ui_task_runner);
   }
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  if (safe_browsing_service_) {
+  // Profiles that disable keyed services by default aren't used for browsing
+  // the web, so there is nothing for Safe Browsing to do in them.
+  // SafeBrowsingService doesn't track these profiles either (see
+  // `SafeBrowsingServiceImpl::OnProfileAdded()`).
+  if (safe_browsing_service_ &&
+      !AreKeyedServicesDisabledForProfileByDefault(Profile::FromBrowserContext(
+          render_process_host->GetBrowserContext()))) {
     registry->AddInterface<safe_browsing::mojom::SafeBrowsing>(
         base::BindRepeating(
             &MaybeCreateSafeBrowsingForRenderer,

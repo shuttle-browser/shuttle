@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/ozone.gni")
 import("//chrome/common/features.gni")
 import("//components/enterprise/buildflags/buildflags.gni")
 import("//components/on_device_translation/buildflags/features.gni")
@@ -41,8 +42,6 @@ source_set("prefs") {
 }
 
 source_set("impl") {
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   sources = [
     "browser_prefs.cc",
     "chrome_command_line_pref_store.cc",
@@ -135,7 +134,9 @@ source_set("impl") {
     "//components/network_time",
     "//components/ntp_tiles:pref_names",
     "//components/omnibox/browser",
+    "//components/on_device_translation/buildflags",
     "//components/optimization_guide/core:features",
+    "//components/page_info/core",
     "//components/performance_manager",
     "//components/permissions",
     "//components/policy/resources/webui/mojom:mojo_bindings",
@@ -150,6 +151,7 @@ source_set("impl") {
     "//components/segmentation_platform/embedder/default_model",
     "//components/signin/core/browser",
     "//components/site_engagement/content",
+    "//components/site_token_provider",
     "//components/subresource_filter/content/browser",
     "//components/subresource_filter/core/common",
     "//components/supervised_user/core/browser",
@@ -348,9 +350,11 @@ source_set("impl") {
 
   if (enable_extensions) {
     deps += [
-      "//extensions/browser/api/audio",
       "//extensions/browser/api/runtime",
     ]
+    if (is_chromeos) {
+      deps += [ "//extensions/browser/api/audio" ]
+    }
   }
 
   if (enable_extensions_core) {
@@ -421,8 +425,6 @@ source_set("util") {
 }
 
 source_set("util_impl") {
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
-
   sources = [
     "session_startup_pref.cc",
   ]
@@ -442,6 +444,14 @@ source_set("util_impl") {
     "//components/ukm",
     "//components/url_formatter",
   ]
+
+  if (is_chromeos) {
+    deps += [ "//ash/constants" ]
+  }
+
+  if (is_android) {
+    deps += [ "//chrome/browser/flags:flags_android" ]
+  }
 }
 
 if (!is_android) {

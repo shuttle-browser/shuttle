@@ -15,11 +15,15 @@ if (is_android) {
 
 source_set("vr") {
   public = [ "vr_tab_helper.h" ]
-  public_deps = [ "//content/public/browser" ]
+  public_deps = [
+    "//base",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//ui/base/unowned_user_data",
+  ]
 
   if (enable_vr) {
     public += [ "chrome_xr_integration_client.h" ]
-    public_deps += [ "//base" ]
   }
 }
 
@@ -146,8 +150,6 @@ if (enable_vr) {
       "//ui/gfx/animation/keyframe",
     ]
 
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
-
     defines = [ "VR_UI_IMPLEMENTATION" ]
 
     if (is_android) {
@@ -194,8 +196,6 @@ if (enable_vr) {
       "//ui/base",
       "//ui/display",
     ]
-
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
     defines = [ "VR_IMPLEMENTATION" ]
 
@@ -265,8 +265,6 @@ if (enable_vr) {
       "//services/metrics/public/cpp:ukm_builders",
       "//skia",
     ]
-
-    configs += [ "//build/config/compiler:wexit_time_destructors" ]
   }
 
   test("vr_common_unittests") {
@@ -402,7 +400,7 @@ if (enable_vr) {
   if (!is_android) {
     # This should only contain that files that are useful if enable_vr = true.
     # For tests/infrastructure that can be used with enable_vr = false, see
-    # //chrome/test:xr_browser_tests_common.
+    # :xr_browser_tests_common.
     source_set("xr_browser_tests_vr_required") {
       testonly = true
       defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
@@ -413,8 +411,8 @@ if (enable_vr) {
 
       deps = [
         ":vr_common",
+        ":xr_browser_tests_common",
         "//chrome/common:constants",
-        "//chrome/test:xr_browser_tests_common",
         "//device/vr",
         "//device/vr:vr_test_utils",
         "//device/vr/buildflags",
@@ -485,10 +483,10 @@ if (enable_vr) {
 
       deps = [
         ":vr_common",
+        ":xr_browser_tests_common",
         "//chrome/browser/content_settings:content_settings_factory",
         "//chrome/common:constants",
         "//chrome/test:xr_android_emulator_tests_runner",
-        "//chrome/test:xr_browser_tests_common",
         "//components/content_settings/browser",
         "//components/content_settings/core/browser",
         "//components/webxr",

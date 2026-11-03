@@ -172,8 +172,6 @@ ADDITIONAL_PATHS_FILENAME = 'additional_readme_paths.json'
 ADDITIONAL_PATHS = (
   os.path.join('chrome', 'test', 'chromeos', 'autotest'),
   os.path.join('chrome', 'test', 'data'),
-  os.path.join('native_client'),
-  os.path.join('third_party', 'android_deps', 'autorolled'),
   os.path.join('third_party', 'boringssl', 'src', 'third_party', 'fiat'),
   os.path.join(
     'third_party', 'devtools-frontend', 'src', 'front_end', 'third_party'
@@ -198,19 +196,6 @@ ADDITIONAL_PATHS = (
 # any metadata files with errors and if you encounter a parsing issue,
 # please file a bug.
 SPECIAL_CASES = {
-  os.path.join('native_client'): {
-    "Name": "native client",
-    "URL": "https://code.google.com/p/nativeclient",
-    "Shipped": "yes",
-    "License": "BSD",
-    "License File": ["//native_client/LICENSE"],
-  },
-  os.path.join('third_party', 'angle'): {
-    "Name": "Almost Native Graphics Layer Engine",
-    "URL": "https://chromium.googlesource.com/angle/angle/",
-    "Shipped": "yes",
-    "License": "BSD",
-  },
   os.path.join('third_party', 'cros_system_api'): {
     "Name": "Chromium OS system API",
     "URL": "https://www.chromium.org/chromium-os",
@@ -256,47 +241,11 @@ SPECIAL_CASES = {
     "License": "MIT",
     "License File": ["//third_party/jsoncpp/LICENSE"],
   },
-  os.path.join('third_party', 'openscreen', 'src', 'third_party', 'mozilla'): {
-    "Name": "mozilla",
-    "URL": "https://github.com/mozilla",
-    "Shipped": "yes",
-    "License": "MPL 1.1/GPL 2.0/LGPL 2.1",
-    "License File": ["LICENSE.txt"],
-  },
   os.path.join('third_party', 'pdfium'): {
     "Name": "PDFium",
     "URL": "https://pdfium.googlesource.com/pdfium/",
     "Shipped": "yes",
     "License": "BSD",
-  },
-  os.path.join('third_party', 'ppapi'): {
-    "Name": "ppapi",
-    "URL": "https://code.google.com/p/ppapi/",
-    "Shipped": "yes",
-  },
-  os.path.join(
-    'third_party', 'crashpad', 'crashpad', 'third_party', 'getopt'
-  ): {
-    "Name": "getopt",
-    "URL": "https://sourceware.org/ml/newlib/2005/msg00758.html",
-    "Shipped": "yes",
-    "License": "Public domain",
-    "License File": [
-      "//third_party/crashpad/crashpad/third_party/getopt/LICENSE",
-    ],
-  },
-  os.path.join('third_party', 'crashpad', 'crashpad', 'third_party', 'xnu'): {
-    "Name": "xnu",
-    "URL": "https://opensource.apple.com/source/xnu/",
-    "Shipped": "yes",
-    "License": "Apple Public Source License 2.0",
-    "License File": ["APPLE_LICENSE"],
-  },
-  os.path.join('third_party', 'v8-i18n'): {
-    "Name": "Internationalization Library for v8",
-    "URL": "https://code.google.com/p/v8-i18n/",
-    "Shipped": "yes",
-    "License": "Apache 2.0",
   },
   os.path.join('third_party', 'blink'): {
     # about:credits doesn't show "Blink" but "WebKit".
@@ -358,13 +307,6 @@ SPECIAL_CASES = {
     "License File": [
       "//third_party/swiftshader/third_party/SPIRV-Headers/LICENSE",
     ],
-  },
-  os.path.join('third_party', 'dawn', 'third_party', 'khronos'): {
-    "Name": "khronos_platform",
-    "URL": "https://registry.khronos.org/EGL/",
-    "Shipped": "yes",
-    "License": "Apache 2.0",
-    "License File": ["//third_party/dawn/third_party/khronos/LICENSE"],
   },
   # This entry is for the integration tests.
   os.path.join('third_party', 'sample3'): {
@@ -474,7 +416,6 @@ KNOWN_NON_IOS_LIBRARIES = set(
     os.path.join('third_party', 'npapi'),
     os.path.join('third_party', 'ots'),
     os.path.join('third_party', 'perfetto'),
-    os.path.join('third_party', 'ppapi'),
     os.path.join('third_party', 're2'),
     os.path.join('third_party', 'safe_browsing'),
     os.path.join('third_party', 'smhasher'),
@@ -482,7 +423,6 @@ KNOWN_NON_IOS_LIBRARIES = set(
     os.path.join('third_party', 'swig'),
     os.path.join('third_party', 'talloc'),
     os.path.join('third_party', 'usb_ids'),
-    os.path.join('third_party', 'v8-i18n'),
     os.path.join('third_party', 'wtl'),
     os.path.join('third_party', 'yasm'),
     os.path.join('v8', 'strongtalk'),

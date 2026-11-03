@@ -32,7 +32,6 @@ source_set("lib") {
   deps = [
     "//base",
     "//build:blink_buildflags",
-    "//components/web_package",
     "//mojo/public/cpp/bindings",
     "//net",
     "//skia",

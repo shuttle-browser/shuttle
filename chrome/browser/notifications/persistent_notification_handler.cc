@@ -65,7 +65,7 @@ void RecordCloseResult(content::PersistentNotificationStatus status) {
 }  // namespace
 
 PersistentNotificationHandler::PersistentNotificationHandler() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   on_app_terminating_subscription_ =
       browser_shutdown::AddAppTerminatingCallback(
           base::BindOnce(&PersistentNotificationHandler::OnAppTerminating,
@@ -73,7 +73,7 @@ PersistentNotificationHandler::PersistentNotificationHandler() {
 }
 
 PersistentNotificationHandler::~PersistentNotificationHandler() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 }
 
 void PersistentNotificationHandler::OnClose(
@@ -82,8 +82,8 @@ void PersistentNotificationHandler::OnClose(
     const std::string& notification_id,
     bool by_user,
     base::OnceClosure completed_closure) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(origin.is_valid());
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
+  CHECK(origin.is_valid(), base::NotFatalUntil::M161);
 
   if (browser_shutdown::HasShutdownStarted() ||
       g_browser_process->IsShuttingDown()) {
@@ -136,7 +136,7 @@ void PersistentNotificationHandler::OnCloseCompleted(
     Profile* profile,
     uint64_t close_completed_callback_id,
     content::PersistentNotificationStatus status) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   base::OnceClosure* completed_closure_pointer =
       close_completed_callbacks_.Lookup(close_completed_callback_id);
@@ -164,7 +164,7 @@ void PersistentNotificationHandler::OnClick(
     const std::optional<int>& action_index,
     const std::optional<std::u16string>& reply,
     base::OnceClosure completed_closure) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   NotificationMetricsLogger* metrics_logger =
       NotificationMetricsLoggerFactory::GetForBrowserContext(profile);
@@ -225,7 +225,7 @@ void PersistentNotificationHandler::OnClickCompleted(
     const std::string& notification_id,
     base::OnceClosure completed_closure,
     content::PersistentNotificationStatus status) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   UMA_HISTOGRAM_ENUMERATION(
       "Notifications.PersistentWebNotificationClickResult", status);
@@ -259,7 +259,7 @@ void PersistentNotificationHandler::OnClickCompleted(
 }
 
 void PersistentNotificationHandler::OnAppTerminating() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   // Release all keep alives for currently running 'notificationclose' events.
   // This will allow browser shutdown to begin without waiting for the
@@ -284,7 +284,7 @@ void PersistentNotificationHandler::DisableNotifications(
     const GURL& origin,
     const std::optional<std::string>& notification_id,
     const std::optional<bool>& is_suspicious) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   permissions::PermissionUmaUtil::ScopedRevocationReporter
       scoped_revocation_reporter(
           profile, origin, origin, ContentSettingsType::NOTIFICATIONS,
@@ -302,7 +302,7 @@ void PersistentNotificationHandler::DisableNotifications(
 
 void PersistentNotificationHandler::OpenSettings(Profile* profile,
                                                  const GURL& origin) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   NotificationCommon::OpenNotificationSettings(profile, origin);
   UMA_HISTOGRAM_ENUMERATION(
       "Notifications.Actions",
@@ -343,7 +343,7 @@ void PersistentNotificationHandler::NotificationKeepAliveState::AddKeepAlive(
 
 void PersistentNotificationHandler::NotificationKeepAliveState::RemoveKeepAlive(
     Profile* profile) {
-  DCHECK_GT(pending_dispatch_events_, 0);
+  CHECK_GT(pending_dispatch_events_, 0, base::NotFatalUntil::M161);
   // Reset the keep alive if all in-flight events have been processed.
   if (--pending_dispatch_events_ == 0)
     event_dispatch_keep_alive_.reset();

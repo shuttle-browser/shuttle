@@ -45,6 +45,7 @@ class PredictionManagerBrowserTestBase;
 class PredictionModelDownloadClient;
 class PredictionModelStoreBrowserTestBase;
 class PushNotificationManager;
+class SettingsEnabledObserver;
 class TabUrlProvider;
 class TopHostProvider;
 

@@ -12,7 +12,6 @@ source_set("history") {
   if (is_android) {
     sources = [ "history_ui_android.cc" ]
     public = [ "history_ui_android.h" ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps += [
       "//base",
       "//components/resources:components_scaled_resources",
@@ -29,7 +28,6 @@ source_set("history") {
       "history_ui.h",
       "navigation_handler.h",
     ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps += [
       "//base",
       "//chrome/app:generated_resources",

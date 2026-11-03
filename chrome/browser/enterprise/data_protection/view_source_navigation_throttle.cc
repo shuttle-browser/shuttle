@@ -158,7 +158,7 @@ ViewSourceNavigationThrottle::WillRedirectRequest() {
 
 content::NavigationThrottle::ThrottleCheckResult
 ViewSourceNavigationThrottle::WillProcessResponse() {
-  DCHECK(manager_);
+  CHECK(manager_, base::NotFatalUntil::M161);
 
   content::NavigationHandle* handle = navigation_handle();
 
@@ -175,8 +175,8 @@ ViewSourceNavigationThrottle::WillProcessResponse() {
           safe_browsing::SBThreatType::SB_THREAT_TYPE_SAFE) {
     // Subframes and nested frame trees will show an interstitial directly
     // from BaseUIManager::DisplayBlockingPage.
-    DCHECK(handle->IsInPrimaryMainFrame() ||
-           handle->IsInPrerenderedMainFrame());
+    CHECK(handle->IsInPrimaryMainFrame() || handle->IsInPrerenderedMainFrame(),
+          base::NotFatalUntil::M161);
 
     security_interstitials::SecurityInterstitialPage* blocking_page =
         manager_->CreateBlockingPage(

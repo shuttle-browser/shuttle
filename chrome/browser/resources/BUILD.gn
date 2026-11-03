@@ -51,7 +51,6 @@ group("resources") {
       "tab_group_home:resources",
       "webnn_internals:resources",
       "webui_gallery:resources",
-      "//components/browser_apis/tab_strip/resources",
     ]
     if (is_chrome_branded) {
       public_deps += [
@@ -141,6 +140,14 @@ group("resources") {
 
   if (enable_webui_history) {
     public_deps += [ "history:resources" ]
+  }
+
+  if (enable_webui_tabstrip_ntb) {
+    public_deps += [ "tabstrip_ntb:resources" ]
+  }
+
+  if (!is_android || enable_webui_tabstrip_ntb) {
+    public_deps += [ "//components/browser_apis/tab_strip/resources" ]
   }
 
   if (enable_compose) {
@@ -296,7 +303,7 @@ group("dev_ui_resources") {
     "location_internals:resources",
     "media:resources",
     "net_internals:resources",
-    "omnibox:resources",
+    "omnibox_internals:resources",
     "predictors:resources",
     "segmentation_internals:resources",
     "subresource_filter:resources",
@@ -369,7 +376,7 @@ repack("dev_ui_paks") {
     "$root_gen_dir/chrome/location_internals_resources.pak",
     "$root_gen_dir/chrome/media_resources.pak",
     "$root_gen_dir/chrome/net_internals_resources.pak",
-    "$root_gen_dir/chrome/omnibox_resources.pak",
+    "$root_gen_dir/chrome/omnibox_internals_resources.pak",
     "$root_gen_dir/chrome/predictors_resources.pak",
     "$root_gen_dir/chrome/segmentation_internals_resources.pak",
     "$root_gen_dir/chrome/subresource_filter_internals_resources.pak",

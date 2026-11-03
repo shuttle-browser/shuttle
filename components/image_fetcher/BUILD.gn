@@ -22,7 +22,6 @@ android_library("java") {
     "//build/android:build_java",
     "//components/browser_ui/util/android:java",
     "//third_party/androidx:androidx_annotation_annotation_java",
-    "//third_party/gif_player:gif_player_java",
     "//third_party/jni_zero:jni_zero_java",
     "//url:gurl_java",
   ]
@@ -39,10 +38,10 @@ generate_jni("jni_headers") {
 
 source_set("android") {
   sources = [
-    "image_fetcher_bridge.cc",
-    "image_fetcher_bridge.h",
-    "image_fetcher_service_provider.cc",
-    "image_fetcher_service_provider.h",
+    "android/image_fetcher_bridge.cc",
+    "android/image_fetcher_bridge.h",
+    "android/image_fetcher_service_provider.cc",
+    "android/image_fetcher_service_provider.h",
   ]
   deps = [
     ":jni_headers",
@@ -51,6 +50,7 @@ source_set("android") {
     "//components/image_fetcher/core:metrics",
     "//services/data_decoder/public/cpp",
     "//ui/gfx",
+    "//url",
   ]
 }
 
@@ -79,7 +79,6 @@ robolectric_library("junit") {
     "//base:base_junit_test_support",
     "//components/browser_ui/util/android:java",
     "//third_party/androidx:androidx_test_runner_java",
-    "//third_party/gif_player:gif_player_java",
     "//third_party/jni_zero:jni_zero_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",

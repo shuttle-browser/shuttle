@@ -455,7 +455,7 @@ void ChromeAutocompleteProviderClient::Classify(
     AutocompleteMatch* match,
     GURL* alternate_nav_url) {
   AutocompleteClassifier* classifier = GetAutocompleteClassifier();
-  DCHECK(classifier);
+  CHECK(classifier, base::NotFatalUntil::M161);
   classifier->Classify(text, in_keyword_mode, allow_exact_keyword_match,
                        page_classification, match, alternate_nav_url);
 }

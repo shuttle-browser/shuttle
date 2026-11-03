@@ -17,6 +17,7 @@ import("//pdf/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/widevine/cdm/widevine.gni")
 import("//tools/grit/grit_rule.gni")
+import("//ui/webui/webui_features.gni")
 
 assert(enable_supervised_users)
 
@@ -138,6 +139,7 @@ static_library("renderer") {
     "//components/content_settings/renderer",
     "//components/continuous_search/renderer",
     "//components/country_codes",
+    "//components/crx_file",
     "//components/dom_distiller/content/renderer",
     "//components/google/core/common",
     "//components/guest_view/buildflags",
@@ -209,6 +211,7 @@ static_library("renderer") {
     "//third_party/re2",
     "//third_party/widevine/cdm:buildflags",
     "//ui/gfx/geometry",
+    "//ui/webui:buildflags",
     "//v8",
   ]
 
@@ -216,8 +219,6 @@ static_library("renderer") {
   }
 
   data_deps = [ "//tools/v8_context_snapshot" ]
-
-  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   if (enable_bound_session_credentials) {
     sources += [
@@ -323,7 +324,6 @@ static_library("renderer") {
     ]
 
     deps += [
-      "//components/crx_file",
       "//services/screen_ai/buildflags",
       "//services/strings",
       "//third_party/re2",

@@ -41,11 +41,16 @@ source_set("activity_reporter") {
       "//base/version_info",
       "//components/policy/core/common",
       "//components/prefs",
+      "//ui/base",
       "//url",
     ]
 
     if (use_activity_reporter_internal_constants) {
       sources += [ "internal/constants.h" ]
+    }
+
+    if (is_win) {
+      deps += [ ":vm_detection" ]
     }
   } else {
     sources += [ "activity_reporter_disabled.cc" ]

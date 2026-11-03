@@ -52,6 +52,7 @@
 #include "chrome/browser/sessions/app_session_service.h"
 #include "chrome/browser/sessions/app_session_service_factory.h"
 #include "chrome/browser/sessions/session_restore_delegate.h"
+#include "chrome/browser/sessions/session_restore_metrics.h"
 #include "chrome/browser/sessions/session_service.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/session_service_log.h"
@@ -316,6 +317,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
                      bool restore_apps,
                      bool restore_browser,
                      bool log_event,
+                     bool is_foreign_session_restore,
                      const StartupTabs& startup_tabs)
       : profile_(profile),
         browser_(browser),
@@ -325,6 +327,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
         log_event_(log_event),
         restore_apps_(restore_apps),
         restore_browser_(restore_browser),
+        is_foreign_session_restore_(is_foreign_session_restore),
         startup_tabs_(startup_tabs),
         active_window_id_(SessionID::InvalidValue()),
         restore_started_(base::TimeTicks::Now()) {
@@ -349,6 +352,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   bool synchronous() const { return synchronous_; }
 
   BrowserWindowInterface* Restore() {
+    DCHECK(!is_foreign_session_restore_);
     if (restore_browser_) {
       SessionServiceBase* service =
           SessionServiceFactory::GetForProfileForSessionRestore(profile_);
@@ -393,6 +397,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   std::vector<BrowserWindowInterface*> RestoreForeignSession(
       std::vector<const sessions::SessionWindow*>::const_iterator begin,
       std::vector<const sessions::SessionWindow*>::const_iterator end) {
+    DCHECK(is_foreign_session_restore_);
     std::vector<BrowserWindowInterface*> windows;
     std::vector<RestoredTab> restored_tabs;
     // Create a browser instance to put the restored tabs in.
@@ -432,6 +437,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   // the WebContents of the restored tab.
   WebContents* RestoreForeignTab(const sessions::SessionTab& tab,
                                  WindowOpenDisposition disposition) {
+    DCHECK(is_foreign_session_restore_);
     DCHECK(!tab.navigations.empty());
     int selected_index = tab.current_navigation_index;
     selected_index = std::max(
@@ -489,7 +495,31 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   SessionRestoreImpl(const SessionRestoreImpl&) = delete;
   SessionRestoreImpl& operator=(const SessionRestoreImpl&) = delete;
 
-  ~SessionRestoreImpl() override { GetActiveSessionRestorers().erase(this); }
+  // SessionRestoreImpl deletes itself once it is done, so the destructor is
+  // where a session restore ends.
+  ~SessionRestoreImpl() override {
+    // Remove `this` from the active restorer set *before* notifying observers,
+    // so that SessionRestore::IsAnySessionCurrentlyRestoring() reflects that
+    // this restore has finished. Observers may call
+    // IsAnySessionCurrentlyRestoring() from OnProfileSessionRestored() to
+    // decide whether the last in-flight restore has completed.
+    GetActiveSessionRestorers().erase(this);
+
+    // Restores of a session from another device are not restores of this
+    // profile's own session, and are not reported to observers.
+    if (is_foreign_session_restore_) {
+      return;
+    }
+
+    for (auto& observer : *SessionRestore::observers()) {
+      observer.OnProfileSessionRestored(profile_, counts_.normal_windows,
+                                        counts_.app_windows);
+    }
+  }
+
+  bool is_foreign_session_restore() const {
+    return is_foreign_session_restore_;
+  }
 
   // BrowserCollectionObserver:
   void OnBrowserClosed(BrowserWindowInterface* browser) override {
@@ -575,18 +605,24 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
       bool for_apps,
       std::vector<std::unique_ptr<sessions::SessionWindow>> windows,
       SessionID active_window_id,
-      bool read_error) {
+      sessions::CommandStorageReadStatus status,
+      sessions::SessionReplayResult replay_result) {
 #if BUILDFLAG(IS_CHROMEOS)
     ash::BootTimesRecorder::Get()->AddLoginTimeMarker(
         "SessionRestore-GotSession", false);
 #endif
+
+    // Record before `windows` is merged into `windows_`, so that the sample
+    // describes this subsystem's restore alone.
+    RecordSessionRestoreMetrics(for_apps, status, replay_result,
+                                !windows.empty());
 
     // This function could be called twice from both SessionService and
     // AppSessionService. If one of them returns error, then |read_error_| is
     // true. So check whether |read_error_| has been set as true to prevent the
     // result is overwritten.
     if (!read_error_) {
-      read_error_ = read_error;
+      read_error_ = sessions::IsCommandStorageReadError(status);
     }
 
     // Copy windows into windows_ so that we can combine both app and browser
@@ -671,6 +707,8 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
     BrowserWindowInterface* result =
         ProcessSessionWindows(windows, active_window_id, restored_tabs,
                               &window_count, &tab_count, &counts);
+    counts_.normal_windows += counts.normal_windows;
+    counts_.app_windows += counts.app_windows;
     if (log_event_) {
       LogSessionServiceRestoreEvent(profile_, window_count, tab_count,
                                     read_error_);
@@ -1465,7 +1503,8 @@ BrowserWindowInterface* SessionRestore::RestoreSession(
       (behavior & CLOBBER_CURRENT_TAB) != 0,
       (behavior & ALWAYS_CREATE_TABBED_BROWSER) != 0,
       (behavior & RESTORE_APPS) != 0, (behavior & RESTORE_BROWSER) != 0,
-      /* log_event */ true, startup_tabs);
+      /* log_event */ true, /* is_foreign_session_restore */ false,
+      startup_tabs);
   return restorer->Restore();
 }
 
@@ -1524,7 +1563,9 @@ void SessionRestore::RestoreForeignSessionWindows(
   SessionRestoreImpl restorer(profile, nullptr, true, false, true,
                               /* restore_apps */ false,
                               /* restore_browser */ true,
-                              /* log_event */ false, startup_tabs);
+                              /* log_event */ false,
+                              /* is_foreign_session_restore */ true,
+                              startup_tabs);
   std::vector<BrowserWindowInterface*> windows =
       restorer.RestoreForeignSession(begin, end);
   std::move(callback).Run(std::move(windows));
@@ -1544,7 +1585,9 @@ WebContents* SessionRestore::RestoreForeignSessionTab(
   SessionRestoreImpl restorer(profile, browser, true, false, false,
                               /* restore_apps */ false,
                               /* restore_browser */ true,
-                              /* log_event */ false, startup_tabs);
+                              /* log_event */ false,
+                              /* is_foreign_session_restore */ true,
+                              startup_tabs);
   return restorer.RestoreForeignTab(tab, disposition);
 }
 
@@ -1557,6 +1600,14 @@ bool SessionRestore::IsRestoring(const Profile* profile) {
     }
   }
   return false;
+}
+
+// static
+bool SessionRestore::IsAnySessionCurrentlyRestoring() {
+  return std::ranges::any_of(GetActiveSessionRestorers(),
+                             [](const SessionRestoreImpl* restorer) {
+                               return !restorer->is_foreign_session_restore();
+                             });
 }
 
 // static

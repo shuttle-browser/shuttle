@@ -28,8 +28,6 @@
 #include "chrome/browser/search/search.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
-#include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_live_tab_context.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -46,7 +44,6 @@
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/tab_restore_service.h"
-#include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/split_tabs/split_tab_visual_data.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_id.h"
@@ -270,9 +267,6 @@ bool RecentTabsSubMenuModel::ExecuteCustomCommand(int command_id,
   if (log_menu_metrics_callback_) {
     log_menu_metrics_callback_.Run(command_id);
   }
-  if (command_id == IDC_SHOW_HISTORY) {
-    LogWrenchMenuAction(MENU_ACTION_SHOW_HISTORY);
-  }
 
   chrome::ExecuteCommandWithDisposition(
       browser_, command_id, ui::DispositionFromEventFlags(event_flags));
@@ -348,7 +342,6 @@ void RecentTabsSubMenuModel::Build() {
   // The menu contains:
   // - History to open the full history tab.
   // - History to open in side panel.
-  // - Tabs from other devices to open in side panel.
   // - Separator
   // - Recent tabs header
   // - A list of local recently closed tabs, groups, and/or windows.

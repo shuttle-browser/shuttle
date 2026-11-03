@@ -37,6 +37,14 @@ class WebContents;
 }  // namespace content
 
 
+namespace lens {
+enum class LensOverlayInvocationSource;
+}  // namespace lens
+
+namespace omnibox {
+enum ChromeAimEntryPoint : int;
+}  // namespace omnibox
+
 namespace split_tabs {
 enum class SplitTabCreatedSource;
 }

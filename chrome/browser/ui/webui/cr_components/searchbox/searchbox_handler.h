@@ -46,6 +46,7 @@ namespace searchbox_internal {
 // subclasses.
 extern const char* kSearchSparkIconResourceName;
 extern const char* kReplyRotated180IconResourceName;
+extern const char* kDockToRightIconResourceName;
 }  // namespace searchbox_internal
 
 namespace gfx {
@@ -101,6 +102,17 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
   static base::DictValue GetWebUIDataSourceDict(Profile* profile,
                                                 WebUIDataSourceOptions options);
 
+  // Computes URL emphasis metadata for the given `text`.
+  // Based on `OmniboxView::UpdateTextStyle()` (for URL component parsing and
+  // deemphasis mode determination) and `OmniboxViewViews::UpdateSchemeStyle()`
+  // (for security-related scheme styling when `include_security_style` is
+  // true).
+  static searchbox::mojom::UrlEmphasisPtr ComputeUrlEmphasis(
+      const std::u16string& text,
+      bool text_is_url,
+      bool include_security_style,
+      const OmniboxClient* client);
+
   // Maps all icons returned from either `AutocompleteMatch::GetVectorIcon()` or
   // `OmniboxAction::GetIconImage()` to svg resource strings.
   virtual std::string AutocompleteIconToResourceName(
@@ -153,10 +165,11 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       const GURL& url,
       omnibox::mojom::NavigationPredictor navigation_predictor) override;
   void DeleteAutocompleteMatch(uint8_t line, const GURL& url) override;
-  void ActivateKeyword(uint8_t line,
-                       const GURL& url,
-                       base::TimeTicks match_selection_timestamp,
-                       bool is_mouse_event) override;
+  void ActivateKeyword(
+      uint8_t line,
+      const GURL& url,
+      base::TimeTicks match_selection_timestamp,
+      searchbox::mojom::KeywordActivationMethod activation_method) override;
   void ExecuteAction(uint8_t line,
                      uint8_t action_index,
                      const GURL& url,

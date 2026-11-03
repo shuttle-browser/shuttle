@@ -35,6 +35,7 @@ source_set("picture_in_picture") {
     "//components/safe_browsing/core/browser/db:util",
     "//content/public/browser",
     "//third_party/blink/public/common",
+    "//ui/base/unowned_user_data",
     "//ui/gfx/geometry",
     "//url",
   ]
@@ -96,6 +97,7 @@ source_set("impl") {
     "//base",
     "//chrome/browser:browser_process",
     "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/media",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/permissions",
     "//chrome/browser/profiles:profile",
@@ -106,6 +108,7 @@ source_set("impl") {
     "//components/content_settings/core/browser",
     "//components/permissions",
     "//components/safe_browsing/core/browser/db:v5_get_hash_protocol_manager",
+    "//components/tabs:public",
     "//content/public/browser",
     "//content/public/common",
     "//extensions/buildflags",

@@ -32,7 +32,6 @@ source_set("impl") {
     ":bluetooth",
     "//chrome/browser/chooser_controller",
     "//chrome/browser/content_settings:content_settings_factory",
-    "//chrome/browser/ui",
     "//chrome/browser/ui/bluetooth",
     "//chrome/browser/ui/dialogs",
     "//components/content_settings/core/browser",

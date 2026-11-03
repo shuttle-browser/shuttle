@@ -137,7 +137,6 @@ export function getHtml(this: SettingsSystemPageElement) {
     </relaunch-confirmation-dialog>
   ` : ''}
 </settings-section>
-
 <!--_html_template_end_-->`;
   // clang-format on
 }

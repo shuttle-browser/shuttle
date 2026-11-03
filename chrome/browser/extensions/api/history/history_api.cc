@@ -118,7 +118,7 @@ VisitItem GetVisitItem(const history::VisitRow& row) {
       transition = api::history::TransitionType::kKeywordGenerated;
       break;
     default:
-      DCHECK(false);
+      CHECK(false, base::NotFatalUntil::M161);
   }
 
   visit_item.transition = transition;
@@ -133,7 +133,7 @@ VisitItem GetVisitItem(const history::VisitRow& row) {
 HistoryEventRouter::HistoryEventRouter(Profile* profile,
                                        history::HistoryService* history_service)
     : profile_(profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
   history_service_observation_.Observe(history_service);
 }
 
@@ -373,7 +373,7 @@ ExtensionFunction::ResponseAction HistoryDeleteUrlFunction::Run() {
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
           ::switches::kEnableExtensionActivityLogTesting)) {
     ActivityLog* activity_log = ActivityLog::GetInstance(GetProfile());
-    DCHECK(activity_log);
+    CHECK(activity_log, base::NotFatalUntil::M161);
     activity_log->RemoveURL(url);
   }
 
@@ -405,7 +405,7 @@ ExtensionFunction::ResponseAction HistoryDeleteRangeFunction::Run() {
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
           ::switches::kEnableExtensionActivityLogTesting)) {
     ActivityLog* activity_log = ActivityLog::GetInstance(GetProfile());
-    DCHECK(activity_log);
+    CHECK(activity_log, base::NotFatalUntil::M161);
     activity_log->RemoveURLs(/*restrict_urls=*/std::vector<GURL>());
   }
 
@@ -438,7 +438,7 @@ ExtensionFunction::ResponseAction HistoryDeleteAllFunction::Run() {
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
           ::switches::kEnableExtensionActivityLogTesting)) {
     ActivityLog* activity_log = ActivityLog::GetInstance(GetProfile());
-    DCHECK(activity_log);
+    CHECK(activity_log, base::NotFatalUntil::M161);
     activity_log->RemoveURLs(/*restrict_urls=*/std::vector<GURL>());
   }
 

@@ -83,10 +83,7 @@ source_set("impl") {
     "time.cc",
   ]
 
-  public_deps = [
-    ":resource_coordinator",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":resource_coordinator" ]
 
   deps = [
     ":mojo_bindings",
@@ -130,7 +127,6 @@ source_set("impl") {
       "//chrome/browser/memory",
       "//chrome/browser/permissions",
       "//chrome/browser/sessions",
-      "//chrome/browser/ui",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tab_contents",

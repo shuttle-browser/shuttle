@@ -64,6 +64,7 @@
 #include "components/enterprise/browser/reporting/cloud_reporting_policy_handler.h"
 #include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/enterprise/buildflags/buildflags.h"
+#include "components/enterprise/client_certificates/core/prefs.h"
 #include "components/enterprise/connectors/core/connectors_prefs.h"
 #include "components/enterprise/connectors/core/enterprise_connectors_policy_handler.h"
 #include "components/enterprise/content/copy_prevention_settings_policy_handler.h"
@@ -197,6 +198,7 @@
 #include "components/user_manager/user_manager_pref_names.h"
 #else
 #include "chrome/browser/policy/browser_signin_policy_handler.h"
+#include "components/enterprise/browser/controller/chrome_browser_cloud_management_controller.h"
 #include "components/enterprise/idle/idle_timeout_policy_handler.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -231,15 +233,6 @@
 #include "components/device_signals/core/browser/pref_names.h"  // nogncheck due to crbug.com/40147906
 #include "components/proxy_config/proxy_config_pref_names.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-#include "components/enterprise/network_header_injection/core/http_header_injection_policy_handler.h"
-#endif
-
-#if BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
-#include "components/enterprise/client_certificates/core/prefs.h"
-#endif  // BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
 
 #if BUILDFLAG(ENTERPRISE_WATERMARK)
 #include "components/enterprise/watermarking/watermark_style_policy_handler.h"  // nogncheck crbug.com/40147906
@@ -970,6 +963,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 #endif  // !BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  { key::kDynamicPatchingEnabled,
+    prefs::kDynamicPatchingEnabled,
+    base::Value::Type::BOOLEAN },
   { key::kPrintPdfAsImageAvailability,
     prefs::kPrintPdfAsImageAvailability,
     base::Value::Type::BOOLEAN },
@@ -1098,6 +1094,12 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kExtensionReviewPromptsEnabled,
     prefs::kExtensionReviewPromptsAllowed,
     base::Value::Type::BOOLEAN },
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  { key::kExtensionForceInstallWithSearchOrNewTabOverridesEnabled,
+    extensions::pref_names::
+        kExtensionForceInstallWithSearchOrNewTabOverridesEnabled,
+    base::Value::Type::BOOLEAN },
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #endif // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -1269,23 +1271,18 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 // chrome_os`), but the per-browser policy is not (it is `chrome.*`, i.e.
 // win/mac/linux only). As a result the per-browser `key::` constant is only
 // generated in non-ChromeOS builds, so its entry must be guarded accordingly.
-#if BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
   { key::kProvisionManagedClientCertificateForUser,
     client_certificates::prefs::kProvisionManagedClientCertificateForUserPrefs,
     base::Value::Type::INTEGER },
-#endif  // BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES)
 
-#if BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES) && !BUILDFLAG(IS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS)
   { key::kProvisionManagedClientCertificateForBrowser,
     client_certificates::prefs::kProvisionManagedClientCertificateForBrowserPrefs,
     base::Value::Type::INTEGER },
-#endif  // BUILDFLAG(ENTERPRISE_CLIENT_CERTIFICATES) && !BUILDFLAG(IS_CHROMEOS)
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
   { key::kWebAudioOutputBufferingEnabled,
     prefs::kWebAudioOutputBufferingEnabled,
-    base::Value::Type::BOOLEAN },
-  { key::kReduceAcceptLanguageEnabled,
-    prefs::kReduceAcceptLanguageEnabled,
     base::Value::Type::BOOLEAN },
 #if !BUILDFLAG(IS_ANDROID)
   { key::kBuiltInAIAPIsEnabled,
@@ -1308,6 +1305,11 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     proxy_config::prefs::kEnableProxyOverrideRulesForAllUsers,
     base::Value::Type::INTEGER },
 #endif // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_ANDROID)
+  { key::kAppStoreRatingEnabled,
+    prefs::kAppRatingPolicyEnabled,
+    base::Value::Type::BOOLEAN },
+#endif  // BUILDFLAG(IS_ANDROID)
 };
 // clang-format on
 
@@ -1319,6 +1321,13 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
 const SchemaValidatingPolicyToPreferenceMapEntry kSchemaValidatingPolicyMap[] =
     {
   // Policies for all platforms - Start.
+#if !BUILDFLAG(IS_CHROMEOS)
+  { key::kManagedClientCertificateForBrowserConfig,
+    client_certificates::prefs::kManagedClientCertificateForBrowserConfigPrefs,
+    SCHEMA_ALLOW_UNKNOWN,
+    SimpleSchemaValidatingPolicyHandler::RECOMMENDED_PROHIBITED,
+    SimpleSchemaValidatingPolicyHandler::MANDATORY_ALLOWED },
+#endif  // !BUILDFLAG(IS_CHROMEOS)
   // Policies for all platforms - End.
   // Policies for ChromeOS - Start.
   // Policies for ChromeOS - End.
@@ -1351,6 +1360,14 @@ bool AreFuturePoliciesEnabledByDefault() {
          channel != version_info::Channel::BETA;
 }
 
+bool AreCloudOnlyPoliciesAllowed() {
+#if !BUILDFLAG(IS_CHROMEOS)
+  return ChromeBrowserCloudManagementController::IsEnabled();
+#else
+  return true;
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+}
+
 }  // namespace
 
 void PopulatePolicyHandlerParameters(PolicyHandlerParameters* parameters) {
@@ -1371,7 +1388,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       new ConfigurationPolicyHandlerList(
           base::BindRepeating(&PopulatePolicyHandlerParameters),
           base::BindRepeating(&GetChromePolicyDetails),
-          AreFuturePoliciesEnabledByDefault()));
+          AreFuturePoliciesEnabledByDefault(), AreCloudOnlyPoliciesAllowed()));
   for (const PolicyToPreferenceMapEntry& entry : kSimplePolicyMap) {
     handlers->AddHandler(std::make_unique<SimplePolicyHandler>(
         entry.policy_name, entry.preference_path, entry.value_type));
@@ -1519,9 +1536,16 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<WebHidDevicePolicyHandler>(
       key::kWebHidAllowDevicesWithHidUsagesForUrls,
       prefs::kManagedWebHidAllowDevicesWithHidUsagesForUrls, chrome_schema));
+  // TODO(crbug.com/571067805): Move `android` from `future_on` to
+  // `supported_on` in PromotionsEnabled.yaml when ready to launch.
+  auto promotions_enabled_policy_handler =
+      std::make_unique<SimplePolicyHandler>(key::kPromotionsEnabled,
+                                            prefs::kPromotionsEnabled,
+                                            base::Value::Type::BOOLEAN);
 #if BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(
       std::make_unique<ContextualSearchPolicyHandlerAndroid>());
+  handlers->AddHandler(std::move(promotions_enabled_policy_handler));
 #else  // !BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(std::make_unique<BrowsingDataLifetimePolicyHandler>(
       key::kClearBrowsingDataOnExitList,
@@ -1536,9 +1560,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<SimplePolicyHandler>(key::kPromotionalTabsEnabled,
                                             prefs::kPromotionsEnabled,
                                             base::Value::Type::BOOLEAN),
-      std::make_unique<SimplePolicyHandler>(key::kPromotionsEnabled,
-                                            prefs::kPromotionsEnabled,
-                                            base::Value::Type::BOOLEAN)));
+      std::move(promotions_enabled_policy_handler)));
 
   handlers->AddHandler(std::make_unique<headless::HeadlessModePolicyHandler>());
   handlers->AddHandler(
@@ -1605,13 +1627,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       SCHEMA_ALLOW_UNKNOWN,
       SimpleSchemaValidatingPolicyHandler::RECOMMENDED_ALLOWED,
       SimpleSchemaValidatingPolicyHandler::MANDATORY_PROHIBITED));
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
-    BUILDFLAG(IS_CHROMEOS)
-  handlers->AddHandler(
-      std::make_unique<
-          enterprise_custom_headers::HttpHeaderInjectionPolicyHandler>(
-          chrome_schema));
-#endif
   handlers->AddHandler(std::make_unique<SimpleSchemaValidatingPolicyHandler>(
       key::kRelaunchWindow, prefs::kRelaunchWindow, chrome_schema,
       SCHEMA_ALLOW_UNKNOWN,
@@ -1919,6 +1934,9 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
       key::kAllHttpAuthSchemesAllowedForOrigins,
       prefs::kAllHttpAuthSchemesAllowedForOrigins));
+  handlers->AddHandler(std::make_unique<URLSchemeListPolicyHandler>(
+      key::kAllHttpAuthSchemesAllowedForProxies,
+      prefs::kAllHttpAuthSchemesAllowedForProxies));
 
   handlers->AddHandler(std::make_unique<PrivacySandboxPolicyHandler>());
 

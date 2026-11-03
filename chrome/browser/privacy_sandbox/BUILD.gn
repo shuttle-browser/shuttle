@@ -39,10 +39,7 @@ source_set("impl") {
     "privacy_sandbox_settings_factory.cc",
   ]
 
-  public_deps = [
-    ":headers",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":headers" ]
 
   deps = [
     "//chrome/browser:browser_process",

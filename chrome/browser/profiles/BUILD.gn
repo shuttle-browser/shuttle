@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//chrome/common/features.gni")
+import("//chrome/common/request_header_integrity/buildflags.gni")
 import("//components/captive_portal/core/features.gni")
 import("//components/enterprise/buildflags/buildflags.gni")
 import("//components/guest_view/buildflags/buildflags.gni")
@@ -51,10 +52,7 @@ source_set("misc") {
     "storage_partition_descriptor.h",
   ]
 
-  public_deps = [
-    ":profiles",
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = [ ":profiles" ]
 
   deps = [
     ":profile",
@@ -63,13 +61,17 @@ source_set("misc") {
     "//base",
     "//chrome/app:branded_strings",
     "//chrome/app:generated_resources",
+    "//chrome/browser:after_startup_task_utils",
+    "//chrome/browser:browser_features",
     "//chrome/browser:browser_process",
     "//chrome/browser:buildflags",
     "//chrome/browser:flags",
     "//chrome/browser:global_features",
+    "//chrome/browser:shell_integration",
     "//chrome/browser:startup_data",
     "//chrome/browser/accessibility",
     "//chrome/browser/app_mode",
+    "//chrome/browser/autocomplete",
     "//chrome/browser/background",
     "//chrome/browser/background_fetch",
     "//chrome/browser/background_sync",
@@ -90,6 +92,7 @@ source_set("misc") {
     "//chrome/browser/net",
     "//chrome/browser/origin_trials",
     "//chrome/browser/permissions",
+    "//chrome/browser/plugins",
     "//chrome/browser/prefs",
     "//chrome/browser/prefs:util",
     "//chrome/browser/privacy",
@@ -126,6 +129,7 @@ source_set("misc") {
     "//components/keyed_service/content",
     "//components/language/core/browser",
     "//components/language/core/common",
+    "//components/payments/core",
     "//components/policy/core/browser",
     "//components/policy/core/common",
     "//components/pref_registry",
@@ -287,7 +291,7 @@ source_set("renderer_updater") {
     ":profile",
     "//base",
     "//build:chromeos_buildflags",
-    "//chrome/browser:browser_public_dependencies",
+    "//chrome/browser:browser_process",
     "//chrome/common",
     "//components/content_settings/core/browser",
     "//components/keyed_service/core",
@@ -297,10 +301,12 @@ source_set("renderer_updater") {
   ]
 
   deps = [
+    "//chrome/browser:global_features",
     "//chrome/browser/content_settings",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/signin",
     "//chrome/common:constants",
+    "//chrome/common/request_header_integrity:buildflags",
     "//components/content_settings/common:mojom",
     "//components/content_settings/core/common",
     "//components/keyed_service/content",
@@ -318,6 +324,10 @@ source_set("renderer_updater") {
 
   if (enable_bound_session_credentials) {
     deps += [ "//components/unexportable_keys/mojom:mojo_service" ]
+  }
+
+  if (enable_request_header_integrity) {
+    deps += [ "//chrome/browser/request_header_integrity" ]
   }
 }
 
@@ -359,7 +369,7 @@ source_set("profile") {
     "//content/public/browser",
     "//extensions/buildflags",
   ]
-  if (enable_extensions) {
+  if (enable_extensions_core) {
     deps += [ "//extensions/browser" ]
   }
   if (is_chromeos) {
@@ -416,6 +426,8 @@ source_set("profile_manager_impl") {
     ":profile_manager",
     ":profile_util",
     "//base",
+    "//chrome/app:branded_strings",
+    "//chrome/app:generated_resources",
     "//chrome/browser:browser_features",
     "//chrome/browser:browser_process",
     "//chrome/browser:browser_process_platform_part",
@@ -431,11 +443,15 @@ source_set("profile_manager_impl") {
     "//chrome/browser/signin",
     "//chrome/browser/supervised_user",
     "//chrome/browser/ui:ui_features",
+    "//chrome/common",
     "//chrome/common:buildflags",
+    "//chrome/common:channel_info",
     "//chrome/common:constants",
+    "//components/bookmarks/common",
     "//components/crash/core/common",
     "//components/keep_alive_registry",
     "//components/profile_metrics",
+    "//components/search_engines",
     "//components/signin/core/browser",
     "//components/signin/public/base:signin_buildflags",
     "//components/supervised_user/core/browser",
@@ -540,10 +556,7 @@ source_set("profile_util_impl") {
     "reporting_util.cc",
   ]
 
-  public_deps = [
-    "//chrome/browser:browser_public_dependencies",
-    "//chrome/browser/browsing_data",
-  ]
+  public_deps = [ "//chrome/browser/browsing_data" ]
 
   deps = [
     ":misc",
@@ -650,6 +663,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/domain_reliability",
     "//chrome/browser/engagement",
     "//chrome/browser/enterprise/connectors/reporting",
+    "//chrome/browser/enterprise/network_header_injection",
     "//chrome/browser/favicon",
     "//chrome/browser/file_system_access",
     "//chrome/browser/first_party_sets",
@@ -664,7 +678,9 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/lookalikes",
     "//chrome/browser/manta",
     "//chrome/browser/manta:impl",
+    "//chrome/browser/media",
     "//chrome/browser/media/webrtc",
+    "//chrome/browser/net",
     "//chrome/browser/notifications",
     "//chrome/browser/omnibox",
     "//chrome/browser/optimization_guide",
@@ -676,6 +692,7 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/page_info",
     "//chrome/browser/performance_manager",
     "//chrome/browser/permissions",
+    "//chrome/browser/plugins",
     "//chrome/browser/predictors",
     "//chrome/browser/prefs",
     "//chrome/browser/preloading",
@@ -710,7 +727,6 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/supervised_user",
     "//chrome/browser/themes",
-    "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/find_bar",
     "//chrome/browser/ui/omnibox",
@@ -728,8 +744,10 @@ source_set("profiles_extra_parts_impl") {
     "//chrome/common:chrome_features",
     "//components/captive_portal/core:buildflags",
     "//components/enterprise/content",
+    "//components/enterprise/network_header_injection/core",
     "//components/manta",
     "//components/omnibox/browser",
+    "//components/on_device_translation/buildflags",
     "//components/optimization_guide/core",
     "//components/permissions:permissions_common",
     "//components/policy/content",
@@ -744,9 +762,7 @@ source_set("profiles_extra_parts_impl") {
     "//ui/webui:buildflags",
   ]
 
-  public_deps = [
-    "//chrome/browser:browser_public_dependencies",
-  ]
+  public_deps = []
 
   if (is_android) {
     deps += [
@@ -807,17 +823,20 @@ source_set("profiles_extra_parts_impl") {
   }
 
   if (is_win || is_mac || is_linux || is_chromeos) {
-    deps += [
-      "//chrome/browser/enterprise/network_header_injection",
-      "//chrome/browser/multistep_filter",
-      "//components/enterprise/network_header_injection/core",
-    ]
+    deps += [ "//chrome/browser/multistep_filter" ]
   }
 
   if (is_win || is_mac || is_linux) {
     deps += [
       "//chrome/browser/browser_switcher",
       "//chrome/browser/search_integrity",
+    ]
+  }
+
+  if (is_win) {
+    deps += [
+      "//chrome/browser/ui/search_promotion",
+      "//chrome/browser/win:jumplist",
     ]
   }
 

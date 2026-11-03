@@ -32,6 +32,7 @@
 #include "base/callback_list.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/buildflags.h"
+#include "components/safe_browsing/buildflags.h"
 #include "content/public/common/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
 #include "rlz/buildflags/buildflags.h"
@@ -64,6 +65,61 @@ class TabUIHelper;
 class ThumbnailTabHelper;
 class UMABrowsingActivityTabHelper;
 class ZeroSuggestPrefetchTabHelper;
+class AutoPictureInPictureTabHelper;
+class ChainedBackNavigationTracker;
+class CoreTabHelper;
+class FileSystemAccessTabHelper;
+class MixedContentSettingsTabHelper;
+class OneTimePermissionsTrackerHelper;
+class RecentlyAudibleHelper;
+class SearchEngineTabHelper;
+class SupervisedUserNavigationObserver;
+class TabDialogs;
+
+namespace blocked_content {
+class PopupOpenerTabHelper;
+}  // namespace blocked_content
+
+namespace chrome_browser_net {
+class NetErrorTabHelper;
+}  // namespace chrome_browser_net
+
+namespace client_hints {
+class ClientHintsWebContentsObserver;
+}  // namespace client_hints
+
+namespace history {
+class WebContentsTopSitesObserver;
+}  // namespace history
+
+namespace metrics {
+class MetricsServicesWebContentsObserver;
+}  // namespace metrics
+
+namespace page_content_annotations {
+class PageContentAnnotationsWebContentsObserver;
+}  // namespace page_content_annotations
+
+namespace predictors {
+class LoadingPredictorTabHelper;
+}  // namespace predictors
+
+namespace vr {
+class VrTabHelper;
+}  // namespace vr
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+namespace extensions {
+class AppTabHelper;
+}  // namespace extensions
+#endif
+
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+namespace safe_browsing {
+class SafeBrowsingTabObserver;
+class TriggerCreator;
+}  // namespace safe_browsing
+#endif
 
 namespace site_protection {
 class SiteProtectionMetricsObserver;
@@ -137,6 +193,7 @@ class FilterUiController;
 
 namespace tabs {
 
+class ChildTabAlertHelper;
 class ContextHighlightTabFeature;
 class InactiveWindowMouseEventController;
 class PageContextEligibilityHelper;
@@ -395,6 +452,66 @@ class TabFeatures {
 
   std::unique_ptr<download::DownloadNavigationObserver>
       download_navigation_observer_;
+
+  std::unique_ptr<TabDialogs> tab_dialogs_;
+
+  std::unique_ptr<vr::VrTabHelper> vr_tab_helper_;
+
+  std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
+
+  std::unique_ptr<ChildTabAlertHelper> child_tab_alert_helper_;
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+  std::unique_ptr<extensions::AppTabHelper> app_tab_helper_;
+#endif
+
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+  std::unique_ptr<safe_browsing::SafeBrowsingTabObserver>
+      safe_browsing_tab_observer_;
+  std::unique_ptr<safe_browsing::TriggerCreator> trigger_creator_;
+#endif
+
+  std::unique_ptr<history::WebContentsTopSitesObserver>
+      web_contents_top_sites_observer_;
+
+  std::unique_ptr<client_hints::ClientHintsWebContentsObserver>
+      client_hints_web_contents_observer_;
+
+  std::unique_ptr<ChainedBackNavigationTracker>
+      chained_back_navigation_tracker_;
+
+  std::unique_ptr<FileSystemAccessTabHelper> file_system_access_tab_helper_;
+
+  std::unique_ptr<SearchEngineTabHelper> search_engine_tab_helper_;
+
+  std::unique_ptr<chrome_browser_net::NetErrorTabHelper> net_error_tab_helper_;
+
+  std::unique_ptr<SupervisedUserNavigationObserver>
+      supervised_user_navigation_observer_;
+
+  std::unique_ptr<AutoPictureInPictureTabHelper>
+      auto_picture_in_picture_tab_helper_;
+
+  std::unique_ptr<metrics::MetricsServicesWebContentsObserver>
+      metrics_services_web_contents_observer_;
+
+  std::unique_ptr<blocked_content::PopupOpenerTabHelper>
+      popup_opener_tab_helper_;
+
+  std::unique_ptr<
+      page_content_annotations::PageContentAnnotationsWebContentsObserver>
+      page_content_annotations_web_contents_observer_;
+
+  std::unique_ptr<CoreTabHelper> core_tab_helper_;
+
+  std::unique_ptr<MixedContentSettingsTabHelper>
+      mixed_content_settings_tab_helper_;
+
+  std::unique_ptr<OneTimePermissionsTrackerHelper>
+      one_time_permissions_tracker_helper_;
+
+  std::unique_ptr<predictors::LoadingPredictorTabHelper>
+      loading_predictor_tab_helper_;
 
   // Must be the last member.
   base::WeakPtrFactory<TabFeatures> weak_factory_{this};

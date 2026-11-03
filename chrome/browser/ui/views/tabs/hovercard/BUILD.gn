@@ -92,6 +92,7 @@ source_set("impl") {
     "//chrome/browser/ui/thumbnails",
     "//chrome/browser/ui/views",
     "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/frame",
     "//chrome/common:constants",
     "//components/prefs",
     "//components/strings",
@@ -112,8 +113,6 @@ source_set("impl") {
     "//ui/views",
     "//url",
   ]
-
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
 

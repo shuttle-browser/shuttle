@@ -2,6 +2,18 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+# NOTE: Please do not add new test source files (e.g. *_unittest.cc,
+# *_browsertest.cc, *_interactive_uitest.cc, *_test.mm) to this file. Instead,
+# add them to the BUILD.gn file of the directory that contains them, e.g.
+# chrome/browser/my_feature/BUILD.gn.
+#
+# That may mean adding a source_set("unit_tests"), source_set("browser_tests")
+# or source_set("interactive_ui_tests") target there, and adding it to the deps
+# of the corresponding test target in this file. For an example of a directory
+# with test_support, unit_tests, browser_tests and interactive_ui_tests
+# targets, see //chrome/browser/ui/views/tab_sharing/BUILD.gn and its reference
+# below.
+
 import("//build/cipd/cipd.gni")
 import("//build/config/buildflags_paint_preview.gni")
 import("//build/config/chrome_build.gni")
@@ -135,11 +147,6 @@ if (is_android) {
 }
 
 if (is_chromeos && is_chromeos_device) {
-  copy("crosier_metadata") {
-    sources = [ "base/chromeos/crosier/ash_integration_test_test.yaml" ]
-    outputs = [ "$root_out_dir/crosier_metadata/{{source_file_part}}" ]
-  }
-
   copy("crosier_js_helpers") {
     sources = [ "../browser/ash/accessibility/google_tts_test_support.js" ]
     outputs = [ "$root_out_dir/crosier_js_helpers/{{source_file_part}}" ]
@@ -177,27 +184,11 @@ if (is_chromeos && is_chromeos_device) {
   test("chromeos_integration_tests") {
     configs += [ "//build/config:precompiled_headers" ]
     defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-    sources = [
-      "base/chromeos/crosier/chromeos_tests_main.cc",
-      "base/chromeos/crosier/demo_integration_test.cc",
-    ]
+    sources = [ "base/chromeos/crosier/chromeos_tests_main.cc" ]
     deps = [
       ":test_support",
       "//chrome/test/base/chromeos/crosier:test_support",
-      "//components/app_constants",
     ]
-
-    # Note: for each test case in the below list, add a metadata file
-    # in the `crosier_metadata` build rule above.
-    sources += [
-      "base/chromeos/crosier/ash_integration_test_test.cc",
-      "base/chromeos/crosier/helper/test_sudo_helper_client_test.cc",
-      "base/chromeos/crosier/upstart_test.cc",
-    ]
-
-    if (is_chrome_branded) {
-      sources += [ "base/chromeos/crosier/test_accounts_test.cc" ]
-    }
 
     data = [
     ]
@@ -217,7 +208,6 @@ if (is_chromeos && is_chromeos_device) {
 
     data_deps = [
       ":crosier_js_helpers",
-      ":crosier_metadata",
       "//chrome:packed_resources",
       "//chrome/test/base/chromeos/crosier/helper",
       "//chrome/test/base/chromeos/crosier/helper/fake_chrome",
@@ -313,6 +303,7 @@ if (is_android) {
       "//chrome/browser/segmentation_platform:test_utils",
       "//chrome/browser/site_protection",
       "//chrome/browser/site_protection:utils",
+      "//chrome/browser/site_token_provider:browser_tests",
       "//chrome/browser/ssl:android_browsertests",
       "//chrome/browser/ssl:cert_verifier_test_support",
       "//chrome/browser/supervised_user:android_browser_tests",
@@ -382,7 +373,6 @@ if (is_android) {
       "//components/safe_browsing/content/common:interfaces",
       "//components/safe_browsing/core/browser/db:sb_database",
       "//components/safe_browsing/core/common",
-      "//components/safe_browsing/core/common/fbs:client_model",
       "//components/safe_browsing/core/common/proto:client_model_proto",
       "//components/safe_browsing/core/common/proto:csd_proto",
       "//components/security_interstitials/core:unsafe_resource",
@@ -565,16 +555,9 @@ if (is_android) {
     }
 
     if (safe_browsing_mode != 0) {
-      sources += [
-        "../renderer/safe_browsing/phishing_classifier_browsertest.cc",
-        "../renderer/safe_browsing/phishing_dom_utils_browsertest.cc",
-      ]
-
       deps += [
         "//components/safe_browsing/content/browser:client_side_detection",
         "//components/safe_browsing/content/browser:client_side_detection_service",
-        "//components/safe_browsing/content/renderer/phishing_classifier",
-        "//components/safe_browsing/core/common/phishing_classifier",
       ]
     }
 
@@ -1002,7 +985,9 @@ if (is_android) {
       "//components/signin/public/android:signin_java_test_support",
       "//components/sync/android:sync_java",
       "//components/tab_groups:tab_groups_java",
+      "//components/trusted_vault/android:java",
       "//content/public/test/android:content_java_test_support",
+      "//google_apis/gaia/android:java",
       "//third_party/androidx:androidx_annotation_annotation_java",
       "//third_party/jni_zero:jni_zero_java",
       "//third_party/junit",

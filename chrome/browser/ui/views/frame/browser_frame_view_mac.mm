@@ -304,7 +304,9 @@ bool BrowserFrameViewMac::ShouldHideTopUIInFullscreen() const {
 void BrowserFrameViewMac::UpdateThrobber(bool running) {}
 
 void BrowserFrameViewMac::PaintAsActiveChanged() {
-  BrowserFrameView::PaintAsActiveChanged();
+  if (!is_glass_frame_eligible_) {
+    BrowserFrameView::PaintAsActiveChanged();
+  }
 }
 
 void BrowserFrameViewMac::OnThemeChanged() {

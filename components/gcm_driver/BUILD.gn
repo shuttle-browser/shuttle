@@ -14,12 +14,8 @@ static_library("gcm_driver") {
   sources = [
     "features.cc",
     "features.h",
-    "gcm_activity.cc",
-    "gcm_activity.h",
     "gcm_app_handler.cc",
     "gcm_app_handler.h",
-    "gcm_backoff_policy.cc",
-    "gcm_backoff_policy.h",
     "gcm_client.cc",
     "gcm_client.h",
     "gcm_connection_observer.cc",
@@ -38,6 +34,8 @@ static_library("gcm_driver") {
 
   public_deps = [
     "//base",
+    "//components/fcm",
+    "//components/fcm/crypto",
     "//components/gcm_driver/common",
     "//components/gcm_driver/crypto",
     "//components/gcm_driver/instance_id",
@@ -49,6 +47,7 @@ static_library("gcm_driver") {
     ":gcm_buildflags",
     "//base:i18n",
     "//components/crx_file",
+    "//components/fcm/base",
     "//components/keyed_service/core",
     "//components/os_crypt/browser",
     "//components/pref_registry",
@@ -82,8 +81,6 @@ static_library("gcm_driver") {
     sources += [
       "account_tracker.cc",
       "account_tracker.h",
-      "gcm_account_mapper.cc",
-      "gcm_account_mapper.h",
       "gcm_account_tracker.cc",
       "gcm_account_tracker.h",
       "gcm_client_factory.cc",
@@ -94,8 +91,6 @@ static_library("gcm_driver") {
       "gcm_desktop_utils.h",
       "gcm_driver_desktop.cc",
       "gcm_driver_desktop.h",
-      "gcm_stats_recorder_impl.cc",
-      "gcm_stats_recorder_impl.h",
     ]
     deps += [
       "//components/crx_file",

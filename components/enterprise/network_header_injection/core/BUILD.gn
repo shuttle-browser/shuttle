@@ -5,13 +5,10 @@
 import("//components/enterprise/buildflags/buildflags.gni")
 
 source_set("policy") {
-  sources = []
-  if (!is_android) {
-    sources += [
-      "http_header_injection_policy_handler.cc",
-      "http_header_injection_policy_handler.h",
-    ]
-  }
+  sources = [
+    "http_header_injection_policy_handler.cc",
+    "http_header_injection_policy_handler.h",
+  ]
 
   deps = [
     ":core",

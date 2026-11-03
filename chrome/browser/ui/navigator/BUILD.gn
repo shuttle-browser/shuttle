@@ -44,7 +44,6 @@ source_set("impl") {
     ":navigator",
     "//base",
     "//chrome/browser:browser_about_handler",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser:primitives",
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/prefs",
@@ -53,7 +52,6 @@ source_set("impl") {
     "//chrome/browser/search_engines",
     "//chrome/browser/tab_contents",
     "//chrome/browser/tab_list",
-    "//chrome/browser/ui",
     "//chrome/browser/ui/browser_window:create_browser_window",
     "//chrome/common:chrome_features",
     "//components/captive_portal/content",
@@ -69,9 +67,14 @@ source_set("impl") {
 
   if (is_chromeos) {
     deps += [
+      "//ash",
       "//chrome/browser/ash/boca/on_task",
       "//chrome/browser/ui/ash/system_web_apps",
     ]
+  }
+
+  if (is_android) {
+    deps += [ "//chrome/browser/android:tabs_public" ]
   }
 
   if (!is_android) {

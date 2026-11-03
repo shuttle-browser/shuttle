@@ -4,6 +4,7 @@
 
 #include "chrome/browser/permissions/prediction_service/prediction_model_handler_provider_factory.h"
 
+#include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
@@ -73,5 +74,5 @@ PredictionModelHandlerProviderFactory::BuildServiceInstanceForBrowserContext(
 
 bool PredictionModelHandlerProviderFactory::ServiceIsCreatedWithBrowserContext()
     const {
-  return true;
+  return !features::IsLazyOptimizationGuideModelsEnabled();
 }

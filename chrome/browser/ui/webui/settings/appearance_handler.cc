@@ -16,6 +16,8 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
+#include "chrome/browser/ui/webui/settings/settings_element_ids.h"
+#include "chrome/browser/ui/webui/settings/settings_utils.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/web_ui.h"
 #include "ui/actions/actions.h"
@@ -65,6 +67,8 @@ void AppearanceHandler::HandleUseTheme(ui::SystemTheme system_theme,
                                        const base::ListValue& args) {
   DCHECK(system_theme != ui::SystemTheme::kDefault || !profile_->IsChild());
   ThemeServiceFactory::GetForProfile(profile_)->UseTheme(system_theme);
+  settings_utils::MaybeNotifySettingsCustomEvent(
+      web_ui(), settings::kAppearanceThemeChangedId);
 }
 
 void AppearanceHandler::ResetPinnedToolbarActions(const base::ListValue& args) {

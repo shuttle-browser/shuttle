@@ -5,19 +5,21 @@
 if (!is_android) {
   source_set("omnibox_popup") {
     sources = [
+      "full_webui_omnibox_layout_helper.cc",
       "omnibox_popup_handler.cc",
       "omnibox_popup_ui.cc",
       "omnibox_popup_web_contents_helper.cc",
     ]
     public = [
+      "full_webui_omnibox_layout_helper.h",
       "omnibox_popup_handler.h",
       "omnibox_popup_ui.h",
       "omnibox_popup_web_contents_helper.h",
     ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
     deps = [
       "//base",
       "//chrome/browser/devtools",
+      "//chrome/browser/feedback",
       "//chrome/browser/history_clusters",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/resources/omnibox_popup:resources",
@@ -35,9 +37,11 @@ if (!is_android) {
       "//chrome/browser/ui/webui/sanitized_image:sanitized_image_source",
       "//chrome/browser/ui/webui/searchbox",
       "//chrome/browser/ui/webui/top_chrome",
+      "//chrome/browser/ui/webui/webui_toolbar:layout_css_helper",
       "//chrome/common",
       "//components/omnibox/browser",
       "//components/omnibox/browser:mojo_bindings",
+      "//components/omnibox/browser:suggest_template_info_mojo_utils",
       "//components/search_engines",
       "//content/public/browser",
       "//ui/base",

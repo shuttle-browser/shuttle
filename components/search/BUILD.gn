@@ -12,6 +12,7 @@ static_library("search") {
 
   deps = [
     "//base",
+    "//build:android_buildflags",
     "//components/search_engines",
   ]
 }

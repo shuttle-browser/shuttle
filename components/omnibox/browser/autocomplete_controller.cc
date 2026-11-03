@@ -144,9 +144,9 @@ void RecordScoringSignalCoverageForProvider(
   // - autocomplete_controller.cc `RecordScoringSignalCoverageForProvider()`
   // - omnibox_metrics_provider.cc `GetScoringSignalsForLogging()`
   // - omnibox.mojom `struct Signals`
-  // - omnibox_page_handler.cc
+  // - omnibox_internals_page_handler.cc
   //   `TypeConverter<AutocompleteMatch::ScoringSignals, mojom::SignalsPtr>`
-  // - omnibox_page_handler.cc `TypeConverter<mojom::SignalsPtr,
+  // - omnibox_internals_page_handler.cc `TypeConverter<mojom::SignalsPtr,
   //   AutocompleteMatch::ScoringSignals>`
   // - omnibox_util.ts `signalNames`
   // - omnibox/histograms.xml
@@ -1931,7 +1931,10 @@ void AutocompleteController::UpdateKeywordDescriptions(
             if (!i->IsStaticContextualSearchSuggestion() ||
                 autocomplete_provider_client()->IsAskGShowChipEnabled()) {
               i->description = l10n_util::GetStringUTF16(
-                  IDS_CONTEXTUAL_SEARCH_OPEN_LENS_ACTION_LABEL);
+                  ContextualSearchProvider::ShouldShowSidePanelDescription(
+                      autocomplete_provider_client())
+                      ? IDS_CONTEXTUAL_SEARCH_OPENS_IN_SIDE_PANEL
+                      : IDS_CONTEXTUAL_SEARCH_OPEN_LENS_ACTION_LABEL);
             } else {
               i->description.clear();
             }

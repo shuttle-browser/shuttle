@@ -53,7 +53,7 @@
 #include "chrome/browser/navigation_predictor/navigation_predictor_features.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service_factory.h"
-#include "chrome/browser/page_load_metrics/chrome_initiator_location.h"
+#include "chrome/browser/page_load_metrics/chrome_navigation_initiator.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/predictors/loading_predictor.h"
@@ -115,6 +115,7 @@
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
+#include "components/page_load_metrics/browser/navigation_initiator.h"
 #include "components/pdf/common/pdf_util.h"
 #include "components/policy/core/browser/url_list/policy_blocklist_service.h"
 #include "components/policy/core/common/policy_pref_names.h"
@@ -180,6 +181,7 @@
 #include "third_party/blink/public/mojom/frame/media_player_action.mojom.h"
 #include "third_party/blink/public/public_buildflags.h"
 #include "third_party/metrics_proto/omnibox_input_type.pb.h"
+#include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
@@ -564,13 +566,14 @@ int UmaEnumForCommand(int key, UmaEnumIdLookupType type) {
        {IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED, 169},
        {IDC_CONTENT_CONTEXT_ASK_GOOGLE_ABOUT_THIS_PAGE, 170},
        {IDC_CONTENT_CONTEXT_CONTEXTUAL_TASKS_SUBMENU, 171},
+       {IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION, 172},
        // To add new items:
        //   - Add one more line above this comment block, using the UMA value
        //     from the line below this comment block.
        //   - Increment the UMA value in that latter line.
        //   - Add the new item to the RenderViewContextMenuItem enum in
        //     tools/metrics/histograms/metadata/ui/enums.xml.
-       {kUmaMaxValueKey, 172}});
+       {kUmaMaxValueKey, 173}});
   // LINT.ThenChange(//tools/metrics/histograms/metadata/ui/enums.xml:RenderViewContextMenuItem)
 
   // LINT.IfChange(ContextMenuOptionDesktop)
@@ -884,6 +887,8 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
                                       kSearchForImageItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
+                                      kSearchForTextItem);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
                                       kSearchForVideoFrameItem);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(RenderViewContextMenu,
                                       kVideoFrameSubmenuItem);
@@ -1068,6 +1073,8 @@ return false;
 
 void RenderViewContextMenu::InitMenu() {
   RenderViewContextMenuBase::InitMenu();
+
+  MaybeAppendGlicSmartSuggestionItem();
 
   const bool use_simplified_menu_for_text_selection =
       ShouldUseSimplifiedTextSelection();
@@ -2126,8 +2133,8 @@ void RenderViewContextMenu::AppendCopyItem() {
   if (menu_model_.GetItemCount()) {
     menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
   }
-    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_COPY,
-                                    IDS_CONTENT_CONTEXT_COPY);
+  menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_COPY,
+                                  IDS_CONTENT_CONTEXT_COPY);
 }
 
 void RenderViewContextMenu::AppendLinkToTextItems() {
@@ -2187,6 +2194,8 @@ void RenderViewContextMenu::AppendPartialTranslateItem() {
 
 void RenderViewContextMenu::AppendTranslateItem() {
 }
+
+void RenderViewContextMenu::AppendTranslateOrPartialTranslateItem() {}
 
 void RenderViewContextMenu::AppendMediaRouterItem() {}
 
@@ -2260,6 +2269,10 @@ void RenderViewContextMenu::AppendSearchProvider() {
           l10n_util::GetStringFUTF16(IDS_CONTENT_CONTEXT_SEARCHWEBFOR,
                                      default_provider->short_name(),
                                      printable_selection_text));
+      menu_model_.SetElementIdentifierAt(
+          menu_model_.GetIndexOfCommandId(IDC_CONTENT_CONTEXT_SEARCHWEBFOR)
+              .value(),
+          kSearchForTextItem);
       if (features::IsMenuSimplificationEnabled()) {
         menu_model_.SetIconForCommandId(
             IDC_CONTENT_CONTEXT_SEARCHWEBFOR,
@@ -2388,11 +2401,7 @@ void RenderViewContextMenu::AppendOtherEditableItems() {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
     }
     AppendPrintItem();
-    if (CanPartiallyTranslateTargetLanguage()) {
-      AppendPartialTranslateItem();
-    } else if (CanTranslate(/*menu_logging=*/false)) {
-      AppendTranslateItem();
-    }
+    AppendTranslateOrPartialTranslateItem();
   }
 
   menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
@@ -2787,6 +2796,7 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
     case IDC_CONTENT_CONTEXT_RELOAD_GLIC:
     case IDC_CONTENT_CONTEXT_ARCHIVE_GLIC:
     case IDC_CONTENT_CONTEXT_GLIC:
+    case IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION:
       return true;
 
     case IDC_CONTENT_CONTEXT_EXIT_FULLSCREEN:
@@ -2951,11 +2961,13 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       if (browser) {
         browser->OpenURL(
             params,
-            base::BindOnce(&AttachContextMenuOpenLinkNavigationHandleUserData));
+            page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
+                chrome_navigation_initiator::kContextMenuOpenLink));
       } else {
         source_web_contents_->OpenURL(
             params,
-            base::BindOnce(&AttachContextMenuOpenLinkNavigationHandleUserData));
+            page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
+                chrome_navigation_initiator::kContextMenuOpenLink));
       }
       break;
     }
@@ -2967,7 +2979,8 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           WindowOpenDisposition::NEW_WINDOW, ui::PAGE_TRANSITION_LINK,
           /*extra_headers=*/std::string(),
           /*started_from_context_menu=*/true,
-          base::BindOnce(&AttachContextMenuOpenLinkNavigationHandleUserData));
+          page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
+              chrome_navigation_initiator::kContextMenuOpenLink));
       break;
 
     case IDC_CONTENT_CONTEXT_OPENLINKBOOKMARKAPP:
@@ -3036,6 +3049,10 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 
     case IDC_CONTENT_CONTEXT_GLIC:
       ExecGlic();
+      break;
+
+    case IDC_CONTENT_CONTEXT_GLIC_SMART_SUGGESTION:
+      ExecGlicSmartSuggestion();
       break;
 
     case IDC_CONTENT_CONTEXT_SEARCHWEBFORIMAGE:
@@ -3242,16 +3259,18 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           GetWebContentsForDataControls(), params_.selection_text.size(),
           base::BindOnce(
               [](base::WeakPtr<content::WebContents> web_contents,
-                 content::OpenURLParams params) {
+                 std::u16string selection_text, content::OpenURLParams params) {
                 if (!web_contents) {
                   return;
                 }
                 web_contents->OpenURL(
                     params,
-                    base::BindOnce(
-                        &AttachContextMenuSearchNavigationHandleUserData));
+                    page_load_metrics::NavigationInitiatorHolder::
+                        AttacherCallback(
+                            chrome_navigation_initiator::kContextMenuSearch));
               },
-              source_web_contents_->GetWeakPtr(), std::move(open_url_params)));
+              source_web_contents_->GetWeakPtr(), params_.selection_text,
+              std::move(open_url_params)));
       break;
     }
     case IDC_CONTENT_CONTEXT_GOTOURL: {
@@ -3850,6 +3869,8 @@ void RenderViewContextMenu::ExecSaveAs() {
 void RenderViewContextMenu::ExecGlic() {
 }
 
+void RenderViewContextMenu::ExecGlicSmartSuggestion() {}
+
 void RenderViewContextMenu::ExecGlicShareImage() {
 }
 
@@ -4072,6 +4093,8 @@ void RenderViewContextMenu::ExecProtocolHandlerSettings(int event_flags) {
 void RenderViewContextMenu::MaybeAppendOpenGlicItem(bool add_separator) {
 }
 
+void RenderViewContextMenu::MaybeAppendGlicSmartSuggestionItem() {}
+
 void RenderViewContextMenu::ExecPictureInPicture() {
   bool picture_in_picture_active =
       IsCommandIdChecked(IDC_CONTENT_CONTEXT_PICTUREINPICTURE);
@@ -4241,7 +4264,10 @@ void RenderViewContextMenu::OpenLinkInSplitView(
         auto navigation_handle =
             tab->GetContents()->GetController().LoadURLWithParams(params);
         if (navigation_handle) {
-          AttachContextMenuOpenLinkNavigationHandleUserData(*navigation_handle);
+          page_load_metrics::NavigationInitiatorHolder::
+              CreateForNavigationHandle(
+                  *navigation_handle,
+                  chrome_navigation_initiator::kContextMenuOpenLink);
         }
         break;
       }
@@ -4253,8 +4279,8 @@ void RenderViewContextMenu::OpenLinkInSplitView(
         WindowOpenDisposition::NEW_BACKGROUND_TAB, ui::PAGE_TRANSITION_LINK,
         /*extra_headers=*/std::string(), /*started_from_context_menu=*/true);
     const WebContents* new_web_contents = source_web_contents_->OpenURL(
-        params,
-        base::BindOnce(&AttachContextMenuOpenLinkNavigationHandleUserData));
+        params, page_load_metrics::NavigationInitiatorHolder::AttacherCallback(
+                    chrome_navigation_initiator::kContextMenuOpenLink));
     if (!new_web_contents) {
       return;
     }
@@ -4326,11 +4352,7 @@ void RenderViewContextMenu::AppendRevisedTextSelectionSection() {
     AppendSaveToMemoryBanksItem();
     AppendPrintItem();
 
-    if (CanPartiallyTranslateTargetLanguage()) {
-      AppendPartialTranslateItem();
-    } else if (CanTranslate(/*menu_logging=*/false)) {
-      AppendTranslateItem();
-    }
+    AppendTranslateOrPartialTranslateItem();
   } else {
     // Pure Selection case
     AppendCopyItem();
@@ -4348,11 +4370,7 @@ void RenderViewContextMenu::AppendRevisedTextSelectionSection() {
     }
     AppendSaveToMemoryBanksItem();
 
-    if (CanPartiallyTranslateTargetLanguage()) {
-      AppendPartialTranslateItem();
-    } else if (CanTranslate(/*menu_logging=*/false)) {
-      AppendTranslateItem();
-    }
+    AppendTranslateOrPartialTranslateItem();
   }
 }
 

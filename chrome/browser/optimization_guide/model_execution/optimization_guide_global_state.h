@@ -10,12 +10,15 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/version_info/channel.h"
 #include "chrome/browser/optimization_guide/prediction/chrome_profile_download_service_tracker.h"
 #include "components/optimization_guide/core/delivery/optimization_guide_model_provider.h"
 #include "components/optimization_guide/core/delivery/prediction_manager.h"
 #include "components/optimization_guide/core/delivery/prediction_model_component_update_listener.h"
 #include "components/optimization_guide/core/delivery/prediction_model_store.h"
 #include "components/optimization_guide/core/optimization_guide_enums.h"
+
+class PrefService;
 
 namespace optimization_guide {
 

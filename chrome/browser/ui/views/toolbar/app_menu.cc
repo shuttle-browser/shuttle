@@ -1052,7 +1052,6 @@ void AppMenu::ExecuteCommand(int command_id, int mouse_event_flags) {
     return;
   }
 
-
   const Entry& entry = command_id_to_entry_.find(command_id)->second;
   return entry.first->ActivatedAt(entry.second, mouse_event_flags);
 }
@@ -1133,9 +1132,10 @@ void AppMenu::OnGlobalErrorsChanged() {
   }
 }
 
-views::View* AppMenu::GetZoomAppMenuViewForTest() {
+// static
+views::View* AppMenu::GetZoomAppMenuViewForTest(views::MenuItemView* root) {
   std::optional<int> zoom_view_command_id = AppMenuModel::kZoomMenuPlaceholder;
-  auto* menu_item = root_->GetMenuItemByID(zoom_view_command_id.value());
+  auto* menu_item = root->GetMenuItemByID(zoom_view_command_id.value());
   DCHECK(menu_item);
 
   for (views::View* child : menu_item->children()) {

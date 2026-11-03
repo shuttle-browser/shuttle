@@ -46,7 +46,13 @@ bool ProxyMayAttachToHost(const Extension& extension,
   // hosts. We also don't block Chrome-restricted hosts in order to allow
   // authentication to the Chrome Web Store from inside a remote desktop
   // session, for example.
-  return !extension.permissions_data()->IsPolicyBlockedHost(origin.GetURL());
+  //
+  // Opaque origins (e.g. sandboxed iframes) can reach this through requests
+  // that are allowed for opaque origins, such as IsUVPAA. Check them against
+  // their precursor so that they are subject to the same policy as the host
+  // that created them.
+  return !extension.permissions_data()->IsPolicyBlockedHost(
+      origin.GetTupleOrPrecursorTupleIfOpaque().GetURL());
 }
 
 }  // namespace
@@ -67,10 +73,12 @@ bool WebAuthenticationProxyRegistrar::SetRequestProxy(
     Profile* profile,
     const Extension* extension) {
   // It is invalid to call this method with an unrelated BrowserContext.
-  DCHECK(profile->IsSameOrParent(profile_));
-  DCHECK(extension);
-  DCHECK(extension_registry_->enabled_extensions().Contains(extension->id()));
-  DCHECK(!attach_regular_proxy_to_both_contexts_ || active_regular_proxy_);
+  CHECK(profile->IsSameOrParent(profile_), base::NotFatalUntil::M161);
+  CHECK(extension, base::NotFatalUntil::M161);
+  CHECK(extension_registry_->enabled_extensions().Contains(extension->id()),
+        base::NotFatalUntil::M161);
+  CHECK(!attach_regular_proxy_to_both_contexts_ || active_regular_proxy_,
+        base::NotFatalUntil::M161);
 
   if ((active_regular_proxy_ && *active_regular_proxy_ != extension->id()) ||
       (active_otr_split_proxy_ &&
@@ -102,13 +110,13 @@ bool WebAuthenticationProxyRegistrar::SetRequestProxy(
 
 void WebAuthenticationProxyRegistrar::ClearRequestProxy(Profile* profile) {
   // It is invalid to call this method with an unrelated BrowserContext.
-  DCHECK(profile->IsSameOrParent(profile_));
+  CHECK(profile->IsSameOrParent(profile_), base::NotFatalUntil::M161);
 
   if (profile->IsOffTheRecord()) {
     // Only a split mode extension can pass an off-the-record profile here. All
     // others use the same regular profile.
-    DCHECK(active_otr_split_proxy_);
-    DCHECK(!attach_regular_proxy_to_both_contexts_);
+    CHECK(active_otr_split_proxy_, base::NotFatalUntil::M161);
+    CHECK(!attach_regular_proxy_to_both_contexts_, base::NotFatalUntil::M161);
     active_otr_split_proxy_.reset();
     WebAuthenticationProxyServiceFactory::GetForBrowserContext(profile)
         ->ClearRequestProxy(PassKey());
@@ -116,7 +124,7 @@ void WebAuthenticationProxyRegistrar::ClearRequestProxy(Profile* profile) {
   }
 
   // Regular browser context.
-  DCHECK(active_regular_proxy_);
+  CHECK(active_regular_proxy_, base::NotFatalUntil::M161);
   active_regular_proxy_.reset();
   WebAuthenticationProxyServiceFactory::GetForBrowserContext(profile)
       ->ClearRequestProxy(PassKey());
@@ -125,7 +133,7 @@ void WebAuthenticationProxyRegistrar::ClearRequestProxy(Profile* profile) {
 
 WebAuthenticationProxyRegistrar::ProxyStatus
 WebAuthenticationProxyRegistrar::ProxyActiveForProfile(Profile* profile) {
-  DCHECK(profile->IsSameOrParent(profile_));
+  CHECK(profile->IsSameOrParent(profile_), base::NotFatalUntil::M161);
   if (profile->IsOffTheRecord()) {
     if (active_otr_split_proxy_) {
       return ProxyStatus::kActive;
@@ -145,7 +153,7 @@ void WebAuthenticationProxyRegistrar::OnExtensionUnloaded(
   // only gets called once for the original profile, for both split and spanning
   // mode extensions.
   auto* profile = Profile::FromBrowserContext(browser_context);
-  DCHECK_EQ(profile, profile_);
+  CHECK_EQ(profile, profile_, base::NotFatalUntil::M161);
 
   if (extension->id() == active_regular_proxy_) {
     active_regular_proxy_.reset();
@@ -154,7 +162,7 @@ void WebAuthenticationProxyRegistrar::OnExtensionUnloaded(
     attach_regular_proxy_to_both_contexts_ = false;
   }
   if (extension->id() == active_otr_split_proxy_) {
-    DCHECK(!attach_regular_proxy_to_both_contexts_);
+    CHECK(!attach_regular_proxy_to_both_contexts_, base::NotFatalUntil::M161);
     active_otr_split_proxy_.reset();
   }
 }
@@ -251,7 +259,7 @@ const Extension* WebAuthenticationProxyService::GetActiveRequestProxy() {
   }
   const Extension* extension =
       extension_registry_->enabled_extensions().GetByID(*active_proxy_);
-  DCHECK(extension);
+  CHECK(extension, base::NotFatalUntil::M161);
   return extension;
 }
 
@@ -336,7 +344,7 @@ void WebAuthenticationProxyService::CancelRequest(RequestId request_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const Extension* proxy_extension = GetActiveRequestProxy();
-  DCHECK(proxy_extension);
+  CHECK(proxy_extension, base::NotFatalUntil::M161);
 
   auto callback_it = pending_callbacks_.find(request_id);
   if (callback_it == pending_callbacks_.end() ||
@@ -358,16 +366,18 @@ void WebAuthenticationProxyService::SetRequestProxy(
     base::PassKey<WebAuthenticationProxyRegistrar>,
     const Extension* extension) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(extension);
-  DCHECK(extension_registry_->enabled_extensions().Contains(extension->id()));
-  DCHECK(!active_proxy_ || active_proxy_ == extension->id());
+  CHECK(extension, base::NotFatalUntil::M161);
+  CHECK(extension_registry_->enabled_extensions().Contains(extension->id()),
+        base::NotFatalUntil::M161);
+  CHECK(!active_proxy_ || active_proxy_ == extension->id(),
+        base::NotFatalUntil::M161);
   active_proxy_ = extension->id();
 }
 
 void WebAuthenticationProxyService::ClearRequestProxy(
     base::PassKey<WebAuthenticationProxyRegistrar>) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(active_proxy_);
+  CHECK(active_proxy_, base::NotFatalUntil::M161);
   CancelPendingCallbacks();
   active_proxy_.reset();
 }
@@ -487,7 +497,7 @@ WebAuthenticationProxyService::SignalCreateRequest(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const Extension* proxy_extension = GetActiveRequestProxy();
-  DCHECK(proxy_extension);
+  CHECK(proxy_extension, base::NotFatalUntil::M161);
 
   auto request_id = NewRequestId();
   pending_callbacks_.emplace(request_id, std::move(callback));
@@ -517,7 +527,7 @@ WebAuthenticationProxyService::SignalGetRequest(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const Extension* proxy_extension = GetActiveRequestProxy();
-  DCHECK(proxy_extension);
+  CHECK(proxy_extension, base::NotFatalUntil::M161);
 
   auto request_id = NewRequestId();
   pending_callbacks_.emplace(request_id, std::move(callback));
@@ -545,7 +555,7 @@ WebAuthenticationProxyService::SignalIsUvpaaRequest(IsUvpaaCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const Extension* proxy_extension = GetActiveRequestProxy();
-  DCHECK(proxy_extension);
+  CHECK(proxy_extension, base::NotFatalUntil::M161);
 
   auto request_id = NewRequestId();
   pending_callbacks_.emplace(request_id, std::move(callback));

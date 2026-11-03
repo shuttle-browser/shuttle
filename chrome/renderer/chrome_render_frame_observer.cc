@@ -73,6 +73,7 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/gfx/geometry/size_f.h"
+#include "ui/webui/buildflags.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -90,6 +91,10 @@
 
 #if BUILDFLAG(ENABLE_PLUGINS)
 #include "chrome/renderer/plugins/chrome_plugin_placeholder.h"
+#endif
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+#include "chrome/renderer/searchbox/searchbox_extension.h"
 #endif
 
 using blink::WebDocumentLoader;

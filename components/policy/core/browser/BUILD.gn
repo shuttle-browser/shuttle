@@ -21,8 +21,6 @@ source_set("internal") {
     "browser_policy_connector_base.h",
     "cloud/message_util.cc",
     "cloud/message_util.h",
-    "cloud/user_cloud_management_status_fetcher.cc",
-    "cloud/user_cloud_management_status_fetcher.h",
     "configuration_policy_handler.cc",
     "configuration_policy_handler.h",
     "configuration_policy_handler_list.cc",
@@ -78,6 +76,13 @@ source_set("internal") {
 
   if (!is_fuchsia) {
     sources += [
+    ]
+  }
+
+  if (!is_android && !is_fuchsia) {
+    sources += [
+      "cloud/user_cloud_management_status_fetcher.cc",
+      "cloud/user_cloud_management_status_fetcher.h",
     ]
   }
 

@@ -131,8 +131,6 @@
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -250,9 +248,6 @@ void DefaultBindingsDelegate::OpenInNewTab(const std::string& url) {
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(url), WindowOpenDisposition::NEW_FOREGROUND_TAB,
           ui::PAGE_TRANSITION_LINK);
-#if BUILDFLAG(IS_ANDROID)
-  NOTIMPLEMENTED();
-#else
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents_);
   // Check if the browser is still alive, as it might have been closed in the
@@ -262,19 +257,18 @@ void DefaultBindingsDelegate::OpenInNewTab(const std::string& url) {
   if (browser) {
     browser->OpenURL(params, /*navigation_handle_callback=*/{});
   }
-#endif
 }
 
 void DefaultBindingsDelegate::OpenSearchResultsInNewTab(
     const std::string& query) {
-#if BUILDFLAG(IS_ANDROID)
-  NOTIMPLEMENTED();
-#else
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents_);
+  if (!browser) {
+    return;
+  }
   TemplateURLService* url_service =
       TemplateURLServiceFactory::GetForProfile(browser->GetProfile());
-  DCHECK(url_service);
+  CHECK(url_service, base::NotFatalUntil::M161);
   GURL url =
       GetDefaultSearchURLForSearchTerms(url_service, base::UTF8ToUTF16(query));
   content::OpenURLParams params =
@@ -282,7 +276,6 @@ void DefaultBindingsDelegate::OpenSearchResultsInNewTab(
           GURL(url), WindowOpenDisposition::NEW_FOREGROUND_TAB,
           ui::PAGE_TRANSITION_LINK);
   browser->OpenURL(params, /*navigation_handle_callback=*/{});
-#endif
 }
 
 void DefaultBindingsDelegate::InspectedContentsClosing() {
@@ -852,6 +845,8 @@ DevToolsUIBindings::DevToolsUIBindings(content::WebContents* web_contents)
       frontend_loaded_(false),
       settings_(profile_),
       http_service_registry_(std::make_unique<DevToolsHttpServiceRegistry>()) {
+  DevToolsUIBindings* previous_bindings =
+      DevToolsUIBindings::ForWebContents(web_contents_);
   DevToolsUIBindings::GetDevToolsUIBindings().push_back(this);
   frontend_contents_observer_ =
       std::make_unique<FrontendWebContentsObserver>(this);
@@ -872,7 +867,14 @@ DevToolsUIBindings::DevToolsUIBindings(content::WebContents* web_contents)
 #endif
   can_access_aida_ = IsAnyAidaPoweredFeatureEnabled();
   is_local_frontend_ =
-      IsLocalDevToolsFrontendURL(web_contents_->GetLastCommittedURL());
+      previous_bindings
+          ? previous_bindings->is_local_frontend_
+          : IsLocalDevToolsFrontendURL(web_contents_->GetLastCommittedURL());
+  has_committed_non_local_frontend_ =
+      previous_bindings && previous_bindings->has_committed_non_local_frontend_;
+  has_previous_frontend_host_ =
+      previous_bindings && (previous_bindings->frontend_host_ ||
+                            previous_bindings->has_previous_frontend_host_);
 }
 
 DevToolsUIBindings::~DevToolsUIBindings() {
@@ -941,7 +943,7 @@ void DevToolsUIBindings::HandleMessageFromDevToolsFrontend(
 void DevToolsUIBindings::DispatchProtocolMessage(
     content::DevToolsAgentHost* agent_host,
     base::span<const uint8_t> message) {
-  DCHECK(agent_host == agent_host_.get());
+  CHECK(agent_host == agent_host_.get(), base::NotFatalUntil::M161);
   if (!frontend_host_) {
     return;
   }
@@ -969,7 +971,7 @@ void DevToolsUIBindings::DispatchProtocolMessage(
 
 void DevToolsUIBindings::AgentHostClosed(
     content::DevToolsAgentHost* agent_host) {
-  DCHECK(agent_host == agent_host_.get());
+  CHECK(agent_host == agent_host_.get(), base::NotFatalUntil::M161);
   agent_host_.reset();
   delegate_->InspectedContentsClosing();
 }
@@ -995,12 +997,16 @@ void DevToolsUIBindings::SendMessageAck(int request_id,
 }
 
 void DevToolsUIBindings::InnerAttach() {
-  DCHECK(agent_host_.get());
+  CHECK(agent_host_.get(), base::NotFatalUntil::M161);
   // TODO(dgozman): handle return value of AttachClient.
   agent_host_->AttachClient(this);
 }
 
 // DevToolsEmbedderMessageDispatcher::Delegate implementation -----------------
+
+bool DevToolsUIBindings::IsLocalFrontend() const {
+  return is_local_frontend_;
+}
 
 void DevToolsUIBindings::ActivateWindow() {
   delegate_->ActivateWindow();
@@ -1166,14 +1172,6 @@ void DevToolsUIBindings::OnAidaResponse(
 void DevToolsUIBindings::DispatchHttpRequest(
     DispatchCallback callback,
     const DevToolsDispatchHttpRequestParams& params) {
-  if (!is_local_frontend_) {
-    base::DictValue response_dict;
-    response_dict.Set("error", "Request validation failed");
-    base::Value response = base::Value(std::move(response_dict));
-    std::move(callback).Run(&response);
-    return;
-  }
-
   if (params.stream_id.has_value()) {
     int stream_id = *params.stream_id;
     auto stream_writer = base::BindRepeating(
@@ -1435,9 +1433,6 @@ void DevToolsUIBindings::OpenSearchResultsInNewTab(const std::string& query) {
 void DevToolsUIBindings::ShowItemInFolder(const std::string& file_system_path) {
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
-  if (!is_local_frontend_) {
-    return;
-  }
   if (!file_helper_.IsFileInFileSystem(file_system_path)) {
     return;
   }
@@ -1464,9 +1459,6 @@ void DevToolsUIBindings::SaveToFile(const std::string& url,
 
 void DevToolsUIBindings::AppendToFile(const std::string& url,
                                       const std::string& content) {
-  if (!is_local_frontend_) {
-    return;
-  }
   file_helper_.Append(url, content,
                       base::BindOnce(&DevToolsUIBindings::AppendedTo,
                                      weak_factory_.GetWeakPtr(), url));
@@ -1507,9 +1499,6 @@ void DevToolsUIBindings::AddFileSystem(const std::string& type) {
 void DevToolsUIBindings::RemoveFileSystem(const std::string& file_system_path) {
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
-  if (!is_local_frontend_) {
-    return;
-  }
   file_helper_.RemoveFileSystem(file_system_path);
 }
 
@@ -1517,9 +1506,6 @@ void DevToolsUIBindings::UpgradeDraggedFileSystemPermissions(
     const std::string& file_system_url) {
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
-  if (!is_local_frontend_) {
-    return;
-  }
   file_helper_.UpgradeDraggedFileSystemPermissions(
       file_system_url,
       base::BindRepeating(&DevToolsUIBindings::HandleDirectoryPermissions,
@@ -1531,13 +1517,9 @@ void DevToolsUIBindings::ConnectAutomaticFileSystem(
     const std::string& file_system_path,
     const std::string& file_system_uuid,
     bool add_if_missing) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
-  if (!is_local_frontend_) {
-    ConnectAutomaticFileSystemDone(std::move(callback), false);
-    return;
-  }
   // Ensure that the |file_system_uuid| is indeed a valid UUID.
   base::Uuid uuid = base::Uuid::ParseCaseInsensitive(file_system_uuid);
   if (!uuid.is_valid()) {
@@ -1566,12 +1548,9 @@ void DevToolsUIBindings::ConnectAutomaticFileSystemDone(
 
 void DevToolsUIBindings::DisconnectAutomaticFileSystem(
     const std::string& file_system_path) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
-  if (!is_local_frontend_) {
-    return;
-  }
   file_helper_.DisconnectAutomaticFileSystem(file_system_path);
 }
 
@@ -1579,7 +1558,7 @@ void DevToolsUIBindings::IndexPath(
     int index_request_id,
     const std::string& file_system_path,
     const std::string& excluded_folders_message) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
   if (!is_local_frontend_) {
@@ -1620,7 +1599,7 @@ void DevToolsUIBindings::IndexPath(
 }
 
 void DevToolsUIBindings::StopIndexing(int index_request_id) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   auto it = indexing_jobs_.find(index_request_id);
   if (it == indexing_jobs_.end()) {
     return;
@@ -1632,7 +1611,7 @@ void DevToolsUIBindings::StopIndexing(int index_request_id) {
 void DevToolsUIBindings::SearchInPath(int search_request_id,
                                       const std::string& file_system_path,
                                       const std::string& query) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CHECK(IsValidFrontendURL(web_contents_->GetLastCommittedURL()) &&
         frontend_host_);
   if (!is_local_frontend_) {
@@ -1681,9 +1660,6 @@ void DevToolsUIBindings::SetDevicesDiscoveryConfig(
     const std::string& port_forwarding_config,
     bool network_discovery_enabled,
     const std::string& network_discovery_config) {
-  if (!is_local_frontend_) {
-    return;
-  }
   std::optional<base::DictValue> parsed_port_forwarding =
       base::JSONReader::ReadDict(port_forwarding_config,
                                  base::JSON_PARSE_CHROMIUM_EXTENSIONS);
@@ -1744,9 +1720,6 @@ void DevToolsUIBindings::SendPortForwardingStatus(base::Value status) {
 }
 
 void DevToolsUIBindings::SetDevicesUpdatesEnabled(bool enabled) {
-  if (!is_local_frontend_ && enabled) {
-    return;
-  }
 #if BUILDFLAG(IS_ANDROID)
   NOTIMPLEMENTED();
 #else
@@ -1796,9 +1769,6 @@ void DevToolsUIBindings::SetDevicesUpdatesEnabled(bool enabled) {
 
 void DevToolsUIBindings::OpenRemotePage(const std::string& browser_id,
                                         const std::string& url) {
-  if (!is_local_frontend_) {
-    return;
-  }
   if (!remote_targets_handler_) {
     return;
   }
@@ -1806,9 +1776,6 @@ void DevToolsUIBindings::OpenRemotePage(const std::string& browser_id,
 }
 
 void DevToolsUIBindings::OpenNodeFrontend() {
-  if (!is_local_frontend_) {
-    return;
-  }
   delegate_->OpenNodeFrontend();
 }
 
@@ -2375,7 +2342,9 @@ void DevToolsUIBindings::RecordCountHistogram(const std::string& name,
   // We've changed this to a DCHECK and instead clamp the value for counts,
   // because it doesn't really make sense to crash if the histogram is out
   // of range.
-  DCHECK_GE(sample, min);
+  CHECK_GE(sample, min, base::NotFatalUntil::M161);
+  // TODO(crbug.com/572218538): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK_LT(sample, exclusive_max);
 
   if (sample < min) {
@@ -2394,10 +2363,10 @@ void DevToolsUIBindings::RecordEnumeratedHistogram(const std::string& name,
     return;
   }
 
-  DCHECK_GE(boundary_value, 0);
-  DCHECK_LT(boundary_value, 1000);
-  DCHECK_GE(sample, 0);
-  DCHECK_LT(sample, boundary_value);
+  CHECK_GE(boundary_value, 0, base::NotFatalUntil::M161);
+  CHECK_LT(boundary_value, 1000, base::NotFatalUntil::M161);
+  CHECK_GE(sample, 0, base::NotFatalUntil::M161);
+  CHECK_LT(sample, boundary_value, base::NotFatalUntil::M161);
   if (!(boundary_value >= 0 && boundary_value <= 1000 && sample >= 0 &&
         sample < boundary_value)) {
     // We should have DCHECK'd in debug builds; for release builds, if we're
@@ -2406,9 +2375,9 @@ void DevToolsUIBindings::RecordEnumeratedHistogram(const std::string& name,
   }
 
   const std::string kDevToolsHistogramPrefix = "DevTools.";
-  DCHECK_EQ(name.compare(0, kDevToolsHistogramPrefix.size(),
-                         kDevToolsHistogramPrefix),
-            0);
+  CHECK_EQ(name.compare(0, kDevToolsHistogramPrefix.size(),
+                        kDevToolsHistogramPrefix),
+           0, base::NotFatalUntil::M161);
   base::UmaHistogramExactLinear(name, sample, boundary_value);
 }
 
@@ -2483,16 +2452,10 @@ void DevToolsUIBindings::SetChromeFlagInternal(Profile* profile,
 
 void DevToolsUIBindings::SetChromeFlag(const std::string& flag_name,
                                        bool value) {
-  if (!is_local_frontend_) {
-    return;
-  }
   SetChromeFlagInternal(profile_, flag_name, value);
 }
 
 void DevToolsUIBindings::RequestRestart() {
-  if (!is_local_frontend_) {
-    return;
-  }
   chrome::AttemptRestart();
 }
 
@@ -2729,7 +2692,7 @@ void DevToolsUIBindings::IndexingTotalWorkCalculated(
     int request_id,
     const std::string& file_system_path,
     int total_work) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CallClientMethod("DevToolsAPI", "indexingTotalWorkCalculated",
                    base::Value(request_id), base::Value(file_system_path),
                    base::Value(total_work));
@@ -2738,7 +2701,7 @@ void DevToolsUIBindings::IndexingTotalWorkCalculated(
 void DevToolsUIBindings::IndexingWorked(int request_id,
                                         const std::string& file_system_path,
                                         int worked) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CallClientMethod("DevToolsAPI", "indexingWorked", base::Value(request_id),
                    base::Value(file_system_path), base::Value(worked));
 }
@@ -2746,7 +2709,7 @@ void DevToolsUIBindings::IndexingWorked(int request_id,
 void DevToolsUIBindings::IndexingDone(int request_id,
                                       const std::string& file_system_path) {
   indexing_jobs_.erase(request_id);
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   CallClientMethod("DevToolsAPI", "indexingDone", base::Value(request_id),
                    base::Value(file_system_path));
 }
@@ -2755,7 +2718,7 @@ void DevToolsUIBindings::SearchCompleted(
     int request_id,
     const std::string& file_system_path,
     const std::vector<std::string>& file_paths) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
   base::ListValue file_paths_value;
   for (auto const& file_path : file_paths) {
     file_paths_value.Append(file_path);
@@ -2822,7 +2785,7 @@ DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kCancelButtonId);
 void DevToolsUIBindings::ShowDirectoryPermissionDialog(
     const std::string& directory_path,
     DevToolsInfoBarDelegate::Callback callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M161);
 
   auto split_callback = base::SplitOnceCallback(std::move(callback));
   auto accept_callback = base::BindOnce(std::move(split_callback.first), true);
@@ -2859,6 +2822,11 @@ void DevToolsUIBindings::OnPermissionDialogResult(
 }
 
 void DevToolsUIBindings::AddDevToolsExtensionsToClient() {
+  // Remote frontends are untrusted: do not expose the installed extension
+  // inventory/policies or grant extension origins to their process.
+  if (!is_local_frontend_) {
+    return;
+  }
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   const extensions::ExtensionRegistry* registry =
       extensions::ExtensionRegistry::Get(profile_->GetOriginalProfile());
@@ -2957,6 +2925,9 @@ void DevToolsUIBindings::OnShutdown(extensions::ExtensionRegistry* registry) {
 
 void DevToolsUIBindings::RegisterExtensionsAPI(const std::string& origin,
                                                const std::string& script) {
+  if (!is_local_frontend_) {
+    return;
+  }
   extensions_api_[origin + "/"] = script;
 }
 
@@ -2988,9 +2959,6 @@ void DevToolsUIBindings::CanShowSurvey(DispatchCallback callback,
 }
 
 bool DevToolsUIBindings::EnsureAidaClientAvailable() {
-  if (!is_local_frontend_) {
-    return false;
-  }
   if (!can_access_aida_ || AidaClient::CanUseAida(profile_).blocked) {
     return false;
   }
@@ -3069,8 +3037,9 @@ void DevToolsUIBindings::AttachTo(
 
 void DevToolsUIBindings::AttachViaBrowserTarget(
     const scoped_refptr<content::DevToolsAgentHost>& agent_host) {
-  DCHECK(!agent_host_ ||
-         agent_host->GetType() == content::DevToolsAgentHost::kTypeBrowser);
+  CHECK(!agent_host_ ||
+            agent_host->GetType() == content::DevToolsAgentHost::kTypeBrowser,
+        base::NotFatalUntil::M161);
   if (!agent_host_) {
     agent_host_ = content::DevToolsAgentHost::CreateForBrowser(
         nullptr /* tethering_task_runner */,
@@ -3156,22 +3125,57 @@ void DevToolsUIBindings::ReadyToCommitNavigation(
       extensions_api_.clear();
       return;
     }
-    if (frontend_host_) {
+    // Under RenderDocument, a new WebUI (and `DevToolsUIBindings`) is created
+    // before the previous `RenderFrameHost`'s `DevToolsUIBindings` is
+    // destroyed, so both instances observe `ReadyToCommitNavigation`. Only the
+    // latest bindings for `web_contents_` should handle the navigation.
+    if (DevToolsUIBindings::ForWebContents(web_contents_) != this) {
       return;
     }
-    // If the window was opened by another window, ensure the root opener in
-    // the live opener chain is a DevTools WebContents with active DevTools
-    // frontend bindings. This also covers cases where `window.opener` was
-    // severed (e.g. via `window.opener = null` or `rel="noopener"`).
-    if (web_contents_->HasLiveOriginalOpenerChain()) {
-      content::WebContents* opener_wc =
-          web_contents_->GetFirstWebContentsInLiveOriginalOpenerChain();
-      DevToolsUIBindings* opener_bindings =
-          opener_wc ? DevToolsUIBindings::ForWebContents(opener_wc) : nullptr;
-      if (!opener_bindings || !opener_bindings->frontend_host_) {
-        return;
+    if (frontend_host_) {
+      if (!IsLocalDevToolsFrontendURL(navigation_handle->GetURL())) {
+        has_committed_non_local_frontend_ = true;
       }
+      is_local_frontend_ =
+          !has_committed_non_local_frontend_ &&
+          IsLocalDevToolsFrontendURL(navigation_handle->GetURL());
+      return;
     }
+    // If the window was opened by another window, ensure every live opener in
+    // the original opener chain is a *local* (trusted) DevTools frontend with
+    // active frontend bindings. A remote frontend must not be able to obtain
+    // a frontend host for a popup that would be classified as local (e.g.
+    // devtools://devtools/blank), because the opener can script the popup
+    // (same origin). This also covers cases where `window.opener` was severed
+    // (e.g. via `window.opener = null` or `rel="noopener"`).
+    // If there is no live opener chain (e.g. the root opener was closed before
+    // the popup navigated), only allow renderer-initiated navigations when the
+    // window already had active DevTools frontend bindings before a
+    // RenderDocument swap, and never upgrade `is_local_frontend_` once the
+    // WebContents has loaded a non-local frontend.
+    if (web_contents_->HasLiveOriginalOpenerChain()) {
+      for (content::WebContents* opener_wc =
+               web_contents_->GetFirstWebContentsInLiveOriginalOpenerChain();
+           opener_wc;
+           opener_wc =
+               opener_wc->GetFirstWebContentsInLiveOriginalOpenerChain()) {
+        DevToolsUIBindings* opener_bindings =
+            DevToolsUIBindings::ForWebContents(opener_wc);
+        if (!opener_bindings || !opener_bindings->frontend_host_ ||
+            !opener_bindings->is_local_frontend_) {
+          return;
+        }
+      }
+    } else if (navigation_handle->IsRendererInitiated() &&
+               !has_previous_frontend_host_) {
+      return;
+    }
+    if (!IsLocalDevToolsFrontendURL(navigation_handle->GetURL())) {
+      has_committed_non_local_frontend_ = true;
+    }
+    is_local_frontend_ =
+        !has_committed_non_local_frontend_ &&
+        IsLocalDevToolsFrontendURL(navigation_handle->GetURL());
     frontend_host_ = content::DevToolsFrontendHost::Create(
         navigation_handle->GetRenderFrameHost(),
         base::BindRepeating(
@@ -3180,7 +3184,7 @@ void DevToolsUIBindings::ReadyToCommitNavigation(
     return;
   }
 
-  if (!frontend_host_) {
+  if (!frontend_host_ || !is_local_frontend_) {
     return;
   }
 
@@ -3203,9 +3207,14 @@ void DevToolsUIBindings::DocumentOnLoadCompletedInPrimaryMainFrame() {
 
 void DevToolsUIBindings::PrimaryPageChanged() {
   frontend_loaded_ = false;
+  if (!IsLocalDevToolsFrontendURL(web_contents_->GetLastCommittedURL())) {
+    has_committed_non_local_frontend_ = true;
+  }
   is_local_frontend_ =
+      !has_committed_non_local_frontend_ &&
       IsLocalDevToolsFrontendURL(web_contents_->GetLastCommittedURL());
   if (!is_local_frontend_) {
+    extensions_api_.clear();
     SetDevicesUpdatesEnabled(false);
   }
 }

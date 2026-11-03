@@ -57,8 +57,6 @@ source_set("impl") {
       "//chrome/browser/ui/browser_window:create_browser_window",
       "//chrome/browser/ui/tabs:tab_enums",
       "//chrome/browser/ui/tabs:tab_strip",
-      "//chrome/browser/ui/views/frame:toolbar_button_provider",
-      "//chrome/browser/ui/views/page_action",
       "//chrome/browser/webauthn",
       "//components/device_event_log",
       "//components/keyed_service/core",
@@ -77,13 +75,9 @@ source_set("impl") {
       "//ui/gfx/geometry",
       "//url",
     ]
-    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   }
   if (!is_android) {
-    deps += [
-      "//chrome/browser/ui:browser_window_header",
-      "//chrome/browser/ui/views/frame:browser_view_header",
-    ]
+    deps += [ "//chrome/browser/ui:browser_window_header" ]
   }
 }
 

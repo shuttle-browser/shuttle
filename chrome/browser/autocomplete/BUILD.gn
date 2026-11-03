@@ -87,7 +87,6 @@ source_set("impl") {
     "//chrome/browser/search",
     "//chrome/browser/search_engines",
     "//chrome/browser/signin",
-    "//chrome/browser/ui",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/tabs:tabs_public",
@@ -137,8 +136,6 @@ source_set("impl") {
       "//extensions/browser",
     ]
   }
-
-  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
 }
 
 if (!is_android) {

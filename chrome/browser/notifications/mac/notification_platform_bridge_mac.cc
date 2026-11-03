@@ -172,7 +172,7 @@ void NotificationPlatformBridgeMac::DisplayServiceShutDown(Profile* profile) {
 
 void NotificationPlatformBridgeMac::CloseAllNotificationsForProfile(
     Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
   std::string profile_id = GetProfileId(profile);
   bool incognito = profile->IsOffTheRecord();
 

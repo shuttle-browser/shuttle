@@ -323,6 +323,8 @@ class LocationBarView
                            AddContextButtonVisibilityAndClick);
   FRIEND_TEST_ALL_PREFIXES(LocationBarViewAddContextButtonBrowserTest,
                            PrefChangesAddContextButtonVisibility);
+  FRIEND_TEST_ALL_PREFIXES(FullWebUIOmniboxInteractiveTest,
+                           NativeFocusHandoffKeepsDraftAndSelection);
   using ContentSettingViews =
       std::vector<raw_ptr<ContentSettingImageView, VectorExperimental>>;
 
@@ -374,6 +376,11 @@ class LocationBarView
   // to process input and display suggestions.
   void OnFullWebUiOmniboxReady();
 
+  // Forwards focus to the WebUI omnibox. Like `OmniboxViewViews::SetFocus()`,
+  // this selects all when `select_all` is true or the omnibox didn't already
+  // have focus.
+  void ForwardFocusToWebUI(bool query_zps, bool select_all, bool show_full_url);
+
   // Called when the popup state changes (classic, AIM, or none).
   void OnPopupStateChanged(OmniboxPopupState old_state,
                            OmniboxPopupState new_state);
@@ -388,6 +395,10 @@ class LocationBarView
   // TODO(crbug.com/40251974): Remove this once state manager is proven
   //  reliable.
   void ClearInPopupStateTransition();
+
+  // Once the location bar is drawn again, reopens the Full WebUI popup closed
+  // in `VisibilityChanged()` if the edit model still has a draft.
+  void RestoreOmniboxStateIfDrawn();
 
   // LocationBar:
   void FocusSearch() override;
@@ -407,6 +418,7 @@ class LocationBarView
   void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
   bool GetNeedsNotificationWhenVisibleBoundsChange() const override;
   void OnVisibleBoundsChanged() override;
+  void VisibilityChanged(views::View* starting_from, bool is_visible) override;
   void OnFocus() override;
   void OnPaintBorder(gfx::Canvas* canvas) override;
   // LocationBarView directs mouse button events from
@@ -428,6 +440,8 @@ class LocationBarView
   bool CanStartDragForView(View* sender,
                            const gfx::Point& press_pt,
                            const gfx::Point& p) override;
+
+  bool ShouldUsePopupOpenAppearance() const;
 
   bool ShouldHidePageActionIcons() const;
 
@@ -586,6 +600,10 @@ class LocationBarView
   // TODO(crbug.com/40251974): Remove this once state manager is proven
   //  reliable.
   bool in_popup_state_transition_ = false;
+  // True while routing Views focus to `LocationBarView` so
+  // `LocationBarView::OnFocus()` skips its default WebUI focus forwarding and
+  // leaves it to the caller's `ForwardFocusToWebUI()` call.
+  bool moving_focus_to_webui_ = false;
   // Caches the latest toolbar visibility state for re-evaluating focus
   // behavior.
   bool is_toolbar_visible_ = true;

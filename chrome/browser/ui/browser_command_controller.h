@@ -27,7 +27,6 @@
 class BrowserWindow;
 class BrowserWindowInterface;
 class Profile;
-enum class TabChangeType;
 
 namespace input {
 struct NativeWebKeyboardEvent;
@@ -133,8 +132,7 @@ class BrowserCommandController : public CommandUpdater,
                               std::optional<tab_groups::TabGroupId> new_group,
                               tabs::TabInterface* tab,
                               int index) override;
-  void OnTabChangedAt(tabs::TabInterface* tab,
-                      TabChangeType change_type) override;
+  void OnTabBlockedStateChanged(tabs::TabInterface* tab) override;
   void OnTabPinnedStateChanged(tabs::TabInterface* tab, int index) override;
   void OnTabGroupFocusChanged(
       std::optional<tab_groups::TabGroupId> new_focused_group,

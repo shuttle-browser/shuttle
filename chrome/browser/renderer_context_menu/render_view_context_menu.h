@@ -120,6 +120,7 @@ class RenderViewContextMenu
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kAskGoogleAboutThisPageItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kContextualTasksSubmenuItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchForImageItem);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchForTextItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSearchForVideoFrameItem);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kVideoFrameSubmenuItem);
 
@@ -248,6 +249,7 @@ class RenderViewContextMenu
                                         gfx::BreakType break_type);
 
   void ExecGlic();
+  void ExecGlicSmartSuggestion();
 
   friend class RenderViewContextMenuTest;
   friend class TestRenderViewContextMenu;
@@ -326,6 +328,7 @@ class RenderViewContextMenu
   void AppendPrintItem();
   void AppendPartialTranslateItem();
   void AppendTranslateItem();
+  void AppendTranslateOrPartialTranslateItem();
   void AppendMediaRouterItem();
   void AppendSaveToMemoryBanksItem();
   void AppendGlicItems();
@@ -478,6 +481,7 @@ class RenderViewContextMenu
       supervised_user::WebFilteringResult result);
 
   void MaybeAppendOpenGlicItem(bool add_separator = true);
+  void MaybeAppendGlicSmartSuggestionItem();
 
 
 #if BUILDFLAG(IS_CHROMEOS)

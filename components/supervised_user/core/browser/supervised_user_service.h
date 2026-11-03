@@ -69,7 +69,8 @@ class Custodian {
 // availability.
 // The state of features is driven by changes to the following preferences:
 // * `profile.managed_user_id` for remote approvals and custodian data,
-// * `incognito.mode_availability` for incognito mode.
+// * `incognito.mode_availability` and `enterprise.isolated_mode` for
+//   off-the-record modes (incognito and enterprise isolated mode).
 class SupervisedUserService : public KeyedService {
  public:
   // Delegate encapsulating platform-specific logic that is invoked from this

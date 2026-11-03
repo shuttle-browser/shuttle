@@ -68,6 +68,7 @@ if (is_ios) {
 if (!is_ios) {
   mojo_ts_files += [
     "components/omnibox/browser/searchbox.mojom-webui.ts",
+    "components/omnibox/browser/suggest_template_info.mojom-webui.ts",
   ]
 }
 
@@ -128,6 +129,11 @@ preprocess_if_expr("copy_mojo_ts") {
     "//url/mojom:url_mojom_origin_ts__generator",
   ]
 
+  if (!is_ios) {
+    deps += [
+      "//components/omnibox/browser:suggest_template_info_mojo_bindings_ts__generator",
+    ]
+  }
   if (is_chromeos) {
     deps += [
       "//chromeos/ash/components/multidevice/mojom:mojom_ts__generator",

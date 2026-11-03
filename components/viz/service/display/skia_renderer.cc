@@ -29,6 +29,7 @@
 #include "base/strings/string_util.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
 #include "build/build_config.h"
@@ -89,7 +90,6 @@
 #include "third_party/skia/include/private/chromium/GrDeferredDisplayList.h"
 #include "third_party/skia/modules/skcms/skcms.h"
 #include "third_party/skia/src/core/SkCanvasPriv.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/axis_transform2d.h"
 #include "ui/gfx/geometry/linear_gradient.h"
@@ -711,6 +711,16 @@ SkiaRenderer::DrawQuadParams::DrawQuadParams(const gfx::Transform& cdt,
   }
 }
 
+gfx::RectF SkiaRenderer::GetRenderPassLogicalBounds(
+    AggregatedRenderPassId render_pass_id) const {
+  const AggregatedRenderPassList& render_passes =
+      *current_frame()->render_passes_in_draw_order;
+  auto render_pass = std::ranges::find(render_passes, render_pass_id,
+                                       &AggregatedRenderPass::id);
+  CHECK(render_pass != render_passes.end());
+  return gfx::RectF((*render_pass)->output_rect.size());
+}
+
 #if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_OZONE) || BUILDFLAG(IS_WIN)
 struct SkiaRenderer::RenderPassOverlayParams {
   RenderPassOverlayParams() = default;
@@ -764,7 +774,6 @@ class SkiaRenderer::ScopedSkImageBuilder {
                        bool maybe_concurrent_reads,
                        SkAlphaType alpha_type = kPremul_SkAlphaType,
                        sk_sp<SkColorSpace> override_color_space = nullptr,
-                       bool raw_draw_if_possible = false,
                        bool force_rgbx = false);
 
   ScopedSkImageBuilder(const ScopedSkImageBuilder&) = delete;
@@ -773,13 +782,9 @@ class SkiaRenderer::ScopedSkImageBuilder {
   ~ScopedSkImageBuilder() = default;
 
   const SkImage* sk_image() const { return sk_image_.get(); }
-  const cc::PaintOpBuffer* paint_op_buffer() const { return paint_op_buffer_; }
-  const std::optional<SkColor4f>& clear_color() const { return clear_color_; }
 
  private:
   sk_sp<SkImage> sk_image_;
-  raw_ptr<const cc::PaintOpBuffer> paint_op_buffer_ = nullptr;
-  std::optional<SkColor4f> clear_color_;
 };
 
 SkiaRenderer::ScopedSkImageBuilder::ScopedSkImageBuilder(
@@ -788,7 +793,6 @@ SkiaRenderer::ScopedSkImageBuilder::ScopedSkImageBuilder(
     bool maybe_concurrent_reads,
     SkAlphaType alpha_type,
     sk_sp<SkColorSpace> override_color_space,
-    bool raw_draw_if_possible,
     bool force_rgbx) {
   if (!resource_id)
     return;
@@ -796,7 +800,7 @@ SkiaRenderer::ScopedSkImageBuilder::ScopedSkImageBuilder(
   DCHECK(IsTextureResource(resource_provider, resource_id));
 
   auto* image_context = skia_renderer->lock_set_for_external_use_.LockResource(
-      resource_id, maybe_concurrent_reads, raw_draw_if_possible);
+      resource_id, maybe_concurrent_reads);
 
   // |ImageContext::image| provides thread safety: (a) this ImageContext is
   // only accessed by GPU thread after |image| is set and (b) the fields of
@@ -808,11 +812,9 @@ SkiaRenderer::ScopedSkImageBuilder::ScopedSkImageBuilder(
 
   skia_renderer->skia_output_surface_->MakePromiseSkImage(image_context,
                                                           force_rgbx);
-  paint_op_buffer_ = image_context->paint_op_buffer();
-  clear_color_ = image_context->clear_color();
   sk_image_ = image_context->image();
-  LOG_IF(ERROR, !image_context->has_image() && !paint_op_buffer_)
-      << "Failed to create the promise sk image or get paint ops.";
+  LOG_IF(ERROR, !image_context->has_image())
+      << "Failed to create the promise sk image.";
 
   if (sk_image_ && override_color_space) {
     sk_image_ = sk_image_->reinterpretColorSpace(override_color_space);
@@ -1089,8 +1091,7 @@ SkiaRenderer::SkiaRenderer(const RendererSettings* settings,
                      resource_provider,
                      overlay_processor),
       skia_output_surface_(skia_output_surface),
-      lock_set_for_external_use_(resource_provider, skia_output_surface_),
-      is_using_raw_draw_(features::IsUsingRawDraw()) {
+      lock_set_for_external_use_(resource_provider, skia_output_surface_) {
   DCHECK(skia_output_surface_);
 
   // There can be different synchronization types requested for different
@@ -1130,10 +1131,48 @@ SkiaRenderer::SkiaRenderer(const RendererSettings* settings,
   protected_buffer_queue_ = std::make_unique<BufferQueue>(
       skia_output_surface_, skia_output_surface_->GetSurfaceHandle(), 3,
       /*is_protected=*/true);
+  const bool has_buffer_queue = true;
+#else
+  // Non-root render pass BufferQueues are only used when there is a root one.
+  const bool has_buffer_queue = !!root_buffer_queue_;
 #endif
+
+  if (has_buffer_queue && base::SingleThreadTaskRunner::HasCurrentDefault()) {
+    base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
+        this, "viz::SkiaRenderer",
+        base::SingleThreadTaskRunner::GetCurrentDefault());
+  }
 }
 
-SkiaRenderer::~SkiaRenderer() = default;
+SkiaRenderer::~SkiaRenderer() {
+  // Unregistering without having registered a provider is allowed.
+  base::trace_event::MemoryDumpManager::GetInstance()->UnregisterDumpProvider(
+      this);
+}
+
+bool SkiaRenderer::OnMemoryDump(const base::trace_event::MemoryDumpArgs& args,
+                                base::trace_event::ProcessMemoryDump* pmd) {
+  if (root_buffer_queue_) {
+    root_buffer_queue_->OnMemoryDump(args, pmd);
+  }
+  // The root render pass backing does not own a BufferQueue (it uses
+  // |root_buffer_queue_|), so this does not double count.
+  for (const auto& [id, backing] : render_pass_backings_) {
+    if (backing.buffer_queue) {
+      backing.buffer_queue->OnMemoryDump(args, pmd);
+    }
+  }
+  if (scanout_backing_for_reuse_ && scanout_backing_for_reuse_->buffer_queue) {
+    scanout_backing_for_reuse_->buffer_queue->OnMemoryDump(args, pmd);
+  }
+#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_CHROMEOS) && \
+    BUILDFLAG(USE_V4L2_CODEC)
+  if (protected_buffer_queue_) {
+    protected_buffer_queue_->OnMemoryDump(args, pmd);
+  }
+#endif
+  return true;
+}
 
 bool SkiaRenderer::CanPartialSwap() {
   return output_surface_->capabilities().supports_post_sub_buffer;
@@ -1192,7 +1231,7 @@ void SkiaRenderer::MaybeFreeProtectedPool() {
 #endif
 
 void SkiaRenderer::SwapBuffers(SwapFrameData swap_frame_data) {
-  DCHECK(visible_);
+  DCHECK(has_back_buffers_);
   DCHECK(output_surface_->capabilities().supports_viewporter ||
          viewport_size_for_swap_buffers() == surface_size_for_swap_buffers());
   TRACE_EVENT0("viz,benchmark", "SkiaRenderer::SwapBuffers");
@@ -2079,11 +2118,6 @@ std::optional<const DrawQuad*> SkiaRenderer::CanPassBeDrawnDirectly(
       quad->material == DrawQuad::Material::kPictureContent)
     return std::nullopt;
 
-  // TODO(penghuang): support composite TileDrawQuad in a sub render pass for
-  // raw draw directly.
-  if (is_using_raw_draw_ && quad->material == DrawQuad::Material::kTiledContent)
-    return std::nullopt;
-
   // If the quad specifies nearest-neighbor scaling then there could be two
   // scaling operations at different quality levels. This requires drawing to an
   // intermediate render pass. See https://crbug.com/1155338.
@@ -2556,53 +2590,6 @@ void SkiaRenderer::DrawSingleImage(const SkImage* image,
       constraint);
 }
 
-void SkiaRenderer::DrawPaintOpBuffer(
-    const cc::PaintOpBuffer* buffer,
-    const std::optional<SkColor4f>& clear_color,
-    const TileDrawQuad* quad,
-    const DrawQuadParams* params) {
-  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("viz.quads"),
-               "SkiaRenderer::DrawPaintOpBuffer");
-  if (!batched_quads_.empty())
-    FlushBatchedQuads();
-
-  SkAutoCanvasRestore auto_canvas_restore(current_canvas_, true /* do_save */);
-  PrepareCanvas(params->scissor_rect, params->mask_filter_info,
-                &params->content_device_transform);
-
-  auto visible_rect = gfx::RectFToSkRect(params->visible_rect);
-  current_canvas_->clipRect(visible_rect);
-
-  if (params->draw_region) {
-    bool aa = params->aa_flags != SkCanvas::kNone_QuadAAFlags;
-    current_canvas_->clipPath(params->draw_region_in_path(), aa);
-  }
-
-  if (quad->ShouldDrawWithBlending()) {
-    auto paint = params->paint(nullptr);
-    // TODO(penghuang): saveLayer() is expensive, try to avoid it as much as
-    // possible.
-    current_canvas_->saveLayer(&visible_rect, &paint);
-  }
-
-  if (clear_color)
-    current_canvas_->drawColor(*clear_color);
-
-  float scale_x = params->rect.width() / quad->tex_coord_rect.width();
-  float scale_y = params->rect.height() / quad->tex_coord_rect.height();
-
-  float offset_x =
-      params->visible_rect.x() - params->vis_tex_coords.x() * scale_x;
-  float offset_y =
-      params->visible_rect.y() - params->vis_tex_coords.y() * scale_y;
-
-  current_canvas_->translate(offset_x, offset_y);
-  current_canvas_->scale(scale_x, scale_y);
-
-  cc::PlaybackParams playback_params(nullptr, SkM44());
-  buffer->Playback(current_canvas_, playback_params);
-}
-
 void SkiaRenderer::DrawDebugBorderQuad(const DebugBorderDrawQuad* quad,
                                        DrawQuadParams* params) {
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("viz.quads"),
@@ -2722,21 +2709,27 @@ void SkiaRenderer::DrawTextureQuad(const TextureDrawQuad* quad,
       overlay_color_space.value_or(resource_provider()
                                        ->GetColorSpace(quad->resource_id)
                                        .GetAsFullRangeRGB());
-  const gfx::HDRMetadata& src_hdr_metadata =
+  // Use the current SDR slider white level for PQ HDR videos on
+  // Windows, so that they look similar when rendered by the
+  // compositor and when rendered as an overlay (HDR10 MPO). Do not adjust
+  // the white level of content that has AGTM metadata.
+  // https://crbug.com/1492817
+  gfx::HDRMetadata hdr_metadata =
       resource_provider()->GetHDRMetadata(quad->resource_id);
-
-  const bool needs_tone_map = [&]() {
-    if (quad->is_video_frame && src_color_space.IsHDR()) {
-      return true;
-    }
-    if (src_color_space.IsToneMappedByDefault()) {
-      return true;
-    }
-    if (gfx::HdrMetadataAgtm::IsEnabled() && src_hdr_metadata.HasAgtm()) {
-      return true;
-    }
-    return false;
-  }();
+  if (quad->is_video_frame &&
+      src_color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ &&
+      !hdr_metadata.HasAgtm() &&
+      base::FeatureList::IsEnabled(features::kUseDisplaySDRMaxLuminanceNits)) {
+    hdr_metadata =
+        gfx::HDRMetadata::PopulateUnspecifiedWithDefaults(hdr_metadata);
+    hdr_metadata.SetHdrReferenceWhite(
+        current_frame()->display_color_spaces.GetSDRMaxLuminanceNits());
+  }
+  const float targeted_hdr_headroom =
+      quad->dynamic_range_limit.ComputeEffectiveHdrHeadroom(
+          current_frame()->display_color_spaces.GetHdrHeadroom());
+  const bool needs_tone_map = cc::ToneMapUtil::UseGlobalToneMapFilter(
+      src_color_space, hdr_metadata, targeted_hdr_headroom);
 
   sk_sp<SkColorSpace> override_color_space;
   if (overlay_color_space) {
@@ -2746,7 +2739,7 @@ void SkiaRenderer::DrawTextureQuad(const TextureDrawQuad* quad,
   ScopedSkImageBuilder builder(
       this, quad->resource_id, /*maybe_concurrent_reads=*/true,
       resource_provider_->GetAlphaType(quad->resource_id), override_color_space,
-      false, quad->force_rgbx);
+      quad->force_rgbx);
   const SkImage* image = builder.sk_image();
   if (!image)
     return;
@@ -2798,24 +2791,8 @@ void SkiaRenderer::DrawTextureQuad(const TextureDrawQuad* quad,
   SkAutoCanvasRestore acr(current_canvas_, /*do_save=*/true);
 
   if (needs_tone_map) {
-    // Use the current SDR slider white level for PQ HDR videos on
-    // Windows, so that they look similar when rendered by the
-    // compositor and when rendered as an overlay (HDR10 MPO).
-    // https://crbug.com/1492817
-    auto hdr_metadata = src_hdr_metadata;
-    if (quad->is_video_frame &&
-        src_color_space.GetTransferID() == gfx::ColorSpace::TransferID::PQ &&
-        base::FeatureList::IsEnabled(
-            features::kUseDisplaySDRMaxLuminanceNits)) {
-      hdr_metadata =
-          gfx::HDRMetadata::PopulateUnspecifiedWithDefaults(src_hdr_metadata);
-      hdr_metadata.SetNDWL(
-          current_frame()->display_color_spaces.GetSDRMaxLuminanceNits());
-    }
-    cc::ToneMapUtil::AddGlobalToneMapFilterToPaint(
-        paint, image, hdr_metadata,
-        quad->dynamic_range_limit.ComputeEffectiveHdrHeadroom(
-            current_frame()->display_color_spaces.GetHdrHeadroom()));
+    cc::ToneMapUtil::AddGlobalToneMapFilterToPaint(paint, image, hdr_metadata,
+                                                   targeted_hdr_headroom);
   }
 
   // From gl_renderer, the final src color will be
@@ -2855,32 +2832,11 @@ void SkiaRenderer::DrawTileDrawQuad(const TileDrawQuad* quad,
   // should never produce tile quads in the first place.
   DCHECK(resource_provider());
 
-  // If quad->ShouldDrawWithBlending() is true, we need to raster tile paint ops
-  // to an offscreen texture first, and then blend it with content behind the
-  // tile. Since a tile could be used cross frames, so it would better to not
-  // use raw draw.
-  bool raw_draw_if_possible =
-      is_using_raw_draw_ && !quad->ShouldDrawWithBlending();
-  ScopedSkImageBuilder builder(
-      this, quad->resource_id, /*maybe_concurrent_reads=*/false,
-      kPremul_SkAlphaType,
-      /*override_color_space=*/nullptr, raw_draw_if_possible);
+  ScopedSkImageBuilder builder(this, quad->resource_id,
+                               /*maybe_concurrent_reads=*/false);
 
   params->vis_tex_coords = cc::MathUtil::ScaleRectProportional(
       quad->tex_coord_rect, gfx::RectF(quad->rect), params->visible_rect);
-
-  bool using_raw_draw = builder.paint_op_buffer();
-  if (is_using_raw_draw_) {
-    UMA_HISTOGRAM_BOOLEAN(
-        "Compositing.SkiaRenderer.DrawTileDrawQuad.UsingRawDraw",
-        using_raw_draw);
-  }
-  if (using_raw_draw) {
-    DCHECK(!rpdq_params);
-    DrawPaintOpBuffer(builder.paint_op_buffer(), builder.clear_color(), quad,
-                      params);
-    return;
-  }
 
   const SkImage* image = builder.sk_image();
   if (!image)
@@ -3476,8 +3432,10 @@ void SkiaRenderer::DrawRenderPassQuad(
 
   params->vis_tex_coords = cc::MathUtil::ScaleRectProportional(
       quad->tex_coord_rect(), gfx::RectF(quad->rect), params->visible_rect);
-  gfx::RectF valid_texel_bounds(content_image->width(),
-                                content_image->height());
+  const gfx::RectF valid_texel_bounds =
+      base::FeatureList::IsEnabled(features::kRenderPassBackingLogicalBounds)
+          ? GetRenderPassLogicalBounds(quad->render_pass_id)
+          : gfx::RectF(content_image->width(), content_image->height());
 
   // When the RPDQ was needed because of a copy request, it may not require any
   // advanced filtering/effects at which point it's basically a tiled quad.
@@ -3519,8 +3477,8 @@ void SkiaRenderer::CopyDrawnRenderPass(
                                    std::move(request), mailbox);
 }
 
-void SkiaRenderer::DidChangeVisibility() {
-  if (visible_) {
+void SkiaRenderer::DidChangeHasBackBuffers() {
+  if (has_back_buffers_) {
     output_surface_->EnsureBackbuffer();
     // NOTE: Not recreating buffers right away, they are recreated on demand
     // later, when a frame is actually needed.
@@ -3528,9 +3486,9 @@ void SkiaRenderer::DidChangeVisibility() {
     output_surface_->DiscardBackbuffer();
 
     if (features::ShouldDiscardVizBufferQueueOnVisibilityChange()) {
-      // We are not visible, all buffers in root and render pass BufferQueues
-      // can go. However, we also need to make sure that the GPU tasks are
-      // flushed for it to have any effect.
+      // Back buffers should be discarded, all buffers in root and render pass
+      // BufferQueues can go. However, we also need to make sure that the GPU
+      // tasks are flushed for it to have any effect.
       if (root_buffer_queue_) {
         root_buffer_queue_->DestroyBuffers();
       }
@@ -4238,8 +4196,11 @@ void SkiaRenderer::PrepareRenderPassOverlay(
       params.vis_tex_coords = cc::MathUtil::ScaleRectProportional(
           quad->tex_coord_rect(), gfx::RectF(quad->rect), params.visible_rect);
 
-      gfx::RectF valid_texel_bounds(content_image->width(),
-                                    content_image->height());
+      const gfx::RectF valid_texel_bounds =
+          base::FeatureList::IsEnabled(
+              features::kRenderPassBackingLogicalBounds)
+              ? GetRenderPassLogicalBounds(quad->render_pass_id)
+              : gfx::RectF(content_image->width(), content_image->height());
 
       SkPaint paint = params.paint(GetContentColorFilter());
 

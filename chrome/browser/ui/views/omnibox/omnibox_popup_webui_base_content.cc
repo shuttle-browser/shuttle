@@ -23,6 +23,7 @@
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/full_webui_omnibox_frame.h"
@@ -147,7 +148,7 @@ gfx::RoundedCornersF OmniboxPopupWebUIBaseContent::GetRoundedCornerRadii()
     const {
   const float corner_radius =
       views::LayoutProvider::Get()->GetCornerRadiusMetric(
-          views::ShapeContextTokens::kOmniboxExpandedRadius);
+          ChromeShapeContextTokens::kOmniboxExpandedRadius);
   return gfx::RoundedCornersF(top_rounded_corners_ ? corner_radius : 0,
                               top_rounded_corners_ ? corner_radius : 0,
                               corner_radius, corner_radius);

@@ -59,7 +59,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/managed_ui.h"
 #include "components/enterprise/browser/reporting/common_pref_names.h"
-#include "components/enterprise/connectors/core/features.h"
 #include "components/safe_browsing/core/common/features.h"
 
 // Must come after other includes, because FromJniType() uses Profile.
@@ -242,7 +241,7 @@ net::NetworkTrafficAnnotationTag GetTrafficAnnotationForPolicy(
 }  // namespace
 
 bool IsBrowserManaged(Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
   return policy::ManagementServiceFactory::GetForProfile(profile)->IsManaged();
 }
 
@@ -494,7 +493,7 @@ static bool JNI_ManagedBrowserUtils_IsProfileReportingEnabled(
 static bool JNI_ManagedBrowserUtils_IsOnSecurityEventEnterpriseConnectorEnabled(
     JNIEnv* env,
     Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
 
   auto* service =
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(
@@ -510,7 +509,7 @@ static bool JNI_ManagedBrowserUtils_IsOnSecurityEventEnterpriseConnectorEnabled(
 static bool JNI_ManagedBrowserUtils_IsEnterpriseRealTimeUrlCheckModeEnabled(
     JNIEnv* env,
     Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
 
   auto* service =
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(
@@ -528,12 +527,7 @@ static bool
 JNI_ManagedBrowserUtils_IsOnFileDownloadedEnterpriseConnectorEnabled(
     JNIEnv* env,
     Profile* profile) {
-  DCHECK(profile);
-
-  if (!base::FeatureList::IsEnabled(
-          enterprise_connectors::kEnableDownloadEnterpriseScanOnClank)) {
-    return false;
-  }
+  CHECK(profile, base::NotFatalUntil::M161);
 
   auto* service =
       enterprise_connectors::ConnectorsServiceFactory::GetForBrowserContext(

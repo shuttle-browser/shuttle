@@ -40,6 +40,7 @@ source_set("pdf") {
     "//components/pdf/common:util",
     "//components/prefs",
     "//components/tabs:public",
+    "//components/user_manager",
     "//components/zoom",
     "//extensions/browser",
     "//extensions/browser/mime_handler:stream_container",

@@ -1,0 +1,92 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals_ui.h"
+
+#include <utility>
+
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "build/build_config.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/omnibox_internals/logging/logs_page_handler.h"
+#include "chrome/browser/ui/webui/omnibox_internals/omnibox_internals_page_handler.h"
+#include "chrome/browser/ui/webui/version/version_handler.h"
+#include "chrome/browser/ui/webui/version/version_ui.h"
+#include "chrome/common/url_constants.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/grit/omnibox_internals_resources.h"
+#include "chrome/grit/omnibox_internals_resources_map.h"
+#include "components/omnibox/browser/omnibox_field_trial.h"
+#include "components/omnibox/common/omnibox_features.h"
+#include "content/public/browser/web_ui.h"
+#include "content/public/browser/web_ui_controller.h"
+#include "content/public/browser/web_ui_data_source.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "ui/base/webui/web_ui_util.h"
+#include "ui/webui/webui_util.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/webui/theme_source.h"  // nogncheck
+#endif
+
+bool OmniboxInternalsUIConfig::SupportsInProcessResourceLoadingV2() const {
+  return true;
+}
+
+bool OmniboxInternalsUIConfig::ShouldCrashOnJavascriptErrorInDevelopmentBuild()
+    const {
+  return true;
+}
+
+OmniboxInternalsUI::OmniboxInternalsUI(content::WebUI* web_ui)
+    : ui::MojoWebUIController(web_ui, /*enable_chrome_send=*/true) {
+  Profile* profile = Profile::FromWebUI(web_ui);
+
+  // Set up the chrome://omnibox-internals/ source.
+  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
+      profile, chrome::kChromeUIOmniboxInternalsHost);
+
+  webui::SetupWebUIDataSource(source, kOmniboxInternalsResources,
+                              IDR_OMNIBOX_INTERNALS_OMNIBOX_HTML);
+
+#if !BUILDFLAG(IS_ANDROID)
+  content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
+#endif
+
+  // Expose version information to client because it is useful in output.
+  VersionUI::AddVersionDetailStrings(source);
+
+  source->AddResourcePath("ml", IDR_OMNIBOX_INTERNALS_ML_ML_HTML);
+  source->AddResourcePath("logging", IDR_OMNIBOX_INTERNALS_LOGGING_LOGS_HTML);
+
+  source->AddBoolean("isMlUrlScoringEnabled",
+                     OmniboxFieldTrial::IsMlUrlScoringEnabled());
+}
+
+WEB_UI_CONTROLLER_TYPE_IMPL(OmniboxInternalsUI)
+
+OmniboxInternalsUI::~OmniboxInternalsUI() = default;
+
+void OmniboxInternalsUI::BindInterface(
+    mojo::PendingReceiver<mojom::OmniboxInternalsPageHandler> receiver) {
+  omnibox_handler_ = std::make_unique<OmniboxInternalsPageHandler>(
+      Profile::FromWebUI(web_ui()), std::move(receiver));
+}
+
+void OmniboxInternalsUI::BindInterface(
+    mojo::PendingReceiver<omnibox::logging::mojom::PageHandlerFactory>
+        receiver) {
+  if (logs_factory_receiver_.is_bound()) {
+    logs_factory_receiver_.reset();
+  }
+  logs_factory_receiver_.Bind(std::move(receiver));
+}
+
+void OmniboxInternalsUI::CreatePageHandler(
+    mojo::PendingRemote<omnibox::logging::mojom::Page> page,
+    mojo::PendingReceiver<omnibox::logging::mojom::PageHandler> handler) {
+  logs_page_handler_ = std::make_unique<omnibox::logging::LogsPageHandler>(
+      std::move(handler), std::move(page));
+}

@@ -12,6 +12,7 @@ source_set("vertical") {
     "vertical_tab_strip_expand_on_hover_lock.h",
     "vertical_tab_strip_focus_swipe_controller.h",
     "vertical_tab_strip_scroll_bar.h",
+    "vertical_tab_strip_segmented_control.h",
     "vertical_tab_strip_top_container.h",
   ]
 
@@ -41,6 +42,7 @@ source_set("impl") {
     "vertical_tab_strip_expand_on_hover_lock.cc",
     "vertical_tab_strip_focus_swipe_controller.cc",
     "vertical_tab_strip_scroll_bar.cc",
+    "vertical_tab_strip_segmented_control.cc",
     "vertical_tab_strip_top_container.cc",
   ]
 
@@ -63,9 +65,11 @@ source_set("impl") {
     "//chrome/browser/ui/views:layout_provider",
     "//chrome/browser/ui/views/frame",
     "//chrome/browser/ui/views/frame:browser_view_header",
+    "//chrome/browser/ui/views/frame:vertical_tab_strip_region_view",
     "//chrome/browser/ui/views/tabs/common",
     "//chrome/browser/ui/views/tabs/common:impl",
     "//chrome/browser/ui/views/tabs/dragging:tab_drag_target",
+    "//chrome/browser/ui/views/tabs/organizer",
     "//chrome/browser/ui/views/tabs/shared",
     "//chrome/browser/ui/views/toolbar",
     "//chrome/browser/ui/window_metadata",
@@ -93,7 +97,6 @@ source_set("impl") {
 
   public_deps = [
     ":vertical",
-    "//chrome/browser:browser_public_dependencies",
     "//chrome/browser/ui/tabs/alert:tab_alert",
     "//chrome/browser/ui/views/tabs/common:impl",
   ]

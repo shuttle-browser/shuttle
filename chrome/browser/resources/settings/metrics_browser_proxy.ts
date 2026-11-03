@@ -126,6 +126,18 @@ export interface MetricsBrowserProxy {
   recordSettingsSearchResultDwellTime(time: number): void;
 
   /**
+   * Helper function that triggers the C++ CUJ interaction sequence step when
+   * a navigation category in the settings menu is clicked.
+   */
+  recordSettingsNavCategoryClicked(): void;
+
+  /**
+   * Helper function that triggers the C++ CUJ interaction sequence step when
+   * a settings search query is submitted.
+   */
+  recordSettingsSearchQueryEntered(): void;
+
+  /**
    * Helper function that calls recordAction with one action from
    * tools/metrics/actions/actions.xml.
    */
@@ -155,6 +167,11 @@ export interface MetricsBrowserProxy {
    */
   recordDeleteBrowsingDataAction(action: DeleteBrowsingDataAction): void;
 
+  /**
+   * Notifies Chrome that the Clear Browsing Data dialog was cancelled or
+   * dismissed without clearing browsing data.
+   */
+  recordClearBrowsingDataCancelled(): void;
   // <if expr="_google_chrome and is_win">
   /**
    * Notifies Chrome that the `feature_notifications.enabled` Local State pref
@@ -182,6 +199,14 @@ export class MetricsBrowserProxyImpl implements MetricsBrowserProxy {
     // exposes no recordLongTime message, so record through metricsPrivate.
     chrome.metricsPrivate.recordLongTime(
         'Settings.Search.ResultDwellTime', time);
+  }
+
+  recordSettingsNavCategoryClicked() {
+    chrome.send('recordSettingsNavCategoryClicked');
+  }
+
+  recordSettingsSearchQueryEntered() {
+    chrome.send('recordSettingsSearchQueryEntered');
   }
 
   recordAction(action: string) {
@@ -222,6 +247,9 @@ export class MetricsBrowserProxyImpl implements MetricsBrowserProxy {
     ]);
   }
 
+  recordClearBrowsingDataCancelled(): void {
+    chrome.send('recordClearBrowsingDataCancelled');
+  }
   // <if expr="_google_chrome and is_win">
   recordFeatureNotificationsChange(enabled: boolean): void {
     chrome.metricsPrivate.recordBoolean(

@@ -44,7 +44,7 @@ namespace {
 
 #if !BUILDFLAG(IS_ANDROID)
 bool ProfileHasBrowsers(const Profile* profile) {
-  DCHECK(profile);
+  CHECK(profile, base::NotFatalUntil::M161);
   profile = profile->GetOriginalProfile();
   bool has_browsers = false;
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
