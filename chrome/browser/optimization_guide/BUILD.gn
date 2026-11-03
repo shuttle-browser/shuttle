@@ -60,7 +60,6 @@ source_set("impl") {
   ]
   deps = [
     ":optimization_guide",
-    ":optimization_guide_on_device_model_installer",
     "//chrome/browser:browser_process",
     "//chrome/browser:global_features",
     "//chrome/browser/download",

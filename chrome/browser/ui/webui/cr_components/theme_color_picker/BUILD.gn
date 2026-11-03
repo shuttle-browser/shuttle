@@ -34,7 +34,6 @@ if (!is_android || enable_webui_ntp) {
     public = [ "theme_color_picker_handler.h" ]
     public_deps = [
       "//base",
-      "//chrome/browser/search/background",
       "//chrome/browser/themes",
       "//components/themes",
       "//mojo/public/cpp/bindings",

@@ -85,7 +85,6 @@ source_set("configs") {
   }
 
   if (!is_android || is_desktop_android) {
-    deps += [ "//chrome/browser/ui/webui/ai_overlay_dialog" ]
   }
 
   if (!is_android) {
@@ -532,7 +531,6 @@ source_set("chrome_web_ui_controller_factory") {
   if (!is_android || is_desktop_android) {
     deps += [
       "//chrome/browser/ui/webui/management",
-      "//chrome/browser/ui/webui/new_tab_page",
     ]
   }
 

@@ -15,7 +15,6 @@ source_set("tab_alert") {
 
   public_deps = [
     "//base",
-    "//chrome/browser/contextual_tasks",
     "//chrome/browser/ui/tabs:tabs_public",
     "//chrome/browser/vr",
     "//components/tabs:public",
@@ -45,7 +44,6 @@ source_set("impl") {
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/common:chrome_features",
-    "//components/contextual_tasks/public:feature_list",
     "//components/tabs:public",
     "//components/vector_icons",
   ]

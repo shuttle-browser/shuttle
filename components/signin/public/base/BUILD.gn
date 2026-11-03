@@ -158,6 +158,23 @@ if (is_android) {
   }
 }
 
+component("device_id_helper") {
+  output_name = "signin_device_id_helper"
+
+  defines = [ "IS_SIGNIN_DEVICE_ID_HELPER_IMPL" ]
+
+  sources = [
+    "device_id_helper.cc",
+    "device_id_helper.h",
+  ]
+
+  deps = [
+    ":signin_switches",
+    "//base",
+    "//components/prefs",
+  ]
+}
+
 component("signin_switches") {
   output_name = "signin_switches"
 

@@ -131,7 +131,6 @@ if (toolkit_views) {
       "//chrome/browser/ui/dialogs",
       "//chrome/browser/ui/exclusive_access",
       "//chrome/browser/ui/omnibox",
-      "//chrome/browser/ui/passwords",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/views:bubble_anchor_util_views",
       "//chrome/browser/ui/views:device_chooser_content_view",

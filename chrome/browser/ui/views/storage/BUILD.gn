@@ -38,17 +38,3 @@ source_set("impl") {
   ]
 }
 
-source_set("browser_tests") {
-  testonly = true
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
-
-  sources = [ "storage_pressure_bubble_view_browsertest.cc" ]
-
-  deps = [
-    ":storage",
-    "//chrome/browser/ui:storage_pressure_bubble",
-    "//chrome/test:test_support",
-    "//content/test:test_support",
-    "//testing/gtest",
-  ]
-}

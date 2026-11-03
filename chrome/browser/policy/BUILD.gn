@@ -439,7 +439,6 @@ source_set("impl") {
     "//components/live_caption:constants",
     "//components/network_time",
     "//components/on_device_translation/buildflags",
-    "//components/payments/core",
     "//components/pref_registry",
     "//components/proxy_config",
     "//components/reporting/encryption:primitives",
@@ -536,7 +535,6 @@ source_set("impl") {
       "//components/headless/policy",
       "//components/live_caption",
       "//components/web_package",
-      "//components/webapps/isolated_web_apps",
     ]
 
     if (!is_chromeos) {

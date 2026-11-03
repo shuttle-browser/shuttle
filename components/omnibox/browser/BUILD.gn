@@ -759,6 +759,31 @@ mojom("mojo_bindings") {
 
   if (!is_ios) {
     sources += [ "searchbox.mojom" ]
+    public_deps += [ ":suggest_template_info_mojo_bindings" ]
+  }
+}
+
+if (!is_ios) {
+  # Shuttle: without fusebox_action (composebox is removed).
+  mojom("suggest_template_info_mojo_bindings") {
+    sources = [ "suggest_template_info.mojom" ]
+    webui_module_path = "chrome://resources/mojo/components/omnibox/browser"
+    public_deps = [
+      "//mojo/public/mojom/base",
+      "//url/mojom:url_mojom_gurl",
+    ]
+  }
+
+  source_set("suggest_template_info_mojo_utils") {
+    sources = [
+      "suggest_template_info_mojo_utils.cc",
+      "suggest_template_info_mojo_utils.h",
+    ]
+    public_deps = [ ":suggest_template_info_mojo_bindings" ]
+    deps = [
+      ":browser",
+      "//third_party/omnibox_proto",
+    ]
   }
 }
 
