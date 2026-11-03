@@ -1029,3 +1029,41 @@ untrusted client naming an inaccessible home target gets the home-tab error inst
 Re-review of the fixed commit: P2 resolved (`IDR_PRODUCT_LOGO_32` has no Linux override; its 1x file is a real
 32 px PNG), no further finding. Desktop registers only 1x/2x resource scales; a future 3x would need its own asset.
 
+
+## Fork commit 56 (2026-11-03): session lifetime guards
+
+- **56** Agent sessions no longer leak tabs or stay open forever (backlog item 3, plan
+  `docs/plans/CDP-TAB-GUARDS.md`). All code is in `chrome/browser/shuttle/`; no upstream file is touched.
+  - Tabs a session's CDP connection made with `Target.createTarget` close when that connection ends
+    (`SessionCdpFilter` records them in `created_`; its destructor posts `SessionManager::CloseCreatedTabs`, skipped
+    while the browser quits). Tabs from `allocate-tab`, and popups, stay with the session.
+  - Idle timeout: a session closes after `idleTimeoutMinutes` without activity. The default is 30 min, or the value of
+    `--shuttle-session-idle-timeout=<minutes|Ns>`; `0` = never. Sessions opened for the user (`OpenTabForUser`,
+    `AdoptTab`) have no timeout. A 5 s timer checks only while some session has a timeout.
+    - Activity: a CDP client message on the session endpoint, an MCP tool call naming the `sessionId` or one of its
+      tabs' `targetId`, and a switch to one of its tabs.
+    - A session tab that is the active tab of the active window when the timeout hits counts as activity.
+  - MCP: `open-session { idleTimeoutMinutes }`; its reply adds `warning` + `openSessions` when the agent already has
+    open sessions. New tool `update-session { sessionId, idleTimeoutMinutes }`. Session descriptions add
+    `lastActivityAt` and `idleTimeoutMinutes`.
+- Probe: `smoke-tab-guards.mjs` (own launch in `smoke-all` with `--shuttle-session-idle-timeout=8s`): createTarget
+  tab closes with its connection, allocate-tab tab and session stay; second-session warning; MCP activity keeps a
+  session open, an idle one closes with its tabs; `update-session` validation and `0`.
+
+Verified: macOS dev build, `smoke-all` 14/14 PASS. Manual: the agent-browser sidecar creates no targets; killing its
+MCP process and daemon and restarting it with a page tool closed no tab.
+Review: SH-Review adversarial review (2026-11-03), `_docs/reviews/REVIEW-fork56-session-lifetime.md`: three P2s and
+one P3, all fixed in the commit:
+- A `beforeunload` dialog could keep a tab whose session was already gone (idle close, close-session), or a
+  connection's created tab. These closes now discard the tab (`DiscardTab` = `DetachAndDeleteWebContentsAt`, no
+  unload handlers); `release-tab` still closes ordinarily.
+- A long running tool call (e.g. `wait-for` of 2 min on a 1 min timeout) was cancelled by the idle close. A call naming
+  a session now counts as activity until it answers (`BeginWork`/`EndWork`, ended by a `ScopedClosureRunner` even if
+  the callback is dropped). A single long raw CDP command still doesn't count (documented in MCP.md).
+- `--headless` windows are "active" with no one looking, so the in-front-of-user check now returns false there.
+- `created_` kept every target id the connection ever created. It now drops ids on `targetDestroyed` and prunes closed
+  tabs on each `createTarget`.
+Also: `CheckIdle` skips while the browser quits and looks sessions up with `find`; `:impl` depends on `:switches`
+(`gn check`). Documented, not changed: an expired session leaves its external CDP sockets open (targets detach).
+Probe additions: wait-for longer than the timeout, `beforeunload` on both close paths, headless activated tab; tab
+existence checked on `/json/list`.

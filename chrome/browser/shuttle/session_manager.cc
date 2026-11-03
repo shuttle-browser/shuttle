@@ -9,6 +9,8 @@
 #include <utility>
 
 #include "base/auto_reset.h"
+#include "base/command_line.h"
+#include "base/logging.h"
 #include "base/functional/bind.h"
 #include "base/containers/span.h"
 #include "base/functional/callback_helpers.h"
@@ -20,9 +22,11 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
+#include "chrome/browser/headless/headless_mode_util.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/shuttle/home_tab_manager.h"
 #include "chrome/browser/shuttle/profile_registry.h"
+#include "chrome/browser/shuttle/switches.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
@@ -209,6 +213,30 @@ TabLocation FindInTabStrips(content::WebContents* contents) {
   return {};
 }
 
+// How often idle sessions are looked for (also bounds the timeout's
+// precision).
+constexpr base::TimeDelta kIdleCheckInterval = base::Seconds(5);
+constexpr base::TimeDelta kDefaultIdleTimeout = base::Minutes(30);
+
+// True if `contents` is the active tab of the focused window: a person is
+// looking at it.
+bool IsInFrontOfUser(content::WebContents* contents) {
+  // Headless windows can be "active" (activation is emulated) with no one
+  // looking.
+  if (headless::IsHeadlessMode()) {
+    return false;
+  }
+  for (BrowserWindowInterface* browser : GetAllBrowserWindowInterfaces()) {
+    TabStripModel* tab_strip = browser->GetTabStripModel();
+    if (!tab_strip || tab_strip->GetActiveWebContents() != contents) {
+      continue;
+    }
+    ui::BaseWindow* window = browser->GetWindow();
+    return window && window->IsActive();
+  }
+  return false;
+}
+
 std::string NewSessionId() {
   uint64_t value = base::RandUint64();
   return base::HexEncodeLower(base::byte_span_from_ref(value)).substr(0, 10);
@@ -240,6 +268,31 @@ class SessionManager::QuitWatcher : public BrowserCollectionObserver {
 };
 #endif  // BUILDFLAG(IS_LINUX)
 
+base::TimeDelta DefaultSessionIdleTimeout() {
+  static const base::TimeDelta timeout = [] {
+    const base::CommandLine* command_line =
+        base::CommandLine::ForCurrentProcess();
+    if (!command_line->HasSwitch(kSessionIdleTimeoutSwitch)) {
+      return kDefaultIdleTimeout;
+    }
+    std::string value =
+        command_line->GetSwitchValueASCII(kSessionIdleTimeoutSwitch);
+    const bool seconds = !value.empty() && value.back() == 's';
+    if (seconds) {
+      value.pop_back();
+    }
+    int amount = 0;
+    if (!base::StringToInt(value, &amount) || amount < 0) {
+      LOG(WARNING) << "Ignoring --" << kSessionIdleTimeoutSwitch << "="
+                   << command_line->GetSwitchValueASCII(
+                          kSessionIdleTimeoutSwitch);
+      return kDefaultIdleTimeout;
+    }
+    return seconds ? base::Seconds(amount) : base::Minutes(amount);
+  }();
+  return timeout;
+}
+
 Session::Session() = default;
 Session::Session(const Session&) = default;
 Session::~Session() = default;
@@ -251,7 +304,9 @@ SessionManager::SessionManager(Profile* profile, ProfileRegistry* registry)
 
 SessionManager::~SessionManager() = default;
 
-const Session& SessionManager::Open(const std::string& agent_id) {
+const Session& SessionManager::Open(
+    const std::string& agent_id,
+    std::optional<base::TimeDelta> idle_timeout) {
   std::string id = NewSessionId();
   while (sessions_.contains(id)) {
     id = NewSessionId();
@@ -260,10 +315,123 @@ const Session& SessionManager::Open(const std::string& agent_id) {
   session.id = id;
   session.agent = agent_id;
   session.opened = base::Time::Now();
+  session.last_activity = session.opened;
+  session.last_activity_ticks = base::TimeTicks::Now();
+  session.idle_timeout = idle_timeout.value_or(base::TimeDelta());
+  UpdateIdleTimer();
 #if BUILDFLAG(IS_LINUX)
   UpdateKeepAlive();
 #endif
   return session;
+}
+
+void SessionManager::Touch(const std::string& session_id) {
+  auto it = sessions_.find(session_id);
+  if (it == sessions_.end()) {
+    return;
+  }
+  it->second.last_activity = base::Time::Now();
+  it->second.last_activity_ticks = base::TimeTicks::Now();
+}
+
+void SessionManager::BeginWork(const std::string& session_id) {
+  auto it = sessions_.find(session_id);
+  if (it != sessions_.end()) {
+    ++it->second.pending_calls;
+  }
+}
+
+void SessionManager::EndWork(const std::string& session_id) {
+  auto it = sessions_.find(session_id);
+  if (it != sessions_.end() && it->second.pending_calls > 0) {
+    --it->second.pending_calls;
+    Touch(session_id);
+  }
+}
+
+bool SessionManager::SetIdleTimeout(const std::string& session_id,
+                                    base::TimeDelta timeout) {
+  auto it = sessions_.find(session_id);
+  if (it == sessions_.end()) {
+    return false;
+  }
+  it->second.idle_timeout = timeout;
+  Touch(session_id);
+  UpdateIdleTimer();
+  return true;
+}
+
+std::vector<const Session*> SessionManager::SessionsOf(
+    const std::string& agent_id) const {
+  std::vector<const Session*> list;
+  for (const auto& [id, session] : sessions_) {
+    if (session.agent == agent_id) {
+      list.push_back(&session);
+    }
+  }
+  std::ranges::sort(list, {}, [](const Session* session) {
+    return session->opened;
+  });
+  return list;
+}
+
+void SessionManager::CloseCreatedTabs(
+    const std::string& session_id,
+    const std::vector<std::string>& target_ids) {
+  if (browser_shutdown::IsTryingToQuit()) {
+    return;
+  }
+  for (const std::string& target_id : target_ids) {
+    content::WebContents* contents = FindTab(target_id);
+    if (contents && SessionOf(contents) == session_id) {
+      DiscardTab(contents);
+    }
+  }
+}
+
+void SessionManager::UpdateIdleTimer() {
+  const bool needed = std::ranges::any_of(sessions_, [](const auto& entry) {
+    return entry.second.idle_timeout.is_positive();
+  });
+  if (!needed) {
+    idle_timer_.Stop();
+  } else if (!idle_timer_.IsRunning()) {
+    idle_timer_.Start(FROM_HERE, kIdleCheckInterval,
+                      base::BindRepeating(&SessionManager::CheckIdle,
+                                          base::Unretained(this)));
+  }
+}
+
+void SessionManager::CheckIdle() {
+  if (browser_shutdown::IsTryingToQuit()) {
+    return;
+  }
+  const base::TimeTicks now = base::TimeTicks::Now();
+  std::vector<std::string> idle;
+  for (auto& [id, session] : sessions_) {
+    // A running tool call (e.g. a long wait-for) is activity until it ends;
+    // each call has its own bounded timeout.
+    if (!session.idle_timeout.is_positive() || session.pending_calls > 0 ||
+        now - session.last_activity_ticks < session.idle_timeout) {
+      continue;
+    }
+    // A person looking at one of its tabs keeps it open.
+    if (std::ranges::any_of(TabsOf(id), &IsInFrontOfUser)) {
+      Touch(id);
+      continue;
+    }
+    idle.push_back(id);
+  }
+  for (const std::string& id : idle) {
+    auto it = sessions_.find(id);
+    if (it == sessions_.end()) {
+      continue;
+    }
+    LOG(WARNING) << "Shuttle: closing session " << id << " after "
+                 << it->second.idle_timeout.InSeconds()
+                 << " s without activity";
+    Close(id);
+  }
 }
 
 #if BUILDFLAG(IS_LINUX)
@@ -323,10 +491,13 @@ bool SessionManager::Close(const std::string& session_id) {
       }
     }
   }
+  // Discarded, not closed: a beforeunload dialog would keep a tab whose
+  // session is gone.
   for (content::WebContents* contents : tabs) {
-    ReleaseTab(contents);
+    DiscardTab(contents);
   }
   sessions_.erase(session_id);
+  UpdateIdleTimer();
   registry_->FlushCookies(agent_id);
   if (session_closed_callback_) {
     session_closed_callback_.Run(session_id);
@@ -458,6 +629,15 @@ void SessionManager::ReleaseTab(content::WebContents* contents) {
   if (location.tab_strip) {
     location.tab_strip->CloseWebContentsAt(location.index,
                                            TabCloseTypes::CLOSE_NONE);
+  } else {
+    contents->Close();
+  }
+}
+
+void SessionManager::DiscardTab(content::WebContents* contents) {
+  TabLocation location = FindInTabStrips(contents);
+  if (location.tab_strip) {
+    location.tab_strip->DetachAndDeleteWebContentsAt(location.index);
   } else {
     contents->Close();
   }
@@ -836,6 +1016,18 @@ const Session* SessionManager::LatestSession(
     }
   }
   return latest;
+}
+
+void SessionManager::OnTabStripModelChanged(
+    TabStripModel* tab_strip,
+    const TabStripModelChange& change,
+    const TabStripSelectionChange& selection) {
+  if (selection.active_tab_changed() && selection.new_contents) {
+    const std::string session_id = SessionOf(selection.new_contents);
+    if (!session_id.empty()) {
+      Touch(session_id);
+    }
+  }
 }
 
 void SessionManager::OnTabStripModelDestroyed(TabStripModel* tab_strip) {

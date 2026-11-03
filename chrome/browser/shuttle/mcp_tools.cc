@@ -76,6 +76,15 @@ base::DictValue DescribeTab(const ToolContext& context,
       .Set("cdpUrl", PageWebSocketUrl(context, target_id));
 }
 
+// Whole minutes as an integer; a seconds timeout (probes) as a fraction, so
+// it never reads as 0 = never.
+base::Value IdleTimeoutMinutes(base::TimeDelta timeout) {
+  if (timeout % base::Minutes(1) == base::TimeDelta()) {
+    return base::Value(static_cast<int>(timeout.InMinutes()));
+  }
+  return base::Value(timeout.InSecondsF() / 60);
+}
+
 base::DictValue DescribeSession(const ToolContext& context,
                                 const Session& session) {
   base::ListValue tabs;
@@ -87,7 +96,26 @@ base::DictValue DescribeSession(const ToolContext& context,
       .Set("sessionId", session.id)
       .Set("agent", session.agent)
       .Set("openedAt", base::TimeFormatAsIso8601(session.opened))
+      .Set("lastActivityAt", base::TimeFormatAsIso8601(session.last_activity))
+      .Set("idleTimeoutMinutes", IdleTimeoutMinutes(session.idle_timeout))
       .Set("tabs", std::move(tabs));
+}
+
+// `idleTimeoutMinutes`: 0 = never; at most a week. Returns nullopt (and sets
+// `error`) when present but invalid, and `fallback` when absent.
+std::optional<base::TimeDelta> GetIdleTimeout(const base::DictValue& args,
+                                              base::TimeDelta fallback,
+                                              std::string* error) {
+  const base::Value* value = args.Find("idleTimeoutMinutes");
+  if (!value) {
+    return fallback;
+  }
+  std::optional<int> minutes = value->GetIfInt();
+  if (!minutes || *minutes < 0 || *minutes > 7 * 24 * 60) {
+    *error = "idleTimeoutMinutes must be an integer from 0 (never) to 10080";
+    return std::nullopt;
+  }
+  return base::Minutes(*minutes);
 }
 
 // Resolves `targetId` to a tab leased to some session.
@@ -294,8 +322,35 @@ void OpenSession(const ToolContext& context,
         "Unknown agent: " + *agent + " (create-agent first)"));
     return;
   }
-  const Session& session = context.service->sessions().Open(*agent);
+  std::string error;
+  std::optional<base::TimeDelta> idle_timeout =
+      GetIdleTimeout(args, DefaultSessionIdleTimeout(), &error);
+  if (!idle_timeout) {
+    std::move(callback).Run(ToolResult::Error(error));
+    return;
+  }
+  SessionManager& sessions = context.service->sessions();
+  // Several sessions per agent are allowed, but usually a leak: say so.
+  base::ListValue others;
+  for (const Session* other : sessions.SessionsOf(*agent)) {
+    others.Append(base::DictValue()
+                      .Set("sessionId", other->id)
+                      .Set("openedAt", base::TimeFormatAsIso8601(other->opened))
+                      .Set("lastActivityAt",
+                           base::TimeFormatAsIso8601(other->last_activity))
+                      .Set("tabs", static_cast<int>(
+                                       sessions.TabsOf(other->id).size())));
+  }
+  const Session& session = sessions.Open(*agent, *idle_timeout);
   base::DictValue result = DescribeSession(context, session);
+  if (!others.empty()) {
+    result.Set("warning",
+               base::StrCat({"Agent ", *agent, " already has ",
+                             base::NumberToString(others.size()),
+                             " open session(s): reuse one, or close-session "
+                             "the ones you no longer need."}));
+    result.Set("openSessions", std::move(others));
+  }
   // A browser-level CDP connection scoped to the session.
   result.Set("cdpEndpoint",
              WithAccessToken(base::StrCat({"ws://", HostOrDefault(context),
@@ -329,6 +384,33 @@ void CloseSession(const ToolContext& context,
   }
   std::move(callback).Run(ToolResult::Json(base::Value(
       base::DictValue().Set("sessionId", *session_id).Set("closed", true))));
+}
+
+void UpdateSession(const ToolContext& context,
+                   const base::DictValue& args,
+                   ToolCallback callback) {
+  const std::string* session_id = GetString(args, "sessionId");
+  if (!session_id) {
+    std::move(callback).Run(ToolResult::Error(MissingArgument("sessionId")));
+    return;
+  }
+  SessionManager& sessions = context.service->sessions();
+  const Session* session = sessions.Get(*session_id);
+  if (!session) {
+    std::move(callback).Run(
+        ToolResult::Error("Unknown session: " + *session_id));
+    return;
+  }
+  std::string error;
+  std::optional<base::TimeDelta> idle_timeout =
+      GetIdleTimeout(args, session->idle_timeout, &error);
+  if (!idle_timeout) {
+    std::move(callback).Run(ToolResult::Error(error));
+    return;
+  }
+  sessions.SetIdleTimeout(*session_id, *idle_timeout);
+  std::move(callback).Run(ToolResult::Json(
+      base::Value(DescribeSession(context, *sessions.Get(*session_id)))));
 }
 
 // Tabs ----------------------------------------------------------------------
@@ -553,8 +635,14 @@ constexpr char kUpdateAgentArgs[] = R"({"type":"object","properties":{
   "required":["id"]})";
 
 constexpr char kOpenSessionArgs[] = R"({"type":"object","properties":{
-  "agent":{"type":"string","description":"Agent id."}},
+  "agent":{"type":"string","description":"Agent id."},
+  "idleTimeoutMinutes":{"type":"integer","description":"Close the session after this many minutes without activity (default 30; 0 = never)."}},
   "required":["agent"]})";
+
+constexpr char kUpdateSessionArgs[] = R"({"type":"object","properties":{
+  "sessionId":{"type":"string"},
+  "idleTimeoutMinutes":{"type":"integer","description":"Close the session after this many minutes without activity (0 = never), counted from now."}},
+  "required":["sessionId"]})";
 
 constexpr char kSessionIdArgs[] = R"({"type":"object","properties":{
   "sessionId":{"type":"string"}},"required":["sessionId"]})";
@@ -613,12 +701,20 @@ constexpr Tool kTools[] = {
      "--cdp. There, the default browser context is the agent's (cookies, "
      "storage), new pages (Target.createTarget, Playwright newPage) become "
      "session tabs, and Browser.close ends the session. Don't create browser "
-     "contexts.",
+     "contexts. Tabs you create over CDP close when that connection ends; "
+     "use allocate-tab for a tab that must stay. The session closes after "
+     "idleTimeoutMinutes (default 30) without activity (MCP calls, CDP "
+     "messages, the user switching to its tabs). Warns if the agent already "
+     "has open sessions: reuse or close them.",
      kOpenSessionArgs, &OpenSession},
     {"list-sessions", "List open sessions and their tabs.", kNoArgs,
      &ListSessions},
     {"close-session", "Close the session's tabs and end it.", kSessionIdArgs,
      &CloseSession},
+    {"update-session",
+     "Change an open session's idleTimeoutMinutes (0 = never), e.g. before "
+     "handing its tab to a person for a long sign-in.",
+     kUpdateSessionArgs, &UpdateSession},
     {"allocate-tab",
      "Open a background tab leased to the session, in its agent's storage. "
      "Returns targetId (in Playwright: the page whose CDP session reports "

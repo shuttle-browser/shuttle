@@ -82,6 +82,31 @@ connection filtered to the session (content hook `DevToolsManagerDelegate::Creat
   `TargetHandler::AutoAttach`); a DevTools client's `GetTypeForMetrics()` must be DevTools/Extension/RemoteDebugger/Other;
   a client that auto-attached with `waitForDebuggerOnStart` holds new navigations until it disconnects (upstream).
 
+## Session lifetime
+
+- **Tabs a CDP connection creates close with it.** `Target.createTarget` / Playwright `newPage()` on a session
+  endpoint makes a session tab that closes when that connection ends (`SessionCdpFilter` remembers them). Tabs from
+  `allocate-tab`, tabs handed to the agent and popups stay with the session. Use `allocate-tab` for a tab that must
+  outlive the connection; a new connection always lists the session's tabs (Playwright `pages()`).
+- **Idle timeout:** a session closes (tabs, cookie flush, sidecar) after `idleTimeoutMinutes` without activity:
+  default 30 (`--shuttle-session-idle-timeout=<minutes>`, 0 = off; `<n>s` for probes), per session on
+  `open-session`, changed later with `update-session` (0 = never, e.g. before a long sign-in by a person).
+  Activity = MCP calls naming the session or one of its tabs, client messages on its CDP connections, and a person
+  switching to one of its tabs (or looking at it when the timeout hits; never in `--headless`, where windows are
+  "active" with no one looking). An MCP tool call still running (e.g. a long `wait-for`) counts until it answers.
+  A connected but silent client doesn't count, nor does one waiting on a single long CDP command: send something
+  (any command) more often than the timeout, or set `idleTimeoutMinutes` 0.
+  Sessions the browser opens for the user (`chrome://agents` "Open tab", a tab newly handed to an agent) have no
+  timeout; an existing session keeps its own.
+- **Automatic and session closes discard the tabs** (no `beforeunload` dialog, no unload handlers), so no tab outlives
+  its session or connection. `release-tab` still closes ordinarily.
+- **An expired session doesn't close its CDP sockets.** A client on the session endpoint sees its targets detach and
+  be destroyed (if it subscribed); its socket stays open until it disconnects, `createTarget` then fails (unknown
+  session), and a reconnect to the old endpoint is refused.
+- **`open-session` warns** (`warning`, `openSessions`) when the agent already has open sessions; the new one still
+  opens. `list-sessions` shows `lastActivityAt` and `idleTimeoutMinutes`.
+- Probe: `scripts/smoke-tab-guards.mjs` (own launch in `smoke-all.sh`, idle timeout 8 s).
+
 ## Page tools (agent-browser sidecar)
 
 [agent-browser](https://github.com/vercel-labs/agent-browser) (Rust, Apache-2.0, bundled unmodified with LICENSE +
@@ -119,5 +144,5 @@ focus a tab, "Open tab" (foreground tab in the agent's storage, e.g. to sign in)
 ## Open
 
 - `outerWidth/outerHeight` report the window, not the resized tab viewport (detectable mismatch).
-- Empty sessions (all tabs closed by hand) stay open until `close-session`; no idle timeout yet.
+- Empty sessions (all tabs closed by hand) stay open until `close-session` or the idle timeout.
 - Fidelity mitigations (`Runtime.enable` suppression) and remote takeover/screencast: not in the browser.

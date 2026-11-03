@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/functional/callback_forward.h"
+#include "base/values.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 #include "ui/gfx/image/image_skia.h"
@@ -87,6 +88,11 @@ class ShuttleService : public KeyedService {
   void Shutdown() override;
 
  private:
+  // Tool arguments naming a session (`sessionId`) or one of its tabs
+  // (`targetId`) count as the session's activity. Returns the session the
+  // call works for (the `sessionId` one first), empty if none.
+  std::string TouchSessionOf(const base::DictValue& arguments);
+
   std::unique_ptr<ProfileRegistry> profiles_;
   std::unique_ptr<SessionManager> sessions_;
   std::unique_ptr<AvatarCache> avatars_;

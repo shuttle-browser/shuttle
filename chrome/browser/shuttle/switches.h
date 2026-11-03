@@ -13,6 +13,12 @@ namespace shuttle {
 // Also applies to a launch forwarded to a running browser.
 inline constexpr char kOpenAgentsSwitch[] = "shuttle-open-agents";
 
+// Idle timeout of MCP sessions in minutes (0 = off; "<n>s" = seconds, for
+// probes). Default 30. A session can override it (open-session,
+// update-session idleTimeoutMinutes).
+inline constexpr char kSessionIdleTimeoutSwitch[] =
+    "shuttle-session-idle-timeout";
+
 }  // namespace shuttle
 
 #endif  // CHROME_BROWSER_SHUTTLE_SWITCHES_H_

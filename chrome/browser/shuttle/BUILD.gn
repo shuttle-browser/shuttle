@@ -85,9 +85,11 @@ source_set("impl") {
   deps = [
     ":agent_partition",
     ":shuttle",
+    ":switches",
     "//base",
     "//base:i18n",
     "//chrome/browser:browser_public_dependencies",
+    "//chrome/browser/headless",
     "//chrome/browser/lifetime",
     "//chrome/browser/profiles/keep_alive",
     "//chrome/browser/profiles:profile",

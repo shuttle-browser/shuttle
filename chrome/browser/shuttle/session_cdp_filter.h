@@ -96,6 +96,8 @@ class SessionCdpFilter
   // Ids of our own commands.
   std::set<int> internal_ids_;
   int next_internal_id_ = 1'000'000'000;
+  // Tabs this connection created (Target.createTarget): closed when it ends.
+  std::set<std::string> created_;
   // Set while Target.createTarget allocates a tab.
   bool allocating_ = false;
 

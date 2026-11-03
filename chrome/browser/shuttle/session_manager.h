@@ -15,6 +15,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/timer/timer.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
 #include "build/build_config.h"
@@ -52,7 +53,22 @@ struct Session {
   // Agent (profile) id.
   std::string agent;
   base::Time opened;
+  // Last agent or user activity: MCP calls naming the session or one of its
+  // tabs, client messages on its CDP connections, a person switching to one
+  // of its tabs. Wall clock for display, ticks for the idle check (they don't
+  // advance while the machine sleeps).
+  base::Time last_activity;
+  base::TimeTicks last_activity_ticks;
+  // Closed after this long without activity; zero = never.
+  base::TimeDelta idle_timeout;
+  // MCP tool calls in flight (BeginWork/EndWork).
+  int pending_calls = 0;
 };
+
+// Browser-wide default idle timeout of MCP sessions:
+// --shuttle-session-idle-timeout=<minutes> (0 = off; "<n>s" = seconds, for
+// probes). Default 30 minutes.
+base::TimeDelta DefaultSessionIdleTimeout();
 
 // Also keeps the session tab groups in sync with the agents' identities, both
 // ways: identity changes restyle the groups, and renaming or recoloring a
@@ -64,7 +80,27 @@ class SessionManager : public TabStripModelObserver {
   SessionManager& operator=(const SessionManager&) = delete;
   ~SessionManager() override;
 
-  const Session& Open(const std::string& agent_id);
+  // `idle_timeout`: zero = never; nullopt = no timeout either (sessions the
+  // browser opens for the user: chrome://agents "Open tab", a tab handed to
+  // an agent). MCP's open-session passes DefaultSessionIdleTimeout().
+  const Session& Open(const std::string& agent_id,
+                      std::optional<base::TimeDelta> idle_timeout =
+                          std::nullopt);
+  // Records activity. No-op for unknown sessions.
+  void Touch(const std::string& session_id);
+  // An MCP tool call for the session is running: the session doesn't idle
+  // out until it ends (EndWork also counts as activity). No-op for unknown
+  // sessions.
+  void BeginWork(const std::string& session_id);
+  void EndWork(const std::string& session_id);
+  // Returns false if unknown.
+  bool SetIdleTimeout(const std::string& session_id, base::TimeDelta timeout);
+  // The agent's open sessions, oldest first.
+  std::vector<const Session*> SessionsOf(const std::string& agent_id) const;
+  // Closes tabs that a CDP connection created (`target_ids`) and that are
+  // still leased to `session_id`.
+  void CloseCreatedTabs(const std::string& session_id,
+                        const std::vector<std::string>& target_ids);
   const Session* Get(const std::string& session_id) const;
   std::vector<const Session*> List() const;
 
@@ -89,6 +125,9 @@ class SessionManager : public TabStripModelObserver {
       const GURL& url,
       std::optional<gfx::Size> viewport);
   void ReleaseTab(content::WebContents* contents);
+  // Closes without beforeunload/unload handlers (no dialog can keep the tab):
+  // for automatic closes, which must not leave a tab behind.
+  void DiscardTab(content::WebContents* contents);
 
   // For the user (chrome://agents): opens `url` (about:blank if empty) in a
   // new foreground tab of `agent_id`, leased to its latest session (or a new
@@ -157,6 +196,11 @@ class SessionManager : public TabStripModelObserver {
                               tabs::TabInterface* tab,
                               int index) override;
   void OnTabStripModelDestroyed(TabStripModel* tab_strip) override;
+  // A person switching to a session tab counts as activity.
+  void OnTabStripModelChanged(
+      TabStripModel* tab_strip,
+      const TabStripModelChange& change,
+      const TabStripSelectionChange& selection) override;
 
  private:
   void Lease(content::WebContents* contents, const std::string& session_id);
@@ -189,6 +233,11 @@ class SessionManager : public TabStripModelObserver {
   // Home tabs of the profile's windows; knows which windows agents opened.
   std::unique_ptr<HomeTabManager> home_tabs_;
   std::map<std::string, Session> sessions_;
+
+  // Closes sessions idle past their timeout; runs while a session has one.
+  void CheckIdle();
+  void UpdateIdleTimer();
+  base::RepeatingTimer idle_timer_;
 #if BUILDFLAG(IS_LINUX)
   // Keeps the browser running while any session is open, so closing the last
   // window (Shuttle started from the menu or a terminal) doesn't stop the
