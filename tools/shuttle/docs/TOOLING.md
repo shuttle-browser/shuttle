@@ -383,6 +383,21 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (snapshot on top, ~15 min incl. V8) had 211 modify/delete + 4 content conflicts. V8 moves with it (new V8
   snapshot + merge in `v8/`, push `upstream` + a branch to shuttle-browser/v8 before building on another
   machine: its `gclient sync` fetches V8 from GitHub).
+- **157 merge (156.0.8078.48 → 157.0.8103.39, 2026-11-04, in progress)**: 34,982 upstream files; 15,502
+  modify/delete + 621 content conflicts; 115 files by script, 506 files / ~1,355 hunks by 6 agents (4 Sonnet + 2
+  Opus, ~20 min, ~1.66M tokens). `gn gen` green ~1 h after the merge commit. Gotchas new with 157:
+  - **Upstream deleted `//chrome/browser/ui:ui`** and moved its deps onto consumers ("leaf targets"): fork targets
+    that depended on it (`//chrome/browser/shuttle:impl`) list the leaf targets they include; upstream's moved deps
+    point at targets the fork removed inside live dirs (incognito dialogs, tab search, intent picker), which
+    gn-fix-loop refuses ("the fork didn't remove" the dir) → drop them by hand.
+  - **prune-tests deleted live typemap headers**: viz `*_test_region_*_mojom_traits.h` and
+    `fake_bluetooth_mojom_traits.h` match the test-name pattern, and typemaps list traits headers as `"//path"`, which
+    the referenced-check didn't see. Fixed: any absolute `"//path"` in a .gn/.gni counts as a reference.
+  - **New upstream registries can bring back removed UI**: 157's infobar registry (`browser_infobar_registry.cc`)
+    and chrome://infobar-internals carried the remote-debugging "controlled by automation" infobar (fork 16). Sweep
+    for undefined IDS_ new vs main finds them (12 in 157).
+  - **Directory listings via gitiles hit HTTP 429** after a few hundred requests; for "what's new" use the commit
+    log between the two tags (`+log/<old>..<new>?format=JSON&n=1000`, ~12 requests) instead of crawling trees.
 
 ## Gotchas
 
