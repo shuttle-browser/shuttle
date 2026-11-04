@@ -1,0 +1,36 @@
+# Prune manifest: features removed with the Chromium 157 merge (Toby's calls, 2026-11-04).
+# remove-only manifest: scripts/prune.py deletes these unconditionally (no build analysis).
+# Rerun after every upstream merge; references are cut by hand (see REMOVAL-LOG, 157 merge).
+# Engine code stays close to upstream (content/, blink, device/vr public mojom): the web APIs remain and report
+# "not available" without the browser-side features.
+# DRAFT: enterprise and optimization_guide are scoped after the first green 157 build.
+
+# Platform Runtime / request-header-integrity: a Google library delivered by the component updater that stamps
+# integrity headers on requests (157: all requests, in a utility process). Already off (enable_request_header_integrity
+# = false); removed so it can't come back.
+remove chrome/common/request_header_integrity
+remove chrome/browser/component_updater/platform_runtime_component_installer.cc
+remove chrome/browser/component_updater/platform_runtime_component_installer.h
+
+# History clusters (Journeys leftovers; Journeys was removed with 155)
+remove components/history_clusters
+remove chrome/browser/history_clusters
+remove chrome/browser/ui/webui/history_clusters
+
+# VR browser side (enable_vr = false already; content's WebXR and device/vr's public mojom stay)
+remove chrome/browser/vr
+
+# Vertical tabs
+remove chrome/browser/ui/views/tabs/vertical
+remove chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h
+
+# Picture-in-picture browser UI (video PiP window, Document PiP window, auto-PiP); content/blink APIs stay
+remove chrome/browser/picture_in_picture
+remove chrome/browser/ui/views/overlay
+remove chrome/browser/ui/views/picture_in_picture
+
+# TODO after the first green build (scoping needs the build graph):
+#   enterprise connectors / reporting / device trust / Isolated Mode (chrome/browser/enterprise, components/enterprise;
+#     keep what policy loading and management UI need)
+#   components/optimization_guide + chrome/browser/optimization_guide (incl. the decisions-api flag)
+#   site_token_provider (proposed, needs Toby's go): OAuth site tokens injected into requests, feature-gated off
