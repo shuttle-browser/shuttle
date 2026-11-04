@@ -29,8 +29,11 @@ remove chrome/browser/picture_in_picture
 remove chrome/browser/ui/views/overlay
 remove chrome/browser/ui/views/picture_in_picture
 
+# Site token provider: OAuth site tokens injected into requests (feature-gated off upstream)
+remove components/site_token_provider
+remove chrome/browser/site_token_provider
+
 # TODO after the first green build (scoping needs the build graph):
 #   enterprise connectors / reporting / device trust / Isolated Mode (chrome/browser/enterprise, components/enterprise;
 #     keep what policy loading and management UI need)
 #   components/optimization_guide + chrome/browser/optimization_guide (incl. the decisions-api flag)
-#   site_token_provider (proposed, needs Toby's go): OAuth site tokens injected into requests, feature-gated off
