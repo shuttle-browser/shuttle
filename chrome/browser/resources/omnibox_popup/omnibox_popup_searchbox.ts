@@ -286,6 +286,12 @@ export class OmniboxPopupSearchboxElement extends
   // executing. Used to suppress recording spurious history edits when input
   // text updates programmatically during undo/redo execution.
   private isUndoRedo_: boolean = false;
+  // Cached Canvas 2D context used to measure text width.
+  private canvasContext_: CanvasRenderingContext2D|null = null;
+  // Cached font style string of input element for text width measurement.
+  // NOTE: This is used to avoid repeated calls to `window.getComputedStyle()`
+  // which normally triggers layout flushes.
+  private inputFontStyle_: string = '';
 
   constructor() {
     super();
@@ -1510,6 +1516,31 @@ export class OmniboxPopupSearchboxElement extends
    * InputClientRectWithoutInlinePadding Blink feature is enabled (the
    * default), but includes it otherwise.
    */
+  /**
+   * Helper function to measure the rendered pixel width of a text string,
+   * using a cached off-screen Canvas 2D context to avoid layout flushes during
+   * resize.
+   */
+  private getTextWidth_(text: string, element: HTMLElement): number {
+    if (!text) {
+      return 0;
+    }
+
+    if (!this.canvasContext_) {
+      const canvas = document.createElement('canvas');
+      this.canvasContext_ = canvas.getContext('2d');
+    }
+
+    if (!this.inputFontStyle_) {
+      const computedStyle = window.getComputedStyle(element);
+      this.inputFontStyle_ = `${computedStyle.fontWeight} ${
+          computedStyle.fontSize} ${computedStyle.fontFamily}`;
+    }
+
+    this.canvasContext_!.font = this.inputFontStyle_;
+    return this.canvasContext_!.measureText(text).width;
+  }
+
   private getVisibleTextWidth_(inputEl: HTMLElement): number {
     const style = window.getComputedStyle(inputEl);
     if (style.direction !== 'ltr') {

@@ -106,9 +106,6 @@ generate_grd("build_grd") {
         "$target_gen_dir/cr_components/searchbox/icons/chrome_branded_resources.grdp",
         "$target_gen_dir/cr_components/searchbox/icons/chrome_branded_google_logo_26_resources.grdp",
       ]
-    } else {
-      public_deps += [ "cr_components/searchbox/icons:google_logo_grdp" ]
-      grdp_files += [ "$target_gen_dir/cr_components/searchbox/icons/google_logo_resources.grdp" ]
     }
   }
 
