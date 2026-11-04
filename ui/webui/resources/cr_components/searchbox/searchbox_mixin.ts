@@ -145,7 +145,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       return this.keywordModeManager_;
     }
 
-    override get inKeywordMode(): boolean {
+    get inKeywordMode(): boolean {
       return this.keywordModeManager_.isInKeywordMode;
     }
 
@@ -804,9 +804,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       this.fillInputForSelection(nextSelection);
       this.narrateSelection(nextSelection);
 
-      const isMatchSelection =
-          nextSelection.state !== SelectionLineState.kFocusedButtonAim &&
-          nextSelection.line !== -1;
+      const isMatchSelection = nextSelection.line !== -1;
       if (isMatchSelection && this.selectedMatch &&
           (key === 'ArrowDown' || key === 'ArrowUp' || key === 'PageDown' ||
            key === 'PageUp')) {
