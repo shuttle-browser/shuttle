@@ -3591,8 +3591,6 @@ source_set("browser") {
         "//chrome/browser/ui/webui/unexportable_keys_internals:impl",
         "//services/audio/public/cpp",
       ]
-    } else {
-      deps += [ "//chrome/browser/ui/views:create_application_shortcut_view" ]
     }
 
     # Merged and added for autofill_ai
