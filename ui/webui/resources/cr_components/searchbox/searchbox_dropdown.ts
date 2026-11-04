@@ -115,12 +115,6 @@ export class SearchboxDropdownElement extends CrLitElement {
       loadTimeData.valueExists('realboxVirtualFocusNavigation') &&
       loadTimeData.getBoolean('realboxVirtualFocusNavigation');
   private accessor showSecondarySide_: boolean = false;
-  // Hiding duplicate descriptions is only needed when the
-  // Omnibox_AskGSuggestionSidePanelDescription param is on, since that's when
-  // the AskG action match and contextual suggestions share a description.
-  private hideDuplicateDescriptions_: boolean =
-      loadTimeData.valueExists('askGSuggestionSidePanelDescription') &&
-      loadTimeData.getBoolean('askGSuggestionSidePanelDescription');
   // Descriptions shown by both a contextual and a non-contextual match.
   private duplicateDescriptions_: Set<string> = new Set();
 
@@ -310,17 +304,9 @@ export class SearchboxDropdownElement extends CrLitElement {
   }
 
   private computeDuplicateDescriptions_(): Set<string> {
-    const contextual = new Set<string>();
-    const other = new Set<string>();
-    if (this.hideDuplicateDescriptions_) {
-      for (const match of this.result?.matches ?? []) {
-        const description = match.suggestTemplate.secondaryText.text;
-        if (description) {
-          (match.isContextualSuggestion ? contextual : other).add(description);
-        }
-      }
-    }
-    return new Set([...contextual].filter(d => other.has(d)));
+    // Shuttle: no contextual suggestions (contextual search is removed), so
+    // no description duplicates one of them.
+    return new Set<string>();
   }
 
   protected isSelected_(match: AutocompleteMatch): boolean {
