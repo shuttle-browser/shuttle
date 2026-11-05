@@ -46,7 +46,6 @@ source_set("toolbar") {
     sources += [
       "app_menu_icon_controller.h",
       "app_menu_model.h",
-      "avatar_toolbar_iph_controller.h",
       "back_forward_menu_model.h",
       "toolbar_pref_names.cc",
       "toolbar_pref_names.h",
@@ -105,7 +104,6 @@ source_set("impl") {
     sources += [
       "app_menu_icon_controller.cc",
       "app_menu_model.cc",
-      "avatar_toolbar_iph_controller.cc",
       "back_forward_menu_model.cc",
     ]
 

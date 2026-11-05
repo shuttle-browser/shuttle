@@ -58,7 +58,6 @@
 #include "chrome/browser/preloading/search_preload/search_preload_features.h"
 #include "chrome/browser/site_isolation/about_flags.h"
 #include "chrome/browser/task_manager/common/task_manager_features.h"
-#include "chrome/browser/ttc/core/features.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
@@ -1220,14 +1219,6 @@ const FeatureEntry::FeatureParam kNtpNextAllowDisablement[] = {
 
 const FeatureEntry::FeatureVariation kNtpNextVariations[] = {
     {"- Allow Disable", kNtpNextAllowDisablement, nullptr},
-};
-
-const FeatureEntry::FeatureParam kNtpThreadsRailHybrid[] = {
-    {"NtpThreadsRailHybridParam", "true"},
-};
-
-const FeatureEntry::FeatureVariation kNtpThreadsRailVariations[] = {
-    {"- Hybrid", kNtpThreadsRailHybrid, nullptr},
 };
 
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) ||
@@ -5832,11 +5823,6 @@ const FeatureEntry kFeatureEntries[] = {
      kOsDesktop,
      FEATURE_VALUE_TYPE(omnibox::kComposeboxDriveContextMenuOptionSigninPromo)},
 
-    {"enable-realbox-virtual-focus",
-     flag_descriptions::kRealboxVirtualFocusNavigationName,
-     flag_descriptions::kRealboxVirtualFocusNavigationDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(ntp_features::kRealboxVirtualFocusNavigation)},
-
     {"enable-lens-overlay-virtual-focus",
      flag_descriptions::kLensOverlayVirtualFocusNavigationName,
      flag_descriptions::kLensOverlayVirtualFocusNavigationDescription,
@@ -9406,14 +9392,6 @@ const FeatureEntry kFeatureEntries[] = {
 
 
 
-    {"contextual-tasks-allow-signed-out-user-in-desktop-android",
-     contextual_tasks::flag_descriptions::
-         kAllowSignedOutUserInDesktopAndroidName,
-     contextual_tasks::flag_descriptions::
-         kAllowSignedOutUserInDesktopAndroidDescription,
-     kOsAndroid,
-     FEATURE_VALUE_TYPE(contextual_tasks::kAllowSignedOutUserInDesktopAndroid)},
-
     {"omnibox-debug-logs", omnibox::flag_descriptions::kOmniboxDebugLogsName,
      omnibox::flag_descriptions::kOmniboxDebugLogsDescription, kOsDesktop,
      FEATURE_VALUE_TYPE(omnibox::kOmniboxDebugLogs)},
@@ -10682,22 +10660,10 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kBrowsingHistoryFilterByActorDescription, kOsAll,
      FEATURE_VALUE_TYPE(history::kBrowsingHistoryFilterByActor)},
 
-    {"ttc", flag_descriptions::kTtcName, flag_descriptions::kTtcDescription,
-     kOsDesktop | kOsAndroid, FEATURE_VALUE_TYPE(ttc::kTtc)},
-
     {"force-webgpu-adapter", flag_descriptions::kForceWebGpuAdapterName,
      flag_descriptions::kForceWebGpuAdapterDescription,
      kOsAndroid | kOsLinux | kOsWin,
      MULTI_VALUE_TYPE(kForceWebGpuAdapterChoices)},
-
-    {"tabs-from-other-devices-enhancement",
-     flag_descriptions::kTabsFromOtherDevicesEnhancementName,
-     flag_descriptions::kTabsFromOtherDevicesEnhancementDescription, kOsDesktop,
-     ENABLE_DISABLE_VALUE_TYPE_AND_VALUE(
-         switches::kEnableFeatures,
-         kTabsFromOtherDevicesEnhancementFeatures,
-         switches::kDisableFeatures,
-         kTabsFromOtherDevicesEnhancementFeatures)},
 
 #if BUILDFLAG(IS_ANDROID)
     {"autofill-card-scanning-bugfixes",

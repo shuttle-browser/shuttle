@@ -938,11 +938,6 @@ inline constexpr char kAndroidVerticalTabsName[] = "Android Vertical Tabs";
 inline constexpr char kAndroidVerticalTabsDescription[] =
     "Enables the Vertical Tabs feature on Android.";
 
-inline constexpr char kTabsFromOtherDevicesEnhancementName[] =
-    "Tabs from other devices";
-inline constexpr char kTabsFromOtherDevicesEnhancementDescription[] =
-    "Enables updated cross-device tab sharing and visibility features.";
-
 inline constexpr char kCCTNavigationInfoScreenshotName[] =
     "Enable Custom Tabs screenshot capturing";
 inline constexpr char kCCTNavigationInfoScreenshotDescription[] =
@@ -1232,9 +1227,6 @@ inline constexpr char kActorNotificationIntentRoutingName[] =
 inline constexpr char kActorNotificationIntentRoutingDescription[] =
     "Enables routing Actor task notifications to Glic and restoring "
     "conversations on Android.";
-
-inline constexpr char kTtcName[] = "TTC";
-inline constexpr char kTtcDescription[] = "Enables the TTC feature.";
 
 inline constexpr char kActorObserveScreenshotDefaultName[] =
     "Actor observe screenshot default";
@@ -5485,15 +5477,6 @@ inline constexpr char kReauthSkipIdentifierPageDescription[] =
     "Re-authentication (mainly in the sign-in pending state) opens Gaia's "
     "AccountChooser with ptc=1 instead of AddSession, skipping the email "
     "page.";
-
-inline constexpr char kRealboxVirtualFocusNavigationName[] =
-    "Enable Realbox Virtual Focus Navigation";
-inline constexpr char kRealboxVirtualFocusNavigationDescription[] =
-    "Enables a new virtual focus model for keyboard navigation within the "
-    "New Tab Page Realbox. This allows tabbing through all interactive "
-    "elements within suggestions (actions, buttons) without losing focus "
-    "from the searchbox, unifying behavior with the Omnibox and improving "
-    "accessibility.";
 
 inline constexpr char kLensOverlayVirtualFocusNavigationName[] =
     "Enable Lens Overlay Virtual Focus Navigation";

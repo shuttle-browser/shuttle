@@ -17,7 +17,6 @@
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service_factory.h"
 #include "chrome/browser/private_verification_tokens/private_verification_tokens_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/reading_list/reading_list_model_factory.h"
 #include "chrome/browser/safe_browsing/verdict_cache_manager_factory.h"
 #include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
@@ -74,7 +73,6 @@ ChromeBrowsingDataRemoverDelegateFactory::
   DependsOn(prerender::NoStatePrefetchManagerFactory::GetInstance());
   DependsOn(PrivateVerificationTokensServiceFactory::GetInstance());
   DependsOn(ProtocolHandlerRegistryFactory::GetInstance());
-  DependsOn(ReadingListModelFactory::GetInstance());
   DependsOn(safe_browsing::VerdictCacheManagerFactory::GetInstance());
   DependsOn(search_engines::SearchEngineChoiceServiceFactory::GetInstance());
   DependsOn(SearchPrefetchServiceFactory::GetInstance());
