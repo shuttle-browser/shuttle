@@ -57,6 +57,7 @@
 #include "build/build_config.h"
 #include "build/config/chromebox_for_meetings/buildflags.h"  // PLATFORM_CFM
 #include "chrome/browser/accessibility/caption_settings_dialog.h"
+#include "chrome/browser/accessibility/page_colors_controller.h"
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/back_forward_cache/back_forward_cache_util.h"
@@ -86,6 +87,8 @@
 #include "chrome/browser/download/chrome_download_manager_delegate.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
+#include "chrome/browser/enterprise/network_header_injection/http_header_injection_proxying_url_loader_factory.h"
+#include "chrome/browser/enterprise/network_header_injection/http_header_injection_utils.h"
 #include "chrome/browser/enterprise/reporting/legacy_tech/legacy_tech_service.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
@@ -536,6 +539,7 @@
 #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
 #include "chrome/browser/digital_credentials/digital_identity_provider_desktop.h"
 #include "chrome/browser/direct_sockets/chrome_direct_sockets_delegate.h"
+#include "chrome/browser/headless/headless_command_processor.h"
 #include "chrome/browser/loader/features.h"
 #include "chrome/browser/loader/fetch_keepalive_process_manager.h"
 #include "chrome/browser/metrics/usage_scenario/chrome_responsiveness_calculator_delegate.h"
@@ -641,6 +645,7 @@
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
+#include "extensions/browser/mime_handler/mime_handler_fallback_url_loader_request_interceptor.h"
 #endif  // !BUILDFLAG(IS_ANDROID)
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 

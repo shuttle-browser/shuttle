@@ -22,7 +22,6 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_factory.h"
-#include "chrome/browser/strike_database/strike_database_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
@@ -77,7 +76,6 @@ ChromeBrowsingDataRemoverDelegateFactory::
   DependsOn(search_engines::SearchEngineChoiceServiceFactory::GetInstance());
   DependsOn(SearchPrefetchServiceFactory::GetInstance());
   DependsOn(SpellcheckServiceFactory::GetInstance());
-  DependsOn(StrikeDatabaseFactory::GetInstance());
   DependsOn(SyncServiceFactory::GetInstance());
   DependsOn(TabRestoreServiceFactory::GetInstance());
   DependsOn(TemplateURLServiceFactory::GetInstance());

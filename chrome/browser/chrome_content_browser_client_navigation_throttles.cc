@@ -122,6 +122,7 @@
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 #include "chrome/browser/browser_switcher/browser_switcher_navigation_throttle.h"
+#include "chrome/browser/enterprise/connectors/device_trust/navigation_throttle.h"
 #include "chrome/browser/enterprise/webstore/chrome_web_store_navigation_throttle.h"
 #include "chrome/browser/enterprise/webstore/features.h"
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
@@ -406,8 +407,10 @@ void CreateAndAddChromeThrottlesForNavigation(
   }
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
   enterprise_connectors::DeviceTrustNavigationThrottle::MaybeCreateAndAdd(
       registry);
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 
 
 #if BUILDFLAG(ENABLE_DEVTOOLS_FRONTEND)
@@ -511,8 +514,6 @@ void CreateAndAddChromeThrottlesForCommitWithoutUrlLoader(
   // navigations that commit without a URL loader (e.g. a subframe navigating
   // the main frame to about:blank), which never reach WillStartRequest().
   pwc::PwcNavigationThrottle::MaybeCreateAndAdd(registry);
-
-  glic::GlicGuestNavigationThrottle::MaybeCreateAndAdd(registry);
 
 #if !BUILDFLAG(ENABLE_EXTENSIONS_CORE) && BUILDFLAG(ENABLE_GUEST_VIEW)
   guest_view::MaybeCreateAndAddSlimWebViewNavigationThrottle(registry);

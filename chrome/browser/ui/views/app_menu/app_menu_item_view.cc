@@ -17,6 +17,7 @@
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/models/menu_model.h"
 #include "ui/views/view_class_properties.h"
 #include "ui/views/view_utils.h"
 
