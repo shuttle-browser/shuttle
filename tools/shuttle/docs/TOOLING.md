@@ -383,7 +383,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (snapshot on top, ~15 min incl. V8) had 211 modify/delete + 4 content conflicts. V8 moves with it (new V8
   snapshot + merge in `v8/`, push `upstream` + a branch to shuttle-browser/v8 before building on another
   machine: its `gclient sync` fetches V8 from GitHub).
-- **157 merge (156.0.8078.48 → 157.0.8103.39, 2026-11-04, in progress)**: 34,982 upstream files; 15,502
+- **157 merge (156.0.8078.48 → 157.0.8103.39, 2026-11-04, in progress; Mac build rounds 1-2 on 11-04)**: 34,982 upstream files; 15,502
   modify/delete + 621 content conflicts; 115 files by script, 506 files / ~1,355 hunks by 6 agents (4 Sonnet + 2
   Opus, ~20 min, ~1.66M tokens). `gn gen` green ~1 h after the merge commit. Gotchas new with 157:
   - **Upstream deleted `//chrome/browser/ui:ui`** and moved its deps onto consumers ("leaf targets"): fork targets
@@ -398,9 +398,26 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     for undefined IDS_ new vs main finds them (12 in 157).
   - **Directory listings via gitiles hit HTTP 429** after a few hundred requests; for "what's new" use the commit
     log between the two tags (`+log/<old>..<new>?format=JSON&n=1000`, ~12 requests) instead of crawling trees.
+  - **Every remote compile fails with `Unknown clang plugin argument: check-raw-ptr-in-blink`** (or another new
+    plugin arg): the sccache-dist toolchain archive still has the old clang. Clang changed with every merge so far
+    (154 → 157: `init-3796-27`, `init-7747-27`, `-53`, `-67`). Rebuild the archive on the build host after its
+    `gclient sync` and install it on the Mac before the first build.
+  - **Mechanical prunes come back to bite:** "files the macOS build never reads" (e.g. the WebNN compiler service,
+    Windows-only in 156) are needed once upstream enables them on Apple. Restore from `chromium` when only the
+    platform condition changed; it is not a feature decision.
+  - **`enable_webui_ntp` is still true** although the WebUI NTP is gone, so merged code keeps
+    `#if BUILDFLAG(ENABLE_WEBUI_NTP)` include blocks of removed files (3 in 157).
+  - **Clean merges can drop live code next to fork deletions**: hunks the fork removed (OCR in the PDF builder,
+    HaTS forward decls) took adjacent new upstream code with them (`current_graphic`, `namespace tabs`). Compare
+    the failing file with `chromium` outside the fork's own removals.
+  - **Blink bindings generators** each start a `cpu_count()` multiprocessing pool; 11 of them in parallel ran ~96
+    Python processes (Mac load 70). They now share a depth-1 GN pool (`third_party/blink/renderer/bindings/BUILD.gn`).
 
 ## Gotchas
 
+- **Killing a build's shell leaves `out/.<Dir>.build-lock` behind** (2026-11-04): the next build refuses with
+  "stale lock (owner N not running)". Remove the lock when no `siso ninja` runs. Stop builds with
+  `pkill -INT -f 'siso ninja'` instead: siso exits cleanly and the script removes the lock.
 - **`smoke-all` launch FAIL on a fresh dev build** (2026-10-29): the first launch of a freshly built component build
   on a loaded Mac can take longer than the 30 s startup deadline (`browser not ready`, empty log). Rerun with
   `SHUTTLE_SMOKE_READY_S=120`; it is not a regression unless the log shows a crash.
