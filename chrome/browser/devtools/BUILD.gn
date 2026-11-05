@@ -453,6 +453,7 @@ static_library("devtools") {
       "protocol/extensions_handler.h",
       "protocol/page_handler.cc",
       "protocol/page_handler.h",
+      "protocol/page_handler_desktop.cc",
       "protocol/security_handler.cc",
       "protocol/security_handler.h",
       "protocol/storage_handler.cc",
