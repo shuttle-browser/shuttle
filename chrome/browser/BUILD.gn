@@ -3192,6 +3192,173 @@ source_set("browser") {
     deps += [ "//chrome/browser/enterprise/data_controls" ]
   }
 
+  if (is_android) {
+    deps += [
+      "//chrome/browser/ui:screen_capture_notification_ui_stub",
+      "//chrome/browser/ui/exclusive_access",
+      "//components/navigation_interception",
+      "//components/resources:android_resources",
+      "//content/public/browser",
+      "//third_party/jni_zero",
+      "//url",
+    ]
+  } else {
+    # !is_android
+
+    # Non-android deps for "ui" target.
+    deps += [
+      ":chrome_browser_interface_binders_webui_parts",
+      ":chrome_browser_interface_binders_webui_parts_desktop",
+      "//base",
+      "//chrome/browser/app_mode",
+      "//chrome/browser/background",
+      "//chrome/browser/bluetooth",
+      "//chrome/browser/custom_handlers",
+      "//chrome/browser/device_api",
+      "//chrome/browser/first_party_sets",
+      "//chrome/browser/lifetime:termination_notification",
+      "//chrome/browser/speech",
+      "//chrome/browser/ui:accelerator_table",
+      "//chrome/browser/ui:browser_actions",
+      "//chrome/browser/ui:browser_command_controller",
+      "//chrome/browser/ui:browser_command_controller_impl",
+      "//chrome/browser/ui:browser_commands",
+      "//chrome/browser/ui:browser_commands_impl",
+      "//chrome/browser/ui:browser_manager_service",
+      "//chrome/browser/ui:browser_select_file_dialog_controller",
+      "//chrome/browser/ui:browser_tabstrip",
+      "//chrome/browser/ui:browser_tabstrip_impl",
+      "//chrome/browser/ui:browser_window_header",
+      "//chrome/browser/ui:browser_window_state",
+      "//chrome/browser/ui:collected_cookies_infobar_delegate",
+      "//chrome/browser/ui:confirm_bubble_model",
+      "//chrome/browser/ui:core",
+      "//chrome/browser/ui:focus_tab_after_navigation_helper",
+      "//chrome/browser/ui:layout_constants",
+      "//chrome/browser/ui:tab_helpers",
+      "//chrome/browser/ui:tab_helpers_impl",
+      "//chrome/browser/ui:tab_ui_helper",
+      "//chrome/browser/ui:uma_browsing_activity_observer",
+      "//chrome/browser/ui:unload_controller",
+      "//chrome/browser/ui:unload_controller_impl",
+      "//chrome/browser/ui/browser_ui_controller",
+      "//chrome/browser/ui/browser_ui_controller:impl",
+      "//chrome/browser/ui/browser_web_contents_delegate",
+      "//chrome/browser/ui/browser_window:create_browser_window",
+      "//chrome/browser/ui/focus",
+      "//chrome/browser/ui/focus:impl",
+      "//chrome/browser/ui/fullscreen",
+      "//chrome/browser/ui/fullscreen:impl",
+      "//chrome/browser/ui/shared_highlighting",
+      "//chrome/browser/ui/tab_sharing",
+      "//chrome/browser/ui/tab_sharing:impl",
+      "//chrome/browser/ui/task_manager",
+      "//chrome/browser/ui/webui/ntp:ntp_resource_cache",
+      "//chrome/browser/ui/webui/omnibox_internals",
+      "//chrome/browser/ui/webui/omnibox_internals/logging:mojo_bindings",
+      "//chrome/browser/ui/webui/omnibox_popup",
+      "//chrome/browser/ui/webui/page_action_internals:mojo_bindings",
+      "//chrome/browser/ui/webui/util:impl",
+      "//chrome/browser/ui/window_feature_controller",
+      "//chrome/browser/usb",
+      "//components/privacy_sandbox:features",
+
+      # No reason for this dependencies be out of alphabetical order.
+      "//chrome/browser/download",
+      "//chrome/browser/download:impl",
+      "//chrome/browser/hid",
+      "//chrome/browser/hid:impl",
+      "//chrome/browser/safe_browsing",
+      "//chrome/browser/smart_card",
+      "//chrome/browser/ui/content_settings",
+      "//chrome/browser/ui/content_settings:impl",
+      "//chrome/browser/ui/exclusive_access",
+      "//chrome/browser/ui/extensions:extensions_menu_handler",
+      "//chrome/browser/ui/feature_first_run",
+      "//chrome/browser/ui/feature_first_run:impl",
+      "//chrome/browser/ui/tabs",
+      "//chrome/browser/ui/tabs:favicon_theming",
+      "//chrome/browser/ui/tabs:impl",
+      "//chrome/browser/ui/tabs:tab_group_impl",
+      "//chrome/browser/ui/tabs:tab_menu",
+      "//chrome/browser/ui/tabs:tab_menu_impl",
+      "//chrome/browser/ui/tabs:tab_model_impl",
+      "//chrome/browser/ui/tabs:tab_strip_impl",
+      "//chrome/browser/ui/tabs:tab_strip_model_observer_impl",
+      "//chrome/browser/ui/tabs/alert:impl",
+      "//chrome/browser/ui/tabs/back_to_opener",
+      "//chrome/browser/ui/tabs/tab_drag_api",
+      "//chrome/browser/ui/tabs/tab_strip_api",
+      "//chrome/browser/ui/toasts",
+      "//chrome/browser/ui/toasts:impl",
+      "//chrome/browser/ui/toolbar/pinned_toolbar",
+      "//chrome/browser/ui/toolbar/pinned_toolbar:impl",
+      "//chrome/browser/ui/views:tab_modal_confirm_dialog_views",
+      "//chrome/browser/ui/views/app_menu",
+      "//chrome/browser/ui/views/app_menu:impl",
+      "//chrome/browser/ui/views/js_optimization",
+      "//chrome/browser/ui/views/location_bar",
+      "//chrome/browser/ui/views/picture_in_picture",
+      "//chrome/browser/ui/views/toolbar",
+      "//chrome/browser/ui/views/toolbar:impl",
+      "//chrome/browser/ui/views/zoom",
+      "//chrome/browser/ui/webui/browser_command",
+      "//chrome/browser/ui/webui/color_pipeline_internals",
+      "//chrome/browser/ui/webui/cr_components/history_clusters",
+      "//chrome/browser/ui/webui/infobar_internals",
+      "//chrome/browser/ui/webui/inspect",
+      "//chrome/browser/ui/webui/metrics_reporter",
+      "//chrome/browser/ui/webui/metrics_reporter:impl",
+      "//chrome/browser/ui/webui/page_action_internals",
+      "//chrome/browser/ui/webui/settings",
+      "//chrome/browser/ui/webui/settings:impl",
+      "//chrome/browser/ui/webui/top_chrome",
+      "//chrome/browser/ui/webui/top_chrome:impl",
+      "//chrome/browser/ui/webui/util",
+      "//chrome/browser/ui/window_sizer",
+      "//chrome/browser/ui/window_sizer:impl",
+      "//chrome/browser/visited_url_ranking:impl",
+      "//components/app_constants",
+      "//components/multistep_filter/core:features",
+      "//components/paint_preview/public",
+      "//components/services/app_service",
+      "//components/ui_metrics",
+      "//components/url_formatter",
+      "//device/bluetooth",
+      "//device/bluetooth/strings:strings_grit",
+      "//device/fido",
+      "//services/preferences/tracked",
+      "//third_party/blink/public/common:headers",
+      "//ui/color/dynamic_color",
+      "//ui/events",
+    ]
+
+    deps += [
+      "//chrome/browser/ui/webui/multistep_filter_internals",
+      "//chrome/browser/ui/webui/util",
+      "//chrome/browser/ui/webui/webnn_internals",
+    ]
+
+    if (use_aura) {
+      deps += [ "//chrome/browser/ui:overscroll_pref_manager" ]
+    }
+
+    if (!is_chromeos && !is_android) {
+      deps += [
+        "//chrome/browser/download/bubble",
+        "//chrome/browser/download/bubble:impl",
+      ]
+    }
+
+    if (use_ozone && !is_chromeos) {
+      deps += [ "//ui/ozone" ]
+    }
+
+    if (is_linux) {
+      deps += [ "//ui/base/ime/linux" ]
+    }
+  }
+
   if (enable_webui_ntp) {
     deps += [
       "//chrome/browser/ui/search",
@@ -3209,6 +3376,34 @@ source_set("browser") {
       "//chrome/browser/extensions/api/web_navigation",
       "//chrome/browser/ui/views/supervised_user",
       "//chrome/browser/ui/views/supervised_user:impl",
+    ]
+  }
+
+  if (is_chromeos) {
+    assert(enable_extensions)
+    assert(enable_supervised_users)
+    assert(toolkit_views)
+
+    deps += [
+      ":browser_process_platform_part_ash",
+      ":platform_util_ash",
+      "//chrome/browser/ui:browser_commands_chromeos",
+      "//chrome/browser/ui/views:external_protocol_handler_ash",
+      "//chrome/browser/ui/views:platform_keys_certificate_selector_chromeos",
+      "//chrome/browser/ui/views/extensions:media_galleries_dialog_views",
+      "//chrome/browser/ui/views/extensions:media_gallery_checkbox_view",
+      "//components/app_constants",
+      "//components/content_relationship_verification",
+      "//components/media_gallery_util",
+      "//components/metrics/structured:structured_events",
+      "//components/services/app_service",
+      "//components/tab_groups",
+      "//content/public/common",
+      "//media/capture:capture_lib",
+      "//mojo/public/js:resources_grit",
+      "//services/device/public/cpp:device_features",
+      "//ui/events/ozone/evdev",
+      "//ui/ozone",
     ]
   }
 
@@ -3271,6 +3466,30 @@ source_set("browser") {
       "Carbon.framework",
       "Quartz.framework",
     ]
+  }
+
+  if (is_win) {
+    assert(toolkit_views)
+    assert(use_aura)
+
+    deps += [
+      ":font_prewarmer_tab_helper",
+      "//chrome/browser/ui:network_profile_bubble",
+      "//chrome/browser/ui/views:certificate_viewer_win",
+      "//chrome/browser/ui/views:critical_notification_bubble_view",
+      "//chrome/browser/ui/views:network_profile_bubble_view",
+      "//chrome/browser/ui/views:uninstall_browser_prompt",
+      "//chrome/browser/ui/views/frame:browser_caption_button_container_win",
+      "//chrome/browser/ui/views/frame:browser_native_widget_factory_aura",
+      "//chrome/browser/ui/views/frame:browser_window_property_manager_win",
+      "//chrome/browser/ui/views/frame:minimize_button_metrics_win",
+      "//chrome/browser/ui/views/frame:windows_taskbar_icon_updater",
+      "//chrome/browser/ui/views/frame:windows_taskbar_icon_updater_impl",
+      "//components/search_engines",
+      "//third_party/wtl",
+    ]
+
+    libs += [ "crypt32.lib" ]
   }
 
   if (is_linux || is_mac) {
@@ -3590,6 +3809,33 @@ source_set("browser") {
         "//chrome/browser/ui/webui/unexportable_keys_internals",
         "//chrome/browser/ui/webui/unexportable_keys_internals:impl",
         "//services/audio/public/cpp",
+      ]
+    }
+
+    if (is_win) {
+      deps += [
+        "//chrome/browser/ui:accessibility_util",
+        "//chrome/browser/ui/views/frame:system_menu_insertion_delegate_win",
+        "//chrome/browser/ui/views/frame:windows_caption_button",
+        "//chrome/browser/ui/views/frame:windows_caption_button_impl",
+      ]
+    }
+
+    if (is_chromeos) {
+      deps += [
+        "//chrome/browser/ui/views/extensions:media_galleries_dialog_views",
+      ]
+    } else {
+      deps += [
+        "//chrome/browser/ui/views:screen_capture_notification_ui_views",
+        "//chrome/browser/ui/views/frame:opaque_browser_frame_view",
+        "//chrome/browser/ui/views/frame:opaque_browser_frame_view_impl",
+        "//chrome/browser/ui/views/frame:opaque_browser_frame_view_layout",
+        "//chrome/browser/ui/views/policy:enterprise_startup_dialog",
+        "//chrome/browser/ui/views/policy:idle_dialog",
+        "//chrome/browser/ui/views/shortcuts",
+        "//chrome/browser/ui/views/shortcuts:impl",
+        "//ui/views/window/vector_icons",
       ]
     }
 
