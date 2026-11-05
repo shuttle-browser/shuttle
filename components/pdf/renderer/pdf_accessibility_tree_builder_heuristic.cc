@@ -1553,6 +1553,22 @@ void PdfAccessibilityTreeBuilderHeuristic::BuildPageTree() {
         GetTextRunContext(page_layout, text_run_index);
     const chrome_pdf::AccessibilityTextRunInfo& text_run = *run_context.run;
 
+    // Close any open non-figure block when entering a graphic so the graphic
+    // starts its own `kFigure` block even if `BreakParagraph()` didn't split
+    // before this run.
+    chrome_pdf::AccessibilityFormGraphicInfo* current_graphic = nullptr;
+    if (features::IsPdfAccessibilityHeuristicEnhancementsEnabled() &&
+        IsObjectWithRangeInTextRun(graphics, current_graphic_index,
+                                   text_run_index)) {
+      current_graphic = &graphics[current_graphic_index];
+      if (block_node && block_node->role != ax::mojom::Role::kFigure) {
+        BuildStaticNode(&static_text_state);
+        block_node = nullptr;
+        current_heading_classifier = HeadingClassifier::kNone;
+        previous_on_line_node = nullptr;
+      }
+    }
+
     // If we don't have a block level node, create one.
     if (!block_node) {
       block_node =

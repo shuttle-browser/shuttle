@@ -167,13 +167,10 @@ void CookiesEventRouter::OnCookieChange(const net::CookieChangeInfo& change) {
                    net::CookieChangeCause::INSERTED_NO_VALUE_CHANGE_OVERWRITE);
 
   ExtensionsBrowserClient* client = ExtensionsBrowserClient::Get();
+  // Shuttle: the cookies API only exposes the original store (no incognito
+  // listener).
   content::BrowserContext* context =
-      otr ? (client->HasOffTheRecordContext(browser_context_)
-                 ? client->GetOffTheRecordContext(browser_context_)
-                 : nullptr)
-          : client->GetOriginalContext(browser_context_);
-  // TODO(407373848): OTR profile must exist when the cookie change event
-  // arrived.
+      client->GetOriginalContext(browser_context_);
   CHECK(context);
 
   api::cookies::Cookie cookie = cookies_helpers::CreateCookie(
@@ -222,19 +219,11 @@ void CookiesEventRouter::OnCookieChange(const net::CookieChangeInfo& change) {
 
 void CookiesEventRouter::OnRelatedOffTheRecordBrowserContextCreated(
     content::BrowserContext& off_the_record_context) {
-  // Start listening for cookie changes there. The OTR receiver may already
-  // be bound if MaybeStartListening() raced this callback (e.g. the
-  // off-the-record context already existed when StartObserving() was
-  // called).
-  if (!otr_receiver_.is_bound()) {
-    BindToCookieManager(&otr_receiver_, off_the_record_context);
-  }
+  // Shuttle: incognito cookie changes are not reported.
 }
 
 void CookiesEventRouter::OnRelatedOffTheRecordBrowserContextDestroyed(
-    content::BrowserContext& off_the_record_context) {
-  otr_receiver_.reset();
-}
+    content::BrowserContext& off_the_record_context) {}
 
 void CookiesEventRouter::MaybeStartListening() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
@@ -246,12 +235,6 @@ void CookiesEventRouter::MaybeStartListening() {
 
   if (!receiver_.is_bound()) {
     BindToCookieManager(&receiver_, *original_context);
-  }
-
-  if (!otr_receiver_.is_bound() &&
-      client->HasOffTheRecordContext(original_context)) {
-    BindToCookieManager(&otr_receiver_,
-                        *client->GetOffTheRecordContext(original_context));
   }
 }
 

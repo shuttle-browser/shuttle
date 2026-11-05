@@ -415,6 +415,7 @@ static_library("devtools") {
     deps += [
       "//chrome/app:command_ids",
       "//chrome/browser/custom_handlers",
+      "//chrome/browser/origin_gating",
       "//chrome/browser/private_verification_tokens",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/startup",

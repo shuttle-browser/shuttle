@@ -271,20 +271,6 @@ std::string_view ToString(content::CopyFromSurfaceError error) {
   }
 }
 
-// Truncate the UTF-8 string to the nearest UTF-8 character that will leave the
-// string size less than or equal to the byte limit. Returns true if the text
-// was truncated.
-bool TruncateUTF8ToByteLimit(std::string& text, size_t byte_limit) {
-  const size_t truncated_size =
-      base::TruncateUTF8ToByteSize(std::string_view{text}, byte_limit).size();
-  if (truncated_size < text.size()) {
-    text.resize(truncated_size);
-    return true;
-  }
-
-  return false;
-}
-
 }  // namespace
 
 // static

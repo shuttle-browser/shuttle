@@ -17,6 +17,7 @@
 #include "base/memory/raw_ref.h"
 #include "base/memory/raw_span.h"
 #include "pdf/accessibility_structs.h"
+#include "ui/accessibility/ax_enums.mojom-forward.h"
 
 namespace chrome_pdf {
 struct AccessibilityCharInfo;

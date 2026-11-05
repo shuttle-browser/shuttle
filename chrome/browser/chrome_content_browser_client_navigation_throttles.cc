@@ -153,11 +153,6 @@
 #include "extensions/browser/extensions_browser_client.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
-#if BUILDFLAG(ENABLE_WEBUI_NTP)
-#include "chrome/browser/ui/search/chrome_search_navigation_throttle.h"
-#include "chrome/browser/ui/search/new_tab_page_navigation_throttle.h"
-#endif
-
 namespace {
 
 // Wrapper for SSLErrorHandler::HandleSSLError() that supplies //chrome-level

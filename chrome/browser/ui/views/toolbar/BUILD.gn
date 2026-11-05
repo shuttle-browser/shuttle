@@ -159,13 +159,6 @@ source_set("impl") {
     "toolbar_view.cc",
   ]
 
-  if (is_mac) {
-    sources += [
-      "webui_toolbar_web_view_util_mac.h",
-      "webui_toolbar_web_view_util_mac.mm",
-    ]
-  }
-
   deps = [
     ":toolbar",
     "//base:i18n",

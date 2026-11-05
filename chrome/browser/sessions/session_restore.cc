@@ -1430,6 +1430,16 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
   // If true, restores the normal browser.
   bool restore_browser_ = true;
 
+  // True if this instance is restoring a session from another device, rather
+  // than this profile's own last session. Foreign restores are not reported to
+  // SessionRestoreObservers.
+  const bool is_foreign_session_restore_;
+
+  // Normal and app window counts restored for this profile, reported to
+  // SessionRestoreObservers when the restore finishes. Tab counts are not
+  // accumulated.
+  SessionRestore::StateCounts counts_;
+
   // During app restores, we make two GetLastSession calls to
   // [App]SessionService, we need to wait till they both return before
   // processing the windows together in one pass.

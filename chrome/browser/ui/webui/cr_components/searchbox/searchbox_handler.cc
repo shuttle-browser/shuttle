@@ -313,9 +313,9 @@ base::DictValue SearchboxHandler::GetWebUIDataSourceDict(
            base::FeatureList::IsEnabled(ntp_features::kRealboxCr23Theming));
   dict.Set("searchboxCr23SteadyStateShadow",
            ntp_features::kNtpRealboxCr23SteadyStateShadow.Get());
-  dict.Set("realboxVirtualFocusNavigation",
-           base::FeatureList::IsEnabled(
-               ntp_features::kRealboxVirtualFocusNavigation));
+  // Shuttle: no NTP realbox (WebUI NTP removed); the key stays for the shared
+  // searchbox component.
+  dict.Set("realboxVirtualFocusNavigation", false);
   dict.Set("lensOverlayVirtualFocusNavigation",
            base::FeatureList::IsEnabled(
                features::kLensOverlayVirtualFocusNavigation));

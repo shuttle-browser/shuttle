@@ -92,7 +92,7 @@ class CookiesEventRouter : public BrowserContextLifetimeObserver {
   // To listen to cookie changes in both the original and the off the record
   // profiles, we need a pair of bindings, as well as a pair of
   // CookieChangeListener instances.
-  CookieChangeListener listener_{this, false};
+  CookieChangeListener listener_{this};
   mojo::Receiver<network::mojom::CookieChangeListener> receiver_{&listener_};
 };
 

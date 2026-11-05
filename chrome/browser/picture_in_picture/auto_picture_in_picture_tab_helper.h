@@ -32,6 +32,10 @@ namespace permissions {
 class PermissionDecisionAutoBlockerBase;
 }  // namespace permissions
 
+namespace tabs {
+class TabInterface;
+}  // namespace tabs
+
 class AutoPictureInPictureSafeBrowsingCheckerClient;
 class AutoPictureInPictureTabObserverHelperBase;
 class AutoPipSettingHelper;

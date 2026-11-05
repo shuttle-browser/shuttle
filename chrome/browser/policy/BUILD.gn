@@ -525,8 +525,6 @@ source_set("impl") {
     sources += [
       "device_account_initializer.cc",
       "managed_account_policy_handler.cc",
-      "value_provider/web_app_managed_configuration_value_provider.cc",
-      "value_provider/web_app_managed_configuration_value_provider.h",
     ]
     deps += [
       "//chrome/browser/device_api",

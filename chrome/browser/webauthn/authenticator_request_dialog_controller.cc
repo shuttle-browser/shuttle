@@ -296,14 +296,6 @@ inline bool IsModalRequest(UIPresentation ui_presentation) {
          ui_presentation == UIPresentation::kModalImmediate;
 }
 
-// Returns true for presentations that run in the background without a modal
-// dialog (conditional/autofill and ambient). Such requests should never surface
-// a page-modal sheet before the user has chosen to interact with them.
-inline bool IsPassiveRequest(UIPresentation ui_presentation) {
-  return ui_presentation == UIPresentation::kAutofill ||
-         ui_presentation == UIPresentation::kAmbient;
-}
-
 // Returns the vector icon associated with the given mechanism type.
 // For Mechanism::WindowsAPI, the effective transport must be provided.
 const gfx::VectorIcon& GetMechanismIcon(

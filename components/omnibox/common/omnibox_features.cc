@@ -368,12 +368,6 @@ BASE_FEATURE(kTruncateSearchUrlOq, DISABLED);
 // parameter of search URLs.
 BASE_FEATURE(kTruncateSearchUrlQ, DISABLED);
 
-// Enable asynchronous Omnibox/Suggest view inflation.
-BASE_FEATURE(kOmniboxAsyncViewInflation, ENABLED);
-
-// Use FusedLocationProvider on Android to fetch device location.
-BASE_FEATURE(kUseFusedLocationProvider, ENABLED);
-
 // Updates various NTP/Omnibox assets and descriptions for visual alignment on
 // iOS.
 BASE_FEATURE(kOmniboxMobileParityUpdate, ENABLED);

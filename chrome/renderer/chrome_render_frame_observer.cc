@@ -93,10 +93,6 @@
 #include "chrome/renderer/plugins/chrome_plugin_placeholder.h"
 #endif
 
-#if BUILDFLAG(ENABLE_WEBUI_NTP)
-#include "chrome/renderer/searchbox/searchbox_extension.h"
-#endif
-
 using blink::WebDocumentLoader;
 using blink::WebElement;
 using blink::WebFrameContentDumper;

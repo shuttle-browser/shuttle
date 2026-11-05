@@ -31,10 +31,8 @@
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/frame/safe_invoke/safe_invoke.h"
 #include "chrome/common/pref_names.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/metrics/daily_event.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
@@ -353,18 +351,9 @@ void GlassFrameService::MaybeShowPromo(BrowserWindowInterface* browser) {
     return;
   }
 
-  const base::Feature& promo_feature =
-      is_glass_frame_enabled_ ? feature_engagement::kIPHGlassFrameOptOutFeature
-                              : feature_engagement::kIPHGlassFrameOptInFeature;
-  if (!base::FeatureList::IsEnabled(promo_feature)) {
-    return;
-  }
-
-  if (auto* const user_education =
-          BrowserUserEducationInterface::From(browser)) {
-    has_attempted_startup_promo_ = true;
-    user_education->MaybeShowStartupFeaturePromo(promo_feature);
-  }
+  // Shuttle: no in-product help (user education and feature_engagement are
+  // removed), so there is no glass frame opt-in/opt-out promo.
+  has_attempted_startup_promo_ = true;
 }
 
 void GlassFrameService::UpdateHasMultipleOpenProfiles() {

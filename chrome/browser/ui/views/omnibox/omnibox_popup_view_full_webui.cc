@@ -605,11 +605,9 @@ void OmniboxPopupViewFullWebUI::DidFinishNavigation(
   }
   // An unfocused draft is shown in the open popup, or kept in the edit model
   // while the popup is closed because the location bar isn't drawn (see
-  // `ReshowPopup()`). Leave the AI Mode popup alone.
+  // `ReshowPopup()`).
   auto* edit_model = controller()->edit_model();
-  if (edit_model->has_focus() || !edit_model->HasDraft() ||
-      controller()->popup_state_manager()->popup_state() ==
-          OmniboxPopupState::kAim) {
+  if (edit_model->has_focus() || !edit_model->HasDraft()) {
     return;
   }
   if (omnibox_view_) {

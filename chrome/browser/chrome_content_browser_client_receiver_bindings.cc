@@ -128,10 +128,6 @@
 #include "chrome/browser/offline_pages/offline_page_tab_helper.h"
 #endif
 
-#if BUILDFLAG(ENABLE_WEBUI_NTP)
-#include "chrome/browser/ui/search/search_tab_helper.h"
-#endif
-
 namespace {
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)

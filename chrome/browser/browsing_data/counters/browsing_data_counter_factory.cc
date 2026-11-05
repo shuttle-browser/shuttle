@@ -12,7 +12,6 @@
 #include "chrome/browser/browsing_data/counters/downloads_counter.h"
 #include "chrome/browser/browsing_data/counters/site_data_counter.h"
 #include "chrome/browser/browsing_data/counters/site_settings_counter.h"
-#include "chrome/browser/browsing_data/counters/skills_counter.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
 #include "chrome/browser/history/history_service_factory.h"

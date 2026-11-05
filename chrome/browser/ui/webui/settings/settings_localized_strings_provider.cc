@@ -35,6 +35,7 @@
 #include "chrome/browser/ui/managed_ui.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toasts/toast_features.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -455,9 +456,8 @@ void AddClearBrowsingDataStrings(content::WebUIDataSource* html_source,
                              IDS_CLEAR_BROWSING_DATA_HISTORY_NOTICE,
                              chrome::kMyActivityUrlInClearBrowsingDataNotice));
 
-  html_source->AddBoolean(
-      "showDeleteSkillsDataType",
-      skills::SkillsServiceFactory::GetForProfile(profile) != nullptr);
+  // Shuttle: skills are removed.
+  html_source->AddBoolean("showDeleteSkillsDataType", false);
 
   html_source->AddLocalizedStrings(kLocalizedStrings);
 }

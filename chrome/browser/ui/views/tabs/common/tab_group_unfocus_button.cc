@@ -9,7 +9,6 @@
 #include "base/i18n/rtl.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_style.h"
 #include "chrome/grit/generated_resources.h"

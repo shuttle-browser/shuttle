@@ -1,0 +1,92 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef SERVICES_WEBNN_WEBNN_COMPILER_SERVICE_IMPL_H_
+#define SERVICES_WEBNN_WEBNN_COMPILER_SERVICE_IMPL_H_
+
+#include "base/component_export.h"
+#include "base/containers/flat_map.h"
+#include "base/timer/timer.h"
+#include "base/types/pass_key.h"
+#include "build/build_config.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/unique_receiver_set.h"
+#if BUILDFLAG(IS_WIN)
+#include "services/webnn/public/cpp/ep_device_info.h"
+#endif
+#include "services/webnn/public/mojom/webnn_compiler_context.mojom.h"
+#include "services/webnn/public/mojom/webnn_compiler_service.mojom.h"
+
+namespace webnn {
+
+#if BUILDFLAG(IS_WIN)
+namespace ort {
+class CompilerContextImplOrt;
+}  // namespace ort
+#elif BUILDFLAG(IS_APPLE)
+namespace coreml {
+class CompilerContextImplCoreml;
+}  // namespace coreml
+#endif
+
+// Maintains a set of WebNNCompilerContext instances. Runs in the WebNN Compiler
+// utility process.
+class COMPONENT_EXPORT(WEBNN_SERVICE) WebNNCompilerServiceImpl
+    : public mojom::WebNNCompilerService {
+ public:
+  explicit WebNNCompilerServiceImpl(
+      mojo::PendingReceiver<mojom::WebNNCompilerService> receiver);
+
+  WebNNCompilerServiceImpl(const WebNNCompilerServiceImpl&) = delete;
+  WebNNCompilerServiceImpl& operator=(const WebNNCompilerServiceImpl&) = delete;
+
+  ~WebNNCompilerServiceImpl() override;
+
+#if BUILDFLAG(IS_WIN)
+  // Called by a compiler context to destroy itself.
+  void RemoveCompilerContext(
+      mojo::ReceiverId receiver_id,
+      base::PassKey<ort::CompilerContextImplOrt> pass_key);
+#elif BUILDFLAG(IS_APPLE)
+  // Called by a compiler context to destroy itself.
+  API_AVAILABLE(macos(14.4))
+  void RemoveCompilerContext(
+      mojo::ReceiverId receiver_id,
+      base::PassKey<coreml::CompilerContextImplCoreml> pass_key);
+#endif
+
+ private:
+  // mojom::WebNNCompilerService:
+  void CreateCompilerContext(
+      mojom::CreateContextOptionsPtr context_options,
+      const ContextProperties& context_properties,
+      mojo::PendingRemote<mojom::WebNNModelLoader> model_loader,
+      mojo::PendingReceiver<mojom::WebNNCompilerContext> receiver,
+      CreateCompilerContextCallback callback) override;
+
+  // Called when any compiler context in `compiler_contexts_` disconnects.
+  void OnCompilerContextDisconnected();
+
+  // Called when the idle timer fires with no active compiler contexts.
+  void OnIdleTimeout();
+
+#if BUILDFLAG(IS_WIN)
+  // The target EP device for this compiler service.
+  const EpDeviceInfo target_device_;
+#endif
+
+  mojo::UniqueReceiverSet<mojom::WebNNCompilerContext> compiler_contexts_;
+
+  // Started at construction and restarted each time the last compiler context
+  // disconnects. Cancelled when a new context is created. If it fires, the
+  // process shuts down via ResetWithReason().
+  base::OneShotTimer idle_timer_;
+
+  mojo::Receiver<mojom::WebNNCompilerService> receiver_;
+};
+
+}  // namespace webnn
+
+#endif  // SERVICES_WEBNN_WEBNN_COMPILER_SERVICE_IMPL_H_

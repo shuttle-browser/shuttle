@@ -9,6 +9,7 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -79,7 +80,7 @@ views::ProposedLayout VerticalTabStripTopContainer::CalculateProposedLayout(
 
   // Once the available width is below the collapse snap width, we update the
   // orientation in order to have smooth transition during animation.
-  if (available_width < VerticalTabStripRegionView::kCollapseSnapWidth ||
+  if (available_width < tabs::kVerticalTabStripCollapseSnapWidth ||
       is_collapsed) {
     int current_y = 0;
 
@@ -226,8 +227,7 @@ void VerticalTabStripTopContainer::ShowContextMenuForViewImpl(
     views::View* source,
     const gfx::Point& point,
     ui::mojom::MenuSourceType source_type) {
-  if (tabs::IsVerticalTabsExpandOnHoverFeatureEnabled() &&
-      source == collapse_button_) {
+  if (source == collapse_button_) {
     // Reset the menu runner to avoid issues when the collapse button is
     // clicked multiple times.
     context_menu_runner_.reset();

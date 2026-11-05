@@ -10,10 +10,8 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_action_item.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
-#include "chrome/browser/user_education/user_education_service.h"
 #include "ui/actions/actions.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -37,14 +35,10 @@ ui::ImageModel StandardizeMenuIconSize(const ui::ImageModel& icon,
   return icon;
 }
 
+// Shuttle: no user education, so menu items never show a "New" badge.
 bool ShouldShowNewBadge(BrowserWindowInterface* browser_window_interface,
                         const base::Feature& feature) {
-  if (auto* const user_education =
-          BrowserUserEducationInterface::From(browser_window_interface)) {
-    return user_education->MaybeShowNewBadgeFor(feature);
-  }
-  return UserEducationService::MaybeShowNewBadge(
-      browser_window_interface->GetProfile(), feature);
+  return false;
 }
 
 class AppMenuItemActionViewInterface
