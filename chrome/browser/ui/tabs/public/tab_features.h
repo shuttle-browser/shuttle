@@ -129,7 +129,6 @@ namespace back_to_opener {
 class BackToOpenerController;
 }  // namespace back_to_opener
 
-
 namespace enterprise_data_protection {
 class DataProtectionNavigationController;
 }  // namespace enterprise_data_protection
@@ -226,7 +225,6 @@ class TabFeatures {
     return permission_indicators_tab_data_.get();
   }
 
-
   TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
 
   page_actions::PageActionController* page_action_controller() {
@@ -291,7 +289,6 @@ class TabFeatures {
   std::unique_ptr<permissions::PermissionIndicatorsTabData>
       permission_indicators_tab_data_;
 
-
   // Responsible for managing the read anything (Reading mode) feature.
 
   // The tab-scoped extension side-panel manager. There is a separate
@@ -354,6 +351,12 @@ class TabFeatures {
   // server HTTP auth.
   std::unique_ptr<HttpAuthCacheStatus> http_auth_cache_status_;
 
+  std::unique_ptr<vr::VrTabHelper> vr_tab_helper_;
+
+  std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
+
+  std::unique_ptr<ChildTabAlertHelper> child_tab_alert_helper_;
+
   std::unique_ptr<TabAlertController> tab_alert_controller_;
 
   std::unique_ptr<ContextHighlightTabFeature> context_highlight_tab_feature_;
@@ -404,6 +407,10 @@ class TabFeatures {
   std::unique_ptr<PluginObserver> plugin_observer_;
 #endif
 
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+  std::unique_ptr<extensions::AppTabHelper> app_tab_helper_;
+#endif
+
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   std::unique_ptr<extensions::NavigationExtensionEnabler>
       navigation_extension_enabler_;
@@ -422,7 +429,6 @@ class TabFeatures {
   // Maintains the thumbnail shown in e.g. tab hover cards. Null when no
   // feature that needs thumbnails is enabled.
   std::unique_ptr<ThumbnailTabHelper> thumbnail_tab_helper_;
-
 
   std::unique_ptr<UMABrowsingActivityTabHelper>
       uma_browsing_activity_tab_helper_;
@@ -448,28 +454,16 @@ class TabFeatures {
   std::unique_ptr<site_protection::SiteProtectionMetricsObserver>
       site_protection_metrics_observer_;
 
-  std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
-
-  std::unique_ptr<download::DownloadNavigationObserver>
-      download_navigation_observer_;
-
-  std::unique_ptr<TabDialogs> tab_dialogs_;
-
-  std::unique_ptr<vr::VrTabHelper> vr_tab_helper_;
-
-  std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
-
-  std::unique_ptr<ChildTabAlertHelper> child_tab_alert_helper_;
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  std::unique_ptr<extensions::AppTabHelper> app_tab_helper_;
-#endif
-
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   std::unique_ptr<safe_browsing::SafeBrowsingTabObserver>
       safe_browsing_tab_observer_;
   std::unique_ptr<safe_browsing::TriggerCreator> trigger_creator_;
 #endif
+
+  std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
+
+  std::unique_ptr<download::DownloadNavigationObserver>
+      download_navigation_observer_;
 
   std::unique_ptr<history::WebContentsTopSitesObserver>
       web_contents_top_sites_observer_;
@@ -491,6 +485,8 @@ class TabFeatures {
 
   std::unique_ptr<AutoPictureInPictureTabHelper>
       auto_picture_in_picture_tab_helper_;
+
+  std::unique_ptr<TabDialogs> tab_dialogs_;
 
   std::unique_ptr<metrics::MetricsServicesWebContentsObserver>
       metrics_services_web_contents_observer_;
