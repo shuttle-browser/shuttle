@@ -13,6 +13,7 @@
 #include "chrome/browser/file_system_access/file_system_access_permission_context_factory.h"
 #include "chrome/browser/heavy_ad_intervention/heavy_ad_service_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
+#include "chrome/browser/language/url_language_histogram_factory.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_manager_factory.h"
 #include "chrome/browser/preloading/prefetch/search_prefetch/search_prefetch_service_factory.h"
 #include "chrome/browser/private_verification_tokens/private_verification_tokens_service_factory.h"
@@ -22,7 +23,6 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
 #include "chrome/browser/spellchecker/spellcheck_factory.h"
-#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/find_bar/find_bar_state_factory.h"
 #include "chrome/browser/webdata_services/web_data_service_factory.h"
 #include "content/public/browser/browser_context.h"
@@ -37,8 +37,6 @@
 #include "chrome/browser/sessions/session_service_factory.h"
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-#endif  // BUILDFLAG(IS_ANDROID
 
 // static
 ChromeBrowsingDataRemoverDelegateFactory*
@@ -76,7 +74,6 @@ ChromeBrowsingDataRemoverDelegateFactory::
   DependsOn(search_engines::SearchEngineChoiceServiceFactory::GetInstance());
   DependsOn(SearchPrefetchServiceFactory::GetInstance());
   DependsOn(SpellcheckServiceFactory::GetInstance());
-  DependsOn(SyncServiceFactory::GetInstance());
   DependsOn(TabRestoreServiceFactory::GetInstance());
   DependsOn(TemplateURLServiceFactory::GetInstance());
   DependsOn(UrlLanguageHistogramFactory::GetInstance());
@@ -91,15 +88,8 @@ ChromeBrowsingDataRemoverDelegateFactory::
   DependsOn(SessionServiceFactory::GetInstance());
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
-  DependsOn(feed::FeedServiceFactory::GetInstance());
-  // The delegate also uses offline_pages::OfflinePageModelFactory, but no
-  // DependsOn() can be declared for it: it is a SimpleKeyedServiceFactory
-  // registered with SimpleDependencyManager, not a
-  // BrowserContextKeyedServiceFactory.
-#else
-  DependsOn(MicrosoftAuthServiceFactory::GetInstance());
-#endif  // BUILDFLAG(IS_ANDROID)
+  // In Android, depends on offline_pages::OfflinePageModelFactory in
+  // SimpleDependencyManager.
 }
 
 ChromeBrowsingDataRemoverDelegateFactory::
