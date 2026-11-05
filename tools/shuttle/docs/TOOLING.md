@@ -383,7 +383,7 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (snapshot on top, ~15 min incl. V8) had 211 modify/delete + 4 content conflicts. V8 moves with it (new V8
   snapshot + merge in `v8/`, push `upstream` + a branch to shuttle-browser/v8 before building on another
   machine: its `gclient sync` fetches V8 from GitHub).
-- **157 merge (156.0.8078.48 → 157.0.8103.39, 2026-11-04, in progress; Mac build rounds 1-2 on 11-04)**: 34,982 upstream files; 15,502
+- **157 merge (156.0.8078.48 → 157.0.8103.39, 2026-11-04, in progress; Mac dev build green + smoke-all 14/14 on 11-05 after 6 rounds)**: 34,982 upstream files; 15,502
   modify/delete + 621 content conflicts; 115 files by script, 506 files / ~1,355 hunks by 6 agents (4 Sonnet + 2
   Opus, ~20 min, ~1.66M tokens). `gn gen` green ~1 h after the merge commit. Gotchas new with 157:
   - **Upstream deleted `//chrome/browser/ui:ui`** and moved its deps onto consumers ("leaf targets"): fork targets
@@ -412,6 +412,18 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     the failing file with `chromium` outside the fork's own removals.
   - **Blink bindings generators** each start a `cpu_count()` multiprocessing pool; 11 of them in parallel ran ~96
     Python processes (Mac load 70). They now share a depth-1 GN pool (`third_party/blink/renderer/bindings/BUILD.gn`).
+  - **The merge can drop whole dep blocks and `gn gen` stays green**: chrome/browser/BUILD.gn lost upstream's
+    block of `*_impl` deps for the dissolved `ui` target (and the views/win/chromeos blocks). Unreferenced targets
+    are no error, so it only showed as ~20+ undefined symbols when linking `libchrome_dll`. Check after `gn gen`:
+    `gn desc <out> //chrome:chrome_dll deps --all` must reach upstream's new `:impl`/`*_impl` targets, and upstream
+    labels missing from merged BUILD.gn files whose target still exists in the fork are merge losses.
+  - **Files split upstream lose their new half**: 157 split `devtools/protocol/page_handler.cc` into
+    `page_handler_desktop.cc` / `_android.cc`; the merge kept the fork's sources list (undefined `PageHandler` ctor).
+  - **Member order in feature-holder classes**: `TabFeatures` kept the fork's 156 member order, so
+    `TabAlertController` was destroyed after the VR/audible helpers it observes (upstream 157 moved it after them):
+    SIGSEGV on every tab close (intermittent smoke failures). Compare the member order of `TabFeatures` /
+    `BrowserWindowFeatures` with upstream after a merge (longest-increasing-subsequence of common members; 0 out of
+    place is the goal).
 
 ## Gotchas
 
