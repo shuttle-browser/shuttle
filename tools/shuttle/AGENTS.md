@@ -30,7 +30,7 @@ commit removed, what is kept on purpose), `docs/LINUX.md`, `docs/BRANDING.md` (i
 
 ## Fork basics
 
-- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **156.0.8078.48** snapshot (merged 2026-10-21; 155.0.8059.87 before); fork work
+- Fork checkout (`src/` of a gclient checkout): base branch `chromium` = stable Chromium **157.0.8103.39** snapshot (merged 2026-11-04..06; 156.0.8078.48 before); fork work
   lives on `main`, work in progress on topic branches. Upstream releases are *merged* in, not rebased; afterwards
   rerun the prune and rebrand scripts (see "After an upstream merge").
 - Mac and Linux must both build before a removal batch is committed. Windows is removed (WSL2 runs the Linux build).

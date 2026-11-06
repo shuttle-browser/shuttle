@@ -1092,6 +1092,11 @@ existence checked on `/json/list`.
     screen/tab sharing; downloads get the plain Safe Browsing verdict (**no cloud deep scanning, including the
     consumer Enhanced Protection "scan this file" prompt; download feedback no longer uploads**); profiles are
     never cloud managed; cloud-only policies can't be set.
+  - Follow-ups: `cd02980136` restores `color_change_listener/resources.grdp` in `ui/webui/resources:build_grd` (the
+    merge kept the dep but lost the grdp entry when upstream moved it into the `!is_ios` block, so
+    `chrome://resources/cr_components/color_change_listener/colors_css_updater.js` was missing and
+    chrome://management + chrome://certificate-manager rendered blank); `4aa1e3568f` drops 260 `flag-metadata.json`
+    entries (+7 never-expire entries) for flags no longer in `about_flags.cc`.
 
 Verified so far: macOS dev build green after each wave, `smoke-all` 14/14; Linux `gn gen` + `check-ninja-inputs`
 green (dev and release configs). Open: Linux release build, chrome://management and chrome://certificate-manager
