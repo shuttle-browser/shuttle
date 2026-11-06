@@ -365,11 +365,12 @@ base::ScopedFD OpenPrivateDir(int parent_fd, const std::string& name) {
 }
 
 // Writes `value` to `secrets_dir`/`name`.txt, readable only by the user.
-// `secrets_dir` is <agent dir>/secrets/<agent>: the two last components are
-// opened without following links (and must be private directories of this
-// user), the value goes into a new exclusively created 0600 file that then
-// replaces the destination entry atomically. An existing file (or link) at the
-// destination is replaced, never written through.
+// `secrets_dir` is <profile>/shuttle/secrets/<agent>: the three components
+// below the profile directory are opened without following links (and must be
+// private directories of this user), the value goes into a new exclusively
+// created 0600 file that then replaces the destination entry atomically. An
+// existing file (or link) at the destination is replaced, never written
+// through.
 SavedText WriteSecretFile(base::FilePath secrets_dir,
                           std::string name,
                           std::string value) {
@@ -378,12 +379,18 @@ SavedText WriteSecretFile(base::FilePath secrets_dir,
   const std::string fail = "Could not write the secret file under " +
                            secrets_dir.AsUTF8Unsafe() +
                            " (it must be a private directory of this user)";
-  if (!base::CreateDirectory(agent_dir)) {
+  // The profile directory is the trusted anchor; every component below it
+  // (shuttle/secrets/<agent>) is opened without following links and must be a
+  // private directory of this user.
+  base::ScopedFD profile_fd(HANDLE_EINTR(
+      open(agent_dir.DirName().value().c_str(),
+           O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!profile_fd.is_valid()) {
     out.error = fail;
     return out;
   }
-  base::ScopedFD base_fd(HANDLE_EINTR(
-      open(agent_dir.value().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  base::ScopedFD base_fd =
+      OpenPrivateDir(profile_fd.get(), agent_dir.BaseName().value());
   if (!base_fd.is_valid()) {
     out.error = fail;
     return out;
