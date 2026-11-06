@@ -28,10 +28,6 @@
 #include "ui/wm/core/window_util.h"
 #endif
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/actor/actor_util.h"  // nogncheck
-#endif
-
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ContentsWebView,
                                       kContentsWebViewElementId);
 
@@ -181,14 +177,6 @@ void ContentsWebView::DidGetUserInteraction(const blink::WebInputEvent& event) {
   // event, such as when a permission prompt is open in another split view.
   if (event.GetType() != blink::WebInputEvent::Type::kMouseDown &&
       event.GetType() != blink::WebInputEvent::Type::kTouchStart) {
-    return;
-  }
-
-  // Clicks simulated by the actor must not steal focus or activate the window.
-  // This isn't perfect: there are some edge cases, such as short-lived tasks
-  // (less than a few seconds), where user input is not blocked, so real clicks
-  // skip this too.
-  if (actor::HaveActiveTaskForContents(web_contents())) {
     return;
   }
 

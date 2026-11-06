@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "base/command_line.h"
+#include "base/compiler_specific.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_util.h"
 #include "build/branding_buildflags.h"
@@ -77,9 +78,11 @@ std::string ReadPlatformClientId() {
     if (!file) {
       return std::string();
     }
-    char buffer[128];
-    size_t read = fread(buffer, 1, sizeof(buffer), file.get());
-    machine_id.assign(buffer, read);
+    std::array<char, 128> buffer;
+    // SAFETY: fread writes at most buffer.size() bytes into buffer.
+    size_t read = UNSAFE_BUFFERS(
+        fread(buffer.data(), 1, buffer.size(), file.get()));
+    machine_id.assign(buffer.data(), read);
   }
   std::string_view machine_id_trimmed =
       base::TrimWhitespaceASCII(machine_id, base::TRIM_TRAILING);
