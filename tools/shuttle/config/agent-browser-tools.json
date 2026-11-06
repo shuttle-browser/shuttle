@@ -278,7 +278,7 @@
             "file",
             "clipboard"
           ],
-          "description": "Default file: <profile>/shuttle/secrets/<agent>/<name>.txt, mode 0600."
+          "description": "Default file: <profile>/shuttle/secrets/<agent>/<name>.txt, mode 0600 (replaced, never written through a link). clipboard: marked confidential on macOS only; Linux clipboards keep it like any text."
         },
         "name": {
           "type": "string",

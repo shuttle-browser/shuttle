@@ -4,6 +4,10 @@
 
 #include "chrome/browser/shuttle/page_tools.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <optional>
 #include <set>
@@ -16,11 +20,14 @@
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
+#include "base/posix/eintr_wrapper.h"
+#include "base/rand_util.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
@@ -334,34 +341,89 @@ struct SavedText {
   std::string path;
 };
 
-// Writes `value` to `dir`/`name`.txt, readable only by the user.
-SavedText WriteSecretFile(base::FilePath dir,
+// Opens directory `name` in `parent_fd` (creating it with mode 0700 if missing)
+// without following a link, and makes sure it is a directory owned by this
+// user with mode 0700. Returns an invalid fd on any failure.
+base::ScopedFD OpenPrivateDir(int parent_fd, const std::string& name) {
+  if (mkdirat(parent_fd, name.c_str(), 0700) != 0 && errno != EEXIST) {
+    return base::ScopedFD();
+  }
+  base::ScopedFD fd(HANDLE_EINTR(openat(
+      parent_fd, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)));
+  if (!fd.is_valid()) {
+    return base::ScopedFD();
+  }
+  struct stat st;
+  if (fstat(fd.get(), &st) != 0 || !S_ISDIR(st.st_mode) ||
+      st.st_uid != geteuid()) {
+    return base::ScopedFD();
+  }
+  if ((st.st_mode & 07777) != 0700 && fchmod(fd.get(), 0700) != 0) {
+    return base::ScopedFD();
+  }
+  return fd;
+}
+
+// Writes `value` to `secrets_dir`/`name`.txt, readable only by the user.
+// `secrets_dir` is <agent dir>/secrets/<agent>: the two last components are
+// opened without following links (and must be private directories of this
+// user), the value goes into a new exclusively created 0600 file that then
+// replaces the destination entry atomically. An existing file (or link) at the
+// destination is replaced, never written through.
+SavedText WriteSecretFile(base::FilePath secrets_dir,
                           std::string name,
                           std::string value) {
   SavedText out;
-  if (!base::CreateDirectory(dir)) {
-    out.error = "Could not create " + dir.AsUTF8Unsafe();
+  const base::FilePath agent_dir = secrets_dir.DirName().DirName();
+  const std::string fail = "Could not write the secret file under " +
+                           secrets_dir.AsUTF8Unsafe() +
+                           " (it must be a private directory of this user)";
+  if (!base::CreateDirectory(agent_dir)) {
+    out.error = fail;
     return out;
   }
-  base::FilePath path = dir.AppendASCII(name + ".txt");
-#if BUILDFLAG(IS_POSIX)
-  base::SetPosixFilePermissions(dir, 0700);
-#endif
-  base::File file(path,
-                  base::File::FLAG_CREATE_ALWAYS | base::File::FLAG_WRITE);
-  if (!file.IsValid()) {
-    out.error = "Could not write " + path.AsUTF8Unsafe();
+  base::ScopedFD base_fd(HANDLE_EINTR(
+      open(agent_dir.value().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC)));
+  if (!base_fd.is_valid()) {
+    out.error = fail;
     return out;
   }
-#if BUILDFLAG(IS_POSIX)
-  // Before any byte is written.
-  base::SetPosixFilePermissions(path, 0600);
-#endif
-  if (!file.WriteAtCurrentPosAndCheck(base::as_byte_span(value))) {
-    out.error = "Could not write " + path.AsUTF8Unsafe();
+  base::ScopedFD secrets_fd = OpenPrivateDir(base_fd.get(), "secrets");
+  if (!secrets_fd.is_valid()) {
+    out.error = fail;
     return out;
   }
-  out.path = path.AsUTF8Unsafe();
+  base::ScopedFD dir_fd =
+      OpenPrivateDir(secrets_fd.get(), secrets_dir.BaseName().value());
+  if (!dir_fd.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  const std::string final_name = name + ".txt";
+  const std::string temp_name =
+      "." + name + ".tmp-" + base::HexEncodeLower(base::RandBytesAsVector(8));
+  base::ScopedFD file(HANDLE_EINTR(
+      openat(dir_fd.get(), temp_name.c_str(),
+             O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600)));
+  if (!file.is_valid()) {
+    out.error = fail;
+    return out;
+  }
+  struct stat st;
+  const bool ok =
+      fchmod(file.get(), 0600) == 0 && fstat(file.get(), &st) == 0 &&
+      S_ISREG(st.st_mode) && st.st_uid == geteuid() &&
+      (st.st_mode & 07777) == 0600 &&
+      base::WriteFileDescriptor(file.get(), value) &&
+      HANDLE_EINTR(fsync(file.get())) == 0;
+  file.reset();
+  if (!ok || renameat(dir_fd.get(), temp_name.c_str(), dir_fd.get(),
+                      final_name.c_str()) != 0) {
+    unlinkat(dir_fd.get(), temp_name.c_str(), 0);
+    out.error = fail;
+    return out;
+  }
+  out.path = secrets_dir.AppendASCII(final_name).AsUTF8Unsafe();
   return out;
 }
 
@@ -606,7 +668,11 @@ void PageToolManager::OnResult(
 
   if (call.save_text) {
     if (!result.has_value() || tool_error) {
-      std::move(callback).Run(ToToolResult(std::move(result)));
+      // Never forward the sidecar's error text: it can carry page content
+      // (e.g. a cached accessible name of the secret's element).
+      std::move(callback).Run(ToolResult::Error(
+          "Could not read the element's text (a stale @ref? take a new "
+          "snapshot)."));
       return;
     }
     SaveText(std::move(call), std::move(callback), RawText(*result));
@@ -663,9 +729,14 @@ void PageToolManager::SaveText(PendingCall call,
   info.Set("sha256",
            base::HexEncodeLower(crypto::SHA256HashString(value)).substr(0, 12));
   if (call.save_to == "clipboard") {
-    ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
-    writer.WriteText(base::UTF8ToUTF16(value));
-    writer.MarkAsConfidential();
+    {
+      // Commits when it goes out of scope: before success is reported.
+      ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
+      writer.WriteText(base::UTF8ToUTF16(value));
+      // Honoured on macOS (current host only, no clipboard history); Linux
+      // (Ozone) ignores it, see the tool description.
+      writer.MarkAsConfidential();
+    }
     info.Set("saved", "clipboard");
     std::move(callback).Run(ToolResult::Json(base::Value(std::move(info))));
     return;
