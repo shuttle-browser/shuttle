@@ -3,7 +3,6 @@
 # Rerun after every upstream merge; references are cut by hand (see REMOVAL-LOG, 157 merge).
 # Engine code stays close to upstream (content/, blink, device/vr public mojom): the web APIs remain and report
 # "not available" without the browser-side features.
-# DRAFT: enterprise and optimization_guide are scoped after the first green 157 build.
 
 # Platform Runtime / request-header-integrity: a Google library delivered by the component updater that stamps
 # integrity headers on requests (157: all requests, in a utility process). Already off (enable_request_header_integrity
@@ -59,7 +58,70 @@ remove chrome/browser/ui/views/frame/picture_in_picture_browser_frame_view_linux
 remove components/site_token_provider
 remove chrome/browser/site_token_provider
 
-# TODO after the first green build (scoping needs the build graph):
-#   enterprise connectors / reporting / device trust / Isolated Mode (chrome/browser/enterprise, components/enterprise;
-#     keep what policy loading and management UI need)
-#   components/optimization_guide + chrome/browser/optimization_guide (incl. the decisions-api flag)
+# --- Wave B, batch 1 (Toby 2026-11-06): optimization_guide and what hangs off it, segmentation platform, visited URL
+# ranking, language detection, supervised users. Phishing (CSD) and language-detection models are dropped with it.
+# Carve-out: CDP Page.getAnnotatedPageContent (page_handler -> WebContentsDelegate::GetAIPageContent ->
+# optimization_guide::GetAIPageContent) keeps the page-content proto provider/serializer and the protos it needs.
+keep components/optimization_guide/content/browser/page_content_proto_provider.cc
+keep components/optimization_guide/content/browser/page_content_proto_provider.h
+keep components/optimization_guide/content/browser/page_content_proto_util.cc
+keep components/optimization_guide/content/browser/page_content_proto_util.h
+keep components/optimization_guide/content/browser/autofill_annotations_provider.cc
+keep components/optimization_guide/content/browser/autofill_annotations_provider.h
+keep components/optimization_guide/content/browser/media_transcript_provider.cc
+keep components/optimization_guide/content/browser/media_transcript_provider.h
+keep components/optimization_guide/content/browser/BUILD.gn
+keep components/optimization_guide/core/page_content_proto_serializer.cc
+keep components/optimization_guide/core/page_content_proto_serializer.h
+keep components/optimization_guide/core/optimization_guide_proto_util.cc
+keep components/optimization_guide/core/optimization_guide_proto_util.h
+keep components/optimization_guide/core/optimization_guide_features.cc
+keep components/optimization_guide/core/optimization_guide_features.h
+keep components/optimization_guide/core/optimization_guide_enums.h
+keep components/optimization_guide/core/BUILD.gn
+keep components/optimization_guide/proto
+keep components/optimization_guide/BUILD.gn
+keep components/optimization_guide/features.gni
+remove components/optimization_guide
+remove chrome/browser/optimization_guide
+remove components/page_content_annotations
+remove chrome/browser/page_content_annotations
+remove components/permissions/prediction_service
+remove chrome/browser/permissions/prediction_service
+remove components/multistep_filter
+remove chrome/browser/multistep_filter
+remove chrome/browser/ui/webui/multistep_filter_internals
+remove chrome/browser/resources/multistep_filter_internals
+remove chrome/test/data/webui/multistep_filter_internals
+remove chrome/test/data/webui/optimization_guide_internals
+remove chrome/browser/v8_compile_hints
+remove components/page_image_service
+remove chrome/browser/page_image_service
+remove ui/webui/resources/cr_components/page_image_service
+remove chrome/browser/page_load_metrics/observers/optimization_guide_page_load_metrics_observer.cc
+remove chrome/browser/page_load_metrics/observers/optimization_guide_page_load_metrics_observer.h
+remove tools/mb/mb_config_expectations/internal.optimization_guide.json
+remove tools/mb/mb_config_expectations/tryserver.internal.optimization_guide.json
+remove testing/buildbot/internal.optimization_guide.json
+remove components/segmentation_platform
+remove chrome/browser/segmentation_platform
+remove components/visited_url_ranking
+remove chrome/browser/visited_url_ranking
+remove components/language_detection
+remove chrome/browser/language_detection
+remove components/supervised_user
+remove chrome/browser/supervised_user
+remove chrome/browser/ui/supervised_user
+remove chrome/browser/ui/views/supervised_user
+remove chrome/renderer/supervised_user
+remove chrome/test/supervised_user
+remove extensions/browser/supervised_user_extensions_delegate.cc
+remove extensions/browser/supervised_user_extensions_delegate.h
+remove chrome/common/supervised_user_commands.mojom
+# Single files of the omnibox ML scoring / tail model, the OG component installers, audio ML forwarder, AX tree
+# fixing OG service and the page-context eligibility helper: listed by the batch-1 surgery (they need ref cuts).
+
+# --- Wave B, batch 2 (Toby 2026-11-06): enterprise connectors / reporting / device trust / Isolated Mode / DLP /
+# watermark / client certs / platform auth / idle, device signals, cloud policy (CBCM, DM server), encrypted
+# reporting (components/reporting). Keeps local policy loading, chrome://policy, chrome://management (generic
+# "managed" disclosure), browser_management, util, identifiers (ProfileIdService). Written after batch 1.
